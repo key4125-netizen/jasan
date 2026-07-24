@@ -1,0 +1,26 @@
+{
+  "name": "Smart Asset Manager",
+  "short_name": "자산관리",
+  "description": "개인 자산관리 대시보드 - 국내/해외 주식, ETF, 채권, 현금을 한 곳에서 관리",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#1E293B",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%234f46e5'/%3E%3Cpath d='M48 76a12 12 0 0 1 12-12h72a12 12 0 0 1 12 12v52a12 12 0 0 1-12 12H60a12 12 0 0 1-12-12Z' fill='%23fff'/%3E%3Ccircle cx='128' cy='102' r='9' fill='%234f46e5'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%234f46e5'/%3E%3Cpath d='M48 76a12 12 0 0 1 12-12h72a12 12 0 0 1 12 12v52a12 12 0 0 1-12 12H60a12 12 0 0 1-12-12Z' fill='%23fff'/%3E%3Ccircle cx='128' cy='102' r='9' fill='%234f46e5'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
