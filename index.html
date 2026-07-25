@@ -182,6 +182,8 @@
         </div>
       </div>
       <p id="kpiTotalValue" class="text-lg font-bold">0원</p>
+      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
+      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -192,6 +194,7 @@
         </div>
       </div>
       <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
+      <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -203,6 +206,7 @@
       </div>
       <p id="kpiTotalProfit" class="text-lg font-bold">0원</p>
       <p id="kpiTotalProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
+      <div id="kpiTotalProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -213,12 +217,14 @@
         </div>
       </div>
       <p id="kpiDailyProfit" class="text-lg font-bold">0원</p>
+      <p id="kpiDailyProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
       <div class="flex items-center gap-1 mt-0.5">
         <span id="kpiDailyHint" class="text-[11px] text-slate-400">수동 변동률</span>
         <input id="dailyChangeInput" type="number" step="0.1" value="0"
           class="w-14 text-xs bg-slate-100 dark:bg-slate-800 rounded px-1 py-0.5 text-right outline-none">
         <span class="text-[11px] text-slate-400">%</span>
       </div>
+      <div id="kpiDailyProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -358,7 +364,7 @@
     <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
       <div class="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
         <h3 class="text-sm font-semibold mb-1">수익률 및 적립 설정</h3>
-        <p class="text-[11px] text-slate-400 mb-3">기본값은 0%입니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 실제 예상치를 직접 입력하는 것을 권장합니다.</p>
+        <p class="text-[11px] text-slate-400 mb-3">자산군별 기본 예상 수익률(주식형자산 7.5% · 채권 4.0% · 현금 0.0% · 부동산 2.5%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
         <div id="categoryReturnInputs" class="space-y-3 mb-4"></div>
         <label class="text-xs block mb-4">
           <span class="text-slate-500 dark:text-slate-400">월 추가 적립금 (KRW, 선택)</span>
@@ -522,11 +528,19 @@ const LS_DAILY_RATE = 'sam_daily_rate_v5';
 const LS_DARKMODE = 'sam_dark_mode_v5';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
+// 일간 손익 계산에 쓰이는 "오늘 하루의 기준 환율"(전일 종가 개념) 저장 키.
+// FX는 24시간 거래되어 명확한 "전일 종가"가 없으므로, 달력 날짜가 바뀔 때 그 시점의 환율을
+// 스냅샷해서 그날 하루 동안 고정 기준값으로 사용한다(당일 중 환율이 갱신되어도 기준값은 안 바뀜).
+const LS_REF_RATE = 'sam_ref_rate_v1';
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',
   '현금': '#64748b', '부동산': '#ef4444', '원자재': '#a855f7', '암호화폐': '#ec4899'
 };
+
+// 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
+// 실시간 시세 조회 대상 및 일간 손익 계산에서 제외한다(사용자가 실수로 티커를 입력해 넣어도 예외).
+const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산'];
 const FALLBACK_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#64748b','#06b6d4','#a855f7','#ec4899','#84cc16','#0ea5e9'];
 function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]; }
 
@@ -632,12 +646,19 @@ function normalizeCurrency(raw, fallback) {
 const state = {
   assets: [],
   exchangeRate: 1450,
+  // 오늘 하루의 일간 손익 계산에 쓰는 기준 환율(어제 종가 개념). loadState()의 ensureDailyReference()가
+  // 달력 날짜 전환 시점에 스냅샷하며, 당일 중에는 exchangeRate가 갱신되어도 이 값은 고정된다.
+  refExchangeRate: 1450,
   dailyChangeRate: 0,
   filters: { owner: 'ALL', category: 'ALL', account: 'ALL' },
   sort: { key: null, dir: 1 },
   // 시세 자동조회로 얻은 종목별 당일 등락률(%). 새로고침마다 초기화되는 휘발성 데이터라
   // localStorage에는 저장하지 않고 자산 id -> 등락률(%) 맵으로만 메모리에 보관한다.
   dayChangeMap: {},
+  // 시세 자동조회로 얻은 종목별 전일종가(자산 통화 기준, 예: USD/KRW 원본 그대로). 일간 손익을
+  // "오늘 평가액 - 어제 종가 기준 평가액"으로 정확히 계산하기 위해 쓰이며, dayChangeMap과 마찬가지로
+  // 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  prevCloseMap: {},
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
@@ -672,6 +693,22 @@ function fmtPct(v) { const n = num(v); return (n >= 0 ? '+' : '') + numFmt2.form
 function fmtSigned(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '') + krwFmt.format(n) + '원'; }
 function profitColor(v) { const n = num(v); return n > 0 ? 'text-red-500' : (n < 0 ? 'text-blue-500' : 'text-slate-400'); }
 // 국내 주식시장 관례상 상승=빨강, 하락=파랑 컬러 사용
+
+// KPI 카드 하단의 자산군별 세부 집계 태그처럼 좁은 공간에 큰 금액을 표기할 때 쓰는 축약 표기
+// (예: 1,250,000,000 -> "12억 5,000만원", 500,000,000 -> "5억원"). 1만원 미만은 그냥 원 단위로 표기.
+function fmtKRWShort(v) {
+  const n = Math.round(num(v));
+  const abs = Math.abs(n);
+  const eok = Math.floor(abs / 1e8);
+  const man = Math.round((abs % 1e8) / 1e4);
+  let body;
+  if (eok === 0 && man === 0) body = krwFmt.format(abs) + '원';
+  else if (eok > 0 && man > 0) body = `${krwFmt.format(eok)}억 ${krwFmt.format(man)}만원`;
+  else if (eok > 0) body = `${krwFmt.format(eok)}억원`;
+  else body = `${krwFmt.format(man)}만원`;
+  return (n < 0 ? '-' : '') + body;
+}
+function fmtSignedShort(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '') + fmtKRWShort(v); }
 
 /* -------------------------------------------------------------------------
  * 4. 자산 객체 생성 헬퍼
@@ -735,6 +772,32 @@ function sampleAssets() {
 /* -------------------------------------------------------------------------
  * 6. localStorage 로드 / 저장
  * ---------------------------------------------------------------------- */
+// 로컬 타임존 기준 'YYYY-MM-DD'. toISOString()은 UTC 기준이라 자정 근처에서 날짜가 하루 어긋날 수 있어
+// getFullYear/getMonth/getDate로 직접 조합한다.
+function todayDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 오늘 하루의 일간 손익 계산 기준 환율(FX의 "전일 종가" 역할)을 확정한다.
+// FX는 24시간 거래되어 진짜 전일 종가가 없으므로, "달력 날짜가 바뀐 시점의 환율"을 그날의 기준값으로
+// 스냅샷해 고정한다 - 그래야 당일 중 [시세 & 환율 갱신]을 여러 번 눌러도 일간 손익이 계속 재기준되지
+// 않고, 오늘 하루 동안의 실제 환율 변동분만 반영된다. 앱을 며칠간 새로고침 없이 켜둔 채 자정을 넘기는
+// 경우까지 대응하도록 loadState() 뿐 아니라 [시세 & 환율 갱신] 클릭 시에도 호출한다.
+function ensureDailyReference() {
+  const todayKey = todayDateStr();
+  let refRaw = null;
+  try { refRaw = JSON.parse(localStorage.getItem(LS_REF_RATE) || 'null'); } catch (e) { /* 손상된 값이면 새로 기록 */ }
+
+  if (!refRaw || refRaw.date !== todayKey) {
+    // 새 날짜 최초 진입: 지금까지의 환율(=어제 마지막으로 알려진 값)을 오늘의 기준값으로 고정한다.
+    state.refExchangeRate = state.exchangeRate;
+    localStorage.setItem(LS_REF_RATE, JSON.stringify({ date: todayKey, rate: state.refExchangeRate }));
+  } else {
+    state.refExchangeRate = refRaw.rate;
+  }
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -748,6 +811,7 @@ function loadState() {
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;
   state.dailyChangeRate = num(localStorage.getItem(LS_DAILY_RATE)) || 0;
+  ensureDailyReference();
 
   document.getElementById('exchangeRateInput').value = state.exchangeRate;
   document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
@@ -825,20 +889,79 @@ function filteredAssets() {
 /* -------------------------------------------------------------------------
  * 8. KPI 렌더링 (전체 포트폴리오 기준 - 필터 영향 없음)
  * ---------------------------------------------------------------------- */
+// 자산 하나의 오늘 하루 손익(KRW)을 계산한다. 우선순위:
+//   1) 전일종가(prevCloseMap)가 있으면 "오늘 평가액 - 어제 종가 기준 평가액"으로 정확히 계산한다.
+//      해외자산은 오늘값에는 현재 환율을, 어제값에는 오늘 하루의 기준환율(refExchangeRate)을 각각
+//      적용해 가격 변동분과 환율 변동분을 모두 반영한다.
+//   2) 전일종가는 없지만 API 등락률(dayChangeMap)만 있으면(예: Stooq 폴백) 근사치로 사용한다.
+//   3) 채권/현금/부동산(NON_TRADABLE_CATEGORIES) 카테고리는 티커 입력 여부와 무관하게 항상 0 -
+//      시세 자체가 없는 자산군이므로 전역 수동 변동률의 영향을 받지 않는다.
+//   4) 그 외 티커가 아예 없는 자산도 시세 조회 대상이 아니므로 항상 0 - 이게 이전 버전의 버그였다
+//      (수동 변동률이 현금/채권에도 적용됨).
+//   5) 티커는 있지만 아직 한 번도 시세를 못 받아온 경우에만 수동 변동률로 추정한다.
+function calcDailyPnL(a, r) {
+  if (NON_TRADABLE_CATEGORIES.includes(a.category)) return 0;
+  const hasTicker = String(a.ticker ?? '').trim() !== '';
+  if (!hasTicker) return 0;
+
+  const qty = num(a.quantity);
+  const prevClose = state.prevCloseMap[a.id];
+  if (typeof prevClose === 'number' && prevClose > 0) {
+    const todayRate = r.isForeign ? state.exchangeRate : 1;
+    const prevRate = r.isForeign ? (state.refExchangeRate || state.exchangeRate) : 1;
+    const todayValue = qty * num(a.currentPrice) * todayRate;
+    const prevValue = qty * prevClose * prevRate;
+    return todayValue - prevValue;
+  }
+
+  const fetchedPct = state.dayChangeMap[a.id];
+  if (typeof fetchedPct === 'number') return r.curAmount * (fetchedPct / 100);
+
+  return r.curAmount * (state.dailyChangeRate / 100);
+}
+
+// KPI 카드 하단에 자산군별 세부 집계 태그를 렌더링한다. entries가 비어있으면(보유 자산군이 없거나
+// 전부 0원) 컨테이너 자체를 숨겨 빈 구분선만 남는 것을 방지한다.
+// valueFn(catStats) -> 표시할 금액, formatFn -> 표시 문자열 포맷터, colored -> true면 손익처럼 +/-/0 색상 적용.
+function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored) {
+  const container = document.getElementById(containerId);
+  const entries = Object.keys(byCategory)
+    .map(cat => ({ cat, val: valueFn(byCategory[cat]) }))
+    .filter(e => Math.round(e.val) !== 0)
+    .sort((a, b) => Math.abs(b.val) - Math.abs(a.val)); // 금액 큰 자산군부터 표시
+
+  if (entries.length === 0) {
+    container.classList.add('hidden');
+    container.classList.remove('flex');
+    container.innerHTML = '';
+    return;
+  }
+  container.classList.remove('hidden');
+  container.classList.add('flex');
+  container.innerHTML = entries.map(e => {
+    const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
+    return `<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
+  }).join('');
+}
+
 function renderKPIs() {
   let totalBuy = 0, totalCur = 0, foreignCur = 0, dailyProfit = 0;
-  const hasAnyFetchedChange = Object.keys(state.dayChangeMap).length > 0;
+  const hasAnyFetchedChange = Object.keys(state.dayChangeMap).length > 0 || Object.keys(state.prevCloseMap).length > 0;
+  // 자산군별(주식/채권/현금/부동산 등) 세부 집계 - KPI 카드 하단 태그용. 필터와 무관하게 전체 포트폴리오 기준.
+  const byCategory = {}; // { category: { buy, cur, dailyPnL } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
+    const dp = calcDailyPnL(a, r);
     totalBuy += r.buyAmount;
     totalCur += r.curAmount;
     if (r.isForeign) foreignCur += r.curAmount;
+    dailyProfit += dp;
 
-    // 실시간 등락률이 있으면 그것을 우선 사용하고, 없으면 사용자가 입력한 수동 변동률을 적용한다.
-    const fetchedPct = state.dayChangeMap[a.id];
-    const pct = (typeof fetchedPct === 'number') ? fetchedPct : state.dailyChangeRate;
-    dailyProfit += r.curAmount * (pct / 100);
+    if (!byCategory[a.category]) byCategory[a.category] = { buy: 0, cur: 0, dailyPnL: 0 };
+    byCategory[a.category].buy += r.buyAmount;
+    byCategory[a.category].cur += r.curAmount;
+    byCategory[a.category].dailyPnL += dp;
   });
 
   const totalProfit = totalCur - totalBuy;
@@ -846,6 +969,8 @@ function renderKPIs() {
 
   document.getElementById('kpiTotalValue').textContent = fmtKRW(totalCur);
   document.getElementById('kpiTotalCost').textContent = fmtKRW(totalBuy);
+  renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
+  renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
 
   const profitEl = document.getElementById('kpiTotalProfit');
   profitEl.textContent = fmtSigned(totalProfit);
@@ -853,11 +978,20 @@ function renderKPIs() {
   const profitRateEl = document.getElementById('kpiTotalProfitRate');
   profitRateEl.textContent = fmtPct(totalProfitRate);
   profitRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(totalProfitRate);
+  renderKpiBreakdown('kpiTotalProfitBreakdown', byCategory, c => c.cur - c.buy, fmtSignedShort, true);
+
+  // 일간 변동률(%)의 분모는 "전일 기준 총자산" = 현재 총자산에서 오늘 하루 손익만큼을 뺀 값.
+  const prevTotal = totalCur - dailyProfit;
+  const dailyProfitRate = prevTotal !== 0 ? (dailyProfit / prevTotal) * 100 : 0;
 
   const dailyEl = document.getElementById('kpiDailyProfit');
   dailyEl.textContent = fmtSigned(dailyProfit);
   dailyEl.className = 'text-lg font-bold ' + profitColor(dailyProfit);
+  const dailyRateEl = document.getElementById('kpiDailyProfitRate');
+  dailyRateEl.textContent = fmtPct(dailyProfitRate);
+  dailyRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
+  renderKpiBreakdown('kpiDailyProfitBreakdown', byCategory, c => c.dailyPnL, fmtSignedShort, true);
 
   document.getElementById('kpiForeignValue').textContent = fmtKRW(foreignCur);
   document.getElementById('kpiAppliedRate').textContent = '적용환율 ' + fmtNum(state.exchangeRate, 1) + '원';
@@ -1152,68 +1286,95 @@ function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, ta
 
 /* -------------------------------------------------------------------------
  * 10-3. 미래 자산예측 (연복리 + 월 적립 시뮬레이션)
- *    - 카테고리별 예상 연수익률은 수동 입력값이 있으면 그 값을, 없으면 0%를 기본값으로 사용한다.
- *      포트폴리오 전체는 각 카테고리 평가금액으로 가중평균한다.
+ *    - 예측 전용 그룹으로 재분류한다: 주식+ETF는 '주식형자산' 하나로 묶고, 채권/현금/부동산은
+ *      카테고리를 그대로 그룹으로 쓴다. 그 외 커스텀 카테고리(원자재/암호화폐 등)도 자기 이름으로
+ *      개별 그룹을 유지해 어떤 자산도 계산에서 누락되지 않게 한다.
+ *    - 그룹별 예상 연수익률은 수동 입력값이 있으면 그 값을, 없으면 그룹별 기본값을 사용한다.
+ *      포트폴리오 전체는 각 그룹 평가금액으로 가중평균한다.
  *    - 그래프/표의 연도 표기는 실행 시점의 실제 캘린더 연도(CURRENT_YEAR) 기준으로 계산한다.
  * ---------------------------------------------------------------------- */
 const CURRENT_YEAR = new Date().getFullYear();
-function getCategoryStatsForProjection() {
-  const byCategory = {}; // { 카테고리: { value, buy, returnRate } }
+
+// 그룹별 기본 예상 연수익률(%). 사용자가 입력창에서 값을 직접 넣으면 이 기본값 대신 그 값이 쓰인다.
+const PROJECTION_GROUP_DEFAULT_RATES = { '주식형자산': 7.5, '채권': 4.0, '현금': 0.0, '부동산': 2.5 };
+const PROJECTION_GROUP_LABELS = { '주식형자산': '주식형 자산 (주식+ETF)' };
+const PROJECTION_GROUP_COLORS = { '주식형자산': '#6366f1', '채권': '#10b981', '현금': '#64748b', '부동산': '#ef4444' };
+
+// 자산의 카테고리를 예측 그룹 키로 변환한다 - 주식/ETF만 '주식형자산'으로 통합하고 나머지는 그대로.
+function getProjectionGroupKey(category) {
+  if (category === '주식' || category === 'ETF') return '주식형자산';
+  return category;
+}
+function getProjectionGroupLabel(groupKey) { return PROJECTION_GROUP_LABELS[groupKey] || groupKey; }
+function getProjectionGroupColor(groupKey, idx) { return PROJECTION_GROUP_COLORS[groupKey] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]; }
+
+function getProjectionGroupStats() {
+  const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
     const r = calcRow(a);
-    if (!byCategory[a.category]) byCategory[a.category] = { value: 0, buy: 0 };
-    byCategory[a.category].value += r.curAmount;
-    byCategory[a.category].buy += r.buyAmount;
+    const key = getProjectionGroupKey(a.category);
+    if (!byGroup[key]) byGroup[key] = { value: 0, buy: 0 };
+    byGroup[key].value += r.curAmount;
+    byGroup[key].buy += r.buyAmount;
   });
-  Object.keys(byCategory).forEach((c) => {
-    const b = byCategory[c];
+  Object.keys(byGroup).forEach((k) => {
+    const b = byGroup[k];
     b.returnRate = b.buy !== 0 ? ((b.value - b.buy) / b.buy * 100) : 0;
   });
-  return byCategory;
+  return byGroup;
+}
+
+// 실제 보유 중인(평가금액이 0이 아닌) 그룹만 남긴다 - 입력창/그래프 라인 모두 이 목록을 기준으로 한다.
+function getHeldProjectionGroupKeys(byGroup) {
+  return Object.keys(byGroup)
+    .filter((k) => Math.round(byGroup[k].value) !== 0)
+    .sort((a, b) => byGroup[b].value - byGroup[a].value); // 보유금액 큰 순
 }
 
 // 주의: '현재 수익률'은 매수 시점 이후 누적 손익률일 뿐 연환산(CAGR) 수치가 아니다(이 앱은 매수일을
 // 기록하지 않아 실제 보유기간을 알 수 없다). 그래서 사용자가 명시적으로 입력하거나 "현재값 사용"
-// 버튼을 눌러 값을 채워 넣기 전까지는 기본값을 0%로 두고, 현재 수익률을 자동으로 미래 예측에
+// 버튼을 눌러 값을 채워 넣기 전까지는 그룹별 기본값을 사용하고, 현재 수익률을 자동으로 미래 예측에
 // 끌어쓰지 않는다 - 그렇지 않으면 단기 급등 종목의 수익률이 그대로 연 수익률처럼 복리 적용되어
 // 20년 후 자산이 비현실적인 천문학적 수치로 계산되는 문제가 있었다.
-function getCategoryReturnRate(category, categoryStats) {
-  const manual = state.projection.categoryReturns[category];
+function getGroupReturnRate(groupKey) {
+  const manual = state.projection.categoryReturns[groupKey];
   if (manual !== undefined && manual !== '' && Number.isFinite(num(manual))) return num(manual);
-  return 0;
+  return PROJECTION_GROUP_DEFAULT_RATES[groupKey] !== undefined ? PROJECTION_GROUP_DEFAULT_RATES[groupKey] : 0;
 }
 
 function renderProjection() {
-  const byCategory = getCategoryStatsForProjection();
-  const categories = Object.keys(byCategory).sort();
-  buildCategoryReturnInputs(categories, byCategory);
+  const byGroup = getProjectionGroupStats();
+  const groupKeys = getHeldProjectionGroupKeys(byGroup);
+  buildCategoryReturnInputs(groupKeys, byGroup);
   document.getElementById('monthlyContributionInput').value = state.projection.monthlyContribution || '';
   updateProjection();
 }
 
-function buildCategoryReturnInputs(categories, byCategory) {
+function buildCategoryReturnInputs(groupKeys, byGroup) {
   const wrap = document.getElementById('categoryReturnInputs');
-  wrap.innerHTML = categories.map((c) => {
-    const manual = state.projection.categoryReturns[c];
-    const auto = byCategory[c].returnRate;
-    const displayVal = (manual !== undefined && manual !== '') ? manual : '';
+  wrap.innerHTML = groupKeys.map((k) => {
+    const manual = state.projection.categoryReturns[k];
+    const auto = byGroup[k].returnRate;
+    const defaultRate = PROJECTION_GROUP_DEFAULT_RATES[k] !== undefined ? PROJECTION_GROUP_DEFAULT_RATES[k] : 0;
+    // 수동 입력값이 없으면 입력창에 그룹 기본값을 그대로 채워서 보여준다(요구사항: 기본값을 입력폼에 노출).
+    const displayVal = (manual !== undefined && manual !== '') ? manual : defaultRate;
     return `
     <div>
       <div class="flex items-center justify-between mb-1 gap-2">
-        <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${escapeHtml(c)} 예상수익률(%)</span>
-        <button type="button" data-use-current="${escapeHtml(c)}" title="매수 이후 누적 수익률입니다 - 연간 수익률과 다를 수 있습니다" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline shrink-0">누적수익률 참고(${fmtNum(auto, 1)}%)</button>
+        <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${escapeHtml(getProjectionGroupLabel(k))} 예상수익률(%)</span>
+        <button type="button" data-use-current="${escapeHtml(k)}" title="매수 이후 누적 수익률입니다 - 연간 수익률과 다를 수 있습니다" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline shrink-0">누적수익률 참고(${fmtNum(auto, 1)}%)</button>
       </div>
-      <input data-category-return="${escapeHtml(c)}" type="number" step="0.1" placeholder="0 (기본값)" value="${displayVal}"
+      <input data-category-return="${escapeHtml(k)}" type="number" step="0.1" placeholder="${fmtNum(defaultRate, 1)} (기본값)" value="${displayVal}"
         class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
     </div>`;
-  }).join('') || '<p class="text-xs text-slate-400">자산을 먼저 추가하면 카테고리별 수익률을 설정할 수 있습니다.</p>';
+  }).join('') || '<p class="text-xs text-slate-400">자산을 먼저 추가하면 자산군별 수익률을 설정할 수 있습니다.</p>';
 
   wrap.querySelectorAll('input[data-category-return]').forEach((input) => {
     input.addEventListener('input', (e) => {
-      const cat = e.target.dataset.categoryReturn;
+      const key = e.target.dataset.categoryReturn;
       const v = e.target.value;
-      if (v === '') delete state.projection.categoryReturns[cat];
-      else state.projection.categoryReturns[cat] = num(v);
+      if (v === '') delete state.projection.categoryReturns[key];
+      else state.projection.categoryReturns[key] = num(v);
       persistProjection();
       updateProjection();
     });
@@ -1223,7 +1384,7 @@ function buildCategoryReturnInputs(categories, byCategory) {
     btn.addEventListener('click', () => {
       delete state.projection.categoryReturns[btn.dataset.useCurrent];
       persistProjection();
-      buildCategoryReturnInputs(categories, byCategory); // 입력창 표시값을 비우기 위해 이번엔 다시 그린다
+      buildCategoryReturnInputs(groupKeys, byGroup); // 입력창 표시값을 기본값으로 되돌리기 위해 다시 그린다
       updateProjection();
     });
   });
@@ -1239,21 +1400,28 @@ function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
 }
 
 function updateProjection() {
-  const byCategory = getCategoryStatsForProjection();
-  const totalValue = Object.values(byCategory).reduce((s, c) => s + c.value, 0);
+  const byGroup = getProjectionGroupStats();
+  const groupKeys = getHeldProjectionGroupKeys(byGroup);
+  const totalValue = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
 
   let weightedSum = 0;
-  Object.keys(byCategory).forEach((c) => { weightedSum += byCategory[c].value * getCategoryReturnRate(c, byCategory[c]); });
+  groupKeys.forEach((k) => { weightedSum += byGroup[k].value * getGroupReturnRate(k); });
   const weightedAvg = totalValue !== 0 ? weightedSum / totalValue : 0;
   document.getElementById('weightedAvgReturn').textContent = fmtNum(weightedAvg, 2) + '%';
 
   const monthlyContribution = num(document.getElementById('monthlyContributionInput').value);
   state.projection.monthlyContribution = monthlyContribution;
 
-  // 그래프용: 0~20년 매년 계산해 부드러운 곡선을 그린다.
+  // 그래프용: 0~20년 매년 계산해 부드러운 곡선을 그린다. 총 자산 합계 라인만 월 적립금 효과를
+  // 반영하고(적립금을 특정 자산군에 배분할 근거가 없으므로), 개별 자산군 라인은 현재 보유액이
+  // 각자의 수익률로만 순수 성장하는 모습을 보여준다.
   const yearlyPoints = [];
-  for (let y = 0; y <= 20; y++) yearlyPoints.push({ year: y, value: computeFutureValue(totalValue, weightedAvg, y, monthlyContribution) });
-  renderProjectionChart(yearlyPoints);
+  for (let y = 0; y <= 20; y++) {
+    const point = { year: y, total: computeFutureValue(totalValue, weightedAvg, y, monthlyContribution) };
+    groupKeys.forEach((k) => { point[k] = computeFutureValue(byGroup[k].value, getGroupReturnRate(k), y, 0); });
+    yearlyPoints.push(point);
+  }
+  renderProjectionChart(yearlyPoints, groupKeys);
 
   // 표용: 5년 단위 마일스톤만 추린다.
   const scheduleRows = [0, 5, 10, 15, 20].map((y) => {
@@ -1272,23 +1440,38 @@ document.getElementById('monthlyContributionInput').addEventListener('input', (e
   updateProjection();
 });
 
-function renderProjectionChart(points) {
+function renderProjectionChart(points, groupKeys) {
   const textColor = chartTextColor();
   if (charts.projection) charts.projection.destroy();
+
+  // 보유 중인 자산군별 개별 라인(가는 선, 채우기 없음) + 총 자산 합계 라인(두꺼운 메인 라인).
+  const groupDatasets = groupKeys.map((k, idx) => ({
+    label: getProjectionGroupLabel(k),
+    data: points.map((p) => p[k]),
+    borderColor: getProjectionGroupColor(k, idx),
+    backgroundColor: 'transparent',
+    fill: false,
+    tension: 0.3,
+    borderWidth: 1.5,
+    pointRadius: 0
+  }));
+  const totalDataset = {
+    label: '총 자산 합계',
+    data: points.map((p) => p.total),
+    borderColor: '#4f46e5',
+    backgroundColor: 'rgba(79,70,229,0.12)',
+    fill: true,
+    tension: 0.3,
+    borderWidth: 3,
+    pointRadius: points.map((p) => ([0, 5, 10, 15, 20].includes(p.year) ? 4 : 0)),
+    pointBackgroundColor: '#4f46e5'
+  };
+
   charts.projection = new Chart(document.getElementById('projectionChart'), {
     type: 'line',
     data: {
       labels: points.map((p) => `${CURRENT_YEAR + p.year}년`),
-      datasets: [{
-        label: '예상 자산 규모',
-        data: points.map((p) => p.value),
-        borderColor: '#4f46e5',
-        backgroundColor: 'rgba(79,70,229,0.12)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: points.map((p) => ([0, 5, 10, 15, 20].includes(p.year) ? 4 : 0)),
-        pointBackgroundColor: '#4f46e5'
-      }]
+      datasets: [...groupDatasets, totalDataset]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -1297,8 +1480,8 @@ function renderProjectionChart(points) {
         y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => ` ${fmtKRW(ctx.raw)}` } }
+        legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRW(ctx.raw)}` } }
       }
     }
   });
@@ -1642,6 +1825,7 @@ function handleAssetListClick(e) {
       if (a && confirm(`"${a.name}" 자산을 삭제하시겠습니까?`)) {
         state.assets = state.assets.filter(x => x.id !== id);
         delete state.dayChangeMap[id];
+        delete state.prevCloseMap[id];
         state.priceFetchFailedIds.delete(id);
         persistAssets();
         renderAll();
@@ -1691,8 +1875,10 @@ function startInlinePriceEdit(cell) {
   const commit = () => {
     if (cancelled) return;
     asset.currentPrice = num(input.value);
-    // 수동으로 값을 고쳤으므로 API가 남긴 당일 등락률 배지는 더 이상 유효하지 않다 - 제거한다.
+    // 수동으로 값을 고쳤으므로 API가 남긴 당일 등락률 배지와 전일종가 기준값은 더 이상 유효하지 않다 -
+    // 제거한다(일간 손익은 이후 수동 변동률 기준으로 폴백된다).
     delete state.dayChangeMap[id];
+    delete state.prevCloseMap[id];
     // 시세 조회 실패 강조 표시(⚠️ 수동 입력 필요)도 방금 값을 고쳤으니 해제한다.
     state.priceFetchFailedIds.delete(id);
     persistAssets();
@@ -1808,8 +1994,13 @@ async function fetchYahooViaProxy(yahooTicker, proxy) {
   const data = await res.json();
   const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
   if (!meta || typeof meta.regularMarketPrice !== 'number') throw new Error('가격 필드 없음');
+  // previousClose(전일 종가)는 Yahoo 응답 버전에 따라 필드명이 다를 수 있어 둘 다 확인한다.
+  // 일간 손익을 "오늘값 - 전일종가"로 정확히 계산하는 데 쓰이며, 값이 없으면 null로 안전하게 폴백한다.
+  const prevCloseRaw = (typeof meta.previousClose === 'number') ? meta.previousClose
+    : (typeof meta.chartPreviousClose === 'number' ? meta.chartPreviousClose : null);
   return {
     price: meta.regularMarketPrice,
+    previousClose: prevCloseRaw,
     changePercent: typeof meta.regularMarketChangePercent === 'number' ? meta.regularMarketChangePercent : 0,
     source: `Yahoo(${proxy.name})`
   };
@@ -1850,7 +2041,8 @@ async function fetchStooqPrice(yahooTicker) {
   if (!closeRaw || closeRaw.toUpperCase() === 'N/D') throw new Error('시세 없음(N/D)');
   const price = parseFloat(closeRaw);
   if (!Number.isFinite(price) || price <= 0) throw new Error('유효하지 않은 가격 값');
-  return { price, changePercent: 0, source: 'Stooq' }; // Stooq 무료 CSV는 등락률을 별도 제공하지 않음
+  // Stooq 무료 CSV는 등락률/전일종가를 별도 제공하지 않음 - 일간 손익 계산은 수동 변동률로 폴백된다.
+  return { price, previousClose: null, changePercent: 0, source: 'Stooq' };
 }
 
 // rawTicker: 사용자가 입력한 원본 티커(예: A005380). 내부에서 소스별로 필요한 포맷으로 변환해
@@ -1892,22 +2084,15 @@ function setRefreshingUI(isRefreshing, statusText) {
   }
 }
 
-refreshBtn.addEventListener('click', async () => {
-  setRefreshingUI(true);
-  refreshStatusMsg.classList.add('hidden');
-
-  // 환율 갱신과 시세 갱신은 서로 의존관계가 없으므로 동시에 시작한다(둘 다 내부적으로 다중 소스를
-  // 병렬 경쟁시키므로, 전체적으로 "가장 오래 걸리는 하나"의 시간만큼만 기다리면 된다 - 모바일에서
-  // 순차 실행 시 최대 1분 가까이 걸리던 것을 대폭 단축한다).
-  const prevRate = state.exchangeRate;
-  const targets = state.assets.filter(a => String(a.ticker ?? '').trim());
-
-  const ratePromise = fetchExchangeRate().then(() => true).catch(() => false);
-  const pricesPromise = Promise.allSettled(
+// 보유 중인 모든 종목의 시세를 조회해 state에 반영한다(성공/실패 집계를 반환).
+// 채권/현금/부동산 및 티커 없는 자산은 대상에서 제외한다 - 사용자가 실수로 티커를 넣어도 안전.
+// 개별 종목 조회 실패는 Promise.allSettled로 흡수하므로 이 함수 자체가 reject되는 일은 없다
+// (기존 currentPrice는 실패한 종목에 한해 그대로 유지된다).
+async function fetchAllPrices() {
+  const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
+  const results = await Promise.allSettled(
     targets.map(a => fetchPriceWithFallback(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
   );
-
-  const [rateOk, results] = await Promise.all([ratePromise, pricesPromise]);
 
   let successCount = 0, failCount = 0;
   const failedNames = [];
@@ -1918,6 +2103,7 @@ refreshBtn.addEventListener('click', async () => {
       if (asset) {
         asset.currentPrice = r.value.price;
         state.dayChangeMap[r.value.id] = r.value.changePercent;
+        state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;
       }
@@ -1928,12 +2114,35 @@ refreshBtn.addEventListener('click', async () => {
     }
   });
 
+  return { targetCount: targets.length, successCount, failCount, failedNames };
+}
+
+// 시세 & 환율을 함께 갱신하는 공용 로직 - [시세 & 환율 갱신] 버튼 클릭과 페이지 최초 로드/새로고침
+// (모바일 pull-to-refresh 포함) 양쪽에서 호출한다. fetchExchangeRate/fetchAllPrices는 내부적으로
+// 이미 실패를 안전하게 흡수하므로(catch), 네트워크 오류가 나도 이 함수가 예외를 던지는 일은 없고
+// LocalStorage에 저장된 기존 시세/환율은 그대로 보존된다.
+async function refreshPricesAndRates() {
+  setRefreshingUI(true);
+  refreshStatusMsg.classList.add('hidden');
+  // 앱을 며칠간 새로고침 없이 켜둔 채 자정을 넘긴 경우까지 대응하기 위해, 갱신 직전에도 날짜 전환을 재확인한다.
+  ensureDailyReference();
+
+  const prevRate = state.exchangeRate;
+  // 환율 갱신과 시세 갱신은 서로 의존관계가 없으므로 동시에 시작한다(둘 다 내부적으로 다중 소스를
+  // 병렬 경쟁시키므로, 전체적으로 "가장 오래 걸리는 하나"의 시간만큼만 기다리면 된다 - 모바일에서
+  // 순차 실행 시 최대 1분 가까이 걸리던 것을 대폭 단축한다).
+  const ratePromise = fetchExchangeRate().then(() => true).catch(() => false);
+  const pricesPromise = fetchAllPrices();
+
+  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise]);
+  const { targetCount, successCount, failCount, failedNames } = priceResult;
+
   if (successCount > 0) persistAssets();
   renderAll();
 
   const parts = [];
   parts.push(rateOk ? '환율 갱신 완료' : '환율 갱신 실패(기존 값 유지)');
-  if (targets.length > 0) {
+  if (targetCount > 0) {
     parts.push(`시세 ${successCount}건 갱신${failCount ? `, ${failCount}건 실패(기존 값 유지)` : ''}`);
   } else {
     parts.push('조회할 티커 없음');
@@ -1942,7 +2151,7 @@ refreshBtn.addEventListener('click', async () => {
 
   // 토스트 안내: 환율+시세가 전부 성공했을 때만 통합 완료 메시지 하나로 요약하고,
   // 그 외에는 환율/시세 각각의 결과를 따로 안내해 어느 쪽이 실패했는지 명확히 전달한다.
-  const priceAllOk = targets.length > 0 && failCount === 0;
+  const priceAllOk = targetCount > 0 && failCount === 0;
 
   if (rateOk && priceAllOk) {
     showToast('모든 종목 시세 및 환율 갱신 완료!', 'success');
@@ -1953,18 +2162,20 @@ refreshBtn.addEventListener('click', async () => {
       showToast(`환율 API 연결 실패 - 기존 환율(${fmtNum(prevRate, 1)}원) 유지. 상단 환율 입력란에서 직접 수정할 수 있습니다.`, 'warn', 8000);
     }
 
-    if (targets.length > 0) {
+    if (targetCount > 0) {
       if (failCount === 0) {
         showToast('모든 종목 시세 조회 완료', 'success');
       } else {
         showToast(
-          `총 ${targets.length}개 종목 중 [${failedNames.join(', ')}] ${failCount}개 종목 시세 조회 실패. 기존 단가를 유지하거나 직접 수정해주세요.`,
+          `총 ${targetCount}개 종목 중 [${failedNames.join(', ')}] ${failCount}개 종목 시세 조회 실패. 기존 단가를 유지하거나 직접 수정해주세요.`,
           'warn', 9000
         );
       }
     }
   }
-});
+}
+
+refreshBtn.addEventListener('click', () => { refreshPricesAndRates(); });
 
 /* -------------------------------------------------------------------------
  * 20. 표준 엑셀 템플릿 다운로드
@@ -2048,6 +2259,7 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       } else {
         state.assets = imported;
         state.dayChangeMap = {};
+        state.prevCloseMap = {};
       }
       persistAssets();
       renderAll();
@@ -2125,6 +2337,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       } else {
         state.assets = restored;
         state.dayChangeMap = {};
+        state.prevCloseMap = {};
         state.priceFetchFailedIds = new Set();
         if (Number.isFinite(num(parsed.exchangeRate)) && num(parsed.exchangeRate) > 0) {
           state.exchangeRate = num(parsed.exchangeRate);
@@ -2168,6 +2381,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   if (!confirm('모든 자산 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
   state.assets = [];
   state.dayChangeMap = {};
+  state.prevCloseMap = {};
   state.priceFetchFailedIds = new Set();
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 50, '해외': 50 }, categoryByRegion: { '국내': {}, '해외': {} } };
@@ -2222,11 +2436,21 @@ function warnIfRestrictedWebView() {
 
 /* -------------------------------------------------------------------------
  * 25. 초기 구동
+ *    - 이 <script>는 </body> 바로 앞에 위치해 실행 시점에는 이미 DOM 파싱이 끝나 있으므로
+ *      DOMContentLoaded를 별도로 기다릴 필요가 없다(기존 초기화 코드도 동일한 전제로 작성됨).
  * ---------------------------------------------------------------------- */
 loadState();
 renderAll();
 lucide.createIcons();
 warnIfRestrictedWebView();
+
+// 페이지를 처음 열거나 모바일에서 아래로 당겨 새로고침(pull-to-refresh)할 때도 최신 시세/환율을
+// 자동으로 한 번 갱신한다. refreshPricesAndRates() 내부에서 fetchExchangeRate/fetchAllPrices의
+// 실패를 이미 안전하게 흡수하지만, 예기치 못한 동기 오류까지 대비해 한 번 더 catch로 감싸
+// 초기 화면 렌더링(위 loadState/renderAll)에는 영향이 전혀 없도록 한다.
+refreshPricesAndRates().catch((err) => {
+  console.error('[초기 자동 시세/환율 갱신 실패] 기존 LocalStorage 데이터는 그대로 유지됩니다:', err);
+});
 </script>
 </body>
 </html>
