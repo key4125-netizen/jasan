@@ -299,12 +299,12 @@
       </div>
     </div>
     <!-- 보기 방식(그룹화) 토글 - 검색/자산군 필터와 독립적으로 동작하며, 필터링된 결과를 그대로 그룹핑한다. -->
-    <div class="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/20">
-      <span class="text-[11px] text-slate-400 mr-0.5">보기 방식</span>
-      <button type="button" data-group-by="none" class="table-group-btn text-[11px] font-semibold px-2.5 py-1 rounded-md">전체</button>
-      <button type="button" data-group-by="owner" class="table-group-btn text-[11px] font-semibold px-2.5 py-1 rounded-md">소유자별</button>
-      <button type="button" data-group-by="domestic" class="table-group-btn text-[11px] font-semibold px-2.5 py-1 rounded-md">국내/해외별</button>
-      <button type="button" data-group-by="category" class="table-group-btn text-[11px] font-semibold px-2.5 py-1 rounded-md">자산군별</button>
+    <div class="flex flex-nowrap items-center gap-1.5 px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/20 overflow-x-auto">
+      <span class="text-[11px] text-slate-400 mr-0.5 shrink-0">보기 방식</span>
+      <button type="button" data-group-by="none" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">전체</button>
+      <button type="button" data-group-by="owner" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">소유자별</button>
+      <button type="button" data-group-by="domestic" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">국내/해외별</button>
+      <button type="button" data-group-by="category" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">자산군별</button>
     </div>
     <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다. -->
     <div class="hidden sm:block overflow-x-auto">
@@ -409,7 +409,7 @@
         <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다. 차액 = 리밸런싱 후 − 현재 유지(명목 기준).</p>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs">
+        <table class="w-full text-xs whitespace-nowrap">
           <thead>
             <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
               <th class="px-4 py-2">시점</th>
@@ -462,7 +462,7 @@
         <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다.</p>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs">
+        <table class="w-full text-xs whitespace-nowrap">
           <thead>
             <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
               <th class="px-4 py-2">시점</th>
@@ -504,7 +504,7 @@
         <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다.</p>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs">
+        <table class="w-full text-xs whitespace-nowrap">
           <thead>
             <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
               <th class="px-4 py-2">시점</th>
@@ -810,6 +810,9 @@ const state = {
   // "오늘 평가액 - 어제 종가 기준 평가액"으로 정확히 계산하기 위해 쓰이며, dayChangeMap과 마찬가지로
   // 휘발성 데이터라 localStorage에는 저장하지 않는다.
   prevCloseMap: {},
+  // 직전 시세 조회에서 정규장 종가 대신 시간외(Pre/Post Market) 시세를 현재가로 채택한 자산 id -> 'post'|'pre'.
+  // 테이블에 "시간외" 배지를 표시하는 용도로만 쓰이며, 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  sessionMap: {},
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
@@ -2195,6 +2198,13 @@ function derivePresentation(r) {
   const changeBadgeClass = hasChange ? (fetchedPct >= 0 ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500') : '';
   const changeText = hasChange ? fmtPct(fetchedPct) : '';
 
+  // 정규장 종가가 아니라 시간외(프리/애프터마켓) 시세를 현재가로 채택한 경우 작은 배지로 안내한다 -
+  // 그래야 "왜 이 가격이 다른 곳의 정규장 종가와 다르지?"라는 혼란을 막을 수 있다.
+  const session = state.sessionMap[r.id];
+  const sessionBadge = session
+    ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-300" title="${session === 'post' ? '애프터마켓(장 마감 후)' : '프리마켓(장 시작 전)'} 시세가 반영된 현재가입니다">${session === 'post' ? '애프터마켓' : '프리마켓'}</span>`
+    : '';
+
   // 화면에는 사용자가 입력한 원본 티커를 표시하고, 시세 조회용 정제 티커는 툴팁으로만 안내한다.
   const sanitized = sanitizeTicker(r.ticker);
   const yahooTickerHint = (sanitized.yahooTicker && sanitized.yahooTicker !== (r.ticker || '').toUpperCase()) ? sanitized.yahooTicker : '';
@@ -2215,7 +2225,7 @@ function derivePresentation(r) {
     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300'
     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300';
 
-  return { priceUnit, hasChange, changeBadgeClass, changeText, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
+  return { priceUnit, hasChange, changeBadgeClass, changeText, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
 }
 
 function rowHtml(r) {
@@ -2238,7 +2248,7 @@ function rowHtml(r) {
     </td>
     <td class="px-3 py-2 text-right">${fmtNum(r.quantity, 4)}</td>
     <td class="px-3 py-2 text-right">${priceUnit}${fmtNum(r.buyPrice, 2)}</td>
-    <td class="px-3 py-2 text-right cursor-pointer ${priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${priceFailBadge}</td>
+    <td class="px-3 py-2 text-right cursor-pointer ${priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceFailBadge}</td>
     <td class="px-3 py-2 text-right">
       ${fmtKRW(r.buyAmount)}${r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">$${fmtNum(r.buyAmountOriginal, 2)}</div>` : ''}
     </td>
@@ -2290,7 +2300,7 @@ function cardHtml(r) {
     <!-- 현재가: 터치 영역을 크게 잡아 모바일에서 바로 수정하기 쉽게 한다 -->
     <div class="touch-target flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer ${p.priceCellClass} mb-3" data-action="edit-price" data-id="${r.id}">
       <div>
-        <span class="text-[11px] text-slate-400 block">현재가</span>
+        <span class="text-[11px] text-slate-400 block">현재가${p.sessionBadge}</span>
         ${p.priceFailBadge}
       </div>
       <span class="text-base font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}</span>
@@ -2481,6 +2491,7 @@ function handleAssetListClick(e) {
         state.assets = state.assets.filter(x => x.id !== id);
         delete state.dayChangeMap[id];
         delete state.prevCloseMap[id];
+        delete state.sessionMap[id];
         state.priceFetchFailedIds.delete(id);
         persistAssets();
         renderAll();
@@ -2534,6 +2545,7 @@ function startInlinePriceEdit(cell) {
     // 제거한다(일간 손익은 이후 수동 변동률 기준으로 폴백된다).
     delete state.dayChangeMap[id];
     delete state.prevCloseMap[id];
+    delete state.sessionMap[id];
     // 시세 조회 실패 강조 표시(⚠️ 수동 입력 필요)도 방금 값을 고쳤으니 해제한다.
     state.priceFetchFailedIds.delete(id);
     persistAssets();
@@ -2677,8 +2689,35 @@ async function fetchExchangeRate() {
  *    각 시도는 실패 사유를 개별적으로 콘솔에 남기고, 모든 시도가 실패하면 기존 currentPrice를
  *    그대로 유지한다(예외 안전) - 호출부에서 이 함수가 던진 에러를 잡아 UI에 반영한다.
  * ---------------------------------------------------------------------- */
+// 시간외 거래(Pre/Post Market) 시세 우선순위: 애프터마켓(postMarketPrice) > 프리마켓(preMarketPrice)
+// > 정규장 종가(regularMarketPrice). 국내(KRX)는 개념상 애프터마켓 시세를 따로 제공하지 않지만,
+// 값이 없으면 자연스럽게 정규장가로 폴백되므로 국내/해외 티커에 동일한 로직을 그대로 적용해도 안전하다.
+// 0 이하이거나 숫자가 아닌 값은 "시세 없음"으로 간주하고 다음 우선순위로 넘어간다.
+function pickCurrentPrice(meta) {
+  if (typeof meta.postMarketPrice === 'number' && meta.postMarketPrice > 0) {
+    return {
+      price: meta.postMarketPrice,
+      changePercent: typeof meta.postMarketChangePercent === 'number' ? meta.postMarketChangePercent : 0,
+      session: 'post'
+    };
+  }
+  if (typeof meta.preMarketPrice === 'number' && meta.preMarketPrice > 0) {
+    return {
+      price: meta.preMarketPrice,
+      changePercent: typeof meta.preMarketChangePercent === 'number' ? meta.preMarketChangePercent : 0,
+      session: 'pre'
+    };
+  }
+  return {
+    price: meta.regularMarketPrice,
+    changePercent: typeof meta.regularMarketChangePercent === 'number' ? meta.regularMarketChangePercent : 0,
+    session: 'regular'
+  };
+}
+
 async function fetchYahooViaProxy(yahooTicker, proxy) {
-  const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=1d';
+  // includePrePost=true: 미국 프리/애프터마켓 및 국내 시간외 단일가 시세를 응답의 meta에 함께 받아온다.
+  const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=1d&includePrePost=true';
   const res = await fetchWithTimeout(proxy.build(target));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -2686,12 +2725,16 @@ async function fetchYahooViaProxy(yahooTicker, proxy) {
   if (!meta || typeof meta.regularMarketPrice !== 'number') throw new Error('가격 필드 없음');
   // previousClose(전일 종가)는 Yahoo 응답 버전에 따라 필드명이 다를 수 있어 둘 다 확인한다.
   // 일간 손익을 "오늘값 - 전일종가"로 정확히 계산하는 데 쓰이며, 값이 없으면 null로 안전하게 폴백한다.
+  // 시간외 시세를 채택하더라도 기준점은 항상 직전 "정규장" 종가를 그대로 쓴다(시간외 자체가 그 기준
+  // 대비 변동분이므로).
   const prevCloseRaw = (typeof meta.previousClose === 'number') ? meta.previousClose
     : (typeof meta.chartPreviousClose === 'number' ? meta.chartPreviousClose : null);
+  const picked = pickCurrentPrice(meta);
   return {
-    price: meta.regularMarketPrice,
+    price: picked.price,
     previousClose: prevCloseRaw,
-    changePercent: typeof meta.regularMarketChangePercent === 'number' ? meta.regularMarketChangePercent : 0,
+    changePercent: picked.changePercent,
+    session: picked.session, // 'post' | 'pre' | 'regular' - 테이블에 시간외 배지를 표시하는 데 쓰인다
     source: `Yahoo(${proxy.name})`
   };
 }
@@ -2731,8 +2774,9 @@ async function fetchStooqPrice(yahooTicker) {
   if (!closeRaw || closeRaw.toUpperCase() === 'N/D') throw new Error('시세 없음(N/D)');
   const price = parseFloat(closeRaw);
   if (!Number.isFinite(price) || price <= 0) throw new Error('유효하지 않은 가격 값');
-  // Stooq 무료 CSV는 등락률/전일종가를 별도 제공하지 않음 - 일간 손익 계산은 수동 변동률로 폴백된다.
-  return { price, previousClose: null, changePercent: 0, source: 'Stooq' };
+  // Stooq 무료 CSV는 등락률/전일종가/시간외 시세를 별도 제공하지 않음(항상 정규장가 취급) -
+  // 일간 손익 계산은 수동 변동률로 폴백된다.
+  return { price, previousClose: null, changePercent: 0, session: 'regular', source: 'Stooq' };
 }
 
 // rawTicker: 사용자가 입력한 원본 티커(예: A005380). 내부에서 소스별로 필요한 포맷으로 변환해
@@ -2794,6 +2838,9 @@ async function fetchAllPrices() {
         asset.currentPrice = r.value.price;
         state.dayChangeMap[r.value.id] = r.value.changePercent;
         state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
+        // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
+        if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[r.value.id] = r.value.session;
+        else delete state.sessionMap[r.value.id];
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;
       }
@@ -2950,6 +2997,7 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         state.assets = imported;
         state.dayChangeMap = {};
         state.prevCloseMap = {};
+        state.sessionMap = {};
       }
       persistAssets();
       renderAll();
@@ -3028,6 +3076,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         state.assets = restored;
         state.dayChangeMap = {};
         state.prevCloseMap = {};
+        state.sessionMap = {};
         state.priceFetchFailedIds = new Set();
         if (Number.isFinite(num(parsed.exchangeRate)) && num(parsed.exchangeRate) > 0) {
           state.exchangeRate = num(parsed.exchangeRate);
@@ -3079,6 +3128,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.assets = [];
   state.dayChangeMap = {};
   state.prevCloseMap = {};
+  state.sessionMap = {};
   state.priceFetchFailedIds = new Set();
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
