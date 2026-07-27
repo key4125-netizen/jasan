@@ -225,7 +225,12 @@
       </div>
       <p id="kpiDailyProfit" class="text-lg font-bold">0원</p>
       <p id="kpiDailyProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
-      <div class="flex items-center gap-1 mt-0.5">
+      <!-- 총 손익 바로 아래에 보유자별(신랑/와이프/공동 등) 손익을 함께 보여준다 -->
+      <div id="kpiDailyOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
+      <!-- '실시간 반영 + 수동 변동률' 안내 문구/수동 입력란은 화면에서 숨긴다(요청에 따라).
+           dailyChangeInput/kpiDailyHint는 loadState 등 여러 곳에서 값을 그대로 읽고 쓰므로
+           DOM에서 완전히 제거하지 않고 hidden 처리만 해서 기존 로직이 깨지지 않게 한다. -->
+      <div class="hidden items-center gap-1 mt-0.5">
         <span id="kpiDailyHint" class="text-[11px] text-slate-400">수동 변동률</span>
         <input id="dailyChangeInput" type="number" step="0.1" value="0"
           class="w-14 text-xs bg-slate-100 dark:bg-slate-800 rounded px-1 py-0.5 text-right outline-none">
@@ -243,6 +248,43 @@
       </div>
       <p id="kpiForeignValue" class="text-lg font-bold">0원</p>
       <p id="kpiAppliedRate" class="text-xs font-semibold mt-0.5 text-slate-400">적용환율 1,450원</p>
+    </div>
+  </section>
+
+  <!-- ============================= 주요 금융 자산 TOP 5 ============================= -->
+  <!-- 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings 참고). -->
+  <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+      <h3 class="text-sm font-semibold mb-3">국내 자산 Top 5</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+              <th class="text-left font-medium py-1.5 pr-2">상품명</th>
+              <th class="text-right font-medium py-1.5 px-2">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-2">평가손익</th>
+              <th class="text-right font-medium py-1.5 pl-2">비중</th>
+            </tr>
+          </thead>
+          <tbody id="topHoldingsDomestic"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+      <h3 class="text-sm font-semibold mb-3">해외 자산 Top 5</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+              <th class="text-left font-medium py-1.5 pr-2">상품명</th>
+              <th class="text-right font-medium py-1.5 px-2">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-2">평가손익</th>
+              <th class="text-right font-medium py-1.5 pl-2">비중</th>
+            </tr>
+          </thead>
+          <tbody id="topHoldingsForeign"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -1152,8 +1194,10 @@ function calcDailyPnL(a, r) {
 // KPI 카드 하단에 자산군별 세부 집계 태그를 렌더링한다. entries가 비어있으면(보유 자산군이 없거나
 // 전부 0원) 컨테이너 자체를 숨겨 빈 구분선만 남는 것을 방지한다.
 // valueFn(catStats) -> 표시할 금액, formatFn -> 표시 문자열 포맷터, colored -> true면 손익처럼 +/-/0 색상 적용.
-function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored) {
+// sizeClass -> 태그 글씨 크기(생략 시 다른 KPI 카드와 동일한 기본 10px 유지).
+function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored, sizeClass) {
   const container = document.getElementById(containerId);
+  const textSizeClass = sizeClass || 'text-[10px]';
   const entries = Object.keys(byCategory)
     .map(cat => ({ cat, val: valueFn(byCategory[cat]) }))
     .filter(e => Math.round(e.val) !== 0)
@@ -1169,7 +1213,7 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored)
   container.classList.add('flex');
   container.innerHTML = entries.map(e => {
     const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
-    return `<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
+    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
   }).join('');
 }
 
@@ -1178,6 +1222,8 @@ function renderKPIs() {
   const hasAnyFetchedChange = Object.keys(state.dayChangeMap).length > 0 || Object.keys(state.prevCloseMap).length > 0;
   // 자산군별(주식/채권/현금/부동산 등) 세부 집계 - KPI 카드 하단 태그용. 필터와 무관하게 전체 포트폴리오 기준.
   const byCategory = {}; // { category: { buy, cur, dailyPnL } }
+  // 소유자별(신랑/와이프/공동 등) 세부 집계 - 일간 평가손익 카드 하단 태그 전용.
+  const byOwner = {}; // { owner: { dailyPnL } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
@@ -1191,6 +1237,9 @@ function renderKPIs() {
     byCategory[a.category].buy += r.buyAmount;
     byCategory[a.category].cur += r.curAmount;
     byCategory[a.category].dailyPnL += dp;
+
+    if (!byOwner[a.owner]) byOwner[a.owner] = { dailyPnL: 0 };
+    byOwner[a.owner].dailyPnL += dp;
   });
 
   const totalProfit = totalCur - totalBuy;
@@ -1220,10 +1269,73 @@ function renderKPIs() {
   dailyRateEl.textContent = fmtPct(dailyProfitRate);
   dailyRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
+  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익 - 다른 태그보다 눈에 잘 띄도록 크게 표시
+  renderKpiBreakdown('kpiDailyOwnerBreakdown', byOwner, o => o.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold');
+  // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익
   renderKpiBreakdown('kpiDailyProfitBreakdown', byCategory, c => c.dailyPnL, fmtSignedShort, true);
 
   document.getElementById('kpiForeignValue').textContent = fmtKRW(foreignCur);
   document.getElementById('kpiAppliedRate').textContent = '적용환율 ' + fmtNum(state.exchangeRate, 1) + '원';
+}
+
+// [주요 금융 자산 Top 5] 집계: 소유자/계좌가 달라도 같은 티커면 수량·평가금액·매입금액을 하나로
+// 합산한다(예: 같은 ETF를 신랑 ISA와 와이프 ISA에 나눠 담은 경우). 티커가 없는 자산(채권/현금/부동산
+// 직접보유)은 애초에 순위 대상이 아니므로 집계에서 제외한다. 필터와 무관하게 전체 포트폴리오 기준.
+function getTopHoldings() {
+  const groups = {}; // ticker -> { name, isDomestic, isForeign, curAmount(KRW), buyAmount(KRW), curAmountOriginal(자산통화) }
+  state.assets.forEach((a) => {
+    const ticker = String(a.ticker ?? '').trim();
+    if (!ticker) return;
+    const r = calcRow(a);
+    if (!groups[ticker]) {
+      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0 };
+    }
+    const g = groups[ticker];
+    g.curAmount += r.curAmount;
+    g.buyAmount += r.buyAmount;
+    g.curAmountOriginal += num(a.quantity) * num(a.currentPrice); // 원래 통화(원화 또는 달러) 기준 평가금액
+  });
+  return Object.values(groups);
+}
+
+// list: 이미 상위 5개로 잘라낸 한 지역(국내 또는 해외)의 합산 종목 배열.
+// grandTotal: 비중(%) 계산의 분모 - 국내/해외를 합친 "티커가 존재하는 전체 상품"의 합계 평가금액.
+function renderTopHoldingsTable(containerId, list, grandTotal) {
+  const tbody = document.getElementById(containerId);
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-400">보유 종목 없음</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map((g) => {
+    const profit = g.curAmount - g.buyAmount;
+    const rateOfReturn = g.buyAmount !== 0 ? (profit / g.buyAmount) * 100 : 0;
+    const pct = grandTotal !== 0 ? (g.curAmount / grandTotal * 100) : 0;
+    // 달러 표시 여부는 "국내/해외" 지역 구분이 아니라 실제 통화(currency)를 기준으로 판단한다 - 국내
+    // 상장된 해외지수 ETF(예: TIGER 미국S&P500)처럼 '해외'로 분류돼도 원화로 거래되는 경우가 흔해서,
+    // 지역 기준으로 판단하면 원화 평가금액에 잘못 '$'를 붙이는 오류가 생긴다(이 앱 전체의 원칙과 동일:
+    // currency가 유일한 원화환산/표시 기준이고 isDomestic은 분류·표시 전용이다).
+    const valueHtml = g.isForeign
+      ? `$${fmtNum(g.curAmountOriginal, 2)}<br><span class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(g.curAmount)}</span>`
+      : fmtKRW(g.curAmount);
+    return `
+    <tr class="border-b border-slate-50 dark:border-slate-800/70 last:border-b-0">
+      <td class="py-2 pr-2 font-medium max-w-[7rem] truncate" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
+      <td class="py-2 px-2 text-right">${valueHtml}</td>
+      <td class="py-2 px-2 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}<br><span class="text-[10px]">${fmtPct(rateOfReturn)}</span></td>
+      <td class="py-2 pl-2 text-right text-slate-500 dark:text-slate-400">${fmtNum(pct, 1)}%</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTopHoldings() {
+  const groups = getTopHoldings();
+  // 비중(%)의 분모는 국내/해외를 합친 "티커가 존재하는 전체 상품"의 합계 평가금액 하나로 통일한다 -
+  // 두 표(국내/해외 Top 5)가 서로 다른 기준으로 100%를 잡으면 두 표를 나란히 비교하기 어렵기 때문이다.
+  const grandTotal = groups.reduce((s, g) => s + g.curAmount, 0);
+  const domestic = groups.filter((g) => g.isDomestic === '국내').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
+  const foreign = groups.filter((g) => g.isDomestic === '해외').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
+  renderTopHoldingsTable('topHoldingsDomestic', domestic, grandTotal);
+  renderTopHoldingsTable('topHoldingsForeign', foreign, grandTotal);
 }
 
 /* -------------------------------------------------------------------------
@@ -1822,13 +1934,38 @@ function renderRebalanceEffectSummary(rows) {
 // 겹쳐 그려 시점별 격차를 직접 비교한다(자산군/지역별 세부 라인은 각 시나리오 개별 차트에서 확인).
 // points1/points2는 renderProjectionChart/renderProjectionChart2에 쓰인 것과 동일한 yearlyPoints
 // 배열이므로 이미 "자산군별 합산" 방식으로 정확히 계산된 point.total을 그대로 재사용한다.
+// [금융자산 미래예측] 탭의 3개 차트(통합비교/시나리오1/시나리오2) 공용: 평소에는 세부 현황(툴팁)을
+// 표시하지 않다가 그래프를 클릭/터치했을 때만 10초간 보여주고 자동으로 사라지게 한다.
+// 각 차트의 options.events를 'click'만 남겨 마우스 호버만으로는 툴팁이 뜨지 않게 하고, 대신
+// options.onClick에서 이 함수를 호출해 10초 뒤 활성 요소를 비워 툴팁을 강제로 닫는다.
+// key로 charts 레지스트리와 비교해, 그 사이 차트가 다시 그려져 이전 인스턴스가 destroy됐으면
+// (예: 데이터 갱신으로 재렌더링) 파괴된 인스턴스를 건드리지 않도록 방어한다.
+const tooltipAutoHideTimers = {};
+function scheduleTooltipAutoHide(chart, key) {
+  clearTimeout(tooltipAutoHideTimers[key]);
+  tooltipAutoHideTimers[key] = setTimeout(() => {
+    if (charts[key] !== chart) return;
+    chart.setActiveElements([]);
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+    chart.update();
+  }, 10000);
+}
+
 function renderScenarioCompareChart(points1, points2, milestoneOffsets) {
   const textColor = chartTextColor();
   if (charts.scenarioCompare) charts.scenarioCompare.destroy();
 
   const MILESTONE_YEARS = [0, ...milestoneOffsets];
   const fmtEok = (v) => (v / 1e8).toFixed(1) + '억원';
-  const makeDataset = (points, label, color) => ({
+  // 두 시나리오 라인이 가까이 붙어 있으면 금액 라벨이 서로 겹쳐 보이는 문제가 있었다 - 그 시점에
+  // 값이 더 큰(그래프상 더 위에 그려지는) 쪽은 점 위(top)에, 더 작은 쪽은 점 아래(bottom)에 라벨을
+  // 배치해서, 라벨 위치가 실제 두 선의 높낮이와 항상 일치하도록 한다(고정된 top/bottom이 아니라
+  // 시점마다 두 시나리오 값을 비교해 동적으로 정한다 - 리밸런싱 후 시나리오가 초반에 더 높다가
+  // 나중에 역전되는 경우처럼 두 선이 교차해도 라벨이 선 위치와 어긋나지 않는다).
+  // otherPoints: 비교 대상이 되는 반대쪽 시나리오의 시계열.
+  // skipYearZeroLabel: 시작 시점(연차 0)은 아직 리밸런싱 전이라 두 시나리오 금액이 완전히 같으므로,
+  // 라벨을 굳이 둘 다 보여줄 필요 없이 하나만("현재 구성 유지 시" 쪽) 표시한다.
+  const makeDataset = (points, otherPoints, label, color, skipYearZeroLabel) => ({
     label,
     data: points.map((p) => p.total),
     borderColor: color,
@@ -1839,8 +1976,12 @@ function renderScenarioCompareChart(points1, points2, milestoneOffsets) {
     pointRadius: points.map((p) => (MILESTONE_YEARS.includes(p.year) ? 4 : 0)),
     pointBackgroundColor: color,
     datalabels: {
-      display: (ctx) => MILESTONE_YEARS.includes(points[ctx.dataIndex].year),
-      align: 'top',
+      display: (ctx) => {
+        const year = points[ctx.dataIndex].year;
+        if (skipYearZeroLabel && year === 0) return false;
+        return MILESTONE_YEARS.includes(year);
+      },
+      align: (ctx) => (points[ctx.dataIndex].total >= otherPoints[ctx.dataIndex].total ? 'top' : 'bottom'),
       offset: 6,
       color,
       font: { size: 11, weight: 'bold' },
@@ -1851,17 +1992,21 @@ function renderScenarioCompareChart(points1, points2, milestoneOffsets) {
   charts.scenarioCompare = new Chart(document.getElementById('scenarioCompareChart'), {
     type: 'line',
     data: {
-      labels: points1.map((p) => `${CURRENT_YEAR + p.year}년`),
+      // X축 연도 표기: "2026년"처럼 풀어쓰지 않고 "Y26" 형식(년도 뒤 2자리)으로 축약한다.
+      labels: points1.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`),
       datasets: [
-        makeDataset(points1, '현재 구성 유지 시', '#4f46e5'),
-        makeDataset(points2, '리밸런싱 후', '#f59e0b')
+        makeDataset(points1, points2, '현재 구성 유지 시', '#4f46e5', false),
+        makeDataset(points2, points1, '리밸런싱 후', '#f59e0b', true)
       ]
     },
     plugins: [ChartDataLabels],
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 20 } },
+      layout: { padding: { top: 20, bottom: 20 } },
       interaction: { mode: 'index', intersect: false },
+      // 호버(마우스 이동)로는 반응하지 않고 클릭/터치했을 때만 툴팁이 뜨도록 이벤트를 click으로 제한한다.
+      events: ['click'],
+      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'scenarioCompare'),
       scales: {
         x: { ticks: { color: textColor, maxTicksLimit: 11 }, grid: { display: false } },
         y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
@@ -2067,8 +2212,9 @@ function renderProjectionChartGeneric(canvasId, chartsKey, points, lineSpecs, mi
   charts[chartsKey] = new Chart(document.getElementById(canvasId), {
     type: 'line',
     data: {
-      // X축은 상대적 "N년 후"가 아니라 실제 캘린더 연도(예: 2030년, 2035년...)로 표기한다.
-      labels: points.map((p) => `${CURRENT_YEAR + p.year}년`),
+      // X축은 상대적 "N년 후"가 아니라 실제 캘린더 연도(예: 2030, 2035...) 기준이며,
+      // "2030년"처럼 풀어쓰지 않고 "Y30" 형식(년도 뒤 2자리)으로 축약해 표기한다.
+      labels: points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`),
       // 총자산 합계를 맨 앞에 두어 툴팁/범례에서 항상 [총자산 → 세부 자산군] 순서로 보이게 한다.
       datasets: [totalDataset, ...lineDatasets]
     },
@@ -2080,6 +2226,10 @@ function renderProjectionChartGeneric(canvasId, chartsKey, points, lineSpecs, mi
       // 시점의 [총자산/자산군별] 라인 값이 전부 한 번에 툴팁으로 표시되게 한다(기본값은 정확히 그
       // 점에 마우스를 올린 라인 하나만 보여줘 세부 내역을 한눈에 비교하기 어려웠다).
       interaction: { mode: 'index', intersect: false },
+      // 호버(마우스 이동)로는 반응하지 않고 클릭/터치했을 때만 툴팁이 뜨도록 이벤트를 click으로 제한하고,
+      // 클릭 시 scheduleTooltipAutoHide가 10초 뒤 자동으로 툴팁을 닫는다(chartsKey로 이 차트를 구분).
+      events: ['click'],
+      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, chartsKey),
       scales: {
         x: { ticks: { color: textColor, maxTicksLimit: 11 }, grid: { display: false } },
         y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
@@ -2145,9 +2295,28 @@ function renderProjectionTable2(rows) { renderProjectionTableGeneric('projection
 /* -------------------------------------------------------------------------
  * 11. 테이블 렌더링 (정렬 + 필터 반영)
  * ---------------------------------------------------------------------- */
+// 기본 정렬(테이블 헤더를 눌러 별도 정렬을 지정하지 않았을 때) 우선순위 규칙.
+// 소유자: 신랑 -> 와이프 -> 그 외(공동 등) / 국내·해외: 해외 -> 국내 / 자산군: 주식 -> ETF -> 채권 -> 현금 -> 부동산.
+// 목록 정렬과 그룹 보기(소유자별/국내외별/자산군별) 토글의 그룹 순서가 항상 같은 감각으로 보이도록
+// renderGroupedRows()의 그룹 정렬에서도 이 랭크 함수들을 그대로 재사용한다.
+const OWNER_RANK = { '신랑': 0, '와이프': 1 };
+const DOMESTIC_RANK = { '해외': 0, '국내': 1 };
+const CATEGORY_RANK = { '주식': 0, 'ETF': 1, '채권': 2, '현금': 3, '부동산': 4 };
+function ownerRank(owner) { return OWNER_RANK[owner] ?? 2; }
+function domesticRank(isDomestic) { return DOMESTIC_RANK[isDomestic] ?? 2; }
+function categoryRank(category) { return CATEGORY_RANK[category] ?? 5; }
+
+function defaultAssetOrder(a, b) {
+  const byOwner = ownerRank(a.owner) - ownerRank(b.owner);
+  if (byOwner !== 0) return byOwner;
+  const byRegion = domesticRank(a.isDomestic) - domesticRank(b.isDomestic);
+  if (byRegion !== 0) return byRegion;
+  return categoryRank(a.category) - categoryRank(b.category);
+}
+
 function sortRows(rows) {
   const { key, dir } = state.sort;
-  if (!key) return rows;
+  if (!key) return [...rows].sort(defaultAssetOrder);
   return [...rows].sort((a, b) => {
     let va = a[key], vb = b[key];
     if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); return va.localeCompare(vb) * dir; }
@@ -2195,9 +2364,13 @@ function renderGroupedRows(rows, mode, rowRenderer, headerRenderer) {
     if (!groupsMap[key]) groupsMap[key] = [];
     groupsMap[key].push(r);
   });
+  // 그룹 순서도 기본 정렬 우선순위(소유자: 신랑->와이프->기타 / 국내외: 해외->국내 / 자산군:
+  // 주식->ETF->채권->현금->부동산)와 동일하게 맞춰, 그룹 보기 토글을 바꿔도 항상 같은 우선순위로
+  // 배치되게 한다(정의되지 않은 그룹 모드가 생기면 기존처럼 소계 금액 큰 순으로 폴백).
   let groupKeys = Object.keys(groupsMap);
-  if (mode === 'domestic') {
-    groupKeys.sort((a, b) => (a === '국내' ? -1 : b === '국내' ? 1 : 0));
+  const rankFn = mode === 'owner' ? ownerRank : mode === 'domestic' ? domesticRank : mode === 'category' ? categoryRank : null;
+  if (rankFn) {
+    groupKeys.sort((a, b) => rankFn(a) - rankFn(b));
   } else {
     groupKeys.sort((a, b) => {
       const sumA = groupsMap[a].reduce((s, r) => s + r.curAmount, 0);
@@ -2416,6 +2589,7 @@ function showToast(message, type = 'info', duration = 6000) {
 function renderAll() {
   populateFilterOptions();
   renderKPIs();
+  renderTopHoldings();
   renderCharts();
   renderTable();
   // 리밸런싱/미래예측 탭은 숨겨진 캔버스에 차트를 그리면 크기가 0이 되므로, 실제로 보이고 있을 때만 갱신한다.
@@ -2877,25 +3051,40 @@ function setRefreshingUI(isRefreshing, statusText) {
 // 채권/현금/부동산 및 티커 없는 자산은 대상에서 제외한다 - 사용자가 실수로 티커를 넣어도 안전.
 // 개별 종목 조회 실패는 Promise.allSettled로 흡수하므로 이 함수 자체가 reject되는 일은 없다
 // (기존 currentPrice는 실패한 종목에 한해 그대로 유지된다).
+// 보유 종목이 많은(20개 이상) 실제 포트폴리오로 실측한 결과, 모든 티커를 한꺼번에 동시 요청하면
+// (티커당 최대 6개 소스 = 종목 20개면 최대 120개 동시 HTTP 요청) 무료 CORS 프록시가 순간적으로
+// 과부하로 타임아웃/레이트리밋(429)에 걸리고, 브라우저 자체도 같은 호스트에 대한 동시 연결 수를
+// 6개 안팎으로 제한해 뒤로 밀린 요청들이 대기하다 그대로 타임아웃되는 현상이 확인됐다(같은 티커를
+// 곧바로 재시도하면 대부분 성공 - 종목 자체의 문제가 아니라 순간 동시 요청량 문제였음을 뒷받침한다).
+// 이를 완화하기 위해 ① 같은 티커를 여러 계좌(ISA/IRP/일반계좌 등)가 나눠 보유해도 티커당 한 번만
+// 조회해 요청 자체를 줄이고, ② 남은 고유 티커도 한꺼번에 쏘지 않고 PRICE_FETCH_BATCH_SIZE개씩
+// 순차 배치로 나눠 동시 요청 수를 억제한다(속도는 다소 늦어지지만 성공률이 크게 개선된다).
+const PRICE_FETCH_BATCH_SIZE = 6;
+
 async function fetchAllPrices() {
   const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
-  const results = await Promise.allSettled(
-    targets.map(a => fetchPriceWithFallback(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
-  );
+  const uniqueTickers = [...new Set(targets.map(a => a.ticker))];
+
+  const resultByTicker = {};
+  for (let i = 0; i < uniqueTickers.length; i += PRICE_FETCH_BATCH_SIZE) {
+    const batch = uniqueTickers.slice(i, i + PRICE_FETCH_BATCH_SIZE);
+    const batchResults = await Promise.allSettled(batch.map((ticker) => fetchPriceWithFallback(ticker)));
+    batch.forEach((ticker, idx) => { resultByTicker[ticker] = batchResults[idx]; });
+  }
 
   let successCount = 0, failCount = 0;
   const failedNames = [];
-  results.forEach((r, i) => {
-    const t = targets[i];
+  targets.forEach((t) => {
+    const r = resultByTicker[t.ticker];
     if (r.status === 'fulfilled') {
-      const asset = state.assets.find(x => x.id === r.value.id);
+      const asset = state.assets.find(x => x.id === t.id);
       if (asset) {
         asset.currentPrice = r.value.price;
-        state.dayChangeMap[r.value.id] = r.value.changePercent;
-        state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
+        state.dayChangeMap[t.id] = r.value.changePercent;
+        state.prevCloseMap[t.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
         // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
-        if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[r.value.id] = r.value.session;
-        else delete state.sessionMap[r.value.id];
+        if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[t.id] = r.value.session;
+        else delete state.sessionMap[t.id];
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;
       }
