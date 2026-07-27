@@ -195,13 +195,25 @@
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
+        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
         <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
           <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
         </div>
       </div>
-      <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
-      <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+      <!-- 정상 상태(시세 조회 실패 0건일 때): 기존 '총 투자금액' 표시 -->
+      <div id="kpiTotalCostNormal">
+        <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
+        <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+      </div>
+      <!-- 실패 상태(1건 이상 시세조회 실패 시 renderKPIs가 이 자리로 동적 전환): 실패 종목 안내 + 일괄 재조회 버튼 -->
+      <div id="kpiFetchFailurePanel" class="hidden">
+        <p class="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
+        <button id="retryFailedPricesBtn" type="button"
+          class="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
+        </button>
+      </div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -440,41 +452,17 @@
 
   <!-- ============================= 금융자산 미래예측 탭 ============================= -->
   <div id="tabPanelProjection" class="hidden">
-    <!-- ===== 시나리오별 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
-      <h3 class="text-sm font-semibold mb-1">📊 시나리오별 미래 자산 통합 비교</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때의 총자산(명목) 성장 곡선을 한 차트에서 직접 비교합니다. 5년 단위 시점마다 예상 금액을 라벨로 표시합니다.</p>
-      <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
-    </section>
-
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-6">
-      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h3 class="text-sm font-semibold">시나리오별 예상 자산 스케줄 비교</h3>
-        <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다. 차액 = 리밸런싱 후 − 현재 유지(명목 기준).</p>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
-          <thead>
-            <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-              <th class="px-4 py-2">시점</th>
-              <th class="px-4 py-2 text-right">현재 유지 (명목)</th>
-              <th class="px-4 py-2 text-right text-slate-400">· 실질</th>
-              <th class="px-4 py-2 text-right">리밸런싱 후 (명목)</th>
-              <th class="px-4 py-2 text-right text-slate-400">· 실질</th>
-              <th class="px-4 py-2 text-right">두 시나리오 간 차액</th>
-            </tr>
-          </thead>
-          <tbody id="scenarioCompareScheduleBody"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ===== 시나리오 1: 현재 구성 유지 ===== -->
-    <h3 class="text-base font-bold mb-3 flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-slate-600 text-white text-xs flex items-center justify-center">1</span> 현재 구성 유지 시</h3>
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <div class="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <h3 class="text-sm font-semibold mb-1">수익률 및 적립 설정 (공통)</h3>
-        <p class="text-[11px] text-slate-400 mb-3">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 아래 시나리오 2에도 동일하게 적용됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
+    <!-- ===== 시나리오 요약 카드 (통합 비교 그래프 바로 위) =====
+         두 시나리오의 핵심 설정값(기대수익률·월 적립금)을 그래프를 보기 전에 먼저 한눈에 비교할 수
+         있게 한다. 값 자체는 아래쪽(현재는 숨김 처리된) 상세 카드와 동일한 소스(updateProjection)에서
+         채워지므로 항상 서로 일치한다. -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
+          <span class="text-sm font-semibold">현재 구성 유지 시</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-3">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
         <div id="categoryReturnInputs" class="space-y-3 mb-4"></div>
         <label class="text-xs block mb-4">
           <span class="text-slate-500 dark:text-slate-400">월 추가 적립금 (KRW, 선택)</span>
@@ -494,13 +482,73 @@
           <p id="weightedAvgReturn" class="text-xl font-bold">0.00%</p>
         </div>
       </div>
-      <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
+          <span class="text-sm font-semibold">리밸런싱 후</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-3">"금융자산 리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목은 고정 수익률(QQQM 11.0% · SPYM 8.0% · SCHD 9.0%)을 쓰고, 국내 항목과 채권/현금은 왼쪽 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 원금·월 적립금·물가상승률은 시나리오 1과 동일합니다.</p>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <p class="text-[11px] text-slate-400">가중평균 기대수익률</p>
+            <p id="summaryReturn2" class="text-lg font-bold">0.00%</p>
+          </div>
+          <div>
+            <p class="text-[11px] text-slate-400">월 적립금</p>
+            <p id="summaryContribution2" class="text-lg font-bold">0원</p>
+          </div>
+        </div>
+        <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+          <p class="text-[11px] text-slate-400 mb-1.5">목표 포트폴리오 상품별 비중</p>
+          <div id="targetAllocationSummary" class="space-y-1.5"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 시나리오별 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
+      <h3 class="text-sm font-semibold mb-1">📊 시나리오별 미래 자산 통합 비교</h3>
+      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때의 총자산(명목) 성장 곡선을 한 차트에서 직접 비교합니다. 5년 단위 시점마다 예상 금액을 라벨로 표시합니다.</p>
+      <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
+    </section>
+
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-6">
+      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+        <h3 class="text-sm font-semibold">시나리오별 예상 자산 스케줄 비교</h3>
+        <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다. 차액 = 리밸런싱 후 − 현재 유지(명목 기준).</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+              <th class="px-4 py-2">시점</th>
+              <th class="px-4 py-2 text-right">현재 유지 (명목)</th>
+              <th class="px-4 py-2 text-right text-slate-400">· 실질 구매력 가치</th>
+              <th class="px-4 py-2 text-right">리밸런싱 후 (명목)</th>
+              <th class="px-4 py-2 text-right text-slate-400">· 실질 구매력 가치</th>
+              <th class="px-4 py-2 text-right">두 시나리오 간 차액</th>
+            </tr>
+          </thead>
+          <tbody id="scenarioCompareScheduleBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== 시나리오 1: 현재 구성 유지 (그래프는 위쪽 통합 비교 차트와 중복되어 숨김 처리) =====
+         수익률 입력/적립금/가중평균 표시는 맨 위 요약 카드로 옮겼으므로 여기서는 제거했다(같은 id를
+         두 곳에 두면 안 되므로). projectionChart 캔버스는 Chart.js가 그릴 대상 엘리먼트가 계속
+         필요하므로(없으면 렌더링 시 에러) 지우지 않고 hidden 처리만 한다. -->
+    <section class="hidden">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
         <h3 class="text-sm font-semibold mb-3">예상 자산 성장 그래프 (20년) · 현재 구성 유지</h3>
         <div class="h-72 sm:h-80"><canvas id="projectionChart"></canvas></div>
       </div>
     </section>
 
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-10">
+    <!-- 위쪽 "시나리오별 예상 자산 스케줄 비교" 통합 표와 내용이 겹쳐 화면을 단순화하기 위해 숨김
+         처리한다(요청에 따름). projectionScheduleBody는 계속 채워지므로 다시 보이게 하려면 이
+         section에서 hidden 클래스만 제거하면 된다. -->
+    <section class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-10">
       <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <h3 class="text-sm font-semibold">5년 단위 예상 자산 스케줄 · 현재 구성 유지</h3>
         <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다.</p>
@@ -524,25 +572,23 @@
       </div>
     </section>
 
-    <!-- ===== 시나리오 2: 목표 포트폴리오로 리밸런싱 후 ===== -->
-    <h3 class="text-base font-bold mb-3 flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-brand-600 text-white text-xs flex items-center justify-center">2</span> 목표 포트폴리오로 리밸런싱 후</h3>
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <div class="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <h3 class="text-sm font-semibold mb-1">재편 후 가중평균 (자동 산출)</h3>
-        <p class="text-[11px] text-slate-400 mb-3">"금융자산 리밸런싱" 탭에서 설정한 목표 비중(국내 40%: KODEX 200TR·TIGER 코리아배당다우존스·주식·채권·현금 / 미국 60%: QQQM·SPYM·SCHD)대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목은 고정 수익률(QQQM 11.0% · SPYM 8.0% · SCHD 9.0%)을 쓰고, 국내 항목과 채권/현금은 위 시나리오 1의 자산군별 수익률을 그대로 재사용합니다(시나리오 1 값을 바꾸면 이 시나리오의 국내/채권/현금 부분도 함께 바뀝니다). 원금·월 적립금·물가상승률은 시나리오 1과 동일합니다.</p>
-        <div id="targetAllocationSummary" class="space-y-1.5 mb-4"></div>
-        <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
-          <p class="text-[11px] text-slate-400">리밸런싱 후 가중평균 연수익률</p>
-          <p id="weightedAvgReturn2" class="text-xl font-bold">0.00%</p>
-        </div>
-      </div>
-      <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+    <!-- ===== 시나리오 2: 목표 포트폴리오로 리밸런싱 후 (그래프는 위쪽 통합 비교 차트와 중복되어 숨김) =====
+         목표 비중/가중평균 표시는 맨 위 요약 카드로 옮겼으므로 여기서는 제거했다(같은 id를 두 곳에
+         두면 안 되므로). weightedAvgReturn2는 다른 곳과 안 겹치니 그대로 두되(업데이트 로직이 계속
+         참조함) 화면에는 보이지 않는다. projectionChart2 캔버스는 Chart.js가 그릴 대상 엘리먼트가
+         계속 필요하므로(없으면 렌더링 시 에러) 지우지 않고 hidden 처리만 한다. -->
+    <section class="hidden">
+      <p id="weightedAvgReturn2"></p>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
         <h3 class="text-sm font-semibold mb-3">예상 자산 성장 그래프 (20년) · 리밸런싱 후</h3>
         <div class="h-72 sm:h-80"><canvas id="projectionChart2"></canvas></div>
       </div>
     </section>
 
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+    <!-- 위쪽 "시나리오별 예상 자산 스케줄 비교" 통합 표와 내용이 겹쳐 화면을 단순화하기 위해 숨김
+         처리한다(요청에 따름). projectionScheduleBody2는 계속 채워지므로 다시 보이게 하려면 이
+         section에서 hidden 클래스만 제거하면 된다. -->
+    <section class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <h3 class="text-sm font-semibold">5년 단위 예상 자산 스케줄 · 리밸런싱 후</h3>
         <p class="text-[11px] text-slate-400 mt-0.5">실질 구매력 가치 = 예상 자산 규모(명목) ÷ (1+물가상승률)^경과년수 - 현재 물가 기준으로 환산한 값입니다.</p>
@@ -726,9 +772,9 @@ const CORS_PROXIES = [
     name: 'allorigins-get',
     build: (url) => 'https://api.allorigins.win/get?url=' + encodeURIComponent(url),
     parse: async (res) => {
-      const wrapped = await res.json();
+      const wrapped = await safeParseJsonResponse(res);
       if (!wrapped || typeof wrapped.contents !== 'string') throw new Error('contents 필드 없음');
-      return JSON.parse(wrapped.contents);
+      return safeParseJsonText(wrapped.contents);
     }
   },
   {
@@ -738,7 +784,7 @@ const CORS_PROXIES = [
       const text = await res.text();
       const idx = text.indexOf('{');
       if (idx === -1) throw new Error('JSON 응답 없음');
-      return JSON.parse(text.slice(idx));
+      return safeParseJsonText(text.slice(idx));
     }
   }
 ];
@@ -758,9 +804,9 @@ const FX_SOURCES = [
     name: 'open.er-api(allorigins-get)',
     url: 'https://api.allorigins.win/get?url=' + encodeURIComponent(FX_TARGET_URL),
     parse: async (res) => {
-      const wrapped = await res.json();
+      const wrapped = await safeParseJsonResponse(res);
       if (!wrapped || typeof wrapped.contents !== 'string') throw new Error('contents 필드 없음');
-      return JSON.parse(wrapped.contents);
+      return safeParseJsonText(wrapped.contents);
     }
   },
   {
@@ -770,7 +816,7 @@ const FX_SOURCES = [
       const text = await res.text();
       const idx = text.indexOf('{');
       if (idx === -1) throw new Error('JSON 응답 없음');
-      return JSON.parse(text.slice(idx));
+      return safeParseJsonText(text.slice(idx));
     }
   }
 ];
@@ -1250,6 +1296,22 @@ function renderKPIs() {
   document.getElementById('kpiTotalCost').textContent = fmtKRW(totalBuy);
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
+
+  // '총 투자금액' 카드 동적 전환: 직전 시세 갱신에서 실패한 종목이 1건이라도 있으면 투자금액 대신
+  // 실패 종목 안내 + [실패 종목 일괄 재조회] 버튼을 보여준다. 실패 0건이면(전부 성공했거나 애초에
+  // 갱신을 한 번도 안 돌렸으면) 기존처럼 총 투자금액을 보여준다.
+  const failedAssets = state.assets.filter((a) => state.priceFetchFailedIds.has(a.id));
+  const hasFetchFailure = failedAssets.length > 0;
+  document.getElementById('kpiTotalCostLabel').textContent = hasFetchFailure ? '시세 반영 실패' : '총 투자금액';
+  document.getElementById('kpiTotalCostNormal').classList.toggle('hidden', hasFetchFailure);
+  document.getElementById('kpiFetchFailurePanel').classList.toggle('hidden', !hasFetchFailure);
+  if (hasFetchFailure) {
+    document.getElementById('kpiFetchFailureNames').textContent = failedAssets.map((a) => a.name || a.ticker).join(', ');
+    // 매 렌더링마다 버튼을 기본 상태로 되돌린다 - 재조회 도중(disabled/"재조회 중...")이었더라도
+    // 재조회가 끝나 이 패널이 다시 그려질 시점에는 항상 눌러줄 수 있는 상태여야 한다.
+    document.getElementById('retryFailedPricesBtn').disabled = false;
+    document.getElementById('retryFailedPricesBtnText').textContent = '실패 종목 일괄 재조회';
+  }
 
   const profitEl = document.getElementById('kpiTotalProfit');
   profitEl.textContent = fmtSigned(totalProfit);
@@ -1824,13 +1886,16 @@ function buildCategoryReturnInputs(groupKeys, byGroup) {
   });
 }
 
-// 월복리 미래가치: FV = PV*(1+r)^n + PMT*(((1+r)^n - 1)/r), r=월이율, n=개월수
+// 월복리 미래가치: FV = PV*(1+r)^n + PMT*(1+r)*(((1+r)^n - 1)/r), r=월이율, n=개월수.
+// 월 적립금은 매월 "초"에 넣는다고 가정하는 기초급(Annuity Due) 연금 복리식이다 - 그래서 일반적인
+// 기말급(적립금이 그 달 말에 들어와 그 달의 성장에는 참여하지 않는) 공식에 (1+월이율)을 한 번 더
+// 곱해, 이번 달 초에 넣은 적립금도 이번 달 성장분을 온전히 받도록 한다.
 function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
   const monthlyRate = annualRatePct / 100 / 12;
   const months = years * 12;
   if (Math.abs(monthlyRate) < 1e-9) return pv + monthlyContribution * months;
   const growth = Math.pow(1 + monthlyRate, months);
-  return pv * growth + monthlyContribution * ((growth - 1) / monthlyRate);
+  return pv * growth + monthlyContribution * (1 + monthlyRate) * ((growth - 1) / monthlyRate);
 }
 
 // 실제 달력상의 5년 단위 연도(2030년/2035년/2040년/2045년처럼 5의 배수인 해)를 마일스톤으로 잡는다 -
@@ -2039,6 +2104,43 @@ function renderScenarioCompareScheduleTable(rows) {
     </tr>`).join('');
 }
 
+// [비리밸런싱 시나리오 전용] 월 단위 시뮬레이션으로 자산군별 미래가치를 계산한다. 리밸런싱을 하지
+// 않으므로 자산군별 기대수익률 차이 때문에 시간이 지날수록 실제 비중(w_i)이 오늘과 달라지는데,
+// 매월 시작 시점의 "그때그때 실제 잔액 비중"대로 그 달 적립금을 나눠 넣어(고정된 오늘 비중이 아님)
+// 이 변화를 정확히 반영한다. 적립금은 기초급(그 달 초에 넣어 그 달 성장에도 참여)으로 처리한다.
+// 반환값: [{year:0, [그룹키]:금액, ..., total}, {year:1, ...}, ... {year: maxYears, ...}] - 그래프/표가
+// 공유하는 연 단위 스냅샷 배열이다.
+function simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, maxYears) {
+  const monthlyRates = {};
+  groupKeys.forEach((k) => { monthlyRates[k] = getGroupReturnRate(k) / 100 / 12; });
+
+  const balances = {};
+  groupKeys.forEach((k) => { balances[k] = byGroup[k].value; });
+
+  const snapshot = (year) => {
+    const point = { year };
+    let total = 0;
+    groupKeys.forEach((k) => { point[k] = balances[k]; total += balances[k]; });
+    point.total = total;
+    return point;
+  };
+
+  const yearlyPoints = [snapshot(0)];
+  const totalMonths = maxYears * 12;
+  for (let m = 1; m <= totalMonths; m++) {
+    const totalNow = groupKeys.reduce((s, k) => s + balances[k], 0);
+    groupKeys.forEach((k) => {
+      // 그 달 "시작" 시점의 실제 비중대로 이번 달 적립금을 배분한다 - 자산군이 하나도 없는 극단적
+      // 경우(totalNow === 0, 예: 전액 인출 상태)에는 남은 그룹에 균등 배분해 적립금이 사라지지 않게 한다.
+      const shareNow = totalNow !== 0 ? balances[k] / totalNow : (groupKeys.length ? 1 / groupKeys.length : 0);
+      const contributionForGroup = monthlyContribution * shareNow;
+      balances[k] = (balances[k] + contributionForGroup) * (1 + monthlyRates[k]);
+    });
+    if (m % 12 === 0) yearlyPoints.push(snapshot(m / 12));
+  }
+  return yearlyPoints;
+}
+
 function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
@@ -2047,10 +2149,13 @@ function updateProjection() {
   let weightedSum = 0;
   groupKeys.forEach((k) => { weightedSum += byGroup[k].value * getGroupReturnRate(k); });
   const weightedAvg = totalValue !== 0 ? weightedSum / totalValue : 0;
+  // weightedAvgReturn은 이제 맨 위 "현재 구성 유지 시" 요약 카드 안에 있는 엘리먼트다(수익률 입력
+  // 폼과 함께 그 카드로 옮김) - 별도의 summaryReturn1 복제 엘리먼트는 더 이상 필요 없다.
   document.getElementById('weightedAvgReturn').textContent = fmtNum(weightedAvg, 2) + '%';
 
   const monthlyContribution = num(document.getElementById('monthlyContributionInput').value);
   state.projection.monthlyContribution = monthlyContribution;
+  document.getElementById('summaryContribution2').textContent = fmtKRW(monthlyContribution);
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
   // "가중평균 연수익률"은 의도적으로 명목 수익률만 표시한다(물가상승률 미반영) - 실질가치 환산은
@@ -2069,29 +2174,23 @@ function updateProjection() {
   // 현상이 발생했다(총자산 = 주식+채권+현금이므로 항상 그 셋보다 커야 한다).
   // 근본 수정: 자산군별로 먼저 각자의 수익률로 복리 계산(주식(t)=주식(t-1)*(1+r)+적립금 ... )한 후에,
   // 총자산(t) = 주식(t)+채권(t)+현금(t)로 "합산"해서 구한다 - 이러면 총자산은 정의상 각 자산군의 합이라
-  // 어떤 개별 자산군보다도 작을 수 없다. 월 적립금은 배분 기준이 없으므로 현재 보유 비중대로 자산군에
-  // 나눠 넣는다(비중이 0인 자산군에는 적립금도 배분하지 않는다).
-  const contributionShare = {};
-  groupKeys.forEach((k) => { contributionShare[k] = totalValue !== 0 ? byGroup[k].value / totalValue : 0; });
-  const groupFutureValue = (k, y) => computeFutureValue(byGroup[k].value, getGroupReturnRate(k), y, monthlyContribution * (contributionShare[k] || 0));
-
-  // 그래프용: 0~20년 매년 계산해 부드러운 곡선을 그린다.
-  const yearlyPoints = [];
-  for (let y = 0; y <= 20; y++) {
-    const point = { year: y };
-    let total = 0;
-    groupKeys.forEach((k) => { const v = groupFutureValue(k, y); point[k] = v; total += v; });
-    point.total = total;
-    yearlyPoints.push(point);
-  }
+  // 어떤 개별 자산군보다도 작을 수 없다.
+  // [동적 가중평균 반영] 리밸런싱을 하지 않는 시나리오이므로, 자산군별 기대수익률 차이 때문에 시간이
+  // 지날수록 실제 비중(w_i)이 오늘의 비중에서 계속 멀어진다. 이를 정확히 반영하기 위해 월 적립금을
+  // "오늘의 고정 비중"이 아니라 "그 달 시작 시점의 실제(그때까지 불어난) 비중"대로 매달 다시 계산해서
+  // 배분한다 - simulateNonRebalancedGroups()가 월 단위로 시뮬레이션하며 이 재계산을 수행한다.
+  const yearlyPoints = simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, 20);
   renderProjectionChart(yearlyPoints, groupKeys, milestoneOffsets);
 
   // 표용: "현재" + 실제 5년 단위 캘린더 연도 마일스톤만 추린다. 실질 구매력 가치 = 명목 미래가치 ÷ (1+물가상승률)^경과년수.
   // groupAmounts에는 PROJECTION_ALL_GROUP_KEYS(주식형자산/채권/현금) 3개 모두를 채워 넣는다(미보유 그룹은 0원).
+  // yearlyPoints는 이미 0~20년 매년 값을 갖고 있으므로(월 단위 시뮬레이션 결과를 연 단위로 샘플링),
+  // 마일스톤 연도의 값을 다시 계산하지 않고 그대로 찾아 쓴다 - 그래프와 표가 항상 같은 값을 보장한다.
   const scheduleRows = [0, ...milestoneOffsets].map((y) => {
-    let value = 0;
+    const point = yearlyPoints[y];
     const groupAmounts = {};
-    groupKeys.forEach((k) => { const v = groupFutureValue(k, y); groupAmounts[k] = v; value += v; });
+    groupKeys.forEach((k) => { groupAmounts[k] = point[k]; });
+    const value = point.total;
     const contributed = totalValue + monthlyContribution * y * 12;
     const realValue = value / Math.pow(1 + inflationRate / 100, y);
     return { year: y, value, contributed, profit: value - contributed, realValue, groupAmounts };
@@ -2102,6 +2201,7 @@ function updateProjection() {
   // 시나리오 1과 정확히 같은 원금(totalValue)을 목표 지역/항목 비중대로 재배분했다고 가정한다.
   const weightedAvg2 = computeTargetWeightedAvgRate();
   document.getElementById('weightedAvgReturn2').textContent = fmtNum(weightedAvg2, 2) + '%';
+  document.getElementById('summaryReturn2').textContent = fmtNum(weightedAvg2, 2) + '%';
 
   const regionPV2 = {
     '국내': totalValue * num(state.rebalance.domestic['국내']) / 100,
@@ -2892,6 +2992,24 @@ async function fetchWithTimeout(url, timeoutMs = 12000, acceptHeader = 'applicat
   }
 }
 
+// 프록시 서버가 HTTP 200 OK와 함께 JSON이 아닌 응답(레이트리밋/점검 안내 HTML 페이지, 빈 문자열 등)을
+// 돌려주는 경우가 실제로 있다. res.json()/JSON.parse를 그대로 쓰면 이해하기 어려운 네이티브
+// SyntaxError("Unexpected token '<'..." 등)를 던지는데, 어느 지점에서 왜 실패했는지 알기 어렵고
+// 프록시별 parse 구현마다 이 처리를 각자 반복하면 빠뜨리기 쉽다. 이 두 헬퍼로 항상 안전하게 감싸서
+// 실패 시 명확한 에러 메시지로 변환하고(호출부는 이미 Promise.allSettled로 실패를 흡수하므로) 다음
+// 소스로 자연스럽게 넘어가게 한다.
+function safeParseJsonText(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('응답 파싱 실패(JSON 형식이 아님 - HTML 에러 페이지 등)');
+  }
+}
+async function safeParseJsonResponse(res) {
+  const text = await res.text();
+  return safeParseJsonText(text);
+}
+
 /* -------------------------------------------------------------------------
  * 17. 실시간 환율 조회 - 다중 소스 "동시" 경쟁 (순차 폴백 아님)
  *    모바일/APK(WebView) 환경은 프록시 왕복 지연이 desktop보다 크고 특정 프록시가 아예 막혀 있는
@@ -2902,7 +3020,7 @@ async function fetchWithTimeout(url, timeoutMs = 12000, acceptHeader = 'applicat
 async function fetchFxFromSource(src) {
   const res = await fetchWithTimeout(src.url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = src.parse ? await src.parse(res) : await res.json();
+  const data = src.parse ? await src.parse(res) : await safeParseJsonResponse(res);
   const krw = data && data.rates && data.rates.KRW;
   if (!krw || !Number.isFinite(krw)) throw new Error('KRW 환율 필드 없음');
   return Math.round(krw * 100) / 100;
@@ -2961,7 +3079,7 @@ async function fetchYahooViaProxy(yahooTicker, proxy) {
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=1d&includePrePost=true';
   const res = await fetchWithTimeout(proxy.build(target));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = proxy.parse ? await proxy.parse(res) : await res.json();
+  const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
   const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
   if (!meta || typeof meta.regularMarketPrice !== 'number') throw new Error('가격 필드 없음');
   // previousClose(전일 종가)는 Yahoo 응답 버전에 따라 필드명이 다를 수 있어 둘 다 확인한다.
@@ -2976,6 +3094,7 @@ async function fetchYahooViaProxy(yahooTicker, proxy) {
     previousClose: prevCloseRaw,
     changePercent: picked.changePercent,
     session: picked.session, // 'post' | 'pre' | 'regular' - 테이블에 시간외 배지를 표시하는 데 쓰인다
+    instrumentType: meta.instrumentType, // 'EQUITY'|'ETF'|'MUTUALFUND' 등 - .KQ 자동 폴백의 오매칭 검증용
     source: `Yahoo(${proxy.name})`
   };
 }
@@ -3020,11 +3139,10 @@ async function fetchStooqPrice(yahooTicker) {
   return { price, previousClose: null, changePercent: 0, session: 'regular', source: 'Stooq' };
 }
 
-// rawTicker: 사용자가 입력한 원본 티커(예: A005380). 내부에서 소스별로 필요한 포맷으로 변환해
-// 아래 4개 소스에 동시에 요청을 보내고(Promise.allSettled), 가장 먼저 성공한 응답을 채택한다.
-async function fetchPriceWithFallback(rawTicker) {
-  const yahooTicker = sanitizeTicker(rawTicker).yahooTicker;
-  // CORS_PROXIES 배열 순서/개수가 바뀌어도 자동으로 따라가도록 인덱스 하드코딩 없이 매핑한다.
+// yahooTicker 하나를 놓고 CORS_PROXIES 전체 + Stooq를 동시에 경쟁시킨다(Promise.allSettled) - 가장
+// 먼저 성공한 응답을 채택하고, 전부 실패하면 소스별 실패 사유를 담아 reject한다.
+// CORS_PROXIES 배열 순서/개수가 바뀌어도 자동으로 따라가도록 인덱스 하드코딩 없이 매핑한다.
+async function raceFetchPrice(yahooTicker) {
   const sourceNames = [...CORS_PROXIES.map((p) => `Yahoo(${p.name})`), 'Stooq'];
   const attempts = [
     ...CORS_PROXIES.map((proxy) => () => fetchYahooViaProxy(yahooTicker, proxy)),
@@ -3036,8 +3154,48 @@ async function fetchPriceWithFallback(rawTicker) {
   if (success) return success.value;
 
   const errors = results.map((r, i) => `${sourceNames[i]}: ${r.reason && r.reason.message}`);
-  console.error(`[시세조회 실패] ticker="${rawTicker}" (조회용: "${yahooTicker}") - 모든 소스 실패:\n` + errors.map((e, i) => `  ${i + 1}) ${e}`).join('\n'));
   throw new Error(errors.join(' | '));
+}
+
+// rawTicker: 사용자가 입력한 원본 티커(예: A005380, 005930, GOOGL). 순수 숫자 6자리만으로는 코스피
+// (.KS)인지 코스닥(.KQ)인지 입력 자체에서 구분할 수 없으므로, sanitizeTicker는 일단 .KS로 간주한다.
+// .KS 조회가 전부 실패하면(존재하지 않는 코스피 코드일 가능성) 같은 6자리를 .KQ로 자동 재시도한다 -
+// 예를 들어 실제로는 코스닥 종목인데 사용자가 접미사 없이 6자리 코드만 입력한 경우를 구제한다.
+// (.KS/.KQ를 이미 명시했거나 해외 티커인 경우는 애매하지 않으므로 재시도하지 않는다.)
+async function fetchPriceWithFallback(rawTicker) {
+  const yahooTicker = sanitizeTicker(rawTicker).yahooTicker;
+  const trimmedRaw = String(rawTicker ?? '').trim();
+  const isAmbiguousKrxCode = /^\d{6}$/.test(trimmedRaw);
+
+  try {
+    return await raceFetchPrice(yahooTicker);
+  } catch (ksErr) {
+    if (!isAmbiguousKrxCode) {
+      console.error(`[시세조회 실패] ticker="${rawTicker}" (조회용: "${yahooTicker}") - 모든 소스 실패:\n${ksErr.message}`);
+      throw ksErr;
+    }
+    const kqTicker = trimmedRaw + '.KQ';
+    try {
+      const result = await raceFetchPrice(kqTicker);
+      // [오매칭 안전장치] 실제로 확인된 사례: 같은 6자리 코드가 KOSDAQ 쪽 전혀 다른 상품(예: 뮤추얼펀드)과
+      // 우연히 겹쳐서, 코스피 종목(예: 삼성전자 005930)의 .KS 조회가 일시적으로 실패했을 때 .KQ 쪽이
+      // "성공"처럼 보이지만 실제로는 완전히 무관한 상품의 가격을 돌려주는 경우가 있었다(005930.KQ가
+      // 삼성전자와 무관한 뮤추얼펀드를 가리킴 - 가격이 전혀 다르게 나옴). Yahoo에서 온 결과는
+      // instrumentType이 EQUITY/ETF일 때만 정상적인 폴백으로 인정하고, 그 외는 오매칭으로 간주해
+      // 실패 처리한다(엉뚱한 가격을 자산에 잘못 반영하는 것보다 실패로 남기고 기존 값을 유지하는 편이
+      // 안전하다). Stooq 등 instrumentType이 없는 소스는 이 검증을 건너뛴다.
+      const isYahooResult = typeof result.source === 'string' && result.source.startsWith('Yahoo(');
+      const looksLikeWrongInstrument = isYahooResult && result.instrumentType && !['EQUITY', 'ETF'].includes(result.instrumentType);
+      if (looksLikeWrongInstrument) {
+        throw new Error(`.KQ(${kqTicker}) 응답이 예상과 다른 종류의 상품(${result.instrumentType})으로 확인되어 폴백을 신뢰할 수 없음`);
+      }
+      console.warn(`[코스닥 폴백 성공] ticker="${rawTicker}" - .KS(${yahooTicker}) 조회 실패 후 .KQ(${kqTicker})로 재시도해 성공했습니다.`);
+      return result;
+    } catch (kqErr) {
+      console.error(`[시세조회 실패] ticker="${rawTicker}" - .KS/.KQ 모두 실패:\n  [.KS] ${ksErr.message}\n  [.KQ] ${kqErr.message}`);
+      throw new Error(`${ksErr.message} | (.KQ 재시도도 실패: ${kqErr.message})`);
+    }
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -3062,8 +3220,14 @@ function setRefreshingUI(isRefreshing, statusText) {
 // 채권/현금/부동산 및 티커 없는 자산은 대상에서 제외한다 - 사용자가 실수로 티커를 넣어도 안전.
 // 개별 종목 조회 실패는 Promise.allSettled로 흡수하므로 이 함수 자체가 reject되는 일은 없다
 // (기존 currentPrice는 실패한 종목에 한해 그대로 유지된다).
-async function fetchAllPrices() {
-  const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
+// targets(자산 객체 배열)에 대해서만 시세를 동시 조회하고 state에 반영한다. 전체 새로고침(fetchAllPrices)과
+// 실패 종목 일괄 재조회(retryFailedPrices) 양쪽이 이 함수 하나를 공유해, 프록시 경쟁/적용 로직이
+// 두 곳에서 어긋나지 않게 한다.
+// 각 자산의 fetchStatus('pending'|'success'|'failed')를 여기서 함께 갱신한다 - localStorage에는
+// 저장되지 않는(persistAssets가 명시적으로 허용한 필드만 저장) 휘발성 런타임 상태다.
+async function fetchPricesForTargets(targets) {
+  targets.forEach((a) => { a.fetchStatus = 'pending'; });
+
   const results = await Promise.allSettled(
     targets.map(a => fetchPriceWithFallback(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
   );
@@ -3076,6 +3240,7 @@ async function fetchAllPrices() {
       const asset = state.assets.find(x => x.id === r.value.id);
       if (asset) {
         asset.currentPrice = r.value.price;
+        asset.fetchStatus = 'success';
         state.dayChangeMap[r.value.id] = r.value.changePercent;
         state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
         // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
@@ -3086,13 +3251,38 @@ async function fetchAllPrices() {
       }
     } else {
       failCount++; // 실패 시 asset.currentPrice는 손대지 않으므로 기존 값이 안전하게 유지된다.
-      state.priceFetchFailedIds.add(t.id); // 테이블에서 강조 표시 + 수동입력 뱃지를 띄우기 위한 표식
+      t.fetchStatus = 'failed';
+      state.priceFetchFailedIds.add(t.id); // 테이블/KPI에서 강조 표시 + 일괄 재조회 대상 표식
       failedNames.push(t.name);
     }
   });
 
   return { targetCount: targets.length, successCount, failCount, failedNames };
 }
+
+async function fetchAllPrices() {
+  const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
+  return fetchPricesForTargets(targets);
+}
+
+// [실패 종목 일괄 재조회] - 이번에 조회조차 시도하지 않는 자산(시세 이미 성공/비거래 자산)은 완전히
+// 건너뛰고, state.priceFetchFailedIds에 남아있는 종목만 골라 다시 시도한다.
+async function retryFailedPrices() {
+  const targets = state.assets.filter((a) => state.priceFetchFailedIds.has(a.id));
+  if (targets.length === 0) return;
+
+  const retryBtn = document.getElementById('retryFailedPricesBtn');
+  const retryBtnText = document.getElementById('retryFailedPricesBtnText');
+  retryBtn.disabled = true;
+  retryBtnText.textContent = '재조회 중...';
+
+  await fetchPricesForTargets(targets);
+  persistAssets();
+  // 실패 0건이 되면 renderKPIs()가 '총 투자금액' 화면으로 자동 복귀시키고, 일부만 성공했다면
+  // 남은 실패 종목 목록으로 패널을 다시 그리면서 버튼 상태도 함께 원상복구한다.
+  renderAll();
+}
+document.getElementById('retryFailedPricesBtn').addEventListener('click', () => { retryFailedPrices(); });
 
 // 시세 & 환율을 함께 갱신하는 공용 로직 - [시세 & 환율 갱신] 버튼 클릭과 페이지 최초 로드/새로고침
 // (모바일 pull-to-refresh 포함) 양쪽에서 호출한다. fetchExchangeRate/fetchAllPrices는 내부적으로
