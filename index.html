@@ -252,7 +252,8 @@
   </section>
 
   <!-- ============================= 주요 금융 자산 TOP 5 ============================= -->
-  <!-- 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings 참고). -->
+  <!-- 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings 참고).
+       모바일(삼성 갤럭시 크롬 등)에서는 1열로 쌓이고, sm 이상에서 좌우 2열로 배치된다. -->
   <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <h3 class="text-sm font-semibold mb-3">국내 자산 Top 5</h3>
@@ -715,11 +716,11 @@ function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx 
 // 프록시(allorigins-get은 {contents:"..."} JSON, r.jina.ai는 텍스트 프리앰블 뒤에 원본을 붙이는 방식)는
 // 별도 parse(res)를 정의해 fetchYahooViaProxy/fetchFxFromSource가 동일하게 처리할 수 있게 한다.
 // corsproxy.io는 2026년부터 localhost/개발환경 외 배포 도메인에서 무료 사용을 막아(HTTP 403,
-// "Free usage is limited to localhost and development environments") 배포된 이 앱에서는 절대 성공하지
-// 않는 소스가 됐다 - 계속 두면 매 종목마다 어차피 실패할 요청 하나를 추가로 쏘며 동시 연결 수만
-// 낭비하므로(모바일 새로고침 지연의 원인 중 하나) 목록에서 제거했다. 정책이 다시 바뀌면 재추가한다.
+// "Free usage is limited to localhost and development environments") 사실상 상시 실패 소스가 되었지만,
+// 향후 정책이 바뀔 수 있고 실패해도 Promise.allSettled 경쟁 구조상 다른 소스가 이어받으므로 그대로 둔다.
 const CORS_PROXIES = [
   { name: 'allorigins', build: (url) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url) },
+  { name: 'corsproxy.io', build: (url) => 'https://corsproxy.io/?url=' + encodeURIComponent(url) },
   { name: 'codetabs', build: (url) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url) },
   {
     name: 'allorigins-get',
@@ -751,6 +752,7 @@ const FX_SOURCES = [
   { name: 'open.er-api', url: 'https://open.er-api.com/v6/latest/USD' },
   { name: 'exchangerate-api', url: 'https://api.exchangerate-api.com/v4/latest/USD' },
   { name: 'open.er-api(allorigins)', url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(FX_TARGET_URL) },
+  { name: 'open.er-api(corsproxy.io)', url: 'https://corsproxy.io/?url=' + encodeURIComponent(FX_TARGET_URL) },
   { name: 'open.er-api(codetabs)', url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(FX_TARGET_URL) },
   {
     name: 'open.er-api(allorigins-get)',
@@ -2877,10 +2879,7 @@ document.getElementById('dailyChangeInput').addEventListener('input', (e) => {
 // accept 헤더는 일부 API/프록시가 콘텐츠 협상에 사용하므로 명시해준다 - 단, User-Agent는 브라우저가
 // fetch()에서 덮어쓰기를 금지한 forbidden header라 여기서 설정해도 무시된다(웹 표준 보안 정책,
 // Android WebView/Chrome 동일). CORS 차단의 실질적인 해결책은 프록시 우회뿐이라 위 다중 폴백으로 대응한다.
-// 8초로 줄였다가 모바일 셀룰러 네트워크에서 오히려 실시간 시세 실패가 늘어나는 것이 실측으로
-// 확인됐다 - 데스크톱 와이파이보다 프록시 서버까지 왕복 지연이 크고 변동폭도 커서, 원래는 몇 초
-// 더 기다리면 성공했을 요청이 8초에서 잘려나가 실패 처리된 것으로 보인다. 15초로 다시 늘린다.
-async function fetchWithTimeout(url, timeoutMs = 15000, acceptHeader = 'application/json, text/plain, */*') {
+async function fetchWithTimeout(url, timeoutMs = 12000, acceptHeader = 'application/json, text/plain, */*') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -3063,40 +3062,33 @@ function setRefreshingUI(isRefreshing, statusText) {
 // 채권/현금/부동산 및 티커 없는 자산은 대상에서 제외한다 - 사용자가 실수로 티커를 넣어도 안전.
 // 개별 종목 조회 실패는 Promise.allSettled로 흡수하므로 이 함수 자체가 reject되는 일은 없다
 // (기존 currentPrice는 실패한 종목에 한해 그대로 유지된다).
-// 같은 티커를 여러 계좌(ISA/IRP/일반계좌 등)가 나눠 보유해도 티커당 한 번만 조회해 요청 자체를
-// 줄이고(불필요한 중복 요청 제거는 항상 이득이라 순차 배치와 무관하게 유지한다), 남은 고유 티커는
-// 전부 동시에 요청한다 - 실사용 환경(모바일)에서는 이렇게 한꺼번에 쏴도 실패가 없었고, 오히려
-// 순차 배치로 나누면 득 없이 대기시간만 늘어난다는 사용자 확인에 따라 순차 배치 처리는 제거했다.
 async function fetchAllPrices() {
   const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
-  const uniqueTickers = [...new Set(targets.map(a => a.ticker))];
-
-  const results = await Promise.allSettled(uniqueTickers.map((ticker) => fetchPriceWithFallback(ticker)));
+  const results = await Promise.allSettled(
+    targets.map(a => fetchPriceWithFallback(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
+  );
 
   let successCount = 0, failCount = 0;
   const failedNames = [];
-  uniqueTickers.forEach((ticker, idx) => {
-    const r = results[idx];
-    // 같은 티커를 여러 계좌/소유자가 나눠 보유해도 이 조회 결과 하나를 전부에 그대로 적용한다.
-    targets.filter((t) => t.ticker === ticker).forEach((t) => {
-      if (r.status === 'fulfilled') {
-        const asset = state.assets.find(x => x.id === t.id);
-        if (asset) {
-          asset.currentPrice = r.value.price;
-          state.dayChangeMap[t.id] = r.value.changePercent;
-          state.prevCloseMap[t.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
-          // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
-          if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[t.id] = r.value.session;
-          else delete state.sessionMap[t.id];
-          state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
-          successCount++;
-        }
-      } else {
-        failCount++; // 실패 시 asset.currentPrice는 손대지 않으므로 기존 값이 안전하게 유지된다.
-        state.priceFetchFailedIds.add(t.id); // 테이블에서 강조 표시 + 수동입력 뱃지를 띄우기 위한 표식
-        failedNames.push(t.name);
+  results.forEach((r, i) => {
+    const t = targets[i];
+    if (r.status === 'fulfilled') {
+      const asset = state.assets.find(x => x.id === r.value.id);
+      if (asset) {
+        asset.currentPrice = r.value.price;
+        state.dayChangeMap[r.value.id] = r.value.changePercent;
+        state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
+        // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
+        if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[r.value.id] = r.value.session;
+        else delete state.sessionMap[r.value.id];
+        state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
+        successCount++;
       }
-    });
+    } else {
+      failCount++; // 실패 시 asset.currentPrice는 손대지 않으므로 기존 값이 안전하게 유지된다.
+      state.priceFetchFailedIds.add(t.id); // 테이블에서 강조 표시 + 수동입력 뱃지를 띄우기 위한 표식
+      failedNames.push(t.name);
+    }
   });
 
   return { targetCount: targets.length, successCount, failCount, failedNames };
