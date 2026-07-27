@@ -159,6 +159,7 @@
       </div>
     </div>
     <p id="refreshStatusMsg" class="text-xs text-slate-400 mt-2 hidden"></p>
+    <p id="autoRefreshStatusMsg" class="text-xs text-slate-400 mt-1 hidden"></p>
   </header>
 
   <!-- ============================= 탭 내비게이션 ============================= -->
@@ -1626,9 +1627,9 @@ function buildCategoryReturnInputs(groupKeys, byGroup) {
     const displayVal = (manual !== undefined && manual !== '') ? manual : defaultRate;
     return `
     <div>
-      <div class="flex items-center justify-between mb-1 gap-2">
-        <span class="text-xs text-slate-500 dark:text-slate-400 truncate">${escapeHtml(getProjectionGroupLabel(k))} 예상수익률(%)</span>
-        <button type="button" data-use-current="${escapeHtml(k)}" title="매수 이후 누적 수익률입니다 - 연간 수익률과 다를 수 있습니다" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline shrink-0">누적수익률 참고(${fmtNum(auto, 1)}%)</button>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-1 gap-0.5 sm:gap-2">
+        <span class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(getProjectionGroupLabel(k))} 예상수익률(%)</span>
+        <button type="button" data-use-current="${escapeHtml(k)}" title="매수 이후 누적 수익률입니다 - 연간 수익률과 다를 수 있습니다" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline shrink-0 self-start sm:self-auto">누적수익률 참고(${fmtNum(auto, 1)}%)</button>
       </div>
       <input data-category-return="${escapeHtml(k)}" type="number" step="0.1" placeholder="${fmtNum(defaultRate, 1)} (기본값)" value="${displayVal}"
         class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
@@ -2876,6 +2877,7 @@ async function refreshPricesAndRates() {
 
   if (successCount > 0) persistAssets();
   renderAll();
+  lastRefreshAt = Date.now(); // 자동 폴링 타이머 및 "다음 자동 갱신까지" 표시의 기준 시각
 
   const parts = [];
   parts.push(rateOk ? '환율 갱신 완료' : '환율 갱신 실패(기존 값 유지)');
@@ -2913,6 +2915,47 @@ async function refreshPricesAndRates() {
 }
 
 refreshBtn.addEventListener('click', () => { refreshPricesAndRates(); });
+
+/* -------------------------------------------------------------------------
+ * 19-1. 자동 주기 갱신(Auto Polling) + 탭 재진입 시 갱신
+ *    - 앱을 켜둔 상태에서 3분마다 자동으로 refreshPricesAndRates()를 호출해 일간 평가손익 등이
+ *      계속 최신 시세를 반영하도록 한다.
+ *    - 다른 탭/앱을 보다가 이 화면으로 다시 돌아왔을 때(visibilitychange)도 즉시 갱신하되,
+ *      마지막 갱신 후 최소 1분이 지나지 않았으면 건너뛰어 API를 과도하게 호출하지 않는다.
+ *    - refreshBtn.disabled(=setRefreshingUI가 관리하는 "갱신 중" 플래그)를 그대로 재사용해
+ *      이미 진행 중인 갱신과 중복 호출되는 것을 막는다.
+ * ---------------------------------------------------------------------- */
+const AUTO_REFRESH_INTERVAL_MS = 180000; // 3분
+const FOCUS_REFRESH_MIN_GAP_MS = 60000;  // 1분
+let lastRefreshAt = 0; // refreshPricesAndRates()가 마지막으로 "완료"된 시각(ms) - 함수 내부에서 갱신
+const autoRefreshStatusMsg = document.getElementById('autoRefreshStatusMsg');
+
+function updateAutoRefreshStatusText() {
+  if (!lastRefreshAt) return; // 아직 첫 갱신이 끝나지 않았으면 표시하지 않음
+  const lastTimeStr = new Date(lastRefreshAt).toLocaleTimeString('ko-KR');
+  if (refreshBtn.disabled) {
+    autoRefreshStatusMsg.textContent = `마지막 갱신 ${lastTimeStr} · 갱신 중...`;
+  } else {
+    const remainSec = Math.max(0, Math.ceil((AUTO_REFRESH_INTERVAL_MS - (Date.now() - lastRefreshAt)) / 1000));
+    const m = Math.floor(remainSec / 60);
+    const s = remainSec % 60;
+    autoRefreshStatusMsg.textContent = `마지막 갱신 ${lastTimeStr} · 다음 자동 갱신까지 ${m}분 ${s}초`;
+  }
+  autoRefreshStatusMsg.classList.remove('hidden');
+}
+setInterval(updateAutoRefreshStatusText, 1000);
+
+setInterval(() => {
+  if (refreshBtn.disabled) return; // 이미 갱신이 진행 중이면 중복 호출하지 않음
+  refreshPricesAndRates();
+}, AUTO_REFRESH_INTERVAL_MS);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (refreshBtn.disabled) return;
+  if (Date.now() - lastRefreshAt < FOCUS_REFRESH_MIN_GAP_MS) return; // 너무 빈번한 재호출 방지
+  refreshPricesAndRates();
+});
 
 /* -------------------------------------------------------------------------
  * 20. 표준 엑셀 템플릿 다운로드
@@ -3189,6 +3232,10 @@ applyTableGroupUI();
 renderAll();
 lucide.createIcons();
 warnIfRestrictedWebView();
+// 캐시된(마지막 저장) 데이터로 화면을 먼저 즉시 그린 뒤, 최신 시세/환율을 비동기로 갱신한다.
+// awaited하지 않으므로 초기 렌더링을 지연시키지 않는다 - 일간 평가손익 등이 오늘자 실제
+// 가격을 반영하려면 페이지를 열 때마다(또는 버튼 클릭 시) 이 호출이 반드시 필요하다.
+refreshPricesAndRates();
 </script>
 </body>
 </html>
