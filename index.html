@@ -744,8 +744,17 @@ const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가'
 
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
-  if (BOND_KEYWORDS.some(k => hay.includes(k.toUpperCase()))) return '채권';
-  if (CASH_KEYWORDS.some(k => hay.includes(k.toUpperCase()))) return '현금';
+  // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
+  // 미국채10년선물 같은 채권형 ETF) 만기까지 들고 가는 개별 채권과 달리 매일 시세가 변하는 상장 상품이므로
+  // '채권'(NON_TRADABLE_CATEGORIES에 포함되어 시세조회 대상에서 빠짐) 대신 ETF로 분류해 실시간 시세가
+  // 계속 반영되게 한다. 티커가 없는 경우(직접 보유·만기보유 채권)만 원래대로 '채권'으로 분류한다.
+  const hasTicker = String(ticker ?? '').trim() !== '';
+  if (BOND_KEYWORDS.some(k => hay.includes(k.toUpperCase()))) return hasTicker ? 'ETF' : '채권';
+  // '현금'도 채권과 동일한 이유로 보호한다: 이름에 '달러/USD/외화' 등이 들어가도 티커가 있으면
+  // (예: TIGER 미국달러선물, KODEX 미국달러선물레버리지 같은 환율 연동 ETF) 매일 시세가 변하는 상장
+  // 상품이므로 '현금'(시세조회 제외 대상) 대신 ETF로 분류한다. 티커 없는 순수 예수금/외화예금만
+  // 원래대로 '현금'으로 분류한다.
+  if (CASH_KEYWORDS.some(k => hay.includes(k.toUpperCase()))) return hasTicker ? 'ETF' : '현금';
   // ETF 브랜드명(TIGER/KODEX 등)이 붙은 상품은 이름에 '부동산'이 들어있어도(예: 리츠 ETF) 여기서
   // 먼저 ETF로 분류된다 - 실제 시장에서 거래되는 상품이므로 실시간 시세 조회 대상에서 빠지면 안 된다.
   // 순수하게 '부동산/아파트/...' 명칭뿐인, 티커 없이 직접 관리하는 실물 자산만 아래 규칙에 걸린다.
