@@ -112,7 +112,7 @@
         </div>
         <div>
           <h1 class="text-xl font-bold tracking-tight">Smart Asset Manager</h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400">개인 자산관리 대시보드</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">개인 자산관리 총투자현황</p>
         </div>
       </div>
 
@@ -169,58 +169,33 @@
   </header>
 
   <!-- ============================= 탭 내비게이션 ============================= -->
-  <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm mb-6 w-fit overflow-x-auto max-w-full">
-    <button data-tab="dashboard" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-      <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 대시보드
-    </button>
-    <button data-tab="projection" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-      <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 금융자산 미래예측
-    </button>
-    <button data-tab="rebalance" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-      <i data-lucide="scale" class="w-3.5 h-3.5"></i> 금융자산 리밸런싱
-    </button>
+  <!-- [모바일 발견성 개선] 좁은 화면에서는 탭 3개가 다 안 들어가 가로 스크롤(overflow-x-auto)이
+       필요한데, 아무 힌트 없이 세 번째 탭("금융자산 리밸런싱")이 뚝 잘려 있으면 "스크롤할 수 있다"는
+       사실 자체를 알아채기 어려웠다. relative 래퍼로 감싸고 오른쪽에 옅은 그라데이션 페이드
+       (#tabScrollHint)를 얹어 "오른쪽에 더 있음"을 시각적으로 암시하고, 실제로 끝까지 스크롤해
+       더 볼 내용이 없어지면(JS의 updateTabScrollHint) 자동으로 숨긴다. -->
+  <div class="relative mb-6 w-fit max-w-full">
+    <div id="tabScrollContainer" class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-fit overflow-x-auto max-w-full">
+      <button data-tab="dashboard" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총투자현황
+      </button>
+      <button data-tab="projection" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 일반계좌 미래예측
+      </button>
+      <button data-tab="rebalance" class="tab-btn flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="scale" class="w-3.5 h-3.5"></i> 일반계좌 리밸런싱
+      </button>
+    </div>
+    <div id="tabScrollHint" class="hidden pointer-events-none absolute top-0.5 bottom-0.5 right-0.5 w-8 rounded-r-lg bg-gradient-to-l from-white dark:from-slate-900 to-transparent"></div>
   </div>
 
   <!-- ============================= 대시보드 탭 ============================= -->
   <div id="tabPanelDashboard">
 
   <!-- ============================= KPI CARDS ============================= -->
+  <!-- [배치 순서 변경] 손익 카드(총평가손익/일간평가손익)를 총평가금액보다 먼저 보여주도록 순서만
+       재배치했다 - 각 카드 내부 내용/id/로직은 전혀 건드리지 않았다. -->
   <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
-
-    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가금액</span>
-        <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
-          <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
-        </div>
-      </div>
-      <p id="kpiTotalValue" class="text-lg font-bold">0원</p>
-      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
-      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-    </div>
-
-    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
-        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
-        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-        </div>
-      </div>
-      <!-- 정상 상태(시세 조회 실패 0건일 때): 기존 '총 투자금액' 표시 -->
-      <div id="kpiTotalCostNormal">
-        <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
-        <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-      </div>
-      <!-- 실패 상태(1건 이상 시세조회 실패 시 renderKPIs가 이 자리로 동적 전환): 실패 종목 안내 + 일괄 재조회 버튼 -->
-      <div id="kpiFetchFailurePanel" class="hidden">
-        <p class="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
-        <button id="retryFailedPricesBtn" type="button"
-          class="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
-          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-          <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
-        </button>
-      </div>
-    </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
@@ -255,6 +230,41 @@
         <span class="text-[11px] text-slate-400">%</span>
       </div>
       <div id="kpiDailyProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+    </div>
+
+    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가금액</span>
+        <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
+          <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
+        </div>
+      </div>
+      <p id="kpiTotalValue" class="text-lg font-bold">0원</p>
+      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
+      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+    </div>
+
+    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between mb-2">
+        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
+        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+          <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+        </div>
+      </div>
+      <!-- 정상 상태(시세 조회 실패 0건일 때): 기존 '총 투자금액' 표시 -->
+      <div id="kpiTotalCostNormal">
+        <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
+        <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+      </div>
+      <!-- 실패 상태(1건 이상 시세조회 실패 시 renderKPIs가 이 자리로 동적 전환): 실패 종목 안내 + 일괄 재조회 버튼 -->
+      <div id="kpiFetchFailurePanel" class="hidden">
+        <p class="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
+        <button id="retryFailedPricesBtn" type="button"
+          class="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
+        </button>
+      </div>
     </div>
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -400,35 +410,47 @@
   <!-- ============================= 리밸런싱 검토 탭 ============================= -->
   <div id="tabPanelRebalance" class="hidden">
     <!-- ===== 리밸런싱 효과 요약 (탭 맨 위 배치 - 목표 비중 표를 보기 전에 먼저 효과부터 확인) ===== -->
+    <!-- [일반계좌 한정] 연금저축/IRP/ISA 등 절세 계좌는 세제 혜택 유지를 위해 자유롭게 매도/매수하기
+         어려운 경우가 많아, 실제로 리밸런싱 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
+         대시보드("총투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
+         이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
+    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 일반계좌 보유 자산만을 대상으로 리밸런싱을 계산합니다.</p>
+
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">⚖️ 리밸런싱 효과 요약</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때, 10년 후·20년 후 시점의 총자산(명목) 차이입니다. 자산군별 예상 수익률은 "금융자산 미래예측" 탭에서 조정할 수 있습니다.</p>
-      <div id="rebalanceEffectSummary" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외, 일반계좌 자산만 집계)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때, 10년 후·20년 후 시점의 총자산(명목) 차이입니다. 자산군별 예상 수익률은 "일반계좌 미래예측" 탭에서 조정할 수 있습니다.</p>
+      <!-- [모바일 가로 병렬 배치] 2035년/2045년 차액 카드를 화면 폭과 무관하게 항상 2열로 나란히
+           배치한다. 좁은 화면에서의 폰트/여백 축소는 renderRebalanceEffectSummary()에서 처리한다. -->
+      <div id="rebalanceEffectSummary" class="grid grid-cols-2 gap-2 sm:gap-4"></div>
     </section>
 
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+    <!-- [모바일 가로 병렬 배치] 국내/해외 목표비중 카드는 위쪽에 전체 폭으로(col-span-2) 두고, 그
+         바로 아래 국내 세부/미국 세부 카드 2개를 화면 폭과 무관하게 항상 나란히(50:50) 배치한다.
+         lg(1024px) 이상 큰 화면에서는 기존처럼 3개 카드가 한 줄에 나란히 보이도록 lg:grid-cols-3 +
+         lg:col-span-1로 되돌린다. -->
+    <section class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
         <h3 class="text-sm font-semibold mb-1">국내/해외(미국) 목표 비중</h3>
         <p class="text-[11px] text-slate-400 mb-3">국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 "전체 목표 금액" 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.</p>
         <div id="domesticTargetInputs" class="grid grid-cols-2 gap-3"></div>
       </div>
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-1">
-          <h3 class="text-sm font-semibold">국내 세부 목표 비중</h3>
-          <span id="categoryTargetSumDomestic" class="text-xs font-semibold">합계 0%</span>
+      <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-1">
+          <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
+          <span id="categoryTargetSumDomestic" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
-        <p class="text-[11px] text-slate-400 mb-3">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
-        <div id="categoryTargetInputsDomestic" class="grid grid-cols-2 gap-3"></div>
-        <p id="categoryTargetWarningDomestic" class="hidden text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
+        <div id="categoryTargetInputsDomestic" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
+        <p id="categoryTargetWarningDomestic" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-1">
-          <h3 class="text-sm font-semibold">미국(해외) 세부 목표 비중</h3>
-          <span id="categoryTargetSumForeign" class="text-xs font-semibold">합계 0%</span>
+      <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-1">
+          <h3 class="text-xs sm:text-sm font-semibold">미국(해외) 세부 목표 비중</h3>
+          <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
-        <p class="text-[11px] text-slate-400 mb-3">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
-        <div id="categoryTargetInputsForeign" class="grid grid-cols-2 gap-3"></div>
-        <p id="categoryTargetWarningForeign" class="hidden text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
+        <div id="categoryTargetInputsForeign" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
+        <p id="categoryTargetWarningForeign" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
     </section>
 
@@ -447,6 +469,15 @@
       <h3 class="text-sm font-semibold mb-3">미국(해외) 세부 리밸런싱 결과</h3>
       <div id="categoryRebalanceResultForeign" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
+
+    <!-- ===== 종목별 리밸런싱 실행 가이드 (탭 최하단) =====
+         자산군/티커 단위로 뭉쳐 있던 위쪽 결과를 실제 보유 개별 종목 단위로 풀어서, 종목별로 정확히
+         얼마를 사고 팔아야 하는지 실행 가이드를 제공한다. -->
+    <section class="mt-6">
+      <h3 class="text-sm font-semibold mb-1">📋 종목별 리밸런싱 실행 가이드</h3>
+      <p class="text-[11px] text-slate-400 mb-3">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
+      <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </section>
   </div>
 
   <!-- ============================= 금융자산 미래예측 탭 ============================= -->
@@ -455,18 +486,27 @@
          두 시나리오의 핵심 설정값(기대수익률·월 적립금)을 그래프를 보기 전에 먼저 한눈에 비교할 수
          있게 한다. 값 자체는 아래쪽(현재는 숨김 처리된) 상세 카드와 동일한 소스(updateProjection)에서
          채워지므로 항상 서로 일치한다. -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center gap-2 mb-3">
+    <!-- [모바일 가로 병렬 배치] 두 카드는 화면 폭과 무관하게 항상 grid-cols-2(50:50)로 나란히
+         배치한다(사용자 요청: "모바일에서도 위아래로 쌓이지 않고 옆으로"). 좁은 반쪽 폭에서도 텍스트가
+         깨지지 않도록 패딩/폰트를 sm(640px) 미만에서 한 단계씩 줄인 반응형 클래스를 각 요소에 넣었다
+         (예: p-2.5 sm:p-4, text-[10px] sm:text-[11px], text-base sm:text-xl). -->
+    <!-- [일반계좌 한정] 리밸런싱 탭과 동일한 이유로, 두 시나리오의 초기 원금(PV)·수익률 계산 모두
+         '일반계좌' 보유 자산만을 기준으로 시뮬레이션한다. -->
+    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 일반계좌 보유 자산만을 대상으로 시뮬레이션합니다.</p>
+    <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
           <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
-          <span class="text-sm font-semibold">현재 구성 유지 시</span>
+          <span class="text-xs sm:text-sm font-semibold truncate">현재 구성 유지 시</span>
         </div>
-        <p class="text-[11px] text-slate-400 mb-3">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
-        <div id="categoryReturnInputs" class="space-y-3 mb-4"></div>
-        <label class="text-xs block mb-4">
-          <span class="text-slate-500 dark:text-slate-400">월 추가 적립금 (KRW, 선택)</span>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
+        <!-- 반쪽 폭 모바일에서는 위 설명 문단 대신 한 줄 요약만 보여줘 공간을 아낀다. -->
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">자산군 기본수익률 자동 적용 (부동산 제외)</p>
+        <div id="categoryReturnInputs" class="space-y-2 sm:space-y-3 mb-3 sm:mb-4"></div>
+        <label class="text-[11px] sm:text-xs block mb-3 sm:mb-4">
+          <span class="text-slate-500 dark:text-slate-400">월 적립금 (KRW)</span>
           <input id="monthlyContributionInput" type="number" step="any" placeholder="0"
-            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+            class="w-full mt-1 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 sm:py-2 outline-none text-right">
         </label>
         <!-- 물가상승률 입력은 화면에는 노출하지 않는다("가중평균 연수익률" 위에 있으면 마치 그 수치에
              물가가 반영되는 것처럼 오해를 살 수 있음 - 실제로는 명목값만 표시됨). 값 자체는 계속
@@ -476,29 +516,30 @@
           <input id="inflationRateInput" type="number" step="0.1" value="2.5"
             class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
         </label>
-        <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
-          <p class="text-[11px] text-slate-400">포트폴리오 가중평균 연수익률</p>
-          <p id="weightedAvgReturn" class="text-xl font-bold">0.00%</p>
+        <div class="border-t border-slate-100 dark:border-slate-800 pt-2 sm:pt-3">
+          <p class="text-[10px] sm:text-[11px] text-slate-400">가중평균 연수익률</p>
+          <p id="weightedAvgReturn" class="text-base sm:text-xl font-bold">0.00%</p>
         </div>
       </div>
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center gap-2 mb-3">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
           <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
-          <span class="text-sm font-semibold">리밸런싱 후</span>
+          <span class="text-xs sm:text-sm font-semibold truncate">리밸런싱 후</span>
         </div>
-        <p class="text-[11px] text-slate-400 mb-3">"금융자산 리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목은 고정 수익률(QQQM 11.0% · SPYM 8.0% · SCHD 9.0%)을 쓰고, 국내 항목과 채권/현금은 왼쪽 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 원금·월 적립금·물가상승률은 시나리오 1과 동일합니다.</p>
-        <div class="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <p class="text-[11px] text-slate-400">가중평균 기대수익률</p>
-            <p id="summaryReturn2" class="text-lg font-bold">0.00%</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"일반계좌 리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목은 고정 수익률(QQQM 11.0% · SPYM 8.0% · SCHD 9.0%)을 쓰고, 국내 항목과 채권/현금은 왼쪽 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 원금·월 적립금·물가상승률은 시나리오 1과 동일합니다.</p>
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">목표 비중대로 오늘 전액 리밸런싱 가정</p>
+        <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
+          <div class="min-w-0">
+            <p class="text-[10px] sm:text-[11px] text-slate-400 truncate">기대수익률</p>
+            <p id="summaryReturn2" class="text-sm sm:text-lg font-bold">0.00%</p>
           </div>
-          <div>
-            <p class="text-[11px] text-slate-400">월 적립금</p>
-            <p id="summaryContribution2" class="text-lg font-bold">0원</p>
+          <div class="min-w-0">
+            <p class="text-[10px] sm:text-[11px] text-slate-400 truncate">월 적립금</p>
+            <p id="summaryContribution2" class="text-sm sm:text-lg font-bold truncate">0원</p>
           </div>
         </div>
-        <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
-          <p class="text-[11px] text-slate-400 mb-1.5">목표 포트폴리오 상품별 비중</p>
+        <div class="border-t border-slate-100 dark:border-slate-800 pt-2 sm:pt-3">
+          <p class="text-[10px] sm:text-[11px] text-slate-400 mb-1.5">상품별 비중</p>
           <div id="targetAllocationSummary" class="space-y-1.5"></div>
         </div>
       </div>
@@ -748,6 +789,14 @@ const CATEGORY_COLORS = {
 // 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
 // 실시간 시세 조회 대상 및 일간 손익 계산에서 제외한다(사용자가 실수로 티커를 입력해 넣어도 예외).
 const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산'];
+// [일반계좌 한정] 미래예측/리밸런싱 계산(일반계좌 미래예측 탭, 일반계좌 리밸런싱 탭)은 연금저축/IRP/ISA
+// 같은 절세 계좌를 제외하고 '일반계좌' 보유 자산만을 대상으로 한다 - 절세 계좌는 세제 혜택 유지를 위해
+// 자유롭게 매도/매수하기 어려운 경우가 많아, 실제로 리밸런싱을 실행할 수 있는 계좌만 계산에 포함시킨다.
+// 대시보드("총투자현황")를 포함한 다른 화면은 계좌 구분과 무관하게 항상 전체 자산을 그대로 보여준다 -
+// 이 필터는 아래 두 함수(getProjectionGroupStats, computeRegionTargetAmounts/computeIndividualRebalanceGuide가
+// 공유하는 regionAssets 필터)에만 적용된다.
+const REBALANCE_ACCOUNT_TYPE = '일반계좌';
+function isRebalanceEligibleAccount(a) { return a.accountType === REBALANCE_ACCOUNT_TYPE; }
 const FALLBACK_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#64748b','#06b6d4','#a855f7','#ec4899','#84cc16','#0ea5e9'];
 function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]; }
 
@@ -827,7 +876,7 @@ const FX_SOURCES = [
  * ---------------------------------------------------------------------- */
 const BOND_KEYWORDS = ['채권', '국고채', '회사채', '국채', '통안채', 'BOND'];
 const CASH_KEYWORDS = ['현금', '예수금', 'CASH', '달러', '외화', 'USD', 'USDT'];
-const ETF_KEYWORDS = ['ETF', 'TIGER', 'KODEX', 'ACE', 'RISE', 'QQQ', 'SCHD'];
+const ETF_KEYWORDS = ['ETF', 'TIGER', 'KODEX', 'ACE', 'RISE', 'QQQ', 'SCHD', 'SPYM'];
 const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가', '토지', '건물'];
 
 function classifyCategory(ticker, name) {
@@ -908,10 +957,15 @@ const DEFAULT_REBALANCE_TARGETS = {
     { type: 'category', category: '채권', label: '채권', pct: 30 },
     { type: 'category', category: '현금', label: '현금', pct: 20 }
   ],
+  // '주식'/'현금' 캐치올을 0%로 추가해 둔다 - QQQM/SPYM/SCHD 외의 해외 보유(개별 주식, 현금성 자산,
+  // 그 외 ETF 등)가 "목표 항목 없음"으로 리밸런싱 계산에서 통째로 제외되지 않고, 최소한 이 캐치올에
+  // 잡혀 "0% 목표 → 전액 매도 필요"로라도 눈에 보이게 한다(값은 사용자가 직접 조정 가능).
   '해외': [
     { type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 50 },
     { type: 'ticker', ticker: 'SPYM', label: 'SPYM', pct: 20 },
-    { type: 'ticker', ticker: 'SCHD', label: 'SCHD', pct: 30 }
+    { type: 'ticker', ticker: 'SCHD', label: 'SCHD', pct: 30 },
+    { type: 'category', category: '주식', label: '주식', pct: 0 },
+    { type: 'category', category: '현금', label: '현금', pct: 0 }
   ]
 };
 function cloneDefaultRebalanceTargets() {
@@ -919,6 +973,18 @@ function cloneDefaultRebalanceTargets() {
     '국내': DEFAULT_REBALANCE_TARGETS['국내'].map((t) => ({ ...t })),
     '해외': DEFAULT_REBALANCE_TARGETS['해외'].map((t) => ({ ...t }))
   };
+}
+
+// 이미 localStorage/JSON 백업에 저장돼 있던 해외 세부 목표에는 '주식'/'현금' 캐치올이 없을 수 있다
+// (이 캐치올을 나중에 추가했으므로). 기존에 저장된 티커별 비중은 그대로 두고, 없는 캐치올만 0%로
+// 추가해 넣어 자산군 매칭 커버리지를 보강한다(합계는 0을 더하는 것이므로 100%가 깨지지 않는다).
+function ensureForeignCategoryCatchalls(list) {
+  const arr = Array.isArray(list) ? list.slice() : [];
+  ['주식', '현금'].forEach((cat) => {
+    const has = arr.some((t) => t && t.type === 'category' && t.category === cat);
+    if (!has) arr.push({ type: 'category', category: cat, label: cat, pct: 0 });
+  });
+  return arr;
 }
 
 // 엑셀 업로드 시 사용자가 '통화' 컬럼을 직접 기재하면 그 값을 그대로 사용한다.
@@ -970,10 +1036,10 @@ const state = {
   //   최종 목표금액 = 리밸런싱 대상 총액 × (domestic[지역]/100) × (targets[지역][i].pct/100)
   // - localStorage/JSON 백업에 저장됨.
   rebalance: { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() },
-  // 미래 자산예측 설정. monthlyContribution(월 적립금) + categoryReturns(카테고리별 수동 지정 예상 연수익률,
-  // 비어있으면 그룹별 기본값을 사용) + inflationRate(실질 구매력 가치 환산에 쓰는 평균 물가상승률, %)
-  // - localStorage/JSON 백업에 저장됨.
-  projection: { monthlyContribution: 0, categoryReturns: {}, inflationRate: 2.5 }
+  // 미래 자산예측 설정. monthlyContribution(월 적립금, 기본값 150만원 - 사용자가 자유롭게 수정 가능)
+  // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용)
+  // + inflationRate(실질 구매력 가치 환산에 쓰는 평균 물가상승률, %) - localStorage/JSON 백업에 저장됨.
+  projection: { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 }
 };
 
 let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null };
@@ -1129,7 +1195,7 @@ function loadState() {
           domestic: parsed.domestic || state.rebalance.domestic,
           targets: {
             '국내': Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내'],
-            '해외': Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외']
+            '해외': ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외'])
           }
         };
       }
@@ -1542,6 +1608,24 @@ function switchTab(tab) {
 }
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
+// [모바일 발견성 개선] 탭 내비게이션이 화면 폭보다 넓어 가로 스크롤이 필요한 경우에만 오른쪽 페이드
+// 힌트(#tabScrollHint)를 보여준다 - 스크롤이 필요 없는 넓은 화면이나, 이미 끝까지 스크롤해 더 볼
+// 탭이 없는 상태에서는 숨겨서 불필요한 시각적 잡음을 만들지 않는다.
+function updateTabScrollHint() {
+  const el = document.getElementById('tabScrollContainer');
+  const hint = document.getElementById('tabScrollHint');
+  if (!el || !hint) return;
+  const hasMoreToScroll = (el.scrollWidth - el.clientWidth - el.scrollLeft) > 4;
+  hint.classList.toggle('hidden', !hasMoreToScroll);
+}
+(() => {
+  const el = document.getElementById('tabScrollContainer');
+  if (!el) return;
+  el.addEventListener('scroll', updateTabScrollHint);
+  window.addEventListener('resize', updateTabScrollHint);
+  updateTabScrollHint();
+})();
+
 /* -------------------------------------------------------------------------
  * 10-2. 리밸런싱 검토
  *    - 필터와 무관하게 항상 전체 포트폴리오 기준으로 계산한다(자산배분은 포트폴리오 전체를 보는 도구).
@@ -1554,8 +1638,12 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
 // 실물자산)은 매수/매도로 조절할 수 없으므로 리밸런싱 계산 대상에서 자동으로 제외된다.
 function computeRegionTargetAmounts(region) {
   const targets = state.rebalance.targets[region] || [];
-  const regionAssets = state.assets.filter((a) => a.isDomestic === region);
+  const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
   const claimedIds = new Set();
+  // assetId -> targetIdx. 종목별 리밸런싱 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
+  // 정확히 어느 목표 항목에 묶였는가"를 알아야 그 항목의 목표금액을 개별 종목 단위로 다시 나눠줄 수
+  // 있으므로, 매칭 결과를 여기서 함께 기록해 반환한다(매칭 로직을 두 곳에 중복 구현하지 않기 위함).
+  const claimedTargetIdx = new Map();
   const amounts = new Array(targets.length).fill(0);
 
   targets.forEach((t, idx) => {
@@ -1567,6 +1655,7 @@ function computeRegionTargetAmounts(region) {
       if (sanitizeTicker(a.ticker).yahooTicker === targetYahoo) {
         amounts[idx] += calcRow(a).curAmount;
         claimedIds.add(a.id);
+        claimedTargetIdx.set(a.id, idx);
       }
     });
   });
@@ -1574,16 +1663,76 @@ function computeRegionTargetAmounts(region) {
     if (t.type !== 'category') return;
     regionAssets.forEach((a) => {
       if (claimedIds.has(a.id)) return;
-      if (a.category === t.category) {
+      // ETF는 별도 자산군이 아니라 실질적으로 주식형 상품이므로, 지정 티커에 안 걸린 ETF도 '주식'
+      // 목표 항목에 그대로 매칭되게 한다(예: TIGER 미국S&P500처럼 이름이 지정 티커와 다른 ETF들이
+      // "목표 항목 없음"으로 리밸런싱 계산에서 통째로 빠지는 문제를 막는다).
+      const matchesCategory = a.category === t.category || (a.category === 'ETF' && t.category === '주식');
+      if (matchesCategory) {
         amounts[idx] += calcRow(a).curAmount;
         claimedIds.add(a.id);
+        claimedTargetIdx.set(a.id, idx);
       }
     });
   });
 
   const coveredTotal = amounts.reduce((s, v) => s + v, 0);
   const uncoveredTotal = regionAssets.reduce((s, a) => s + (claimedIds.has(a.id) ? 0 : calcRow(a).curAmount), 0);
-  return { amounts, coveredTotal, uncoveredTotal };
+  return { amounts, coveredTotal, uncoveredTotal, claimedTargetIdx };
+}
+
+// 종목별 리밸런싱 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
+// 단위로 풀어낸다. 주의: computeRegionTargetAmounts()가 돌려주는 amounts는 그 항목에 매칭된 자산의
+// "현재" 평가금액 합계이지 목표금액이 아니다 - 실제 목표금액은 renderTargetRebalanceResultGroup()과
+// 똑같은 공식(지역 목표금액 × 항목 비중%)으로 별도 계산해야 위쪽 자산군별 결과 카드와 숫자가 일치한다.
+//   - 특정 티커로 지정된 목표(KODEX 200TR, QQQM 등)는 그 목표금액을 그대로 쓴다(보통 종목 1개뿐이지만,
+//     여러 소유자가 같은 티커를 나눠 보유하는 경우까지 대비해 아래 "그룹 내 비중대로 분배"를 동일하게 적용).
+//   - 자산군 캐치올(주식/채권/현금)에 묶인 여러 종목은 그 캐치올 목표금액을 "현재 각 종목이 그룹 내에서
+//     차지하는 비중"대로 나눠 갖는다 - 즉 캐치올 전체가 늘거나 줄어야 하는 비율만큼 그 안의 모든 종목이
+//     동일한 비율로 조정된다고 가정한다(개별 종목마다 별도 목표를 지정하지 않은 이상 가장 자연스러운
+//     기본 가정).
+//   - 어느 목표에도 매칭되지 않는 자산(부동산 등 실물자산)은 excluded로 따로 반환한다.
+function computeIndividualRebalanceGuide() {
+  const rows = [];
+  const excluded = [];
+  const { total } = getRebalanceTotals();
+
+  ['국내', '해외'].forEach((region) => {
+    const targets = state.rebalance.targets[region] || [];
+    const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
+    const { claimedTargetIdx } = computeRegionTargetAmounts(region);
+    // renderTargetRebalanceResultGroup()에서 쓰는 것과 동일한 공식: 지역 목표금액 = 전체 리밸런싱
+    // 대상 총액 × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
+    const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
+
+    const groups = new Map(); // targetIdx -> assets[]
+    regionAssets.forEach((a) => {
+      if (!claimedTargetIdx.has(a.id)) { excluded.push(a); return; }
+      const idx = claimedTargetIdx.get(a.id);
+      if (!groups.has(idx)) groups.set(idx, []);
+      groups.get(idx).push(a);
+    });
+
+    groups.forEach((groupAssets, idx) => {
+      const targetAmount = regionTargetAmount * num(targets[idx].pct) / 100;
+      const groupCurTotal = groupAssets.reduce((s, a) => s + calcRow(a).curAmount, 0);
+      groupAssets.forEach((a) => {
+        const r = calcRow(a);
+        const share = groupCurTotal !== 0 ? r.curAmount / groupCurTotal : (1 / groupAssets.length);
+        const assetTargetAmount = targetAmount * share;
+        const diff = assetTargetAmount - r.curAmount;
+        const priceRate = r.isForeign ? state.exchangeRate : 1;
+        const priceKRW = num(a.currentPrice) * priceRate;
+        const qtyDelta = priceKRW !== 0 ? diff / priceKRW : 0;
+        rows.push({
+          asset: a, region, targetLabel: targets[idx].label,
+          curAmount: r.curAmount, targetAmount: assetTargetAmount, diff, qtyDelta, isForeign: r.isForeign
+        });
+      });
+    });
+  });
+
+  rows.sort((a, b) => b.curAmount - a.curAmount);
+  return { rows, excluded };
 }
 
 // 리밸런싱 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=리밸런싱 가능한)" 자산만 합산한다.
@@ -1666,7 +1815,7 @@ function updateTargetSum(region) {
   const sumEl = document.getElementById('categoryTargetSum' + suffix);
   const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
   sumEl.textContent = `합계 ${fmtNum(sum, 1)}%`;
-  sumEl.className = isValid ? 'text-xs font-semibold text-emerald-600 dark:text-emerald-400' : 'text-xs font-semibold text-amber-600 dark:text-amber-400';
+  sumEl.className = isValid ? 'text-[10px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400' : 'text-[10px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400';
   document.getElementById('categoryTargetWarning' + suffix).classList.toggle('hidden', isValid);
 }
 
@@ -1698,10 +1847,85 @@ function updateRebalanceResults() {
   });
 
   renderUncoveredNote(uncovered);
+  renderIndividualRebalanceGuide();
 
   // 리밸런싱 효과 요약 카드가 이 탭 상단으로 이동했으므로, 리밸런싱 탭만 방문/수정해도
   // updateProjection()이 함께 실행되어 요약 카드(및 미래예측 탭의 비교표)가 항상 최신 값으로 갱신되게 한다.
   updateProjection();
+}
+
+// 매수/매도 필요 금액에 따라 "매수"(파랑) / "매도"(빨강) / "유지"(회색) 배지를 정하고, 실제 종목별
+// 매수/매도 판단 노이즈(아주 미세한 원 단위 오차까지 전부 "매수/매도"로 표시되는 것)를 줄이기 위해
+// 현재 평가금액의 2% 미만 차이는 "유지"로 취급한다.
+function rebalanceActionBadge(diff, curAmount) {
+  const threshold = Math.max(curAmount * 0.02, 10000);
+  if (Math.abs(diff) < threshold) {
+    return { label: '유지', className: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' };
+  }
+  if (diff > 0) {
+    return { label: `+${fmtSigned(diff).replace('+', '')} 매수`, className: 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400' };
+  }
+  return { label: `${fmtSigned(diff)} 매도`, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400' };
+}
+
+// [금융자산 리밸런싱] 탭 맨 아래 "종목별 리밸런싱 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
+// 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 카드 형태로 보여준다. 부동산 등
+// 목표에 매칭되지 않는 자산은 별도로 "[리밸런싱 제외 자산]" 배지를 달아 같은 목록에 구분 표시한다.
+function renderIndividualRebalanceGuide() {
+  const container = document.getElementById('individualRebalanceGuide');
+  if (!container) return;
+  const { rows, excluded } = computeIndividualRebalanceGuide();
+
+  if (rows.length === 0 && excluded.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
+    return;
+  }
+
+  const qtyText = (qtyDelta, isForeign) => {
+    const rounded = isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
+    if (rounded === 0) return '0주';
+    return (rounded > 0 ? '+' : '') + fmtNum(rounded, isForeign ? 2 : 0) + '주';
+  };
+
+  const cards = rows.map((r) => {
+    const badge = rebalanceActionBadge(r.diff, r.curAmount);
+    return `
+    <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate">${escapeHtml(r.asset.name || r.asset.ticker || '(이름 없음)')}</p>
+          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(r.asset.ticker || '-')} · ${escapeHtml(r.asset.owner || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
+        </div>
+        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium">${fmtKRW(r.targetAmount)}</span></div>
+        <div><span class="text-slate-400 block">리밸런싱 필요금액</span><span class="font-medium ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
+        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium">${qtyText(r.qtyDelta, r.isForeign)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const excludedCards = excluded.map((a) => {
+    const r = calcRow(a);
+    return `
+    <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
+          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
+        </div>
+        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">리밸런싱 제외 자산</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium text-slate-300 dark:text-slate-600">해당 없음</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = cards + excludedCards;
 }
 
 // targetBaseAmount: 목표금액 계산 시 곱할 기준 총액. currentBaseAmount: 현재비중(%) 계산 시 나눌 기준 총액.
@@ -1807,6 +2031,7 @@ function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
     if (a.category === '부동산') return; // 부동산은 미래 자산예측 전체에서 제외
+    if (!isRebalanceEligibleAccount(a)) return; // 일반계좌 외 절세 계좌 보유 자산은 미래예측 계산에서 제외
     const r = calcRow(a);
     const key = getProjectionGroupKey(a.category);
     if (!byGroup[key]) byGroup[key] = { value: 0, buy: 0 };
@@ -1957,21 +2182,55 @@ function computeRegionWeightedRate(region) {
 }
 
 // 시나리오 2 카드의 "재편 후 가중평균" 옆에 표시할, 목표 항목별 배분 금액/수익률 요약 목록.
+// [상품별 비중 표시 상세화] 기존에는 "종목명 / 금액·수익률"만 한 줄에 좁게 표시해 비중(%)이 아예
+// 빠져 있고, 나머지 값도 서로 붙어 있어 모바일에서 구분이 어려웠다 - 종목(국가 배지 포함)/목표금액/
+// 비중/수익률 4개 항목을 표(<table>) 형태의 별도 열로 나눠 겹침 없이 정렬한다. 비중(%)은 "지역
+// 목표비중(국내/해외) × 지역 내 항목비중"으로 계산한 포트폴리오 전체 기준값이라 목표금액(역시
+// 포트폴리오 전체 기준 금액)과 항상 서로 일치한다.
 function renderTargetAllocationSummary(regionPV2) {
   const container = document.getElementById('targetAllocationSummary');
   const rows = [];
   ['국내', '해외'].forEach((region) => {
+    const regionPct = num(state.rebalance.domestic[region]);
     const targets = state.rebalance.targets[region] || [];
     targets.forEach((t) => {
       const amount = regionPV2[region] * num(t.pct) / 100;
-      rows.push({ label: region === '해외' ? `${t.label} (미국)` : t.label, amount, rate: getTargetProjectionRate(t) });
+      const overallPct = regionPct * num(t.pct) / 100;
+      rows.push({ name: t.label, region, amount, pct: overallPct, rate: getTargetProjectionRate(t) });
     });
   });
-  container.innerHTML = rows.map((r) => `
-    <div class="flex items-center justify-between text-xs gap-2">
-      <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
-      <span class="font-semibold shrink-0">${fmtKRWShort(r.amount)} · ${fmtNum(r.rate, 1)}%</span>
-    </div>`).join('');
+  if (rows.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400">"일반계좌 리밸런싱" 탭에서 목표 비중을 먼저 설정하세요.</p>';
+    return;
+  }
+  container.innerHTML = `
+  <div class="overflow-x-auto -mx-1 px-1">
+    <table class="w-full text-[9px] sm:text-[11px] border-collapse">
+      <thead>
+        <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+          <th class="text-left py-1 pr-1 sm:pr-2 font-medium">종목</th>
+          <th class="text-right py-1 px-1 font-medium">금액</th>
+          <th class="text-right py-1 px-1 font-medium">비중</th>
+          <th class="text-right py-1 pl-1 font-medium">수익률</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r) => `
+        <tr class="border-b border-slate-50 dark:border-slate-800/60 last:border-0">
+          <td class="py-1 sm:py-1.5 pr-1 sm:pr-2">
+            <div class="flex items-center gap-0.5 sm:gap-1 min-w-0">
+              <span class="truncate max-w-[52px] sm:max-w-[104px] font-medium text-slate-700 dark:text-slate-200">${escapeHtml(r.name)}</span>
+              <span class="shrink-0 px-1 py-0.5 rounded text-[8px] sm:text-[9px] leading-none ${r.region === '해외' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'}">${r.region === '해외' ? '미국' : '국내'}</span>
+            </div>
+          </td>
+          <td class="text-right py-1 sm:py-1.5 px-1 font-semibold whitespace-nowrap">${fmtKRWShort(r.amount)}</td>
+          <td class="text-right py-1 sm:py-1.5 px-1 text-slate-500 dark:text-slate-400 whitespace-nowrap">${fmtNum(r.pct, 1)}%</td>
+          <td class="text-right py-1 sm:py-1.5 pl-1 font-semibold whitespace-nowrap">${fmtNum(r.rate, 1)}%</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <p class="sm:hidden text-[8px] text-slate-300 dark:text-slate-600 mt-1 text-right">← 좌우로 스크롤 →</p>`;
 }
 
 // 맨 위 "리밸런싱 효과 요약" 카드 - 시점별로 시나리오2(리밸런싱 후) - 시나리오1(현재 유지)의 명목
@@ -1988,10 +2247,10 @@ function renderRebalanceEffectSummary(rows) {
       : (diff < 0 ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
       : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');
     return `
-    <div class="rounded-xl border p-4 ${bgClass}">
-      <p class="text-xs text-slate-500 dark:text-slate-400 mb-1">${r.label} 리밸런싱 실행 시 추가 형성되는 차액</p>
-      <p class="text-2xl font-bold ${profitColor(diff)}">${fmtSignedShort(diff)}</p>
-      <p class="text-[11px] text-slate-400 mt-1">(현재 유지 시: ${fmtKRWShort(r.scenario1)} vs 리밸런싱 후: ${fmtKRWShort(r.scenario2)})</p>
+    <div class="rounded-xl border p-2.5 sm:p-4 min-w-0 ${bgClass}">
+      <p class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-1 leading-snug">${r.label} 추가 형성 차액</p>
+      <p class="text-base sm:text-2xl font-bold ${profitColor(diff)} truncate">${fmtSignedShort(diff)}</p>
+      <p class="text-[9px] sm:text-[11px] text-slate-400 mt-1 leading-snug">유지: ${fmtKRWShort(r.scenario1)}<br class="sm:hidden">·리밸런싱: ${fmtKRWShort(r.scenario2)}</p>
     </div>`;
   }).join('');
 }
@@ -3066,15 +3325,22 @@ async function fetchExchangeRate() {
 // > 정규장 종가(regularMarketPrice). 국내(KRX)는 개념상 애프터마켓 시세를 따로 제공하지 않지만,
 // 값이 없으면 자연스럽게 정규장가로 폴백되므로 국내/해외 티커에 동일한 로직을 그대로 적용해도 안전하다.
 // 0 이하이거나 숫자가 아닌 값은 "시세 없음"으로 간주하고 다음 우선순위로 넘어간다.
+// marketState('PRE'|'REGULAR'|'POST'|'POSTPOST'|'PREPRE'|'CLOSED' 등)가 응답에 있으면 정규장이
+// 진행 중/마감 직후가 아닌 세션의 시세만 채택하도록 한 번 더 검증한다(정규장 중에도 이전 세션의
+// 시간외 값이 응답에 남아있는 드문 경우를 방지). 일부 프록시가 marketState 필드를 아예 빼고
+// 응답하는 경우도 있어, 그 필드 자체가 없으면 기존처럼 값의 존재 여부만으로 판단한다(과도한 거부 방지).
 function pickCurrentPrice(meta) {
-  if (typeof meta.postMarketPrice === 'number' && meta.postMarketPrice > 0) {
+  const marketState = meta.marketState;
+  const postAllowed = marketState === undefined || marketState === 'POST' || marketState === 'POSTPOST';
+  const preAllowed = marketState === undefined || marketState === 'PRE' || marketState === 'PREPRE';
+  if (postAllowed && typeof meta.postMarketPrice === 'number' && meta.postMarketPrice > 0) {
     return {
       price: meta.postMarketPrice,
       changePercent: typeof meta.postMarketChangePercent === 'number' ? meta.postMarketChangePercent : 0,
       session: 'post'
     };
   }
-  if (typeof meta.preMarketPrice === 'number' && meta.preMarketPrice > 0) {
+  if (preAllowed && typeof meta.preMarketPrice === 'number' && meta.preMarketPrice > 0) {
     return {
       price: meta.preMarketPrice,
       changePercent: typeof meta.preMarketChangePercent === 'number' ? meta.preMarketChangePercent : 0,
@@ -3586,7 +3852,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           state.rebalance = {
             domestic: parsed.rebalance.domestic || { '국내': 40, '해외': 60 },
             targets: (tg && typeof tg === 'object')
-              ? { '국내': Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내'], '해외': Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외'] }
+              ? { '국내': Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내'], '해외': ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외']) }
               : defaults
           };
           persistRebalance();
@@ -3624,7 +3890,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.priceFetchFailedIds = new Set();
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
-  state.projection = { monthlyContribution: 0, categoryReturns: {}, inflationRate: 2.5 };
+  state.projection = { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 };
   persistAssets();
   persistRebalance();
   persistProjection();
