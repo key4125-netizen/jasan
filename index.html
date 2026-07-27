@@ -75,6 +75,12 @@
     #tabPanelRebalance input[type=number], #tabPanelProjection input[type=number] { min-height: 44px; font-size: 16px; }
   }
 
+  /* 자산 관리 목록 아코디언: 카드 뷰(div)는 max-height/opacity 전환으로 부드럽게 펼쳐지고 접힌다.
+     테이블 행(tr)은 브라우저마다 max-height 전환이 불안정해 hidden(즉시 토글)으로 처리한다. */
+  .detail-panel { max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; }
+  .detail-panel.expanded { max-height: 500px; opacity: 1; }
+  [data-chevron-for] { transition: transform 0.2s ease; }
+
   /* 탭 버튼: 비활성은 회색 텍스트, 활성은 브랜드 컬러 배경 */
   .tab-btn { color: #64748b; }
   .dark .tab-btn { color: #94a3b8; }
@@ -362,25 +368,18 @@
       <button type="button" data-group-by="domestic" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">국내/해외별</button>
       <button type="button" data-group-by="category" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">자산군별</button>
     </div>
-    <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다. -->
+    <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
+         요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
+         평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
+         담는다(rowHtml 참고) - 아코디언 방식. -->
     <div class="hidden sm:block overflow-x-auto">
       <table class="w-full text-xs whitespace-nowrap">
         <thead>
           <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-            <th class="sortable px-3 py-2" data-key="ticker">Ticker</th>
-            <th class="sortable px-3 py-2" data-key="owner">소유자</th>
-            <th class="sortable px-3 py-2" data-key="accountType">계좌구분</th>
-            <th class="sortable px-3 py-2" data-key="category">자산군</th>
             <th class="sortable px-3 py-2" data-key="name">종목명</th>
-            <th class="sortable px-3 py-2" data-key="isDomestic">국내/해외</th>
             <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-            <th class="sortable px-3 py-2 text-right" data-key="buyPrice">매수단가</th>
             <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-            <th class="sortable px-3 py-2 text-right" data-key="buyAmount">매입금액(KRW)</th>
-            <th class="sortable px-3 py-2 text-right" data-key="curAmount">평가금액(KRW)</th>
-            <th class="sortable px-3 py-2 text-right" data-key="profit">평가손익</th>
-            <th class="sortable px-3 py-2 text-right" data-key="rateOfReturn">수익률(%)</th>
-            <th class="px-3 py-2 text-center">관리</th>
+            <th class="px-3 py-2 w-8"></th>
           </tr>
         </thead>
         <tbody id="assetTableBody"></tbody>
@@ -960,6 +959,9 @@ const state = {
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
+  // 자산 관리 목록 아코디언에서 펼쳐진(상세 보기 중인) 자산 id 집합 - 화면 표시 상태일 뿐이라
+  // localStorage에는 저장하지 않는다(세션 휘발성, 새로고침 시 전부 접힌 상태로 복귀).
+  expandedRowIds: new Set(),
   // 현재 활성화된 탭 ('dashboard' | 'rebalance' | 'projection') - 휘발성, 새로고침 시 대시보드로 복귀.
   activeTab: 'dashboard',
   // 리밸런싱 목표 비중.
@@ -2447,7 +2449,7 @@ function getTableGroupKey(mode, r) {
 function groupHeaderRowHtml(label, count, subtotal, pct) {
   return `
   <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
-    <td colspan="14" class="px-3 py-2">
+    <td colspan="4" class="px-3 py-2">
       <div class="flex items-center justify-between gap-2">
         <span class="font-semibold text-xs">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
         <span class="text-xs text-slate-500 dark:text-slate-400">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
@@ -2567,89 +2569,83 @@ function derivePresentation(r) {
   return { priceUnit, hasChange, changeBadgeClass, changeText, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
 }
 
+// 자산군/소유자/계좌/국내해외/매수단가/매입금액/평가금액/평가손익/수익률/수정·삭제 버튼을 공유하는
+// 상세(펼침) 영역 콘텐츠 - 테이블 상세행과 카드 상세영역이 마크업만 다를 뿐 같은 정보를 보여준다.
+function detailContentHtml(r, p) {
+  const foreignSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">$${fmtNum(r.buyAmountOriginal, 2)}</div>` : '';
+  return `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-3">
+      <div><span class="text-slate-400 block mb-0.5">매수단가</span><span class="font-medium">${p.priceUnit}${fmtNum(r.buyPrice, 2)}</span></div>
+      <div><span class="text-slate-400 block mb-0.5">매입금액</span><span class="font-medium">${fmtKRW(r.buyAmount)}</span>${foreignSub}</div>
+      <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
+      <div><span class="text-slate-400 block mb-0.5">평가손익 (수익률)</span><span class="font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</span> <span class="font-semibold ${profitColor(r.rateOfReturn)}">(${fmtPct(r.rateOfReturn)})</span></div>
+      <div>
+        <span class="text-slate-400 block mb-0.5">자산군 · 국내/해외</span>
+        <span class="font-medium">${escapeHtml(r.category)}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded ${p.isDomesticBadgeClass}">${escapeHtml(r.isDomestic)}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded ${p.currencyBadgeClass}">${escapeHtml(r.currency)}</span>
+      </div>
+      <div><span class="text-slate-400 block mb-0.5">계좌구분</span><span class="font-medium">${escapeHtml(r.accountType)}</span></div>
+      <div><span class="text-slate-400 block mb-0.5">소유자</span><span class="font-medium">${escapeHtml(r.owner)}</span></div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button data-action="edit" data-id="${r.id}" class="touch-target flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> 수정</button>
+      <button data-action="delete" data-id="${r.id}" class="touch-target flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900 bg-red-50 dark:bg-red-950 text-red-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제</button>
+    </div>`;
+}
+
+// 요약(접힌) 행 + 상세(펼침) 행, 2개의 <tr>을 한 쌍으로 반환한다 - 아코디언 방식.
+// 요약 행은 종목명/수량/현재가 3항목만 보여주고 클릭하면 상세 행이 펼쳐진다(state.expandedRowIds로
+// 펼침 상태를 기억해 시세 갱신 등으로 다시 그려져도 펼친 상태가 유지된다).
 function rowHtml(r) {
   const p = derivePresentation(r);
   const priceUnit = p.priceUnit;
   const changeBadge = p.hasChange ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${p.changeBadgeClass}">${p.changeText}</span>` : '';
   const tickerTitle = p.yahooTickerHint ? ` title="시세조회: ${escapeHtml(p.yahooTickerHint)}"` : '';
-  const priceCellClass = p.priceCellClass;
-  const priceFailBadge = p.priceFailBadge;
+  const isExpanded = state.expandedRowIds.has(r.id);
+  // 해외 자산은 "적용 통화(달러)"와 "환산 원화"를 요약에서 함께 보여준다.
+  const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+
   return `
-  <tr class="border-b border-slate-50 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/40">
-    <td class="px-3 py-2 font-mono text-[11px] text-slate-500 dark:text-slate-400"${tickerTitle}>${escapeHtml(r.ticker || '-')}</td>
-    <td class="px-3 py-2">${escapeHtml(r.owner)}</td>
-    <td class="px-3 py-2">${escapeHtml(r.accountType)}</td>
-    <td class="px-3 py-2">${escapeHtml(r.category)}</td>
-    <td class="px-3 py-2 font-medium">${escapeHtml(r.name)}${changeBadge}</td>
-    <td class="px-3 py-2">
-      <span class="text-[10px] px-1.5 py-0.5 rounded ${p.isDomesticBadgeClass}">${escapeHtml(r.isDomestic)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded ${p.currencyBadgeClass}">${escapeHtml(r.currency)}</span>
+  <tr class="border-b border-slate-50 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" data-action="toggle-expand" data-id="${r.id}">
+    <td class="px-3 py-2.5">
+      <div class="font-medium">${escapeHtml(r.name)}${changeBadge}</div>
+      <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}</div>
     </td>
-    <td class="px-3 py-2 text-right">${fmtNum(r.quantity, 4)}</td>
-    <td class="px-3 py-2 text-right">${priceUnit}${fmtNum(r.buyPrice, 2)}</td>
-    <td class="px-3 py-2 text-right cursor-pointer ${priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceFailBadge}</td>
-    <td class="px-3 py-2 text-right">
-      ${fmtKRW(r.buyAmount)}${r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">$${fmtNum(r.buyAmountOriginal, 2)}</div>` : ''}
-    </td>
-    <td class="px-3 py-2 text-right font-medium">${fmtKRW(r.curAmount)}</td>
-    <td class="px-3 py-2 text-right font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</td>
-    <td class="px-3 py-2 text-right font-semibold ${profitColor(r.rateOfReturn)}">${fmtPct(r.rateOfReturn)}</td>
-    <td class="px-3 py-2">
-      <div class="flex items-center justify-center gap-1">
-        <button data-action="edit" data-id="${r.id}" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-        <button data-action="delete" data-id="${r.id}" class="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
-      </div>
-    </td>
+    <td class="px-3 py-2.5 text-right">${fmtNum(r.quantity, 4)}</td>
+    <td class="px-3 py-2.5 text-right cursor-pointer ${p.priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
+    <td class="px-3 py-2.5 text-center"><i data-lucide="chevron-down" data-chevron-for="${r.id}" class="w-4 h-4 text-slate-400 inline-block${isExpanded ? ' rotate-180' : ''}" style="transition: transform 0.2s ease"></i></td>
+  </tr>
+  <tr data-detail-for="${r.id}" class="border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30${isExpanded ? '' : ' hidden'}">
+    <td colspan="4" class="px-3 py-3">${detailContentHtml(r, p)}</td>
   </tr>`;
 }
 
-// 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 정보는 rowHtml과 동일하되
-// 세로로 쌓아 한눈에 들어오게 배치하고, 현재가 영역은 터치하기 쉽도록 더 크게 만든다.
+// 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약(항상 보임: 종목명/수량/현재가)을 탭하면
+// 상세 영역이 부드럽게 펼쳐진다 - 표시 항목은 rowHtml의 상세행과 동일(detailContentHtml 공유).
 function cardHtml(r) {
   const p = derivePresentation(r);
   const changeBadge = p.hasChange ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${p.changeBadgeClass}">${p.changeText}</span>` : '';
-  const foreignSub = r.isForeign ? `<span class="text-[10px] text-slate-400 font-normal ml-1">($${fmtNum(r.buyAmountOriginal, 2)})</span>` : '';
+  const isExpanded = state.expandedRowIds.has(r.id);
+  const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
 
   return `
-  <div class="p-4">
-    <div class="flex items-start justify-between gap-2 mb-2.5">
-      <div class="min-w-0">
+  <div>
+    <div class="touch-target flex items-center gap-2 px-4 py-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="toggle-expand" data-id="${r.id}">
+      <div class="min-w-0 flex-1">
         <p class="font-semibold text-sm truncate">${escapeHtml(r.name)}${changeBadge}</p>
-        <p class="text-[11px] font-mono text-slate-400 truncate">${escapeHtml(r.ticker || '-')}${p.yahooTickerHint ? ` · 조회: ${escapeHtml(p.yahooTickerHint)}` : ''}</p>
+        <p class="text-[11px] font-mono text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}</p>
       </div>
-      <div class="flex items-center gap-1 shrink-0">
-        <button data-action="edit" data-id="${r.id}" class="touch-target w-9 h-9 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-        <button data-action="delete" data-id="${r.id}" class="touch-target w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-      </div>
-    </div>
-
-    <div class="flex flex-wrap gap-1 mb-3">
-      <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">${escapeHtml(r.owner)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">${escapeHtml(r.accountType)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">${escapeHtml(r.category)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded ${p.isDomesticBadgeClass}">${escapeHtml(r.isDomestic)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded ${p.currencyBadgeClass}">${escapeHtml(r.currency)}</span>
-    </div>
-
-    <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mb-3">
-      <div class="flex justify-between"><span class="text-slate-400">수량</span><span class="font-medium">${fmtNum(r.quantity, 4)}</span></div>
-      <div class="flex justify-between"><span class="text-slate-400">매수단가</span><span class="font-medium">${p.priceUnit}${fmtNum(r.buyPrice, 2)}</span></div>
-    </div>
-
-    <!-- 현재가: 터치 영역을 크게 잡아 모바일에서 바로 수정하기 쉽게 한다 -->
-    <div class="touch-target flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer ${p.priceCellClass} mb-3" data-action="edit-price" data-id="${r.id}">
-      <div>
-        <span class="text-[11px] text-slate-400 block">현재가${p.sessionBadge}</span>
+      <div class="text-right shrink-0 pl-2 cursor-pointer" data-action="edit-price" data-id="${r.id}" title="탭하여 현재가 직접 수정">
+        <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
+        <p class="text-sm font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+        ${priceKrwSub}
         ${p.priceFailBadge}
       </div>
-      <span class="text-base font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}</span>
+      <i data-lucide="chevron-down" data-chevron-for="${r.id}" class="w-4 h-4 text-slate-400 shrink-0${isExpanded ? ' rotate-180' : ''}" style="transition: transform 0.2s ease"></i>
     </div>
-
-    <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs border-t border-slate-100 dark:border-slate-800 pt-2.5">
-      <div><span class="text-slate-400 block mb-0.5">매입금액</span><span class="font-medium">${fmtKRW(r.buyAmount)}</span>${foreignSub}</div>
-      <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
-      <div><span class="text-slate-400 block mb-0.5">평가손익</span><span class="font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</span></div>
-      <div><span class="text-slate-400 block mb-0.5">수익률</span><span class="font-semibold ${profitColor(r.rateOfReturn)}">${fmtPct(r.rateOfReturn)}</span></div>
+    <div data-detail-for="${r.id}" class="detail-panel px-4${isExpanded ? ' expanded' : ''}">
+      <div class="pb-4">${detailContentHtml(r, p)}</div>
     </div>
   </div>`;
 }
@@ -2660,13 +2656,12 @@ function renderTableFooter(rows) {
   const totalProfit = totalCur - totalBuy;
   const totalRate = totalBuy !== 0 ? (totalProfit / totalBuy) * 100 : 0;
 
+  // 요약 뷰가 종목명/수량/현재가 3열로 줄어든 만큼, 합계 행도 그에 맞춰 4열(종목명+수량 병합/현재가
+  // 자리에 평가금액/마지막 열에 손익·수익률)로 압축한다.
   document.getElementById('tableFooterRow').innerHTML = `
-    <td class="px-3 py-2" colspan="9">합계 (${rows.length}건, 현재 필터 기준)</td>
-    <td class="px-3 py-2 text-right">${fmtKRW(totalBuy)}</td>
+    <td class="px-3 py-2" colspan="2">합계 (${rows.length}건, 현재 필터 기준) · 매입 ${fmtKRWShort(totalBuy)}</td>
     <td class="px-3 py-2 text-right">${fmtKRW(totalCur)}</td>
-    <td class="px-3 py-2 text-right ${profitColor(totalProfit)}">${fmtSigned(totalProfit)}</td>
-    <td class="px-3 py-2 text-right ${profitColor(totalRate)}">${fmtPct(totalRate)}</td>
-    <td></td>`;
+    <td class="px-3 py-2 text-right ${profitColor(totalProfit)}">${fmtSignedShort(totalProfit)}<br><span class="text-[10px]">${fmtPct(totalRate)}</span></td>`;
 }
 
 function escapeHtml(str) {
@@ -2833,6 +2828,7 @@ function handleAssetListClick(e) {
         delete state.prevCloseMap[id];
         delete state.sessionMap[id];
         state.priceFetchFailedIds.delete(id);
+        state.expandedRowIds.delete(id);
         persistAssets();
         renderAll();
       }
@@ -2842,9 +2838,27 @@ function handleAssetListClick(e) {
 
   // 현재가 셀/카드 인라인 수정: API 시세 조회가 실패했을 때도 사용자가 즉시 값을 고칠 수 있게 한다.
   // 테이블에서는 <td>, 카드에서는 <div>이므로 태그에 의존하지 않는 속성 선택자를 사용한다.
+  // toggle-expand보다 먼저 확인해야 한다 - 현재가 영역이 요약 행/카드 안에 중첩돼 있어, 그 위를
+  // 클릭했을 때 아코디언이 아니라 가격 수정이 우선되어야 하기 때문이다.
   const priceCell = e.target.closest('[data-action="edit-price"]');
   if (priceCell && !priceCell.querySelector('input')) {
     startInlinePriceEdit(priceCell);
+    return;
+  }
+
+  // 자산 관리 목록 아코디언: 요약 행/카드를 클릭하면 상세 영역을 펼치거나 접는다. 데이터를 다시
+  // 그리지 않고(스크롤 위치 유지·매끄러운 전환을 위해) 해당 id의 상세 요소와 화살표 아이콘만 직접
+  // 토글하고, state.expandedRowIds에도 반영해 이후 renderTable()이 다시 호출돼도 펼침 상태가 유지되게 한다.
+  const toggleEl = e.target.closest('[data-action="toggle-expand"]');
+  if (toggleEl) {
+    const id = toggleEl.dataset.id;
+    const willExpand = !state.expandedRowIds.has(id);
+    if (willExpand) state.expandedRowIds.add(id); else state.expandedRowIds.delete(id);
+    document.querySelectorAll(`[data-detail-for="${CSS.escape(id)}"]`).forEach((el) => {
+      if (el.tagName === 'TR') el.classList.toggle('hidden', !willExpand);
+      else el.classList.toggle('expanded', willExpand);
+    });
+    document.querySelectorAll(`[data-chevron-for="${CSS.escape(id)}"]`).forEach((el) => el.classList.toggle('rotate-180', willExpand));
   }
 }
 
