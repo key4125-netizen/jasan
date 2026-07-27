@@ -2877,10 +2877,10 @@ document.getElementById('dailyChangeInput').addEventListener('input', (e) => {
 // accept 헤더는 일부 API/프록시가 콘텐츠 협상에 사용하므로 명시해준다 - 단, User-Agent는 브라우저가
 // fetch()에서 덮어쓰기를 금지한 forbidden header라 여기서 설정해도 무시된다(웹 표준 보안 정책,
 // Android WebView/Chrome 동일). CORS 차단의 실질적인 해결책은 프록시 우회뿐이라 위 다중 폴백으로 대응한다.
-// 모바일 실측 결과 성공하는 요청은 대부분 몇 초 안에 응답이 오고, 12초까지 기다려야 하는 요청은
-// 사실상 거의 다 실패로 끝났다 - 타임아웃을 8초로 줄여 "이번 배치 전체가 죽은 소스 하나 때문에
-// 불필요하게 오래 멈춰있는" 최악의 경우 지연을 줄인다(정상 응답엔 영향 없음).
-async function fetchWithTimeout(url, timeoutMs = 8000, acceptHeader = 'application/json, text/plain, */*') {
+// 8초로 줄였다가 모바일 셀룰러 네트워크에서 오히려 실시간 시세 실패가 늘어나는 것이 실측으로
+// 확인됐다 - 데스크톱 와이파이보다 프록시 서버까지 왕복 지연이 크고 변동폭도 커서, 원래는 몇 초
+// 더 기다리면 성공했을 요청이 8초에서 잘려나가 실패 처리된 것으로 보인다. 15초로 다시 늘린다.
+async function fetchWithTimeout(url, timeoutMs = 15000, acceptHeader = 'application/json, text/plain, */*') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
