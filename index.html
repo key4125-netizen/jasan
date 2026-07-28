@@ -141,9 +141,6 @@
           <button id="addAssetBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i> 자산 추가
           </button>
-          <button id="downloadTemplateBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 표준 엑셀 템플릿
-          </button>
           <button id="exportExcelBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> 엑셀 내보내기
           </button>
@@ -175,9 +172,12 @@
        (#tabScrollHint)를 얹어 "오른쪽에 더 있음"을 시각적으로 암시하고, 실제로 끝까지 스크롤해
        더 볼 내용이 없어지면(JS의 updateTabScrollHint) 자동으로 숨긴다. -->
   <div class="relative mb-6 w-full sm:w-fit sm:max-w-full">
-    <div id="tabScrollContainer" class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full sm:w-fit overflow-x-auto sm:max-w-full">
+    <div id="tabScrollContainer" class="grid grid-cols-2 sm:flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full sm:w-fit overflow-x-auto sm:max-w-full">
       <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총투자현황
+      </button>
+      <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
       <button data-tab="projection" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 자산예측
@@ -425,6 +425,116 @@
   </section>
 
   </div> <!-- /tabPanelDashboard -->
+
+  <!-- ============================= 거래내역 탭 =============================
+       매매 거래를 입력하면 이동평균법으로 계좌별·종목별 수량/평단가를 자동 집계해 대시보드 자산과
+       동기화한다(syncAssetsFromTransactions 참고). 계산이 잘못됐다고 판단되면 대시보드에서 직접 수정
+       해도 되지만, 이후 거래내역이 다시 바뀌면 자동 계산값으로 재동기화된다. -->
+  <div id="tabPanelTransactions" class="hidden">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="text-sm font-semibold">매매 거래 내역</h2>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목마다 현재 수량/매수단가로 어제 날짜 매수 거래를 생성합니다"
+          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+          <i data-lucide="history" class="w-3.5 h-3.5"></i> 최초거래등록
+        </button>
+        <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다"
+          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i> 기간거래등록
+        </button>
+        <input id="txExcelFileInput" type="file" accept=".xlsx,.xls" class="hidden">
+        <button id="addTransactionBtn" type="button"
+          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> 거래 추가
+        </button>
+      </div>
+    </div>
+
+    <!-- 필터 -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div class="col-span-2 text-xs">
+          <span class="text-slate-500 dark:text-slate-400">조회기간</span>
+          <div class="flex items-center gap-1.5 mt-1">
+            <input id="txFilterFrom" type="date" class="w-full min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <span class="text-slate-400 shrink-0">~</span>
+            <input id="txFilterTo" type="date" class="w-full min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          </div>
+        </div>
+        <label class="text-xs">
+          <span class="text-slate-500 dark:text-slate-400">계좌</span>
+          <select id="txFilterAccount" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="ALL">전체 계좌</option>
+          </select>
+        </label>
+        <label class="text-xs">
+          <span class="text-slate-500 dark:text-slate-400">거래유형</span>
+          <select id="txFilterType" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="ALL">전체</option>
+            <option value="buy">매수</option>
+            <option value="sell">매도</option>
+          </select>
+        </label>
+        <label class="col-span-2 sm:col-span-4 text-xs">
+          <span class="text-slate-500 dark:text-slate-400">종목명/티커 검색</span>
+          <input id="txFilterSearch" type="text" placeholder="종목명 또는 티커로 검색"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+      </div>
+      <button id="txFilterResetBtn" type="button" class="mt-2 text-[11px] text-brand-600 dark:text-brand-300 hover:underline">필터 초기화</button>
+    </section>
+
+    <!-- 거래 목록 -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-6">
+      <h3 class="text-sm font-semibold mb-3">거래 목록 <span id="txListCount" class="text-xs font-normal text-slate-400"></span></h3>
+      <div id="txListContainer" class="divide-y divide-slate-100 dark:divide-slate-800"></div>
+      <p id="txEmptyMsg" class="hidden text-center text-slate-400 text-sm py-8">등록된 거래가 없습니다. "거래 추가" 버튼으로 시작하세요.</p>
+    </section>
+
+    <!-- 기간별 실현 손익 -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-6">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 class="text-sm font-semibold">기간별 실현 손익</h3>
+        <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+          <button data-pnl-period="daily" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">일별</button>
+          <button data-pnl-period="monthly" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">월별</button>
+          <button data-pnl-period="yearly" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">연별</button>
+        </div>
+      </div>
+      <div id="pnlPeriodNav" class="flex items-center justify-center gap-3 mb-3">
+        <button id="pnlPeriodPrev" type="button" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+        <span id="pnlPeriodLabel" class="text-sm font-semibold"></span>
+        <button id="pnlPeriodNext" type="button" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
+          <p class="text-[10px] text-slate-400 mb-1">총 실현손익</p>
+          <p id="pnlSummaryTotal" class="text-sm font-bold">0원</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
+          <p class="text-[10px] text-slate-400 mb-1">수익률</p>
+          <p id="pnlSummaryRate" class="text-sm font-bold">0%</p>
+        </div>
+      </div>
+
+      <div class="h-56 mb-4"><canvas id="pnlChart"></canvas></div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+              <th class="text-left font-medium py-1.5 pr-2">기간</th>
+              <th class="text-right font-medium py-1.5 px-2">실현손익</th>
+              <th class="text-right font-medium py-1.5 px-2">매도금액</th>
+              <th class="text-right font-medium py-1.5 pl-2">거래건수</th>
+            </tr>
+          </thead>
+          <tbody id="pnlReportTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div> <!-- /tabPanelTransactions -->
 
   <!-- ============================= 리밸런싱 검토 탭 ============================= -->
   <div id="tabPanelRebalance" class="hidden">
@@ -775,6 +885,113 @@
   </div>
 </div>
 
+<!-- ============================= 개별주식 검색 모달 (리밸런싱 국내/해외 개별주식 추가 전용) =============================
+     assetModal(z-50)과 동시에 열릴 일은 없지만 혹시 모를 겹침에 대비해 z-index를 한 단계 더 높게 둔다. -->
+<div id="stockSearchModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 id="stockSearchModalTitle" class="text-sm font-semibold">개별주식 검색 추가</h3>
+      <button type="button" id="closeStockSearchModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-3 shrink-0">
+      <input id="stockSearchInput" type="text" placeholder="종목명(영문) 또는 티커/코드 검색 - 예: Samsung, 005930, QQQM"
+        class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 outline-none focus:border-brand-400">
+      <p id="stockSearchHint" class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.</p>
+    </div>
+    <div id="stockSearchResults" class="flex-1 overflow-y-auto px-2 pb-3 min-h-[140px]">
+      <p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 거래 입력 모달 (거래내역 탭 전용) ============================= -->
+<div id="transactionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+      <h3 id="txModalTitle" class="text-sm font-semibold">거래 추가</h3>
+      <button type="button" id="closeTxModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <form id="transactionForm" class="px-5 py-4 grid grid-cols-2 gap-3">
+      <input type="hidden" id="tx_id">
+      <input type="hidden" id="tx_ticker">
+
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">일자</span>
+        <input id="tx_date" type="date" required
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+      </label>
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">거래유형</span>
+        <select id="tx_type" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="buy">매수</option>
+          <option value="sell">매도</option>
+        </select>
+      </label>
+
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">소유자</span>
+        <select id="tx_owner" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="신랑">신랑</option>
+          <option value="와이프">와이프</option>
+          <option value="공동">공동</option>
+        </select>
+      </label>
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">계좌구분</span>
+        <input id="tx_accountType" list="accountTypeList" placeholder="예: 일반계좌"
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+      </label>
+
+      <label class="col-span-2 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">종목명/티커</span>
+        <div class="flex gap-1.5 mt-1">
+          <input id="tx_name" type="text" placeholder="검색 버튼으로 선택하거나 직접 입력" required
+            class="flex-1 min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <button type="button" id="txSearchStockBtn" title="종목 검색"
+            class="shrink-0 text-xs font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+            <i data-lucide="search" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <p id="tx_tickerHint" class="text-[10px] text-slate-400 mt-1">&nbsp;</p>
+      </label>
+
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">수량</span>
+        <input id="tx_quantity" type="number" step="any" min="0" required
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+      </label>
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">매매단가</span>
+        <input id="tx_price" type="number" step="any" min="0" required
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+      </label>
+
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">통화</span>
+        <select id="tx_currency" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="KRW">KRW (원화)</option>
+          <option value="USD">USD (달러)</option>
+        </select>
+      </label>
+      <label class="col-span-1 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">수수료/세금</span>
+        <input id="tx_fee" type="number" step="any" min="0" value="0"
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+      </label>
+
+      <div class="col-span-2 flex justify-end gap-2 mt-2">
+        <button type="button" id="cancelTxModalBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+        <button type="submit" class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 /* =========================================================================
  * Smart Asset Manager
@@ -795,6 +1012,7 @@ const LS_DAILY_RATE = 'sam_daily_rate_v5';
 const LS_DARKMODE = 'sam_dark_mode_v5';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
+const LS_TRANSACTIONS = 'sam_transactions_v1';
 // 일간 손익 계산에 쓰이는 "오늘 하루의 기준 환율"(전일 종가 개념) 저장 키.
 // FX는 24시간 거래되어 명확한 "전일 종가"가 없으므로, 달력 날짜가 바뀔 때 그 시점의 환율을
 // 스냅샷해서 그날 하루 동안 고정 기준값으로 사용한다(당일 중 환율이 갱신되어도 기준값은 안 바뀜).
@@ -1065,10 +1283,17 @@ const state = {
   // 미래 자산예측 설정. monthlyContribution(월 적립금, 기본값 150만원 - 사용자가 자유롭게 수정 가능)
   // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용)
   // + inflationRate(실질 구매력 가치 환산에 쓰는 평균 물가상승률, %) - localStorage/JSON 백업에 저장됨.
-  projection: { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 }
+  projection: { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 },
+  // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
+  // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
+  transactions: [],
+  // 거래내역 탭의 현재 조회 필터(세션 휘발성 - 새로고침 시 초기화).
+  txFilters: { from: '', to: '', account: 'ALL', type: 'ALL', search: '' },
+  // 기간별 실현손익 섹션의 현재 보기 단위/기준일(세션 휘발성).
+  pnlPeriod: { granularity: 'monthly', refDate: todayDateStr() }
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -1171,6 +1396,12 @@ function todayDateStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// 기존 보유 자산을 거래내역 기초 데이터로 일괄 등록할 때 쓰는 날짜(어제) - seedTransactionsFromAssets 참고.
+function yesterdayDateStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // 오늘 하루의 일간 손익 계산 기준 환율(FX의 "전일 종가" 역할)을 확정한다.
 // FX는 24시간 거래되어 진짜 전일 종가가 없으므로, "달력 날짜가 바뀐 시점의 환율"을 그날의 기준값으로
@@ -1240,6 +1471,12 @@ function loadState() {
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
 
+  try {
+    const txRaw = localStorage.getItem(LS_TRANSACTIONS);
+    state.transactions = txRaw ? JSON.parse(txRaw) : [];
+    if (!Array.isArray(state.transactions)) state.transactions = [];
+  } catch (e) { state.transactions = []; }
+
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
   }
@@ -1258,6 +1495,7 @@ function persistRate() { localStorage.setItem(LS_RATE, String(state.exchangeRate
 function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); }
 function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); }
 function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); }
+function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); }
 
 /* -------------------------------------------------------------------------
  * 7. 파생 계산 (매입금액/평가금액/손익/수익률 - 전부 KRW 환산)
@@ -1682,9 +1920,11 @@ function switchTab(tab) {
   state.activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
   document.getElementById('tabPanelDashboard').classList.toggle('hidden', tab !== 'dashboard');
+  document.getElementById('tabPanelTransactions').classList.toggle('hidden', tab !== 'transactions');
   document.getElementById('tabPanelRebalance').classList.toggle('hidden', tab !== 'rebalance');
   document.getElementById('tabPanelProjection').classList.toggle('hidden', tab !== 'projection');
   // 숨겨져 있던 탭의 캔버스는 크기가 0이었으므로, 보여줄 때 다시 렌더링해야 차트가 정상적으로 그려진다.
+  if (tab === 'transactions') renderTransactionsTab();
   if (tab === 'rebalance') renderRebalance();
   if (tab === 'projection') renderProjection();
   lucide.createIcons();
@@ -1897,9 +2137,195 @@ function getCustomStockPctSum(region, excludeIdx) {
   return (state.rebalance.targets[region] || []).reduce((s, t, i) => (t.custom && i !== excludeIdx ? s + num(t.pct) : s), 0);
 }
 
+/* -------------------------------------------------------------------------
+ * 15-1. [개별주식 검색 모달] - 리밸런싱 국내/해외 개별주식 추가 전용
+ *    - 로컬(보유 자산 종목명/티커 부분일치, 한글 검색 지원) + Yahoo Finance 검색 API(v1/finance/search,
+ *      인증 불필요, 영문명/티커/코드) 두 소스를 합쳐서 보여준다. 검색으로 확정된 티커가 그대로
+ *      state.rebalance.targets[region]에 들어가므로, 리밸런싱 실행 가이드/실시간 시세/RISK 감지 등
+ *      티커 기반 로직과 자동으로 연동된다(별도 매핑 불필요 - 같은 ticker 필드를 그대로 공유).
+ * ---------------------------------------------------------------------- */
+// stockSearchMode: 'rebalance'(리밸런싱 개별주식 추가) | 'transaction'(거래내역 입력 폼의 종목 선택) -
+// 같은 검색 모달을 두 화면에서 재사용하기 위해 어느 쪽에서 열렸는지 구분한다.
+let stockSearchMode = 'rebalance';
+let stockSearchContext = null; // rebalance 모드일 때만 사용: 검색 모달을 연 지역('국내'|'해외')
+let stockSearchDebounceTimer = null;
+let stockSearchRequestSeq = 0; // 느린 응답이 늦게 도착해 최신 검색 결과를 덮어쓰는 경쟁 상태 방지용
+
+// 보유 중인 자산의 종목명/티커에서 부분일치로 찾는다 - Yahoo 검색 API가 한글을 지원하지 않아서,
+// 최소한 "이미 포트폴리오에 있는 종목"만큼은 한글 이름으로도 찾을 수 있도록 보조 지원한다.
+function searchLocalHoldings(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const seen = new Set();
+  const results = [];
+  state.assets.forEach((a) => {
+    if (!a.ticker) return;
+    const hay = `${a.name} ${a.ticker}`.toLowerCase();
+    if (!hay.includes(q)) return;
+    const key = a.ticker.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    results.push({ symbol: a.ticker, name: a.name, exch: a.isDomestic === '국내' ? '국내' : '해외', type: a.category });
+  });
+  return results;
+}
+
+// Yahoo Finance 검색(자동완성) API - v7/quote, v10/quoteSummary와 달리 인증 없이 열려있다(2026-07 확인).
+// 프록시 없이 직접 호출을 먼저 시도하고(가장 빠름), 막히면 프록시 2개만 추가로 경쟁시킨다(검색은
+// 시세 조회만큼 소스를 많이 둘 필요는 없어 트래픽을 절약한다).
+async function searchYahooStocks(query) {
+  const url = 'https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(query) + '&quotesCount=8&newsCount=0';
+  const attempts = [
+    async () => {
+      const res = await fetchWithTimeout(url, 8000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return safeParseJsonResponse(res);
+    },
+    ...CORS_PROXIES.slice(0, 2).map((proxy) => async () => {
+      const res = await fetchWithTimeout(proxy.build(url), 8000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
+    })
+  ];
+  let data;
+  try {
+    data = await Promise.any(attempts.map((fn) => fn()));
+  } catch (e) {
+    return [];
+  }
+  const quotes = (data && data.quotes) || [];
+  return quotes
+    .filter((q) => q.symbol && (q.quoteType === 'EQUITY' || q.quoteType === 'ETF'))
+    .map((q) => ({ symbol: q.symbol, name: q.shortname || q.longname || q.symbol, exch: q.exchDisp || q.exchange || '', type: q.quoteType }));
+}
+
+async function searchStockCandidates(query) {
+  const local = searchLocalHoldings(query);
+  const remote = await searchYahooStocks(query);
+  const seen = new Set(local.map((r) => r.symbol.toUpperCase()));
+  const merged = [...local];
+  remote.forEach((r) => {
+    const key = r.symbol.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(r);
+  });
+  return merged.slice(0, 15);
+}
+
+// 티커 접미사(.KS/.KQ)로 국내/해외를 판별한다 - sanitizeTicker와 동일한 기준(getMarketKeyForTicker 등
+// 이 앱 전반에서 쓰는 규칙)이라 다른 곳의 국내/해외 분류와 항상 일치한다.
+function isDomesticTicker(symbol) { return /\.(KS|KQ)$/i.test(String(symbol ?? '')); }
+
+// 검색 팝업 상단에 "이 팝업에서 추가하면 어떤 조건이 적용되는지"를 미리 안내한다 - 검색 범위(국내/
+// 해외 제한)뿐 아니라 몇 개까지/비중이 얼마까지 가능한지도 선택 전에 알 수 있게 한다.
+function buildStockSearchConditionText(region) {
+  const regionLabel = region === '국내' ? '국내(KOSPI/KOSDAQ)' : '해외';
+  const searchNote = region === '국내'
+    ? '한글 종목명은 보유 중인 종목만 검색되고, 그 외에는 코드로 검색하세요.'
+    : '영문명 또는 티커로 검색하세요.';
+  const customCount = (state.rebalance.targets[region] || []).filter((t) => t.custom).length;
+  const budget = getRegionStockBudgetPct(region);
+  const budgetNote = budget !== null
+    ? `개별종목 비중 합계는 ${region} 전체 주식 목표 비중(${fmtNum(budget, 1)}%)을 넘을 수 없습니다.`
+    : `개별종목 비중 합계는 ${region} 지역 배분(합계 100%) 안에서만 가능합니다.`;
+  return `${regionLabel} 종목만 검색됩니다(${searchNote}) 최대 ${MAX_CUSTOM_STOCKS_PER_REGION}개까지 추가할 수 있고(현재 ${customCount}/${MAX_CUSTOM_STOCKS_PER_REGION}), ${budgetNote}`;
+}
+
+function openStockSearchModal(mode, context) {
+  stockSearchMode = mode;
+  stockSearchContext = context;
+  const titleEl = document.getElementById('stockSearchModalTitle');
+  const hintEl = document.getElementById('stockSearchHint');
+  if (mode === 'rebalance' && context) {
+    titleEl.textContent = `개별주식 검색 추가 (${context})`;
+    hintEl.textContent = buildStockSearchConditionText(context);
+  } else {
+    titleEl.textContent = '개별주식 검색 추가';
+    hintEl.textContent = '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
+  }
+  document.getElementById('stockSearchModal').classList.remove('hidden');
+  const input = document.getElementById('stockSearchInput');
+  input.value = '';
+  document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeStockSearchModal() {
+  document.getElementById('stockSearchModal').classList.add('hidden');
+  stockSearchContext = null;
+}
+
+document.getElementById('closeStockSearchModalBtn').addEventListener('click', closeStockSearchModal);
+document.getElementById('stockSearchModal').addEventListener('click', (e) => {
+  if (e.target.id === 'stockSearchModal') closeStockSearchModal(); // 배경(오버레이) 클릭 시 닫기
+});
+
+function renderStockSearchResults(results, seq) {
+  if (seq !== stockSearchRequestSeq) return; // 더 최신 검색이 이미 진행 중이면 이 응답은 버린다
+  const container = document.getElementById('stockSearchResults');
+  if (results.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 결과가 없습니다</p>';
+    return;
+  }
+  container.innerHTML = results.map((r) => `
+    <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+      <span class="min-w-0">
+        <span class="block text-sm font-medium truncate">${escapeHtml(r.name)}</span>
+        <span class="block text-[11px] text-slate-400">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
+      </span>
+      <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">${escapeHtml(r.type || '')}</span>
+    </button>`).join('');
+  container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (stockSearchMode === 'transaction') {
+        applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName);
+      } else {
+        pickStockForRegion(stockSearchContext, btn.dataset.pickSymbol, btn.dataset.pickName);
+      }
+      closeStockSearchModal();
+    });
+  });
+}
+
+function pickStockForRegion(region, ticker, name) {
+  if (!region) return;
+  const list = state.rebalance.targets[region] || (state.rebalance.targets[region] = []);
+  if (list.some((t) => t.custom && String(t.ticker ?? '').toUpperCase() === ticker.toUpperCase())) {
+    showToast('이미 추가된 종목입니다.', 'warn');
+    return;
+  }
+  list.push({ type: 'ticker', ticker, label: name, pct: 0, custom: true });
+  persistRebalance();
+  buildTargetInputs(region);
+  updateRebalanceResults();
+}
+
+document.getElementById('stockSearchInput').addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  clearTimeout(stockSearchDebounceTimer);
+  if (!query) {
+    document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
+    return;
+  }
+  document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 중...</p>';
+  stockSearchDebounceTimer = setTimeout(async () => {
+    const seq = ++stockSearchRequestSeq;
+    let results = await searchStockCandidates(query);
+    // 리밸런싱 모드에서는 이 팝업을 연 지역(국내/해외)과 다른 시장의 종목은 애초에 후보에서 뺀다 -
+    // 국내 탭에서 열었으면 국내(.KS/.KQ) 종목만, 해외 탭이면 그 외 종목만 남긴다.
+    if (stockSearchMode === 'rebalance' && stockSearchContext) {
+      const wantDomestic = stockSearchContext === '국내';
+      results = results.filter((r) => isDomesticTicker(r.symbol) === wantDomestic);
+    }
+    renderStockSearchResults(results, seq);
+  }, 350);
+});
+
 // region: '국내' | '해외' - 해당 지역의 티커/자산군 혼합 목표 항목 입력창을 그린다(지역 내 합계 100%).
-// 고정 목록(KODEX 200TR, QQQM 등) 아래에 [+ 개별주식 추가] 버튼과, 사용자가 직접 추가한 개별주식
-// (종목명/티커/비중을 자유 입력하는 행, 지역당 최대 3개)을 함께 그린다. 개별주식은 custom:true로
+// '주식' 캐치올 항목 바로 아래에 개별주식(검색으로 추가, 지역당 최대 3개) 목록과 [+ 개별주식 추가]
+// 버튼을 두고, 그 뒤에 나머지 고정 항목(채권/현금 등)을 이어서 그린다. 개별주식은 custom:true로
 // 표시해 고정 목록과 구분한다 - 고정 목록은 이 화면에서 삭제할 수 없지만 개별주식은 삭제(×) 가능하다.
 function buildTargetInputs(region) {
   const wrapId = region === '국내' ? 'categoryTargetInputsDomestic' : 'categoryTargetInputsForeign';
@@ -1909,7 +2335,6 @@ function buildTargetInputs(region) {
   const fixedTargets = withIdx.filter((t) => !t.custom);
   const customTargets = withIdx.filter((t) => t.custom);
   const customCount = customTargets.length;
-  const canAddMore = customCount < MAX_CUSTOM_STOCKS_PER_REGION;
 
   const fixedRowHtml = (t) => `
     <label class="text-xs">
@@ -1918,38 +2343,43 @@ function buildTargetInputs(region) {
         class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
     </label>`;
 
+  // 검색으로 확정된 종목이라 이름/티커는 더 이상 직접 편집하지 않는다(잘못 골랐으면 삭제 후 재검색).
+  // 국내/해외 두 영역이 모바일에서도 항상 나란히(50:50) 배치되는 기존 레이아웃 때문에 이 행이 들어갈
+  // 실제 폭이 매우 좁아서(~140px), [종목명 (티커)] | [비중%] | [삭제]를 한 줄로 우겨넣으면 이름이
+  // 거의 다 잘려나간다(실측 확인됨) - 1행: 종목명(티커)+삭제, 2행: 비중% 입력(우측 정렬)로 나눠
+  // 좁은 폭에서도 이름이 읽히게 한다.
   const customRowHtml = (t) => `
-    <div class="col-span-full flex items-end gap-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2">
-      <label class="text-xs flex-1 min-w-0">
-        <span class="text-slate-500 dark:text-slate-400">종목명</span>
-        <input data-custom-label data-region="${region}" data-idx="${t.idx}" type="text" value="${escapeHtml(t.label)}" placeholder="예: 삼성전자"
-          class="w-full mt-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-      </label>
-      <label class="text-xs flex-1 min-w-0">
-        <span class="text-slate-500 dark:text-slate-400">티커</span>
-        <input data-custom-ticker data-region="${region}" data-idx="${t.idx}" type="text" value="${escapeHtml(t.ticker || '')}" placeholder="예: 005930"
-          class="w-full mt-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-      </label>
-      <label class="text-xs w-16 shrink-0">
-        <span class="text-slate-500 dark:text-slate-400">비중%</span>
+    <div class="col-span-full bg-slate-50 dark:bg-slate-800/50 rounded-lg px-2 py-1.5">
+      <div class="flex items-center justify-between gap-1">
+        <span class="text-xs font-medium truncate min-w-0" title="${escapeHtml(t.label)} (${escapeHtml(t.ticker || '-')})">${escapeHtml(t.label)} <span class="text-slate-400 font-normal">(${escapeHtml(t.ticker || '-')})</span></span>
+        <button type="button" data-remove-custom data-region="${region}" data-idx="${t.idx}" title="개별주식 삭제"
+          class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+      <div class="flex items-center justify-end gap-1 mt-1">
         <input data-target-pct data-region="${region}" data-idx="${t.idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
-          class="w-full mt-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
-      </label>
-      <button type="button" data-remove-custom data-region="${region}" data-idx="${t.idx}" title="개별주식 삭제"
-        class="touch-target shrink-0 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
+          class="w-16 shrink-0 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 outline-none text-right">
+        <span class="text-xs text-slate-400 shrink-0">%</span>
+      </div>
     </div>`;
 
   const addButtonHtml = `
     <div class="col-span-full">
-      <button type="button" data-add-custom-stock="${region}" ${canAddMore ? '' : 'disabled'}
-        class="touch-target w-full text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-slate-300 dark:disabled:hover:border-slate-700 disabled:hover:text-slate-500">
+      <button type="button" data-add-custom-stock="${region}"
+        class="touch-target w-full text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
         + 개별주식 추가${customCount > 0 ? ` (${customCount}/${MAX_CUSTOM_STOCKS_PER_REGION})` : ''}
       </button>
     </div>`;
 
-  wrap.innerHTML = (fixedTargets.map(fixedRowHtml).join('') + addButtonHtml + customTargets.map(customRowHtml).join(''))
+  // '주식' 캐치올 항목 바로 아래에 개별주식 블록(기존 목록 + 추가 버튼)을 끼워 넣는다 - 그 뒤(채권/
+  // 현금 등)는 그대로 이어서 그린다. '주식' 항목이 없는 예외적인 구성이면 안전하게 맨 끝에 붙인다.
+  const stockIdx = fixedTargets.findIndex((t) => t.type === 'category' && t.category === '주식');
+  const beforeStock = stockIdx === -1 ? fixedTargets : fixedTargets.slice(0, stockIdx + 1);
+  const afterStock = stockIdx === -1 ? [] : fixedTargets.slice(stockIdx + 1);
+  const customBlockHtml = customTargets.map(customRowHtml).join('') + addButtonHtml;
+
+  wrap.innerHTML = (beforeStock.map(fixedRowHtml).join('') + customBlockHtml + afterStock.map(fixedRowHtml).join(''))
     || `<p class="text-xs text-slate-400 col-span-full">설정된 목표 항목이 없습니다.</p>`;
 
   // 비중(%) 입력 - 고정 항목/개별주식 공통. 개별주식은 추가로 "이 지역 전체 주식 목표 비중"을
@@ -1978,20 +2408,6 @@ function buildTargetInputs(region) {
     });
   });
 
-  wrap.querySelectorAll('input[data-custom-label]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      state.rebalance.targets[e.target.dataset.region][Number(e.target.dataset.idx)].label = e.target.value;
-      persistRebalance();
-      updateRebalanceResults();
-    });
-  });
-  wrap.querySelectorAll('input[data-custom-ticker]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      state.rebalance.targets[e.target.dataset.region][Number(e.target.dataset.idx)].ticker = e.target.value.trim();
-      persistRebalance();
-      updateRebalanceResults();
-    });
-  });
   wrap.querySelectorAll('button[data-remove-custom]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const r = btn.dataset.region;
@@ -2005,11 +2421,11 @@ function buildTargetInputs(region) {
   if (addBtn) {
     addBtn.addEventListener('click', () => {
       const r = addBtn.dataset.addCustomStock;
-      if ((state.rebalance.targets[r] || []).filter((t) => t.custom).length >= MAX_CUSTOM_STOCKS_PER_REGION) return;
-      state.rebalance.targets[r].push({ type: 'ticker', ticker: '', label: '새 종목', pct: 0, custom: true });
-      persistRebalance();
-      buildTargetInputs(r);
-      updateRebalanceResults();
+      if ((state.rebalance.targets[r] || []).filter((t) => t.custom).length >= MAX_CUSTOM_STOCKS_PER_REGION) {
+        showToast('개별주식은 국가별로 최대 3개 종목까지만 추가할 수 있습니다.', 'warn');
+        return;
+      }
+      openStockSearchModal('rebalance', r);
     });
   }
 
@@ -2880,6 +3296,518 @@ function renderProjectionTable(rows) {
 function renderProjectionTable2(rows) { renderProjectionTableGeneric('projectionScheduleBody2', rows); }
 
 /* -------------------------------------------------------------------------
+ * 10-4. [거래내역] 매매 거래 CRUD + 이동평균법 집계 + 기간별 실현손익
+ *    - state.transactions가 원본(source of truth)이다. 계좌별·종목별 수량/평단가는 항상 거래내역에서
+ *      다시 계산해 대시보드 자산에 동기화한다(syncAssetsFromTransactions). 계산이 실제와 다르면
+ *      대시보드에서 수량/매수단가를 직접 고쳐도 되지만, 그 뒤 거래내역이 다시 바뀌면 이 동기화가 다시
+ *      돌면서 자동 계산값으로 덮어써진다 - "거래내역이 정답"이라는 원칙을 일관되게 지키기 위함이다.
+ * ---------------------------------------------------------------------- */
+
+// 이동평균법: 매수 시 (기존 총매입금액+신규 매입금액)/(기존 수량+신규 수량)으로 평단가를 갱신하고,
+// 매도 시 (매도단가-평단가)*매도수량-수수료를 실현손익으로 떼어내되 평단가 자체는 그대로 유지한다.
+// 반환값의 annotated는 각 거래에 그 시점 실현손익(매도 건만)을 붙인 것으로, 기간별 손익 집계에 쓰인다.
+function computePositionsAndRealizedPnL() {
+  const positions = {}; // key(소유자__계좌구분__티커) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, realizedPnL }
+  const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
+  const annotated = sorted.map((tx) => {
+    const key = `${tx.owner}__${tx.accountType}__${tx.ticker || tx.name}`;
+    if (!positions[key]) positions[key] = { owner: tx.owner, accountType: tx.accountType, ticker: tx.ticker, name: tx.name, currency: tx.currency, quantity: 0, avgPrice: 0, totalCost: 0, realizedPnL: 0 };
+    const pos = positions[key];
+    let computedRealizedPnL = null, computedSellAmount = null;
+    if (tx.type === 'buy') {
+      pos.totalCost += tx.quantity * tx.price + num(tx.fee);
+      pos.quantity += tx.quantity;
+      pos.avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
+    } else {
+      const sellQty = Math.min(tx.quantity, pos.quantity); // 보유수량보다 많이 팔 수 없도록 안전하게 clamp
+      computedRealizedPnL = (tx.price - pos.avgPrice) * sellQty - num(tx.fee);
+      computedSellAmount = tx.price * sellQty;
+      pos.realizedPnL += computedRealizedPnL;
+      pos.quantity = Math.max(0, pos.quantity - sellQty);
+      pos.totalCost = pos.avgPrice * pos.quantity; // 평단가는 유지, 총원가만 남은 수량에 비례해 축소
+    }
+    pos.name = tx.name || pos.name;
+    pos.currency = tx.currency || pos.currency;
+    return { ...tx, computedRealizedPnL, computedSellAmount };
+  });
+  return { positions, annotated };
+}
+
+// 거래내역 기준 최종 수량/평단가를 대시보드 자산 목록에 반영한다. 이미 있는 자산(소유자+계좌구분+티커
+// 일치)이면 수량/매수단가만 덮어쓰고, 없으면 새로 만든다. 전량 매도(수량 0 이하)된 포지션은 자산을
+// 지우지 않고 수량만 0으로 남긴다(삭제는 되돌리기 어려운 작업이라 사용자가 원할 때 직접 지우도록 함).
+function syncAssetsFromTransactions() {
+  const { positions } = computePositionsAndRealizedPnL();
+  Object.values(positions).forEach((pos) => {
+    if (!pos.ticker) return; // 티커 없는 거래는 자동 동기화 대상에서 제외
+    let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType && a.ticker === pos.ticker);
+    if (pos.quantity <= 0) {
+      if (asset) asset.quantity = 0;
+      return;
+    }
+    if (!asset) {
+      asset = makeAsset({ ticker: pos.ticker, owner: pos.owner, accountType: pos.accountType, name: pos.name, quantity: pos.quantity, buyPrice: pos.avgPrice, currency: pos.currency });
+      state.assets.push(asset);
+    } else {
+      asset.quantity = pos.quantity;
+      asset.buyPrice = pos.avgPrice;
+    }
+  });
+}
+
+// [보유 자산으로 초기화] 버튼 - 아직 거래내역이 하나도 없는 보유 종목마다, 지금의 수량/매수단가를
+// 그대로 옮겨 "어제" 날짜의 매수 거래 1건을 만들어준다. 값이 기존 자산과 정확히 같으므로 동기화해도
+// 화면상 수치(평가손익/RISK/예측 등)는 전혀 바뀌지 않고(검토 완료 - 실현손익 집계는 매도 거래만 대상
+// 이라 매수 시드는 애초에 집계되지 않음), 이후 실제 매매부터는 거래내역 기준으로 정확히 이어진다.
+// 이미 거래내역이 있는 종목(소유자+계좌구분+티커 일치)은 중복 등록을 막기 위해 건너뛴다.
+function seedTransactionsFromAssets() {
+  const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker}`));
+  const targets = state.assets.filter((a) => {
+    if (!a.ticker) return false;
+    if (num(a.quantity) <= 0) return false;
+    return !existingKeys.has(`${a.owner}__${a.accountType}__${a.ticker}`);
+  });
+
+  if (targets.length === 0) {
+    showToast('거래내역이 없는 보유 종목이 없습니다(이미 전부 등록됨).', 'warn');
+    return;
+  }
+  if (!confirm(`거래내역이 없는 보유 종목 ${targets.length}개에 대해, 현재 수량/매수단가로 어제 날짜 매수 거래를 생성합니다.\n(화면에 보이는 평가손익 등은 바뀌지 않습니다. 계속할까요?)`)) return;
+
+  const seedDate = yesterdayDateStr();
+  targets.forEach((a) => {
+    state.transactions.push({
+      id: genId(),
+      date: seedDate,
+      owner: a.owner,
+      accountType: a.accountType,
+      ticker: a.ticker,
+      name: a.name,
+      type: 'buy',
+      quantity: num(a.quantity),
+      price: num(a.buyPrice),
+      currency: a.currency,
+      fee: 0,
+      createdAt: Date.now()
+    });
+  });
+
+  persistTransactions();
+  syncAssetsFromTransactions();
+  persistAssets();
+  renderTransactionsTab();
+  renderAll();
+  showToast(`${targets.length}개 종목의 기초 거래를 등록했습니다.`, 'success');
+}
+document.getElementById('seedTransactionsBtn').addEventListener('click', seedTransactionsFromAssets);
+
+// [거래내역 엑셀 업로드] 밀린 실제 매매를 한 번에 등록할 때 쓴다 - 기존 거래내역은 지우지 않고
+// 그대로 이어 붙인다(자산 엑셀 업로드처럼 덮어쓰기 확인창을 두지 않는다 - 거래내역은 "쌓이는" 기록이라
+// 새 파일을 올릴 때마다 이어붙이는 편이 자연스럽다). 헤더: 일자/소유자/계좌구분/종목명/티커/거래유형
+// (매수 또는 매도)/수량/매매단가/통화(KRW·USD)/수수료. 업로드 후 이동평균 재계산+자산 동기화까지 한번에 처리된다.
+function formatDateCell(v) {
+  if (v instanceof Date && !isNaN(v)) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  }
+  const s = String(v ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const parsed = new Date(s);
+  if (!isNaN(parsed)) return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  return todayDateStr(); // 날짜를 못 읽으면 안전하게 오늘 날짜로 폴백(거래 자체를 버리지 않기 위함)
+}
+
+document.getElementById('importTxExcelBtn').addEventListener('click', () => document.getElementById('txExcelFileInput').click());
+
+document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws);
+
+      const parsed = json.map((row) => {
+        const typeRaw = String(pick(row, '거래유형', 'type', 'Type') ?? '').trim().toLowerCase();
+        const type = (typeRaw === '매도' || typeRaw === 'sell') ? 'sell' : 'buy';
+        const currencyRaw = String(pick(row, '통화', 'Currency', 'CURRENCY') ?? '').trim().toUpperCase();
+        return {
+          id: genId(),
+          date: formatDateCell(pick(row, '일자', '날짜', 'date', 'Date')),
+          owner: String(pick(row, '소유자', 'owner') ?? '').trim() || '공동',
+          accountType: String(pick(row, '계좌구분', 'accountType') ?? '').trim() || '일반계좌',
+          ticker: String(pick(row, 'ticker', 'Ticker', '티커') ?? '').trim(),
+          name: String(pick(row, '종목명', 'name') ?? '').trim() || '이름없음',
+          type,
+          quantity: num(pick(row, '수량', 'quantity')),
+          price: num(pick(row, '매매단가', '단가', 'price')),
+          currency: currencyRaw === 'USD' ? 'USD' : 'KRW',
+          fee: num(pick(row, '수수료', '세금', '수수료/세금', 'fee')),
+          createdAt: Date.now()
+        };
+      }).filter((t) => t.quantity > 0 && t.price > 0 && t.name);
+
+      if (parsed.length === 0) {
+        alert('가져올 거래 데이터가 없습니다. (일자, 소유자, 계좌구분, 종목명, 거래유형, 수량, 매매단가 헤더를 확인하세요)');
+        return;
+      }
+
+      state.transactions = state.transactions.concat(parsed);
+      persistTransactions();
+      syncAssetsFromTransactions();
+      persistAssets();
+      renderTransactionsTab();
+      renderAll();
+      showToast(`거래내역 ${parsed.length}건을 업로드했습니다.`, 'success');
+    } catch (err) {
+      alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// 검색 모달(개별주식 검색)을 'transaction' 모드로 열었을 때 종목 선택 결과를 거래 입력 폼에 채운다.
+function applyStockPickToTransactionForm(ticker, name) {
+  document.getElementById('tx_name').value = name;
+  document.getElementById('tx_ticker').value = ticker;
+  const isKr = /\.(KS|KQ)$/i.test(ticker) || /^\d{6}$/.test(ticker);
+  document.getElementById('tx_currency').value = isKr ? 'KRW' : 'USD';
+  document.getElementById('tx_tickerHint').textContent = `선택된 티커: ${ticker}`;
+}
+
+function openTransactionModal(txId) {
+  const form = document.getElementById('transactionForm');
+  form.reset();
+  document.getElementById('tx_id').value = '';
+  document.getElementById('tx_ticker').value = '';
+  document.getElementById('tx_tickerHint').textContent = ' ';
+  document.getElementById('tx_date').value = todayDateStr();
+  document.getElementById('tx_fee').value = 0;
+
+  if (txId) {
+    const tx = state.transactions.find((t) => t.id === txId);
+    if (!tx) return;
+    document.getElementById('txModalTitle').textContent = '거래 수정';
+    document.getElementById('tx_id').value = tx.id;
+    document.getElementById('tx_date').value = tx.date;
+    document.getElementById('tx_type').value = tx.type;
+    document.getElementById('tx_owner').value = tx.owner;
+    document.getElementById('tx_accountType').value = tx.accountType;
+    document.getElementById('tx_name').value = tx.name;
+    document.getElementById('tx_ticker').value = tx.ticker || '';
+    document.getElementById('tx_quantity').value = tx.quantity;
+    document.getElementById('tx_price').value = tx.price;
+    document.getElementById('tx_currency').value = tx.currency;
+    document.getElementById('tx_fee').value = tx.fee;
+    document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
+  } else {
+    document.getElementById('txModalTitle').textContent = '거래 추가';
+  }
+  document.getElementById('transactionModal').classList.remove('hidden');
+}
+function closeTransactionModal() {
+  document.getElementById('transactionModal').classList.add('hidden');
+}
+
+document.getElementById('addTransactionBtn').addEventListener('click', () => openTransactionModal(null));
+document.getElementById('closeTxModalBtn').addEventListener('click', closeTransactionModal);
+document.getElementById('cancelTxModalBtn').addEventListener('click', closeTransactionModal);
+document.getElementById('transactionModal').addEventListener('click', (e) => {
+  if (e.target.id === 'transactionModal') closeTransactionModal();
+});
+document.getElementById('txSearchStockBtn').addEventListener('click', () => openStockSearchModal('transaction', null));
+
+document.getElementById('transactionForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const id = document.getElementById('tx_id').value || genId();
+  const name = document.getElementById('tx_name').value.trim();
+  if (!name) { showToast('종목명을 입력하세요.', 'warn'); return; }
+  const quantity = num(document.getElementById('tx_quantity').value);
+  if (quantity <= 0) { showToast('수량은 0보다 커야 합니다.', 'warn'); return; }
+  const price = num(document.getElementById('tx_price').value);
+  if (price <= 0) { showToast('매매단가는 0보다 커야 합니다.', 'warn'); return; }
+
+  const existing = state.transactions.find((t) => t.id === id);
+  const tx = {
+    id,
+    date: document.getElementById('tx_date').value || todayDateStr(),
+    owner: document.getElementById('tx_owner').value,
+    accountType: document.getElementById('tx_accountType').value.trim() || '일반계좌',
+    ticker: document.getElementById('tx_ticker').value.trim(),
+    name,
+    type: document.getElementById('tx_type').value,
+    quantity, price,
+    currency: document.getElementById('tx_currency').value,
+    fee: num(document.getElementById('tx_fee').value),
+    createdAt: existing ? existing.createdAt : Date.now() // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
+  };
+
+  if (existing) {
+    const idx = state.transactions.findIndex((t) => t.id === id);
+    state.transactions[idx] = tx;
+  } else {
+    state.transactions.push(tx);
+  }
+
+  persistTransactions();
+  syncAssetsFromTransactions();
+  persistAssets();
+  closeTransactionModal();
+  renderTransactionsTab();
+  renderAll();
+  showToast('거래 내역을 저장했습니다.', 'success');
+});
+
+function deleteTransaction(id) {
+  if (!confirm('이 거래 내역을 삭제하시겠습니까? 삭제 시 관련 종목의 수량/평단가가 남은 거래내역 기준으로 다시 계산됩니다.')) return;
+  state.transactions = state.transactions.filter((t) => t.id !== id);
+  persistTransactions();
+  syncAssetsFromTransactions();
+  persistAssets();
+  renderTransactionsTab();
+  renderAll();
+}
+
+function getFilteredTransactions() {
+  const f = state.txFilters;
+  const q = f.search.trim().toLowerCase();
+  return state.transactions
+    .filter((t) => !f.from || t.date >= f.from)
+    .filter((t) => !f.to || t.date <= f.to)
+    .filter((t) => f.account === 'ALL' || `${t.owner}·${t.accountType}` === f.account)
+    .filter((t) => f.type === 'ALL' || t.type === f.type)
+    .filter((t) => !q || `${t.name} ${t.ticker}`.toLowerCase().includes(q))
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)); // 최신순
+}
+
+function populateTxFilterOptions() {
+  const combos = [...new Set(state.transactions.map((t) => `${t.owner}·${t.accountType}`))];
+  const sel = document.getElementById('txFilterAccount');
+  const current = state.txFilters.account;
+  sel.innerHTML = '<option value="ALL">전체 계좌</option>' + combos.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value = combos.includes(current) ? current : 'ALL';
+}
+
+function renderTransactionList() {
+  populateTxFilterOptions();
+  const list = getFilteredTransactions();
+  const container = document.getElementById('txListContainer');
+  const emptyMsg = document.getElementById('txEmptyMsg');
+  document.getElementById('txListCount').textContent = list.length > 0 ? `(${list.length}건)` : '';
+
+  if (list.length === 0) {
+    container.innerHTML = '';
+    emptyMsg.classList.remove('hidden');
+    return;
+  }
+  emptyMsg.classList.add('hidden');
+
+  container.innerHTML = list.map((t) => {
+    const typeLabel = t.type === 'buy' ? '매수' : '매도';
+    const typeClass = t.type === 'buy' ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500';
+    const unit = t.currency === 'USD' ? '$' : '';
+    const amount = t.quantity * t.price;
+    return `
+    <div class="py-2.5 flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
+          <span class="text-sm font-medium truncate">${escapeHtml(t.name)}</span>
+          <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}</p>
+        <p class="text-xs mt-0.5">${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}</p>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button type="button" data-edit-tx="${t.id}" title="수정" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+          <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+        </button>
+        <button type="button" data-delete-tx="${t.id}" title="삭제" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('button[data-edit-tx]').forEach((btn) => btn.addEventListener('click', () => openTransactionModal(btn.dataset.editTx)));
+  container.querySelectorAll('button[data-delete-tx]').forEach((btn) => btn.addEventListener('click', () => deleteTransaction(btn.dataset.deleteTx)));
+  lucide.createIcons();
+}
+
+['txFilterFrom', 'txFilterTo', 'txFilterAccount', 'txFilterType'].forEach((id) => {
+  const map = { txFilterFrom: 'from', txFilterTo: 'to', txFilterAccount: 'account', txFilterType: 'type' };
+  document.getElementById(id).addEventListener('change', (e) => {
+    state.txFilters[map[id]] = e.target.value;
+    renderTransactionList();
+  });
+});
+document.getElementById('txFilterSearch').addEventListener('input', (e) => {
+  state.txFilters.search = e.target.value;
+  renderTransactionList();
+});
+document.getElementById('txFilterResetBtn').addEventListener('click', () => {
+  state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
+  document.getElementById('txFilterFrom').value = '';
+  document.getElementById('txFilterTo').value = '';
+  document.getElementById('txFilterAccount').value = 'ALL';
+  document.getElementById('txFilterType').value = 'ALL';
+  document.getElementById('txFilterSearch').value = '';
+  renderTransactionList();
+});
+
+/* ---- 기간별(일별/월별/연별) 실현손익 ---- */
+function daysInMonth(year, month1to12) { return new Date(year, month1to12, 0).getDate(); }
+
+// granularity: 'daily'(refDate가 속한 달의 일자별, 1일~말일 고정 축) | 'monthly'(refDate가 속한 연도의
+// 1~12월 고정 축) | 'yearly'(거래가 존재하는 전체 연도 범위, 가변 축). 매도 거래만 실현손익을 만들어내므로
+// (매수는 포지션만 쌓을 뿐 손익이 확정되지 않음) annotated 중 매도 건만 집계 대상으로 삼는다.
+function computeRealizedPnLByPeriod(granularity, refDate) {
+  const { annotated } = computePositionsAndRealizedPnL();
+  const sells = annotated.filter((tx) => tx.type === 'sell' && tx.computedRealizedPnL !== null);
+
+  const [refYear, refMonth] = refDate.split('-').map(Number);
+  let periodKeys, keyFn, labelFn, filteredSells;
+
+  if (granularity === 'daily') {
+    const dim = daysInMonth(refYear, refMonth);
+    const ym = refDate.slice(0, 7);
+    periodKeys = Array.from({ length: dim }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+    keyFn = (tx) => tx.date;
+    labelFn = (key) => `${Number(key.slice(8, 10))}일`;
+    filteredSells = sells.filter((tx) => tx.date.slice(0, 7) === ym);
+  } else if (granularity === 'monthly') {
+    periodKeys = Array.from({ length: 12 }, (_, i) => `${refYear}-${String(i + 1).padStart(2, '0')}`);
+    keyFn = (tx) => tx.date.slice(0, 7);
+    labelFn = (key) => `${Number(key.slice(5, 7))}월`;
+    filteredSells = sells.filter((tx) => tx.date.slice(0, 4) === String(refYear));
+  } else {
+    const years = sells.map((tx) => Number(tx.date.slice(0, 4)));
+    const minYear = years.length ? Math.min(...years) : refYear;
+    const maxYear = Math.max(refYear, ...(years.length ? years : [refYear]));
+    periodKeys = [];
+    for (let y = minYear; y <= maxYear; y++) periodKeys.push(String(y));
+    keyFn = (tx) => tx.date.slice(0, 4);
+    labelFn = (key) => `${key}년`;
+    filteredSells = sells;
+  }
+
+  const buckets = {};
+  periodKeys.forEach((k) => { buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0 }; });
+  filteredSells.forEach((tx) => {
+    const k = keyFn(tx);
+    if (!buckets[k]) buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0 };
+    buckets[k].realizedPnL += tx.computedRealizedPnL;
+    buckets[k].sellAmount += tx.computedSellAmount;
+    buckets[k].tradeCount += 1;
+    if (tx.computedRealizedPnL > 0) buckets[k].winCount += 1;
+  });
+
+  const periods = periodKeys.map((k) => buckets[k]);
+  const totalPnL = filteredSells.reduce((s, tx) => s + tx.computedRealizedPnL, 0);
+  const totalSellAmount = filteredSells.reduce((s, tx) => s + tx.computedSellAmount, 0);
+  const totalTradeCount = filteredSells.length;
+  const totalWinCount = filteredSells.filter((tx) => tx.computedRealizedPnL > 0).length;
+  // 수익률 = 실현손익 / 매도원가(=매도금액-실현손익, 수수료로 인한 미세한 근사 오차는 허용). 매도금액이
+  // 없으면(해당 기간 매도 없음) 0으로 처리한다.
+  const costBasis = totalSellAmount - totalPnL;
+  const totalRate = costBasis !== 0 ? (totalPnL / costBasis) * 100 : 0;
+  const winRate = totalTradeCount !== 0 ? (totalWinCount / totalTradeCount) * 100 : 0;
+
+  return { periods, totalPnL, totalSellAmount, totalTradeCount, totalWinCount, totalRate, winRate };
+}
+
+function shiftPnlPeriod(dir) {
+  const g = state.pnlPeriod.granularity;
+  const [y, m] = state.pnlPeriod.refDate.split('-').map(Number);
+  if (g === 'daily') {
+    const nd = new Date(y, m - 1 + dir, 1);
+    state.pnlPeriod.refDate = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
+  } else if (g === 'monthly') {
+    state.pnlPeriod.refDate = `${y + dir}-${String(m).padStart(2, '0')}-01`;
+  }
+  updatePnlSection();
+}
+document.getElementById('pnlPeriodPrev').addEventListener('click', () => shiftPnlPeriod(-1));
+document.getElementById('pnlPeriodNext').addEventListener('click', () => shiftPnlPeriod(1));
+document.querySelectorAll('.pnl-period-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    state.pnlPeriod.granularity = btn.dataset.pnlPeriod;
+    updatePnlSection();
+  });
+});
+
+function renderPnlChart(periods) {
+  const textColor = chartTextColor();
+  const labels = periods.map((p) => p.label);
+  const data = periods.map((p) => p.realizedPnL);
+  const colors = data.map((v) => (v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8')));
+
+  if (charts.pnl) charts.pnl.destroy();
+  charts.pnl = new Chart(document.getElementById('pnlChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => fmtSigned(c.parsed.y) } } },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,0.15)' } }
+      }
+    }
+  });
+}
+
+function renderPnlReportTable(periods) {
+  const tbody = document.getElementById('pnlReportTableBody');
+  const nonEmpty = periods.filter((p) => p.tradeCount > 0);
+  if (nonEmpty.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-slate-400 py-6">해당 기간에 매도 거래가 없습니다.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = nonEmpty.slice().reverse().map((p) => `
+    <tr class="border-b border-slate-50 dark:border-slate-800/50">
+      <td class="py-1.5 pr-2">${escapeHtml(p.label)}</td>
+      <td class="py-1.5 px-2 text-right ${profitColor(p.realizedPnL)}">${fmtSigned(p.realizedPnL)}</td>
+      <td class="py-1.5 px-2 text-right text-slate-500 dark:text-slate-400">${fmtKRWShort(p.sellAmount)}</td>
+      <td class="py-1.5 pl-2 text-right text-slate-500 dark:text-slate-400">${p.tradeCount}건</td>
+    </tr>`).join('');
+}
+
+function updatePnlSection() {
+  document.querySelectorAll('.pnl-period-btn').forEach((btn) => {
+    const active = btn.dataset.pnlPeriod === state.pnlPeriod.granularity;
+    btn.className = 'pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md ' +
+      (active ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400');
+  });
+
+  const g = state.pnlPeriod.granularity;
+  document.getElementById('pnlPeriodNav').classList.toggle('hidden', g === 'yearly');
+  const [y, m] = state.pnlPeriod.refDate.split('-').map(Number);
+  document.getElementById('pnlPeriodLabel').textContent = g === 'daily' ? `${y}년 ${m}월` : (g === 'monthly' ? `${y}년` : '전체 기간');
+
+  const result = computeRealizedPnLByPeriod(g, state.pnlPeriod.refDate);
+
+  const totalEl = document.getElementById('pnlSummaryTotal');
+  totalEl.textContent = fmtSigned(result.totalPnL);
+  totalEl.className = 'text-sm font-bold ' + profitColor(result.totalPnL);
+  const rateEl = document.getElementById('pnlSummaryRate');
+  rateEl.textContent = fmtPct(result.totalRate);
+  rateEl.className = 'text-sm font-bold ' + profitColor(result.totalRate);
+
+  renderPnlChart(result.periods);
+  renderPnlReportTable(result.periods);
+}
+
+function renderTransactionsTab() {
+  renderTransactionList();
+  updatePnlSection();
+  lucide.createIcons();
+}
+
+/* -------------------------------------------------------------------------
  * 11. 테이블 렌더링 (정렬 + 필터 반영)
  * ---------------------------------------------------------------------- */
 // 기본 정렬(테이블 헤더를 눌러 별도 정렬을 지정하지 않았을 때) 우선순위 규칙.
@@ -2893,14 +3821,18 @@ function ownerRank(owner) { return OWNER_RANK[owner] ?? 2; }
 function domesticRank(isDomestic) { return DOMESTIC_RANK[isDomestic] ?? 2; }
 function categoryRank(category) { return CATEGORY_RANK[category] ?? 5; }
 
-// 채권/현금/부동산(NON_TRADABLE_CATEGORIES)은 소유자·지역과 무관하게 항상 목록 맨 아래로 보낸다 -
-// 그 안에서는 기존처럼 소유자→국내/해외→자산군 순으로 정렬한다.
+// 채권/현금/부동산(NON_TRADABLE_CATEGORIES)은 소유자·지역과 무관하게 항상 목록 맨 아래로 보낸다.
+// 일반 거래 가능 자산(주식/ETF)은 기존처럼 소유자→국내/해외→자산군 순으로 정렬하지만, 이 묶음
+// 안에서는 지역보다 자산군을 먼저 비교한다 - 그렇지 않으면 "국채"(국내)가 "달러"(해외로 분류되는
+// 현금성 자산)보다 뒤로 밀려서 채권(CATEGORY_RANK상 현금보다 앞순위)인데도 화면엔 늦게 보이는
+// 문제가 있었다.
 function defaultAssetOrder(a, b) {
   const aBottom = NON_TRADABLE_CATEGORIES.includes(a.category) ? 1 : 0;
   const bBottom = NON_TRADABLE_CATEGORIES.includes(b.category) ? 1 : 0;
   if (aBottom !== bBottom) return aBottom - bBottom;
   const byOwner = ownerRank(a.owner) - ownerRank(b.owner);
   if (byOwner !== 0) return byOwner;
+  if (aBottom === 1) return categoryRank(a.category) - categoryRank(b.category);
   const byRegion = domesticRank(a.isDomestic) - domesticRank(b.isDomestic);
   if (byRegion !== 0) return byRegion;
   return categoryRank(a.category) - categoryRank(b.category);
@@ -3184,6 +4116,7 @@ function renderAll() {
   renderTable();
   // 리밸런싱/미래예측 탭은 숨겨진 캔버스에 차트를 그리면 크기가 0이 되므로, 실제로 보이고 있을 때만 갱신한다.
   // (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
+  if (state.activeTab === 'transactions') renderTransactionsTab();
   if (state.activeTab === 'rebalance') renderRebalance();
   if (state.activeTab === 'projection') renderProjection();
 }
@@ -4122,29 +5055,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* -------------------------------------------------------------------------
- * 20. 표준 엑셀 템플릿 다운로드
- *    - ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 8개 필수 헤더 + 현재가(선택) 1개.
- *    - '국내/해외'는 '국내'/'해외', '통화'는 'KRW'/'USD'로 명시 기재한다(비어있으면 ticker 형식으로 자동판별).
- *    - 매입금액은 입력받지 않고 모듈이 수량×매수단가로 자동 계산한다.
- *    - 현재가는 선택 입력 항목이다: 값을 채우면 업로드 직후 그 값이 그대로 반영되고(웹 화면에 즉시 표시),
- *      비워두면 매수단가로 초기화된다. 어느 쪽이든 티커가 있는 종목은 [시세 & 환율 갱신] 시 최신 시세로
- *      덮어써지므로, 현재가 열은 Yahoo/Stooq가 커버하지 못하는 종목(비상장·사모펀드 등)이나 갱신 전 잠깐
- *      화면에 보여줄 값을 지정하는 용도로 쓰면 된다.
- * ---------------------------------------------------------------------- */
-document.getElementById('downloadTemplateBtn').addEventListener('click', () => {
-  const rows = [
-    { ticker: 'GOOGL', 소유자: '신랑', 계좌구분: '일반계좌', 종목명: '알파벳A', '국내/해외': '해외', '통화': 'USD', 수량: 21, 매수단가: 323.4, 현재가: 342 },
-    { ticker: '000660.KS', 소유자: '와이프', 계좌구분: '일반계좌', 종목명: 'SK하이닉스', '국내/해외': '국내', '통화': 'KRW', 수량: 273, 매수단가: 228666, 현재가: 1906000 },
-    { ticker: '', 소유자: '신랑', 계좌구분: '채권/현금', 종목명: '국고채', '국내/해외': '국내', '통화': 'KRW', 수량: 1, 매수단가: 100000000, 현재가: '' }
-  ];
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 14 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '템플릿');
-  XLSX.writeFile(wb, '자산관리_표준템플릿.xlsx');
-});
-
-/* -------------------------------------------------------------------------
  * 21. 엑셀 내보내기 (전체 백업 - 파생 필드 포함)
  * ---------------------------------------------------------------------- */
 document.getElementById('exportExcelBtn').addEventListener('click', () => {
@@ -4242,7 +5152,8 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
-    }))
+    })),
+    transactions: state.transactions
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -4320,6 +5231,23 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           };
           persistProjection();
         }
+        if (Array.isArray(parsed.transactions)) {
+          state.transactions = parsed.transactions.map((t) => ({
+            id: t.id || genId(),
+            date: t.date || todayDateStr(),
+            owner: t.owner || '공동',
+            accountType: t.accountType || '일반계좌',
+            ticker: String(t.ticker ?? '').trim(),
+            name: t.name || '이름없음',
+            type: t.type === 'sell' ? 'sell' : 'buy',
+            quantity: num(t.quantity),
+            price: num(t.price),
+            currency: (t.currency === 'USD') ? 'USD' : 'KRW',
+            fee: num(t.fee),
+            createdAt: t.createdAt || Date.now()
+          }));
+          persistTransactions();
+        }
       }
       persistAssets();
       renderAll();
@@ -4346,9 +5274,12 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
   state.projection = { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 };
+  state.transactions = [];
+  state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   persistAssets();
   persistRebalance();
   persistProjection();
+  persistTransactions();
   renderAll();
 });
 
@@ -4404,6 +5335,9 @@ function warnIfRestrictedWebView() {
  * 25. 초기 구동
  * ---------------------------------------------------------------------- */
 loadState();
+// 거래내역이 있으면 자산 목록을 항상 최신 계산값으로 맞춰둔 뒤 첫 렌더링을 시작한다(구조 변경/수동
+// localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치).
+if (state.transactions.length > 0) { syncAssetsFromTransactions(); persistAssets(); }
 applyTableGroupUI();
 renderAll();
 lucide.createIcons();
