@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v2';
+const CACHE_NAME = 'smart-asset-manager-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,13 +11,21 @@ const APP_SHELL = [
 
 // 외부 시세/환율 API 및 CORS 프록시는 항상 최신 데이터가 우선이므로 네트워크를 먼저 시도하고,
 // 오프라인일 때만 마지막으로 캐시된 응답을 폴백으로 사용한다.
+// [버그 수정] polling.finance.naver.com(국내 장전/장후 시간외 시세의 핵심 소스)과 프록시 2개
+// (api.codetabs.com, r.jina.ai)가 이 목록에 빠져 있었다 - 그 결과 PWA로 설치된 모바일에서는
+// 서비스워커가 이 요청들을 "캐시 우선"으로 처리해, 최초 1회 조회 이후로는 계속 그때 캐시된 옛
+// 시세만 반환되고 실제 새 시간외 시세가 전혀 반영되지 않는 문제가 있었다(file:// 로컬 실행에서는
+// 서비스워커 자체가 등록되지 않아 이 버그가 재현되지 않았던 것도 원인 파악이 늦어진 이유다).
 const NETWORK_FIRST_HOSTS = [
   'query1.finance.yahoo.com',
   'open.er-api.com',
   'api.exchangerate-api.com',
   'stooq.com',
   'api.allorigins.win',
-  'corsproxy.io'
+  'corsproxy.io',
+  'api.codetabs.com',
+  'r.jina.ai',
+  'polling.finance.naver.com'
 ];
 
 self.addEventListener('install', (event) => {
