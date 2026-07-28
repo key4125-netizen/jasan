@@ -285,13 +285,18 @@
        조건1(지수대비 10%p 이상 과락)/조건2(매수가 대비 -20% 이하)/조건3(20일선 이탈) 중 하나라도
        해당하면 표시 - computeRiskAssets()/renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상. -->
   <section class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
-    <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
         <h3 class="text-sm font-semibold text-red-600 dark:text-red-400">RISK 관리</h3>
+        <button type="button" title="조건1: 지수 대비 10%p 이상 과락 · 조건2: 매수가 대비 -20% 이하 · 조건3: 20일 이동평균선(20MA) 이탈 - 셋 중 하나라도 해당하면 감지됩니다."
+          class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+          <i data-lucide="info" class="w-3.5 h-3.5"></i>
+        </button>
       </div>
       <span id="riskCountBadge" class="hidden text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500 text-white"></span>
     </div>
+    <p class="text-[10px] text-slate-400 mb-3">기준: 지수대비 -10%p 이상 · 매수가대비 -20% 이하 · 20일선 이탈 (하나라도 해당 시 감지)</p>
     <div id="riskListContainer">
       <p class="text-xs text-slate-400">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>
     </div>
@@ -481,7 +486,14 @@
             class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
         </label>
       </div>
-      <button id="txFilterResetBtn" type="button" class="mt-2 text-[11px] text-brand-600 dark:text-brand-300 hover:underline">필터 초기화</button>
+      <div class="flex items-center justify-end gap-2 mt-3">
+        <button id="txFilterResetBtn" type="button"
+          class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">초기화</button>
+        <button id="txFilterApplyBtn" type="button"
+          class="flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
+          <i data-lucide="search" class="w-3.5 h-3.5"></i> 조회
+        </button>
+      </div>
     </section>
 
     <!-- 거래 목록 -->
@@ -623,40 +635,37 @@
          '일반계좌' 보유 자산만을 기준으로 시뮬레이션한다. -->
     <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 일반계좌 보유 자산만을 대상으로 시뮬레이션합니다.</p>
     <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
-        <div class="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-          <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
-          <span class="text-xs sm:text-sm font-semibold truncate">현재 구성 유지 시</span>
+      <div id="scenarioCard1" role="button" tabindex="0" title="탭하여 수익률/월 적립금 수정"
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 cursor-pointer hover:border-brand-400 dark:hover:border-brand-600">
+        <div class="flex items-center justify-between mb-2 sm:mb-3">
+          <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
+            <span class="text-xs sm:text-sm font-semibold truncate">현재 구성 유지 시</span>
+          </div>
+          <i data-lucide="pencil" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
         </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. "현재 누적 수익률"은 매수 후 지금까지의 누적치라 연간 수익률과 다를 수 있으니 참고용으로만 활용하고, 필요하면 직접 값을 수정하세요.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 9.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. 값을 바꾸려면 카드를 탭하세요.</p>
         <!-- 반쪽 폭 모바일에서는 위 설명 문단 대신 한 줄 요약만 보여줘 공간을 아낀다. -->
-        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">자산군 기본수익률 자동 적용 (부동산 제외)</p>
-        <div id="categoryReturnInputs" class="space-y-2 sm:space-y-3 mb-3 sm:mb-4"></div>
-        <label class="text-[11px] sm:text-xs block mb-3 sm:mb-4">
-          <span class="text-slate-500 dark:text-slate-400">월 적립금 (KRW)</span>
-          <input id="monthlyContributionInput" type="number" step="any" placeholder="0"
-            class="w-full mt-1 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 sm:py-2 outline-none text-right">
-        </label>
-        <!-- 물가상승률 입력은 화면에는 노출하지 않는다("가중평균 연수익률" 위에 있으면 마치 그 수치에
-             물가가 반영되는 것처럼 오해를 살 수 있음 - 실제로는 명목값만 표시됨). 값 자체는 계속
-             유지/사용되며, 실질 구매력 가치 열 헤더에 "(현재 물가 N% 기준)"으로만 표기된다. -->
-        <label class="text-xs hidden">
-          <span class="text-slate-500 dark:text-slate-400">평균 물가상승률 (%, 실질 구매력 가치 환산용)</span>
-          <input id="inflationRateInput" type="number" step="0.1" value="2.5"
-            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-        </label>
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">탭하여 수익률/적립금 수정</p>
+        <!-- 읽기 전용 요약 - 실제 입력창은 scenarioModal1로 옮겼다(카드는 보기 전용, 수정은 팝업에서). -->
+        <div id="categoryReturnSummaryReadonly" class="space-y-1 mb-3 sm:mb-4 text-xs"></div>
         <div class="border-t border-slate-100 dark:border-slate-800 pt-2 sm:pt-3">
           <p class="text-[10px] sm:text-[11px] text-slate-400">가중평균 연수익률</p>
           <p id="weightedAvgReturn" class="text-base sm:text-xl font-bold">0.00%</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-400 mt-1.5">월 적립금 <span id="monthlyContributionReadonly" class="font-medium text-slate-600 dark:text-slate-300">0원</span></p>
         </div>
       </div>
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
-        <div class="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-          <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
-          <span class="text-xs sm:text-sm font-semibold truncate">리밸런싱 후</span>
+      <div id="scenarioCard2" role="button" tabindex="0" title="탭하여 종목별 기대수익률 수정"
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 cursor-pointer hover:border-brand-400 dark:hover:border-brand-600">
+        <div class="flex items-center justify-between mb-2 sm:mb-3">
+          <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
+            <span class="text-xs sm:text-sm font-semibold truncate">리밸런싱 후</span>
+          </div>
+          <i data-lucide="pencil" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
         </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목은 고정 수익률(QQQM 11.0% · SPYM 8.0% · SCHD 9.0%)을 쓰고, 국내 항목과 채권/현금은 왼쪽 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 원금·월 적립금·물가상승률은 시나리오 1과 동일합니다.</p>
-        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">목표 비중대로 오늘 전액 리밸런싱 가정</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목(QQQM/SPYM/SCHD)은 팝업에서 직접 지정한 수익률을 쓰고, 국내 항목과 채권/현금은 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 값을 바꾸려면 카드를 탭하세요.</p>
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">탭하여 종목별 기대수익률 수정</p>
         <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
           <div class="min-w-0">
             <p class="text-[10px] sm:text-[11px] text-slate-400 truncate">기대수익률</p>
@@ -673,6 +682,60 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== 시나리오 1 수정 팝업 - categoryReturnInputs/monthlyContributionInput은 기존 엘리먼트를
+         그대로 옮겨왔다(같은 id를 두 곳에 두면 안 되므로 복제가 아니라 이동). buildCategoryReturnInputs/
+         renderProjection의 기존 이벤트 배선이 그대로 재사용된다. -->
+    <div id="scenarioModal1" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+          <h3 class="text-sm font-semibold">현재 구성 유지 시 - 수익률/적립금 수정</h3>
+          <button type="button" id="closeScenarioModal1Btn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="px-5 py-4">
+          <div id="categoryReturnInputs" class="space-y-3 mb-4"></div>
+          <label class="text-xs block">
+            <span class="text-slate-500 dark:text-slate-400">월 적립금 (KRW)</span>
+            <input id="monthlyContributionInput" type="number" step="any" placeholder="0"
+              class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+          <!-- 물가상승률 입력은 화면에는 노출하지 않는다(실질 구매력 가치 열 헤더에만 "(현재 물가 N%
+               기준)"으로 표기) - 값 자체는 계속 유지/사용된다. -->
+          <label class="text-xs hidden">
+            <span class="text-slate-500 dark:text-slate-400">평균 물가상승률 (%, 실질 구매력 가치 환산용)</span>
+            <input id="inflationRateInput" type="number" step="0.1" value="2.5"
+              class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+        </div>
+        <div class="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+          <button type="button" id="applyScenarioModal1Btn"
+            class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">적용하기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 시나리오 2 수정 팝업 - QQQM/SPYM/SCHD 종목별 기대수익률(예전엔 SCENARIO2_TICKER_RATE_
+         OVERRIDES에 하드코딩되어 수정 불가였음)을 여기서 직접 편집한다. -->
+    <div id="scenarioModal2" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+          <h3 class="text-sm font-semibold">리밸런싱 후 - 종목별 기대수익률 수정</h3>
+          <button type="button" id="closeScenarioModal2Btn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="px-5 py-4">
+          <p class="text-[11px] text-slate-400 mb-3 leading-relaxed">국내 항목과 채권/현금은 "현재 구성 유지 시" 팝업의 자산군별 수익률을 그대로 재사용합니다. 아래 3개 미국 개별 종목만 별도로 지정할 수 있습니다.</p>
+          <div id="scenario2TickerRateInputs" class="space-y-3"></div>
+        </div>
+        <div class="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+          <button type="button" id="applyScenarioModal2Btn"
+            class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">적용하기</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ===== 시나리오별 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
@@ -1283,7 +1346,9 @@ const state = {
   // 미래 자산예측 설정. monthlyContribution(월 적립금, 기본값 150만원 - 사용자가 자유롭게 수정 가능)
   // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용)
   // + inflationRate(실질 구매력 가치 환산에 쓰는 평균 물가상승률, %) - localStorage/JSON 백업에 저장됨.
-  projection: { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 },
+  // scenario2TickerRates: 시나리오2(리밸런싱 후) 전용 종목별 기대수익률 수동 오버라이드 - 비어있으면
+  // SCENARIO2_TICKER_RATE_OVERRIDES 기본값(QQQM 11%·SPYM 9%·SCHD 9%)을 그대로 쓴다.
+  projection: { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} },
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
   transactions: [],
@@ -1466,7 +1531,8 @@ function loadState() {
       if (parsed && typeof parsed === 'object') state.projection = {
         monthlyContribution: num(parsed.monthlyContribution),
         categoryReturns: parsed.categoryReturns || {},
-        inflationRate: (parsed.inflationRate !== undefined && parsed.inflationRate !== null && parsed.inflationRate !== '') ? num(parsed.inflationRate) : 2.5
+        inflationRate: (parsed.inflationRate !== undefined && parsed.inflationRate !== null && parsed.inflationRate !== '') ? num(parsed.inflationRate) : 2.5,
+        scenario2TickerRates: parsed.scenario2TickerRates || {}
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
@@ -1930,6 +1996,52 @@ function switchTab(tab) {
   lucide.createIcons();
 }
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+/* -------------------------------------------------------------------------
+ * 10-1-1. 모바일 좌우 스와이프로 메인 탭 전환
+ *    - X축 이동거리가 Y축보다 크고 최소 임계값(50px)을 넘을 때만 스와이프로 인정한다(세로 스크롤
+ *      오인식 방지). 표/차트처럼 자체적으로 가로 스크롤이 있는 영역(.overflow-x-auto, 탭 바 자신도
+ *      포함)에서 시작한 터치는 애초에 추적하지 않아 그 영역의 좌우 스크롤과 충돌하지 않는다. 모달이
+ *      열려 있을 때도 배경 탭이 바뀌면 혼란스러우므로 추적하지 않는다. preventDefault를 전혀 호출하지
+ *      않으므로(passive 리스너) 세로 스크롤 등 기존 터치 동작은 전혀 방해받지 않는다.
+ * ---------------------------------------------------------------------- */
+const SWIPE_TAB_ORDER = ['dashboard', 'transactions', 'projection', 'rebalance'];
+const SWIPE_MIN_DISTANCE = 50; // px
+const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2'];
+let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
+
+function isAnyModalOpen() {
+  return SWIPE_MODAL_IDS.some((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden');
+  });
+}
+
+const swipeSurface = document.getElementById('app');
+swipeSurface.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1 || isAnyModalOpen() || e.target.closest('.overflow-x-auto')) {
+    swipeTracking = false;
+    return;
+  }
+  swipeStartX = e.touches[0].clientX;
+  swipeStartY = e.touches[0].clientY;
+  swipeTracking = true;
+}, { passive: true });
+
+swipeSurface.addEventListener('touchend', (e) => {
+  if (!swipeTracking) return;
+  swipeTracking = false;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - swipeStartX;
+  const dy = touch.clientY - swipeStartY;
+  if (Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) <= Math.abs(dy)) return;
+
+  const idx = SWIPE_TAB_ORDER.indexOf(state.activeTab);
+  if (idx === -1) return;
+  const nextIdx = dx < 0 ? idx + 1 : idx - 1; // 왼쪽으로 스와이프 -> 다음 탭, 오른쪽으로 -> 이전 탭
+  if (nextIdx < 0 || nextIdx >= SWIPE_TAB_ORDER.length) return; // 첫/마지막 탭 경계에서는 무반응
+  switchTab(SWIPE_TAB_ORDER[nextIdx]);
+}, { passive: true });
 
 // [모바일 발견성 개선] 탭 내비게이션이 화면 폭보다 넓어 가로 스크롤이 필요한 경우에만 오른쪽 페이드
 // 힌트(#tabScrollHint)를 보여준다 - 스크롤이 필요 없는 넓은 화면이나, 이미 끝까지 스크롤해 더 볼
@@ -2634,7 +2746,7 @@ function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetB
 const CURRENT_YEAR = new Date().getFullYear();
 
 // 그룹별 기본 예상 연수익률(%). 사용자가 입력창에서 값을 직접 넣으면 이 기본값 대신 그 값이 쓰인다.
-const PROJECTION_GROUP_DEFAULT_RATES = { '주식형자산': 8.0, '채권': 4.5, '현금': 0.0 };
+const PROJECTION_GROUP_DEFAULT_RATES = { '주식형자산': 9.0, '채권': 4.5, '현금': 0.0 };
 const PROJECTION_GROUP_LABELS = { '주식형자산': '주식형 자산 (주식+ETF)' };
 // [색상 구분 개선] 기존 '주식형자산'(#6366f1)이 '총 자산 합계' 라인(#4f46e5, 보라 계열)과 색조가
 // 거의 같아 두 라인을 눈으로 구분하기 어려웠다 - 서로 다른 색상 계열(빨강/초록/청록)로 바꿔 총자산
@@ -2695,10 +2807,79 @@ function renderProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
   buildCategoryReturnInputs(groupKeys, byGroup);
+  renderCategoryReturnSummaryReadonly(groupKeys, byGroup);
+  renderScenario2TickerRateInputs();
   document.getElementById('monthlyContributionInput').value = state.projection.monthlyContribution || '';
   document.getElementById('inflationRateInput').value =
     (state.projection.inflationRate !== undefined && state.projection.inflationRate !== null) ? state.projection.inflationRate : 2.5;
   updateProjection();
+}
+
+// 카드1(현재 구성 유지 시)의 읽기 전용 요약 - 실제 입력창(categoryReturnInputs)은 scenarioModal1 안에
+// 있고, 메인 화면에는 그 값을 텍스트로만 보여준다(요청: 메인 화면은 읽기 전용, 수정은 팝업에서).
+function renderCategoryReturnSummaryReadonly(groupKeys, byGroup) {
+  const wrap = document.getElementById('categoryReturnSummaryReadonly');
+  if (!wrap) return;
+  const editableGroupKeys = groupKeys.filter((k) => k !== '현금');
+  wrap.innerHTML = editableGroupKeys.map((k) => {
+    const rate = getGroupReturnRate(k);
+    return `<div class="flex items-center justify-between"><span class="text-slate-400">${escapeHtml(getProjectionGroupLabel(k))}</span><span class="font-medium">${fmtNum(rate, 1)}%</span></div>`;
+  }).join('') || '<p class="text-slate-400">자산을 먼저 추가하세요.</p>';
+}
+
+// 카드2(리밸런싱 후) 팝업 안의 QQQM/SPYM/SCHD 기대수익률 입력창 - 예전엔 SCENARIO2_TICKER_RATE_
+// OVERRIDES에 하드코딩되어 수정할 방법이 없었는데, 여기서 직접 편집할 수 있게 한다. 입력은 다른
+// 예측 입력창들과 동일하게 바로바로 반영된다(수정 즉시 persistProjection+updateProjection) - 팝업의
+// "적용하기" 버튼은 팝업을 닫아 확정하는 역할만 한다.
+// 시나리오2에서 개별 수익률을 지정할 수 있는 대상 = 고정 3종목(QQQM/SPYM/SCHD) + "리밸런싱" 탭
+// 해외 세부 목표에 검색으로 추가한 개별주식 전부. 국내 개별 티커(KODEX 200TR 등)는 기존 설계대로
+// '주식형자산' 그룹 수익률을 그대로 쓰고 여기 목록에 넣지 않는다(요청 범위: 미국/해외 개별주식만).
+// Map을 쓰는 이유: 같은 티커가 고정 목록과 커스텀 목록에 동시에 있거나, 나중에 커스텀으로 QQQM을
+// 또 추가하는 등 중복이 생겨도 자동으로 하나로 합쳐지게 하기 위함이다.
+function getScenario2EditableTickers() {
+  const map = new Map(); // yahooTicker -> label
+  Object.keys(SCENARIO2_TICKER_RATE_OVERRIDES).forEach((t) => map.set(t, t));
+  (state.rebalance.targets['해외'] || []).forEach((t) => {
+    if (t.type !== 'ticker' || !t.ticker) return;
+    const yahoo = sanitizeTicker(t.ticker).yahooTicker;
+    if (yahoo) map.set(yahoo, t.label || yahoo);
+  });
+  return map;
+}
+
+// 고정 3종목은 원래의 하드코딩 기본값을, 그 외(커스텀 추가 종목)는 '주식형자산' 그룹 기본 수익률을
+// 시작값으로 보여준다 - 사용자가 팝업에서 얼마든지 덮어쓸 수 있다.
+function getScenario2TickerDefaultRate(yahooTicker) {
+  return SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker] !== undefined ? SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker] : getGroupReturnRate('주식형자산');
+}
+
+function renderScenario2TickerRateInputs() {
+  const wrap = document.getElementById('scenario2TickerRateInputs');
+  if (!wrap) return;
+  const tickers = [...getScenario2EditableTickers().entries()];
+  wrap.innerHTML = tickers.map(([ticker, label]) => {
+    const defaultRate = getScenario2TickerDefaultRate(ticker);
+    const manual = state.projection.scenario2TickerRates[ticker];
+    const displayVal = (manual !== undefined && manual !== '') ? manual : defaultRate;
+    const labelText = label === ticker ? ticker : `${label} (${ticker})`;
+    return `
+    <div>
+      <span class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(labelText)} 예상수익률(%)</span>
+      <input data-scenario2-ticker-rate="${escapeHtml(ticker)}" type="number" step="0.1" placeholder="${fmtNum(defaultRate, 1)} (기본값)" value="${displayVal}"
+        class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+    </div>`;
+  }).join('') || '<p class="text-xs text-slate-400">"리밸런싱" 탭의 해외 세부 목표에 개별 종목을 추가하면 여기서 수익률을 지정할 수 있습니다.</p>';
+
+  wrap.querySelectorAll('input[data-scenario2-ticker-rate]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const ticker = e.target.dataset.scenario2TickerRate;
+      const v = e.target.value;
+      if (v === '') delete state.projection.scenario2TickerRates[ticker];
+      else state.projection.scenario2TickerRates[ticker] = num(v);
+      persistProjection();
+      updateProjection();
+    });
+  });
 }
 
 function buildCategoryReturnInputs(groupKeys, byGroup) {
@@ -2773,21 +2954,52 @@ function getMilestoneYearOffsets() {
  * ---------------------------------------------------------------------- */
 // 미국 개별 티커는 자산군 공통 수익률이 아니라 종목별로 고정된 수익률을 쓴다(사용자 지정값).
 // 키는 sanitizeTicker().yahooTicker 기준으로 비교하므로 'QQQM'처럼 정제된 형태로 등록한다.
-const SCENARIO2_TICKER_RATE_OVERRIDES = { 'QQQM': 11.0, 'SPYM': 8.0, 'SCHD': 9.0 };
+const SCENARIO2_TICKER_RATE_OVERRIDES = { 'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 9.0 };
 
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 시나리오 2에서 쓸 예상 수익률을 정한다.
-//   - 미국 개별 티커(QQQM/SPYM/SCHD)는 SCENARIO2_TICKER_RATE_OVERRIDES에 고정된 값을 그대로 쓴다.
-//   - 국내 개별 티커(KODEX 200TR, TIGER 코리아배당다우존스)는 고정 오버라이드가 없으므로 실질적으로
+//   - 해외 개별 티커(고정 QQQM/SPYM/SCHD + 리밸런싱 탭에서 검색으로 추가한 커스텀 종목 전부)는
+//     scenarioModal2에서 개별 지정한 수익률(없으면 getScenario2TickerDefaultRate 기본값)을 쓴다.
+//   - 국내 개별 티커(KODEX 200TR, TIGER 코리아배당다우존스 등)는 개별 입력창이 없으므로 실질적으로
 //     주식형 ETF인 점을 반영해 '주식형자산' 그룹의 기본 수익률을 쓴다.
 //   - 자산군 캐치올(주식/채권/현금)은 그 자산군이 매핑되는 예측 그룹의 수익률을 쓴다.
+// scenarioModal2에서 수동으로 값을 바꾸면 state.projection.scenario2TickerRates에 저장되고, 비어있으면
+// getScenario2TickerDefaultRate 기본값을 그대로 쓴다(getGroupReturnRate가 categoryReturns를 다루는
+// 방식과 동일한 패턴).
+function getScenario2TickerRate(yahooTicker) {
+  const manual = state.projection.scenario2TickerRates && state.projection.scenario2TickerRates[yahooTicker];
+  if (manual !== undefined && manual !== '' && Number.isFinite(num(manual))) return num(manual);
+  return getScenario2TickerDefaultRate(yahooTicker);
+}
 function getTargetProjectionRate(target) {
   if (target.type === 'ticker') {
     const yahoo = sanitizeTicker(target.ticker).yahooTicker;
-    if (SCENARIO2_TICKER_RATE_OVERRIDES[yahoo] !== undefined) return SCENARIO2_TICKER_RATE_OVERRIDES[yahoo];
+    const isDomesticTicker = /\.(KS|KQ)$/i.test(yahoo);
+    if (!isDomesticTicker) return getScenario2TickerRate(yahoo); // 해외 개별 티커는 전부 개별 지정 가능
     return getGroupReturnRate('주식형자산');
   }
   return getGroupReturnRate(getProjectionGroupKey(target.category));
 }
+
+/* -------------------------------------------------------------------------
+ * 10-3-3. 시나리오 수정 팝업 (카드1/카드2 각각 별도) - 카드는 읽기 전용, 탭하면 팝업이 열려 그 안에서만
+ *    수정한다. 입력값 자체는 이미 실시간으로 반영되므로(카드 안 input의 기존 'input' 리스너 그대로
+ *    유지), "적용하기" 버튼은 팝업을 닫아 결과를 확인시켜주는 역할이다.
+ * ---------------------------------------------------------------------- */
+function openScenarioModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeScenarioModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+document.getElementById('scenarioCard1').addEventListener('click', () => openScenarioModal('scenarioModal1'));
+document.getElementById('scenarioCard1').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScenarioModal('scenarioModal1'); } });
+document.getElementById('scenarioCard2').addEventListener('click', () => openScenarioModal('scenarioModal2'));
+document.getElementById('scenarioCard2').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScenarioModal('scenarioModal2'); } });
+
+document.getElementById('closeScenarioModal1Btn').addEventListener('click', () => closeScenarioModal('scenarioModal1'));
+document.getElementById('applyScenarioModal1Btn').addEventListener('click', () => closeScenarioModal('scenarioModal1'));
+document.getElementById('scenarioModal1').addEventListener('click', (e) => { if (e.target.id === 'scenarioModal1') closeScenarioModal('scenarioModal1'); });
+
+document.getElementById('closeScenarioModal2Btn').addEventListener('click', () => closeScenarioModal('scenarioModal2'));
+document.getElementById('applyScenarioModal2Btn').addEventListener('click', () => closeScenarioModal('scenarioModal2'));
+document.getElementById('scenarioModal2').addEventListener('click', (e) => { if (e.target.id === 'scenarioModal2') closeScenarioModal('scenarioModal2'); });
 
 // 리밸런싱 후(시나리오 2) 포트폴리오 전체의 가중평균 연수익률 - 지역 배분(국내/해외 %) × 지역 내
 // 목표 항목 비중(%) × 그 항목의 예상 수익률을 전부 더한다.
@@ -3036,6 +3248,9 @@ function simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, ma
 function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
+  // 카드1의 읽기 전용 요약(수치는 팝업 안 input에만 반응해 바뀌므로, input이 바뀔 때마다 호출되는
+  // updateProjection 안에서 매번 같이 다시 그려야 카드 쪽 표시도 실시간으로 따라간다).
+  renderCategoryReturnSummaryReadonly(groupKeys, byGroup);
   const totalValue = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
 
   let weightedSum = 0;
@@ -3048,6 +3263,7 @@ function updateProjection() {
   const monthlyContribution = num(document.getElementById('monthlyContributionInput').value);
   state.projection.monthlyContribution = monthlyContribution;
   document.getElementById('summaryContribution2').textContent = fmtKRW(monthlyContribution);
+  document.getElementById('monthlyContributionReadonly').textContent = fmtKRW(monthlyContribution);
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
   // "가중평균 연수익률"은 의도적으로 명목 수익률만 표시한다(물가상승률 미반영) - 실질가치 환산은
@@ -3635,25 +3851,29 @@ function renderTransactionList() {
   lucide.createIcons();
 }
 
-['txFilterFrom', 'txFilterTo', 'txFilterAccount', 'txFilterType'].forEach((id) => {
-  const map = { txFilterFrom: 'from', txFilterTo: 'to', txFilterAccount: 'account', txFilterType: 'type' };
-  document.getElementById(id).addEventListener('change', (e) => {
-    state.txFilters[map[id]] = e.target.value;
-    renderTransactionList();
-  });
-});
-document.getElementById('txFilterSearch').addEventListener('input', (e) => {
-  state.txFilters.search = e.target.value;
+// 필터 변경은 더 이상 즉시 조회하지 않는다(요청에 따라) - 입력란은 값만 바뀌고, [조회] 버튼을 눌러야
+// 그 조건으로 실제 목록이 다시 그려진다. [초기화]는 예외적으로 누르는 즉시 결과까지 초기화해 보여준다.
+function applyTxFilters() {
+  state.txFilters = {
+    from: document.getElementById('txFilterFrom').value,
+    to: document.getElementById('txFilterTo').value,
+    account: document.getElementById('txFilterAccount').value,
+    type: document.getElementById('txFilterType').value,
+    search: document.getElementById('txFilterSearch').value
+  };
   renderTransactionList();
+}
+document.getElementById('txFilterApplyBtn').addEventListener('click', applyTxFilters);
+document.getElementById('txFilterSearch').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyTxFilters();
 });
 document.getElementById('txFilterResetBtn').addEventListener('click', () => {
-  state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   document.getElementById('txFilterFrom').value = '';
   document.getElementById('txFilterTo').value = '';
   document.getElementById('txFilterAccount').value = 'ALL';
   document.getElementById('txFilterType').value = 'ALL';
   document.getElementById('txFilterSearch').value = '';
-  renderTransactionList();
+  applyTxFilters();
 });
 
 /* ---- 기간별(일별/월별/연별) 실현손익 ---- */
@@ -5225,7 +5445,8 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           state.projection = {
             monthlyContribution: num(parsed.projection.monthlyContribution),
             categoryReturns: parsed.projection.categoryReturns || {},
-            inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5
+            inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
+            scenario2TickerRates: parsed.projection.scenario2TickerRates || {}
           };
           persistProjection();
         }
@@ -5272,7 +5493,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.priceFetchFailedIds = new Set();
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
-  state.projection = { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5 };
+  state.projection = { monthlyContribution: 1500000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   persistAssets();
