@@ -44,6 +44,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <!-- Chart.js DataLabels 플러그인 (파이/도넛 조각에 % 상시 표기) -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<!-- Hammer.js: chartjs-plugin-zoom의 핀치(두 손가락) 제스처 인식에 필요 (반드시 zoom 플러그인보다 먼저 로드) -->
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<!-- Chart.js Zoom 플러그인 (종목 상세 차트 전용 - 휠 확대/축소, 드래그 이동, 핀치 줌) -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 <!-- SheetJS (엑셀 입출력) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
@@ -75,12 +79,6 @@
     #tabPanelRebalance input[type=number], #tabPanelProjection input[type=number] { min-height: 44px; font-size: 16px; }
   }
 
-  /* 자산 관리 목록 아코디언: 카드 뷰(div)는 max-height/opacity 전환으로 부드럽게 펼쳐지고 접힌다.
-     테이블 행(tr)은 브라우저마다 max-height 전환이 불안정해 hidden(즉시 토글)으로 처리한다. */
-  .detail-panel { max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; }
-  .detail-panel.expanded { max-height: 500px; opacity: 1; }
-  [data-chevron-for] { transition: transform 0.2s ease; }
-
   /* 탭 버튼: 비활성은 회색 텍스트, 활성은 브랜드 컬러 배경 */
   .tab-btn { color: #64748b; }
   .dark .tab-btn { color: #94a3b8; }
@@ -93,6 +91,16 @@
   .dark .table-group-btn { color: #94a3b8; }
   .table-group-btn:hover { background: rgba(148,163,184,.12); }
   .table-group-btn.active { background: #4f46e5; color: #fff; }
+
+  /* 종목 상세 팝업의 주가 차트: 핀치 줌/드래그 제스처가 브라우저 기본 스크롤/확대와 충돌하지 않도록
+     터치 동작을 캔버스 자체가 전담하게 한다(없으면 모바일에서 두 손가락으로 확대할 때 팝업 뒤 배경
+     페이지가 스크롤되거나, 브라우저의 페이지 확대 제스처와 겹쳐 버벅인다). */
+  #assetDetailChart { touch-action: none; }
+
+  /* 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 선택된 기간만 강조 배경으로 표시한다. */
+  .period-btn { color: #64748b; }
+  .dark .period-btn { color: #94a3b8; }
+  .period-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
 </style>
 </head>
 
@@ -948,6 +956,73 @@
   </div>
 </div>
 
+<!-- ============================= 종목 상세 정보 + 주가 차트 모달 =============================
+     총투자현황 탭의 자산 관리 목록에서 종목을 클릭하면 뜬다(기존 수정 폼 아코디언을 대체) - 읽기 전용
+     정보 + 일봉 주가 차트를 보여주고, 자산 삭제만 여기서 계속 할 수 있게 남겨둔다(수정은 더 이상 이
+     화면에서 하지 않는다 - 거래내역 탭에서 거래를 등록/수정하면 수량·매입단가가 자동 반영된다). -->
+<div id="assetDetailModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div class="min-w-0">
+        <h3 id="assetDetailName" class="text-sm font-semibold truncate">-</h3>
+        <p id="assetDetailTicker" class="text-[11px] font-mono text-slate-400 truncate">-</p>
+      </div>
+      <button type="button" id="closeAssetDetailModalBtn" class="shrink-0 ml-3 text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto">
+      <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-4"></div>
+
+      <!-- [종목 통합 표시 전용] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우에만 표시된다. -->
+      <div id="assetDetailOwnerBreakdown" class="hidden mb-4">
+        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">소유자별 보유 세부 현황</h4>
+        <div id="assetDetailOwnerBreakdownList" class="space-y-1.5"></div>
+      </div>
+
+      <div class="border border-slate-100 dark:border-slate-800 rounded-xl p-2">
+        <!-- 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 클릭 시 캐시된 전체 시세(assetDetailFullPoints)를
+             다시 잘라 그 기간만큼만 보여준다(재조회 없음). 휠/드래그/핀치로 임의 확대·이동한 뒤에도
+             버튼을 누르면 그 기간 기준으로 확실하게 리셋된다. -->
+        <div id="assetDetailPeriodButtons" class="flex items-center justify-end gap-1 mb-1.5"></div>
+        <!-- 이동평균선(MA5/10/20/60/120) 범례 - 색상 점 + 명칭 + 현재 시점 수치. 데이터가 부족한
+             기간(신규 상장 등)은 렌더링 시 '-'로 표시된다. -->
+        <div id="assetDetailMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium mb-1 px-1"></div>
+        <div class="relative h-56 sm:h-72">
+          <canvas id="assetDetailChart"></canvas>
+          <p id="assetDetailChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+        </div>
+        <p class="text-[9px] text-slate-300 dark:text-slate-600 mt-1 px-1">휠/드래그로 확대·이동, 모바일은 두 손가락으로 확대(핀치 줌)할 수 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="assetDetailDeleteBtn" class="touch-target text-xs font-medium text-red-500 hover:text-red-600 flex items-center gap-1.5">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제
+      </button>
+      <button type="button" id="assetDetailCloseBtn" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 비중 차트 확대 모달 (자산군별/소유자별/국내해외 비중 공용) =============================
+     대시보드 3개 비중 차트를 클릭/터치하면 같은 데이터를 큼직하게 다시 그려 보여준다 - 작은 차트에서
+     하던 툴팁 노출은 여기서는 끄고(작은 차트 쪽은 tooltip.enabled=false), 이 확대 화면에서만 툴팁을 켠다. -->
+<div id="chartZoomModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 id="chartZoomModalTitle" class="text-sm font-semibold">비중 상세</h3>
+      <button type="button" id="closeChartZoomModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="p-5">
+      <div class="h-72 sm:h-96"><canvas id="chartZoomCanvas"></canvas></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 개별주식 검색 모달 (리밸런싱 국내/해외 개별주식 추가 전용) =============================
      assetModal(z-50)과 동시에 열릴 일은 없지만 혹시 모를 겹침에 대비해 z-index를 한 단계 더 높게 둔다. -->
 <div id="stockSearchModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -1287,6 +1362,14 @@ function ensureForeignCategoryCatchalls(list) {
   return arr;
 }
 
+// [개별주식 추가 기능 제거] 예전 버전에서 리밸런싱 탭 검색으로 추가했던 개별주식은 custom:true로
+// 표시되어 저장돼 있다 - 그 기능이 통째로 제거되어 이제 화면에서 보이지도, 관리되지도 않으므로,
+// 이미 localStorage/JSON 백업에 남아있는 custom 항목을 불러오는 시점에 걸러내 깔끔하게 정리한다
+// (남겨두면 화면엔 안 보이는데 비중(%)만 계산에 계속 반영되는 유령 항목이 된다).
+function stripCustomRebalanceTargets(list) {
+  return (Array.isArray(list) ? list : []).filter((t) => !(t && t.custom));
+}
+
 // 엑셀 업로드 시 사용자가 '통화' 컬럼을 직접 기재하면 그 값을 그대로 사용한다.
 // 'KRW'/'USD'(또는 '원화'/'달러') 외의 값(공란, 오타 등)은 무시하고 fallback(기본값)으로 폴백한다.
 // 통화는 국내/해외 표시와는 독립적인 필드로, 실제 원화 환산 계산은 전부 이 값을 기준으로 한다.
@@ -1325,9 +1408,6 @@ const state = {
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
-  // 자산 관리 목록 아코디언에서 펼쳐진(상세 보기 중인) 자산 id 집합 - 화면 표시 상태일 뿐이라
-  // localStorage에는 저장하지 않는다(세션 휘발성, 새로고침 시 전부 접힌 상태로 복귀).
-  expandedRowIds: new Set(),
   // [RISK 관리] 시장 지수/선물 실시간 등락률(%) - KOSPI/KOSDAQ/NASDAQ/SP500. 시세 갱신마다 함께
   // 갱신되는 휘발성 데이터라 localStorage에는 저장하지 않는다.
   indexChangeMap: {},
@@ -1358,7 +1438,7 @@ const state = {
   pnlPeriod: { granularity: 'monthly', refDate: todayDateStr() }
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -1516,8 +1596,8 @@ function loadState() {
         state.rebalance = {
           domestic: parsed.domestic || state.rebalance.domestic,
           targets: {
-            '국내': Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내'],
-            '해외': ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외'])
+            '국내': stripCustomRebalanceTargets(Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내']),
+            '해외': stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외']))
           }
         };
       }
@@ -1925,6 +2005,30 @@ function pieChartPlugins(textColor, isMobile) {
   };
 }
 
+const DOMESTIC_CHART_COLORS = { '국내': '#64748b', '해외': '#f59e0b' }; // 테이블의 국내/해외 뱃지 색상과 통일
+const CHART_ZOOM_TITLES = { category: '자산군별 비중 상세', owner: '소유자별 비중 상세', domestic: '국내/해외 비중 상세' };
+
+// 3개 비중 차트(자산군별/소유자별/국내해외별)의 라벨·값·색상 계산 로직을 한 곳에 모은다 - 작은
+// 대시보드 차트와 확대 모달 차트가 이 함수 하나를 공유해서 두 화면의 숫자가 항상 일치한다.
+function buildPieChartData(key, rows) {
+  if (key === 'owner') {
+    const byOwner = {};
+    rows.forEach(r => { byOwner[r.owner] = (byOwner[r.owner] || 0) + r.curAmount; });
+    const labels = Object.keys(byOwner).sort((a, b) => ownerRank(a) - ownerRank(b));
+    return { type: 'pie', labels, values: labels.map(o => byOwner[o]), colors: labels.map((o, i) => colorFor(o, i + 3)) };
+  }
+  if (key === 'domestic') {
+    const byDomestic = { '국내': 0, '해외': 0 };
+    rows.forEach(r => { byDomestic[r.isDomestic] = (byDomestic[r.isDomestic] || 0) + r.curAmount; });
+    const labels = Object.keys(byDomestic).filter(k => byDomestic[k] > 0);
+    return { type: 'doughnut', labels, values: labels.map(k => byDomestic[k]), colors: labels.map(k => DOMESTIC_CHART_COLORS[k]) };
+  }
+  const byCategory = {};
+  rows.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.curAmount; });
+  const labels = Object.keys(byCategory);
+  return { type: 'doughnut', labels, values: labels.map(c => byCategory[c]), colors: labels.map((c, i) => colorFor(c, i)) };
+}
+
 function renderCharts() {
   const rows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
   const textColor = chartTextColor();
@@ -1933,51 +2037,55 @@ function renderCharts() {
   // 범례/데이터라벨 글자를 더 작게·짧게 줄인다 - sm 브레이크포인트(640px)와 동일 기준.
   const isMobile = window.innerWidth < 640;
 
-  // --- 차트 1: 자산군별 비중 (도넛) ---
-  const byCategory = {};
-  rows.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.curAmount; });
-  const catLabels = Object.keys(byCategory);
-  const catValues = Object.values(byCategory);
-  const catColors = catLabels.map((c, i) => colorFor(c, i));
-
-  if (charts.category) charts.category.destroy();
-  charts.category = new Chart(document.getElementById('categoryChart'), {
-    type: 'doughnut',
-    data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: catColors, borderWidth: 2, borderColor }] },
-    plugins: [ChartDataLabels],
-    options: { responsive: true, maintainAspectRatio: false, plugins: pieChartPlugins(textColor, isMobile) }
-  });
-
-  // --- 차트 2: 소유자별 자산 비중 (파이) ---
-  const byOwner = {};
-  rows.forEach(r => { byOwner[r.owner] = (byOwner[r.owner] || 0) + r.curAmount; });
-  const ownerLabels = Object.keys(byOwner).sort((a, b) => ownerRank(a) - ownerRank(b));
-  const ownerValues = ownerLabels.map(o => byOwner[o]);
-  const ownerColors = ownerLabels.map((o, i) => colorFor(o, i + 3));
-
-  if (charts.owner) charts.owner.destroy();
-  charts.owner = new Chart(document.getElementById('ownerChart'), {
-    type: 'pie',
-    data: { labels: ownerLabels, datasets: [{ data: ownerValues, backgroundColor: ownerColors, borderWidth: 2, borderColor }] },
-    plugins: [ChartDataLabels],
-    options: { responsive: true, maintainAspectRatio: false, plugins: pieChartPlugins(textColor, isMobile) }
-  });
-
-  // --- 차트 3: 국내/해외 비중 (도넛) ---
-  const byDomestic = { '국내': 0, '해외': 0 };
-  rows.forEach(r => { byDomestic[r.isDomestic] = (byDomestic[r.isDomestic] || 0) + r.curAmount; });
-  const domesticLabels = Object.keys(byDomestic).filter(k => byDomestic[k] > 0);
-  const domesticValues = domesticLabels.map(k => byDomestic[k]);
-  const DOMESTIC_COLORS = { '국내': '#64748b', '해외': '#f59e0b' }; // 테이블의 국내/해외 뱃지 색상과 통일
-
-  if (charts.domestic) charts.domestic.destroy();
-  charts.domestic = new Chart(document.getElementById('domesticChart'), {
-    type: 'doughnut',
-    data: { labels: domesticLabels, datasets: [{ data: domesticValues, backgroundColor: domesticLabels.map(k => DOMESTIC_COLORS[k]), borderWidth: 2, borderColor }] },
-    plugins: [ChartDataLabels],
-    options: { responsive: true, maintainAspectRatio: false, plugins: pieChartPlugins(textColor, isMobile) }
+  // [차트 확대 모달 전환] 예전에는 이 작은 차트를 탭하면 Chart.js 기본 툴팁이 좁은 화면에 뜨는 게
+  // 전부였다 - 이제는 탭/클릭하면 openChartZoomModal()이 같은 데이터를 큼직하게 다시 그려서 보여주므로,
+  // 작은 차트 쪽 툴팁은 꺼서(tooltip.enabled=false) 서로 겹치지 않게 한다.
+  ['category', 'owner', 'domestic'].forEach((key) => {
+    const d = buildPieChartData(key, rows);
+    if (charts[key]) charts[key].destroy();
+    charts[key] = new Chart(document.getElementById(key + 'Chart'), {
+      type: d.type,
+      data: { labels: d.labels, datasets: [{ data: d.values, backgroundColor: d.colors, borderWidth: 2, borderColor }] },
+      plugins: [ChartDataLabels],
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: () => openChartZoomModal(key),
+        plugins: { ...pieChartPlugins(textColor, isMobile), tooltip: { enabled: false } }
+      }
+    });
   });
 }
+
+// 비중 차트 확대 모달 - 대시보드의 작은 차트와 똑같은 데이터(buildPieChartData)를 더 큰 캔버스에
+// 다시 그리고, 여기서는 툴팁도 켜서 정확한 금액/비중을 확인할 수 있게 한다.
+function openChartZoomModal(key) {
+  document.getElementById('chartZoomModalTitle').textContent = CHART_ZOOM_TITLES[key] || '비중 상세';
+  document.getElementById('chartZoomModal').classList.remove('hidden');
+
+  const rows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
+  const textColor = chartTextColor();
+  const borderColor = chartBorderColor();
+  const d = buildPieChartData(key, rows);
+
+  if (charts.chartZoom) charts.chartZoom.destroy();
+  charts.chartZoom = new Chart(document.getElementById('chartZoomCanvas'), {
+    type: d.type,
+    data: { labels: d.labels, datasets: [{ data: d.values, backgroundColor: d.colors, borderWidth: 2, borderColor }] },
+    plugins: [ChartDataLabels],
+    options: { responsive: true, maintainAspectRatio: false, plugins: pieChartPlugins(textColor, false) }
+  });
+  // 모달이 hidden 상태(display:none)일 때는 캔버스 크기를 0으로 인식하므로, 보여준 직후 한 프레임
+  // 기다렸다가 resize()를 강제로 한 번 더 호출해 올바른 크기로 다시 그리게 한다.
+  requestAnimationFrame(() => { if (charts.chartZoom) charts.chartZoom.resize(); });
+}
+
+function closeChartZoomModal() {
+  document.getElementById('chartZoomModal').classList.add('hidden');
+}
+document.getElementById('closeChartZoomModalBtn').addEventListener('click', closeChartZoomModal);
+document.getElementById('chartZoomModal').addEventListener('click', (e) => {
+  if (e.target.id === 'chartZoomModal') closeChartZoomModal();
+});
 
 /* -------------------------------------------------------------------------
  * 10-1. 탭 전환
@@ -2007,7 +2115,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  * ---------------------------------------------------------------------- */
 const SWIPE_TAB_ORDER = ['dashboard', 'transactions', 'projection', 'rebalance'];
 const SWIPE_MIN_DISTANCE = 50; // px
-const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2'];
+const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2234,32 +2342,13 @@ function buildDomesticTargetInputs() {
   });
 }
 
-const MAX_CUSTOM_STOCKS_PER_REGION = 3;
-
-// 이 지역의 "전체 주식 목표 비중" 상한 - category:'주식' 캐치올 항목이 있으면 그 비중(%)을 그대로 쓴다.
-// 해외(미국)처럼 별도 '주식' 캐치올이 없고 이미 전부 개별 티커로만 구성된 지역은 null을 반환하며,
-// 이 경우 개별주식 비중은(기존 규칙대로) 지역 합계 100% 제약만 적용받는다.
-function getRegionStockBudgetPct(region) {
-  const stockCategoryTarget = (state.rebalance.targets[region] || []).find((t) => t.type === 'category' && t.category === '주식');
-  return stockCategoryTarget ? num(stockCategoryTarget.pct) : null;
-}
-
-// excludeIdx: 지금 막 값을 바꾸려는 항목 자신은 합계에서 빼고 계산한다(자기 자신과 비교하지 않기 위함).
-function getCustomStockPctSum(region, excludeIdx) {
-  return (state.rebalance.targets[region] || []).reduce((s, t, i) => (t.custom && i !== excludeIdx ? s + num(t.pct) : s), 0);
-}
-
 /* -------------------------------------------------------------------------
- * 15-1. [개별주식 검색 모달] - 리밸런싱 국내/해외 개별주식 추가 전용
+ * 15-1. [개별주식 검색 모달] - 거래내역 탭의 종목 선택 전용
  *    - 로컬(보유 자산 종목명/티커 부분일치, 한글 검색 지원) + Yahoo Finance 검색 API(v1/finance/search,
- *      인증 불필요, 영문명/티커/코드) 두 소스를 합쳐서 보여준다. 검색으로 확정된 티커가 그대로
- *      state.rebalance.targets[region]에 들어가므로, 리밸런싱 실행 가이드/실시간 시세/RISK 감지 등
- *      티커 기반 로직과 자동으로 연동된다(별도 매핑 불필요 - 같은 ticker 필드를 그대로 공유).
+ *      인증 불필요, 영문명/티커/코드) 두 소스를 합쳐서 보여준다.
+ *    - [리밸런싱 탭 개별주식 추가 기능 제거] 이 모달은 원래 리밸런싱 탭에서도 재사용했으나(모드 분기),
+ *      그 기능이 통째로 제거되어 이제 거래내역 탭 전용으로 단순화했다.
  * ---------------------------------------------------------------------- */
-// stockSearchMode: 'rebalance'(리밸런싱 개별주식 추가) | 'transaction'(거래내역 입력 폼의 종목 선택) -
-// 같은 검색 모달을 두 화면에서 재사용하기 위해 어느 쪽에서 열렸는지 구분한다.
-let stockSearchMode = 'rebalance';
-let stockSearchContext = null; // rebalance 모드일 때만 사용: 검색 모달을 연 지역('국내'|'해외')
 let stockSearchDebounceTimer = null;
 let stockSearchRequestSeq = 0; // 느린 응답이 늦게 도착해 최신 검색 결과를 덮어쓰는 경쟁 상태 방지용
 
@@ -2327,35 +2416,9 @@ async function searchStockCandidates(query) {
 
 // 티커 접미사(.KS/.KQ)로 국내/해외를 판별한다 - sanitizeTicker와 동일한 기준(getMarketKeyForTicker 등
 // 이 앱 전반에서 쓰는 규칙)이라 다른 곳의 국내/해외 분류와 항상 일치한다.
-function isDomesticTicker(symbol) { return /\.(KS|KQ)$/i.test(String(symbol ?? '')); }
-
-// 검색 팝업 상단에 "이 팝업에서 추가하면 어떤 조건이 적용되는지"를 미리 안내한다 - 검색 범위(국내/
-// 해외 제한)뿐 아니라 몇 개까지/비중이 얼마까지 가능한지도 선택 전에 알 수 있게 한다.
-function buildStockSearchConditionText(region) {
-  const regionLabel = region === '국내' ? '국내(KOSPI/KOSDAQ)' : '해외';
-  const searchNote = region === '국내'
-    ? '한글 종목명은 보유 중인 종목만 검색되고, 그 외에는 코드로 검색하세요.'
-    : '영문명 또는 티커로 검색하세요.';
-  const customCount = (state.rebalance.targets[region] || []).filter((t) => t.custom).length;
-  const budget = getRegionStockBudgetPct(region);
-  const budgetNote = budget !== null
-    ? `개별종목 비중 합계는 ${region} 전체 주식 목표 비중(${fmtNum(budget, 1)}%)을 넘을 수 없습니다.`
-    : `개별종목 비중 합계는 ${region} 지역 배분(합계 100%) 안에서만 가능합니다.`;
-  return `${regionLabel} 종목만 검색됩니다(${searchNote}) 최대 ${MAX_CUSTOM_STOCKS_PER_REGION}개까지 추가할 수 있고(현재 ${customCount}/${MAX_CUSTOM_STOCKS_PER_REGION}), ${budgetNote}`;
-}
-
-function openStockSearchModal(mode, context) {
-  stockSearchMode = mode;
-  stockSearchContext = context;
-  const titleEl = document.getElementById('stockSearchModalTitle');
-  const hintEl = document.getElementById('stockSearchHint');
-  if (mode === 'rebalance' && context) {
-    titleEl.textContent = `개별주식 검색 추가 (${context})`;
-    hintEl.textContent = buildStockSearchConditionText(context);
-  } else {
-    titleEl.textContent = '개별주식 검색 추가';
-    hintEl.textContent = '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
-  }
+function openStockSearchModal() {
+  document.getElementById('stockSearchModalTitle').textContent = '개별주식 검색 추가';
+  document.getElementById('stockSearchHint').textContent = '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
   document.getElementById('stockSearchModal').classList.remove('hidden');
   const input = document.getElementById('stockSearchInput');
   input.value = '';
@@ -2365,7 +2428,6 @@ function openStockSearchModal(mode, context) {
 
 function closeStockSearchModal() {
   document.getElementById('stockSearchModal').classList.add('hidden');
-  stockSearchContext = null;
 }
 
 document.getElementById('closeStockSearchModalBtn').addEventListener('click', closeStockSearchModal);
@@ -2391,27 +2453,10 @@ function renderStockSearchResults(results, seq) {
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (stockSearchMode === 'transaction') {
-        applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName);
-      } else {
-        pickStockForRegion(stockSearchContext, btn.dataset.pickSymbol, btn.dataset.pickName);
-      }
+      applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName);
       closeStockSearchModal();
     });
   });
-}
-
-function pickStockForRegion(region, ticker, name) {
-  if (!region) return;
-  const list = state.rebalance.targets[region] || (state.rebalance.targets[region] = []);
-  if (list.some((t) => t.custom && String(t.ticker ?? '').toUpperCase() === ticker.toUpperCase())) {
-    showToast('이미 추가된 종목입니다.', 'warn');
-    return;
-  }
-  list.push({ type: 'ticker', ticker, label: name, pct: 0, custom: true });
-  persistRebalance();
-  buildTargetInputs(region);
-  updateRebalanceResults();
 }
 
 document.getElementById('stockSearchInput').addEventListener('input', (e) => {
@@ -2424,125 +2469,38 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
   document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 중...</p>';
   stockSearchDebounceTimer = setTimeout(async () => {
     const seq = ++stockSearchRequestSeq;
-    let results = await searchStockCandidates(query);
-    // 리밸런싱 모드에서는 이 팝업을 연 지역(국내/해외)과 다른 시장의 종목은 애초에 후보에서 뺀다 -
-    // 국내 탭에서 열었으면 국내(.KS/.KQ) 종목만, 해외 탭이면 그 외 종목만 남긴다.
-    if (stockSearchMode === 'rebalance' && stockSearchContext) {
-      const wantDomestic = stockSearchContext === '국내';
-      results = results.filter((r) => isDomesticTicker(r.symbol) === wantDomestic);
-    }
+    const results = await searchStockCandidates(query);
     renderStockSearchResults(results, seq);
   }, 350);
 });
 
 // region: '국내' | '해외' - 해당 지역의 티커/자산군 혼합 목표 항목 입력창을 그린다(지역 내 합계 100%).
-// '주식' 캐치올 항목 바로 아래에 개별주식(검색으로 추가, 지역당 최대 3개) 목록과 [+ 개별주식 추가]
-// 버튼을 두고, 그 뒤에 나머지 고정 항목(채권/현금 등)을 이어서 그린다. 개별주식은 custom:true로
-// 표시해 고정 목록과 구분한다 - 고정 목록은 이 화면에서 삭제할 수 없지만 개별주식은 삭제(×) 가능하다.
+// [개별주식 추가 기능 제거] 예전에는 여기에 검색으로 추가한 개별주식(custom:true) 목록과 [+ 개별주식
+// 추가] 버튼이 함께 있었으나 기능이 통째로 제거되어, 이제 DEFAULT_REBALANCE_TARGETS 기반의 고정 목록만
+// 그린다(사용자가 이 화면에서 추가/삭제할 수 없고 비중(%)만 조정 가능).
 function buildTargetInputs(region) {
   const wrapId = region === '국내' ? 'categoryTargetInputsDomestic' : 'categoryTargetInputsForeign';
   const wrap = document.getElementById(wrapId);
   const targets = state.rebalance.targets[region] || [];
-  const withIdx = targets.map((t, idx) => ({ ...t, idx }));
-  const fixedTargets = withIdx.filter((t) => !t.custom);
-  const customTargets = withIdx.filter((t) => t.custom);
-  const customCount = customTargets.length;
 
-  const fixedRowHtml = (t) => `
+  wrap.innerHTML = targets.map((t, idx) => `
     <label class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t.label)} (%)</span>
-      <input data-target-pct data-region="${region}" data-idx="${t.idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
+      <input data-target-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
         class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-    </label>`;
+    </label>`).join('') || `<p class="text-xs text-slate-400 col-span-full">설정된 목표 항목이 없습니다.</p>`;
 
-  // 검색으로 확정된 종목이라 이름/티커는 더 이상 직접 편집하지 않는다(잘못 골랐으면 삭제 후 재검색).
-  // 국내/해외 두 영역이 모바일에서도 항상 나란히(50:50) 배치되는 기존 레이아웃 때문에 이 행이 들어갈
-  // 실제 폭이 매우 좁아서(~140px), [종목명 (티커)] | [비중%] | [삭제]를 한 줄로 우겨넣으면 이름이
-  // 거의 다 잘려나간다(실측 확인됨) - 1행: 종목명(티커)+삭제, 2행: 비중% 입력(우측 정렬)로 나눠
-  // 좁은 폭에서도 이름이 읽히게 한다.
-  const customRowHtml = (t) => `
-    <div class="col-span-full bg-slate-50 dark:bg-slate-800/50 rounded-lg px-2 py-1.5">
-      <div class="flex items-center justify-between gap-1">
-        <span class="text-xs font-medium truncate min-w-0" title="${escapeHtml(t.label)} (${escapeHtml(t.ticker || '-')})">${escapeHtml(t.label)} <span class="text-slate-400 font-normal">(${escapeHtml(t.ticker || '-')})</span></span>
-        <button type="button" data-remove-custom data-region="${region}" data-idx="${t.idx}" title="개별주식 삭제"
-          class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
-          <i data-lucide="x" class="w-3.5 h-3.5"></i>
-        </button>
-      </div>
-      <div class="flex items-center justify-end gap-1 mt-1">
-        <input data-target-pct data-region="${region}" data-idx="${t.idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
-          class="w-16 shrink-0 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 outline-none text-right">
-        <span class="text-xs text-slate-400 shrink-0">%</span>
-      </div>
-    </div>`;
-
-  const addButtonHtml = `
-    <div class="col-span-full">
-      <button type="button" data-add-custom-stock="${region}"
-        class="touch-target w-full text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-        + 개별주식 추가${customCount > 0 ? ` (${customCount}/${MAX_CUSTOM_STOCKS_PER_REGION})` : ''}
-      </button>
-    </div>`;
-
-  // '주식' 캐치올 항목 바로 아래에 개별주식 블록(기존 목록 + 추가 버튼)을 끼워 넣는다 - 그 뒤(채권/
-  // 현금 등)는 그대로 이어서 그린다. '주식' 항목이 없는 예외적인 구성이면 안전하게 맨 끝에 붙인다.
-  const stockIdx = fixedTargets.findIndex((t) => t.type === 'category' && t.category === '주식');
-  const beforeStock = stockIdx === -1 ? fixedTargets : fixedTargets.slice(0, stockIdx + 1);
-  const afterStock = stockIdx === -1 ? [] : fixedTargets.slice(stockIdx + 1);
-  const customBlockHtml = customTargets.map(customRowHtml).join('') + addButtonHtml;
-
-  wrap.innerHTML = (beforeStock.map(fixedRowHtml).join('') + customBlockHtml + afterStock.map(fixedRowHtml).join(''))
-    || `<p class="text-xs text-slate-400 col-span-full">설정된 목표 항목이 없습니다.</p>`;
-
-  // 비중(%) 입력 - 고정 항목/개별주식 공통. 개별주식은 추가로 "이 지역 전체 주식 목표 비중"을
-  // 초과하지 않는지 검증한다(초과 시 경고 토스트를 띄우고 입력을 이전 값으로 되돌린다).
   wrap.querySelectorAll('input[data-target-pct]').forEach((input) => {
     input.addEventListener('input', (e) => {
       const r = e.target.dataset.region;
       const idx = Number(e.target.dataset.idx);
-      const target = state.rebalance.targets[r][idx];
-      const newPct = Math.max(0, Math.min(100, num(e.target.value)));
-
-      if (target.custom) {
-        const budget = getRegionStockBudgetPct(r);
-        if (budget !== null) {
-          const othersSum = getCustomStockPctSum(r, idx);
-          if (othersSum + newPct > budget + 0.05) {
-            showToast(`개별주식 합산 비중은 ${r} 전체 주식 목표 비중(${fmtNum(budget, 1)}%)을 초과할 수 없습니다. (다른 개별주식 합계 ${fmtNum(othersSum, 1)}%)`, 'warn', 6000);
-            e.target.value = target.pct;
-            return;
-          }
-        }
-      }
-      target.pct = newPct;
+      state.rebalance.targets[r][idx].pct = Math.max(0, Math.min(100, num(e.target.value)));
       persistRebalance();
       updateRebalanceResults();
     });
   });
-
-  wrap.querySelectorAll('button[data-remove-custom]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const r = btn.dataset.region;
-      state.rebalance.targets[r].splice(Number(btn.dataset.idx), 1);
-      persistRebalance();
-      buildTargetInputs(r); // 인덱스가 밀리므로 이 지역 입력창을 통째로 다시 그린다
-      updateRebalanceResults();
-    });
-  });
-  const addBtn = wrap.querySelector('button[data-add-custom-stock]');
-  if (addBtn) {
-    addBtn.addEventListener('click', () => {
-      const r = addBtn.dataset.addCustomStock;
-      if ((state.rebalance.targets[r] || []).filter((t) => t.custom).length >= MAX_CUSTOM_STOCKS_PER_REGION) {
-        showToast('개별주식은 국가별로 최대 3개 종목까지만 추가할 수 있습니다.', 'warn');
-        return;
-      }
-      openStockSearchModal('rebalance', r);
-    });
-  }
 
   updateTargetSum(region);
-  lucide.createIcons(); // 삭제(×) 버튼 아이콘을 새로 그렸으므로 다시 렌더링해 아이콘이 비어보이지 않게 한다.
 }
 
 function updateTargetSum(region) {
@@ -2832,43 +2790,24 @@ function renderCategoryReturnSummaryReadonly(groupKeys, byGroup) {
 // 예측 입력창들과 동일하게 바로바로 반영된다(수정 즉시 persistProjection+updateProjection) - 팝업의
 // "적용하기" 버튼은 팝업을 닫아 확정하는 역할만 한다.
 // 시나리오2에서 개별 수익률을 지정할 수 있는 대상 = 고정 3종목(QQQM/SPYM/SCHD) + "리밸런싱" 탭
-// 해외 세부 목표에 검색으로 추가한 개별주식 전부. 국내 개별 티커(KODEX 200TR 등)는 기존 설계대로
-// '주식형자산' 그룹 수익률을 그대로 쓰고 여기 목록에 넣지 않는다(요청 범위: 미국/해외 개별주식만).
-// Map을 쓰는 이유: 같은 티커가 고정 목록과 커스텀 목록에 동시에 있거나, 나중에 커스텀으로 QQQM을
-// 또 추가하는 등 중복이 생겨도 자동으로 하나로 합쳐지게 하기 위함이다.
-function getScenario2EditableTickers() {
-  const map = new Map(); // yahooTicker -> label
-  Object.keys(SCENARIO2_TICKER_RATE_OVERRIDES).forEach((t) => map.set(t, t));
-  (state.rebalance.targets['해외'] || []).forEach((t) => {
-    if (t.type !== 'ticker' || !t.ticker) return;
-    const yahoo = sanitizeTicker(t.ticker).yahooTicker;
-    if (yahoo) map.set(yahoo, t.label || yahoo);
-  });
-  return map;
-}
-
-// 고정 3종목은 원래의 하드코딩 기본값을, 그 외(커스텀 추가 종목)는 '주식형자산' 그룹 기본 수익률을
-// 시작값으로 보여준다 - 사용자가 팝업에서 얼마든지 덮어쓸 수 있다.
-function getScenario2TickerDefaultRate(yahooTicker) {
-  return SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker] !== undefined ? SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker] : getGroupReturnRate('주식형자산');
-}
-
+// 고정 해외 개별 티커 3종목(QQQM/SPYM/SCHD)의 예상수익률을 scenarioModal2에서 직접 수정할 수 있게
+// 입력창을 그린다 - 개별 수익률 관리 대상은 이 3종목으로 고정이다(리밸런싱 탭의 개별주식 검색·추가
+// 기능이 제거되어 더 이상 동적으로 목록을 늘릴 필요가 없다).
 function renderScenario2TickerRateInputs() {
   const wrap = document.getElementById('scenario2TickerRateInputs');
   if (!wrap) return;
-  const tickers = [...getScenario2EditableTickers().entries()];
-  wrap.innerHTML = tickers.map(([ticker, label]) => {
-    const defaultRate = getScenario2TickerDefaultRate(ticker);
+  const tickers = Object.keys(SCENARIO2_TICKER_RATE_OVERRIDES);
+  wrap.innerHTML = tickers.map((ticker) => {
+    const defaultRate = SCENARIO2_TICKER_RATE_OVERRIDES[ticker];
     const manual = state.projection.scenario2TickerRates[ticker];
     const displayVal = (manual !== undefined && manual !== '') ? manual : defaultRate;
-    const labelText = label === ticker ? ticker : `${label} (${ticker})`;
     return `
     <div>
-      <span class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(labelText)} 예상수익률(%)</span>
+      <span class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(ticker)} 예상수익률(%)</span>
       <input data-scenario2-ticker-rate="${escapeHtml(ticker)}" type="number" step="0.1" placeholder="${fmtNum(defaultRate, 1)} (기본값)" value="${displayVal}"
         class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
     </div>`;
-  }).join('') || '<p class="text-xs text-slate-400">"리밸런싱" 탭의 해외 세부 목표에 개별 종목을 추가하면 여기서 수익률을 지정할 수 있습니다.</p>';
+  }).join('');
 
   wrap.querySelectorAll('input[data-scenario2-ticker-rate]').forEach((input) => {
     input.addEventListener('input', (e) => {
@@ -2957,24 +2896,24 @@ function getMilestoneYearOffsets() {
 const SCENARIO2_TICKER_RATE_OVERRIDES = { 'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 9.0 };
 
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 시나리오 2에서 쓸 예상 수익률을 정한다.
-//   - 해외 개별 티커(고정 QQQM/SPYM/SCHD + 리밸런싱 탭에서 검색으로 추가한 커스텀 종목 전부)는
-//     scenarioModal2에서 개별 지정한 수익률(없으면 getScenario2TickerDefaultRate 기본값)을 쓴다.
-//   - 국내 개별 티커(KODEX 200TR, TIGER 코리아배당다우존스 등)는 개별 입력창이 없으므로 실질적으로
-//     주식형 ETF인 점을 반영해 '주식형자산' 그룹의 기본 수익률을 쓴다.
+//   - 고정 해외 개별 티커(QQQM/SPYM/SCHD)만 scenarioModal2에서 개별 지정한 수익률(없으면
+//     SCENARIO2_TICKER_RATE_OVERRIDES 기본값)을 쓴다 - 개별 수익률 관리 대상은 이 3종목으로 고정이다
+//     (리밸런싱 탭의 개별주식 검색·추가 기능은 제거되었으므로 그 외 티커가 생길 일이 없다).
+//   - 그 외 모든 티커(국내 개별 티커 KODEX 200TR/TIGER 코리아배당다우존스 등 포함)는 개별 입력창이
+//     없으므로 실질적으로 주식형 ETF인 점을 반영해 '주식형자산' 그룹의 수익률을 그대로 쓴다.
 //   - 자산군 캐치올(주식/채권/현금)은 그 자산군이 매핑되는 예측 그룹의 수익률을 쓴다.
 // scenarioModal2에서 수동으로 값을 바꾸면 state.projection.scenario2TickerRates에 저장되고, 비어있으면
-// getScenario2TickerDefaultRate 기본값을 그대로 쓴다(getGroupReturnRate가 categoryReturns를 다루는
+// SCENARIO2_TICKER_RATE_OVERRIDES 기본값을 그대로 쓴다(getGroupReturnRate가 categoryReturns를 다루는
 // 방식과 동일한 패턴).
 function getScenario2TickerRate(yahooTicker) {
   const manual = state.projection.scenario2TickerRates && state.projection.scenario2TickerRates[yahooTicker];
   if (manual !== undefined && manual !== '' && Number.isFinite(num(manual))) return num(manual);
-  return getScenario2TickerDefaultRate(yahooTicker);
+  return SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker];
 }
 function getTargetProjectionRate(target) {
   if (target.type === 'ticker') {
     const yahoo = sanitizeTicker(target.ticker).yahooTicker;
-    const isDomesticTicker = /\.(KS|KQ)$/i.test(yahoo);
-    if (!isDomesticTicker) return getScenario2TickerRate(yahoo); // 해외 개별 티커는 전부 개별 지정 가능
+    if (SCENARIO2_TICKER_RATE_OVERRIDES[yahoo] !== undefined) return getScenario2TickerRate(yahoo);
     return getGroupReturnRate('주식형자산');
   }
   return getGroupReturnRate(getProjectionGroupKey(target.category));
@@ -3727,7 +3666,7 @@ document.getElementById('cancelTxModalBtn').addEventListener('click', closeTrans
 document.getElementById('transactionModal').addEventListener('click', (e) => {
   if (e.target.id === 'transactionModal') closeTransactionModal();
 });
-document.getElementById('txSearchStockBtn').addEventListener('click', () => openStockSearchModal('transaction', null));
+document.getElementById('txSearchStockBtn').addEventListener('click', () => openStockSearchModal());
 
 document.getElementById('transactionForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -4044,16 +3983,14 @@ function categoryRank(category) { return CATEGORY_RANK[category] ?? 5; }
 // 안에서는 지역보다 자산군을 먼저 비교한다 - 그렇지 않으면 "국채"(국내)가 "달러"(해외로 분류되는
 // 현금성 자산)보다 뒤로 밀려서 채권(CATEGORY_RANK상 현금보다 앞순위)인데도 화면엔 늦게 보이는
 // 문제가 있었다.
+// [금액순 정렬 추가] 사용자가 열 헤더를 클릭해 직접 정렬하지 않은 기본 상태에서의 정렬 순서.
+// 기존 "채권/현금/부동산은 항상 맨 아래" 규칙(NON_TRADABLE_CATEGORIES 기반 aBottom 분리)은 그대로
+// 유지하되, 그 안에서는 소유자/국내해외/자산군 순서 대신 평가금액이 큰 순(내림차순)으로 최종 정렬한다.
 function defaultAssetOrder(a, b) {
   const aBottom = NON_TRADABLE_CATEGORIES.includes(a.category) ? 1 : 0;
   const bBottom = NON_TRADABLE_CATEGORIES.includes(b.category) ? 1 : 0;
   if (aBottom !== bBottom) return aBottom - bBottom;
-  const byOwner = ownerRank(a.owner) - ownerRank(b.owner);
-  if (byOwner !== 0) return byOwner;
-  if (aBottom === 1) return categoryRank(a.category) - categoryRank(b.category);
-  const byRegion = domesticRank(a.isDomestic) - domesticRank(b.isDomestic);
-  if (byRegion !== 0) return byRegion;
-  return categoryRank(a.category) - categoryRank(b.category);
+  return num(b.curAmount) - num(a.curAmount);
 }
 
 function sortRows(rows) {
@@ -4128,13 +4065,63 @@ function renderGroupedRows(rows, mode, rowRenderer, headerRenderer) {
   }).join('');
 }
 
+// [종목 통합 표시] 동일 티커(티커가 없으면 동일 종목명)를 그룹 키로 삼는다 - sanitizeTicker와 동일한
+// 기준이라 다른 곳의 티커 매칭(리밸런싱 등)과 항상 일치한다.
+function groupKeyFor(a) {
+  const yahoo = sanitizeTicker(a.ticker).yahooTicker;
+  return yahoo ? `T:${yahoo}` : `N:${String(a.name ?? '').trim().toUpperCase()}`;
+}
+
+// "전체" 목록 뷰 전용: 여러 소유자/계좌에 나뉘어 보유 중인 같은 종목을 한 행으로 합친다.
+// - 총 보유 수량/총 평가금액은 단순 합산, 통합 평가손익·수익률은 전체 매수금액 대비 전체 평가금액으로
+//   다시 계산한다(개별 손익률의 평균이 아니다 - 금액 가중이 자동으로 반영되게 하기 위함).
+// - 현재가/통화/자산군 등 "대표값"은 시세 조회에 성공한 멤버를 우선 쓰고, 전부 실패했으면 첫 멤버를 쓴다.
+// - 소유자별/국내해외별/자산군별 "보기 방식"은 그 자체가 소유자·지역·자산군 구분을 보여주는 화면이라
+//   이 통합을 적용하지 않는다(renderTable에서 mode==='none'일 때만 호출).
+function buildMergedRows(rows) {
+  const order = [];
+  const groups = new Map();
+  rows.forEach((r) => {
+    const key = groupKeyFor(r);
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key).push(r);
+  });
+
+  return order.map((key) => {
+    const members = groups.get(key);
+    if (members.length === 1) return { ...members[0], _isGroup: false };
+
+    const totalQuantity = members.reduce((s, m) => s + num(m.quantity), 0);
+    const totalBuyAmount = members.reduce((s, m) => s + m.buyAmount, 0);
+    const totalCurAmount = members.reduce((s, m) => s + m.curAmount, 0);
+    const profit = totalCurAmount - totalBuyAmount;
+    const rateOfReturn = totalBuyAmount !== 0 ? (profit / totalBuyAmount) * 100 : 0;
+    const priced = members.find((m) => !state.priceFetchFailedIds.has(m.id)) || members[0];
+    const owners = [...new Set(members.map((m) => m.owner))];
+
+    return {
+      ...priced,
+      quantity: totalQuantity,
+      buyAmount: totalBuyAmount,
+      curAmount: totalCurAmount,
+      profit,
+      rateOfReturn,
+      owner: owners.join('+'),
+      _isGroup: true,
+      _memberIds: members.map((m) => m.id),
+      _memberCount: members.length
+    };
+  });
+}
+
 function renderTable() {
-  const rows = sortRows(filteredAssets().map(a => ({ ...a, ...calcRow(a) })));
+  const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
   const tbody = document.getElementById('assetTableBody');
   const cardList = document.getElementById('assetCardList');
   const emptyMsg = document.getElementById('emptyTableMsg');
+  let displayedCount = 0;
 
-  if (rows.length === 0) {
+  if (rawRows.length === 0) {
     tbody.innerHTML = '';
     cardList.innerHTML = '';
     // 검색어/필터 때문에 0건인 것과 애초에 자산이 없는 것을 구분해 정확한 안내를 보여준다.
@@ -4146,16 +4133,20 @@ function renderTable() {
     emptyMsg.classList.add('hidden');
     const mode = state.tableGroupBy;
     if (mode === 'none') {
-      tbody.innerHTML = rows.map(r => rowHtml(r)).join('');
-      cardList.innerHTML = rows.map(r => cardHtml(r)).join(''); // 모바일 카드 뷰 (640px 미만에서만 보임)
+      const merged = sortRows(buildMergedRows(rawRows));
+      tbody.innerHTML = merged.map(r => rowHtml(r)).join('');
+      cardList.innerHTML = merged.map(r => cardHtml(r)).join(''); // 모바일 카드 뷰 (640px 미만에서만 보임)
+      displayedCount = merged.length;
     } else {
+      const rows = sortRows(rawRows);
       tbody.innerHTML = renderGroupedRows(rows, mode, rowHtml, groupHeaderRowHtml);
       cardList.innerHTML = renderGroupedRows(rows, mode, cardHtml, groupHeaderCardHtml);
+      displayedCount = rows.length;
     }
   }
 
-  document.getElementById('tableCountLabel').textContent = `총 ${state.assets.length}건 중 ${rows.length}건 표시`;
-  renderTableFooter(rows);
+  document.getElementById('tableCountLabel').textContent = `총 ${state.assets.length}건 중 ${displayedCount}건 표시`;
+  renderTableFooter(rawRows);
   lucide.createIcons();
 }
 
@@ -4163,16 +4154,13 @@ function renderTable() {
 // 두 뷰가 같은 로직에서 갈라져 나오도록 해서 표시 내용이 서로 어긋나지 않게 한다.
 function derivePresentation(r) {
   const priceUnit = r.isForeign ? '$' : '';
+  // 당일 등락률(%) - 종목명 바로 옆에 표기한다. 국내 시간외/미국 프리·애프터마켓 시세를 현재가로
+  // 채택했을 때도 그 세션의 등락률이 그대로 fetchedPct에 들어있으므로(fetchPriceWithFallback/
+  // pickCurrentPriceFromChart 참고) 별도 처리 없이 항상 최신 값을 보여준다.
   const fetchedPct = state.dayChangeMap[r.id];
   const hasChange = typeof fetchedPct === 'number';
-  const changeBadgeClass = hasChange ? (fetchedPct >= 0 ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500') : '';
+  const changeColorClass = hasChange ? profitColor(fetchedPct) : '';
   const changeText = hasChange ? fmtPct(fetchedPct) : '';
-  // 종목명 색상: 등락률 배지(텍스트) 대신 이름 자체를 상승(빨강)/하락(파랑)으로 물들인다. r은 자산
-  // 필드와 calcRow() 파생값을 모두 가진 병합 객체라 calcDailyPnL(a, r)의 두 인자 모두로 그대로 쓸 수
-  // 있다. calcDailyPnL 자체가 시장별(국내 KST/미국 ET) 자정 리셋 창에는 0을 반환하므로, 장 시작 전·
-  // 휴장일에는 자연히 무색(기본 글자색)이 된다.
-  const dailyPnLForColor = calcDailyPnL(r, r);
-  const nameColorClass = dailyPnLForColor > 0 ? 'text-red-500' : (dailyPnLForColor < 0 ? 'text-blue-500' : '');
 
   // 정규장 종가가 아니라 시간외(프리/애프터마켓) 시세를 현재가로 채택한 경우 작은 배지로 안내한다 -
   // 그래야 "왜 이 가격이 다른 곳의 정규장 종가와 다르지?"라는 혼란을 막을 수 있다.
@@ -4201,85 +4189,64 @@ function derivePresentation(r) {
     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300'
     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300';
 
-  return { priceUnit, hasChange, changeBadgeClass, changeText, nameColorClass, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
+  return { priceUnit, hasChange, changeColorClass, changeText, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
 }
 
-// 자산군/소유자/계좌/국내해외/매수단가/매입금액/평가금액/평가손익/수익률/수정·삭제 버튼을 공유하는
-// 상세(펼침) 영역 콘텐츠 - 테이블 상세행과 카드 상세영역이 마크업만 다를 뿐 같은 정보를 보여준다.
-function detailContentHtml(r, p) {
-  const foreignSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">$${fmtNum(r.buyAmountOriginal, 2)}</div>` : '';
-  return `
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-3">
-      <div><span class="text-slate-400 block mb-0.5">매수단가</span><span class="font-medium">${p.priceUnit}${fmtNum(r.buyPrice, 2)}</span></div>
-      <div><span class="text-slate-400 block mb-0.5">매입금액</span><span class="font-medium">${fmtKRW(r.buyAmount)}</span>${foreignSub}</div>
-      <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
-      <div><span class="text-slate-400 block mb-0.5">평가손익 (수익률)</span><span class="font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</span> <span class="font-semibold ${profitColor(r.rateOfReturn)}">(${fmtPct(r.rateOfReturn)})</span></div>
-      <div>
-        <span class="text-slate-400 block mb-0.5">자산군 · 국내/해외</span>
-        <span class="font-medium">${escapeHtml(r.category)}</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded ${p.isDomesticBadgeClass}">${escapeHtml(r.isDomestic)}</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded ${p.currencyBadgeClass}">${escapeHtml(r.currency)}</span>
-      </div>
-      <div><span class="text-slate-400 block mb-0.5">계좌구분</span><span class="font-medium">${escapeHtml(r.accountType)}</span></div>
-      <div><span class="text-slate-400 block mb-0.5">소유자</span><span class="font-medium">${escapeHtml(r.owner)}</span></div>
-    </div>
-    <div class="flex items-center gap-2">
-      <button data-action="edit" data-id="${r.id}" class="touch-target flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> 수정</button>
-      <button data-action="delete" data-id="${r.id}" class="touch-target flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900 bg-red-50 dark:bg-red-950 text-red-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제</button>
-    </div>`;
+// 종목명 바로 옆에 붙일 당일 등락률 텍스트 - 상승 빨강/하락 파랑/보합 기본색(profitColor와 동일 규칙).
+function changeInlineHtml(p) {
+  return p.hasChange ? ` <span class="text-[11px] font-medium ${p.changeColorClass}">(${p.changeText})</span>` : '';
 }
 
-// 요약(접힌) 행 + 상세(펼침) 행, 2개의 <tr>을 한 쌍으로 반환한다 - 아코디언 방식.
-// 요약 행은 종목명/수량/현재가 3항목만 보여주고 클릭하면 상세 행이 펼쳐진다(state.expandedRowIds로
-// 펼침 상태를 기억해 시세 갱신 등으로 다시 그려져도 펼친 상태가 유지된다).
+// [종목 상세 모달 전환] 요약 행/카드를 클릭하면 아코디언으로 펼치는 대신 openAssetDetailModal()이
+// 종목 상세 정보 + 주가 차트 모달을 띄운다(기존 수정 폼으로 이어지던 아코디언·수정 버튼은 제거됨 -
+// 수량/매입단가 수정은 이제 거래내역 탭에서 거래를 등록하는 방식으로 이뤄진다).
 function rowHtml(r) {
   const p = derivePresentation(r);
   const priceUnit = p.priceUnit;
   const tickerTitle = p.yahooTickerHint ? ` title="시세조회: ${escapeHtml(p.yahooTickerHint)}"` : '';
-  const isExpanded = state.expandedRowIds.has(r.id);
   // 해외 자산은 "적용 통화(달러)"와 "환산 원화"를 요약에서 함께 보여준다.
   const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+  // [종목 통합 표시] 여러 소유자/계좌를 합친 행은 "통합 N건(소유자1+소유자2)"로 구분해 보여주고,
+  // 클릭 시 그룹 상세 모달로 라우팅할 수 있도록 data-member-ids를 함께 심어둔다.
+  const subtitle = r._isGroup
+    ? `${escapeHtml(r.ticker || '-')} · 통합 ${r._memberCount}건 (${escapeHtml(r.owner)})`
+    : `${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}`;
+  const memberIdsAttr = r._isGroup ? ` data-member-ids="${r._memberIds.join(',')}"` : '';
 
   return `
-  <tr class="border-b border-slate-50 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" data-action="toggle-expand" data-id="${r.id}">
+  <tr class="border-b border-slate-50 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
     <td class="px-3 py-2.5">
-      <div class="font-medium ${p.nameColorClass}">${escapeHtml(r.name)}</div>
-      <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}</div>
+      <div class="font-medium">${escapeHtml(r.name)}${changeInlineHtml(p)}</div>
+      <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${subtitle}</div>
     </td>
     <td class="px-3 py-2.5 text-right">${fmtNum(r.quantity, 4)}</td>
     <td class="px-3 py-2.5 text-right cursor-pointer ${p.priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
-    <td class="px-3 py-2.5 text-center"><i data-lucide="chevron-down" data-chevron-for="${r.id}" class="w-4 h-4 text-slate-400 inline-block${isExpanded ? ' rotate-180' : ''}" style="transition: transform 0.2s ease"></i></td>
-  </tr>
-  <tr data-detail-for="${r.id}" class="border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30${isExpanded ? '' : ' hidden'}">
-    <td colspan="4" class="px-3 py-3">${detailContentHtml(r, p)}</td>
+    <td class="px-3 py-2.5 text-center"><i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 inline-block"></i></td>
   </tr>`;
 }
 
-// 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약(항상 보임: 종목명/수량/현재가)을 탭하면
-// 상세 영역이 부드럽게 펼쳐진다 - 표시 항목은 rowHtml의 상세행과 동일(detailContentHtml 공유).
+// 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약을 탭하면 openAssetDetailModal()이 뜬다.
 function cardHtml(r) {
   const p = derivePresentation(r);
-  const isExpanded = state.expandedRowIds.has(r.id);
   const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+  const subtitle = r._isGroup
+    ? `${escapeHtml(r.ticker || '-')} · 통합 ${r._memberCount}건 (${escapeHtml(r.owner)})`
+    : `${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}`;
+  const memberIdsAttr = r._isGroup ? ` data-member-ids="${r._memberIds.join(',')}"` : '';
 
   return `
-  <div>
-    <div class="touch-target flex items-center gap-2 px-4 py-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="toggle-expand" data-id="${r.id}">
-      <div class="min-w-0 flex-1">
-        <p class="font-semibold text-sm truncate ${p.nameColorClass}">${escapeHtml(r.name)}</p>
-        <p class="text-[11px] font-mono text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}</p>
-      </div>
-      <div class="text-right shrink-0 pl-2 cursor-pointer" data-action="edit-price" data-id="${r.id}" title="탭하여 현재가 직접 수정">
-        <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
-        <p class="text-sm font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
-        ${priceKrwSub}
-        ${p.priceFailBadge}
-      </div>
-      <i data-lucide="chevron-down" data-chevron-for="${r.id}" class="w-4 h-4 text-slate-400 shrink-0${isExpanded ? ' rotate-180' : ''}" style="transition: transform 0.2s ease"></i>
+  <div class="touch-target flex items-center gap-2 px-4 py-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
+    <div class="min-w-0 flex-1">
+      <p class="font-semibold text-sm truncate">${escapeHtml(r.name)}${changeInlineHtml(p)}</p>
+      <p class="text-[11px] font-mono text-slate-400 truncate">${subtitle}</p>
     </div>
-    <div data-detail-for="${r.id}" class="detail-panel px-4${isExpanded ? ' expanded' : ''}">
-      <div class="pb-4">${detailContentHtml(r, p)}</div>
+    <div class="text-right shrink-0 pl-2 cursor-pointer" data-action="edit-price" data-id="${r.id}" title="탭하여 현재가 직접 수정">
+      <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
+      <p class="text-sm font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+      ${priceKrwSub}
+      ${p.priceFailBadge}
     </div>
+    <i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0"></i>
   </div>`;
 }
 
@@ -4449,56 +4416,438 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
 // 테이블(PC/태블릿)과 카드 뷰(모바일)가 마크업만 다를 뿐 data-action 규약은 동일하므로
 // 클릭 위임 핸들러 하나를 두 컨테이너에 공유해서 로직이 어긋나지 않게 한다.
 function handleAssetListClick(e) {
-  const btn = e.target.closest('button[data-action]');
-  if (btn) {
-    const id = btn.dataset.id;
-    if (btn.dataset.action === 'edit') {
-      openModal('edit', id);
-      showModal();
-    } else if (btn.dataset.action === 'delete') {
-      const a = state.assets.find(x => x.id === id);
-      if (a && confirm(`"${a.name}" 자산을 삭제하시겠습니까?`)) {
-        state.assets = state.assets.filter(x => x.id !== id);
-        delete state.dayChangeMap[id];
-        delete state.prevCloseMap[id];
-        delete state.sessionMap[id];
-        state.priceFetchFailedIds.delete(id);
-        state.expandedRowIds.delete(id);
-        persistAssets();
-        renderAll();
-      }
-    }
-    return;
-  }
-
   // 현재가 셀/카드 인라인 수정: API 시세 조회가 실패했을 때도 사용자가 즉시 값을 고칠 수 있게 한다.
   // 테이블에서는 <td>, 카드에서는 <div>이므로 태그에 의존하지 않는 속성 선택자를 사용한다.
-  // toggle-expand보다 먼저 확인해야 한다 - 현재가 영역이 요약 행/카드 안에 중첩돼 있어, 그 위를
-  // 클릭했을 때 아코디언이 아니라 가격 수정이 우선되어야 하기 때문이다.
+  // open-detail보다 먼저 확인해야 한다 - 현재가 영역이 요약 행/카드 안에 중첩돼 있어, 그 위를
+  // 클릭했을 때 상세 모달이 아니라 가격 수정이 우선되어야 하기 때문이다.
   const priceCell = e.target.closest('[data-action="edit-price"]');
   if (priceCell && !priceCell.querySelector('input')) {
     startInlinePriceEdit(priceCell);
     return;
   }
 
-  // 자산 관리 목록 아코디언: 요약 행/카드를 클릭하면 상세 영역을 펼치거나 접는다. 데이터를 다시
-  // 그리지 않고(스크롤 위치 유지·매끄러운 전환을 위해) 해당 id의 상세 요소와 화살표 아이콘만 직접
-  // 토글하고, state.expandedRowIds에도 반영해 이후 renderTable()이 다시 호출돼도 펼침 상태가 유지되게 한다.
-  const toggleEl = e.target.closest('[data-action="toggle-expand"]');
-  if (toggleEl) {
-    const id = toggleEl.dataset.id;
-    const willExpand = !state.expandedRowIds.has(id);
-    if (willExpand) state.expandedRowIds.add(id); else state.expandedRowIds.delete(id);
-    document.querySelectorAll(`[data-detail-for="${CSS.escape(id)}"]`).forEach((el) => {
-      if (el.tagName === 'TR') el.classList.toggle('hidden', !willExpand);
-      else el.classList.toggle('expanded', willExpand);
-    });
-    document.querySelectorAll(`[data-chevron-for="${CSS.escape(id)}"]`).forEach((el) => el.classList.toggle('rotate-180', willExpand));
+  // 요약 행/카드를 클릭하면 종목 상세+주가 차트 모달을 띄운다(기존 아코디언 펼침 방식을 대체).
+  // data-member-ids가 있으면(여러 소유자/계좌를 통합한 행) 그룹 상세 모달로, 없으면 단일 자산
+  // 상세 모달로 연다.
+  const detailEl = e.target.closest('[data-action="open-detail"]');
+  if (detailEl) {
+    const memberIdsAttr = detailEl.dataset.memberIds;
+    if (memberIdsAttr) {
+      const ids = memberIdsAttr.split(',').filter(Boolean);
+      const members = ids.map((id) => state.assets.find((a) => a.id === id)).filter(Boolean).map((a) => ({ ...a, ...calcRow(a) }));
+      openAssetDetailModalGroup(members);
+    } else {
+      openAssetDetailModal(detailEl.dataset.id);
+    }
   }
 }
 
 document.getElementById('assetTableBody').addEventListener('click', handleAssetListClick);
 document.getElementById('assetCardList').addEventListener('click', handleAssetListClick);
+
+/* -------------------------------------------------------------------------
+ * 11-0. 종목 상세 정보 + 주가 차트 모달
+ *    - 자산 관리 목록에서 종목을 클릭하면 열린다. 상단은 보유 정보 요약(읽기 전용), 중앙은 해당
+ *      티커의 최근 일봉 시세를 Yahoo Finance 차트 API로 받아와 선 그래프로 그린다(국내/해외 티커
+ *      변환은 기존 시세 조회와 동일하게 sanitizeTicker().yahooTicker를 그대로 재사용한다).
+ * ---------------------------------------------------------------------- */
+let assetDetailCurrentId = null; // 단일 자산 상세 보기 중인 자산 id (그룹/통합 보기 중에는 null)
+let assetDetailCurrentGroupIds = null; // 통합(그룹) 상세 보기 중인 자산 id 배열 (단일 보기 중에는 null)
+let assetDetailChartToken = 0; // 비동기 차트 응답이 모달이 닫히거나 다른 종목으로 바뀐 뒤 늦게 도착해 덮어쓰는 것을 방지
+
+function openAssetDetailModal(id) {
+  const a = state.assets.find((x) => x.id === id);
+  if (!a) return;
+  assetDetailCurrentId = id;
+  assetDetailCurrentGroupIds = null;
+  const r = calcRow(a);
+  const priceUnit = r.isForeign ? '$' : '';
+
+  document.getElementById('assetDetailName').textContent = a.name || a.ticker || '(이름 없음)';
+  document.getElementById('assetDetailTicker').textContent = `${a.ticker || '티커 없음'} · ${a.owner} · ${a.accountType}`;
+  document.getElementById('assetDetailInfoGrid').innerHTML = `
+    <div><span class="text-slate-400 block mb-0.5">보유 수량</span><span class="font-medium">${fmtNum(a.quantity, 4)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium">${priceUnit}${fmtNum(a.buyPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium">${priceUnit}${fmtNum(a.currentPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
+    <div class="col-span-2 sm:col-span-4">
+      <span class="text-slate-400 block mb-0.5">평가손익 (수익률)</span>
+      <span class="font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</span>
+      <span class="font-semibold ${profitColor(r.rateOfReturn)}">(${fmtPct(r.rateOfReturn)})</span>
+    </div>`;
+
+  document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
+  document.getElementById('assetDetailDeleteBtn').classList.remove('hidden');
+  document.getElementById('assetDetailModal').classList.remove('hidden');
+  renderAssetDetailChart(a);
+}
+
+// 소유자별 보유 세부 현황 한 줄 - 통합(그룹) 상세 모달 전용.
+function assetDetailOwnerRowHtml(m, totalCurAmount) {
+  const priceUnit = m.isForeign ? '$' : '';
+  const pct = totalCurAmount !== 0 ? (m.curAmount / totalCurAmount * 100) : 0;
+  return `
+  <div class="flex items-center justify-between gap-2 text-xs border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
+    <div class="min-w-0">
+      <p class="font-medium">${escapeHtml(m.owner)} <span class="text-slate-400 font-normal">· ${escapeHtml(m.accountType)}</span></p>
+      <p class="text-slate-400 mt-0.5">수량 ${fmtNum(m.quantity, 4)} · 매수단가 ${priceUnit}${fmtNum(m.buyPrice, 2)}</p>
+    </div>
+    <div class="text-right shrink-0">
+      <p class="font-semibold">${fmtKRW(m.curAmount)}</p>
+      <p class="text-slate-400">${fmtNum(pct, 1)}%</p>
+    </div>
+    <button type="button" data-delete-member="${m.id}" title="이 보유분 삭제"
+      class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+    </button>
+  </div>`;
+}
+
+// [종목 통합 표시] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우, 목록에서는 한 행으로 합쳐
+// 보여주고(buildMergedRows) 이 모달에서 통합 총액 + 소유자별 세부 내역을 함께 보여준다.
+// members: calcRow가 이미 병합된 자산 배열(각 원소는 실제 개별 자산 - 그룹 합계가 아니다).
+function openAssetDetailModalGroup(members) {
+  if (!members || members.length === 0) return;
+  if (members.length === 1) { openAssetDetailModal(members[0].id); return; }
+
+  assetDetailCurrentId = null;
+  assetDetailCurrentGroupIds = members.map((m) => m.id);
+
+  const first = members[0];
+  const totalQuantity = members.reduce((s, m) => s + num(m.quantity), 0);
+  const totalBuyNative = members.reduce((s, m) => s + m.buyAmountOriginal, 0);
+  const totalBuyAmount = members.reduce((s, m) => s + m.buyAmount, 0);
+  const totalCurAmount = members.reduce((s, m) => s + m.curAmount, 0);
+  const profit = totalCurAmount - totalBuyAmount;
+  const rateOfReturn = totalBuyAmount !== 0 ? (profit / totalBuyAmount) * 100 : 0;
+  const priced = members.find((m) => !state.priceFetchFailedIds.has(m.id)) || first;
+  const priceUnit = first.isForeign ? '$' : '';
+  const avgBuyPriceNative = totalQuantity !== 0 ? totalBuyNative / totalQuantity : 0;
+  const owners = [...new Set(members.map((m) => m.owner))];
+
+  document.getElementById('assetDetailName').textContent = first.name || first.ticker || '(이름 없음)';
+  document.getElementById('assetDetailTicker').textContent = `${first.ticker || '티커 없음'} · ${owners.join('+')} 통합 (${members.length}건)`;
+  document.getElementById('assetDetailInfoGrid').innerHTML = `
+    <div><span class="text-slate-400 block mb-0.5">총 보유 수량</span><span class="font-medium">${fmtNum(totalQuantity, 4)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium">${priceUnit}${fmtNum(avgBuyPriceNative, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium">${priceUnit}${fmtNum(priced.currentPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">총 평가금액</span><span class="font-medium">${fmtKRW(totalCurAmount)}</span></div>
+    <div class="col-span-2 sm:col-span-4">
+      <span class="text-slate-400 block mb-0.5">통합 평가손익 (수익률)</span>
+      <span class="font-medium ${profitColor(profit)}">${fmtSigned(profit)}</span>
+      <span class="font-semibold ${profitColor(rateOfReturn)}">(${fmtPct(rateOfReturn)})</span>
+    </div>`;
+
+  document.getElementById('assetDetailOwnerBreakdownList').innerHTML = [...members]
+    .sort((a, b) => b.curAmount - a.curAmount)
+    .map((m) => assetDetailOwnerRowHtml(m, totalCurAmount))
+    .join('');
+  document.getElementById('assetDetailOwnerBreakdown').classList.remove('hidden');
+  // 그룹 전체를 한 번에 지우는 건 어느 소유자 것을 지우는지 모호하므로, 상단 삭제 버튼은 숨기고
+  // 소유자별 세부 목록의 개별 휴지통 아이콘으로만 삭제하게 한다.
+  document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
+
+  document.getElementById('assetDetailModal').classList.remove('hidden');
+  lucide.createIcons();
+  renderAssetDetailChart(priced); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그린다
+}
+
+function closeAssetDetailModal() {
+  document.getElementById('assetDetailModal').classList.add('hidden');
+  assetDetailCurrentId = null;
+  assetDetailCurrentGroupIds = null;
+}
+document.getElementById('closeAssetDetailModalBtn').addEventListener('click', closeAssetDetailModal);
+document.getElementById('assetDetailCloseBtn').addEventListener('click', closeAssetDetailModal);
+document.getElementById('assetDetailModal').addEventListener('click', (e) => {
+  if (e.target.id === 'assetDetailModal') closeAssetDetailModal();
+});
+document.getElementById('assetDetailDeleteBtn').addEventListener('click', () => {
+  const id = assetDetailCurrentId;
+  const a = state.assets.find((x) => x.id === id);
+  if (a && confirm(`"${a.name}" 자산을 삭제하시겠습니까?`)) {
+    state.assets = state.assets.filter((x) => x.id !== id);
+    delete state.dayChangeMap[id];
+    delete state.prevCloseMap[id];
+    delete state.sessionMap[id];
+    state.priceFetchFailedIds.delete(id);
+    persistAssets();
+    closeAssetDetailModal();
+    renderAll();
+  }
+});
+// 통합(그룹) 상세 모달의 소유자별 세부 목록 - 각 행의 휴지통 아이콘으로 그 소유자의 보유분만 삭제한다.
+// 삭제 후 남은 멤버 수에 따라 그룹 모달을 다시 그리거나(2건 이상), 단일 모드로 전환하거나(1건),
+// 모달을 닫는다(0건).
+document.getElementById('assetDetailOwnerBreakdownList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-delete-member]');
+  if (!btn) return;
+  const id = btn.dataset.deleteMember;
+  const a = state.assets.find((x) => x.id === id);
+  if (!a || !confirm(`"${a.name}" (${a.owner}) 보유분을 삭제하시겠습니까?`)) return;
+
+  const remainingIds = (assetDetailCurrentGroupIds || []).filter((mid) => mid !== id);
+  state.assets = state.assets.filter((x) => x.id !== id);
+  delete state.dayChangeMap[id];
+  delete state.prevCloseMap[id];
+  delete state.sessionMap[id];
+  state.priceFetchFailedIds.delete(id);
+  persistAssets();
+  renderAll();
+
+  const remaining = remainingIds.map((mid) => state.assets.find((x) => x.id === mid)).filter(Boolean);
+  if (remaining.length === 0) closeAssetDetailModal();
+  else if (remaining.length === 1) openAssetDetailModal(remaining[0].id);
+  else openAssetDetailModalGroup(remaining.map((x) => ({ ...x, ...calcRow(x) })));
+});
+
+// 이동평균선(MA) 설정 - 5/10/20/60/120일. 색상은 요청된 팔레트를 그대로 쓴다.
+const MA_PERIODS = [5, 10, 20, 60, 120];
+const MA_COLORS = { 5: '#FF3B30', 10: '#FF9500', 20: '#FFCC00', 60: '#34C759', 120: '#AF52DE' };
+
+// 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 달력 날짜가 아니라 "거래일 수"로 근사한다. 주말/휴장일이
+// 껴 있어 달력일수와 거래일수가 달라지므로, 날짜로 필터링하는 것보다 이 방식이 항상 "최근 N개 봉"을
+// 안정적으로 보여준다.
+const PERIOD_LABELS = { '1m': '1M', '3m': '3M', '6m': '6M', '1y': '1Y', 'all': 'ALL' };
+const PERIOD_TRADING_DAYS = { '1m': 21, '3m': 63, '6m': 126, '1y': 252, 'all': Infinity };
+
+let assetDetailFullPoints = [];   // 캐시된 전체(최대 2년) 일봉 시세 - 기간 버튼/줌은 이걸 슬라이스만 한다
+let assetDetailFullMA = {};       // 전체 시세 기준으로 미리 계산해 둔 이동평균(기간과 무관하게 항상 전체
+                                  // 데이터로 계산 - 슬라이스 후 재계산하면 구간 첫머리에서 MA가 끊겨 보인다)
+let assetDetailChartMeta = { name: '', isForeign: false };
+let assetDetailActivePeriod = '1y';
+
+// 단순이동평균(SMA) - 종가 배열 기준으로 계산한다. 데이터가 기간(period)보다 짧으면(신규 상장 등)
+// null을 반환해 호출부가 그 MA 자체를 그리지 않고 범례에 '-'로 표시하는 세이프가드로 삼는다.
+// 데이터가 있어도 처음 (period-1)개 구간은 아직 평균을 낼 수 없으므로 null로 채워 선이 끊기게 한다.
+function computeMA(points, period) {
+  if (!points || points.length < period) return null;
+  const closes = points.map((p) => p.close);
+  const result = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    sum += closes[i];
+    if (i >= period) sum -= closes[i - period];
+    if (i >= period - 1) result[i] = sum / period;
+  }
+  return result;
+}
+
+// 차트 상단 범례 - 이동평균선 색상 점 + 명칭 + 가장 최근 시점의 수치("-"는 데이터 부족).
+function buildMaLegendHtml(maByPeriod, isForeign) {
+  return MA_PERIODS.map((period) => {
+    const arr = maByPeriod[period];
+    const latest = arr ? arr[arr.length - 1] : null;
+    const valueText = (typeof latest === 'number') ? `${isForeign ? '$' : ''}${fmtNum(latest, isForeign ? 2 : 0)}` : '-';
+    return `<span style="color:${MA_COLORS[period]}">● MA${period}: ${valueText}</span>`;
+  }).join('');
+}
+
+// 종목 상세 모달 전용 일봉 시세 조회 - 실시간 현재가 조회(fetchPriceWithFallback)와 같은 CORS 프록시
+// 경쟁 방식을 그대로 재사용하되, range를 2년으로 넓혀 받아온다 - MA120은 최소 120거래일치 과거 데이터가
+// 필요하고, 기간 선택 버튼의 [ALL]이 [1Y]와 실질적으로 다른 범위를 보여주려면 애초에 1년보다 긴 원본
+// 데이터를 캐시해 둬야 한다(버튼 클릭 시 재조회 없이 이 전체 데이터를 그때그때 필요한 만큼만 잘라
+// 쓴다 - assetDetailFullPoints/assetDetailFullMA 참고).
+async function fetchDailyHistory(yahooTicker) {
+  const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=2y';
+  const attempts = [
+    async () => {
+      const res = await fetchWithTimeout(target, 10000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return safeParseJsonResponse(res);
+    },
+    ...CORS_PROXIES.map((proxy) => async () => {
+      const res = await fetchWithTimeout(proxy.build(target), 10000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
+    })
+  ];
+  const data = await Promise.any(attempts.map((fn) => fn()));
+  const result = data && data.chart && data.chart.result && data.chart.result[0];
+  if (!result) throw new Error('차트 데이터 없음');
+  const timestamps = result.timestamp || [];
+  const closes = (result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [];
+  const points = timestamps
+    .map((t, i) => ({ date: new Date(t * 1000), close: closes[i] }))
+    .filter((p) => typeof p.close === 'number');
+  if (points.length === 0) throw new Error('유효한 시세 데이터 없음');
+  return points;
+}
+
+// 이동평균은 항상 "캐시된 전체 데이터" 기준으로 한 번만 다시 계산해 둔다 - 기간 버튼/줌은 이미 계산된
+// 배열을 슬라이스만 하므로 구간 경계에서 MA선이 끊기지 않는다.
+function rebuildAssetDetailFullMA() {
+  assetDetailFullMA = {};
+  MA_PERIODS.forEach((period) => { assetDetailFullMA[period] = computeMA(assetDetailFullPoints, period); });
+}
+
+// 기간 선택 버튼([1M][3M][6M][1Y][ALL]) 그룹을 그린다. 활성 버튼 강조는 updatePeriodButtonActiveUI()가 처리한다.
+function renderAssetDetailPeriodButtons() {
+  const wrap = document.getElementById('assetDetailPeriodButtons');
+  wrap.innerHTML = Object.keys(PERIOD_LABELS).map((key) => `
+    <button type="button" data-period-btn="${key}" class="period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
+  `).join('');
+  wrap.querySelectorAll('button[data-period-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => buildAssetDetailChart(btn.dataset.periodBtn));
+  });
+}
+
+function updatePeriodButtonActiveUI(activeKey) {
+  document.querySelectorAll('#assetDetailPeriodButtons button[data-period-btn]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.periodBtn === activeKey);
+  });
+}
+
+// 휠/드래그/핀치로 X축(기간)이 바뀐 뒤, 지금 화면에 보이는 구간의 종가만 기준으로 Y축 범위를 다시
+// 맞춘다 - 그렇지 않으면 확대해도 Y축이 원래 전체 기간 스케일 그대로 남아 확대한 의미가 없어진다.
+function rescaleAssetDetailYAxis(chart) {
+  const xScale = chart.scales.x;
+  const priceData = chart.data.datasets[0].data;
+  const minIdx = Math.max(0, Math.round(xScale.min));
+  const maxIdx = Math.min(priceData.length - 1, Math.round(xScale.max));
+  if (maxIdx < minIdx) return;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = minIdx; i <= maxIdx; i++) {
+    const v = priceData[i];
+    if (typeof v === 'number') { if (v < lo) lo = v; if (v > hi) hi = v; }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+  const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
+  chart.options.scales.y.min = lo - pad;
+  chart.options.scales.y.max = hi + pad;
+  chart.update('none'); // 애니메이션 없이 즉시 갱신 - 연속되는 제스처 도중 매번 애니메이션이 걸리면 버벅인다
+}
+
+// 기간 버튼 클릭(또는 최초 표시) 시 호출 - 재조회 없이 캐시된 전체 시세(assetDetailFullPoints/
+// assetDetailFullMA)를 해당 기간만큼만 잘라 차트를 새로 그린다. 매번 파괴 후 재생성해서 이전에
+// 휠/드래그/핀치로 걸려 있던 줌 상태가 기간 전환 시 항상 깔끔하게 리셋되게 한다.
+function buildAssetDetailChart(periodKey) {
+  if (assetDetailFullPoints.length === 0) return;
+  assetDetailActivePeriod = periodKey;
+  updatePeriodButtonActiveUI(periodKey);
+
+  const canvas = document.getElementById('assetDetailChart');
+  if (charts.assetDetail) { charts.assetDetail.destroy(); charts.assetDetail = null; }
+
+  const days = PERIOD_TRADING_DAYS[periodKey];
+  const total = assetDetailFullPoints.length;
+  const startIdx = Number.isFinite(days) ? Math.max(0, total - days) : 0;
+  const points = assetDetailFullPoints.slice(startIdx);
+  if (points.length === 0) return;
+
+  const textColor = chartTextColor();
+  const { name, isForeign } = assetDetailChartMeta;
+  const lineColor = points[points.length - 1].close >= points[0].close ? '#ef4444' : '#3b82f6';
+
+  const maByPeriod = {};
+  MA_PERIODS.forEach((period) => {
+    const full = assetDetailFullMA[period];
+    maByPeriod[period] = full ? full.slice(startIdx) : null;
+  });
+  document.getElementById('assetDetailMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign);
+
+  const maDatasets = MA_PERIODS
+    .filter((period) => maByPeriod[period])
+    .map((period) => ({
+      label: `MA${period}`,
+      data: maByPeriod[period],
+      borderColor: MA_COLORS[period],
+      backgroundColor: 'transparent',
+      borderWidth: 1.2,
+      pointRadius: 0,
+      tension: 0.15,
+      spanGaps: false // 기간 초반(평균 낼 데이터가 아직 부족한 구간)은 선을 잇지 않고 끊어서 보여준다
+    }));
+
+  charts.assetDetail = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: points.map((p) => `${p.date.getMonth() + 1}/${p.date.getDate()}`),
+      datasets: [
+        {
+          label: name,
+          data: points.map((p) => p.close),
+          borderColor: lineColor,
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.15
+        },
+        ...maDatasets
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
+        y: { ticks: { color: textColor, callback: (v) => (isForeign ? '$' : '') + fmtNum(v, isForeign ? 2 : 0) }, grid: { color: 'rgba(148,163,184,.15)' } }
+      },
+      plugins: {
+        // 이동평균선 범례는 차트 위 커스텀 HTML(#assetDetailMaLegend)로 대체하므로 Chart.js 기본
+        // 범례는 끈다 - 종목 라인 + MA 5개까지 합쳐 6개 범례가 뜨면 좁은 모달 폭에서 지저분해진다.
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${isForeign ? '$' : ''}${fmtNum(ctx.raw, isForeign ? 2 : 0)}` } },
+        // [줌/이동/핀치 확대축소] 휠=확대축소, 드래그=좌우이동(팬), 모바일 두 손가락=핀치 줌.
+        // x축만 확대/이동하며(mode:'x'), 원본 범위(min/max:'original') 밖으로는 벗어나지 못한다.
+        // 확대/이동이 끝나면(Complete 콜백) 지금 보이는 구간 기준으로 Y축을 다시 스케일링한다.
+        zoom: {
+          pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => rescaleAssetDetailYAxis(chart) },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x',
+            onZoomComplete: ({ chart }) => rescaleAssetDetailYAxis(chart)
+          },
+          limits: { x: { min: 'original', max: 'original' } }
+        }
+      }
+    }
+  });
+  // 모달이 방금 열린 직후라 캔버스가 아직 최종 크기를 잡기 전일 수 있으므로, 한 프레임 뒤 resize()를
+  // 한 번 더 호출해 모바일/가로세로 전환에서도 차트 비율이 깨지지 않게 한다.
+  requestAnimationFrame(() => { if (charts.assetDetail) charts.assetDetail.resize(); });
+}
+
+async function renderAssetDetailChart(asset) {
+  const canvas = document.getElementById('assetDetailChart');
+  const msgEl = document.getElementById('assetDetailChartMsg');
+  const legendEl = document.getElementById('assetDetailMaLegend');
+  const myToken = ++assetDetailChartToken;
+  if (charts.assetDetail) { charts.assetDetail.destroy(); charts.assetDetail = null; }
+  legendEl.innerHTML = '';
+  document.getElementById('assetDetailPeriodButtons').innerHTML = '';
+
+  const sanitized = sanitizeTicker(asset.ticker);
+  if (!sanitized.yahooTicker) {
+    canvas.classList.add('hidden');
+    msgEl.textContent = '티커가 없는 자산은 주가 차트를 제공할 수 없습니다.';
+    msgEl.classList.remove('hidden');
+    return;
+  }
+
+  canvas.classList.add('hidden');
+  msgEl.textContent = '차트 불러오는 중...';
+  msgEl.classList.remove('hidden');
+
+  let points;
+  try {
+    points = await fetchDailyHistory(sanitized.yahooTicker);
+  } catch (e) {
+    // 모달이 그 사이 닫혔거나 다른 종목으로 다시 열렸으면 이 실패 메시지는 무시한다.
+    if (myToken === assetDetailChartToken) msgEl.textContent = '주가 차트를 불러오지 못했습니다.';
+    return;
+  }
+  if (myToken !== assetDetailChartToken) return; // 응답 도착 전 모달이 닫혔거나 다른 종목으로 전환됨
+
+  assetDetailFullPoints = points;
+  rebuildAssetDetailFullMA();
+  assetDetailChartMeta = { name: asset.name, isForeign: asset.currency === 'USD' };
+
+  msgEl.classList.add('hidden');
+  canvas.classList.remove('hidden');
+  renderAssetDetailPeriodButtons();
+  buildAssetDetailChart('1y');
+}
 
 function startInlinePriceEdit(cell) {
   const id = cell.dataset.id;
@@ -5436,7 +5785,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           state.rebalance = {
             domestic: parsed.rebalance.domestic || { '국내': 40, '해외': 60 },
             targets: (tg && typeof tg === 'object')
-              ? { '국내': Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내'], '해외': ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외']) }
+              ? { '국내': stripCustomRebalanceTargets(Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내']), '해외': stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외'])) }
               : defaults
           };
           persistRebalance();
