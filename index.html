@@ -434,11 +434,11 @@
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <h2 class="text-sm font-semibold">매매 거래 내역</h2>
       <div class="flex items-center gap-2 flex-wrap">
-        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목마다 현재 수량/매수단가로 어제 날짜 매수 거래를 생성합니다"
+        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 기간거래등록으로 함께 올리세요."
           class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-          <i data-lucide="history" class="w-3.5 h-3.5"></i> 최초거래등록
+          <i data-lucide="history" class="w-3.5 h-3.5"></i> 보유자산 양식 다운로드
         </button>
-        <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다"
+        <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다(구분 컬럼: 최초/기간)"
           class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
           <i data-lucide="upload" class="w-3.5 h-3.5"></i> 기간거래등록
         </button>
@@ -3355,12 +3355,13 @@ function syncAssetsFromTransactions() {
   });
 }
 
-// [보유 자산으로 초기화] 버튼 - 아직 거래내역이 하나도 없는 보유 종목마다, 지금의 수량/매수단가를
-// 그대로 옮겨 "어제" 날짜의 매수 거래 1건을 만들어준다. 값이 기존 자산과 정확히 같으므로 동기화해도
-// 화면상 수치(평가손익/RISK/예측 등)는 전혀 바뀌지 않고(검토 완료 - 실현손익 집계는 매도 거래만 대상
-// 이라 매수 시드는 애초에 집계되지 않음), 이후 실제 매매부터는 거래내역 기준으로 정확히 이어진다.
-// 이미 거래내역이 있는 종목(소유자+계좌구분+티커 일치)은 중복 등록을 막기 위해 건너뛴다.
-function seedTransactionsFromAssets() {
+// [보유자산 양식 다운로드] 버튼 - 아직 거래내역이 하나도 없는 보유 종목들을, 지금의 수량/매수단가로
+// "구분=최초" 행을 미리 채운 엑셀로 내려준다(일자는 어제로 기본 채움). 예전엔 이 버튼이 거래내역을
+// 바로 생성했지만, "기간거래등록" 업로드와 창구를 하나로 합쳐달라는 요청에 따라 이제는 그 업로드 양식을
+// 미리 채워서 내려주는 역할만 한다 - 사용자가 이 파일을 열어 실제 매매(구분=기간)를 이어서 적고, 완성된
+// 파일을 [기간거래등록]으로 올리면 최초/기간 행이 한 번에 등록된다. 이미 거래내역이 있는 종목은
+// (중복 등록 방지 차원에서) 양식에서 제외한다.
+function downloadHoldingsAsTxTemplate() {
   const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker}`));
   const targets = state.assets.filter((a) => {
     if (!a.ticker) return false;
@@ -3372,34 +3373,21 @@ function seedTransactionsFromAssets() {
     showToast('거래내역이 없는 보유 종목이 없습니다(이미 전부 등록됨).', 'warn');
     return;
   }
-  if (!confirm(`거래내역이 없는 보유 종목 ${targets.length}개에 대해, 현재 수량/매수단가로 어제 날짜 매수 거래를 생성합니다.\n(화면에 보이는 평가손익 등은 바뀌지 않습니다. 계속할까요?)`)) return;
 
   const seedDate = yesterdayDateStr();
-  targets.forEach((a) => {
-    state.transactions.push({
-      id: genId(),
-      date: seedDate,
-      owner: a.owner,
-      accountType: a.accountType,
-      ticker: a.ticker,
-      name: a.name,
-      type: 'buy',
-      quantity: num(a.quantity),
-      price: num(a.buyPrice),
-      currency: a.currency,
-      fee: 0,
-      createdAt: Date.now()
-    });
-  });
-
-  persistTransactions();
-  syncAssetsFromTransactions();
-  persistAssets();
-  renderTransactionsTab();
-  renderAll();
-  showToast(`${targets.length}개 종목의 기초 거래를 등록했습니다.`, 'success');
+  const rows = targets.map((a) => ({
+    '구분': '최초', '일자': seedDate, '소유자': a.owner, '계좌구분': a.accountType, '종목명': a.name,
+    '티커': a.ticker, '거래유형': '매수', '수량': num(a.quantity), '매매단가': num(a.buyPrice),
+    '통화': a.currency, '수수료': 0
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 8 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '거래내역');
+  XLSX.writeFile(wb, `거래내역_양식_${todayDateStr()}.xlsx`);
+  showToast(`${targets.length}개 종목을 '최초' 행으로 채운 양식을 내려받았습니다. 실제 거래(구분=기간)를 추가로 적은 뒤 [기간거래등록]으로 올려주세요.`, 'success', 7000);
 }
-document.getElementById('seedTransactionsBtn').addEventListener('click', seedTransactionsFromAssets);
+document.getElementById('seedTransactionsBtn').addEventListener('click', downloadHoldingsAsTxTemplate);
 
 // [거래내역 엑셀 업로드] 밀린 실제 매매를 한 번에 등록할 때 쓴다 - 기존 거래내역은 지우지 않고
 // 그대로 이어 붙인다(자산 엑셀 업로드처럼 덮어쓰기 확인창을 두지 않는다 - 거래내역은 "쌓이는" 기록이라
@@ -3432,6 +3420,10 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
         const typeRaw = String(pick(row, '거래유형', 'type', 'Type') ?? '').trim().toLowerCase();
         const type = (typeRaw === '매도' || typeRaw === 'sell') ? 'sell' : 'buy';
         const currencyRaw = String(pick(row, '통화', 'Currency', 'CURRENCY') ?? '').trim().toUpperCase();
+        // '구분' 컬럼(최초/기간)은 계산에는 아무 영향이 없다(둘 다 동일한 매수/매도 거래로 처리됨) -
+        // 거래 목록에서 "이게 시작점이었지"를 구분해 보여주기 위한 표시 전용 태그다.
+        const originRaw = String(pick(row, '구분', 'origin') ?? '').trim();
+        const origin = originRaw.includes('최초') ? 'initial' : 'period';
         return {
           id: genId(),
           date: formatDateCell(pick(row, '일자', '날짜', 'date', 'Date')),
@@ -3444,6 +3436,7 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
           price: num(pick(row, '매매단가', '단가', 'price')),
           currency: currencyRaw === 'USD' ? 'USD' : 'KRW',
           fee: num(pick(row, '수수료', '세금', '수수료/세금', 'fee')),
+          origin,
           createdAt: Date.now()
         };
       }).filter((t) => t.quantity > 0 && t.price > 0 && t.name);
@@ -3542,6 +3535,7 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     quantity, price,
     currency: document.getElementById('tx_currency').value,
     fee: num(document.getElementById('tx_fee').value),
+    origin: (existing && existing.origin) || 'period', // 수동 입력은 항상 '기간' 거래로 취급(구분 태그는 엑셀 업로드 전용)
     createdAt: existing ? existing.createdAt : Date.now() // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
   };
 
@@ -3610,11 +3604,15 @@ function renderTransactionList() {
     const typeClass = t.type === 'buy' ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500';
     const unit = t.currency === 'USD' ? '$' : '';
     const amount = t.quantity * t.price;
+    const originTag = t.origin === 'initial'
+      ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">최초</span>'
+      : '';
     return `
     <div class="py-2.5 flex items-start justify-between gap-2">
       <div class="min-w-0">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
+          ${originTag}
           <span class="text-sm font-medium truncate">${escapeHtml(t.name)}</span>
           <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
         </div>
@@ -5244,6 +5242,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
             price: num(t.price),
             currency: (t.currency === 'USD') ? 'USD' : 'KRW',
             fee: num(t.fee),
+            origin: t.origin === 'initial' ? 'initial' : 'period',
             createdAt: t.createdAt || Date.now()
           }));
           persistTransactions();
