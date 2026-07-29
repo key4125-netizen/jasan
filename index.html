@@ -2266,6 +2266,19 @@ window.addEventListener('popstate', () => {
 // 성립하지 않는다.
 history.pushState({ smAppGuard: true }, '');
 
+// [Chrome 히스토리 조작 방지(History Manipulation Intervention) 대비] 사용자 제스처 없이(페이지 로드
+// 스크립트 실행 중) 쌓은 pushState는 일부 최신 브라우저가 "제스처 없는 히스토리 조작"으로 간주해
+// 실제 뒤로가기 시 건너뛰어 버릴 수 있다(그러면 첫 뒤로가기에 가드 없이 바로 앱을 벗어나 버린다).
+// 사용자의 첫 실제 터치/클릭/키 입력이 들어오는 즉시, 아직 가드가 없다면 제스처에 연결된 상태로
+// 한 번 더 쌓아 재확인한다 - 이미 정상적으로 쌓여 있으면(현재 state가 가드/모달이면) 아무 것도 하지 않는다.
+['touchstart', 'mousedown', 'keydown'].forEach((evt) => {
+  window.addEventListener(evt, () => {
+    if (!(history.state && (history.state.smAppGuard || history.state.smAppModal))) {
+      history.pushState({ smAppGuard: true }, '');
+    }
+  }, { once: true, passive: true });
+});
+
 const swipeSurface = document.getElementById('app');
 swipeSurface.addEventListener('touchstart', (e) => {
   if (e.touches.length !== 1 || isAnyModalOpen() || e.target.closest('.overflow-x-auto')) {
