@@ -1969,7 +1969,7 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
       : fmtKRW(g.curAmount);
     return `
     <tr class="border-b border-slate-50 dark:border-slate-800/70 last:border-b-0">
-      <td class="py-2 pr-2 font-medium max-w-[7rem] truncate" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
+      <td class="py-2 pr-2 font-medium max-w-[7rem] truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
       <td class="py-2 px-2 text-right">${valueHtml}</td>
       <td class="py-2 px-2 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}<br><span class="text-[10px]">${fmtPct(rateOfReturn)}</span></td>
       <td class="py-2 pl-2 text-right text-slate-500 dark:text-slate-400">${fmtNum(pct, 1)}%</td>
@@ -2450,6 +2450,12 @@ function computeIndividualRebalanceGuide() {
   return { rows, excluded };
 }
 
+// 목표금액-현재금액 차액(diff)의 색상 관례 - renderRebalanceResultGroup에서 처음 정한 것을 공유한다:
+// 매수 필요(부족, 양수)=파랑, 매도 필요(과다, 음수)=빨강. 1원 미만 차이는 오차로 보고 중립색 처리한다.
+function rebalanceDiffColorClass(diff) {
+  return diff > 1 ? 'text-blue-500' : (diff < -1 ? 'text-red-500' : 'text-slate-400');
+}
+
 // 리밸런싱 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=리밸런싱 가능한)" 자산만 합산한다.
 function getRebalanceTotals() {
   const byDomestic = { '국내': 0, '해외': 0 };
@@ -2467,25 +2473,45 @@ function getRebalanceTotals() {
 }
 
 function renderRebalance() {
-  buildDomesticTargetInputs();
-  buildTargetInputs('국내');
-  buildTargetInputs('해외');
+  const { total, byDomestic, perRegion } = getRebalanceTotals();
+  buildDomesticTargetInputs(total, byDomestic);
+  buildTargetInputs('국내', total, perRegion['국내']);
+  buildTargetInputs('해외', total, perRegion['해외']);
   updateRebalanceResults();
+}
+
+// 비중 아래에 목표금액/조정금액 미리보기를 만든다 - rebalanceTargetModal 안의 미리보기와 같은 색상
+// 관례(목표금액은 굵게, 조정금액은 매수=파랑/매도=빨강)를 기본 화면에서도 그대로 보여준다. 기본 화면의
+// 세부 목표 카드는 국내/해외가 항상 나란히 50:50으로 배치돼 폭이 좁으므로(모바일 가로 병렬 배치),
+// 한 줄에 나란히 배치하면 "원"이 줄바꿈되어 지저분해진다 - 값은 축약 표기(fmtKRWShort/fmtSignedShort)로
+// 줄이고 label/값을 세로로 쌓아 좁은 폭에서도 깨지지 않게 한다.
+function rebalanceAmountPreviewHtml(targetAmount, currentAmount) {
+  const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
+  return `<div class="mt-1 text-[11px] leading-tight space-y-0.5">
+    <div class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(targetAmount)}</span></div>
+    <div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSignedShort(diff)}</div>
+  </div>`;
 }
 
 // 읽기 전용 표시칸 - 실제 편집은 이 영역을 클릭하면 뜨는 [전체 목표 비중 수정] 모달(rebalanceTargetModal)
 // 안에서만 한다. 여기 있는 값은 항상 state.rebalance를 그대로 보여주기만 한다.
-function buildDomesticTargetInputs() {
+// total/byDomestic: getRebalanceTotals()의 결과 - 비중 아래 목표금액/조정금액 미리보기 계산에 쓰인다.
+function buildDomesticTargetInputs(total, byDomestic) {
   const wrap = document.getElementById('domesticTargetInputs');
   const domesticPct = num(state.rebalance.domestic['국내']);
+  const foreignPct = 100 - domesticPct;
+  const krTargetAmount = total * domesticPct / 100;
+  const frTargetAmount = total * foreignPct / 100;
   wrap.innerHTML = `
     <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
       <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(domesticPct, 1)}</div>
+      ${rebalanceAmountPreviewHtml(krTargetAmount, (byDomestic && byDomestic['국내']) || 0)}
     </div>
     <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
-      <div class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right text-slate-400">${fmtNum(100 - domesticPct, 1)}</div>
+      <div class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right text-slate-400">${fmtNum(foreignPct, 1)}</div>
+      ${rebalanceAmountPreviewHtml(frTargetAmount, (byDomestic && byDomestic['해외']) || 0)}
     </div>`;
 }
 
@@ -2628,16 +2654,24 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
 // 추가] 버튼이 함께 있었으나 기능이 통째로 제거되어, 이제 DEFAULT_REBALANCE_TARGETS 기반의 고정 목록만
 // 그린다(사용자가 이 화면에서 추가/삭제할 수 없고 비중(%)만 조정 가능).
 // 읽기 전용 표시칸 - buildDomesticTargetInputs와 동일하게, 실제 편집은 rebalanceTargetModal에서만 한다.
-function buildTargetInputs(region) {
+// total/currentAmounts: getRebalanceTotals()의 결과(currentAmounts는 targets와 같은 순서의 현재 평가금액
+// 배열) - 비중 아래 목표금액/조정금액 미리보기 계산에 쓰인다.
+function buildTargetInputs(region, total, currentAmounts) {
   const wrapId = region === '국내' ? 'categoryTargetInputsDomestic' : 'categoryTargetInputsForeign';
   const wrap = document.getElementById(wrapId);
   const targets = state.rebalance.targets[region] || [];
+  const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
 
-  wrap.innerHTML = targets.map((t) => `
+  wrap.innerHTML = targets.map((t, idx) => {
+    const targetAmount = regionTargetAmount * num(t.pct) / 100;
+    const currentAmount = (currentAmounts && currentAmounts[idx]) || 0;
+    return `
     <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t.label)} (%)</span>
       <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(num(t.pct), 1)}</div>
-    </div>`).join('') || `<p class="text-xs text-slate-400 col-span-full" data-action="open-rebalance-target-modal">설정된 목표 항목이 없습니다.</p>`;
+      ${rebalanceAmountPreviewHtml(targetAmount, currentAmount)}
+    </div>`;
+  }).join('') || `<p class="text-xs text-slate-400 col-span-full" data-action="open-rebalance-target-modal">설정된 목표 항목이 없습니다.</p>`;
 
   updateTargetSum(region);
 }
@@ -2763,9 +2797,7 @@ function updateRtmPreviews() {
       const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
       const previewEl = document.querySelector(`[data-rtm-preview][data-region="${region}"][data-idx="${idx}"]`);
       if (!previewEl) return;
-      // renderRebalanceResultGroup과 동일한 색상 관례: 매수 필요(부족)=파랑, 매도 필요(과다)=빨강.
-      const diffClass = diff > 1 ? 'text-blue-500' : (diff < -1 ? 'text-red-500' : 'text-slate-400');
-      previewEl.innerHTML = `<span class="text-slate-400">목표금액 ${fmtKRW(targetAmount)}</span><span class="font-medium ${diffClass}">${fmtSigned(diff)}</span>`;
+      previewEl.innerHTML = `<span class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></span><span class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</span>`;
     });
     const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
     const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
@@ -2871,7 +2903,7 @@ function renderIndividualRebalanceGuide() {
     <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
-          <p class="text-sm font-semibold truncate">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
+          <p class="text-sm font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
           <p class="text-[11px] text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
         </div>
         <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
@@ -2891,7 +2923,7 @@ function renderIndividualRebalanceGuide() {
     <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
-          <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
+          <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
           <p class="text-[11px] text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
         </div>
         <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">리밸런싱 제외 자산</span>
@@ -3261,7 +3293,7 @@ function renderTargetAllocationSummary(regionPV2) {
     targets.forEach((t) => {
       const amount = regionPV2[region] * num(t.pct) / 100;
       const overallPct = regionPct * num(t.pct) / 100;
-      rows.push({ name: t.label, region, amount, pct: overallPct, rate: getTargetProjectionRate(t) });
+      rows.push({ name: t.label, region, amount, pct: overallPct, rate: getTargetProjectionRate(t), ticker: t.type === 'ticker' ? t.ticker : '' });
     });
   });
   if (rows.length === 0) {
@@ -3284,7 +3316,7 @@ function renderTargetAllocationSummary(regionPV2) {
         <tr class="border-b border-slate-50 dark:border-slate-800/60 last:border-0">
           <td class="py-1 sm:py-1.5 pr-1 sm:pr-2">
             <div class="flex items-center gap-0.5 sm:gap-1 min-w-0">
-              <span class="truncate max-w-[52px] sm:max-w-[104px] font-medium text-slate-700 dark:text-slate-200">${escapeHtml(r.name)}</span>
+              <span class="truncate max-w-[52px] sm:max-w-[104px] font-medium text-slate-700 dark:text-slate-200 ${r.ticker ? 'cursor-pointer hover:underline' : ''}"${r.ticker ? ` data-open-stock-detail data-ticker="${escapeHtml(r.ticker)}" data-name="${escapeHtml(r.name)}"` : ''}>${escapeHtml(r.name)}</span>
               <span class="shrink-0 px-1 py-0.5 rounded text-[8px] sm:text-[9px] leading-none ${r.region === '해외' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'}">${r.region === '해외' ? '미국' : '국내'}</span>
             </div>
           </td>
@@ -4053,7 +4085,7 @@ function renderTransactionList() {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
           ${originTag}
-          <span class="text-sm font-medium truncate">${escapeHtml(t.name)}</span>
+          <span class="text-sm font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(t.ticker || '')}" data-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
           <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
         </div>
         <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}</p>
@@ -4901,6 +4933,50 @@ document.getElementById('assetDetailOwnerBreakdownList').addEventListener('click
   if (remaining.length === 0) closeAssetDetailModal();
   else if (remaining.length === 1) openAssetDetailModal(remaining[0].id);
   else openAssetDetailModalGroup(remaining.map((x) => ({ ...x, ...calcRow(x) })));
+});
+
+/* -------------------------------------------------------------------------
+ * 11-0-1. 자산관리 리스트 밖(거래내역/리밸런싱 실행가이드/자산예측 상품별 비중/대시보드 Top5/RISK 관리
+ *    등)에서 종목명·티커를 클릭했을 때도 자산관리 리스트와 완전히 동일한 종목 상세+차트 팝업이 뜨도록
+ *    하는 공통 진입점. 화면마다 렌더 함수가 제각각이라 매번 리스너를 따로 다는 대신, 종목명 요소에
+ *    data-open-stock-detail(+data-ticker/data-name)만 붙여두면 아래 위임(delegated) 리스너 하나가
+ *    재렌더링 여부와 무관하게 항상 처리한다.
+ * ---------------------------------------------------------------------- */
+// 보유 중인 자산과 매칭되면(같은 티커, 여러 소유자면 통합 그룹 모달) 기존 상세 모달을 그대로 재사용해
+// 보유 정보(수량/매입가/평가손익 등)까지 보여주고, 매칭되지 않으면(매도 완료 종목, 자산군 캐치올 항목
+// 등) 보유 정보 없이 차트만 보여주는 경량 버전(openStockDetailModalReadOnly)으로 연다.
+function openStockDetailModal(ticker, name) {
+  const sanitized = sanitizeTicker(ticker);
+  if (sanitized.yahooTicker) {
+    const matches = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker === sanitized.yahooTicker);
+    if (matches.length === 1) { openAssetDetailModal(matches[0].id); return; }
+    if (matches.length > 1) { openAssetDetailModalGroup(matches.map((a) => ({ ...a, ...calcRow(a) }))); return; }
+  }
+  openStockDetailModalReadOnly(ticker, name, sanitized);
+}
+
+function openStockDetailModalReadOnly(ticker, name, sanitized) {
+  assetDetailCurrentId = null;
+  assetDetailCurrentGroupIds = null;
+  const s = sanitized || sanitizeTicker(ticker);
+  document.getElementById('assetDetailName').textContent = name || ticker || '(이름 없음)';
+  document.getElementById('assetDetailTicker').textContent = ticker || '티커 없음';
+  document.getElementById('assetDetailInfoGrid').innerHTML = s.yahooTicker
+    ? '<p class="col-span-2 sm:col-span-4 text-slate-400">현재 보유 중인 자산이 아닙니다(매도 완료 등). 아래에서 시세 차트만 확인할 수 있습니다.</p>'
+    : '<p class="col-span-2 sm:col-span-4 text-slate-400">특정 종목이 아닌 자산군 항목이라 상세 정보/차트를 제공할 수 없습니다.</p>';
+  document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
+  document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
+  document.getElementById('assetDetailEditBtn').classList.add('hidden');
+  document.getElementById('assetDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+  renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
+}
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-open-stock-detail]');
+  if (!el) return;
+  openStockDetailModal(el.dataset.ticker, el.dataset.name);
 });
 
 // 이동평균선(MA) 설정 - 5/10/20/60/120일. 색상은 요청된 팔레트를 그대로 쓴다.
@@ -5751,7 +5827,7 @@ function renderRiskSection() {
     return `
     <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40">
       <div class="min-w-0">
-        <p class="text-sm font-semibold truncate">${escapeHtml(a.name)} <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+        <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
         <div class="flex flex-wrap gap-1 mt-1">${tagHtml}</div>
       </div>
       <div class="text-right shrink-0 pl-2">
