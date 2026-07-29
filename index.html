@@ -1898,6 +1898,24 @@ function resolveForeignTimeWindow() {
   return 'closed';
 }
 
+// [정규장 외 거래 적격성 검증] 국내(KRX/NEXTRADE) 상장 상품 중 실제로 프리마켓/애프터마켓에서
+// 유동성 있게 거래되는 것은 사실상 개별 보통주뿐이다. ETF/ETN(집합투자기구)은 유동성공급자(LP)의
+// 호가 제공 의무가 정규장에만 있어 시간외 단일가 시장에 사실상 참여하지 않고, 국내 우선주도 대다수가
+// 거래량이 적어 시간외 데이터가 거의 없다. 이 함수는 API 응답에 실제 시간외 데이터가 유무와 무관하게
+// (API가 어쩌다 깡통/오류 데이터를 흘려보내는 경우까지 대비한 이중 안전장치) 카테고리 기준으로 먼저
+// 판정해, fetchNaverKrPrice/fetchYahooViaProxy/fetchStooqPrice가 이 결과가 참이면 무조건 프리/애프터
+// 라벨을 걸지 않고 '장마감'으로 고정하게 한다. 미국(해외) 티커에는 적용하지 않는다 - 미국 ETF(QQQM 등)는
+// 실제로 프리/애프터마켓에서 정상 거래된다.
+//   - ETF/ETN: classifyCategory와 동일한 ETF_KEYWORDS를 재사용해 판정 기준을 하나로 통일한다.
+//   - 우선주: KRX 종목코드 부여 관례상 끝자리가 0이 아닌 홀수(1/3/5/7/9)인 6자리 코드.
+function isDomesticAfterHoursIneligible(yahooTicker, name) {
+  const code = String(yahooTicker ?? '').replace(/\.(KS|KQ)$/i, '');
+  const isPreferredStockCode = /^\d{5}[13579]$/.test(code);
+  const hay = ((yahooTicker || '') + ' ' + (name || '')).toUpperCase();
+  const isEtfOrEtn = ETF_KEYWORDS.some((k) => hay.includes(k)) || hay.includes('ETN');
+  return isPreferredStockCode || isEtfOrEtn;
+}
+
 // 자산 하나의 오늘 하루 손익(KRW)을 계산한다. 우선순위:
 //   1) 전일종가(prevCloseMap)가 있으면 "오늘 평가액 - 어제 종가 기준 평가액"으로 정확히 계산한다.
 //      해외자산은 오늘값에는 현재 환율을, 어제값에는 오늘 하루의 기준환율(refExchangeRate)을 각각
@@ -5643,7 +5661,7 @@ async function fetchExchangeRate() {
 // 경계와 비교해 판별하는 방식으로 시간외 시세를 채택한다. 국내(KRX)는 Yahoo가 애초에 시간외 데이터를
 // 채워주지 않는 경우가 많아(meta.hasPrePostMarketData: false) 이 경로를 타도 정규장 종가로 자연 폴백된다.
 // changePercent도 더 이상 meta에서 내려오지 않으므로 previousClose 대비 직접 계산한다.
-function pickCurrentPriceFromChart(result) {
+function pickCurrentPriceFromChart(result, yahooTicker, name) {
   const meta = result.meta;
   const period = meta.currentTradingPeriod;
   const ts = result.timestamp || [];
@@ -5666,7 +5684,13 @@ function pickCurrentPriceFromChart(result) {
 
   const inWindow = (w, atTs) => w && typeof w.start === 'number' && typeof w.end === 'number' && atTs >= w.start && atTs < w.end;
 
-  if (lastIdx !== -1 && period) {
+  // [정규장 외 거래 적격성 사전 필터] 국내 티커(.KS/.KQ)에 한해 ETF/ETN·우선주는 시간외 틱이 실제로
+  // 있어도 무시한다. Yahoo가 내려주는 meta.instrumentType==='ETF'도 추가 근거로 함께 본다(더 넓게
+  // 잡히는 이름 키워드 기반 판정과 OR) - 미국(해외) 티커에는 적용하지 않는다(미국 ETF는 실제로 거래됨).
+  const isDomesticTicker = /\.(KS|KQ)$/i.test(yahooTicker || '');
+  const ineligible = isDomesticTicker && (isDomesticAfterHoursIneligible(yahooTicker, name) || meta.instrumentType === 'ETF');
+
+  if (!ineligible && lastIdx !== -1 && period) {
     const lastTs = ts[lastIdx];
     const lastClose = closes[lastIdx];
     if (lastClose > 0 && inWindow(period.post, lastTs)) return withChangePercent(lastClose, 'post');
@@ -5683,7 +5707,7 @@ function pickCurrentPriceFromChart(result) {
   return withChangePercent(meta.regularMarketPrice, inRegularNow ? 'regular' : 'closed');
 }
 
-async function fetchYahooViaProxy(yahooTicker, proxy) {
+async function fetchYahooViaProxy(yahooTicker, proxy, name) {
   // interval=2m: meta의 preMarketPrice/postMarketPrice가 더 이상 내려오지 않아, 분봉 배열에서 직접
   // 시간외 틱을 찾아야 한다(위 pickCurrentPriceFromChart 참고). 1분봉 대신 2분봉을 써서 모바일 트래픽
   // 부담을 줄인다 - 시간외 거래 자체가 체결이 뜸해 2분 단위로도 최신 틱을 놓치지 않는다.
@@ -5694,7 +5718,7 @@ async function fetchYahooViaProxy(yahooTicker, proxy) {
   const result = data && data.chart && data.chart.result && data.chart.result[0];
   const meta = result && result.meta;
   if (!meta || typeof meta.regularMarketPrice !== 'number') throw new Error('가격 필드 없음');
-  const picked = pickCurrentPriceFromChart(result);
+  const picked = pickCurrentPriceFromChart(result, yahooTicker, name);
   return {
     price: picked.price,
     previousClose: picked.previousClose,
@@ -5763,7 +5787,7 @@ function parseNaverNum(s) {
 // 방화벽 등 이유로) 실패하는 경우를 대비한 폴백. 직접 호출만 있던 이전 구조는 실패 시 조용히
 // Yahoo/Stooq(국내 종목은 시간외 데이터 자체가 없음)로 넘어가 "갱신 완료" 배너는 뜨지만 실제로는 전일
 // 종가만 표시되는 문제가 있었다.
-async function fetchNaverKrPrice(yahooTicker, proxy) {
+async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   const code = yahooTicker.replace(/\.(KS|KQ)$/i, '');
   if (!/^\d{6}$/.test(code)) throw new Error('국내 종목 코드 형식이 아님');
   const target = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
@@ -5775,7 +5799,10 @@ async function fetchNaverKrPrice(yahooTicker, proxy) {
 
   const closeRaw = parseNaverNum(d.closePriceRaw);
   const diffRaw = parseNaverNum(d.compareToPreviousClosePriceRaw);
-  if (closeRaw === null) throw new Error('가격 필드 없음');
+  // [0원/깡통 데이터 방지 세이프가드] null뿐 아니라 0 이하도 무효로 본다 - 0원이 그대로 현재가로
+  // 반영되면 평가금액이 순간적으로 0원이 되는 사고로 이어진다. 이 경우도 실패로 던져 호출부가
+  // 기존 값을 그대로 유지하게 한다(다른 소스들과 동일한 방어 방식 - fetchStooqPrice 참고).
+  if (closeRaw === null || closeRaw <= 0) throw new Error('가격 필드 없음 또는 0 이하의 유효하지 않은 값');
   // previousClose(전일 종가)는 "오늘 종가 - 오늘 등락폭"으로 역산한다(네이버가 전일종가 자체는
   // 별도 필드로 안 주고 등락폭만 제공).
   const previousClose = (diffRaw !== null) ? (closeRaw - diffRaw) : null;
@@ -5791,22 +5818,25 @@ async function fetchNaverKrPrice(yahooTicker, proxy) {
   const over = d.overMarketPriceInfo;
   const overPrice = over ? parseNaverNum(over.overPrice) : null;
   const hasValidOverPrice = !!(over && over.tradingSessionType && over.tradingSessionType !== 'REGULAR_MARKET' && overPrice !== null && overPrice > 0);
+  // [정규장 외 거래 적격성 사전 필터] ETF/ETN·우선주는 API가 어쩌다 시간외 데이터를 흘려보내더라도
+  // 무조건 부적격 처리한다 - isDomesticAfterHoursIneligible 참고.
+  const ineligible = isDomesticAfterHoursIneligible(yahooTicker, name);
 
   let price = closeRaw;
   let session = 'closed';
   if (timeWindow === 'regular') {
     session = 'regular';
     price = closeRaw;
-  } else if (timeWindow === 'pre' && hasValidOverPrice) {
+  } else if (timeWindow === 'pre' && hasValidOverPrice && !ineligible) {
     session = 'pre';
     price = overPrice;
-  } else if (timeWindow === 'post' && hasValidOverPrice) {
+  } else if (timeWindow === 'post' && hasValidOverPrice && !ineligible) {
     session = 'post';
     price = overPrice;
   }
-  // 그 외(장마감/주말, 또는 프리·애프터 시간대인데 시간외 데이터 없음)는 session='closed' 그대로,
-  // price=closeRaw(프리 구간이면 전일 종가, 그 외엔 당일 정규장 종가 - 네이버 API가 그 시점에 실제로
-  // 반환하는 값 그대로다).
+  // 그 외(장마감/주말, 프리·애프터 시간대인데 시간외 데이터 없음, 또는 ETF/ETN·우선주라 애초에
+  // 부적격)는 session='closed' 그대로, price=closeRaw(프리 구간이면 전일 종가, 그 외엔 당일 정규장
+  // 종가 - 네이버 API가 그 시점에 실제로 반환하는 값 그대로다).
 
   const changePercent = (typeof previousClose === 'number' && previousClose > 0) ? ((price - previousClose) / previousClose * 100) : 0;
   return { price, previousClose, changePercent, session, source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)' };
@@ -5814,11 +5844,11 @@ async function fetchNaverKrPrice(yahooTicker, proxy) {
 
 // 네이버 직접 호출 + CORS_PROXIES 경유 재시도를 Promise.any로 동시 경쟁시킨다 - 직접 호출이 배포
 // 환경에서 막혀도(방화벽/CORS 등) 프록시 중 하나가 성공하면 그 값을 채택한다.
-async function raceFetchNaverKr(yahooTicker) {
+async function raceFetchNaverKr(yahooTicker, name) {
   const sourceNames = ['Naver(직접)', ...CORS_PROXIES.map((p) => `Naver(${p.name})`)];
   const attempts = [
-    () => fetchNaverKrPrice(yahooTicker),
-    ...CORS_PROXIES.map((proxy) => () => fetchNaverKrPrice(yahooTicker, proxy))
+    () => fetchNaverKrPrice(yahooTicker, undefined, name),
+    ...CORS_PROXIES.map((proxy) => () => fetchNaverKrPrice(yahooTicker, proxy, name))
   ];
   try {
     return await Promise.any(attempts.map((fn) => fn()));
@@ -5834,10 +5864,10 @@ async function raceFetchNaverKr(yahooTicker) {
 // reject한다. CORS_PROXIES 배열 순서/개수가 바뀌어도 자동으로 따라가도록 인덱스 하드코딩 없이 매핑한다.
 // Yahoo 프록시 5개 + Stooq를 Promise.any로 경쟁시킨다 - allSettled와 달리 "전부 끝날 때까지"
 // 기다리지 않고 가장 먼저 fulfill되는 소스가 나오는 즉시 그 값을 채택한다(진짜 속도 기준 경쟁).
-async function raceFetchYahooStooq(yahooTicker) {
+async function raceFetchYahooStooq(yahooTicker, name) {
   const sourceNames = [...CORS_PROXIES.map((p) => `Yahoo(${p.name})`), 'Stooq'];
   const attempts = [
-    ...CORS_PROXIES.map((proxy) => () => fetchYahooViaProxy(yahooTicker, proxy)),
+    ...CORS_PROXIES.map((proxy) => () => fetchYahooViaProxy(yahooTicker, proxy, name)),
     () => fetchStooqPrice(yahooTicker)
   ];
   try {
@@ -5849,19 +5879,19 @@ async function raceFetchYahooStooq(yahooTicker) {
   }
 }
 
-async function raceFetchPrice(yahooTicker) {
+async function raceFetchPrice(yahooTicker, name) {
   const isKr = /\.(KS|KQ)$/i.test(yahooTicker);
-  if (!isKr) return raceFetchYahooStooq(yahooTicker);
+  if (!isKr) return raceFetchYahooStooq(yahooTicker, name);
 
   // 국내 티커는 "가장 빠른 소스"가 아니라 네이버(직접+프록시 경쟁)를 항상 먼저 시도한다 - 시간외
   // 시세를 실제로 제공하는 유일한 소스라서, 순수 속도 경쟁에 맡기면 우연히 더 빨리 응답한 Yahoo
   // (정규장가로만 폴백됨)가 이겨 시간외 시세가 묻히는 경우가 생길 수 있다. 네이버 쪽(직접+프록시 전부)이
   // 실패할 때만 Yahoo/Stooq 경쟁으로 폴백한다.
   try {
-    return await raceFetchNaverKr(yahooTicker);
+    return await raceFetchNaverKr(yahooTicker, name);
   } catch (naverErr) {
     try {
-      return await raceFetchYahooStooq(yahooTicker);
+      return await raceFetchYahooStooq(yahooTicker, name);
     } catch (restErr) {
       throw new Error(`Naver: ${naverErr.message} | ${restErr.message}`);
     }
@@ -5873,13 +5903,13 @@ async function raceFetchPrice(yahooTicker) {
 // .KS 조회가 전부 실패하면(존재하지 않는 코스피 코드일 가능성) 같은 6자리를 .KQ로 자동 재시도한다 -
 // 예를 들어 실제로는 코스닥 종목인데 사용자가 접미사 없이 6자리 코드만 입력한 경우를 구제한다.
 // (.KS/.KQ를 이미 명시했거나 해외 티커인 경우는 애매하지 않으므로 재시도하지 않는다.)
-async function fetchPriceWithFallback(rawTicker) {
+async function fetchPriceWithFallback(rawTicker, name) {
   const yahooTicker = sanitizeTicker(rawTicker).yahooTicker;
   const trimmedRaw = String(rawTicker ?? '').trim();
   const isAmbiguousKrxCode = /^\d{6}$/.test(trimmedRaw);
 
   try {
-    return await raceFetchPrice(yahooTicker);
+    return await raceFetchPrice(yahooTicker, name);
   } catch (ksErr) {
     if (!isAmbiguousKrxCode) {
       console.error(`[시세조회 실패] ticker="${rawTicker}" (조회용: "${yahooTicker}") - 모든 소스 실패:\n${ksErr.message}`);
@@ -5887,7 +5917,7 @@ async function fetchPriceWithFallback(rawTicker) {
     }
     const kqTicker = trimmedRaw + '.KQ';
     try {
-      const result = await raceFetchPrice(kqTicker);
+      const result = await raceFetchPrice(kqTicker, name);
       // [오매칭 안전장치] 실제로 확인된 사례: 같은 6자리 코드가 KOSDAQ 쪽 전혀 다른 상품(예: 뮤추얼펀드)과
       // 우연히 겹쳐서, 코스피 종목(예: 삼성전자 005930)의 .KS 조회가 일시적으로 실패했을 때 .KQ 쪽이
       // "성공"처럼 보이지만 실제로는 완전히 무관한 상품의 가격을 돌려주는 경우가 있었다(005930.KQ가
@@ -6097,7 +6127,7 @@ async function fetchPricesForTargets(targets) {
   targets.forEach((a) => { a.fetchStatus = 'pending'; });
 
   const results = await Promise.allSettled(
-    targets.map(a => fetchPriceWithFallback(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
+    targets.map(a => fetchPriceWithFallback(a.ticker, a.name).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
   );
 
   let successCount = 0, failCount = 0;
