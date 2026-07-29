@@ -4434,11 +4434,18 @@ function derivePresentation(r) {
   const changeColorClass = hasChange ? profitColor(fetchedPct) : '';
   const changeText = hasChange ? fmtPct(fetchedPct) : '';
 
-  // 정규장 종가가 아니라 시간외(프리/애프터마켓) 시세를 현재가로 채택한 경우 작은 배지로 안내한다 -
-  // 그래야 "왜 이 가격이 다른 곳의 정규장 종가와 다르지?"라는 혼란을 막을 수 있다.
+  // 지금 현재가가 프리/정규/애프터 중 어느 세션의 시세인지 작은 배지로 안내한다 - 시간외(프리/애프터)는
+  // "왜 이 가격이 다른 곳의 정규장 종가와 다르지?"라는 혼란을 막기 위해 눈에 띄는 보라색으로,
+  // 정규장은 참고용으로만 보이면 되므로 차분한 회색으로 구분한다.
   const session = state.sessionMap[r.id];
-  const sessionBadge = session
-    ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-300" title="${session === 'post' ? '애프터마켓(장 마감 후)' : '프리마켓(장 시작 전)'} 시세가 반영된 현재가입니다">${session === 'post' ? '애프터마켓' : '프리마켓'}</span>`
+  const SESSION_BADGE_META = {
+    pre: { label: '프리마켓', title: '프리마켓(장 시작 전) 시세가 반영된 현재가입니다', cls: 'bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-300' },
+    post: { label: '애프터마켓', title: '애프터마켓(장 마감 후) 시세가 반영된 현재가입니다', cls: 'bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-300' },
+    regular: { label: '정규장', title: '정규장 시세가 반영된 현재가입니다', cls: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300' }
+  };
+  const sessionMeta = SESSION_BADGE_META[session];
+  const sessionBadge = sessionMeta
+    ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
     : '';
 
   // 화면에는 사용자가 입력한 원본 티커를 표시하고, 시세 조회용 정제 티커는 툴팁으로만 안내한다.
@@ -5786,8 +5793,9 @@ async function fetchPricesForTargets(targets) {
         asset.fetchStatus = 'success';
         state.dayChangeMap[r.value.id] = r.value.changePercent;
         state.prevCloseMap[r.value.id] = r.value.previousClose; // 일간 손익 정밀 계산용 전일종가(없으면 null)
-        // 'post'/'pre'이면 정규장 종가가 아니라 시간외 시세를 현재가로 채택했다는 표식 - 테이블 배지용.
-        if (r.value.session === 'post' || r.value.session === 'pre') state.sessionMap[r.value.id] = r.value.session;
+        // 'post'/'pre'/'regular' 어느 세션의 시세를 현재가로 채택했는지 표식 - 테이블 배지용.
+        // session 정보 자체가 없는 소스(Stooq 등)만 배지를 아예 띄우지 않도록 sessionMap에서 지운다.
+        if (r.value.session) state.sessionMap[r.value.id] = r.value.session;
         else delete state.sessionMap[r.value.id];
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;

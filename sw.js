@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v5';
+const CACHE_NAME = 'smart-asset-manager-v6';
 const APP_SHELL = [
   './',
   './index.html',
