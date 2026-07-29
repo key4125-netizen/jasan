@@ -5012,7 +5012,7 @@ document.addEventListener('click', (e) => {
 
 // 이동평균선(MA) 설정 - 5/10/20/60/120일. 색상은 요청된 팔레트를 그대로 쓴다.
 const MA_PERIODS = [5, 10, 20, 60, 120];
-const MA_COLORS = { 5: '#FF2D55', 10: '#FF9500', 20: '#FFD600', 60: '#34C759', 120: '#AF52DE' };
+const MA_COLORS = { 5: '#000000', 10: '#B22222', 20: '#FFD600', 60: '#34C759', 120: '#AF52DE' };
 // 캔들스틱 색상 - 양봉/음봉과 시각적으로 뚜렷이 구분되도록 지정된 고대비 팔레트.
 const CANDLE_UP_COLOR = '#FF3B30';
 const CANDLE_DOWN_COLOR = '#007AFF';
@@ -5139,12 +5139,27 @@ function rescaleAssetDetailYAxis(chart) {
   chart.update('none'); // 애니메이션 없이 즉시 갱신 - 연속되는 제스처 도중 매번 애니메이션이 걸리면 버벅인다
 }
 
-// 돋보기 [+]/[-] 버튼 - chartjs-plugin-zoom의 프로그래매틱 zoom API를 그대로 재사용하되, 휠/핀치
-// 제스처 트리거만 꺼서(zoom.zoom.wheel/pinch enabled:false) 의도치 않은 확대/축소를 막는다.
+// 돋보기 [+]/[-] 버튼 - chart.zoom()의 기본 동작(현재 보이는 구간의 중앙을 기준으로 확대/축소)을 쓰지
+// 않는다. 그렇게 하면 확대할 때마다 최근(오른쪽 끝) 날짜가 화면 밖으로 밀려날 수 있기 때문이다.
+// 대신 오른쪽 끝(가장 최근 날짜)은 항상 고정하고, 왼쪽(과거 방향) 경계만 늘리거나 줄여서 "최근 날짜가
+// 항상 차트 오른쪽 끝에 정렬된 상태"를 유지한다. chart.zoomScale()은 chartjs-plugin-zoom이 제공하는
+// 프로그래매틱 API로, 이 방식으로 범위를 바꿔도 이후의 드래그(pan) 등 다른 제스처와의 내부 상태가
+// 계속 일관되게 유지된다(직접 chart.options.scales.x.min/max만 바꾸는 것과 달리 안전).
+const ASSET_DETAIL_MIN_ZOOM_SPAN_MS = 3 * 24 * 60 * 60 * 1000; // 최소 3일치 - 지나치게 확대해 캔들이 안 보이는 상황 방지
 function zoomAssetDetailChart(factor) {
   const chart = charts.assetDetail;
   if (!chart) return;
-  chart.zoom({ x: factor });
+  const candleData = chart.data.datasets[0].data;
+  if (!candleData || candleData.length === 0) return;
+  const overallMin = candleData[0].x;
+  const overallMax = candleData[candleData.length - 1].x; // 데이터상 가장 최근 날짜 - 항상 이 값에 고정한다
+  const xScale = chart.scales.x;
+  const currentMin = (typeof xScale.min === 'number') ? xScale.min : overallMin;
+  const currentMax = (typeof xScale.max === 'number') ? xScale.max : overallMax;
+  const currentSpan = Math.max(currentMax - currentMin, ASSET_DETAIL_MIN_ZOOM_SPAN_MS);
+  const newSpan = Math.max(currentSpan / factor, ASSET_DETAIL_MIN_ZOOM_SPAN_MS);
+  const newMin = Math.max(overallMax - newSpan, overallMin);
+  chart.zoomScale('x', { min: newMin, max: overallMax }, 'none');
   rescaleAssetDetailYAxis(chart);
 }
 
@@ -5230,25 +5245,9 @@ function buildAssetDetailChart(periodKey) {
         // 이동평균선/평단가 범례는 차트 위 커스텀 HTML(#assetDetailMaLegend)로 대체하므로 Chart.js 기본
         // 범례는 끈다 - 캔들 + MA 5개 + 평단가까지 합쳐 7개 범례가 뜨면 좁은 모달 폭에서 지저분해진다.
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const raw = ctx.raw;
-              const u = isForeign ? '$' : '';
-              const dp = isForeign ? 2 : 0;
-              if (raw && typeof raw === 'object' && typeof raw.o === 'number') {
-                return [
-                  `시가 ${u}${fmtNum(raw.o, dp)}`,
-                  `고가 ${u}${fmtNum(raw.h, dp)}`,
-                  `저가 ${u}${fmtNum(raw.l, dp)}`,
-                  `종가 ${u}${fmtNum(raw.c, dp)}`
-                ];
-              }
-              const y = raw && typeof raw === 'object' ? raw.y : raw;
-              return ` ${ctx.dataset.label}: ${u}${fmtNum(y, dp)}`;
-            }
-          }
-        },
+        // 터치/마우스 이동 시 뜨는 세부 금액 툴팁(크로스헤어)은 요구사항에 따라 완전히 끈다 -
+        // 캔들스틱 + 이동평균선만 깔끔하게 보이게 한다.
+        tooltip: { enabled: false },
         // [돋보기 버튼 확대/축소 + 드래그 이동] 휠/핀치 제스처는 의도적으로 끈다(요구사항) - 확대/축소는
         // #assetDetailZoomInBtn/#assetDetailZoomOutBtn 버튼(zoomAssetDetailChart)으로만 한다.
         // x축만 확대/이동하며(mode:'x'), 원본 범위(min/max:'original') 밖으로는 벗어나지 못한다.
