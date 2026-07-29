@@ -46,8 +46,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
 <!-- Hammer.js: chartjs-plugin-zoom의 핀치(두 손가락) 제스처 인식에 필요 (반드시 zoom 플러그인보다 먼저 로드) -->
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-<!-- Chart.js Zoom 플러그인 (종목 상세 차트 전용 - 휠 확대/축소, 드래그 이동, 핀치 줌) -->
+<!-- Chart.js Zoom 플러그인 (종목 상세 차트 전용 - [+]/[-] 버튼 확대/축소, 드래그 이동. 휠/핀치 제스처는 비활성화) -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+<!-- 캔들스틱 차트: 시간축(time scale)에 date-fns adapter가 필요하고, 반드시 Chart.js 본체 로드 뒤에 와야 한다 -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <!-- SheetJS (엑셀 입출력) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
@@ -950,7 +953,7 @@
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
         <button type="button" id="cancelModalBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-        <button type="submit" class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+        <button type="submit" id="assetFormSubmitBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">추가</button>
       </div>
     </form>
   </div>
@@ -983,9 +986,19 @@
 
       <div class="border border-slate-100 dark:border-slate-800 rounded-xl p-2">
         <!-- 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 클릭 시 캐시된 전체 시세(assetDetailFullPoints)를
-             다시 잘라 그 기간만큼만 보여준다(재조회 없음). 휠/드래그/핀치로 임의 확대·이동한 뒤에도
+             다시 잘라 그 기간만큼만 보여준다(재조회 없음). 돋보기 버튼으로 임의 확대한 뒤에도
              버튼을 누르면 그 기간 기준으로 확실하게 리셋된다. -->
-        <div id="assetDetailPeriodButtons" class="flex items-center justify-end gap-1 mb-1.5"></div>
+        <div class="flex items-center justify-between gap-1 mb-1.5">
+          <div class="flex items-center gap-1">
+            <button type="button" id="assetDetailZoomInBtn" title="확대" class="touch-target w-6 h-6 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300">
+              <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
+            </button>
+            <button type="button" id="assetDetailZoomOutBtn" title="축소" class="touch-target w-6 h-6 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300">
+              <i data-lucide="zoom-out" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+          <div id="assetDetailPeriodButtons" class="flex items-center justify-end gap-1"></div>
+        </div>
         <!-- 이동평균선(MA5/10/20/60/120) 범례 - 색상 점 + 명칭 + 현재 시점 수치. 데이터가 부족한
              기간(신규 상장 등)은 렌더링 시 '-'로 표시된다. -->
         <div id="assetDetailMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium mb-1 px-1"></div>
@@ -993,14 +1006,21 @@
           <canvas id="assetDetailChart"></canvas>
           <p id="assetDetailChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
         </div>
-        <p class="text-[9px] text-slate-300 dark:text-slate-600 mt-1 px-1">휠/드래그로 확대·이동, 모바일은 두 손가락으로 확대(핀치 줌)할 수 있습니다.</p>
+        <p class="text-[9px] text-slate-300 dark:text-slate-600 mt-1 px-1">돋보기 버튼으로 확대/축소, 드래그로 좌우 이동할 수 있습니다.</p>
       </div>
     </div>
 
     <div class="flex items-center justify-between px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="assetDetailDeleteBtn" class="touch-target text-xs font-medium text-red-500 hover:text-red-600 flex items-center gap-1.5">
-        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제
-      </button>
+      <div class="flex items-center gap-3">
+        <button type="button" id="assetDetailDeleteBtn" class="touch-target text-xs font-medium text-red-500 hover:text-red-600 flex items-center gap-1.5">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제
+        </button>
+        <!-- 티커가 없는 자산(예금/적금/현금성 자산 등)만 노출된다 - 티커가 있는 자산은 시세 자동 조회로만
+             갱신되고 이 화면에서 직접 수정할 수 없다. -->
+        <button type="button" id="assetDetailEditBtn" class="hidden touch-target text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1.5">
+          <i data-lucide="pencil" class="w-3.5 h-3.5"></i> 수정
+        </button>
+      </div>
       <button type="button" id="assetDetailCloseBtn" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
     </div>
   </div>
@@ -1019,6 +1039,48 @@
     </div>
     <div class="p-5">
       <div class="h-72 sm:h-96"><canvas id="chartZoomCanvas"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 전체 목표 비중 수정 모달 (리밸런싱 탭 전용) =============================
+     리밸런싱 탭의 목표 비중 입력칸(국내/해외 split + 국내/해외 세부)은 기본 화면에서 읽기 전용이고,
+     이 영역을 클릭하면 뜨는 이 모달 안에서만 편집할 수 있다. [확인]을 눌러야 state.rebalance에 반영되고
+     (draft 객체에서만 수정하다가 확인 시 커밋), 취소/오버레이 클릭/뒤로가기로 닫으면 편집 내용이
+     버려지고 이전 상태가 그대로 유지된다. -->
+<div id="rebalanceTargetModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">전체 목표 비중 수정</h3>
+      <button type="button" id="closeRebalanceTargetModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto space-y-5">
+      <div>
+        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">국내/해외(미국) 목표 비중</h4>
+        <div id="rtmDomesticSplit" class="grid grid-cols-2 gap-3"></div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">국내 세부 목표 비중</h4>
+          <span id="rtmSumDomestic" class="text-xs font-semibold">합계 0%</span>
+        </div>
+        <div id="rtmTargetsDomestic" class="space-y-2"></div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">미국(해외) 세부 목표 비중</h4>
+          <span id="rtmSumForeign" class="text-xs font-semibold">합계 0%</span>
+        </div>
+        <div id="rtmTargetsForeign" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="cancelRebalanceTargetModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+      <button type="button" id="confirmRebalanceTargetModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">확인</button>
     </div>
   </div>
 </div>
@@ -2061,6 +2123,7 @@ function renderCharts() {
 function openChartZoomModal(key) {
   document.getElementById('chartZoomModalTitle').textContent = CHART_ZOOM_TITLES[key] || '비중 상세';
   document.getElementById('chartZoomModal').classList.remove('hidden');
+  pushModalHistoryState();
 
   const rows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
   const textColor = chartTextColor();
@@ -2079,10 +2142,11 @@ function openChartZoomModal(key) {
   requestAnimationFrame(() => { if (charts.chartZoom) charts.chartZoom.resize(); });
 }
 
-function closeChartZoomModal() {
+function closeChartZoomModal(viaBackButton) {
   document.getElementById('chartZoomModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
 }
-document.getElementById('closeChartZoomModalBtn').addEventListener('click', closeChartZoomModal);
+document.getElementById('closeChartZoomModalBtn').addEventListener('click', () => closeChartZoomModal());
 document.getElementById('chartZoomModal').addEventListener('click', (e) => {
   if (e.target.id === 'chartZoomModal') closeChartZoomModal();
 });
@@ -2115,7 +2179,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  * ---------------------------------------------------------------------- */
 const SWIPE_TAB_ORDER = ['dashboard', 'transactions', 'projection', 'rebalance'];
 const SWIPE_MIN_DISTANCE = 50; // px
-const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal'];
+const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'rebalanceTargetModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2124,6 +2188,83 @@ function isAnyModalOpen() {
     return el && !el.classList.contains('hidden');
   });
 }
+
+/* -------------------------------------------------------------------------
+ * 10-1-2. 모바일 뒤로가기(popstate) 스마트 핸들링
+ *    - 모달이 열릴 때마다 history.pushState로 히스토리 레이어를 하나 쌓아둔다. 물리 뒤로가기를
+ *      누르면 popstate가 그 레이어만 소비하며, 이때 열려 있는 모달을 찾아 닫기만 하고 실제 페이지
+ *      이동은 일으키지 않는다(모달 close 함수들이 모두 hidden 클래스만 토글하므로 popstate 핸들러가
+ *      직접 hidden을 추가해도 안전 - 각 close 함수에 viaBackButton=true를 넘겨 popModalHistoryIfNeeded의
+ *      추가 history.back() 호출을 막는다. 안 그러면 이 popstate 안에서 또 back()을 호출해 상태가 꼬인다).
+ *    - 모달이 없는 메인 화면 상태에서 뒤로가기를 누르면 "한 번 더 누르면 종료" 토스트를 띄우고 히스토리
+ *      가드 상태를 다시 쌓아 페이지에 머무른다. 2초 안에 다시 누르면 가드를 재적립하지 않고 그대로
+ *      흘려보내 실제로 앱을 벗어나게 둔다(표준 더블백 종료 패턴).
+ * ---------------------------------------------------------------------- */
+// 모달 id -> "물리 뒤로가기로 닫을 때" 쓸 함수. 대부분 (viaBackButton) 하나만 받지만 시나리오 모달은
+// id를 함께 넘겨야 해서 래핑한다.
+const MODAL_CLOSE_FNS = {
+  assetModal: (viaBack) => closeModal(viaBack),
+  stockSearchModal: (viaBack) => closeStockSearchModal(viaBack),
+  transactionModal: (viaBack) => closeTransactionModal(viaBack),
+  scenarioModal1: (viaBack) => closeScenarioModal('scenarioModal1', viaBack),
+  scenarioModal2: (viaBack) => closeScenarioModal('scenarioModal2', viaBack),
+  assetDetailModal: (viaBack) => closeAssetDetailModal(viaBack),
+  chartZoomModal: (viaBack) => closeChartZoomModal(viaBack),
+  rebalanceTargetModal: (viaBack) => closeRebalanceTargetModal(viaBack)
+};
+
+function findOpenModalId() {
+  return SWIPE_MODAL_IDS.find((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden');
+  }) || null;
+}
+
+let suppressNextPopstate = false;
+
+function pushModalHistoryState() {
+  history.pushState({ smAppModal: true }, '');
+}
+
+// 모달을 UI(버튼/오버레이 클릭 등)로 닫을 때 호출한다 - 물리 뒤로가기로 닫을 때는(viaBackButton=true)
+// 호출하지 않는다(이미 popstate가 그 히스토리 레이어를 소비한 뒤이므로 또 back()을 부르면 한 단계
+// 더 넘어가 버린다).
+function popModalHistoryIfNeeded() {
+  if (history.state && history.state.smAppModal) {
+    suppressNextPopstate = true;
+    history.back();
+  }
+}
+
+let lastMainBackPressAt = 0;
+const MAIN_BACK_EXIT_WINDOW_MS = 2000;
+
+window.addEventListener('popstate', () => {
+  if (suppressNextPopstate) { suppressNextPopstate = false; return; }
+
+  const openId = findOpenModalId();
+  if (openId) {
+    const fn = MODAL_CLOSE_FNS[openId];
+    if (fn) fn(true); else document.getElementById(openId).classList.add('hidden');
+    return;
+  }
+
+  // 모달이 없는 메인 화면 상태 - 더블백 종료 처리.
+  const now = Date.now();
+  if (now - lastMainBackPressAt < MAIN_BACK_EXIT_WINDOW_MS) {
+    // 2초 안에 다시 눌렀다 - 가드 상태를 다시 쌓지 않고 그대로 흘려보내 실제로 이전 페이지로
+    // 이동하거나(브라우저 탭) 앱이 종료되게(PWA/APK) 둔다.
+    return;
+  }
+  lastMainBackPressAt = now;
+  history.pushState({ smAppGuard: true }, ''); // 뒤로가기 1회분을 다시 흡수해 페이지에 머무른다
+  showToast('뒤로 버튼을 한 번 더 누르면 종료됩니다.', 'info', 2000);
+});
+
+// 최초 로드 시 더미 히스토리 항목을 하나 쌓아둔다 - 이게 없으면 첫 물리 뒤로가기가 곧바로 앱을
+// 벗어나 버려(popstate가 아예 안 뜨거나 페이지를 떠남) 메인 화면에서의 더블백 종료 처리 자체가
+// 성립하지 않는다.
+history.pushState({ smAppGuard: true }, '');
 
 const swipeSurface = document.getElementById('app');
 swipeSurface.addEventListener('touchstart', (e) => {
@@ -2319,27 +2460,20 @@ function renderRebalance() {
   updateRebalanceResults();
 }
 
+// 읽기 전용 표시칸 - 실제 편집은 이 영역을 클릭하면 뜨는 [전체 목표 비중 수정] 모달(rebalanceTargetModal)
+// 안에서만 한다. 여기 있는 값은 항상 state.rebalance를 그대로 보여주기만 한다.
 function buildDomesticTargetInputs() {
   const wrap = document.getElementById('domesticTargetInputs');
   const domesticPct = num(state.rebalance.domestic['국내']);
   wrap.innerHTML = `
-    <label class="text-xs">
+    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
-      <input id="domesticTargetKR" type="number" min="0" max="100" step="1" value="${domesticPct}"
-        class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-    </label>
-    <label class="text-xs">
+      <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(domesticPct, 1)}</div>
+    </div>
+    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
-      <input id="domesticTargetFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
-        class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right text-slate-400">
-    </label>`;
-  document.getElementById('domesticTargetKR').addEventListener('input', (e) => {
-    const v = Math.max(0, Math.min(100, num(e.target.value)));
-    document.getElementById('domesticTargetFR').value = fmtNum(100 - v, 1);
-    state.rebalance.domestic = { '국내': v, '해외': 100 - v };
-    persistRebalance();
-    updateRebalanceResults();
-  });
+      <div class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right text-slate-400">${fmtNum(100 - domesticPct, 1)}</div>
+    </div>`;
 }
 
 /* -------------------------------------------------------------------------
@@ -2420,17 +2554,19 @@ function openStockSearchModal() {
   document.getElementById('stockSearchModalTitle').textContent = '개별주식 검색 추가';
   document.getElementById('stockSearchHint').textContent = '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
   document.getElementById('stockSearchModal').classList.remove('hidden');
+  pushModalHistoryState();
   const input = document.getElementById('stockSearchInput');
   input.value = '';
   document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
   setTimeout(() => input.focus(), 50);
 }
 
-function closeStockSearchModal() {
+function closeStockSearchModal(viaBackButton) {
   document.getElementById('stockSearchModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
 }
 
-document.getElementById('closeStockSearchModalBtn').addEventListener('click', closeStockSearchModal);
+document.getElementById('closeStockSearchModalBtn').addEventListener('click', () => closeStockSearchModal());
 document.getElementById('stockSearchModal').addEventListener('click', (e) => {
   if (e.target.id === 'stockSearchModal') closeStockSearchModal(); // 배경(오버레이) 클릭 시 닫기
 });
@@ -2478,27 +2614,17 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
 // [개별주식 추가 기능 제거] 예전에는 여기에 검색으로 추가한 개별주식(custom:true) 목록과 [+ 개별주식
 // 추가] 버튼이 함께 있었으나 기능이 통째로 제거되어, 이제 DEFAULT_REBALANCE_TARGETS 기반의 고정 목록만
 // 그린다(사용자가 이 화면에서 추가/삭제할 수 없고 비중(%)만 조정 가능).
+// 읽기 전용 표시칸 - buildDomesticTargetInputs와 동일하게, 실제 편집은 rebalanceTargetModal에서만 한다.
 function buildTargetInputs(region) {
   const wrapId = region === '국내' ? 'categoryTargetInputsDomestic' : 'categoryTargetInputsForeign';
   const wrap = document.getElementById(wrapId);
   const targets = state.rebalance.targets[region] || [];
 
-  wrap.innerHTML = targets.map((t, idx) => `
-    <label class="text-xs">
+  wrap.innerHTML = targets.map((t) => `
+    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
       <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t.label)} (%)</span>
-      <input data-target-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
-        class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-    </label>`).join('') || `<p class="text-xs text-slate-400 col-span-full">설정된 목표 항목이 없습니다.</p>`;
-
-  wrap.querySelectorAll('input[data-target-pct]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const r = e.target.dataset.region;
-      const idx = Number(e.target.dataset.idx);
-      state.rebalance.targets[r][idx].pct = Math.max(0, Math.min(100, num(e.target.value)));
-      persistRebalance();
-      updateRebalanceResults();
-    });
-  });
+      <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(num(t.pct), 1)}</div>
+    </div>`).join('') || `<p class="text-xs text-slate-400 col-span-full" data-action="open-rebalance-target-modal">설정된 목표 항목이 없습니다.</p>`;
 
   updateTargetSum(region);
 }
@@ -2513,6 +2639,150 @@ function updateTargetSum(region) {
   sumEl.className = isValid ? 'text-[10px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400' : 'text-[10px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400';
   document.getElementById('categoryTargetWarning' + suffix).classList.toggle('hidden', isValid);
 }
+
+/* -------------------------------------------------------------------------
+ * 15-0-1. [전체 목표 비중 수정] 모달 - 리밸런싱 탭의 목표 비중은 기본 화면에서 읽기 전용이고, 이
+ *    모달에서만 편집한다. rebalanceModalDraft(초안)에서만 값을 바꾸다가 [확인]을 눌러야 state.rebalance에
+ *    커밋된다 - 취소/오버레이 클릭/뒤로가기로 닫으면 초안을 버리고 이전 상태를 그대로 유지한다.
+ *    목표금액/증감금액 미리보기는 "지금 보유 중인 실제 금액"(rebalanceModalSnapshot - 모달을 여는 시점에
+ *    한 번만 스냅샷)과 "지금 입력 중인 draft 비중"을 조합해 매 입력마다 다시 계산한다 - 보유 자산
+ *    금액 자체는 비중 입력과 무관하므로 재조회 없이 스냅샷을 그대로 재사용해도 정확하다.
+ * ---------------------------------------------------------------------- */
+let rebalanceModalDraft = null;
+let rebalanceModalSnapshot = null;
+
+function openRebalanceTargetModal() {
+  const { total, perRegion } = getRebalanceTotals();
+  rebalanceModalSnapshot = { total, perRegion };
+  rebalanceModalDraft = {
+    domestic: { ...state.rebalance.domestic },
+    targets: {
+      '국내': (state.rebalance.targets['국내'] || []).map((t) => ({ ...t })),
+      '해외': (state.rebalance.targets['해외'] || []).map((t) => ({ ...t }))
+    }
+  };
+  renderRtmDomesticSplit();
+  renderRtmTargetGroup('국내');
+  renderRtmTargetGroup('해외');
+  updateRtmPreviews();
+  document.getElementById('rebalanceTargetModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+
+function closeRebalanceTargetModal(viaBackButton) {
+  document.getElementById('rebalanceTargetModal').classList.add('hidden');
+  rebalanceModalDraft = null;
+  rebalanceModalSnapshot = null;
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+
+// 국내/해외 split 입력창 - 이 함수는 모달을 열 때 한 번만 호출한다(입력 중에는 호출하지 않는다 -
+// input 엘리먼트 자체를 다시 그리면 타이핑 중 포커스/커서 위치가 날아간다). 값이 바뀔 때의 화면
+// 갱신은 updateRtmPreviews()가 텍스트만 갱신하는 방식으로 처리한다.
+function renderRtmDomesticSplit() {
+  const wrap = document.getElementById('rtmDomesticSplit');
+  const domesticPct = num(rebalanceModalDraft.domestic['국내']);
+  wrap.innerHTML = `
+    <label class="text-xs">
+      <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
+      <input id="rtm_domesticKR" type="number" min="0" max="100" step="1" value="${domesticPct}"
+        class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+    </label>
+    <label class="text-xs">
+      <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
+      <input id="rtm_domesticFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
+        class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right text-slate-400">
+    </label>`;
+  document.getElementById('rtm_domesticKR').addEventListener('input', (e) => {
+    const v = Math.max(0, Math.min(100, num(e.target.value)));
+    rebalanceModalDraft.domestic = { '국내': v, '해외': 100 - v };
+    updateRtmPreviews();
+  });
+}
+
+// 국내/해외 세부 목표 % 입력창 - 위와 같은 이유로 모달을 열 때 한 번만 호출한다.
+function renderRtmTargetGroup(region) {
+  const wrapId = region === '국내' ? 'rtmTargetsDomestic' : 'rtmTargetsForeign';
+  const wrap = document.getElementById(wrapId);
+  const targets = rebalanceModalDraft.targets[region];
+
+  wrap.innerHTML = targets.map((t, idx) => `
+    <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs text-slate-600 dark:text-slate-300">${escapeHtml(t.label)}</span>
+        <div class="flex items-center gap-1">
+          <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
+            class="w-20 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+          <span class="text-xs text-slate-400">%</span>
+        </div>
+      </div>
+      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex items-center justify-between"></div>
+    </div>`).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
+
+  wrap.querySelectorAll('input[data-rtm-pct]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const r = e.target.dataset.region;
+      const idx = Number(e.target.dataset.idx);
+      rebalanceModalDraft.targets[r][idx].pct = Math.max(0, Math.min(100, num(e.target.value)));
+      updateRtmPreviews();
+    });
+  });
+}
+
+// 입력 중인 draft 비중 + 모달을 연 시점의 실보유금액 스냅샷을 조합해 목표금액/증감금액 미리보기를
+// 갱신한다 - input 엘리먼트는 절대 다시 그리지 않고 미리보기 텍스트(.textContent/.innerHTML)와
+// FR(자동계산) 표시만 갱신하므로, 타이핑 중 포커스가 끊기지 않는다.
+function updateRtmPreviews() {
+  const frInput = document.getElementById('rtm_domesticFR');
+  if (frInput) frInput.value = fmtNum(100 - num(rebalanceModalDraft.domestic['국내']), 1);
+
+  const { total, perRegion } = rebalanceModalSnapshot;
+  ['국내', '해외'].forEach((region) => {
+    const regionTargetAmount = total * num(rebalanceModalDraft.domestic[region]) / 100;
+    const targets = rebalanceModalDraft.targets[region];
+    const currentAmounts = perRegion[region] || [];
+    let sum = 0;
+    targets.forEach((t, idx) => {
+      const pct = num(t.pct);
+      sum += pct;
+      const targetAmount = regionTargetAmount * pct / 100;
+      const currentAmount = currentAmounts[idx] || 0;
+      const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
+      const previewEl = document.querySelector(`[data-rtm-preview][data-region="${region}"][data-idx="${idx}"]`);
+      if (!previewEl) return;
+      // renderRebalanceResultGroup과 동일한 색상 관례: 매수 필요(부족)=파랑, 매도 필요(과다)=빨강.
+      const diffClass = diff > 1 ? 'text-blue-500' : (diff < -1 ? 'text-red-500' : 'text-slate-400');
+      previewEl.innerHTML = `<span class="text-slate-400">목표금액 ${fmtKRW(targetAmount)}</span><span class="font-medium ${diffClass}">${fmtSigned(diff)}</span>`;
+    });
+    const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
+    const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
+    sumEl.textContent = `합계 ${fmtNum(sum, 1)}%`;
+    sumEl.className = isValid ? 'text-xs font-semibold text-emerald-600 dark:text-emerald-400' : 'text-xs font-semibold text-amber-600 dark:text-amber-400';
+  });
+}
+
+// [확인] - 초안을 state.rebalance에 커밋하고 저장 + 메인 화면/연산 로직에 반영한다.
+document.getElementById('confirmRebalanceTargetModalBtn').addEventListener('click', () => {
+  state.rebalance.domestic = { ...rebalanceModalDraft.domestic };
+  state.rebalance.targets = {
+    '국내': rebalanceModalDraft.targets['국내'].map((t) => ({ ...t })),
+    '해외': rebalanceModalDraft.targets['해외'].map((t) => ({ ...t }))
+  };
+  persistRebalance();
+  closeRebalanceTargetModal();
+  renderRebalance();
+});
+document.getElementById('closeRebalanceTargetModalBtn').addEventListener('click', () => closeRebalanceTargetModal());
+document.getElementById('cancelRebalanceTargetModalBtn').addEventListener('click', () => closeRebalanceTargetModal());
+document.getElementById('rebalanceTargetModal').addEventListener('click', (e) => {
+  if (e.target.id === 'rebalanceTargetModal') closeRebalanceTargetModal();
+});
+
+// 기본 화면의 목표 비중 표시칸(읽기 전용)을 클릭/터치하면 모달을 연다 - 세 컨테이너 어디를 클릭해도
+// 동일한 [전체 목표 비중 수정] 모달이 뜬다.
+['domesticTargetInputs', 'categoryTargetInputsDomestic', 'categoryTargetInputsForeign'].forEach((id) => {
+  document.getElementById(id).addEventListener('click', () => openRebalanceTargetModal());
+});
 
 // 목표에 하나도 매칭되지 않은 자산(예: 부동산 등 실물자산)이 있으면 계산에서 제외되었음을 안내한다.
 function renderUncoveredNote(uncovered) {
@@ -2924,8 +3194,8 @@ function getTargetProjectionRate(target) {
  *    수정한다. 입력값 자체는 이미 실시간으로 반영되므로(카드 안 input의 기존 'input' 리스너 그대로
  *    유지), "적용하기" 버튼은 팝업을 닫아 결과를 확인시켜주는 역할이다.
  * ---------------------------------------------------------------------- */
-function openScenarioModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeScenarioModal(id) { document.getElementById(id).classList.add('hidden'); }
+function openScenarioModal(id) { document.getElementById(id).classList.remove('hidden'); pushModalHistoryState(); }
+function closeScenarioModal(id, viaBackButton) { document.getElementById(id).classList.add('hidden'); if (!viaBackButton) popModalHistoryIfNeeded(); }
 
 document.getElementById('scenarioCard1').addEventListener('click', () => openScenarioModal('scenarioModal1'));
 document.getElementById('scenarioCard1').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScenarioModal('scenarioModal1'); } });
@@ -3655,14 +3925,16 @@ function openTransactionModal(txId) {
     document.getElementById('txModalTitle').textContent = '거래 추가';
   }
   document.getElementById('transactionModal').classList.remove('hidden');
+  pushModalHistoryState();
 }
-function closeTransactionModal() {
+function closeTransactionModal(viaBackButton) {
   document.getElementById('transactionModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
 }
 
 document.getElementById('addTransactionBtn').addEventListener('click', () => openTransactionModal(null));
-document.getElementById('closeTxModalBtn').addEventListener('click', closeTransactionModal);
-document.getElementById('cancelTxModalBtn').addEventListener('click', closeTransactionModal);
+document.getElementById('closeTxModalBtn').addEventListener('click', () => closeTransactionModal());
+document.getElementById('cancelTxModalBtn').addEventListener('click', () => closeTransactionModal());
 document.getElementById('transactionModal').addEventListener('click', (e) => {
   if (e.target.id === 'transactionModal') closeTransactionModal();
 });
@@ -4220,7 +4492,7 @@ function rowHtml(r) {
       <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${subtitle}</div>
     </td>
     <td class="px-3 py-2.5 text-right">${fmtNum(r.quantity, 4)}</td>
-    <td class="px-3 py-2.5 text-right cursor-pointer ${p.priceCellClass}" data-action="edit-price" data-id="${r.id}" title="클릭하여 현재가 직접 수정">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
+    <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
     <td class="px-3 py-2.5 text-center"><i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 inline-block"></i></td>
   </tr>`;
 }
@@ -4240,7 +4512,7 @@ function cardHtml(r) {
       <p class="font-semibold text-sm truncate">${escapeHtml(r.name)}${changeInlineHtml(p)}</p>
       <p class="text-[11px] font-mono text-slate-400 truncate">${subtitle}</p>
     </div>
-    <div class="text-right shrink-0 pl-2 cursor-pointer" data-action="edit-price" data-id="${r.id}" title="탭하여 현재가 직접 수정">
+    <div class="text-right shrink-0 pl-2">
       <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
       <p class="text-sm font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
       ${priceKrwSub}
@@ -4314,6 +4586,7 @@ const modal = document.getElementById('assetModal');
 function openModal(mode, id) {
   document.getElementById('assetForm').reset();
   document.getElementById('modalTitle').textContent = mode === 'edit' ? '자산 수정' : '자산 추가';
+  document.getElementById('assetFormSubmitBtn').textContent = mode === 'edit' ? '수정 완료' : '추가';
   document.getElementById('f_id').value = '';
 
   if (mode === 'edit') {
@@ -4339,8 +4612,8 @@ function openModal(mode, id) {
   updatePriceUnitLabels();
 }
 
-function showModal() { modal.classList.remove('hidden'); }
-function closeModal() { modal.classList.add('hidden'); }
+function showModal() { modal.classList.remove('hidden'); pushModalHistoryState(); }
+function closeModal(viaBackButton) { modal.classList.add('hidden'); if (!viaBackButton) popModalHistoryIfNeeded(); }
 
 // 매수단가/현재가의 단위 표시는 '통화' 필드를 기준으로 한다 (국내/해외와는 독립적).
 function updatePriceUnitLabels() {
@@ -4368,8 +4641,8 @@ function syncCurrencyWithDomestic() {
 }
 
 document.getElementById('addAssetBtn').addEventListener('click', () => { openModal('add'); showModal(); });
-document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+document.getElementById('closeModalBtn').addEventListener('click', () => closeModal());
+document.getElementById('cancelModalBtn').addEventListener('click', () => closeModal());
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyWithDomestic);
 document.getElementById('f_currency').addEventListener('change', updatePriceUnitLabels);
@@ -4416,17 +4689,9 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
 // 테이블(PC/태블릿)과 카드 뷰(모바일)가 마크업만 다를 뿐 data-action 규약은 동일하므로
 // 클릭 위임 핸들러 하나를 두 컨테이너에 공유해서 로직이 어긋나지 않게 한다.
 function handleAssetListClick(e) {
-  // 현재가 셀/카드 인라인 수정: API 시세 조회가 실패했을 때도 사용자가 즉시 값을 고칠 수 있게 한다.
-  // 테이블에서는 <td>, 카드에서는 <div>이므로 태그에 의존하지 않는 속성 선택자를 사용한다.
-  // open-detail보다 먼저 확인해야 한다 - 현재가 영역이 요약 행/카드 안에 중첩돼 있어, 그 위를
-  // 클릭했을 때 상세 모달이 아니라 가격 수정이 우선되어야 하기 때문이다.
-  const priceCell = e.target.closest('[data-action="edit-price"]');
-  if (priceCell && !priceCell.querySelector('input')) {
-    startInlinePriceEdit(priceCell);
-    return;
-  }
-
-  // 요약 행/카드를 클릭하면 종목 상세+주가 차트 모달을 띄운다(기존 아코디언 펼침 방식을 대체).
+  // 자산관리 리스트는 읽기 전용이다 - 금액/수량을 이 화면에서 직접 고치는 경로는 없고, 요약 행/카드를
+  // 클릭하면 종목 상세+주가 차트 모달을 띄운다(기존 현재가 인라인 수정은 폐지 - 티커 없는 자산은
+  // 상세 모달의 [수정] 버튼으로, 티커 있는 자산은 시세 자동 조회로만 갱신된다).
   // data-member-ids가 있으면(여러 소유자/계좌를 통합한 행) 그룹 상세 모달로, 없으면 단일 자산
   // 상세 모달로 연다.
   const detailEl = e.target.closest('[data-action="open-detail"]');
@@ -4478,7 +4743,12 @@ function openAssetDetailModal(id) {
 
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   document.getElementById('assetDetailDeleteBtn').classList.remove('hidden');
+  // 티커가 없는 자산(예금/적금/현금성 자산 등)만 [수정] 버튼을 노출한다 - 티커가 있는 자산은 시세
+  // 자동 조회로만 갱신되고 이 화면에서 직접 값을 고칠 방법을 주지 않는다.
+  const hasTicker = !!sanitizeTicker(a.ticker).yahooTicker;
+  document.getElementById('assetDetailEditBtn').classList.toggle('hidden', hasTicker);
   document.getElementById('assetDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
   renderAssetDetailChart(a);
 }
 
@@ -4544,23 +4814,35 @@ function openAssetDetailModalGroup(members) {
     .join('');
   document.getElementById('assetDetailOwnerBreakdown').classList.remove('hidden');
   // 그룹 전체를 한 번에 지우는 건 어느 소유자 것을 지우는지 모호하므로, 상단 삭제 버튼은 숨기고
-  // 소유자별 세부 목록의 개별 휴지통 아이콘으로만 삭제하게 한다.
+  // 소유자별 세부 목록의 개별 휴지통 아이콘으로만 삭제하게 한다. 수정 버튼도 그룹 보기에서는 항상 숨긴다.
   document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
+  document.getElementById('assetDetailEditBtn').classList.add('hidden');
 
   document.getElementById('assetDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
   lucide.createIcons();
-  renderAssetDetailChart(priced); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그린다
+  renderAssetDetailChart(priced, avgBuyPriceNative); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그리되, 평단가선은 통합 평균 매수단가를 쓴다
 }
 
-function closeAssetDetailModal() {
+function closeAssetDetailModal(viaBackButton) {
   document.getElementById('assetDetailModal').classList.add('hidden');
   assetDetailCurrentId = null;
   assetDetailCurrentGroupIds = null;
+  if (!viaBackButton) popModalHistoryIfNeeded();
 }
-document.getElementById('closeAssetDetailModalBtn').addEventListener('click', closeAssetDetailModal);
-document.getElementById('assetDetailCloseBtn').addEventListener('click', closeAssetDetailModal);
+document.getElementById('closeAssetDetailModalBtn').addEventListener('click', () => closeAssetDetailModal());
+document.getElementById('assetDetailCloseBtn').addEventListener('click', () => closeAssetDetailModal());
 document.getElementById('assetDetailModal').addEventListener('click', (e) => {
   if (e.target.id === 'assetDetailModal') closeAssetDetailModal();
+});
+document.getElementById('assetDetailZoomInBtn').addEventListener('click', () => zoomAssetDetailChart(1.3));
+document.getElementById('assetDetailZoomOutBtn').addEventListener('click', () => zoomAssetDetailChart(0.7));
+document.getElementById('assetDetailEditBtn').addEventListener('click', () => {
+  const id = assetDetailCurrentId;
+  if (!id) return;
+  closeAssetDetailModal();
+  openModal('edit', id);
+  showModal();
 });
 document.getElementById('assetDetailDeleteBtn').addEventListener('click', () => {
   const id = assetDetailCurrentId;
@@ -4603,7 +4885,11 @@ document.getElementById('assetDetailOwnerBreakdownList').addEventListener('click
 
 // 이동평균선(MA) 설정 - 5/10/20/60/120일. 색상은 요청된 팔레트를 그대로 쓴다.
 const MA_PERIODS = [5, 10, 20, 60, 120];
-const MA_COLORS = { 5: '#FF3B30', 10: '#FF9500', 20: '#FFCC00', 60: '#34C759', 120: '#AF52DE' };
+const MA_COLORS = { 5: '#FF2D55', 10: '#FF9500', 20: '#FFD600', 60: '#34C759', 120: '#AF52DE' };
+// 캔들스틱 색상 - 양봉/음봉과 시각적으로 뚜렷이 구분되도록 지정된 고대비 팔레트.
+const CANDLE_UP_COLOR = '#FF3B30';
+const CANDLE_DOWN_COLOR = '#007AFF';
+const AVG_PRICE_LINE_COLOR = '#64D2FF';
 
 // 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 달력 날짜가 아니라 "거래일 수"로 근사한다. 주말/휴장일이
 // 껴 있어 달력일수와 거래일수가 달라지므로, 날짜로 필터링하는 것보다 이 방식이 항상 "최근 N개 봉"을
@@ -4614,7 +4900,7 @@ const PERIOD_TRADING_DAYS = { '1m': 21, '3m': 63, '6m': 126, '1y': 252, 'all': I
 let assetDetailFullPoints = [];   // 캐시된 전체(최대 2년) 일봉 시세 - 기간 버튼/줌은 이걸 슬라이스만 한다
 let assetDetailFullMA = {};       // 전체 시세 기준으로 미리 계산해 둔 이동평균(기간과 무관하게 항상 전체
                                   // 데이터로 계산 - 슬라이스 후 재계산하면 구간 첫머리에서 MA가 끊겨 보인다)
-let assetDetailChartMeta = { name: '', isForeign: false };
+let assetDetailChartMeta = { name: '', isForeign: false, avgPrice: 0 };
 let assetDetailActivePeriod = '1y';
 
 // 단순이동평균(SMA) - 종가 배열 기준으로 계산한다. 데이터가 기간(period)보다 짧으면(신규 상장 등)
@@ -4633,14 +4919,19 @@ function computeMA(points, period) {
   return result;
 }
 
-// 차트 상단 범례 - 이동평균선 색상 점 + 명칭 + 가장 최근 시점의 수치("-"는 데이터 부족).
-function buildMaLegendHtml(maByPeriod, isForeign) {
-  return MA_PERIODS.map((period) => {
+// 차트 상단 범례 - 이동평균선 색상 점 + 명칭 + 가장 최근 시점의 수치("-"는 데이터 부족) + 평단가.
+function buildMaLegendHtml(maByPeriod, isForeign, avgPrice) {
+  const maSpans = MA_PERIODS.map((period) => {
     const arr = maByPeriod[period];
     const latest = arr ? arr[arr.length - 1] : null;
     const valueText = (typeof latest === 'number') ? `${isForeign ? '$' : ''}${fmtNum(latest, isForeign ? 2 : 0)}` : '-';
     return `<span style="color:${MA_COLORS[period]}">● MA${period}: ${valueText}</span>`;
-  }).join('');
+  });
+  const unit = isForeign ? '$' : '₩';
+  const avgSpan = (typeof avgPrice === 'number' && avgPrice > 0)
+    ? `<span style="color:${AVG_PRICE_LINE_COLOR}">┅ 평단가: ${unit}${fmtNum(avgPrice, isForeign ? 2 : 0)}</span>`
+    : '';
+  return maSpans.join('') + avgSpan;
 }
 
 // 종목 상세 모달 전용 일봉 시세 조회 - 실시간 현재가 조회(fetchPriceWithFallback)와 같은 CORS 프록시
@@ -4666,10 +4957,14 @@ async function fetchDailyHistory(yahooTicker) {
   const result = data && data.chart && data.chart.result && data.chart.result[0];
   if (!result) throw new Error('차트 데이터 없음');
   const timestamps = result.timestamp || [];
-  const closes = (result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [];
+  const quote = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+  const { open = [], high = [], low = [], close = [] } = quote;
+  // 캔들스틱 렌더링에는 OHLC가 모두 필요하다 - 넷 중 하나라도 그 봉에서 null이면(휴장/데이터 결측)
+  // 그 봉 자체를 건너뛴다(MA는 종가만 쓰므로 close만 있어도 되지만, 캔들과 같은 배열을 공유해야
+  // 인덱스가 어긋나지 않는다).
   const points = timestamps
-    .map((t, i) => ({ date: new Date(t * 1000), close: closes[i] }))
-    .filter((p) => typeof p.close === 'number');
+    .map((t, i) => ({ date: new Date(t * 1000), open: open[i], high: high[i], low: low[i], close: close[i] }))
+    .filter((p) => [p.open, p.high, p.low, p.close].every((v) => typeof v === 'number'));
   if (points.length === 0) throw new Error('유효한 시세 데이터 없음');
   return points;
 }
@@ -4698,24 +4993,32 @@ function updatePeriodButtonActiveUI(activeKey) {
   });
 }
 
-// 휠/드래그/핀치로 X축(기간)이 바뀐 뒤, 지금 화면에 보이는 구간의 종가만 기준으로 Y축 범위를 다시
-// 맞춘다 - 그렇지 않으면 확대해도 Y축이 원래 전체 기간 스케일 그대로 남아 확대한 의미가 없어진다.
+// 돋보기 버튼/드래그로 X축(기간)이 바뀐 뒤, 지금 화면에 보이는 구간의 고가/저가만 기준으로 Y축
+// 범위를 다시 맞춘다 - 그렇지 않으면 확대해도 Y축이 원래 전체 기간 스케일 그대로 남아 확대한 의미가
+// 없어진다. 캔들스틱 데이터는 {x,o,h,l,c} 객체이므로 고가/저가(h/l)로 범위를 잡는다.
 function rescaleAssetDetailYAxis(chart) {
   const xScale = chart.scales.x;
-  const priceData = chart.data.datasets[0].data;
-  const minIdx = Math.max(0, Math.round(xScale.min));
-  const maxIdx = Math.min(priceData.length - 1, Math.round(xScale.max));
-  if (maxIdx < minIdx) return;
+  const candleData = chart.data.datasets[0].data;
   let lo = Infinity, hi = -Infinity;
-  for (let i = minIdx; i <= maxIdx; i++) {
-    const v = priceData[i];
-    if (typeof v === 'number') { if (v < lo) lo = v; if (v > hi) hi = v; }
+  for (const p of candleData) {
+    if (!p || p.x < xScale.min || p.x > xScale.max) continue;
+    if (typeof p.l === 'number' && p.l < lo) lo = p.l;
+    if (typeof p.h === 'number' && p.h > hi) hi = p.h;
   }
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
   const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
   chart.options.scales.y.min = lo - pad;
   chart.options.scales.y.max = hi + pad;
   chart.update('none'); // 애니메이션 없이 즉시 갱신 - 연속되는 제스처 도중 매번 애니메이션이 걸리면 버벅인다
+}
+
+// 돋보기 [+]/[-] 버튼 - chartjs-plugin-zoom의 프로그래매틱 zoom API를 그대로 재사용하되, 휠/핀치
+// 제스처 트리거만 꺼서(zoom.zoom.wheel/pinch enabled:false) 의도치 않은 확대/축소를 막는다.
+function zoomAssetDetailChart(factor) {
+  const chart = charts.assetDetail;
+  if (!chart) return;
+  chart.zoom({ x: factor });
+  rescaleAssetDetailYAxis(chart);
 }
 
 // 기간 버튼 클릭(또는 최초 표시) 시 호출 - 재조회 없이 캐시된 전체 시세(assetDetailFullPoints/
@@ -4736,67 +5039,99 @@ function buildAssetDetailChart(periodKey) {
   if (points.length === 0) return;
 
   const textColor = chartTextColor();
-  const { name, isForeign } = assetDetailChartMeta;
-  const lineColor = points[points.length - 1].close >= points[0].close ? '#ef4444' : '#3b82f6';
+  const { name, isForeign, avgPrice } = assetDetailChartMeta;
 
   const maByPeriod = {};
   MA_PERIODS.forEach((period) => {
     const full = assetDetailFullMA[period];
     maByPeriod[period] = full ? full.slice(startIdx) : null;
   });
-  document.getElementById('assetDetailMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign);
+  document.getElementById('assetDetailMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign, avgPrice);
 
   const maDatasets = MA_PERIODS
     .filter((period) => maByPeriod[period])
     .map((period) => ({
+      type: 'line',
       label: `MA${period}`,
-      data: maByPeriod[period],
+      data: points.map((p, i) => ({ x: p.date.getTime(), y: maByPeriod[period][i] })),
       borderColor: MA_COLORS[period],
       backgroundColor: 'transparent',
       borderWidth: 1.2,
       pointRadius: 0,
       tension: 0.15,
-      spanGaps: false // 기간 초반(평균 낼 데이터가 아직 부족한 구간)은 선을 잇지 않고 끊어서 보여준다
+      spanGaps: false, // 기간 초반(평균 낼 데이터가 아직 부족한 구간)은 선을 잇지 않고 끊어서 보여준다
+      order: 1
     }));
 
-  charts.assetDetail = new Chart(canvas, {
+  // 평균 매수단가 가로 기준선 - 보유 중이 아닌(avgPrice 없음) 경우 그리지 않는다.
+  const avgPriceDataset = (typeof avgPrice === 'number' && avgPrice > 0) ? [{
     type: 'line',
+    label: '평단가',
+    data: [{ x: points[0].date.getTime(), y: avgPrice }, { x: points[points.length - 1].date.getTime(), y: avgPrice }],
+    borderColor: AVG_PRICE_LINE_COLOR,
+    backgroundColor: 'transparent',
+    borderWidth: 1.3,
+    borderDash: [6, 4],
+    pointRadius: 0,
+    order: 0
+  }] : [];
+
+  charts.assetDetail = new Chart(canvas, {
+    type: 'candlestick',
     data: {
-      labels: points.map((p) => `${p.date.getMonth() + 1}/${p.date.getDate()}`),
       datasets: [
         {
+          type: 'candlestick',
           label: name,
-          data: points.map((p) => p.close),
-          borderColor: lineColor,
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.15
+          data: points.map((p) => ({ x: p.date.getTime(), o: p.open, h: p.high, l: p.low, c: p.close })),
+          color: { up: CANDLE_UP_COLOR, down: CANDLE_DOWN_COLOR, unchanged: CANDLE_UP_COLOR },
+          borderColor: { up: CANDLE_UP_COLOR, down: CANDLE_DOWN_COLOR, unchanged: CANDLE_UP_COLOR },
+          order: 2
         },
-        ...maDatasets
+        ...maDatasets,
+        ...avgPriceDataset
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      parsing: false,
       scales: {
-        x: { ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
+        x: { type: 'time', time: { unit: 'day' }, ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
         y: { ticks: { color: textColor, callback: (v) => (isForeign ? '$' : '') + fmtNum(v, isForeign ? 2 : 0) }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
-        // 이동평균선 범례는 차트 위 커스텀 HTML(#assetDetailMaLegend)로 대체하므로 Chart.js 기본
-        // 범례는 끈다 - 종목 라인 + MA 5개까지 합쳐 6개 범례가 뜨면 좁은 모달 폭에서 지저분해진다.
+        // 이동평균선/평단가 범례는 차트 위 커스텀 HTML(#assetDetailMaLegend)로 대체하므로 Chart.js 기본
+        // 범례는 끈다 - 캔들 + MA 5개 + 평단가까지 합쳐 7개 범례가 뜨면 좁은 모달 폭에서 지저분해진다.
         legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${isForeign ? '$' : ''}${fmtNum(ctx.raw, isForeign ? 2 : 0)}` } },
-        // [줌/이동/핀치 확대축소] 휠=확대축소, 드래그=좌우이동(팬), 모바일 두 손가락=핀치 줌.
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const raw = ctx.raw;
+              const u = isForeign ? '$' : '';
+              const dp = isForeign ? 2 : 0;
+              if (raw && typeof raw === 'object' && typeof raw.o === 'number') {
+                return [
+                  `시가 ${u}${fmtNum(raw.o, dp)}`,
+                  `고가 ${u}${fmtNum(raw.h, dp)}`,
+                  `저가 ${u}${fmtNum(raw.l, dp)}`,
+                  `종가 ${u}${fmtNum(raw.c, dp)}`
+                ];
+              }
+              const y = raw && typeof raw === 'object' ? raw.y : raw;
+              return ` ${ctx.dataset.label}: ${u}${fmtNum(y, dp)}`;
+            }
+          }
+        },
+        // [돋보기 버튼 확대/축소 + 드래그 이동] 휠/핀치 제스처는 의도적으로 끈다(요구사항) - 확대/축소는
+        // #assetDetailZoomInBtn/#assetDetailZoomOutBtn 버튼(zoomAssetDetailChart)으로만 한다.
         // x축만 확대/이동하며(mode:'x'), 원본 범위(min/max:'original') 밖으로는 벗어나지 못한다.
-        // 확대/이동이 끝나면(Complete 콜백) 지금 보이는 구간 기준으로 Y축을 다시 스케일링한다.
+        // 이동이 끝나면(Complete 콜백) 지금 보이는 구간 기준으로 Y축을 다시 스케일링한다.
         zoom: {
           pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => rescaleAssetDetailYAxis(chart) },
           zoom: {
-            wheel: { enabled: true },
-            pinch: { enabled: true },
-            mode: 'x',
-            onZoomComplete: ({ chart }) => rescaleAssetDetailYAxis(chart)
+            wheel: { enabled: false },
+            pinch: { enabled: false },
+            mode: 'x'
           },
           limits: { x: { min: 'original', max: 'original' } }
         }
@@ -4808,7 +5143,7 @@ function buildAssetDetailChart(periodKey) {
   requestAnimationFrame(() => { if (charts.assetDetail) charts.assetDetail.resize(); });
 }
 
-async function renderAssetDetailChart(asset) {
+async function renderAssetDetailChart(asset, avgPriceOverride) {
   const canvas = document.getElementById('assetDetailChart');
   const msgEl = document.getElementById('assetDetailChartMsg');
   const legendEl = document.getElementById('assetDetailMaLegend');
@@ -4841,60 +5176,13 @@ async function renderAssetDetailChart(asset) {
 
   assetDetailFullPoints = points;
   rebuildAssetDetailFullMA();
-  assetDetailChartMeta = { name: asset.name, isForeign: asset.currency === 'USD' };
+  const avgPrice = (typeof avgPriceOverride === 'number') ? avgPriceOverride : num(asset.buyPrice);
+  assetDetailChartMeta = { name: asset.name, isForeign: asset.currency === 'USD', avgPrice };
 
   msgEl.classList.add('hidden');
   canvas.classList.remove('hidden');
   renderAssetDetailPeriodButtons();
   buildAssetDetailChart('1y');
-}
-
-function startInlinePriceEdit(cell) {
-  const id = cell.dataset.id;
-  const asset = state.assets.find(a => a.id === id);
-  if (!asset) return;
-  const unit = asset.currency === 'USD' ? '$' : '';
-  // 카드 뷰(모바일)는 <div>, 테이블 뷰(PC/태블릿)는 <td> - 카드일 때는 터치하기 쉽도록 더 큰 입력창을 쓴다.
-  const isCard = cell.tagName === 'DIV';
-
-  cell.innerHTML = isCard
-    ? `<div class="flex items-center justify-between w-full gap-2">
-         <span class="text-[11px] text-slate-400">현재가</span>
-         <div class="flex items-center gap-1">
-           <span class="text-slate-400 text-sm">${unit}</span>
-           <input type="number" step="any" inputmode="decimal" value="${asset.currentPrice}"
-             class="w-28 text-right text-base font-semibold bg-white dark:bg-slate-800 border-2 border-brand-400 rounded-lg px-2 py-2 outline-none">
-         </div>
-       </div>`
-    : `<div class="flex items-center justify-end gap-1">
-         <span class="text-slate-400 text-[10px]">${unit}</span>
-         <input type="number" step="any" inputmode="decimal" value="${asset.currentPrice}"
-           class="w-24 text-right text-xs bg-white dark:bg-slate-800 border border-brand-400 rounded px-1 py-1 outline-none">
-       </div>`;
-  const input = cell.querySelector('input');
-  input.focus();
-  input.select();
-
-  let cancelled = false;
-  const commit = () => {
-    if (cancelled) return;
-    asset.currentPrice = num(input.value);
-    // 수동으로 값을 고쳤으므로 API가 남긴 당일 등락률 배지와 전일종가 기준값은 더 이상 유효하지 않다 -
-    // 제거한다(일간 손익은 이후 수동 변동률 기준으로 폴백된다).
-    delete state.dayChangeMap[id];
-    delete state.prevCloseMap[id];
-    delete state.sessionMap[id];
-    // 시세 조회 실패 강조 표시(⚠️ 수동 입력 필요)도 방금 값을 고쳤으니 해제한다.
-    state.priceFetchFailedIds.delete(id);
-    persistAssets();
-    renderAll();
-  };
-
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); cancelled = true; renderTable(); }
-  });
 }
 
 /* -------------------------------------------------------------------------
@@ -5162,12 +5450,18 @@ function parseNaverNum(s) {
   return Number.isFinite(n) ? n : null;
 }
 
-async function fetchNaverKrPrice(yahooTicker) {
+// proxy를 생략하면 직접 호출(file://나 CORS 허용 환경에서 잘 동작), proxy를 넘기면 Yahoo와 동일한
+// CORS_PROXIES 경유로 재시도한다 - 실서비스 배포 도메인에서 네이버 직접 fetch가 (CORS 정책/통신사·기업
+// 방화벽 등 이유로) 실패하는 경우를 대비한 폴백. 직접 호출만 있던 이전 구조는 실패 시 조용히
+// Yahoo/Stooq(국내 종목은 시간외 데이터 자체가 없음)로 넘어가 "갱신 완료" 배너는 뜨지만 실제로는 전일
+// 종가만 표시되는 문제가 있었다.
+async function fetchNaverKrPrice(yahooTicker, proxy) {
   const code = yahooTicker.replace(/\.(KS|KQ)$/i, '');
   if (!/^\d{6}$/.test(code)) throw new Error('국내 종목 코드 형식이 아님');
-  const res = await fetchWithTimeout(`https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`, 8000);
+  const target = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
+  const res = await fetchWithTimeout(proxy ? proxy.build(target) : target, 8000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await safeParseJsonResponse(res);
+  const json = proxy && proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
   const d = json && json.datas && json.datas[0];
   if (!d) throw new Error('종목 데이터 없음');
 
@@ -5196,7 +5490,24 @@ async function fetchNaverKrPrice(yahooTicker) {
   }
 
   const changePercent = (typeof previousClose === 'number' && previousClose > 0) ? ((price - previousClose) / previousClose * 100) : 0;
-  return { price, previousClose, changePercent, session, source: 'Naver' };
+  return { price, previousClose, changePercent, session, source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)' };
+}
+
+// 네이버 직접 호출 + CORS_PROXIES 경유 재시도를 Promise.any로 동시 경쟁시킨다 - 직접 호출이 배포
+// 환경에서 막혀도(방화벽/CORS 등) 프록시 중 하나가 성공하면 그 값을 채택한다.
+async function raceFetchNaverKr(yahooTicker) {
+  const sourceNames = ['Naver(직접)', ...CORS_PROXIES.map((p) => `Naver(${p.name})`)];
+  const attempts = [
+    () => fetchNaverKrPrice(yahooTicker),
+    ...CORS_PROXIES.map((proxy) => () => fetchNaverKrPrice(yahooTicker, proxy))
+  ];
+  try {
+    return await Promise.any(attempts.map((fn) => fn()));
+  } catch (aggregateErr) {
+    const reasons = aggregateErr.errors || [];
+    const errors = reasons.map((e, i) => `${sourceNames[i]}: ${e && e.message}`);
+    throw new Error(errors.join(' | '));
+  }
 }
 
 // yahooTicker 하나를 놓고 CORS_PROXIES 전체 + Stooq(+국내 티커면 네이버)를 동시에 경쟁시킨다
@@ -5223,11 +5534,12 @@ async function raceFetchPrice(yahooTicker) {
   const isKr = /\.(KS|KQ)$/i.test(yahooTicker);
   if (!isKr) return raceFetchYahooStooq(yahooTicker);
 
-  // 국내 티커는 "가장 빠른 소스"가 아니라 네이버를 항상 먼저 시도한다 - 시간외 시세를 실제로 제공하는
-  // 유일한 소스라서, 순수 속도 경쟁에 맡기면 우연히 더 빨리 응답한 Yahoo(정규장가로만 폴백됨)가 이겨
-  // 시간외 시세가 묻히는 경우가 생길 수 있다. 네이버가 실패할 때만 Yahoo/Stooq 경쟁으로 폴백한다.
+  // 국내 티커는 "가장 빠른 소스"가 아니라 네이버(직접+프록시 경쟁)를 항상 먼저 시도한다 - 시간외
+  // 시세를 실제로 제공하는 유일한 소스라서, 순수 속도 경쟁에 맡기면 우연히 더 빨리 응답한 Yahoo
+  // (정규장가로만 폴백됨)가 이겨 시간외 시세가 묻히는 경우가 생길 수 있다. 네이버 쪽(직접+프록시 전부)이
+  // 실패할 때만 Yahoo/Stooq 경쟁으로 폴백한다.
   try {
-    return await fetchNaverKrPrice(yahooTicker);
+    return await raceFetchNaverKr(yahooTicker);
   } catch (naverErr) {
     try {
       return await raceFetchYahooStooq(yahooTicker);
