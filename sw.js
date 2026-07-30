@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v22'; // [리밸런싱 목표비중 팝업 진입점 단일화] v21->v22: 이 값을 바꿔야 PWA가
+const CACHE_NAME = 'smart-asset-manager-v23'; // [구글 드라이브 동기화 추가] v22->v23: 이 값을 바꿔야 PWA가
 // 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면 GitHub에 새 index.html을
 // 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate 핸들러가 CACHE_NAME이
 // 다른 캐시만 지우기 때문).
@@ -28,7 +28,13 @@ const NETWORK_FIRST_HOSTS = [
   'corsproxy.io',
   'api.codetabs.com',
   'r.jina.ai',
-  'polling.finance.naver.com'
+  'polling.finance.naver.com',
+  // [구글 드라이브 동기화] 인증 스크립트/토큰과 Drive API 응답은 캐시되면 안 된다(오래된 폴더/파일
+  // ID나 만료된 토큰 응답이 재사용되면 동기화가 조용히 깨진다). POST/PATCH 등 GET이 아닌 요청은 이
+  // 서비스워커의 fetch 핸들러가 애초에 건드리지 않으므로(위 install/fetch 리스너 참고) 아래는 GET으로
+  // 나가는 스크립트 로드/파일 목록 조회/다운로드 요청에만 적용된다.
+  'accounts.google.com',
+  'www.googleapis.com'
 ];
 
 self.addEventListener('install', (event) => {
