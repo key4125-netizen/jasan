@@ -222,6 +222,9 @@
       <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총투자현황
       </button>
+      <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 투자세부
+      </button>
       <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
@@ -355,6 +358,16 @@
     </div>
   </section>
 
+  </div> <!-- /tabPanelDashboard -->
+
+  <!-- ============================= 투자세부 탭 =============================
+       [탭 구조 개편] 국내/해외자산 TOP5 · 필터바 · 비중 차트 3종 · 자산 관리 목록을 총투자현황(요약 KPI)
+       탭에서 분리해 이 탭으로 옮겼다. 소유자 필터(state.filters.owner)는 이 탭 전용 UI가 아니라
+       DOM 위치와 무관한 전역 state 객체에 저장되므로, 탭을 오가도 선택 상태가 그대로 유지된다(추가
+       배선 불필요). 처음 렌더링은 switchTab()이 이 탭에 진입할 때 renderInvestmentDetailTab()을 호출해
+       처리한다(숨겨진 탭의 캔버스는 크기가 0이므로 dashboard 탭처럼 무조건 그리면 차트가 깨진다). -->
+  <div id="tabPanelInvestmentDetail" class="hidden">
+
   <!-- ============================= 주요 금융 자산 TOP 5 ============================= -->
   <!-- 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings 참고).
        모바일(삼성 갤럭시 크롬 등)에서는 1열로 쌓이고, sm 이상에서 좌우 2열로 배치된다. -->
@@ -482,7 +495,7 @@
     <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "자산 추가" 버튼 또는 엑셀 업로드로 시작하세요.</p>
   </section>
 
-  </div> <!-- /tabPanelDashboard -->
+  </div> <!-- /tabPanelInvestmentDetail -->
 
   <!-- ============================= 거래내역 탭 =============================
        매매 거래를 입력하면 이동평균법으로 계좌별·종목별 수량/평단가를 자동 집계해 대시보드 자산과
@@ -626,7 +639,7 @@
       <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
         <div class="flex items-center justify-between mb-1">
           <h3 class="text-sm font-semibold">국내/해외(미국) 목표 비중</h3>
-          <button type="button" id="domesticTargetDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <button type="button" id="domesticTargetDetailBtn" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="text-[11px] text-slate-400 mb-3">국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 "전체 목표 금액" 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.</p>
         <div id="domesticTargetInputs" class="grid grid-cols-2 gap-3"></div>
@@ -636,10 +649,7 @@
           <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
           <span id="categoryTargetSumDomestic" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
-        <div class="flex justify-end mb-1">
-          <button type="button" id="categoryTargetDomesticDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-        </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
         <div id="categoryTargetInputsDomestic" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
         <p id="categoryTargetWarningDomestic" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
@@ -648,10 +658,7 @@
           <h3 class="text-xs sm:text-sm font-semibold">미국(해외) 세부 목표 비중</h3>
           <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
-        <div class="flex justify-end mb-1">
-          <button type="button" id="categoryTargetForeignDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-        </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
         <div id="categoryTargetInputsForeign" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
         <p id="categoryTargetWarningForeign" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
@@ -1095,7 +1102,7 @@
 </div>
 
 <!-- ============================= 일별 손익 추이 팝업 (일간 평가손익 KPI 카드 터치 시) =============================
-     [일별 평가손익/일별 실현손익] 전환 + [전체(합계)/신랑/와이프] 소유자 필터 + [7일/1개월/3개월] 기간
+     [일별 평가손익/일별 실현손익] 전환 + [전체(합계)/신랑/와이프] 소유자 필터 + [1개월/3개월/6개월] 기간
      선택으로 일자별 손익 추이를 막대그래프 + 세부 리스트로 보여준다. 관련 상태/계산 함수는 섹션 20
      참고(dailyPnlPopupType/Owner/Days, buildDailyPnlSeries 등). -->
 <div id="dailyPnlModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -1116,9 +1123,9 @@
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
         <div class="flex items-center gap-1 shrink-0">
-          <button type="button" data-pnl-days="7" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">7일</button>
-          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
           <button type="button" data-pnl-days="90" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+          <button type="button" data-pnl-days="180" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
         </div>
       </div>
 
@@ -2415,10 +2422,12 @@ function switchTab(tab) {
   state.activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
   document.getElementById('tabPanelDashboard').classList.toggle('hidden', tab !== 'dashboard');
+  document.getElementById('tabPanelInvestmentDetail').classList.toggle('hidden', tab !== 'investmentDetail');
   document.getElementById('tabPanelTransactions').classList.toggle('hidden', tab !== 'transactions');
   document.getElementById('tabPanelRebalance').classList.toggle('hidden', tab !== 'rebalance');
   document.getElementById('tabPanelProjection').classList.toggle('hidden', tab !== 'projection');
   // 숨겨져 있던 탭의 캔버스는 크기가 0이었으므로, 보여줄 때 다시 렌더링해야 차트가 정상적으로 그려진다.
+  if (tab === 'investmentDetail') renderInvestmentDetailTab();
   if (tab === 'transactions') renderTransactionsTab();
   if (tab === 'rebalance') renderRebalance();
   if (tab === 'projection') renderProjection();
@@ -2434,7 +2443,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  *      열려 있을 때도 배경 탭이 바뀌면 혼란스러우므로 추적하지 않는다. preventDefault를 전혀 호출하지
  *      않으므로(passive 리스너) 세로 스크롤 등 기존 터치 동작은 전혀 방해받지 않는다.
  * ---------------------------------------------------------------------- */
-const SWIPE_TAB_ORDER = ['dashboard', 'transactions', 'projection', 'rebalance'];
+const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'projection', 'rebalance'];
 const SWIPE_MIN_DISTANCE = 50; // px
 // [중첩 모달 순서 주의] findOpenModalId()는 이 배열에서 "먼저 찾히는" id를 열려 있는 모달로 간주하므로,
 // 다른 모달 위에 중첩되어 열리는 2차 모달(stockAllocationModal → rebalanceTargetModal 위,
@@ -3337,12 +3346,11 @@ document.getElementById('rebalanceTargetModal').addEventListener('click', (e) =>
   if (e.target.id === 'rebalanceTargetModal') closeRebalanceTargetModal();
 });
 
-// [카드 전체 터치→팝업 제거] 예전엔 비중 표시칸 영역 어디를 눌러도 모달이 떴는데, 숫자를 보거나
-// 스크롤하려는 터치까지 팝업을 열어버리는 불편이 있었다 - 이제 각 카드의 [세부내용] 버튼을 눌렀을
-// 때만 동일한 [전체 목표 비중 수정] 모달이 뜬다.
-['domesticTargetDetailBtn', 'categoryTargetDomesticDetailBtn', 'categoryTargetForeignDetailBtn'].forEach((id) => {
-  document.getElementById(id).addEventListener('click', () => openRebalanceTargetModal());
-});
+// [진입점 단일화] 국내 세부/미국 세부 카드에도 각자 팝업 호출 버튼이 따로 있었는데, 세 버튼 모두
+// 결국 같은 [전체 목표 비중 수정] 모달을 열 뿐이라 셋 중 아무거나 눌러도 되는 게 오히려 혼란스러웠다.
+// 이제 최상단 "국내/해외(미국) 목표 비중" 카드의 [비중조절] 버튼 하나로만 진입한다 - 모달 내부에서
+// 국내/해외 전체 비중과 하위 세부 자산별 비중을 한 번에 수정한다.
+document.getElementById('domesticTargetDetailBtn').addEventListener('click', () => openRebalanceTargetModal());
 
 // 목표에 하나도 매칭되지 않은 자산(예: 부동산 등 실물자산)이 있으면 계산에서 제외되었음을 안내한다.
 function renderUncoveredNote(uncovered) {
@@ -5147,15 +5155,21 @@ function showToast(message, type = 'info', duration = 6000) {
 /* -------------------------------------------------------------------------
  * 12. 전체 렌더 파이프라인
  * ---------------------------------------------------------------------- */
+// 투자세부 탭(국내/해외 Top5 + 필터바 + 비중 차트 3종 + 자산 관리 목록)을 한 번에 다시 그린다.
+// switchTab()이 이 탭에 진입할 때, 그리고 renderAll()이 이 탭이 이미 보이고 있을 때 호출한다.
+function renderInvestmentDetailTab() {
+  renderTopHoldings();
+  renderCharts();
+  renderTable();
+}
+
 function renderAll() {
   populateFilterOptions();
   renderKPIs();
   renderRiskSection();
-  renderTopHoldings();
-  renderCharts();
-  renderTable();
-  // 리밸런싱/미래예측 탭은 숨겨진 캔버스에 차트를 그리면 크기가 0이 되므로, 실제로 보이고 있을 때만 갱신한다.
-  // (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
+  // 투자세부/리밸런싱/미래예측 탭은 숨겨진 캔버스에 차트를 그리면 크기가 0이 되므로, 실제로 보이고
+  // 있을 때만 갱신한다. (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
+  if (state.activeTab === 'investmentDetail') renderInvestmentDetailTab();
   if (state.activeTab === 'transactions') renderTransactionsTab();
   if (state.activeTab === 'rebalance') renderRebalance();
   if (state.activeTab === 'projection') renderProjection();
@@ -6670,7 +6684,7 @@ document.addEventListener('visibilitychange', () => {
  * ---------------------------------------------------------------------- */
 let dailyPnlPopupType = 'unrealized'; // 'unrealized' | 'realized'
 let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
-let dailyPnlPopupDays = 7;            // 7 | 30 | 90
+let dailyPnlPopupDays = 30;           // 30 | 90 | 180
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -6695,10 +6709,11 @@ function dateKeyFromDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 1개월(영업일 기준 21일 - PERIOD_TRADING_DAYS.1m와
+// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 6개월(영업일 기준 126일 - PERIOD_TRADING_DAYS.6m와
 // 동일 기준)치 일별 종가(fetchDailyHistory, 종목 상세 차트와 같은 소스를 재사용)를 가져와 그 구간의
 // "일간 평가손익"(하루 대비 변동분)을 역산해 state.dailySnapshots에 채워 넣는다. 자산을 막 등록한 첫날에도
-// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 한 달 추세로 보이게 하기 위함이다.
+// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 6개월 추세로 보이게 하기 위함이다(일별 손익
+// 추이 팝업의 [6개월] 탭 데이터도 이 백필 결과를 그대로 재사용한다).
 //   - 값의 "단위"를 실시간 기록(recordDailySnapshot)과 반드시 맞춘다 - 하루 대비 변동분(누적 매수 대비
 //     손익이 아니다). 그래야 소급된 과거 구간과 오늘부터 실시간으로 쌓이는 구간이 그래프 상에서 자연스럽게
 //     이어지고, 큰 폭(누적)에서 작은 폭(하루치)으로 뚝 떨어지는 단절이 생기지 않는다.
@@ -6722,21 +6737,41 @@ async function backfillDailyPnlHistory(asset) {
   try {
     points = await fetchDailyHistory(sanitized.yahooTicker);
   } catch (e) {
-    console.warn(`[소급 히스토리] ${asset.name || asset.ticker} 과거 시세 조회 실패 - 건너뜀: ${e.message}`);
+    console.warn(`[소급 히스토리] ${asset.name || asset.ticker}(${asset.owner}) 과거 시세 조회 실패 - 건너뜀: ${e.message}`);
     return;
   }
-  const windowPoints = points.slice(-PERIOD_TRADING_DAYS['1m']);
+  // [휴장일/결측 방어] fetchDailyHistory가 이미 open/high/low/close 중 하나라도 null인 봉은 걸러내므로
+  // (휴장일은 애초에 timestamp 배열 자체에 없다), 여기서는 혹시 있을 수 있는 0 이하의 비정상 종가만
+  // 한 번 더 방어적으로 걸러낸다(직전 유효 종가로 이월 - forward fill).
+  const rawWindow = points.slice(-PERIOD_TRADING_DAYS['6m']);
+  const windowPoints = [];
+  let lastValidClose = null;
+  rawWindow.forEach((p) => {
+    if (typeof p.close === 'number' && p.close > 0) {
+      lastValidClose = p.close;
+      windowPoints.push(p);
+    } else if (lastValidClose !== null) {
+      windowPoints.push({ ...p, close: lastValidClose }); // 이월
+    }
+    // lastValidClose가 아직 없는데(구간 맨 앞부터 비정상) close도 없으면 그 봉은 아예 버린다.
+  });
   if (windowPoints.length === 0) return;
 
   const fxRate = asset.currency === 'USD' ? state.exchangeRate : 1;
   const today = todayDateStr();
+  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) ticker=${sanitized.yahooTicker} qty=${qty} buyPrice=${asset.buyPrice} - 조회된 봉 ${points.length}개 중 최근 ${windowPoints.length}개 사용 (${dateKeyFromDate(windowPoints[0].date)} ~ ${dateKeyFromDate(windowPoints[windowPoints.length - 1].date)}), 종가 흐름:`,
+    windowPoints.map((p) => `${dateKeyFromDate(p.date)}=${p.close}`).join(', '));
 
+  let appliedDays = 0;
+  let sumDailyPnLKRW = 0;
   windowPoints.forEach((p, i) => {
     const dateKey = dateKeyFromDate(p.date);
     if (dateKey >= today) return; // 오늘/미래 날짜는 실시간 기록에 맡긴다
 
     const prevClose = i === 0 ? num(asset.buyPrice) : windowPoints[i - 1].close;
     const dailyPnLKRW = (p.close - prevClose) * qty * fxRate;
+    sumDailyPnLKRW += dailyPnLKRW;
+    appliedDays++;
 
     if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {} };
     const snap = state.dailySnapshots[dateKey];
@@ -6744,8 +6779,41 @@ async function backfillDailyPnlHistory(asset) {
     if (!snap.byOwner[asset.owner]) snap.byOwner[asset.owner] = { cur: 0, dailyPnL: 0 };
     snap.byOwner[asset.owner].dailyPnL += dailyPnLKRW;
   });
+  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) - ${appliedDays}일 반영 완료, 구간 합산 손익 ${Math.round(sumDailyPnLKRW).toLocaleString()}원 (= 매수단가 ${asset.buyPrice} → 최근 종가 ${windowPoints[windowPoints.length - 1].close} 변동을 반영한 값)`);
 
   localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
+}
+
+// [기존 보유 자산 소급 히스토리 일괄 실행] backfillDailyPnlHistory는 "새로 등록되는 자산"에만 걸려 있어,
+// 이 기능이 추가되기 전부터 있던 기존 보유 자산(예: 이미 몇 달 전부터 들고 있던 SK하이닉스)에는 한 번도
+// 실행된 적이 없었다 - 그 결과 실제로는 최근 주가가 하락했어도 [일별 손익 추이] 그래프/리스트에는 전혀
+// 반영되지 않는 문제가 있었다. 앱을 켤 때 딱 한 번만(localStorage 플래그로 재실행 방지) 지금 보유 중인
+// 모든 티커 자산에 대해 이 소급 계산을 일괄 실행해, 이미 예전부터 자산을 등록해 둔 경우도 똑같이
+// 적용받게 한다. 새로 추가되는 자산은 기존처럼 그 시점에 개별적으로 처리된다.
+// v1->v2: 소급 윈도우를 3개월(63영업일)에서 6개월(126영업일)로 넓히면서, 이미 v1으로 3개월치만
+// 채워둔 기존 사용자도 한 번 더(딱 한 번) 돌려 나머지 3개월을 마저 채우도록 플래그 키를 올렸다.
+const LS_DAILY_BACKFILL_ALL_DONE = 'sam_daily_backfill_all_v2';
+// [버그 수정] 원래 Promise.allSettled로 보유 자산 전체(티커마다 직접호출+프록시 5개 경쟁)를 한꺼번에
+// 쐈더니, 페이지 로드 직후 실시간 시세 갱신(refreshPricesAndRates)과 같은 CORS 프록시 풀을 두고
+// 동시에 자원 경합이 벌어져(이번 세션 내내 관찰된 429/타임아웃과 동일 현상) 실기기 환경에서 완료까지
+// 지나치게 오래 걸리거나 일부만 반영된 채 남는 문제가 있었다. 이제 (1) 실시간 시세 갱신이 끝난 뒤에
+// 시작하고, (2) 자산을 한 번에 하나씩 순차 처리해서 동시 요청 폭주를 줄인다 - 어차피 앱 생애주기에서
+// 딱 한 번만(플래그 확인) 백그라운드로 도는 마이그레이션이라 시간이 조금 더 걸리는 건 문제 없다.
+async function backfillAllHoldingsDailyPnlHistory() {
+  if (localStorage.getItem(LS_DAILY_BACKFILL_ALL_DONE)) return;
+  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0);
+  console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
+  for (const a of targets) {
+    try {
+      await backfillDailyPnlHistory(a);
+    } catch (e) {
+      console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
+    }
+  }
+  localStorage.setItem(LS_DAILY_BACKFILL_ALL_DONE, '1');
+  console.log('[소급 히스토리 일괄 실행] 전체 완료, 플래그 저장됨');
+  // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운 값을 즉시 보여준다.
+  if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
 }
 
 // 평가손익 시리즈 - 최근 days일 내에 "실제로 기록된" 스냅샷 날짜만 포함한다(앱을 켜지 않은 날은
@@ -6787,32 +6855,9 @@ function seriesAmountForOwner(entry, owner) {
   return owner === 'all' ? entry.total : (entry.byOwnerAmounts[owner] || 0);
 }
 
-// 차트 X축 날짜 라벨 바로 아래에 그날의 손익금액을 100만원 단위로 그려 넣는 커스텀 플러그인
-// (양수=붉은색, 음수=파란색, 0=회색). Chart.js 기본 tick은 한 줄·단일 색상만 지원해서 afterDraw로
-// 직접 그린다 - 그만큼의 여백은 options.layout.padding.bottom으로 미리 확보해 둔다.
-const dailyPnlAmountLabelPlugin = {
-  id: 'dailyPnlAmountLabel',
-  afterDraw(chart) {
-    const xScale = chart.scales.x;
-    const amounts = chart.data.datasets[0].data;
-    if (!xScale || !amounts) return;
-    const { ctx } = chart;
-    ctx.save();
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    amounts.forEach((amount, i) => {
-      const x = xScale.getPixelForValue(i);
-      const y = xScale.bottom + 2; // xScale.bottom은 이미 날짜 tick 라벨까지 포함한 위치라, layout.padding.bottom(14)로
-                                    // 확보해 둔 여백 안쪽(+2)에서 시작해야 캔버스 아래로 잘려서 안 보이는 문제가 없다.
-      const manwon = Math.round(amount / 10000);
-      const text = (manwon > 0 ? '+' : '') + fmtNum(manwon, 0) + '만';
-      ctx.fillStyle = manwon > 0 ? '#ef4444' : (manwon < 0 ? '#3b82f6' : '#94a3b8');
-      ctx.fillText(text, x, y);
-    });
-    ctx.restore();
-  }
-};
+function dailyPnlLineColor(v) {
+  return v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8');
+}
 
 function renderDailyPnlChart(series, owner) {
   const canvas = document.getElementById('dailyPnlChart');
@@ -6833,26 +6878,27 @@ function renderDailyPnlChart(series, owner) {
   const textColor = chartTextColor();
   const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
   const data = series.map((s) => seriesAmountForOwner(s, owner));
-  const colors = data.map((v) => (v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8')));
+  const colors = data.map((v) => dailyPnlLineColor(v));
 
   charts.dailyPnl = new Chart(canvas, {
     type: 'bar',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { bottom: 14 } }, // dailyPnlAmountLabelPlugin이 날짜 라벨 아래 그릴 금액 텍스트 공간
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (c) => fmtSigned(c.parsed.y) } }
       },
       scales: {
+        // X축은 'MM/DD' 날짜만 깔끔하게 표기한다 - 날짜 아래에 손익 금액을 함께 그려 넣던 커스텀 플러그인
+        // (dailyPnlAmountLabelPlugin)은 하단이 혼잡해 보인다는 피드백에 따라 제거했다. 금액 상세는 차트
+        // 아래 renderDailyPnlList()의 날짜별 리스트에서 그대로 확인할 수 있다.
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
         // 0원 기준선을 또렷하게: y=0 근처에 grid가 항상 지나가도록 beginAtZero는 쓰지 않고(막대가 위/
         // 아래로 다 있으면 자동으로 0을 지난다) grid 색만 살짝 진하게 유지한다.
         y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,0.25)' } }
       }
-    },
-    plugins: [dailyPnlAmountLabelPlugin]
+    }
   });
 }
 
@@ -6914,9 +6960,9 @@ document.querySelectorAll('.daily-pnl-period-btn').forEach((btn) => {
 function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
-  dailyPnlPopupDays = 7;
+  dailyPnlPopupDays = 30;
   document.querySelectorAll('.daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b.dataset.pnlType === 'unrealized'));
-  document.querySelectorAll('.daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 7));
+  document.querySelectorAll('.daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -7225,7 +7271,12 @@ warnIfRestrictedWebView();
 // 캐시된(마지막 저장) 데이터로 화면을 먼저 즉시 그린 뒤, 최신 시세/환율을 비동기로 갱신한다.
 // awaited하지 않으므로 초기 렌더링을 지연시키지 않는다 - 일간 평가손익 등이 오늘자 실제
 // 가격을 반영하려면 페이지를 열 때마다(또는 버튼 클릭 시) 이 호출이 반드시 필요하다.
-refreshPricesAndRates();
+// [기존 보유 자산 소급 히스토리] 이 기능이 추가되기 전부터 있던 보유 자산은 한 번도 소급 계산이
+// 실행된 적이 없으므로, 앱을 켤 때 딱 한 번(플래그로 재실행 방지) 지금 보유 중인 자산 전체에 대해
+// 일괄 실행한다. refreshPricesAndRates()의 실시간 시세 갱신이 끝난 뒤에 시작해서(then), 두 배치가
+// 같은 CORS 프록시 풀을 동시에 두고 경합하지 않게 한다 - 사용자가 지금 당장 보는 현재가 갱신이
+// 우선이고, 이 소급 백필은 화면에 없어도 티 안 나는 백그라운드 작업이라 늦게 끝나도 무방하다.
+refreshPricesAndRates().finally(() => backfillAllHoldingsDailyPnlHistory());
 </script>
 </body>
 </html>
