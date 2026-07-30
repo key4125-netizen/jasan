@@ -55,6 +55,25 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
+  /* [모바일 텍스트 선택/구글 검색 툴바 방지] 화면 텍스트를 길게 누르면 안드로이드/iOS 브라우저 기본
+     "복사/공유/모두선택/웹검색" 메뉴 및 하단 구글 검색 바가 뜨는 문제를 막는다. user-select는 상속되는
+     속성이라 body에 한 번만 걸면 모든 하위 요소(카드/자산 리스트 등)에 그대로 적용되고, 값 입력이
+     필요한 input/textarea/select만 다시 auto로 풀어 정상 입력되게 한다. */
+  body {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input, textarea, select {
+    -webkit-user-select: auto;
+    -moz-user-select: auto;
+    -ms-user-select: auto;
+    user-select: auto;
+    -webkit-touch-callout: default;
+  }
+
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
@@ -109,8 +128,17 @@
   .daily-pnl-type-btn.active, .daily-pnl-period-btn.active, .daily-pnl-owner-btn.active {
     background: #4f46e5; color: #fff; border-color: #4f46e5;
   }
-  #kpiDailyProfitCard { cursor: pointer; transition: box-shadow .15s ease; }
-  #kpiDailyProfitCard:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+  /* [카드 전체 터치→팝업 제거] 카드 어디를 눌러도 팝업이 뜨던 것을 막고, 아래 .detail-btn 버튼을
+     눌렀을 때만 열리도록 바꾸면서 쓰는 공용 버튼 스타일 - 라인(테두리) 버튼 + 화살표 아이콘. */
+  .detail-btn {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 10px; font-weight: 600; padding: 4px 7px; border-radius: 8px;
+    border: 1px solid #e2e8f0; color: #64748b; background: transparent;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  .dark .detail-btn { border-color: #334155; color: #94a3b8; }
+  .detail-btn:hover { border-color: #818cf8; color: #4f46e5; }
+  .dark .detail-btn:hover { border-color: #6366f1; color: #a5b4fc; }
 </style>
 </head>
 
@@ -224,14 +252,21 @@
       </div>
       <p id="kpiTotalProfit" class="text-lg font-bold">0원</p>
       <p id="kpiTotalProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
+      <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
+           (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
+           "+850만원 (+18.2%)"처럼 금액과 수익률을 한 줄에 함께 표기한다). -->
+      <div id="kpiTotalProfitOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
       <div id="kpiTotalProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
 
-    <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm" title="터치하면 일별 손익 추이를 볼 수 있습니다">
+    <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간 평가손익</span>
-        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+          </div>
         </div>
       </div>
       <p id="kpiDailyProfit" class="text-lg font-bold">0원</p>
@@ -589,23 +624,32 @@
          lg:col-span-1로 되돌린다. -->
     <section class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
       <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
-        <h3 class="text-sm font-semibold mb-1">국내/해외(미국) 목표 비중</h3>
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-sm font-semibold">국내/해외(미국) 목표 비중</h3>
+          <button type="button" id="domesticTargetDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+        </div>
         <p class="text-[11px] text-slate-400 mb-3">국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 "전체 목표 금액" 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.</p>
         <div id="domesticTargetInputs" class="grid grid-cols-2 gap-3"></div>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-1">
+        <div class="flex items-center justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
           <span id="categoryTargetSumDomestic" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+        </div>
+        <div class="flex justify-end mb-1">
+          <button type="button" id="categoryTargetDomesticDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
         <div id="categoryTargetInputsDomestic" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
         <p id="categoryTargetWarningDomestic" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-1">
+        <div class="flex items-center justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">미국(해외) 세부 목표 비중</h3>
           <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+        </div>
+        <div class="flex justify-end mb-1">
+          <button type="button" id="categoryTargetForeignDetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
         <div id="categoryTargetInputsForeign" class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-0"></div>
@@ -653,18 +697,18 @@
          '일반계좌' 보유 자산만을 기준으로 시뮬레이션한다. -->
     <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세 계좌(ISA/IRP/연금저축)를 제외한 자산만을 대상으로 시뮬레이션합니다.</p>
     <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-4">
-      <div id="scenarioCard1" role="button" tabindex="0" title="탭하여 수익률/월 적립금 수정"
-        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 cursor-pointer hover:border-brand-400 dark:hover:border-brand-600">
+      <div id="scenarioCard1"
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
         <div class="flex items-center justify-between mb-2 sm:mb-3">
           <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
             <span class="text-xs sm:text-sm font-semibold truncate">현재 구성 유지 시</span>
           </div>
-          <i data-lucide="pencil" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+          <button type="button" id="scenarioCard1DetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 9.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. 값을 바꾸려면 카드를 탭하세요.</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 9.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. 값을 바꾸려면 [세부내용]을 탭하세요.</p>
         <!-- 반쪽 폭 모바일에서는 위 설명 문단 대신 한 줄 요약만 보여줘 공간을 아낀다. -->
-        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">탭하여 수익률/적립금 수정</p>
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">[세부내용]을 탭해 수익률/적립금 수정</p>
         <!-- 읽기 전용 요약 - 실제 입력창은 scenarioModal1로 옮겼다(카드는 보기 전용, 수정은 팝업에서). -->
         <div id="categoryReturnSummaryReadonly" class="space-y-1 mb-3 sm:mb-4 text-xs"></div>
         <div class="border-t border-slate-100 dark:border-slate-800 pt-2 sm:pt-3">
@@ -673,17 +717,17 @@
           <p class="text-[10px] sm:text-[11px] text-slate-400 mt-1.5">월 적립금 <span id="monthlyContributionReadonly" class="font-medium text-slate-600 dark:text-slate-300">0원</span></p>
         </div>
       </div>
-      <div id="scenarioCard2" role="button" tabindex="0" title="탭하여 종목별 기대수익률 수정"
-        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 cursor-pointer hover:border-brand-400 dark:hover:border-brand-600">
+      <div id="scenarioCard2"
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
         <div class="flex items-center justify-between mb-2 sm:mb-3">
           <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
             <span class="text-xs sm:text-sm font-semibold truncate">리밸런싱 후</span>
           </div>
-          <i data-lucide="pencil" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+          <button type="button" id="scenarioCard2DetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
-        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목(QQQM/SPYM/SCHD)은 팝업에서 직접 지정한 수익률을 쓰고, 국내 항목과 채권/현금은 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 값을 바꾸려면 카드를 탭하세요.</p>
-        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">탭하여 종목별 기대수익률 수정</p>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목(QQQM/SPYM/SCHD)은 팝업에서 직접 지정한 수익률을 쓰고, 국내 항목과 채권/현금은 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 값을 바꾸려면 [세부내용]을 탭하세요.</p>
+        <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">[세부내용]을 탭해 종목별 기대수익률 수정</p>
         <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
           <div class="min-w-0">
             <p class="text-[10px] sm:text-[11px] text-slate-400 truncate">기대수익률</p>
@@ -1130,6 +1174,40 @@
   </div>
 </div>
 
+<!-- ============================= 보유 주식 종목 선택 모달 (리밸런싱 '주식' 세부 목표 - 개별 종목 다중 설정) =============================
+     rebalanceTargetModal(z-50) 위에 중첩되어 열리므로 z-index를 한 단계 더 높게 둔다. 최대
+     MAX_SELECTED_STOCKS_PER_CATEGORY(3)개까지 보유 주식을 지정하고, 각 종목의 목표 비중(%)을 이 안에서
+     직접 입력한다 - [확인]/[취소] 버튼 없이 rebalanceModalDraft를 바로 수정하며(부모 모달의 [확인]을
+     눌러야 최종 저장됨), 닫으면 부모 화면의 '주식' 항목이 자동으로 갱신된다. -->
+<div id="stockAllocationModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">보유 주식 종목 선택 <span class="text-slate-400 font-normal">(최대 3개)</span></h3>
+      <button type="button" id="closeStockAllocationModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-4 overflow-y-auto space-y-4">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
+          <span id="stockAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
+        </div>
+        <div id="stockAllocationSelectedList" class="space-y-2"></div>
+      </div>
+      <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+        <input id="stockAllocationSearchInput" type="text" placeholder="보유 종목명/티커 검색"
+          class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
+        <div id="stockAllocationSearchResults" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
+      </div>
+      <p class="text-[10px] text-slate-400 leading-relaxed">* 선택되지 않은 기존 보유 주식은 리밸런싱 시 전량 매도 대상으로 산출됩니다.</p>
+    </div>
+    <div class="flex items-center justify-end px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="closeStockAllocationModalBtn2" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 개별주식 검색 모달 (리밸런싱 국내/해외 개별주식 추가 전용) =============================
      assetModal(z-50)과 동시에 열릴 일은 없지만 혹시 모를 겹침에 대비해 z-index를 한 단계 더 높게 둔다. -->
 <div id="stockSearchModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -1441,7 +1519,7 @@ const DEFAULT_REBALANCE_TARGETS = {
   '국내': [
     { type: 'ticker', ticker: '278530', label: 'KODEX 200TR', pct: 15 },
     { type: 'ticker', ticker: '0052D0.KS', label: 'TIGER 코리아배당다우존스', pct: 15 },
-    { type: 'category', category: '주식', label: '주식', pct: 20 },
+    { type: 'category', category: '주식', label: '주식', pct: 20, selectedStocks: [] },
     { type: 'category', category: '채권', label: '채권', pct: 30 },
     { type: 'category', category: '현금', label: '현금', pct: 20 }
   ],
@@ -1452,7 +1530,7 @@ const DEFAULT_REBALANCE_TARGETS = {
     { type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 50 },
     { type: 'ticker', ticker: 'SPYM', label: 'SPYM', pct: 20 },
     { type: 'ticker', ticker: 'SCHD', label: 'SCHD', pct: 30 },
-    { type: 'category', category: '주식', label: '주식', pct: 0 },
+    { type: 'category', category: '주식', label: '주식', pct: 0, selectedStocks: [] },
     { type: 'category', category: '현금', label: '현금', pct: 0 }
   ]
 };
@@ -1481,6 +1559,21 @@ function ensureForeignCategoryCatchalls(list) {
 // (남겨두면 화면엔 안 보이는데 비중(%)만 계산에 계속 반영되는 유령 항목이 된다).
 function stripCustomRebalanceTargets(list) {
   return (Array.isArray(list) ? list : []).filter((t) => !(t && t.custom));
+}
+
+// [개별주식 다중 설정] '주식' 캐치올 항목에 보유 종목(최대 3개) + 종목별 비중을 매달아 둘 수 있다
+// (selectedStocks: [{ticker, name, pct}]). 이 필드가 하나라도 있으면 '주식' 항목의 pct는 그 합계로
+// 자동 계산되고(자동 계산 중엔 직접 입력 불가), 없으면 예전처럼 직접 입력한다. 예전에 저장된 데이터에는
+// 이 필드가 없을 수 있어(기능이 나중에 추가됨) 불러올 때마다 빈 배열로 보강해 넣어 undefined 참조
+// 에러 없이 항상 배열로 다룰 수 있게 한다.
+const MAX_SELECTED_STOCKS_PER_CATEGORY = 3;
+function ensureSelectedStocksField(list) {
+  return (Array.isArray(list) ? list : []).map((t) => {
+    if (t && t.type === 'category' && t.category === '주식' && !Array.isArray(t.selectedStocks)) {
+      return { ...t, selectedStocks: [] };
+    }
+    return t;
+  });
 }
 
 // 엑셀 업로드 시 사용자가 '통화' 컬럼을 직접 기재하면 그 값을 그대로 사용한다.
@@ -1717,8 +1810,8 @@ function loadState() {
         state.rebalance = {
           domestic: parsed.domestic || state.rebalance.domestic,
           targets: {
-            '국내': stripCustomRebalanceTargets(Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내']),
-            '해외': stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외']))
+            '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내'])),
+            '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외'])))
           }
         };
       }
@@ -1977,13 +2070,42 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored,
   }).join('');
 }
 
+// [총 평가손익 카드 전용] 소유자별 세부 손익 - 다른 태그(renderKpiBreakdown)는 값 하나만 보여주지만,
+// 이건 "+850만원 (+18.2%)"처럼 금액과 수익률을 함께 한 줄에 보여준다. 양수=빨강/음수=파랑/0=기본색은
+// profitColor()를 그대로 재사용해 앱 전체와 색상 규칙을 통일한다.
+function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
+  const container = document.getElementById(containerId);
+  const entries = Object.keys(byOwner)
+    .map((owner) => {
+      const o = byOwner[owner];
+      const profit = o.cur - o.buy;
+      const rate = o.buy !== 0 ? (profit / o.buy) * 100 : 0;
+      return { owner, profit, rate };
+    })
+    .filter((e) => Math.round(e.profit) !== 0)
+    .sort((a, b) => ownerRank(a.owner) - ownerRank(b.owner));
+
+  if (entries.length === 0) {
+    container.classList.add('hidden');
+    container.classList.remove('flex');
+    container.innerHTML = '';
+    return;
+  }
+  container.classList.remove('hidden');
+  container.classList.add('flex');
+  container.innerHTML = entries.map((e) => {
+    const colorClass = profitColor(e.profit);
+    return `<span class="text-[11px] sm:text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.owner)} ${fmtSignedShort(e.profit)} (${fmtPct(e.rate)})</span>`;
+  }).join('');
+}
+
 function renderKPIs() {
   let totalBuy = 0, totalCur = 0, foreignCur = 0, dailyProfit = 0;
   const hasAnyFetchedChange = Object.keys(state.dayChangeMap).length > 0 || Object.keys(state.prevCloseMap).length > 0;
   // 자산군별(주식/채권/현금/부동산 등) 세부 집계 - KPI 카드 하단 태그용. 필터와 무관하게 전체 포트폴리오 기준.
   const byCategory = {}; // { category: { buy, cur, dailyPnL } }
-  // 소유자별(신랑/와이프/공동 등) 세부 집계 - 일간 평가손익 카드 및 총 평가금액 카드 하단 태그 전용.
-  const byOwner = {}; // { owner: { dailyPnL, cur } }
+  // 소유자별(신랑/와이프/공동 등) 세부 집계 - 일간 평가손익/총 평가금액/총 평가손익 카드 하단 태그 전용.
+  const byOwner = {}; // { owner: { dailyPnL, cur, buy } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
@@ -1998,9 +2120,10 @@ function renderKPIs() {
     byCategory[a.category].cur += r.curAmount;
     byCategory[a.category].dailyPnL += dp;
 
-    if (!byOwner[a.owner]) byOwner[a.owner] = { dailyPnL: 0, cur: 0 };
+    if (!byOwner[a.owner]) byOwner[a.owner] = { dailyPnL: 0, cur: 0, buy: 0 };
     byOwner[a.owner].dailyPnL += dp;
     byOwner[a.owner].cur += r.curAmount;
+    byOwner[a.owner].buy += r.buyAmount;
   });
 
   const totalProfit = totalCur - totalBuy;
@@ -2034,6 +2157,8 @@ function renderKPIs() {
   const profitRateEl = document.getElementById('kpiTotalProfitRate');
   profitRateEl.textContent = fmtPct(totalProfitRate);
   profitRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(totalProfitRate);
+  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률 - 다른 태그보다 눈에 잘 띄도록 크게 표시
+  renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwner);
   renderKpiBreakdown('kpiTotalProfitBreakdown', byCategory, c => c.cur - c.buy, fmtSignedShort, true);
 
   // 일간 변동률(%)의 분모는 "전일 기준 총자산" = 현재 총자산에서 오늘 하루 손익만큼을 뺀 값.
@@ -2311,7 +2436,11 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  * ---------------------------------------------------------------------- */
 const SWIPE_TAB_ORDER = ['dashboard', 'transactions', 'projection', 'rebalance'];
 const SWIPE_MIN_DISTANCE = 50; // px
-const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'rebalanceTargetModal', 'dailyPnlModal'];
+// [중첩 모달 순서 주의] findOpenModalId()는 이 배열에서 "먼저 찾히는" id를 열려 있는 모달로 간주하므로,
+// 다른 모달 위에 중첩되어 열리는 2차 모달(stockAllocationModal → rebalanceTargetModal 위,
+// stockSearchModal → transactionModal 위)은 반드시 그 부모보다 앞쪽에 와야 뒤로가기 시 2차 모달부터
+// 정확히 닫힌다.
+const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2343,7 +2472,8 @@ const MODAL_CLOSE_FNS = {
   assetDetailModal: (viaBack) => closeAssetDetailModal(viaBack),
   chartZoomModal: (viaBack) => closeChartZoomModal(viaBack),
   rebalanceTargetModal: (viaBack) => closeRebalanceTargetModal(viaBack),
-  dailyPnlModal: (viaBack) => closeDailyPnlModal(viaBack)
+  dailyPnlModal: (viaBack) => closeDailyPnlModal(viaBack),
+  stockAllocationModal: (viaBack) => closeStockAllocationModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -2473,8 +2603,12 @@ function updateTabScrollHint() {
 // 티커형 항목을 먼저 매칭해 자산을 "선점"시키고(claimedIds), 자산군 캐치올은 이미 선점된 자산을
 // 제외한 나머지만 합산한다 - 이중 집계를 막는다. 어느 항목에도 매칭되지 않는 자산(예: 부동산 같은
 // 실물자산)은 매수/매도로 조절할 수 없으므로 리밸런싱 계산 대상에서 자동으로 제외된다.
-function computeRegionTargetAmounts(region) {
-  const targets = state.rebalance.targets[region] || [];
+// targetsOverride: 기본은 state.rebalance.targets[region](사용자가 편집하는 원본, '주식' 항목이
+// selectedStocks를 포함해도 한 항목으로 남아있다). 종목별 실행 가이드/세부 결과 카드처럼 선택된
+// 개별 종목을 각자 따로 계산해야 하는 곳은 expandRebalanceTargetsForComputation(region)으로 "펼친"
+// 목록을 넘긴다 - 매칭 로직 자체는 동일하게 재사용한다.
+function computeRegionTargetAmounts(region, targetsOverride) {
+  const targets = targetsOverride || state.rebalance.targets[region] || [];
   const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
   const claimedIds = new Set();
   // assetId -> targetIdx. 종목별 리밸런싱 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
@@ -2514,7 +2648,37 @@ function computeRegionTargetAmounts(region) {
 
   const coveredTotal = amounts.reduce((s, v) => s + v, 0);
   const uncoveredTotal = regionAssets.reduce((s, a) => s + (claimedIds.has(a.id) ? 0 : calcRow(a).curAmount), 0);
-  return { amounts, coveredTotal, uncoveredTotal, claimedTargetIdx };
+  return { amounts, coveredTotal, uncoveredTotal, claimedTargetIdx, targets };
+}
+
+// [개별주식 다중 설정] '주식' 캐치올에 selectedStocks(최대 3개)가 지정돼 있으면, 실제 리밸런싱 계산
+// (매칭·목표금액·종목별 가이드)에서는 이를 각각 독립된 티커 목표로 "펼쳐서" 다룬다 - 그래야 지정한
+// 종목이 하나의 뭉치로 묶여 "현재 비중 비율대로" 나눠 갖는 게 아니라 자기 비중만큼의 목표금액/증감을
+// 온전히 따로 갖는다. 지정하지 않은 나머지 보유 주식(같은 지역의 주식/ETF 중 3종목에 안 걸린 것들)은
+// "주식(기타)" 항목으로 남기되 목표 비중을 강제로 0%로 고정한다 - 이렇게 해야 아직 지정 안 한 기존
+// 보유 종목이 "목표 항목 없음"으로 조용히 제외(uncovered, 부동산과 같은 취급)되는 대신, 명시적으로
+// 매도 대상(목표 0%→전량 매도)으로 계산에 반영된다. 이 펼쳐진 목록은 계산 전용이고, 사용자가 실제로
+// 편집하는 state.rebalance.targets[region](원본, 3개 고정 항목 구조)은 그대로 둔다.
+function expandRebalanceTargetsForComputation(region) {
+  const raw = state.rebalance.targets[region] || [];
+  const expanded = [];
+  raw.forEach((t) => {
+    if (t.type === 'category' && t.category === '주식' && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0) {
+      t.selectedStocks.forEach((s) => {
+        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct) });
+      });
+      expanded.push({ type: 'category', category: '주식', label: '주식(기타)', pct: 0 });
+    } else {
+      expanded.push(t);
+    }
+  });
+  return expanded;
+}
+
+// computeRegionTargetAmounts(region)을 항상 "펼쳐진" 목록 기준으로 실행하는 편의 함수 - 종목별 실행
+// 가이드/세부 결과 카드 등 개별 종목 단위 계산이 필요한 곳에서 쓴다.
+function computeExpandedRegionTargetAmounts(region) {
+  return computeRegionTargetAmounts(region, expandRebalanceTargetsForComputation(region));
 }
 
 // 종목별 리밸런싱 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
@@ -2536,9 +2700,10 @@ function computeIndividualRebalanceGuide() {
   const { total } = getRebalanceTotals();
 
   ['국내', '해외'].forEach((region) => {
-    const targets = state.rebalance.targets[region] || [];
+    // 개별 지정 종목(selectedStocks)이 있으면 "펼쳐진" 목록을 써서 그 종목들이 각자 자기 비중만큼의
+    // 목표를 따로 갖고, 지정 안 한 나머지 보유 주식은 목표 0%(전량 매도)로 계산되게 한다.
+    const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region);
     const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
-    const { claimedTargetIdx } = computeRegionTargetAmounts(region);
     // renderTargetRebalanceResultGroup()에서 쓰는 것과 동일한 공식: 지역 목표금액 = 전체 리밸런싱
     // 대상 총액 × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
@@ -2633,8 +2798,10 @@ function rebalanceAmountPreviewHtml(targetAmount, currentAmount) {
   </div>`;
 }
 
-// 읽기 전용 표시칸 - 실제 편집은 이 영역을 클릭하면 뜨는 [전체 목표 비중 수정] 모달(rebalanceTargetModal)
-// 안에서만 한다. 여기 있는 값은 항상 state.rebalance를 그대로 보여주기만 한다.
+// 읽기 전용 표시칸 - 실제 편집은 카드 우측 상단 [세부내용] 버튼을 눌러야 뜨는 [전체 목표 비중 수정]
+// 모달(rebalanceTargetModal)에서만 한다(표시칸 자체는 더 이상 클릭 대상이 아니다 - 숫자를 보거나
+// 스크롤하려는 터치까지 팝업을 열어버리는 문제가 있었다). 여기 있는 값은 항상 state.rebalance를
+// 그대로 보여주기만 한다.
 // total/byDomestic: getRebalanceTotals()의 결과 - 비중 아래 목표금액/조정금액 미리보기 계산에 쓰인다.
 function buildDomesticTargetInputs(total, byDomestic) {
   const wrap = document.getElementById('domesticTargetInputs');
@@ -2643,12 +2810,12 @@ function buildDomesticTargetInputs(total, byDomestic) {
   const krTargetAmount = total * domesticPct / 100;
   const frTargetAmount = total * foreignPct / 100;
   wrap.innerHTML = `
-    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
+    <div class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
       <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(domesticPct, 1)}</div>
       ${rebalanceAmountPreviewHtml(krTargetAmount, (byDomestic && byDomestic['국내']) || 0)}
     </div>
-    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
+    <div class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
       <div class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right text-slate-400">${fmtNum(foreignPct, 1)}</div>
       ${rebalanceAmountPreviewHtml(frTargetAmount, (byDomestic && byDomestic['해외']) || 0)}
@@ -2805,13 +2972,20 @@ function buildTargetInputs(region, total, currentAmounts) {
   wrap.innerHTML = targets.map((t, idx) => {
     const targetAmount = regionTargetAmount * num(t.pct) / 100;
     const currentAmount = (currentAmounts && currentAmounts[idx]) || 0;
+    // '주식' 항목에 개별 지정 종목이 있으면(selectedStocks) 기본 화면에도 소형 텍스트로 구성 내역을
+    // 보여준다 - 편집(검색 아이콘)은 rebalanceTargetModal 안에서만 가능하다.
+    const hasSelectedStocks = t.type === 'category' && t.category === '주식' && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0;
+    const subText = hasSelectedStocks
+      ? `<p class="mt-1 text-[10px] text-slate-400 truncate">└ ${t.selectedStocks.map((s) => `${escapeHtml(s.name)} ${fmtNum(num(s.pct), 1)}%`).join(', ')}</p>`
+      : '';
     return `
-    <div class="text-xs cursor-pointer" data-action="open-rebalance-target-modal">
+    <div class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t.label)} (%)</span>
       <div class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right">${fmtNum(num(t.pct), 1)}</div>
+      ${subText}
       ${rebalanceAmountPreviewHtml(targetAmount, currentAmount)}
     </div>`;
-  }).join('') || `<p class="text-xs text-slate-400 col-span-full" data-action="open-rebalance-target-modal">설정된 목표 항목이 없습니다.</p>`;
+  }).join('') || `<p class="text-xs text-slate-400 col-span-full">설정된 목표 항목이 없습니다.</p>`;
 
   updateTargetSum(region);
 }
@@ -2838,14 +3012,21 @@ function updateTargetSum(region) {
 let rebalanceModalDraft = null;
 let rebalanceModalSnapshot = null;
 
+// targets 배열을 깊은 복사한다 - selectedStocks가 배열(참조 타입)이라 얕은 복사({...t})만 하면 draft와
+// state.rebalance가 같은 배열을 공유하게 되어, draft에서 종목 추가/삭제(push/splice)가 취소 전에도
+// state.rebalance를 그대로 오염시키는 문제가 있었다.
+function cloneRebalanceTargetList(list) {
+  return (list || []).map((t) => ({ ...t, ...(Array.isArray(t.selectedStocks) ? { selectedStocks: t.selectedStocks.map((s) => ({ ...s })) } : {}) }));
+}
+
 function openRebalanceTargetModal() {
   const { total, byDomestic, perRegion } = getRebalanceTotals();
   rebalanceModalSnapshot = { total, byDomestic, perRegion };
   rebalanceModalDraft = {
     domestic: { ...state.rebalance.domestic },
     targets: {
-      '국내': (state.rebalance.targets['국내'] || []).map((t) => ({ ...t })),
-      '해외': (state.rebalance.targets['해외'] || []).map((t) => ({ ...t }))
+      '국내': cloneRebalanceTargetList(state.rebalance.targets['국내']),
+      '해외': cloneRebalanceTargetList(state.rebalance.targets['해외'])
     }
   };
   renderRtmDomesticSplit();
@@ -2895,18 +3076,37 @@ function renderRtmTargetGroup(region) {
   const wrap = document.getElementById(wrapId);
   const targets = rebalanceModalDraft.targets[region];
 
-  wrap.innerHTML = targets.map((t, idx) => `
+  wrap.innerHTML = targets.map((t, idx) => {
+    // ['주식' 개별 종목 다중 설정] '주식' 항목에 한해 검색(돋보기) 버튼을 붙여 보유 종목을 최대
+    // MAX_SELECTED_STOCKS_PER_CATEGORY개까지 지정할 수 있게 한다. 하나라도 지정돼 있으면 그 항목의
+    // %는 지정된 종목들의 비중 합으로 자동 계산되므로(recalcStockCategoryPct) 직접 입력을 막고
+    // (disabled) 하단에 "└ 종목명 %, 종목명 %" 소형 텍스트로 구성 내역을 보여준다.
+    const isStockCategory = t.type === 'category' && t.category === '주식';
+    const hasSelectedStocks = isStockCategory && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0;
+    const searchBtn = isStockCategory
+      ? `<button type="button" data-rtm-stock-search data-region="${region}" data-idx="${idx}" title="보유 주식 종목 선택"
+          class="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-brand-600 hover:border-brand-400 dark:hover:border-brand-500 shrink-0">
+          <i data-lucide="search" class="w-3.5 h-3.5"></i>
+        </button>`
+      : '';
+    const subText = hasSelectedStocks
+      ? `<p class="mt-1 text-[10px] text-slate-400 truncate">└ ${t.selectedStocks.map((s) => `${escapeHtml(s.name)} ${fmtNum(num(s.pct), 1)}%`).join(', ')}</p>`
+      : '';
+    return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2.5">
       <div class="flex items-center justify-between gap-2">
         <span class="text-xs text-slate-600 dark:text-slate-300">${escapeHtml(t.label)}</span>
         <div class="flex items-center gap-1">
-          <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}"
-            class="w-20 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+          ${searchBtn}
+          <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}" ${hasSelectedStocks ? 'disabled title="선택된 종목 비중의 합으로 자동 계산됩니다"' : ''}
+            class="w-20 text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
           <span class="text-xs text-slate-400">%</span>
         </div>
       </div>
+      ${subText}
       <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex items-center justify-between"></div>
-    </div>`).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
+    </div>`;
+  }).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
 
   wrap.querySelectorAll('input[data-rtm-pct]').forEach((input) => {
     input.addEventListener('input', (e) => {
@@ -2916,7 +3116,167 @@ function renderRtmTargetGroup(region) {
       updateRtmPreviews();
     });
   });
+  wrap.querySelectorAll('button[data-rtm-stock-search]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openStockAllocationModal(btn.dataset.region, Number(btn.dataset.idx));
+    });
+  });
+  lucide.createIcons();
 }
+
+/* -------------------------------------------------------------------------
+ * 15-0-2. [보유 주식 종목 선택 모달] - rebalanceTargetModal의 '주식' 세부 목표 항목 전용 2차 팝업.
+ *    최대 MAX_SELECTED_STOCKS_PER_CATEGORY개까지 보유 종목을 지정하고 종목별 비중(%)을 입력한다.
+ *    [확인]/[취소]가 따로 없다 - rebalanceModalDraft를 바로 수정하며, 부모 모달의 [확인]을 눌러야
+ *    최종 state.rebalance에 반영된다(부모 모달을 취소하면 여기서 한 작업도 함께 버려진다).
+ * ---------------------------------------------------------------------- */
+let stockAllocationCurrentRegion = null;
+let stockAllocationCurrentIdx = null;
+
+function getStockAllocationTarget() {
+  if (!rebalanceModalDraft || !stockAllocationCurrentRegion || stockAllocationCurrentIdx === null) return null;
+  return rebalanceModalDraft.targets[stockAllocationCurrentRegion][stockAllocationCurrentIdx];
+}
+
+// '주식' 항목의 pct를 선택된 종목들의 비중 합으로 다시 맞춘다 - 종목 추가/삭제/비중 수정 때마다 호출.
+function recalcStockCategoryPct() {
+  const t = getStockAllocationTarget();
+  if (!t) return;
+  t.pct = t.selectedStocks.reduce((s, x) => s + num(x.pct), 0);
+}
+
+// 지정 후보 - 해당 지역의 보유 '주식' 카테고리 자산(절세 계좌 제외, 리밸런싱 대상과 동일 범위)을
+// 티커 기준으로 중복 없이 모은다(같은 종목을 신랑/와이프가 나눠 보유해도 한 줄로 노출).
+function getHeldStockCandidates(region) {
+  const seen = new Map();
+  state.assets
+    .filter((a) => a.isDomestic === region && a.category === '주식' && isRebalanceEligibleAccount(a) && String(a.ticker ?? '').trim() !== '')
+    .forEach((a) => {
+      const key = a.ticker.toUpperCase();
+      if (!seen.has(key)) seen.set(key, a);
+    });
+  return [...seen.values()];
+}
+
+function openStockAllocationModal(region, idx) {
+  stockAllocationCurrentRegion = region;
+  stockAllocationCurrentIdx = idx;
+  document.getElementById('stockAllocationSearchInput').value = '';
+  renderStockAllocationSelectedList();
+  renderStockAllocationSearchResults('');
+  document.getElementById('stockAllocationModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+
+function closeStockAllocationModal(viaBackButton) {
+  document.getElementById('stockAllocationModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+  // 부모 팝업(rebalanceTargetModal)의 '주식' 항목 행을 다시 그려서 자동 합산%/하단 종목 리스트를
+  // 최신 상태로 반영한다 - 부모는 이 2차 팝업이 열려 있는 동안 안 보이므로 닫힐 때만 갱신해도 충분하다.
+  if (stockAllocationCurrentRegion) {
+    renderRtmTargetGroup(stockAllocationCurrentRegion);
+    updateRtmPreviews();
+  }
+  stockAllocationCurrentRegion = null;
+  stockAllocationCurrentIdx = null;
+}
+
+function renderStockAllocationSelectedList() {
+  const t = getStockAllocationTarget();
+  const container = document.getElementById('stockAllocationSelectedList');
+  const sumHint = document.getElementById('stockAllocationSumHint');
+  if (!t) return;
+  sumHint.textContent = `합계 ${fmtNum(t.pct, 1)}%`;
+
+  if (t.selectedStocks.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400">아직 선택된 종목이 없습니다. 아래에서 검색해 추가하세요.</p>';
+    return;
+  }
+  container.innerHTML = t.selectedStocks.map((s, i) => `
+    <div class="flex items-center justify-between gap-2 border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
+      <div class="min-w-0">
+        <p class="text-sm font-medium truncate">${escapeHtml(s.name)}</p>
+        <p class="text-[11px] text-slate-400 truncate">${escapeHtml(s.ticker)}</p>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <input data-stock-alloc-pct data-i="${i}" type="number" min="0" max="100" step="1" value="${num(s.pct)}"
+          class="w-16 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+        <span class="text-xs text-slate-400">%</span>
+        <button type="button" data-stock-alloc-remove data-i="${i}" title="삭제" class="touch-target w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>`).join('');
+  lucide.createIcons();
+
+  container.querySelectorAll('input[data-stock-alloc-pct]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const i = Number(e.target.dataset.i);
+      const tt = getStockAllocationTarget();
+      tt.selectedStocks[i].pct = Math.max(0, Math.min(100, num(e.target.value)));
+      recalcStockCategoryPct();
+      document.getElementById('stockAllocationSumHint').textContent = `합계 ${fmtNum(tt.pct, 1)}%`;
+    });
+  });
+  container.querySelectorAll('button[data-stock-alloc-remove]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.i);
+      const tt = getStockAllocationTarget();
+      tt.selectedStocks.splice(i, 1);
+      recalcStockCategoryPct();
+      renderStockAllocationSelectedList();
+      renderStockAllocationSearchResults(document.getElementById('stockAllocationSearchInput').value);
+    });
+  });
+}
+
+function renderStockAllocationSearchResults(query) {
+  const t = getStockAllocationTarget();
+  const container = document.getElementById('stockAllocationSearchResults');
+  if (!t) return;
+
+  if (t.selectedStocks.length >= MAX_SELECTED_STOCKS_PER_CATEGORY) {
+    container.innerHTML = `<p class="text-[11px] text-amber-600 dark:text-amber-400 py-2">최대 ${MAX_SELECTED_STOCKS_PER_CATEGORY}개까지 선택할 수 있습니다.</p>`;
+    return;
+  }
+
+  const selectedTickers = new Set(t.selectedStocks.map((s) => s.ticker));
+  const q = query.trim().toLowerCase();
+  const candidates = getHeldStockCandidates(stockAllocationCurrentRegion)
+    .filter((a) => !selectedTickers.has(a.ticker))
+    .filter((a) => !q || `${a.name} ${a.ticker}`.toLowerCase().includes(q));
+
+  if (candidates.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400 py-2">검색 결과가 없습니다.</p>';
+    return;
+  }
+  container.innerHTML = candidates.map((a) => `
+    <button type="button" data-stock-alloc-add data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+      <span class="text-sm truncate">${escapeHtml(a.name)}</span>
+      <span class="text-[11px] text-slate-400 shrink-0">${escapeHtml(a.ticker)}</span>
+    </button>`).join('');
+  container.querySelectorAll('button[data-stock-alloc-add]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tt = getStockAllocationTarget();
+      if (tt.selectedStocks.length >= MAX_SELECTED_STOCKS_PER_CATEGORY) return;
+      tt.selectedStocks.push({ ticker: btn.dataset.ticker, name: btn.dataset.name, pct: 0 });
+      recalcStockCategoryPct();
+      renderStockAllocationSelectedList();
+      renderStockAllocationSearchResults(document.getElementById('stockAllocationSearchInput').value);
+    });
+  });
+}
+
+document.getElementById('stockAllocationSearchInput').addEventListener('input', (e) => {
+  renderStockAllocationSearchResults(e.target.value);
+});
+document.getElementById('closeStockAllocationModalBtn').addEventListener('click', () => closeStockAllocationModal());
+document.getElementById('closeStockAllocationModalBtn2').addEventListener('click', () => closeStockAllocationModal());
+document.getElementById('stockAllocationModal').addEventListener('click', (e) => {
+  if (e.target.id === 'stockAllocationModal') closeStockAllocationModal();
+});
 
 // 입력 중인 draft 비중 + 모달을 연 시점의 실보유금액 스냅샷을 조합해 목표금액/증감금액 미리보기를
 // 갱신한다 - input 엘리먼트는 절대 다시 그리지 않고 미리보기 텍스트(.textContent/.innerHTML)와
@@ -2964,8 +3324,8 @@ function updateRtmPreviews() {
 document.getElementById('confirmRebalanceTargetModalBtn').addEventListener('click', () => {
   state.rebalance.domestic = { ...rebalanceModalDraft.domestic };
   state.rebalance.targets = {
-    '국내': rebalanceModalDraft.targets['국내'].map((t) => ({ ...t })),
-    '해외': rebalanceModalDraft.targets['해외'].map((t) => ({ ...t }))
+    '국내': cloneRebalanceTargetList(rebalanceModalDraft.targets['국내']),
+    '해외': cloneRebalanceTargetList(rebalanceModalDraft.targets['해외'])
   };
   persistRebalance();
   closeRebalanceTargetModal();
@@ -2977,9 +3337,10 @@ document.getElementById('rebalanceTargetModal').addEventListener('click', (e) =>
   if (e.target.id === 'rebalanceTargetModal') closeRebalanceTargetModal();
 });
 
-// 기본 화면의 목표 비중 표시칸(읽기 전용)을 클릭/터치하면 모달을 연다 - 세 컨테이너 어디를 클릭해도
-// 동일한 [전체 목표 비중 수정] 모달이 뜬다.
-['domesticTargetInputs', 'categoryTargetInputsDomestic', 'categoryTargetInputsForeign'].forEach((id) => {
+// [카드 전체 터치→팝업 제거] 예전엔 비중 표시칸 영역 어디를 눌러도 모달이 떴는데, 숫자를 보거나
+// 스크롤하려는 터치까지 팝업을 열어버리는 불편이 있었다 - 이제 각 카드의 [세부내용] 버튼을 눌렀을
+// 때만 동일한 [전체 목표 비중 수정] 모달이 뜬다.
+['domesticTargetDetailBtn', 'categoryTargetDomesticDetailBtn', 'categoryTargetForeignDetailBtn'].forEach((id) => {
   document.getElementById(id).addEventListener('click', () => openRebalanceTargetModal());
 });
 
@@ -2997,7 +3358,7 @@ function renderUncoveredNote(uncovered) {
 }
 
 function updateRebalanceResults() {
-  const { total, byDomestic, perRegion, uncovered } = getRebalanceTotals();
+  const { total, byDomestic, uncovered } = getRebalanceTotals();
   renderRebalanceResultGroup('domesticRebalanceResult', state.rebalance.domestic, byDomestic, total, total);
 
   // 목표금액은 "리밸런싱 대상 총액 × 지역 목표비중 × 지역 내 항목 비중"으로 연동 계산되고,
@@ -3006,7 +3367,10 @@ function updateRebalanceResults() {
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
     const regionCurrentAmount = byDomestic[region] || 0;
     const containerId = region === '국내' ? 'categoryRebalanceResultDomestic' : 'categoryRebalanceResultForeign';
-    renderTargetRebalanceResultGroup(containerId, state.rebalance.targets[region], perRegion[region], regionTargetAmount, regionCurrentAmount);
+    // 개별 지정 종목이 있으면 "펼쳐진" 목록으로 카드를 그려서, 지정한 종목이 각자 자기 목표금액/증감을
+    // 따로 보여주고 지정 안 한 나머지는 "주식(기타)"로 전량 매도 대상임이 드러나게 한다.
+    const { amounts: expandedAmounts, targets: expandedTargets } = computeExpandedRegionTargetAmounts(region);
+    renderTargetRebalanceResultGroup(containerId, expandedTargets, expandedAmounts, regionTargetAmount, regionCurrentAmount);
     updateTargetSum(region);
   });
 
@@ -3396,10 +3760,8 @@ function getTargetProjectionRate(target) {
 function openScenarioModal(id) { document.getElementById(id).classList.remove('hidden'); pushModalHistoryState(); }
 function closeScenarioModal(id, viaBackButton) { document.getElementById(id).classList.add('hidden'); if (!viaBackButton) popModalHistoryIfNeeded(); }
 
-document.getElementById('scenarioCard1').addEventListener('click', () => openScenarioModal('scenarioModal1'));
-document.getElementById('scenarioCard1').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScenarioModal('scenarioModal1'); } });
-document.getElementById('scenarioCard2').addEventListener('click', () => openScenarioModal('scenarioModal2'));
-document.getElementById('scenarioCard2').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScenarioModal('scenarioModal2'); } });
+document.getElementById('scenarioCard1DetailBtn').addEventListener('click', () => openScenarioModal('scenarioModal1'));
+document.getElementById('scenarioCard2DetailBtn').addEventListener('click', () => openScenarioModal('scenarioModal2'));
 
 document.getElementById('closeScenarioModal1Btn').addEventListener('click', () => closeScenarioModal('scenarioModal1'));
 document.getElementById('applyScenarioModal1Btn').addEventListener('click', () => closeScenarioModal('scenarioModal1'));
@@ -3972,6 +4334,10 @@ function syncAssetsFromTransactions() {
     if (!asset) {
       asset = makeAsset({ ticker: pos.ticker, owner: pos.owner, accountType: pos.accountType, name: pos.name, quantity: pos.quantity, buyPrice: pos.avgPrice, currency: pos.currency });
       state.assets.push(asset);
+      // [최초 등록 소급 히스토리] 거래내역(엑셀 업로드/거래 추가)으로 처음 생긴 자산만 해당 - 이미
+      // 있던 자산의 수량/매수단가 갱신(else 분기)에는 다시 호출하지 않는다(중복 소급 방지, 자연히
+      // 멱등적이다). 네트워크 호출이라 굳이 기다리지 않고 백그라운드로 흘려보낸다.
+      backfillDailyPnlHistory(asset);
     } else {
       asset.quantity = pos.quantity;
       asset.buyPrice = pos.avgPrice;
@@ -4895,7 +5261,11 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     const idx = state.assets.findIndex(x => x.id === id);
     if (idx >= 0) state.assets[idx] = { ...state.assets[idx], ...payload };
   } else {
-    state.assets.push({ id: genId(), ...payload });
+    const newAsset = { id: genId(), ...payload };
+    state.assets.push(newAsset);
+    // [최초 등록 소급 히스토리] "자산 추가"로 직접 만든 신규 자산도 대상 - 티커 없는 자산(채권/현금 등)은
+    // backfillDailyPnlHistory 안에서 자연히 건너뛴다.
+    backfillDailyPnlHistory(newAsset);
   }
 
   persistAssets();
@@ -6321,6 +6691,63 @@ function recordDailySnapshot(totalCur, dailyProfit, byOwner) {
   localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
 }
 
+function dateKeyFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 1개월(영업일 기준 21일 - PERIOD_TRADING_DAYS.1m와
+// 동일 기준)치 일별 종가(fetchDailyHistory, 종목 상세 차트와 같은 소스를 재사용)를 가져와 그 구간의
+// "일간 평가손익"(하루 대비 변동분)을 역산해 state.dailySnapshots에 채워 넣는다. 자산을 막 등록한 첫날에도
+// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 한 달 추세로 보이게 하기 위함이다.
+//   - 값의 "단위"를 실시간 기록(recordDailySnapshot)과 반드시 맞춘다 - 하루 대비 변동분(누적 매수 대비
+//     손익이 아니다). 그래야 소급된 과거 구간과 오늘부터 실시간으로 쌓이는 구간이 그래프 상에서 자연스럽게
+//     이어지고, 큰 폭(누적)에서 작은 폭(하루치)으로 뚝 떨어지는 단절이 생기지 않는다.
+//   - 구간 첫째 날만 예외적으로 "그날 종가 - 매수단가"를 전일 대비 변동분으로 간주한다(그 이전 체결
+//     종가를 알 수 없으므로 매수단가를 사실상의 "전일 종가"로 취급). 이후 날짜는 전날 종가 대비 종가
+//     변동분 × 수량이다.
+//   - 해외 자산은 과거 일자별 환율까지는 조회하지 않고(무료 API 호출 부담이 커지고, 이 기능의 목적이
+//     정밀 회계가 아니라 "빈 그래프 대신 바로 추세를 보여주는 것"이므로) 현재 환율을 구간 전체에
+//     동일하게 적용하는 근사치를 쓴다.
+//   - 오늘 날짜는 건드리지 않는다 - renderKPIs()가 매 렌더링마다 실시간 값으로 그 날짜를 새로 계산해
+//     덮어쓰므로, 여기서 과거치 방식으로 채워봐야 곧바로 실제 값으로 대체된다.
+//   - 이미 그 날짜에 스냅샷이 있으면(다른 자산의 실시간 기록 등) 새로 만들지 않고 더해 넣는다 - 이후
+//     이 함수가 다른 신규 자산에도 반복 호출될 수 있으므로 항상 "누적"이 맞다.
+async function backfillDailyPnlHistory(asset) {
+  const sanitized = sanitizeTicker(asset.ticker);
+  if (!sanitized.yahooTicker) return; // 티커 없는 자산(채권/현금 등)은 시세 자체가 없어 대상 아님
+  const qty = num(asset.quantity);
+  if (qty <= 0) return;
+
+  let points;
+  try {
+    points = await fetchDailyHistory(sanitized.yahooTicker);
+  } catch (e) {
+    console.warn(`[소급 히스토리] ${asset.name || asset.ticker} 과거 시세 조회 실패 - 건너뜀: ${e.message}`);
+    return;
+  }
+  const windowPoints = points.slice(-PERIOD_TRADING_DAYS['1m']);
+  if (windowPoints.length === 0) return;
+
+  const fxRate = asset.currency === 'USD' ? state.exchangeRate : 1;
+  const today = todayDateStr();
+
+  windowPoints.forEach((p, i) => {
+    const dateKey = dateKeyFromDate(p.date);
+    if (dateKey >= today) return; // 오늘/미래 날짜는 실시간 기록에 맡긴다
+
+    const prevClose = i === 0 ? num(asset.buyPrice) : windowPoints[i - 1].close;
+    const dailyPnLKRW = (p.close - prevClose) * qty * fxRate;
+
+    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {} };
+    const snap = state.dailySnapshots[dateKey];
+    snap.total.dailyPnL += dailyPnLKRW;
+    if (!snap.byOwner[asset.owner]) snap.byOwner[asset.owner] = { cur: 0, dailyPnL: 0 };
+    snap.byOwner[asset.owner].dailyPnL += dailyPnLKRW;
+  });
+
+  localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
+}
+
 // 평가손익 시리즈 - 최근 days일 내에 "실제로 기록된" 스냅샷 날짜만 포함한다(앱을 켜지 않은 날은
 // 데이터 자체가 없으므로 0으로 채워 넣지 않고 자연스럽게 건너뛴다).
 function buildUnrealizedPnlSeries(days) {
@@ -6499,7 +6926,7 @@ function closeDailyPnlModal(viaBackButton) {
   document.getElementById('dailyPnlModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
-document.getElementById('kpiDailyProfitCard').addEventListener('click', openDailyPnlModal);
+document.getElementById('kpiDailyProfitDetailBtn').addEventListener('click', openDailyPnlModal);
 document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () => closeDailyPnlModal());
 document.getElementById('dailyPnlModal').addEventListener('click', (e) => {
   if (e.target.id === 'dailyPnlModal') closeDailyPnlModal();
@@ -6669,7 +7096,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           state.rebalance = {
             domestic: parsed.rebalance.domestic || { '국내': 40, '해외': 60 },
             targets: (tg && typeof tg === 'object')
-              ? { '국내': stripCustomRebalanceTargets(Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내']), '해외': stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외'])) }
+              ? { '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내'])), '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외']))) }
               : defaults
           };
           persistRebalance();
