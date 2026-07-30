@@ -106,6 +106,30 @@
     #tabPanelRebalance input[type=number], #tabPanelProjection input[type=number] { min-height: 44px; font-size: 16px; }
   }
 
+  /* [가로 모드(Landscape) 대응] 스마트폰/태블릿을 눕히면 세로 높이가 크게 줄어든다. 대부분의 팝업은
+     이미 max-h-[85vh]/[90vh] + overflow-y-auto를 쓰고 있어(뷰포트 높이에 비례하므로 가로 모드에서도
+     자동으로 따라 줄어들고 내부 스크롤도 이미 된다) 별도 대응이 필요 없다 - 여기서는 뷰포트 높이에
+     비례하지 않는 "고정 픽셀" 요소(차트 높이, 헤더/카드 여백)만 조정한다.
+     [!important 사용 이유] Tailwind CDN은 <script> 실행 시점에 자신의 스타일시트를 새 <style> 태그로
+     생성해 <head>에 "나중에" 추가한다 - 이 파일에 정적으로 적혀 있는 이 <style> 블록보다 소스상 뒤에
+     위치하게 되어, 같은 클래스 하나짜리 선택자끼리는(예: .daily-pnl-chart-box vs .sm\:h-64) 나중에 온
+     Tailwind 쪽이 이겨버린다(직접 확인됨: 가로 모드에서도 sm:h-64의 256px가 그대로 유지되던 버그).
+     !important로 이 소스 순서 문제를 우회한다. */
+  /* 스마트폰 가로 모드 - 세로 높이가 아주 좁을 때(폰을 눕혔을 때 대략적인 기준). max-width:767px를
+     함께 걸어 아래 태블릿 규칙과 겹치지 않게 한다 - 안 그러면 흔한 폰 가로 해상도(예: 812x375)조차
+     폭이 768px보다 넓어서 "태블릿" 규칙(260px)이 잘못 이겨버린다(실제로 재현/확인된 문제). */
+  @media (max-width: 767px) and (max-height: 500px) and (orientation: landscape) {
+    .daily-pnl-chart-box { height: 200px !important; }
+    header { margin-bottom: 0.75rem !important; }
+    .kpi-card { padding: 0.625rem !important; }
+  }
+
+  /* 태블릿 가로 모드(폭 768px 이상 + 가로) - 스마트폰 가로 모드보다 세로 공간이 넉넉하므로 차트를
+     조금 더 크게 보여준다. */
+  @media (min-width: 768px) and (orientation: landscape) {
+    .daily-pnl-chart-box { height: 260px !important; }
+  }
+
   /* 탭 버튼: 비활성은 회색 텍스트, 활성은 브랜드 컬러 배경 */
   .tab-btn { color: #64748b; }
   .dark .tab-btn { color: #94a3b8; }
@@ -192,7 +216,12 @@
             <i id="googleSyncIcon" data-lucide="cloud" class="w-3.5 h-3.5"></i>
             <span id="googleSyncLabel">구글 계정 연동</span>
           </button>
-          <div id="googleSyncMenu" class="hidden absolute right-0 mt-2 w-64 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2">
+          <!-- [모바일 겹침 버그 수정] 헤더 버튼들이 좁은 화면에서 줄바꿈(flex-wrap)되면 이 버튼이 화면
+               오른쪽이 아니라 왼쪽 쪽에 놓일 수 있어, right-0로만 고정하면 폭 256px 메뉴가 화면 왼쪽
+               밖으로 잘려나가는 문제가 있었다(직접 재현/확인됨). 좁은 화면(기본, sm 미만)에서는 왼쪽
+               기준으로, sm 이상(버튼이 실제로 화면 오른쪽에 있는 데스크톱 레이아웃)에서는 기존처럼
+               오른쪽 기준으로 위치를 잡는다. -->
+          <div id="googleSyncMenu" class="hidden absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2">
             <p id="googleSyncMenuStatus" class="text-[11px] text-slate-400 px-2 pb-2 leading-relaxed"></p>
             <button type="button" id="googleSyncForceDownloadBtn" class="w-full flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">
               <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> 드라이브에서 데이터 강제 불러오기
@@ -403,6 +432,7 @@
               <th class="text-left font-medium py-1.5 pr-2">상품명</th>
               <th class="text-right font-medium py-1.5 px-2">평가금액</th>
               <th class="text-right font-medium py-1.5 px-2">평가손익</th>
+              <th class="text-right font-medium py-1.5 px-2">당일손익</th>
               <th class="text-right font-medium py-1.5 pl-2">비중</th>
             </tr>
           </thead>
@@ -419,6 +449,7 @@
               <th class="text-left font-medium py-1.5 pr-2">상품명</th>
               <th class="text-right font-medium py-1.5 px-2">평가금액</th>
               <th class="text-right font-medium py-1.5 px-2">평가손익</th>
+              <th class="text-right font-medium py-1.5 px-2">당일손익</th>
               <th class="text-right font-medium py-1.5 pl-2">비중</th>
             </tr>
           </thead>
@@ -660,7 +691,7 @@
     <section class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
       <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
         <div class="flex items-center justify-between mb-1">
-          <h3 class="text-sm font-semibold">국내/해외(미국) 목표 비중</h3>
+          <h3 class="text-sm font-semibold">국내/해외 목표 비중</h3>
           <button type="button" id="domesticTargetDetailBtn" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="text-[11px] text-slate-400 mb-3">국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 "전체 목표 금액" 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.</p>
@@ -677,7 +708,7 @@
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
         <div class="flex items-center justify-between gap-0.5">
-          <h3 class="text-xs sm:text-sm font-semibold">미국(해외) 세부 목표 비중</h3>
+          <h3 class="text-xs sm:text-sm font-semibold">해외 세부 목표 비중</h3>
           <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
@@ -698,7 +729,7 @@
     </section>
 
     <section>
-      <h3 class="text-sm font-semibold mb-3">미국(해외) 세부 리밸런싱 결과</h3>
+      <h3 class="text-sm font-semibold mb-3">해외 세부 리밸런싱 결과</h3>
       <div id="categoryRebalanceResultForeign" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
 
@@ -1151,7 +1182,7 @@
         </div>
       </div>
 
-      <div class="relative h-56 sm:h-64">
+      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="dailyPnlChart"></canvas>
         <p id="dailyPnlChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
       </div>
@@ -1170,7 +1201,7 @@
          오타를 방지한다. 이 비밀번호를 잊으면 드라이브에 저장된 데이터는 복호화할 방법이 없다.
        - 'unlock': 이미 드라이브에 암호화된 파일이 있을 때 - 기존 비밀번호를 한 번만 입력한다. -->
 <div id="googleSyncPassphraseModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
       <h3 id="googleSyncPassphraseTitle" class="text-sm font-semibold">동기화 비밀번호 설정</h3>
       <button type="button" id="closeGoogleSyncPassphraseModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
@@ -1214,7 +1245,7 @@
 
     <div class="px-5 py-4 overflow-y-auto space-y-5">
       <div>
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">국내/해외(미국) 목표 비중</h4>
+        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">국내/해외 목표 비중</h4>
         <div id="rtmDomesticSplit" class="grid grid-cols-2 gap-3"></div>
       </div>
       <div>
@@ -1226,7 +1257,7 @@
       </div>
       <div>
         <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">미국(해외) 세부 목표 비중</h4>
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">해외 세부 목표 비중</h4>
           <span id="rtmSumForeign" class="text-xs font-semibold">합계 0%</span>
         </div>
         <div id="rtmTargetsForeign" class="space-y-2"></div>
@@ -2274,18 +2305,20 @@ function renderKPIs() {
 // 합산한다(예: 같은 ETF를 신랑 ISA와 와이프 ISA에 나눠 담은 경우). 티커가 없는 자산(채권/현금/부동산
 // 직접보유)은 애초에 순위 대상이 아니므로 집계에서 제외한다. 필터와 무관하게 전체 포트폴리오 기준.
 function getTopHoldings() {
-  const groups = {}; // ticker -> { name, isDomestic, isForeign, curAmount(KRW), buyAmount(KRW), curAmountOriginal(자산통화) }
+  const groups = {}; // ticker -> { name, isDomestic, isForeign, curAmount(KRW), buyAmount(KRW), curAmountOriginal(자산통화), dailyPnL(KRW) }
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return;
     const r = calcRow(a);
     if (!groups[ticker]) {
-      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0 };
+      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0 };
     }
     const g = groups[ticker];
     g.curAmount += r.curAmount;
     g.buyAmount += r.buyAmount;
     g.curAmountOriginal += num(a.quantity) * num(a.currentPrice); // 원래 통화(원화 또는 달러) 기준 평가금액
+    // [Top5 당일손익 컬럼] 소유자/계좌가 달라도 같은 티커면 당일손익도 합산한다(평가금액/평가손익과 동일한 규칙).
+    g.dailyPnL += calcDailyPnL(a, r);
   });
   return Object.values(groups);
 }
@@ -2295,13 +2328,17 @@ function getTopHoldings() {
 function renderTopHoldingsTable(containerId, list, grandTotal) {
   const tbody = document.getElementById(containerId);
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-400">보유 종목 없음</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-400">보유 종목 없음</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map((g) => {
     const profit = g.curAmount - g.buyAmount;
     const rateOfReturn = g.buyAmount !== 0 ? (profit / g.buyAmount) * 100 : 0;
     const pct = grandTotal !== 0 ? (g.curAmount / grandTotal * 100) : 0;
+    // 당일손익률 분모는 renderKPIs()의 dailyProfitRate와 동일한 규칙(전일 기준 평가금액 = 오늘 평가금액
+    // - 오늘 하루 손익)을 이 종목(합산 그룹) 단위로 그대로 적용한다.
+    const prevDayAmount = g.curAmount - g.dailyPnL;
+    const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
     // 달러 표시 여부는 "국내/해외" 지역 구분이 아니라 실제 통화(currency)를 기준으로 판단한다 - 국내
     // 상장된 해외지수 ETF(예: TIGER 미국S&P500)처럼 '해외'로 분류돼도 원화로 거래되는 경우가 흔해서,
     // 지역 기준으로 판단하면 원화 평가금액에 잘못 '$'를 붙이는 오류가 생긴다(이 앱 전체의 원칙과 동일:
@@ -2314,6 +2351,7 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
       <td class="py-2 pr-2 font-medium max-w-[7rem] truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
       <td class="py-2 px-2 text-right">${valueHtml}</td>
       <td class="py-2 px-2 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}<br><span class="text-[10px]">${fmtPct(rateOfReturn)}</span></td>
+      <td class="py-2 px-2 text-right ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}<br><span class="text-[10px]">${fmtPct(dailyRate)}</span></td>
       <td class="py-2 pl-2 text-right text-slate-500 dark:text-slate-400">${fmtNum(pct, 1)}%</td>
     </tr>`;
   }).join('');
@@ -2904,7 +2942,7 @@ function buildDomesticTargetInputs(total, byDomestic) {
       ${rebalanceAmountPreviewHtml(krTargetAmount, (byDomestic && byDomestic['국내']) || 0)}
     </div>
     <div class="text-xs">
-      <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
+      <span class="text-slate-500 dark:text-slate-400">해외 (%) · 자동계산</span>
       <div class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-right text-slate-400">${fmtNum(foreignPct, 1)}</div>
       ${rebalanceAmountPreviewHtml(frTargetAmount, (byDomestic && byDomestic['해외']) || 0)}
     </div>`;
@@ -3146,7 +3184,7 @@ function renderRtmDomesticSplit() {
       <div data-rtm-domestic-preview="국내" class="mt-1 text-[11px] flex items-center justify-between"></div>
     </label>
     <label class="text-xs">
-      <span class="text-slate-500 dark:text-slate-400">해외(미국) (%) · 자동계산</span>
+      <span class="text-slate-500 dark:text-slate-400">해외 (%) · 자동계산</span>
       <input id="rtm_domesticFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
         class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right text-slate-400">
       <div data-rtm-domestic-preview="해외" class="mt-1 text-[11px] flex items-center justify-between"></div>
@@ -6878,31 +6916,42 @@ async function backfillDailyPnlHistory(asset) {
 // [기존 보유 자산 소급 히스토리 일괄 실행] backfillDailyPnlHistory는 "새로 등록되는 자산"에만 걸려 있어,
 // 이 기능이 추가되기 전부터 있던 기존 보유 자산(예: 이미 몇 달 전부터 들고 있던 SK하이닉스)에는 한 번도
 // 실행된 적이 없었다 - 그 결과 실제로는 최근 주가가 하락했어도 [일별 손익 추이] 그래프/리스트에는 전혀
-// 반영되지 않는 문제가 있었다. 앱을 켤 때 딱 한 번만(localStorage 플래그로 재실행 방지) 지금 보유 중인
-// 모든 티커 자산에 대해 이 소급 계산을 일괄 실행해, 이미 예전부터 자산을 등록해 둔 경우도 똑같이
-// 적용받게 한다. 새로 추가되는 자산은 기존처럼 그 시점에 개별적으로 처리된다.
-// v1->v2: 소급 윈도우를 3개월(63영업일)에서 6개월(126영업일)로 넓히면서, 이미 v1으로 3개월치만
-// 채워둔 기존 사용자도 한 번 더(딱 한 번) 돌려 나머지 3개월을 마저 채우도록 플래그 키를 올렸다.
-const LS_DAILY_BACKFILL_ALL_DONE = 'sam_daily_backfill_all_v2';
+// 반영되지 않는 문제가 있었다.
+// [버그 수정 - 자산 ID 단위 추적] 예전엔 "앱 생애주기에 딱 한 번"만 실행되는 전역 플래그로 막았는데,
+// 실사용 테스트(엑셀 표준템플릿 업로드) 도중 이 설계의 구멍이 실제로 재현됐다: 처음 앱을 켜면 샘플
+// 데이터 6건에 대해 이 마이그레이션이 먼저 실행되어 전역 플래그가 소모되고, 그 직후 사용자가 진짜
+// 보유 자산 28건을 엑셀로 업로드해도(엑셀/JSON 일괄 업로드는 신규 자산 개별 등록 경로를 타지 않아
+// backfillDailyPnlHistory가 걸리지 않는다) 전역 플래그가 이미 소모된 뒤라 새로 들어온 22개 종목은
+// 영원히 소급 이력 없이 남는다. 이제 "언제 한 번 실행했는가"가 아니라 "이 자산(id)이 이미 채워졌는가"
+// 를 기준으로 판단해, 샘플 데이터를 실제 자산으로 교체하거나 엑셀/JSON을 일괄 업로드해도 아직 한
+// 번도 채워지지 않은 자산은 다음 로드 때 자동으로 채워진다.
+const LS_DAILY_BACKFILL_DONE_IDS = 'sam_daily_backfill_done_ids_v1';
+function getBackfillDoneIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_DAILY_BACKFILL_DONE_IDS) || '[]');
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch (e) { return new Set(); }
+}
 // [버그 수정] 원래 Promise.allSettled로 보유 자산 전체(티커마다 직접호출+프록시 5개 경쟁)를 한꺼번에
 // 쐈더니, 페이지 로드 직후 실시간 시세 갱신(refreshPricesAndRates)과 같은 CORS 프록시 풀을 두고
 // 동시에 자원 경합이 벌어져(이번 세션 내내 관찰된 429/타임아웃과 동일 현상) 실기기 환경에서 완료까지
-// 지나치게 오래 걸리거나 일부만 반영된 채 남는 문제가 있었다. 이제 (1) 실시간 시세 갱신이 끝난 뒤에
-// 시작하고, (2) 자산을 한 번에 하나씩 순차 처리해서 동시 요청 폭주를 줄인다 - 어차피 앱 생애주기에서
-// 딱 한 번만(플래그 확인) 백그라운드로 도는 마이그레이션이라 시간이 조금 더 걸리는 건 문제 없다.
+// 지나치게 오래 걸리거나 일부만 반영된 채 남는 문제가 있었다. (1) 실시간 시세 갱신이 끝난 뒤에
+// 시작하고, (2) 자산을 한 번에 하나씩 순차 처리해서 동시 요청 폭주를 줄인다.
 async function backfillAllHoldingsDailyPnlHistory() {
-  if (localStorage.getItem(LS_DAILY_BACKFILL_ALL_DONE)) return;
-  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0);
+  const doneIds = getBackfillDoneIds();
+  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneIds.has(a.id));
+  if (targets.length === 0) return;
   console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
   for (const a of targets) {
     try {
       await backfillDailyPnlHistory(a);
+      doneIds.add(a.id);
+      localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
     } catch (e) {
       console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
     }
   }
-  localStorage.setItem(LS_DAILY_BACKFILL_ALL_DONE, '1');
-  console.log('[소급 히스토리 일괄 실행] 전체 완료, 플래그 저장됨');
+  console.log('[소급 히스토리 일괄 실행] 전체 완료');
   // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운 값을 즉시 보여준다.
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
 }
@@ -6950,9 +6999,43 @@ function dailyPnlLineColor(v) {
   return v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8');
 }
 
+// [일별 손익 추이 Y축 전용 축약 포맷] 기존 fmtKRWShort("1억 2,000만원" 형태)는 다른 화면(KPI 카드 등)
+// 여러 곳에서 이미 쓰이고 있어 그대로 두고, 이 차트 Y축에만 더 짧은 "1.2억"/"3천만원"/"5백만원"/"80만원"
+// 표기를 쓴다 - 세로로 좁은 축 라벨 공간에 두 자리 단위(억+만)까지 다 넣으면 겹쳐 보인다.
+function fmtKRWAxisShort(v) {
+  const n = Math.round(num(v));
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs === 0) return '0원';
+  if (abs >= 1e8) {
+    const eok = Math.round((abs / 1e8) * 10) / 10;
+    return `${sign}${Number.isInteger(eok) ? eok : eok.toFixed(1)}억`;
+  }
+  if (abs >= 1e7) return `${sign}${Math.round(abs / 1e7)}천만원`;
+  if (abs >= 1e6) return `${sign}${Math.round(abs / 1e6)}백만원`;
+  if (abs >= 1e4) return `${sign}${Math.round(abs / 1e4)}만원`;
+  return `${sign}${krwFmt.format(abs)}원`;
+}
+
+// [툴팁 3초 자동 숨김] Chart.js는 툴팁을 "숨기는 타이머"를 내장하고 있지 않아, 터치/클릭으로 뜬 툴팁이
+// 다른 곳을 다시 누르기 전까지 화면에 계속 남아 있었다. setActiveElements([])로 활성 요소를 비우고
+// update()하면 프로그램적으로 툴팁을 닫을 수 있다는 점을 이용해, 클릭할 때마다 3초 타이머를 새로
+// 걸고(연속 터치 시 자연히 리셋됨) 그 시간이 지나면 자동으로 닫는다.
+let dailyPnlTooltipHideTimer = null;
+function scheduleDailyPnlTooltipHide(chart) {
+  clearTimeout(dailyPnlTooltipHideTimer);
+  dailyPnlTooltipHideTimer = setTimeout(() => {
+    if (!chart || chart.destroyed) return;
+    chart.setActiveElements([]);
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+    chart.update();
+  }, 3000);
+}
+
 function renderDailyPnlChart(series, owner) {
   const canvas = document.getElementById('dailyPnlChart');
   const msgEl = document.getElementById('dailyPnlChartMsg');
+  clearTimeout(dailyPnlTooltipHideTimer);
   if (charts.dailyPnl) { charts.dailyPnl.destroy(); charts.dailyPnl = null; }
 
   if (series.length === 0) {
@@ -6983,39 +7066,58 @@ function renderDailyPnlChart(series, owner) {
       scales: {
         // X축은 'MM/DD' 날짜만 깔끔하게 표기한다 - 날짜 아래에 손익 금액을 함께 그려 넣던 커스텀 플러그인
         // (dailyPnlAmountLabelPlugin)은 하단이 혼잡해 보인다는 피드백에 따라 제거했다. 금액 상세는 차트
-        // 아래 renderDailyPnlList()의 날짜별 리스트에서 그대로 확인할 수 있다.
+        // 아래 renderDailyPnlSummary()의 기간 합계 요약에서 확인할 수 있다.
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
         // 0원 기준선을 또렷하게: y=0 근처에 grid가 항상 지나가도록 beginAtZero는 쓰지 않고(막대가 위/
         // 아래로 다 있으면 자동으로 0을 지난다) grid 색만 살짝 진하게 유지한다.
-        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,0.25)' } }
+        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWAxisShort(v) }, grid: { color: 'rgba(148,163,184,0.25)' } }
       }
     }
   });
+
+  // DOM0 스타일(onclick=) 할당은 재렌더링마다 이전 핸들러를 자동으로 덮어써서, addEventListener처럼
+  // 모달을 여러 번 열고 닫을 때 리스너가 계속 쌓이는(leak) 문제가 없다.
+  canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.dailyPnl);
 }
 
-// 차트 하단 세부 리스트 - 오너 필터와 무관하게 항상 "합계 + 소유자별 내역"을 함께 보여준다(요구사항).
-function renderDailyPnlList(series) {
+// 차트 하단 요약 - 예전엔 날짜별 개별 리스트를 보여줬지만, 이제 선택된 기간/소유자 필터 조건에 맞는
+// "합계"만 보여준다(요구사항). 전체(합계) 선택 시에는 소유자별 합계 + 총 합계를, 특정 소유자 선택
+// 시에는 그 소유자의 합계만 표시한다.
+function renderDailyPnlSummary(series) {
   const container = document.getElementById('dailyPnlList');
   if (series.length === 0) { container.innerHTML = ''; return; }
+
   const owners = getDailyPnlOwnerList();
-  container.innerHTML = series.slice().reverse().map((s) => {
-    const dateLabel = `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`;
-    const ownerDetail = owners.map((o) => `${escapeHtml(o)}: ${fmtSigned(s.byOwnerAmounts[o] || 0)}`).join(' / ');
-    return `
-      <div class="flex items-center justify-between text-xs py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-b-0">
-        <div>
-          <span class="text-slate-500 dark:text-slate-400">${dateLabel}</span>
-          <span class="ml-2 text-[10px] text-slate-400 dark:text-slate-500">${ownerDetail}</span>
-        </div>
-        <span class="font-semibold ${profitColor(s.total)}">${fmtSigned(s.total)}</span>
-      </div>`;
-  }).join('');
+  const totalSum = series.reduce((acc, s) => acc + s.total, 0);
+  const ownerSums = {};
+  owners.forEach((o) => { ownerSums[o] = series.reduce((acc, s) => acc + (s.byOwnerAmounts[o] || 0), 0); });
+
+  const periodBtn = document.querySelector('.daily-pnl-period-btn.active');
+  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+
+  const rows = [];
+  if (dailyPnlPopupOwner === 'all') {
+    owners.forEach((o) => rows.push({ label: `${o} 손익 합계`, amount: ownerSums[o] || 0 }));
+    rows.push({ label: '총 손익 합계', amount: totalSum, emphasize: true });
+  } else {
+    rows.push({ label: `${dailyPnlPopupOwner} 손익 합계`, amount: ownerSums[dailyPnlPopupOwner] || 0, emphasize: true });
+  }
+
+  container.innerHTML = `
+    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 합계</p>
+    <div class="space-y-1.5">
+      ${rows.map((r) => `
+        <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
+          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
+          <span class="${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
+        </div>`).join('')}
+    </div>`;
 }
 
 function updateDailyPnlModal() {
   const series = buildDailyPnlSeries(dailyPnlPopupDays);
   renderDailyPnlChart(series, dailyPnlPopupOwner);
-  renderDailyPnlList(series);
+  renderDailyPnlSummary(series);
 }
 
 function renderDailyPnlOwnerTabs() {
@@ -7139,6 +7241,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       }
       persistAssets();
       renderAll();
+      // [일괄 업로드 소급 히스토리] 엑셀로 한 번에 들어온 종목들은 개별 등록 경로(assetForm 제출)를
+      // 타지 않아 각자 새로 생성될 때 걸리는 backfillDailyPnlHistory 호출이 없다 - 대신 이 마이그레이션
+      // 함수가 "아직 안 채워진 자산"만 골라 처리하므로 여기서 바로 불러 다음 새로고침을 기다리지 않고
+      // 즉시 소급 이력을 채운다.
+      backfillAllHoldingsDailyPnlHistory();
       alert(`엑셀 데이터 ${imported.length}건을 불러왔습니다. (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
@@ -7268,6 +7375,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       }
       persistAssets();
       renderAll();
+      backfillAllHoldingsDailyPnlHistory(); // 엑셀 업로드와 동일한 이유 - 일괄 복원은 개별 등록 경로를 타지 않는다.
       showToast(`JSON 백업 ${restored.length}건을 복원했습니다.`, 'success');
     } catch (err) {
       alert('JSON 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
@@ -7743,23 +7851,49 @@ async function tryInitialGoogleDriveSync() {
    driveTokenCallbackHandler에 "지금 기다리고 있는 곳"을 등록해 그 결과를 그 호출로만 돌려준다.
    timeoutMs를 주면 그 시간 안에 응답이 없을 때 null로 대신 resolve한다(조용한 시도가 브라우저 정책
    등으로 영영 응답하지 않는 경우에 대비한 안전장치 - 사용자가 직접 누른 대화형 요청에는 걸지 않는다). */
-function initGoogleAuthClient(retriesLeft = 20) {
-  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-    if (retriesLeft > 0) setTimeout(() => initGoogleAuthClient(retriesLeft - 1), 250);
-    return;
-  }
-  driveTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GOOGLE_DRIVE_SCOPE,
-    callback: (resp) => {
-      const handler = driveTokenCallbackHandler;
-      driveTokenCallbackHandler = null;
-      if (handler) handler(resp);
-    }
-  });
+// [무한 락 버그 수정] 예전엔 이 초기화가 페이지 로드 시 딱 한 번만 실행되고, GIS 스크립트가 느리게
+// 뜨거나(광고차단/보안 확장 프로그램이 accounts.google.com을 늦게 풀어주는 경우 등) 잠깐 실패하면
+// driveTokenClient가 영영 null로 남아 이후 [구글 계정 연동] 버튼을 눌러도 "준비 중입니다"만 계속
+// 반복됐다. 이제 googleAuthInitializing 락으로 중복 실행만 막고, 실패(재시도 소진)하면 반드시 락을
+// 풀어서 다음 시도(자동 재접속이든 수동 버튼 클릭이든) 때 처음부터 다시 초기화를 시도할 수 있게 한다.
+let googleAuthInitializing = false;
+
+function startGoogleAuthInit() {
+  if (driveTokenClient || googleAuthInitializing) return; // 이미 준비됐거나 이미 시도 중이면 중복 실행 안 함.
+  googleAuthInitializing = true;
+  initGoogleAuthClient(20);
 }
 
+function initGoogleAuthClient(retriesLeft) {
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    if (retriesLeft > 0) { setTimeout(() => initGoogleAuthClient(retriesLeft - 1), 250); return; }
+    console.warn('[구글 인증] GIS SDK 로드 실패 - 다음 시도 때 다시 초기화합니다.');
+    googleAuthInitializing = false; // 완전히 실패했어도 락을 반드시 풀어서 나중에 재시도 가능하게 한다.
+    return;
+  }
+  try {
+    driveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_DRIVE_SCOPE,
+      callback: (resp) => {
+        const handler = driveTokenCallbackHandler;
+        driveTokenCallbackHandler = null;
+        if (handler) handler(resp);
+      }
+    });
+  } catch (e) {
+    console.warn('[구글 인증] 토큰 클라이언트 초기화 중 예외:', e);
+  } finally {
+    googleAuthInitializing = false; // 성공/실패 어느 쪽이든 락은 항상 풀린다(무한 락 방지).
+  }
+}
+
+// SDK가 아직 로딩 중이면(driveTokenClient가 아직 없으면) 최대 timeoutMs만큼 기다리되, 그냥 기다리기만
+// 하지 않고 startGoogleAuthInit()으로 초기화 자체를 다시 시도한다(Lazy re-init) - 이전 시도가 어떤
+// 이유로든 멈춰 있어도(락은 항상 풀리므로) 이번 호출에서 다시 살아날 수 있다.
 function waitForGoogleAuthReady(timeoutMs) {
+  if (driveTokenClient) return Promise.resolve(true);
+  startGoogleAuthInit();
   const start = Date.now();
   return new Promise((resolve) => {
     (function poll() {
@@ -7804,9 +7938,9 @@ async function connectGoogleDrive() {
     showToast('아직 구글 클라이언트 ID가 설정되지 않았습니다. 개발자 안내를 확인해 주세요.', 'warn');
     return;
   }
-  const ready = await waitForGoogleAuthReady(4000);
+  const ready = await waitForGoogleAuthReady(3000);
   if (!ready) {
-    showToast('구글 인증 준비 중입니다. 잠시 후 다시 시도해 주세요.', 'warn');
+    showToast('구글 인증 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.', 'warn');
     return;
   }
   updateGoogleSyncStatusUI('connecting');
@@ -7920,7 +8054,7 @@ window.addEventListener('offline', () => {
 // 페이지 로드 시 구글 인증 클라이언트를 초기화해 둔다(라이브러리 로드를 기다렸다가 재시도). 실제 로그인
 // 시도(조용한 재발급 포함)는 bootApp()의 tryInitialGoogleDriveSync()가 renderAll() 이전에 수행한다 -
 // 여기서는 클라이언트만 준비해 둔다.
-initGoogleAuthClient();
+startGoogleAuthInit();
 initGoogleOneTap();
 
 /* -------------------------------------------------------------------------
