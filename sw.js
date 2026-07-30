@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v23'; // [구글 드라이브 동기화 추가] v22->v23: 이 값을 바꿔야 PWA가
+const CACHE_NAME = 'smart-asset-manager-v24'; // [Drive-First 동기화 + One Tap 자동로그인] v23->v24: 이 값을 바꿔야 PWA가
 // 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면 GitHub에 새 index.html을
 // 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate 핸들러가 CACHE_NAME이
 // 다른 캐시만 지우기 때문).
