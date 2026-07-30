@@ -168,6 +168,13 @@
   .dark .detail-btn { border-color: #334155; color: #94a3b8; }
   .detail-btn:hover { border-color: #818cf8; color: #4f46e5; }
   .dark .detail-btn:hover { border-color: #6366f1; color: #a5b4fc; }
+
+  /* [모바일 당겨서 새로고침(Pull-to-Refresh) 방지] 화면을 아래로 당기면 브라우저가 전체 페이지를
+     새로고침해버려, 매번 구글 로그인/드라이브 동기화 초기화 로직이 처음부터 다시 실행되는 문제가
+     있었다. overscroll-behavior-y로 브라우저의 바운스/새로고침 제스처 자체를 최상위 스크롤 지점에서
+     차단한다(세션 캐시 자체는 별도로 localStorage에 저장해 이중 안전장치로 삼는다 - 아래 23-1 참고). */
+  html, body { overscroll-behavior-y: contain; }
+  #app { overscroll-behavior-y: contain; }
 </style>
 </head>
 
@@ -226,6 +233,9 @@
             <button type="button" id="googleSyncForceDownloadBtn" class="w-full flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">
               <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> 드라이브에서 데이터 강제 불러오기
             </button>
+            <button type="button" id="googleSyncLogoutBtn" class="w-full flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 text-left">
+              <i data-lucide="log-out" class="w-3.5 h-3.5"></i> 로그아웃(연동 해제)
+            </button>
           </div>
         </div>
 
@@ -279,11 +289,11 @@
       <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
-      <button data-tab="projection" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-        <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 자산예측
-      </button>
       <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="scale" class="w-3.5 h-3.5"></i> 리밸런싱
+      </button>
+      <button data-tab="projection" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+        <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 자산예측
       </button>
     </div>
     <div id="tabScrollHint" class="hidden pointer-events-none absolute top-0.5 bottom-0.5 right-0.5 w-8 rounded-r-lg bg-gradient-to-l from-white dark:from-slate-900 to-transparent"></div>
@@ -737,7 +747,13 @@
          자산군/티커 단위로 뭉쳐 있던 위쪽 결과를 실제 보유 개별 종목 단위로 풀어서, 종목별로 정확히
          얼마를 사고 팔아야 하는지 실행 가이드를 제공한다. -->
     <section class="mt-6">
-      <h3 class="text-sm font-semibold mb-1">📋 종목별 리밸런싱 실행 가이드</h3>
+      <div class="flex items-start justify-between gap-2 mb-1">
+        <h3 class="text-sm font-semibold">📋 종목별 리밸런싱 실행 가이드</h3>
+        <button type="button" id="rebalanceGuideExportBtn"
+          class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
+        </button>
+      </div>
       <p class="text-[11px] text-slate-400 mb-3">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
       <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
@@ -982,15 +998,33 @@
     <form id="assetForm" class="px-5 py-4 grid grid-cols-2 gap-3">
       <input type="hidden" id="f_id">
 
-      <!-- 필수 입력 7개 항목 -->
+      <!-- [자산 추가 팝업 개선] 종목명/티커로 검색해 고르면 종목명·자산군·국내해외·통화·현재가가
+           실시간 시세 조회 결과로 자동 채워진다(직접 입력 불가 - readonly/disabled). 채권/현금/부동산처럼
+           애초에 시세가 없어 검색 결과가 나올 수 없는 자산은 오른쪽 [직접 입력] 토글로 전환해 기존처럼
+           수동으로 채운다. 실제로 사용자가 입력하는 값은 소유자/계좌구분/수량/매수단가 4개뿐이다. -->
+      <div class="col-span-2 flex items-center justify-between">
+        <span class="text-xs text-slate-500 dark:text-slate-400">종목 검색</span>
+        <label id="f_manualEntryToggleWrap" class="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+          <input type="checkbox" id="f_manualEntryToggle" class="rounded">
+          직접 입력(채권/현금/부동산 등)
+        </label>
+      </div>
+      <div class="col-span-2" id="assetSearchRow">
+        <button type="button" id="assetSearchStockBtn"
+          class="w-full flex items-center gap-2 text-sm bg-slate-50 dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-left text-slate-400 hover:border-brand-400 hover:text-brand-600">
+          <i data-lucide="search" class="w-3.5 h-3.5 shrink-0"></i>
+          <span id="assetSearchStockBtnLabel" class="truncate">종목명 또는 티커로 검색...</span>
+        </button>
+      </div>
+
       <label class="col-span-2 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">① 티커(Ticker) <span class="text-slate-400">- 국내는 .KS/.KQ, 티커 없으면 원화 자산으로 간주</span></span>
-        <input id="f_ticker" type="text" placeholder="예: GOOGL, 000660.KS (채권/현금은 공란)"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        <span class="text-slate-500 dark:text-slate-400">티커(Ticker)</span>
+        <input id="f_ticker" type="text" readonly placeholder="검색으로 자동 채워짐 (직접 입력 모드에서는 수동 입력)"
+          class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">② 소유자</span>
+        <span class="text-slate-500 dark:text-slate-400">① 소유자</span>
         <select id="f_owner" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="신랑">신랑</option>
           <option value="와이프">와이프</option>
@@ -999,7 +1033,7 @@
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">③ 계좌구분</span>
+        <span class="text-slate-500 dark:text-slate-400">② 계좌구분</span>
         <input id="f_accountType" list="accountTypeList" placeholder="예: 일반계좌"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
         <datalist id="accountTypeList">
@@ -1010,30 +1044,30 @@
       </label>
 
       <label class="col-span-2 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">④ 종목명</span>
-        <input id="f_name" type="text" placeholder="예: 삼성전자"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        <span class="text-slate-500 dark:text-slate-400">종목명</span>
+        <input id="f_name" type="text" readonly placeholder="검색으로 자동 채워짐"
+          class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">⑤ 수량/좌수</span>
+        <span class="text-slate-500 dark:text-slate-400">③ 수량/좌수</span>
         <input id="f_quantity" type="number" step="any" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">⑥ 매수단가 <span id="f_buyPriceUnit" class="text-slate-400">(KRW)</span></span>
+        <span class="text-slate-500 dark:text-slate-400">④ 매수단가 <span id="f_buyPriceUnit" class="text-slate-400">(KRW)</span></span>
         <input id="f_buyPrice" type="number" step="any" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 my-1"></div>
-      <p class="col-span-2 text-[11px] text-slate-400 -mt-1">아래 항목은 티커/종목명을 기준으로 자동 판별됩니다. 매입금액은 수량×매수단가로 자동 계산됩니다. 필요 시 직접 수정하세요.</p>
+      <p class="col-span-2 text-[11px] text-slate-400 -mt-1">아래 항목은 검색 결과(실시간 시세 조회) 기준으로 자동 채워지며 직접 수정할 수 없습니다. 매입금액은 수량×매수단가로 자동 계산됩니다.</p>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">자산군 (자동판별)</span>
-        <input id="f_category" list="categoryList" placeholder="자동 분류"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        <span class="text-slate-500 dark:text-slate-400">자산군</span>
+        <input id="f_category" list="categoryList" readonly placeholder="검색 시 자동 분류"
+          class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
         <datalist id="categoryList">
           <option value="주식"><option value="ETF"><option value="채권">
           <option value="현금"><option value="부동산"><option value="원자재"><option value="암호화폐">
@@ -1041,25 +1075,25 @@
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">국내/해외 (자동판별)</span>
-        <select id="f_isDomestic" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        <span class="text-slate-500 dark:text-slate-400">국내/해외</span>
+        <select id="f_isDomestic" disabled class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="국내">국내</option>
           <option value="해외">해외</option>
         </select>
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">통화 (자동판별) <span class="text-slate-400">- 원화환산 계산 기준</span></span>
-        <select id="f_currency" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        <span class="text-slate-500 dark:text-slate-400">통화 <span class="text-slate-400">- 원화환산 계산 기준</span></span>
+        <select id="f_currency" disabled class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="KRW">KRW (원화)</option>
           <option value="USD">USD (달러)</option>
         </select>
       </label>
 
       <label class="col-span-2 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">현재가 <span id="f_curPriceUnit" class="text-slate-400">(KRW)</span> <span class="text-slate-400">- 공란 시 매수단가로 초기화, 이후 [시세 갱신]으로 자동 업데이트</span></span>
-        <input id="f_currentPrice" type="number" step="any" placeholder="공란 = 매수단가"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+        <span class="text-slate-500 dark:text-slate-400">현재가 <span id="f_curPriceUnit" class="text-slate-400">(KRW)</span> <span id="f_currentPriceStatus" class="text-slate-400"></span></span>
+        <input id="f_currentPrice" type="number" step="any" readonly placeholder="검색 시 실시간 시세로 자동 채워짐"
+          class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
@@ -1447,6 +1481,16 @@ const LS_GOOGLE_CONNECTED = 'sam_google_connected_v1';
 // 마지막으로 "로컬에서" 데이터가 바뀐 시각(ISO 문자열) - 구글 드라이브에 저장된 데이터의 updatedAt과
 // 비교해 어느 쪽이 최신인지 판단하는 데 쓴다(간단한 최종 수정 우선 방식의 충돌 해결).
 const LS_LAST_LOCAL_UPDATE = 'sam_last_local_update_v1';
+// [세션 영구 보존] OAuth 액세스 토큰 + 만료 시각(expires_at, ms epoch)을 저장한다 - { access_token,
+// expires_at }. 예전에는 앱을 열 때마다(새로고침/당겨서 새로고침 포함) 무조건 구글 서버에 새 토큰을
+// 요청해서, 브라우저/기기 상태에 따라 계정 선택 화면이 매번 뜨는 문제가 있었다. 이제는 이 캐시가
+// 유효(미만료)하면 구글 서버에 아예 묻지 않고 그대로 재사용한다. 비밀번호(패스프레이즈)는 여전히
+// 여기 저장하지 않는다(위 LS_GOOGLE_CONNECTED 주석과 동일한 보안상의 이유).
+const LS_GOOGLE_TOKEN = 'sam_google_token_v1';
+// [세션 영구 보존] One Tap ID 토큰(JWT)에서 뽑아낸 표시용 사용자 정보(이름/이메일) - 로그인 상태 UI에
+// "OOO님으로 연동됨" 같은 안내를 즉시 보여주기 위한 용도일 뿐, 서명 검증을 하지 않으므로 인증/권한
+// 판단에는 전혀 쓰이지 않는다(실제 드라이브 접근 권한은 오직 OAuth 액세스 토큰으로만 결정된다).
+const LS_GOOGLE_USER_INFO = 'sam_google_user_info_v1';
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',
@@ -2559,13 +2603,16 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  *      열려 있을 때도 배경 탭이 바뀌면 혼란스러우므로 추적하지 않는다. preventDefault를 전혀 호출하지
  *      않으므로(passive 리스너) 세로 스크롤 등 기존 터치 동작은 전혀 방해받지 않는다.
  * ---------------------------------------------------------------------- */
-const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'projection', 'rebalance'];
+const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'rebalance', 'projection'];
 const SWIPE_MIN_DISTANCE = 50; // px
 // [중첩 모달 순서 주의] findOpenModalId()는 이 배열에서 "먼저 찾히는" id를 열려 있는 모달로 간주하므로,
 // 다른 모달 위에 중첩되어 열리는 2차 모달(stockAllocationModal → rebalanceTargetModal 위,
 // stockSearchModal → transactionModal 위)은 반드시 그 부모보다 앞쪽에 와야 뒤로가기 시 2차 모달부터
 // 정확히 닫힌다.
-const SWIPE_MODAL_IDS = ['assetModal', 'stockSearchModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'googleSyncPassphraseModal'];
+// [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
+// 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
+// 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'googleSyncPassphraseModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -3022,8 +3069,14 @@ async function searchStockCandidates(query) {
 
 // 티커 접미사(.KS/.KQ)로 국내/해외를 판별한다 - sanitizeTicker와 동일한 기준(getMarketKeyForTicker 등
 // 이 앱 전반에서 쓰는 규칙)이라 다른 곳의 국내/해외 분류와 항상 일치한다.
-function openStockSearchModal() {
-  document.getElementById('stockSearchModalTitle').textContent = '개별주식 검색 추가';
+// [자산 추가 팝업 개선] mode: 'transaction'(기본, 거래내역 탭) | 'asset'(자산 추가 팝업) - 검색 결과를
+// 선택했을 때 어느 폼에 채울지를 결정한다(아래 renderStockSearchResults 참고). 이 모달은 assetModal
+// 위에도(z-[60] > assetModal의 z-50) 그대로 겹쳐 뜨므로, assetModal을 닫지 않고 그 위에서 검색만
+// 진행할 수 있다.
+let stockSearchTargetMode = 'transaction';
+function openStockSearchModal(mode) {
+  stockSearchTargetMode = mode || 'transaction';
+  document.getElementById('stockSearchModalTitle').textContent = stockSearchTargetMode === 'asset' ? '종목 검색' : '개별주식 검색 추가';
   document.getElementById('stockSearchHint').textContent = '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
   document.getElementById('stockSearchModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -3061,7 +3114,11 @@ function renderStockSearchResults(results, seq) {
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName);
+      if (stockSearchTargetMode === 'asset') {
+        applyStockPickToAssetForm(btn.dataset.pickSymbol, btn.dataset.pickName);
+      } else {
+        applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName);
+      }
       closeStockSearchModal();
     });
   });
@@ -3181,13 +3238,13 @@ function renderRtmDomesticSplit() {
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
       <input id="rtm_domesticKR" type="number" min="0" max="100" step="1" value="${domesticPct}"
         class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-      <div data-rtm-domestic-preview="국내" class="mt-1 text-[11px] flex items-center justify-between"></div>
+      <div data-rtm-domestic-preview="국내" class="mt-1 text-[11px] flex flex-col gap-0.5"></div>
     </label>
     <label class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">해외 (%) · 자동계산</span>
       <input id="rtm_domesticFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
         class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right text-slate-400">
-      <div data-rtm-domestic-preview="해외" class="mt-1 text-[11px] flex items-center justify-between"></div>
+      <div data-rtm-domestic-preview="해외" class="mt-1 text-[11px] flex flex-col gap-0.5"></div>
     </label>`;
   document.getElementById('rtm_domesticKR').addEventListener('input', (e) => {
     const v = Math.max(0, Math.min(100, num(e.target.value)));
@@ -3230,7 +3287,7 @@ function renderRtmTargetGroup(region) {
         </div>
       </div>
       ${subText}
-      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex items-center justify-between"></div>
+      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex flex-col gap-0.5"></div>
     </div>`;
   }).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
 
@@ -3421,7 +3478,10 @@ function updateRtmPreviews() {
     const targetAmount = total * num(rebalanceModalDraft.domestic[region]) / 100;
     const currentAmount = (byDomestic && byDomestic[region]) || 0;
     const diff = targetAmount - currentAmount;
-    el.innerHTML = `<span class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></span><span class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</span>`;
+    // [모바일 줄바꿈 버그 수정] 예전엔 두 span을 한 flex row(justify-between)에 나란히 두어, 금액이
+    // 길어지면 좁은 화면에서 중간에 부자연스럽게 줄바꿈됐다. 이제 각 줄을 별도 block(div)으로 나눠
+    // 화면 폭과 무관하게 항상 목표금액/조정금액 두 줄로 고정 표시한다.
+    el.innerHTML = `<div class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
   });
 
   ['국내', '해외'].forEach((region) => {
@@ -3437,7 +3497,8 @@ function updateRtmPreviews() {
       const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
       const previewEl = document.querySelector(`[data-rtm-preview][data-region="${region}"][data-idx="${idx}"]`);
       if (!previewEl) return;
-      previewEl.innerHTML = `<span class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></span><span class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</span>`;
+      // [모바일 줄바꿈 버그 수정] 위 국내/해외 split 미리보기와 동일하게 두 줄(block)로 고정한다.
+      previewEl.innerHTML = `<div class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
     });
     const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
     const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
@@ -3580,6 +3641,68 @@ function renderIndividualRebalanceGuide() {
 
   container.innerHTML = cards + excludedCards;
 }
+
+// [종목별 리밸런싱 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
+// 그대로 표로 옮긴다. 이 앱은 이미 SheetJS(xlsx.full.min.js)를 CDN으로 로드해 엑셀 백업/업로드에 쓰고
+// 있으므로(위 "21. 엑셀 내보내기" 참고) 같은 라이브러리/패턴을 그대로 재사용한다 - 별도 CDN을 새로
+// 추가하지 않는다.
+document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
+  const { rows, excluded } = computeIndividualRebalanceGuide();
+  if (rows.length === 0 && excluded.length === 0) {
+    showToast('내보낼 리밸런싱 실행 가이드 데이터가 없습니다.', 'warn');
+    return;
+  }
+
+  const qtyRounded = (qtyDelta, isForeign) => isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
+
+  const guideRows = rows.map((r) => {
+    const badge = rebalanceActionBadge(r.diff, r.curAmount);
+    return {
+      '종목명': r.name || r.ticker || '(이름 없음)',
+      '티커': r.ticker || '',
+      '소유자': r.owners.join('+') || '-',
+      '지역': r.region,
+      '목표 항목': r.targetLabel,
+      '거래통화': r.isForeign ? 'USD' : 'KRW',
+      '현재 평가금액(KRW)': Math.round(r.curAmount),
+      '목표 평가금액(KRW)': Math.round(r.targetAmount),
+      '리밸런싱 필요금액(KRW)': Math.round(r.diff),
+      '실행 구분': badge.label,
+      '예상 매수/매도 수량': qtyRounded(r.qtyDelta, r.isForeign)
+    };
+  });
+
+  // 목표에 매칭되지 않아 화면에서도 "리밸런싱 제외 자산"으로 별도 표시되는 항목들 - 같은 표 아래에
+  // 이어 붙이되, 목표/실행 관련 컬럼은 해당 없음을 뜻하는 빈 값으로 둔다(화면 카드의 "해당 없음"과 동일).
+  const excludedRows = excluded.map((a) => {
+    const r = calcRow(a);
+    return {
+      '종목명': a.name || a.ticker || '(이름 없음)',
+      '티커': a.ticker || '',
+      '소유자': a.owner || '-',
+      '지역': a.isDomestic,
+      '목표 항목': '',
+      '거래통화': a.currency,
+      '현재 평가금액(KRW)': Math.round(r.curAmount),
+      '목표 평가금액(KRW)': '',
+      '리밸런싱 필요금액(KRW)': '',
+      '실행 구분': '리밸런싱 제외 자산',
+      '예상 매수/매도 수량': ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet([...guideRows, ...excludedRows]);
+  // 종목명/목표 항목처럼 긴 텍스트 컬럼이 잘려 보이지 않도록 열 너비를 지정한다.
+  ws['!cols'] = [
+    { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 16 }, { wch: 8 },
+    { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 14 }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '리밸런싱 실행가이드');
+  const today = new Date();
+  const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  XLSX.writeFile(wb, `리밸런싱_실행가이드_${ymd}.xlsx`);
+});
 
 // targetBaseAmount: 목표금액 계산 시 곱할 기준 총액. currentBaseAmount: 현재비중(%) 계산 시 나눌 기준 총액.
 // (지역별 호출에서는 둘 다 리밸런싱 대상 전체 total이고, 항목별 호출에서는 각각 지역 목표금액 / 지역 현재총액이다.)
@@ -5297,15 +5420,52 @@ function renderAll() {
  * ---------------------------------------------------------------------- */
 const modal = document.getElementById('assetModal');
 
+// [자산 추가 팝업 개선] isManual=false(기본, "검색" 모드) - 티커/종목명/자산군/국내해외/통화/현재가는
+// 검색 결과로만 채워지고 직접 수정할 수 없다(readonly input, disabled select). isManual=true("직접 입력"
+// 모드) - 이 필드들을 기존처럼 손으로 채울 수 있다(티커 없는 채권/현금/부동산 등, 그리고 [수정] 진입 시).
+// disabled된 select의 값도 .value로는 계속 읽고 쓸 수 있어(네이티브 폼 제출에만 영향) 제출 로직은
+// 그대로 동작한다.
+function setAssetFormSearchMode(isManual) {
+  const readonlyFieldIds = ['f_ticker', 'f_name', 'f_category', 'f_currentPrice'];
+  const disabledSelectIds = ['f_isDomestic', 'f_currency'];
+  readonlyFieldIds.forEach((id) => {
+    const el = document.getElementById(id);
+    el.readOnly = !isManual;
+    el.classList.toggle('bg-slate-100', !isManual);
+    el.classList.toggle('dark:bg-slate-800/50', !isManual);
+    el.classList.toggle('text-slate-400', !isManual);
+    el.classList.toggle('bg-slate-50', isManual);
+    el.classList.toggle('dark:bg-slate-800', isManual);
+  });
+  disabledSelectIds.forEach((id) => {
+    const el = document.getElementById(id);
+    el.disabled = !isManual;
+    el.classList.toggle('bg-slate-100', !isManual);
+    el.classList.toggle('dark:bg-slate-800/50', !isManual);
+    el.classList.toggle('text-slate-400', !isManual);
+    el.classList.toggle('bg-slate-50', isManual);
+    el.classList.toggle('dark:bg-slate-800', isManual);
+  });
+  document.getElementById('assetSearchRow').classList.toggle('hidden', isManual);
+  document.getElementById('f_currentPriceStatus').textContent = '';
+}
+
 function openModal(mode, id) {
   document.getElementById('assetForm').reset();
   document.getElementById('modalTitle').textContent = mode === 'edit' ? '자산 수정' : '자산 추가';
   document.getElementById('assetFormSubmitBtn').textContent = mode === 'edit' ? '수정 완료' : '추가';
   document.getElementById('f_id').value = '';
+  document.getElementById('assetSearchStockBtnLabel').textContent = '종목명 또는 티커로 검색...';
+  document.getElementById('f_manualEntryToggle').checked = false;
 
   if (mode === 'edit') {
     const a = state.assets.find(x => x.id === id);
     if (!a) return;
+    // [수정] 버튼은 항상 티커 없는 자산(채권/현금/부동산 등)에서만 열린다 - 검색 결과가 애초에 있을 수
+    // 없는 종류라 "직접 입력" 모드로 고정하고, 토글 자체를 숨겨 되돌아갈 수 없게 한다.
+    document.getElementById('f_manualEntryToggle').checked = true;
+    document.getElementById('f_manualEntryToggleWrap').classList.add('hidden');
+    setAssetFormSearchMode(true);
     document.getElementById('f_id').value = a.id;
     document.getElementById('f_ticker').value = a.ticker || '';
     document.getElementById('f_owner').value = a.owner;
@@ -5318,6 +5478,8 @@ function openModal(mode, id) {
     document.getElementById('f_buyPrice').value = a.buyPrice;
     document.getElementById('f_currentPrice').value = a.currentPrice;
   } else {
+    document.getElementById('f_manualEntryToggleWrap').classList.remove('hidden');
+    setAssetFormSearchMode(false); // 신규 추가는 항상 "검색" 모드로 시작한다.
     document.getElementById('f_owner').value = '신랑';
     document.getElementById('f_isDomestic').value = '국내';
     document.getElementById('f_currency').value = 'KRW';
@@ -5337,7 +5499,8 @@ function updatePriceUnitLabels() {
   document.getElementById('f_curPriceUnit').textContent = unit;
 }
 
-// 티커 또는 종목명을 입력하는 동안 자산군/국내해외/통화를 실시간으로 자동 추론해 반영한다.
+// 티커 또는 종목명을 입력하는 동안 자산군/국내해외/통화를 실시간으로 자동 추론해 반영한다("직접 입력"
+// 모드 전용 - 검색 모드에서는 이 두 필드가 readonly라 input 이벤트 자체가 발생하지 않는다).
 function autoClassifyModal() {
   const ticker = document.getElementById('f_ticker').value;
   const name = document.getElementById('f_name').value;
@@ -5354,6 +5517,34 @@ function syncCurrencyWithDomestic() {
   updatePriceUnitLabels();
 }
 
+// [자산 추가 팝업 개선] 검색 모달(stockSearchModal)을 'asset' 모드로 열었을 때 선택 결과를 여기 채운다.
+// 1) 즉시 티커/종목명을 채우고 키워드 기반 자동판별(autoClassifyModal)로 1차 값을 보여준 뒤,
+// 2) 이 프로젝트가 이미 쓰고 있는 실시간 시세 조회(fetchPriceWithFallback - Naver/Yahoo/Stooq 동일 경쟁
+//    로직)를 그대로 재사용해 현재가와 실제 거래 통화를 받아와 덮어쓴다. 통화는 이 앱이 지원하는
+//    KRW/USD 중 하나로 확인될 때만 반영한다(그 외 통화는 국내/해외 자동판별 결과를 그대로 유지 - 이
+//    앱의 원화환산 계산은 KRW/USD 두 통화만 지원한다).
+async function applyStockPickToAssetForm(ticker, name) {
+  document.getElementById('f_ticker').value = ticker;
+  document.getElementById('f_name').value = name;
+  document.getElementById('assetSearchStockBtnLabel').textContent = `${name} (${ticker})`;
+  autoClassifyModal();
+
+  const statusEl = document.getElementById('f_currentPriceStatus');
+  statusEl.textContent = '(실시간 시세 조회 중...)';
+  try {
+    const result = await fetchPriceWithFallback(ticker, name);
+    document.getElementById('f_currentPrice').value = result.price;
+    if (result.currency === 'KRW' || result.currency === 'USD') {
+      document.getElementById('f_currency').value = result.currency;
+      document.getElementById('f_isDomestic').value = result.currency === 'USD' ? '해외' : '국내';
+    }
+    updatePriceUnitLabels();
+    statusEl.textContent = '(실시간 시세 반영됨)';
+  } catch (e) {
+    statusEl.textContent = '(시세 조회 실패 - 매수단가와 동일하게 직접 입력해 주세요)';
+  }
+}
+
 document.getElementById('addAssetBtn').addEventListener('click', () => { openModal('add'); showModal(); });
 document.getElementById('closeModalBtn').addEventListener('click', () => closeModal());
 document.getElementById('cancelModalBtn').addEventListener('click', () => closeModal());
@@ -5362,6 +5553,8 @@ document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyW
 document.getElementById('f_currency').addEventListener('change', updatePriceUnitLabels);
 document.getElementById('f_ticker').addEventListener('input', autoClassifyModal);
 document.getElementById('f_name').addEventListener('input', autoClassifyModal);
+document.getElementById('f_manualEntryToggle').addEventListener('change', (e) => setAssetFormSearchMode(e.target.checked));
+document.getElementById('assetSearchStockBtn').addEventListener('click', () => openStockSearchModal('asset'));
 
 document.getElementById('assetForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -6228,6 +6421,7 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
     changePercent: picked.changePercent,
     session: picked.session, // 'post' | 'pre' | 'regular' | 'closed' - 테이블에 시간외/장마감 배지를 표시하는 데 쓰인다
     instrumentType: meta.instrumentType, // 'EQUITY'|'ETF'|'MUTUALFUND' 등 - .KQ 자동 폴백의 오매칭 검증용
+    currency: meta.currency, // [자산 추가 팝업 개선] 종목 검색 시 거래 통화 자동 감지용 - Yahoo가 실제 상장 통화를 그대로 내려준다(USD/KRW/JPY 등)
     source: `Yahoo(${proxy.name})`
   };
 }
@@ -6272,7 +6466,9 @@ async function fetchStooqPrice(yahooTicker) {
   // 뿐이라 장이 마감된 뒤에도 '정규장'으로 잘못 표기됐다. Stooq엔 프리/애프터 시세가 없으므로, 지금이
   // 실제 정규장 시간대일 때만 '정규장'으로 표기하고 그 외에는 '장마감'으로 표기한다.
   const timeWindow = /\.(KS|KQ)$/i.test(yahooTicker) ? resolveDomesticTimeWindow() : resolveForeignTimeWindow();
-  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', source: 'Stooq' };
+  // [자산 추가 팝업 개선] Stooq는 통화 필드를 안 주므로 티커 형태로만 추정한다(국내면 KRW, 그 외 USD).
+  const currency = /\.(KS|KQ)$/i.test(yahooTicker) ? 'KRW' : 'USD';
+  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', currency, source: 'Stooq' };
 }
 
 // 국내(KRX) 티커 전용 - 네이버 금융의 비공식 실시간 API. Yahoo는 meta.preMarketPrice/postMarketPrice
@@ -6342,7 +6538,10 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   // 종가 - 네이버 API가 그 시점에 실제로 반환하는 값 그대로다).
 
   const changePercent = (typeof previousClose === 'number' && previousClose > 0) ? ((price - previousClose) / previousClose * 100) : 0;
-  return { price, previousClose, changePercent, session, source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)' };
+  // [자산 추가 팝업 개선] 국내(KRX) 종목은 사실상 항상 KRW지만, currencyType.code를 그대로 써서 실제
+  // 응답 기준으로 판단한다(하드코딩 방지).
+  const currency = (d.currencyType && d.currencyType.code) || 'KRW';
+  return { price, previousClose, changePercent, session, currency, source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)' };
 }
 
 // 네이버 직접 호출 + CORS_PROXIES 경유 재시도를 Promise.any로 동시 경쟁시킨다 - 직접 호출이 배포
@@ -7461,6 +7660,74 @@ function isGoogleClientIdConfigured() {
   return typeof GOOGLE_CLIENT_ID === 'string' && GOOGLE_CLIENT_ID.length > 0 && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID');
 }
 
+/* ---- 23-1-0. 세션 영구 보존 (localStorage 토큰 캐시) ----
+   OAuth 액세스 토큰은 보통 1시간 정도만 유효하고, 구글 GIS의 클라이언트 전용(백엔드 없는) 토큰 플로우는
+   리프레시 토큰을 주지 않는다 - 그래서 이 캐시로 할 수 있는 일은 "유효기간이 남아있는 동안은 구글
+   서버에 아예 다시 묻지 않는다"까지다(만료 이후에는 여전히 조용한 재발급을 한 번 시도해야 한다). 그래도
+   "새로고침/당겨서 새로고침/앱 재시작마다 매번" 재요청하던 것을 "토큰 수명 동안 한 번"으로 줄여주므로,
+   신고된 문제(계정 선택/비밀번호 화면이 계속 뜸)의 빈도를 실질적으로 없앤다. */
+function saveGoogleTokenSession(accessToken, expiresInSec) {
+  const expiresAt = Date.now() + (Number(expiresInSec) > 0 ? Number(expiresInSec) : 3600) * 1000;
+  localStorage.setItem(LS_GOOGLE_TOKEN, JSON.stringify({ access_token: accessToken, expires_at: expiresAt }));
+}
+
+// 만료 60초 전부터는 안전하게 "만료됨"으로 간주한다 - 딱 경계 시점에 API를 호출하다 401을 맞는 것을 방지.
+function loadGoogleTokenSession() {
+  try {
+    const raw = localStorage.getItem(LS_GOOGLE_TOKEN);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.access_token !== 'string' || typeof parsed.expires_at !== 'number') return null;
+    if (Date.now() >= parsed.expires_at - 60000) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearGoogleTokenSession() {
+  localStorage.removeItem(LS_GOOGLE_TOKEN);
+}
+
+// One Tap ID 토큰(JWT)의 payload만 디코드한다 - 서명 검증은 하지 않는다(이 앱엔 백엔드가 없어 애초에
+// 검증이 불가능하고, 화면에 이름/이메일을 보여주는 표시용 이상의 용도로는 쓰지 않는다).
+function decodeGoogleIdToken(credential) {
+  try {
+    const base64 = credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(base64).split('').map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')
+    );
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveGoogleUserInfo(profile) {
+  if (!profile || (!profile.email && !profile.name)) return;
+  localStorage.setItem(LS_GOOGLE_USER_INFO, JSON.stringify({ name: profile.name || '', email: profile.email || '' }));
+  applyGoogleUserInfoToUI();
+}
+
+function clearGoogleUserInfo() {
+  localStorage.removeItem(LS_GOOGLE_USER_INFO);
+  applyGoogleUserInfoToUI();
+}
+
+// 저장된 사용자 정보를 동기화 버튼 툴팁으로 반영한다 - 새로고침 직후에도(One Tap 콜백을 다시 받기 전)
+// 곧바로 "OOO 계정으로 연동됨"을 보여줄 수 있도록 localStorage에서 즉시 읽어온다.
+function applyGoogleUserInfoToUI() {
+  const btn = document.getElementById('googleSyncBtn');
+  if (!btn) return;
+  try {
+    const raw = localStorage.getItem(LS_GOOGLE_USER_INFO);
+    const info = raw ? JSON.parse(raw) : null;
+    btn.title = (info && (info.email || info.name)) ? `${info.name || ''}${info.email ? ` (${info.email})` : ''} 계정으로 연동됨` : '';
+  } catch (e) {
+    btn.title = '';
+  }
+}
+
 // persist*() 호출을 "로컬 저장은 하되 구글 드라이브 dirty 표시는 남기지 않는" 상태로 감싼다 - 자동으로
 // 벌어지는 저장(빈 상태 샘플 시딩, 렌더링마다의 일별 스냅샷 자동 기록, 시세/환율 자동 갱신, 소급 백필
 // 마이그레이션)이 "사용자가 방금 수정함"으로 오인되어 lastLocalUpdate가 부풀려지는 것을 막는다.
@@ -7813,13 +8080,23 @@ async function tryInitialGoogleDriveSync() {
   if (localStorage.getItem(LS_GOOGLE_CONNECTED) !== '1') return; // 연동 이력이 없으면 로컬로 시작 - 버튼으로 수동 연동.
   initialGoogleSyncAttempted = true;
 
-  updateGoogleSyncStatusUI('connecting'); // "보안 동기화 중..." 계열 라벨로 전환.
-  const ready = await waitForGoogleAuthReady(4000);
-  if (!ready) { updateGoogleSyncStatusUI('disconnected'); return; }
+  // [세션 영구 보존] localStorage에 아직 만료되지 않은 토큰이 캐시돼 있으면, 구글 인증 서버에 아예
+  // 묻지 않고(=계정 선택 팝업이 뜰 여지 자체가 없다) 그 토큰을 곧바로 재사용한다. 이게 "새로고침/당겨서
+  // 새로고침/앱 재시작마다 매번 계정 선택+비밀번호 화면이 뜨는" 문제의 핵심 원인이었다 - 예전엔 이
+  // 캐시 없이 매번 새 토큰을 요청했다.
+  const cachedToken = loadGoogleTokenSession();
+  if (cachedToken) {
+    driveAccessToken = cachedToken.access_token;
+  } else {
+    updateGoogleSyncStatusUI('connecting'); // "보안 동기화 중..." 계열 라벨로 전환.
+    const ready = await waitForGoogleAuthReady(4000);
+    if (!ready) { updateGoogleSyncStatusUI('disconnected'); return; }
 
-  const token = await requestAccessTokenPromise('', 6000); // prompt:'' = 팝업 없는 조용한 재발급, 6초 타임아웃.
-  if (!token) { updateGoogleSyncStatusUI('disconnected'); return; } // 세션 만료 등 - 버튼으로 수동 재연동 가능.
-  driveAccessToken = token;
+    const resp = await requestAccessTokenPromise('', 6000); // prompt:'' = 팝업 없는 조용한 재발급, 6초 타임아웃.
+    if (!resp || !resp.access_token) { updateGoogleSyncStatusUI('disconnected'); return; } // 세션 만료 등 - 버튼으로 수동 재연동 가능.
+    driveAccessToken = resp.access_token;
+    saveGoogleTokenSession(resp.access_token, resp.expires_in);
+  }
 
   try {
     const { newer, file } = await isDriveNewerThanLocal();
@@ -7838,6 +8115,8 @@ async function tryInitialGoogleDriveSync() {
       updateGoogleSyncStatusUI('disconnected');
     } else {
       syncPassphrase = null;
+      // 캐시된 토큰이 이미 무효(원격에서 취소/만료)했을 가능성 - 지워서 다음 시도 때 새로 발급받게 한다.
+      clearGoogleTokenSession();
       console.warn('[구글 드라이브 초기 동기화 실패]', e);
       showToast('구글 드라이브 데이터를 불러오는 중 문제가 발생했습니다. [구글 계정 연동] 버튼으로 다시 시도해 주세요.', 'error');
       updateGoogleSyncStatusUI('error');
@@ -7904,6 +8183,9 @@ function waitForGoogleAuthReady(timeoutMs) {
   });
 }
 
+// [세션 영구 보존] 예전엔 resp.access_token 문자열만 돌려줬는데, 만료 시각을 계산하려면 resp.expires_in도
+// 필요해서 이제 응답 객체 전체를(성공 시) 그대로 돌려준다 - 호출부에서 resp.access_token/resp.expires_in을
+// 꺼내 쓴다.
 function requestAccessTokenPromise(promptValue, timeoutMs) {
   return new Promise((resolve) => {
     if (!driveTokenClient) { resolve(null); return; }
@@ -7913,7 +8195,7 @@ function requestAccessTokenPromise(promptValue, timeoutMs) {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      resolve(resp && !resp.error ? resp.access_token : null);
+      resolve(resp && !resp.error ? resp : null);
     };
     if (timeoutMs) {
       timer = setTimeout(() => {
@@ -7944,13 +8226,14 @@ async function connectGoogleDrive() {
     return;
   }
   updateGoogleSyncStatusUI('connecting');
-  const token = await requestAccessTokenPromise('consent', null); // 대화형 - 타임아웃 없이 사용자 응답을 기다린다.
-  if (!token) {
+  const resp = await requestAccessTokenPromise('consent', null); // 대화형 - 타임아웃 없이 사용자 응답을 기다린다.
+  if (!resp || !resp.access_token) {
     showToast('구글 로그인에 실패했습니다.', 'error');
     updateGoogleSyncStatusUI('disconnected');
     return;
   }
-  driveAccessToken = token;
+  driveAccessToken = resp.access_token;
+  saveGoogleTokenSession(resp.access_token, resp.expires_in); // [세션 영구 보존] 다음 방문부터는 이 캐시를 먼저 재사용한다.
   initialGoogleSyncAttempted = true; // 방금 대화형으로 연동했으므로 부팅용 자동 시도는 더 필요 없다.
   await ensureDriveFolderAndSyncAfterAuth();
 }
@@ -7987,6 +8270,8 @@ function initGoogleOneTap() {
 
 function handleGoogleIdCredential(response) {
   if (!response || !response.credential) return;
+  const profile = decodeGoogleIdToken(response.credential);
+  if (profile) saveGoogleUserInfo(profile); // [세션 영구 보존] 이름/이메일을 localStorage에 남겨 로그인 상태 UI에 반영.
   if (localStorage.getItem(LS_GOOGLE_CONNECTED) === '1') tryInitialGoogleDriveSync();
 }
 
@@ -8038,6 +8323,27 @@ document.getElementById('googleSyncForceDownloadBtn').addEventListener('click', 
   }
 });
 
+// [로그아웃] 사용자가 명시적으로 눌렀을 때만 세션을 지운다 - 새로고침/당겨서 새로고침 등 어떤 자동
+// 경로에서도 호출되지 않는다. google.accounts.id.disableAutoSelect()를 불러 다음 방문 때 One Tap이
+// 이 브라우저를 자동으로 다시 선택하지 않게 하고, 캐시된 토큰/사용자 정보/연동 이력을 전부 지운다.
+function disconnectGoogleDrive() {
+  closeGoogleSyncMenu();
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+    try { google.accounts.id.disableAutoSelect(); } catch (e) { /* 이 브라우저/환경에서 지원 안 함 - 무시 */ }
+  }
+  clearGoogleTokenSession();
+  clearGoogleUserInfo();
+  localStorage.removeItem(LS_GOOGLE_CONNECTED);
+  driveAccessToken = null;
+  driveFolderId = null;
+  driveFileId = null;
+  syncPassphrase = null;
+  driveSyncDirty = false;
+  updateGoogleSyncStatusUI('disconnected');
+  showToast('구글 계정 연동을 해제했습니다. 이 기기의 데이터는 그대로 남아 있습니다.', 'info');
+}
+document.getElementById('googleSyncLogoutBtn').addEventListener('click', disconnectGoogleDrive);
+
 /* ---- 23-1-11. 오프라인 -> 온라인 복귀 시 자동 재동기화 ---- */
 window.addEventListener('online', () => {
   if (driveAccessToken && syncPassphrase && driveSyncDirty) {
@@ -8056,6 +8362,9 @@ window.addEventListener('offline', () => {
 // 여기서는 클라이언트만 준비해 둔다.
 startGoogleAuthInit();
 initGoogleOneTap();
+// [세션 영구 보존] 새 One Tap 자격증명을 기다리지 않고, 이전 방문에서 저장해 둔 이름/이메일을 즉시
+// 버튼 툴팁에 반영한다(조건 A: 세션이 있으면 로그인 UI를 즉시 그린다).
+applyGoogleUserInfoToUI();
 
 /* -------------------------------------------------------------------------
  * 24. 다크모드 토글
