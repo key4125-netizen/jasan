@@ -7959,6 +7959,13 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
 
   renderAll();
+  // [버그 수정 - 초기화해도 팝업 그래프가 그대로 보임] renderAll()은 메인 화면만 다시 그릴 뿐 [일별
+  // 손익 추이]/[총 평가금액 추이] 팝업은 건드리지 않는다 - 그 결과 초기화 당시 팝업이 이미 열려 있으면
+  // state.dailySnapshots는 실제로 비워졌는데도 화면에 그려진 Chart.js 차트 객체는 그대로 남아 예전
+  // 그래프를 계속 보여줬다. 열려 있는 팝업만 즉시 다시 그려 방금 지운 값을 반영한다(backfillAllHoldings
+  // DailyPnlHistory에서 쓰는 것과 동일한 패턴).
+  if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
+  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
   showToast('모든 데이터가 초기화되었습니다.', 'success');
 });
 
