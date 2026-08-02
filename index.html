@@ -53,12 +53,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <!-- SheetJS (엑셀 입출력) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-<!-- [구글 드라이브 동기화] CryptoJS: 클라이언트 측 AES-256 암호화(구글 드라이브에는 암호문만 업로드) -->
-<script src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
-<!-- [구글 드라이브 동기화] Google Identity Services: OAuth 2.0 토큰 발급(drive.file 스코프). file:// 로컬
-     실행에서는 구글 정책상 로그인 자체가 불가능하고, 반드시 http(s)로 호스팅된 주소에서만 동작한다. -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-
 <style>
   /* [모바일 텍스트 선택/구글 검색 툴바 방지] 화면 텍스트를 길게 누르면 안드로이드/iOS 브라우저 기본
      "복사/공유/모두선택/웹검색" 메뉴 및 하단 구글 검색 바가 뜨는 문제를 막는다. user-select는 상속되는
@@ -214,30 +208,6 @@
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
 
-        <!-- [구글 드라이브 동기화] 연동 전/중/완료 상태를 하나의 버튼으로 표시한다. 상태별 색상/문구는
-             updateGoogleSyncStatusUI()가 관리한다. file:// 로컬 실행에서는 구글 로그인 자체가 막혀 있어
-             클릭 시 안내 토스트만 뜬다. 이미 연동된 상태에서 버튼을 누르면 재로그인 대신 아래 드롭다운
-             메뉴([드라이브에서 강제 불러오기])를 연다(connectGoogleDrive 참고). -->
-        <div id="googleSyncMenuWrap" class="relative">
-          <button id="googleSyncBtn" type="button" class="flex items-center gap-1.5 text-xs font-semibold px-3 py-2.5 rounded-xl border shadow-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-brand-400">
-            <i id="googleSyncIcon" data-lucide="cloud" class="w-3.5 h-3.5"></i>
-            <span id="googleSyncLabel">구글 계정 연동</span>
-          </button>
-          <!-- [모바일 겹침 버그 수정] 헤더 버튼들이 좁은 화면에서 줄바꿈(flex-wrap)되면 이 버튼이 화면
-               오른쪽이 아니라 왼쪽 쪽에 놓일 수 있어, right-0로만 고정하면 폭 256px 메뉴가 화면 왼쪽
-               밖으로 잘려나가는 문제가 있었다(직접 재현/확인됨). 좁은 화면(기본, sm 미만)에서는 왼쪽
-               기준으로, sm 이상(버튼이 실제로 화면 오른쪽에 있는 데스크톱 레이아웃)에서는 기존처럼
-               오른쪽 기준으로 위치를 잡는다. -->
-          <div id="googleSyncMenu" class="hidden absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2">
-            <p id="googleSyncMenuStatus" class="text-[11px] text-slate-400 px-2 pb-2 leading-relaxed"></p>
-            <button type="button" id="googleSyncForceDownloadBtn" class="w-full flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">
-              <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> 드라이브에서 데이터 강제 불러오기
-            </button>
-            <button type="button" id="googleSyncLogoutBtn" class="w-full flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 text-left">
-              <i data-lucide="log-out" class="w-3.5 h-3.5"></i> 로그아웃(연동 해제)
-            </button>
-          </div>
-        </div>
 
         <!-- 메인 액션 버튼 그룹 -->
         <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm flex-wrap">
@@ -352,8 +322,11 @@
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가금액</span>
-        <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
-          <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
+            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
+          </div>
         </div>
       </div>
       <p id="kpiTotalValue" class="text-lg font-bold">0원</p>
@@ -755,6 +728,10 @@
         </button>
       </div>
       <p class="text-[11px] text-slate-400 mb-3">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
+      <!-- [소유자별 필터] 전체(가구 합산) 외에 신랑/와이프 각자를 "독립된 포트폴리오"로 놓고 같은 목표
+           비중(%)을 적용했을 때의 매수/매도 가이드를 따로 볼 수 있다 - computeIndividualRebalanceGuide(owner)
+           참고. -->
+      <div id="rebalanceGuideOwnerTabs" class="flex items-center gap-1.5 mb-3"></div>
       <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
   </div>
@@ -1189,9 +1166,9 @@
 </div>
 
 <!-- ============================= 일별 손익 추이 팝업 (일간 평가손익 KPI 카드 터치 시) =============================
-     [일별 평가손익/일별 실현손익] 전환 + [전체(합계)/신랑/와이프] 소유자 필터 + [1개월/3개월/6개월] 기간
-     선택으로 일자별 손익 추이를 막대그래프 + 세부 리스트로 보여준다. 관련 상태/계산 함수는 섹션 20
-     참고(dailyPnlPopupType/Owner/Days, buildDailyPnlSeries 등). -->
+     [사용자 요청: 기존 형태 유지] [일별 평가손익/일별 실현손익] 전환 + [전체(합계)/신랑/와이프] 소유자
+     필터 + [1개월/3개월/6개월] 기간 선택으로 일자별 손익 추이를 막대그래프 + 세부 리스트로 보여준다.
+     관련 상태/계산 함수는 섹션 20 참고(dailyPnlPopupType/Owner/Days, buildDailyPnlSeries 등). -->
 <div id="dailyPnlModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -1209,10 +1186,11 @@
 
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
-        <div class="flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-1 shrink-0 flex-wrap">
           <button type="button" data-pnl-days="30" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
           <button type="button" data-pnl-days="90" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
           <button type="button" data-pnl-days="180" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+          <button type="button" data-pnl-days="365" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
         </div>
       </div>
 
@@ -1226,39 +1204,33 @@
   </div>
 </div>
 
-<!-- ============================= 구글 드라이브 동기화 비밀번호(패스프레이즈) 모달 =============================
-     [보안 설계] 이 비밀번호는 AES-256 암호화 키로만 쓰이고 구글 드라이브/서버 어디에도 평문으로 저장되지
-     않는다 - 메모리(JS 변수 syncPassphrase)에만 잠깐 보관되고 탭을 닫거나 새로고침하면 사라진다. 그래서
-     새 기기는 물론 같은 기기라도 앱을 다시 열 때마다 한 번씩 입력해야 한다(사용자가 편의보다 보안을
-     택함 - "기기별 자동 저장"이 아닌 "최초 1회 직접 설정" 방식을 선택). 두 가지 모드로 쓰인다:
-       - 'setup': 드라이브에 portfolio_data.json이 아직 없을 때(최초 연동) - 새 비밀번호를 두 번 입력해
-         오타를 방지한다. 이 비밀번호를 잊으면 드라이브에 저장된 데이터는 복호화할 방법이 없다.
-       - 'unlock': 이미 드라이브에 암호화된 파일이 있을 때 - 기존 비밀번호를 한 번만 입력한다. -->
-<div id="googleSyncPassphraseModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-      <h3 id="googleSyncPassphraseTitle" class="text-sm font-semibold">동기화 비밀번호 설정</h3>
-      <button type="button" id="closeGoogleSyncPassphraseModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+<!-- ============================= 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) =============================
+     [1개월/3개월/6개월/1년] 기간 선택으로 일자별 총 평가금액 추이를 [합계/신랑/와이프] 3개 라인으로
+     한 그래프 안에서 비교해 보여준다. 관련 함수는 섹션 20 참고(buildTotalValueSeries,
+     renderMultiSeriesLineChart 등 - 일별 손익 추이 팝업과 데이터 집계/차트 렌더링 로직을 공유한다). -->
+<div id="totalValueModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">총 평가금액 추이</h3>
+      <button type="button" id="closeTotalValueModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
-    <div class="px-5 py-4 space-y-3">
-      <p id="googleSyncPassphraseDesc" class="text-xs text-slate-400 leading-relaxed"></p>
-      <div>
-        <label class="text-xs text-slate-500 dark:text-slate-400">비밀번호</label>
-        <input id="googleSyncPassphraseInput" type="password" autocomplete="off"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
+
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
+      <div class="flex items-center justify-end gap-1">
+        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tv-days="90" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tv-days="365" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
-      <div id="googleSyncPassphraseConfirmWrap" class="hidden">
-        <label class="text-xs text-slate-500 dark:text-slate-400">비밀번호 확인</label>
-        <input id="googleSyncPassphraseConfirmInput" type="password" autocomplete="off"
-          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
+
+      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
+        <canvas id="totalValueChart"></canvas>
+        <p id="totalValueChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
       </div>
-      <p id="googleSyncPassphraseError" class="hidden text-xs text-red-500"></p>
-      <button type="button" id="googleSyncPassphraseSubmitBtn"
-        class="w-full flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
-        확인
-      </button>
+
+      <div id="totalValueList" class="pt-1"></div>
     </div>
   </div>
 </div>
@@ -1473,24 +1445,15 @@ const LS_TRANSACTIONS = 'sam_transactions_v1';
 const LS_REF_RATE = 'sam_ref_rate_v1';
 // [일별 손익 추이 팝업] 일자별 자동 스냅샷 저장 키 - state.dailySnapshots 참고.
 const LS_DAILY_SNAPSHOTS = 'sam_daily_snapshot_v1';
-// [구글 드라이브 동기화] 이 브라우저가 예전에 구글 연동을 완료한 적이 있는지 여부만 저장하는 표식이다
-// ('1'/없음). 비밀번호(패스프레이즈) 자체는 절대 여기 저장하지 않는다 - 이 값이 있으면 앱을 열 때
-// 조용히(팝업 없이) 토큰 재발급을 한 번 시도해 볼 뿐이고, 실제 복호화에 필요한 비밀번호는 매번 사용자가
-// 직접 입력해야 한다.
-const LS_GOOGLE_CONNECTED = 'sam_google_connected_v1';
-// 마지막으로 "로컬에서" 데이터가 바뀐 시각(ISO 문자열) - 구글 드라이브에 저장된 데이터의 updatedAt과
-// 비교해 어느 쪽이 최신인지 판단하는 데 쓴다(간단한 최종 수정 우선 방식의 충돌 해결).
-const LS_LAST_LOCAL_UPDATE = 'sam_last_local_update_v1';
-// [세션 영구 보존] OAuth 액세스 토큰 + 만료 시각(expires_at, ms epoch)을 저장한다 - { access_token,
-// expires_at }. 예전에는 앱을 열 때마다(새로고침/당겨서 새로고침 포함) 무조건 구글 서버에 새 토큰을
-// 요청해서, 브라우저/기기 상태에 따라 계정 선택 화면이 매번 뜨는 문제가 있었다. 이제는 이 캐시가
-// 유효(미만료)하면 구글 서버에 아예 묻지 않고 그대로 재사용한다. 비밀번호(패스프레이즈)는 여전히
-// 여기 저장하지 않는다(위 LS_GOOGLE_CONNECTED 주석과 동일한 보안상의 이유).
-const LS_GOOGLE_TOKEN = 'sam_google_token_v1';
-// [세션 영구 보존] One Tap ID 토큰(JWT)에서 뽑아낸 표시용 사용자 정보(이름/이메일) - 로그인 상태 UI에
-// "OOO님으로 연동됨" 같은 안내를 즉시 보여주기 위한 용도일 뿐, 서명 검증을 하지 않으므로 인증/권한
-// 판단에는 전혀 쓰이지 않는다(실제 드라이브 접근 권한은 오직 OAuth 액세스 토큰으로만 결정된다).
-const LS_GOOGLE_USER_INFO = 'sam_google_user_info_v1';
+// [구글 드라이브 동기화 기능 완전 제거] 이 앱은 다시 기기 로컬 저장(localStorage) 전용으로 동작한다.
+// 예전에 구글 드라이브 연동 기능을 썼던 기기에는 아래 키들이 여전히 남아있을 수 있어(연동 여부 표식,
+// 캐시된 OAuth 토큰, 표시용 사용자 정보, 마지막 로컬 수정 시각) 앱 시작 시 한 번(cleanupLegacyGoogleSyncKeys,
+// bootApp 참고) 정리한다. 기능 자체가 완전히 제거됐으므로 이 키들은 더 이상 어떤 로직에서도 쓰이지
+// 않는다 - 순수하게 예전 기기에 남은 찌꺼기 데이터 청소용 목록이다.
+const LEGACY_GOOGLE_LS_KEYS = ['sam_google_connected_v1', 'sam_google_token_v1', 'sam_google_user_info_v1', 'sam_last_local_update_v1'];
+function cleanupLegacyGoogleSyncKeys() {
+  LEGACY_GOOGLE_LS_KEYS.forEach((k) => localStorage.removeItem(k));
+}
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',
@@ -1798,7 +1761,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -1938,12 +1901,7 @@ function loadState() {
 
   if (!state.assets || !Array.isArray(state.assets) || state.assets.length === 0) {
     state.assets = sampleAssets();
-    // [구글 드라이브 동기화] 이 샘플 시드는 사용자가 입력한 데이터가 아니라 "빈 상태"의 기본값일 뿐이다.
-    // 이걸 진짜 변경으로 잡아 lastLocalUpdate를 "지금"으로 찍어버리면, 처음 켜보는 새 기기가 실제로는
-    // 아무 데이터도 없는데도 마치 방금 막 수정된 것처럼 취급되어 드라이브의 진짜 최신 데이터를 덮어쓰는
-    // 사고로 이어진다(신고된 버그의 근본 원인). persistWithoutDriveSync로 로컬 저장만 하고 dirty 표시는
-    // 남기지 않는다 - 이후 이 기기에서 구글 연동을 확인하면 드라이브 쪽이 항상 더 최신으로 판단된다.
-    persistWithoutDriveSync(() => persistAssets());
+    persistAssets();
   }
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;
@@ -2003,10 +1961,6 @@ function loadState() {
 }
 
 // 자산 스키마에 정의된 필드만 저장 (dayChangeMap 등 휘발성 데이터는 제외)
-// [구글 드라이브 동기화] 아래 persist*() 함수들은 전부 markDriveSyncDirty()를 마지막에 한 줄씩 호출한다 -
-// 이 함수는 파일 뒤쪽(23-1 구글 드라이브 동기화 섹션)에서 정의되지만 일반 function 선언이라 호이스팅
-// 되므로 호출 순서상 문제없다. 구글 연동 전이거나 비밀번호 미설정 상태면 markDriveSyncDirty()가 그냥
-// 조용히 아무 일도 하지 않고 리턴하므로, 연동 여부와 무관하게 기존 로컬 저장 동작은 항상 그대로다.
 function persistAssets() {
   const clean = state.assets.map(a => ({
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
@@ -2014,14 +1968,13 @@ function persistAssets() {
     quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
-  markDriveSyncDirty();
 }
-function persistRate() { localStorage.setItem(LS_RATE, String(state.exchangeRate)); markDriveSyncDirty(); }
-function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); markDriveSyncDirty(); }
-function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); markDriveSyncDirty(); }
-function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); markDriveSyncDirty(); }
-function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); markDriveSyncDirty(); }
-function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); markDriveSyncDirty(); }
+function persistRate() { localStorage.setItem(LS_RATE, String(state.exchangeRate)); }
+function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); }
+function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); }
+function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); }
+function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); }
+function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); }
 
 /* -------------------------------------------------------------------------
  * 7. 파생 계산 (매입금액/평가금액/손익/수익률 - 전부 KRW 환산)
@@ -2612,7 +2565,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'googleSyncPassphraseModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2646,7 +2599,7 @@ const MODAL_CLOSE_FNS = {
   rebalanceTargetModal: (viaBack) => closeRebalanceTargetModal(viaBack),
   dailyPnlModal: (viaBack) => closeDailyPnlModal(viaBack),
   stockAllocationModal: (viaBack) => closeStockAllocationModal(viaBack),
-  googleSyncPassphraseModal: (viaBack) => closeGoogleSyncPassphraseModal(viaBack)
+  totalValueModal: (viaBack) => closeTotalValueModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -2780,9 +2733,15 @@ function updateTabScrollHint() {
 // selectedStocks를 포함해도 한 항목으로 남아있다). 종목별 실행 가이드/세부 결과 카드처럼 선택된
 // 개별 종목을 각자 따로 계산해야 하는 곳은 expandRebalanceTargetsForComputation(region)으로 "펼친"
 // 목록을 넘긴다 - 매칭 로직 자체는 동일하게 재사용한다.
-function computeRegionTargetAmounts(region, targetsOverride) {
+// ownerFilter: 'all'/undefined면 가구 전체(기존과 동일), 특정 소유자명이면 그 소유자의 자산만 놓고
+// 마치 그 사람 혼자만의 포트폴리오인 것처럼 같은 목표 비중(%)을 적용한다(종목별 리밸런싱 실행 가이드의
+// 소유자별 필터 전용 - isAssetIncludedForOwner 참고).
+function isAssetIncludedForOwner(a, ownerFilter) {
+  return !ownerFilter || ownerFilter === 'all' || a.owner === ownerFilter;
+}
+function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
   const targets = targetsOverride || state.rebalance.targets[region] || [];
-  const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
+  const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
   const claimedIds = new Set();
   // assetId -> targetIdx. 종목별 리밸런싱 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
   // 정확히 어느 목표 항목에 묶였는가"를 알아야 그 항목의 목표금액을 개별 종목 단위로 다시 나눠줄 수
@@ -2850,8 +2809,8 @@ function expandRebalanceTargetsForComputation(region) {
 
 // computeRegionTargetAmounts(region)을 항상 "펼쳐진" 목록 기준으로 실행하는 편의 함수 - 종목별 실행
 // 가이드/세부 결과 카드 등 개별 종목 단위 계산이 필요한 곳에서 쓴다.
-function computeExpandedRegionTargetAmounts(region) {
-  return computeRegionTargetAmounts(region, expandRebalanceTargetsForComputation(region));
+function computeExpandedRegionTargetAmounts(region, ownerFilter) {
+  return computeRegionTargetAmounts(region, expandRebalanceTargetsForComputation(region), ownerFilter);
 }
 
 // 종목별 리밸런싱 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
@@ -2866,17 +2825,21 @@ function computeExpandedRegionTargetAmounts(region) {
 //     기본 가정).
 //   - 어느 목표에도 매칭되지 않는 자산(부동산 등 실물자산)은 excluded로 따로 반환한다.
 //   - 소유자가 달라도 동일 종목(티커, 티커가 없으면 이름)은 하나의 행으로 합산한다 - 신랑/와이프가
-//     같은 종목을 나눠 보유해도 "종목 하나당 매수/매도 실행 가이드 하나"만 나오게 한다.
-function computeIndividualRebalanceGuide() {
+//     같은 종목을 나눠 보유해도 "종목 하나당 매수/매도 실행 가이드 하나"만 나오게 한다(단, ownerFilter로
+//     특정 소유자를 지정하면 애초에 그 소유자의 자산만 대상이라 이 합산은 자연히 그 사람 것만 남는다).
+// ownerFilter: 'all'/undefined면 가구 전체(기존 동작), 특정 소유자명이면 그 소유자의 자산만으로 "독립된
+// 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 매수/매도 가이드를 만든다(리밸런싱 실행 가이드의
+// 소유자별 필터 전용).
+function computeIndividualRebalanceGuide(ownerFilter) {
   const rows = [];
   const excluded = [];
-  const { total } = getRebalanceTotals();
+  const { total } = getRebalanceTotals(ownerFilter);
 
   ['국내', '해외'].forEach((region) => {
     // 개별 지정 종목(selectedStocks)이 있으면 "펼쳐진" 목록을 써서 그 종목들이 각자 자기 비중만큼의
     // 목표를 따로 갖고, 지정 안 한 나머지 보유 주식은 목표 0%(전량 매도)로 계산되게 한다.
-    const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region);
-    const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a));
+    const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region, ownerFilter);
+    const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
     // renderTargetRebalanceResultGroup()에서 쓰는 것과 동일한 공식: 지역 목표금액 = 전체 리밸런싱
     // 대상 총액 × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
@@ -2935,13 +2898,15 @@ function rebalanceDiffColorClass(diff) {
 }
 
 // 리밸런싱 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=리밸런싱 가능한)" 자산만 합산한다.
-function getRebalanceTotals() {
+// ownerFilter를 생략하면(대부분의 호출부 - 메인 화면 요약/목표 비중 입력칸 등) 기존과 동일하게 항상
+// 가구 전체 기준이다. 종목별 리밸런싱 실행 가이드의 소유자별 필터에서만 특정 소유자명을 넘긴다.
+function getRebalanceTotals(ownerFilter) {
   const byDomestic = { '국내': 0, '해외': 0 };
   const perRegion = {};
   const uncovered = { '국내': 0, '해외': 0 };
   let total = 0;
   ['국내', '해외'].forEach((region) => {
-    const { amounts, coveredTotal, uncoveredTotal } = computeRegionTargetAmounts(region);
+    const { amounts, coveredTotal, uncoveredTotal } = computeRegionTargetAmounts(region, undefined, ownerFilter);
     perRegion[region] = amounts;
     byDomestic[region] = coveredTotal;
     uncovered[region] = uncoveredTotal;
@@ -3582,13 +3547,33 @@ function rebalanceActionBadge(diff, curAmount) {
   return { label: `${fmtSigned(diff)} 매도`, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400' };
 }
 
+// [소유자별 필터] 'all'(전체, 가구 합산 - 기존 동작) 외에 신랑/와이프 등 실제 소유자명을 선택하면
+// 그 사람의 자산만으로 "독립된 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 가이드를 보여준다.
+let rebalanceGuideOwnerFilter = 'all';
+
+function renderRebalanceGuideOwnerTabs() {
+  const wrap = document.getElementById('rebalanceGuideOwnerTabs');
+  if (!wrap) return;
+  const tabs = [{ key: 'all', label: '전체' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
+  wrap.innerHTML = tabs.map((t) => `
+    <button type="button" data-guide-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === rebalanceGuideOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
+  `).join('');
+  wrap.querySelectorAll('button[data-guide-owner]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      rebalanceGuideOwnerFilter = btn.dataset.guideOwner;
+      renderIndividualRebalanceGuide();
+    });
+  });
+}
+
 // [금융자산 리밸런싱] 탭 맨 아래 "종목별 리밸런싱 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
 // 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 카드 형태로 보여준다. 부동산 등
 // 목표에 매칭되지 않는 자산은 별도로 "[리밸런싱 제외 자산]" 배지를 달아 같은 목록에 구분 표시한다.
 function renderIndividualRebalanceGuide() {
   const container = document.getElementById('individualRebalanceGuide');
   if (!container) return;
-  const { rows, excluded } = computeIndividualRebalanceGuide();
+  renderRebalanceGuideOwnerTabs();
+  const { rows, excluded } = computeIndividualRebalanceGuide(rebalanceGuideOwnerFilter);
 
   if (rows.length === 0 && excluded.length === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
@@ -3646,13 +3631,11 @@ function renderIndividualRebalanceGuide() {
 // 그대로 표로 옮긴다. 이 앱은 이미 SheetJS(xlsx.full.min.js)를 CDN으로 로드해 엑셀 백업/업로드에 쓰고
 // 있으므로(위 "21. 엑셀 내보내기" 참고) 같은 라이브러리/패턴을 그대로 재사용한다 - 별도 CDN을 새로
 // 추가하지 않는다.
-document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
-  const { rows, excluded } = computeIndividualRebalanceGuide();
-  if (rows.length === 0 && excluded.length === 0) {
-    showToast('내보낼 리밸런싱 실행 가이드 데이터가 없습니다.', 'warn');
-    return;
-  }
-
+// 특정 소유자 필터(전체/신랑/와이프 등) 기준으로 리밸런싱 실행 가이드 표 데이터를 만든다.
+// 화면에 그리는 카드용 계산(computeIndividualRebalanceGuide)을 그대로 재사용해 화면과 엑셀의
+// 수치가 항상 일치하도록 한다.
+function buildRebalanceGuideSheetRows(ownerFilter) {
+  const { rows, excluded } = computeIndividualRebalanceGuide(ownerFilter);
   const qtyRounded = (qtyDelta, isForeign) => isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
 
   const guideRows = rows.map((r) => {
@@ -3691,14 +3674,38 @@ document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () 
     };
   });
 
-  const ws = XLSX.utils.json_to_sheet([...guideRows, ...excludedRows]);
-  // 종목명/목표 항목처럼 긴 텍스트 컬럼이 잘려 보이지 않도록 열 너비를 지정한다.
-  ws['!cols'] = [
+  return { rows: guideRows, excluded: excludedRows, isEmpty: rows.length === 0 && excluded.length === 0 };
+}
+
+document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
+  // 화면에 어떤 탭이 선택되어 있든 상관없이 매번 [합계, 신랑, 와이프 ...] 3개 시트를 모두 생성한다.
+  const sheetDefs = [{ key: 'all', label: '합계' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
+  const sheetCols = [
     { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 16 }, { wch: 8 },
     { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 14 }
   ];
+
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '리밸런싱 실행가이드');
+  let anyData = false;
+  const usedNames = new Set();
+
+  sheetDefs.forEach((def) => {
+    const { rows, excluded, isEmpty } = buildRebalanceGuideSheetRows(def.key);
+    if (!isEmpty) anyData = true;
+    const ws = XLSX.utils.json_to_sheet([...rows, ...excluded]);
+    ws['!cols'] = sheetCols;
+    // 엑셀 시트명 제약(31자 이하, 중복 불가) 대비 - 신랑/와이프 등은 짧아 실무상 충돌 없음.
+    let sheetName = def.label.slice(0, 31) || def.key;
+    while (usedNames.has(sheetName)) sheetName = `${sheetName}_`.slice(0, 31);
+    usedNames.add(sheetName);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  if (!anyData) {
+    showToast('내보낼 리밸런싱 실행 가이드 데이터가 없습니다.', 'warn');
+    return;
+  }
+
   const today = new Date();
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
   XLSX.writeFile(wb, `리밸런싱_실행가이드_${ymd}.xlsx`);
@@ -6390,9 +6397,7 @@ async function fetchExchangeRate() {
   try {
     state.exchangeRate = await Promise.any(FX_SOURCES.map((src) => fetchFxFromSource(src)));
     document.getElementById('exchangeRateInput').value = state.exchangeRate;
-    // [구글 드라이브 동기화] 자동 환율 갱신은 "사용자가 직접 입력/수정"한 것이 아니므로 dirty로 잡지 않는다
-    // (사용자가 직접 환율을 고치는 exchangeRateInput 리스너의 persistRate()는 그대로 dirty로 잡힌다).
-    persistWithoutDriveSync(() => persistRate());
+    persistRate();
   } catch (aggregateErr) {
     const reasons = aggregateErr.errors || [];
     const errors = reasons.map((e, i) => `${FX_SOURCES[i].name}: ${e && e.message}`);
@@ -6938,9 +6943,7 @@ async function retryFailedPrices() {
   retryBtnText.textContent = '재조회 중...';
 
   await fetchPricesForTargets(targets);
-  // [구글 드라이브 동기화] 시세 재조회는 currentPrice만 갱신할 뿐 사용자가 보유 종목/수량을 직접 바꾼
-  // 것이 아니므로 dirty로 잡지 않는다.
-  persistWithoutDriveSync(() => persistAssets());
+  persistAssets();
   // 실패 0건이 되면 renderKPIs()가 '총 투자금액' 화면으로 자동 복귀시키고, 일부만 성공했다면
   // 남은 실패 종목 목록으로 패널을 다시 그리면서 버튼 상태도 함께 원상복구한다.
   renderAll();
@@ -6971,8 +6974,7 @@ async function refreshPricesAndRates() {
   const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, indexPromise, ma20Promise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
 
-  // [구글 드라이브 동기화] 자동/수동 시세 갱신 모두 currentPrice만 바뀔 뿐이라 dirty로 잡지 않는다.
-  if (successCount > 0) persistWithoutDriveSync(() => persistAssets());
+  if (successCount > 0) persistAssets();
   renderAll();
   lastRefreshAt = Date.now(); // 자동 폴링 타이머 및 "다음 자동 갱신까지" 표시의 기준 시각
 
@@ -7055,17 +7057,21 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* -------------------------------------------------------------------------
- * 20. 일별 손익 추이 팝업 (일간 평가손익 KPI 카드 터치 시)
+ * 20. 일별 손익 추이 / 총 평가금액 추이 팝업
  *    - 일별 평가손익: renderKPIs()가 매 렌더링마다 자동으로 남기는 오늘자 스냅샷(state.dailySnapshots,
  *      소유자별 평가금액+당일손익)을 그대로 모아서 보여준다. 사용자가 아무것도 입력하지 않아도 앱을
  *      켜서 렌더링될 때마다 자동으로 쌓인다(다만 앱을 켜지 않은 날은 그 날짜의 기록 자체가 없다 -
  *      "수동 입력 Zero"의 필연적인 한계).
  *    - 일별 실현손익: [거래내역] 탭의 실현손익 리포트와 같은 계산 결과(computePositionsAndRealizedPnL의
  *      annotated 배열, 매도 건마다 이동평균법으로 계산된 computedRealizedPnL)를 날짜별로 다시 집계한다.
+ *    - [멀티 라인 통합] 예전엔 소유자 필터 탭으로 한 번에 한 시리즈만 보여줬는데, 이제 합계/신랑/와이프
+ *      3개 라인을 한 차트에 동시에 그린다(renderMultiSeriesLineChart 공용 함수) - 개별 라인을 숨기려면
+ *      Chart.js 기본 범례를 클릭하면 된다. 총 평가금액 추이 팝업도 같은 집계(buildSnapshotSeries)/
+ *      렌더링 함수를 공유한다.
  * ---------------------------------------------------------------------- */
 let dailyPnlPopupType = 'unrealized'; // 'unrealized' | 'realized'
 let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
-let dailyPnlPopupDays = 30;           // 30 | 90 | 180
+let dailyPnlPopupDays = 30;           // 30 | 90 | 180 | 365
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -7083,21 +7089,18 @@ function recordDailySnapshot(totalCur, dailyProfit, byOwner) {
     byOwnerSnap[owner] = { cur: byOwner[owner].cur, dailyPnL: byOwner[owner].dailyPnL };
   });
   state.dailySnapshots[dateKey] = { total: { cur: totalCur, dailyPnL: dailyProfit }, byOwner: byOwnerSnap };
-  // [구글 드라이브 동기화] 렌더링마다 자동으로 쌓이는 스냅샷이라 dirty로 잡지 않는다 - 그렇지 않으면
-  // 앱을 열어두기만 해도(사용자가 아무것도 안 바꿔도) 계속 lastLocalUpdate가 "지금"으로 갱신되어,
-  // 다른 기기에서 실제로 입력한 최신 데이터가 있어도 이 기기 쪽이 항상 "더 최신"으로 오판된다.
-  persistWithoutDriveSync(() => persistDailySnapshots());
+  persistDailySnapshots();
 }
 
 function dateKeyFromDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 6개월(영업일 기준 126일 - PERIOD_TRADING_DAYS.6m와
+// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 1년(영업일 기준 252일 - PERIOD_TRADING_DAYS.1y와
 // 동일 기준)치 일별 종가(fetchDailyHistory, 종목 상세 차트와 같은 소스를 재사용)를 가져와 그 구간의
 // "일간 평가손익"(하루 대비 변동분)을 역산해 state.dailySnapshots에 채워 넣는다. 자산을 막 등록한 첫날에도
-// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 6개월 추세로 보이게 하기 위함이다(일별 손익
-// 추이 팝업의 [6개월] 탭 데이터도 이 백필 결과를 그대로 재사용한다).
+// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 1년 추세로 보이게 하기 위함이다(일별 손익
+// 추이/총 평가금액 추이 팝업의 [1년] 탭 데이터도 이 백필 결과를 그대로 재사용한다).
 //   - 값의 "단위"를 실시간 기록(recordDailySnapshot)과 반드시 맞춘다 - 하루 대비 변동분(누적 매수 대비
 //     손익이 아니다). 그래야 소급된 과거 구간과 오늘부터 실시간으로 쌓이는 구간이 그래프 상에서 자연스럽게
 //     이어지고, 큰 폭(누적)에서 작은 폭(하루치)으로 뚝 떨어지는 단절이 생기지 않는다.
@@ -7124,10 +7127,17 @@ async function backfillDailyPnlHistory(asset) {
     console.warn(`[소급 히스토리] ${asset.name || asset.ticker}(${asset.owner}) 과거 시세 조회 실패 - 건너뜀: ${e.message}`);
     return;
   }
-  // [휴장일/결측 방어] fetchDailyHistory가 이미 open/high/low/close 중 하나라도 null인 봉은 걸러내므로
-  // (휴장일은 애초에 timestamp 배열 자체에 없다), 여기서는 혹시 있을 수 있는 0 이하의 비정상 종가만
-  // 한 번 더 방어적으로 걸러낸다(직전 유효 종가로 이월 - forward fill).
-  const rawWindow = points.slice(-PERIOD_TRADING_DAYS['6m']);
+  // [버그 수정 - 일간손익 그래프 이상 스파이크] 예전엔 "구간의 첫째 날"은 그 전날 종가를 알 수 없다는
+  // 이유로 매수단가(취득 시점 가격 - 몇 달~몇 년 전일 수 있음)를 그날의 "전일 종가" 대용으로 썼다.
+  // 그 결과 (그날 종가 - 매수단가)라는, 사실은 "취득 이후 누적 손익"에 가까운 큰 값이 "하루치 손익"으로
+  // 잘못 기록되어 그래프에 비정상적으로 큰 스파이크가 찍혔다(신고된 버그의 원인 - 환율 이중 곱셈이나
+  // 누적 합산 오류는 아니었고, 이 한 지점의 잘못된 "전일 종가" 대입이 원인이었다).
+  // fetchDailyHistory가 range=2y로 2년치를 받아오므로, 1년치보다 하루 더 앞선 봉까지 가져오면 1년
+  // 구간의 첫째 날에도 진짜 전일 종가를 쓸 수 있다 - 매수단가는 더 이상 전일 종가 대용으로 쓰지 않는다.
+  // [기간 확장: 6개월→1년] 일별 손익 추이/총 평가금액 추이 팝업에 [1년] 기간 탭이 생겼는데, 소급
+  // 히스토리는 여전히 6개월치만 채워서 "1년" 탭을 눌러도 앞쪽 6개월은 빈 데이터(0원)로 보이는 문제가
+  // 있었다 - 이미 2년치를 받아오고 있으므로 API 호출 추가 없이 슬라이싱 구간만 1년으로 늘렸다.
+  const rawWindow = points.slice(-(PERIOD_TRADING_DAYS['1y'] + 1));
   const windowPoints = [];
   let lastValidClose = null;
   rawWindow.forEach((p) => {
@@ -7139,20 +7149,24 @@ async function backfillDailyPnlHistory(asset) {
     }
     // lastValidClose가 아직 없는데(구간 맨 앞부터 비정상) close도 없으면 그 봉은 아예 버린다.
   });
-  if (windowPoints.length === 0) return;
+  // 기준이 될 "전일 종가" 봉 하나 + 실제로 기록할 최소 하루가 있어야 한다(상장 초기라 데이터가
+  // 그만큼도 없으면 매수단가로 근사조차 하지 않고 소급 자체를 건너뛴다 - 틀린 값보다 빈 값이 낫다).
+  if (windowPoints.length < 2) return;
 
   const fxRate = asset.currency === 'USD' ? state.exchangeRate : 1;
   const today = todayDateStr();
-  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) ticker=${sanitized.yahooTicker} qty=${qty} buyPrice=${asset.buyPrice} - 조회된 봉 ${points.length}개 중 최근 ${windowPoints.length}개 사용 (${dateKeyFromDate(windowPoints[0].date)} ~ ${dateKeyFromDate(windowPoints[windowPoints.length - 1].date)}), 종가 흐름:`,
+  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) ticker=${sanitized.yahooTicker} qty=${qty} - 조회된 봉 ${points.length}개 중 최근 ${windowPoints.length}개 사용(첫 번째는 전일종가 기준봉, 실제 반영은 그 다음날부터) (${dateKeyFromDate(windowPoints[0].date)} ~ ${dateKeyFromDate(windowPoints[windowPoints.length - 1].date)}), 종가 흐름:`,
     windowPoints.map((p) => `${dateKeyFromDate(p.date)}=${p.close}`).join(', '));
 
   let appliedDays = 0;
   let sumDailyPnLKRW = 0;
-  windowPoints.forEach((p, i) => {
+  // i=0은 전일 종가 기준봉일 뿐 그 자체는 기록하지 않는다 - i=1부터가 실제로 반영할 구간이다.
+  for (let i = 1; i < windowPoints.length; i++) {
+    const p = windowPoints[i];
     const dateKey = dateKeyFromDate(p.date);
-    if (dateKey >= today) return; // 오늘/미래 날짜는 실시간 기록에 맡긴다
+    if (dateKey >= today) continue; // 오늘/미래 날짜는 실시간 기록에 맡긴다
 
-    const prevClose = i === 0 ? num(asset.buyPrice) : windowPoints[i - 1].close;
+    const prevClose = windowPoints[i - 1].close;
     const dailyPnLKRW = (p.close - prevClose) * qty * fxRate;
     sumDailyPnLKRW += dailyPnLKRW;
     appliedDays++;
@@ -7162,14 +7176,9 @@ async function backfillDailyPnlHistory(asset) {
     snap.total.dailyPnL += dailyPnLKRW;
     if (!snap.byOwner[asset.owner]) snap.byOwner[asset.owner] = { cur: 0, dailyPnL: 0 };
     snap.byOwner[asset.owner].dailyPnL += dailyPnLKRW;
-  });
-  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) - ${appliedDays}일 반영 완료, 구간 합산 손익 ${Math.round(sumDailyPnLKRW).toLocaleString()}원 (= 매수단가 ${asset.buyPrice} → 최근 종가 ${windowPoints[windowPoints.length - 1].close} 변동을 반영한 값)`);
-
-  // [구글 드라이브 동기화] 이 함수는 자동 일괄 마이그레이션(backfillAllHoldingsDailyPnlHistory)과 신규
-  // 자산 등록 양쪽에서 호출된다 - 신규 자산 등록 쪽은 그 호출부의 persistAssets()가 이미 dirty로 잡으므로
-  // (buildSyncPayload가 항상 dailySnapshots 전체를 함께 담아 올린다), 여기서 별도로 또 dirty 표시할
-  // 필요가 없다. 자동 마이그레이션 경로에서 dirty로 잡히지 않게 하는 것이 핵심 목적이다.
-  persistWithoutDriveSync(() => persistDailySnapshots());
+  }
+  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) - ${appliedDays}일 반영 완료, 구간 합산 손익 ${Math.round(sumDailyPnLKRW).toLocaleString()}원`);
+  persistDailySnapshots();
 }
 
 // [기존 보유 자산 소급 히스토리 일괄 실행] backfillDailyPnlHistory는 "새로 등록되는 자산"에만 걸려 있어,
@@ -7199,32 +7208,112 @@ function getBackfillDoneIds() {
 async function backfillAllHoldingsDailyPnlHistory() {
   const doneIds = getBackfillDoneIds();
   const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneIds.has(a.id));
-  if (targets.length === 0) return;
-  console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
-  for (const a of targets) {
-    try {
-      await backfillDailyPnlHistory(a);
-      doneIds.add(a.id);
-      localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
-    } catch (e) {
-      console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
+  if (targets.length > 0) {
+    console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
+    for (const a of targets) {
+      try {
+        await backfillDailyPnlHistory(a);
+        doneIds.add(a.id);
+        localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
+      } catch (e) {
+        console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
+      }
     }
+    console.log('[소급 히스토리 일괄 실행] 전체 완료');
   }
-  console.log('[소급 히스토리 일괄 실행] 전체 완료');
-  // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운 값을 즉시 보여준다.
+  // [버그 수정 - 총 평가금액 추이 과거 0원 표시] 위 backfillDailyPnlHistory는 자산별 종가만 보고 그날의
+  // "변동액(dailyPnL)"만 채울 수 있을 뿐 그날의 "절대 평가금액(cur)"은 알 수 없다(포트폴리오 전체를
+  // 봐야 하는 값이라 자산 단위 함수에서는 계산 불가) - 그래서 이미 채워진 종목이라 위 for문을 건너뛰는
+  // 날에도(targets.length === 0) 매번 다시 실행해 오늘 날짜를 기준(anchor)으로 재계산해야 한다.
+  reconstructHistoricalCurValues();
+  // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운/보정한 값을 즉시 보여준다.
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
+  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
 }
 
-// 평가손익 시리즈 - 최근 days일 내에 "실제로 기록된" 스냅샷 날짜만 포함한다(앱을 켜지 않은 날은
-// 데이터 자체가 없으므로 0으로 채워 넣지 않고 자연스럽게 건너뛴다).
+// [버그 수정 - 총 평가금액 추이 과거 데이터 0원 표시] backfillDailyPnlHistory가 채우는 건 자산별 종가
+// 이력에서 뽑아낸 "그날의 변동액(dailyPnL)"뿐이다 - 그 결과 [총 평가금액 추이] 차트(metricKey='cur')는
+// 실제로 앱이 켜져 recordDailySnapshot()이 실행된 날짜에만 값이 있고, 그 외 소급 채운 과거 날짜는
+// snap.total.cur 기본값 0 그대로 남아 그래프가 뚝뚝 끊겨 보였다([일별 손익 추이]는 dailyPnL만 쓰므로
+// 이 문제와 무관했다).
+// 해결: 오늘의 실제 총/소유자별 평가금액(현재 state.assets 기준 - 방금 끝난 시세 갱신을 확실히 반영하기
+// 위해 매번 새로 계산)을 기준(anchor)으로, 최신 날짜부터 거꾸로 하루씩 훑으며
+//   cur[D] = cur[D+1] - dailyPnL[D+1]
+// 을 반복 적용해 과거 각 날짜의 절대 평가금액을 재구성한다. 스냅샷 자체가 없던 날(주말/휴장일)도 이
+// 재구성 과정에서 dailyPnL 0(변동 없음)인 새 스냅샷을 만들어 cur를 이어붙인다 - 그래야 총 평가금액
+// 그래프가 주말마다 0원으로 끊기지 않고 직전 값을 그대로 이어간다(일별 손익 추이 쪽은 0원 표시가
+// 원래도 옳으므로 영향 없음). 오늘 날짜 자체는 renderKPIs()가 실시간으로 관리하므로 건드리지 않는다.
+const CUR_RECONSTRUCTION_DAYS = 366; // 팝업 최대 기간 탭([1년]=365일)을 여유 있게 덮는다.
+function reconstructHistoricalCurValues() {
+  const owners = getDailyPnlOwnerList();
+  let totalCur = 0;
+  const byOwnerCur = {};
+  owners.forEach((o) => { byOwnerCur[o] = 0; });
+  state.assets.forEach((a) => {
+    const curAmount = calcRow(a).curAmount;
+    totalCur += curAmount;
+    if (!(a.owner in byOwnerCur)) byOwnerCur[a.owner] = 0;
+    byOwnerCur[a.owner] += curAmount;
+  });
+
+  const todayKey = todayDateStr();
+  const cursor = new Date();
+  const dateKeys = [];
+  for (let i = 0; i < CUR_RECONSTRUCTION_DAYS; i++) {
+    dateKeys.push(dateKeyFromDate(cursor));
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  // dateKeys[0] === todayKey이고, 뒤로 갈수록 하루씩 과거로 간다(최신 -> 과거 순).
+
+  let runningTotal = totalCur;
+  const runningByOwner = { ...byOwnerCur };
+
+  dateKeys.forEach((dateKey, i) => {
+    if (i > 0) {
+      // 하루 더 과거로 넘어가기 전에, 방금 처리한(하루 더 최신인) 날짜의 변동액만큼을 빼서 이 날짜의
+      // 값을 구한다 - runningTotal/runningByOwner는 이 시점까지 "dateKeys[i-1]의 cur"를 들고 있다.
+      const prevSnap = state.dailySnapshots[dateKeys[i - 1]];
+      runningTotal -= num(prevSnap && prevSnap.total && prevSnap.total.dailyPnL);
+      owners.forEach((o) => {
+        const ownerSnap = prevSnap && prevSnap.byOwner && prevSnap.byOwner[o];
+        runningByOwner[o] -= num(ownerSnap && ownerSnap.dailyPnL);
+      });
+    }
+
+    if (dateKey === todayKey) return; // 오늘은 renderKPIs()의 실시간 기록을 그대로 둔다.
+
+    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {} };
+    const snap = state.dailySnapshots[dateKey];
+    // [버그 수정 - 1년 전 구간 음수(-) 평가금액] "현재 수량이 과거에도 그대로 있었다"는 근사이다 보니
+    // 구간이 길어질수록(특히 1년) 역산 누적값이 실제로는 있을 수 없는 음수까지 내려가는 경우가
+    // 있었다 - 평가금액은 개념상 0원 미만이 될 수 없으므로 저장 시점에 0원 바닥을 씌운다. runningTotal/
+    // runningByOwner 자체는 클램프하지 않고 그대로 다음(더 과거) 날짜 역산의 기준으로 계속 쓴다 - 그래야
+    // 화면에 보여줄 값만 보정되고, 재귀 계산 자체는 매일의 실제 dailyPnL 누적을 그대로 반영해 왜곡되지
+    // 않는다.
+    // [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 합계와 소유자별 값을 각각 따로 클램프하면(합계는 원래
+    // 음수라 0으로, 신랑+와이프 합은 원래 양수라 그대로 남는 식으로) 합계가 소유자 합과 어긋날 수 있다.
+    // 그래서 소유자별 값을 먼저 0원으로 바닥 처리한 뒤, 합계는 그 바닥 처리된 소유자별 값들의 합으로
+    // "역산"하지 않고 "재계산"한다 - 이러면 합계는 항상 정의상 소유자 합과 정확히 같다.
+    owners.forEach((o) => {
+      if (!snap.byOwner[o]) snap.byOwner[o] = { cur: 0, dailyPnL: 0 };
+      snap.byOwner[o].cur = Math.max(0, runningByOwner[o]);
+    });
+    snap.total.cur = owners.reduce((sum, o) => sum + snap.byOwner[o].cur, 0);
+  });
+
+  persistDailySnapshots();
+}
+
+// [공용 스냅샷 시리즈 빌더] metricKey: 'cur'(평가금액) | 'dailyPnL'(일간손익) - 일별 손익 추이(평가손익
+// 모드)와 총 평가금액 추이 팝업이 이 함수를 공유한다. 최근 days일 "전체 달력 날짜"를 하루도 빠짐없이
+// 순회하며, 스냅샷이 있는 날은 그 값을, 없는 날(앱을 그날 안 열었거나 아직 기록 전인 경우)은 0으로
+// 채운 항목을 명시적으로 만든다.
 // [버그 수정 - 최신 날짜 누락] 예전엔 state.dailySnapshots에 실제로 키가 있는 날짜만 나열했다 - 그
-// 결과 특정 날짜(앱을 그날 한 번도 안 열었거나, 스냅샷이 아직 기록되지 않은 경우)에 키 자체가 없으면
-// 그 날짜가 X축에서 통째로 빠져(끼어 있어야 할 날짜가 건너뛰어짐) "그 날짜 데이터가 안 보인다"는
-// 문제로 이어졌다. 이제 기간 전체의 달력 날짜를 하루도 빠짐없이 순회하면서, 스냅샷이 있는 날은 그
-// 값을, 없는 날(0으로 채움)도 명시적인 항목으로 만들어 X축이 항상 최신 날짜(오늘)까지 끊기지 않고
-// 이어지게 한다(이 차트는 막대그래프라 Chart.js의 spanGaps는 적용 대상이 아니다 - 매 라벨마다 막대
-// 하나가 필요한 구조라, "이어서 그리기"의 실질적인 대응은 이 달력 채우기다).
-function buildUnrealizedPnlSeries(days) {
+// 결과 특정 날짜에 키 자체가 없으면 그 날짜가 X축에서 통째로 빠져(끼어 있어야 할 날짜가 건너뛰어짐)
+// "그 날짜 데이터가 안 보인다"는 문제로 이어졌다. 달력 채우기로 X축이 항상 최신 날짜(오늘)까지
+// 끊기지 않고 이어지게 한다(막대/라인 어느 쪽으로 그리든 Chart.js의 spanGaps에 기댈 필요 없이, 이
+// 달력 채우기 자체가 "끊김 없이 이어서 그리기"의 실질적인 구현이다).
+function buildSnapshotSeries(days, metricKey) {
   const todayKey = todayDateStr();
   const result = [];
   const cursor = new Date();
@@ -7234,16 +7323,32 @@ function buildUnrealizedPnlSeries(days) {
     const snap = state.dailySnapshots[dateKey];
     const byOwnerAmounts = {};
     if (snap) {
-      Object.keys(snap.byOwner || {}).forEach((o) => { byOwnerAmounts[o] = snap.byOwner[o].dailyPnL; });
+      Object.keys(snap.byOwner || {}).forEach((o) => { byOwnerAmounts[o] = snap.byOwner[o][metricKey]; });
     }
-    result.push({ date: dateKey, total: snap ? snap.total.dailyPnL : 0, byOwnerAmounts });
+    result.push({ date: dateKey, total: snap ? snap.total[metricKey] : 0, byOwnerAmounts });
     cursor.setDate(cursor.getDate() + 1);
   }
   return result;
 }
+function buildUnrealizedPnlSeries(days) { return buildSnapshotSeries(days, 'dailyPnL'); }
+// 평가금액(총 평가금액 추이)은 개념상 음수가 될 수 없다 - reconstructHistoricalCurValues가 저장 시점에
+// 이미 0원 바닥을 씌우지만, 차트 렌더링 직전에도 한 번 더 방어적으로 클램프해 둔다(일별 손익 추이는
+// 하루치 손실이 음수인 게 정상이라 공용 buildSnapshotSeries가 아닌 'cur' 전용 래퍼인 여기서만 처리한다).
+// [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 합계(row.total)를 소유자별 값과 따로 클램프하면 두 값이
+// 어긋날 수 있다 - 소유자별 값을 먼저 바닥 처리한 뒤, 합계는 그 값들의 합으로 다시 계산해 항상
+// "합계 = 신랑 + 와이프"가 성립하도록 한다.
+function buildTotalValueSeries(days) {
+  const series = buildSnapshotSeries(days, 'cur');
+  series.forEach((row) => {
+    Object.keys(row.byOwnerAmounts).forEach((o) => { row.byOwnerAmounts[o] = Math.max(0, row.byOwnerAmounts[o]); });
+    row.total = Object.values(row.byOwnerAmounts).reduce((sum, v) => sum + v, 0);
+  });
+  return series;
+}
 
 // 실현손익 시리즈 - 거래내역의 매도 건을 날짜별/소유자별로 집계한다(기간별 실현손익 리포트와 같은
-// computePositionsAndRealizedPnL 결과를 재사용).
+// computePositionsAndRealizedPnL 결과를 재사용). 매도가 없는 날은 자연스럽게 빈 날짜라 달력 채우기를
+// 적용하지 않는다(평가손익/평가금액과 달리 "매도 없음=0"이 아니라 "그 날은 집계 대상이 아님"에 가깝다).
 function buildRealizedPnlSeries(days) {
   const cutoffKey = daysAgoDateStr(days - 1);
   const { annotated } = computePositionsAndRealizedPnL();
@@ -7262,12 +7367,13 @@ function buildDailyPnlSeries(days) {
   return dailyPnlPopupType === 'unrealized' ? buildUnrealizedPnlSeries(days) : buildRealizedPnlSeries(days);
 }
 
-function seriesAmountForOwner(entry, owner) {
-  return owner === 'all' ? entry.total : (entry.byOwnerAmounts[owner] || 0);
-}
-
-function dailyPnlLineColor(v) {
-  return v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8');
+// [차트 선 색상 고대비 개선과 동일한 방식] 합계/소유자별 라인 색상을 라이트/다크 모드별로 분리한다 -
+// 합계=브랜드 보라, 첫 번째 소유자(ownerRank 기준 신랑)=파랑 계열, 두 번째(와이프)=분홍 계열. 다크
+// 모드에서는 어두운 배경에서도 또렷하도록 더 밝은 톤을 쓴다.
+const SERIES_COLORS_LIGHT = { total: '#4f46e5', owners: ['#0077B6', '#EC4899', '#B8860B', '#1B8A3A'] };
+const SERIES_COLORS_DARK = { total: '#818cf8', owners: ['#64D2FF', '#F472B6', '#FFD60A', '#32D74B'] };
+function getSeriesColors() {
+  return document.documentElement.classList.contains('dark') ? SERIES_COLORS_DARK : SERIES_COLORS_LIGHT;
 }
 
 // [일별 손익 추이 Y축 전용 축약 포맷] 기존 fmtKRWShort("1억 2,000만원" 형태)는 다른 화면(KPI 카드 등)
@@ -7303,6 +7409,89 @@ function scheduleDailyPnlTooltipHide(chart) {
   }, 3000);
 }
 
+// [공용 멀티 라인 차트 렌더러] 합계 + 소유자별 라인을 한 차트에 동시에 그린다 - 일별 손익 추이(평가/
+// 실현손익)와 총 평가금액 추이 팝업이 공유한다. chartKey는 charts 레지스트리의 키('dailyPnl'|'totalValue'),
+// valueLabelFn(v)은 툴팁/범례에 쓸 금액 포맷터(손익은 부호 있는 fmtSigned, 평가금액은 fmtKRW 등 호출부가
+// 넘겨준다).
+function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMessage, valueLabelFn) {
+  const canvas = document.getElementById(canvasId);
+  const msgEl = document.getElementById(msgElId);
+  clearTimeout(dailyPnlTooltipHideTimer);
+  if (charts[chartKey]) { charts[chartKey].destroy(); charts[chartKey] = null; }
+
+  if (series.length === 0) {
+    canvas.classList.add('hidden');
+    msgEl.textContent = emptyMessage;
+    msgEl.classList.remove('hidden');
+    return;
+  }
+  msgEl.classList.add('hidden');
+  canvas.classList.remove('hidden');
+
+  const textColor = chartTextColor();
+  const seriesColors = getSeriesColors();
+  const owners = getDailyPnlOwnerList();
+  const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
+
+  const datasets = [
+    {
+      label: '합계',
+      data: series.map((s) => s.total),
+      borderColor: seriesColors.total,
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      tension: 0.15,
+      order: 0
+    },
+    ...owners.map((o, idx) => ({
+      label: o,
+      data: series.map((s) => s.byOwnerAmounts[o] ?? 0),
+      borderColor: seriesColors.owners[idx % seriesColors.owners.length],
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.15,
+      order: idx + 1
+    }))
+  ];
+
+  charts[chartKey] = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false }, // 세 라인이 겹쳐 있어도 같은 날짜의 세 값을 한 번에 툴팁으로 보여준다
+      plugins: {
+        // 기본 범례를 그대로 쓴다 - 항목을 클릭하면 그 라인만 숨기고 보일 수 있어(Chart.js 내장 동작),
+        // 예전의 소유자 필터 탭을 대신한다.
+        legend: { display: true, position: 'top', labels: { color: textColor, boxWidth: 10, font: { size: 10 }, padding: 10 } },
+        tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${valueLabelFn(c.parsed.y)}` } }
+      },
+      scales: {
+        x: { ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false } },
+        // 0원 기준선을 또렷하게: 손익류 차트는 beginAtZero를 쓰지 않아야(위/아래로 다 있으면 자동으로
+        // 0을 지난다) grid 색만 살짝 진하게 유지해서 자연스럽게 강조된다.
+        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWAxisShort(v) }, grid: { color: 'rgba(148,163,184,0.25)' } }
+      }
+    }
+  });
+
+  // DOM0 스타일(onclick=) 할당은 재렌더링마다 이전 핸들러를 자동으로 덮어써서, addEventListener처럼
+  // 모달을 여러 번 열고 닫을 때 리스너가 계속 쌓이는(leak) 문제가 없다.
+  canvas.onclick = () => scheduleDailyPnlTooltipHide(charts[chartKey]);
+}
+
+function seriesAmountForOwner(entry, owner) {
+  return owner === 'all' ? entry.total : (entry.byOwnerAmounts[owner] || 0);
+}
+
+function dailyPnlLineColor(v) {
+  return v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8');
+}
+
+// [사용자 요청: 기존 형태 유지] 소유자 필터(전체(합계)/신랑/와이프) 탭으로 한 번에 한 시리즈만
+// 막대그래프로 보여준다(총 평가금액 추이 팝업의 멀티 라인 방식과는 별개로, 이 팝업은 원래 방식 그대로).
 function renderDailyPnlChart(series, owner) {
   const canvas = document.getElementById('dailyPnlChart');
   const msgEl = document.getElementById('dailyPnlChartMsg');
@@ -7335,9 +7524,6 @@ function renderDailyPnlChart(series, owner) {
         tooltip: { callbacks: { label: (c) => fmtSigned(c.parsed.y) } }
       },
       scales: {
-        // X축은 'MM/DD' 날짜만 깔끔하게 표기한다 - 날짜 아래에 손익 금액을 함께 그려 넣던 커스텀 플러그인
-        // (dailyPnlAmountLabelPlugin)은 하단이 혼잡해 보인다는 피드백에 따라 제거했다. 금액 상세는 차트
-        // 아래 renderDailyPnlSummary()의 기간 합계 요약에서 확인할 수 있다.
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
         // 0원 기준선을 또렷하게: y=0 근처에 grid가 항상 지나가도록 beginAtZero는 쓰지 않고(막대가 위/
         // 아래로 다 있으면 자동으로 0을 지난다) grid 색만 살짝 진하게 유지한다.
@@ -7351,9 +7537,8 @@ function renderDailyPnlChart(series, owner) {
   canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.dailyPnl);
 }
 
-// 차트 하단 요약 - 예전엔 날짜별 개별 리스트를 보여줬지만, 이제 선택된 기간/소유자 필터 조건에 맞는
-// "합계"만 보여준다(요구사항). 전체(합계) 선택 시에는 소유자별 합계 + 총 합계를, 특정 소유자 선택
-// 시에는 그 소유자의 합계만 표시한다.
+// 차트 하단 요약 - 선택된 기간/소유자 필터 조건에 맞는 "합계"만 보여준다. 전체(합계) 선택 시에는
+// 소유자별 합계 + 총 합계를, 특정 소유자 선택 시에는 그 소유자의 합계만 표시한다.
 function renderDailyPnlSummary(series) {
   const container = document.getElementById('dailyPnlList');
   if (series.length === 0) { container.innerHTML = ''; return; }
@@ -7363,7 +7548,7 @@ function renderDailyPnlSummary(series) {
   const ownerSums = {};
   owners.forEach((o) => { ownerSums[o] = series.reduce((acc, s) => acc + (s.byOwnerAmounts[o] || 0), 0); });
 
-  const periodBtn = document.querySelector('.daily-pnl-period-btn.active');
+  const periodBtn = document.querySelector('#dailyPnlModal .daily-pnl-period-btn.active');
   const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
 
   const rows = [];
@@ -7406,17 +7591,17 @@ function renderDailyPnlOwnerTabs() {
   });
 }
 
-document.querySelectorAll('.daily-pnl-type-btn').forEach((btn) => {
+document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     dailyPnlPopupType = btn.dataset.pnlType;
-    document.querySelectorAll('.daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateDailyPnlModal();
   });
 });
-document.querySelectorAll('.daily-pnl-period-btn').forEach((btn) => {
+document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     dailyPnlPopupDays = Number(btn.dataset.pnlDays);
-    document.querySelectorAll('.daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateDailyPnlModal();
   });
 });
@@ -7425,8 +7610,8 @@ function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
   dailyPnlPopupDays = 30;
-  document.querySelectorAll('.daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b.dataset.pnlType === 'unrealized'));
-  document.querySelectorAll('.daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b.dataset.pnlType === 'unrealized'));
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -7438,6 +7623,77 @@ function closeDailyPnlModal(viaBackButton) {
 }
 document.getElementById('kpiDailyProfitDetailBtn').addEventListener('click', openDailyPnlModal);
 document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () => closeDailyPnlModal());
+
+/* ---- 20-1. 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) ---- */
+let totalValuePopupDays = 30; // 30 | 90 | 180 | 365
+
+function renderTotalValueChart(series) {
+  const emptyMessage = '아직 기록된 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
+  renderMultiSeriesLineChart('totalValue', 'totalValueChart', 'totalValueChartMsg', series, emptyMessage, (v) => fmtKRW(v));
+}
+
+// 차트 하단 요약 - 현재(기간 마지막 날) 평가금액과, 기간 시작일 대비 증감을 합계/소유자별로 보여준다.
+function renderTotalValueSummary(series) {
+  const container = document.getElementById('totalValueList');
+  if (series.length === 0) { container.innerHTML = ''; return; }
+
+  const owners = getDailyPnlOwnerList();
+  const first = series[0];
+  const last = series[series.length - 1];
+  const periodBtn = document.querySelector('#totalValueModal .total-value-period-btn.active');
+  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+
+  const rows = owners.map((o) => {
+    const startAmt = first.byOwnerAmounts[o] || 0;
+    const endAmt = last.byOwnerAmounts[o] || 0;
+    return { label: o, current: endAmt, diff: endAmt - startAmt };
+  });
+  rows.push({ label: '합계', current: last.total, diff: last.total - first.total, emphasize: true });
+
+  container.innerHTML = `
+    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (기간 시작 대비 증감)</p>
+    <div class="space-y-1.5">
+      ${rows.map((r) => `
+        <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
+          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
+          <span class="text-right">
+            <span class="font-medium">${fmtKRW(r.current)}</span>
+            <span class="ml-1.5 text-xs ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span>
+          </span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function updateTotalValueModal() {
+  const series = buildTotalValueSeries(totalValuePopupDays);
+  renderTotalValueChart(series);
+  renderTotalValueSummary(series);
+}
+
+document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    totalValuePopupDays = Number(btn.dataset.tvDays);
+    document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    updateTotalValueModal();
+  });
+});
+
+function openTotalValueModal() {
+  totalValuePopupDays = 30;
+  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvDays) === 30));
+  document.getElementById('totalValueModal').classList.remove('hidden');
+  pushModalHistoryState();
+  updateTotalValueModal();
+}
+function closeTotalValueModal(viaBackButton) {
+  document.getElementById('totalValueModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('kpiTotalValueDetailBtn').addEventListener('click', openTotalValueModal);
+document.getElementById('closeTotalValueModalBtn').addEventListener('click', () => closeTotalValueModal());
+document.getElementById('totalValueModal').addEventListener('click', (e) => {
+  if (e.target.id === 'totalValueModal') closeTotalValueModal();
+});
 document.getElementById('dailyPnlModal').addEventListener('click', (e) => {
   if (e.target.id === 'dailyPnlModal') closeDailyPnlModal();
 });
@@ -7662,6 +7918,17 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
  * ---------------------------------------------------------------------- */
 document.getElementById('resetDataBtn').addEventListener('click', () => {
   if (!confirm('모든 자산 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+
+  // [데이터 초기화 강화] 예전엔 state의 주요 필드만 비우고 그에 대응하는 persist*()만 다시 호출했다 -
+  // 그 결과 이 앱이 만든 적 있는 다른 localStorage 키(특히 일별 손익 스냅샷 sam_daily_snapshot_v1,
+  // 소급 백필 완료 표시 sam_daily_backfill_done_ids_v1 등)는 그대로 남아있어서, 초기화 후에도 [일별
+  // 손익 추이] 그래프 등에 예전 데이터가 계속 보이는 문제가 있었다. 이제 이 앱이 쓰는 모든 키(sam_
+  // 접두사)를 하드코딩된 목록 없이 통째로 지운다 - 새 기능이 새 키를 추가해도 자동으로 다 걸린다.
+  // 다크모드(sam_dark_mode_v5)는 재무 데이터가 아니라 순수 화면 설정이라 예외로 남긴다.
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith('sam_') && k !== LS_DARKMODE)
+    .forEach((k) => localStorage.removeItem(k));
+
   state.assets = [];
   state.dayChangeMap = {};
   state.prevCloseMap = {};
@@ -7672,771 +7939,28 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.projection = { monthlyContribution: 2000000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
+  // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라
+  // 명시적으로 함께 비워야 한다 - 안 그러면 자산은 0건인데 [일별 손익 추이] 그래프에는 지운 자산의
+  // 과거 손익 막대가 계속 남아있는 상태가 된다.
+  state.dailySnapshots = {};
+  state.exchangeRate = 1450;
+  state.refExchangeRate = 1450;
+  state.dailyChangeRate = 0;
+
   persistAssets();
   persistRebalance();
   persistProjection();
   persistTransactions();
+  persistDailySnapshots();
+  persistRate();
+  persistDaily();
+
+  document.getElementById('exchangeRateInput').value = state.exchangeRate;
+  document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
+
   renderAll();
+  showToast('모든 데이터가 초기화되었습니다.', 'success');
 });
-
-/* -------------------------------------------------------------------------
- * 23-1. 구글 드라이브 동기화 (OAuth 2.0 + drive.file 스코프 + CryptoJS AES-256 암호화)
- *    - "지정 폴더('자산관리') 자동 탐색/생성 -> portfolio_data.json에 암호화 저장/불러오기 -> 기기 간
- *      자동 동기화" 요구사항의 구현. drive.file 스코프는 "이 앱이 만들었거나 사용자가 직접 연 파일"
- *      에만 접근하는 최소 권한 스코프다 - 이 앱이 처음 연동 시 만든 폴더/파일이면(사용자가 Drive에서
- *      직접 만든 게 아니라) 이후 어느 기기에서 같은 계정으로 다시 연동해도 동일하게 찾아 쓸 수 있다.
- *    - 비밀번호(암호화 키)는 메모리 변수에만 있고 어디에도 평문 저장하지 않는다 - 새로고침/재접속마다
- *      다시 입력해야 한다(사용자가 편의보다 보안을 택한 설계). LS_GOOGLE_CONNECTED는 "예전에 연동한
- *      적 있다"는 표식일 뿐이라 조용한 토큰 재발급 시도 여부만 결정하고, 비밀번호를 대신하지 않는다.
- *    - "오프라인이면 로컬 우선, 재연결 시 동기화": navigator.onLine 체크 + online 이벤트로 처리한다 -
- *      오프라인 중에는 로컬 persist*()만 정상 동작하고 드라이브 업로드는 조용히 건너뛴 채 dirty 상태만
- *      남겨 두었다가, 재연결되면 쌓인 변경사항을 한 번에 올린다.
- *    - [기기 간 덮어쓰기 버그 수정] 예전 구현은 persist*() 호출이면 무조건(자동 렌더링/시세갱신/샘플
- *      데이터 시딩까지 포함) "방금 수정됨"으로 기록해, 새 기기를 처음 켰을 때 "빈 상태 시딩"조차 진짜
- *      변경으로 잘못 인식되어 드라이브의 진짜 최신 데이터를 덮어쓰는 사고로 이어졌다. 이제
- *      persistWithoutDriveSync()로 감싼 자동 저장(샘플 시딩/일별 스냅샷 자동 기록/시세 자동갱신/소급
- *      백필)은 dirty로 잡지 않고, 사용자가 자산·거래내역을 직접 추가/수정/삭제하거나 리밸런싱·예측
- *      설정을 저장하는 등 진짜 명시적 입력에서만 markDriveSyncDirty()가 실질적으로 발동한다.
- *    - [Drive-First 부팅] renderAll()로 화면을 그리기 전에 tryInitialGoogleDriveSync()가 먼저 실행된다
- *      (맨 아래 "25. 초기 구동" bootApp() 참고). 드라이브 파일의 modifiedTime만 가볍게 먼저 확인해서
- *      (비밀번호 없이도 가능) 로컬보다 최신일 때만 비밀번호를 물어 다운로드/반영한다 - 같은 기기의
- *      평범한 재방문(대부분의 경우)에는 매번 비밀번호를 묻지 않는다.
- * ---------------------------------------------------------------------- */
-// [설정 필요] Google Cloud Console > API 및 서비스 > 사용자 인증 정보에서 발급받은
-// "OAuth 클라이언트 ID"(웹 애플리케이션 유형)로 아래 값을 교체해야 구글 로그인이 동작한다. "승인된
-// JavaScript 원본"에는 이 앱이 실제로 호스팅되는 주소의 origin만(경로/슬래시 없이) 정확히 등록해야
-// 한다. file://로 직접 열었을 때는 구글 정책상 로그인 자체가 불가능하다(아래 connectGoogleDrive의
-// location.protocol 가드 참고).
-const GOOGLE_CLIENT_ID = '775497664897-gogv0vbncpu52dplc0fbpu4plhfnl8l0.apps.googleusercontent.com';
-const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const DRIVE_FOLDER_NAME = '자산관리';
-const DRIVE_FILE_NAME = 'portfolio_data.json';
-const DRIVE_API = 'https://www.googleapis.com/drive/v3';
-const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
-
-let driveTokenClient = null;
-let driveTokenCallbackHandler = null; // requestAccessTokenPromise()가 매 호출마다 갈아끼우는 1회용 콜백.
-let driveAccessToken = null;
-let driveFolderId = null;
-let driveFileId = null;        // 알고 있으면 업로드 시 매번 재검색하지 않고 바로 PATCH한다.
-let syncPassphrase = null;     // 메모리에만 보관 - 절대 localStorage에 저장하지 않는다.
-let driveSyncDirty = false;
-let driveSyncTimer = null;
-let driveSyncBusy = false;     // 업로드/다운로드 진행 중 중복 실행 방지.
-let suppressDriveDirty = false; // "이 persist는 진짜 사용자 변경이 아니다"라고 표시하는 가드 - 드라이브
-                                 // → 로컬 반영(applySyncPayload) 및 persistWithoutDriveSync()가 사용한다.
-let initialGoogleSyncAttempted = false; // 부팅 시 자동 동기화 시도가 두 경로(One Tap 콜백 / bootApp)에서
-                                         // 중복 실행되지 않도록 막는 가드.
-
-function isGoogleClientIdConfigured() {
-  return typeof GOOGLE_CLIENT_ID === 'string' && GOOGLE_CLIENT_ID.length > 0 && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID');
-}
-
-/* ---- 23-1-0. 세션 영구 보존 (localStorage 토큰 캐시) ----
-   OAuth 액세스 토큰은 보통 1시간 정도만 유효하고, 구글 GIS의 클라이언트 전용(백엔드 없는) 토큰 플로우는
-   리프레시 토큰을 주지 않는다 - 그래서 이 캐시로 할 수 있는 일은 "유효기간이 남아있는 동안은 구글
-   서버에 아예 다시 묻지 않는다"까지다(만료 이후에는 여전히 조용한 재발급을 한 번 시도해야 한다). 그래도
-   "새로고침/당겨서 새로고침/앱 재시작마다 매번" 재요청하던 것을 "토큰 수명 동안 한 번"으로 줄여주므로,
-   신고된 문제(계정 선택/비밀번호 화면이 계속 뜸)의 빈도를 실질적으로 없앤다. */
-function saveGoogleTokenSession(accessToken, expiresInSec) {
-  const expiresAt = Date.now() + (Number(expiresInSec) > 0 ? Number(expiresInSec) : 3600) * 1000;
-  localStorage.setItem(LS_GOOGLE_TOKEN, JSON.stringify({ access_token: accessToken, expires_at: expiresAt }));
-}
-
-// 만료 60초 전부터는 안전하게 "만료됨"으로 간주한다 - 딱 경계 시점에 API를 호출하다 401을 맞는 것을 방지.
-function loadGoogleTokenSession() {
-  try {
-    const raw = localStorage.getItem(LS_GOOGLE_TOKEN);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed.access_token !== 'string' || typeof parsed.expires_at !== 'number') return null;
-    if (Date.now() >= parsed.expires_at - 60000) return null;
-    return parsed;
-  } catch (e) {
-    return null;
-  }
-}
-
-function clearGoogleTokenSession() {
-  localStorage.removeItem(LS_GOOGLE_TOKEN);
-}
-
-// One Tap ID 토큰(JWT)의 payload만 디코드한다 - 서명 검증은 하지 않는다(이 앱엔 백엔드가 없어 애초에
-// 검증이 불가능하고, 화면에 이름/이메일을 보여주는 표시용 이상의 용도로는 쓰지 않는다).
-function decodeGoogleIdToken(credential) {
-  try {
-    const base64 = credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = decodeURIComponent(
-      atob(base64).split('').map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')
-    );
-    return JSON.parse(json);
-  } catch (e) {
-    return null;
-  }
-}
-
-function saveGoogleUserInfo(profile) {
-  if (!profile || (!profile.email && !profile.name)) return;
-  localStorage.setItem(LS_GOOGLE_USER_INFO, JSON.stringify({ name: profile.name || '', email: profile.email || '' }));
-  applyGoogleUserInfoToUI();
-}
-
-function clearGoogleUserInfo() {
-  localStorage.removeItem(LS_GOOGLE_USER_INFO);
-  applyGoogleUserInfoToUI();
-}
-
-// 저장된 사용자 정보를 동기화 버튼 툴팁으로 반영한다 - 새로고침 직후에도(One Tap 콜백을 다시 받기 전)
-// 곧바로 "OOO 계정으로 연동됨"을 보여줄 수 있도록 localStorage에서 즉시 읽어온다.
-function applyGoogleUserInfoToUI() {
-  const btn = document.getElementById('googleSyncBtn');
-  if (!btn) return;
-  try {
-    const raw = localStorage.getItem(LS_GOOGLE_USER_INFO);
-    const info = raw ? JSON.parse(raw) : null;
-    btn.title = (info && (info.email || info.name)) ? `${info.name || ''}${info.email ? ` (${info.email})` : ''} 계정으로 연동됨` : '';
-  } catch (e) {
-    btn.title = '';
-  }
-}
-
-// persist*() 호출을 "로컬 저장은 하되 구글 드라이브 dirty 표시는 남기지 않는" 상태로 감싼다 - 자동으로
-// 벌어지는 저장(빈 상태 샘플 시딩, 렌더링마다의 일별 스냅샷 자동 기록, 시세/환율 자동 갱신, 소급 백필
-// 마이그레이션)이 "사용자가 방금 수정함"으로 오인되어 lastLocalUpdate가 부풀려지는 것을 막는다.
-function persistWithoutDriveSync(fn) {
-  const prev = suppressDriveDirty;
-  suppressDriveDirty = true;
-  try { fn(); } finally { suppressDriveDirty = prev; }
-}
-
-/* ---- 23-1-1. AES-256 암/복호화 래퍼 ---- */
-function encryptData(obj, passphrase) {
-  return CryptoJS.AES.encrypt(JSON.stringify(obj), passphrase).toString();
-}
-function decryptData(ciphertext, passphrase) {
-  const bytes = CryptoJS.AES.decrypt(ciphertext, passphrase);
-  const text = bytes.toString(CryptoJS.enc.Utf8);
-  if (!text) throw new Error('비밀번호가 올바르지 않거나 데이터가 손상되었습니다.');
-  return JSON.parse(text);
-}
-
-/* ---- 23-1-2. 동기화 상태 UI ---- */
-// status: 'disconnected' | 'connecting' | 'synced' | 'syncing' | 'error' | 'offline'
-function updateGoogleSyncStatusUI(status) {
-  const btn = document.getElementById('googleSyncBtn');
-  const icon = document.getElementById('googleSyncIcon');
-  const label = document.getElementById('googleSyncLabel');
-  if (!btn) return;
-  btn.classList.remove('border-emerald-400', 'text-emerald-600', 'dark:text-emerald-400', 'border-amber-400', 'text-amber-600', 'dark:text-amber-400', 'border-red-400', 'text-red-500');
-  const map = {
-    disconnected: { iconName: 'cloud', text: '구글 계정 연동' },
-    connecting: { iconName: 'loader-circle', text: '보안 동기화 중...' },
-    synced: { iconName: 'cloud-check', text: '보안 동기화 완료' },
-    syncing: { iconName: 'refresh-cw', text: '보안 동기화 중...' },
-    error: { iconName: 'cloud-alert', text: '동기화 오류' },
-    offline: { iconName: 'cloud-off', text: '오프라인(로컬 저장)' }
-  };
-  const m = map[status] || map.disconnected;
-  label.textContent = m.text;
-  icon.setAttribute('data-lucide', m.iconName);
-  if (status === 'synced') btn.classList.add('border-emerald-400', 'text-emerald-600', 'dark:text-emerald-400');
-  else if (status === 'syncing' || status === 'connecting') btn.classList.add('border-amber-400', 'text-amber-600', 'dark:text-amber-400');
-  else if (status === 'error') btn.classList.add('border-red-400', 'text-red-500');
-  if (window.lucide) lucide.createIcons(); // data-lucide를 새로 그려야 아이콘이 바뀐 것이 실제로 반영된다.
-}
-
-/* ---- 23-1-3. 비밀번호 입력 모달 (Promise 기반) ----
-   openGoogleSyncPassphraseModal('setup' | 'unlock')를 호출하면, 사용자가 확인을 누를 때 그 비밀번호
-   문자열로 resolve되고 모달을 닫으면(취소) reject되는 Promise를 돌려준다. */
-let passphrasePromiseResolve = null;
-let passphrasePromiseReject = null;
-
-function openGoogleSyncPassphraseModal(mode) {
-  const modal = document.getElementById('googleSyncPassphraseModal');
-  const title = document.getElementById('googleSyncPassphraseTitle');
-  const desc = document.getElementById('googleSyncPassphraseDesc');
-  const confirmWrap = document.getElementById('googleSyncPassphraseConfirmWrap');
-  const input = document.getElementById('googleSyncPassphraseInput');
-  const confirmInput = document.getElementById('googleSyncPassphraseConfirmInput');
-  const errorEl = document.getElementById('googleSyncPassphraseError');
-
-  errorEl.classList.add('hidden');
-  input.value = '';
-  confirmInput.value = '';
-  modal.dataset.mode = mode;
-
-  if (mode === 'setup') {
-    title.textContent = '동기화 비밀번호 설정';
-    desc.textContent = '구글 드라이브에 저장할 데이터를 암호화할 비밀번호를 새로 설정합니다. 이 비밀번호를 잊으면 드라이브에 저장된 데이터를 복구할 방법이 없으니 꼭 기억해 두세요. 다른 기기에서도 같은 비밀번호로 연동합니다.';
-    confirmWrap.classList.remove('hidden');
-  } else {
-    title.textContent = '동기화 비밀번호 입력';
-    desc.textContent = '이 계정에 이미 저장된 데이터가 있습니다. 처음 설정했던 비밀번호를 입력해 주세요.';
-    confirmWrap.classList.add('hidden');
-  }
-
-  modal.classList.remove('hidden');
-  pushModalHistoryState();
-  setTimeout(() => input.focus(), 50);
-
-  return new Promise((resolve, reject) => {
-    passphrasePromiseResolve = resolve;
-    passphrasePromiseReject = reject;
-  });
-}
-
-function closeGoogleSyncPassphraseModal(viaBack) {
-  document.getElementById('googleSyncPassphraseModal').classList.add('hidden');
-  if (!viaBack) popModalHistoryIfNeeded();
-  if (passphrasePromiseReject) {
-    const reject = passphrasePromiseReject;
-    passphrasePromiseResolve = null; passphrasePromiseReject = null;
-    reject(new Error('cancelled'));
-  }
-}
-
-document.getElementById('closeGoogleSyncPassphraseModalBtn').addEventListener('click', () => closeGoogleSyncPassphraseModal());
-document.getElementById('googleSyncPassphraseModal').addEventListener('click', (e) => {
-  if (e.target.id === 'googleSyncPassphraseModal') closeGoogleSyncPassphraseModal();
-});
-document.getElementById('googleSyncPassphraseSubmitBtn').addEventListener('click', submitGoogleSyncPassphrase);
-document.getElementById('googleSyncPassphraseInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitGoogleSyncPassphrase(); });
-document.getElementById('googleSyncPassphraseConfirmInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitGoogleSyncPassphrase(); });
-
-function submitGoogleSyncPassphrase() {
-  const modal = document.getElementById('googleSyncPassphraseModal');
-  const mode = modal.dataset.mode;
-  const input = document.getElementById('googleSyncPassphraseInput');
-  const confirmInput = document.getElementById('googleSyncPassphraseConfirmInput');
-  const errorEl = document.getElementById('googleSyncPassphraseError');
-  const pw = input.value;
-
-  if (!pw || pw.length < 4) {
-    errorEl.textContent = '비밀번호는 4자 이상 입력해 주세요.';
-    errorEl.classList.remove('hidden');
-    return;
-  }
-  if (mode === 'setup' && pw !== confirmInput.value) {
-    errorEl.textContent = '비밀번호가 서로 일치하지 않습니다.';
-    errorEl.classList.remove('hidden');
-    return;
-  }
-  errorEl.classList.add('hidden');
-  modal.classList.add('hidden');
-  popModalHistoryIfNeeded();
-  const resolve = passphrasePromiseResolve;
-  passphrasePromiseResolve = null; passphrasePromiseReject = null;
-  if (resolve) resolve(pw);
-}
-
-/* ---- 23-1-4. Google Drive REST 헬퍼 (drive.file 스코프, Bearer 토큰만으로 인증 - 별도 API 키 불필요) ---- */
-async function driveFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { ...(options.headers || {}), Authorization: `Bearer ${driveAccessToken}` }
-  });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => '');
-    throw new Error(`Drive API 오류 (${res.status}) ${bodyText.slice(0, 200)}`);
-  }
-  return res;
-}
-
-async function findOrCreateDriveFolder() {
-  if (driveFolderId) return driveFolderId;
-  const q = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and name='${DRIVE_FOLDER_NAME}' and trashed=false`);
-  const res = await driveFetch(`${DRIVE_API}/files?q=${q}&fields=files(id,name)&spaces=drive`);
-  const data = await res.json();
-  if (data.files && data.files.length > 0) {
-    driveFolderId = data.files[0].id;
-    return driveFolderId;
-  }
-  const createRes = await driveFetch(`${DRIVE_API}/files`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
-  });
-  const created = await createRes.json();
-  driveFolderId = created.id;
-  return driveFolderId;
-}
-
-async function findDriveDataFile() {
-  const folderId = await findOrCreateDriveFolder();
-  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and '${folderId}' in parents and trashed=false`);
-  const res = await driveFetch(`${DRIVE_API}/files?q=${q}&fields=files(id,name,modifiedTime)&spaces=drive`);
-  const data = await res.json();
-  return (data.files && data.files[0]) || null;
-}
-
-async function downloadDriveFileContent(fileId) {
-  const res = await driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
-  return res.text();
-}
-
-async function uploadDriveData(ciphertext) {
-  const folderId = await findOrCreateDriveFolder();
-  if (!driveFileId) {
-    const existing = await findDriveDataFile();
-    if (existing) driveFileId = existing.id;
-  }
-  const boundary = 'sam_boundary_' + Date.now();
-  const metadata = driveFileId ? { mimeType: 'text/plain' } : { name: DRIVE_FILE_NAME, parents: [folderId], mimeType: 'text/plain' };
-  const body =
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\nContent-Type: text/plain\r\n\r\n${ciphertext}\r\n--${boundary}--`;
-  const url = driveFileId
-    ? `${DRIVE_UPLOAD_API}/files/${driveFileId}?uploadType=multipart`
-    : `${DRIVE_UPLOAD_API}/files?uploadType=multipart`;
-  const res = await driveFetch(url, {
-    method: driveFileId ? 'PATCH' : 'POST',
-    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body
-  });
-  const saved = await res.json();
-  driveFileId = saved.id;
-}
-
-/* ---- 23-1-5. 동기화 페이로드 구성/반영 ---- */
-function buildSyncPayload() {
-  return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    assets: state.assets.map((a) => ({
-      id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
-      category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
-      quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
-    })),
-    transactions: state.transactions,
-    rebalance: state.rebalance,
-    projection: state.projection,
-    dailySnapshots: state.dailySnapshots,
-    exchangeRate: state.exchangeRate,
-    dailyChangeRate: state.dailyChangeRate
-  };
-}
-
-// 드라이브에서 내려받은 데이터를 state에 반영하고 로컬 localStorage에도 그대로 미러링한다(요구사항:
-// "오프라인 시 로컬 데이터 우선 활용"이 가능하려면 로컬에도 항상 최신 사본이 있어야 한다).
-function applySyncPayload(payload) {
-  suppressDriveDirty = true;
-  try {
-    if (Array.isArray(payload.assets)) { state.assets = payload.assets; persistAssets(); }
-    if (Array.isArray(payload.transactions)) { state.transactions = payload.transactions; persistTransactions(); }
-    if (payload.rebalance && typeof payload.rebalance === 'object') { state.rebalance = payload.rebalance; persistRebalance(); }
-    if (payload.projection && typeof payload.projection === 'object') { state.projection = payload.projection; persistProjection(); }
-    if (payload.dailySnapshots && typeof payload.dailySnapshots === 'object') { state.dailySnapshots = payload.dailySnapshots; persistDailySnapshots(); }
-    if (Number.isFinite(num(payload.exchangeRate)) && num(payload.exchangeRate) > 0) {
-      state.exchangeRate = num(payload.exchangeRate);
-      document.getElementById('exchangeRateInput').value = state.exchangeRate;
-      persistRate();
-    }
-    if (payload.dailyChangeRate !== undefined) {
-      state.dailyChangeRate = num(payload.dailyChangeRate);
-      document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
-      persistDaily();
-    }
-    touchLastLocalUpdate(payload.updatedAt); // 방금 받아온 시각을 그대로 로컬 기준시각으로도 맞춰둔다.
-  } finally {
-    suppressDriveDirty = false;
-  }
-}
-
-/* ---- 23-1-6. dirty 표시 + 디바운스 업로드 ---- */
-function touchLastLocalUpdate(isoString) {
-  localStorage.setItem(LS_LAST_LOCAL_UPDATE, isoString || new Date().toISOString());
-}
-
-function markDriveSyncDirty() {
-  if (suppressDriveDirty) return; // 드라이브 → 로컬 반영 중에는 다시 dirty로 잡지 않는다.
-  touchLastLocalUpdate();
-  driveSyncDirty = true;
-  if (!driveAccessToken || !syncPassphrase) return; // 연동/비밀번호 미설정 상태면 로컬 저장만으로 충분.
-  if (!navigator.onLine) { updateGoogleSyncStatusUI('offline'); return; } // 오프라인이면 dirty만 남기고 대기.
-  clearTimeout(driveSyncTimer);
-  driveSyncTimer = setTimeout(runDriveUpload, 4000); // 짧은 연속 입력(숫자 타이핑 등)을 하나로 묶는다.
-}
-
-async function runDriveUpload() {
-  if (!driveSyncDirty || !driveAccessToken || !syncPassphrase || driveSyncBusy) return;
-  if (!navigator.onLine) { updateGoogleSyncStatusUI('offline'); return; }
-  driveSyncBusy = true;
-  updateGoogleSyncStatusUI('syncing');
-  try {
-    const payload = buildSyncPayload();
-    const ciphertext = encryptData(payload, syncPassphrase);
-    await uploadDriveData(ciphertext);
-    driveSyncDirty = false;
-    updateGoogleSyncStatusUI('synced');
-  } catch (e) {
-    console.warn('[구글 드라이브 동기화 실패]', e);
-    updateGoogleSyncStatusUI('error');
-  } finally {
-    driveSyncBusy = false;
-  }
-}
-
-/* ---- 23-1-7. 최초 연동(또는 재연동) 시 다운로드/업로드 판단 (최종 수정 시각 비교로 충돌 해결) ----
-   [구글 계정 연동] 버튼을 눌러 대화형으로 로그인했을 때 쓰인다 - 항상 파일 존재 여부부터 확인하고,
-   있으면 비밀번호를 물어 내려받아 비교하고, 없으면 새 비밀번호를 설정해 지금 로컬 데이터를 올린다. */
-async function ensureDriveFolderAndSyncAfterAuth() {
-  updateGoogleSyncStatusUI('syncing');
-  try {
-    const file = await findDriveDataFile();
-    if (file) {
-      driveFileId = file.id;
-      if (!syncPassphrase) syncPassphrase = await openGoogleSyncPassphraseModal('unlock');
-      const ciphertext = await downloadDriveFileContent(file.id);
-      let payload;
-      try {
-        payload = decryptData(ciphertext, syncPassphrase);
-      } catch (e) {
-        syncPassphrase = null;
-        showToast('비밀번호가 올바르지 않습니다. [구글 계정 연동] 버튼을 다시 눌러 시도해 주세요.', 'error');
-        updateGoogleSyncStatusUI('error');
-        return;
-      }
-      const remoteTime = payload.updatedAt ? new Date(payload.updatedAt).getTime() : 0;
-      const localRaw = localStorage.getItem(LS_LAST_LOCAL_UPDATE);
-      const localTime = localRaw ? new Date(localRaw).getTime() : 0;
-      if (remoteTime > localTime) {
-        applySyncPayload(payload);
-        renderAll();
-        showToast('구글 드라이브에 저장된 최신 데이터를 불러왔습니다.', 'success');
-      } else if (localTime > remoteTime) {
-        driveSyncDirty = true;
-        await runDriveUpload();
-        showToast('이 기기의 최신 변경사항을 구글 드라이브에 반영했습니다.', 'success');
-      }
-    } else {
-      // 드라이브에 파일이 아직 없다 - 최초 연동. 새 비밀번호를 설정하고 지금 로컬 데이터를 그대로 올린다.
-      syncPassphrase = await openGoogleSyncPassphraseModal('setup');
-      driveSyncDirty = true;
-      await runDriveUpload();
-      showToast('구글 드라이브 "자산관리" 폴더에 암호화된 초기 백업을 저장했습니다.', 'success');
-    }
-    localStorage.setItem(LS_GOOGLE_CONNECTED, '1');
-    updateGoogleSyncStatusUI('synced');
-  } catch (e) {
-    if (e && e.message === 'cancelled') {
-      showToast('구글 드라이브 동기화가 취소되었습니다.', 'warn');
-    } else {
-      console.warn('[구글 드라이브 연동 실패]', e);
-      showToast('구글 드라이브 연동 중 오류가 발생했습니다: ' + e.message, 'error');
-    }
-    updateGoogleSyncStatusUI(driveAccessToken ? 'error' : 'disconnected');
-  }
-}
-
-// 드라이브 파일의 modifiedTime "메타데이터만" 조회한다(다운로드/복호화 없이, 비밀번호도 필요 없다) -
-// 로컬 마지막 수정 시각과 가볍게 비교해서, 정말 새로운 데이터가 있을 때만 비밀번호 입력을 요구하기
-// 위한 사전 확인용이다.
-async function isDriveNewerThanLocal() {
-  const file = await findDriveDataFile();
-  if (!file) return { newer: false, file: null };
-  const remoteTime = new Date(file.modifiedTime).getTime();
-  const localRaw = localStorage.getItem(LS_LAST_LOCAL_UPDATE);
-  const localTime = localRaw ? new Date(localRaw).getTime() : 0;
-  return { newer: remoteTime > localTime, file };
-}
-
-// [Drive-First 부팅] 예전에 연동한 적 있는 브라우저에서 앱을 새로 열었을 때, renderAll()로 화면을
-// 그리기 전에 호출된다(맨 아래 bootApp() 참고). 조용히 토큰을 재발급받고, 드라이브 파일이 로컬보다
-// 최신일 때만(메타데이터만으로 먼저 확인) 비밀번호를 물어 다운로드/반영한다 - 그래야 신고된 버그
-// ("태블릿의 초기 로컬 데이터가 스마트폰의 최신 데이터를 덮어씀")처럼 뒤늦게 화면부터 그려버려서 잠깐
-// 이라도 오래된 데이터가 진짜 최신인 것처럼 취급되는 상황 자체가 생기지 않는다. One Tap 콜백에서도
-// 호출될 수 있어(handleGoogleIdCredential) initialGoogleSyncAttempted로 중복 실행을 막는다.
-async function tryInitialGoogleDriveSync() {
-  if (initialGoogleSyncAttempted) return;
-  if (!isGoogleClientIdConfigured() || location.protocol === 'file:') return;
-  if (localStorage.getItem(LS_GOOGLE_CONNECTED) !== '1') return; // 연동 이력이 없으면 로컬로 시작 - 버튼으로 수동 연동.
-  initialGoogleSyncAttempted = true;
-
-  // [세션 영구 보존] localStorage에 아직 만료되지 않은 토큰이 캐시돼 있으면, 구글 인증 서버에 아예
-  // 묻지 않고(=계정 선택 팝업이 뜰 여지 자체가 없다) 그 토큰을 곧바로 재사용한다. 이게 "새로고침/당겨서
-  // 새로고침/앱 재시작마다 매번 계정 선택+비밀번호 화면이 뜨는" 문제의 핵심 원인이었다 - 예전엔 이
-  // 캐시 없이 매번 새 토큰을 요청했다.
-  const cachedToken = loadGoogleTokenSession();
-  if (cachedToken) {
-    driveAccessToken = cachedToken.access_token;
-  } else {
-    updateGoogleSyncStatusUI('connecting'); // "보안 동기화 중..." 계열 라벨로 전환.
-    const ready = await waitForGoogleAuthReady(4000);
-    if (!ready) { updateGoogleSyncStatusUI('disconnected'); return; }
-
-    const resp = await requestAccessTokenPromise('', 6000); // prompt:'' = 팝업 없는 조용한 재발급, 6초 타임아웃.
-    if (!resp || !resp.access_token) { updateGoogleSyncStatusUI('disconnected'); return; } // 세션 만료 등 - 버튼으로 수동 재연동 가능.
-    driveAccessToken = resp.access_token;
-    saveGoogleTokenSession(resp.access_token, resp.expires_in);
-  }
-
-  try {
-    const { newer, file } = await isDriveNewerThanLocal();
-    if (file) driveFileId = file.id;
-    if (newer && file) {
-      updateGoogleSyncStatusUI('syncing'); // "동기화 중..." - 요구사항의 [보안 동기화 중...] 단계.
-      syncPassphrase = await openGoogleSyncPassphraseModal('unlock');
-      const ciphertext = await downloadDriveFileContent(file.id);
-      const payload = decryptData(ciphertext, syncPassphrase);
-      applySyncPayload(payload);
-      showToast('구글 드라이브의 최신 데이터를 불러왔습니다.', 'success');
-    }
-    updateGoogleSyncStatusUI('synced'); // [보안 동기화 완료]로 전환.
-  } catch (e) {
-    if (e && e.message === 'cancelled') {
-      updateGoogleSyncStatusUI('disconnected');
-    } else {
-      syncPassphrase = null;
-      // 캐시된 토큰이 이미 무효(원격에서 취소/만료)했을 가능성 - 지워서 다음 시도 때 새로 발급받게 한다.
-      clearGoogleTokenSession();
-      console.warn('[구글 드라이브 초기 동기화 실패]', e);
-      showToast('구글 드라이브 데이터를 불러오는 중 문제가 발생했습니다. [구글 계정 연동] 버튼으로 다시 시도해 주세요.', 'error');
-      updateGoogleSyncStatusUI('error');
-    }
-  }
-}
-
-/* ---- 23-1-8. OAuth 토큰 클라이언트 (Promise 기반) ----
-   requestAccessTokenPromise(promptValue, timeoutMs)는 google.accounts.oauth2 토큰 클라이언트의 콜백
-   기반 API를 Promise로 감싼다 - initTokenClient는 콜백을 하나만 고정으로 받으므로, 매 호출마다
-   driveTokenCallbackHandler에 "지금 기다리고 있는 곳"을 등록해 그 결과를 그 호출로만 돌려준다.
-   timeoutMs를 주면 그 시간 안에 응답이 없을 때 null로 대신 resolve한다(조용한 시도가 브라우저 정책
-   등으로 영영 응답하지 않는 경우에 대비한 안전장치 - 사용자가 직접 누른 대화형 요청에는 걸지 않는다). */
-// [무한 락 버그 수정] 예전엔 이 초기화가 페이지 로드 시 딱 한 번만 실행되고, GIS 스크립트가 느리게
-// 뜨거나(광고차단/보안 확장 프로그램이 accounts.google.com을 늦게 풀어주는 경우 등) 잠깐 실패하면
-// driveTokenClient가 영영 null로 남아 이후 [구글 계정 연동] 버튼을 눌러도 "준비 중입니다"만 계속
-// 반복됐다. 이제 googleAuthInitializing 락으로 중복 실행만 막고, 실패(재시도 소진)하면 반드시 락을
-// 풀어서 다음 시도(자동 재접속이든 수동 버튼 클릭이든) 때 처음부터 다시 초기화를 시도할 수 있게 한다.
-let googleAuthInitializing = false;
-
-function startGoogleAuthInit() {
-  if (driveTokenClient || googleAuthInitializing) return; // 이미 준비됐거나 이미 시도 중이면 중복 실행 안 함.
-  googleAuthInitializing = true;
-  initGoogleAuthClient(20);
-}
-
-function initGoogleAuthClient(retriesLeft) {
-  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-    if (retriesLeft > 0) { setTimeout(() => initGoogleAuthClient(retriesLeft - 1), 250); return; }
-    console.warn('[구글 인증] GIS SDK 로드 실패 - 다음 시도 때 다시 초기화합니다.');
-    googleAuthInitializing = false; // 완전히 실패했어도 락을 반드시 풀어서 나중에 재시도 가능하게 한다.
-    return;
-  }
-  try {
-    driveTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GOOGLE_DRIVE_SCOPE,
-      callback: (resp) => {
-        const handler = driveTokenCallbackHandler;
-        driveTokenCallbackHandler = null;
-        if (handler) handler(resp);
-      }
-    });
-  } catch (e) {
-    console.warn('[구글 인증] 토큰 클라이언트 초기화 중 예외:', e);
-  } finally {
-    googleAuthInitializing = false; // 성공/실패 어느 쪽이든 락은 항상 풀린다(무한 락 방지).
-  }
-}
-
-// SDK가 아직 로딩 중이면(driveTokenClient가 아직 없으면) 최대 timeoutMs만큼 기다리되, 그냥 기다리기만
-// 하지 않고 startGoogleAuthInit()으로 초기화 자체를 다시 시도한다(Lazy re-init) - 이전 시도가 어떤
-// 이유로든 멈춰 있어도(락은 항상 풀리므로) 이번 호출에서 다시 살아날 수 있다.
-function waitForGoogleAuthReady(timeoutMs) {
-  if (driveTokenClient) return Promise.resolve(true);
-  startGoogleAuthInit();
-  const start = Date.now();
-  return new Promise((resolve) => {
-    (function poll() {
-      if (driveTokenClient) { resolve(true); return; }
-      if (Date.now() - start > timeoutMs) { resolve(false); return; }
-      setTimeout(poll, 150);
-    })();
-  });
-}
-
-// [세션 영구 보존] 예전엔 resp.access_token 문자열만 돌려줬는데, 만료 시각을 계산하려면 resp.expires_in도
-// 필요해서 이제 응답 객체 전체를(성공 시) 그대로 돌려준다 - 호출부에서 resp.access_token/resp.expires_in을
-// 꺼내 쓴다.
-function requestAccessTokenPromise(promptValue, timeoutMs) {
-  return new Promise((resolve) => {
-    if (!driveTokenClient) { resolve(null); return; }
-    let settled = false;
-    let timer = null;
-    driveTokenCallbackHandler = (resp) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      resolve(resp && !resp.error ? resp : null);
-    };
-    if (timeoutMs) {
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        driveTokenCallbackHandler = null;
-        resolve(null);
-      }, timeoutMs);
-    }
-    driveTokenClient.requestAccessToken({ prompt: promptValue });
-  });
-}
-
-async function connectGoogleDrive() {
-  // 이미 연동되어 있으면 재로그인 대신 [드라이브에서 강제 불러오기] 등이 담긴 메뉴를 연다.
-  if (driveAccessToken) { toggleGoogleSyncMenu(); return; }
-  if (location.protocol === 'file:') {
-    showToast('구글 로그인은 file://로 직접 연 화면에서는 동작하지 않습니다. https로 배포된 주소에서 이용해 주세요.', 'warn');
-    return;
-  }
-  if (!isGoogleClientIdConfigured()) {
-    showToast('아직 구글 클라이언트 ID가 설정되지 않았습니다. 개발자 안내를 확인해 주세요.', 'warn');
-    return;
-  }
-  const ready = await waitForGoogleAuthReady(3000);
-  if (!ready) {
-    showToast('구글 인증 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.', 'warn');
-    return;
-  }
-  updateGoogleSyncStatusUI('connecting');
-  const resp = await requestAccessTokenPromise('consent', null); // 대화형 - 타임아웃 없이 사용자 응답을 기다린다.
-  if (!resp || !resp.access_token) {
-    showToast('구글 로그인에 실패했습니다.', 'error');
-    updateGoogleSyncStatusUI('disconnected');
-    return;
-  }
-  driveAccessToken = resp.access_token;
-  saveGoogleTokenSession(resp.access_token, resp.expires_in); // [세션 영구 보존] 다음 방문부터는 이 캐시를 먼저 재사용한다.
-  initialGoogleSyncAttempted = true; // 방금 대화형으로 연동했으므로 부팅용 자동 시도는 더 필요 없다.
-  await ensureDriveFolderAndSyncAfterAuth();
-}
-
-document.getElementById('googleSyncBtn').addEventListener('click', connectGoogleDrive);
-
-/* ---- 23-1-9. Google Identity Services One Tap (auto_select) - 크롬 재방문 시 계정 선택 팝업 최소화 ----
-   google.accounts.oauth2(위)는 "이 앱이 드라이브에 접근해도 되는가"를 다루는 권한(인가) API이고,
-   google.accounts.id(여기)는 "지금 이 브라우저에 로그인된 사람이 누구인가"를 다루는 신원(인증) API다.
-   One Tap이 신원을 조용히 확인해 주더라도 drive.file 스코프 접근에는 여전히 별도의 OAuth 액세스
-   토큰이 필요하므로, 아래 콜백은 "이 브라우저에 활성 구글 세션이 있다"는 신호로만 쓰고 실제 드라이브
-   접근은 곧바로 이어서 tryInitialGoogleDriveSync()(조용한 토큰 재발급)로 처리한다. FedCM을 지원하지
-   않는 브라우저/제3자 쿠키가 막힌 환경에서는 prompt()가 아무 UI도 띄우지 않고 조용히 끝날 수 있다 -
-   그런 경우는 bootApp()의 tryInitialGoogleDriveSync() 직접 호출이 정상 경로로 대체한다. -->*/
-function initGoogleOneTap() {
-  if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) return;
-  if (!isGoogleClientIdConfigured() || location.protocol === 'file:') return;
-  try {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      auto_select: true,
-      cancel_on_tap_outside: false,
-      callback: handleGoogleIdCredential
-    });
-    // 예전에 연동한 적 있는 브라우저에서만 One Tap 자동 표시를 시도한다 - 처음 방문자에게까지 매번
-    // 로그인 유도 UI를 띄우는 건 방해가 된다(최초 연동은 [구글 계정 연동] 버튼으로 시작).
-    if (localStorage.getItem(LS_GOOGLE_CONNECTED) === '1') {
-      google.accounts.id.prompt();
-    }
-  } catch (e) {
-    console.info('[구글 One Tap] 이 브라우저/환경에서는 사용할 수 없습니다(정상 - 조용히 무시).', e);
-  }
-}
-
-function handleGoogleIdCredential(response) {
-  if (!response || !response.credential) return;
-  const profile = decodeGoogleIdToken(response.credential);
-  if (profile) saveGoogleUserInfo(profile); // [세션 영구 보존] 이름/이메일을 localStorage에 남겨 로그인 상태 UI에 반영.
-  if (localStorage.getItem(LS_GOOGLE_CONNECTED) === '1') tryInitialGoogleDriveSync();
-}
-
-/* ---- 23-1-10. 연동 상태 드롭다운 메뉴 (수동 [드라이브에서 데이터 강제 불러오기]) ---- */
-function toggleGoogleSyncMenu() {
-  const menu = document.getElementById('googleSyncMenu');
-  const willOpen = menu.classList.contains('hidden');
-  menu.classList.toggle('hidden', !willOpen);
-  if (willOpen) {
-    const statusEl = document.getElementById('googleSyncMenuStatus');
-    const lastUpdate = localStorage.getItem(LS_LAST_LOCAL_UPDATE);
-    statusEl.textContent = lastUpdate ? `이 기기 마지막 저장: ${new Date(lastUpdate).toLocaleString('ko-KR')}` : '이 기기에 저장된 변경 이력이 없습니다.';
-  }
-}
-function closeGoogleSyncMenu() {
-  document.getElementById('googleSyncMenu').classList.add('hidden');
-}
-document.addEventListener('click', (e) => {
-  const wrap = document.getElementById('googleSyncMenuWrap');
-  if (wrap && !wrap.contains(e.target)) closeGoogleSyncMenu();
-});
-
-document.getElementById('googleSyncForceDownloadBtn').addEventListener('click', async () => {
-  closeGoogleSyncMenu();
-  if (!driveAccessToken) { showToast('먼저 구글 계정을 연동해 주세요.', 'warn'); return; }
-  if (!confirm('이 기기의 로컬 변경사항을 버리고 구글 드라이브에 저장된 데이터로 덮어씁니다. 계속할까요?')) return;
-  updateGoogleSyncStatusUI('syncing');
-  try {
-    const file = await findDriveDataFile();
-    if (!file) { showToast('구글 드라이브에 저장된 데이터가 아직 없습니다.', 'warn'); updateGoogleSyncStatusUI('synced'); return; }
-    driveFileId = file.id;
-    if (!syncPassphrase) syncPassphrase = await openGoogleSyncPassphraseModal('unlock');
-    const ciphertext = await downloadDriveFileContent(file.id);
-    const payload = decryptData(ciphertext, syncPassphrase);
-    applySyncPayload(payload);
-    renderAll();
-    showToast('구글 드라이브 데이터로 강제 복원했습니다.', 'success');
-    updateGoogleSyncStatusUI('synced');
-  } catch (e) {
-    if (e && e.message === 'cancelled') {
-      showToast('취소되었습니다.', 'warn');
-      updateGoogleSyncStatusUI('synced');
-    } else {
-      syncPassphrase = null;
-      console.warn('[강제 불러오기 실패]', e);
-      showToast('불러오기 실패: 비밀번호가 올바르지 않거나 오류가 발생했습니다.', 'error');
-      updateGoogleSyncStatusUI('error');
-    }
-  }
-});
-
-// [로그아웃] 사용자가 명시적으로 눌렀을 때만 세션을 지운다 - 새로고침/당겨서 새로고침 등 어떤 자동
-// 경로에서도 호출되지 않는다. google.accounts.id.disableAutoSelect()를 불러 다음 방문 때 One Tap이
-// 이 브라우저를 자동으로 다시 선택하지 않게 하고, 캐시된 토큰/사용자 정보/연동 이력을 전부 지운다.
-function disconnectGoogleDrive() {
-  closeGoogleSyncMenu();
-  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-    try { google.accounts.id.disableAutoSelect(); } catch (e) { /* 이 브라우저/환경에서 지원 안 함 - 무시 */ }
-  }
-  clearGoogleTokenSession();
-  clearGoogleUserInfo();
-  localStorage.removeItem(LS_GOOGLE_CONNECTED);
-  driveAccessToken = null;
-  driveFolderId = null;
-  driveFileId = null;
-  syncPassphrase = null;
-  driveSyncDirty = false;
-  updateGoogleSyncStatusUI('disconnected');
-  showToast('구글 계정 연동을 해제했습니다. 이 기기의 데이터는 그대로 남아 있습니다.', 'info');
-}
-document.getElementById('googleSyncLogoutBtn').addEventListener('click', disconnectGoogleDrive);
-
-/* ---- 23-1-11. 오프라인 -> 온라인 복귀 시 자동 재동기화 ---- */
-window.addEventListener('online', () => {
-  if (driveAccessToken && syncPassphrase && driveSyncDirty) {
-    runDriveUpload();
-  } else if (isGoogleClientIdConfigured() && localStorage.getItem(LS_GOOGLE_CONNECTED) === '1' && !driveAccessToken) {
-    initialGoogleSyncAttempted = false; // 오프라인 상태에서 부팅됐을 수 있으니 다시 한번 시도를 허용한다.
-    tryInitialGoogleDriveSync();
-  }
-});
-window.addEventListener('offline', () => {
-  if (driveAccessToken) updateGoogleSyncStatusUI('offline');
-});
-
-// 페이지 로드 시 구글 인증 클라이언트를 초기화해 둔다(라이브러리 로드를 기다렸다가 재시도). 실제 로그인
-// 시도(조용한 재발급 포함)는 bootApp()의 tryInitialGoogleDriveSync()가 renderAll() 이전에 수행한다 -
-// 여기서는 클라이언트만 준비해 둔다.
-startGoogleAuthInit();
-initGoogleOneTap();
-// [세션 영구 보존] 새 One Tap 자격증명을 기다리지 않고, 이전 방문에서 저장해 둔 이름/이메일을 즉시
-// 버튼 툴팁에 반영한다(조건 A: 세션이 있으면 로그인 UI를 즉시 그린다).
-applyGoogleUserInfoToUI();
 
 /* -------------------------------------------------------------------------
  * 24. 다크모드 토글
@@ -8488,22 +8012,18 @@ function warnIfRestrictedWebView() {
 
 /* -------------------------------------------------------------------------
  * 25. 초기 구동
- *    [Drive-First] loadState()로 로컬 캐시를 읽어들인 뒤, 화면을 그리기(renderAll) 전에 반드시
- *    tryInitialGoogleDriveSync()를 먼저 기다린다 - 구글 드라이브에 이 기기보다 최신 데이터가 있으면
- *    그걸로 완전히 반영한 "다음"에야 첫 렌더링이 일어난다. 연동 이력이 없거나 조용한 재인증이 실패하면
- *    (오프라인, 세션 만료 등) 이 함수는 금방 조용히 리턴하므로 로컬 데이터로 정상적으로 계속 진행된다.
+ *    [구글 드라이브 동기화 기능 제거] 이제 기기 로컬 저장(localStorage) 전용으로 동작한다 - 네트워크
+ *    동기화를 기다리지 않고 loadState()로 로컬 데이터를 읽는 즉시 렌더링을 시작한다.
  * ---------------------------------------------------------------------- */
 async function bootApp() {
+  cleanupLegacyGoogleSyncKeys(); // 예전 구글 드라이브 연동 기능이 남긴 localStorage 키를 1회 정리
   loadState();
   // 거래내역이 있으면 자산 목록을 항상 최신 계산값으로 맞춰둔 뒤 첫 렌더링을 시작한다(구조 변경/수동
-  // localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치 - 사용자가 직접 입력한 새 데이터가
-  // 아니라 기존 거래내역을 그대로 재계산하는 것뿐이므로 dirty로 잡지 않는다).
+  // localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치).
   if (state.transactions.length > 0) {
     syncAssetsFromTransactions();
-    persistWithoutDriveSync(() => persistAssets());
+    persistAssets();
   }
-
-  await tryInitialGoogleDriveSync();
 
   applyTableGroupUI();
   renderAll();
