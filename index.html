@@ -373,7 +373,10 @@
 
   <!-- ============================= RISK 관리 =============================
        조건1(지수대비 10%p 이상 과락)/조건2(매수가 대비 -20% 이하)/조건3(20일선 이탈) 중 하나라도
-       해당하면 표시 - computeRiskAssets()/renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상. -->
+       해당하면 [리스크 감지], 셋 다 해당 없으면 [안정적인 종목]으로 분류한다 - computeRiskClassifiedAssets()/
+       renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상.
+       [아코디언 UI] 두 그룹을 클릭해서 펼치는 접이식 헤더로 나눈다 - 기본값은 리스크 감지는 펼침,
+       안정 종목은 접힘(riskyAccordionOpen/safeAccordionOpen, renderRiskSection 하단 참고). -->
   <section class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
@@ -384,11 +387,33 @@
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>
       </div>
-      <span id="riskCountBadge" class="hidden text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500 text-white"></span>
     </div>
     <p class="text-[10px] text-slate-400 mb-3">기준: 지수대비 -10%p 이상 · 매수가대비 -20% 이하 · 20일선 이탈 (하나라도 해당 시 감지)</p>
-    <div id="riskListContainer">
-      <p class="text-xs text-slate-400">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>
+
+    <div class="space-y-2">
+      <div class="rounded-xl border border-red-200 dark:border-red-900/50 overflow-hidden">
+        <button type="button" id="riskyAccordionBtn" class="w-full flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/40 text-left">
+          <span class="text-xs font-semibold text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            ⚠️ 리스크 감지 <span id="riskyCountBadge" class="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">0건</span>
+          </span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-red-400 transition-transform duration-200" id="riskyAccordionChevron"></i>
+        </button>
+        <div id="riskyAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <div id="riskListContainer" class="px-3 pt-2 pb-3"></div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-emerald-200 dark:border-emerald-900/50 overflow-hidden">
+        <button type="button" id="safeAccordionBtn" class="w-full flex items-center justify-between gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 text-left">
+          <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+            ✅ 안정적인 종목 <span id="safeCountBadge" class="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">0건</span>
+          </span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-emerald-400 transition-transform duration-200" id="safeAccordionChevron"></i>
+        </button>
+        <div id="safeAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <div id="safeListContainer" class="px-3 pt-2 pb-3"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -2830,6 +2855,17 @@ function computeExpandedRegionTargetAmounts(region, ownerFilter) {
 // ownerFilter: 'all'/undefined면 가구 전체(기존 동작), 특정 소유자명이면 그 소유자의 자산만으로 "독립된
 // 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 매수/매도 가이드를 만든다(리밸런싱 실행 가이드의
 // 소유자별 필터 전용).
+// [버그 수정 - 소유자 필터 시 미보유 목표 종목 누락] 특정 소유자(예: 와이프)가 어떤 목표 항목을
+// 하나도 보유하지 않을 때, 그 종목의 시세/통화를 알아야 목표금액 대비 매수 수량을 계산할 수 있다 -
+// 목표로 지정된 티커는 보통 가구 내 누군가는 실제로 보유하고 있으므로, 소유자 필터와 무관하게 가구
+// 전체에서 같은 티커를 가진 자산을 하나 찾아 그 시세/통화를 빌려 쓴다(정말 아무도 안 산 티커라면
+// 시세를 알 방법이 없어 수량은 0으로 남는다 - 틀린 값보다 빈 값이 낫다).
+function findAnyHouseholdAssetByTicker(ticker) {
+  const target = sanitizeTicker(ticker).yahooTicker;
+  if (!target) return null;
+  return state.assets.find((a) => sanitizeTicker(a.ticker).yahooTicker === target) || null;
+}
+
 function computeIndividualRebalanceGuide(ownerFilter) {
   const rows = [];
   const excluded = [];
@@ -2841,10 +2877,10 @@ function computeIndividualRebalanceGuide(ownerFilter) {
     const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region, ownerFilter);
     const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
     // renderTargetRebalanceResultGroup()에서 쓰는 것과 동일한 공식: 지역 목표금액 = 전체 리밸런싱
-    // 대상 총액 × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
+    // 대상 총액(이 소유자 기준) × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
 
-    const groups = new Map(); // targetIdx -> assets[]
+    const groups = new Map(); // targetIdx -> assets[] (이 소유자가 실제 보유한 자산만 - 없는 idx도 있을 수 있다)
     regionAssets.forEach((a) => {
       if (!claimedTargetIdx.has(a.id)) { excluded.push(a); return; }
       const idx = claimedTargetIdx.get(a.id);
@@ -2852,8 +2888,36 @@ function computeIndividualRebalanceGuide(ownerFilter) {
       groups.get(idx).push(a);
     });
 
-    groups.forEach((groupAssets, idx) => {
-      const targetAmount = regionTargetAmount * num(targets[idx].pct) / 100;
+    // [버그 수정] 예전엔 groups.forEach로 "이 소유자가 실제 보유한 목표 항목"만 훑었다 - 그 결과 목표
+    // 비중이 설정돼 있어도 이 소유자가 하나도 보유하지 않은 항목(예: 와이프가 안 가진 해외 ISA 종목)은
+    // 통째로 화면/엑셀에서 빠졌다. 이제 targets 전체를 훑어, 보유가 없는 항목도 "0원 보유, 목표금액
+    // 전액 신규 매수 필요"인 행으로 빠짐없이 보여준다.
+    targets.forEach((t, idx) => {
+      const pct = num(t.pct);
+      const groupAssets = groups.get(idx);
+      const targetAmount = regionTargetAmount * pct / 100;
+
+      if (!groupAssets || groupAssets.length === 0) {
+        if (pct <= 0) return; // 보유도 없고 목표 비중도 0%면(예: 미지정 "주식(기타)") 보여줄 내용이 없다.
+        const isTicker = t.type === 'ticker';
+        const refAsset = isTicker ? findAnyHouseholdAssetByTicker(t.ticker) : null;
+        const isForeign = refAsset ? refAsset.currency === 'USD' : false;
+        const priceRate = isForeign ? state.exchangeRate : 1;
+        const priceKRW = refAsset ? num(refAsset.currentPrice) * priceRate : 0;
+        const qtyDelta = priceKRW !== 0 ? targetAmount / priceKRW : 0;
+        // 티커 표기는 실제로 보유 중인 자산(refAsset)이 있으면 그 표기를 그대로 쓴다 - 목표 설정에는
+        // "278530"처럼 접미사 없이 적혀 있어도, 실제 보유 자산은 "278530.KS"처럼 등록돼 있을 수 있어
+        // 그대로 쓰면 같은 종목인데 소유자 탭마다 티커 표기가 달라 보이는 문제가 생긴다.
+        rows.push({
+          name: isTicker ? (refAsset ? refAsset.name : t.label) : t.label,
+          ticker: isTicker ? (refAsset ? refAsset.ticker : t.ticker) : '',
+          owners: [],
+          region, targetLabel: t.label,
+          curAmount: 0, targetAmount, diff: targetAmount, qtyDelta, isForeign
+        });
+        return;
+      }
+
       const groupCurTotal = groupAssets.reduce((s, a) => s + calcRow(a).curAmount, 0);
 
       // 소유자 무관 동일 종목 합산: 같은 그룹 안에서 티커(없으면 이름)가 같은 자산끼리 먼저 하나로 묶는다.
@@ -2880,7 +2944,7 @@ function computeIndividualRebalanceGuide(ownerFilter) {
         const qtyDelta = priceKRW !== 0 ? diff / priceKRW : 0;
         rows.push({
           name: bucket.name, ticker: bucket.ticker, owners: [...bucket.owners].sort((a, b) => ownerRank(a) - ownerRank(b)),
-          region, targetLabel: targets[idx].label,
+          region, targetLabel: t.label,
           curAmount: bucket.curAmount, targetAmount: assetTargetAmount, diff, qtyDelta, isForeign: bucket.isForeign
         });
       });
@@ -6782,12 +6846,15 @@ function riskEligibleAssets() {
   return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
 }
 
-// 3가지 조건을 각각 독립적으로 평가해 해당하는 태그를 전부 모은다(OR 조건 - 하나 이상이면 RISK).
-// 같은 종목을 신랑/와이프가 나눠 보유한 경우 조건2(매수가대비)는 소유자마다 평균단가가 달라 결과가
-// 갈릴 수 있지만, 화면에는 종목당 한 줄만 보여달라는 요청에 따라 소유자별 판정을 합쳐(태그는 합집합,
-// 소유자는 목록) 티커(없으면 이름) 기준으로 병합한다 - "일반계좌 리밸런싱 실행 가이드"의 병합 방식과 동일.
-function computeRiskAssets() {
-  const perAssetRisky = [];
+// 3가지 조건을 각각 독립적으로 평가해 해당하는 태그를 전부 모은다(OR 조건 - 하나 이상이면 RISK, 하나도
+// 없으면 안정). 같은 종목을 신랑/와이프가 나눠 보유한 경우 조건2(매수가대비)는 소유자마다 평균단가가
+// 달라 결과가 갈릴 수 있지만, 화면에는 종목당 한 줄만 보여달라는 요청에 따라 소유자별 판정을 합쳐
+// (태그는 합집합, 소유자는 목록) 티커(없으면 이름) 기준으로 병합한다 - "일반계좌 리밸런싱 실행 가이드"의
+// 병합 방식과 동일. [리스크 감지/안정 종목 이원화] 병합을 먼저 끝낸 뒤 태그 유무로 risky/safe를
+// 나눠야 한다 - 소유자별로 먼저 나누면 같은 종목이 신랑 쪽은 risky, 와이프 쪽은 safe로 쪼개져 "종목당
+// 한 줄" 원칙이 깨진다(예: 매수가가 서로 달라 한쪽만 -20% 이하에 걸리는 경우).
+function computeRiskClassifiedAssets() {
+  const perAsset = [];
   riskEligibleAssets().forEach((a) => {
     const tags = [];
     const assetChange = state.dayChangeMap[a.id];
@@ -6807,61 +6874,119 @@ function computeRiskAssets() {
       tags.push('20일선 이탈');
     }
 
-    if (tags.length > 0) perAssetRisky.push({ asset: a, row: { ...a, ...calcRow(a) }, tags });
+    perAsset.push({ asset: a, row: { ...a, ...calcRow(a) }, tags });
   });
 
-  const byKey = new Map(); // 티커(없으면 이름) -> { asset, row, tags: Set, owners: Set, curAmount(소유자 합산) }
-  perAssetRisky.forEach(({ asset: a, row, tags }) => {
+  const byKey = new Map(); // 티커(없으면 이름) -> { asset, row, tags: Set, owners: Set, curAmount, buyAmount(소유자 합산) }
+  perAsset.forEach(({ asset: a, row, tags }) => {
     const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
-    if (!byKey.has(key)) byKey.set(key, { asset: a, row, tags: new Set(), owners: new Set(), curAmount: 0 });
+    if (!byKey.has(key)) byKey.set(key, { asset: a, row, tags: new Set(), owners: new Set(), curAmount: 0, buyAmount: 0 });
     const bucket = byKey.get(key);
     tags.forEach((t) => bucket.tags.add(t));
     bucket.owners.add(a.owner);
     bucket.curAmount += row.curAmount; // 신랑/와이프가 나눠 보유해도 정렬 기준(평가금액)은 합산 기준으로 잡는다
+    bucket.buyAmount += row.buyAmount;
   });
 
-  return [...byKey.values()].map((b) => ({
+  const merged = [...byKey.values()].map((b) => ({
     asset: b.asset, row: b.row, tags: [...b.tags],
     owners: [...b.owners].sort((x, y) => ownerRank(x) - ownerRank(y)),
-    curAmount: b.curAmount
+    curAmount: b.curAmount, buyAmount: b.buyAmount,
+    rateOfReturn: b.buyAmount !== 0 ? (b.curAmount - b.buyAmount) / b.buyAmount * 100 : 0
   }));
+
+  return { risky: merged.filter((m) => m.tags.length > 0), safe: merged.filter((m) => m.tags.length === 0) };
+}
+
+// [RISK 관리 아코디언] 리스크 감지/안정 종목 두 섹션의 펼침 상태를 렌더링 사이에도 기억한다 - 5분
+// 자동 갱신 등으로 renderRiskSection이 반복 호출돼도 사용자가 열어/닫아 둔 상태가 되돌아가지 않게 한다.
+// 기본값: 리스크 감지는 펼침(바로 눈에 띄어야 함), 안정 종목은 접힘(요청된 기본 상태).
+let riskyAccordionOpen = true;
+let safeAccordionOpen = false;
+
+function setAccordionOpen(bodyEl, chevronEl, isOpen) {
+  bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
+  chevronEl.classList.toggle('rotate-180', isOpen);
 }
 
 function renderRiskSection() {
-  const container = document.getElementById('riskListContainer');
-  const badge = document.getElementById('riskCountBadge');
-  if (!container || !badge) return;
-  // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다.
-  const risky = computeRiskAssets().sort((x, y) => {
+  const riskyContainer = document.getElementById('riskListContainer');
+  const safeContainer = document.getElementById('safeListContainer');
+  const riskyBadge = document.getElementById('riskyCountBadge');
+  const safeBadge = document.getElementById('safeCountBadge');
+  const riskyBody = document.getElementById('riskyAccordionBody');
+  const safeBody = document.getElementById('safeAccordionBody');
+  const riskyChevron = document.getElementById('riskyAccordionChevron');
+  const safeChevron = document.getElementById('safeAccordionChevron');
+  if (!riskyContainer || !safeContainer) return;
+
+  const { risky: riskyRaw, safe: safeRaw } = computeRiskClassifiedAssets();
+  // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다(두 목록 공통).
+  const regionThenAmount = (x, y) => {
     const regionRank = (b) => (b.asset.isDomestic === '해외' ? 0 : 1);
     return regionRank(x) - regionRank(y) || y.curAmount - x.curAmount;
-  });
+  };
+  const risky = riskyRaw.sort(regionThenAmount);
+  const safe = safeRaw.sort(regionThenAmount);
+  const totalPortfolioCur = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
 
-  if (risky.length === 0) {
-    badge.classList.add('hidden');
-    container.innerHTML = '<p class="text-xs text-slate-400">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>';
-    return;
-  }
+  riskyBadge.textContent = `${risky.length}건`;
+  safeBadge.textContent = `${safe.length}건`;
 
-  badge.textContent = `${risky.length}건`;
-  badge.classList.remove('hidden');
-  container.innerHTML = risky.map(({ asset: a, row: r, tags, owners }) => {
-    const p = derivePresentation(r);
-    const tagHtml = tags.map((t) =>
-      `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
-    ).join(' ');
-    return `
-    <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40">
-      <div class="min-w-0">
-        <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-        <div class="flex flex-wrap gap-1 mt-1">${tagHtml}</div>
-      </div>
-      <div class="text-right shrink-0 pl-2">
-        <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
-      </div>
-    </div>`;
-  }).join('');
+  riskyContainer.innerHTML = risky.length === 0
+    ? '<p class="text-xs text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
+    : risky.map(({ asset: a, row: r, tags, owners, curAmount }) => {
+      const p = derivePresentation(r);
+      const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
+      const tagHtml = tags.map((t) =>
+        `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
+      ).join(' ');
+      return `
+      <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+          <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+        </div>
+        <div class="text-right shrink-0 pl-2">
+          <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+        </div>
+      </div>`;
+    }).join('');
+
+  safeContainer.innerHTML = safe.length === 0
+    ? '<p class="text-xs text-slate-400 py-1">아직 안정 상태로 분류된 종목이 없습니다.</p>'
+    : safe.map(({ asset: a, row: r, owners, curAmount }) => {
+      const p = derivePresentation(r);
+      const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
+      return `
+      <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-emerald-100 dark:border-emerald-900/40">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+          <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 font-semibold">특이사항 없음</span>
+            <span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span>
+          </div>
+        </div>
+        <div class="text-right shrink-0 pl-2">
+          <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+        </div>
+      </div>`;
+    }).join('');
+
+  // 방금 다시 그린 내용 기준으로 펼침 상태를 재적용한다 - 펼쳐진 채로 데이터가 바뀌어도(5분 자동
+  // 갱신 등) 높이가 새 내용에 맞게 갱신되고, 접힌 쪽은 계속 접힌 채로 유지된다.
+  if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, riskyAccordionOpen);
+  if (safeBody && safeChevron) setAccordionOpen(safeBody, safeChevron, safeAccordionOpen);
 }
+
+document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
+  riskyAccordionOpen = !riskyAccordionOpen;
+  setAccordionOpen(document.getElementById('riskyAccordionBody'), document.getElementById('riskyAccordionChevron'), riskyAccordionOpen);
+});
+document.getElementById('safeAccordionBtn').addEventListener('click', () => {
+  safeAccordionOpen = !safeAccordionOpen;
+  setAccordionOpen(document.getElementById('safeAccordionBody'), document.getElementById('safeAccordionChevron'), safeAccordionOpen);
+});
 
 /* -------------------------------------------------------------------------
  * 19. [시세 & 환율 갱신] 통합 버튼
