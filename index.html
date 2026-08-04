@@ -339,8 +339,11 @@
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
-        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="kpiTotalCostDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+          </div>
         </div>
       </div>
       <!-- 정상 상태(시세 조회 실패 0건일 때): 기존 '총 투자금액' 표시 -->
@@ -363,7 +366,7 @@
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">달러자산 총액 / 적용환율</span>
         <div class="flex items-center gap-1.5">
-          <button type="button" id="kpiExchangeRateDetailBtn" class="detail-btn">차트보기 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <button type="button" id="kpiExchangeRateDetailBtn" class="detail-btn">환율보기 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
             <i data-lucide="globe" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
           </div>
@@ -1298,6 +1301,40 @@
   </div>
 </div>
 
+<!-- ============================= 자산군별 투자금액 추이 모달 (총 투자금액 KPI 카드 [세부내용] 터치) =============================
+     소유자(전체/신랑/와이프) × 자산군(주식/ETF/채권/현금/부동산) 교차 집계를 일자별로 쌓은 스냅샷
+     (state.dailySnapshots[].byOwnerCategory, reconstructHistoricalCurValues 참고)을 누적 영역 차트로
+     보여준다 - showCategoryHistoryModal() 참고. -->
+<div id="categoryHistoryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">자산군별 투자금액 추이</h3>
+      <button type="button" id="closeCategoryHistoryModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
+      <div class="flex items-center justify-between flex-wrap gap-y-2">
+        <div id="categoryHistoryOwnerTabs" class="flex items-center gap-1.5"></div>
+        <div class="flex items-center gap-1">
+          <button type="button" data-ch-period="30" class="category-history-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+          <button type="button" data-ch-period="90" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+          <button type="button" data-ch-period="180" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+          <button type="button" data-ch-period="365" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+        </div>
+      </div>
+
+      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
+        <canvas id="categoryHistoryChart"></canvas>
+        <p id="categoryHistoryChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+      </div>
+
+      <div id="categoryHistorySummary" class="space-y-1.5 pt-1"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 전체 목표 비중 수정 모달 (리밸런싱 탭 전용) =============================
      리밸런싱 탭의 목표 비중 입력칸(국내/해외 split + 국내/해외 세부)은 기본 화면에서 읽기 전용이고,
      이 영역을 클릭하면 뜨는 이 모달 안에서만 편집할 수 있다. [확인]을 눌러야 state.rebalance에 반영되고
@@ -1848,7 +1885,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, exchangeRate: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, exchangeRate: null, categoryHistory: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -2306,6 +2343,11 @@ function renderKPIs() {
   const byCategory = {}; // { category: { buy, cur, dailyPnL } }
   // 소유자별(신랑/와이프/공동 등) 세부 집계 - 일간 평가손익/총 평가금액/총 평가손익 카드 하단 태그 전용.
   const byOwner = {}; // { owner: { dailyPnL, cur, buy } }
+  // [자산군별 투자금액 추이 팝업] 소유자×자산군 교차 집계 - 소유자 필터별로도 자산군 구성을 볼 수 있어야
+  // 하므로 byOwner/byCategory 둘만으로는 부족하다(둘 다 서로 다른 축으로만 합산된 값이라 "이 소유자의
+  // 이 자산군"을 따로 뽑아낼 수 없음). recordDailySnapshot에 그대로 전달해 일자별 스냅샷에도 이 교차
+  // 집계 기준으로 남긴다.
+  const byOwnerCategory = {}; // { owner: { category: { dailyPnL, cur, buy } } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
@@ -2324,6 +2366,12 @@ function renderKPIs() {
     byOwner[a.owner].dailyPnL += dp;
     byOwner[a.owner].cur += r.curAmount;
     byOwner[a.owner].buy += r.buyAmount;
+
+    if (!byOwnerCategory[a.owner]) byOwnerCategory[a.owner] = {};
+    if (!byOwnerCategory[a.owner][a.category]) byOwnerCategory[a.owner][a.category] = { dailyPnL: 0, cur: 0, buy: 0 };
+    byOwnerCategory[a.owner][a.category].dailyPnL += dp;
+    byOwnerCategory[a.owner][a.category].cur += r.curAmount;
+    byOwnerCategory[a.owner][a.category].buy += r.buyAmount;
   });
 
   const totalProfit = totalCur - totalBuy;
@@ -2382,7 +2430,7 @@ function renderKPIs() {
 
   // [일별 손익 추이 팝업] 오늘 날짜 스냅샷을 항상 최신값으로 덮어쓴다 - 사용자 입력 없이 렌더링될
   // 때마다 자동으로 쌓이는 히스토리(recordDailySnapshot 참고).
-  recordDailySnapshot(totalCur, dailyProfit, byOwner);
+  recordDailySnapshot(totalCur, dailyProfit, byOwner, byOwnerCategory);
 }
 
 // [주요 금융 자산 Top 5] 집계: 소유자/계좌가 달라도 같은 티커면 수량·평가금액·매입금액을 하나로
@@ -2595,7 +2643,8 @@ function openChartZoomModal(key) {
   const d = buildPieChartData(key, rows);
 
   if (charts.chartZoom) charts.chartZoom.destroy();
-  charts.chartZoom = new Chart(document.getElementById('chartZoomCanvas'), {
+  const chartZoomCanvas = document.getElementById('chartZoomCanvas');
+  charts.chartZoom = new Chart(chartZoomCanvas, {
     type: d.type,
     data: { labels: d.labels, datasets: [{ data: d.values, backgroundColor: d.colors, borderWidth: 2, borderColor }] },
     plugins: [ChartDataLabels],
@@ -2604,6 +2653,8 @@ function openChartZoomModal(key) {
   // 모달이 hidden 상태(display:none)일 때는 캔버스 크기를 0으로 인식하므로, 보여준 직후 한 프레임
   // 기다렸다가 resize()를 강제로 한 번 더 호출해 올바른 크기로 다시 그리게 한다.
   requestAnimationFrame(() => { if (charts.chartZoom) charts.chartZoom.resize(); });
+  // [버그 수정 - 터치 시 금액 툴팁이 안 사라짐] 다른 그래프 팝업과 동일하게 3초 뒤 자동으로 닫는다.
+  chartZoomCanvas.onclick = () => scheduleDailyPnlTooltipHide(charts.chartZoom);
 }
 
 function closeChartZoomModal(viaBackButton) {
@@ -2652,7 +2703,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal', 'categoryHistoryModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2688,7 +2739,8 @@ const MODAL_CLOSE_FNS = {
   stockAllocationModal: (viaBack) => closeStockAllocationModal(viaBack),
   totalValueModal: (viaBack) => closeTotalValueModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
-  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack)
+  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
+  categoryHistoryModal: (viaBack) => closeCategoryHistoryModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -4270,9 +4322,12 @@ function renderRebalanceEffectSummary(rows) {
 // points1/points2는 renderProjectionChart/renderProjectionChart2에 쓰인 것과 동일한 yearlyPoints
 // 배열이므로 이미 "자산군별 합산" 방식으로 정확히 계산된 point.total을 그대로 재사용한다.
 // [금융자산 미래예측] 탭의 3개 차트(통합비교/시나리오1/시나리오2) 공용: 평소에는 세부 현황(툴팁)을
-// 표시하지 않다가 그래프를 클릭/터치했을 때만 10초간 보여주고 자동으로 사라지게 한다.
+// 표시하지 않다가 그래프를 클릭/터치했을 때만 3초간 보여주고 자동으로 사라지게 한다.
+// [버그 수정 - 팝업마다 자동 숨김 시간이 제각각이었음] 예전엔 여기만 10초였고 다른 그래프 팝업(일별
+// 손익 추이/총 평가금액 추이/자산군별 투자금액 추이/환율 추이/비중 확대)은 3초(scheduleDailyPnl
+// TooltipHide)였다 - 전부 3초로 통일한다.
 // 각 차트의 options.events를 'click'만 남겨 마우스 호버만으로는 툴팁이 뜨지 않게 하고, 대신
-// options.onClick에서 이 함수를 호출해 10초 뒤 활성 요소를 비워 툴팁을 강제로 닫는다.
+// options.onClick에서 이 함수를 호출해 3초 뒤 활성 요소를 비워 툴팁을 강제로 닫는다.
 // key로 charts 레지스트리와 비교해, 그 사이 차트가 다시 그려져 이전 인스턴스가 destroy됐으면
 // (예: 데이터 갱신으로 재렌더링) 파괴된 인스턴스를 건드리지 않도록 방어한다.
 const tooltipAutoHideTimers = {};
@@ -4283,7 +4338,7 @@ function scheduleTooltipAutoHide(chart, key) {
     chart.setActiveElements([]);
     chart.tooltip.setActiveElements([], { x: 0, y: 0 });
     chart.update();
-  }, 10000);
+  }, 3000);
 }
 
 function renderScenarioCompareChart(points1, points2, milestoneOffsets) {
@@ -5509,20 +5564,36 @@ function rowHtml(r) {
   </tr>`;
 }
 
-// 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약을 탭하면 openAssetDetailModal()이 뜬다.
+// [모바일 3줄 레이아웃] 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약을 탭하면
+// openAssetDetailModal()이 뜬다. 왼쪽 텍스트 블록을 정확히 3줄로 구성한다:
+//   1줄 종목명(15px/600, 말줄임표) - 2줄 티커+소유자 배지(13px, 보조색) - 3줄 누적 수익률/평가손익
+//   (13.5px/500, 상승=빨강/하락=파랑 - profitColor()로 기존 전체 화면과 색상 규칙 통일).
+// min-w-0(텍스트 블록)+flex-1과 shrink-0(우측 가격 블록)의 조합이 있어야 flex 레이아웃 안에서 종목명의
+// truncate(=white-space:nowrap+overflow:hidden+text-overflow:ellipsis, Tailwind 유틸리티)가 실제로
+// 우측 영역을 침범하지 않고 동작한다(min-w-0 없이는 flex 아이템이 콘텐츠 너비만큼 늘어나 버린다).
+// [참고] 예전엔 1줄에 당일 등락률(changeInlineHtml)을 함께 붙였는데, 이번 3줄 재구성으로 3줄 자리에
+// 누적 수익률/평가손익을 대신 넣었다 - 당일 등락률은 종목 상세 모달/KPI 카드에서 계속 확인 가능하다.
 function cardHtml(r) {
   const p = derivePresentation(r);
   const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
-  const subtitle = r._isGroup
-    ? `${escapeHtml(r.ticker || '-')} · 통합 ${r._memberCount}건 (${escapeHtml(r.owner)})`
-    : `${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owner)}`;
+  // [배지 폭 절약] "통합 N건" 접미사를 붙이면(예: "신랑+와이프 · 통합 2건") 좁은 모바일 폭에서 배지가
+  // 너무 넓어져 옆의 티커가 도리어 심하게 잘린다 - 소유자 이름("신랑+와이프")만으로도 통합 여부는 알 수
+  // 있으므로 배지는 소유자 이름만 표시하고, 상세 모달에서 정확한 통합 건수를 확인하게 한다.
+  const ownerLabel = r.owner;
   const memberIdsAttr = r._isGroup ? ` data-member-ids="${r._memberIds.join(',')}"` : '';
 
   return `
-  <div class="touch-target flex items-center gap-2 px-4 py-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
+  <div class="touch-target flex items-center gap-2 px-4 py-3.5 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
     <div class="min-w-0 flex-1">
-      <p class="font-semibold text-sm truncate">${escapeHtml(r.name)}${changeInlineHtml(p)}</p>
-      <p class="text-[11px] font-mono text-slate-400 truncate">${subtitle}</p>
+      <p class="font-semibold text-[15px] leading-tight truncate">${escapeHtml(r.name)}</p>
+      <p class="mt-1 text-[13px] leading-tight text-slate-500 dark:text-slate-400 flex items-center gap-1.5 min-w-0">
+        <span class="font-mono truncate">${escapeHtml(r.ticker || '-')}</span>
+        <span class="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500 dark:text-slate-300">${escapeHtml(ownerLabel)}</span>
+      </p>
+      <!-- [버그 수정 - 3줄 레이아웃 줄바꿈] 평가손익이 억대(예: +378,765,528원)로 커지면 전체 숫자를
+           다 쓰는 fmtSigned가 좁은 모바일 폭에서 한 줄에 안 들어가 2줄로 줄바꿈되며 3줄 설계가 깨졌다
+           - "억/만원" 축약 표기(fmtSignedShort, 예: +3억 7,877만원)로 바꿔 항상 한 줄에 들어가게 한다. -->
+      <p class="mt-1 text-[13.5px] leading-tight font-medium whitespace-nowrap ${profitColor(r.profit)}">(${fmtPct(r.rateOfReturn)} / ${fmtSignedShort(r.profit)})</p>
     </div>
     <div class="text-right shrink-0 pl-2">
       <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
@@ -7283,13 +7354,22 @@ function getDailyPnlOwnerList() {
 
 // 오늘 날짜 키를 항상 최신값으로 덮어쓴다 - 하루 중 여러 번 호출돼도(자동 5분 갱신 등) 그날의 가장
 // 최근 값만 남는다.
-function recordDailySnapshot(totalCur, dailyProfit, byOwner) {
+function recordDailySnapshot(totalCur, dailyProfit, byOwner, byOwnerCategory) {
   const dateKey = todayDateStr();
   const byOwnerSnap = {};
   Object.keys(byOwner).forEach((owner) => {
     byOwnerSnap[owner] = { cur: byOwner[owner].cur, dailyPnL: byOwner[owner].dailyPnL };
   });
-  state.dailySnapshots[dateKey] = { total: { cur: totalCur, dailyPnL: dailyProfit }, byOwner: byOwnerSnap };
+  // [자산군별 투자금액 추이 팝업] 소유자×자산군 교차 집계도 함께 기록한다 - byOwnerCategory 인자를
+  // 안 넘기는 기존 호출부(없음, 하지만 방어적으로)나 옛 데이터 구조와의 호환을 위해 없으면 빈 객체로 둔다.
+  const byOwnerCategorySnap = {};
+  Object.keys(byOwnerCategory || {}).forEach((owner) => {
+    byOwnerCategorySnap[owner] = {};
+    Object.keys(byOwnerCategory[owner]).forEach((category) => {
+      byOwnerCategorySnap[owner][category] = { cur: byOwnerCategory[owner][category].cur, dailyPnL: byOwnerCategory[owner][category].dailyPnL };
+    });
+  });
+  state.dailySnapshots[dateKey] = { total: { cur: totalCur, dailyPnL: dailyProfit }, byOwner: byOwnerSnap, byOwnerCategory: byOwnerCategorySnap };
   persistDailySnapshots();
 }
 
@@ -7372,11 +7452,16 @@ async function backfillDailyPnlHistory(asset) {
     sumDailyPnLKRW += dailyPnLKRW;
     appliedDays++;
 
-    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {} };
+    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
     const snap = state.dailySnapshots[dateKey];
+    if (!snap.byOwnerCategory) snap.byOwnerCategory = {}; // 이 기능 이전에 만들어진 스냅샷 방어
     snap.total.dailyPnL += dailyPnLKRW;
     if (!snap.byOwner[asset.owner]) snap.byOwner[asset.owner] = { cur: 0, dailyPnL: 0 };
     snap.byOwner[asset.owner].dailyPnL += dailyPnLKRW;
+    // [자산군별 투자금액 추이 팝업] 소유자×자산군 교차 집계에도 같은 변동액을 반영한다.
+    if (!snap.byOwnerCategory[asset.owner]) snap.byOwnerCategory[asset.owner] = {};
+    if (!snap.byOwnerCategory[asset.owner][asset.category]) snap.byOwnerCategory[asset.owner][asset.category] = { cur: 0, dailyPnL: 0 };
+    snap.byOwnerCategory[asset.owner][asset.category].dailyPnL += dailyPnLKRW;
   }
   console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) - ${appliedDays}일 반영 완료, 구간 합산 손익 ${Math.round(sumDailyPnLKRW).toLocaleString()}원`);
   persistDailySnapshots();
@@ -7445,16 +7530,19 @@ async function backfillAllHoldingsDailyPnlHistory() {
 // 그래프가 주말마다 0원으로 끊기지 않고 직전 값을 그대로 이어간다(일별 손익 추이 쪽은 0원 표시가
 // 원래도 옳으므로 영향 없음). 오늘 날짜 자체는 renderKPIs()가 실시간으로 관리하므로 건드리지 않는다.
 const CUR_RECONSTRUCTION_DAYS = 366; // 팝업 최대 기간 탭([1년]=365일)을 여유 있게 덮는다.
+// [자산군별 투자금액 추이 팝업] 소유자 단독 역산에서 "소유자×자산군" 역산으로 한 단계 더 세분화했다.
+// 가장 세밀한 단위(소유자×자산군)에서 먼저 역산+0원 바닥 처리를 하고, 소유자 합계·전체 합계는 그
+// 세분화된 값들을 그대로 더해서 "재계산"한다(따로 역산하지 않음) - 그래야 전체=Σ소유자=Σ(소유자×자산군)
+// 3단 계층이 항상 정확히 일치한다(합계 ≠ 신랑+와이프 불일치 버그와 같은 원리를 한 단계 더 확장).
 function reconstructHistoricalCurValues() {
   const owners = getDailyPnlOwnerList();
-  let totalCur = 0;
-  const byOwnerCur = {};
-  owners.forEach((o) => { byOwnerCur[o] = 0; });
+  // anchor: 오늘 시점의 실제 소유자×자산군 평가금액(방금 끝난 시세 갱신을 확실히 반영하기 위해 매번 새로 계산)
+  const ownerCategoryCur = {}; // { owner: { category: cur } }
+  owners.forEach((o) => { ownerCategoryCur[o] = {}; });
   state.assets.forEach((a) => {
     const curAmount = calcRow(a).curAmount;
-    totalCur += curAmount;
-    if (!(a.owner in byOwnerCur)) byOwnerCur[a.owner] = 0;
-    byOwnerCur[a.owner] += curAmount;
+    if (!ownerCategoryCur[a.owner]) ownerCategoryCur[a.owner] = {};
+    ownerCategoryCur[a.owner][a.category] = (ownerCategoryCur[a.owner][a.category] || 0) + curAmount;
   });
 
   const todayKey = todayDateStr();
@@ -7466,38 +7554,48 @@ function reconstructHistoricalCurValues() {
   }
   // dateKeys[0] === todayKey이고, 뒤로 갈수록 하루씩 과거로 간다(최신 -> 과거 순).
 
-  let runningTotal = totalCur;
-  const runningByOwner = { ...byOwnerCur };
+  const runningOC = {}; // { owner: { category: 클램프 전 역산값 } }
+  owners.forEach((o) => { runningOC[o] = { ...ownerCategoryCur[o] }; });
 
   dateKeys.forEach((dateKey, i) => {
     if (i > 0) {
       // 하루 더 과거로 넘어가기 전에, 방금 처리한(하루 더 최신인) 날짜의 변동액만큼을 빼서 이 날짜의
-      // 값을 구한다 - runningTotal/runningByOwner는 이 시점까지 "dateKeys[i-1]의 cur"를 들고 있다.
+      // 값을 구한다 - runningOC는 이 시점까지 "dateKeys[i-1]의 cur"를 들고 있다.
       const prevSnap = state.dailySnapshots[dateKeys[i - 1]];
-      runningTotal -= num(prevSnap && prevSnap.total && prevSnap.total.dailyPnL);
       owners.forEach((o) => {
-        const ownerSnap = prevSnap && prevSnap.byOwner && prevSnap.byOwner[o];
-        runningByOwner[o] -= num(ownerSnap && ownerSnap.dailyPnL);
+        const ownerCatSnap = prevSnap && prevSnap.byOwnerCategory && prevSnap.byOwnerCategory[o];
+        Object.keys(runningOC[o]).forEach((cat) => {
+          const catSnap = ownerCatSnap && ownerCatSnap[cat];
+          runningOC[o][cat] -= num(catSnap && catSnap.dailyPnL);
+        });
       });
     }
 
     if (dateKey === todayKey) return; // 오늘은 renderKPIs()의 실시간 기록을 그대로 둔다.
 
-    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {} };
+    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
     const snap = state.dailySnapshots[dateKey];
+    if (!snap.byOwnerCategory) snap.byOwnerCategory = {};
     // [버그 수정 - 1년 전 구간 음수(-) 평가금액] "현재 수량이 과거에도 그대로 있었다"는 근사이다 보니
     // 구간이 길어질수록(특히 1년) 역산 누적값이 실제로는 있을 수 없는 음수까지 내려가는 경우가
-    // 있었다 - 평가금액은 개념상 0원 미만이 될 수 없으므로 저장 시점에 0원 바닥을 씌운다. runningTotal/
-    // runningByOwner 자체는 클램프하지 않고 그대로 다음(더 과거) 날짜 역산의 기준으로 계속 쓴다 - 그래야
-    // 화면에 보여줄 값만 보정되고, 재귀 계산 자체는 매일의 실제 dailyPnL 누적을 그대로 반영해 왜곡되지
-    // 않는다.
-    // [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 합계와 소유자별 값을 각각 따로 클램프하면(합계는 원래
-    // 음수라 0으로, 신랑+와이프 합은 원래 양수라 그대로 남는 식으로) 합계가 소유자 합과 어긋날 수 있다.
-    // 그래서 소유자별 값을 먼저 0원으로 바닥 처리한 뒤, 합계는 그 바닥 처리된 소유자별 값들의 합으로
-    // "역산"하지 않고 "재계산"한다 - 이러면 합계는 항상 정의상 소유자 합과 정확히 같다.
+    // 있었다 - 평가금액은 개념상 0원 미만이 될 수 없으므로 저장 시점에(가장 세밀한 소유자×자산군
+    // 단위에서) 0원 바닥을 씌운다. runningOC 자체는 클램프하지 않고 그대로 다음(더 과거) 날짜 역산의
+    // 기준으로 계속 쓴다 - 그래야 화면에 보여줄 값만 보정되고, 재귀 계산 자체는 매일의 실제 dailyPnL
+    // 누적을 그대로 반영해 왜곡되지 않는다.
+    // [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 상위 단계(소유자 합계/전체 합계)를 각각 따로 역산해
+    // 클램프하면 서로 어긋날 수 있다 - 그래서 가장 세밀한 단위만 역산+클램프하고, 그 위 단계는 전부
+    // "재계산"(합산)한다. 이러면 전체=Σ소유자=Σ(소유자×자산군)이 항상 정확히 일치한다.
     owners.forEach((o) => {
       if (!snap.byOwner[o]) snap.byOwner[o] = { cur: 0, dailyPnL: 0 };
-      snap.byOwner[o].cur = Math.max(0, runningByOwner[o]);
+      if (!snap.byOwnerCategory[o]) snap.byOwnerCategory[o] = {};
+      let ownerTotal = 0;
+      Object.keys(runningOC[o]).forEach((cat) => {
+        const floored = Math.max(0, runningOC[o][cat]);
+        if (!snap.byOwnerCategory[o][cat]) snap.byOwnerCategory[o][cat] = { cur: 0, dailyPnL: 0 };
+        snap.byOwnerCategory[o][cat].cur = floored;
+        ownerTotal += floored;
+      });
+      snap.byOwner[o].cur = ownerTotal;
     });
     snap.total.cur = owners.reduce((sum, o) => sum + snap.byOwner[o].cur, 0);
   });
@@ -7547,6 +7645,36 @@ function buildTotalValueSeries(days) {
   return series;
 }
 
+// [자산군별 투자금액 추이 팝업] 소유자 필터를 반영해 날짜별 자산군 구성을 만든다. ownerFilter가 'all'/
+// 미지정이면 모든 소유자의 같은 자산군을 합산하고, 특정 소유자명이면 그 사람 몫만 뽑는다. reconstruct
+// HistoricalCurValues가 이미 0원 바닥 처리를 해 두었으므로 여기서 다시 클램프할 필요는 없지만, 이 기능
+// 추가 이전에 만들어진 옛 스냅샷(byOwnerCategory 없음)까지 방어적으로 감안해 Math.max(0, ...)를 한 번
+// 더 적용한다.
+function buildCategoryHistorySeries(days, ownerFilter) {
+  const todayKey = todayDateStr();
+  const owners = (!ownerFilter || ownerFilter === 'all') ? getDailyPnlOwnerList() : [ownerFilter];
+  const result = [];
+  const cursor = new Date();
+  cursor.setDate(cursor.getDate() - (days - 1));
+  while (dateKeyFromDate(cursor) <= todayKey) {
+    const dateKey = dateKeyFromDate(cursor);
+    const snap = state.dailySnapshots[dateKey];
+    const byCategoryAmounts = {};
+    if (snap && snap.byOwnerCategory) {
+      owners.forEach((o) => {
+        const oc = snap.byOwnerCategory[o];
+        if (!oc) return;
+        Object.keys(oc).forEach((cat) => {
+          byCategoryAmounts[cat] = (byCategoryAmounts[cat] || 0) + Math.max(0, num(oc[cat].cur));
+        });
+      });
+    }
+    result.push({ date: dateKey, byCategoryAmounts });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
 // 실현손익 시리즈 - 거래내역의 매도 건을 날짜별/소유자별로 집계한다(기간별 실현손익 리포트와 같은
 // computePositionsAndRealizedPnL 결과를 재사용). 매도가 없는 날은 자연스럽게 빈 날짜라 달력 채우기를
 // 적용하지 않는다(평가손익/평가금액과 달리 "매도 없음=0"이 아니라 "그 날은 집계 대상이 아님"에 가깝다).
@@ -7575,6 +7703,31 @@ const SERIES_COLORS_LIGHT = { total: '#4f46e5', owners: ['#0077B6', '#EC4899', '
 const SERIES_COLORS_DARK = { total: '#818cf8', owners: ['#64D2FF', '#F472B6', '#FFD60A', '#32D74B'] };
 function getSeriesColors() {
   return document.documentElement.classList.contains('dark') ? SERIES_COLORS_DARK : SERIES_COLORS_LIGHT;
+}
+
+// [자산군별 투자금액 추이 팝업] 자산군(주식/ETF/채권/현금/부동산)별 고정 색상 - 다른 차트의 팔레트와
+// 겹치지 않도록 골랐고, 라이트/다크 모드별로 대비를 맞췄다. 팔레트에 없는(사용자가 새 자산군을 쓰는)
+// 경우를 대비해 폴백 회색도 함께 둔다.
+// [버그 수정 - 누적 영역 차트 시인성] 예전 팔레트(#0077B6, #B8860B 등)는 채도가 낮아 여러 영역이
+// 겹겹이 쌓였을 때 경계가 흐릿하게 번져 보였다 - 채도/명도를 올린 선명한 색으로 교체했다.
+const CATEGORY_COLORS_LIGHT = { '주식': '#7C3AED', 'ETF': '#0EA5E9', '채권': '#16A34A', '현금': '#F59E0B', '부동산': '#DC2626' };
+const CATEGORY_COLORS_DARK = { '주식': '#A78BFA', 'ETF': '#38BDF8', '채권': '#4ADE80', '현금': '#FBBF24', '부동산': '#F87171' };
+const CATEGORY_COLOR_FALLBACK_LIGHT = '#64748b';
+const CATEGORY_COLOR_FALLBACK_DARK = '#94a3b8';
+function getCategoryColor(category) {
+  const isDark = document.documentElement.classList.contains('dark');
+  const palette = isDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS_LIGHT;
+  return palette[category] || (isDark ? CATEGORY_COLOR_FALLBACK_DARK : CATEGORY_COLOR_FALLBACK_LIGHT);
+}
+// 자산군 영역 위에서 가장 돋보여야 하는 "총 합계" 라인 색 - 요청하신 대로 흰색/크림색 계열을 쓰되,
+// 라이트 모드에서는 카드 배경 자체가 흰색이라 크림색 단독으로는 거의 안 보인다. 그래서 진한 테두리
+// 색(hexToRgba로 반투명 처리)을 먼저 굵게 깔아 "헤일로"를 만들고 그 위에 밝은 선을 얹는 2겹 방식으로
+// 어떤 배경에서도(밝은 카드/어두운 카드) 고대비를 유지한다 - renderCategoryHistoryChart 참고.
+function getTotalLineColor() {
+  return document.documentElement.classList.contains('dark') ? '#FFFBEB' : '#FFFDF5';
+}
+function getTotalLineHaloColor() {
+  return document.documentElement.classList.contains('dark') ? 'rgba(0,0,0,0.55)' : 'rgba(15,23,42,0.45)';
 }
 
 // [일별 손익 추이 Y축 전용 축약 포맷] 기존 fmtKRWShort("1억 2,000만원" 형태)는 다른 화면(KPI 카드 등)
@@ -7955,6 +8108,11 @@ function renderExchangeRateChart(points) {
       }
     }
   });
+
+  // [버그 수정 - 터치 시 금액 툴팁이 안 사라짐] 다른 그래프 팝업(일별 손익 추이/총 평가금액 추이/
+  // 자산군별 투자금액 추이)과 동일하게 3초 뒤 자동으로 닫는다 - onclick= 할당이라 재렌더링마다 이전
+  // 핸들러를 덮어써서 리스너가 쌓이지 않는다.
+  canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.exchangeRate);
 }
 
 function renderExchangeRateSummary(points) {
@@ -8016,6 +8174,239 @@ document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((btn
     fxRatePopupPeriod = btn.dataset.fxPeriod;
     document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateExchangeRateModal();
+  });
+});
+
+/* ---- 20-3. 자산군별 투자금액 추이 모달 (총 투자금액 KPI 카드 [세부내용] 터치 시) ----
+ *    state.dailySnapshots[].byOwnerCategory(reconstructHistoricalCurValues가 채워 둔 소유자×자산군
+ *    교차 평가금액)를 buildCategoryHistorySeries()로 뽑아 누적 영역(stacked area) 차트로 그린다.
+ * ---------------------------------------------------------------------- */
+let categoryHistoryOwnerFilter = 'all'; // 'all' | 실제 소유자명
+let categoryHistoryPopupDays = 30;      // 30 | 90 | 180 | 365
+
+function renderCategoryHistoryOwnerTabs() {
+  const wrap = document.getElementById('categoryHistoryOwnerTabs');
+  const tabs = [{ key: 'all', label: '전체' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
+  wrap.innerHTML = tabs.map((t) => `
+    <button type="button" data-ch-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === categoryHistoryOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
+  `).join('');
+  wrap.querySelectorAll('button[data-ch-owner]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      categoryHistoryOwnerFilter = btn.dataset.chOwner;
+      renderCategoryHistoryOwnerTabs();
+      updateCategoryHistoryModal();
+    });
+  });
+}
+
+// 자산군 고유 색(hex)을 반투명 영역 채우기 색(rgba)으로 변환 - Chart.js 색상 헬퍼에 기대지 않고 직접 계산.
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+// [자산군별 영역 그라데이션] 단색 반투명 대신 위(진하게)->아래(연하게) 그라데이션을 줘서 "겹겹이
+// 쌓인" 입체감을 낸다. chartArea가 아직 없는 최초 레이아웃 패스에서는 canvas가 준비 전이라 반투명
+// 단색으로 폴백한다(Chart.js가 레이아웃 완료 후 다시 호출해준다).
+function makeCategoryAreaGradient(chart, colorHex) {
+  const { ctx, chartArea } = chart;
+  if (!chartArea) return hexToRgba(colorHex, 0.45);
+  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  gradient.addColorStop(0, hexToRgba(colorHex, 0.68));
+  gradient.addColorStop(1, hexToRgba(colorHex, 0.16));
+  return gradient;
+}
+
+// [영역 경계 입체감] 자산군 영역의 테두리 선 아래에 은은한 그림자를 깔아 "평면 색칠"이 아니라 한 겹
+// 한 겹 쌓아올린 듯한 느낌을 낸다 - 이 차트 전용 로컬 플러그인이라 다른 차트에는 영향 없다(Chart 생성
+// 시 plugins: [...] 배열로 이 차트 인스턴스에만 등록).
+const categoryAreaShadowPlugin = {
+  id: 'categoryAreaShadow',
+  beforeDatasetDraw(chart, args) {
+    const ds = chart.data.datasets[args.index];
+    if (!ds || !ds._applyShadow) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.28)';
+    ctx.shadowBlur = 7;
+    ctx.shadowOffsetY = 3;
+  },
+  afterDatasetDraw(chart, args) {
+    const ds = chart.data.datasets[args.index];
+    if (!ds || !ds._applyShadow) return;
+    chart.ctx.restore();
+  }
+};
+
+function renderCategoryHistoryChart(series) {
+  const canvas = document.getElementById('categoryHistoryChart');
+  const msgEl = document.getElementById('categoryHistoryChartMsg');
+  if (charts.categoryHistory) { charts.categoryHistory.destroy(); charts.categoryHistory = null; }
+
+  const categorySet = new Set();
+  series.forEach((row) => Object.keys(row.byCategoryAmounts).forEach((c) => categorySet.add(c)));
+  const categoryList = [...categorySet];
+
+  if (series.length === 0 || categoryList.length === 0) {
+    canvas.classList.add('hidden');
+    msgEl.textContent = '아직 기록된 자산군별 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
+    msgEl.classList.remove('hidden');
+    return;
+  }
+  msgEl.classList.add('hidden');
+  canvas.classList.remove('hidden');
+
+  const isDark = document.documentElement.classList.contains('dark');
+  const textColor = chartTextColor();
+  const pointBorderColor = isDark ? '#0f172a' : '#ffffff';
+  const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
+
+  // [경계선 강조] 자산군마다 뚜렷하게 구분되도록 테두리를 굵고 선명하게, 배경은 그라데이션으로.
+  const categoryDatasets = categoryList.map((cat) => {
+    const color = getCategoryColor(cat);
+    return {
+      label: cat,
+      data: series.map((s) => s.byCategoryAmounts[cat] || 0),
+      borderColor: color,
+      backgroundColor: (context) => makeCategoryAreaGradient(context.chart, color),
+      borderWidth: 2.5,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      pointBackgroundColor: color,
+      pointBorderColor,
+      pointBorderWidth: 1.5,
+      tension: 0.15,
+      fill: true,
+      stack: 'categories',
+      _applyShadow: true
+    };
+  });
+
+  // [총 합계 라인] 자산군 영역 맨 위에서 가장 돋보여야 하는 라인 - 밝은 크림색 단독으로는 라이트
+  // 모드(흰 배경 카드)에서 거의 안 보이므로, 어두운 "헤일로" 선을 먼저 굵게 깐 뒤 그 위에 밝은 선을
+  // 겹쳐 그려 어떤 배경에서도 고대비를 유지한다(지도 앱의 윤곽선 있는 경로선과 같은 기법). 두 선
+  // 모두 실제 자산군 합계와 동일한 값이라 각자 고유 stack 그룹을 줘서 서로 이중으로 누적되지 않게
+  // 한다(카테고리 영역의 'categories' 스택과도 분리).
+  const totalSeries = series.map((s) => Object.values(s.byCategoryAmounts).reduce((sum, v) => sum + v, 0));
+  const totalHaloDataset = {
+    label: '합계(외곽선)',
+    data: totalSeries,
+    borderColor: getTotalLineHaloColor(),
+    borderWidth: 6,
+    pointRadius: 0,
+    tension: 0.15,
+    fill: false,
+    stack: 'totalHalo',
+    _hideFromLegend: true,
+    _hideFromTooltip: true
+  };
+  const totalBrightDataset = {
+    label: '합계',
+    data: totalSeries,
+    borderColor: getTotalLineColor(),
+    borderWidth: 3,
+    pointRadius: 2.5,
+    pointHoverRadius: 6,
+    pointBackgroundColor: getTotalLineColor(),
+    pointBorderColor: isDark ? '#000000' : '#334155',
+    pointBorderWidth: 1,
+    tension: 0.15,
+    fill: false,
+    stack: 'totalBright'
+  };
+
+  const datasets = [...categoryDatasets, totalHaloDataset, totalBrightDataset];
+
+  charts.categoryHistory = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    plugins: [categoryAreaShadowPlugin],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: { color: textColor, boxWidth: 10, usePointStyle: true, font: { size: 10, weight: '600' }, filter: (item, data) => !data.datasets[item.datasetIndex]._hideFromLegend }
+        },
+        tooltip: {
+          filter: (item) => !item.dataset._hideFromTooltip,
+          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtKRW(ctx.parsed.y)}` }
+        },
+        datalabels: { display: false }
+      },
+      scales: {
+        x: { ticks: { color: textColor, maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWAxisShort(v) }, grid: { color: isDark ? 'rgba(148,163,184,.2)' : 'rgba(100,116,139,.18)' }, stacked: true }
+      }
+    }
+  });
+
+  // [버그 수정 - 터치 시 금액 툴팁이 안 사라짐] 일별 손익 추이/총 평가금액 추이 팝업과 동일하게, 모바일
+  // 터치로 띄운 툴팁이 다른 곳을 다시 누르기 전까지 화면에 계속 남아있던 문제를 막는다 - 3초 뒤 자동으로
+  // 닫는다(scheduleDailyPnlTooltipHide 재사용). onclick= 할당은 재렌더링마다 이전 핸들러를 덮어써서
+  // addEventListener처럼 리스너가 쌓이는 leak이 없다.
+  canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.categoryHistory);
+}
+
+// 차트 바로 아래 요약 - 기간 마지막 날(=오늘) 기준 자산군별 평가금액과 비중(%).
+function renderCategoryHistorySummary(series) {
+  const container = document.getElementById('categoryHistorySummary');
+  if (series.length === 0) { container.innerHTML = ''; return; }
+  const last = series[series.length - 1];
+  const entries = Object.entries(last.byCategoryAmounts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400">현재 시점에 표시할 자산군 데이터가 없습니다.</p>';
+    return;
+  }
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  container.innerHTML = entries.map(([cat, amt]) => {
+    const pct = total !== 0 ? (amt / total) * 100 : 0;
+    return `
+    <div class="flex items-center justify-between text-sm">
+      <span class="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+        <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0" style="background:${getCategoryColor(cat)}"></span>${escapeHtml(cat)}
+      </span>
+      <span class="text-right">
+        <span class="font-medium">${fmtKRW(amt)}</span>
+        <span class="ml-1.5 text-xs text-slate-400">${fmtNum(pct, 1)}%</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function updateCategoryHistoryModal() {
+  const series = buildCategoryHistorySeries(categoryHistoryPopupDays, categoryHistoryOwnerFilter);
+  renderCategoryHistoryChart(series);
+  renderCategoryHistorySummary(series);
+}
+
+function showCategoryHistoryModal() {
+  categoryHistoryOwnerFilter = 'all';
+  categoryHistoryPopupDays = 30;
+  renderCategoryHistoryOwnerTabs();
+  document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.chPeriod) === 30));
+  document.getElementById('categoryHistoryModal').classList.remove('hidden');
+  pushModalHistoryState();
+  updateCategoryHistoryModal();
+}
+function closeCategoryHistoryModal(viaBackButton) {
+  document.getElementById('categoryHistoryModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('kpiTotalCostDetailBtn').addEventListener('click', showCategoryHistoryModal);
+document.getElementById('closeCategoryHistoryModalBtn').addEventListener('click', () => closeCategoryHistoryModal());
+document.getElementById('categoryHistoryModal').addEventListener('click', (e) => {
+  if (e.target.id === 'categoryHistoryModal') closeCategoryHistoryModal();
+});
+document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    categoryHistoryPopupDays = Number(btn.dataset.chPeriod);
+    document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    updateCategoryHistoryModal();
   });
 });
 
