@@ -321,20 +321,27 @@
   <!-- ============================= 주요 금융 자산 TOP 5 =============================
        [탭 재배치] 투자세부 탭에 있던 국내/해외 자산 Top5를 총투자현황의 [일간 평가손익] 카드 바로
        다음 자리로 옮겨왔다 - 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings
-       참고). 모바일에서는 평가손익/당일손익 두 열을 숨겨(hidden sm:table-cell) 상품명·평가금액·비중
-       3열만 가로 스크롤 없이 한 줄로 보여준다 - sm 이상에서는 5열 전부 보인다. -->
+       참고). [모바일 5열 한 줄 표기 - 최종] 상품명·평가금액·등락률·당일손익·총손익 5열(비중은 제외)을
+       모든 화면 폭에서 동일하게 보여준다 - table-fixed + colgroup로 열 너비를 퍼센트 고정해 내용이
+       가로로 삐져나오지 않게 하고, 상품명만 truncate로 말줄임 처리한다. 폰트를 text-[10px]로 줄이고
+       각 숫자 열은 손익률을 금액 아래 두 줄로 쌓지 않고 한 열의 한 줄 값으로만 표시해(renderTopHoldingsTable
+       참고) 320~375px 폭에서도 가로 스크롤 없이 한 줄에 다 들어간다. -->
   <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <h3 class="text-sm font-semibold mb-3">국내 자산 Top 5</h3>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
+        <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
+          <colgroup>
+            <col style="width:20%"><col style="width:23%"><col style="width:15%">
+            <col style="width:19%"><col style="width:23%">
+          </colgroup>
           <thead>
             <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th class="text-left font-medium py-1.5 pr-2">상품명</th>
-              <th class="text-right font-medium py-1.5 px-2">평가금액</th>
-              <th class="hidden sm:table-cell text-right font-medium py-1.5 px-2">평가손익</th>
-              <th class="hidden sm:table-cell text-right font-medium py-1.5 px-2">당일손익</th>
-              <th class="text-right font-medium py-1.5 pl-2">비중</th>
+              <th class="text-left font-medium py-1.5 pr-1">상품명</th>
+              <th class="text-right font-medium py-1.5 px-1">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-1">등락률</th>
+              <th class="text-right font-medium py-1.5 px-1">당일손익</th>
+              <th class="text-right font-medium py-1.5 pl-1">총손익</th>
             </tr>
           </thead>
           <tbody id="topHoldingsDomestic"></tbody>
@@ -344,14 +351,18 @@
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <h3 class="text-sm font-semibold mb-3">해외 자산 Top 5</h3>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
+        <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
+          <colgroup>
+            <col style="width:20%"><col style="width:23%"><col style="width:15%">
+            <col style="width:19%"><col style="width:23%">
+          </colgroup>
           <thead>
             <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th class="text-left font-medium py-1.5 pr-2">상품명</th>
-              <th class="text-right font-medium py-1.5 px-2">평가금액</th>
-              <th class="hidden sm:table-cell text-right font-medium py-1.5 px-2">평가손익</th>
-              <th class="hidden sm:table-cell text-right font-medium py-1.5 px-2">당일손익</th>
-              <th class="text-right font-medium py-1.5 pl-2">비중</th>
+              <th class="text-left font-medium py-1.5 pr-1">상품명</th>
+              <th class="text-right font-medium py-1.5 px-1">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-1">등락률</th>
+              <th class="text-right font-medium py-1.5 px-1">당일손익</th>
+              <th class="text-right font-medium py-1.5 pl-1">총손익</th>
             </tr>
           </thead>
           <tbody id="topHoldingsForeign"></tbody>
@@ -2465,7 +2476,8 @@ function getTopHoldings() {
 }
 
 // list: 이미 상위 5개로 잘라낸 한 지역(국내 또는 해외)의 합산 종목 배열.
-// grandTotal: 비중(%) 계산의 분모 - 국내/해외를 합친 "티커가 존재하는 전체 상품"의 합계 평가금액.
+// grandTotal: 예전엔 비중(%) 계산에 썼으나 [최종 5열 확정] Top5에서 비중 열을 제외하면서 더는 쓰이지
+// 않는다 - 호출부(renderTopHoldings)와의 시그니처 호환을 위해 인자만 남겨둔다.
 function renderTopHoldingsTable(containerId, list, grandTotal) {
   const tbody = document.getElementById(containerId);
   if (list.length === 0) {
@@ -2474,30 +2486,25 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
   }
   tbody.innerHTML = list.map((g) => {
     const profit = g.curAmount - g.buyAmount;
-    const rateOfReturn = g.buyAmount !== 0 ? (profit / g.buyAmount) * 100 : 0;
-    const pct = grandTotal !== 0 ? (g.curAmount / grandTotal * 100) : 0;
     // 당일손익률 분모는 renderKPIs()의 dailyProfitRate와 동일한 규칙(전일 기준 평가금액 = 오늘 평가금액
-    // - 오늘 하루 손익)을 이 종목(합산 그룹) 단위로 그대로 적용한다.
+    // - 오늘 하루 손익)을 이 종목(합산 그룹) 단위로 그대로 적용한다. 이 값이 곧 "당일 실시간 주가등락율"
+    // 열이다(보유수량은 하루 안에 안 바뀌므로 포지션 당일손익률 = 종목 당일 주가등락률과 동일).
     const prevDayAmount = g.curAmount - g.dailyPnL;
     const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
-    // 달러 표시 여부는 "국내/해외" 지역 구분이 아니라 실제 통화(currency)를 기준으로 판단한다 - 국내
-    // 상장된 해외지수 ETF(예: TIGER 미국S&P500)처럼 '해외'로 분류돼도 원화로 거래되는 경우가 흔해서,
-    // 지역 기준으로 판단하면 원화 평가금액에 잘못 '$'를 붙이는 오류가 생긴다(이 앱 전체의 원칙과 동일:
-    // currency가 유일한 원화환산/표시 기준이고 isDomestic은 분류·표시 전용이다).
-    // [금액 단위 표기] 억/만원 축약 표기(fmtKRWShort) - 달러 보유분은 $ 원금이 주 표시이므로 그대로
-    // 두고, 원화 환산 보조줄만 이 축약 표기를 쓴다.
-    const valueHtml = g.isForeign
-      ? `$${fmtNum(g.curAmountOriginal, 2)}<br><span class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(g.curAmount)}</span>`
-      : fmtKRWShort(g.curAmount);
-    // [모바일 한 줄 표기] 좁은 화면(sm 미만)에서는 평가손익/당일손익 두 열을 숨기고 상품명·평가금액·비중
-    // 3열만 보여줘 가로 스크롤 없이 한 줄로 떨어지게 한다 - sm 이상에서는 기존처럼 5열 전부 보인다.
+    // [최종 5열 확정] 달러 보유분도 "$원금 + 원화환산 보조줄" 2줄 표기 대신 다른 숫자 열들과 동일하게
+    // 원화 축약 표기(fmtKRWShort) 한 줄로 통일한다 - 모든 화면 폭에서 5열이 줄바꿈 없이 한 줄에
+    // 나란히 들어가려면 각 셀이 항상 단일 텍스트 줄이어야 한다($ 원금은 종목 상세 모달에서 확인 가능).
+    const valueHtml = fmtKRWShort(g.curAmount);
+    // [최종 5열 확정] 상품명·평가금액·등락률·당일손익·총손익 5개의 독립된 열로 나란히 배치한다(비중은
+    // 제외, 카드 상단 comment 참고) - 손익 금액 아래 수익률을 두 줄로 쌓지 않고 각 지표를 한 열의
+    // 한 줄 값으로만 표시해야 세로 높이가 줄어 좁은 화면에도 가로 스크롤 없이 들어간다.
     return `
     <tr class="border-b border-slate-50 dark:border-slate-800/70 last:border-b-0">
-      <td class="py-2 pr-2 font-medium max-w-[6rem] sm:max-w-[7rem] truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
-      <td class="py-2 px-2 text-right whitespace-nowrap">${valueHtml}</td>
-      <td class="hidden sm:table-cell py-2 px-2 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}<br><span class="text-[10px]">${fmtPct(rateOfReturn)}</span></td>
-      <td class="hidden sm:table-cell py-2 px-2 text-right ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}<br><span class="text-[10px]">${fmtPct(dailyRate)}</span></td>
-      <td class="py-2 pl-2 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">${fmtNum(pct, 1)}%</td>
+      <td class="py-1.5 pr-1 font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
+      <td class="py-1.5 px-1 text-right">${valueHtml}</td>
+      <td class="py-1.5 px-1 text-right ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</td>
+      <td class="py-1.5 px-1 text-right ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</td>
+      <td class="py-1.5 pl-1 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}</td>
     </tr>`;
   }).join('');
 }
@@ -5579,16 +5586,20 @@ function rowHtml(r) {
 
 // [모바일 3줄 레이아웃] 640px 미만 화면에서 테이블 대신 표시하는 종목별 카드. 요약을 탭하면
 // openAssetDetailModal()이 뜬다. 왼쪽 텍스트 블록을 정확히 3줄로 구성한다:
-//   1줄 종목명(15px/600, 말줄임표) - 2줄 티커+소유자 배지(13px, 보조색) - 3줄 누적 수익률/평가손익
-//   (13.5px/500, 상승=빨강/하락=파랑 - profitColor()로 기존 전체 화면과 색상 규칙 통일).
+//   1줄 종목명(15px/600, 말줄임표)+당일 실시간 등락률(색상 구분) - 2줄 티커+소유자 배지(13px, 보조색)
+//   - 3줄 누적 수익률/평가손익(13.5px/500, 상승=빨강/하락=파랑 - profitColor()로 기존 전체 화면과
+//   색상 규칙 통일).
 // min-w-0(텍스트 블록)+flex-1과 shrink-0(우측 가격 블록)의 조합이 있어야 flex 레이아웃 안에서 종목명의
 // truncate(=white-space:nowrap+overflow:hidden+text-overflow:ellipsis, Tailwind 유틸리티)가 실제로
 // 우측 영역을 침범하지 않고 동작한다(min-w-0 없이는 flex 아이템이 콘텐츠 너비만큼 늘어나 버린다).
-// [참고] 예전엔 1줄에 당일 등락률(changeInlineHtml)을 함께 붙였는데, 이번 3줄 재구성으로 3줄 자리에
-// 누적 수익률/평가손익을 대신 넣었다 - 당일 등락률은 종목 상세 모달/KPI 카드에서 계속 확인 가능하다.
+// [등락률 재배치] 1줄 안에서도 종목명은 truncate(min-w-0)로 줄어들고, 등락률은 shrink-0으로 항상
+// 온전히 보이도록 별도 flex 컨테이너로 감싼다 - 그래야 이름이 길어도 등락률이 잘리지 않는다.
 function cardHtml(r) {
   const p = derivePresentation(r);
   const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+  const dailyRateInline = p.hasChange
+    ? `<span class="shrink-0 text-[12px] font-semibold ${p.changeColorClass}">${p.changeText}</span>`
+    : '';
   // [배지 폭 절약] "통합 N건" 접미사를 붙이면(예: "신랑+와이프 · 통합 2건") 좁은 모바일 폭에서 배지가
   // 너무 넓어져 옆의 티커가 도리어 심하게 잘린다 - 소유자 이름("신랑+와이프")만으로도 통합 여부는 알 수
   // 있으므로 배지는 소유자 이름만 표시하고, 상세 모달에서 정확한 통합 건수를 확인하게 한다.
@@ -5598,7 +5609,10 @@ function cardHtml(r) {
   return `
   <div class="touch-target flex items-center gap-2 px-4 py-3.5 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/40" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
     <div class="min-w-0 flex-1">
-      <p class="font-semibold text-[15px] leading-tight truncate">${escapeHtml(r.name)}</p>
+      <p class="flex items-baseline gap-1.5 min-w-0">
+        <span class="font-semibold text-[15px] leading-tight truncate min-w-0">${escapeHtml(r.name)}</span>
+        ${dailyRateInline}
+      </p>
       <p class="mt-1 text-[13px] leading-tight text-slate-500 dark:text-slate-400 flex items-center gap-1.5 min-w-0">
         <span class="font-mono truncate">${escapeHtml(r.ticker || '-')}</span>
         <span class="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500 dark:text-slate-300">${escapeHtml(ownerLabel)}</span>
