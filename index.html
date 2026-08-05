@@ -273,24 +273,50 @@
   <!-- ============================= KPI CARDS ============================= -->
   <!-- [배치 순서 변경] 손익 카드(총평가손익/일간평가손익)를 총평가금액보다 먼저 보여주도록 순서만
        재배치했다 - 각 카드 내부 내용/id/로직은 전혀 건드리지 않았다. -->
-  <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+  <!-- [카드 통합] 투자세부 탭 최상단에 있던 [총 평가금액] 카드를 이 탭으로 옮겨와 [총 평가손익] 카드와
+       1:1 좌우 2컬럼으로 나란히 배치한다 - 내부 id/로직(세부내용 버튼 -> openTotalValueModal, 소유자별/
+       자산군별 태그 렌더링은 renderKPIs()가 그대로 채움)은 전혀 손대지 않고 위치만 이동했다.
+       [모바일에서도 항상 가로 2열] 요청에 따라 sm 미만에서도 위아래로 쌓지 않고 grid-cols-2를 고정으로
+       쓴다 - 카드 폭이 절반으로 줄어드는 만큼 패딩/폰트를 모바일 전용으로 한 단계씩 낮춰서
+      (p-2.5 sm:p-4, 금액 text-base sm:text-lg, 라벨/태그 text-[10px] sm:text-xs 등) 숫자가 줄바꿈되거나
+       카드 밖으로 삐져나오지 않게 한다. -->
+  <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-6">
 
-    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가손익</span>
-        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
+      <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
+        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가금액</span>
+        <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn !text-[9px] sm:!text-[10px] !px-1.5 sm:!px-[7px]">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <div class="hidden sm:flex w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 items-center justify-center">
+            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
+          </div>
+        </div>
+      </div>
+      <p id="kpiTotalValue" class="text-base sm:text-lg font-bold truncate">0원</p>
+      <!-- 총 평가금액 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 - 총 평가금액보다 작은 글씨 -->
+      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-[10px] sm:text-xs"></div>
+      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
+      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+    </div>
+
+    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
+      <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
+        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가손익</span>
+        <div class="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center shrink-0">
           <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
         </div>
       </div>
-      <p id="kpiTotalProfit" class="text-lg font-bold">0원</p>
-      <p id="kpiTotalProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
+      <p id="kpiTotalProfit" class="text-base sm:text-lg font-bold truncate">0원</p>
+      <p id="kpiTotalProfitRate" class="text-[10px] sm:text-xs font-semibold mt-0.5">0.00%</p>
       <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
            (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
            "+850만원 (+18.2%)"처럼 금액과 수익률을 한 줄에 함께 표기한다). -->
-      <div id="kpiTotalProfitOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
+      <div id="kpiTotalProfitOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-[10px] sm:text-xs"></div>
       <div id="kpiTotalProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
+  </section>
 
+  <section class="grid grid-cols-1 gap-4 mb-6">
     <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간 평가손익</span>
@@ -425,29 +451,13 @@
        state 객체에 저장되므로, 탭을 오가도 선택 상태가 그대로 유지된다(추가 배선 불필요). 처음 렌더링은
        switchTab()이 이 탭에 진입할 때 renderInvestmentDetailTab()을 호출해 처리한다(숨겨진 탭의
        캔버스는 크기가 0이므로 dashboard 탭처럼 무조건 그리면 차트가 깨진다).
-       [탭 재배치] 총투자현황 탭에 있던 [총평가금액]/[총투자금액]/[달러자산 총액·적용환율] 3개 카드를
-       이 탭 최상단으로 옮겨왔다 - 카드 내부 id/로직(세부내용 버튼, 환율 추이 팝업 등)은 그대로다. -->
+       [탭 재배치] 총투자현황 탭에 있던 [총투자금액]/[달러자산 총액·적용환율] 2개 카드를 이 탭 최상단으로
+       옮겨왔다 - 카드 내부 id/로직(세부내용 버튼, 환율 추이 팝업 등)은 그대로다. [총평가금액] 카드는
+       이후 다시 총투자현황 탭으로 옮겨져 [총평가손익] 카드와 나란히 배치됐다(해당 섹션 상단 주석 참고). -->
   <div id="tabPanelInvestmentDetail" class="hidden">
 
   <!-- ============================= KPI CARDS (금액 상세) ============================= -->
-  <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가금액</span>
-        <div class="flex items-center gap-1.5">
-          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
-            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
-          </div>
-        </div>
-      </div>
-      <p id="kpiTotalValue" class="text-lg font-bold">0원</p>
-      <!-- 총 평가금액 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 - 총 평가금액보다 작은 글씨 -->
-      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
-      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
-      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-    </div>
-
+  <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
@@ -2323,7 +2333,7 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored,
   container.classList.add('flex');
   container.innerHTML = entries.map(e => {
     const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
-    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
+    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
   }).join('');
 }
 
@@ -2352,7 +2362,7 @@ function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
   container.classList.add('flex');
   container.innerHTML = entries.map((e) => {
     const colorClass = profitColor(e.profit);
-    return `<span class="text-[11px] sm:text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ${colorClass}">${escapeHtml(e.owner)} ${fmtSignedShort(e.profit)} (${fmtPct(e.rate)})</span>`;
+    return `<span class="text-[11px] sm:text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.owner)} ${fmtSignedShort(e.profit)} (${fmtPct(e.rate)})</span>`;
   }).join('');
 }
 
