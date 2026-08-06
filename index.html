@@ -131,6 +131,13 @@
   .tab-btn.active { background: #4f46e5; color: #fff; }
   .tab-btn.active:hover { background: #4338ca; }
 
+  /* [리밸런싱/자산예측 통합] 2단계(서브) 탭 - 최상위 tab-btn과 같은 시각 언어를 그대로 재사용한다 */
+  .rebalance-subtab-btn { color: #64748b; }
+  .dark .rebalance-subtab-btn { color: #94a3b8; }
+  .rebalance-subtab-btn:hover { background: rgba(148,163,184,.12); }
+  .rebalance-subtab-btn.active { background: #4f46e5; color: #fff; }
+  .rebalance-subtab-btn.active:hover { background: #4338ca; }
+
   /* 자산 관리 테이블 "보기 방식(그룹화)" 토글 버튼 - tab-btn과 같은 시각 언어를 작은 크기로 재사용 */
   .table-group-btn { color: #64748b; }
   .dark .table-group-btn { color: #94a3b8; }
@@ -258,10 +265,7 @@
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
       <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-        <i data-lucide="scale" class="w-3.5 h-3.5"></i> 리밸런싱
-      </button>
-      <button data-tab="projection" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-        <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 자산예측
+        <i data-lucide="scale" class="w-3.5 h-3.5"></i> 리밸런싱/자산예측
       </button>
     </div>
     <div id="tabScrollHint" class="hidden pointer-events-none absolute top-0.5 bottom-0.5 right-0.5 w-8 rounded-r-lg bg-gradient-to-l from-white dark:from-slate-900 to-transparent"></div>
@@ -736,6 +740,17 @@
 
   <!-- ============================= 리밸런싱 검토 탭 ============================= -->
   <div id="tabPanelRebalance" class="hidden">
+    <!-- [리밸런싱/자산예측 통합] 예전엔 "리밸런싱"과 "자산예측"이 서로 다른 최상위 탭이었다 - 자산예측의
+         "리밸런싱 후" 시나리오가 이 탭에서 설정한 목표 비중을 그대로 가져다 쓰는 등 데이터로 이미
+         연결돼 있어, 하나의 탭 안에 2단계(서브) 탭으로 합쳤다. switchRebalanceSubTab() 참고 - 최상위
+         탭 전환(switchTab)과 별개의 하위 상태(rebalanceSubTab)로 관리된다. -->
+    <div class="flex items-center gap-1 mb-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
+      <button type="button" data-subtab="target" class="rebalance-subtab-btn active flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">목표 비중 설정</button>
+      <button type="button" data-subtab="guide" class="rebalance-subtab-btn flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">실행 가이드</button>
+      <button type="button" data-subtab="projection" class="rebalance-subtab-btn flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
+    </div>
+
+    <div id="rebalanceSubTarget">
     <!-- ===== 리밸런싱 효과 요약 (탭 맨 위 배치 - 목표 비중 표를 보기 전에 먼저 효과부터 확인) ===== -->
     <!-- [일반계좌 한정] 연금저축/IRP/ISA 등 절세 계좌는 세제 혜택 유지를 위해 자유롭게 매도/매수하기
          어려운 경우가 많아, 실제로 리밸런싱 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
@@ -745,7 +760,7 @@
 
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">⚖️ 리밸런싱 효과 요약</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외, 절세 계좌 제외 자산만 집계)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때, 10년 후·20년 후 시점의 총자산(명목) 차이입니다. 자산군별 예상 수익률은 "자산예측" 탭에서 조정할 수 있습니다.</p>
+      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외, 절세 계좌 제외 자산만 집계)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>할 때, 10년 후·20년 후 시점의 총자산(명목) 차이입니다. 자산군별 예상 수익률은 이 탭의 "미래 예측" 서브탭에서 조정할 수 있습니다.</p>
       <!-- [모바일 가로 병렬 배치] 2035년/2045년 차액 카드를 화면 폭과 무관하게 항상 2열로 나란히
            배치한다. 좁은 화면에서의 폰트/여백 축소는 renderRebalanceEffectSummary()에서 처리한다. -->
       <div id="rebalanceEffectSummary" class="grid grid-cols-2 gap-2 sm:gap-4"></div>
@@ -765,7 +780,10 @@
         <div id="domesticTargetInputs" class="grid grid-cols-2 gap-3"></div>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
-        <div class="flex items-center justify-between gap-0.5">
+        <!-- [모바일 시인성 개선] 반쪽 폭 카드에서 제목+"합계 N%" 배지를 한 줄에 억지로 넣으면 CJK 기본
+             줄바꿈 규칙 때문에 "비중" 같은 단어 중간이 잘려("국내 세부 목표 비 / 중") 보기 흉했다 - 좁은
+             화면에서는 제목과 배지를 위아래로 나눠 각자 카드 전체 폭을 쓰게 한다. -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
           <span id="categoryTargetSumDomestic" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
@@ -774,7 +792,8 @@
         <p id="categoryTargetWarningDomestic" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm">
-        <div class="flex items-center justify-between gap-0.5">
+        <!-- [모바일 시인성 개선] 국내 세부 목표 비중 카드와 동일한 이유. -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">해외 세부 목표 비중</h3>
           <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
@@ -784,26 +803,64 @@
       </div>
     </section>
 
-    <section class="mb-6">
-      <h3 class="text-sm font-semibold mb-3">국내/해외 리밸런싱 결과</h3>
-      <p id="rebalanceUncoveredNote" class="hidden text-[11px] text-amber-600 dark:text-amber-400 mb-3"></p>
-      <div id="domesticRebalanceResult" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+    <!-- [아코디언 UI] 리밸런싱 결과 카드 3개 - 기본은 접힘, 헤더의 요약 문구만 보고도 대략적인 상태를
+         알 수 있고, 탭하면 기존 세부 카드 그리드가 펼쳐진다. 각각 독립적으로 열고 닫을 수 있다(멀티
+         오픈) - rebalanceResultAccordionOpen 상태 객체 + toggleRebalanceResultAccordion() 참고. -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-3 overflow-hidden">
+      <button type="button" data-accordion="domesticResult"
+        class="rebalance-result-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="min-w-0">
+          <h3 class="text-sm font-semibold">국내/해외 리밸런싱 결과</h3>
+          <p id="domesticResultSummary" class="text-[11px] text-slate-400 mt-0.5 truncate">계산 중...</p>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" data-accordion-chevron="domesticResult"></i>
+      </button>
+      <div id="domesticResultAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4">
+          <p id="rebalanceUncoveredNote" class="hidden text-[11px] text-amber-600 dark:text-amber-400 mb-3"></p>
+          <div id="domesticRebalanceResult" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        </div>
+      </div>
     </section>
 
-    <section class="mb-6">
-      <h3 class="text-sm font-semibold mb-3">국내 세부 리밸런싱 결과</h3>
-      <div id="categoryRebalanceResultDomestic" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-3 overflow-hidden">
+      <button type="button" data-accordion="categoryDomestic"
+        class="rebalance-result-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="min-w-0">
+          <h3 class="text-sm font-semibold">국내 세부 리밸런싱 결과</h3>
+          <p id="categoryDomesticResultSummary" class="text-[11px] text-slate-400 mt-0.5 truncate">계산 중...</p>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" data-accordion-chevron="categoryDomestic"></i>
+      </button>
+      <div id="categoryDomesticAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4">
+          <div id="categoryRebalanceResultDomestic" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+      </div>
     </section>
 
-    <section>
-      <h3 class="text-sm font-semibold mb-3">해외 세부 리밸런싱 결과</h3>
-      <div id="categoryRebalanceResultForeign" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-6 overflow-hidden">
+      <button type="button" data-accordion="categoryForeign"
+        class="rebalance-result-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="min-w-0">
+          <h3 class="text-sm font-semibold">해외 세부 리밸런싱 결과</h3>
+          <p id="categoryForeignResultSummary" class="text-[11px] text-slate-400 mt-0.5 truncate">계산 중...</p>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" data-accordion-chevron="categoryForeign"></i>
+      </button>
+      <div id="categoryForeignAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4">
+          <div id="categoryRebalanceResultForeign" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+      </div>
     </section>
+    </div> <!-- /rebalanceSubTarget -->
 
-    <!-- ===== 종목별 리밸런싱 실행 가이드 (탭 최하단) =====
+    <!-- ===== 종목별 리밸런싱 실행 가이드 (서브탭: 실행 가이드) =====
          자산군/티커 단위로 뭉쳐 있던 위쪽 결과를 실제 보유 개별 종목 단위로 풀어서, 종목별로 정확히
          얼마를 사고 팔아야 하는지 실행 가이드를 제공한다. -->
-    <section class="mt-6">
+    <div id="rebalanceSubGuide" class="hidden">
+    <section>
       <div class="flex items-start justify-between gap-2 mb-1">
         <h3 class="text-sm font-semibold">📋 종목별 리밸런싱 실행 가이드</h3>
         <button type="button" id="rebalanceGuideExportBtn"
@@ -818,9 +875,9 @@
       <div id="rebalanceGuideOwnerTabs" class="flex items-center gap-1.5 mb-3"></div>
       <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
-  </div>
+    </div> <!-- /rebalanceSubGuide -->
 
-  <!-- ============================= 금융자산 미래예측 탭 ============================= -->
+  <!-- ============================= 금융자산 미래예측 (서브탭: 미래 예측) ============================= -->
   <div id="tabPanelProjection" class="hidden">
     <!-- ===== 시나리오 요약 카드 (통합 비교 그래프 바로 위) =====
          두 시나리오의 핵심 설정값(기대수익률·월 적립금)을 그래프를 보기 전에 먼저 한눈에 비교할 수
@@ -839,9 +896,14 @@
         <div class="flex items-center justify-between mb-2 sm:mb-3">
           <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
-            <span class="text-xs sm:text-sm font-semibold truncate">현재 구성 유지 시</span>
+            <!-- [모바일 시인성 개선] "현재 구성 유지 시"는 카드2의 "리밸런싱 후"보다 길어 아이콘 전용
+                 버튼으로 바꾼 뒤에도 여전히 살짝 잘렸다 - 좁은 화면에서만 더 짧은 표현으로 바꾼다. -->
+            <span class="text-xs sm:text-sm font-semibold truncate"><span class="sm:hidden">현재 유지</span><span class="hidden sm:inline">현재 구성 유지 시</span></span>
           </div>
-          <button type="button" id="scenarioCard1DetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <!-- [모바일 시인성 개선] 반쪽 폭 카드(grid-cols-2)에서 뱃지+제목+버튼이 한 줄에 다 들어가야
+               하다 보니, "세부내용" 글자까지 넣으면 제목이 심하게 잘렸다("현재 ..."처럼) - 좁은 화면에서는
+               버튼을 아이콘만 남겨 제목이 온전히 보이도록 공간을 확보한다. -->
+          <button type="button" id="scenarioCard1DetailBtn" class="detail-btn shrink-0" aria-label="세부내용"><span class="hidden sm:inline">세부내용 </span><i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">자산군별 기본 예상 수익률(주식형자산 8.0% · 채권 4.5% · 현금 0.0%)이 자동 적용되며, 보유 중인 자산군만 표시됩니다. 부동산은 실물자산이라 이 예측에서 제외됩니다. 월 적립금·물가상승률은 리밸런싱 후 시나리오에도 동일하게 적용됩니다. 값을 바꾸려면 [세부내용]을 탭하세요.</p>
         <!-- 반쪽 폭 모바일에서는 위 설명 문단 대신 한 줄 요약만 보여줘 공간을 아낀다. -->
@@ -861,7 +923,8 @@
             <span class="w-5 h-5 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
             <span class="text-xs sm:text-sm font-semibold truncate">리밸런싱 후</span>
           </div>
-          <button type="button" id="scenarioCard2DetailBtn" class="detail-btn shrink-0">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <!-- [모바일 시인성 개선] 카드1과 동일한 이유로 좁은 화면에서는 아이콘만 남긴다. -->
+          <button type="button" id="scenarioCard2DetailBtn" class="detail-btn shrink-0" aria-label="세부내용"><span class="hidden sm:inline">세부내용 </span><i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3 leading-relaxed">"리밸런싱" 탭에서 설정한 목표 비중대로 오늘 시점에 전액 리밸런싱했다고 가정합니다. 미국 개별 종목(QQQM/SPYM/SCHD)은 팝업에서 직접 지정한 수익률을 쓰고, 국내 항목과 채권/현금은 시나리오 1의 자산군별 수익률을 그대로 재사용합니다. 값을 바꾸려면 [세부내용]을 탭하세요.</p>
         <p class="sm:hidden text-[10px] text-slate-400 mb-2 leading-snug">[세부내용]을 탭해 종목별 기대수익률 수정</p>
@@ -1039,7 +1102,8 @@
         </table>
       </div>
     </section>
-  </div>
+  </div> <!-- /tabPanelProjection -->
+  </div> <!-- /tabPanelRebalance (리밸런싱/자산예측 통합 탭) -->
 
   <footer class="text-center text-[11px] text-slate-400 py-6">
     모든 데이터는 브라우저 localStorage에만 저장되며 외부로 전송되지 않습니다. 시세/환율 자동조회는 외부 무료 API(Yahoo Finance, open.er-api.com)를 이용합니다.
@@ -1908,7 +1972,9 @@ const state = {
   // 일봉 데이터라 하루 한 번만 갱신하면 충분해서(모바일 트래픽 절약), date가 오늘과 다를 때만
   // 다시 조회한다. 휘발성 데이터라 localStorage에는 저장하지 않는다.
   ma20Map: {},
-  // 현재 활성화된 탭 ('dashboard' | 'rebalance' | 'projection') - 휘발성, 새로고침 시 대시보드로 복귀.
+  // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
+  // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
+  // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
   activeTab: 'dashboard',
   // 리밸런싱 목표 비중.
   //   domestic: 리밸런싱 대상 자산 대비 국내/해외(미국) 배분 목표 { 국내, 해외 }
@@ -2730,15 +2796,31 @@ function switchTab(tab) {
   document.getElementById('tabPanelInvestmentDetail').classList.toggle('hidden', tab !== 'investmentDetail');
   document.getElementById('tabPanelTransactions').classList.toggle('hidden', tab !== 'transactions');
   document.getElementById('tabPanelRebalance').classList.toggle('hidden', tab !== 'rebalance');
-  document.getElementById('tabPanelProjection').classList.toggle('hidden', tab !== 'projection');
   // 숨겨져 있던 탭의 캔버스는 크기가 0이었으므로, 보여줄 때 다시 렌더링해야 차트가 정상적으로 그려진다.
   if (tab === 'investmentDetail') renderInvestmentDetailTab();
   if (tab === 'transactions') renderTransactionsTab();
-  if (tab === 'rebalance') renderRebalance();
-  if (tab === 'projection') renderProjection();
+  // [리밸런싱/자산예측 통합] 이 탭에 들어올 때마다 마지막으로 보고 있던 서브탭(rebalanceSubTab)을
+  // 그대로 다시 그린다 - tabPanelProjection이 물리적으로 tabPanelRebalance 안에 중첩돼 있으므로
+  // (HTML 참고), 그 hidden 여부는 여기가 아니라 switchRebalanceSubTab()이 전담한다.
+  if (tab === 'rebalance') switchRebalanceSubTab(rebalanceSubTab);
   lucide.createIcons();
 }
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+// [리밸런싱/자산예측 통합] 2단계(서브) 탭 전환 - 최상위 탭 상태(state.activeTab)와는 별개로 관리한다.
+// 'target'(목표 비중 설정 + 결과), 'guide'(종목별 실행 가이드), 'projection'(미래 예측) 3개.
+let rebalanceSubTab = 'target';
+function switchRebalanceSubTab(subTab) {
+  rebalanceSubTab = subTab;
+  document.querySelectorAll('.rebalance-subtab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.subtab === subTab));
+  document.getElementById('rebalanceSubTarget').classList.toggle('hidden', subTab !== 'target');
+  document.getElementById('rebalanceSubGuide').classList.toggle('hidden', subTab !== 'guide');
+  document.getElementById('tabPanelProjection').classList.toggle('hidden', subTab !== 'projection');
+  if (subTab === 'target' || subTab === 'guide') renderRebalance();
+  if (subTab === 'projection') renderProjection();
+  lucide.createIcons();
+}
+document.querySelectorAll('.rebalance-subtab-btn').forEach((btn) => btn.addEventListener('click', () => switchRebalanceSubTab(btn.dataset.subtab)));
 
 /* -------------------------------------------------------------------------
  * 10-1-1. 모바일 좌우 스와이프로 메인 탭 전환
@@ -2748,7 +2830,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  *      열려 있을 때도 배경 탭이 바뀌면 혼란스러우므로 추적하지 않는다. preventDefault를 전혀 호출하지
  *      않으므로(passive 리스너) 세로 스크롤 등 기존 터치 동작은 전혀 방해받지 않는다.
  * ---------------------------------------------------------------------- */
-const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'rebalance', 'projection'];
+const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'rebalance'];
 const SWIPE_MIN_DISTANCE = 50; // px
 // [중첩 모달 순서 주의] findOpenModalId()는 이 배열에서 "먼저 찾히는" id를 열려 있는 모달로 간주하므로,
 // 다른 모달 위에 중첩되어 열리는 2차 모달(stockAllocationModal → rebalanceTargetModal 위,
@@ -3756,7 +3838,7 @@ function renderUncoveredNote(uncovered) {
 
 function updateRebalanceResults() {
   const { total, byDomestic, uncovered } = getRebalanceTotals();
-  renderRebalanceResultGroup('domesticRebalanceResult', state.rebalance.domestic, byDomestic, total, total);
+  renderRebalanceResultGroup('domesticRebalanceResult', state.rebalance.domestic, byDomestic, total, total, 'domesticResultSummary');
 
   // 목표금액은 "리밸런싱 대상 총액 × 지역 목표비중 × 지역 내 항목 비중"으로 연동 계산되고,
   // 현재비중(%)은 그 지역의 리밸런싱 대상 현재 총액을 기준으로 계산해 지역 내 상대 비교가 되게 한다.
@@ -3764,19 +3846,47 @@ function updateRebalanceResults() {
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
     const regionCurrentAmount = byDomestic[region] || 0;
     const containerId = region === '국내' ? 'categoryRebalanceResultDomestic' : 'categoryRebalanceResultForeign';
+    const summaryElId = region === '국내' ? 'categoryDomesticResultSummary' : 'categoryForeignResultSummary';
     // 개별 지정 종목이 있으면 "펼쳐진" 목록으로 카드를 그려서, 지정한 종목이 각자 자기 목표금액/증감을
     // 따로 보여주고 지정 안 한 나머지는 "주식(기타)"로 전량 매도 대상임이 드러나게 한다.
     const { amounts: expandedAmounts, targets: expandedTargets } = computeExpandedRegionTargetAmounts(region);
-    renderTargetRebalanceResultGroup(containerId, expandedTargets, expandedAmounts, regionTargetAmount, regionCurrentAmount);
+    renderTargetRebalanceResultGroup(containerId, expandedTargets, expandedAmounts, regionTargetAmount, regionCurrentAmount, summaryElId);
     updateTargetSum(region);
   });
 
   renderUncoveredNote(uncovered);
   renderIndividualRebalanceGuide();
+  // 이미 펼쳐진 카드가 있다면(드문 경우, 목표 비중 수정 등으로 세부 내용의 줄 수/높이가 바뀔 수 있음)
+  // 새 내용 기준으로 max-height를 다시 맞춘다 - 접힌 카드는 계속 접힌 채로 유지된다.
+  refreshRebalanceResultAccordionHeights();
 
   // 리밸런싱 효과 요약 카드가 이 탭 상단으로 이동했으므로, 리밸런싱 탭만 방문/수정해도
   // updateProjection()이 함께 실행되어 요약 카드(및 미래예측 탭의 비교표)가 항상 최신 값으로 갱신되게 한다.
   updateProjection();
+}
+
+// [아코디언 UI] 리밸런싱 결과 카드 3개 - 기본 접힘, 서로 독립적으로(멀티오픈) 여닫는다.
+const rebalanceResultAccordionOpen = { domesticResult: false, categoryDomestic: false, categoryForeign: false };
+const REBALANCE_RESULT_ACCORDION_BODY_IDS = {
+  domesticResult: 'domesticResultAccordionBody',
+  categoryDomestic: 'categoryDomesticAccordionBody',
+  categoryForeign: 'categoryForeignAccordionBody'
+};
+function toggleRebalanceResultAccordion(key) {
+  rebalanceResultAccordionOpen[key] = !rebalanceResultAccordionOpen[key];
+  const bodyEl = document.getElementById(REBALANCE_RESULT_ACCORDION_BODY_IDS[key]);
+  const chevronEl = document.querySelector(`[data-accordion-chevron="${key}"]`);
+  setAccordionOpen(bodyEl, chevronEl, rebalanceResultAccordionOpen[key]);
+}
+document.querySelectorAll('.rebalance-result-accordion-btn').forEach((btn) => {
+  btn.addEventListener('click', () => toggleRebalanceResultAccordion(btn.dataset.accordion));
+});
+function refreshRebalanceResultAccordionHeights() {
+  Object.keys(REBALANCE_RESULT_ACCORDION_BODY_IDS).forEach((key) => {
+    const bodyEl = document.getElementById(REBALANCE_RESULT_ACCORDION_BODY_IDS[key]);
+    const chevronEl = document.querySelector(`[data-accordion-chevron="${key}"]`);
+    if (bodyEl && chevronEl) setAccordionOpen(bodyEl, chevronEl, rebalanceResultAccordionOpen[key]);
+  });
 }
 
 // 매수/매도 필요 금액에 따라 "매수"(파랑) / "매도"(빨강) / "유지"(회색) 배지를 정하고, 실제 종목별
@@ -3959,13 +4069,19 @@ document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () 
 
 // targetBaseAmount: 목표금액 계산 시 곱할 기준 총액. currentBaseAmount: 현재비중(%) 계산 시 나눌 기준 총액.
 // (지역별 호출에서는 둘 다 리밸런싱 대상 전체 total이고, 항목별 호출에서는 각각 지역 목표금액 / 지역 현재총액이다.)
-function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, targetBaseAmount, currentBaseAmount) {
+// [아코디언 헤더 요약] summaryElId를 넘기면, 카드 내 항목들의 매수/매도 필요 금액을 전부 합산해
+// 헤더에 한 줄 요약("매수 필요 X · 매도 필요 Y")을 써 준다 - 접힌 상태에서도 대략적인 상태를 알 수
+// 있게 하기 위함(요청). 항목별 diff 계산과 같은 루프에서 누적하므로 값이 항상 카드 세부 내용과 일치한다.
+function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, targetBaseAmount, currentBaseAmount, summaryElId) {
   const container = document.getElementById(containerId);
+  const summaryEl = summaryElId ? document.getElementById(summaryElId) : null;
   const keys = Object.keys(targetMap);
   if (currentBaseAmount === 0 || keys.length === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">계산할 자산 데이터가 없습니다.</p>';
+    if (summaryEl) summaryEl.textContent = '계산할 자산 데이터가 없습니다.';
     return;
   }
+  let totalBuy = 0, totalSell = 0;
   container.innerHTML = keys.map((key) => {
     const currentAmount = currentAmountMap[key] || 0;
     const currentPct = currentBaseAmount !== 0 ? (currentAmount / currentBaseAmount * 100) : 0;
@@ -3974,6 +4090,8 @@ function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, ta
     const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
     const isBuy = diff > 1; // 1원 미만 차이는 오차로 보고 '거의 일치' 처리
     const isSell = diff < -1;
+    if (isBuy) totalBuy += diff;
+    if (isSell) totalSell += Math.abs(diff);
     const colorClass = isBuy ? 'text-blue-500' : (isSell ? 'text-red-500' : 'text-slate-400');
     const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
       : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
@@ -3989,16 +4107,29 @@ function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, ta
       <p class="text-[11px] text-slate-400 mt-1">현재 ${fmtKRW(currentAmount)} · 목표 ${fmtKRW(targetAmount)}</p>
     </div>`;
   }).join('');
+  if (summaryEl) summaryEl.textContent = buildRebalanceResultSummaryText(totalBuy, totalSell);
+}
+
+// 매수/매도 합산액을 헤더용 한 줄 요약 문구로 바꾼다 - 두 render*ResultGroup 함수가 공유한다.
+function buildRebalanceResultSummaryText(totalBuy, totalSell) {
+  if (totalBuy < 1 && totalSell < 1) return '목표 비중과 거의 일치';
+  return [
+    totalBuy >= 1 ? `매수 필요 ${fmtKRWShort(totalBuy)}` : null,
+    totalSell >= 1 ? `매도 필요 ${fmtKRWShort(totalSell)}` : null
+  ].filter(Boolean).join(' · ');
 }
 
 // targets: [{type,ticker/category,label,pct}, ...] (state.rebalance.targets[region]).
 // amounts: computeRegionTargetAmounts()가 반환한, targets와 같은 순서의 현재 평가금액 배열.
-function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetBaseAmount, currentBaseAmount) {
+function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetBaseAmount, currentBaseAmount, summaryElId) {
   const container = document.getElementById(containerId);
+  const summaryEl = summaryElId ? document.getElementById(summaryElId) : null;
   if (!targets || targets.length === 0 || currentBaseAmount === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">계산할 자산 데이터가 없습니다.</p>';
+    if (summaryEl) summaryEl.textContent = '계산할 자산 데이터가 없습니다.';
     return;
   }
+  let totalBuy = 0, totalSell = 0;
   container.innerHTML = targets.map((t, idx) => {
     const currentAmount = (amounts && amounts[idx]) || 0;
     const currentPct = currentBaseAmount !== 0 ? (currentAmount / currentBaseAmount * 100) : 0;
@@ -4007,6 +4138,8 @@ function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetB
     const diff = targetAmount - currentAmount;
     const isBuy = diff > 1;
     const isSell = diff < -1;
+    if (isBuy) totalBuy += diff;
+    if (isSell) totalSell += Math.abs(diff);
     const colorClass = isBuy ? 'text-blue-500' : (isSell ? 'text-red-500' : 'text-slate-400');
     const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
       : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
@@ -4022,6 +4155,7 @@ function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetB
       <p class="text-[11px] text-slate-400 mt-1">현재 ${fmtKRW(currentAmount)} · 목표 ${fmtKRW(targetAmount)}</p>
     </div>`;
   }).join('');
+  if (summaryEl) summaryEl.textContent = buildRebalanceResultSummaryText(totalBuy, totalSell);
 }
 
 /* -------------------------------------------------------------------------
@@ -4333,7 +4467,7 @@ function renderTargetAllocationSummary(regionPV2) {
         <tr class="border-b border-slate-50 dark:border-slate-800/60 last:border-0">
           <td class="py-1 sm:py-1.5 pr-1 sm:pr-2">
             <div class="flex items-center gap-0.5 sm:gap-1 min-w-0">
-              <span class="truncate max-w-[52px] sm:max-w-[104px] font-medium text-slate-700 dark:text-slate-200 ${r.ticker ? 'cursor-pointer hover:underline' : ''}"${r.ticker ? ` data-open-stock-detail data-ticker="${escapeHtml(r.ticker)}" data-name="${escapeHtml(r.name)}"` : ''}>${escapeHtml(r.name)}</span>
+              <span class="truncate max-w-[76px] sm:max-w-[104px] font-medium text-slate-700 dark:text-slate-200 ${r.ticker ? 'cursor-pointer hover:underline' : ''}"${r.ticker ? ` data-open-stock-detail data-ticker="${escapeHtml(r.ticker)}" data-name="${escapeHtml(r.name)}"` : ''}>${escapeHtml(r.name)}</span>
               <span class="shrink-0 px-1 py-0.5 rounded text-[8px] sm:text-[9px] leading-none ${r.region === '해외' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'}">${r.region === '해외' ? '미국' : '국내'}</span>
             </div>
           </td>
@@ -5742,8 +5876,10 @@ function renderAll() {
   // 있을 때만 갱신한다. (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
   if (state.activeTab === 'investmentDetail') renderInvestmentDetailTab();
   if (state.activeTab === 'transactions') renderTransactionsTab();
-  if (state.activeTab === 'rebalance') renderRebalance();
-  if (state.activeTab === 'projection') renderProjection();
+  // [리밸런싱/자산예측 통합] tabPanelProjection이 tabPanelRebalance 안에 중첩돼 있으므로, 어느 서브탭을
+  // 보고 있는지(rebalanceSubTab)까지 함께 확인해야 숨겨진 캔버스를 건드리지 않는다.
+  if (state.activeTab === 'rebalance' && rebalanceSubTab !== 'projection') renderRebalance();
+  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') renderProjection();
 }
 
 /* -------------------------------------------------------------------------
@@ -8797,12 +8933,12 @@ document.getElementById('darkModeBtn').addEventListener('click', () => {
   html.classList.toggle('dark');
   localStorage.setItem(LS_DARKMODE, html.classList.contains('dark') ? '1' : '0');
   renderCharts();
-  // [버그 수정] 금융자산 미래예측 탭의 3개 차트(통합비교/시나리오1/시나리오2)는 renderCharts()에
-  // 포함돼 있지 않아, 그 탭을 보고 있는 상태에서 다크모드를 전환하면 축/범례 텍스트가 이전 테마
-  // 색 그대로 남아 새 배경과 겹쳐 안 보이는 문제가 있었다(탭을 나갔다 다시 들어오면 switchTab()이
-  // 다시 그려줘서 우연히 정상으로 보였을 뿐). 이 탭을 보고 있을 때만 다시 그린다 - 숨겨진 캔버스에
-  // 그리면 크기가 0이 되므로 다른 탭에서는 호출하지 않는다.
-  if (state.activeTab === 'projection') updateProjection();
+  // [버그 수정] 금융자산 미래예측(리밸런싱/자산예측 통합 탭의 "미래 예측" 서브탭)의 3개 차트(통합비교/
+  // 시나리오1/시나리오2)는 renderCharts()에 포함돼 있지 않아, 그 서브탭을 보고 있는 상태에서 다크모드를
+  // 전환하면 축/범례 텍스트가 이전 테마 색 그대로 남아 새 배경과 겹쳐 안 보이는 문제가 있었다(탭을
+  // 나갔다 다시 들어오면 switchRebalanceSubTab()이 다시 그려줘서 우연히 정상으로 보였을 뿐). 이
+  // 서브탭을 보고 있을 때만 다시 그린다 - 숨겨진 캔버스에 그리면 크기가 0이 되므로 호출하지 않는다.
+  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection();
 });
 
 /* -------------------------------------------------------------------------
