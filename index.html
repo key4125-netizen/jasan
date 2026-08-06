@@ -280,6 +280,24 @@
        쓴다 - 카드 폭이 절반으로 줄어드는 만큼 패딩/폰트를 모바일 전용으로 한 단계씩 낮춰서
       (p-2.5 sm:p-4, 금액 text-base sm:text-lg, 라벨/태그 text-[10px] sm:text-xs 등) 숫자가 줄바꿈되거나
        카드 밖으로 삐져나오지 않게 한다. -->
+
+  <!-- ============================= 시세 반영 실패 알림 배너 =============================
+       [알림 카드 위치 이동] 원래 투자세부 탭의 [총 투자금액] 카드 내용을 통째로 바꿔치기하던
+       kpiFetchFailurePanel을 이 위치(총평가금액/총평가손익 카드 바로 위)의 독립 배너로 옮겼다 - id와
+       내부 구조(kpiFetchFailureNames, retryFailedPricesBtn, retryFailedPricesBtnText)는 그대로라
+       renderKPIs()/retryFailedPrices()의 상태 관리·이벤트 로직은 단 한 줄도 바뀌지 않았다(hidden
+       클래스 토글만 그대로 재사용 - display:none이라 실패가 없을 때는 공간을 전혀 차지하지 않는다).
+       고대비 경고색(amber) 배경+테두리로 눈에 띄게 하고, 아래 KPI 카드와 자연스럽게 이어지도록 mb-4만
+       준다(다른 섹션의 mb-6보다 좁게 - 알림과 그 대상 카드가 시각적으로 한 묶음처럼 보이도록). -->
+  <div id="kpiFetchFailurePanel" class="hidden mb-4 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 sm:p-4">
+    <p class="text-xs sm:text-sm text-amber-700 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
+    <button id="retryFailedPricesBtn" type="button"
+      class="mt-2 w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+      <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
+    </button>
+  </div>
+
   <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-6">
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
@@ -468,19 +486,13 @@
           </div>
         </div>
       </div>
-      <!-- 정상 상태(시세 조회 실패 0건일 때): 기존 '총 투자금액' 표시 -->
+      <!-- [알림 카드 위치 이동] 시세 반영 실패 시 이 카드 내용을 안내 문구로 바꿔치기하던 kpiFetchFailurePanel은
+           총투자현황 탭의 [총 평가금액]/[총 평가손익] 카드 바로 위 독립 배너로 옮겨갔다 - 그래서 이 카드는
+           이제 실패 여부와 무관하게 항상 '총 투자금액' 정상 내용만 보여준다(kpiTotalCostLabel도 더 이상
+           텍스트가 바뀌지 않는다). renderKPIs() 참고. -->
       <div id="kpiTotalCostNormal">
         <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
         <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-      </div>
-      <!-- 실패 상태(1건 이상 시세조회 실패 시 renderKPIs가 이 자리로 동적 전환): 실패 종목 안내 + 일괄 재조회 버튼 -->
-      <div id="kpiFetchFailurePanel" class="hidden">
-        <p class="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
-        <button id="retryFailedPricesBtn" type="button"
-          class="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
-          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-          <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
-        </button>
       </div>
     </div>
 
@@ -657,11 +669,24 @@
       </div>
     </section>
 
-    <!-- 거래 목록 -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-6">
-      <h3 class="text-sm font-semibold mb-3">거래 목록 <span id="txListCount" class="text-xs font-normal text-slate-400"></span></h3>
-      <div id="txListContainer" class="divide-y divide-slate-100 dark:divide-slate-800"></div>
-      <p id="txEmptyMsg" class="hidden text-center text-slate-400 text-sm py-8">등록된 거래가 없습니다. "거래 추가" 버튼으로 시작하세요.</p>
+    <!-- 거래 목록 [아코디언] 기본값은 접힘(txListAccordionOpen = false) - 헤더(버튼 전체)를 탭해야
+         펼쳐진다. 접힌 상태에서도 헤더의 txListCount("N건")로 총 거래 건수를 바로 확인할 수 있다.
+         RISK 관리 아코디언(riskyAccordionBtn 등)과 동일한 setAccordionOpen(max-height 트랜지션 +
+         chevron 회전) 패턴을 그대로 재사용한다 - renderTransactionList()가 목록을 새로 그릴 때마다
+         현재 펼침 상태를 재적용해 필터/검색으로 목록이 바뀌어도 사용자가 선택한 열림/닫힘 상태가
+         유지된다. 거래 추가/수정/삭제·필터·검색 로직은 전부 그대로이고 DOM 위치만 바뀌었다. -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-6 overflow-hidden">
+      <button type="button" id="txListAccordionBtn"
+        class="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <h3 class="text-sm font-semibold">거래 목록 <span id="txListCount" class="text-xs font-normal text-slate-400"></span></h3>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="txListAccordionChevron"></i>
+      </button>
+      <div id="txListAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-3 sm:px-4 pb-3 sm:pb-4">
+          <div id="txListContainer" class="divide-y divide-slate-100 dark:divide-slate-800"></div>
+          <p id="txEmptyMsg" class="hidden text-center text-slate-400 text-sm py-8">등록된 거래가 없습니다. "거래 추가" 버튼으로 시작하세요.</p>
+        </div>
+      </div>
     </section>
 
     <!-- 기간별 실현 손익 -->
@@ -2413,13 +2438,12 @@ function renderKPIs() {
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
 
-  // '총 투자금액' 카드 동적 전환: 직전 시세 갱신에서 실패한 종목이 1건이라도 있으면 투자금액 대신
-  // 실패 종목 안내 + [실패 종목 일괄 재조회] 버튼을 보여준다. 실패 0건이면(전부 성공했거나 애초에
-  // 갱신을 한 번도 안 돌렸으면) 기존처럼 총 투자금액을 보여준다.
+  // [알림 배너] 직전 시세 갱신에서 실패한 종목이 1건이라도 있으면 총평가금액/총평가손익 카드 바로 위
+  // 독립 배너(kpiFetchFailurePanel)에 실패 종목 안내 + [실패 종목 일괄 재조회] 버튼을 보여준다. 실패
+  // 0건이면(전부 성공했거나 애초에 갱신을 한 번도 안 돌렸으면) 배너 자체를 숨긴다(hidden = display:none
+  // 이라 공간을 차지하지 않는다). '총 투자금액' 카드는 이제 이 실패 상태와 무관하게 항상 정상 내용을 보여준다.
   const failedAssets = state.assets.filter((a) => state.priceFetchFailedIds.has(a.id));
   const hasFetchFailure = failedAssets.length > 0;
-  document.getElementById('kpiTotalCostLabel').textContent = hasFetchFailure ? '시세 반영 실패' : '총 투자금액';
-  document.getElementById('kpiTotalCostNormal').classList.toggle('hidden', hasFetchFailure);
   document.getElementById('kpiFetchFailurePanel').classList.toggle('hidden', !hasFetchFailure);
   if (hasFetchFailure) {
     document.getElementById('kpiFetchFailureNames').textContent = failedAssets.map((a) => a.name || a.ticker).join(', ');
@@ -5063,16 +5087,24 @@ function populateTxFilterOptions() {
   sel.value = combos.includes(current) ? current : 'ALL';
 }
 
+// [거래 목록 아코디언] 기본값은 접힘 - 헤더(txListAccordionBtn)를 탭해야만 펼쳐진다. RISK 관리
+// 아코디언과 동일하게 모듈 전역 변수로 펼침 상태를 기억해, renderTransactionList()가 필터/검색/
+// 추가/수정/삭제로 반복 호출돼도 사용자가 선택한 열림/닫힘 상태가 되돌아가지 않는다.
+let txListAccordionOpen = false;
+
 function renderTransactionList() {
   populateTxFilterOptions();
   const list = getFilteredTransactions();
   const container = document.getElementById('txListContainer');
   const emptyMsg = document.getElementById('txEmptyMsg');
+  const accordionBody = document.getElementById('txListAccordionBody');
+  const accordionChevron = document.getElementById('txListAccordionChevron');
   document.getElementById('txListCount').textContent = list.length > 0 ? `(${list.length}건)` : '';
 
   if (list.length === 0) {
     container.innerHTML = '';
     emptyMsg.classList.remove('hidden');
+    setAccordionOpen(accordionBody, accordionChevron, txListAccordionOpen);
     return;
   }
   emptyMsg.classList.add('hidden');
@@ -5111,7 +5143,15 @@ function renderTransactionList() {
   container.querySelectorAll('button[data-edit-tx]').forEach((btn) => btn.addEventListener('click', () => openTransactionModal(btn.dataset.editTx)));
   container.querySelectorAll('button[data-delete-tx]').forEach((btn) => btn.addEventListener('click', () => deleteTransaction(btn.dataset.deleteTx)));
   lucide.createIcons();
+  // 방금 다시 그린 목록 기준으로 펼침 상태를 재적용한다 - 펼쳐진 채로 필터/검색 결과가 바뀌어도
+  // max-height가 새 목록 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다.
+  setAccordionOpen(accordionBody, accordionChevron, txListAccordionOpen);
 }
+
+document.getElementById('txListAccordionBtn').addEventListener('click', () => {
+  txListAccordionOpen = !txListAccordionOpen;
+  setAccordionOpen(document.getElementById('txListAccordionBody'), document.getElementById('txListAccordionChevron'), txListAccordionOpen);
+});
 
 // 필터 변경은 더 이상 즉시 조회하지 않는다(요청에 따라) - 입력란은 값만 바뀌고, [조회] 버튼을 눌러야
 // 그 조건으로 실제 목록이 다시 그려진다. [초기화]는 예외적으로 누르는 즉시 결과까지 초기화해 보여준다.
