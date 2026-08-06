@@ -97,8 +97,7 @@
   @media (max-width: 639px) {
     .touch-target { min-height: 44px; }
     #assetCardList input[type=number] { min-height: 44px; font-size: 16px; } /* 16px 미만이면 iOS Safari가 자동 확대(줌)를 일으킨다 */
-    #tabPanelRebalance input[type=number], #tabPanelProjection input[type=number], #tabPanelChildAsset input[type=number], #tabPanelChildAsset input[type=text] { min-height: 44px; font-size: 16px; }
-    #tabPanelChildAsset input[type=range] { min-height: 32px; }
+    #tabPanelRebalance input[type=number], #tabPanelProjection input[type=number] { min-height: 44px; font-size: 16px; }
   }
 
   /* [가로 모드(Landscape) 대응] 스마트폰/태블릿을 눕히면 세로 높이가 크게 줄어든다. 대부분의 팝업은
@@ -263,9 +262,6 @@
       </button>
       <button data-tab="projection" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> 자산예측
-      </button>
-      <button data-tab="childAsset" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-        <i data-lucide="baby" class="w-3.5 h-3.5"></i> 자녀자산
       </button>
     </div>
     <div id="tabScrollHint" class="hidden pointer-events-none absolute top-0.5 bottom-0.5 right-0.5 w-8 rounded-r-lg bg-gradient-to-l from-white dark:from-slate-900 to-transparent"></div>
@@ -1043,147 +1039,7 @@
         </table>
       </div>
     </section>
-  </div> <!-- /tabPanelProjection -->
-
-  <!-- ============================= 자녀자산 탭 =============================
-       [자녀자산 데이터 격리] 소유자가 '아들'인 자산/거래만 다루는 완전히 독립된 탭. 다른 모든 탭의
-       집계 함수는 isChildOwner()로 아들 데이터를 제외하므로, 아들 데이터는 오직 여기서만 계산·표시된다
-       (getChildAssets/renderChildAssetTab 참고). -->
-  <div id="tabPanelChildAsset" class="hidden">
-
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-sm font-semibold">자녀자산 (아들)</h2>
-      <button id="childAddAssetBtn" type="button"
-        class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
-        <i data-lucide="plus" class="w-3.5 h-3.5"></i> 자산 추가
-      </button>
-    </div>
-
-    <!-- 카드1(총평가금액)+카드2(총평가손익) - [세로 배치] 가로 2컬럼(grid-cols-2)에서 세로 1컬럼으로
-         변경해 각 카드가 한 줄씩(전체 폭) 차지하도록 분리 배치한다. 소유자가 항상 '아들' 하나뿐이므로
-         "소유자별" 자리를 "계좌구분별" 태그로 대체했다. -->
-    <section class="grid grid-cols-1 gap-4 mb-6">
-      <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가금액</span>
-          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
-            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
-          </div>
-        </div>
-        <p id="childKpiTotalValue" class="text-lg font-bold">0원</p>
-        <!-- 계좌구분별 세부 집계(일반계좌/연금저축/보험) -->
-        <div id="childKpiTotalValueAccountBreakdown" class="flex-wrap gap-1 mt-1 hidden text-xs text-slate-500 dark:text-slate-400"></div>
-        <!-- 자산군별 세부 집계(주식/ETF/보험상품) -->
-        <div id="childKpiTotalValueCategoryBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-      </div>
-
-      <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 평가손익</span>
-          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-            <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-          </div>
-        </div>
-        <p id="childKpiTotalProfit" class="text-lg font-bold">0원</p>
-        <p id="childKpiTotalProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
-        <div id="childKpiTotalProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-      </div>
-    </section>
-
-    <!-- 카드3(총투자금액) - [세부내용] 토글 버튼을 없애고 계좌구분별/자산군별 태그를 항상 인라인으로
-         보여준다(요청에 따라 접힘 없이 카드 렌더링 시 기본 노출). -->
-    <section class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
-        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-        </div>
-      </div>
-      <p id="childKpiTotalCost" class="text-lg font-bold">0원</p>
-      <div id="childKpiTotalCostDetail" class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-        <div id="childKpiTotalCostAccountBreakdown" class="flex flex-wrap gap-1"></div>
-        <div id="childKpiTotalCostCategoryBreakdown" class="flex flex-wrap gap-1"></div>
-      </div>
-    </section>
-
-    <!-- [자녀 거래내역] 카드 - 소유자가 '아들'인 거래만 보여주는 전용 아코디언(기본 접힘). 가구
-         거래내역 탭의 거래목록 아코디언(txListAccordionBtn 등)과 동일한 setAccordionOpen 패턴을 그대로
-         재사용한다. 수정/삭제는 가구 거래내역과 동일하게 openTransactionModal/deleteTransaction을
-         공유해서 저장 시 computePositionsAndRealizedPnL/syncAssetsFromTransactions을 그대로 거쳐
-         자녀자산 카드의 수량·평단가·평가금액에 즉시 반영된다. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-6 overflow-hidden">
-      <div class="w-full flex items-center gap-2 px-3 sm:px-4 py-3">
-        <button type="button" id="childTxListAccordionBtn"
-          class="flex-1 flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors -m-1 p-1 rounded-lg">
-          <h3 class="text-sm font-semibold">자녀 거래내역 <span id="childTxListCount" class="text-xs font-normal text-slate-400"></span></h3>
-          <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="childTxListAccordionChevron"></i>
-        </button>
-        <button type="button" id="childAddTransactionBtn" title="거래 추가"
-          class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-brand-600 dark:text-brand-300">
-          <i data-lucide="plus" class="w-4 h-4"></i>
-        </button>
-      </div>
-      <div id="childTxListAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="px-3 sm:px-4 pb-3 sm:pb-4">
-          <div id="childTxListContainer" class="divide-y divide-slate-100 dark:divide-slate-800"></div>
-          <p id="childTxEmptyMsg" class="hidden text-center text-slate-400 text-sm py-8">등록된 거래가 없습니다. + 버튼으로 추가하세요.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 카드4(자녀 자산예측) - 슬라이더(연수익률/목표기간)+월적립금 입력+생년월일 입력, 누적 원금/복리
-         수익금이 쌓이는 스택 차트, 요약 텍스트. computeChildProjectionSeries/renderChildProjectionChart 참고. -->
-    <section class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
-      <h3 class="text-sm font-semibold mb-3 flex items-center gap-1.5">
-        <i data-lucide="line-chart" class="w-4 h-4 text-brand-600 dark:text-brand-300"></i> 자녀 자산예측
-      </h3>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-xs text-slate-500 dark:text-slate-400">연 예상 수익률</span>
-            <span id="childReturnRateValue" class="text-xs font-semibold">6.0%</span>
-          </div>
-          <input type="range" id="childReturnRateSlider" min="1" max="15" step="0.1" value="6"
-            class="w-full accent-brand-600">
-          <button type="button" id="childReturnRateSuggestBtn" class="mt-1 text-[10px] text-brand-600 dark:text-brand-300 hover:underline">추천값 사용 (자산예측 탭 목표수익률 연동)</button>
-        </div>
-
-        <div>
-          <span class="text-xs text-slate-500 dark:text-slate-400">월 추가 적립금(원)</span>
-          <input type="number" id="childMonthlyContributionInput" value="0" step="10000" min="0"
-            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-        </div>
-
-        <div>
-          <span class="text-xs text-slate-500 dark:text-slate-400">아들 생년월일</span>
-          <div class="flex items-center gap-1.5 mt-1">
-            <input type="text" id="childBirthDateInput" inputmode="numeric" placeholder="YYYYMMDD" maxlength="8"
-              class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
-            <button type="button" id="childBirthDateConfirmBtn"
-              class="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">확인</button>
-          </div>
-          <p id="childBirthDateMsg" class="text-[10px] text-slate-400 mt-1"></p>
-        </div>
-
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-xs text-slate-500 dark:text-slate-400">목표 투자 기간(년)</span>
-            <span id="childTargetYearsValue" class="text-xs font-semibold">10년</span>
-          </div>
-          <input type="range" id="childTargetYearsSlider" min="1" max="19" step="1" value="10"
-            class="w-full accent-brand-600">
-        </div>
-      </div>
-
-      <div class="h-56 sm:h-72 mb-3">
-        <canvas id="childProjectionChart"></canvas>
-      </div>
-
-      <p id="childProjectionSummary" class="text-sm font-medium text-center leading-relaxed"></p>
-    </section>
-
-  </div> <!-- /tabPanelChildAsset -->
+  </div>
 
   <footer class="text-center text-[11px] text-slate-400 py-6">
     모든 데이터는 브라우저 localStorage에만 저장되며 외부로 전송되지 않습니다. 시세/환율 자동조회는 외부 무료 API(Yahoo Finance, open.er-api.com)를 이용합니다.
@@ -1234,7 +1090,6 @@
           <option value="신랑">신랑</option>
           <option value="와이프">와이프</option>
           <option value="공동">공동</option>
-          <option value="아들">아들</option>
         </select>
       </label>
 
@@ -1245,7 +1100,7 @@
         <datalist id="accountTypeList">
           <option value="일반계좌"><option value="ISA"><option value="IRP">
           <option value="연금저축"><option value="토스"><option value="CMA">
-          <option value="채권/현금"><option value="보험">
+          <option value="채권/현금">
         </datalist>
       </label>
 
@@ -1277,7 +1132,6 @@
         <datalist id="categoryList">
           <option value="주식"><option value="ETF"><option value="채권">
           <option value="현금"><option value="부동산"><option value="원자재"><option value="암호화폐">
-          <option value="보험상품">
         </datalist>
       </label>
 
@@ -1662,7 +1516,6 @@
           <option value="신랑">신랑</option>
           <option value="와이프">와이프</option>
           <option value="공동">공동</option>
-          <option value="아들">아들</option>
         </select>
       </label>
       <label class="col-span-1 text-xs">
@@ -1761,9 +1614,6 @@ const LS_DARKMODE = 'sam_dark_mode_v5';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
-// [자녀자산 탭] 자녀 전용 자산예측(state.projection과 완전히 분리된 병렬 구조) + 아들 생년월일 저장 키.
-const LS_CHILD_PROJECTION = 'sam_child_projection_v1';
-const LS_CHILD_BIRTHDATE = 'sam_child_birthdate_v1';
 // 일간 손익 계산에 쓰이는 "오늘 하루의 기준 환율"(전일 종가 개념) 저장 키.
 // FX는 24시간 거래되어 명확한 "전일 종가"가 없으므로, 달력 날짜가 바뀔 때 그 시점의 환율을
 // 스냅샷해서 그날 하루 동안 고정 기준값으로 사용한다(당일 중 환율이 갱신되어도 기준값은 안 바뀜).
@@ -1782,15 +1632,12 @@ function cleanupLegacyGoogleSyncKeys() {
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',
-  '현금': '#64748b', '부동산': '#ef4444', '원자재': '#a855f7', '암호화폐': '#ec4899',
-  '보험상품': '#f97316'
+  '현금': '#64748b', '부동산': '#ef4444', '원자재': '#a855f7', '암호화폐': '#ec4899'
 };
 
 // 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
 // 실시간 시세 조회 대상 및 일간 손익 계산에서 제외한다(사용자가 실수로 티커를 입력해 넣어도 예외).
-// '보험상품'도 여기 포함 - 보험은 시장 시세가 없고 사용자가 상세 모달에서 해약환급금을 현재가 자리에
-// 직접 입력/갱신하는 방식으로 평가금액을 산정한다(채권/현금/부동산과 동일한 수동입력 경로 재사용).
-const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산', '보험상품'];
+const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산'];
 // [절세 계좌 제외] 미래예측/리밸런싱 계산(일반계좌 미래예측 탭, 일반계좌 리밸런싱 탭)은 연금저축/IRP/ISA
 // 같은 절세 계좌를 제외한 자산만을 대상으로 한다 - 절세 계좌는 세제 혜택 유지를 위해 자유롭게
 // 매도/매수하기 어려운 경우가 많아, 실제로 리밸런싱을 실행할 수 있는 계좌만 계산에 포함시킨다.
@@ -1803,13 +1650,6 @@ const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산', '보험상품'
 // 문제가 있었다. 의도(절세 계좌만 제외)에 맞게 절세 계좌 이름 목록에 대한 제외 방식으로 바꾼다.
 const TAX_ADVANTAGED_ACCOUNT_TYPES = ['ISA', 'IRP', '연금저축'];
 function isRebalanceEligibleAccount(a) { return !TAX_ADVANTAGED_ACCOUNT_TYPES.includes(a.accountType); }
-// [자녀자산 데이터 격리] 소유자가 '아들'인 자산/거래는 가구 전체 집계(총투자현황/투자세부/리밸런싱/
-// 자산예측/거래내역)에서 완전히 제외되고 오직 '자녀자산' 탭에서만 계산·표시된다 - 이 함수 하나를
-// 모든 집계 지점(renderKPIs, getTopHoldings, 리밸런싱, 자산예측, 거래내역 실현손익 등)에서 공유해서
-// 예외 없이 일관되게 적용한다. 자산(a.owner)과 거래(t.owner) 둘 다 owner 필드를 그대로 쓰므로 이
-// 함수 하나로 양쪽 다 커버된다. CRUD/시세갱신/백업 등 데이터 자체를 다루는 함수들은 아들 데이터도
-// 똑같이 처리해야 하므로 절대 이 필터를 적용하지 않는다(격리는 "집계/표시"에서만 이뤄진다).
-function isChildOwner(a) { return a.owner === '아들'; }
 const FALLBACK_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#64748b','#06b6d4','#a855f7','#ec4899','#84cc16','#0ea5e9'];
 function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]; }
 
@@ -1891,18 +1731,9 @@ const BOND_KEYWORDS = ['채권', '국고채', '회사채', '국채', '통안채'
 const CASH_KEYWORDS = ['현금', '예수금', 'CASH', '달러', '외화', 'USD', 'USDT'];
 const ETF_KEYWORDS = ['ETF', 'TIGER', 'KODEX', 'ACE', 'RISE', 'QQQ', 'SCHD', 'SPYM'];
 const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가', '토지', '건물'];
-// [자녀자산 탭] 보험상품(변액연금보험 등)은 시장 티커가 없는 수동입력 자산이라 채권/현금과 같은 방식으로
-// 이름 키워드만으로 분류한다 - 엑셀 업로드 시 '소유자'란이 '아들'인 보험 상품 행도 여기서 자동으로
-// '보험상품' 자산군으로 잡혀야 자녀 자산예측 카드의 추천 수익률 가중평균(주식/ETF 7%·보험 3%)이 정확하다.
-const INSURANCE_KEYWORDS = ['보험', '변액', '연금보험', 'INSURANCE'];
 
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
-  const hasTickerForInsurance = String(ticker ?? '').trim() !== '';
-  // 보험 상품도 채권/현금과 동일한 원칙: 티커가 있으면(보험 관련 브랜드명이 붙은 ETF 등) 실시간 시세
-  // 상품이므로 '보험상품'(NON_TRADABLE_CATEGORIES, 시세조회 제외)이 아니라 원래 분류를 계속 타게 둔다 -
-  // 이 규칙은 아래로 통과시키고, 티커가 없을 때만 '보험상품'으로 확정한다.
-  if (!hasTickerForInsurance && INSURANCE_KEYWORDS.some(k => hay.includes(k.toUpperCase()))) return '보험상품';
   // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
   // 미국채10년선물 같은 채권형 ETF) 만기까지 들고 가는 개별 채권과 달리 매일 시세가 변하는 상장 상품이므로
   // '채권'(NON_TRADABLE_CATEGORIES에 포함되어 시세조회 대상에서 빠짐) 대신 ETF로 분류해 실시간 시세가
@@ -2093,14 +1924,6 @@ const state = {
   // SCENARIO2_TICKER_RATE_OVERRIDES 기본값(QQQM 11%·SPYM 9%·SCHD 10%)을 그대로 쓴다(주식형자산 일괄
   // 기본값 변경과 무관하게 이 3종목은 개별 지정값을 계속 유지한다).
   projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} },
-  // [자녀자산 탭] 자녀 전용 자산예측 - state.projection과 완전히 분리된 병렬 구조(가구 자산예측과 절대
-  // 섞이지 않는다). expectedReturnRate: null이면 보유 자산군 가중평균 추천값을 쓰고, 숫자면 사용자가
-  // 슬라이더로 직접 오버라이드한 값(1~15%). monthlyContribution: 월 추가 적립금(기본 0원).
-  // targetYears: null이면 childBirthDate로 만 19세까지 남은 기간을 자동계산, 숫자면 수동 오버라이드.
-  childProjection: { expectedReturnRate: null, monthlyContribution: 0, targetYears: null },
-  // 아들 생년월일(YYYY-MM-DD) - 개별 자산 레코드가 아니라 가구 단위 값이라 최상위 state에 둔다.
-  // 자녀 자산예측 카드의 "목표 투자 기간(만 19세까지)" 기본값 계산에 쓰인다.
-  childBirthDate: '',
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
   transactions: [],
@@ -2115,7 +1938,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, exchangeRate: null, categoryHistory: null, childProjection: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, exchangeRate: null, categoryHistory: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -2300,23 +2123,6 @@ function loadState() {
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
 
   try {
-    const childProjRaw = localStorage.getItem(LS_CHILD_PROJECTION);
-    if (childProjRaw) {
-      const parsed = JSON.parse(childProjRaw);
-      if (parsed && typeof parsed === 'object') state.childProjection = {
-        expectedReturnRate: (parsed.expectedReturnRate !== undefined && parsed.expectedReturnRate !== null && parsed.expectedReturnRate !== '') ? num(parsed.expectedReturnRate) : null,
-        monthlyContribution: num(parsed.monthlyContribution),
-        targetYears: (parsed.targetYears !== undefined && parsed.targetYears !== null && parsed.targetYears !== '') ? num(parsed.targetYears) : null
-      };
-    }
-  } catch (e) { /* 손상된 값이면 기본값 유지 */ }
-
-  try {
-    const childBirthRaw = localStorage.getItem(LS_CHILD_BIRTHDATE);
-    state.childBirthDate = childBirthRaw ? String(childBirthRaw) : '';
-  } catch (e) { state.childBirthDate = ''; }
-
-  try {
     const txRaw = localStorage.getItem(LS_TRANSACTIONS);
     state.transactions = txRaw ? JSON.parse(txRaw) : [];
     if (!Array.isArray(state.transactions)) state.transactions = [];
@@ -2346,8 +2152,6 @@ function persistRate() { localStorage.setItem(LS_RATE, String(state.exchangeRate
 function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); }
 function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); }
 function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); }
-function persistChildProjection() { localStorage.setItem(LS_CHILD_PROJECTION, JSON.stringify(state.childProjection)); }
-function persistChildBirthDate() { localStorage.setItem(LS_CHILD_BIRTHDATE, state.childBirthDate || ''); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); }
 function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); }
 
@@ -2373,9 +2177,6 @@ function calcRow(a) {
 function filteredAssets() {
   const q = String(state.filters.search ?? '').trim().toLowerCase();
   return state.assets.filter(a => {
-    // [자녀자산 격리] 투자세부 탭은 가구 전용 화면이라 아들 자산은 절대 여기 나타나면 안 된다 -
-    // 소유자 드롭다운에서 이미 '아들'을 뺐지만(populateFilterOptions), 방어적으로 여기서도 막는다.
-    if (isChildOwner(a)) return false;
     if (state.filters.owner !== 'ALL' && a.owner !== state.filters.owner) return false;
     if (state.filters.category !== 'ALL' && a.category !== state.filters.category) return false;
     if (state.filters.account !== 'ALL' && a.accountType !== state.filters.account) return false;
@@ -2603,9 +2404,7 @@ function renderKPIs() {
   // 집계 기준으로 남긴다.
   const byOwnerCategory = {}; // { owner: { category: { dailyPnL, cur, buy } } }
 
-  // [자녀자산 격리] 아들 소유 자산은 가구 전체 KPI(총평가금액/총평가손익/일간손익 등)에서 완전히
-  // 제외한다 - 오직 자녀자산 탭(getChildAssets/renderChildAssetTab)에서만 집계된다.
-  state.assets.filter(a => !isChildOwner(a)).forEach(a => {
+  state.assets.forEach(a => {
     const r = calcRow(a);
     const dp = calcDailyPnL(a, r);
     totalBuy += r.buyAmount;
@@ -2643,7 +2442,7 @@ function renderKPIs() {
   // 독립 배너(kpiFetchFailurePanel)에 실패 종목 안내 + [실패 종목 일괄 재조회] 버튼을 보여준다. 실패
   // 0건이면(전부 성공했거나 애초에 갱신을 한 번도 안 돌렸으면) 배너 자체를 숨긴다(hidden = display:none
   // 이라 공간을 차지하지 않는다). '총 투자금액' 카드는 이제 이 실패 상태와 무관하게 항상 정상 내용을 보여준다.
-  const failedAssets = state.assets.filter((a) => state.priceFetchFailedIds.has(a.id) && !isChildOwner(a));
+  const failedAssets = state.assets.filter((a) => state.priceFetchFailedIds.has(a.id));
   const hasFetchFailure = failedAssets.length > 0;
   document.getElementById('kpiFetchFailurePanel').classList.toggle('hidden', !hasFetchFailure);
   if (hasFetchFailure) {
@@ -2693,8 +2492,7 @@ function renderKPIs() {
 // 직접보유)은 애초에 순위 대상이 아니므로 집계에서 제외한다. 필터와 무관하게 전체 포트폴리오 기준.
 function getTopHoldings() {
   const groups = {}; // ticker -> { name, isDomestic, isForeign, curAmount(KRW), buyAmount(KRW), curAmountOriginal(자산통화), dailyPnL(KRW) }
-  // [자녀자산 격리] 아들 소유 자산은 Top5 순위 집계에서 제외한다.
-  state.assets.filter((a) => !isChildOwner(a)).forEach((a) => {
+  state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return;
     const r = calcRow(a);
@@ -2760,11 +2558,9 @@ function renderTopHoldings() {
  * 9. 필터 옵션 채우기
  * ---------------------------------------------------------------------- */
 function populateFilterOptions() {
-  // [자녀자산 격리] 투자세부 탭 필터 드롭다운은 가구 자산 기준이라 '아들'이 소유자 옵션으로 뜨면 안 된다.
-  const householdAssets = state.assets.filter((a) => !isChildOwner(a));
-  const owners = [...new Set(householdAssets.map(a => a.owner))].filter(Boolean).sort((a, b) => ownerRank(a) - ownerRank(b));
-  const categories = [...new Set(householdAssets.map(a => a.category))].filter(Boolean);
-  const accounts = [...new Set(householdAssets.map(a => a.accountType))].filter(Boolean);
+  const owners = [...new Set(state.assets.map(a => a.owner))].filter(Boolean).sort((a, b) => ownerRank(a) - ownerRank(b));
+  const categories = [...new Set(state.assets.map(a => a.category))].filter(Boolean);
+  const accounts = [...new Set(state.assets.map(a => a.accountType))].filter(Boolean);
 
   fillSelect('filterOwner', owners, '전체 소유자', state.filters.owner);
   fillSelect('filterCategory', categories, '전체 자산군', state.filters.category);
@@ -2935,13 +2731,11 @@ function switchTab(tab) {
   document.getElementById('tabPanelTransactions').classList.toggle('hidden', tab !== 'transactions');
   document.getElementById('tabPanelRebalance').classList.toggle('hidden', tab !== 'rebalance');
   document.getElementById('tabPanelProjection').classList.toggle('hidden', tab !== 'projection');
-  document.getElementById('tabPanelChildAsset').classList.toggle('hidden', tab !== 'childAsset');
   // 숨겨져 있던 탭의 캔버스는 크기가 0이었으므로, 보여줄 때 다시 렌더링해야 차트가 정상적으로 그려진다.
   if (tab === 'investmentDetail') renderInvestmentDetailTab();
   if (tab === 'transactions') renderTransactionsTab();
   if (tab === 'rebalance') renderRebalance();
   if (tab === 'projection') renderProjection();
-  if (tab === 'childAsset') renderChildAssetTab();
   lucide.createIcons();
 }
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -2954,7 +2748,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('cli
  *      열려 있을 때도 배경 탭이 바뀌면 혼란스러우므로 추적하지 않는다. preventDefault를 전혀 호출하지
  *      않으므로(passive 리스너) 세로 스크롤 등 기존 터치 동작은 전혀 방해받지 않는다.
  * ---------------------------------------------------------------------- */
-const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'rebalance', 'projection', 'childAsset'];
+const SWIPE_TAB_ORDER = ['dashboard', 'investmentDetail', 'transactions', 'rebalance', 'projection'];
 const SWIPE_MIN_DISTANCE = 50; // px
 // [중첩 모달 순서 주의] findOpenModalId()는 이 배열에서 "먼저 찾히는" id를 열려 있는 모달로 간주하므로,
 // 다른 모달 위에 중첩되어 열리는 2차 모달(stockAllocationModal → rebalanceTargetModal 위,
@@ -3150,8 +2944,6 @@ function updateTabScrollHint() {
 // 마치 그 사람 혼자만의 포트폴리오인 것처럼 같은 목표 비중(%)을 적용한다(종목별 리밸런싱 실행 가이드의
 // 소유자별 필터 전용 - isAssetIncludedForOwner 참고).
 function isAssetIncludedForOwner(a, ownerFilter) {
-  // [자녀자산 격리] 리밸런싱은 가구 전용 기능이라 ownerFilter 값과 무관하게 아들 자산은 항상 제외한다.
-  if (isChildOwner(a)) return false;
   return !ownerFilter || ownerFilter === 'all' || a.owner === ownerFilter;
 }
 function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
@@ -3253,7 +3045,7 @@ function computeExpandedRegionTargetAmounts(region, ownerFilter) {
 function findAnyHouseholdAssetByTicker(ticker) {
   const target = sanitizeTicker(ticker).yahooTicker;
   if (!target) return null;
-  return state.assets.find((a) => !isChildOwner(a) && sanitizeTicker(a.ticker).yahooTicker === target) || null;
+  return state.assets.find((a) => sanitizeTicker(a.ticker).yahooTicker === target) || null;
 }
 
 function computeIndividualRebalanceGuide(ownerFilter) {
@@ -3752,7 +3544,7 @@ function recalcStockCategoryPct() {
 function getHeldStockCandidates(region) {
   const seen = new Map();
   state.assets
-    .filter((a) => !isChildOwner(a) && a.isDomestic === region && a.category === '주식' && isRebalanceEligibleAccount(a) && String(a.ticker ?? '').trim() !== '')
+    .filter((a) => a.isDomestic === region && a.category === '주식' && isRebalanceEligibleAccount(a) && String(a.ticker ?? '').trim() !== '')
     .forEach((a) => {
       const key = a.ticker.toUpperCase();
       if (!seen.has(key)) seen.set(key, a);
@@ -4267,7 +4059,6 @@ function getProjectionGroupColor(groupKey, idx) { return PROJECTION_GROUP_COLORS
 function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
-    if (isChildOwner(a)) return; // [자녀자산 격리] 아들 자산은 가구 자산예측 탭 집계에서 제외
     if (a.category === '부동산') return; // 부동산은 미래 자산예측 전체에서 제외
     if (!isRebalanceEligibleAccount(a)) return; // 일반계좌 외 절세 계좌 보유 자산은 미래예측 계산에서 제외
     const r = calcRow(a);
@@ -5064,37 +4855,7 @@ function syncAssetsFromTransactions() {
 // 미리 채워서 내려주는 역할만 한다 - 사용자가 이 파일을 열어 실제 매매(구분=기간)를 이어서 적고, 완성된
 // 파일을 [기간거래등록]으로 올리면 최초/기간 행이 한 번에 등록된다. 이미 거래내역이 있는 종목은
 // (중복 등록 방지 차원에서) 양식에서 제외한다.
-// [저장 취소 감지] File System Access API(showSaveFilePicker)를 지원하는 브라우저(Chromium 계열)에서는
-// 사용자가 저장 대화상자에서 [취소]를 누르면 AbortError가 던져지므로 그 경우 성공 토스트를 띄우지 않고
-// 조용히 종료한다. 미지원 브라우저(Firefox/Safari 등)는 XLSX.writeFile()의 <a download> 방식으로
-// 폴백하는데, 이 방식은 웹 표준상 저장 대화상자의 취소 여부를 브라우저가 JS에 노출하지 않아 계속
-// 낙관적으로 성공 토스트가 뜬다 - File System Access API 지원 브라우저에서만 완전히 해결 가능한 플랫폼
-// 한계다. onSuccess는 실제로 저장이 완료됐을 때(또는 취소 여부를 판단할 수 없는 폴백 경로에서)만 호출된다.
-async function saveWorkbookWithCancelDetection(wb, filename, onSuccess) {
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [{ description: 'Excel 파일', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]
-      });
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const writable = await handle.createWritable();
-      await writable.write(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-      await writable.close();
-      onSuccess();
-    } catch (err) {
-      if (err && err.name === 'AbortError') return; // 사용자가 저장 대화상자에서 취소함 - 토스트 없이 조용히 종료
-      // 그 외 오류(권한 거부 등)는 기존 <a download> 방식으로 폴백해 다운로드 자체는 이어가게 한다.
-      XLSX.writeFile(wb, filename);
-      onSuccess();
-    }
-  } else {
-    XLSX.writeFile(wb, filename);
-    onSuccess();
-  }
-}
-
-async function downloadHoldingsAsTxTemplate() {
+function downloadHoldingsAsTxTemplate() {
   const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker}`));
   const targets = state.assets.filter((a) => {
     if (!a.ticker) return false;
@@ -5117,9 +4878,8 @@ async function downloadHoldingsAsTxTemplate() {
   ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 8 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '거래내역');
-  await saveWorkbookWithCancelDetection(wb, `거래내역_양식_${todayDateStr()}.xlsx`, () => {
-    showToast(`${targets.length}개 종목을 '최초' 행으로 채운 양식을 내려받았습니다. 실제 거래(구분=기간)를 추가로 적은 뒤 [기간거래등록]으로 올려주세요.`, 'success', 7000);
-  });
+  XLSX.writeFile(wb, `거래내역_양식_${todayDateStr()}.xlsx`);
+  showToast(`${targets.length}개 종목을 '최초' 행으로 채운 양식을 내려받았습니다. 실제 거래(구분=기간)를 추가로 적은 뒤 [기간거래등록]으로 올려주세요.`, 'success', 7000);
 }
 document.getElementById('seedTransactionsBtn').addEventListener('click', downloadHoldingsAsTxTemplate);
 
@@ -5310,8 +5070,6 @@ function getFilteredTransactions() {
   const f = state.txFilters;
   const q = f.search.trim().toLowerCase();
   return state.transactions
-    // [자녀자산 격리] 거래내역 탭은 가구 전용 화면이라 아들 거래는 여기 나타나면 안 된다.
-    .filter((t) => !isChildOwner(t))
     .filter((t) => !f.from || t.date >= f.from)
     .filter((t) => !f.to || t.date <= f.to)
     .filter((t) => f.account === 'ALL' || `${t.owner}·${t.accountType}` === f.account)
@@ -5322,7 +5080,7 @@ function getFilteredTransactions() {
 }
 
 function populateTxFilterOptions() {
-  const combos = [...new Set(state.transactions.filter((t) => !isChildOwner(t)).map((t) => `${t.owner}·${t.accountType}`))];
+  const combos = [...new Set(state.transactions.map((t) => `${t.owner}·${t.accountType}`))];
   const sel = document.getElementById('txFilterAccount');
   const current = state.txFilters.account;
   sel.innerHTML = '<option value="ALL">전체 계좌</option>' + combos.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
@@ -5428,10 +5186,7 @@ function daysInMonth(year, month1to12) { return new Date(year, month1to12, 0).ge
 // (매수는 포지션만 쌓을 뿐 손익이 확정되지 않음) annotated 중 매도 건만 집계 대상으로 삼는다.
 function computeRealizedPnLByPeriod(granularity, refDate) {
   const { annotated } = computePositionsAndRealizedPnL();
-  // [자녀자산 격리] computePositionsAndRealizedPnL() 자체는 아들 거래도 포함해 전부 계산해야
-  // 아들 자산의 수량/평단가가 정상 동기화되지만(syncAssetsFromTransactions), 거래내역 탭에 보여줄
-  // "기간별 실현손익" 리포트는 가구 전용이므로 여기서만 아들 매도분을 제외한다.
-  const sells = annotated.filter((tx) => tx.type === 'sell' && tx.computedRealizedPnL !== null && !isChildOwner(tx));
+  const sells = annotated.filter((tx) => tx.type === 'sell' && tx.computedRealizedPnL !== null);
 
   const [refYear, refMonth] = refDate.split('-').map(Number);
   let periodKeys, keyFn, labelFn, filteredSells;
@@ -5753,7 +5508,7 @@ function renderTable() {
     }
   }
 
-  document.getElementById('tableCountLabel').textContent = `총 ${state.assets.filter((a) => !isChildOwner(a)).length}건 중 ${displayedCount}건 표시`;
+  document.getElementById('tableCountLabel').textContent = `총 ${state.assets.length}건 중 ${displayedCount}건 표시`;
   renderTableFooter(rawRows);
   lucide.createIcons();
 }
@@ -5976,394 +5731,6 @@ function renderInvestmentDetailTab() {
   renderTable();
 }
 
-/* -------------------------------------------------------------------------
- * 12-1. 자녀자산 탭 (소유자가 '아들'인 자산 전용 - 가구 집계에서 완전히 격리된 화면)
- * ---------------------------------------------------------------------- */
-// 소유자가 '아들'인 자산만 뽑아낸다 - 자녀자산 탭의 카드들이 전부 이 함수 하나를 공유하는 단일 소스.
-function getChildAssets() {
-  return state.assets.filter(isChildOwner);
-}
-
-// switchTab()이 이 탭에 진입할 때, 그리고 renderAll()이 이 탭이 이미 보이고 있을 때 호출한다.
-function renderChildAssetTab() {
-  renderChildValueProfitCards();
-  renderChildCostCard();
-  renderChildTransactionList();
-  renderChildProjectionCard();
-}
-
-// 카드1(총평가금액)+카드2(총평가손익) - 소유자가 항상 '아들' 하나뿐이므로 가구 KPI 카드의 "소유자별"
-// 태그 자리를 "계좌구분별" 태그로 대체했다. 태그 렌더링은 기존 renderKpiBreakdown()을 그대로 재사용.
-function renderChildValueProfitCards() {
-  const assets = getChildAssets();
-  let totalBuy = 0, totalCur = 0;
-  const byAccount = {}; // { accountType: { cur, buy } }
-  const byCategory = {}; // { category: { cur, buy } }
-
-  assets.forEach((a) => {
-    const r = calcRow(a);
-    totalBuy += r.buyAmount;
-    totalCur += r.curAmount;
-
-    if (!byAccount[a.accountType]) byAccount[a.accountType] = { cur: 0, buy: 0 };
-    byAccount[a.accountType].cur += r.curAmount;
-    byAccount[a.accountType].buy += r.buyAmount;
-
-    if (!byCategory[a.category]) byCategory[a.category] = { cur: 0, buy: 0 };
-    byCategory[a.category].cur += r.curAmount;
-    byCategory[a.category].buy += r.buyAmount;
-  });
-
-  const totalProfit = totalCur - totalBuy;
-  const totalProfitRate = totalBuy !== 0 ? (totalProfit / totalBuy) * 100 : 0;
-
-  document.getElementById('childKpiTotalValue').textContent = fmtKRW(totalCur);
-  renderKpiBreakdown('childKpiTotalValueAccountBreakdown', byAccount, o => o.cur, fmtKRWShort, false, 'text-xs text-slate-500 dark:text-slate-400');
-  renderKpiBreakdown('childKpiTotalValueCategoryBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
-
-  const profitEl = document.getElementById('childKpiTotalProfit');
-  profitEl.textContent = fmtSigned(totalProfit);
-  profitEl.className = 'text-lg font-bold ' + profitColor(totalProfit);
-  const profitRateEl = document.getElementById('childKpiTotalProfitRate');
-  profitRateEl.textContent = fmtPct(totalProfitRate);
-  profitRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(totalProfitRate);
-  renderKpiBreakdown('childKpiTotalProfitBreakdown', byCategory, c => c.cur - c.buy, fmtSignedShort, true);
-}
-
-// 카드3(총투자금액) - [세부내용]은 모달을 열지 않고 카드 내부 블록(childKpiTotalCostDetail)을
-// hidden 클래스만으로 펼치고 접는다(요청에 따라 모달 인프라 없이 인라인 태그로 처리).
-function renderChildCostCard() {
-  const assets = getChildAssets();
-  let totalBuy = 0;
-  const byAccount = {}; // { accountType: { buy } }
-  const byCategory = {}; // { category: { buy } }
-
-  assets.forEach((a) => {
-    const r = calcRow(a);
-    totalBuy += r.buyAmount;
-    if (!byAccount[a.accountType]) byAccount[a.accountType] = { buy: 0 };
-    byAccount[a.accountType].buy += r.buyAmount;
-    if (!byCategory[a.category]) byCategory[a.category] = { buy: 0 };
-    byCategory[a.category].buy += r.buyAmount;
-  });
-
-  document.getElementById('childKpiTotalCost').textContent = fmtKRW(totalBuy);
-  renderKpiBreakdown('childKpiTotalCostAccountBreakdown', byAccount, o => o.buy, fmtKRWShort, false);
-  renderKpiBreakdown('childKpiTotalCostCategoryBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
-}
-
-/* ---- [자녀 거래내역] 카드 ---- */
-// 가구 거래내역 탭의 거래목록 아코디언(renderTransactionList, ~5311)과 완전히 같은 렌더 패턴을
-// owner === '아들' 전용으로 재사용한다 - 행 마크업/수정·삭제 버튼 배선(openTransactionModal,
-// deleteTransaction)까지 동일 함수를 그대로 공유해서, 여기서 거래를 수정/삭제해도 가구 거래내역과
-// 똑같이 computePositionsAndRealizedPnL/syncAssetsFromTransactions를 거쳐 자녀 자산 카드가 갱신된다.
-let childTxListAccordionOpen = false;
-
-function getChildTransactions() {
-  return state.transactions
-    .filter((t) => t.owner === '아들')
-    .sort((a, b) => b.date.localeCompare(a.date) || txAmountKRW(b) - txAmountKRW(a));
-}
-
-function renderChildTransactionList() {
-  const list = getChildTransactions();
-  const container = document.getElementById('childTxListContainer');
-  const emptyMsg = document.getElementById('childTxEmptyMsg');
-  const accordionBody = document.getElementById('childTxListAccordionBody');
-  const accordionChevron = document.getElementById('childTxListAccordionChevron');
-  document.getElementById('childTxListCount').textContent = list.length > 0 ? `(${list.length}건)` : '';
-
-  if (list.length === 0) {
-    container.innerHTML = '';
-    emptyMsg.classList.remove('hidden');
-    setAccordionOpen(accordionBody, accordionChevron, childTxListAccordionOpen);
-    return;
-  }
-  emptyMsg.classList.add('hidden');
-
-  container.innerHTML = list.map((t) => {
-    const typeLabel = t.type === 'buy' ? '매수' : '매도';
-    const typeClass = t.type === 'buy' ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500';
-    const unit = t.currency === 'USD' ? '$' : '';
-    const amount = t.quantity * t.price;
-    const originTag = t.origin === 'initial'
-      ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">최초</span>'
-      : '';
-    return `
-    <div class="py-2.5 flex items-start justify-between gap-2">
-      <div class="min-w-0">
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
-          ${originTag}
-          <span class="text-sm font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(t.ticker || '')}" data-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-          <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
-        </div>
-        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}</p>
-        <p class="text-xs mt-0.5">${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}</p>
-      </div>
-      <div class="flex items-center gap-1 shrink-0">
-        <button type="button" data-edit-child-tx="${t.id}" title="수정" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
-          <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
-        </button>
-        <button type="button" data-delete-child-tx="${t.id}" title="삭제" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-        </button>
-      </div>
-    </div>`;
-  }).join('');
-
-  container.querySelectorAll('button[data-edit-child-tx]').forEach((btn) => btn.addEventListener('click', () => openTransactionModal(btn.dataset.editChildTx)));
-  container.querySelectorAll('button[data-delete-child-tx]').forEach((btn) => btn.addEventListener('click', () => deleteTransaction(btn.dataset.deleteChildTx)));
-  lucide.createIcons();
-  setAccordionOpen(accordionBody, accordionChevron, childTxListAccordionOpen);
-}
-
-document.getElementById('childTxListAccordionBtn').addEventListener('click', () => {
-  childTxListAccordionOpen = !childTxListAccordionOpen;
-  setAccordionOpen(document.getElementById('childTxListAccordionBody'), document.getElementById('childTxListAccordionChevron'), childTxListAccordionOpen);
-});
-
-// [거래 추가] 가구 거래 추가 모달을 그대로 열되 소유자를 '아들'로 미리 채운다(자산 추가 버튼과 동일한 패턴).
-document.getElementById('childAddTransactionBtn').addEventListener('click', () => {
-  openTransactionModal(null);
-  document.getElementById('tx_owner').value = '아들';
-});
-
-/* ---- 카드4: 자녀 자산예측 ---- */
-// [자산예측 탭 연동] 자산군 하나의 예상 수익률을 정한다 - '주식형자산'/'채권'/'현금'처럼 가구 자산예측
-// 탭에도 존재하는 그룹은 getGroupReturnRate()를 그대로 재사용해 실제로 연동한다(그 탭에서 목표수익률을
-// 바꾸면 이 값도 자동으로 따라 바뀐다). '보험상품'은 가구 자산예측 탭에 없는 개념이라 연동 대상이 될
-// 그룹 자체가 없으므로 별도 고정값(CHILD_INSURANCE_DEFAULT_RATE)을 쓴다.
-const CHILD_INSURANCE_DEFAULT_RATE = 3.0;
-function getChildAssetReturnRate(category) {
-  const key = getProjectionGroupKey(category);
-  if (PROJECTION_ALL_GROUP_KEYS.includes(key)) return getGroupReturnRate(key);
-  return CHILD_INSURANCE_DEFAULT_RATE;
-}
-
-// 보유 자산군별 평가금액 비중으로 가중평균한 연 예상 수익률을 추천한다 - 각 자산의 수익률은
-// getChildAssetReturnRate()가 자산예측 탭 설정(state.projection.categoryReturns/PROJECTION_GROUP_DEFAULT_RATES)과
-// 실시간으로 연동해 결정한다. 보유 자산이 없으면(총액 0) 가구 자산예측 탭의 '주식형자산' 기본값을 그대로 추천한다.
-function computeChildSuggestedReturnRate() {
-  const assets = getChildAssets();
-  let weightedSum = 0, totalValue = 0;
-  assets.forEach((a) => {
-    const cur = calcRow(a).curAmount;
-    totalValue += cur;
-    weightedSum += cur * getChildAssetReturnRate(a.category);
-  });
-  if (totalValue === 0) return PROJECTION_GROUP_DEFAULT_RATES['주식형자산'] ?? 6;
-  return weightedSum / totalValue;
-}
-
-// 아들 생년월일로부터 만 19세까지 남은 연수를 계산한다(생년월일 미입력 시 기본 10년).
-function getChildTargetYearsDefault() {
-  if (!state.childBirthDate) return 10;
-  const birth = new Date(state.childBirthDate);
-  if (isNaN(birth.getTime())) return 10;
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const hadBirthdayThisYear = (now.getMonth() > birth.getMonth()) || (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate());
-  if (!hadBirthdayThisYear) age -= 1;
-  return Math.min(19, Math.max(1, 19 - age));
-}
-
-// year=1..targetYears 순회하며 [원금(월적립금 비복리 단순누적)/총액(월복리)/수익금] 계열을 만든다.
-// 총액 계산은 기존 household 자산예측 엔진의 computeFutureValue()를 그대로 재사용한다.
-function computeChildProjectionSeries() {
-  const assets = getChildAssets();
-  const pv = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
-  const rate = (state.childProjection.expectedReturnRate !== null && state.childProjection.expectedReturnRate !== undefined)
-    ? state.childProjection.expectedReturnRate
-    : computeChildSuggestedReturnRate();
-  const monthlyContribution = num(state.childProjection.monthlyContribution);
-  const targetYears = (state.childProjection.targetYears !== null && state.childProjection.targetYears !== undefined)
-    ? state.childProjection.targetYears
-    : getChildTargetYearsDefault();
-
-  const series = [];
-  for (let year = 1; year <= targetYears; year++) {
-    const principal = pv + monthlyContribution * 12 * year;
-    const total = computeFutureValue(pv, rate, year, monthlyContribution);
-    const growth = Math.max(0, total - principal);
-    series.push({ year, principal, growth, total });
-  }
-  return { series, rate, targetYears, monthlyContribution, pv };
-}
-
-// [신규 차트 유형] 누적 원금(하단)과 복리 수익금(상단)이 쌓이는 스택형 라인/영역 차트 - 기존
-// renderProjectionChartGeneric()(멀티라인 오버레이 방식)과는 다른 형태라 새로 작성했다. 다크모드
-// 대응(chartTextColor)과 억원 단위 Y축 콜백, hexToRgba 반투명 처리는 기존 차트들의 관례를 그대로 따른다.
-function renderChildProjectionChart(seriesData) {
-  const canvas = document.getElementById('childProjectionChart');
-  if (!canvas) return;
-  if (charts.childProjection) { charts.childProjection.destroy(); charts.childProjection = null; }
-
-  const isDark = document.documentElement.classList.contains('dark');
-  const textColor = chartTextColor();
-  const principalColor = isDark ? '#38BDF8' : '#0EA5E9';
-  const growthColor = isDark ? '#4ADE80' : '#16A34A';
-  const labels = seriesData.series.map((s) => `${s.year}년`);
-
-  charts.childProjection = new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: '누적 원금',
-          data: seriesData.series.map((s) => s.principal),
-          borderColor: principalColor,
-          backgroundColor: hexToRgba(principalColor, 0.35),
-          fill: 'origin',
-          stack: 'childProjection',
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.1
-        },
-        {
-          label: '복리 수익금',
-          data: seriesData.series.map((s) => s.growth),
-          borderColor: growthColor,
-          backgroundColor: hexToRgba(growthColor, 0.35),
-          fill: '-1',
-          stack: 'childProjection',
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.1
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        x: { stacked: true, ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
-        y: {
-          stacked: true,
-          ticks: { color: textColor, font: { size: 10 }, callback: (v) => (v / 1e8).toFixed(1) + '억' },
-          grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }
-        }
-      },
-      plugins: {
-        legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.parsed.y)}`,
-            footer: (items) => `합계: ${fmtKRWShort(items.reduce((s, it) => s + it.parsed.y, 0))}`
-          }
-        },
-        // 스택 영역마다 데이터레이블을 그리면 지저분해지므로 이 차트는 datalabels를 끈다(다른 차트와 동일 관례).
-        datalabels: { display: false }
-      }
-    }
-  });
-}
-
-function renderChildProjectionSummary(seriesData) {
-  const el = document.getElementById('childProjectionSummary');
-  if (!el || seriesData.series.length === 0) { if (el) el.textContent = ''; return; }
-  const last = seriesData.series[seriesData.series.length - 1];
-  el.innerHTML = `${seriesData.targetYears}년 후 예상 자산: <span class="text-brand-600 dark:text-brand-300 font-bold">${fmtKRWShort(last.total)}</span> (원금: ${fmtKRWShort(last.principal)} / 예상 수익: ${fmtKRWShort(last.growth)})`;
-}
-
-// 입력값 변경 시(슬라이더/적립금/생년월일/목표기간) 차트+요약만 다시 그린다 - 상태는 이미 각 이벤트
-// 핸들러가 갱신·persist한 뒤 호출된다.
-function updateChildProjection() {
-  const seriesData = computeChildProjectionSeries();
-  renderChildProjectionChart(seriesData);
-  renderChildProjectionSummary(seriesData);
-}
-
-// 탭 진입/데이터 변경 시 슬라이더·입력창 값을 state.childProjection 기준으로 다시 맞추고 차트를 그린다.
-function renderChildProjectionCard() {
-  const suggested = computeChildSuggestedReturnRate();
-  const rate = (state.childProjection.expectedReturnRate !== null && state.childProjection.expectedReturnRate !== undefined)
-    ? state.childProjection.expectedReturnRate : suggested;
-  document.getElementById('childReturnRateSlider').value = rate;
-  document.getElementById('childReturnRateValue').textContent = fmtNum(rate, 1) + '%';
-
-  document.getElementById('childMonthlyContributionInput').value = state.childProjection.monthlyContribution || 0;
-  // [8자리 숫자 입력] 저장 형식(state.childBirthDate)은 계속 'YYYY-MM-DD' ISO 문자열을 쓰고, 입력창에는
-  // 하이픈을 뗀 8자리 숫자만 보여준다 - 파싱/검증은 childBirthDateConfirmBtn 클릭 시에만 이뤄진다.
-  document.getElementById('childBirthDateInput').value = (state.childBirthDate || '').replace(/-/g, '');
-
-  const defaultYears = getChildTargetYearsDefault();
-  const targetYears = (state.childProjection.targetYears !== null && state.childProjection.targetYears !== undefined)
-    ? state.childProjection.targetYears : defaultYears;
-  const yearsSlider = document.getElementById('childTargetYearsSlider');
-  yearsSlider.value = targetYears;
-  document.getElementById('childTargetYearsValue').textContent = targetYears + '년';
-
-  updateChildProjection();
-}
-
-document.getElementById('childReturnRateSlider').addEventListener('input', (e) => {
-  const rate = num(e.target.value);
-  state.childProjection.expectedReturnRate = rate;
-  persistChildProjection();
-  document.getElementById('childReturnRateValue').textContent = fmtNum(rate, 1) + '%';
-  updateChildProjection();
-});
-document.getElementById('childReturnRateSuggestBtn').addEventListener('click', () => {
-  state.childProjection.expectedReturnRate = null;
-  persistChildProjection();
-  renderChildProjectionCard(); // 슬라이더 위치 자체를 추천값으로 되돌려야 하므로 전체 재동기화
-});
-document.getElementById('childMonthlyContributionInput').addEventListener('input', (e) => {
-  state.childProjection.monthlyContribution = num(e.target.value);
-  persistChildProjection();
-  updateChildProjection();
-});
-// [8자리 숫자 입력 + 확인 버튼] 달력 선택기 대신 YYYYMMDD 8자리를 직접 입력받아 [확인] 클릭 시에만
-// 파싱·검증 후 저장한다(입력 중간에는 아무 반응 없음 - 값 확정은 오직 버튼 클릭으로만 이뤄진다).
-document.getElementById('childBirthDateConfirmBtn').addEventListener('click', () => {
-  const raw = document.getElementById('childBirthDateInput').value.trim();
-  const msgEl = document.getElementById('childBirthDateMsg');
-  if (!/^\d{8}$/.test(raw)) {
-    msgEl.textContent = '생년월일 8자리 숫자(YYYYMMDD)를 입력해주세요.';
-    msgEl.className = 'text-[10px] text-red-500 mt-1';
-    return;
-  }
-  const y = Number(raw.slice(0, 4)), m = Number(raw.slice(4, 6)), d = Number(raw.slice(6, 8));
-  const dateObj = new Date(y, m - 1, d);
-  // new Date(y, m-1, d)는 존재하지 않는 날짜(예: 2월 30일)를 다음 달로 넘겨버리므로, 되돌아온 연/월/일이
-  // 입력값과 정확히 같은지 다시 비교해야 진짜 유효한 달력 날짜인지 확인할 수 있다.
-  const valid = dateObj.getFullYear() === y && (dateObj.getMonth() + 1) === m && dateObj.getDate() === d
-    && dateObj <= new Date() && y >= 1990;
-  if (!valid) {
-    msgEl.textContent = '유효한 생년월일이 아닙니다. 다시 확인해주세요.';
-    msgEl.className = 'text-[10px] text-red-500 mt-1';
-    return;
-  }
-  state.childBirthDate = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
-  persistChildBirthDate();
-  msgEl.textContent = '생년월일이 저장되었습니다 - 목표 투자 기간에 반영됩니다.';
-  msgEl.className = 'text-[10px] text-emerald-600 dark:text-emerald-400 mt-1';
-  // 목표기간을 사용자가 수동으로 오버라이드한 적이 없을 때만(targetYears === null) 새 기본값을 반영한다.
-  if (state.childProjection.targetYears === null || state.childProjection.targetYears === undefined) {
-    renderChildProjectionCard(); // 목표기간 슬라이더 위치도 새 기본값으로 되돌려야 하므로 전체 재동기화
-  } else {
-    updateChildProjection();
-  }
-});
-document.getElementById('childTargetYearsSlider').addEventListener('input', (e) => {
-  const years = num(e.target.value);
-  state.childProjection.targetYears = years;
-  persistChildProjection();
-  document.getElementById('childTargetYearsValue').textContent = years + '년';
-  updateChildProjection();
-});
-
-// 자녀자산 탭 전용 [자산 추가] 버튼 - 별도 모달을 만들지 않고 기존 자산 추가 모달을 그대로 열되,
-// 소유자를 '아들'로 미리 채워준다(모달 자체의 검색/수동입력/시세조회 로직은 전혀 손대지 않는다).
-document.getElementById('childAddAssetBtn').addEventListener('click', () => {
-  openModal('add');
-  document.getElementById('f_owner').value = '아들';
-  showModal();
-});
-
 function renderAll() {
   populateFilterOptions();
   renderKPIs();
@@ -6377,7 +5744,6 @@ function renderAll() {
   if (state.activeTab === 'transactions') renderTransactionsTab();
   if (state.activeTab === 'rebalance') renderRebalance();
   if (state.activeTab === 'projection') renderProjection();
-  if (state.activeTab === 'childAsset') renderChildAssetTab();
 }
 
 /* -------------------------------------------------------------------------
@@ -7703,7 +7069,7 @@ async function refreshMa20ForTargets(targets) {
 }
 
 function riskEligibleAssets() {
-  return state.assets.filter((a) => !isChildOwner(a) && isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
+  return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
 }
 
 // 3가지 조건을 각각 독립적으로 평가해 해당하는 태그를 전부 모은다(OR 조건 - 하나 이상이면 RISK, 하나도
@@ -7788,7 +7154,7 @@ function renderRiskSection() {
   };
   const risky = riskyRaw.sort(regionThenAmount);
   const safe = safeRaw.sort(regionThenAmount);
-  const totalPortfolioCur = state.assets.filter((a) => !isChildOwner(a)).reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const totalPortfolioCur = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   riskyBadge.textContent = `${risky.length}건`;
   safeBadge.textContent = `${safe.length}건`;
@@ -8061,8 +7427,7 @@ let dailyPnlPopupDays = 30;           // 30 | 90 | 180 | 365
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
 function getDailyPnlOwnerList() {
-  // [자녀자산 격리] 일별손익 팝업/리밸런싱 가이드 소유자 탭 모두 가구 전용이라 '아들'이 뜨면 안 된다.
-  return Array.from(new Set(state.assets.filter((a) => !isChildOwner(a)).map((a) => a.owner).filter(Boolean)))
+  return Array.from(new Set(state.assets.map((a) => a.owner).filter(Boolean)))
     .sort((a, b) => ownerRank(a) - ownerRank(b));
 }
 
@@ -8253,9 +7618,7 @@ function reconstructHistoricalCurValues() {
   // anchor: 오늘 시점의 실제 소유자×자산군 평가금액(방금 끝난 시세 갱신을 확실히 반영하기 위해 매번 새로 계산)
   const ownerCategoryCur = {}; // { owner: { category: cur } }
   owners.forEach((o) => { ownerCategoryCur[o] = {}; });
-  // [자녀자산 격리] 아들 자산은 가구용 소유자×자산군 히스토리 재구성에서 제외한다(owners 목록도
-  // getDailyPnlOwnerList()에서 이미 아들이 빠져 있으므로 이중으로 안전).
-  state.assets.filter((a) => !isChildOwner(a)).forEach((a) => {
+  state.assets.forEach((a) => {
     const curAmount = calcRow(a).curAmount;
     if (!ownerCategoryCur[a.owner]) ownerCategoryCur[a.owner] = {};
     ownerCategoryCur[a.owner][a.category] = (ownerCategoryCur[a.owner][a.category] || 0) + curAmount;
@@ -8426,8 +7789,8 @@ function getSeriesColors() {
 // 경우를 대비해 폴백 회색도 함께 둔다.
 // [버그 수정 - 누적 영역 차트 시인성] 예전 팔레트(#0077B6, #B8860B 등)는 채도가 낮아 여러 영역이
 // 겹겹이 쌓였을 때 경계가 흐릿하게 번져 보였다 - 채도/명도를 올린 선명한 색으로 교체했다.
-const CATEGORY_COLORS_LIGHT = { '주식': '#7C3AED', 'ETF': '#0EA5E9', '채권': '#16A34A', '현금': '#F59E0B', '부동산': '#DC2626', '보험상품': '#EA580C' };
-const CATEGORY_COLORS_DARK = { '주식': '#A78BFA', 'ETF': '#38BDF8', '채권': '#4ADE80', '현금': '#FBBF24', '부동산': '#F87171', '보험상품': '#FB923C' };
+const CATEGORY_COLORS_LIGHT = { '주식': '#7C3AED', 'ETF': '#0EA5E9', '채권': '#16A34A', '현금': '#F59E0B', '부동산': '#DC2626' };
+const CATEGORY_COLORS_DARK = { '주식': '#A78BFA', 'ETF': '#38BDF8', '채권': '#4ADE80', '현금': '#FBBF24', '부동산': '#F87171' };
 const CATEGORY_COLOR_FALLBACK_LIGHT = '#64748b';
 const CATEGORY_COLOR_FALLBACK_DARK = '#94a3b8';
 function getCategoryColor(category) {
@@ -9252,8 +8615,6 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
     dailyChangeRate: state.dailyChangeRate,
     rebalance: state.rebalance,
     projection: state.projection,
-    childProjection: state.childProjection,
-    childBirthDate: state.childBirthDate,
     assets: state.assets.map(a => ({
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
@@ -9340,18 +8701,6 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           };
           persistProjection();
         }
-        if (parsed.childProjection && typeof parsed.childProjection === 'object') {
-          state.childProjection = {
-            expectedReturnRate: (parsed.childProjection.expectedReturnRate !== undefined && parsed.childProjection.expectedReturnRate !== null && parsed.childProjection.expectedReturnRate !== '') ? num(parsed.childProjection.expectedReturnRate) : null,
-            monthlyContribution: num(parsed.childProjection.monthlyContribution),
-            targetYears: (parsed.childProjection.targetYears !== undefined && parsed.childProjection.targetYears !== null && parsed.childProjection.targetYears !== '') ? num(parsed.childProjection.targetYears) : null
-          };
-          persistChildProjection();
-        }
-        if (typeof parsed.childBirthDate === 'string') {
-          state.childBirthDate = parsed.childBirthDate;
-          persistChildBirthDate();
-        }
         if (Array.isArray(parsed.transactions)) {
           state.transactions = parsed.transactions.map((t) => ({
             id: t.id || genId(),
@@ -9408,8 +8757,6 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
   state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} };
-  state.childProjection = { expectedReturnRate: null, monthlyContribution: 0, targetYears: null };
-  state.childBirthDate = '';
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라
@@ -9423,8 +8770,6 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   persistAssets();
   persistRebalance();
   persistProjection();
-  persistChildProjection();
-  persistChildBirthDate();
   persistTransactions();
   persistDailySnapshots();
   persistRate();
