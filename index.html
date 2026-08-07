@@ -277,13 +277,11 @@
   <!-- ============================= KPI CARDS ============================= -->
   <!-- [배치 순서 변경] 손익 카드(총평가손익/일간평가손익)를 총평가금액보다 먼저 보여주도록 순서만
        재배치했다 - 각 카드 내부 내용/id/로직은 전혀 건드리지 않았다. -->
-  <!-- [카드 통합] 투자세부 탭 최상단에 있던 [총 평가금액] 카드를 이 탭으로 옮겨와 [총 평가손익] 카드와
-       1:1 좌우 2컬럼으로 나란히 배치한다 - 내부 id/로직(세부내용 버튼 -> openTotalValueModal, 소유자별/
-       자산군별 태그 렌더링은 renderKPIs()가 그대로 채움)은 전혀 손대지 않고 위치만 이동했다.
-       [모바일에서도 항상 가로 2열] 요청에 따라 sm 미만에서도 위아래로 쌓지 않고 grid-cols-2를 고정으로
-       쓴다 - 카드 폭이 절반으로 줄어드는 만큼 패딩/폰트를 모바일 전용으로 한 단계씩 낮춰서
-      (p-2.5 sm:p-4, 금액 text-base sm:text-lg, 라벨/태그 text-[10px] sm:text-xs 등) 숫자가 줄바꿈되거나
-       카드 밖으로 삐져나오지 않게 한다. -->
+  <!-- [카드 재이동] [총 평가금액] 카드는 다시 투자세부 탭(tabPanelInvestmentDetail, 총투자금액 카드
+       바로 위)으로 옮겼다 - 그래서 이 탭에는 이제 [총 평가손익] 카드만 남는다. 예전에 2컬럼 짝을
+       맞추려고 모바일 전용으로 줄여뒀던 패딩/폰트(p-2.5/text-base 등)는 그대로 둬도 무방하지만,
+       혼자 남은 카드가 모바일에서도 좌우 여백 없이 폭 전체를 쓰도록 감싸는 section을 grid-cols-2 ->
+       grid-cols-1로 바꿨다(카드 자체 클래스는 원래도 폭 100%라 별도 w-full 지정 불필요). -->
 
   <!-- ============================= 시세 반영 실패 알림 배너 =============================
        [알림 카드 위치 이동] 원래 투자세부 탭의 [총 투자금액] 카드 내용을 통째로 바꿔치기하던
@@ -302,24 +300,7 @@
     </button>
   </div>
 
-  <section class="grid grid-cols-2 gap-2 sm:gap-4 mb-6">
-
-    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
-      <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
-        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가금액</span>
-        <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn !text-[9px] sm:!text-[10px] !px-1.5 sm:!px-[7px]">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-          <div class="hidden sm:flex w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 items-center justify-center">
-            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
-          </div>
-        </div>
-      </div>
-      <p id="kpiTotalValue" class="text-base sm:text-lg font-bold truncate">0원</p>
-      <!-- 총 평가금액 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 - 총 평가금액보다 작은 글씨 -->
-      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-[10px] sm:text-xs"></div>
-      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
-      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
-    </div>
+  <section class="grid grid-cols-1 gap-2 sm:gap-4 mb-6">
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
@@ -353,6 +334,10 @@
       <p id="kpiDailyProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
       <!-- 총 손익 바로 아래에 보유자별(신랑/와이프/공동 등) 손익을 함께 보여준다 -->
       <div id="kpiDailyOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
+      <!-- [통화별 일간손익] 신랑/와이프 손익 바로 아래에 거래 통화(a.currency) 기준 원화/해외통화
+           일간손익을 같은 글씨 크기(text-sm font-semibold)로 추가 표기한다 - renderKPIs() 참고,
+           손익 계산 로직 자체는 전혀 건드리지 않고 기존 dp 값을 통화별로 다시 묶어서 보여줄 뿐이다. -->
+      <div id="kpiDailyCurrencyBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
       <!-- '실시간 반영 + 수동 변동률' 안내 문구/수동 입력란은 화면에서 숨긴다(요청에 따라).
            dailyChangeInput/kpiDailyHint는 loadState 등 여러 곳에서 값을 그대로 읽고 쓰므로
            DOM에서 완전히 제거하지 않고 hidden 처리만 해서 기존 로직이 깨지지 않게 한다. -->
@@ -475,8 +460,32 @@
        캔버스는 크기가 0이므로 dashboard 탭처럼 무조건 그리면 차트가 깨진다).
        [탭 재배치] 총투자현황 탭에 있던 [총투자금액]/[달러자산 총액·적용환율] 2개 카드를 이 탭 최상단으로
        옮겨왔다 - 카드 내부 id/로직(세부내용 버튼, 환율 추이 팝업 등)은 그대로다. [총평가금액] 카드는
-       이후 다시 총투자현황 탭으로 옮겨져 [총평가손익] 카드와 나란히 배치됐다(해당 섹션 상단 주석 참고). -->
+       한동안 총투자현황 탭에서 [총평가손익] 카드와 나란히 배치됐다가, 다시 이 탭으로 옮겨와 바로 아래
+       [총 투자금액] 카드 위에 자리잡았다(요청: "총평가금액 카드를 총투자금액 카드 바로 위에 배치"). -->
   <div id="tabPanelInvestmentDetail" class="hidden">
+
+  <!-- ============================= KPI CARDS (평가금액) =============================
+       [총투자현황 탭에서 이동] id/로직(세부내용 버튼 -> openTotalValueModal, 소유자별/자산군별 태그
+       렌더링은 renderKPIs()가 그대로 채움)은 전혀 손대지 않고 위치만 옮겼다. 아래 [총 투자금액] 카드
+       바로 위에 오도록 별도의 전체 폭 section으로 감쌌다. -->
+  <section class="grid grid-cols-1 gap-4 mb-4">
+    <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-w-0">
+      <div class="flex items-center justify-between mb-2 gap-1">
+        <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가금액</span>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
+            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
+          </div>
+        </div>
+      </div>
+      <p id="kpiTotalValue" class="text-lg font-bold truncate">0원</p>
+      <!-- 총 평가금액 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
+      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-xs"></div>
+      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
+      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+    </div>
+  </section>
 
   <!-- ============================= KPI CARDS (금액 상세) ============================= -->
   <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -1327,11 +1336,9 @@
     </div>
 
     <div class="px-5 py-4 overflow-y-auto space-y-3">
-      <div class="grid grid-cols-2 gap-2">
-        <button type="button" data-pnl-type="unrealized" class="daily-pnl-type-btn active text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">일별 평가손익</button>
-        <button type="button" data-pnl-type="realized" class="daily-pnl-type-btn text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">일별 실현손익</button>
-      </div>
-
+      <!-- [일별 실현손익 항목 제거] 예전엔 [일별 평가손익]/[일별 실현손익] 전환 토글이 있었으나 요청에
+           따라 완전히 삭제했다 - 이 팝업은 이제 항상 일별 평가손익만 보여준다(dailyPnlPopupType은
+           'unrealized' 고정, buildDailyPnlSeries 참고). -->
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
         <div class="flex items-center gap-1 shrink-0 flex-wrap">
@@ -2469,6 +2476,9 @@ function renderKPIs() {
   // 이 자산군"을 따로 뽑아낼 수 없음). recordDailySnapshot에 그대로 전달해 일자별 스냅샷에도 이 교차
   // 집계 기준으로 남긴다.
   const byOwnerCategory = {}; // { owner: { category: { dailyPnL, cur, buy } } }
+  // [일간평가손익 카드 - 통화별 표기] 거래 통화(a.currency) 기준 원화/해외통화 일간손익 - 계산 로직은
+  // 전혀 바꾸지 않고 이미 구한 dp(원화 환산 완료된 값)를 통화 라벨로 다시 묶기만 한다.
+  const byCurrency = {}; // { '원화': { dailyPnL }, '해외통화': { dailyPnL } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
@@ -2493,6 +2503,10 @@ function renderKPIs() {
     byOwnerCategory[a.owner][a.category].dailyPnL += dp;
     byOwnerCategory[a.owner][a.category].cur += r.curAmount;
     byOwnerCategory[a.owner][a.category].buy += r.buyAmount;
+
+    const currencyLabel = a.currency === 'KRW' ? '원화' : '해외통화';
+    if (!byCurrency[currencyLabel]) byCurrency[currencyLabel] = { dailyPnL: 0 };
+    byCurrency[currencyLabel].dailyPnL += dp;
   });
 
   const totalProfit = totalCur - totalBuy;
@@ -2542,6 +2556,8 @@ function renderKPIs() {
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익 - 다른 태그보다 눈에 잘 띄도록 크게 표시
   renderKpiBreakdown('kpiDailyOwnerBreakdown', byOwner, o => o.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold', true);
+  // 그 바로 아래: 거래 통화(원화/해외통화) 기준 일간손익 - 소유자 태그와 동일한 글씨 크기로 표시
+  renderKpiBreakdown('kpiDailyCurrencyBreakdown', byCurrency, c => c.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold');
   // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익
   renderKpiBreakdown('kpiDailyProfitBreakdown', byCategory, c => c.dailyPnL, fmtSignedShort, true);
 
@@ -5400,11 +5416,15 @@ function renderPnlChart(periods) {
   const colors = data.map((v) => (v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8')));
 
   if (charts.pnl) charts.pnl.destroy();
-  charts.pnl = new Chart(document.getElementById('pnlChart'), {
+  const pnlCanvas = document.getElementById('pnlChart');
+  charts.pnl = new Chart(pnlCanvas, {
     type: 'bar',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      // [툴팁 3초 자동 숨김] 다른 차트들과 동일하게 hover가 아니라 click에서만 툴팁이 뜨게 하고,
+      // 아래 canvas.onclick에서 scheduleDailyPnlTooltipHide로 3초 뒤 자동으로 닫는다.
+      events: ['click'],
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => fmtSigned(c.parsed.y) } } },
       scales: {
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
@@ -5412,6 +5432,8 @@ function renderPnlChart(periods) {
       }
     }
   });
+  // DOM0 스타일(onclick=) 할당 - 재렌더링마다 이전 핸들러를 자동으로 덮어써서 리스너가 계속 쌓이지 않는다.
+  pnlCanvas.onclick = () => scheduleDailyPnlTooltipHide(charts.pnl);
 }
 
 function renderPnlReportTable(periods) {
@@ -5642,7 +5664,12 @@ function renderTable() {
     }
   }
 
-  document.getElementById('tableCountLabel').textContent = `총 ${state.assets.length}건 중 ${displayedCount}건 표시`;
+  // [건수 표기 형식 변경] "총 N건 중 M건 표시" -> "총 N건 (단일 X건, 중복 Y건)". 단일(X)=실제로 화면에
+  // 표시되는 행 수(같은 종목을 여러 소유자/계좌가 나눠 보유해 buildMergedRows가 한 줄로 합친 경우도
+  // 1건으로 센다), 중복(Y)=그렇게 합쳐지며 줄어든 건수(현재 필터 기준 원본 건수 - 표시 행 수). 필터가
+  // '전체'일 때는 rawRows.length가 곧 state.assets.length와 같아 예시("총 28건...")와 정확히 일치한다.
+  const duplicateCount = rawRows.length - displayedCount;
+  document.getElementById('tableCountLabel').textContent = `총 ${rawRows.length}건 (단일 ${displayedCount}건, 중복 ${duplicateCount}건)`;
   renderTableFooter(rawRows);
   lucide.createIcons();
 }
@@ -7907,8 +7934,11 @@ function buildRealizedPnlSeries(days) {
   return Object.keys(byDate).sort().map((k) => byDate[k]);
 }
 
+// [일별 실현손익 항목 제거] 팝업의 [일별 평가손익]/[일별 실현손익] 전환 토글을 없애면서, 이 팝업은
+// 항상 일별 평가손익(buildUnrealizedPnlSeries)만 보여준다 - buildRealizedPnlSeries는 더 이상 호출되지
+// 않지만, 계산 로직 자체는 그대로 남겨둔다(다른 화면에서 재사용될 가능성을 열어둠).
 function buildDailyPnlSeries(days) {
-  return dailyPnlPopupType === 'unrealized' ? buildUnrealizedPnlSeries(days) : buildRealizedPnlSeries(days);
+  return buildUnrealizedPnlSeries(days);
 }
 
 // [차트 선 색상 고대비 개선과 동일한 방식] 합계/소유자별 라인 색상을 라이트/다크 모드별로 분리한다 -
@@ -8160,13 +8190,6 @@ function renderDailyPnlOwnerTabs() {
   });
 }
 
-document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    dailyPnlPopupType = btn.dataset.pnlType;
-    document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    updateDailyPnlModal();
-  });
-});
 document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     dailyPnlPopupDays = Number(btn.dataset.pnlDays);
@@ -8179,7 +8202,6 @@ function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
   dailyPnlPopupDays = 30;
-  document.querySelectorAll('#dailyPnlModal .daily-pnl-type-btn').forEach((b) => b.classList.toggle('active', b.dataset.pnlType === 'unrealized'));
   document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
