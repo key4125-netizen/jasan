@@ -307,8 +307,18 @@
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
         <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가손익</span>
-        <div class="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center shrink-0">
-          <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+        <!-- [세부내용 버튼 신설] 클릭 시 openTotalProfitModal()로 누적 평가손익 추이(꺾은선) 모달을 연다 -
+             다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
+        <div class="flex flex-col items-end gap-1 shrink-0">
+          <div class="flex items-center gap-1 sm:gap-1.5">
+            <button type="button" id="kpiTotalProfitDetailBtn" class="detail-btn !text-[9px] sm:!text-[10px] !px-1.5 sm:!px-[7px]">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+            <div class="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center">
+              <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+            </div>
+          </div>
+          <!-- [총 실현손익 배지] 매도 거래 전체 누적 실현손익(getTotalRealizedPnL) - renderKPIs() 참고,
+               매도 내역이 아예 없으면 숨긴다. -->
+          <span id="kpiTotalRealizedBadge" class="hidden text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
         </div>
       </div>
       <p id="kpiTotalProfit" class="text-base sm:text-lg font-bold truncate">0원</p>
@@ -325,11 +335,17 @@
     <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간 평가손익</span>
-        <div class="flex items-center gap-1.5">
-          <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-            <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+        <!-- [오늘 실현손익 배지] 메인 숫자(kpiDailyProfit)는 순수 미실현(평가) 손익 계산을 그대로 유지하고,
+             오늘 매도해서 발생한 실현손익은 세부내용 버튼 바로 밑에 별도 배지로만 덧붙인다
+             (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다. -->
+        <div class="flex flex-col items-end gap-1">
+          <div class="flex items-center gap-1.5">
+            <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+            <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
+            </div>
           </div>
+          <span id="kpiTodayRealizedBadge" class="hidden text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
         </div>
       </div>
       <p id="kpiDailyProfit" class="text-lg font-bold">0원</p>
@@ -1392,6 +1408,36 @@
   </div>
 </div>
 
+<!-- ============================= 누적 평가손익 추이 모달 (총 평가손익 KPI 카드 [세부내용] 터치) =============================
+     바로 위 [총 평가금액 추이] 모달과 완전히 동일한 마크업/기간탭 구조를 재사용한다(id 접두사만 tv->tp로
+     교체) - buildCumulativeProfitSeries()/openTotalProfitModal() 참고. -->
+<div id="totalProfitModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">누적 평가손익 추이</h3>
+      <button type="button" id="closeTotalProfitModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
+      <div class="flex items-center justify-end gap-1">
+        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tp-days="90" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+      </div>
+
+      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
+        <canvas id="totalProfitChart"></canvas>
+        <p id="totalProfitChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+      </div>
+
+      <div id="totalProfitList" class="pt-1"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 환율 추이 모달 (달러자산 총액/적용환율 KPI 카드 터치) =============================
      Yahoo Finance의 USD/KRW 환율 티커(KRW=X)를 종목 상세 차트와 같은 fetchDailyHistory()로 조회해
      최근 1개월~1년 일별 종가 흐름을 라인 차트로 보여준다 - openExchangeRateModal() 참고. -->
@@ -2013,7 +2059,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, exchangeRate: null, categoryHistory: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null, categoryHistory: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -2410,6 +2456,20 @@ function calcDailyPnL(a, r) {
   return r.curAmount * (state.dailyChangeRate / 100);
 }
 
+// [일간평가손익/총평가손익 카드 - 실현손익 배지] 세부내용 버튼 밑에 다는 소형 배지 공용 렌더러.
+// amount가 0이면(해당 없음 - 오늘 매도 없음/전체 매도 이력 없음) 배지 자체를 숨긴다.
+function renderRealizedBadge(elId, amount, label) {
+  const el = document.getElementById(elId);
+  if (Math.round(amount) === 0) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.textContent = `${label}: ${fmtSigned(amount)}`;
+  el.className = 'text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ' + profitColor(amount);
+}
+
 // KPI 카드 하단에 자산군별 세부 집계 태그를 렌더링한다. entries가 비어있으면(보유 자산군이 없거나
 // 전부 0원) 컨테이너 자체를 숨겨 빈 구분선만 남는 것을 방지한다.
 // valueFn(catStats) -> 표시할 금액, formatFn -> 표시 문자열 포맷터, colored -> true면 손익처럼 +/-/0 색상 적용.
@@ -2544,6 +2604,9 @@ function renderKPIs() {
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률 - 다른 태그보다 눈에 잘 띄도록 크게 표시
   renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwner);
   renderKpiBreakdown('kpiTotalProfitBreakdown', byCategory, c => c.cur - c.buy, fmtSignedShort, true);
+  // [총 실현손익 배지] 세부내용 버튼 밑 - 지금까지의 매도 건 전체 누적 실현손익(getTotalRealizedPnL).
+  // 위 총평가손익 계산(totalProfit = totalCur - totalBuy, 미실현)과는 완전히 독립된 별도 표시다.
+  renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익');
 
   // 일간 변동률(%)의 분모는 "전일 기준 총자산" = 현재 총자산에서 오늘 하루 손익만큼을 뺀 값.
   const prevTotal = totalCur - dailyProfit;
@@ -2562,6 +2625,9 @@ function renderKPIs() {
   renderKpiBreakdown('kpiDailyCurrencyBreakdown', byCurrency, c => c.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold');
   // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익
   renderKpiBreakdown('kpiDailyProfitBreakdown', byCategory, c => c.dailyPnL, fmtSignedShort, true);
+  // [오늘 실현손익 배지] 세부내용 버튼 밑 - 오늘 매도해서 발생한 실현손익(getTodayRealizedPnL). 위
+  // dailyProfit(미실현 평가손익) 계산은 전혀 건드리지 않고, 별도로 계산해 배지로만 덧붙인다.
+  renderRealizedBadge('kpiTodayRealizedBadge', getTodayRealizedPnL(), '오늘 실현손익');
 
   document.getElementById('kpiForeignValue').textContent = fmtKRW(foreignCur);
   document.getElementById('kpiAppliedRate').textContent = '적용환율 ' + fmtNum(state.exchangeRate, 1) + '원';
@@ -2857,7 +2923,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal', 'categoryHistoryModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'categoryHistoryModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2892,6 +2958,7 @@ const MODAL_CLOSE_FNS = {
   dailyPnlModal: (viaBack) => closeDailyPnlModal(viaBack),
   stockAllocationModal: (viaBack) => closeStockAllocationModal(viaBack),
   totalValueModal: (viaBack) => closeTotalValueModal(viaBack),
+  totalProfitModal: (viaBack) => closeTotalProfitModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
   categoryHistoryModal: (viaBack) => closeCategoryHistoryModal(viaBack)
@@ -7759,6 +7826,7 @@ async function backfillAllHoldingsDailyPnlHistory() {
   // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운/보정한 값을 즉시 보여준다.
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
+  if (!document.getElementById('totalProfitModal').classList.contains('hidden')) updateTotalProfitModal();
 }
 
 // [버그 수정 - 총 평가금액 추이 과거 데이터 0원 표시] backfillDailyPnlHistory가 채우는 건 자산별 종가
@@ -7889,6 +7957,27 @@ function buildTotalValueSeries(days) {
   return series;
 }
 
+// [총 평가손익 카드 - 누적 평가손익 추이 팝업] 일자별 "절대 평가금액(cur)"이 아니라 "그날의 시세
+// 변동분(dailyPnL)"을 선택 기간 시작일부터 누적으로 더해 나간다 - 이미 검증된 buildUnrealizedPnlSeries
+// (일별 손익 추이 팝업과 동일 소스)를 그대로 재사용하므로 새로운 이력 추적 없이 바로 만들 수 있다.
+// 매입금액(원금) 자체의 과거 이력은 저장하지 않으므로 "그 기간 동안 순수 시세 변동으로 쌓인 손익"만
+// 보여준다(중간에 추가 매수/매도로 원금이 바뀌어도 왜곡되지 않는, 증권사 앱의 "기간 수익률" 그래프와
+// 같은 개념) - 선택한 기간의 첫날은 항상 0에서 시작해 오늘까지 누적된다.
+function buildCumulativeProfitSeries(days) {
+  const dailySeries = buildUnrealizedPnlSeries(days);
+  const runningByOwner = {};
+  let runningTotal = 0;
+  return dailySeries.map((row) => {
+    runningTotal += row.total;
+    const byOwnerAmounts = {};
+    Object.keys(row.byOwnerAmounts).forEach((o) => {
+      runningByOwner[o] = (runningByOwner[o] || 0) + row.byOwnerAmounts[o];
+      byOwnerAmounts[o] = runningByOwner[o];
+    });
+    return { date: row.date, total: runningTotal, byOwnerAmounts };
+  });
+}
+
 // [자산군별 투자금액 추이 팝업] 소유자 필터를 반영해 날짜별 자산군 구성을 만든다. ownerFilter가 'all'/
 // 미지정이면 모든 소유자의 같은 자산군을 합산하고, 특정 소유자명이면 그 사람 몫만 뽑는다. reconstruct
 // HistoricalCurValues가 이미 0원 바닥 처리를 해 두었으므로 여기서 다시 클램프할 필요는 없지만, 이 기능
@@ -7934,6 +8023,24 @@ function buildRealizedPnlSeries(days) {
     bucket.byOwnerAmounts[tx.owner] = (bucket.byOwnerAmounts[tx.owner] || 0) + tx.computedRealizedPnL;
   });
   return Object.keys(byDate).sort().map((k) => byDate[k]);
+}
+
+// [일간평가손익/총평가손익 카드 - 실현손익 배지] buildRealizedPnlSeries와 동일한 소스
+// (computePositionsAndRealizedPnL의 annotated 매도 건)를 재사용해 두 카드에 필요한 합계만 뽑아낸다.
+// 오늘 실현손익: 매도일이 정확히 오늘인 건만 합산(일간평가손익 카드 - 미실현 계산과는 완전히 별개).
+function getTodayRealizedPnL() {
+  const today = todayDateStr();
+  const { annotated } = computePositionsAndRealizedPnL();
+  return annotated
+    .filter((tx) => tx.type === 'sell' && tx.date === today)
+    .reduce((sum, tx) => sum + tx.computedRealizedPnL, 0);
+}
+// 총 실현손익: 기간 제한 없이 지금까지의 매도 건 전체를 합산(총평가손익 카드 - 미실현 누적과는 별개).
+function getTotalRealizedPnL() {
+  const { annotated } = computePositionsAndRealizedPnL();
+  return annotated
+    .filter((tx) => tx.type === 'sell')
+    .reduce((sum, tx) => sum + tx.computedRealizedPnL, 0);
 }
 
 // [일별 실현손익 항목 제거] 팝업의 [일별 평가손익]/[일별 실현손익] 전환 토글을 없애면서, 이 팝업은
@@ -8289,6 +8396,72 @@ document.getElementById('totalValueModal').addEventListener('click', (e) => {
 });
 document.getElementById('dailyPnlModal').addEventListener('click', (e) => {
   if (e.target.id === 'dailyPnlModal') closeDailyPnlModal();
+});
+
+/* ---- 20-1-1. 누적 평가손익 추이 팝업 (총 평가손익 KPI 카드 [세부내용] 터치) ----
+ *    총 평가금액 추이 팝업(20-1)과 완전히 같은 패턴(기간 탭 4개, renderMultiSeriesLineChart 공용 렌더러,
+ *    3초 툴팁 자동숨김)을 그대로 따르되, 시리즈만 buildCumulativeProfitSeries로 교체했다. -------- */
+let totalProfitPopupDays = 30; // 30 | 90 | 180 | 365
+
+function renderTotalProfitChart(series) {
+  const emptyMessage = '아직 기록된 평가손익 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
+  renderMultiSeriesLineChart('totalProfit', 'totalProfitChart', 'totalProfitChartMsg', series, emptyMessage, (v) => fmtSigned(v));
+}
+
+// 차트 하단 요약 - 시리즈 자체가 이미 "선택 기간 첫날=0"부터의 누적값이므로, 마지막(오늘) 값이 곧 그
+// 기간 동안의 누적 평가손익이다(일별 손익 추이 팝업의 합계 요약과 같은 스타일로 통일).
+function renderTotalProfitSummary(series) {
+  const container = document.getElementById('totalProfitList');
+  if (series.length === 0) { container.innerHTML = ''; return; }
+
+  const owners = getDailyPnlOwnerList();
+  const last = series[series.length - 1];
+  const periodBtn = document.querySelector('#totalProfitModal .total-profit-period-btn.active');
+  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+
+  const rows = owners.map((o) => ({ label: `${o} 누적 평가손익`, amount: last.byOwnerAmounts[o] || 0 }));
+  rows.push({ label: '총 누적 평가손익', amount: last.total, emphasize: true });
+
+  container.innerHTML = `
+    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 누적 합계</p>
+    <div class="space-y-1.5">
+      ${rows.map((r) => `
+        <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
+          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
+          <span class="${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function updateTotalProfitModal() {
+  const series = buildCumulativeProfitSeries(totalProfitPopupDays);
+  renderTotalProfitChart(series);
+  renderTotalProfitSummary(series);
+}
+
+document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    totalProfitPopupDays = Number(btn.dataset.tpDays);
+    document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    updateTotalProfitModal();
+  });
+});
+
+function openTotalProfitModal() {
+  totalProfitPopupDays = 30;
+  document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tpDays) === 30));
+  document.getElementById('totalProfitModal').classList.remove('hidden');
+  pushModalHistoryState();
+  updateTotalProfitModal();
+}
+function closeTotalProfitModal(viaBackButton) {
+  document.getElementById('totalProfitModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('kpiTotalProfitDetailBtn').addEventListener('click', openTotalProfitModal);
+document.getElementById('closeTotalProfitModalBtn').addEventListener('click', () => closeTotalProfitModal());
+document.getElementById('totalProfitModal').addEventListener('click', (e) => {
+  if (e.target.id === 'totalProfitModal') closeTotalProfitModal();
 });
 
 /* ---- 20-2. 환율 추이 모달 (달러자산 총액/적용환율 KPI 카드 터치 시) ----
@@ -8946,6 +9119,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // DailyPnlHistory에서 쓰는 것과 동일한 패턴).
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
+  if (!document.getElementById('totalProfitModal').classList.contains('hidden')) updateTotalProfitModal();
   showToast('모든 데이터가 초기화되었습니다.', 'success');
 });
 
