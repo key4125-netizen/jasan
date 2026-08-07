@@ -2,11 +2,13 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v37'; // [일간평가손익/총평가손익 카드에 실현손익 배지 추가 +
-// 총평가손익 카드 세부내용(누적 평가손익 추이 모달) 신설] v36->v37: 이 값을
-// 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면 GitHub에 새
-// index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate 핸들러가
-// CACHE_NAME이 다른 캐시만 지우기 때문).
+const CACHE_NAME = 'smart-asset-manager-v39'; // [추가 개선 5종] 종목별 리밸런싱 실행가이드 카드 아코디언화
+// (기본 접힘 + 매수/매도 합계·조정종목수 요약), 월 적립금 입력이 편집 중 0원으로 초기화되던 버그 수정,
+// 국내/해외자산 Top5 카드 표시값을 평가금액->현재가로 변경, JSON 백업/복원에서 누락돼 있던 dailySnapshots
+// (추이 차트 히스토리) 추가, 환율보기 버튼을 KPI 카드에서 상단 헤더 실시간 환율 표시 옆으로 이동.
+// v38->v39: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면
+// GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate
+// 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
   './',
   './index.html',
