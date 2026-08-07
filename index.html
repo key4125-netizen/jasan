@@ -207,6 +207,13 @@
             value="1450">
           <span class="text-xs text-slate-500 dark:text-slate-400">원</span>
           <i data-lucide="pencil" class="w-3 h-3 text-slate-300 dark:text-slate-600"></i>
+          <!-- [환율보기 버튼 이동] 원래 [달러자산 총액/적용환율] KPI 카드에 있던 버튼을 여기(상단 헤더의
+               실시간 환율 표시 바로 옆)로 옮겨왔다 - id/클릭 핸들러(openExchangeRateModal)는 그대로라
+               JS 쪽 수정 없이 위치만 바뀐다. -->
+          <button type="button" id="kpiExchangeRateDetailBtn" title="환율 추이 보기"
+            class="flex items-center gap-1 text-[11px] font-semibold pl-2 ml-1 border-l border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 whitespace-nowrap">
+            <i data-lucide="line-chart" class="w-3.5 h-3.5"></i> 환율보기
+          </button>
         </div>
 
         <button id="darkModeBtn" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600">
@@ -389,7 +396,7 @@
           <thead>
             <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
               <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-              <th class="text-right font-medium py-1.5 px-1">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-1">현재가</th>
               <th class="text-right font-medium py-1.5 px-1">등락률</th>
               <th class="text-right font-medium py-1.5 px-1">당일손익</th>
               <th class="text-right font-medium py-1.5 pl-1">총손익</th>
@@ -410,7 +417,7 @@
           <thead>
             <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
               <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-              <th class="text-right font-medium py-1.5 px-1">평가금액</th>
+              <th class="text-right font-medium py-1.5 px-1">현재가</th>
               <th class="text-right font-medium py-1.5 px-1">등락률</th>
               <th class="text-right font-medium py-1.5 px-1">당일손익</th>
               <th class="text-right font-medium py-1.5 pl-1">총손익</th>
@@ -491,7 +498,7 @@
       <div class="flex items-center justify-between mb-2 gap-1">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가금액</span>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn"><i data-lucide="search" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
             <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
           </div>
@@ -511,7 +518,6 @@
       <div class="flex items-center justify-between mb-2">
         <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
         <div class="flex items-center gap-1.5">
-          <button type="button" id="kpiTotalCostDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
             <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
           </div>
@@ -531,7 +537,6 @@
       <div class="flex items-center justify-between mb-2">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400">달러자산 총액 / 적용환율</span>
         <div class="flex items-center gap-1.5">
-          <button type="button" id="kpiExchangeRateDetailBtn" class="detail-btn">환율보기 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
             <i data-lucide="globe" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
           </div>
@@ -580,57 +585,71 @@
   </section>
 
   <!-- ============================= TABLE ============================= -->
+  <!-- [자산 관리 카드 아코디언] 기본값은 접힘(assetManagementAccordionOpen = false) - 헤더(assetManagement
+       AccordionBtn)를 탭해야만 펼쳐진다. 접힌 상태에서도 헤더의 tableCountLabel(총 건수)과 assetManagement
+       Summary(현재 보기 방식)로 핵심 정보를 바로 확인할 수 있다. 검색/필터, 보기 방식 토글, 표/카드 뷰는
+       모두 접히는 본문(assetManagementAccordionBody) 안으로 옮겼다 - 헤더 자체에는 클릭 가능한 하위 요소가
+       없어야 탭할 때 검색창/버튼과 토글 동작이 서로 충돌하지 않는다(txListAccordionBtn과 동일한 이유).
+       거래 목록 아코디언(txListAccordionBtn 등)과 동일한 setAccordionOpen(max-height 트랜지션 + chevron
+       회전) 패턴을 그대로 재사용한다. -->
   <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-      <div class="flex items-center gap-2">
-        <h3 class="text-sm font-semibold">자산 관리</h3>
-        <span id="tableCountLabel" class="text-xs text-slate-400"></span>
+    <button type="button" id="assetManagementAccordionBtn"
+      class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+      <div class="flex items-center gap-2 min-w-0">
+        <h3 class="text-sm font-semibold shrink-0">자산 관리</h3>
+        <span id="tableCountLabel" class="text-xs text-slate-400 shrink-0"></span>
+        <span id="assetManagementSummary" class="text-xs text-slate-400 truncate"></span>
       </div>
-      <!-- 자산 목록 전용 검색/자산군 필터. 상단 FILTER BAR의 '전체 자산군' 선택과 값이 서로 동기화된다. -->
-      <div class="flex flex-wrap items-center gap-2">
-        <div class="relative">
-          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-          <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색"
-            class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
+      <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetManagementAccordionChevron"></i>
+    </button>
+    <div id="assetManagementAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+        <!-- 자산 목록 전용 검색/자산군 필터. 상단 FILTER BAR의 '전체 자산군' 선택과 값이 서로 동기화된다. -->
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative">
+            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색"
+              class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
+          </div>
+          <select id="tableCategoryFilter" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+            <option value="ALL">전체 자산군</option>
+          </select>
         </div>
-        <select id="tableCategoryFilter" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-          <option value="ALL">전체 자산군</option>
-        </select>
       </div>
-    </div>
-    <!-- 보기 방식(그룹화) 토글 - 검색/자산군 필터와 독립적으로 동작하며, 필터링된 결과를 그대로 그룹핑한다. -->
-    <div class="flex flex-nowrap items-center gap-1.5 px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/20 overflow-x-auto">
-      <span class="text-[11px] text-slate-400 mr-0.5 shrink-0">보기 방식</span>
-      <button type="button" data-group-by="none" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">전체</button>
-      <button type="button" data-group-by="owner" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">소유자별</button>
-      <button type="button" data-group-by="domestic" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">국내/해외별</button>
-      <button type="button" data-group-by="category" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">자산군별</button>
-    </div>
-    <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
-         요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
-         평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
-         담는다(rowHtml 참고) - 아코디언 방식. -->
-    <div class="hidden sm:block overflow-x-auto">
-      <table class="w-full text-xs whitespace-nowrap">
-        <thead>
-          <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-            <th class="sortable px-3 py-2" data-key="name">종목명</th>
-            <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-            <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-            <th class="px-3 py-2 w-8"></th>
-          </tr>
-        </thead>
-        <tbody id="assetTableBody"></tbody>
-        <tfoot>
-          <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
-        </tfoot>
-      </table>
-    </div>
+      <!-- 보기 방식(그룹화) 토글 - 검색/자산군 필터와 독립적으로 동작하며, 필터링된 결과를 그대로 그룹핑한다. -->
+      <div class="flex flex-nowrap items-center gap-1.5 px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/20 overflow-x-auto">
+        <span class="text-[11px] text-slate-400 mr-0.5 shrink-0">보기 방식</span>
+        <button type="button" data-group-by="none" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">전체</button>
+        <button type="button" data-group-by="owner" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">소유자별</button>
+        <button type="button" data-group-by="domestic" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">국내/해외별</button>
+        <button type="button" data-group-by="category" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">자산군별</button>
+      </div>
+      <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
+           요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
+           평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
+           담는다(rowHtml 참고) - 아코디언 방식. -->
+      <div class="hidden sm:block overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+              <th class="sortable px-3 py-2" data-key="name">종목명</th>
+              <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+              <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+              <th class="px-3 py-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody id="assetTableBody"></tbody>
+          <tfoot>
+            <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
+          </tfoot>
+        </table>
+      </div>
 
-    <!-- 모바일(640px 미만): 종목별 카드 뷰. 동일한 데이터를 rowHtml()과 병행해 cardHtml()로 렌더링한다. -->
-    <div id="assetCardList" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      <!-- 모바일(640px 미만): 종목별 카드 뷰. 동일한 데이터를 rowHtml()과 병행해 cardHtml()로 렌더링한다. -->
+      <div id="assetCardList" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
 
-    <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.</p>
+      <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.</p>
+    </div>
   </section>
 
   </div> <!-- /tabPanelInvestmentDetail -->
@@ -886,21 +905,36 @@
     <!-- ===== 종목별 리밸런싱 실행 가이드 (서브탭: 실행 가이드) =====
          자산군/티커 단위로 뭉쳐 있던 위쪽 결과를 실제 보유 개별 종목 단위로 풀어서, 종목별로 정확히
          얼마를 사고 팔아야 하는지 실행 가이드를 제공한다. -->
+    <!-- [아코디언] 기본값은 접힘(rebalanceGuideAccordionOpen = false) - 헤더(rebalanceGuideAccordionBtn)를
+         탭해야만 펼쳐진다. 접힌 상태에서도 헤더의 rebalanceGuideSummary(총 매수/매도 필요금액, 조정 필요
+         종목 수)로 핵심 정보를 바로 확인할 수 있다 - renderIndividualRebalanceGuide()가 카드를 다시 그릴
+         때마다 함께 갱신한다. 자산 관리 카드 아코디언(assetManagementAccordionBtn)과 동일한 패턴. -->
     <div id="rebalanceSubGuide" class="hidden">
-    <section>
-      <div class="flex items-start justify-between gap-2 mb-1">
-        <h3 class="text-sm font-semibold">📋 종목별 리밸런싱 실행 가이드</h3>
-        <button type="button" id="rebalanceGuideExportBtn"
-          class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-          <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
-        </button>
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      <button type="button" id="rebalanceGuideAccordionBtn"
+        class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0 flex-wrap">
+          <h3 class="text-sm font-semibold shrink-0">📋 종목별 리밸런싱 실행 가이드</h3>
+          <div id="rebalanceGuideSummary" class="flex items-center gap-1.5 flex-wrap"></div>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="rebalanceGuideAccordionChevron"></i>
+      </button>
+      <div id="rebalanceGuideAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4 border-t border-slate-100 dark:border-slate-800 pt-3">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <p class="text-[11px] text-slate-400">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
+            <button type="button" id="rebalanceGuideExportBtn"
+              class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+              <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
+            </button>
+          </div>
+          <!-- [소유자별 필터] 전체(가구 합산) 외에 신랑/와이프 각자를 "독립된 포트폴리오"로 놓고 같은 목표
+               비중(%)을 적용했을 때의 매수/매도 가이드를 따로 볼 수 있다 - computeIndividualRebalanceGuide(owner)
+               참고. -->
+          <div id="rebalanceGuideOwnerTabs" class="flex items-center gap-1.5 mb-3 mt-2"></div>
+          <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
       </div>
-      <p class="text-[11px] text-slate-400 mb-3">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
-      <!-- [소유자별 필터] 전체(가구 합산) 외에 신랑/와이프 각자를 "독립된 포트폴리오"로 놓고 같은 목표
-           비중(%)을 적용했을 때의 매수/매도 가이드를 따로 볼 수 있다 - computeIndividualRebalanceGuide(owner)
-           참고. -->
-      <div id="rebalanceGuideOwnerTabs" class="flex items-center gap-1.5 mb-3"></div>
-      <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </section>
     </div> <!-- /rebalanceSubGuide -->
 
@@ -1273,15 +1307,7 @@
     </div>
 
     <div class="px-5 py-4 overflow-y-auto">
-      <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-4"></div>
-
-      <!-- [종목 통합 표시 전용] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우에만 표시된다. -->
-      <div id="assetDetailOwnerBreakdown" class="hidden mb-4">
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">소유자별 보유 세부 현황</h4>
-        <div id="assetDetailOwnerBreakdownList" class="space-y-1.5"></div>
-      </div>
-
-      <div class="border border-slate-100 dark:border-slate-800 rounded-xl p-2">
+      <div class="border border-slate-100 dark:border-slate-800 rounded-xl p-2 mb-4">
         <!-- 기간 선택 버튼([1M][3M][6M][1Y][ALL]) - 클릭 시 캐시된 전체 시세(assetDetailFullPoints)를
              다시 잘라 그 기간만큼만 보여준다(재조회 없음). 돋보기 버튼으로 임의 확대한 뒤에도
              버튼을 누르면 그 기간 기준으로 확실하게 리셋된다. -->
@@ -1304,6 +1330,14 @@
           <p id="assetDetailChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
         </div>
         <p class="text-[9px] text-slate-300 dark:text-slate-600 mt-1 px-1">돋보기 버튼으로 확대/축소, 드래그로 좌우 이동할 수 있습니다.</p>
+      </div>
+
+      <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-4"></div>
+
+      <!-- [종목 통합 표시 전용] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우에만 표시된다. -->
+      <div id="assetDetailOwnerBreakdown" class="hidden mb-4">
+        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">소유자별 보유 세부 현황</h4>
+        <div id="assetDetailOwnerBreakdownList" class="space-y-1.5"></div>
       </div>
     </div>
 
@@ -1360,9 +1394,9 @@
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
         <div class="flex items-center gap-1 shrink-0 flex-wrap">
-          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
           <button type="button" data-pnl-days="90" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-          <button type="button" data-pnl-days="180" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+          <button type="button" data-pnl-days="180" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
           <button type="button" data-pnl-days="365" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
         </div>
       </div>
@@ -1392,9 +1426,9 @@
 
     <div class="px-5 py-4 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
         <button type="button" data-tv-days="90" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
         <button type="button" data-tv-days="365" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
@@ -1422,9 +1456,9 @@
 
     <div class="px-5 py-4 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
         <button type="button" data-tp-days="90" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
         <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
@@ -1455,9 +1489,9 @@
 
     <div class="px-5 py-4 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-fx-period="1m" class="fx-rate-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-fx-period="1m" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
         <button type="button" data-fx-period="3m" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-fx-period="6m" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-fx-period="6m" class="fx-rate-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
         <button type="button" data-fx-period="1y" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
@@ -1467,40 +1501,6 @@
       </div>
 
       <div id="exchangeRateSummary" class="grid grid-cols-3 gap-2"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ============================= 자산군별 투자금액 추이 모달 (총 투자금액 KPI 카드 [세부내용] 터치) =============================
-     소유자(전체/신랑/와이프) × 자산군(주식/ETF/채권/현금/부동산) 교차 집계를 일자별로 쌓은 스냅샷
-     (state.dailySnapshots[].byOwnerCategory, reconstructHistoricalCurValues 참고)을 누적 영역 차트로
-     보여준다 - showCategoryHistoryModal() 참고. -->
-<div id="categoryHistoryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-sm font-semibold">자산군별 투자금액 추이</h3>
-      <button type="button" id="closeCategoryHistoryModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-
-    <div class="px-5 py-4 overflow-y-auto space-y-3">
-      <div class="flex items-center justify-between flex-wrap gap-y-2">
-        <div id="categoryHistoryOwnerTabs" class="flex items-center gap-1.5"></div>
-        <div class="flex items-center gap-1">
-          <button type="button" data-ch-period="30" class="category-history-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-          <button type="button" data-ch-period="90" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-          <button type="button" data-ch-period="180" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-          <button type="button" data-ch-period="365" class="category-history-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
-        </div>
-      </div>
-
-      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
-        <canvas id="categoryHistoryChart"></canvas>
-        <p id="categoryHistoryChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
-      </div>
-
-      <div id="categoryHistorySummary" class="space-y-1.5 pt-1"></div>
     </div>
   </div>
 </div>
@@ -2059,7 +2059,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null, categoryHistory: null };
+let charts = { category: null, owner: null, domestic: null, projection: null, projection2: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -2647,7 +2647,7 @@ function getTopHoldings() {
     if (!ticker) return;
     const r = calcRow(a);
     if (!groups[ticker]) {
-      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0 };
+      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0, currentPrice: a.currentPrice };
     }
     const g = groups[ticker];
     g.curAmount += r.curAmount;
@@ -2675,10 +2675,10 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
     // 열이다(보유수량은 하루 안에 안 바뀌므로 포지션 당일손익률 = 종목 당일 주가등락률과 동일).
     const prevDayAmount = g.curAmount - g.dailyPnL;
     const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
-    // [최종 5열 확정] 달러 보유분도 "$원금 + 원화환산 보조줄" 2줄 표기 대신 다른 숫자 열들과 동일하게
-    // 원화 축약 표기(fmtKRWShort) 한 줄로 통일한다 - 모든 화면 폭에서 5열이 줄바꿈 없이 한 줄에
-    // 나란히 들어가려면 각 셀이 항상 단일 텍스트 줄이어야 한다($ 원금은 종목 상세 모달에서 확인 가능).
-    const valueHtml = fmtKRWShort(g.curAmount);
+    // [Top5 표시값 - 평가금액 대신 현재주가] 국내는 원화 표기("72,500원"), 해외는 달러 표기("$182.50")로
+    // 보여준다 - 정렬 기준(Top5 선정 순서)은 그대로 평가금액(curAmount) 합산 기준을 유지하고, 화면에
+    // 노출되는 숫자만 종목의 현재가로 바꾼다.
+    const valueHtml = g.isForeign ? `$${fmtNum(g.currentPrice, 2)}` : `${krwFmt.format(Math.round(num(g.currentPrice)))}원`;
     // [최종 5열 확정] 상품명·평가금액·등락률·당일손익·총손익 5개의 독립된 열로 나란히 배치한다(비중은
     // 제외, 카드 상단 comment 참고) - 손익 금액 아래 수익률을 두 줄로 쌓지 않고 각 지표를 한 열의
     // 한 줄 값으로만 표시해야 세로 높이가 줄어 좁은 화면에도 가로 스크롤 없이 들어간다.
@@ -2923,7 +2923,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'categoryHistoryModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'scenarioModal1', 'scenarioModal2', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2960,8 +2960,7 @@ const MODAL_CLOSE_FNS = {
   totalValueModal: (viaBack) => closeTotalValueModal(viaBack),
   totalProfitModal: (viaBack) => closeTotalProfitModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
-  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
-  categoryHistoryModal: (viaBack) => closeCategoryHistoryModal(viaBack)
+  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -3991,6 +3990,28 @@ function rebalanceActionBadge(diff, curAmount) {
 // [소유자별 필터] 'all'(전체, 가구 합산 - 기존 동작) 외에 신랑/와이프 등 실제 소유자명을 선택하면
 // 그 사람의 자산만으로 "독립된 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 가이드를 보여준다.
 let rebalanceGuideOwnerFilter = 'all';
+// [아코디언] 기본값은 접힘 - 헤더(rebalanceGuideAccordionBtn)를 탭해야만 펼쳐진다.
+let rebalanceGuideAccordionOpen = false;
+
+// [헤더 요약] 접힌 상태에서도 핵심 정보(총 매수/매도 필요금액, 조정 필요 종목 수)를 바로 볼 수 있도록
+// rebalanceActionBadge와 동일한 기준(현재 평가금액의 2% 미만 차이는 "유지")으로 분류해 합산한다.
+function updateRebalanceGuideSummary(rows) {
+  const el = document.getElementById('rebalanceGuideSummary');
+  if (!el) return;
+  let buyTotal = 0, sellTotal = 0, adjustCount = 0;
+  rows.forEach((r) => {
+    const badge = rebalanceActionBadge(r.diff, r.curAmount);
+    if (badge.label === '유지') return;
+    adjustCount += 1;
+    if (r.diff > 0) buyTotal += r.diff; else sellTotal += r.diff;
+  });
+  if (rows.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">매수 ${fmtSigned(buyTotal)}</span>
+    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">매도 ${fmtSigned(sellTotal)}</span>
+    <span class="text-[10px] text-slate-400">조정 필요 ${adjustCount}종목</span>
+  `;
+}
 
 function renderRebalanceGuideOwnerTabs() {
   const wrap = document.getElementById('rebalanceGuideOwnerTabs');
@@ -4015,9 +4036,11 @@ function renderIndividualRebalanceGuide() {
   if (!container) return;
   renderRebalanceGuideOwnerTabs();
   const { rows, excluded } = computeIndividualRebalanceGuide(rebalanceGuideOwnerFilter);
+  updateRebalanceGuideSummary(rows);
 
   if (rows.length === 0 && excluded.length === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
+    reapplyRebalanceGuideAccordionHeight();
     return;
   }
 
@@ -4066,6 +4089,15 @@ function renderIndividualRebalanceGuide() {
   }).join('');
 
   container.innerHTML = cards + excludedCards;
+  reapplyRebalanceGuideAccordionHeight();
+}
+
+// 방금 다시 그린 카드 목록 기준으로 펼침 상태를 재적용한다 - 소유자 필터로 카드 목록 높이가 바뀌어도
+// max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
+function reapplyRebalanceGuideAccordionHeight() {
+  const accordionBody = document.getElementById('rebalanceGuideAccordionBody');
+  const accordionChevron = document.getElementById('rebalanceGuideAccordionChevron');
+  if (accordionBody && accordionChevron) setAccordionOpen(accordionBody, accordionChevron, rebalanceGuideAccordionOpen);
 }
 
 // [종목별 리밸런싱 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
@@ -4117,6 +4149,11 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
 
   return { rows: guideRows, excluded: excludedRows, isEmpty: rows.length === 0 && excluded.length === 0 };
 }
+
+document.getElementById('rebalanceGuideAccordionBtn').addEventListener('click', () => {
+  rebalanceGuideAccordionOpen = !rebalanceGuideAccordionOpen;
+  setAccordionOpen(document.getElementById('rebalanceGuideAccordionBody'), document.getElementById('rebalanceGuideAccordionChevron'), rebalanceGuideAccordionOpen);
+});
 
 document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
   // 화면에 어떤 탭이 선택되어 있든 상관없이 매번 [합계, 신랑, 와이프 ...] 3개 시트를 모두 생성한다.
@@ -4753,7 +4790,11 @@ function updateProjection() {
   // 폼과 함께 그 카드로 옮김) - 별도의 summaryReturn1 복제 엘리먼트는 더 이상 필요 없다.
   document.getElementById('weightedAvgReturn').textContent = fmtNum(weightedAvg, 2) + '%';
 
-  const monthlyContribution = num(document.getElementById('monthlyContributionInput').value);
+  // [버그 수정] 입력창이 비어 있는 동안(사용자가 값을 지우고 새로 입력하는 중)에 num('')=0으로 그대로
+  // 덮어쓰면, updateProjection()이 다른 경로(가격 자동갱신 등)에서 호출될 때 state가 0으로 뭉개졌다.
+  // 비어 있으면 기존 state 값을 그대로 유지한다 - 콤마가 섞여 들어와도(붙여넣기 등) 안전하도록 제거 후 파싱.
+  const rawMonthlyInput = document.getElementById('monthlyContributionInput').value.replace(/,/g, '').trim();
+  const monthlyContribution = rawMonthlyInput === '' ? state.projection.monthlyContribution : num(rawMonthlyInput);
   state.projection.monthlyContribution = monthlyContribution;
   document.getElementById('summaryContribution2').textContent = fmtKRW(monthlyContribution);
   document.getElementById('monthlyContributionReadonly').textContent = fmtKRW(monthlyContribution);
@@ -4862,11 +4903,23 @@ function updateProjection() {
 }
 
 document.getElementById('monthlyContributionInput').addEventListener('input', (e) => {
+  // [버그 수정 - 월 적립금이 자꾸 0원으로 초기화됨] 값을 지우고 새로 입력하는 중간에도 매 keystroke마다
+  // 이 리스너가 실행되는데, 비어 있는 순간 그대로 num('')=0을 state에 반영해 즉시 persistProjection()으로
+  // localStorage에 저장해버리면 그 사이 가격 자동갱신 등으로 updateProjection()이 한 번이라도 더 호출될
+  // 때 0원이 영구히 굳어졌다. 입력이 비어 있는 동안은 아직 확정된 값이 아니므로 state/저장을 건드리지
+  // 않고 다음 입력을 기다린다 - 콤마가 섞여 들어와도(붙여넣기 등) 안전하도록 제거 후 파싱한다.
+  const raw = e.target.value.replace(/,/g, '').trim();
+  if (raw === '') return;
   // state.projection.monthlyContribution은 updateProjection()이 내부적으로도 갱신하지만,
   // 그건 persist 호출 '다음'에 일어나 저장이 한 박자 늦어지는 문제가 있었다 - 여기서 먼저 반영한다.
-  state.projection.monthlyContribution = num(e.target.value);
+  state.projection.monthlyContribution = num(raw);
   persistProjection();
   updateProjection();
+});
+// 입력창을 비운 채로 포커스를 벗어나면(예: 다른 값을 지운 뒤 딴 곳을 탭) 화면에 빈 칸이 그대로 남아
+// 현재 저장된 값과 화면 표시가 어긋나 보인다 - 마지막으로 확정된 state 값으로 되돌려 보여준다.
+document.getElementById('monthlyContributionInput').addEventListener('blur', (e) => {
+  if (e.target.value.trim() === '') e.target.value = state.projection.monthlyContribution || '';
 });
 
 document.getElementById('inflationRateInput').addEventListener('input', (e) => {
@@ -5702,6 +5755,9 @@ function buildMergedRows(rows) {
   });
 }
 
+// [자산 관리 카드 아코디언] 기본값은 접힘 - 헤더(assetManagementAccordionBtn)를 탭해야만 펼쳐진다.
+let assetManagementAccordionOpen = false;
+
 function renderTable() {
   const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
   const tbody = document.getElementById('assetTableBody');
@@ -5741,6 +5797,9 @@ function renderTable() {
   document.getElementById('tableCountLabel').textContent = `총 ${rawRows.length}건 (단일 ${displayedCount}건, 중복 ${duplicateCount}건)`;
   renderTableFooter(rawRows);
   lucide.createIcons();
+  // 방금 다시 그린 목록 기준으로 펼침 상태를 재적용한다 - 검색/필터/보기방식으로 목록 높이가 바뀌어도
+  // max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
+  setAccordionOpen(document.getElementById('assetManagementAccordionBody'), document.getElementById('assetManagementAccordionChevron'), assetManagementAccordionOpen);
 }
 
 // 테이블 행(rowHtml)과 모바일 카드(cardHtml)가 공유하는 파생 표시값 계산.
@@ -6456,7 +6515,7 @@ let assetDetailFullMA = {};       // 전체 시세 기준으로 미리 계산해
 // 종목을 보유하지 않음(수량 0)을 뜻한다. 단일 자산 상세에서는 undefined로 남아 범례가 병기 없이
 // 단일 평단가만 보여준다.
 let assetDetailChartMeta = { name: '', isForeign: false, avgPrice: 0, byOwnerAvgPrice: undefined };
-let assetDetailActivePeriod = '1y';
+let assetDetailActivePeriod = '6m';
 
 // 단순이동평균(SMA) - 종가 배열 기준으로 계산한다. 데이터가 기간(period)보다 짧으면(신규 상장 등)
 // null을 반환해 호출부가 그 MA 자체를 그리지 않고 범례에 '-'로 표시하는 세이프가드로 삼는다.
@@ -6781,7 +6840,7 @@ async function renderAssetDetailChart(asset, avgPriceOverride, byOwnerAvgPriceOv
   msgEl.classList.add('hidden');
   canvas.classList.remove('hidden');
   renderAssetDetailPeriodButtons();
-  buildAssetDetailChart('1y');
+  buildAssetDetailChart('6m');
 }
 
 /* -------------------------------------------------------------------------
@@ -6815,6 +6874,11 @@ document.getElementById('filterResetBtn').addEventListener('click', () => {
   renderTable();
 });
 
+document.getElementById('assetManagementAccordionBtn').addEventListener('click', () => {
+  assetManagementAccordionOpen = !assetManagementAccordionOpen;
+  setAccordionOpen(document.getElementById('assetManagementAccordionBody'), document.getElementById('assetManagementAccordionChevron'), assetManagementAccordionOpen);
+});
+
 // 자산 관리 목록 상단의 검색창 - 종목명/티커/계좌구분/소유자 실시간 검색(차트에는 영향 없음, 목록만 필터링).
 document.getElementById('assetSearchInput').addEventListener('input', (e) => {
   state.filters.search = e.target.value;
@@ -6831,10 +6895,18 @@ document.getElementById('tableCategoryFilter').addEventListener('change', (e) =>
 
 // 자산 관리 목록 보기 방식(전체/소유자별/국내외별/자산군별) 토글 - 검색/필터 결과를 그대로 그룹핑하므로
 // 별도의 필터 재계산 없이 renderTable()만 다시 호출하면 된다.
+const TABLE_GROUP_BY_LABELS = { none: '전체', owner: '소유자별', domestic: '국내/해외별', category: '자산군별' };
+// [자산 관리 카드 아코디언 헤더 요약] 접힌 상태에서도 현재 보기 방식을 바로 확인할 수 있도록 헤더에
+// 표시한다 - 건수(tableCountLabel)는 renderTable()이 이미 갱신하므로 여기서는 보기 방식만 다룬다.
+function updateAssetManagementSummary() {
+  const el = document.getElementById('assetManagementSummary');
+  if (el) el.textContent = `· ${TABLE_GROUP_BY_LABELS[state.tableGroupBy] || '전체'} 보기`;
+}
 function applyTableGroupUI() {
   document.querySelectorAll('.table-group-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.groupBy === state.tableGroupBy);
   });
+  updateAssetManagementSummary();
 }
 document.querySelectorAll('.table-group-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -7654,7 +7726,7 @@ document.addEventListener('visibilitychange', () => {
  * ---------------------------------------------------------------------- */
 let dailyPnlPopupType = 'unrealized'; // 'unrealized' | 'realized'
 let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
-let dailyPnlPopupDays = 30;           // 30 | 90 | 180 | 365
+let dailyPnlPopupDays = 180;          // 30 | 90 | 180 | 365
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -7978,36 +8050,6 @@ function buildCumulativeProfitSeries(days) {
   });
 }
 
-// [자산군별 투자금액 추이 팝업] 소유자 필터를 반영해 날짜별 자산군 구성을 만든다. ownerFilter가 'all'/
-// 미지정이면 모든 소유자의 같은 자산군을 합산하고, 특정 소유자명이면 그 사람 몫만 뽑는다. reconstruct
-// HistoricalCurValues가 이미 0원 바닥 처리를 해 두었으므로 여기서 다시 클램프할 필요는 없지만, 이 기능
-// 추가 이전에 만들어진 옛 스냅샷(byOwnerCategory 없음)까지 방어적으로 감안해 Math.max(0, ...)를 한 번
-// 더 적용한다.
-function buildCategoryHistorySeries(days, ownerFilter) {
-  const todayKey = todayDateStr();
-  const owners = (!ownerFilter || ownerFilter === 'all') ? getDailyPnlOwnerList() : [ownerFilter];
-  const result = [];
-  const cursor = new Date();
-  cursor.setDate(cursor.getDate() - (days - 1));
-  while (dateKeyFromDate(cursor) <= todayKey) {
-    const dateKey = dateKeyFromDate(cursor);
-    const snap = state.dailySnapshots[dateKey];
-    const byCategoryAmounts = {};
-    if (snap && snap.byOwnerCategory) {
-      owners.forEach((o) => {
-        const oc = snap.byOwnerCategory[o];
-        if (!oc) return;
-        Object.keys(oc).forEach((cat) => {
-          byCategoryAmounts[cat] = (byCategoryAmounts[cat] || 0) + Math.max(0, num(oc[cat].cur));
-        });
-      });
-    }
-    result.push({ date: dateKey, byCategoryAmounts });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return result;
-}
-
 // 실현손익 시리즈 - 거래내역의 매도 건을 날짜별/소유자별로 집계한다(기간별 실현손익 리포트와 같은
 // computePositionsAndRealizedPnL 결과를 재사용). 매도가 없는 날은 자연스럽게 빈 날짜라 달력 채우기를
 // 적용하지 않는다(평가손익/평가금액과 달리 "매도 없음=0"이 아니라 "그 날은 집계 대상이 아님"에 가깝다).
@@ -8059,24 +8101,10 @@ function getSeriesColors() {
   return document.documentElement.classList.contains('dark') ? SERIES_COLORS_DARK : SERIES_COLORS_LIGHT;
 }
 
-// [자산군별 투자금액 추이 팝업] 자산군(주식/ETF/채권/현금/부동산)별 고정 색상 - 다른 차트의 팔레트와
-// 겹치지 않도록 골랐고, 라이트/다크 모드별로 대비를 맞췄다. 팔레트에 없는(사용자가 새 자산군을 쓰는)
-// 경우를 대비해 폴백 회색도 함께 둔다.
-// [버그 수정 - 누적 영역 차트 시인성] 예전 팔레트(#0077B6, #B8860B 등)는 채도가 낮아 여러 영역이
-// 겹겹이 쌓였을 때 경계가 흐릿하게 번져 보였다 - 채도/명도를 올린 선명한 색으로 교체했다.
-const CATEGORY_COLORS_LIGHT = { '주식': '#7C3AED', 'ETF': '#0EA5E9', '채권': '#16A34A', '현금': '#F59E0B', '부동산': '#DC2626' };
-const CATEGORY_COLORS_DARK = { '주식': '#A78BFA', 'ETF': '#38BDF8', '채권': '#4ADE80', '현금': '#FBBF24', '부동산': '#F87171' };
-const CATEGORY_COLOR_FALLBACK_LIGHT = '#64748b';
-const CATEGORY_COLOR_FALLBACK_DARK = '#94a3b8';
-function getCategoryColor(category) {
-  const isDark = document.documentElement.classList.contains('dark');
-  const palette = isDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS_LIGHT;
-  return palette[category] || (isDark ? CATEGORY_COLOR_FALLBACK_DARK : CATEGORY_COLOR_FALLBACK_LIGHT);
-}
 // 자산군 영역 위에서 가장 돋보여야 하는 "총 합계" 라인 색 - 요청하신 대로 흰색/크림색 계열을 쓰되,
 // 라이트 모드에서는 카드 배경 자체가 흰색이라 크림색 단독으로는 거의 안 보인다. 그래서 진한 테두리
-// 색(hexToRgba로 반투명 처리)을 먼저 굵게 깔아 "헤일로"를 만들고 그 위에 밝은 선을 얹는 2겹 방식으로
-// 어떤 배경에서도(밝은 카드/어두운 카드) 고대비를 유지한다 - renderCategoryHistoryChart 참고.
+// 색을 먼저 굵게 깔아 "헤일로"를 만들고 그 위에 밝은 선을 얹는 2겹 방식으로
+// 어떤 배경에서도(밝은 카드/어두운 카드) 고대비를 유지한다.
 function getTotalLineColor() {
   return document.documentElement.classList.contains('dark') ? '#FFFBEB' : '#FFFDF5';
 }
@@ -8310,8 +8338,8 @@ document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) 
 function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
-  dailyPnlPopupDays = 30;
-  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
+  dailyPnlPopupDays = 180;
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 180));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -8325,7 +8353,7 @@ document.getElementById('kpiDailyProfitDetailBtn').addEventListener('click', ope
 document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () => closeDailyPnlModal());
 
 /* ---- 20-1. 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) ---- */
-let totalValuePopupDays = 30; // 30 | 90 | 180 | 365
+let totalValuePopupDays = 180; // 30 | 90 | 180 | 365
 
 function renderTotalValueChart(series) {
   const emptyMessage = '아직 기록된 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
@@ -8379,8 +8407,8 @@ document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b
 });
 
 function openTotalValueModal() {
-  totalValuePopupDays = 30;
-  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvDays) === 30));
+  totalValuePopupDays = 180;
+  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvDays) === 180));
   document.getElementById('totalValueModal').classList.remove('hidden');
   pushModalHistoryState();
   updateTotalValueModal();
@@ -8401,7 +8429,7 @@ document.getElementById('dailyPnlModal').addEventListener('click', (e) => {
 /* ---- 20-1-1. 누적 평가손익 추이 팝업 (총 평가손익 KPI 카드 [세부내용] 터치) ----
  *    총 평가금액 추이 팝업(20-1)과 완전히 같은 패턴(기간 탭 4개, renderMultiSeriesLineChart 공용 렌더러,
  *    3초 툴팁 자동숨김)을 그대로 따르되, 시리즈만 buildCumulativeProfitSeries로 교체했다. -------- */
-let totalProfitPopupDays = 30; // 30 | 90 | 180 | 365
+let totalProfitPopupDays = 180; // 30 | 90 | 180 | 365
 
 function renderTotalProfitChart(series) {
   const emptyMessage = '아직 기록된 평가손익 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
@@ -8448,8 +8476,8 @@ document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach(
 });
 
 function openTotalProfitModal() {
-  totalProfitPopupDays = 30;
-  document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tpDays) === 30));
+  totalProfitPopupDays = 180;
+  document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tpDays) === 180));
   document.getElementById('totalProfitModal').classList.remove('hidden');
   pushModalHistoryState();
   updateTotalProfitModal();
@@ -8469,7 +8497,7 @@ document.getElementById('totalProfitModal').addEventListener('click', (e) => {
  *    이 함수는 이미 최대 2년치 일봉을 받아오므로, 기간 버튼은 이 캐시된 배열을 PERIOD_TRADING_DAYS
  *    기준으로 슬라이스만 한다(달력 날짜를 채우는 buildSnapshotSeries 계열과 달리, 원본이 거래일만
  *    있는 배열이라 그 방식을 그대로 재사용할 수 없다 - 종목 상세 차트와 같은 슬라이싱 방식을 쓴다). */
-let fxRatePopupPeriod = '1m';   // '1m' | '3m' | '6m' | '1y'
+let fxRatePopupPeriod = '6m';   // '1m' | '3m' | '6m' | '1y'
 let fxRateFullPoints = [];      // 캐시된 전체(최대 2년) 일별 USD/KRW 종가
 let fxRateLoaded = false;       // 모달을 열 때마다 새로 fetch하지 않도록 - 한 번 불러오면 세션 동안 재사용
 
@@ -8550,8 +8578,8 @@ function updateExchangeRateModal() {
 
 async function openExchangeRateModal() {
   document.getElementById('exchangeRateModalCurrent').textContent = `현재 $1 = ${fmtNum(state.exchangeRate, 1)}원`;
-  fxRatePopupPeriod = '1m';
-  document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((b) => b.classList.toggle('active', b.dataset.fxPeriod === '1m'));
+  fxRatePopupPeriod = '6m';
+  document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((b) => b.classList.toggle('active', b.dataset.fxPeriod === '6m'));
   document.getElementById('exchangeRateModal').classList.remove('hidden');
   pushModalHistoryState();
 
@@ -8586,239 +8614,6 @@ document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((btn
     fxRatePopupPeriod = btn.dataset.fxPeriod;
     document.querySelectorAll('#exchangeRateModal .fx-rate-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateExchangeRateModal();
-  });
-});
-
-/* ---- 20-3. 자산군별 투자금액 추이 모달 (총 투자금액 KPI 카드 [세부내용] 터치 시) ----
- *    state.dailySnapshots[].byOwnerCategory(reconstructHistoricalCurValues가 채워 둔 소유자×자산군
- *    교차 평가금액)를 buildCategoryHistorySeries()로 뽑아 누적 영역(stacked area) 차트로 그린다.
- * ---------------------------------------------------------------------- */
-let categoryHistoryOwnerFilter = 'all'; // 'all' | 실제 소유자명
-let categoryHistoryPopupDays = 30;      // 30 | 90 | 180 | 365
-
-function renderCategoryHistoryOwnerTabs() {
-  const wrap = document.getElementById('categoryHistoryOwnerTabs');
-  const tabs = [{ key: 'all', label: '전체' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
-  wrap.innerHTML = tabs.map((t) => `
-    <button type="button" data-ch-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === categoryHistoryOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
-  `).join('');
-  wrap.querySelectorAll('button[data-ch-owner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      categoryHistoryOwnerFilter = btn.dataset.chOwner;
-      renderCategoryHistoryOwnerTabs();
-      updateCategoryHistoryModal();
-    });
-  });
-}
-
-// 자산군 고유 색(hex)을 반투명 영역 채우기 색(rgba)으로 변환 - Chart.js 색상 헬퍼에 기대지 않고 직접 계산.
-function hexToRgba(hex, alpha) {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const n = parseInt(full, 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
-// [자산군별 영역 그라데이션] 단색 반투명 대신 위(진하게)->아래(연하게) 그라데이션을 줘서 "겹겹이
-// 쌓인" 입체감을 낸다. chartArea가 아직 없는 최초 레이아웃 패스에서는 canvas가 준비 전이라 반투명
-// 단색으로 폴백한다(Chart.js가 레이아웃 완료 후 다시 호출해준다).
-function makeCategoryAreaGradient(chart, colorHex) {
-  const { ctx, chartArea } = chart;
-  if (!chartArea) return hexToRgba(colorHex, 0.45);
-  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-  gradient.addColorStop(0, hexToRgba(colorHex, 0.68));
-  gradient.addColorStop(1, hexToRgba(colorHex, 0.16));
-  return gradient;
-}
-
-// [영역 경계 입체감] 자산군 영역의 테두리 선 아래에 은은한 그림자를 깔아 "평면 색칠"이 아니라 한 겹
-// 한 겹 쌓아올린 듯한 느낌을 낸다 - 이 차트 전용 로컬 플러그인이라 다른 차트에는 영향 없다(Chart 생성
-// 시 plugins: [...] 배열로 이 차트 인스턴스에만 등록).
-const categoryAreaShadowPlugin = {
-  id: 'categoryAreaShadow',
-  beforeDatasetDraw(chart, args) {
-    const ds = chart.data.datasets[args.index];
-    if (!ds || !ds._applyShadow) return;
-    const ctx = chart.ctx;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.28)';
-    ctx.shadowBlur = 7;
-    ctx.shadowOffsetY = 3;
-  },
-  afterDatasetDraw(chart, args) {
-    const ds = chart.data.datasets[args.index];
-    if (!ds || !ds._applyShadow) return;
-    chart.ctx.restore();
-  }
-};
-
-function renderCategoryHistoryChart(series) {
-  const canvas = document.getElementById('categoryHistoryChart');
-  const msgEl = document.getElementById('categoryHistoryChartMsg');
-  if (charts.categoryHistory) { charts.categoryHistory.destroy(); charts.categoryHistory = null; }
-
-  const categorySet = new Set();
-  series.forEach((row) => Object.keys(row.byCategoryAmounts).forEach((c) => categorySet.add(c)));
-  const categoryList = [...categorySet];
-
-  if (series.length === 0 || categoryList.length === 0) {
-    canvas.classList.add('hidden');
-    msgEl.textContent = '아직 기록된 자산군별 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
-    msgEl.classList.remove('hidden');
-    return;
-  }
-  msgEl.classList.add('hidden');
-  canvas.classList.remove('hidden');
-
-  const isDark = document.documentElement.classList.contains('dark');
-  const textColor = chartTextColor();
-  const pointBorderColor = isDark ? '#0f172a' : '#ffffff';
-  const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
-
-  // [경계선 강조] 자산군마다 뚜렷하게 구분되도록 테두리를 굵고 선명하게, 배경은 그라데이션으로.
-  const categoryDatasets = categoryList.map((cat) => {
-    const color = getCategoryColor(cat);
-    return {
-      label: cat,
-      data: series.map((s) => s.byCategoryAmounts[cat] || 0),
-      borderColor: color,
-      backgroundColor: (context) => makeCategoryAreaGradient(context.chart, color),
-      borderWidth: 2.5,
-      pointRadius: 0,
-      pointHoverRadius: 5,
-      pointBackgroundColor: color,
-      pointBorderColor,
-      pointBorderWidth: 1.5,
-      tension: 0.15,
-      fill: true,
-      stack: 'categories',
-      _applyShadow: true
-    };
-  });
-
-  // [총 합계 라인] 자산군 영역 맨 위에서 가장 돋보여야 하는 라인 - 밝은 크림색 단독으로는 라이트
-  // 모드(흰 배경 카드)에서 거의 안 보이므로, 어두운 "헤일로" 선을 먼저 굵게 깐 뒤 그 위에 밝은 선을
-  // 겹쳐 그려 어떤 배경에서도 고대비를 유지한다(지도 앱의 윤곽선 있는 경로선과 같은 기법). 두 선
-  // 모두 실제 자산군 합계와 동일한 값이라 각자 고유 stack 그룹을 줘서 서로 이중으로 누적되지 않게
-  // 한다(카테고리 영역의 'categories' 스택과도 분리).
-  const totalSeries = series.map((s) => Object.values(s.byCategoryAmounts).reduce((sum, v) => sum + v, 0));
-  const totalHaloDataset = {
-    label: '합계(외곽선)',
-    data: totalSeries,
-    borderColor: getTotalLineHaloColor(),
-    borderWidth: 6,
-    pointRadius: 0,
-    tension: 0.15,
-    fill: false,
-    stack: 'totalHalo',
-    _hideFromLegend: true,
-    _hideFromTooltip: true
-  };
-  const totalBrightDataset = {
-    label: '합계',
-    data: totalSeries,
-    borderColor: getTotalLineColor(),
-    borderWidth: 3,
-    pointRadius: 0,
-    pointHoverRadius: 6,
-    pointBackgroundColor: getTotalLineColor(),
-    pointBorderColor: isDark ? '#000000' : '#334155',
-    pointBorderWidth: 1,
-    tension: 0.15,
-    fill: false,
-    stack: 'totalBright'
-  };
-
-  const datasets = [...categoryDatasets, totalHaloDataset, totalBrightDataset];
-
-  charts.categoryHistory = new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: { labels, datasets },
-    plugins: [categoryAreaShadowPlugin],
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          display: true, position: 'bottom',
-          labels: { color: textColor, boxWidth: 10, usePointStyle: true, font: { size: 10, weight: '600' }, filter: (item, data) => !data.datasets[item.datasetIndex]._hideFromLegend }
-        },
-        tooltip: {
-          filter: (item) => !item.dataset._hideFromTooltip,
-          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtKRW(ctx.parsed.y)}` }
-        },
-        datalabels: { display: false }
-      },
-      scales: {
-        x: { ticks: { color: textColor, maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: textColor, font: { size: 10 }, callback: (v) => fmtKRWAxisShort(v) }, grid: { color: isDark ? 'rgba(148,163,184,.2)' : 'rgba(100,116,139,.18)' }, stacked: true }
-      }
-    }
-  });
-
-  // [버그 수정 - 터치 시 금액 툴팁이 안 사라짐] 일별 손익 추이/총 평가금액 추이 팝업과 동일하게, 모바일
-  // 터치로 띄운 툴팁이 다른 곳을 다시 누르기 전까지 화면에 계속 남아있던 문제를 막는다 - 3초 뒤 자동으로
-  // 닫는다(scheduleDailyPnlTooltipHide 재사용). onclick= 할당은 재렌더링마다 이전 핸들러를 덮어써서
-  // addEventListener처럼 리스너가 쌓이는 leak이 없다.
-  canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.categoryHistory);
-}
-
-// 차트 바로 아래 요약 - 기간 마지막 날(=오늘) 기준 자산군별 평가금액과 비중(%).
-function renderCategoryHistorySummary(series) {
-  const container = document.getElementById('categoryHistorySummary');
-  if (series.length === 0) { container.innerHTML = ''; return; }
-  const last = series[series.length - 1];
-  const entries = Object.entries(last.byCategoryAmounts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">현재 시점에 표시할 자산군 데이터가 없습니다.</p>';
-    return;
-  }
-  const total = entries.reduce((s, [, v]) => s + v, 0);
-  container.innerHTML = entries.map(([cat, amt]) => {
-    const pct = total !== 0 ? (amt / total) * 100 : 0;
-    return `
-    <div class="flex items-center justify-between text-sm">
-      <span class="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-        <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0" style="background:${getCategoryColor(cat)}"></span>${escapeHtml(cat)}
-      </span>
-      <span class="text-right">
-        <span class="font-medium">${fmtKRW(amt)}</span>
-        <span class="ml-1.5 text-xs text-slate-400">${fmtNum(pct, 1)}%</span>
-      </span>
-    </div>`;
-  }).join('');
-}
-
-function updateCategoryHistoryModal() {
-  const series = buildCategoryHistorySeries(categoryHistoryPopupDays, categoryHistoryOwnerFilter);
-  renderCategoryHistoryChart(series);
-  renderCategoryHistorySummary(series);
-}
-
-function showCategoryHistoryModal() {
-  categoryHistoryOwnerFilter = 'all';
-  categoryHistoryPopupDays = 30;
-  renderCategoryHistoryOwnerTabs();
-  document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.chPeriod) === 30));
-  document.getElementById('categoryHistoryModal').classList.remove('hidden');
-  pushModalHistoryState();
-  updateCategoryHistoryModal();
-}
-function closeCategoryHistoryModal(viaBackButton) {
-  document.getElementById('categoryHistoryModal').classList.add('hidden');
-  if (!viaBackButton) popModalHistoryIfNeeded();
-}
-document.getElementById('kpiTotalCostDetailBtn').addEventListener('click', showCategoryHistoryModal);
-document.getElementById('closeCategoryHistoryModalBtn').addEventListener('click', () => closeCategoryHistoryModal());
-document.getElementById('categoryHistoryModal').addEventListener('click', (e) => {
-  if (e.target.id === 'categoryHistoryModal') closeCategoryHistoryModal();
-});
-document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    categoryHistoryPopupDays = Number(btn.dataset.chPeriod);
-    document.querySelectorAll('#categoryHistoryModal .category-history-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    updateCategoryHistoryModal();
   });
 });
 
@@ -8953,7 +8748,11 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
     })),
-    transactions: state.transactions
+    transactions: state.transactions,
+    // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
+    // 빠져 있었다 - 이 필드가 없으면 새 기기에서 복원해도 일별손익/총평가금액/누적평가손익 추이 차트의
+    // 과거 히스토리가 전부 사라진다(복원 이후 날짜부터 새로 쌓이기 시작).
+    dailySnapshots: state.dailySnapshots
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -9051,6 +8850,13 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
             createdAt: t.createdAt || Date.now()
           }));
           persistTransactions();
+        }
+        // [버그 수정] dailySnapshots 복원 누락 - 이 필드가 없으면 백업 시점까지의 추이 차트 히스토리가
+        // 새 기기에서 통째로 사라진다. 손상된 형식이면 무시하고 빈 상태로 두어(백업 이후 날짜부터 다시
+        // 쌓임) 복원 자체가 실패하지 않게 한다.
+        if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
+          state.dailySnapshots = parsed.dailySnapshots;
+          persistDailySnapshots();
         }
       }
       persistAssets();
