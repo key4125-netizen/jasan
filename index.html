@@ -285,12 +285,14 @@
 
   <!-- ============================= 시세 반영 실패 알림 배너 =============================
        [알림 카드 위치 이동] 원래 투자세부 탭의 [총 투자금액] 카드 내용을 통째로 바꿔치기하던
-       kpiFetchFailurePanel을 이 위치(총평가금액/총평가손익 카드 바로 위)의 독립 배너로 옮겼다 - id와
+       kpiFetchFailurePanel을 이 위치(총투자현황 탭 최상단, KPI 카드 바로 위)의 독립 배너로 옮겼다 - id와
        내부 구조(kpiFetchFailureNames, retryFailedPricesBtn, retryFailedPricesBtnText)는 그대로라
        renderKPIs()/retryFailedPrices()의 상태 관리·이벤트 로직은 단 한 줄도 바뀌지 않았다(hidden
        클래스 토글만 그대로 재사용 - display:none이라 실패가 없을 때는 공간을 전혀 차지하지 않는다).
-       고대비 경고색(amber) 배경+테두리로 눈에 띄게 하고, 아래 KPI 카드와 자연스럽게 이어지도록 mb-4만
-       준다(다른 섹션의 mb-6보다 좁게 - 알림과 그 대상 카드가 시각적으로 한 묶음처럼 보이도록). -->
+       고대비 경고색(amber) 배경+테두리로 눈에 띄게 하고, 바로 아래 [총 평가손익] 카드와 자연스럽게
+       이어지도록 mb-4만 준다(다른 섹션의 mb-6보다 좁게 - 알림과 그 대상 카드가 시각적으로 한 묶음처럼
+       보이도록). [총 평가금액] 카드는 이후 투자세부 탭으로 옮겨가 이 탭에는 더 이상 없다(바로 위
+       [카드 재이동] 주석 참고). -->
   <div id="kpiFetchFailurePanel" class="hidden mb-4 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 sm:p-4">
     <p class="text-xs sm:text-sm text-amber-700 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
     <button id="retryFailedPricesBtn" type="button"
