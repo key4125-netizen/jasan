@@ -1048,7 +1048,14 @@
     <section class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 mb-4">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden min-w-0">
         <div class="p-2.5 sm:p-4 pb-2">
-          <span class="text-xs sm:text-sm font-semibold">시나리오별 적용 수익률 요약</span>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs sm:text-sm font-semibold">시나리오별 적용 수익률 요약</span>
+            <!-- [사용자 정의 수익률 오버라이드] 이 버튼으로 열리는 scenarioRateManagerModal에서 종목별
+                 보수/일반/긍정 수익률을 직접 등록·수정할 수 있다 - openScenarioRateManagerModal 참고. -->
+            <button type="button" id="openScenarioRateManagerBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+              <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
+            </button>
+          </div>
           <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">보수적/일반적/긍정적 시나리오에서 각 상품·종목에 실제로 적용되는 연 기대수익률입니다. <b>일반적</b>이 기본값이고, <span class="inline-block w-1.5 h-1.5 rounded-full bg-brand-500 align-middle"></span> 표시는 지금 실제로 보유 중이거나 리밸런싱 목표에 배분돼 계산에 쓰이고 있는 상품입니다.</p>
         </div>
         <button type="button" id="scenarioRateAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
@@ -1437,6 +1444,56 @@
       </div>
 
       <div id="exchangeRateSummary" class="grid grid-cols-3 gap-2"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 수익률 관리 모달 (미래예측 "시나리오별 적용 수익률 요약" 카드 전용) =============================
+     사용자가 종목별 보수적/일반적/긍정적 기대수익률을 직접 등록·수정하는 모달. scenarioRateManagerDraft
+     (초안 배열)에서만 값을 바꾸다가 [저장]을 눌러야 state.projection.customScenarioRates에 커밋되고
+     updateProjection()이 재계산된다 - [취소]/오버레이 닫기(스와이프·뒤로가기·ESC)를 하면 초안이 버려지고
+     이전 상태가 그대로 유지된다(rebalanceTargetModal과 동일한 draft-then-commit 패턴). -->
+<div id="scenarioRateManagerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div class="min-w-0">
+        <h3 class="text-sm font-semibold">수익률 관리</h3>
+        <p class="text-xs text-slate-400 mt-0.5">종목별 보수적/일반적/긍정적 기대수익률을 직접 등록·수정합니다</p>
+      </div>
+      <button type="button" id="closeScenarioRateManagerModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto space-y-4">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">등록된 종목</h4>
+          <button type="button" id="scenarioRateResetDefaultsBtn" class="text-[11px] font-medium text-slate-400 hover:text-red-500">기본값으로 초기화</button>
+        </div>
+        <div class="flex items-center gap-1.5 px-2 mb-1">
+          <span class="flex-1 text-[10px] font-medium text-slate-400">종목/상품</span>
+          <div class="flex items-center gap-1 shrink-0">
+            <span class="w-14 text-[10px] font-medium text-center" style="color:#ef4444">보수</span>
+            <span class="w-14 text-[10px] font-medium text-center text-slate-500 dark:text-slate-400">일반</span>
+            <span class="w-14 text-[10px] font-medium text-center" style="color:#10b981">긍정</span>
+            <span class="w-6 shrink-0"></span>
+          </div>
+        </div>
+        <div id="scenarioRateManagerList" class="space-y-2"></div>
+      </div>
+
+      <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+        <button type="button" id="scenarioRateAddNewBtn" class="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> 신규 종목 추가
+        </button>
+        <div id="scenarioRateAddNewForm" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="cancelScenarioRateManagerModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+      <button type="button" id="saveScenarioRateManagerModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
     </div>
   </div>
 </div>
@@ -1974,10 +2031,10 @@ const state = {
   // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용 - 주식형자산
   // 기본 8%/PROJECTION_GROUP_DEFAULT_RATES 참고)
   // + inflationRate(실질 구매력 가치 환산에 쓰는 평균 물가상승률, %) - localStorage/JSON 백업에 저장됨.
-  // scenario2TickerRates: 시나리오2(리밸런싱 후) 전용 종목별 기대수익률 수동 오버라이드 - 비어있으면
-  // SCENARIO2_TICKER_RATE_OVERRIDES 기본값(QQQM 11%·SPYM 9%·SCHD 10%)을 그대로 쓴다(주식형자산 일괄
-  // 기본값 변경과 무관하게 이 3종목은 개별 지정값을 계속 유지한다).
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} },
+  // customScenarioRates: [수익률 관리] 모달에서 사용자가 등록/수정한 종목별 보수/일반/긍정 수익률
+  // 오버라이드 - { [key]: { label, conservative, normal, optimistic } }, key는 sanitizeTicker().yahooTicker
+  // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {} },
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
   transactions: [],
@@ -2171,7 +2228,19 @@ function loadState() {
         monthlyContribution: num(parsed.monthlyContribution),
         categoryReturns: parsed.categoryReturns || {},
         inflationRate: (parsed.inflationRate !== undefined && parsed.inflationRate !== null && parsed.inflationRate !== '') ? num(parsed.inflationRate) : 2.5,
-        scenario2TickerRates: parsed.scenario2TickerRates || {}
+        // [하위호환 마이그레이션] 예전 scenario2TickerRates(QQQM/SPYM/SCHD 3종목 한정 수동 오버라이드)에
+        // 값이 남아있는 기기라면, 새 customScenarioRates 체계로 1회 자동 이전한다(이미 새 키가 있으면
+        // 덮어쓰지 않음 - 사용자가 새 모달에서 이미 수정했을 수 있으므로).
+        customScenarioRates: (() => {
+          const migrated = { ...(parsed.customScenarioRates || {}) };
+          const legacy = parsed.scenario2TickerRates || {};
+          Object.keys(legacy).forEach((yahooTicker) => {
+            const v = legacy[yahooTicker];
+            if (migrated[yahooTicker] || v === undefined || v === '' || !Number.isFinite(num(v))) return;
+            migrated[yahooTicker] = { label: yahooTicker, normal: num(v) };
+          });
+          return migrated;
+        })()
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
@@ -2858,7 +2927,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -2892,7 +2961,8 @@ const MODAL_CLOSE_FNS = {
   totalValueModal: (viaBack) => closeTotalValueModal(viaBack),
   totalProfitModal: (viaBack) => closeTotalProfitModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
-  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack)
+  exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
+  scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -4275,6 +4345,8 @@ function getProjectionGroupLabel(groupKey) { return PROJECTION_GROUP_LABELS[grou
 function getProjectionAssetGroupKey(asset) {
   const groupKey = getProjectionGroupKey(asset.category);
   if (groupKey !== '주식형자산') return groupKey; // 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
+  const customKey = findCustomRateKeyForAsset(asset.ticker, asset.name);
+  if (customKey) return customKey; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
   const sanitized = sanitizeTicker(asset.ticker);
   const yahoo = sanitized.yahooTicker;
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return yahoo;
@@ -4282,9 +4354,12 @@ function getProjectionAssetGroupKey(asset) {
 }
 // 위 getProjectionAssetGroupKey()가 만든 그룹 키 하나의 "일반적" 기준 예상 연수익률을 정한다 - "현재
 // 구성 유지"는 프리셋 선택 개념이 없는 단일 시나리오라 항상 'normal'을 쓴다(리밸런싱 후 "일반적"과
-// 동일한 숫자를 보게 된다 - 종목 구성이 다르면 가중평균 결과는 서로 다를 수 있다).
+// 동일한 숫자를 보게 된다 - 종목 구성이 다르면 가중평균 결과는 서로 다를 수 있다). 사용자 정의
+// 오버라이드가 있으면(getCustomRate) 항상 최우선 적용된다.
 function getRateForProjectionGroupKey(key) {
   if (key === '현금') return 0;
+  const custom = getCustomRate(key, 'normal');
+  if (custom !== undefined) return custom;
   if (key === '채권') return SCENARIO_RATE_PRESETS.normal.categories['채권'];
   if (key === 'KOSPI') return SCENARIO_RATE_PRESETS.normal.indexRates.domestic;
   if (SCENARIO_RATE_PRESETS.normal.tickers[key] !== undefined) return getPresetTickerRate('normal', key);
@@ -4364,15 +4439,53 @@ function getMilestoneYearOffsets() {
  *      비중대로 재배분했다고 가정한다. 별도의 수익률 입력창은 없고, 시나리오 1에서 입력한 자산군별
  *      수익률을 그대로 재사용한다(아래 getTargetProjectionRate).
  * ---------------------------------------------------------------------- */
-// 예전부터 scenarioModal2에서 수동으로 직접 편집 가능했던 3종목의 "일반적" 기본값 - 사용자가 값을
-// 입력해 두면(state.projection.scenario2TickerRates) 프리셋 표보다 이 수동값이 항상 우선한다(하위호환).
-// 키는 sanitizeTicker().yahooTicker 기준으로 비교하므로 'QQQM'처럼 정제된 형태로 등록한다.
-const SCENARIO2_TICKER_RATE_OVERRIDES = { 'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 9.0 };
+/* -------------------------------------------------------------------------
+ * [사용자 정의 수익률 오버라이드] "수익률 관리" 모달에서 사용자가 직접 등록/수정한 종목별 기대수익률.
+ *    예전 SCENARIO2_TICKER_RATE_OVERRIDES(QQQM/SPYM/SCHD 3종목 한정, 하나의 수치를 3개 시나리오에
+ *    동일 적용)를 완전히 대체하는 범용 시스템이다 - 어떤 종목이든(기존 매핑 종목의 수치 수정 포함,
+ *    SK하이닉스처럼 시스템에 없던 신규 종목 추가 포함) 보수적/일반적/긍정적 3개 값을 각각 등록할 수 있다.
+ *    state.projection.customScenarioRates: { [key]: { label, conservative, normal, optimistic } }
+ *    key 규칙(findCustomRateKeyForAsset 참고) - 종목코드/티커가 있으면 sanitizeTicker().yahooTicker를
+ *    그대로 쓰고('005930.KS','000660.KS','MSFT' 등 - 시스템 기본 매핑표와 동일한 키 체계라 그대로
+ *    맞물린다), 코드/티커 없이 이름만 있는 종목은 'NAME:정규화이름'을 쓴다.
+ * ---------------------------------------------------------------------- */
+function normalizeNameKey(name) {
+  return String(name ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+// 모달에서 사용자가 입력한 종목코드/티커(선택)와 종목명으로 저장 키를 만든다.
+function buildCustomRateKey(codeOrTicker, name) {
+  const sanitized = sanitizeTicker(codeOrTicker);
+  if (sanitized.yahooTicker) return sanitized.yahooTicker;
+  const normalized = normalizeNameKey(name);
+  return normalized ? 'NAME:' + normalized : null;
+}
+
+// 실제 보유/거래/리밸런싱 목표 종목(ticker+name) 하나가 사용자 정의 오버라이드와 매칭되는 키를 찾는다.
+// 1순위 종목코드/티커(sanitizeTicker 정제), 2순위 정규화된 종목명 - 매칭되는 게 하나도 없으면 null을
+// 반환해 호출부가 시스템 기본 매핑(SCENARIO_RATE_PRESETS)으로 진행하게 한다.
+function findCustomRateKeyForAsset(ticker, name) {
+  const customRates = state.projection.customScenarioRates || {};
+  const sanitized = sanitizeTicker(ticker);
+  if (sanitized.yahooTicker && customRates[sanitized.yahooTicker]) return sanitized.yahooTicker;
+  const nameKey = 'NAME:' + normalizeNameKey(name);
+  if (name && customRates[nameKey]) return nameKey;
+  return null;
+}
+
+// 오버라이드 키 하나의 특정 프리셋(보수/일반/긍정) 값을 읽는다 - 등록은 돼 있어도 그 프리셋 칸만
+// 비워뒀다면(예: 보수/긍정만 입력) undefined를 반환해 호출부가 시스템 기본값으로 자연스럽게 대체하게 한다.
+function getCustomRate(key, presetKey) {
+  const entry = key ? (state.projection.customScenarioRates || {})[key] : undefined;
+  if (!entry) return undefined;
+  const v = entry[presetKey];
+  return (v !== undefined && v !== '' && Number.isFinite(num(v))) ? num(v) : undefined;
+}
 
 // [상품/종목별 세부 기대수익률 매핑] 리밸런싱 후 3개 프리셋(보수적/일반적/긍정적)의 종목별 예상 연수익률.
+// 이 표의 값들도 이제 전부 사용자 정의 오버라이드가 있으면 그 값이 최우선이다(getPresetTickerRate 등 참고).
 //   - tickers: 특정 티커로 지정된 목표(리밸런싱 탭에서 직접 추가한 종목)의 전용 수익률. 키는
-//     sanitizeTicker().yahooTicker 형식('005930.KS'=삼성전자, 'MSFT' 등)이다. QQQM/SPYM/SCHD는 예전과
-//     동일하게 scenarioModal2의 수동 오버라이드가 이 표보다 우선한다(getPresetTickerRate 참고).
+//     sanitizeTicker().yahooTicker 형식('005930.KS'=삼성전자, 'MSFT' 등)이다.
 //   - indexRates: 위 tickers 표에 없는 "기타 개별 종목"이 대신 쓰는 지역별 대표 지수 수익률 -
 //     국내는 KOSPI, 해외는 S&P500(=SPYM과 동일 값, 대표지수 그 자체이므로 의도적으로 같다)을 쓴다.
 //   - categories: 채권(국채) 캐치올 전용 수익률. 현금은 항상 0%(getTargetProjectionRate에서 처리),
@@ -4412,41 +4525,55 @@ const SCENARIO_RATE_PRESETS = {
   }
 };
 
-// 프리셋 표에 있는 티커(위 tickers 참고) 하나의 수익률을 정한다 - QQQM/SPYM/SCHD 3종목만 예전부터
-// scenarioModal2에서 수동 편집 가능했으므로, 그 수동값이 있으면 프리셋 표보다 우선한다. 그 외 신규
-// 매핑 종목(삼성전자/미국 대형주)은 편집 UI가 없으므로 프리셋 표 값을 그대로 쓴다.
+// 프리셋 표에 있는 티커(위 tickers 참고) 하나의 수익률을 정한다 - 사용자 정의 오버라이드(key=yahooTicker)가
+// 있으면 그 값이 최우선이고, 없으면 프리셋 표 기본값을 그대로 쓴다.
 function getPresetTickerRate(presetKey, yahooTicker) {
-  if (SCENARIO2_TICKER_RATE_OVERRIDES[yahooTicker] !== undefined) {
-    const manual = state.projection.scenario2TickerRates && state.projection.scenario2TickerRates[yahooTicker];
-    if (manual !== undefined && manual !== '' && Number.isFinite(num(manual))) return num(manual);
-  }
+  const custom = getCustomRate(yahooTicker, presetKey);
+  if (custom !== undefined) return custom;
   return SCENARIO_RATE_PRESETS[presetKey].tickers[yahooTicker];
 }
 
+// 지역별 대표지수(국내=KOSPI, 해외=SPYM/S&P500) 수익률 하나 - 이 값도 'KOSPI'/'SPYM' 키로 사용자 정의
+// 오버라이드가 가능하다(참조표의 해당 행과 동일한 키를 공유하므로 자연스럽게 맞물린다).
+function getEffectiveIndexRate(presetKey, region) {
+  const key = region === 'foreign' ? 'SPYM' : 'KOSPI';
+  const custom = getCustomRate(key, presetKey);
+  if (custom !== undefined) return custom;
+  return SCENARIO_RATE_PRESETS[presetKey].indexRates[region];
+}
+
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 특정 프리셋·지역에서 쓸 예상 수익률을 정한다.
-//   1. 기본값: "일반적" 프리셋 수익률(getTargetProjectionRate(t,'normal',region) 호출 시).
-//   2. 티커 지정 목표: SCENARIO_RATE_PRESETS[presetKey].tickers에 전용 매핑이 있으면 그 값(삼성전자/
+//   1. 사용자 정의 오버라이드: 종목코드/티커/이름 중 하나라도 등록돼 있으면 최우선 적용(findCustomRateKeyForAsset).
+//   2. 시스템 기본 매핑: SCENARIO_RATE_PRESETS[presetKey].tickers에 전용 매핑이 있으면 그 값(삼성전자/
 //      대표 ETF/미국 대형주), 없으면 지역별 대표지수(국내=KOSPI, 해외=S&P500)로 대체(fallback)한다.
-//   3. 자산군 캐치올: 채권(국채)은 categories.채권, 현금은 항상 0%, 그 외(주식 등)는 지역별 대표지수를
-//      그대로 쓴다 - region 인자로 그 캐치올이 국내/해외 중 어느 목표 배열 소속인지 판단한다.
+//   3. 자산군 캐치올: 채권(국채)은 categories.채권(역시 'BOND' 키로 오버라이드 가능), 현금은 항상 0%,
+//      그 외(주식 등)는 지역별 대표지수를 그대로 쓴다 - region 인자로 국내/해외 중 어느 소속인지 판단한다.
 function getTargetProjectionRate(target, presetKey, region) {
   const preset = SCENARIO_RATE_PRESETS[presetKey];
   if (target.type === 'ticker') {
+    const customKey = findCustomRateKeyForAsset(target.ticker, target.label);
+    if (customKey) {
+      const custom = getCustomRate(customKey, presetKey);
+      if (custom !== undefined) return custom;
+    }
     const yahoo = sanitizeTicker(target.ticker).yahooTicker;
     if (preset.tickers[yahoo] !== undefined) return getPresetTickerRate(presetKey, yahoo);
     const isForeign = sanitizeTicker(target.ticker).isDomestic === '해외';
-    return isForeign ? preset.indexRates.foreign : preset.indexRates.domestic;
+    return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
   }
   const groupKey = getProjectionGroupKey(target.category);
   if (groupKey === '현금') return 0;
-  if (groupKey === '채권') return preset.categories['채권'];
-  return region === '해외' ? preset.indexRates.foreign : preset.indexRates.domestic;
+  if (groupKey === '채권') {
+    const custom = getCustomRate('BOND', presetKey);
+    return custom !== undefined ? custom : preset.categories['채권'];
+  }
+  return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
 }
 
-// [시나리오별 적용 수익률 요약 표] 화면에 나열할 참조 상품 목록 - SCENARIO_RATE_PRESETS.tickers에 있는
-// 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'SPYM'이 대표 ETF이자 동시에
-// "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
-const SCENARIO_RATE_REFERENCE_ROWS = [
+// [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
+// tickers에 있는 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'SPYM'이 대표 ETF이자
+// 동시에 "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
+const SCENARIO_RATE_BASE_ROWS = [
   { key: 'BOND', label: '국채/채권형' },
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
@@ -4460,16 +4587,38 @@ const SCENARIO_RATE_REFERENCE_ROWS = [
   { key: 'META', label: 'Meta' },
   { key: 'NVDA', label: 'Nvidia' }
 ];
-// BOND/KOSPI는 SCENARIO_RATE_PRESETS[x].tickers가 아니라 categories/indexRates에 있으므로 별도로 조회한다.
+// [수익률 관리 모달 - 신규 종목 지원] 화면에 표시할 전체 행 = 시스템 기본 12행 + 사용자가 등록한
+// 종목 중 기본 목록에 없는 것(SK하이닉스 등 신규 매핑, key로 중복 판별)만 이어붙인 것. 기본 행에
+// 이미 있는 종목(삼성전자 등)을 사용자가 수정한 경우는 새 행을 만들지 않고 기존 행의 수치만 바뀐다
+// (getReferenceRate가 오버라이드를 최우선 적용하므로 자동으로 반영됨).
+function getScenarioRateDisplayRows() {
+  const rows = SCENARIO_RATE_BASE_ROWS.slice();
+  const baseKeys = new Set(rows.map((r) => r.key));
+  const customRates = state.projection.customScenarioRates || {};
+  Object.keys(customRates).forEach((key) => {
+    if (baseKeys.has(key)) return;
+    rows.push({ key, label: customRates[key].label || key, custom: true });
+  });
+  return rows;
+}
+// BOND/KOSPI는 SCENARIO_RATE_PRESETS[x].tickers가 아니라 categories/indexRates에 있으므로 별도로 조회하고,
+// 그 외 모든 키는 사용자 정의 오버라이드를 먼저 확인한 뒤 프리셋 표 기본값으로 대체(fallback)한다.
 function getReferenceRate(presetKey, key) {
+  const custom = getCustomRate(key, presetKey);
+  if (custom !== undefined) return custom;
+  return getSystemDefaultRate(presetKey, key);
+}
+// 사용자 정의 오버라이드를 무시하고 시스템 기본 매핑값만 조회한다 - [수익률 관리] 모달의 [기본값으로
+// 초기화]와, 저장 시 "사용자가 실제로 기본값과 다르게 고쳤는지" 판별하는 데 쓰인다.
+function getSystemDefaultRate(presetKey, key) {
   const preset = SCENARIO_RATE_PRESETS[presetKey];
   if (key === 'BOND') return preset.categories['채권'];
   if (key === 'KOSPI') return preset.indexRates.domestic;
-  return getPresetTickerRate(presetKey, key);
+  return preset.tickers[key];
 }
 // 지금 리밸런싱 목표(pct>0인 활성 항목)에 실제로 배분돼 있어 계산에 쓰이고 있는 참조행 키 집합 -
-// getTargetProjectionRate와 완전히 동일한 판별 로직(전용 매핑 있으면 그 티커, 없으면 지역별 대표지수/
-// 국채)을 그대로 따라간다.
+// getTargetProjectionRate와 완전히 동일한 판별 로직(사용자 정의 오버라이드 → 전용 매핑 → 지역별
+// 대표지수/국채)을 그대로 따라간다.
 // "적용 중" 판정은 두 소스를 합친다(union): ① 리밸런싱 목표에 실제 배분(pct>0)된 항목, ② 지금 실제로
 // 보유 중인 자산(현재 구성 유지 시나리오가 이제 이 기준으로 세부 수익률을 적용하므로 - getProjection
 // AssetGroupKey 참고). 둘 중 하나라도 해당하면 그 상품의 수익률이 최소 한 시나리오의 계산에 실제로
@@ -4479,6 +4628,8 @@ function getActiveScenarioRateKeys() {
   ['국내', '해외'].forEach((region) => {
     (state.rebalance.targets[region] || []).filter((t) => num(t.pct) > 0).forEach((t) => {
       if (t.type === 'ticker') {
+        const customKey = findCustomRateKeyForAsset(t.ticker, t.label);
+        if (customKey) { active.add(customKey); return; }
         const sanitized = sanitizeTicker(t.ticker);
         if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) { active.add(sanitized.yahooTicker); return; }
         active.add(sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI');
@@ -4491,7 +4642,7 @@ function getActiveScenarioRateKeys() {
   });
   state.assets.forEach((a) => {
     if (a.category === '부동산' || !isRebalanceEligibleAccount(a)) return;
-    const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|커스텀 카테고리명
+    const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
     if (key === '현금') return;
     active.add(key === '채권' ? 'BOND' : key);
   });
@@ -4523,7 +4674,7 @@ function renderScenarioRateReferenceTable() {
         </tr>
       </thead>
       <tbody>
-        ${SCENARIO_RATE_REFERENCE_ROWS.map((row) => {
+        ${getScenarioRateDisplayRows().map((row) => {
           const isActive = activeKeys.has(row.key);
           return `
           <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${isActive ? 'bg-brand-50/60 dark:bg-brand-900/10' : ''}">
@@ -4531,6 +4682,7 @@ function renderScenarioRateReferenceTable() {
               <span class="inline-flex items-center gap-1.5 min-w-0">
                 ${isActive ? '<span class="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" title="현재 실제로 보유 중이거나 리밸런싱 목표에 배분되어 적용 중"></span>' : '<span class="w-1.5 h-1.5 shrink-0"></span>'}
                 <span class="truncate font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(row.label)}</span>
+                ${row.custom ? '<span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400">사용자 등록</span>' : ''}
               </span>
             </td>
             <td class="text-right py-2 px-1 font-semibold text-slate-700 dark:text-slate-300">${fmtNum(getReferenceRate('conservative', row.key), 1)}%</td>
@@ -4554,10 +4706,11 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
 
 /* -------------------------------------------------------------------------
  * 10-3-3. [편집 UI 제거] 예전엔 카드1/카드2 각각 [›] 버튼을 탭하면 수익률/적립금을 수동으로 고칠 수
- *    있는 팝업(scenarioModal1/scenarioModal2)이 열렸다 - 이제 수익률은 SCENARIO_RATE_PRESETS(상품별
- *    세부 매핑)로 전부 자동 계산되므로 그 팝업과 여는 버튼을 완전히 제거했다. 월 적립금 입력만 상단
- *    고정 영역으로 옮겨 계속 수정할 수 있게 남겨뒀다(monthlyContributionInput 리스너는 그대로 유지).
- *    아래 두 카드는 이제 순수 읽기 전용이며, 세부 표는 detailCardAccordionOpen 아코디언으로 접고 편다.
+ *    있는 팝업(scenarioModal1/scenarioModal2)이 열렸다 - 그 팝업과 여는 버튼은 완전히 제거했다. 월
+ *    적립금 입력만 상단 고정 영역으로 옮겨 계속 수정할 수 있게 남겨뒀다(monthlyContributionInput
+ *    리스너는 그대로 유지). 아래 두 카드 자체는 순수 읽기 전용이며, 세부 표는 detailCardAccordionOpen
+ *    아코디언으로 접고 편다 - [수익률 관리] 버튼(scenarioRateManagerModal)만 별도로 열어야 종목별
+ *    보수/일반/긍정 수익률을 직접 등록·수정할 수 있다(카드 자체에 인라인 편집 UI는 없음).
  * ---------------------------------------------------------------------- */
 let detailCardAccordionOpen = { rate: false, allocation: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
@@ -4569,6 +4722,158 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
 }
 document.getElementById('scenarioRateAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('rate', 'scenarioRateAccordionBtn', 'scenarioRateAccordionBody'));
 document.getElementById('targetAllocationAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody'));
+
+/* -------------------------------------------------------------------------
+ * 10-3-3-1. [수익률 관리 모달] 사용자가 종목별 보수/일반/긍정 수익률을 직접 등록·수정한다 - 시스템
+ *    기본 매핑(SCENARIO_RATE_PRESETS)을 덮어쓰는 오버라이드를 state.projection.customScenarioRates에
+ *    저장한다(getCustomRate/findCustomRateKeyForAsset 참고). rebalanceTargetModal과 동일하게 draft
+ *    (초안) 배열에서만 수정하다가 [저장]을 눌러야 실제 state에 커밋되고, [취소]/스와이프/뒤로가기로
+ *    닫으면 초안이 버려진다.
+ * ---------------------------------------------------------------------- */
+let scenarioRateManagerDraft = [];
+
+// 모달을 열 때 현재 유효 수익률(오버라이드가 있으면 그 값, 없으면 시스템 기본값)로 초안을 채운다.
+function buildScenarioRateManagerDraft() {
+  return getScenarioRateDisplayRows().map((row) => ({
+    key: row.key,
+    label: row.label,
+    isBase: !row.custom,
+    conservative: num(getReferenceRate('conservative', row.key)),
+    normal: num(getReferenceRate('normal', row.key)),
+    optimistic: num(getReferenceRate('optimistic', row.key))
+  }));
+}
+
+function openScenarioRateManagerModal() {
+  scenarioRateManagerDraft = buildScenarioRateManagerDraft();
+  const form = document.getElementById('scenarioRateAddNewForm');
+  form.classList.add('hidden');
+  form.innerHTML = '';
+  renderScenarioRateManagerList();
+  document.getElementById('scenarioRateManagerModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+
+function closeScenarioRateManagerModal(viaBackButton) {
+  document.getElementById('scenarioRateManagerModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+  scenarioRateManagerDraft = [];
+}
+
+document.getElementById('openScenarioRateManagerBtn').addEventListener('click', openScenarioRateManagerModal);
+document.getElementById('closeScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
+document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
+
+function renderScenarioRateManagerList() {
+  const container = document.getElementById('scenarioRateManagerList');
+  container.innerHTML = scenarioRateManagerDraft.map((row, idx) => `
+    <div class="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+      <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+      <div class="flex items-center gap-1 shrink-0">
+        <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative"
+          class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
+        <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal"
+          class="scenario-rate-input w-14 text-[11px] font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+        <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
+          class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
+        ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+      </div>
+    </div>`).join('');
+  lucide.createIcons();
+}
+
+// 종목명/코드 입력값으로부터 저장 키를 만든다(buildCustomRateKey 재사용) - 등록된 종목 목록의
+// 수치 입력은 매 keystroke마다 draft 배열에 그대로 반영한다(아직 state에는 커밋되지 않음).
+document.getElementById('scenarioRateManagerList').addEventListener('input', (e) => {
+  const idx = e.target.dataset.rateIdx;
+  const field = e.target.dataset.rateField;
+  if (idx === undefined || !field) return;
+  scenarioRateManagerDraft[Number(idx)][field] = num(e.target.value);
+});
+
+document.getElementById('scenarioRateManagerList').addEventListener('click', (e) => {
+  const btn = e.target.closest('.scenario-rate-remove-btn');
+  if (!btn) return;
+  scenarioRateManagerDraft.splice(Number(btn.dataset.rateIdx), 1);
+  renderScenarioRateManagerList();
+});
+
+// [+ 신규 종목 추가] 버튼 - 인라인 폼을 펼쳐서 종목명/코드 및 3개 수익률을 입력받는다. 코드는
+// 선택사항(없으면 이름만으로 'NAME:' 키를 만든다 - findCustomRateKeyForAsset과 동일한 규칙).
+document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () => {
+  const form = document.getElementById('scenarioRateAddNewForm');
+  if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
+  form.innerHTML = `
+    <input id="newScenarioRateName" type="text" placeholder="종목명 (예: SK하이닉스)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateCode" type="text" placeholder="종목코드/티커 (예: 000660, 선택 입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <div class="flex items-center gap-1.5">
+      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">보수
+        <input id="newScenarioRateConservative" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#ef4444">
+      </label>
+      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">일반
+        <input id="newScenarioRateNormal" type="number" step="0.1" placeholder="%" class="w-full text-xs font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+      </label>
+      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">긍정
+        <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
+      </label>
+    </div>
+    <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
+  `;
+  document.getElementById('confirmAddScenarioRateBtn').addEventListener('click', () => {
+    const name = document.getElementById('newScenarioRateName').value.trim();
+    const code = document.getElementById('newScenarioRateCode').value.trim();
+    const rawConservative = document.getElementById('newScenarioRateConservative').value.trim();
+    const rawNormal = document.getElementById('newScenarioRateNormal').value.trim();
+    const rawOptimistic = document.getElementById('newScenarioRateOptimistic').value.trim();
+    if (!name && !code) { alert('종목명 또는 종목코드/티커를 입력하세요.'); return; }
+    if (rawConservative === '' || rawNormal === '' || rawOptimistic === '') { alert('보수/일반/긍정 수익률을 모두 입력하세요.'); return; }
+    const key = buildCustomRateKey(code, name);
+    if (scenarioRateManagerDraft.some((r) => r.key === key)) { alert('이미 등록된 종목입니다.'); return; }
+    scenarioRateManagerDraft.push({
+      key, label: name || code, isBase: false,
+      conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic)
+    });
+    renderScenarioRateManagerList();
+    form.classList.add('hidden');
+    form.innerHTML = '';
+  });
+});
+
+// [기본값으로 초기화] 초안에서 모든 사용자 등록/수정 내용을 지운다 - 시스템 기본 12개 상품만 남기고
+// 각 수치도 SCENARIO_RATE_PRESETS 원본값으로 되돌린다. 아직 초안일 뿐이라 [저장]을 눌러야 확정된다.
+document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click', () => {
+  scenarioRateManagerDraft = SCENARIO_RATE_BASE_ROWS.map((row) => ({
+    key: row.key, label: row.label, isBase: true,
+    conservative: num(getSystemDefaultRate('conservative', row.key)),
+    normal: num(getSystemDefaultRate('normal', row.key)),
+    optimistic: num(getSystemDefaultRate('optimistic', row.key))
+  }));
+  renderScenarioRateManagerList();
+});
+
+// [저장] 초안을 state.projection.customScenarioRates로 커밋한다. 기본 상품 행은 시스템 기본값과
+// 실제로 다른 필드만 오버라이드로 저장하고(전부 기본값과 같으면 그 종목의 오버라이드를 아예 지운다 -
+// 기본값으로 초기화 후 저장한 경우가 여기 해당), 신규 등록 행은 입력값을 그대로 저장한다.
+document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('click', () => {
+  const next = {};
+  scenarioRateManagerDraft.forEach((row) => {
+    if (row.isBase) {
+      const entry = {};
+      if (num(row.conservative) !== num(getSystemDefaultRate('conservative', row.key))) entry.conservative = num(row.conservative);
+      if (num(row.normal) !== num(getSystemDefaultRate('normal', row.key))) entry.normal = num(row.normal);
+      if (num(row.optimistic) !== num(getSystemDefaultRate('optimistic', row.key))) entry.optimistic = num(row.optimistic);
+      if (Object.keys(entry).length > 0) { entry.label = row.label; next[row.key] = entry; }
+    } else {
+      next[row.key] = { label: row.label, conservative: num(row.conservative), normal: num(row.normal), optimistic: num(row.optimistic) };
+    }
+  });
+  state.projection.customScenarioRates = next;
+  persistProjection();
+  closeScenarioRateManagerModal(false);
+  updateProjection();
+  showToast('수익률 설정을 저장했습니다.', 'success');
+});
 
 // 리밸런싱 후 포트폴리오 전체의 가중평균 연수익률(프리셋별) - 지역 배분(국내/해외 %) × 지역 내
 // 목표 항목 비중(%) × 그 항목의 예상 수익률(해당 프리셋 기준)을 전부 더한다.
@@ -8745,7 +9050,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
             monthlyContribution: num(parsed.projection.monthlyContribution),
             categoryReturns: parsed.projection.categoryReturns || {},
             inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
-            scenario2TickerRates: parsed.projection.scenario2TickerRates || {}
+            customScenarioRates: parsed.projection.customScenarioRates || {}
           };
           persistProjection();
         }
@@ -8811,7 +9116,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.priceFetchFailedIds = new Set();
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   state.rebalance = { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
-  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, scenario2TickerRates: {} };
+  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {} };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라
