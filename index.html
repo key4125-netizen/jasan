@@ -4799,27 +4799,95 @@ document.getElementById('scenarioRateManagerList').addEventListener('click', (e)
   renderScenarioRateManagerList();
 });
 
+// [종목 검색 자동완성] 거래내역/자산등록 탭에서 쓰는 searchStockCandidates()(보유종목 로컬 검색 +
+// Yahoo Finance 검색 API)를 그대로 재사용한다 - 별도 API 연동 없이 기존 검색 인프라에 그대로 올라탄다.
+// 드롭다운은 stockAllocationSearchResults와 동일하게 "겹치지 않는 인라인(그 자리에서 펼쳐지는)" 방식으로
+// 렌더링한다(absolute 오버레이 대신) - 모달 자체가 스크롤 컨테이너라 absolute 오버레이는 z-index를
+// 아무리 높여도 overflow-y-auto 경계에서 잘리는 문제가 있어, 이미 이 앱에서 검증된 인라인 방식을 그대로 쓴다.
+let scenarioRateSearchDebounceTimer = null;
+let scenarioRateSearchRequestSeq = 0;
+
+function renderScenarioRateSearchResults(results, seq) {
+  if (seq !== scenarioRateSearchRequestSeq) return; // 더 최신 검색이 진행 중이면 늦게 도착한 응답은 버린다
+  const container = document.getElementById('newScenarioRateSearchResults');
+  if (!container) return;
+  if (results.length === 0) {
+    container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
+    return;
+  }
+  container.innerHTML = results.map((r) => `
+    <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700">
+      <span class="min-w-0 text-xs truncate">${escapeHtml(r.name)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
+    </button>`).join('');
+  container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const symbol = btn.dataset.pickSymbol;
+      const name = btn.dataset.pickName;
+      document.getElementById('newScenarioRateName').value = name;
+      document.getElementById('newScenarioRateCode').value = symbol;
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      // [기본 매핑 종목 자동 세팅] 이미 SCENARIO_RATE_PRESETS에 전용 수익률이 있는 종목(삼성전자/QQQM/
+      // 미국 대형주 등)을 골랐다면, 시스템 기본값(일반적 프리셋 기준)을 3개 입력창에 미리 채워 넣고
+      // 안내한다 - 사용자는 필요하면 그 값을 그대로 두거나 수정만 하면 된다.
+      const yahoo = sanitizeTicker(symbol).yahooTicker;
+      if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) {
+        const c = getSystemDefaultRate('conservative', yahoo);
+        const n = getSystemDefaultRate('normal', yahoo);
+        const o = getSystemDefaultRate('optimistic', yahoo);
+        document.getElementById('newScenarioRateConservative').value = c;
+        document.getElementById('newScenarioRateNormal').value = n;
+        document.getElementById('newScenarioRateOptimistic').value = o;
+        showToast(`${name}은(는) 이미 시스템 기본 매핑에 등록된 종목입니다. 기본 수익률(보수 ${fmtNum(c, 1)}% · 일반 ${fmtNum(n, 1)}% · 긍정 ${fmtNum(o, 1)}%)이 자동 입력되었습니다.`, 'info');
+      }
+    });
+  });
+}
+
+function triggerScenarioRateSearch(query) {
+  const container = document.getElementById('newScenarioRateSearchResults');
+  clearTimeout(scenarioRateSearchDebounceTimer);
+  if (!query) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+  container.classList.remove('hidden');
+  container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 중...</p>';
+  scenarioRateSearchDebounceTimer = setTimeout(async () => {
+    const seq = ++scenarioRateSearchRequestSeq;
+    const results = await searchStockCandidates(query);
+    renderScenarioRateSearchResults(results, seq);
+  }, 350);
+}
+
 // [+ 신규 종목 추가] 버튼 - 인라인 폼을 펼쳐서 종목명/코드 및 3개 수익률을 입력받는다. 코드는
 // 선택사항(없으면 이름만으로 'NAME:' 키를 만든다 - findCustomRateKeyForAsset과 동일한 규칙).
 document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () => {
   const form = document.getElementById('scenarioRateAddNewForm');
   if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
+  form.classList.remove('hidden'); // [버그 수정] innerHTML만 채우고 hidden을 안 벗겨서 폼이 채워져도
+  // 화면엔 계속 안 보이던 문제 - 실기기 터치로 버튼을 눌러도 "아무 변화가 없는 것처럼" 보였다.
   form.innerHTML = `
-    <input id="newScenarioRateName" type="text" placeholder="종목명 (예: SK하이닉스)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-    <input id="newScenarioRateCode" type="text" placeholder="종목코드/티커 (예: 000660, 선택 입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-    <div class="flex items-center gap-1.5">
-      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">보수
+    <input id="newScenarioRateName" type="text" placeholder="종목명 검색 (예: SK하이닉스, 하이닉스, TSLA)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <div id="newScenarioRateSearchResults" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>
+    <input id="newScenarioRateCode" type="text" placeholder="종목코드/티커 (예: 000660, 검색결과 선택 시 자동입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <div class="flex items-start gap-1.5">
+      <div class="flex-1 min-w-0">
+        <label for="newScenarioRateConservative" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">보수</label>
         <input id="newScenarioRateConservative" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#ef4444">
-      </label>
-      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">일반
+      </div>
+      <div class="flex-1 min-w-0">
+        <label for="newScenarioRateNormal" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">일반</label>
         <input id="newScenarioRateNormal" type="number" step="0.1" placeholder="%" class="w-full text-xs font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
-      </label>
-      <label class="flex-1 flex items-center gap-1 text-[10px] text-slate-400">긍정
+      </div>
+      <div class="flex-1 min-w-0">
+        <label for="newScenarioRateOptimistic" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">긍정</label>
         <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
-      </label>
+      </div>
     </div>
     <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
   `;
+  document.getElementById('newScenarioRateName').addEventListener('input', (e) => triggerScenarioRateSearch(e.target.value.trim()));
+  document.getElementById('newScenarioRateCode').addEventListener('input', (e) => triggerScenarioRateSearch(e.target.value.trim()));
   document.getElementById('confirmAddScenarioRateBtn').addEventListener('click', () => {
     const name = document.getElementById('newScenarioRateName').value.trim();
     const code = document.getElementById('newScenarioRateCode').value.trim();
@@ -4849,7 +4917,13 @@ document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click'
     normal: num(getSystemDefaultRate('normal', row.key)),
     optimistic: num(getSystemDefaultRate('optimistic', row.key))
   }));
+  // 신규 종목 추가 폼이 열려 있었다면 함께 접는다 - 방금 지워진 초안 목록과 어긋난 채로 남아있으면
+  // 안 되므로(예: 방금 추가하려던 종목이 사라졌는데 입력 폼만 남아있는 상태 방지).
+  const addForm = document.getElementById('scenarioRateAddNewForm');
+  addForm.classList.add('hidden');
+  addForm.innerHTML = '';
   renderScenarioRateManagerList();
+  showToast('모든 시나리오 수익률이 시스템 기본값으로 초기화되었습니다.', 'success');
 });
 
 // [저장] 초안을 state.projection.customScenarioRates로 커밋한다. 기본 상품 행은 시스템 기본값과
