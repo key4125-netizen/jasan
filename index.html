@@ -5226,32 +5226,36 @@ function renderTargetAllocationSummary(regionPV2) {
 // 순회하며 카드 4개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
-// [20년 후 예상자산 - 금융자산/부동산 구분 표기] 각 시나리오의 마지막 연간 스냅샷(finalPoint)은 이미
-// 그룹키별 잔액을 갖고 있다(simulateNonRebalancedGroups/simulateRebalancedPreset 참고) - '부동산' 키가
-// 있으면(보유 중이면) 그 값을 총액에서 빼 "금융자산" 몫을 따로 계산한다. 부동산이 없으면(0원이거나
-// 아예 미보유) 구분선 자체를 만들지 않고 예전처럼 총액만 깔끔하게 보여준다 - 4개 시나리오 카드는 항상
-// 다같이 부동산을 보유하거나 다같이 안 보유하므로(포트폴리오 전체 단위 자산이라) 카드 높이가 그리드 안에서 들쭉날쭉해지지 않는다.
+// [2040년/2045년 고정 표기 + 금융자산/부동산 구분] 예전엔 "20년 후 예상자산" 하나만 보여줬으나, 이제
+// 향후 3번째·4번째 5년 단위 캘린더 연도(milestoneOffsets[2]/[3] - 2026년 기준으로는 14년후=2040년,
+// 19년후=2045년) 두 시점을 각각 독립된 블록으로 보여준다. CURRENT_YEAR 기준으로 계산하므로 다른 해에
+// 열어도 "앞으로 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
+// 각 시나리오의 해당 연차 스냅샷(s.points[offset])은 이미 그룹키별 잔액을 갖고 있으므로(simulateNonRebalancedGroups/
+// simulateRebalancedPreset 참고) '부동산' 키가 있으면 총액에서 빼 "금융자산" 몫을 계산한다 - 부동산이
+// 없으면(0원이거나 미보유) 그 구분 줄 자체를 만들지 않고 총액만 깔끔하게 보여준다. 4개 시나리오 카드는
+// 항상 다같이 부동산을 보유하거나 다같이 안 보유하므로(포트폴리오 전체 단위 자산) 카드 높이가 그리드
+// 안에서 들쭉날쭉해지지 않는다.
+// [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
+// 2040/2045년)로 표기했으나, 캘린더 연도 대신 오늘 기준 상대 연차인 "15년 후"/"20년 후"로 단순화했다 -
+// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. maxYears가 20이므로 "20년 후"는
+// 시뮬레이션의 마지막 스냅샷과 같다.
+const SCENARIO_CARD_YEAR_OFFSETS = [15, 20];
+
 function renderScenarioSummaryCards(scenarioData) {
   const grid = document.getElementById('scenarioSummaryCardsGrid');
   if (!grid) return;
-  grid.innerHTML = scenarioData.map((s) => {
-    const finalPoint = s.points[s.points.length - 1];
-    const finalValue = finalPoint.total; // 20년 후 예상자산(총액)
-    const realEstateValue = finalPoint['부동산'] || 0;
+
+  const renderMilestoneBlock = (point, offset) => {
+    const total = point.total;
+    const realEstateValue = point['부동산'] || 0;
     const hasRealEstate = Math.round(realEstateValue) !== 0;
-    const financialValue = finalValue - realEstateValue;
+    const financialValue = total - realEstateValue;
     return `
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
-      <div class="flex items-center gap-1.5 mb-2 min-w-0">
-        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
-        <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
-      </div>
-      <p class="text-[10px] sm:text-[11px] text-slate-400">기대수익률</p>
-      <p class="text-sm sm:text-lg font-bold truncate" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</p>
-      <p class="text-[10px] sm:text-[11px] text-slate-400 mt-1.5">20년 후 예상자산</p>
-      <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(finalValue)}</p>
+    <div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+      <p class="text-[10px] sm:text-[11px] text-slate-400">${offset}년 후(${CURRENT_YEAR + offset}년) 예상자산</p>
+      <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(total)}</p>
       ${hasRealEstate ? `
-      <div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 space-y-0.5">
+      <div class="mt-1 space-y-0.5">
         <div class="flex items-center justify-between gap-1 min-w-0">
           <span class="text-[9px] sm:text-[11px] text-slate-400 shrink-0">금융자산</span>
           <span class="text-[9px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">${fmtKRWShort(financialValue)}</span>
@@ -5262,7 +5266,18 @@ function renderScenarioSummaryCards(scenarioData) {
         </div>
       </div>` : ''}
     </div>`;
-  }).join('');
+  };
+
+  grid.innerHTML = scenarioData.map((s) => `
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
+      <div class="flex items-center gap-1.5 mb-2 min-w-0">
+        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
+        <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
+      </div>
+      <p class="text-[10px] sm:text-[11px] text-slate-400">기대수익률</p>
+      <p class="text-sm sm:text-lg font-bold truncate" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</p>
+      ${SCENARIO_CARD_YEAR_OFFSETS.map((offset) => renderMilestoneBlock(s.points[offset], offset)).join('')}
+    </div>`).join('');
 }
 
 // 맨 위 "리밸런싱 효과 요약" 카드 - 시점별로 시나리오2(리밸런싱 후) - 시나리오1(현재 유지)의 명목
