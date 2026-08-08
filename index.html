@@ -869,19 +869,12 @@
 
       <div class="h-56 mb-4"><canvas id="pnlChart"></canvas></div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
-          <thead>
-            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th class="text-left font-medium py-1.5 pr-2">기간</th>
-              <th class="text-right font-medium py-1.5 px-2">실현손익</th>
-              <th class="text-right font-medium py-1.5 px-2">매도금액</th>
-              <th class="text-right font-medium py-1.5 pl-2">거래건수</th>
-            </tr>
-          </thead>
-          <tbody id="pnlReportTableBody"></tbody>
-        </table>
-      </div>
+      <!-- [기간별 집계 - 아코디언 리스트] 예전엔 <table> 한 줄짜리 요약만 보여줬으나, 이제 각 기간
+           행을 펼치면 그 기간에 속한 개별 매도 거래 내역(거래일자/종목명/소유자·계좌구분/수량/단가/
+           실현손익)이 바로 아래로 부드럽게 펼쳐진다(renderPnlReportList/togglePnlPeriodDetail 참고).
+           펼침 상태는 기간(granularity)·페이지 이동과 무관하게 pnlPeriodDetailOpen에 key(날짜/월/연도)
+           단위로 보존된다. -->
+      <div id="pnlReportListContainer" class="space-y-1.5"></div>
     </section>
   </div> <!-- /tabPanelTransactions -->
 
@@ -5233,13 +5226,22 @@ function renderTargetAllocationSummary(regionPV2) {
 // 순회하며 카드 4개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
+// [20년 후 예상자산 - 금융자산/부동산 구분 표기] 각 시나리오의 마지막 연간 스냅샷(finalPoint)은 이미
+// 그룹키별 잔액을 갖고 있다(simulateNonRebalancedGroups/simulateRebalancedPreset 참고) - '부동산' 키가
+// 있으면(보유 중이면) 그 값을 총액에서 빼 "금융자산" 몫을 따로 계산한다. 부동산이 없으면(0원이거나
+// 아예 미보유) 구분선 자체를 만들지 않고 예전처럼 총액만 깔끔하게 보여준다 - 4개 시나리오 카드는 항상
+// 다같이 부동산을 보유하거나 다같이 안 보유하므로(포트폴리오 전체 단위 자산이라) 카드 높이가 그리드 안에서 들쭉날쭉해지지 않는다.
 function renderScenarioSummaryCards(scenarioData) {
   const grid = document.getElementById('scenarioSummaryCardsGrid');
   if (!grid) return;
   grid.innerHTML = scenarioData.map((s) => {
-    const finalValue = s.points[s.points.length - 1].total; // 20년 후 예상자산
+    const finalPoint = s.points[s.points.length - 1];
+    const finalValue = finalPoint.total; // 20년 후 예상자산(총액)
+    const realEstateValue = finalPoint['부동산'] || 0;
+    const hasRealEstate = Math.round(realEstateValue) !== 0;
+    const financialValue = finalValue - realEstateValue;
     return `
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
       <div class="flex items-center gap-1.5 mb-2 min-w-0">
         <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
         <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
@@ -5248,6 +5250,17 @@ function renderScenarioSummaryCards(scenarioData) {
       <p class="text-sm sm:text-lg font-bold truncate" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</p>
       <p class="text-[10px] sm:text-[11px] text-slate-400 mt-1.5">20년 후 예상자산</p>
       <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(finalValue)}</p>
+      ${hasRealEstate ? `
+      <div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 space-y-0.5">
+        <div class="flex items-center justify-between gap-1 min-w-0">
+          <span class="text-[9px] sm:text-[11px] text-slate-400 shrink-0">금융자산</span>
+          <span class="text-[9px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">${fmtKRWShort(financialValue)}</span>
+        </div>
+        <div class="flex items-center justify-between gap-1 min-w-0">
+          <span class="text-[9px] sm:text-[11px] text-slate-400 shrink-0">부동산</span>
+          <span class="text-[9px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">${fmtKRWShort(realEstateValue)}</span>
+        </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -5972,14 +5985,17 @@ function computeRealizedPnLByPeriod(granularity, refDate) {
     filteredSells = sells;
   }
 
+  // [기간별 세부 거래내역 - 아코디언 확장용] 각 기간 버킷에 집계값뿐 아니라 그 기간에 속한 개별 매도
+  // 거래(tx) 목록도 함께 쌓아둔다 - renderPnlReportList()가 행을 펼칠 때 이 배열을 그대로 렌더링한다.
   const buckets = {};
-  periodKeys.forEach((k) => { buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0 }; });
+  periodKeys.forEach((k) => { buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0, transactions: [] }; });
   filteredSells.forEach((tx) => {
     const k = keyFn(tx);
-    if (!buckets[k]) buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0 };
+    if (!buckets[k]) buckets[k] = { key: k, label: labelFn(k), realizedPnL: 0, sellAmount: 0, tradeCount: 0, winCount: 0, transactions: [] };
     buckets[k].realizedPnL += tx.computedRealizedPnL;
     buckets[k].sellAmount += tx.computedSellAmount;
     buckets[k].tradeCount += 1;
+    buckets[k].transactions.push(tx);
     if (tx.computedRealizedPnL > 0) buckets[k].winCount += 1;
   });
 
@@ -6044,20 +6060,80 @@ function renderPnlChart(periods) {
   pnlCanvas.onclick = () => scheduleDailyPnlTooltipHide(charts.pnl);
 }
 
-function renderPnlReportTable(periods) {
-  const tbody = document.getElementById('pnlReportTableBody');
+// [기간별 실현손익 - 행별 아코디언 펼침 상태] key(일별="YYYY-MM-DD"/월별="YYYY-MM"/연별="YYYY")별로
+// 펼침 여부를 기억한다 - 세 granularity의 key 형식이 서로 겹치지 않으므로 하나의 평면 객체로 충분하다.
+// 기간 이동(이전/다음 달)이나 일별·월별·연별 전환으로 다시 렌더링돼도 사용자가 펼쳐둔 행은 그대로 유지된다.
+let pnlPeriodDetailOpen = {};
+
+function togglePnlPeriodDetail(key) {
+  pnlPeriodDetailOpen[key] = !pnlPeriodDetailOpen[key];
+  const body = document.getElementById(`pnlDetailBody_${key}`);
+  const chevron = document.querySelector(`[data-pnl-chevron="${key}"]`);
+  if (body && chevron) setAccordionOpen(body, chevron, pnlPeriodDetailOpen[key]);
+}
+
+// 기간 행을 펼쳤을 때 그 아래 나열되는 개별 매도 거래 카드 - 거래일자/종목명/소유자·계좌구분/매도수량/
+// 매도단가/그 거래 하나의 실현손익을 보여준다. 모바일에서도 겹침 없이 보이도록 2줄 카드 형태로 구성한다.
+function renderPnlDetailRow(tx) {
+  const unit = tx.currency === 'USD' ? '$' : '';
+  return `
+  <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 text-[11px] sm:text-xs">
+    <div class="flex items-center justify-between gap-2 mb-1 min-w-0">
+      <span class="font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(tx.name)}</span>
+      <span class="font-bold shrink-0 ${profitColor(tx.computedRealizedPnL)}">${fmtSigned(tx.computedRealizedPnL)}</span>
+    </div>
+    <div class="flex items-center justify-between gap-2 text-slate-400 min-w-0">
+      <span class="truncate">${escapeHtml(tx.date)} · ${escapeHtml(tx.owner)}·${escapeHtml(tx.accountType)}</span>
+      <span class="shrink-0">${fmtNum(tx.quantity, 4)} × ${unit}${fmtNum(tx.price, 2)}</span>
+    </div>
+  </div>`;
+}
+
+// [기간별 집계 - 아코디언 리스트] 각 기간 행(일/월/연)을 클릭하면 그 기간의 개별 매도 거래 목록이
+// 바로 아래로 펼쳐진다(setAccordionOpen과 동일한 max-height 트랜지션 패턴). 실현손익 양수=빨강/
+// 음수=파랑(profitColor)으로 색상을 구분한다.
+function renderPnlReportList(periods) {
+  const container = document.getElementById('pnlReportListContainer');
   const nonEmpty = periods.filter((p) => p.tradeCount > 0);
   if (nonEmpty.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-slate-400 py-6">해당 기간에 매도 거래가 없습니다.</td></tr>`;
+    container.innerHTML = `<p class="text-center text-slate-400 text-xs py-6">해당 기간에 매도 거래가 없습니다.</p>`;
     return;
   }
-  tbody.innerHTML = nonEmpty.slice().reverse().map((p) => `
-    <tr class="border-b border-slate-50 dark:border-slate-800/50">
-      <td class="py-1.5 pr-2">${escapeHtml(p.label)}</td>
-      <td class="py-1.5 px-2 text-right ${profitColor(p.realizedPnL)}">${fmtSigned(p.realizedPnL)}</td>
-      <td class="py-1.5 px-2 text-right text-slate-500 dark:text-slate-400">${fmtKRWShort(p.sellAmount)}</td>
-      <td class="py-1.5 pl-2 text-right text-slate-500 dark:text-slate-400">${p.tradeCount}건</td>
-    </tr>`).join('');
+  const rows = nonEmpty.slice().reverse();
+  container.innerHTML = rows.map((p) => {
+    const isOpen = !!pnlPeriodDetailOpen[p.key];
+    return `
+    <div class="rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+      <button type="button" data-pnl-detail-toggle="${escapeHtml(p.key)}"
+        class="w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40">
+        <span class="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 shrink-0">${escapeHtml(p.label)}</span>
+        <span class="flex-1 flex items-center justify-end gap-2 sm:gap-4 min-w-0">
+          <span class="text-xs sm:text-sm font-bold truncate ${profitColor(p.realizedPnL)}">${fmtSigned(p.realizedPnL)}</span>
+          <span class="hidden sm:inline text-xs text-slate-400 truncate">${fmtKRWShort(p.sellAmount)}</span>
+          <span class="text-[11px] sm:text-xs text-slate-400 shrink-0">${p.tradeCount}건</span>
+        </span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}" data-pnl-chevron="${escapeHtml(p.key)}"></i>
+      </button>
+      <div id="pnlDetailBody_${escapeHtml(p.key)}" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-2.5 sm:px-3 pb-2.5 sm:pb-3 pt-1 space-y-1.5">
+          ${p.transactions.slice().reverse().map((tx) => renderPnlDetailRow(tx)).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('button[data-pnl-detail-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => togglePnlPeriodDetail(btn.dataset.pnlDetailToggle));
+  });
+  lucide.createIcons();
+  // 방금 다시 그린 목록 기준으로, 이미 펼쳐져 있어야 하는 행들의 실제 높이를 재적용한다(다른
+  // 아코디언들과 동일한 이유 - 내용이 바뀌어도 max-height가 새 높이에 맞게 갱신된다).
+  rows.forEach((p) => {
+    if (!pnlPeriodDetailOpen[p.key]) return;
+    const body = document.getElementById(`pnlDetailBody_${p.key}`);
+    const chevron = document.querySelector(`[data-pnl-chevron="${p.key}"]`);
+    if (body && chevron) setAccordionOpen(body, chevron, true);
+  });
 }
 
 function updatePnlSection() {
@@ -6082,7 +6158,7 @@ function updatePnlSection() {
   rateEl.className = 'text-sm font-bold ' + profitColor(result.totalRate);
 
   renderPnlChart(result.periods);
-  renderPnlReportTable(result.periods);
+  renderPnlReportList(result.periods);
 }
 
 function renderTransactionsTab() {
