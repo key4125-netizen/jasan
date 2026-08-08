@@ -2,12 +2,13 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v49'; // [수익률 관리 모달 - 신규 종목 추가 폼 라벨/입력창 겹침 수정]
-// "보수/일반/긍정" 라벨을 <label>(block) 안에 텍스트와 <input>(inline-block, w-full)을 같이 넣어뒀더니,
-// 인라인 서식 맥락에서 줄바꿈이 보장되지 않아 라벨 텍스트와 입력창이 겹쳐 보이는 문제가 있었다(특히
-// 좁은 모바일 폭에서 두드러짐) - 라벨과 입력창을 각각 별도의 block 자식으로 분리한 <div> 래퍼로
-// 바꿔 항상 라벨이 위, 입력창이 아래로 확실히 쌓이도록 고쳤다.
-// v48->v49: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면
+const CACHE_NAME = 'smart-asset-manager-v52'; // [미래예측에 절세계좌(ISA/IRP/연금저축) 자산도 포함]
+// 예전엔 리밸런싱 탭과 동일한 정책으로 미래예측도 '일반계좌' 보유 자산만 시뮬레이션했으나
+// (getProjectionGroupStats/getActiveScenarioRateKeys의 isRebalanceEligibleAccount 필터), 이제 미래예측은
+// 계좌 구분과 무관하게 실제 보유한 모든 금융자산(+부동산)을 합산해 시뮬레이션한다 - "얼마를 리밸런싱할
+// 수 있는가"(리밸런싱 탭, 그대로 일반계좌 한정 유지)와 "총자산이 앞으로 얼마나 불어나는가"(미래예측
+// 탭)는 서로 다른 질문이라는 판단. 상단 안내 문구도 이에 맞게 수정했다.
+// v51->v52: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 파일을 다시 받아온다 - 안 바꾸면
 // GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate
 // 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [

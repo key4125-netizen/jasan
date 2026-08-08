@@ -260,7 +260,7 @@
   <div class="relative mb-6 w-full sm:w-fit sm:max-w-full">
     <div id="tabScrollContainer" class="grid grid-cols-2 sm:flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full sm:w-fit overflow-x-auto sm:max-w-full">
       <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
-        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총투자현황
+        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총금융투자현황
       </button>
       <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
         <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 투자세부
@@ -310,7 +310,7 @@
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
-        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가손익</span>
+        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총금융자산평가손익</span>
         <!-- [세부내용 버튼 신설] 클릭 시 openTotalProfitModal()로 누적 평가손익 추이(꺾은선) 모달을 연다 -
              다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
         <div class="flex flex-col items-end gap-1 shrink-0">
@@ -338,7 +338,7 @@
   <section class="grid grid-cols-1 gap-4 mb-6">
     <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간 평가손익</span>
+        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간금융평가손익</span>
         <!-- [오늘 실현손익 배지] 메인 숫자(kpiDailyProfit)는 순수 미실현(평가) 손익 계산을 그대로 유지하고,
              오늘 매도해서 발생한 실현손익은 세부내용 버튼 바로 밑에 별도 배지로만 덧붙인다
              (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다. -->
@@ -493,7 +493,7 @@
   <section class="grid grid-cols-1 gap-4 mb-4">
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-2 gap-1">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총 평가금액</span>
+        <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총자산평가금액</span>
         <div class="flex items-center gap-1.5 shrink-0">
           <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn"><i data-lucide="search" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
@@ -501,16 +501,27 @@
           </div>
         </div>
       </div>
-      <!-- [달러자산 총액/적용환율 카드 통합] 예전엔 이 값이 별도 KPI 카드(kpiForeignValue/kpiAppliedRate)로
-           독립돼 있었으나, 카드 하나를 아예 없애고 총 평가금액 옆에 보조 텍스트로 붙였다(요청: "달러자산
-           총액/적용환율 카드를 제거하고 총 평가금액 카드 내부로 통합"). 적용환율 자체는 더 이상 표시하지
-           않고(환율은 상단 헤더 환율 뱃지에서 이미 보임), 달러자산 금액만 괄호로 병기한다. -->
-      <div class="flex items-baseline gap-1.5 flex-wrap">
-        <p id="kpiTotalValue" class="text-lg font-bold truncate">0원</p>
-        <span id="kpiForeignValueInline" class="text-sm font-semibold text-slate-400 dark:text-slate-500 truncate">(달러자산 0원)</span>
+      <p id="kpiTotalValue" class="text-lg font-bold truncate">0원</p>
+      <!-- [4가지 구분값 표기 - 요청 반영] 카드 제목(총자산평가금액)+메인 숫자가 "전체(금융자산+부동산)"를
+           나타내고, 그 아래 3줄로 금융자산/부동산/달러자산 평가금액을 구분해 보여준다. 예전엔 달러자산만
+           메인 숫자 옆에 괄호로 병기했는데(kpiForeignValueInline), 이제 다른 두 구분값과 같은 줄 형식으로
+           통일했다(JS 쪽은 renderKPIs()에서 같은 id로 계속 채운다). -->
+      <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-slate-400 shrink-0">금융자산 총평가금액</span>
+          <span id="kpiFinancialValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-slate-400 shrink-0">부동산 자산 총평가금액</span>
+          <span id="kpiRealEstateValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-slate-400 shrink-0">달러자산 평가금액</span>
+          <span id="kpiForeignValueInline" class="font-semibold text-slate-500 dark:text-slate-400 truncate">0원</span>
+        </div>
       </div>
-      <!-- 총 평가금액 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
-      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-xs"></div>
+      <!-- 그 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
+      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-2 hidden text-xs"></div>
       <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
       <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
@@ -523,7 +534,7 @@
   <section class="grid grid-cols-1 gap-4 mb-6">
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총 투자금액</span>
+        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총자산투자금액</span>
         <div class="flex items-center gap-1.5">
           <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
             <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
@@ -536,6 +547,18 @@
            텍스트가 바뀌지 않는다). renderKPIs() 참고. -->
       <div id="kpiTotalCostNormal">
         <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
+        <!-- [3가지 구분값 표기 - 요청 반영] 총자산투자금액(전체, 카드 제목+메인 숫자)/금융자산투자금액/
+             부동산 자산투자금액을 구분해 보여준다. -->
+        <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-slate-400 shrink-0">금융자산 투자금액</span>
+            <span id="kpiFinancialCost" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-slate-400 shrink-0">부동산 자산 투자금액</span>
+            <span id="kpiRealEstateCost" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
+          </div>
+        </div>
         <div id="kpiTotalCostBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
       </div>
     </div>
@@ -736,18 +759,21 @@
   <div id="tabPanelTransactions" class="hidden">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <h2 class="text-sm font-semibold">매매 거래 내역</h2>
-      <div class="flex items-center gap-2 flex-wrap">
-        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 기간거래등록으로 함께 올리세요."
-          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-          <i data-lucide="history" class="w-3.5 h-3.5"></i> 보유자산 양식 다운로드
+      <!-- [3버튼 한 줄 정돈 - 가로 스크롤 없이] 라벨을 짧게 줄이고(양식다운로드) 버튼 좌우 패딩/간격을
+           모바일에서 압축(px-2/gap-1)해 375px 폭에서도 스크롤 없이 세 버튼이 한 줄에 다 들어가게 했다
+           (sm 이상에서는 기존 여유 있는 패딩/간격으로 되돌아간다). -->
+      <div class="flex items-center gap-1 sm:gap-2 flex-nowrap">
+        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 거래등록으로 함께 올리세요."
+          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+          <i data-lucide="history" class="w-3.5 h-3.5"></i> 양식다운로드
         </button>
         <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다(구분 컬럼: 최초/기간)"
-          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-          <i data-lucide="upload" class="w-3.5 h-3.5"></i> 기간거래등록
+          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i> 거래등록
         </button>
         <input id="txExcelFileInput" type="file" accept=".xlsx,.xls" class="hidden">
         <button id="addTransactionBtn" type="button"
-          class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
+          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 whitespace-nowrap">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 거래 추가
         </button>
       </div>
@@ -1018,9 +1044,12 @@
          "일반적" 프리셋은 예전 "리밸런싱 후"와 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
          "보수적"/"긍정적"은 SCENARIO_RATE_PRESETS에 정의된 고정 근사치(±1σ 약세장/강세장 근사)를
          쓴다 - 실제 백테스트 데이터가 아니라 참고용 근사치임을 카드 하단에 안내한다. -->
-    <!-- [일반계좌 한정] 모든 시나리오의 초기 원금(PV)·수익률 계산은 '일반계좌' 보유 자산만을 기준으로
-         시뮬레이션한다(리밸런싱 탭과 동일한 정책). -->
-    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-1">※ 절세 계좌(ISA/IRP/연금저축)를 제외한 자산만을 대상으로 시뮬레이션합니다.</p>
+    <!-- [절세계좌 포함 - 요청 반영] 예전엔 리밸런싱 탭과 동일하게 '일반계좌' 보유 자산만 시뮬레이션
+         대상으로 삼았으나(계좌 구분과 무관하게 실제 리밸런싱을 실행할 수 있는 자산만 계산하려던 정책),
+         이제 미래예측은 "총자산이 앞으로 얼마나 불어나는가"를 보는 화면이므로 ISA/IRP/연금저축 등
+         절세계좌 보유 자산도 전부 합산해 시뮬레이션한다(getProjectionGroupStats 참고) - 리밸런싱
+         탭(목표비중/실행가이드)의 일반계좌 한정 정책은 그대로 유지되고, 이 변경은 미래예측에만 적용된다. -->
+    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-1">※ ISA/IRP/연금저축 등 절세 계좌를 포함한 모든 금융자산(+부동산)을 대상으로 시뮬레이션합니다.</p>
     <!-- [월 적립금 - 편집 가능한 위치로 이동] 예전엔 scenarioModal1 팝업 안에서만 수정할 수 있었는데,
          그 팝업(수익률 수동 편집 UI)을 완전히 제거하면서 월 적립금 입력은 여기 상단 고정 영역으로
          옮겨왔다 - id/리스너는 그대로라 JS 쪽 수정 없이 위치만 바뀐다. inflationRateInput은 화면에
@@ -1088,7 +1117,7 @@
     <!-- ===== 4개 시나리오 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">📊 4가지 시나리오 미래 자산 통합 비교</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 원금(부동산 제외)을 <b>"지금 구성 그대로 유지"</b>할 때와 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>(보수적/일반적/긍정적 수익률 가정) 했을 때의 총자산(명목) 성장 곡선 4개를 한 차트에서 비교합니다. 그래프를 탭하면 해당 연도의 4개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+      <p class="text-[11px] text-slate-400 mb-3"><b>"지금 구성 그대로 유지"</b>(부동산 포함, 자체 기대수익률 적용)할 때와, 같은 금융자산 원금(부동산 제외)을 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>(보수적/일반적/긍정적 수익률 가정) 했을 때의 총자산(명목) 성장 곡선 4개를 한 차트에서 비교합니다. 그래프를 탭하면 해당 연도의 4개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
       <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
     </section>
 
@@ -2530,27 +2559,47 @@ function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
 
 function renderKPIs() {
   let totalBuy = 0, totalCur = 0, foreignCur = 0, dailyProfit = 0;
+  // [부동산 제외 - 금융자산 전용 집계] "총금융자산평가손익"/"일간금융평가손익" 카드는 부동산을 뺀
+  // 순수 금융자산 기준으로만 계산한다 - totalBuy/totalCur/dailyProfit(전체, 부동산 포함)와는 별도로
+  // financialBuy/financialCur/financialDailyProfit를 따로 누적한다. 부동산 쪽 합계(realEstateBuy/Cur)는
+  // "총자산평가금액"/"총자산투자금액" 카드의 부동산 구분값 표기에 쓰인다.
+  let financialBuy = 0, financialCur = 0, financialDailyProfit = 0;
+  let realEstateBuy = 0, realEstateCur = 0;
   const hasAnyFetchedChange = Object.keys(state.dayChangeMap).length > 0 || Object.keys(state.prevCloseMap).length > 0;
-  // 자산군별(주식/채권/현금/부동산 등) 세부 집계 - KPI 카드 하단 태그용. 필터와 무관하게 전체 포트폴리오 기준.
+  // 자산군별(주식/채권/현금/부동산 등) 세부 집계 - "총자산평가금액"/"총자산투자금액" 카드 하단 태그용
+  // (부동산 포함, 전체 포트폴리오 기준).
   const byCategory = {}; // { category: { buy, cur, dailyPnL } }
-  // 소유자별(신랑/와이프/공동 등) 세부 집계 - 일간 평가손익/총 평가금액/총 평가손익 카드 하단 태그 전용.
+  // 소유자별(신랑/와이프/공동 등) 세부 집계 - "총자산평가금액" 카드 하단 태그 전용(부동산 포함).
   const byOwner = {}; // { owner: { dailyPnL, cur, buy } }
+  // [금융자산 전용 소유자/자산군별 집계] "총금융자산평가손익"/"일간금융평가손익" 카드 하단 태그는
+  // 부동산을 뺀 이 집계를 쓴다.
+  const byOwnerFinancial = {}; // { owner: { dailyPnL, cur, buy } }
+  const byCategoryFinancial = {}; // { category: { buy, cur, dailyPnL } } - 부동산 키 자체가 없음
   // [자산군별 투자금액 추이 팝업] 소유자×자산군 교차 집계 - 소유자 필터별로도 자산군 구성을 볼 수 있어야
   // 하므로 byOwner/byCategory 둘만으로는 부족하다(둘 다 서로 다른 축으로만 합산된 값이라 "이 소유자의
   // 이 자산군"을 따로 뽑아낼 수 없음). recordDailySnapshot에 그대로 전달해 일자별 스냅샷에도 이 교차
   // 집계 기준으로 남긴다.
   const byOwnerCategory = {}; // { owner: { category: { dailyPnL, cur, buy } } }
-  // [일간평가손익 카드 - 통화별 표기] 거래 통화(a.currency) 기준 원화/해외통화 일간손익 - 계산 로직은
-  // 전혀 바꾸지 않고 이미 구한 dp(원화 환산 완료된 값)를 통화 라벨로 다시 묶기만 한다.
+  // [일간금융평가손익 카드 - 통화별 표기] 거래 통화(a.currency) 기준 원화/해외통화 일간손익(부동산 제외) -
+  // 계산 로직은 전혀 바꾸지 않고 이미 구한 dp(원화 환산 완료된 값)를 통화 라벨로 다시 묶기만 한다.
   const byCurrency = {}; // { '원화': { dailyPnL }, '해외통화': { dailyPnL } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
     const dp = calcDailyPnL(a, r);
+    const isRealEstate = a.category === '부동산';
     totalBuy += r.buyAmount;
     totalCur += r.curAmount;
     if (r.isForeign) foreignCur += r.curAmount;
     dailyProfit += dp;
+    if (isRealEstate) {
+      realEstateBuy += r.buyAmount;
+      realEstateCur += r.curAmount;
+    } else {
+      financialBuy += r.buyAmount;
+      financialCur += r.curAmount;
+      financialDailyProfit += dp;
+    }
 
     if (!byCategory[a.category]) byCategory[a.category] = { buy: 0, cur: 0, dailyPnL: 0 };
     byCategory[a.category].buy += r.buyAmount;
@@ -2568,16 +2617,35 @@ function renderKPIs() {
     byOwnerCategory[a.owner][a.category].cur += r.curAmount;
     byOwnerCategory[a.owner][a.category].buy += r.buyAmount;
 
-    const currencyLabel = a.currency === 'KRW' ? '원화' : '해외통화';
-    if (!byCurrency[currencyLabel]) byCurrency[currencyLabel] = { dailyPnL: 0 };
-    byCurrency[currencyLabel].dailyPnL += dp;
+    if (!isRealEstate) {
+      if (!byOwnerFinancial[a.owner]) byOwnerFinancial[a.owner] = { dailyPnL: 0, cur: 0, buy: 0 };
+      byOwnerFinancial[a.owner].dailyPnL += dp;
+      byOwnerFinancial[a.owner].cur += r.curAmount;
+      byOwnerFinancial[a.owner].buy += r.buyAmount;
+
+      if (!byCategoryFinancial[a.category]) byCategoryFinancial[a.category] = { buy: 0, cur: 0, dailyPnL: 0 };
+      byCategoryFinancial[a.category].buy += r.buyAmount;
+      byCategoryFinancial[a.category].cur += r.curAmount;
+      byCategoryFinancial[a.category].dailyPnL += dp;
+
+      const currencyLabel = a.currency === 'KRW' ? '원화' : '해외통화';
+      if (!byCurrency[currencyLabel]) byCurrency[currencyLabel] = { dailyPnL: 0 };
+      byCurrency[currencyLabel].dailyPnL += dp;
+    }
   });
 
-  const totalProfit = totalCur - totalBuy;
-  const totalProfitRate = totalBuy !== 0 ? (totalProfit / totalBuy) * 100 : 0;
+  // [금융자산평가손익 - 부동산 제외] 예전엔 totalCur-totalBuy(전체)를 썼으나, 이제 financialCur/Buy로
+  // 부동산을 뺀 순수 금융자산 손익만 계산한다.
+  const totalProfit = financialCur - financialBuy;
+  const totalProfitRate = financialBuy !== 0 ? (totalProfit / financialBuy) * 100 : 0;
 
   document.getElementById('kpiTotalValue').textContent = fmtKRW(totalCur);
   document.getElementById('kpiTotalCost').textContent = fmtKRW(totalBuy);
+  // [4가지/3가지 구분값 표기] 총자산평가금액/총자산투자금액 카드에 금융자산·부동산 세부 금액을 채운다.
+  document.getElementById('kpiFinancialValue').textContent = fmtKRW(financialCur);
+  document.getElementById('kpiRealEstateValue').textContent = fmtKRW(realEstateCur);
+  document.getElementById('kpiFinancialCost').textContent = fmtKRW(financialBuy);
+  document.getElementById('kpiRealEstateCost').textContent = fmtKRW(realEstateBuy);
   renderKpiBreakdown('kpiTotalValueOwnerBreakdown', byOwner, o => o.cur, fmtKRWShort, false, 'text-xs text-slate-500 dark:text-slate-400', true);
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
@@ -2603,38 +2671,42 @@ function renderKPIs() {
   const profitRateEl = document.getElementById('kpiTotalProfitRate');
   profitRateEl.textContent = fmtPct(totalProfitRate);
   profitRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(totalProfitRate);
-  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률 - 다른 태그보다 눈에 잘 띄도록 크게 표시
-  renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwner);
-  renderKpiBreakdown('kpiTotalProfitBreakdown', byCategory, c => c.cur - c.buy, fmtSignedShort, true);
-  // [총 실현손익 배지] 세부내용 버튼 밑 - 지금까지의 매도 건 전체 누적 실현손익(getTotalRealizedPnL).
-  // 위 총평가손익 계산(totalProfit = totalCur - totalBuy, 미실현)과는 완전히 독립된 별도 표시다.
+  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률(부동산 제외) - 다른 태그보다 눈에
+  // 잘 띄도록 크게 표시
+  renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwnerFinancial);
+  renderKpiBreakdown('kpiTotalProfitBreakdown', byCategoryFinancial, c => c.cur - c.buy, fmtSignedShort, true);
+  // [총 실현손익 배지] 세부내용 버튼 밑 - 지금까지의 매도 건 전체 누적 실현손익(getTotalRealizedPnL,
+  // 부동산 매매 실현손익도 포함 - 거래내역 기준이라 부동산 제외 여부와 무관하게 항상 전체를 본다).
+  // 위 총금융자산평가손익 계산(totalProfit = financialCur - financialBuy, 미실현)과는 완전히 독립된
+  // 별도 표시다.
   renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익');
 
-  // 일간 변동률(%)의 분모는 "전일 기준 총자산" = 현재 총자산에서 오늘 하루 손익만큼을 뺀 값.
-  const prevTotal = totalCur - dailyProfit;
-  const dailyProfitRate = prevTotal !== 0 ? (dailyProfit / prevTotal) * 100 : 0;
+  // 일간 변동률(%)의 분모는 "전일 기준 금융자산" = 현재 금융자산에서 오늘 하루 손익만큼을 뺀 값
+  // (부동산 제외).
+  const prevTotal = financialCur - financialDailyProfit;
+  const dailyProfitRate = prevTotal !== 0 ? (financialDailyProfit / prevTotal) * 100 : 0;
 
   const dailyEl = document.getElementById('kpiDailyProfit');
-  dailyEl.textContent = fmtSigned(dailyProfit);
-  dailyEl.className = 'text-lg font-bold ' + profitColor(dailyProfit);
+  dailyEl.textContent = fmtSigned(financialDailyProfit);
+  dailyEl.className = 'text-lg font-bold ' + profitColor(financialDailyProfit);
   const dailyRateEl = document.getElementById('kpiDailyProfitRate');
   dailyRateEl.textContent = fmtPct(dailyProfitRate);
   dailyRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
-  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익 - 다른 태그보다 눈에 잘 띄도록 크게 표시
-  renderKpiBreakdown('kpiDailyOwnerBreakdown', byOwner, o => o.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold', true);
-  // 그 바로 아래: 거래 통화(원화/해외통화) 기준 일간손익 - 소유자 태그와 동일한 글씨 크기로 표시
+  // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익(부동산 제외) - 다른 태그보다 눈에
+  // 잘 띄도록 크게 표시
+  renderKpiBreakdown('kpiDailyOwnerBreakdown', byOwnerFinancial, o => o.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold', true);
+  // 그 바로 아래: 거래 통화(원화/해외통화) 기준 일간손익(부동산 제외) - 소유자 태그와 동일한 글씨 크기로 표시
   renderKpiBreakdown('kpiDailyCurrencyBreakdown', byCurrency, c => c.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold');
-  // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익
-  renderKpiBreakdown('kpiDailyProfitBreakdown', byCategory, c => c.dailyPnL, fmtSignedShort, true);
-  // [오늘 실현손익 배지] 세부내용 버튼 밑 - 오늘 매도해서 발생한 실현손익(getTodayRealizedPnL). 위
-  // dailyProfit(미실현 평가손익) 계산은 전혀 건드리지 않고, 별도로 계산해 배지로만 덧붙인다.
+  // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익(부동산 제외)
+  renderKpiBreakdown('kpiDailyProfitBreakdown', byCategoryFinancial, c => c.dailyPnL, fmtSignedShort, true);
+  // [오늘 실현손익 배지] 세부내용 버튼 밑 - 오늘 매도해서 발생한 실현손익(getTodayRealizedPnL, 부동산
+  // 매매 포함). 위 dailyProfit(미실현 평가손익) 계산은 전혀 건드리지 않고, 별도로 계산해 배지로만 덧붙인다.
   renderRealizedBadge('kpiTodayRealizedBadge', getTodayRealizedPnL(), '오늘 실현손익');
 
-  // [달러자산 총액/적용환율 카드 통합] 예전엔 별도 KPI 카드에 kpiForeignValue(달러자산 총액)와
-  // kpiAppliedRate(적용환율 텍스트)를 나눠서 표시했으나, 카드를 없애고 총 평가금액 옆 보조 텍스트로
-  // 합쳤다 - 적용환율은 더 이상 여기서 표시하지 않는다(상단 헤더 환율 뱃지가 이미 보여준다).
-  document.getElementById('kpiForeignValueInline').textContent = '(달러자산 ' + fmtKRW(foreignCur) + ')';
+  // [4가지 구분값 표기] 총자산평가금액 카드의 달러자산 라인 - 예전엔 "(달러자산 ...)"처럼 메인 숫자
+  // 옆에 괄호로 병기했으나, 이제 금융자산/부동산과 같은 줄 형식(라벨+금액)으로 통일했다.
+  document.getElementById('kpiForeignValueInline').textContent = fmtKRW(foreignCur);
 
   // [일별 손익 추이 팝업] 오늘 날짜 스냅샷을 항상 최신값으로 덮어쓴다 - 사용자 입력 없이 렌더링될
   // 때마다 자동으로 쌓이는 히스토리(recordDailySnapshot 참고).
@@ -4342,6 +4414,24 @@ function getProjectionGroupLabel(groupKey) { return PROJECTION_GROUP_LABELS[grou
 // KOSPI, 해외 개별종목→S&P500/SPYM)로 대체(fallback)한다 - getTargetProjectionRate가 리밸런싱 목표
 // 항목에 적용하는 규칙과 완전히 동일한 판별 로직이라, 두 시나리오가 "같은 데이터베이스"를 본다.
 // 채권/현금/그 외 커스텀 카테고리(원자재 등)는 종목 단위 매핑이 없으므로 기존처럼 카테고리 단위로 묶는다.
+//
+// [절세계좌 국내상장 해외지수 ETF 키워드 매핑] KODEX/TIGER/SOL 등 국내 브랜드로 상장된 해외지수 추종
+// ETF(예: KODEX 미국S&P500, TIGER 미국나스닥100, SOL 미국배당다우존스)는 티커가 국내 6자리 코드라
+// sanitizeTicker/티커표 매칭만으로는 SPYM/QQQM/SCHD 같은 대표 상품과 연결되지 않는다 - 종목명에 특정
+// 키워드가 들어있으면 실제 추종 지수의 대표 수익률로 매핑한다. 나스닥을 SCHD/SPYM보다 먼저 확인해야
+// "TIGER 미국나스닥100"처럼 여러 키워드가 겹칠 수 있는 이름에서 올바른 지수가 선택된다.
+const NAME_KEYWORD_RATE_MAP = [
+  { key: 'QQQM', keywords: ['나스닥100', '나스닥 100', 'NASDAQ100', 'NASDAQ 100', '나스닥', 'NASDAQ'] },
+  { key: 'SCHD', keywords: ['배당다우존스', '배당 다우존스', 'SCHD'] },
+  { key: 'SPYM', keywords: ['S&P500', 'S&P 500', 'SP500', 'S&P지수'] }
+];
+function getNameKeywordRateKey(name) {
+  const hay = String(name ?? '').toUpperCase();
+  for (const { key, keywords } of NAME_KEYWORD_RATE_MAP) {
+    if (keywords.some((k) => hay.includes(k.toUpperCase()))) return key;
+  }
+  return null;
+}
 function getProjectionAssetGroupKey(asset) {
   const groupKey = getProjectionGroupKey(asset.category);
   if (groupKey !== '주식형자산') return groupKey; // 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
@@ -4350,6 +4440,8 @@ function getProjectionAssetGroupKey(asset) {
   const sanitized = sanitizeTicker(asset.ticker);
   const yahoo = sanitized.yahooTicker;
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return yahoo;
+  const nameKey = getNameKeywordRateKey(asset.name);
+  if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
   return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
 }
 // 위 getProjectionAssetGroupKey()가 만든 그룹 키 하나의 "일반적" 기준 예상 연수익률을 정한다 - "현재
@@ -4361,6 +4453,9 @@ function getRateForProjectionGroupKey(key) {
   const custom = getCustomRate(key, 'normal');
   if (custom !== undefined) return custom;
   if (key === '채권') return SCENARIO_RATE_PRESETS.normal.categories['채권'];
+  // [부동산 수익률 매핑] "현재 구성 유지" 시나리오에 부동산도 이제 포함되므로(getProjectionGroupStats
+  // 참고) 전용 수익률(일반적 기준 5.5%)을 매핑한다.
+  if (key === '부동산') return SCENARIO_RATE_PRESETS.normal.categories['부동산'];
   if (key === 'KOSPI') return SCENARIO_RATE_PRESETS.normal.indexRates.domestic;
   if (SCENARIO_RATE_PRESETS.normal.tickers[key] !== undefined) return getPresetTickerRate('normal', key);
   return getGroupReturnRate(key); // 그 외 커스텀 카테고리(원자재 등) - 기존 관례 그대로 유지
@@ -4369,8 +4464,17 @@ function getRateForProjectionGroupKey(key) {
 function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
-    if (a.category === '부동산') return; // 부동산은 미래 자산예측 전체에서 제외
-    if (!isRebalanceEligibleAccount(a)) return; // 일반계좌 외 절세 계좌 보유 자산은 미래예측 계산에서 제외
+    // [부동산 포함 - 요청 반영] 예전엔 부동산을 미래 자산예측 전체에서 제외했으나, 이제 "현재 구성
+    // 유지" 시나리오는 부동산도 자체 그룹('부동산' 키, getRateForProjectionGroupKey 참고)으로 포함해
+    // 실제 총자산 성장 곡선에 반영한다. 단 "리밸런싱 후" 3개 시나리오의 재배분 원금에서는 별도로
+    // 제외한다(updateProjection()의 totalValueForRebalance 참고 - 집을 팔아 주식/채권으로 재배분한다고
+    // 가정하는 게 아니므로).
+    // [절세계좌 포함 - 요청 반영] 예전엔 일반계좌 외 절세 계좌(ISA/IRP/연금저축) 보유 자산을 미래예측
+    // 전체에서 제외했으나(리밸런싱 탭의 "일반계좌만 리밸런싱" 정책을 그대로 가져다 썼던 것), 이제
+    // 미래예측은 계좌 구분과 무관하게 실제 보유한 모든 금융자산(+부동산)을 합산해 시뮬레이션한다 -
+    // "얼마를 리밸런싱할 수 있는가"(리밸런싱 탭)와 "총자산이 앞으로 얼마나 불어나는가"(미래예측 탭)는
+    // 서로 다른 질문이므로 계좌 필터를 분리했다. 리밸런싱 탭 자체의 목표비중/실행가이드 계산(다른 함수,
+    // isRebalanceEligibleAccount 호출부 참고)은 이 필터를 그대로 유지해 일반계좌만 대상으로 한다.
     const r = calcRow(a);
     const key = getProjectionAssetGroupKey(a);
     if (!byGroup[key]) byGroup[key] = { value: 0, buy: 0 };
@@ -4495,7 +4599,9 @@ function getCustomRate(key, presetKey) {
 const SCENARIO_RATE_PRESETS = {
   conservative: {
     label: '보수적', color: '#ef4444',
-    categories: { '채권': 3.5 },
+    // [부동산 수익률 매핑 추가] 채권과 동일한 "카테고리 캐치올" 방식 - 부동산은 종목 단위 매핑이 없는
+    // 단일 자산군이라 tickers가 아니라 categories에 둔다(getRateForProjectionGroupKey/getReferenceRate 참고).
+    categories: { '채권': 3.5, '부동산': 3.0 },
     indexRates: { domestic: 5.0, foreign: 7.0 }, // KOSPI / S&P500(SPYM) 대표지수
     tickers: {
       '005930.KS': 8.0, // 삼성전자
@@ -4505,17 +4611,19 @@ const SCENARIO_RATE_PRESETS = {
   },
   normal: {
     label: '일반적', color: '#f59e0b',
-    categories: { '채권': 4.5 },
-    indexRates: { domestic: 8.0, foreign: 9.0 },
+    // [기본 수익률 프리셋 조정] 채권 4.5→4.0 / KOSPI 8.0→7.0 / 삼성전자 11.0→9.0 / SCHD 9.0→10.0 /
+    // AAPL 9.0→10.0 (사용자 요청값 - "일반적" 프리셋만 변경, 보수적/긍정적은 그대로 유지).
+    categories: { '채권': 4.0, '부동산': 5.5 },
+    indexRates: { domestic: 7.0, foreign: 9.0 },
     tickers: {
-      '005930.KS': 11.0,
-      'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 9.0,
-      'MSFT': 10.5, 'GOOGL': 11.5, 'AAPL': 9.0, 'AMZN': 11.5, 'META': 12.0, 'NVDA': 12.5
+      '005930.KS': 9.0,
+      'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 10.0,
+      'MSFT': 10.5, 'GOOGL': 11.5, 'AAPL': 10.0, 'AMZN': 11.5, 'META': 12.0, 'NVDA': 12.5
     }
   },
   optimistic: {
     label: '긍정적', color: '#10b981',
-    categories: { '채권': 5.5 },
+    categories: { '채권': 5.5, '부동산': 8.0 },
     indexRates: { domestic: 11.0, foreign: 13.0 },
     tickers: {
       '005930.KS': 15.0,
@@ -4558,6 +4666,10 @@ function getTargetProjectionRate(target, presetKey, region) {
     }
     const yahoo = sanitizeTicker(target.ticker).yahooTicker;
     if (preset.tickers[yahoo] !== undefined) return getPresetTickerRate(presetKey, yahoo);
+    // [절세계좌 국내상장 해외지수 ETF] KODEX 미국S&P500/TIGER 미국나스닥100/SOL 미국배당다우존스 등
+    // 이름 키워드로 실제 추종 지수의 대표 수익률에 매핑한다(getProjectionAssetGroupKey와 동일 규칙).
+    const nameKey = getNameKeywordRateKey(target.label);
+    if (nameKey) return getPresetTickerRate(presetKey, nameKey);
     const isForeign = sanitizeTicker(target.ticker).isDomestic === '해외';
     return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
   }
@@ -4575,6 +4687,7 @@ function getTargetProjectionRate(target, presetKey, region) {
 // 동시에 "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
 const SCENARIO_RATE_BASE_ROWS = [
   { key: 'BOND', label: '국채/채권형' },
+  { key: '부동산', label: '부동산' },
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
   { key: 'SPYM', label: 'S&P500 (SPYM)' },
@@ -4613,6 +4726,7 @@ function getReferenceRate(presetKey, key) {
 function getSystemDefaultRate(presetKey, key) {
   const preset = SCENARIO_RATE_PRESETS[presetKey];
   if (key === 'BOND') return preset.categories['채권'];
+  if (key === '부동산') return preset.categories['부동산'];
   if (key === 'KOSPI') return preset.indexRates.domestic;
   return preset.tickers[key];
 }
@@ -4632,6 +4746,8 @@ function getActiveScenarioRateKeys() {
         if (customKey) { active.add(customKey); return; }
         const sanitized = sanitizeTicker(t.ticker);
         if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) { active.add(sanitized.yahooTicker); return; }
+        const nameKey = getNameKeywordRateKey(t.label);
+        if (nameKey) { active.add(nameKey); return; }
         active.add(sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI');
         return;
       }
@@ -4641,8 +4757,10 @@ function getActiveScenarioRateKeys() {
     });
   });
   state.assets.forEach((a) => {
-    if (a.category === '부동산' || !isRebalanceEligibleAccount(a)) return;
-    const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
+    // [부동산/절세계좌 포함] 부동산도, 절세계좌(ISA/IRP/연금저축) 보유 자산도 이제 "현재 구성 유지"
+    // 계산에 포함되므로(getProjectionGroupStats 참고) 실제 보유 중이면 참조표에서도 활성(●) 표시가
+    // 되어야 한다 - 두 제외 필터를 모두 없앴다.
+    const key = getProjectionAssetGroupKey(a); // '채권'|'부동산'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
     if (key === '현금') return;
     active.add(key === '채권' ? 'BOND' : key);
   });
@@ -4886,6 +5004,9 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
     </div>
     <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
   `;
+  // [모바일 스크롤 개선] 폼을 펼친 직후 화면(특히 모바일)에서 입력창이 하단에 가려 안 보일 수 있으므로,
+  // 부드럽게 스크롤해 방금 펼친 입력 폼이 바로 눈에 들어오게 한다.
+  form.scrollIntoView({ behavior: 'smooth', block: 'end' });
   document.getElementById('newScenarioRateName').addEventListener('input', (e) => triggerScenarioRateSearch(e.target.value.trim()));
   document.getElementById('newScenarioRateCode').addEventListener('input', (e) => triggerScenarioRateSearch(e.target.value.trim()));
   document.getElementById('confirmAddScenarioRateBtn').addEventListener('click', () => {
@@ -5239,7 +5360,11 @@ function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
   // "시나리오별 적용 수익률 요약" 카드(순수 읽기 전용)는 renderScenarioRateReferenceTable()가 담당한다.
+  // [부동산 포함/제외 분리] "현재 구성 유지"(시나리오①)의 가중평균은 부동산을 포함한 실제 총자산
+  // 기준으로 계산하지만, "리밸런싱 후" 3개 시나리오(②③④)가 재배분하는 원금(totalValueForRebalance)은
+  // 부동산을 뺀다 - 집을 팔아 주식/채권으로 재배분한다고 가정하는 게 아니기 때문이다.
   const totalValue = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
+  const totalValueForRebalance = groupKeys.filter((k) => k !== '부동산').reduce((s, k) => s + byGroup[k].value, 0);
 
   let weightedSum = 0;
   groupKeys.forEach((k) => { weightedSum += byGroup[k].value * getRateForProjectionGroupKey(k); });
@@ -5272,14 +5397,14 @@ function updateProjection() {
   // "리밸런싱 후" 시나리오와 완전히 동일한 값(사용자 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
-    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, 20);
+    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 20);
   });
 
   // "리밸런싱 후(일반적)" 상세 패널용 - 상품별 비중 표는 자산 배분 자체가 프리셋과 무관하게 동일하므로
   // "일반적" 프리셋의 수익률 기준으로 보여준다.
   const regionPV2 = {
-    '국내': totalValue * num(state.rebalance.domestic['국내']) / 100,
-    '해외': totalValue * num(state.rebalance.domestic['해외']) / 100
+    '국내': totalValueForRebalance * num(state.rebalance.domestic['국내']) / 100,
+    '해외': totalValueForRebalance * num(state.rebalance.domestic['해외']) / 100
   };
   renderTargetAllocationSummary(regionPV2);
 
@@ -5381,13 +5506,21 @@ function computePositionsAndRealizedPnL() {
 }
 
 // 거래내역 기준 최종 수량/평단가를 대시보드 자산 목록에 반영한다. 이미 있는 자산(소유자+계좌구분+티커
-// 일치)이면 수량/매수단가만 덮어쓰고, 없으면 새로 만든다. 전량 매도(수량 0 이하)된 포지션은 자산을
-// 지우지 않고 수량만 0으로 남긴다(삭제는 되돌리기 어려운 작업이라 사용자가 원할 때 직접 지우도록 함).
+// 일치, 티커 없으면 소유자+계좌구분+종목명 일치)이면 수량/매수단가만 덮어쓰고, 없으면 새로 만든다.
+// 전량 매도(수량 0 이하)된 포지션은 자산을 지우지 않고 수량만 0으로 남긴다(삭제는 되돌리기 어려운
+// 작업이라 사용자가 원할 때 직접 지우도록 함).
+// [부동산/실물채권/절세계좌 거래내역 동기화] 예전엔 티커가 없는 거래(부동산, 실물채권 등 시세 조회가
+// 안 되는 자산)를 자동 동기화 대상에서 통째로 제외했다(!pos.ticker 가드) - 거래내역 탭에 기록해도
+// 자산 목록에는 전혀 반영되지 않아, 이런 자산은 자산관리 탭에서 별도로 직접 등록/수정해야 했다. 이제
+// 티커가 없으면 종목명(pos.name)을 대신 매칭 키로 써서 정상 동기화한다(computePositionsAndRealizedPnL도
+// 이미 "티커 || 이름"으로 포지션을 구분해왔으므로 그 결과를 그대로 반영하는 것뿐이다). 같은 소유자·
+// 계좌 안에서 이름까지 같아야 동일 자산으로 보므로, 서로 다른 부동산 2건을 같은 이름으로 적지만
+// 않으면 섞이지 않는다.
 function syncAssetsFromTransactions() {
   const { positions } = computePositionsAndRealizedPnL();
   Object.values(positions).forEach((pos) => {
-    if (!pos.ticker) return; // 티커 없는 거래는 자동 동기화 대상에서 제외
-    let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType && a.ticker === pos.ticker);
+    let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType &&
+      (pos.ticker ? a.ticker === pos.ticker : (!a.ticker && a.name === pos.name)));
     if (pos.quantity <= 0) {
       if (asset) asset.quantity = 0;
       return;
@@ -5397,8 +5530,9 @@ function syncAssetsFromTransactions() {
       state.assets.push(asset);
       // [최초 등록 소급 히스토리] 거래내역(엑셀 업로드/거래 추가)으로 처음 생긴 자산만 해당 - 이미
       // 있던 자산의 수량/매수단가 갱신(else 분기)에는 다시 호출하지 않는다(중복 소급 방지, 자연히
-      // 멱등적이다). 네트워크 호출이라 굳이 기다리지 않고 백그라운드로 흘려보낸다.
-      backfillDailyPnlHistory(asset);
+      // 멱등적이다). 네트워크 호출이라 굳이 기다리지 않고 백그라운드로 흘려보낸다. 티커가 없는 자산
+      // (부동산/실물채권 등)은 시세 조회 자체가 불가능하므로 호출하지 않는다.
+      if (pos.ticker) backfillDailyPnlHistory(asset);
     } else {
       asset.quantity = pos.quantity;
       asset.buyPrice = pos.avgPrice;
@@ -5413,11 +5547,13 @@ function syncAssetsFromTransactions() {
 // 파일을 [기간거래등록]으로 올리면 최초/기간 행이 한 번에 등록된다. 이미 거래내역이 있는 종목은
 // (중복 등록 방지 차원에서) 양식에서 제외한다.
 function downloadHoldingsAsTxTemplate() {
-  const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker}`));
+  // [부동산/채권 등 티커 없는 실보유자산 포함] syncAssetsFromTransactions()가 이제 이름 매칭으로도
+  // 동기화되므로, 이 양식도 티커 유무와 무관하게 "현재 등록된 실보유자산" 전체를 대상으로 한다 -
+  // 티커 없는 자산은 매칭 키로 티커 대신 종목명을 쓴다(동일 소유자·계좌·이름 조합으로 중복 판별).
+  const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker || t.name}`));
   const targets = state.assets.filter((a) => {
-    if (!a.ticker) return false;
     if (num(a.quantity) <= 0) return false;
-    return !existingKeys.has(`${a.owner}__${a.accountType}__${a.ticker}`);
+    return !existingKeys.has(`${a.owner}__${a.accountType}__${a.ticker || a.name}`);
   });
 
   if (targets.length === 0) {
@@ -5440,9 +5576,9 @@ function downloadHoldingsAsTxTemplate() {
 }
 document.getElementById('seedTransactionsBtn').addEventListener('click', downloadHoldingsAsTxTemplate);
 
-// [거래내역 엑셀 업로드] 밀린 실제 매매를 한 번에 등록할 때 쓴다 - 기존 거래내역은 지우지 않고
-// 그대로 이어 붙인다(자산 엑셀 업로드처럼 덮어쓰기 확인창을 두지 않는다 - 거래내역은 "쌓이는" 기록이라
-// 새 파일을 올릴 때마다 이어붙이는 편이 자연스럽다). 헤더: 일자/소유자/계좌구분/종목명/티커/거래유형
+// [거래등록 - 엑셀 업로드] 밀린 실제 매매를 한 번에 등록할 때 쓴다 - JSON 백업 복원과 동일하게
+// [기존 데이터 덮어쓰기]/[추가하기]/[취소]를 선택하는 모달을 띄운다(openImportChoiceModal 재사용).
+// 헤더: 일자/소유자/계좌구분/종목명/티커/거래유형
 // (매수 또는 매도)/수량/매매단가/통화(KRW·USD)/수수료. 업로드 후 이동평균 재계산+자산 동기화까지 한번에 처리된다.
 function formatDateCell(v) {
   if (v instanceof Date && !isNaN(v)) {
@@ -5461,7 +5597,7 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (evt) => {
+  reader.onload = async (evt) => {
     try {
       const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
@@ -5497,13 +5633,18 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
         return;
       }
 
-      state.transactions = state.transactions.concat(parsed);
+      // [거래등록 - 덮어쓰기/추가 선택] 예전엔 항상 기존 거래내역에 이어붙였으나(엑셀을 잘못 두 번
+      // 올리면 중복 등록됨), JSON 백업 복원과 동일한 선택 모달(openImportChoiceModal)을 재사용해
+      // [기존 데이터 덮어쓰기]/[기존 데이터에 추가하기]/[취소]를 명시적으로 고르게 한다.
+      const choice = await openImportChoiceModal(`${parsed.length}건의 거래를 등록합니다.\n기존 거래내역을 덮어쓸까요, 추가할까요?`);
+      if (choice === 'cancel') return;
+      state.transactions = choice === 'overwrite' ? parsed : state.transactions.concat(parsed);
       persistTransactions();
       syncAssetsFromTransactions();
       persistAssets();
       renderTransactionsTab();
       renderAll();
-      showToast(`거래내역 ${parsed.length}건을 업로드했습니다.`, 'success');
+      showToast(`거래내역 ${parsed.length}건을 ${choice === 'overwrite' ? '덮어썼습니다' : '추가했습니다'}.`, 'success');
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
