@@ -138,12 +138,6 @@
   .rebalance-subtab-btn.active { background: #4f46e5; color: #fff; }
   .rebalance-subtab-btn.active:hover { background: #4338ca; }
 
-  /* 자산 관리 테이블 "보기 방식(그룹화)" 토글 버튼 - tab-btn과 같은 시각 언어를 작은 크기로 재사용 */
-  .table-group-btn { color: #64748b; }
-  .dark .table-group-btn { color: #94a3b8; }
-  .table-group-btn:hover { background: rgba(148,163,184,.12); }
-  .table-group-btn.active { background: #4f46e5; color: #fff; }
-
   /* 종목 상세 팝업의 주가 차트: 핀치 줌/드래그 제스처가 브라우저 기본 스크롤/확대와 충돌하지 않도록
      터치 동작을 캔버스 자체가 전담하게 한다(없으면 모바일에서 두 손가락으로 확대할 때 팝업 뒤 배경
      페이지가 스크롤되거나, 브라우저의 페이지 확대 제스처와 겹쳐 버벅인다). */
@@ -198,25 +192,28 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
+        <!-- [모바일 한 줄 배치] 환율 뱃지+환율보기+다크모드 버튼이 375px 화면에서도 한 줄에 나란히
+             들어가도록, 좁은 화면에서만 라벨 텍스트를 줄이고(icon-only 환율보기, "현재 환율" 문구 생략)
+             입력창 너비/여백을 압축한다(sm 이상에서는 기존과 동일). -->
         <!-- 환율 뱃지: 자동 갱신 결과 표시 + 언제든 클릭해서 직접 수정 가능 (점선 밑줄로 편집 가능함을 항상 표시) -->
-        <div class="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 shadow-sm" title="클릭하여 환율을 직접 수정할 수 있습니다">
-          <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400"></i>
-          <span class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">현재 환율 $1 =</span>
+        <div class="flex items-center gap-1 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 shadow-sm" title="클릭하여 환율을 직접 수정할 수 있습니다">
+          <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400 shrink-0"></i>
+          <span class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden sm:inline">현재 환율 </span>$1 =</span>
           <input id="exchangeRateInput" type="number" step="0.1"
-            class="w-24 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5"
+            class="w-14 sm:w-24 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5"
             value="1450">
           <span class="text-xs text-slate-500 dark:text-slate-400">원</span>
-          <i data-lucide="pencil" class="w-3 h-3 text-slate-300 dark:text-slate-600"></i>
+          <i data-lucide="pencil" class="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0"></i>
           <!-- [환율보기 버튼 이동] 원래 [달러자산 총액/적용환율] KPI 카드에 있던 버튼을 여기(상단 헤더의
                실시간 환율 표시 바로 옆)로 옮겨왔다 - id/클릭 핸들러(openExchangeRateModal)는 그대로라
                JS 쪽 수정 없이 위치만 바뀐다. -->
           <button type="button" id="kpiExchangeRateDetailBtn" title="환율 추이 보기"
-            class="flex items-center gap-1 text-[11px] font-semibold pl-2 ml-1 border-l border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 whitespace-nowrap">
-            <i data-lucide="line-chart" class="w-3.5 h-3.5"></i> 환율보기
+            class="flex items-center gap-1 text-[11px] font-semibold pl-1.5 sm:pl-2 ml-0.5 sm:ml-1 border-l border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 whitespace-nowrap">
+            <i data-lucide="line-chart" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">환율보기</span>
           </button>
         </div>
 
-        <button id="darkModeBtn" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600">
+        <button id="darkModeBtn" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
 
@@ -318,7 +315,7 @@
              다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
         <div class="flex flex-col items-end gap-1 shrink-0">
           <div class="flex items-center gap-1 sm:gap-1.5">
-            <button type="button" id="kpiTotalProfitDetailBtn" class="detail-btn !text-[9px] sm:!text-[10px] !px-1.5 sm:!px-[7px]">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+            <button type="button" id="kpiTotalProfitDetailBtn" class="detail-btn !text-[9px] sm:!text-[10px] !px-1.5 sm:!px-[7px]"><i data-lucide="line-chart" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
             <div class="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center">
               <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
             </div>
@@ -347,7 +344,7 @@
              (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다. -->
         <div class="flex flex-col items-end gap-1">
           <div class="flex items-center gap-1.5">
-            <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn">세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+            <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn"><i data-lucide="bar-chart-3" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
             <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
               <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
             </div>
@@ -543,9 +540,10 @@
         </div>
       </div>
       <p id="kpiForeignValue" class="text-lg font-bold">0원</p>
-      <!-- [환율 추이 차트] 클릭 가능함을 알 수 있도록 밑줄+포인터 커서 - 위 [환율보기] 버튼과 동일한
-           동작(openExchangeRateModal)을 이 텍스트 자체를 눌러도 바로 열 수 있게 한다. -->
-      <p id="kpiAppliedRate" class="text-xs font-semibold mt-0.5 text-slate-400 cursor-pointer hover:underline hover:text-brand-600 dark:hover:text-brand-300" title="클릭하면 환율 추이 차트를 볼 수 있습니다">적용환율 1,450원</p>
+      <!-- [팝업 트리거 제거] 예전엔 이 텍스트를 눌러도 환율 추이 차트 모달이 열렸으나(환율보기 버튼과
+           동일 동작), 이 카드에서는 적용환율을 단순 표시만 하도록 클릭 가능 스타일/리스너를 제거했다 -
+           차트는 상단 헤더의 [환율보기] 버튼으로만 연다. -->
+      <p id="kpiAppliedRate" class="text-xs font-semibold mt-0.5 text-slate-400">적용환율 1,450원</p>
     </div>
   </section>
 
@@ -585,71 +583,154 @@
   </section>
 
   <!-- ============================= TABLE ============================= -->
-  <!-- [자산 관리 카드 아코디언] 기본값은 접힘(assetManagementAccordionOpen = false) - 헤더(assetManagement
-       AccordionBtn)를 탭해야만 펼쳐진다. 접힌 상태에서도 헤더의 tableCountLabel(총 건수)과 assetManagement
-       Summary(현재 보기 방식)로 핵심 정보를 바로 확인할 수 있다. 검색/필터, 보기 방식 토글, 표/카드 뷰는
-       모두 접히는 본문(assetManagementAccordionBody) 안으로 옮겼다 - 헤더 자체에는 클릭 가능한 하위 요소가
-       없어야 탭할 때 검색창/버튼과 토글 동작이 서로 충돌하지 않는다(txListAccordionBtn과 동일한 이유).
-       거래 목록 아코디언(txListAccordionBtn 등)과 동일한 setAccordionOpen(max-height 트랜지션 + chevron
-       회전) 패턴을 그대로 재사용한다. -->
-  <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-    <button type="button" id="assetManagementAccordionBtn"
-      class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-      <div class="flex items-center gap-2 min-w-0">
+  <!-- [자산 관리 카드 - 계층별 독립 아코디언 구조] 요약 정보(tableCountLabel)와 검색/자산군 필터는
+       접힘/펼침과 무관하게 항상 최상단에 고정 노출된다. 그 아래 [전체]/[소유자별]/[국내·해외별]/
+       [자산군별] 4개 보기 방식이 더 이상 토글 버튼으로 하나만 골라 보는 방식이 아니라, 각자 독립적으로
+       접고 펼 수 있는 별도 아코디언 섹션으로 나란히 쌓여 있다 - assetGroupAccordionOpen{mode: bool}로
+       각 섹션의 열림 상태를 개별 관리한다(assetManagementAccordionOpen 단일 변수 방식에서 전환).
+       모든 섹션이 같은 검색/필터 결과(rawRows)를 공유하며 그룹핑 방식만 다르게 보여줄 뿐이라 헤더 요약
+       (총 건수·총 평가액)도 4곳 모두 동일하다. 거래 목록 아코디언(txListAccordionBtn)과 동일한
+       setAccordionOpen(max-height 트랜지션 + chevron 회전) 패턴을 섹션마다 재사용한다. -->
+  <section id="assetManagementSection" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+      <div class="flex items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold shrink-0">자산 관리</h3>
-        <span id="tableCountLabel" class="text-xs text-slate-400 shrink-0"></span>
-        <span id="assetManagementSummary" class="text-xs text-slate-400 truncate"></span>
+        <span id="tableCountLabel" class="text-xs text-slate-400"></span>
       </div>
-      <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetManagementAccordionChevron"></i>
-    </button>
-    <div id="assetManagementAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-        <!-- 자산 목록 전용 검색/자산군 필터. 상단 FILTER BAR의 '전체 자산군' 선택과 값이 서로 동기화된다. -->
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="relative">
-            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-            <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색"
-              class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
-          </div>
-          <select id="tableCategoryFilter" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-            <option value="ALL">전체 자산군</option>
-          </select>
+      <!-- 자산 목록 전용 검색/자산군 필터. 상단 FILTER BAR의 '전체 자산군' 선택과 값이 서로 동기화된다. -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색"
+            class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
         </div>
+        <select id="tableCategoryFilter" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+          <option value="ALL">전체 자산군</option>
+        </select>
       </div>
-      <!-- 보기 방식(그룹화) 토글 - 검색/자산군 필터와 독립적으로 동작하며, 필터링된 결과를 그대로 그룹핑한다. -->
-      <div class="flex flex-nowrap items-center gap-1.5 px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/20 overflow-x-auto">
-        <span class="text-[11px] text-slate-400 mr-0.5 shrink-0">보기 방식</span>
-        <button type="button" data-group-by="none" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">전체</button>
-        <button type="button" data-group-by="owner" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">소유자별</button>
-        <button type="button" data-group-by="domestic" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">국내/해외별</button>
-        <button type="button" data-group-by="category" class="table-group-btn shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">자산군별</button>
-      </div>
-      <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
-           요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
-           평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
-           담는다(rowHtml 참고) - 아코디언 방식. -->
-      <div class="hidden sm:block overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
-          <thead>
-            <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-              <th class="sortable px-3 py-2" data-key="name">종목명</th>
-              <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-              <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-              <th class="px-3 py-2 w-8"></th>
-            </tr>
-          </thead>
-          <tbody id="assetTableBody"></tbody>
-          <tfoot>
-            <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <!-- 모바일(640px 미만): 종목별 카드 뷰. 동일한 데이터를 rowHtml()과 병행해 cardHtml()로 렌더링한다. -->
-      <div id="assetCardList" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
-
-      <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.</p>
     </div>
+
+    <!-- ① 전체 -->
+    <div class="border-b border-slate-100 dark:border-slate-800">
+      <button type="button" id="assetGroupAccordionBtnNone"
+        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold shrink-0">전체</span>
+          <span id="assetGroupSummaryNone" class="text-[11px] text-slate-400 truncate"></span>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronNone"></i>
+      </button>
+      <div id="assetGroupAccordionBodyNone" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
+             요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
+             평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
+             담는다(rowHtml 참고) - 아코디언 방식. -->
+        <div class="hidden sm:block overflow-x-auto">
+          <table class="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+                <th class="sortable px-3 py-2" data-key="name">종목명</th>
+                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+                <th class="px-3 py-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBodyNone"></tbody>
+            <tfoot>
+              <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
+            </tfoot>
+          </table>
+        </div>
+        <!-- 모바일(640px 미만): 종목별 카드 뷰. 동일한 데이터를 rowHtml()과 병행해 cardHtml()로 렌더링한다. -->
+        <div id="assetCardListNone" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      </div>
+    </div>
+
+    <!-- ② 소유자별 -->
+    <div class="border-b border-slate-100 dark:border-slate-800">
+      <button type="button" id="assetGroupAccordionBtnOwner"
+        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold shrink-0">소유자별</span>
+          <span id="assetGroupSummaryOwner" class="text-[11px] text-slate-400 truncate"></span>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronOwner"></i>
+      </button>
+      <div id="assetGroupAccordionBodyOwner" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="hidden sm:block overflow-x-auto">
+          <table class="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+                <th class="sortable px-3 py-2" data-key="name">종목명</th>
+                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+                <th class="px-3 py-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBodyOwner"></tbody>
+          </table>
+        </div>
+        <div id="assetCardListOwner" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      </div>
+    </div>
+
+    <!-- ③ 국내/해외별 -->
+    <div class="border-b border-slate-100 dark:border-slate-800">
+      <button type="button" id="assetGroupAccordionBtnDomestic"
+        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold shrink-0">국내/해외별</span>
+          <span id="assetGroupSummaryDomestic" class="text-[11px] text-slate-400 truncate"></span>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronDomestic"></i>
+      </button>
+      <div id="assetGroupAccordionBodyDomestic" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="hidden sm:block overflow-x-auto">
+          <table class="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+                <th class="sortable px-3 py-2" data-key="name">종목명</th>
+                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+                <th class="px-3 py-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBodyDomestic"></tbody>
+          </table>
+        </div>
+        <div id="assetCardListDomestic" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      </div>
+    </div>
+
+    <!-- ④ 자산군별 -->
+    <div>
+      <button type="button" id="assetGroupAccordionBtnCategory"
+        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold shrink-0">자산군별</span>
+          <span id="assetGroupSummaryCategory" class="text-[11px] text-slate-400 truncate"></span>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronCategory"></i>
+      </button>
+      <div id="assetGroupAccordionBodyCategory" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="hidden sm:block overflow-x-auto">
+          <table class="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+                <th class="sortable px-3 py-2" data-key="name">종목명</th>
+                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+                <th class="px-3 py-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBodyCategory"></tbody>
+          </table>
+        </div>
+        <div id="assetCardListCategory" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      </div>
+    </div>
+
+    <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.</p>
   </section>
 
   </div> <!-- /tabPanelInvestmentDetail -->
@@ -905,36 +986,25 @@
     <!-- ===== 종목별 리밸런싱 실행 가이드 (서브탭: 실행 가이드) =====
          자산군/티커 단위로 뭉쳐 있던 위쪽 결과를 실제 보유 개별 종목 단위로 풀어서, 종목별로 정확히
          얼마를 사고 팔아야 하는지 실행 가이드를 제공한다. -->
-    <!-- [아코디언] 기본값은 접힘(rebalanceGuideAccordionOpen = false) - 헤더(rebalanceGuideAccordionBtn)를
-         탭해야만 펼쳐진다. 접힌 상태에서도 헤더의 rebalanceGuideSummary(총 매수/매도 필요금액, 조정 필요
-         종목 수)로 핵심 정보를 바로 확인할 수 있다 - renderIndividualRebalanceGuide()가 카드를 다시 그릴
-         때마다 함께 갱신한다. 자산 관리 카드 아코디언(assetManagementAccordionBtn)과 동일한 패턴. -->
+    <!-- [소유자별 순차 아코디언] 설명 문구와 엑셀 다운로드는 접힘/펼침과 무관하게 항상 최상단에 고정
+         노출된다. 그 아래 [전체]/[신랑]/[와이프] 등 실제 소유자 수만큼(getDailyPnlOwnerList() 기준
+         동적 생성) 독립적인 접힘/펼침 섹션이 순서대로 쌓인다 - 서로 배타적이지 않고 동시에 여러 개를
+         펼쳐 둘 수 있다. 각 섹션 헤더에는 그 소유자 기준 요약(총 매수/매도 필요금액, 조정 필요 종목수)이
+         항상 보인다. rebalanceGuideAccordionOpen{ownerKey: bool}로 섹션별 열림 상태를 개별 관리한다
+         (renderIndividualRebalanceGuide 하단 참고). -->
     <div id="rebalanceSubGuide" class="hidden">
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-      <button type="button" id="rebalanceGuideAccordionBtn"
-        class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0 flex-wrap">
-          <h3 class="text-sm font-semibold shrink-0">📋 종목별 리밸런싱 실행 가이드</h3>
-          <div id="rebalanceGuideSummary" class="flex items-center gap-1.5 flex-wrap"></div>
+      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-start justify-between gap-2 mb-1">
+          <h3 class="text-sm font-semibold">📋 종목별 리밸런싱 실행 가이드</h3>
+          <button type="button" id="rebalanceGuideExportBtn"
+            class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+            <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
+          </button>
         </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="rebalanceGuideAccordionChevron"></i>
-      </button>
-      <div id="rebalanceGuideAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="px-4 pb-4 border-t border-slate-100 dark:border-slate-800 pt-3">
-          <div class="flex items-start justify-between gap-2 mb-1">
-            <p class="text-[11px] text-slate-400">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
-            <button type="button" id="rebalanceGuideExportBtn"
-              class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-              <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
-            </button>
-          </div>
-          <!-- [소유자별 필터] 전체(가구 합산) 외에 신랑/와이프 각자를 "독립된 포트폴리오"로 놓고 같은 목표
-               비중(%)을 적용했을 때의 매수/매도 가이드를 따로 볼 수 있다 - computeIndividualRebalanceGuide(owner)
-               참고. -->
-          <div id="rebalanceGuideOwnerTabs" class="flex items-center gap-1.5 mb-3 mt-2"></div>
-          <div id="individualRebalanceGuide" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
-        </div>
+        <p class="text-[11px] text-slate-400">위 자산군별 결과를 실제 보유 중인 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
       </div>
+      <div id="rebalanceGuideAccordionsContainer"></div>
     </section>
     </div> <!-- /rebalanceSubGuide -->
 
@@ -2003,9 +2073,6 @@ const state = {
   refExchangeRate: 1450,
   dailyChangeRate: 0,
   filters: { owner: 'ALL', category: 'ALL', account: 'ALL', search: '' },
-  // 자산 관리 테이블 보기 방식('none' | 'owner' | 'domestic' | 'category') - 검색/필터와는 독립적인
-  // 화면 표시 옵션이라 필터 초기화 버튼으로는 리셋되지 않는다. 세션 휘발성(새로고침 시 'none'으로 복귀).
-  tableGroupBy: 'none',
   sort: { key: null, dir: 1 },
   // 시세 자동조회로 얻은 종목별 당일 등락률(%). 새로고침마다 초기화되는 휘발성 데이터라
   // localStorage에는 저장하지 않고 자산 id -> 등락률(%) 맵으로만 메모리에 보관한다.
@@ -3987,17 +4054,16 @@ function rebalanceActionBadge(diff, curAmount) {
   return { label: `${fmtSigned(diff)} 매도`, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400' };
 }
 
-// [소유자별 필터] 'all'(전체, 가구 합산 - 기존 동작) 외에 신랑/와이프 등 실제 소유자명을 선택하면
-// 그 사람의 자산만으로 "독립된 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 가이드를 보여준다.
-let rebalanceGuideOwnerFilter = 'all';
-// [아코디언] 기본값은 접힘 - 헤더(rebalanceGuideAccordionBtn)를 탭해야만 펼쳐진다.
-let rebalanceGuideAccordionOpen = false;
+// [소유자별 순차 아코디언] 'all'(전체, 가구 합산) + 실제 소유자명(신랑/와이프 등) 각각을 독립적인
+// 아코디언 섹션으로 늘어놓는다 - 예전엔 탭으로 하나만 골라 보는 방식이었지만, 이제 전부 동시에 펼쳐 둘
+// 수 있다. 기본값은 전부 접힘이며, 새로 추가된 소유자는 기본 접힘으로 시작하고 기존에 펼쳐 둔 섹션의
+// 상태는 재렌더링돼도 그대로 유지된다.
+let rebalanceGuideAccordionOpen = {};
 
-// [헤더 요약] 접힌 상태에서도 핵심 정보(총 매수/매도 필요금액, 조정 필요 종목 수)를 바로 볼 수 있도록
+// [헤더 요약 HTML] 특정 소유자(rows)의 매수/매도 필요금액 합계·조정 필요 종목 수를 뱃지로 만든다 -
 // rebalanceActionBadge와 동일한 기준(현재 평가금액의 2% 미만 차이는 "유지")으로 분류해 합산한다.
-function updateRebalanceGuideSummary(rows) {
-  const el = document.getElementById('rebalanceGuideSummary');
-  if (!el) return;
+function buildRebalanceGuideSummaryHtml(rows) {
+  if (rows.length === 0) return '';
   let buyTotal = 0, sellTotal = 0, adjustCount = 0;
   rows.forEach((r) => {
     const badge = rebalanceActionBadge(r.diff, r.curAmount);
@@ -4005,51 +4071,25 @@ function updateRebalanceGuideSummary(rows) {
     adjustCount += 1;
     if (r.diff > 0) buyTotal += r.diff; else sellTotal += r.diff;
   });
-  if (rows.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = `
+  return `
     <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">매수 ${fmtSigned(buyTotal)}</span>
     <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">매도 ${fmtSigned(sellTotal)}</span>
     <span class="text-[10px] text-slate-400">조정 필요 ${adjustCount}종목</span>
   `;
 }
 
-function renderRebalanceGuideOwnerTabs() {
-  const wrap = document.getElementById('rebalanceGuideOwnerTabs');
-  if (!wrap) return;
-  const tabs = [{ key: 'all', label: '전체' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
-  wrap.innerHTML = tabs.map((t) => `
-    <button type="button" data-guide-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === rebalanceGuideOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
-  `).join('');
-  wrap.querySelectorAll('button[data-guide-owner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      rebalanceGuideOwnerFilter = btn.dataset.guideOwner;
-      renderIndividualRebalanceGuide();
-    });
-  });
-}
+const qtyRebalanceGuideText = (qtyDelta, isForeign) => {
+  const rounded = isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
+  if (rounded === 0) return '0주';
+  return (rounded > 0 ? '+' : '') + fmtNum(rounded, isForeign ? 2 : 0) + '주';
+};
 
-// [금융자산 리밸런싱] 탭 맨 아래 "종목별 리밸런싱 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
-// 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 카드 형태로 보여준다. 부동산 등
-// 목표에 매칭되지 않는 자산은 별도로 "[리밸런싱 제외 자산]" 배지를 달아 같은 목록에 구분 표시한다.
-function renderIndividualRebalanceGuide() {
-  const container = document.getElementById('individualRebalanceGuide');
-  if (!container) return;
-  renderRebalanceGuideOwnerTabs();
-  const { rows, excluded } = computeIndividualRebalanceGuide(rebalanceGuideOwnerFilter);
-  updateRebalanceGuideSummary(rows);
-
+// [카드 목록 HTML] 특정 소유자 기준 rows/excluded를 카드 그리드 HTML로 만든다 - 소유자별 아코디언
+// 섹션마다 이 함수를 재사용한다.
+function buildRebalanceGuideCardsHtml(rows, excluded) {
   if (rows.length === 0 && excluded.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
-    reapplyRebalanceGuideAccordionHeight();
-    return;
+    return '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
   }
-
-  const qtyText = (qtyDelta, isForeign) => {
-    const rounded = isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
-    if (rounded === 0) return '0주';
-    return (rounded > 0 ? '+' : '') + fmtNum(rounded, isForeign ? 2 : 0) + '주';
-  };
-
   const cards = rows.map((r) => {
     const badge = rebalanceActionBadge(r.diff, r.curAmount);
     return `
@@ -4065,7 +4105,7 @@ function renderIndividualRebalanceGuide() {
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
         <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium">${fmtKRW(r.targetAmount)}</span></div>
         <div><span class="text-slate-400 block">리밸런싱 필요금액</span><span class="font-medium ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
-        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium">${qtyText(r.qtyDelta, r.isForeign)}</span></div>
+        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -4088,17 +4128,67 @@ function renderIndividualRebalanceGuide() {
     </div>`;
   }).join('');
 
-  container.innerHTML = cards + excludedCards;
-  reapplyRebalanceGuideAccordionHeight();
+  return cards + excludedCards;
 }
 
-// 방금 다시 그린 카드 목록 기준으로 펼침 상태를 재적용한다 - 소유자 필터로 카드 목록 높이가 바뀌어도
-// max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
-function reapplyRebalanceGuideAccordionHeight() {
-  const accordionBody = document.getElementById('rebalanceGuideAccordionBody');
-  const accordionChevron = document.getElementById('rebalanceGuideAccordionChevron');
-  if (accordionBody && accordionChevron) setAccordionOpen(accordionBody, accordionChevron, rebalanceGuideAccordionOpen);
+// [금융자산 리밸런싱] 탭 맨 아래 "종목별 리밸런싱 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
+// 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 [전체]/[소유자별] 순차 아코디언
+// 카드 형태로 보여준다. 부동산 등 목표에 매칭되지 않는 자산은 별도로 "[리밸런싱 제외 자산]" 배지를
+// 달아 같은 목록에 구분 표시한다.
+function renderIndividualRebalanceGuide() {
+  const container = document.getElementById('rebalanceGuideAccordionsContainer');
+  if (!container) return;
+
+  const ownerKeys = ['all', ...getDailyPnlOwnerList()];
+  ownerKeys.forEach((key) => { if (!(key in rebalanceGuideAccordionOpen)) rebalanceGuideAccordionOpen[key] = false; });
+
+  container.innerHTML = ownerKeys.map((key) => {
+    const label = key === 'all' ? '전체' : key;
+    const { rows, excluded } = computeIndividualRebalanceGuide(key);
+    return `
+    <div class="border-t border-slate-100 dark:border-slate-800">
+      <button type="button" data-guide-accordion-key="${escapeHtml(key)}"
+        class="rebalance-guide-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <div class="flex items-center gap-2 min-w-0 flex-wrap">
+          <span class="text-xs font-semibold shrink-0">${escapeHtml(label)} 리밸런싱 가이드</span>
+          <div class="flex items-center gap-1.5 flex-wrap">${buildRebalanceGuideSummaryHtml(rows)}</div>
+        </div>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 rebalance-guide-chevron" data-guide-chevron-key="${escapeHtml(key)}"></i>
+      </button>
+      <div class="overflow-hidden transition-[max-height] duration-300 ease-in-out rebalance-guide-body" data-guide-body-key="${escapeHtml(key)}" style="max-height:0px;">
+        <div class="px-4 pb-4 pt-1">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${buildRebalanceGuideCardsHtml(rows, excluded)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  lucide.createIcons();
+  reapplyRebalanceGuideAccordionHeights();
 }
+
+// 방금 다시 그린 섹션들 기준으로 각각의 펼침 상태를 재적용한다 - 소유자가 추가/제거되거나 카드 내용이
+// 바뀌어도 max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다
+// (txListAccordion과 동일한 이유).
+function reapplyRebalanceGuideAccordionHeights() {
+  const container = document.getElementById('rebalanceGuideAccordionsContainer');
+  if (!container) return;
+  container.querySelectorAll('.rebalance-guide-body').forEach((body) => {
+    const key = body.dataset.guideBodyKey;
+    const chevron = container.querySelector(`.rebalance-guide-chevron[data-guide-chevron-key="${CSS.escape(key)}"]`);
+    if (chevron) setAccordionOpen(body, chevron, !!rebalanceGuideAccordionOpen[key]);
+  });
+}
+
+// [이벤트 위임] 매 렌더링마다 innerHTML로 통째로 다시 그려지므로, 섹션 헤더 버튼에 개별 리스너를
+// 매번 새로 붙이는 대신 컨테이너 하나에 위임해 둔다 - 재렌더링돼도 리스너가 끊기지 않는다.
+document.getElementById('rebalanceGuideAccordionsContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('.rebalance-guide-accordion-btn');
+  if (!btn) return;
+  const key = btn.dataset.guideAccordionKey;
+  rebalanceGuideAccordionOpen[key] = !rebalanceGuideAccordionOpen[key];
+  reapplyRebalanceGuideAccordionHeights();
+});
 
 // [종목별 리밸런싱 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
 // 그대로 표로 옮긴다. 이 앱은 이미 SheetJS(xlsx.full.min.js)를 CDN으로 로드해 엑셀 백업/업로드에 쓰고
@@ -4149,11 +4239,6 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
 
   return { rows: guideRows, excluded: excludedRows, isEmpty: rows.length === 0 && excluded.length === 0 };
 }
-
-document.getElementById('rebalanceGuideAccordionBtn').addEventListener('click', () => {
-  rebalanceGuideAccordionOpen = !rebalanceGuideAccordionOpen;
-  setAccordionOpen(document.getElementById('rebalanceGuideAccordionBody'), document.getElementById('rebalanceGuideAccordionChevron'), rebalanceGuideAccordionOpen);
-});
 
 document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
   // 화면에 어떤 탭이 선택되어 있든 상관없이 매번 [합계, 신랑, 와이프 ...] 3개 시트를 모두 생성한다.
@@ -5755,51 +5840,78 @@ function buildMergedRows(rows) {
   });
 }
 
-// [자산 관리 카드 아코디언] 기본값은 접힘 - 헤더(assetManagementAccordionBtn)를 탭해야만 펼쳐진다.
-let assetManagementAccordionOpen = false;
+// [자산 관리 카드 - 계층별 독립 아코디언] 4개 보기 방식(전체/소유자별/국내해외별/자산군별)이 각자
+// 독립적으로 접고 펼 수 있어, 이제 "현재 선택된 보기 방식 하나"라는 개념이 없다 - 4개 모두 기본 접힘.
+const ASSET_GROUP_MODE_SUFFIX = { none: 'None', owner: 'Owner', domestic: 'Domestic', category: 'Category' };
+let assetGroupAccordionOpen = { none: false, owner: false, domestic: false, category: false };
+
+function reapplyAssetGroupAccordionHeights() {
+  Object.keys(ASSET_GROUP_MODE_SUFFIX).forEach((mode) => {
+    const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
+    const body = document.getElementById(`assetGroupAccordionBody${suffix}`);
+    const chevron = document.getElementById(`assetGroupAccordionChevron${suffix}`);
+    if (body && chevron) setAccordionOpen(body, chevron, assetGroupAccordionOpen[mode]);
+  });
+}
 
 function renderTable() {
   const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
-  const tbody = document.getElementById('assetTableBody');
-  const cardList = document.getElementById('assetCardList');
   const emptyMsg = document.getElementById('emptyTableMsg');
-  let displayedCount = 0;
 
   if (rawRows.length === 0) {
-    tbody.innerHTML = '';
-    cardList.innerHTML = '';
+    Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
+      document.getElementById(`assetTableBody${suffix}`).innerHTML = '';
+      document.getElementById(`assetCardList${suffix}`).innerHTML = '';
+    });
     // 검색어/필터 때문에 0건인 것과 애초에 자산이 없는 것을 구분해 정확한 안내를 보여준다.
     emptyMsg.textContent = hasActiveListFilter()
       ? '검색/필터 조건에 맞는 자산이 없습니다.'
       : '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
     emptyMsg.classList.remove('hidden');
-  } else {
-    emptyMsg.classList.add('hidden');
-    const mode = state.tableGroupBy;
-    if (mode === 'none') {
-      const merged = sortRows(buildMergedRows(rawRows));
-      tbody.innerHTML = merged.map(r => rowHtml(r)).join('');
-      cardList.innerHTML = merged.map(r => cardHtml(r)).join(''); // 모바일 카드 뷰 (640px 미만에서만 보임)
-      displayedCount = merged.length;
-    } else {
-      const rows = sortRows(rawRows);
-      tbody.innerHTML = renderGroupedRows(rows, mode, rowHtml, groupHeaderRowHtml);
-      cardList.innerHTML = renderGroupedRows(rows, mode, cardHtml, groupHeaderCardHtml);
-      displayedCount = rows.length;
-    }
+    document.getElementById('tableCountLabel').textContent = '총 0건';
+    Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
+      document.getElementById(`assetGroupSummary${suffix}`).textContent = '0건';
+    });
+    renderTableFooter(rawRows);
+    lucide.createIcons();
+    reapplyAssetGroupAccordionHeights();
+    return;
   }
+
+  emptyMsg.classList.add('hidden');
+
+  // ① 전체 - 같은 종목을 여러 소유자/계좌가 나눠 보유해도 한 행으로 합친다.
+  const merged = sortRows(buildMergedRows(rawRows));
+  document.getElementById('assetTableBodyNone').innerHTML = merged.map(r => rowHtml(r)).join('');
+  document.getElementById('assetCardListNone').innerHTML = merged.map(r => cardHtml(r)).join('');
+
+  // ② ③ ④ - 소유자별/국내해외별/자산군별은 그룹 헤더(소계)와 함께 나열한다.
+  const sortedRows = sortRows(rawRows);
+  ['owner', 'domestic', 'category'].forEach((mode) => {
+    const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
+    document.getElementById(`assetTableBody${suffix}`).innerHTML = renderGroupedRows(sortedRows, mode, rowHtml, groupHeaderRowHtml);
+    document.getElementById(`assetCardList${suffix}`).innerHTML = renderGroupedRows(sortedRows, mode, cardHtml, groupHeaderCardHtml);
+  });
 
   // [건수 표기 형식 변경] "총 N건 중 M건 표시" -> "총 N건 (단일 X건, 중복 Y건)". 단일(X)=실제로 화면에
   // 표시되는 행 수(같은 종목을 여러 소유자/계좌가 나눠 보유해 buildMergedRows가 한 줄로 합친 경우도
   // 1건으로 센다), 중복(Y)=그렇게 합쳐지며 줄어든 건수(현재 필터 기준 원본 건수 - 표시 행 수). 필터가
   // '전체'일 때는 rawRows.length가 곧 state.assets.length와 같아 예시("총 28건...")와 정확히 일치한다.
+  const displayedCount = merged.length;
   const duplicateCount = rawRows.length - displayedCount;
   document.getElementById('tableCountLabel').textContent = `총 ${rawRows.length}건 (단일 ${displayedCount}건, 중복 ${duplicateCount}건)`;
+  // [4개 아코디언 헤더 공통 요약] 4개 섹션이 같은 필터 결과를 그룹핑만 다르게 보여줄 뿐이라 총 건수/총
+  // 평가액은 어디서나 동일하다 - 접힌 상태에서도 핵심 정보를 바로 확인할 수 있게 헤더에 노출한다.
+  const totalCur = rawRows.reduce((s, r) => s + r.curAmount, 0);
+  const groupSummaryText = `${rawRows.length}건 · ${fmtKRW(totalCur)}`;
+  Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
+    document.getElementById(`assetGroupSummary${suffix}`).textContent = groupSummaryText;
+  });
   renderTableFooter(rawRows);
   lucide.createIcons();
-  // 방금 다시 그린 목록 기준으로 펼침 상태를 재적용한다 - 검색/필터/보기방식으로 목록 높이가 바뀌어도
-  // max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
-  setAccordionOpen(document.getElementById('assetManagementAccordionBody'), document.getElementById('assetManagementAccordionChevron'), assetManagementAccordionOpen);
+  // 방금 다시 그린 목록 기준으로 펼침 상태를 재적용한다 - 검색/필터로 목록 높이가 바뀌어도 max-height가
+  // 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
+  reapplyAssetGroupAccordionHeights();
 }
 
 // 테이블 행(rowHtml)과 모바일 카드(cardHtml)가 공유하는 파생 표시값 계산.
@@ -6240,8 +6352,9 @@ function handleAssetListClick(e) {
   }
 }
 
-document.getElementById('assetTableBody').addEventListener('click', handleAssetListClick);
-document.getElementById('assetCardList').addEventListener('click', handleAssetListClick);
+// [계층별 독립 아코디언] 4개 섹션(전체/소유자별/국내해외별/자산군별)마다 별도의 tbody/카드리스트가
+// 있으므로, 각각에 리스너를 붙이는 대신 카드 전체(assetManagementSection)에서 한 번만 위임 처리한다.
+document.getElementById('assetManagementSection').addEventListener('click', handleAssetListClick);
 
 /* -------------------------------------------------------------------------
  * 11-0. 종목 상세 정보 + 주가 차트 모달
@@ -6874,9 +6987,14 @@ document.getElementById('filterResetBtn').addEventListener('click', () => {
   renderTable();
 });
 
-document.getElementById('assetManagementAccordionBtn').addEventListener('click', () => {
-  assetManagementAccordionOpen = !assetManagementAccordionOpen;
-  setAccordionOpen(document.getElementById('assetManagementAccordionBody'), document.getElementById('assetManagementAccordionChevron'), assetManagementAccordionOpen);
+// [자산 관리 카드 - 계층별 독립 아코디언] 4개 섹션(전체/소유자별/국내해외별/자산군별) 각각의 헤더를
+// 탭하면 그 섹션만 접히거나 펼쳐진다 - 서로 배타적이지 않고 동시에 여러 개를 펼쳐 둘 수 있다.
+Object.keys(ASSET_GROUP_MODE_SUFFIX).forEach((mode) => {
+  const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
+  document.getElementById(`assetGroupAccordionBtn${suffix}`).addEventListener('click', () => {
+    assetGroupAccordionOpen[mode] = !assetGroupAccordionOpen[mode];
+    setAccordionOpen(document.getElementById(`assetGroupAccordionBody${suffix}`), document.getElementById(`assetGroupAccordionChevron${suffix}`), assetGroupAccordionOpen[mode]);
+  });
 });
 
 // 자산 관리 목록 상단의 검색창 - 종목명/티커/계좌구분/소유자 실시간 검색(차트에는 영향 없음, 목록만 필터링).
@@ -6893,28 +7011,6 @@ document.getElementById('tableCategoryFilter').addEventListener('change', (e) =>
   renderTable();
 });
 
-// 자산 관리 목록 보기 방식(전체/소유자별/국내외별/자산군별) 토글 - 검색/필터 결과를 그대로 그룹핑하므로
-// 별도의 필터 재계산 없이 renderTable()만 다시 호출하면 된다.
-const TABLE_GROUP_BY_LABELS = { none: '전체', owner: '소유자별', domestic: '국내/해외별', category: '자산군별' };
-// [자산 관리 카드 아코디언 헤더 요약] 접힌 상태에서도 현재 보기 방식을 바로 확인할 수 있도록 헤더에
-// 표시한다 - 건수(tableCountLabel)는 renderTable()이 이미 갱신하므로 여기서는 보기 방식만 다룬다.
-function updateAssetManagementSummary() {
-  const el = document.getElementById('assetManagementSummary');
-  if (el) el.textContent = `· ${TABLE_GROUP_BY_LABELS[state.tableGroupBy] || '전체'} 보기`;
-}
-function applyTableGroupUI() {
-  document.querySelectorAll('.table-group-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.groupBy === state.tableGroupBy);
-  });
-  updateAssetManagementSummary();
-}
-document.querySelectorAll('.table-group-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    state.tableGroupBy = btn.dataset.groupBy;
-    applyTableGroupUI();
-    renderTable();
-  });
-});
 
 /* -------------------------------------------------------------------------
  * 16. 환율 수동 입력
@@ -8604,7 +8700,6 @@ function closeExchangeRateModal(viaBackButton) {
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
 document.getElementById('kpiExchangeRateDetailBtn').addEventListener('click', openExchangeRateModal);
-document.getElementById('kpiAppliedRate').addEventListener('click', openExchangeRateModal);
 document.getElementById('closeExchangeRateModalBtn').addEventListener('click', () => closeExchangeRateModal());
 document.getElementById('exchangeRateModal').addEventListener('click', (e) => {
   if (e.target.id === 'exchangeRateModal') closeExchangeRateModal();
@@ -8992,7 +9087,6 @@ async function bootApp() {
     persistAssets();
   }
 
-  applyTableGroupUI();
   renderAll();
   // [버그 수정 - 초기 진입 시 탭 버튼 active 스타일 누락] state.activeTab 기본값('dashboard')과
   // 실제로 보이는 탭 패널(총투자현황)은 처음부터 일치했지만, 탭 버튼에 .active 클래스를 붙이는 건
