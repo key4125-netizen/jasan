@@ -176,6 +176,11 @@
 <!-- 토스트 알림 컨테이너: 시세/환율 갱신 실패 등 즉시성 있는 알림을 화면 우상단에 띄운다 -->
 <div id="toastContainer" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 items-end max-w-[90vw]"></div>
 
+<!-- [초보자용 (i) 툴팁] 싱글톤 팝오버 하나를 재사용 - data-info-tip="설명문구"가 붙은 (i) 버튼을 탭하면
+     그 버튼 바로 아래에 뜬다(마우스오버가 없는 모바일에서도 탭으로 동작). 화면 밖으로 넘치지 않게 좌우
+     위치를 보정한다(리스크 엔진 JS 섹션의 openInfoTip 참고). -->
+<div id="infoTipPopover" class="hidden fixed z-[9999] max-w-[280px] text-sm leading-relaxed bg-slate-800 dark:bg-slate-700 text-white rounded-lg shadow-lg px-3.5 py-2.5"></div>
+
 <div id="app" class="max-w-[1680px] mx-auto px-4 md:px-6 py-5">
 
   <!-- ============================= HEADER ============================= -->
@@ -443,13 +448,13 @@
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
         <h3 class="text-sm font-semibold text-red-600 dark:text-red-400">RISK 관리</h3>
-        <button type="button" title="RSI(과열/과매도) · 이동평균선(추세 이탈) · 52주 고점 대비 낙폭 · 거래량 급증 - 종목별 정밀 주가 분석 중 하나라도 해당하면 감지됩니다."
+        <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, RSI 과열·추세 이탈·52주 고점대비 급락·거래량 급증 중 하나라도 해당하면 종목이 감지됩니다."
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>
       </div>
     </div>
-    <p class="text-[10px] text-slate-400 mb-3">💡 개별 종목의 기술적 추세, 과열도(RSI), 변동성 및 계좌 위험도를 종합 진단합니다.</p>
+    <p class="text-xs text-slate-400 mb-3">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
@@ -1539,9 +1544,9 @@
 <div id="riskAlertModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-sm font-semibold">📢 포트폴리오 위험 진단</h3>
+      <h3 class="text-base font-semibold">📢 포트폴리오 위험 진단</h3>
       <button type="button" id="closeRiskAlertModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
-        <i data-lucide="x" class="w-4 h-4"></i>
+        <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
     <div class="px-5 py-4 overflow-y-auto space-y-3">
@@ -1551,10 +1556,10 @@
     </div>
     <div class="flex flex-col gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <div class="flex items-center gap-2">
-        <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-[11px] sm:text-xs font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
-        <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-[11px] sm:text-xs font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">📊 상세 리스크 관리 카드로 이동</button>
+        <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
+        <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">📊 상세 리스크 관리 카드로 이동</button>
       </div>
-      <button type="button" id="riskAlertDismissTodayBtn" class="w-full text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1">오늘 하루 안 보기</button>
+      <button type="button" id="riskAlertDismissTodayBtn" class="w-full text-sm font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1">오늘 하루 안 보기</button>
     </div>
   </div>
 </div>
@@ -6659,6 +6664,45 @@ function showToast(message, type = 'info', duration = 6000) {
 }
 
 /* -------------------------------------------------------------------------
+ * 11-2. [초보자용 (i) 툴팁] 어디서든 data-info-tip="설명문구"만 붙이면 이 위임 리스너 하나가 처리한다 -
+ *    마우스오버가 없는 모바일에서도 탭으로 열고 닫을 수 있다(리스크 진단 화면의 전문용어 해설용으로
+ *    도입했지만 범용 컴포넌트라 다른 화면에서도 그대로 재사용 가능).
+ * ---------------------------------------------------------------------- */
+const infoTipPopover = document.getElementById('infoTipPopover');
+let infoTipOpenBtn = null;
+
+function closeInfoTip() {
+  infoTipPopover.classList.add('hidden');
+  infoTipOpenBtn = null;
+}
+
+function openInfoTip(btn) {
+  infoTipPopover.textContent = btn.dataset.infoTip;
+  infoTipPopover.classList.remove('hidden');
+  const rect = btn.getBoundingClientRect();
+  // 팝오버를 일단 보이는 상태로 만든 뒤 실제 렌더링 폭을 재서 화면 밖으로 넘치지 않게 좌우를 보정한다.
+  let left = rect.left;
+  const maxLeft = window.innerWidth - infoTipPopover.offsetWidth - 8;
+  if (left > maxLeft) left = Math.max(8, maxLeft);
+  if (left < 8) left = 8;
+  infoTipPopover.style.left = left + 'px';
+  infoTipPopover.style.top = (rect.bottom + 6) + 'px';
+  infoTipOpenBtn = btn;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-info-tip]');
+  if (btn) {
+    e.stopPropagation();
+    if (infoTipOpenBtn === btn) { closeInfoTip(); return; }
+    openInfoTip(btn);
+    return;
+  }
+  if (!e.target.closest('#infoTipPopover')) closeInfoTip();
+});
+window.addEventListener('scroll', closeInfoTip, true);
+
+/* -------------------------------------------------------------------------
  * 12. 전체 렌더 파이프라인
  * ---------------------------------------------------------------------- */
 // 투자세부 탭(필터바 + 비중 차트 3종 + 자산 관리 목록)을 한 번에 다시 그린다.
@@ -8090,6 +8134,339 @@ function rsiStateLabel(rsi14) {
 // 근사치를 추정한다 - 화면에 항상 "추정치"임을 명시한다.
 const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9 };
 
+/* -------------------------------------------------------------------------
+ * 18-1b. [정밀 포트폴리오 리스크 엔진] 섹터/ETF 룩스루 매핑 + 수급 대체 지표 + 6대 위험요인 계산
+ *    - 실시간 API가 아닌 사전 정의 표(SECTOR_MAP/ETF_HOLDINGS_MAP)로 섹터 집중도·ETF 실질노출을
+ *      근사 계산한다. 매핑에 없는 종목/ETF는 자동으로 "미분류"로 안전하게 빠진다(계산 오류 없음).
+ *    - 수급(외국인·기관 매매동향)은 실제 수급 데이터 소스가 없어 거래량+가격변동 기반 대체 지표를
+ *      쓴다 - 화면과 데이터 신뢰도 점수에 항상 "추정치"임을 명시한다.
+ * ---------------------------------------------------------------------- */
+// 국내 대형주/미국 대형주 섹터 매핑 - 보유 가능성이 높은 종목 위주로만 커버하며, 없는 종목은 "미분류".
+const SECTOR_MAP = {
+  '005930.KS': '반도체', '000660.KS': '반도체', '035420.KS': 'IT/인터넷', '035720.KS': 'IT/인터넷',
+  '051910.KS': '화학/배터리', '006400.KS': '배터리', '373220.KS': '배터리', '005380.KS': '자동차',
+  '000270.KS': '자동차', '105560.KS': '금융', '055550.KS': '금융', '086790.KS': '금융',
+  '207940.KS': '바이오', '068270.KS': '바이오', '028260.KS': '유통/상사', '015760.KS': '유틸리티',
+  'AAPL': 'IT/하드웨어', 'MSFT': 'IT/소프트웨어', 'GOOGL': 'IT/인터넷', 'GOOG': 'IT/인터넷',
+  'AMZN': '유통/인터넷', 'NVDA': '반도체', 'AVGO': '반도체', 'TSM': '반도체', 'AMD': '반도체',
+  'META': 'IT/인터넷', 'TSLA': '자동차', 'NFLX': '미디어', 'JPM': '금융', 'V': '금융', 'MA': '금융',
+  'JNJ': '헬스케어', 'UNH': '헬스케어', 'XOM': '에너지', 'CVX': '에너지', 'PG': '필수소비재', 'KO': '필수소비재'
+};
+// ETF는 "섹터 비중맵"(합계 약 1.0)으로 등록해 실질 룩스루 노출 계산에 쓴다 - 운용사 팩트시트 기준
+// 대략적인 값이며 실시간 구성종목 API가 아니므로 실제 비중과 차이가 있을 수 있다(화면에 항상 명시).
+const ETF_HOLDINGS_MAP = {
+  'QQQM': { label: '나스닥100', sectorWeights: { 'IT/소프트웨어': 0.30, '반도체': 0.25, 'IT/인터넷': 0.20, '유통/인터넷': 0.10, '헬스케어': 0.05, '기타': 0.10 } },
+  'QQQ': { label: '나스닥100', sectorWeights: { 'IT/소프트웨어': 0.30, '반도체': 0.25, 'IT/인터넷': 0.20, '유통/인터넷': 0.10, '헬스케어': 0.05, '기타': 0.10 } },
+  'SOXX': { label: '반도체 ETF', sectorWeights: { '반도체': 0.95, '기타': 0.05 } },
+  'SMH': { label: '반도체 ETF', sectorWeights: { '반도체': 0.95, '기타': 0.05 } },
+  'TQQQ': { label: '나스닥100 3배 레버리지', sectorWeights: { 'IT/소프트웨어': 0.30, '반도체': 0.25, 'IT/인터넷': 0.20, '유통/인터넷': 0.10, '헬스케어': 0.05, '기타': 0.10 } },
+  'SCHD': { label: '미국 배당 ETF', sectorWeights: { '금융': 0.20, '필수소비재': 0.15, '헬스케어': 0.15, '에너지': 0.10, 'IT/소프트웨어': 0.10, '기타': 0.30 } },
+  'SPY': { label: 'S&P500', sectorWeights: { 'IT/소프트웨어': 0.18, '반도체': 0.10, '금융': 0.13, '헬스케어': 0.12, '유통/인터넷': 0.10, '기타': 0.37 } },
+  'SPYM': { label: 'S&P500', sectorWeights: { 'IT/소프트웨어': 0.18, '반도체': 0.10, '금융': 0.13, '헬스케어': 0.12, '유통/인터넷': 0.10, '기타': 0.37 } },
+  'VOO': { label: 'S&P500', sectorWeights: { 'IT/소프트웨어': 0.18, '반도체': 0.10, '금융': 0.13, '헬스케어': 0.12, '유통/인터넷': 0.10, '기타': 0.37 } },
+  '069500.KS': { label: 'KODEX 200', sectorWeights: { '반도체': 0.30, '금융': 0.15, '자동차': 0.10, '배터리': 0.10, '기타': 0.35 } },
+  '102110.KS': { label: 'TIGER 200', sectorWeights: { '반도체': 0.30, '금융': 0.15, '자동차': 0.10, '배터리': 0.10, '기타': 0.35 } },
+  'TLT': { label: '미국 장기국채', sectorWeights: { '채권': 1.0 } },
+  'IEF': { label: '미국 중기국채', sectorWeights: { '채권': 1.0 } }
+};
+
+// 종목의 섹터 비중맵 - 직접 보유는 SECTOR_MAP에서 그 섹터 100%, ETF는 ETF_HOLDINGS_MAP의 룩스루
+// 비중맵, 둘 다 없으면 "미분류" 100%(계산은 항상 안전하게 진행되고 화면엔 미분류 비중만 안내한다).
+function resolveSectorWeights(ticker) {
+  if (ETF_HOLDINGS_MAP[ticker]) return ETF_HOLDINGS_MAP[ticker].sectorWeights;
+  if (SECTOR_MAP[ticker]) return { [SECTOR_MAP[ticker]]: 1.0 };
+  return { '미분류': 1.0 };
+}
+
+// 포트폴리오 전체의 섹터 노출도(ETF 룩스루 포함) - 종목별 비중 × 그 종목의 섹터비중맵을 전부 합산한다.
+function computeSectorExposure(holdings) {
+  const sectorTotals = {};
+  holdings.forEach((h) => {
+    const weights = resolveSectorWeights(h.ticker);
+    Object.entries(weights).forEach(([sector, frac]) => {
+      sectorTotals[sector] = (sectorTotals[sector] || 0) + h.weight * frac;
+    });
+  });
+  const entries = Object.entries(sectorTotals).sort((a, b) => b[1] - a[1]);
+  return {
+    sectorTotals,
+    topSector: entries[0] ? entries[0][0] : null,
+    topSectorWeight: entries[0] ? entries[0][1] * 100 : 0,
+    unclassifiedWeightPct: (sectorTotals['미분류'] || 0) * 100
+  };
+}
+
+// HHI(허핀달-허쉬만 지수) = Σ(비중²) - 0(완전분산)~1(단일종목 100%) 사이 값. 단일종목 비중만 볼 때보다
+// 포트폴리오 "전체"가 얼마나 몰려있는지 더 정확히 잡아낸다.
+function computeHHI(holdings) {
+  return holdings.reduce((s, h) => s + h.weight * h.weight, 0);
+}
+
+// 연환산 변동성(%) - 일간 수익률 표준편차 × √252.
+function computeAnnualizedVolatilityPct(returns) {
+  if (!returns || returns.length < 10) return null;
+  const mean = statMean(returns);
+  const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
+  return Math.sqrt(variance) * Math.sqrt(252) * 100;
+}
+
+// 최대낙폭(MDD, %, 음수) - 종가/지수 시계열에서 그 시점까지의 최고점 대비 최대 하락폭.
+function computeMDDFromCloses(closes) {
+  if (!closes || closes.length < 2) return null;
+  let peak = closes[0], maxDrawdown = 0;
+  closes.forEach((c) => {
+    if (c > peak) peak = c;
+    const drawdown = peak > 0 ? (c - peak) / peak : 0;
+    if (drawdown < maxDrawdown) maxDrawdown = drawdown;
+  });
+  return maxDrawdown * 100;
+}
+
+// 포트폴리오 단위 MDD - 이미 계산해 둔 포트폴리오 일간 수익률 시계열을 누적곱해 가상의 "포트폴리오
+// 지수"를 만든 뒤, 종목 MDD와 동일한 함수로 그 지수의 MDD를 구한다(코드 재사용).
+function computePortfolioMDDFromReturns(portfolioReturns) {
+  if (!portfolioReturns || portfolioReturns.length < 2) return null;
+  const indexSeries = [1];
+  portfolioReturns.forEach((r) => indexSeries.push(indexSeries[indexSeries.length - 1] * (1 + r)));
+  return computeMDDFromCloses(indexSeries);
+}
+
+// [수급 대체 지표] 실제 외국인/기관 매매 데이터가 없어 거래량+가격변동으로 근사 추정한다 - 어디까지나
+// 대체 지표이며 데이터 신뢰도 점수에도 항상 이 한계가 반영된다.
+// 음봉 대량거래(20일 평균 거래량의 2배 이상 & 당일 -2% 이상 하락) → 매물 압박(outflow)
+// 양봉 대량거래(2배 이상 & +2% 이상 상승) → 매수 유입(inflow)
+// 거래량이 20일 평균의 40% 이하로 급감 → 관망세 지속(quiet), 그 외에는 안정(neutral).
+function computeFlowSignal(h) {
+  if (!h.closes || h.closes.length < 2 || !h.volMA20 || typeof h.lastVolume !== 'number') return null;
+  const lastChangePct = ((h.closes[h.closes.length - 1] - h.closes[h.closes.length - 2]) / h.closes[h.closes.length - 2]) * 100;
+  if (h.lastVolume >= h.volMA20 * 2 && lastChangePct <= -2) return 'outflow';
+  if (h.lastVolume >= h.volMA20 * 2 && lastChangePct >= 2) return 'inflow';
+  if (h.lastVolume <= h.volMA20 * 0.4) return 'quiet';
+  return 'neutral';
+}
+function flowSignalLabel(signal) {
+  if (signal === 'outflow') return { label: '매물 압박', emoji: '🔴' };
+  if (signal === 'inflow') return { label: '매수 유입', emoji: '🟢' };
+  if (signal === 'quiet') return { label: '관망세 지속', emoji: '🟡' };
+  if (signal === 'neutral') return { label: '수급 안정', emoji: '🟢' };
+  return { label: '데이터 부족', emoji: '⚪' };
+}
+
+// 데이터가 있는 종목들 간 전체 상관계수 행렬 - { tickerA: { tickerB: 상관계수 } }.
+function computeFullCorrelationMatrix(withData) {
+  const matrix = {};
+  withData.forEach((a) => {
+    matrix[a.ticker] = {};
+    withData.forEach((b) => { matrix[a.ticker][b.ticker] = a.ticker === b.ticker ? 1 : computeCorrelationFromReturns(a.returns, b.returns); });
+  });
+  return matrix;
+}
+// 비중 가중 평균 상관관계 - 두 종목의 비중 곱을 가중치로 상관계수를 평균한다. 값이 클수록 "종목 수는
+// 많지만 실제로는 같이 움직여 분산 효과가 약하다"는 뜻(운명 공동체 위험).
+function computeWeightedAvgCorrelation(withData, matrix) {
+  let weightedSum = 0, weightSum = 0;
+  for (let i = 0; i < withData.length; i++) {
+    for (let j = i + 1; j < withData.length; j++) {
+      const corr = matrix[withData[i].ticker][withData[j].ticker];
+      if (typeof corr !== 'number') continue;
+      const w = withData[i].weight * withData[j].weight;
+      weightedSum += corr * w; weightSum += w;
+    }
+  }
+  return weightSum > 0 ? weightedSum / weightSum : null;
+}
+// [실제 위험 지분 - Risk Contribution] 종목이 "포트폴리오 자체"와 얼마나 같이 움직이는지(포트폴리오를
+// 벤치마크로 삼은 베타)를 구해 비중을 곱한다 - 이론상 Σ(비중×베타)=1이라 그대로 위험 기여 비율로 쓸 수
+// 있다(반올림/데이터 누락 오차 보정을 위해 마지막에 정규화).
+function computeRiskContributions(withData, portfolioReturns) {
+  const raw = withData.map((h) => {
+    const betaToPortfolio = computeBetaFromReturns(h.returns, portfolioReturns);
+    return { ticker: h.ticker, contribution: Math.max(0, (typeof betaToPortfolio === 'number' ? betaToPortfolio : 1) * h.weight) };
+  });
+  const total = raw.reduce((s, r) => s + r.contribution, 0);
+  const byTicker = {};
+  raw.forEach((r) => { byTicker[r.ticker] = total > 0 ? (r.contribution / total) * 100 : null; });
+  return byTicker;
+}
+// 임계 구간표를 이용해 실수값을 0~100 위험 점수로 변환하는 공용 헬퍼 - bands는 max 오름차순 배열이며
+// 마지막 항목의 max는 Infinity여야 한다.
+function scoreFromBands(value, bands) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  for (const b of bands) { if (value <= b.max) return b.score; }
+  return bands[bands.length - 1].score;
+}
+
+/* -------------------------------------------------------------------------
+ * 18-1c. [6대 위험요인 → 0~100 위험점수] 점수가 높을수록 위험하다(챗GPT 제안 구조 채용) - 집중25% +
+ *    변동성20% + 손실20% + 시장15% + 상관관계10% + 기술/수급10% 가중합 + 극단위험 가산.
+ * ---------------------------------------------------------------------- */
+// ① 집중위험 - 단일종목 비중(40%) + HHI(30%) + 섹터 집중도(ETF 룩스루 포함, 30%).
+function computeConcentrationRiskScore(m) {
+  const singleScore = scoreFromBands(m.topWeight, [
+    { max: 10, score: 10 }, { max: 20, score: 30 }, { max: 30, score: 50 },
+    { max: 40, score: 70 }, { max: 50, score: 85 }, { max: Infinity, score: 100 }
+  ]);
+  const hhiScore = scoreFromBands(m.hhi * 100, [
+    { max: 15, score: 20 }, { max: 25, score: 40 }, { max: 35, score: 60 },
+    { max: 50, score: 80 }, { max: Infinity, score: 100 }
+  ]);
+  const sectorScore = scoreFromBands(m.sectorExposure.topSectorWeight, [
+    { max: 20, score: 10 }, { max: 35, score: 30 }, { max: 50, score: 55 },
+    { max: 65, score: 75 }, { max: 80, score: 90 }, { max: Infinity, score: 100 }
+  ]);
+  return Math.round((singleScore ?? 0) * 0.4 + (hhiScore ?? 0) * 0.3 + (sectorScore ?? 0) * 0.3);
+}
+// ② 변동성위험 - 포트폴리오 연환산 변동성.
+function computeVolatilityRiskScore(m) {
+  return scoreFromBands(m.portfolioVolatilityPct, [
+    { max: 15, score: 20 }, { max: 20, score: 40 }, { max: 25, score: 60 },
+    { max: 30, score: 80 }, { max: Infinity, score: 100 }
+  ]) ?? 50;
+}
+// ③ 손실위험(Drawdown/Tail) - MDD(40%) + VaR95(30%) + CVaR(30%).
+function computeDrawdownTailRiskScore(m) {
+  const mddScore = scoreFromBands(Math.abs(m.portfolioMDDPct ?? 0), [
+    { max: 10, score: 20 }, { max: 20, score: 40 }, { max: 30, score: 60 },
+    { max: 40, score: 80 }, { max: Infinity, score: 100 }
+  ]);
+  const varScore = scoreFromBands(Math.abs(m.var95Pct), [
+    { max: 1.5, score: 20 }, { max: 2.5, score: 40 }, { max: 3.5, score: 60 },
+    { max: 5, score: 80 }, { max: Infinity, score: 100 }
+  ]);
+  const cvarScore = scoreFromBands(Math.abs(m.cvarPct), [
+    { max: 2.5, score: 20 }, { max: 4, score: 40 }, { max: 6, score: 60 },
+    { max: 8, score: 80 }, { max: Infinity, score: 100 }
+  ]);
+  return Math.round((mddScore ?? 50) * 0.4 + (varScore ?? 50) * 0.3 + (cvarScore ?? 50) * 0.3);
+}
+// ④ 시장위험 - 포트폴리오 베타(시장 대비 널뛰기 위험).
+function computeMarketRiskScore(m) {
+  return scoreFromBands(m.portfolioBeta, [
+    { max: 0.8, score: 20 }, { max: 1.0, score: 35 }, { max: 1.2, score: 55 },
+    { max: 1.4, score: 75 }, { max: Infinity, score: 95 }
+  ]) ?? 50;
+}
+// ⑤ 상관관계위험(운명 공동체) - 비중 가중 평균 상관계수.
+function computeCorrelationRiskScore(m) {
+  return scoreFromBands(m.weightedAvgCorrelation, [
+    { max: 0.3, score: 20 }, { max: 0.5, score: 40 }, { max: 0.7, score: 60 },
+    { max: 0.85, score: 80 }, { max: Infinity, score: 100 }
+  ]) ?? 40;
+}
+// ⑥ 기술/수급위험 - 종목별 [RSI 과열도 + 추세이탈 + 수급신호]를 비중가중 평균한다.
+function computeTechnicalFlowRiskScore(holdings) {
+  const weightSum = holdings.reduce((s, h) => s + h.weight, 0);
+  if (weightSum === 0) return 50;
+  const weightedScore = holdings.reduce((s, h) => {
+    let score = 50;
+    if (typeof h.rsi14 === 'number') {
+      score = h.rsi14 >= 70 ? 70 + Math.min(30, (h.rsi14 - 70) * 1.5)
+        : h.rsi14 <= 30 ? 55
+        : 30;
+    }
+    if (h.trendBroken) score += 15;
+    if (h.flowSignal === 'outflow') score += 15;
+    if (h.flowSignal === 'inflow') score -= 5;
+    return s + Math.max(0, Math.min(100, score)) * h.weight;
+  }, 0);
+  return Math.round(weightedScore / weightSum);
+}
+// [종합 위험점수] 6대 요인 가중합 + 극단위험 가산(어느 한 요인이라도 90점 이상이면 +5, 95점 이상이면
+// +8 - 다른 요인이 낮다고 평균으로 희석돼 실제로 위험한 포트폴리오가 저평가되는 것을 막는다).
+function computeCompositeRiskScore(subScores) {
+  const weights = { concentration: 0.25, volatility: 0.20, drawdown: 0.20, market: 0.15, correlation: 0.10, technical: 0.10 };
+  const base = Object.entries(weights).reduce((s, [key, w]) => s + (subScores[key] ?? 50) * w, 0);
+  const maxSub = Math.max(...Object.values(subScores).map((v) => v ?? 0));
+  const extremePenalty = maxSub >= 95 ? 8 : maxSub >= 90 ? 5 : 0;
+  return Math.max(0, Math.min(100, Math.round(base + extremePenalty)));
+}
+// [위험점수 신호등] 0~40 🟢양호 / 41~60 🟡주의 / 61~100 🔴위험 - 점수가 높을수록 위험(챗GPT 제안 및
+// 요청 사양 그대로). 'safe'/level 명칭은 구 안전점수 체계와 호환되도록 그대로 유지한다.
+function riskLevelFromScore(score) {
+  if (score <= 40) return { level: 'safe', label: '양호', emoji: '🟢', colorClass: 'text-emerald-600 dark:text-emerald-400', bgClass: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50', barClass: 'bg-emerald-500' };
+  if (score <= 60) return { level: 'warn', label: '주의', emoji: '🟡', colorClass: 'text-amber-600 dark:text-amber-400', bgClass: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50', barClass: 'bg-amber-500' };
+  return { level: 'danger', label: '위험', emoji: '🔴', colorClass: 'text-red-600 dark:text-red-400', bgClass: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50', barClass: 'bg-red-500' };
+}
+// [데이터 신뢰도] 위험점수와 별개로 "이 진단이 얼마나 실데이터에 기반했는가"를 보여준다 - 가격 이력이
+// 없는 종목 비중 / 섹터·ETF 룩스루 미분류 비중 / 수급이 실제 데이터가 아닌 거래량 기반 추정치라는
+// 구조적 한계를 반영한다(최대 92%로 제한 - 100%라고 표시하면 추정치를 실측치처럼 오해할 수 있음).
+function computeDataConfidence(m) {
+  const totalWeight = m.holdings.reduce((s, h) => s + h.weight, 0) || 1;
+  const missingWeight = m.holdings.filter((h) => !h.hasData).reduce((s, h) => s + h.weight, 0);
+  const missingPenalty = (missingWeight / totalWeight) * 35;
+  const unclassifiedPenalty = (m.sectorExposure.unclassifiedWeightPct / 100) * 20;
+  const flowProxyPenalty = 8;
+  const score = Math.max(0, Math.min(100, Math.round(100 - missingPenalty - unclassifiedPenalty - flowProxyPenalty)));
+  const reasons = [];
+  if (missingWeight > 0) reasons.push(`${fmtNum(missingWeight / totalWeight * 100, 0)}% 비중 종목은 가격 이력 부족`);
+  if (m.sectorExposure.unclassifiedWeightPct > 0) reasons.push(`${fmtNum(m.sectorExposure.unclassifiedWeightPct, 0)}% 비중 종목은 섹터 미분류`);
+  reasons.push('수급 지표는 실제 외국인/기관 매매 데이터가 아닌 거래량 기반 추정치');
+  return { score, reasons };
+}
+
+/* -------------------------------------------------------------------------
+ * 18-1d. [What-If 리밸런싱 시뮬레이션 - Scenario Engine]
+ *    - 실제 시세를 다시 받아오지 않고, 이미 계산해 둔 종목별 수익률/베타 시계열에 "새 비중"만 대입해
+ *      위험점수가 어떻게 바뀌는지 추정한다(과거 변동성·상관관계 구조가 리밸런싱 후에도 유지된다고
+ *      가정하는, 이런 시뮬레이터에서 흔히 쓰는 단순화 - 화면에 "추정치"임을 명시한다).
+ * ---------------------------------------------------------------------- */
+// newWeightsOverride = { ticker: 새 비중(0~1) } - 언급되지 않은 종목들은 원래 비중 "비율"을 유지한 채
+// 남은 비중을 나눠 갖는다(예: SK하이닉스만 59%→35%로 지정하면 나머지 종목들이 비율대로 65%를 채운다).
+function computeScenarioRiskMetrics(m, newWeightsOverride) {
+  const overrideTickers = Object.keys(newWeightsOverride);
+  const overrideWeightSum = overrideTickers.reduce((s, t) => s + newWeightsOverride[t], 0);
+  const remainingWeight = Math.max(0, 1 - overrideWeightSum);
+  const others = m.holdings.filter((h) => !overrideTickers.includes(h.ticker));
+  const othersWeightSum = others.reduce((s, h) => s + h.weight, 0);
+
+  const newHoldings = m.holdings.map((h) => {
+    if (overrideTickers.includes(h.ticker)) return { ...h, weight: newWeightsOverride[h.ticker] };
+    const scaledWeight = othersWeightSum > 0 ? (h.weight / othersWeightSum) * remainingWeight : 0;
+    return { ...h, weight: scaledWeight };
+  });
+
+  const withData = newHoldings.filter((h) => h.hasData);
+  const withDataWeightSum = withData.reduce((s, h) => s + h.weight, 0);
+
+  const portfolioBeta = withDataWeightSum > 0
+    ? withData.reduce((s, h) => s + (typeof h.beta === 'number' ? h.beta : 1) * (h.weight / withDataWeightSum), 0)
+    : null;
+
+  const minLen = withData.length ? Math.min(...withData.map((h) => h.returns.length)) : 0;
+  const portfolioReturns = [];
+  for (let i = 1; i <= minLen; i++) {
+    let sum = 0;
+    withData.forEach((h) => { sum += h.returns[h.returns.length - i] * (h.weight / withDataWeightSum); });
+    portfolioReturns.unshift(sum);
+  }
+  const sorted = [...portfolioReturns].sort((a, b) => a - b);
+  const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
+  const var95Pct = sorted.length ? sorted[varIdx] * 100 : 0;
+  const tailReturns = sorted.slice(0, varIdx + 1);
+  const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
+  const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
+  const portfolioMDDPct = computePortfolioMDDFromReturns(portfolioReturns);
+
+  const hhi = computeHHI(newHoldings);
+  const sortedByWeight = [...newHoldings].sort((a, b) => b.weight - a.weight);
+  const topWeight = sortedByWeight[0] ? sortedByWeight[0].weight * 100 : 0;
+  const sectorExposure = computeSectorExposure(newHoldings);
+  const correlationMatrix = computeFullCorrelationMatrix(withData);
+  const weightedAvgCorrelation = withData.length >= 2 ? computeWeightedAvgCorrelation(withData, correlationMatrix) : null;
+
+  const scoreInputs = { topWeight, hhi, sectorExposure, portfolioVolatilityPct, portfolioMDDPct, var95Pct, cvarPct, portfolioBeta, weightedAvgCorrelation };
+  const subScores = {
+    concentration: computeConcentrationRiskScore(scoreInputs),
+    volatility: computeVolatilityRiskScore(scoreInputs),
+    drawdown: computeDrawdownTailRiskScore(scoreInputs),
+    market: computeMarketRiskScore(scoreInputs),
+    correlation: computeCorrelationRiskScore(scoreInputs),
+    technical: computeTechnicalFlowRiskScore(newHoldings)
+  };
+  const riskScore = computeCompositeRiskScore(subScores);
+  return { topWeight, portfolioVolatilityPct, portfolioMDDPct, var95Pct, cvarPct, portfolioBeta, subScores, riskScore };
+}
+
 // 포트폴리오 전체의 리스크 지표를 계산한다 - 실패해도(네트워크 전면 실패 등) null을 반환할 뿐 예외를
 // 던지지 않아 refreshPricesAndRates()의 나머지 갱신을 막지 않는다.
 async function computeAdvancedRiskMetrics() {
@@ -8154,6 +8531,10 @@ async function computeAdvancedRiskMetrics() {
       } else {
         h.volMA20 = null; h.lastVolume = null; h.volumeSpike = false;
       }
+      // [정밀 리스크 엔진] 종목 단위 MDD(최대낙폭) + 수급 대체 지표(거래량/가격 기반 추정) - 둘 다 위의
+      // closes/volumes/volMA20/lastVolume이 이미 계산된 뒤에 구해야 해서 이 블록 마지막에 둔다.
+      h.mdd = h.closes ? computeMDDFromCloses(h.closes) : null;
+      h.flowSignal = computeFlowSignal(h);
     }));
 
     const withData = holdings.filter((h) => h.hasData);
@@ -8192,13 +8573,16 @@ async function computeAdvancedRiskMetrics() {
     const topWeight = topHolding ? topHolding.weight * 100 : 0;
     const top3Weight = sortedByWeight.slice(0, 3).reduce((s, h) => s + h.weight, 0) * 100;
 
-    // 상관관계(운명 공동체): 비중 상위 2종목의 일간 수익률 상관계수.
+    // 상관관계(운명 공동체): 비중 상위 2종목의 일간 수익률 상관계수(화면 표시용) + 전체 종목 간 상관계수
+    // 행렬과 비중가중 평균 상관관계(위험점수 계산용, 2종목 이상일 때만 의미가 있다).
     let topCorrelation = null, topCorrelationPair = null;
     const withDataByWeight = withData.slice().sort((a, b) => b.weight - a.weight);
     if (withDataByWeight.length >= 2) {
       topCorrelation = computeCorrelationFromReturns(withDataByWeight[0].returns, withDataByWeight[1].returns);
       topCorrelationPair = [withDataByWeight[0].name, withDataByWeight[1].name];
     }
+    const correlationMatrix = computeFullCorrelationMatrix(withData);
+    const weightedAvgCorrelation = withData.length >= 2 ? computeWeightedAvgCorrelation(withData, correlationMatrix) : null;
 
     // 2020 코로나 폭락 재현 - 종목별 베타 × 그 종목 벤치마크의 실제 2020년 낙폭(데이터 없는 종목은
     // 시장과 동일하게 움직인다고 가정해 베타 1.0으로 근사, 안전한 기본값).
@@ -8210,10 +8594,34 @@ async function computeAdvancedRiskMetrics() {
     });
     const stressLossPct = totalCur !== 0 ? (stressLossKRW / totalCur) * 100 : 0;
 
+    // [정밀 포트폴리오 리스크 엔진] 섹터 노출(ETF 룩스루 포함)/HHI/연환산 변동성/MDD/위험기여도를 구하고,
+    // 6대 위험요인 → 종합 위험점수(0~100, 높을수록 위험) → 데이터 신뢰도까지 전부 계산해 둔다. 화면은
+    // 이 값을 그대로 표시만 하면 되도록, 여기서 최종 형태까지 만들어 반환한다.
+    const sectorExposure = computeSectorExposure(holdings);
+    const hhi = computeHHI(holdings);
+    const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
+    const portfolioMDDPct = computePortfolioMDDFromReturns(portfolioReturns);
+    const riskContributions = computeRiskContributions(withData, portfolioReturns);
+    holdings.forEach((h) => { h.riskContributionPct = riskContributions[h.ticker] ?? null; });
+
+    const scoreInputs = { topWeight, hhi, sectorExposure, portfolioVolatilityPct, portfolioMDDPct, var95Pct, cvarPct, portfolioBeta, weightedAvgCorrelation };
+    const subScores = {
+      concentration: computeConcentrationRiskScore(scoreInputs),
+      volatility: computeVolatilityRiskScore(scoreInputs),
+      drawdown: computeDrawdownTailRiskScore(scoreInputs),
+      market: computeMarketRiskScore(scoreInputs),
+      correlation: computeCorrelationRiskScore(scoreInputs),
+      technical: computeTechnicalFlowRiskScore(holdings)
+    };
+    const riskScore = computeCompositeRiskScore(subScores);
+    const dataConfidence = computeDataConfidence({ holdings, sectorExposure });
+
     return {
       totalCur, holdings: sortedByWeight, missingCount, portfolioBeta, var95Pct, cvarPct, sortino,
       var95KRW: totalCur * var95Pct / 100, cvarKRW: totalCur * cvarPct / 100,
-      topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair, stressLossKRW, stressLossPct
+      topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair, stressLossKRW, stressLossPct,
+      hhi, sectorExposure, portfolioVolatilityPct, portfolioMDDPct, weightedAvgCorrelation, correlationMatrix,
+      subScores, riskScore, dataConfidence
     };
   } catch (e) {
     console.warn('[리스크 진단] 계산 실패 - 다음 갱신에서 재시도합니다:', e.message);
@@ -8239,49 +8647,37 @@ function sortinoToGrade(sortino) {
   return 'F';
 }
 
-// [포트폴리오 안전 점수] 100점 만점 감점 방식 - 몰빵위험/널뛰기위험(베타)/평소 예상 손실폭(VaR)/
-// 운명공동체(상관관계)/폭락장 방어 성적(Sortino) 각 항목이 임계치를 넘으면 정해진 만큼 깎는다.
-// 80점 이상 🟢안전, 50~79점 🟡주의, 50점 미만 🔴위험으로 신호등을 매긴다.
-function computeSafetyScore(m) {
-  let score = 100;
-  if (m.topWeight >= 35) score -= 25; else if (m.topWeight >= 25) score -= 15; else if (m.topWeight >= 15) score -= 5;
-  if (m.top3Weight >= 75) score -= 10;
-  if (typeof m.portfolioBeta === 'number') {
-    if (m.portfolioBeta >= 1.4) score -= 20; else if (m.portfolioBeta >= 1.2) score -= 10; else if (m.portfolioBeta >= 1.05) score -= 5;
-  }
-  if (m.var95Pct <= -5) score -= 15; else if (m.var95Pct <= -3.5) score -= 10; else if (m.var95Pct <= -2.5) score -= 5;
-  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85) score -= 10;
-  const grade = sortinoToGrade(m.sortino);
-  if (grade === 'F' || grade === 'E') score -= 10;
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-function safetyLevel(score) {
-  if (score >= 80) return { level: 'safe', label: '안전', emoji: '🟢', colorClass: 'text-emerald-600 dark:text-emerald-400', bgClass: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50' };
-  if (score >= 50) return { level: 'warn', label: '주의', emoji: '🟡', colorClass: 'text-amber-600 dark:text-amber-400', bgClass: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50' };
-  return { level: 'danger', label: '위험', emoji: '🔴', colorClass: 'text-red-600 dark:text-red-400', bgClass: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50' };
-}
-
-// [1줄 쉬운 종합 진단] 여러 신호가 겹쳐도 화면엔 가장 심각한 신호 하나만 문장으로 보여준다(우선순위:
-// 집중도 > 베타 > 상관관계 > VaR).
+// [1줄 쉬운 종합 진단] 6대 위험요인 중 점수가 가장 높은(가장 위험한) 요인 하나를 골라 그 원인을 구체
+// 수치와 함께 문장으로 설명한다 - "72점입니다"가 아니라 "왜 72점인가"를 보여주는 것이 핵심.
 function buildRiskDiagnosisLine(m) {
-  if (m.topWeight >= 25 && m.topHolding) {
-    return `현재 ${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 너무 커서 하락장에 널뛰기가 심할 수 있습니다.`;
+  const s = m.subScores;
+  const maxKey = Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
+  if (maxKey === 'concentration' && m.topHolding) {
+    const contrib = typeof m.topHolding.riskContributionPct === 'number' ? m.topHolding.riskContributionPct : null;
+    return contrib !== null
+      ? `${m.topHolding.name}은(는) 투자 비중은 ${fmtNum(m.topWeight, 0)}%지만, 전체 계좌 위험의 ${fmtNum(contrib, 0)}%를 만듭니다.`
+      : `현재 ${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 너무 커서 하락장에 널뛰기가 심할 수 있습니다.`;
   }
-  if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.2) {
+  if (maxKey === 'volatility' && typeof m.portfolioVolatilityPct === 'number') {
+    return `포트폴리오 연환산 변동성이 ${fmtNum(m.portfolioVolatilityPct, 1)}%로 시장 평균보다 높은 편이라, 등락 폭 자체가 큽니다.`;
+  }
+  if (maxKey === 'drawdown') {
+    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있고, 과거 데이터 기준 최대낙폭은 ${fmtNum(Math.abs(m.portfolioMDDPct ?? 0), 1)}%였습니다.`;
+  }
+  if (maxKey === 'market' && typeof m.portfolioBeta === 'number') {
     return `포트폴리오 전체가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 더 크게 움직이는 구조라, 하락장에서 손실 폭이 시장보다 클 수 있습니다.`;
   }
-  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85 && m.topCorrelationPair) {
-    return `${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}이(가) 같이 움직이는 경향이 커서, 분산 효과가 기대만큼 크지 않을 수 있습니다.`;
+  if (maxKey === 'correlation' && m.topCorrelationPair) {
+    return `${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}이(가) 같이 움직이는 경향이 커서, 종목 수는 여러 개여도 분산 효과가 기대만큼 크지 않을 수 있습니다.`;
   }
-  if (m.var95Pct <= -3.5) {
-    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있는 구성입니다.`;
+  if (maxKey === 'technical' && m.topHolding) {
+    return '보유 종목 중 일부가 단기 과열이거나 추세가 꺾여 있어 기술적 위험이 다소 높습니다.';
   }
   return '포트폴리오가 비교적 안정적으로 분산되어 있습니다.';
 }
 
 // [💡 초직관적 행동 제안] 감지된 신호별로 규칙 기반 문장을 쌓는다(여러 개면 전부 보여준다). 아무
-// 신호도 없으면 "유지" 안내 한 줄만 보여준다.
+// 신호도 없으면 "유지" 안내 한 줄만 보여준다. 임계치는 6대 위험요인 산정 기준과 동일선상에 있다.
 function buildRiskActionItems(m) {
   const items = [];
   if (m.topWeight >= 25 && m.topHolding) {
@@ -8291,8 +8687,11 @@ function buildRiskActionItems(m) {
   if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.15) {
     items.push('하락장 충격을 줄이기 위해 현금이나 미국 국채(TLT) 비중을 15% 정도 확보하세요.');
   }
-  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85 && m.topCorrelationPair) {
+  if (typeof m.weightedAvgCorrelation === 'number' && m.weightedAvgCorrelation >= 0.7 && m.topCorrelationPair) {
     items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}은(는) 같이 움직이는 종목이라, 두 종목을 동시에 늘리기보다 성격이 다른 자산과 섞는 게 좋아요.`);
+  }
+  if (m.sectorExposure && m.sectorExposure.topSectorWeight >= 50 && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류') {
+    items.push(`ETF 속 구성종목까지 합치면 '${m.sectorExposure.topSector}' 섹터 노출이 ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%에 달합니다 - 다른 섹터 자산으로 분산해 보세요.`);
   }
   if (items.length === 0) items.push('현재 특별한 위험 신호가 없습니다. 지금처럼 분산 투자를 유지하세요.');
   return items;
@@ -8383,6 +8782,9 @@ function buildIndividualActionItem(h, weightPct) {
   if (h.trendBroken) {
     return '20일선 아래로 단기 추세가 꺾였습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
   }
+  if (h.flowSignal === 'outflow') {
+    return '최근 거래량이 급증하면서 하락한 매물 압박(추정) 흐름입니다. 추가 매수는 안정 여부를 확인한 뒤 판단하세요.';
+  }
   if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) {
     return `52주 고점 대비 ${fmtNum(Math.abs(h.week52DrawdownPct), 0)}% 하락한 상태입니다. 추가 하락 여력을 감안해 무리한 추가 매수는 피하세요.`;
   }
@@ -8392,25 +8794,56 @@ function buildIndividualActionItem(h, weightPct) {
   return '현재 특별한 위험 신호가 없습니다.';
 }
 
+// [추세/과열도/수급 신호등] 3개 항목을 초보자용 신호등 색+짧은 문구로 보여준다 - 각각 h.trendBroken/
+// h.rsiState/h.flowSignal(거래량+가격 기반 대체 수급 지표)에서 그대로 가져온다.
+function buildIndividualSignalLightsHtml(h) {
+  if (!h || !h.hasData) {
+    return `<div class="grid grid-cols-3 gap-1.5 text-center">
+      ${['추세', '과열도', '수급(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-xs text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
+    </div>`;
+  }
+  const trendHtml = h.trendBroken ? '🔴 하락 전환' : '🟢 상승 흐름';
+  const rsiHtml = h.rsiState === '과열' ? '🔥 단기 과열' : h.rsiState === '과매도' ? '🛡️ 바닥권' : '🟢 적정';
+  const flow = flowSignalLabel(h.flowSignal);
+  return `
+  <div class="grid grid-cols-3 gap-1.5 text-center">
+    <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
+      <p class="text-xs text-slate-400">추세</p>
+      <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${trendHtml}</p>
+    </div>
+    <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
+      <p class="text-xs text-slate-400">과열도</p>
+      <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${rsiHtml}</p>
+    </div>
+    <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
+      <p class="text-xs text-slate-400">수급(추정)</p>
+      <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${flow.emoji} ${flow.label}</p>
+    </div>
+  </div>`;
+}
+
 function buildIndividualRiskDetailHtml(h, weightPct) {
   const betaText = h && typeof h.beta === 'number' ? fmtNum(h.beta, 2) + '배' : '데이터 부족';
   const sortinoText = h ? (sortinoToGrade(h.sortino) || '-') + '등급' : '-등급';
   const drawdownText = h && typeof h.week52DrawdownPct === 'number' ? fmtNum(h.week52DrawdownPct, 1) + '%' : '데이터 부족';
+  const contribText = h && typeof h.riskContributionPct === 'number' ? fmtNum(h.riskContributionPct, 0) + '%' : '데이터 부족';
   return `
-  <div class="mt-2 mb-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-2.5 space-y-2">
+  <div class="mt-2.5 mb-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 space-y-3">
     <div>
-      <p class="text-[10px] font-semibold text-slate-400 mb-0.5">📊 주가 및 리스크 정밀 진단</p>
-      <p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${buildIndividualDiagnosisLine(h)}</p>
+      <p class="text-sm font-semibold text-slate-400 mb-1">📊 주가 및 리스크 정밀 진단</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5">${buildIndividualDiagnosisLine(h)}</p>
+      ${buildIndividualSignalLightsHtml(h)}
     </div>
-    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
-      <div><span class="text-slate-400">널뛰기 위험(베타)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${betaText}</span></div>
-      <div><span class="text-slate-400">하방 방어력(Sortino)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${sortinoText}</span></div>
-      <div><span class="text-slate-400">계좌 내 비중</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtNum(weightPct, 1)}%</span></div>
-      <div><span class="text-slate-400">52주 고점 대비</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${drawdownText}</span></div>
+    <div>
+      ${buildMetricItem('⚡ 지수 대비 널뛰기 심함', betaText, '시장이 1% 움직일 때 이 종목이 대략 몇 % 움직이는지 나타냅니다. 1보다 크면 시장보다 더 크게 흔들려요.')}
+      ${buildMetricItem('폭락장 방어 성적표', sortinoText, '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
+      ${buildMetricItem('계좌 내 비중', fmtNum(weightPct, 1) + '%', '전체 계좌에서 이 종목이 차지하는 평가금액 비중입니다.')}
+      ${buildMetricItem('52주 고점 대비', drawdownText, '최근 1년 최고가 대비 현재 주가가 얼마나 낮은지 나타냅니다.')}
+      ${buildMetricItem('💣 진짜 위험 만드는 주범', contribText, "투자 비중이 아니라 '실제로 내 계좌를 흔드는 힘'이 몇 %인지 보여줍니다. 이 숫자가 투자 비중보다 훨씬 크면 겉보기보다 훨씬 위험한 종목이에요.")}
     </div>
-    <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2">
-      <p class="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-0.5">💡 초직관적 권장 행동 지침</p>
-      <p class="text-[11px] sm:text-xs text-slate-700 dark:text-slate-200 leading-relaxed">${buildIndividualActionItem(h, weightPct)}</p>
+    <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5">
+      <p class="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-1">💡 초직관적 권장 행동 지침</p>
+      <p class="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">${buildIndividualActionItem(h, weightPct)}</p>
     </div>
   </div>`;
 }
@@ -8432,6 +8865,40 @@ function setAccordionOpen(bodyEl, chevronEl, isOpen) {
 // [포트폴리오 위험 진단 & 위기 시뮬레이션] state.advancedRiskMetrics(refreshPricesAndRates에서 이미
 // 계산 완료된 값)를 읽어 안전 점수/신호등/1줄 진단/행동 제안/2020년 폭락 재현 손실 추정치를 그린다.
 // 데이터가 없으면(계산 전, 리스크 대상 종목 자체가 없음 등) 섹션 자체를 숨긴다.
+// [6대 위험요인 막대그래프 한 줄] 라벨+(i)툴팁 / 막대 / 점수. 가독성을 위해 최소 폰트를 text-xs(12px)
+// 이상으로 유지한다(작은 화면에서도 잘 읽히도록).
+// [가독성] 라벨(이모지 포함)이 길어질 수 있어 라벨/점수를 한 줄에, 막대를 그 아래 별도 줄에 꽉 차게
+// 배치한다 - 좁은 화면에서 라벨이 단어 중간에 어색하게 줄바꿈되는 것을 원천적으로 막는다.
+function buildFactorBarRow(label, score, tooltip) {
+  const level = riskLevelFromScore(score);
+  const widthPct = Math.max(4, Math.min(100, score));
+  return `
+  <div>
+    <div class="flex items-center justify-between gap-2 mb-1">
+      <span class="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-1">
+        ${escapeHtml(label)}
+        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      </span>
+      <span class="text-sm font-bold text-slate-700 dark:text-slate-200 shrink-0">${Math.round(score)}</span>
+    </div>
+    <span class="block h-3 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+      <span class="block h-full rounded-full ${level.barClass}" style="width:${widthPct}%"></span>
+    </span>
+  </div>`;
+}
+
+// [정밀 수치 한 항목] 쉬운 한글 라벨 + (i) 툴팁 + 실제 계산된 숫자값.
+function buildMetricItem(label, valueHtml, tooltip) {
+  return `
+  <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
+    <span class="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1 min-w-0 leading-snug break-keep">
+      ${escapeHtml(label)}
+      <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+    </span>
+    <span class="text-base font-semibold text-slate-700 dark:text-slate-200 text-right shrink-0 pl-2">${valueHtml}</span>
+  </div>`;
+}
+
 function renderRiskDiagnosisSummary() {
   const container = document.getElementById('riskDiagnosisSummary');
   if (!container) return;
@@ -8439,40 +8906,121 @@ function renderRiskDiagnosisSummary() {
   if (!m) { container.classList.add('hidden'); container.innerHTML = ''; return; }
   container.classList.remove('hidden');
 
-  const score = computeSafetyScore(m);
-  const level = safetyLevel(score);
+  const score = m.riskScore;
+  const level = riskLevelFromScore(score);
   const diagnosisLine = buildRiskDiagnosisLine(m);
   const actionItems = buildRiskActionItems(m);
   const sortinoGrade = sortinoToGrade(m.sortino) || '-';
-  const correlationLabel = typeof m.topCorrelation === 'number'
-    ? (m.topCorrelation >= 0.85 ? '매우 높음' : (m.topCorrelation >= 0.6 ? '보통' : '낮음'))
-    : '데이터 부족';
+  const conf = m.dataConfidence;
+  const confLevel = conf.score >= 80 ? 'text-emerald-500' : conf.score >= 50 ? 'text-amber-500' : 'text-red-500';
+
+  const s = m.subScores;
+  const barsHtml = [
+    buildFactorBarRow('🎯 몰빵위험', s.concentration, '100점에 가까울수록 위험해요. 한 종목/업종에 돈이 쏠려 있으면 그 종목이 흔들릴 때 계좌 전체가 같이 흔들립니다.'),
+    buildFactorBarRow('🌊 변동성', s.volatility, '100점에 가까울수록 위험해요. 내 계좌 가격이 평소에 얼마나 위아래로 크게 출렁이는지를 나타냅니다.'),
+    buildFactorBarRow('📉 손실위험', s.drawdown, '100점에 가까울수록 위험해요. 과거 데이터로 계산한 "최악의 하루/최악의 구간에 얼마나 잃을 수 있는가"입니다.'),
+    buildFactorBarRow('⚡ 시장위험', s.market, '100점에 가까울수록 위험해요. 시장이 1% 빠질 때 내 계좌가 그보다 더 크게 빠지는 정도입니다.'),
+    buildFactorBarRow('🔗 상관관계', s.correlation, '100점에 가까울수록 위험해요. 종목은 여러 개인데 실제로는 다 같이 오르고 같이 빠지면 분산 효과가 없다는 뜻입니다.'),
+    buildFactorBarRow('🔥 과열·수급', s.technical, '100점에 가까울수록 위험해요. 보유 종목이 단기간에 너무 많이 올라 숨고르기가 필요하거나, 거래량이 심상치 않은 정도입니다.')
+  ].join('');
 
   container.innerHTML = `
-  <div class="rounded-xl border p-3 ${level.bgClass}">
-    <p class="text-sm font-bold ${level.colorClass}">${level.emoji} 내 계좌 안전 점수: ${score}점 [${level.label}]</p>
-    <p class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${diagnosisLine}</p>
-    <div class="mt-2 space-y-1">
-      ${actionItems.map((item, i) => `<p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+  <div class="rounded-xl border p-3.5 ${level.bgClass}">
+    <div class="flex items-start justify-between gap-2 flex-wrap">
+      <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <span class="shrink-0 text-xs font-semibold ${confLevel} flex items-center gap-0.5 whitespace-nowrap">
+        분석 신뢰도 ${conf.score}%
+        <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      </span>
     </div>
+    <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
+    <div class="mt-2.5 space-y-1.5">
+      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+    </div>
+
+    <!-- [6대 위험요인 분해] -->
+    <div class="mt-4 space-y-3">${barsHtml}</div>
+
+    <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
+    <div class="mt-3.5">
+      ${buildMetricItem('⚡ 지수 대비 널뛰기 심함', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '시장이 1% 움직일 때 내 포트폴리오가 대략 몇 % 움직이는지 나타냅니다. 1보다 크면 시장보다 더 크게 흔들린다는 뜻이에요.')}
+      ${buildMetricItem('🎯 한 종목 몰빵 위험', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '특정 종목 하나에 자산이 얼마나 쏠려 있는지 보여줍니다. 비중이 클수록 그 종목 하나의 움직임에 계좌 전체가 휘둘려요.')}
+      ${buildMetricItem('📉 평소 하락장 하루 최대 손실 예상액', fmtKRWShort(Math.abs(m.var95KRW)), '일상적인 하락장에서 95% 확률로 겪을 수 있는 하루 손실액입니다.')}
+      ${buildMetricItem('💥 대폭락장(금융위기급) 손실 예상액', fmtKRWShort(Math.abs(m.cvarKRW)), '2020년 코로나 폭락 같은 극단적인 위기 상황이 실제로 벌어졌을 때 예상되는 평균 손실액입니다.')}
+      ${buildMetricItem('폭락장 방어 성적표', sortinoGrade + '등급', '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
+      ${buildMetricItem('🔗 운명 공동체(위험 중복)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : '데이터 부족', '종목이 달라도 주가가 같이 움직이는 정도입니다. 높을수록 "따로 담았지만 사실상 한 종목"과 비슷해 분산 효과가 떨어져요.')}
+    </div>
+    ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
+
     <!-- [역사적 위기 체험하기] 2020년 코로나 폭락 재현 시뮬레이션 -->
-    <div class="mt-2.5 rounded-lg bg-white/70 dark:bg-black/20 p-2.5">
-      <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 역사적 위기 체험하기 - 2020년 코로나 폭락장 재현 시</p>
-      <p class="text-sm sm:text-base font-bold text-blue-500">내 계좌 약 ${fmtKRWShort(Math.abs(m.stressLossKRW))}(${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
-      <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">* 보유 종목별 시장 민감도(널뛰기 위험)를 2020년 실제 지수 낙폭(코스피 -35.7%·S&P500 -33.9%)에 대입한 추정치이며, 실제 결과와 다를 수 있습니다.</p>
+    <div class="mt-3 rounded-lg bg-white/70 dark:bg-black/20 p-3">
+      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 역사적 위기 체험하기 - 2020년 코로나 폭락장 재현 시</p>
+      <p class="text-lg sm:text-xl font-bold text-blue-500">내 계좌 약 ${fmtKRWShort(Math.abs(m.stressLossKRW))}(${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
+      <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 보유 종목별 시장 민감도(널뛰기 위험)를 2020년 실제 지수 낙폭(코스피 -35.7%·S&P500 -33.9%)에 대입한 추정치이며, 실제 결과와 다를 수 있습니다.</p>
     </div>
-    <!-- [세부 지표 - 쉬운 한글 번역] 요청된 6개 전문 용어를 전부 쉬운 한글로만 표기한다. -->
-    <div class="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px] sm:text-xs">
-      <div><span class="text-slate-400">널뛰기 위험(시장 대비 변동성)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족'}</span></div>
-      <div><span class="text-slate-400">몰빵(집중) 위험도</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtNum(m.topWeight, 0)}% (${escapeHtml(m.topHolding ? m.topHolding.name : '-')})</span></div>
-      <div><span class="text-slate-400">평소 하락장 하루 최대 예상 손실액</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtKRWShort(Math.abs(m.var95KRW))}</span></div>
-      <div><span class="text-slate-400">대폭락장(금융위기급) 하루 최대 예상 손실액</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtKRWShort(Math.abs(m.cvarKRW))}</span></div>
-      <div><span class="text-slate-400">폭락장 방어 성적표</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(sortinoGrade)}등급</span></div>
-      <div><span class="text-slate-400">운명 공동체(같이 움직이는 종목)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(correlationLabel)}</span></div>
-    </div>
-    ${m.missingCount > 0 ? `<p class="text-[10px] text-slate-400 mt-2">* ${m.missingCount}개 종목은 가격 이력이 부족해(신규 상장 등) 이 진단에서 제외되었습니다.</p>` : ''}
+
+    <!-- [What-If 리밸런싱 시뮬레이션] -->
+    ${m.topHolding ? `
+    <div class="mt-3 rounded-lg bg-white/70 dark:bg-black/20 p-3" id="whatIfSimBox" data-top-ticker="${escapeHtml(m.topHolding.ticker)}">
+      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+        💡 위험관리 시뮬레이션(What-If)
+        <button type="button" data-info-tip="실제 매도 지시가 아니라, 비중을 조정하면 위험점수가 어떻게 바뀌는지 미리 계산해 보는 기능입니다." class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      </p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 mb-2">${escapeHtml(m.topHolding.name)} 비중을 조절하면?</p>
+      <div class="flex gap-1.5 mb-2.5">
+        ${['aggressive', 'balanced', 'conservative'].map((key) => {
+          const label = key === 'aggressive' ? '공격적' : key === 'balanced' ? '균형' : '보수적';
+          const targetPct = key === 'aggressive' ? Math.max(5, m.topWeight - 15) : key === 'balanced' ? Math.max(5, m.topWeight * 0.55) : Math.min(15, m.topWeight);
+          return `<button type="button" data-scenario-preset="${key}" data-target-pct="${targetPct.toFixed(1)}" class="flex-1 text-xs sm:text-sm font-semibold py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">${label} ${fmtNum(targetPct, 0)}%</button>`;
+        }).join('')}
+      </div>
+      <div id="whatIfResultBox"></div>
+    </div>` : ''}
+
+    ${m.missingCount > 0 ? `<p class="text-sm text-slate-400 mt-2.5">* ${m.missingCount}개 종목은 가격 이력이 부족해(신규 상장 등) 이 진단에서 제외되었습니다.</p>` : ''}
   </div>`;
+
+  lucide.createIcons();
+  // 진입 시 "균형" 시나리오를 기본으로 미리 계산해 보여준다(클릭 없이도 바로 가치를 확인할 수 있게).
+  if (m.topHolding) {
+    const balancedBtn = container.querySelector('[data-scenario-preset="balanced"]');
+    if (balancedBtn) balancedBtn.click();
+  }
 }
+
+// [What-If 프리셋 버튼 클릭] 실제 데이터 재조회 없이 computeScenarioRiskMetrics()로 즉시 재계산한다.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-scenario-preset]');
+  if (!btn) return;
+  const box = document.getElementById('whatIfSimBox');
+  const m = state.advancedRiskMetrics;
+  if (!box || !m || !m.topHolding) return;
+  const targetPct = parseFloat(btn.dataset.targetPct);
+  const scenario = computeScenarioRiskMetrics(m, { [box.dataset.topTicker]: targetPct / 100 });
+  const resultBox = document.getElementById('whatIfResultBox');
+  if (!resultBox) return;
+  const beforeLevel = riskLevelFromScore(m.riskScore);
+  const afterLevel = riskLevelFromScore(scenario.riskScore);
+  const delta = scenario.riskScore - m.riskScore;
+  resultBox.innerHTML = `
+    <p class="text-sm text-slate-700 dark:text-slate-200 mb-2">${escapeHtml(m.topHolding.name)} ${fmtNum(m.topWeight, 0)}% → ${fmtNum(targetPct, 0)}%로 조정 시</p>
+    <div class="flex items-center gap-2 mb-2 flex-wrap">
+      <span class="text-2xl font-extrabold ${beforeLevel.colorClass}">${m.riskScore}</span>
+      <span class="text-slate-400">→</span>
+      <span class="text-2xl font-extrabold ${afterLevel.colorClass}">${scenario.riskScore}</span>
+      <span class="text-sm font-semibold ${delta <= 0 ? 'text-emerald-500' : 'text-red-500'}">${delta <= 0 ? '▼' : '▲'}${Math.abs(Math.round(delta))}</span>
+      <span class="text-sm text-slate-500 dark:text-slate-400">${afterLevel.emoji} ${afterLevel.label}</span>
+    </div>
+    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
+      <div>변동성: ${fmtNum(m.portfolioVolatilityPct, 1)}% → ${fmtNum(scenario.portfolioVolatilityPct, 1)}%</div>
+      <div>최대낙폭: ${fmtNum(m.portfolioMDDPct, 1)}% → ${fmtNum(scenario.portfolioMDDPct, 1)}%</div>
+    </div>
+    <p class="text-xs text-slate-400 mt-2 leading-relaxed">* 실제 매매 지시가 아닌 추정 시뮬레이션이며, 과거 변동성·상관관계 구조가 유지된다고 가정합니다.</p>`;
+  document.querySelectorAll('[data-scenario-preset]').forEach((b) => {
+    b.classList.toggle('bg-brand-600', b === btn); b.classList.toggle('text-white', b === btn);
+    b.classList.toggle('border-brand-600', b === btn);
+  });
+});
 
 function renderRiskSection() {
   renderRiskDiagnosisSummary();
@@ -8505,23 +9053,23 @@ function renderRiskSection() {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
       const tagHtml = tags.map((t) =>
-        `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
+        `<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
       ).join(' ');
       // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의"/
       // "변동성 확대 주의" 중 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 우선순위대로 고른다.
       const actionTag = buildAssetActionTag(tags);
-      const actionTagHtml = actionTag ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
+      const actionTagHtml = actionTag ? `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
       return `
-      <div class="py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40" data-risk-row data-risk-key="${escapeHtml(key)}">
+      <div class="py-2.5 border-b last:border-b-0 border-red-100 dark:border-red-900/40" data-risk-row data-risk-key="${escapeHtml(key)}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-            <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}${actionTagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+            <p class="text-base font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-xs font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1.5">${tagHtml}${actionTagHtml}<span class="text-xs text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
           </div>
           <div class="text-right shrink-0 pl-2">
-            <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
-            <button type="button" data-risk-detail-toggle class="mt-1 inline-flex items-center gap-0.5 py-1 pl-2 -mr-2 text-[10px] font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
-              🔍 리스크 진단 보기 <i data-lucide="chevron-down" class="w-3 h-3 transition-transform duration-200" data-risk-detail-chevron></i>
+            <p class="text-base font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+            <button type="button" data-risk-detail-toggle class="mt-1.5 inline-flex items-center gap-0.5 py-1 pl-2 -mr-2 text-xs font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
+              🔍 리스크 진단 보기 <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" data-risk-detail-chevron></i>
             </button>
           </div>
         </div>
@@ -8532,21 +9080,21 @@ function renderRiskSection() {
     }).join('');
 
   safeContainer.innerHTML = safe.length === 0
-    ? '<p class="text-xs text-slate-400 py-1">아직 안정 상태로 분류된 종목이 없습니다.</p>'
+    ? '<p class="text-sm text-slate-400 py-1">아직 안정 상태로 분류된 종목이 없습니다.</p>'
     : safe.map(({ asset: a, row: r, owners, curAmount }) => {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
       return `
-      <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-emerald-100 dark:border-emerald-900/40">
+      <div class="flex items-start justify-between gap-2 py-2.5 border-b last:border-b-0 border-emerald-100 dark:border-emerald-900/40">
         <div class="min-w-0">
-          <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-          <div class="flex items-center gap-1.5 mt-1">
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 font-semibold">특이사항 없음</span>
-            <span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span>
+          <p class="text-base font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-xs font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+          <div class="flex items-center gap-1.5 mt-1.5">
+            <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 font-semibold">특이사항 없음</span>
+            <span class="text-xs text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span>
           </div>
         </div>
         <div class="text-right shrink-0 pl-2">
-          <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+          <p class="text-base font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
         </div>
       </div>`;
     }).join('');
@@ -8628,21 +9176,21 @@ const LS_RISK_ALERT_DISMISSED = 'sam_risk_alert_dismissed_v1';
 function maybeShowRiskAlertPopup() {
   const m = state.advancedRiskMetrics;
   if (!m) return;
-  const score = computeSafetyScore(m);
-  const level = safetyLevel(score);
-  if (level.level === 'safe') return; // 안전 단계면 팝업 없음
+  const level = riskLevelFromScore(m.riskScore);
+  if (level.level === 'safe') return; // 양호 단계면 팝업 없음
   const dismissedDate = localStorage.getItem(LS_RISK_ALERT_DISMISSED);
   const today = new Date().toISOString().slice(0, 10);
   if (dismissedDate === today) return; // 오늘 하루 안 보기를 이미 눌렀음
   openRiskAlertModal();
 }
 
-// 🚨 긴급 점검 종목 카드 - 집중도가 높은 종목(topWeight>=25%)과, RISK 관리 카드의 3조건 감지 종목을
-// 합쳐 최대 3개까지만 간추려 보여준다(팝업이 너무 길어지지 않도록).
+// 🚨 핵심 위험 TOP3 카드 - 집중도가 높은 종목(topWeight>=25%, 위험 기여도 함께 표기)과, RISK 관리
+// 카드의 감지 종목을 합쳐 최대 3개까지만 간추려 보여준다(팝업이 너무 길어지지 않도록).
 function buildRiskAlertStockCards(m) {
   const cards = [];
   if (m.topWeight >= 25 && m.topHolding) {
-    cards.push(`⚠️ [${escapeHtml(m.topHolding.name)}] 단일 종목 비중 ${fmtNum(m.topWeight, 0)}% (과도함)`);
+    const contrib = typeof m.topHolding.riskContributionPct === 'number' ? m.topHolding.riskContributionPct : null;
+    cards.push(`⚠️ [${escapeHtml(m.topHolding.name)}] 비중 ${fmtNum(m.topWeight, 0)}%${contrib !== null ? ` · 위험기여도 ${fmtNum(contrib, 0)}%` : ''} (과도함)`);
   }
   const { risky } = computeRiskClassifiedAssets();
   risky.slice(0, 3).forEach((r) => {
@@ -8656,24 +9204,24 @@ function buildRiskAlertStockCards(m) {
 function openRiskAlertModal() {
   const m = state.advancedRiskMetrics;
   if (!m) return;
-  const score = computeSafetyScore(m);
-  const level = safetyLevel(score);
+  const score = m.riskScore;
+  const level = riskLevelFromScore(score);
 
   document.getElementById('riskAlertScoreBox').innerHTML = `
     <div class="rounded-xl border p-3 ${level.bgClass}">
-      <p class="text-sm font-bold ${level.colorClass}">${level.emoji} 내 계좌 안전 점수: ${score}점 [${level.label}]</p>
-      <p class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
+      <p class="text-base font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
     </div>`;
 
   const stockCards = buildRiskAlertStockCards(m);
   document.getElementById('riskAlertStockCards').innerHTML = stockCards.length
-    ? stockCards.map((c) => `<p class="text-xs sm:text-sm font-semibold text-red-600 dark:text-red-400 leading-relaxed">${c}</p>`).join('')
+    ? stockCards.map((c) => `<p class="text-sm font-semibold text-red-600 dark:text-red-400 leading-relaxed">${c}</p>`).join('')
     : '';
 
   const actionItems = buildRiskActionItems(m);
   document.getElementById('riskAlertActionItems').innerHTML = `
-    <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
-    ${actionItems.map((item, i) => `<p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${item}</p>`).join('')}`;
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
+    ${actionItems.map((item, i) => `<p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${item}</p>`).join('')}`;
 
   document.getElementById('riskAlertModal').classList.remove('hidden');
   pushModalHistoryState();
