@@ -427,9 +427,15 @@
   </section>
 
   <!-- ============================= RISK 관리 =============================
-       조건1(지수대비 10%p 이상 과락)/조건2(매수가 대비 -20% 이하)/조건3(20일선 이탈) 중 하나라도
-       해당하면 [리스크 감지], 셋 다 해당 없으면 [안정적인 종목]으로 분류한다 - computeRiskClassifiedAssets()/
-       renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상.
+       [개별 종목 정밀 주가 분석 엔진] RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락
+       (-30% 이하)/거래량 급증(20일 평균 거래량의 2배 이상) 중 하나라도 해당하면 [리스크 감지], 넷 다
+       해당 없으면 [안정적인 종목]으로 분류한다(구 지수대비 과락/매수가대비 -20%/20일선 이탈 3조건은
+       이 엔진으로 완전히 대체됨) - computeRiskClassifiedAssets()/buildIndividualRiskTags()/
+      renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상이며, state.advancedRiskMetrics.holdings
+       (포트폴리오 위험 진단과 동일한 단일 데이터)를 그대로 재사용해 중복 계산이 없다.
+       [🔍 리스크 진단 보기] 리스크 감지 종목마다 우측 하단에 토글 버튼이 있어, 누르면 해당 종목의
+       개별 정밀 리스크 카드(주가 상태 진단문 + 베타/Sortino/비중/52주 낙폭 + 행동 지침)가 그 종목 행
+       바로 아래로 펼쳐진다 - openStockDetailIds Set으로 펼침 상태를 기억한다.
        [아코디언 UI] 두 그룹을 클릭해서 펼치는 접이식 헤더로 나눈다 - 기본값은 둘 다 접힘이고, 헤더를
        탭해야 펼쳐진다(riskyAccordionOpen/safeAccordionOpen, renderRiskSection 하단 참고). -->
   <section id="riskManagementSection" class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
@@ -437,13 +443,13 @@
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
         <h3 class="text-sm font-semibold text-red-600 dark:text-red-400">RISK 관리</h3>
-        <button type="button" title="조건1: 지수 대비 10%p 이상 과락 · 조건2: 매수가 대비 -20% 이하 · 조건3: 20일 이동평균선(20MA) 이탈 - 셋 중 하나라도 해당하면 감지됩니다."
+        <button type="button" title="RSI(과열/과매도) · 이동평균선(추세 이탈) · 52주 고점 대비 낙폭 · 거래량 급증 - 종목별 정밀 주가 분석 중 하나라도 해당하면 감지됩니다."
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>
       </div>
     </div>
-    <p class="text-[10px] text-slate-400 mb-3">기준: 지수대비 -10%p 이상 · 매수가대비 -20% 이하 · 20일선 이탈 (하나라도 해당 시 감지)</p>
+    <p class="text-[10px] text-slate-400 mb-3">💡 개별 종목의 기술적 추세, 과열도(RSI), 변동성 및 계좌 위험도를 종합 진단합니다.</p>
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
@@ -2065,16 +2071,11 @@ const state = {
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
-  // [RISK 관리] 시장 지수/선물 실시간 등락률(%) - KOSPI/KOSDAQ/NASDAQ/SP500. 시세 갱신마다 함께
-  // 갱신되는 휘발성 데이터라 localStorage에는 저장하지 않는다.
-  indexChangeMap: {},
-  // [RISK 관리] 종목별 20일 이동평균선(20 MA) 캐시 - { assetId: { value, date: 'YYYY-MM-DD' } }.
-  // 일봉 데이터라 하루 한 번만 갱신하면 충분해서(모바일 트래픽 절약), date가 오늘과 다를 때만
-  // 다시 조회한다. 휘발성 데이터라 localStorage에는 저장하지 않는다.
-  ma20Map: {},
-  // [초보자용 리스크 진단] 종목/지수별 최근 6개월 일별 종가 캐시 - { yahooTicker: { date, closes[] } }.
-  // ma20Map과 동일하게 하루 한 번만 갱신하면 충분해 날짜가 오늘과 다를 때만 다시 조회한다. 휘발성
-  // 데이터라 localStorage에는 저장하지 않는다.
+  // [초보자용 리스크 진단] 종목/지수별 최근 1년 일별 종가+거래량 캐시 - { yahooTicker: { date,
+  // data: { closes[], volumes[] } } }. 하루 한 번만 갱신하면 충분해 날짜가 오늘과 다를 때만 다시
+  // 조회한다. 휘발성 데이터라 localStorage에는 저장하지 않는다. [구 지수대비 과락/20일선 이탈 감지용
+  // indexChangeMap/ma20Map은 이 캐시 하나로 완전히 대체되어 제거됨 - computeAdvancedRiskMetrics()의
+  // holdings[].closes/volumes에서 RSI14/이동평균/52주 고점/거래량 급증까지 전부 계산한다.]
   riskHistoryCache: {},
   // [초보자용 리스크 진단] computeAdvancedRiskMetrics()가 계산한 포트폴리오 단위 결과(베타/VaR/CVaR/
   // Sortino/집중도/상관관계/위기 시뮬레이션 손실액 등) - refreshPricesAndRates() 안에서 시세 갱신과
@@ -7932,8 +7933,9 @@ async function fetchPriceWithFallback(rawTicker, name) {
 }
 
 /* -------------------------------------------------------------------------
- * 18-1. [RISK 관리] 감지 로직
- *    - 조건1(지수 대비 과락)/조건2(매수가 대비 -20%)/조건3(20일선 이탈) 중 하나라도 해당하면 RISK.
+ * 18-1. [RISK 관리] 개별 종목 정밀 주가 분석 감지 로직
+ *    - RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락(-30% 이하)/거래량 급증(20일
+ *      평균의 2배 이상) 중 하나라도 해당하면 RISK - buildIndividualRiskTags() 참고.
  *    - 대상은 일반계좌 보유 주식/ETF만(REBALANCE_ACCOUNT_TYPE과 동일 범위 - 사용자 확인됨).
  * ---------------------------------------------------------------------- */
 // 지수 심볼은 raceFetchPrice()를 그대로 재사용한다(개별 종목과 동일한 Yahoo chart 엔드포인트라
@@ -7944,15 +7946,6 @@ async function fetchPriceWithFallback(rawTicker, name) {
 // 직전 정규장 등락률을 그대로 반환한다(사용자 확인된 처리 방식과 일치, 별도 분기 코드 불필요).
 const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500: '^GSPC' };
 const RISK_ELIGIBLE_CATEGORIES = ['주식', 'ETF'];
-
-async function refreshIndexBenchmarks() {
-  const entries = Object.entries(INDEX_TICKERS);
-  const results = await Promise.allSettled(entries.map(([, sym]) => raceFetchPrice(sym)));
-  results.forEach((r, i) => {
-    const [key] = entries[i];
-    if (r.status === 'fulfilled') state.indexChangeMap[key] = r.value.changePercent;
-  });
-}
 
 // 자산의 벤치마크 지수를 정한다: 국내는 티커 접미사(.KS→코스피, .KQ→코스닥)로 명확히 구분된다.
 // 미국은 종목마다 실제 추종/소속 지수가 제각각이라(QQQM=나스닥100, SCHD/SPYM=배당·S&P 성격) 정확한
@@ -7965,70 +7958,42 @@ function getBenchmarkKeyForAsset(a) {
   return 'SP500';
 }
 
-// 최근 20거래일 일봉 종가 평균(20일 이동평균선). range=1mo&interval=1d로 받으면 딱 20개 안팎의
-// 거래일 종가만 내려와 별도 필터링 없이 그대로 평균낼 수 있다(오늘 장중 진행분도 마지막 값으로
-// 포함되지만, 지표 성격상 근사치로 충분하다).
-async function fetchMa20(yahooTicker) {
-  const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=1mo';
-  const attempts = CORS_PROXIES.map((proxy) => async () => {
-    const res = await fetchWithTimeout(proxy.build(target));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
-    const result = data && data.chart && data.chart.result && data.chart.result[0];
-    const closes = ((result && result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [])
-      .filter((c) => typeof c === 'number');
-    if (closes.length === 0) throw new Error('종가 데이터 없음');
-    const last20 = closes.slice(-20);
-    return last20.reduce((a, b) => a + b, 0) / last20.length;
-  });
-  try {
-    return await Promise.any(attempts.map((fn) => fn()));
-  } catch (aggregateErr) {
-    throw new Error('20일선 조회 실패');
-  }
-}
-
-// RISK 대상 종목의 20일선을 갱신한다 - 일봉 데이터라 하루에 한 번만 새로 받으면 충분하므로, 오늘
-// 이미 캐시된 종목은 건너뛰어 5분 자동갱신마다 불필요한 트래픽이 반복되는 것을 막는다.
-async function refreshMa20ForTargets(targets) {
-  const today = new Date().toISOString().slice(0, 10);
-  const needsFetch = targets.filter((a) => {
-    const cached = state.ma20Map[a.id];
-    return !cached || cached.date !== today;
-  });
-  if (needsFetch.length === 0) return;
-  const results = await Promise.allSettled(needsFetch.map((a) => fetchMa20(sanitizeTicker(a.ticker).yahooTicker)));
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') state.ma20Map[needsFetch[i].id] = { value: r.value, date: today };
-  });
-}
-
 function riskEligibleAssets() {
   return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
 }
 
 /* -------------------------------------------------------------------------
- * 18-2. [초보자용 리스크 진단] Beta/VaR/CVaR/Sortino/상관관계/집중도 계산 엔진
- *    - 화면에는 쉬운 한글 용어로만 보이지만, 내부 계산은 실제 금융공학 지표를 그대로 쓴다: 최근 6개월
- *      일별 종가로 일간 수익률을 구하고, 그 수익률 시계열로 베타(시장 민감도)/VaR·CVaR(하락 시
- *      예상손실)/Sortino(하방위험 대비 성과)/상관관계를 계산한다. fetchMa20과 동일한 Yahoo Finance
- *      chart 엔드포인트를 재사용하므로 새 API 연동은 없다.
+ * 18-2. [초보자용 리스크 진단 + 개별 종목 정밀 주가 분석] Beta/VaR/CVaR/Sortino/상관관계/집중도 +
+ *    RSI14/이동평균/52주 고점/거래량 계산 엔진
+ *    - 화면에는 쉬운 한글 용어로만 보이지만, 내부 계산은 실제 금융공학 지표를 그대로 쓴다: 최근 1년
+ *      일별 종가+거래량으로 일간 수익률을 구하고, 그 수익률 시계열로 베타(시장 민감도)/VaR·CVaR(하락 시
+ *      예상손실)/Sortino(하방위험 대비 성과)/상관관계를 계산한다. 같은 1년 데이터에서 종목별 RSI14/
+ *      20·60일 이동평균/52주 고점 대비 낙폭/거래량 급증까지 함께 뽑아 개별 종목 정밀 분석과 포트폴리오
+ *      진단이 하나의 데이터(holdings)를 공유한다(중복 계산 없음).
  *    - 가격 이력이 없는 자산(부동산, 상장 직후라 데이터가 부족한 신규 종목, API 실패 등)은 자동으로
  *      "데이터 부족" 취급되어 계산에서 안전하게 제외되고(0으로 기여), 화면엔 몇 종목이 제외됐는지만
  *      안내한다 - 에러를 던지거나 전체 계산을 막지 않는다.
  * ---------------------------------------------------------------------- */
-// 최근 N개월 일별 종가 - fetchMa20()과 동일한 다중 프록시 경쟁 패턴이며, range만 다르다(기본 6개월).
-async function fetchDailyCloses(yahooTicker, range = '6mo') {
+// 최근 N개월 일별 종가+거래량 - fetchMa20()과 동일한 다중 프록시 경쟁 패턴이며, range만 다르다(기본
+// 1년 - 52주 최고가/거래량 이동평균까지 한 번의 조회로 함께 커버하기 위해 6개월에서 1년으로 늘렸다).
+async function fetchDailyCloses(yahooTicker, range = '1y') {
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
   const attempts = CORS_PROXIES.map((proxy) => async () => {
     const res = await fetchWithTimeout(proxy.build(target));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
     const result = data && data.chart && data.chart.result && data.chart.result[0];
-    const closes = ((result && result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [])
-      .filter((c) => typeof c === 'number');
+    const quote = (result && result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+    const rawCloses = quote.close || [];
+    const rawVolumes = quote.volume || [];
+    const closes = [], volumes = [];
+    rawCloses.forEach((c, i) => {
+      if (typeof c !== 'number') return; // 종가 없는 날(휴장 등)은 거래량도 함께 건너뛰어 인덱스를 맞춘다
+      closes.push(c);
+      volumes.push(typeof rawVolumes[i] === 'number' ? rawVolumes[i] : 0);
+    });
     if (closes.length < 10) throw new Error('종가 데이터 부족');
-    return closes;
+    return { closes, volumes };
   });
   try {
     return await Promise.any(attempts.map((fn) => fn()));
@@ -8038,14 +8003,14 @@ async function fetchDailyCloses(yahooTicker, range = '6mo') {
 }
 
 // ma20Map과 동일한 하루-한-번 캐시 정책 - 같은 티커를 여러 종목(같은 종목을 신랑/와이프가 나눠 보유)이
-// 공유해도 실제 네트워크 조회는 한 번만 일어난다.
+// 공유해도 실제 네트워크 조회는 한 번만 일어난다. { closes, volumes } 객체를 그대로 캐시/반환한다.
 async function getCachedDailyCloses(yahooTicker) {
   const today = new Date().toISOString().slice(0, 10);
   const cached = state.riskHistoryCache[yahooTicker];
-  if (cached && cached.date === today) return cached.closes;
-  const closes = await fetchDailyCloses(yahooTicker);
-  if (closes) state.riskHistoryCache[yahooTicker] = { date: today, closes };
-  return closes;
+  if (cached && cached.date === today) return cached.data;
+  const data = await fetchDailyCloses(yahooTicker);
+  if (data) state.riskHistoryCache[yahooTicker] = { date: today, data };
+  return data;
 }
 
 function dailyReturnsFromCloses(closes) {
@@ -8078,6 +8043,46 @@ function computeCorrelationFromReturns(x0, y0) {
   if (vx === 0 || vy === 0) return null;
   return cov / Math.sqrt(vx * vy);
 }
+// Sortino = 연율화 평균수익률 / 연율화 하방편차(음수 수익률만의 표준편차 성격) - 포트폴리오 전체와
+// 개별 종목 양쪽에서 재사용한다(코드 중복 제거).
+function computeSortinoFromReturns(returns) {
+  if (!returns || returns.length < 10) return null;
+  const downside = returns.filter((r) => r < 0);
+  const downsideDevDaily = downside.length ? Math.sqrt(downside.reduce((s, r) => s + r * r, 0) / downside.length) : 0;
+  const annualizedReturn = statMean(returns) * 252;
+  const annualizedDownsideDev = downsideDevDaily * Math.sqrt(252);
+  return annualizedDownsideDev !== 0 ? annualizedReturn / annualizedDownsideDev : null;
+}
+// 단순 이동평균(SMA) - 종가/거래량 공통으로 쓴다(마지막 period개 평균).
+function computeSMA(arr, period) {
+  if (!arr || arr.length < period) return null;
+  const slice = arr.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+// RSI(14) - Wilder 전체 평활 대신 최근 14개 등락폭의 단순평균을 쓰는 근사식이다(초보자용 참고 지표라
+// 실전 트레이딩 툴 수준의 정밀도까지는 필요 없다는 판단). avgLoss가 0이면(14일 내내 상승만) 100에
+// 수렴시킨다.
+function computeRSI14(closes) {
+  if (!closes || closes.length < 15) return null;
+  const period = 14;
+  const recent = closes.slice(-(period + 1));
+  let gains = 0, losses = 0;
+  for (let i = 1; i < recent.length; i++) {
+    const diff = recent[i] - recent[i - 1];
+    if (diff > 0) gains += diff; else losses += -diff;
+  }
+  const avgGain = gains / period, avgLoss = losses / period;
+  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+// RSI14 값을 초보자용 상태 라벨로 변환 - 70 이상 과열(과매수), 30 이하 바닥권(과매도), 그 사이는 적정.
+function rsiStateLabel(rsi14) {
+  if (typeof rsi14 !== 'number') return null;
+  if (rsi14 >= 70) return '과열';
+  if (rsi14 <= 30) return '과매도';
+  return '적정';
+}
 
 // [2020 코로나 폭락 재현] 2020-02-19~2020-03-23 실제 벤치마크 지수 낙폭(%, 공개된 역사적 수치) - 종목별
 // 실제 2020년 당시 가격을 개별 재조회하는 대신(당시 미상장 종목이 많아 무의미), 지금 계산한 베타를 이
@@ -8094,12 +8099,13 @@ async function computeAdvancedRiskMetrics() {
     const totalCur = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
     if (totalCur === 0) return null;
 
-    // 종목(티커) 단위로 소유자/계좌 합산 - RISK 관리 카드의 병합 기준과 동일하다.
+    // 종목(티커) 단위로 소유자/계좌 합산 - RISK 관리 카드의 병합 기준과 동일하다. currentPrice는 같은
+    // 티커면 소유자가 달라도 동일한 시세이므로 처음 만난 값을 그대로 쓴다.
     const byTicker = new Map();
     assets.forEach((a) => {
       const yahoo = sanitizeTicker(a.ticker).yahooTicker;
       const r = calcRow(a);
-      if (!byTicker.has(yahoo)) byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: getBenchmarkKeyForAsset(a) });
+      if (!byTicker.has(yahoo)) byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: getBenchmarkKeyForAsset(a), currentPrice: a.currentPrice });
       byTicker.get(yahoo).curAmount += r.curAmount;
     });
     const holdings = [...byTicker.values()].map((h) => ({ ...h, weight: h.curAmount / totalCur }));
@@ -8107,16 +8113,47 @@ async function computeAdvancedRiskMetrics() {
     // 필요한 벤치마크 지수만 모아서 한 번씩만 조회한다.
     const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey))];
     const benchmarkCloses = {};
-    await Promise.all(neededBenchmarks.map(async (key) => { benchmarkCloses[key] = await getCachedDailyCloses(INDEX_TICKERS[key]); }));
+    await Promise.all(neededBenchmarks.map(async (key) => {
+      const data = await getCachedDailyCloses(INDEX_TICKERS[key]);
+      benchmarkCloses[key] = data ? data.closes : null;
+    }));
     const benchmarkReturns = {};
     neededBenchmarks.forEach((key) => { benchmarkReturns[key] = benchmarkCloses[key] ? dailyReturnsFromCloses(benchmarkCloses[key]) : null; });
 
+    // [개별 종목 정밀 주가 분석 엔진] 포트폴리오 계산과 완전히 같은 1년 일별 종가/거래량 데이터에서
+    // RSI14/이동평균/52주 고점 대비 낙폭/거래량 급증/개별 Sortino까지 한 번에 뽑아 각 holding에
+    // 붙여둔다 - RISK 관리 카드(computeRiskClassifiedAssets)와 리스크 진단 보기 상세 카드가 재계산
+    // 없이 이 값을 그대로 재사용한다(중복 계산 제거).
     await Promise.all(holdings.map(async (h) => {
-      h.closes = await getCachedDailyCloses(h.ticker);
+      const data = await getCachedDailyCloses(h.ticker);
+      h.closes = data ? data.closes : null;
+      h.volumes = data ? data.volumes : null;
       h.returns = h.closes ? dailyReturnsFromCloses(h.closes) : null;
       const bmReturns = benchmarkReturns[h.benchmarkKey];
       h.beta = (h.returns && bmReturns) ? computeBetaFromReturns(h.returns, bmReturns) : null;
       h.hasData = !!h.returns;
+      h.sortino = h.returns ? computeSortinoFromReturns(h.returns) : null;
+
+      if (h.closes) {
+        h.rsi14 = computeRSI14(h.closes);
+        h.rsiState = rsiStateLabel(h.rsi14);
+        h.ma20 = computeSMA(h.closes, 20);
+        h.ma60 = computeSMA(h.closes, 60);
+        const latestPrice = typeof h.currentPrice === 'number' ? h.currentPrice : h.closes[h.closes.length - 1];
+        h.week52High = Math.max(...h.closes, latestPrice || 0);
+        h.week52DrawdownPct = h.week52High > 0 ? ((latestPrice - h.week52High) / h.week52High) * 100 : null;
+        h.trendBroken = typeof h.ma20 === 'number' && typeof latestPrice === 'number' ? latestPrice < h.ma20 : false;
+      } else {
+        h.rsi14 = null; h.rsiState = null; h.ma20 = null; h.ma60 = null;
+        h.week52High = null; h.week52DrawdownPct = null; h.trendBroken = false;
+      }
+      if (h.volumes) {
+        h.volMA20 = computeSMA(h.volumes, 20);
+        h.lastVolume = h.volumes[h.volumes.length - 1];
+        h.volumeSpike = !!(h.volMA20 && typeof h.lastVolume === 'number' && h.lastVolume >= h.volMA20 * 2);
+      } else {
+        h.volMA20 = null; h.lastVolume = null; h.volumeSpike = false;
+      }
     }));
 
     const withData = holdings.filter((h) => h.hasData);
@@ -8145,13 +8182,9 @@ async function computeAdvancedRiskMetrics() {
     const tailReturns = sorted.slice(0, varIdx + 1);
     const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
 
-    // Sortino: 연율화한 평균수익률을 연율화한 하방편차(음수 수익률만의 표준편차 성격)로 나눈다.
-    const downside = portfolioReturns.filter((r) => r < 0);
-    const downsideDevDaily = downside.length ? Math.sqrt(downside.reduce((s, r) => s + r * r, 0) / downside.length) : 0;
-    const avgReturnDaily = statMean(portfolioReturns);
-    const annualizedReturn = avgReturnDaily * 252;
-    const annualizedDownsideDev = downsideDevDaily * Math.sqrt(252);
-    const sortino = annualizedDownsideDev !== 0 ? annualizedReturn / annualizedDownsideDev : null;
+    // Sortino: 연율화한 평균수익률을 연율화한 하방편차(음수 수익률만의 표준편차 성격)로 나눈다(개별
+    // 종목과 동일한 computeSortinoFromReturns()를 재사용 - 코드 중복 제거).
+    const sortino = computeSortinoFromReturns(portfolioReturns);
 
     // 집중도(몰빵위험도): 최대 비중 1종목, 상위 3종목 합산 비중.
     const sortedByWeight = [...holdings].sort((a, b) => b.weight - a.weight);
@@ -8266,64 +8299,120 @@ function buildRiskActionItems(m) {
 }
 
 // [개별 종목 행동 지침 태그] RISK 관리 카드의 감지 종목 행에 붙일 짧은 한글 태그 - 어떤 조건에
-// 걸렸는지에 따라 다르게 보여준다(지수대비 과락/매수가대비 -20%/20일선 이탈 각각에 대응).
+// 걸렸는지에 따라 다르게 보여준다(RSI 과열/추세 이탈/52주 고점대비 급락/거래량 급증 각각에 대응,
+// 우선순위 하나만 골라 보여준다 - 자세한 근거는 [🔍 리스크 진단 보기] 상세 카드에서 전부 보여준다).
 function buildAssetActionTag(tags) {
-  if (tags.includes('매수가대비 -20%')) return '비중 축소 검토';
-  if (tags.includes('지수대비 과락')) return '방어자산 확보 필요';
-  if (tags.includes('20일선 이탈')) return '단기 추세 주의';
+  if (tags.includes('RSI 과열')) return '비중 축소 검토';
+  if (tags.includes('52주 고점대비 급락')) return '방어자산 확보 필요';
+  if (tags.includes('추세 이탈')) return '단기 추세 주의';
+  if (tags.includes('거래량 급증')) return '변동성 확대 주의';
   return null;
 }
 
-// 3가지 조건을 각각 독립적으로 평가해 해당하는 태그를 전부 모은다(OR 조건 - 하나 이상이면 RISK, 하나도
-// 없으면 안정). 같은 종목을 신랑/와이프가 나눠 보유한 경우 조건2(매수가대비)는 소유자마다 평균단가가
-// 달라 결과가 갈릴 수 있지만, 화면에는 종목당 한 줄만 보여달라는 요청에 따라 소유자별 판정을 합쳐
-// (태그는 합집합, 소유자는 목록) 티커(없으면 이름) 기준으로 병합한다 - "일반계좌 리밸런싱 실행 가이드"의
-// 병합 방식과 동일. [리스크 감지/안정 종목 이원화] 병합을 먼저 끝낸 뒤 태그 유무로 risky/safe를
-// 나눠야 한다 - 소유자별로 먼저 나누면 같은 종목이 신랑 쪽은 risky, 와이프 쪽은 safe로 쪼개져 "종목당
-// 한 줄" 원칙이 깨진다(예: 매수가가 서로 달라 한쪽만 -20% 이하에 걸리는 경우).
+// [개별 종목 정밀 주가 분석 엔진의 판정 결과 → 태그] computeAdvancedRiskMetrics()가 이미 계산해 둔
+// holding(h) 하나를 받아 RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락(-30% 이하)/
+// 거래량 급증(20일 평균 거래량의 2배 이상) 중 해당하는 태그를 전부 모은다(OR 조건). 가격 이력이 없는
+// 종목(h가 없거나 hasData=false, 신규상장·API 실패 등)은 안전하게 태그 없음(안정 목록)으로 처리한다.
+function buildIndividualRiskTags(h) {
+  if (!h || !h.hasData) return [];
+  const tags = [];
+  if (h.rsiState === '과열') tags.push('RSI 과열');
+  if (h.trendBroken) tags.push('추세 이탈');
+  if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) tags.push('52주 고점대비 급락');
+  if (h.volumeSpike) tags.push('거래량 급증');
+  return tags;
+}
+
+// [구 3조건(지수대비 과락/매수가대비 -20%/20일선 이탈) → 신규 개별 종목 정밀 주가 분석 엔진으로 완전
+// 대체] 이제 별도로 시세/지수를 다시 조회하지 않고, computeAdvancedRiskMetrics()가 이미 계산해 둔
+// state.advancedRiskMetrics.holdings(포트폴리오 위험 진단과 완전히 같은 단일 데이터)에서 티커로 찾아
+// 태그만 판정한다 - 중복 계산이 전혀 없다. 아직 계산 전(state.advancedRiskMetrics===null)이면 모든
+// 종목이 태그 없음(안정)으로 잠시 보였다가, 계산이 끝나면 다음 렌더링에서 정상 분류된다.
+// 신랑/와이프가 같은 종목을 나눠 보유해도 태그는 시세 데이터 기준(종목당 공통)이라 소유자별로 갈릴
+// 일이 없다 - owners는 표시용으로만 병합한다(티커, 없으면 이름 기준 - 다른 병합 로직과 동일).
 function computeRiskClassifiedAssets() {
-  const perAsset = [];
+  const holdingsByTicker = new Map(((state.advancedRiskMetrics && state.advancedRiskMetrics.holdings) || []).map((h) => [h.ticker, h]));
+
+  const byKey = new Map();
   riskEligibleAssets().forEach((a) => {
-    const tags = [];
-    const assetChange = state.dayChangeMap[a.id];
-    const benchmarkChange = state.indexChangeMap[getBenchmarkKeyForAsset(a)];
-    if (typeof assetChange === 'number' && typeof benchmarkChange === 'number' && (assetChange - benchmarkChange) <= -10) {
-      tags.push('지수대비 과락');
-    }
-
-    const buyPrice = num(a.buyPrice);
-    if (buyPrice > 0 && typeof a.currentPrice === 'number') {
-      const vsBuyPct = (a.currentPrice - buyPrice) / buyPrice * 100;
-      if (vsBuyPct <= -20) tags.push('매수가대비 -20%');
-    }
-
-    const ma20 = state.ma20Map[a.id] && state.ma20Map[a.id].value;
-    if (typeof ma20 === 'number' && typeof a.currentPrice === 'number' && a.currentPrice < ma20) {
-      tags.push('20일선 이탈');
-    }
-
-    perAsset.push({ asset: a, row: { ...a, ...calcRow(a) }, tags });
-  });
-
-  const byKey = new Map(); // 티커(없으면 이름) -> { asset, row, tags: Set, owners: Set, curAmount, buyAmount(소유자 합산) }
-  perAsset.forEach(({ asset: a, row, tags }) => {
+    const yahoo = sanitizeTicker(a.ticker).yahooTicker;
     const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
-    if (!byKey.has(key)) byKey.set(key, { asset: a, row, tags: new Set(), owners: new Set(), curAmount: 0, buyAmount: 0 });
+    const row = { ...a, ...calcRow(a) };
+    if (!byKey.has(key)) byKey.set(key, { key, asset: a, row, owners: new Set(), curAmount: 0, buyAmount: 0, holding: holdingsByTicker.get(yahoo) || null });
     const bucket = byKey.get(key);
-    tags.forEach((t) => bucket.tags.add(t));
     bucket.owners.add(a.owner);
     bucket.curAmount += row.curAmount; // 신랑/와이프가 나눠 보유해도 정렬 기준(평가금액)은 합산 기준으로 잡는다
     bucket.buyAmount += row.buyAmount;
   });
 
   const merged = [...byKey.values()].map((b) => ({
-    asset: b.asset, row: b.row, tags: [...b.tags],
+    key: b.key, asset: b.asset, row: b.row, holding: b.holding, tags: buildIndividualRiskTags(b.holding),
     owners: [...b.owners].sort((x, y) => ownerRank(x) - ownerRank(y)),
     curAmount: b.curAmount, buyAmount: b.buyAmount,
     rateOfReturn: b.buyAmount !== 0 ? (b.curAmount - b.buyAmount) / b.buyAmount * 100 : 0
   }));
 
-  return { risky: merged.filter((m) => m.tags.length > 0), safe: merged.filter((m) => m.tags.length === 0) };
+  return { risky: merged.filter((x) => x.tags.length > 0), safe: merged.filter((x) => x.tags.length === 0) };
+}
+
+// [🔍 리스크 진단 보기] 개별 종목 정밀 리스크 카드 - 주가 상태 진단문 + 널뛰기위험(베타)/방어력
+// (Sortino)/계좌 내 비중/52주 고점 대비 낙폭 + 초직관적 행동 지침을 전부 holding(h) 하나에서 뽑는다.
+function buildIndividualDiagnosisLine(h) {
+  if (!h || !h.hasData) return '가격 이력 데이터가 부족해(신규 상장 등) 정밀 진단을 계산할 수 없습니다.';
+  const trendPhrase = h.trendBroken ? '20일선 아래로 단기 하락 전환 상태입니다.' : '20일선 위 상승 추세를 유지 중입니다.';
+  const rsiPhrase = h.rsiState === '과열'
+    ? `RSI ${fmtNum(h.rsi14, 0)}로 단기 과열(과매수) 구간입니다.`
+    : h.rsiState === '과매도'
+      ? `RSI ${fmtNum(h.rsi14, 0)}로 바닥권(과매도) 구간입니다.`
+      : `RSI ${typeof h.rsi14 === 'number' ? fmtNum(h.rsi14, 0) : '-'}로 과열·과매도 없이 적정 구간입니다.`;
+  return `${trendPhrase} ${rsiPhrase}`;
+}
+
+function buildIndividualActionItem(h, weightPct) {
+  if (!h || !h.hasData) return '가격 이력 데이터가 부족해 행동 지침을 계산할 수 없습니다. 최근 상장/거래정지 종목일 수 있습니다.';
+  const overweight = weightPct >= 25;
+  if (overweight && h.rsiState === '과열') {
+    return `현재 단기 과열 및 비중 과다(${fmtNum(weightPct, 1)}%) 상태입니다. 추가 매수보다는 일부 이익을 실현하여 목표 비중(15% 이하)으로 줄이고 방어 자산을 확보하세요.`;
+  }
+  if (overweight) {
+    return `계좌 내 비중이 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 목표 비중(15% 이하)까지 서서히 줄여 위험을 분산하세요.`;
+  }
+  if (h.rsiState === '과열') {
+    return `단기 과열(RSI ${fmtNum(h.rsi14, 0)}) 구간입니다. 추가 매수는 조정 이후로 미루고, 일부 이익 실현을 고려하세요.`;
+  }
+  if (h.trendBroken) {
+    return '20일선 아래로 단기 추세가 꺾였습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
+  }
+  if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) {
+    return `52주 고점 대비 ${fmtNum(Math.abs(h.week52DrawdownPct), 0)}% 하락한 상태입니다. 추가 하락 여력을 감안해 무리한 추가 매수는 피하세요.`;
+  }
+  if (h.volumeSpike) {
+    return '거래량이 평소보다 크게 늘었습니다. 단기 변동성이 커질 수 있으니 주가 움직임을 주의 깊게 지켜보세요.';
+  }
+  return '현재 특별한 위험 신호가 없습니다.';
+}
+
+function buildIndividualRiskDetailHtml(h, weightPct) {
+  const betaText = h && typeof h.beta === 'number' ? fmtNum(h.beta, 2) + '배' : '데이터 부족';
+  const sortinoText = h ? (sortinoToGrade(h.sortino) || '-') + '등급' : '-등급';
+  const drawdownText = h && typeof h.week52DrawdownPct === 'number' ? fmtNum(h.week52DrawdownPct, 1) + '%' : '데이터 부족';
+  return `
+  <div class="mt-2 mb-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-2.5 space-y-2">
+    <div>
+      <p class="text-[10px] font-semibold text-slate-400 mb-0.5">📊 주가 및 리스크 정밀 진단</p>
+      <p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${buildIndividualDiagnosisLine(h)}</p>
+    </div>
+    <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+      <div><span class="text-slate-400">널뛰기 위험(베타)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${betaText}</span></div>
+      <div><span class="text-slate-400">하방 방어력(Sortino)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${sortinoText}</span></div>
+      <div><span class="text-slate-400">계좌 내 비중</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtNum(weightPct, 1)}%</span></div>
+      <div><span class="text-slate-400">52주 고점 대비</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${drawdownText}</span></div>
+    </div>
+    <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2">
+      <p class="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-0.5">💡 초직관적 권장 행동 지침</p>
+      <p class="text-[11px] sm:text-xs text-slate-700 dark:text-slate-200 leading-relaxed">${buildIndividualActionItem(h, weightPct)}</p>
+    </div>
+  </div>`;
 }
 
 // [RISK 관리 아코디언] 리스크 감지/안정 종목 두 섹션의 펼침 상태를 렌더링 사이에도 기억한다 - 5분
@@ -8331,6 +8420,9 @@ function computeRiskClassifiedAssets() {
 // 기본값: 두 섹션 모두 접힘(요청된 기본 상태) - 헤더를 탭해야만 펼쳐진다.
 let riskyAccordionOpen = false;
 let safeAccordionOpen = false;
+// [🔍 리스크 진단 보기] 리스크 감지 종목마다 개별 펼침 상태를 종목 키(티커, 없으면 이름) 단위로
+// 기억한다 - riskyAccordionOpen과 마찬가지로 5분 자동 갱신에도 사용자가 펼쳐 둔 카드가 유지된다.
+let openStockDetailKeys = new Set();
 
 function setAccordionOpen(bodyEl, chevronEl, isOpen) {
   bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
@@ -8409,24 +8501,32 @@ function renderRiskSection() {
 
   riskyContainer.innerHTML = risky.length === 0
     ? '<p class="text-xs text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
-    : risky.map(({ asset: a, row: r, tags, owners, curAmount }) => {
+    : risky.map(({ key, asset: a, row: r, tags, owners, curAmount, holding }) => {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
       const tagHtml = tags.map((t) =>
         `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
       ).join(' ');
-      // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의" 중
-      // 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 조건 우선순위대로 하나만 고른다.
+      // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의"/
+      // "변동성 확대 주의" 중 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 우선순위대로 고른다.
       const actionTag = buildAssetActionTag(tags);
       const actionTagHtml = actionTag ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
       return `
-      <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40">
-        <div class="min-w-0">
-          <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-          <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}${actionTagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+      <div class="py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40" data-risk-row data-risk-key="${escapeHtml(key)}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+            <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}${actionTagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+          </div>
+          <div class="text-right shrink-0 pl-2">
+            <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+            <button type="button" data-risk-detail-toggle class="mt-1 inline-flex items-center gap-0.5 py-1 pl-2 -mr-2 text-[10px] font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
+              🔍 리스크 진단 보기 <i data-lucide="chevron-down" class="w-3 h-3 transition-transform duration-200" data-risk-detail-chevron></i>
+            </button>
+          </div>
         </div>
-        <div class="text-right shrink-0 pl-2">
-          <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+        <div data-risk-detail-body class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          ${buildIndividualRiskDetailHtml(holding, weightPct)}
         </div>
       </div>`;
     }).join('');
@@ -8455,6 +8555,39 @@ function renderRiskSection() {
   // 갱신 등) 높이가 새 내용에 맞게 갱신되고, 접힌 쪽은 계속 접힌 채로 유지된다.
   if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, riskyAccordionOpen);
   if (safeBody && safeChevron) setAccordionOpen(safeBody, safeChevron, safeAccordionOpen);
+
+  // [🔍 리스크 진단 보기] 새로 그려진 종목 행마다 data-lucide 아이콘을 실제 SVG로 바꿔주고, 이 종목이
+  // openStockDetailKeys에 펼쳐진 상태로 기록돼 있으면 높이/화살표를 즉시 재적용한다(reapplyRiskDetailPanelHeights).
+  // 그 다음 바깥 "리스크 감지" 아코디언 높이도 늘어난 내용에 맞춰 다시 계산한다(중첩 아코디언 버그 수정).
+  lucide.createIcons();
+  reapplyRiskDetailPanelHeights();
+  reapplyRiskyOuterAccordionHeight();
+}
+
+// riskyContainer 안의 각 종목 행을 순회하며 openStockDetailKeys에 있는 종목만 펼친 상태로 되돌린다 -
+// setAccordionOpen과 동일한 max-height 트릭이지만 종목별로 여러 개를 동시에 다뤄야 해 별도 함수로 뺐다.
+function reapplyRiskDetailPanelHeights() {
+  document.querySelectorAll('#riskListContainer [data-risk-row]').forEach((rowEl) => {
+    const key = rowEl.dataset.riskKey;
+    const bodyEl = rowEl.querySelector('[data-risk-detail-body]');
+    const chevronEl = rowEl.querySelector('[data-risk-detail-chevron]');
+    if (!bodyEl) return;
+    const isOpen = openStockDetailKeys.has(key);
+    bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
+    if (chevronEl) chevronEl.classList.toggle('rotate-180', isOpen);
+  });
+}
+
+// [중첩 아코디언 높이 버그 수정] "리스크 감지" 바깥 아코디언(riskyAccordionBody)의 max-height는 종목
+// 리스트가 그려질 때의 높이로 한 번 고정되는데, 그 안의 개별 [🔍 리스크 진단 보기] 카드가 나중에
+// 펼쳐지면 바깥 컨테이너 높이가 더 늘어나야 한다 - 그렇지 않으면 안쪽 카드가 잘려 보인다. 안쪽 카드가
+// CSS transition으로 서서히 커지는 도중에는 scrollHeight를 읽어도 아직 다 커지지 않은 중간값이 잡히므로,
+// 즉시 한 번 + 안쪽 transition(300ms)이 끝난 뒤 한 번 더 재계산해 확실히 맞춘다.
+function reapplyRiskyOuterAccordionHeight() {
+  const riskyBody = document.getElementById('riskyAccordionBody');
+  if (!riskyBody || !riskyAccordionOpen) return;
+  riskyBody.style.maxHeight = riskyBody.scrollHeight + 'px';
+  setTimeout(() => { if (riskyAccordionOpen) riskyBody.style.maxHeight = riskyBody.scrollHeight + 'px'; }, 320);
 }
 
 document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
@@ -8464,6 +8597,24 @@ document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
 document.getElementById('safeAccordionBtn').addEventListener('click', () => {
   safeAccordionOpen = !safeAccordionOpen;
   setAccordionOpen(document.getElementById('safeAccordionBody'), document.getElementById('safeAccordionChevron'), safeAccordionOpen);
+});
+
+// [🔍 리스크 진단 보기] 종목 행 안의 토글 버튼 클릭 - 위임(delegated) 리스너 하나로 재렌더링 여부와
+// 무관하게 항상 동작한다(data-open-stock-detail과 동일한 패턴). 아코디언이 펼쳐지면서 detail 카드
+// 안의 실제 렌더링된 높이(scrollHeight)를 그대로 max-height에 반영해 자연스럽게 슬라이드된다.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-risk-detail-toggle]');
+  if (!btn) return;
+  const rowEl = btn.closest('[data-risk-row]');
+  if (!rowEl) return;
+  const key = rowEl.dataset.riskKey;
+  const bodyEl = rowEl.querySelector('[data-risk-detail-body]');
+  const chevronEl = rowEl.querySelector('[data-risk-detail-chevron]');
+  const isOpen = !openStockDetailKeys.has(key);
+  if (isOpen) openStockDetailKeys.add(key); else openStockDetailKeys.delete(key);
+  if (bodyEl) bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
+  if (chevronEl) chevronEl.classList.toggle('rotate-180', isOpen);
+  reapplyRiskyOuterAccordionHeight();
 });
 
 /* -------------------------------------------------------------------------
@@ -8550,6 +8701,8 @@ document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () =>
 
 // [📊 상세 리스크 관리 카드로 이동] 팝업을 닫고 대시보드 탭으로 전환한 뒤, RISK 관리 카드 위치까지
 // 부드럽게 스크롤한다 - 아코디언(리스크 감지 목록)도 함께 펼쳐 바로 세부 내용을 볼 수 있게 한다.
+// [🔍 리스크 진단 보기 자동 연동] 가장 비중이 큰 감지 종목의 개별 진단 카드까지 미리 펼쳐두고, 잠시
+// 파란 테두리로 강조해 팝업에서 보던 문제 종목을 바로 찾을 수 있게 한다.
 document.getElementById('riskAlertDetailBtn').addEventListener('click', () => {
   closeRiskAlertModal(false);
   switchTab('dashboard');
@@ -8557,8 +8710,21 @@ document.getElementById('riskAlertDetailBtn').addEventListener('click', () => {
     riskyAccordionOpen = true;
     setAccordionOpen(document.getElementById('riskyAccordionBody'), document.getElementById('riskyAccordionChevron'), true);
   }
+  const { risky } = computeRiskClassifiedAssets();
+  const primary = risky.slice().sort((a, b) => b.curAmount - a.curAmount)[0] || null;
+  if (primary) {
+    openStockDetailKeys.add(primary.key);
+    renderRiskSection();
+  }
   setTimeout(() => {
     document.getElementById('riskManagementSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (primary) {
+      const rowEl = document.querySelector(`#riskListContainer [data-risk-key="${CSS.escape(primary.key)}"]`);
+      if (rowEl) {
+        rowEl.classList.add('ring-2', 'ring-blue-400', 'rounded-lg');
+        setTimeout(() => rowEl.classList.remove('ring-2', 'ring-blue-400', 'rounded-lg'), 2500);
+      }
+    }
   }, 50);
 });
 
@@ -8665,16 +8831,13 @@ async function refreshPricesAndRates() {
   // 순차 실행 시 최대 1분 가까이 걸리던 것을 대폭 단축한다).
   const ratePromise = fetchExchangeRate().then(() => true).catch(() => false);
   const pricesPromise = fetchAllPrices();
-  // [RISK 관리] 지수/20일선도 같은 타이밍에 함께 갱신한다 - 실패해도 catch로 흡수해 나머지 갱신을
-  // 막지 않는다(지수 실패 시 조건1만, 20일선 실패 시 조건3만 그 종목에 한해 평가를 건너뛴다).
-  const indexPromise = refreshIndexBenchmarks().catch(() => {});
-  const ma20Promise = refreshMa20ForTargets(riskEligibleAssets()).catch(() => {});
-  // [초보자용 리스크 진단] pricesPromise가 끝나 현재가(a.currentPrice)가 최신 상태로 반영된 뒤에
-  // 계산해야 종목별 비중이 정확하다 - pricesPromise에 체이닝해 순서를 보장한다. 계산 자체는 내부에서
-  // try/catch로 감싸 있어 실패해도 state.advancedRiskMetrics만 null이 될 뿐 나머지 갱신엔 영향 없다.
+  // [초보자용 리스크 진단 + 개별 종목 정밀 주가 분석] pricesPromise가 끝나 현재가(a.currentPrice)가
+  // 최신 상태로 반영된 뒤에 계산해야 종목별 비중/52주 낙폭이 정확하다 - pricesPromise에 체이닝해
+  // 순서를 보장한다. 계산 자체는 내부에서 try/catch로 감싸 있어 실패해도 state.advancedRiskMetrics만
+  // null이 될 뿐 나머지 갱신엔 영향 없다. (구 지수/20일선 개별 갱신 로직은 이 계산 하나로 흡수되어 제거됨)
   const riskMetricsPromise = pricesPromise.then(() => computeAdvancedRiskMetrics()).then((m) => { state.advancedRiskMetrics = m; }).catch(() => {});
 
-  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, indexPromise, ma20Promise, riskMetricsPromise]);
+  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
 
   if (successCount > 0) persistAssets();
