@@ -432,7 +432,7 @@
        renderRiskSection() 참고. 일반계좌 보유 주식/ETF만 대상.
        [아코디언 UI] 두 그룹을 클릭해서 펼치는 접이식 헤더로 나눈다 - 기본값은 둘 다 접힘이고, 헤더를
        탭해야 펼쳐진다(riskyAccordionOpen/safeAccordionOpen, renderRiskSection 하단 참고). -->
-  <section class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
+  <section id="riskManagementSection" class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
@@ -444,6 +444,12 @@
       </div>
     </div>
     <p class="text-[10px] text-slate-400 mb-3">기준: 지수대비 -10%p 이상 · 매수가대비 -20% 이하 · 20일선 이탈 (하나라도 해당 시 감지)</p>
+
+    <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
+         코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
+         Sortino/상관관계/집중도를 renderRiskDiagnosisSummary()가 쉬운 한글로 옮겨 적는다. 데이터가
+         아직 없으면(계산 전, 리스크 대상 종목 없음 등) hidden 처리되어 공간을 차지하지 않는다. -->
+    <div id="riskDiagnosisSummary" class="hidden mb-3"></div>
 
     <div class="space-y-2">
       <div class="rounded-xl border border-red-200 dark:border-red-900/50 overflow-hidden">
@@ -1520,6 +1526,33 @@
   </div>
 </div>
 
+<!-- ============================= 포트폴리오 위험 진단 알림 팝업 (초보자용, 웹 접속 시 자동 노출) =============================
+     안전 점수가 주의/위험 단계이고 오늘 하루 안 보기를 아직 안 눌렀을 때만 뜬다(maybeShowRiskAlertPopup
+     참고). 내용은 RISK 관리 카드의 renderRiskDiagnosisSummary()와 동일한 계산 결과(state.advancedRiskMetrics)를
+     그대로 재사용해 쉬운 한글로만 보여준다 - 백엔드 계산은 하나, 화면 표현만 두 곳(카드/팝업)에 나눠 쓴다. -->
+<div id="riskAlertModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">📢 포트폴리오 위험 진단</h3>
+      <button type="button" id="closeRiskAlertModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
+      <div id="riskAlertScoreBox" class="rounded-xl border p-3"></div>
+      <div id="riskAlertStockCards" class="space-y-2"></div>
+      <div id="riskAlertActionItems" class="space-y-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3"></div>
+    </div>
+    <div class="flex flex-col gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <div class="flex items-center gap-2">
+        <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-[11px] sm:text-xs font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
+        <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-[11px] sm:text-xs font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">📊 상세 리스크 관리 카드로 이동</button>
+      </div>
+      <button type="button" id="riskAlertDismissTodayBtn" class="w-full text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1">오늘 하루 안 보기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 전체 목표 비중 수정 모달 (리밸런싱 탭 전용) =============================
      리밸런싱 탭의 목표 비중 입력칸(국내/해외 split + 국내/해외 세부)은 기본 화면에서 읽기 전용이고,
      이 영역을 클릭하면 뜨는 이 모달 안에서만 편집할 수 있다. [확인]을 눌러야 state.rebalance에 반영되고
@@ -2039,6 +2072,15 @@ const state = {
   // 일봉 데이터라 하루 한 번만 갱신하면 충분해서(모바일 트래픽 절약), date가 오늘과 다를 때만
   // 다시 조회한다. 휘발성 데이터라 localStorage에는 저장하지 않는다.
   ma20Map: {},
+  // [초보자용 리스크 진단] 종목/지수별 최근 6개월 일별 종가 캐시 - { yahooTicker: { date, closes[] } }.
+  // ma20Map과 동일하게 하루 한 번만 갱신하면 충분해 날짜가 오늘과 다를 때만 다시 조회한다. 휘발성
+  // 데이터라 localStorage에는 저장하지 않는다.
+  riskHistoryCache: {},
+  // [초보자용 리스크 진단] computeAdvancedRiskMetrics()가 계산한 포트폴리오 단위 결과(베타/VaR/CVaR/
+  // Sortino/집중도/상관관계/위기 시뮬레이션 손실액 등) - refreshPricesAndRates() 안에서 시세 갱신과
+  // 함께 새로 계산되고, renderRiskSection()/리스크 알림 팝업이 이 값을 그대로 읽어 렌더링한다.
+  // 계산 실패(데이터 없음 등)면 null - 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  advancedRiskMetrics: null,
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
@@ -2992,7 +3034,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'riskAlertModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -3027,7 +3069,8 @@ const MODAL_CLOSE_FNS = {
   totalProfitModal: (viaBack) => closeTotalProfitModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
-  scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack)
+  scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack),
+  riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -7964,6 +8007,273 @@ function riskEligibleAssets() {
   return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
 }
 
+/* -------------------------------------------------------------------------
+ * 18-2. [초보자용 리스크 진단] Beta/VaR/CVaR/Sortino/상관관계/집중도 계산 엔진
+ *    - 화면에는 쉬운 한글 용어로만 보이지만, 내부 계산은 실제 금융공학 지표를 그대로 쓴다: 최근 6개월
+ *      일별 종가로 일간 수익률을 구하고, 그 수익률 시계열로 베타(시장 민감도)/VaR·CVaR(하락 시
+ *      예상손실)/Sortino(하방위험 대비 성과)/상관관계를 계산한다. fetchMa20과 동일한 Yahoo Finance
+ *      chart 엔드포인트를 재사용하므로 새 API 연동은 없다.
+ *    - 가격 이력이 없는 자산(부동산, 상장 직후라 데이터가 부족한 신규 종목, API 실패 등)은 자동으로
+ *      "데이터 부족" 취급되어 계산에서 안전하게 제외되고(0으로 기여), 화면엔 몇 종목이 제외됐는지만
+ *      안내한다 - 에러를 던지거나 전체 계산을 막지 않는다.
+ * ---------------------------------------------------------------------- */
+// 최근 N개월 일별 종가 - fetchMa20()과 동일한 다중 프록시 경쟁 패턴이며, range만 다르다(기본 6개월).
+async function fetchDailyCloses(yahooTicker, range = '6mo') {
+  const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
+  const attempts = CORS_PROXIES.map((proxy) => async () => {
+    const res = await fetchWithTimeout(proxy.build(target));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
+    const result = data && data.chart && data.chart.result && data.chart.result[0];
+    const closes = ((result && result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [])
+      .filter((c) => typeof c === 'number');
+    if (closes.length < 10) throw new Error('종가 데이터 부족');
+    return closes;
+  });
+  try {
+    return await Promise.any(attempts.map((fn) => fn()));
+  } catch (aggregateErr) {
+    return null; // 실패해도 예외를 던지지 않는다 - 호출부가 "데이터 부족"으로 안전하게 처리
+  }
+}
+
+// ma20Map과 동일한 하루-한-번 캐시 정책 - 같은 티커를 여러 종목(같은 종목을 신랑/와이프가 나눠 보유)이
+// 공유해도 실제 네트워크 조회는 한 번만 일어난다.
+async function getCachedDailyCloses(yahooTicker) {
+  const today = new Date().toISOString().slice(0, 10);
+  const cached = state.riskHistoryCache[yahooTicker];
+  if (cached && cached.date === today) return cached.closes;
+  const closes = await fetchDailyCloses(yahooTicker);
+  if (closes) state.riskHistoryCache[yahooTicker] = { date: today, closes };
+  return closes;
+}
+
+function dailyReturnsFromCloses(closes) {
+  const out = [];
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i - 1] !== 0) out.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+  }
+  return out;
+}
+function statMean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+// 베타 = Cov(종목 수익률, 벤치마크 수익률) / Var(벤치마크 수익률) - 두 시계열의 최신 구간을 같은
+// 길이로 맞춰서 계산한다(거래일이 완벽히 일치하진 않지만 참고용 근사치로 충분하다).
+function computeBetaFromReturns(assetReturns, benchmarkReturns) {
+  const n = Math.min(assetReturns.length, benchmarkReturns.length);
+  if (n < 10) return null;
+  const a = assetReturns.slice(-n), b = benchmarkReturns.slice(-n);
+  const ma = statMean(a), mb = statMean(b);
+  let cov = 0, varB = 0;
+  for (let i = 0; i < n; i++) { cov += (a[i] - ma) * (b[i] - mb); varB += (b[i] - mb) * (b[i] - mb); }
+  if (varB === 0) return null;
+  return cov / varB;
+}
+function computeCorrelationFromReturns(x0, y0) {
+  const n = Math.min(x0.length, y0.length);
+  if (n < 10) return null;
+  const x = x0.slice(-n), y = y0.slice(-n);
+  const mx = statMean(x), my = statMean(y);
+  let cov = 0, vx = 0, vy = 0;
+  for (let i = 0; i < n; i++) { cov += (x[i] - mx) * (y[i] - my); vx += (x[i] - mx) ** 2; vy += (y[i] - my) ** 2; }
+  if (vx === 0 || vy === 0) return null;
+  return cov / Math.sqrt(vx * vy);
+}
+
+// [2020 코로나 폭락 재현] 2020-02-19~2020-03-23 실제 벤치마크 지수 낙폭(%, 공개된 역사적 수치) - 종목별
+// 실제 2020년 당시 가격을 개별 재조회하는 대신(당시 미상장 종목이 많아 무의미), 지금 계산한 베타를 이
+// 실측 낙폭에 곱해 "시장이 그때처럼 다시 급락하면 내 포트폴리오는 베타만큼 상대적으로 더/덜 흔들린다"는
+// 근사치를 추정한다 - 화면에 항상 "추정치"임을 명시한다.
+const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9 };
+
+// 포트폴리오 전체의 리스크 지표를 계산한다 - 실패해도(네트워크 전면 실패 등) null을 반환할 뿐 예외를
+// 던지지 않아 refreshPricesAndRates()의 나머지 갱신을 막지 않는다.
+async function computeAdvancedRiskMetrics() {
+  try {
+    const assets = riskEligibleAssets();
+    if (assets.length === 0) return null;
+    const totalCur = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
+    if (totalCur === 0) return null;
+
+    // 종목(티커) 단위로 소유자/계좌 합산 - RISK 관리 카드의 병합 기준과 동일하다.
+    const byTicker = new Map();
+    assets.forEach((a) => {
+      const yahoo = sanitizeTicker(a.ticker).yahooTicker;
+      const r = calcRow(a);
+      if (!byTicker.has(yahoo)) byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: getBenchmarkKeyForAsset(a) });
+      byTicker.get(yahoo).curAmount += r.curAmount;
+    });
+    const holdings = [...byTicker.values()].map((h) => ({ ...h, weight: h.curAmount / totalCur }));
+
+    // 필요한 벤치마크 지수만 모아서 한 번씩만 조회한다.
+    const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey))];
+    const benchmarkCloses = {};
+    await Promise.all(neededBenchmarks.map(async (key) => { benchmarkCloses[key] = await getCachedDailyCloses(INDEX_TICKERS[key]); }));
+    const benchmarkReturns = {};
+    neededBenchmarks.forEach((key) => { benchmarkReturns[key] = benchmarkCloses[key] ? dailyReturnsFromCloses(benchmarkCloses[key]) : null; });
+
+    await Promise.all(holdings.map(async (h) => {
+      h.closes = await getCachedDailyCloses(h.ticker);
+      h.returns = h.closes ? dailyReturnsFromCloses(h.closes) : null;
+      const bmReturns = benchmarkReturns[h.benchmarkKey];
+      h.beta = (h.returns && bmReturns) ? computeBetaFromReturns(h.returns, bmReturns) : null;
+      h.hasData = !!h.returns;
+    }));
+
+    const withData = holdings.filter((h) => h.hasData);
+    const missingCount = holdings.length - withData.length;
+    const withDataWeightSum = withData.reduce((s, h) => s + h.weight, 0);
+
+    // 포트폴리오 베타 = 데이터 있는 종목들의 비중(그 안에서 재정규화) 가중평균.
+    const portfolioBeta = withDataWeightSum > 0
+      ? withData.reduce((s, h) => s + (typeof h.beta === 'number' ? h.beta : 1) * (h.weight / withDataWeightSum), 0)
+      : null;
+
+    // 포트폴리오 일간 수익률 시계열 = 종목별 수익률의 비중 가중합(공통 길이만큼, 최신 날짜 기준으로
+    // 뒤에서부터 정렬) - 완벽한 날짜 매칭은 아니지만 참고용 근사치로 충분하다.
+    const minLen = withData.length ? Math.min(...withData.map((h) => h.returns.length)) : 0;
+    const portfolioReturns = [];
+    for (let i = 1; i <= minLen; i++) {
+      let sum = 0;
+      withData.forEach((h) => { sum += h.returns[h.returns.length - i] * (h.weight / withDataWeightSum); });
+      portfolioReturns.unshift(sum);
+    }
+
+    // VaR95/CVaR: 일간 수익률 분포의 하위 5% 지점(과거 실측 분포 기반 - parametric 가정 없음).
+    const sorted = [...portfolioReturns].sort((a, b) => a - b);
+    const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
+    const var95Pct = sorted.length ? sorted[varIdx] * 100 : 0; // 퍼센트 단위, 음수
+    const tailReturns = sorted.slice(0, varIdx + 1);
+    const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
+
+    // Sortino: 연율화한 평균수익률을 연율화한 하방편차(음수 수익률만의 표준편차 성격)로 나눈다.
+    const downside = portfolioReturns.filter((r) => r < 0);
+    const downsideDevDaily = downside.length ? Math.sqrt(downside.reduce((s, r) => s + r * r, 0) / downside.length) : 0;
+    const avgReturnDaily = statMean(portfolioReturns);
+    const annualizedReturn = avgReturnDaily * 252;
+    const annualizedDownsideDev = downsideDevDaily * Math.sqrt(252);
+    const sortino = annualizedDownsideDev !== 0 ? annualizedReturn / annualizedDownsideDev : null;
+
+    // 집중도(몰빵위험도): 최대 비중 1종목, 상위 3종목 합산 비중.
+    const sortedByWeight = [...holdings].sort((a, b) => b.weight - a.weight);
+    const topHolding = sortedByWeight[0] || null;
+    const topWeight = topHolding ? topHolding.weight * 100 : 0;
+    const top3Weight = sortedByWeight.slice(0, 3).reduce((s, h) => s + h.weight, 0) * 100;
+
+    // 상관관계(운명 공동체): 비중 상위 2종목의 일간 수익률 상관계수.
+    let topCorrelation = null, topCorrelationPair = null;
+    const withDataByWeight = withData.slice().sort((a, b) => b.weight - a.weight);
+    if (withDataByWeight.length >= 2) {
+      topCorrelation = computeCorrelationFromReturns(withDataByWeight[0].returns, withDataByWeight[1].returns);
+      topCorrelationPair = [withDataByWeight[0].name, withDataByWeight[1].name];
+    }
+
+    // 2020 코로나 폭락 재현 - 종목별 베타 × 그 종목 벤치마크의 실제 2020년 낙폭(데이터 없는 종목은
+    // 시장과 동일하게 움직인다고 가정해 베타 1.0으로 근사, 안전한 기본값).
+    let stressLossKRW = 0;
+    holdings.forEach((h) => {
+      const beta = typeof h.beta === 'number' ? h.beta : 1.0;
+      const benchmarkDrop = COVID_CRASH_BENCHMARK_DROP_PCT[h.benchmarkKey] || -34;
+      stressLossKRW += h.curAmount * (beta * benchmarkDrop / 100);
+    });
+    const stressLossPct = totalCur !== 0 ? (stressLossKRW / totalCur) * 100 : 0;
+
+    return {
+      totalCur, holdings: sortedByWeight, missingCount, portfolioBeta, var95Pct, cvarPct, sortino,
+      var95KRW: totalCur * var95Pct / 100, cvarKRW: totalCur * cvarPct / 100,
+      topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair, stressLossKRW, stressLossPct
+    };
+  } catch (e) {
+    console.warn('[리스크 진단] 계산 실패 - 다음 갱신에서 재시도합니다:', e.message);
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * 18-3. [초보자용 리스크 진단] 안전 점수/신호등 + 쉬운 한글 번역 레이어
+ *    - 화면에 노출되는 문구는 전부 이 구간에서 만든다. 내부 지표(베타/VaR/CVaR/Sortino/상관관계/
+ *      집중도)는 computeAdvancedRiskMetrics()가 이미 실제로 계산해 둔 값을 그대로 쓰고, 여기서는
+ *      "쉬운 한글 설명 + 점수 + 행동 제안"으로 옮겨 적기만 한다.
+ * ---------------------------------------------------------------------- */
+// [Sortino Ratio → 폭락장 방어 성적표 A~F] 연율화 Sortino 비율을 직관적인 학점으로 변환한다 - 학술적
+// 컷오프가 아니라 일반 투자자가 감을 잡기 위한 참고용 구간이다.
+function sortinoToGrade(sortino) {
+  if (typeof sortino !== 'number' || !Number.isFinite(sortino)) return null;
+  if (sortino >= 2.0) return 'A';
+  if (sortino >= 1.0) return 'B';
+  if (sortino >= 0.3) return 'C';
+  if (sortino >= 0) return 'D';
+  if (sortino >= -0.5) return 'E';
+  return 'F';
+}
+
+// [포트폴리오 안전 점수] 100점 만점 감점 방식 - 몰빵위험/널뛰기위험(베타)/평소 예상 손실폭(VaR)/
+// 운명공동체(상관관계)/폭락장 방어 성적(Sortino) 각 항목이 임계치를 넘으면 정해진 만큼 깎는다.
+// 80점 이상 🟢안전, 50~79점 🟡주의, 50점 미만 🔴위험으로 신호등을 매긴다.
+function computeSafetyScore(m) {
+  let score = 100;
+  if (m.topWeight >= 35) score -= 25; else if (m.topWeight >= 25) score -= 15; else if (m.topWeight >= 15) score -= 5;
+  if (m.top3Weight >= 75) score -= 10;
+  if (typeof m.portfolioBeta === 'number') {
+    if (m.portfolioBeta >= 1.4) score -= 20; else if (m.portfolioBeta >= 1.2) score -= 10; else if (m.portfolioBeta >= 1.05) score -= 5;
+  }
+  if (m.var95Pct <= -5) score -= 15; else if (m.var95Pct <= -3.5) score -= 10; else if (m.var95Pct <= -2.5) score -= 5;
+  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85) score -= 10;
+  const grade = sortinoToGrade(m.sortino);
+  if (grade === 'F' || grade === 'E') score -= 10;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function safetyLevel(score) {
+  if (score >= 80) return { level: 'safe', label: '안전', emoji: '🟢', colorClass: 'text-emerald-600 dark:text-emerald-400', bgClass: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50' };
+  if (score >= 50) return { level: 'warn', label: '주의', emoji: '🟡', colorClass: 'text-amber-600 dark:text-amber-400', bgClass: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50' };
+  return { level: 'danger', label: '위험', emoji: '🔴', colorClass: 'text-red-600 dark:text-red-400', bgClass: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50' };
+}
+
+// [1줄 쉬운 종합 진단] 여러 신호가 겹쳐도 화면엔 가장 심각한 신호 하나만 문장으로 보여준다(우선순위:
+// 집중도 > 베타 > 상관관계 > VaR).
+function buildRiskDiagnosisLine(m) {
+  if (m.topWeight >= 25 && m.topHolding) {
+    return `현재 ${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 너무 커서 하락장에 널뛰기가 심할 수 있습니다.`;
+  }
+  if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.2) {
+    return `포트폴리오 전체가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 더 크게 움직이는 구조라, 하락장에서 손실 폭이 시장보다 클 수 있습니다.`;
+  }
+  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85 && m.topCorrelationPair) {
+    return `${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}이(가) 같이 움직이는 경향이 커서, 분산 효과가 기대만큼 크지 않을 수 있습니다.`;
+  }
+  if (m.var95Pct <= -3.5) {
+    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있는 구성입니다.`;
+  }
+  return '포트폴리오가 비교적 안정적으로 분산되어 있습니다.';
+}
+
+// [💡 초직관적 행동 제안] 감지된 신호별로 규칙 기반 문장을 쌓는다(여러 개면 전부 보여준다). 아무
+// 신호도 없으면 "유지" 안내 한 줄만 보여준다.
+function buildRiskActionItems(m) {
+  const items = [];
+  if (m.topWeight >= 25 && m.topHolding) {
+    const alt = m.topHolding.benchmarkKey === 'SP500' ? '미국 대표 지수 ETF(QQQM, SPYM 등)' : '코스피 대표지수 ETF';
+    items.push(`${m.topHolding.name} 비중을 줄여 ${alt}로 나눠 담으세요.`);
+  }
+  if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.15) {
+    items.push('하락장 충격을 줄이기 위해 현금이나 미국 국채(TLT) 비중을 15% 정도 확보하세요.');
+  }
+  if (typeof m.topCorrelation === 'number' && m.topCorrelation >= 0.85 && m.topCorrelationPair) {
+    items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}은(는) 같이 움직이는 종목이라, 두 종목을 동시에 늘리기보다 성격이 다른 자산과 섞는 게 좋아요.`);
+  }
+  if (items.length === 0) items.push('현재 특별한 위험 신호가 없습니다. 지금처럼 분산 투자를 유지하세요.');
+  return items;
+}
+
+// [개별 종목 행동 지침 태그] RISK 관리 카드의 감지 종목 행에 붙일 짧은 한글 태그 - 어떤 조건에
+// 걸렸는지에 따라 다르게 보여준다(지수대비 과락/매수가대비 -20%/20일선 이탈 각각에 대응).
+function buildAssetActionTag(tags) {
+  if (tags.includes('매수가대비 -20%')) return '비중 축소 검토';
+  if (tags.includes('지수대비 과락')) return '방어자산 확보 필요';
+  if (tags.includes('20일선 이탈')) return '단기 추세 주의';
+  return null;
+}
+
 // 3가지 조건을 각각 독립적으로 평가해 해당하는 태그를 전부 모은다(OR 조건 - 하나 이상이면 RISK, 하나도
 // 없으면 안정). 같은 종목을 신랑/와이프가 나눠 보유한 경우 조건2(매수가대비)는 소유자마다 평균단가가
 // 달라 결과가 갈릴 수 있지만, 화면에는 종목당 한 줄만 보여달라는 요청에 따라 소유자별 판정을 합쳐
@@ -8027,7 +8337,53 @@ function setAccordionOpen(bodyEl, chevronEl, isOpen) {
   chevronEl.classList.toggle('rotate-180', isOpen);
 }
 
+// [포트폴리오 위험 진단 & 위기 시뮬레이션] state.advancedRiskMetrics(refreshPricesAndRates에서 이미
+// 계산 완료된 값)를 읽어 안전 점수/신호등/1줄 진단/행동 제안/2020년 폭락 재현 손실 추정치를 그린다.
+// 데이터가 없으면(계산 전, 리스크 대상 종목 자체가 없음 등) 섹션 자체를 숨긴다.
+function renderRiskDiagnosisSummary() {
+  const container = document.getElementById('riskDiagnosisSummary');
+  if (!container) return;
+  const m = state.advancedRiskMetrics;
+  if (!m) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+  container.classList.remove('hidden');
+
+  const score = computeSafetyScore(m);
+  const level = safetyLevel(score);
+  const diagnosisLine = buildRiskDiagnosisLine(m);
+  const actionItems = buildRiskActionItems(m);
+  const sortinoGrade = sortinoToGrade(m.sortino) || '-';
+  const correlationLabel = typeof m.topCorrelation === 'number'
+    ? (m.topCorrelation >= 0.85 ? '매우 높음' : (m.topCorrelation >= 0.6 ? '보통' : '낮음'))
+    : '데이터 부족';
+
+  container.innerHTML = `
+  <div class="rounded-xl border p-3 ${level.bgClass}">
+    <p class="text-sm font-bold ${level.colorClass}">${level.emoji} 내 계좌 안전 점수: ${score}점 [${level.label}]</p>
+    <p class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${diagnosisLine}</p>
+    <div class="mt-2 space-y-1">
+      ${actionItems.map((item, i) => `<p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+    </div>
+    <!-- [역사적 위기 체험하기] 2020년 코로나 폭락 재현 시뮬레이션 -->
+    <div class="mt-2.5 rounded-lg bg-white/70 dark:bg-black/20 p-2.5">
+      <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 역사적 위기 체험하기 - 2020년 코로나 폭락장 재현 시</p>
+      <p class="text-sm sm:text-base font-bold text-blue-500">내 계좌 약 ${fmtKRWShort(Math.abs(m.stressLossKRW))}(${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
+      <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">* 보유 종목별 시장 민감도(널뛰기 위험)를 2020년 실제 지수 낙폭(코스피 -35.7%·S&P500 -33.9%)에 대입한 추정치이며, 실제 결과와 다를 수 있습니다.</p>
+    </div>
+    <!-- [세부 지표 - 쉬운 한글 번역] 요청된 6개 전문 용어를 전부 쉬운 한글로만 표기한다. -->
+    <div class="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px] sm:text-xs">
+      <div><span class="text-slate-400">널뛰기 위험(시장 대비 변동성)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족'}</span></div>
+      <div><span class="text-slate-400">몰빵(집중) 위험도</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtNum(m.topWeight, 0)}% (${escapeHtml(m.topHolding ? m.topHolding.name : '-')})</span></div>
+      <div><span class="text-slate-400">평소 하락장 하루 최대 예상 손실액</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtKRWShort(Math.abs(m.var95KRW))}</span></div>
+      <div><span class="text-slate-400">대폭락장(금융위기급) 하루 최대 예상 손실액</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${fmtKRWShort(Math.abs(m.cvarKRW))}</span></div>
+      <div><span class="text-slate-400">폭락장 방어 성적표</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(sortinoGrade)}등급</span></div>
+      <div><span class="text-slate-400">운명 공동체(같이 움직이는 종목)</span><br><span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(correlationLabel)}</span></div>
+    </div>
+    ${m.missingCount > 0 ? `<p class="text-[10px] text-slate-400 mt-2">* ${m.missingCount}개 종목은 가격 이력이 부족해(신규 상장 등) 이 진단에서 제외되었습니다.</p>` : ''}
+  </div>`;
+}
+
 function renderRiskSection() {
+  renderRiskDiagnosisSummary();
   const riskyContainer = document.getElementById('riskListContainer');
   const safeContainer = document.getElementById('safeListContainer');
   const riskyBadge = document.getElementById('riskyCountBadge');
@@ -8059,11 +8415,15 @@ function renderRiskSection() {
       const tagHtml = tags.map((t) =>
         `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
       ).join(' ');
+      // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의" 중
+      // 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 조건 우선순위대로 하나만 고른다.
+      const actionTag = buildAssetActionTag(tags);
+      const actionTagHtml = actionTag ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
       return `
       <div class="flex items-start justify-between gap-2 py-2 border-b last:border-b-0 border-red-100 dark:border-red-900/40">
         <div class="min-w-0">
           <p class="text-sm font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-[10px] font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-          <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+          <div class="flex flex-wrap items-center gap-1 mt-1">${tagHtml}${actionTagHtml}<span class="text-[10px] text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
         </div>
         <div class="text-right shrink-0 pl-2">
           <p class="text-sm font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
@@ -8104,6 +8464,102 @@ document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
 document.getElementById('safeAccordionBtn').addEventListener('click', () => {
   safeAccordionOpen = !safeAccordionOpen;
   setAccordionOpen(document.getElementById('safeAccordionBody'), document.getElementById('safeAccordionChevron'), safeAccordionOpen);
+});
+
+/* -------------------------------------------------------------------------
+ * 18-4. [초보자용] 포트폴리오 위험 진단 알림 팝업
+ *    - 웹 접속(bootApp) 시 딱 한 번 판단한다: state.advancedRiskMetrics가 있고, 안전 점수가 주의(🟡)
+ *      /위험(🔴) 단계이며, 오늘 하루 안 보기를 아직 안 눌렀으면 자동으로 뜬다. 내용은 RISK 관리
+ *      카드와 완전히 같은 계산 결과를 재사용하므로 숫자가 어긋날 일이 없다.
+ * ---------------------------------------------------------------------- */
+const LS_RISK_ALERT_DISMISSED = 'sam_risk_alert_dismissed_v1';
+
+function maybeShowRiskAlertPopup() {
+  const m = state.advancedRiskMetrics;
+  if (!m) return;
+  const score = computeSafetyScore(m);
+  const level = safetyLevel(score);
+  if (level.level === 'safe') return; // 안전 단계면 팝업 없음
+  const dismissedDate = localStorage.getItem(LS_RISK_ALERT_DISMISSED);
+  const today = new Date().toISOString().slice(0, 10);
+  if (dismissedDate === today) return; // 오늘 하루 안 보기를 이미 눌렀음
+  openRiskAlertModal();
+}
+
+// 🚨 긴급 점검 종목 카드 - 집중도가 높은 종목(topWeight>=25%)과, RISK 관리 카드의 3조건 감지 종목을
+// 합쳐 최대 3개까지만 간추려 보여준다(팝업이 너무 길어지지 않도록).
+function buildRiskAlertStockCards(m) {
+  const cards = [];
+  if (m.topWeight >= 25 && m.topHolding) {
+    cards.push(`⚠️ [${escapeHtml(m.topHolding.name)}] 단일 종목 비중 ${fmtNum(m.topWeight, 0)}% (과도함)`);
+  }
+  const { risky } = computeRiskClassifiedAssets();
+  risky.slice(0, 3).forEach((r) => {
+    if (cards.length >= 3) return;
+    const tagText = r.tags.join(', ');
+    cards.push(`⚠️ [${escapeHtml(r.asset.name)}] ${escapeHtml(tagText)}`);
+  });
+  return cards.slice(0, 3);
+}
+
+function openRiskAlertModal() {
+  const m = state.advancedRiskMetrics;
+  if (!m) return;
+  const score = computeSafetyScore(m);
+  const level = safetyLevel(score);
+
+  document.getElementById('riskAlertScoreBox').innerHTML = `
+    <div class="rounded-xl border p-3 ${level.bgClass}">
+      <p class="text-sm font-bold ${level.colorClass}">${level.emoji} 내 계좌 안전 점수: ${score}점 [${level.label}]</p>
+      <p class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
+    </div>`;
+
+  const stockCards = buildRiskAlertStockCards(m);
+  document.getElementById('riskAlertStockCards').innerHTML = stockCards.length
+    ? stockCards.map((c) => `<p class="text-xs sm:text-sm font-semibold text-red-600 dark:text-red-400 leading-relaxed">${c}</p>`).join('')
+    : '';
+
+  const actionItems = buildRiskActionItems(m);
+  document.getElementById('riskAlertActionItems').innerHTML = `
+    <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
+    ${actionItems.map((item, i) => `<p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${item}</p>`).join('')}`;
+
+  document.getElementById('riskAlertModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+
+function closeRiskAlertModal(viaBackButton) {
+  document.getElementById('riskAlertModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+
+document.getElementById('closeRiskAlertModalBtn').addEventListener('click', () => closeRiskAlertModal(false));
+
+document.getElementById('riskAlertDismissTodayBtn').addEventListener('click', () => {
+  localStorage.setItem(LS_RISK_ALERT_DISMISSED, new Date().toISOString().slice(0, 10));
+  closeRiskAlertModal(false);
+});
+
+// [⚡ 1클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
+document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () => {
+  closeRiskAlertModal(false);
+  switchTab('rebalance');
+  switchRebalanceSubTab('target');
+});
+
+// [📊 상세 리스크 관리 카드로 이동] 팝업을 닫고 대시보드 탭으로 전환한 뒤, RISK 관리 카드 위치까지
+// 부드럽게 스크롤한다 - 아코디언(리스크 감지 목록)도 함께 펼쳐 바로 세부 내용을 볼 수 있게 한다.
+document.getElementById('riskAlertDetailBtn').addEventListener('click', () => {
+  closeRiskAlertModal(false);
+  switchTab('dashboard');
+  if (!riskyAccordionOpen) {
+    riskyAccordionOpen = true;
+    setAccordionOpen(document.getElementById('riskyAccordionBody'), document.getElementById('riskyAccordionChevron'), true);
+  }
+  setTimeout(() => {
+    document.getElementById('riskManagementSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
 });
 
 /* -------------------------------------------------------------------------
@@ -8213,8 +8669,12 @@ async function refreshPricesAndRates() {
   // 막지 않는다(지수 실패 시 조건1만, 20일선 실패 시 조건3만 그 종목에 한해 평가를 건너뛴다).
   const indexPromise = refreshIndexBenchmarks().catch(() => {});
   const ma20Promise = refreshMa20ForTargets(riskEligibleAssets()).catch(() => {});
+  // [초보자용 리스크 진단] pricesPromise가 끝나 현재가(a.currentPrice)가 최신 상태로 반영된 뒤에
+  // 계산해야 종목별 비중이 정확하다 - pricesPromise에 체이닝해 순서를 보장한다. 계산 자체는 내부에서
+  // try/catch로 감싸 있어 실패해도 state.advancedRiskMetrics만 null이 될 뿐 나머지 갱신엔 영향 없다.
+  const riskMetricsPromise = pricesPromise.then(() => computeAdvancedRiskMetrics()).then((m) => { state.advancedRiskMetrics = m; }).catch(() => {});
 
-  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, indexPromise, ma20Promise]);
+  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, indexPromise, ma20Promise, riskMetricsPromise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
 
   if (successCount > 0) persistAssets();
@@ -9596,7 +10056,15 @@ async function bootApp() {
   // 일괄 실행한다. refreshPricesAndRates()의 실시간 시세 갱신이 끝난 뒤에 시작해서(then), 두 배치가
   // 같은 CORS 프록시 풀을 동시에 두고 경합하지 않게 한다 - 사용자가 지금 당장 보는 현재가 갱신이
   // 우선이고, 이 소급 백필은 화면에 없어도 티 안 나는 백그라운드 작업이라 늦게 끝나도 무방하다.
-  refreshPricesAndRates().finally(() => backfillAllHoldingsDailyPnlHistory());
+  // [초보자용 리스크 진단 팝업] refreshPricesAndRates()가 끝나 state.advancedRiskMetrics가 채워진
+  // 뒤에만 판단할 수 있다 - .then()으로 체이닝해 순서를 보장한다(실패해도 팝업을 그냥 안 띄울 뿐
+  // 나머지 백필 작업엔 영향 없도록 .finally 앞에 넣는다).
+  // [버그 수정] refreshPricesAndRates()는 내부에서 시세 갱신(fetchAllPrices 등)이 전부 실패하면
+  // reject될 수 있는데, 그 경우 .then()이 아예 실행되지 않아 팝업 판단 자체가 스킵돼 버렸다(정작
+  // state.advancedRiskMetrics는 riskMetricsPromise가 별도로 항상 resolve되는 체인이라 이미 채워져
+  // 있는데도 팝업만 못 뜨는 상태) - .catch(() => {})로 먼저 흡수해 성공/실패 여부와 무관하게
+  // maybeShowRiskAlertPopup()이 항상 실행되도록 한다.
+  refreshPricesAndRates().catch(() => {}).then(() => maybeShowRiskAlertPopup()).finally(() => backfillAllHoldingsDailyPnlHistory());
 }
 bootApp();
 </script>
