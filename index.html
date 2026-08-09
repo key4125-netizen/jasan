@@ -1376,9 +1376,9 @@
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
         <div class="flex items-center gap-1 shrink-0 flex-wrap">
-          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+          <button type="button" data-pnl-days="30" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
           <button type="button" data-pnl-days="90" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-          <button type="button" data-pnl-days="180" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+          <button type="button" data-pnl-days="180" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
           <button type="button" data-pnl-days="365" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
         </div>
       </div>
@@ -1554,12 +1554,12 @@
       <div id="riskAlertStockCards" class="space-y-2"></div>
       <div id="riskAlertActionItems" class="space-y-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3"></div>
     </div>
-    <div class="flex flex-col gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <div class="flex items-center gap-2">
-        <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
-        <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">📊 상세 리스크 관리 카드로 이동</button>
-      </div>
-      <button type="button" id="riskAlertDismissTodayBtn" class="w-full text-sm font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1">오늘 하루 안 보기</button>
+    <!-- ['오늘 하루 안 보기' 제거] 이 팝업은 이제 접속/새로고침마다 항상 다시 노출되어야 하므로 사용자가
+         숨길 수 있는 버튼 자체를 없앴다(maybeShowRiskAlertPopup() 참고 - localStorage 기반 억제 로직도
+         함께 제거했다). -->
+    <div class="flex items-center gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
+      <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 상세 리스크 관리 이동</button>
     </div>
   </div>
 </div>
@@ -9168,19 +9168,17 @@ document.addEventListener('click', (e) => {
 /* -------------------------------------------------------------------------
  * 18-4. [초보자용] 포트폴리오 위험 진단 알림 팝업
  *    - 웹 접속(bootApp) 시 딱 한 번 판단한다: state.advancedRiskMetrics가 있고, 안전 점수가 주의(🟡)
- *      /위험(🔴) 단계이며, 오늘 하루 안 보기를 아직 안 눌렀으면 자동으로 뜬다. 내용은 RISK 관리
- *      카드와 완전히 같은 계산 결과를 재사용하므로 숫자가 어긋날 일이 없다.
+ *      /위험(🔴) 단계이면 자동으로 뜬다. 내용은 RISK 관리 카드와 완전히 같은 계산 결과를 재사용하므로
+ *      숫자가 어긋날 일이 없다.
+ *    ['오늘 하루 안 보기' 제거] 예전엔 localStorage(LS_RISK_ALERT_DISMISSED)에 오늘 날짜를 저장해 같은
+ *      날 재접속/새로고침 시 팝업을 건너뛰었다 - 요청에 따라 이 저장/조회 로직을 완전히 없애 접속·
+ *      새로고침 때마다(위험/주의 단계인 한) 매번 다시 뜨도록 바꿨다.
  * ---------------------------------------------------------------------- */
-const LS_RISK_ALERT_DISMISSED = 'sam_risk_alert_dismissed_v1';
-
 function maybeShowRiskAlertPopup() {
   const m = state.advancedRiskMetrics;
   if (!m) return;
   const level = riskLevelFromScore(m.riskScore);
   if (level.level === 'safe') return; // 양호 단계면 팝업 없음
-  const dismissedDate = localStorage.getItem(LS_RISK_ALERT_DISMISSED);
-  const today = new Date().toISOString().slice(0, 10);
-  if (dismissedDate === today) return; // 오늘 하루 안 보기를 이미 눌렀음
   openRiskAlertModal();
 }
 
@@ -9234,11 +9232,6 @@ function closeRiskAlertModal(viaBackButton) {
 }
 
 document.getElementById('closeRiskAlertModalBtn').addEventListener('click', () => closeRiskAlertModal(false));
-
-document.getElementById('riskAlertDismissTodayBtn').addEventListener('click', () => {
-  localStorage.setItem(LS_RISK_ALERT_DISMISSED, new Date().toISOString().slice(0, 10));
-  closeRiskAlertModal(false);
-});
 
 // [⚡ 1클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
 document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () => {
@@ -9485,7 +9478,7 @@ document.addEventListener('visibilitychange', () => {
  * ---------------------------------------------------------------------- */
 let dailyPnlPopupType = 'unrealized'; // 'unrealized' | 'realized'
 let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
-let dailyPnlPopupDays = 180;          // 30 | 90 | 180 | 365
+let dailyPnlPopupDays = 30;           // 30 | 90 | 180 | 365 - [기본 기간 1개월] 팝업 최초 오픈 시 항상 1개월
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -10097,8 +10090,8 @@ document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) 
 function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
-  dailyPnlPopupDays = 180;
-  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 180));
+  dailyPnlPopupDays = 30; // [기본 기간 1개월] 팝업을 열 때마다 항상 1개월부터 보여준다
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
