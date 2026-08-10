@@ -456,6 +456,10 @@
     </div>
     <p class="text-xs text-slate-400 mb-3">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
 
+    <!-- [소유자별 필터] '전체'와 등록된 소유자(신랑/와이프 등) 버튼 - 소유자가 1명뿐이면 renderRiskCardOwnerTabs()가
+         이 영역 자체를 숨긴다. 375px 모바일에서도 줄바꿈되도록 flex-wrap. -->
+    <div id="riskCardOwnerTabs" class="hidden flex items-center gap-1.5 flex-wrap mb-3"></div>
+
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
          Sortino/상관관계/집중도를 renderRiskDiagnosisSummary()가 쉬운 한글로 옮겨 적는다. 데이터가
@@ -1558,7 +1562,7 @@
          숨길 수 있는 버튼 자체를 없앴다(maybeShowRiskAlertPopup() 참고 - localStorage 기반 억제 로직도
          함께 제거했다). -->
     <div class="flex items-center gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 1클릭 리밸런싱 이동</button>
+      <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 원클릭 리밸런싱 이동</button>
       <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 상세 리스크 관리 이동</button>
     </div>
   </div>
@@ -1621,10 +1625,14 @@
     </div>
     <div class="px-5 py-4 overflow-y-auto space-y-4">
       <div>
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
           <span id="stockAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
         </div>
+        <!-- [AI 최적 추천 비중 - 전체 적용] 종목이 2개 이상일 때만 의미가 있어 renderStockAllocationSelectedList()에서
+             그 조건일 때만 보여준다(hidden 토글) - 베타(시장 민감도)가 낮은 종목에 더 크게 배분하는
+             역베타 가중 추천을 선택된 종목 전체에 한 번에 적용한다. -->
+        <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-2 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ AI 최적 추천 비중 전체 적용</button>
         <div id="stockAllocationSelectedList" class="space-y-2"></div>
       </div>
       <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
@@ -3891,6 +3899,26 @@ function closeStockAllocationModal(viaBackButton) {
   stockAllocationCurrentIdx = null;
 }
 
+// [AI 최적 추천 비중] 선택된 종목들 사이에서 "베타(시장 민감도)가 낮은 종목일수록 더 크게, 높은
+// 종목일수록 더 작게" 나눠 담는 역베타 가중(inverse-beta weighting) 방식이다 - 정밀 리스크 엔진이
+// 이미 계산해 둔 state.advancedRiskMetrics.holdings의 beta를 그대로 재사용하므로 별도 계산·API 호출이
+// 없다. 카테고리 전체 비중(totalPct)은 그대로 유지한 채 "같은 총 비중을 더 안전하게 나누는" 참고용
+// 배분만 제안한다 - 실제 매매 지시가 아니며, 베타 데이터가 없는 종목(신규상장 등)은 1.0(시장 평균)으로
+// 근사하고, 아무 데이터도 없으면 안전하게 균등 배분으로 폴백한다.
+function computeAiOptimalStockWeights(selectedStocks, totalPct) {
+  if (selectedStocks.length === 0) return [];
+  const m = state.advancedRiskMetrics;
+  const betas = selectedStocks.map((s) => {
+    const yahoo = sanitizeTicker(s.ticker).yahooTicker;
+    const h = m && m.holdings.find((hh) => hh.ticker === yahoo);
+    return (h && typeof h.beta === 'number' && h.beta > 0) ? h.beta : 1.0;
+  });
+  const inverseBetas = betas.map((b) => 1 / b);
+  const sumInverse = inverseBetas.reduce((a, b) => a + b, 0);
+  if (sumInverse <= 0) return selectedStocks.map(() => totalPct / selectedStocks.length);
+  return inverseBetas.map((ib) => (ib / sumInverse) * totalPct);
+}
+
 function renderStockAllocationSelectedList() {
   const t = getStockAllocationTarget();
   const container = document.getElementById('stockAllocationSelectedList');
@@ -3898,25 +3926,44 @@ function renderStockAllocationSelectedList() {
   if (!t) return;
   sumHint.textContent = `합계 ${fmtNum(t.pct, 1)}%`;
 
+  const applyAllBtn = document.getElementById('stockAllocationApplyAiAllBtn');
+  if (applyAllBtn) applyAllBtn.classList.toggle('hidden', t.selectedStocks.length < 2);
+
   if (t.selectedStocks.length === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400">아직 선택된 종목이 없습니다. 아래에서 검색해 추가하세요.</p>';
     return;
   }
-  container.innerHTML = t.selectedStocks.map((s, i) => `
-    <div class="flex items-center justify-between gap-2 border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
-      <div class="min-w-0">
-        <p class="text-sm font-medium truncate">${escapeHtml(s.name)}</p>
-        <p class="text-[11px] text-slate-400 truncate">${escapeHtml(s.ticker)}</p>
+  // [AI 최적 추천 비중] 현재 카테고리 총 비중(t.pct)을 그대로 유지한 채, 선택된 종목들 사이에서만
+  // 역베타 가중으로 재배분한 값이다 - 종목이 1개뿐이면 재배분할 대상이 없으므로 계산하지 않는다.
+  const aiWeights = t.selectedStocks.length >= 2 ? computeAiOptimalStockWeights(t.selectedStocks, t.pct) : null;
+
+  container.innerHTML = t.selectedStocks.map((s, i) => {
+    const aiPct = aiWeights ? aiWeights[i] : null;
+    const diff = aiPct !== null ? aiPct - num(s.pct) : null;
+    const badgeHtml = aiPct !== null ? `
+      <div class="flex items-center gap-1 mt-1.5 flex-wrap">
+        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 AI 최적 추천: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
+        <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
+      </div>` : '';
+    return `
+    <div class="border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-sm font-medium truncate">${escapeHtml(s.name)}</p>
+          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(s.ticker)}</p>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <input data-stock-alloc-pct data-i="${i}" type="number" min="0" max="100" step="1" value="${num(s.pct)}"
+            class="w-16 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+          <span class="text-xs text-slate-400">%</span>
+          <button type="button" data-stock-alloc-remove data-i="${i}" title="삭제" class="touch-target w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
       </div>
-      <div class="flex items-center gap-1.5 shrink-0">
-        <input data-stock-alloc-pct data-i="${i}" type="number" min="0" max="100" step="1" value="${num(s.pct)}"
-          class="w-16 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
-        <span class="text-xs text-slate-400">%</span>
-        <button type="button" data-stock-alloc-remove data-i="${i}" title="삭제" class="touch-target w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-        </button>
-      </div>
-    </div>`).join('');
+      ${badgeHtml}
+    </div>`;
+  }).join('');
   lucide.createIcons();
 
   container.querySelectorAll('input[data-stock-alloc-pct]').forEach((input) => {
@@ -3938,7 +3985,29 @@ function renderStockAllocationSelectedList() {
       renderStockAllocationSearchResults(document.getElementById('stockAllocationSearchInput').value);
     });
   });
+  // [AI 최적 추천 - 종목별 적용] 그 종목 하나만 추천값으로 바꾸고 나머지는 손대지 않는다(기존 수동
+  // 입력과 동일하게 카테고리 합계는 recalcStockCategoryPct()가 그때그때 합산해 다시 계산한다).
+  container.querySelectorAll('button[data-stock-alloc-apply-ai]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.i);
+      const tt = getStockAllocationTarget();
+      const weights = computeAiOptimalStockWeights(tt.selectedStocks, tt.pct);
+      tt.selectedStocks[i].pct = Math.round(weights[i] * 10) / 10;
+      recalcStockCategoryPct();
+      renderStockAllocationSelectedList();
+    });
+  });
 }
+
+// [⚡ AI 최적 추천 비중 전체 적용] 선택된 모든 종목을 한 번에 역베타 가중 추천값으로 맞춘다.
+document.getElementById('stockAllocationApplyAiAllBtn').addEventListener('click', () => {
+  const t = getStockAllocationTarget();
+  if (!t || t.selectedStocks.length < 2) return;
+  const weights = computeAiOptimalStockWeights(t.selectedStocks, t.pct);
+  t.selectedStocks.forEach((s, i) => { s.pct = Math.round(weights[i] * 10) / 10; });
+  recalcStockCategoryPct();
+  renderStockAllocationSelectedList();
+});
 
 function renderStockAllocationSearchResults(query) {
   const t = getStockAllocationTarget();
@@ -5717,6 +5786,15 @@ function formatDateCell(v) {
   return todayDateStr(); // 날짜를 못 읽으면 안전하게 오늘 날짜로 폴백(거래 자체를 버리지 않기 위함)
 }
 
+// [거래등록 - 내용 기반 중복 거래 스킵] 엑셀 행은 매번 새 id(genId())를 받기 때문에 JSON 백업 복원처럼
+// id로는 중복을 가려낼 수 없다 - 대신 실제 거래 내용(소유자+계좌구분+티커/이름+일자+거래유형+수량+
+// 매매단가)이 완전히 같은 기존 거래가 있으면 "같은 거래를 실수로 다시 올린 것"으로 보고 등록하지
+// 않는다. 수수료는 사용자가 매번 다르게 적어도 같은 거래로 볼 수 있어(계산 영향도 미미) 식별 키에서
+// 제외했다.
+function transactionContentKey(t) {
+  return [t.owner, t.accountType, t.ticker || t.name, t.date, t.type, num(t.quantity), num(t.price)].join('|');
+}
+
 document.getElementById('importTxExcelBtn').addEventListener('click', () => document.getElementById('txExcelFileInput').click());
 
 document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
@@ -5764,13 +5842,31 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
       // [기존 데이터 덮어쓰기]/[기존 데이터에 추가하기]/[취소]를 명시적으로 고르게 한다.
       const choice = await openImportChoiceModal(`${parsed.length}건의 거래를 등록합니다.\n기존 거래내역을 덮어쓸까요, 추가할까요?`);
       if (choice === 'cancel') return;
-      state.transactions = choice === 'overwrite' ? parsed : state.transactions.concat(parsed);
+      let resultMsg;
+      if (choice === 'overwrite') {
+        state.transactions = parsed;
+        resultMsg = `거래내역 ${parsed.length}건을 덮어썼습니다.`;
+      } else {
+        // [내용 기반 중복 스킵] 기존 거래내역 + "이번 업로드에서 이미 받아들인 행"까지 함께 키로 관리해,
+        // 같은 파일 안에 똑같은 행이 여러 번 있어도 한 번만 반영되게 한다.
+        const seenKeys = new Set(state.transactions.map(transactionContentKey));
+        const newOnes = [];
+        let dupCount = 0;
+        parsed.forEach((t) => {
+          const key = transactionContentKey(t);
+          if (seenKeys.has(key)) { dupCount++; return; }
+          seenKeys.add(key);
+          newOnes.push(t);
+        });
+        state.transactions = state.transactions.concat(newOnes);
+        resultMsg = `총 ${parsed.length}건 중 신규 ${newOnes.length}건 등록, 중복 ${dupCount}건 건너뜀`;
+      }
       persistTransactions();
       syncAssetsFromTransactions();
       persistAssets();
       renderTransactionsTab();
       renderAll();
-      showToast(`거래내역 ${parsed.length}건을 ${choice === 'overwrite' ? '덮어썼습니다' : '추가했습니다'}.`, 'success');
+      showToast(resultMsg, 'success');
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
@@ -8487,9 +8583,14 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
 
 // 포트폴리오 전체의 리스크 지표를 계산한다 - 실패해도(네트워크 전면 실패 등) null을 반환할 뿐 예외를
 // 던지지 않아 refreshPricesAndRates()의 나머지 갱신을 막지 않는다.
-async function computeAdvancedRiskMetrics() {
+// [RISK 카드 - 소유자별 필터] ownerFilter를 생략하거나 'all'이면 지금까지처럼 가구 전체 기준이고,
+// 특정 소유자명을 넘기면 그 소유자 보유분(riskEligibleAssets 기준)만으로 같은 계산을 전부 다시 돈다 -
+// 종목 단위 1년 시세 이력은 getCachedDailyCloses가 이미 캐시해 둔 값을 재사용하므로 네트워크 재조회가
+// 없다(같은 날 안에서는 사실상 즉시 계산된다).
+async function computeAdvancedRiskMetrics(ownerFilter) {
   try {
-    const assets = riskEligibleAssets();
+    let assets = riskEligibleAssets();
+    if (ownerFilter && ownerFilter !== 'all') assets = assets.filter((a) => a.owner === ownerFilter);
     if (assets.length === 0) return null;
     const totalCur = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
     if (totalCur === 0) return null;
@@ -8763,11 +8864,15 @@ function buildIndividualRiskTags(h) {
 // 종목이 태그 없음(안정)으로 잠시 보였다가, 계산이 끝나면 다음 렌더링에서 정상 분류된다.
 // 신랑/와이프가 같은 종목을 나눠 보유해도 태그는 시세 데이터 기준(종목당 공통)이라 소유자별로 갈릴
 // 일이 없다 - owners는 표시용으로만 병합한다(티커, 없으면 이름 기준 - 다른 병합 로직과 동일).
-function computeRiskClassifiedAssets() {
-  const holdingsByTicker = new Map(((state.advancedRiskMetrics && state.advancedRiskMetrics.holdings) || []).map((h) => [h.ticker, h]));
+// [RISK 카드 - 소유자별 필터] ownerFilter가 있으면 그 소유자 보유분만 걸러서 리스트를 만들고, 태그
+// 판정용 holding도 (전체가 아니라) 그 소유자 기준으로 다시 계산된 지표(getCurrentRiskMetrics 참고)를
+// 쓴다 - 위험기여도(riskContributionPct) 같은 값은 소유자 범위에 따라 달라지기 때문이다.
+function computeRiskClassifiedAssets(ownerFilter) {
+  const m = (!ownerFilter || ownerFilter === 'all') ? state.advancedRiskMetrics : riskCardOwnerMetricsCache[ownerFilter];
+  const holdingsByTicker = new Map(((m && m.holdings) || []).map((h) => [h.ticker, h]));
 
   const byKey = new Map();
-  riskEligibleAssets().forEach((a) => {
+  riskEligibleAssets().filter((a) => !ownerFilter || ownerFilter === 'all' || a.owner === ownerFilter).forEach((a) => {
     const yahoo = sanitizeTicker(a.ticker).yahooTicker;
     const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
     const row = { ...a, ...calcRow(a) };
@@ -8893,6 +8998,49 @@ let safeAccordionOpen = false;
 // 기억한다 - riskyAccordionOpen과 마찬가지로 5분 자동 갱신에도 사용자가 펼쳐 둔 카드가 유지된다.
 let openStockDetailKeys = new Set();
 
+// [RISK 카드 - 소유자별 필터] 'all'이면 지금까지처럼 state.advancedRiskMetrics(가구 전체, 5분 자동
+// 갱신/새로고침 버튼이 채움)를 그대로 쓴다. 특정 소유자를 고르면 그 소유자 보유분만으로 같은 엔진
+// (computeAdvancedRiskMetrics)을 다시 돌린 결과를 riskCardOwnerMetricsCache에 담아 재사용한다 - 종목별
+// 1년 시세 이력은 이미 state.riskHistoryCache에 캐시돼 있어 네트워크 재호출 없이 즉시 계산된다.
+let riskCardOwnerFilter = 'all';
+let riskCardOwnerMetricsCache = {}; // { 소유자명: 계산결과 | null(계산 완료, 대상 없음) } - undefined면 "아직 계산 전"
+let riskCardOwnerRequestToken = 0; // 소유자를 빠르게 연속 전환해도 가장 마지막 선택만 반영되도록 하는 가드
+function getCurrentRiskMetrics() {
+  return riskCardOwnerFilter === 'all' ? state.advancedRiskMetrics : riskCardOwnerMetricsCache[riskCardOwnerFilter];
+}
+function selectRiskCardOwner(owner) {
+  riskCardOwnerFilter = owner;
+  riskCardOwnerRequestToken++;
+  renderRiskCardOwnerTabs();
+  renderRiskSection();
+}
+function renderRiskCardOwnerTabs() {
+  const wrap = document.getElementById('riskCardOwnerTabs');
+  if (!wrap) return;
+  const owners = getDailyPnlOwnerList();
+  if (owners.length < 2) { wrap.innerHTML = ''; wrap.classList.add('hidden'); return; } // 소유자가 1명뿐이면 구분할 의미가 없다
+  wrap.classList.remove('hidden');
+  const tabs = [{ key: 'all', label: '전체' }, ...owners.map((o) => ({ key: o, label: o }))];
+  wrap.innerHTML = tabs.map((t) => `
+    <button type="button" data-risk-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === riskCardOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 whitespace-nowrap">${escapeHtml(t.label)}</button>
+  `).join('');
+  wrap.querySelectorAll('button[data-risk-owner]').forEach((btn) => {
+    btn.addEventListener('click', () => selectRiskCardOwner(btn.dataset.riskOwner));
+  });
+}
+// [⚡ 원클릭 리밸런싱 이동 - RISK 카드 전용] 리밸런싱 탭의 "종목별 실행 가이드" 서브탭으로 이동해,
+// 지금 리스크 카드에서 보고 있던 소유자(또는 전체)의 아코디언만 자동으로 펼치고 그 자리로 스크롤한다 -
+// "누가 무엇을 사고팔아야 하는지"를 바로 확인할 수 있게 연결한다.
+function goToRebalanceGuideForOwner(owner) {
+  const key = owner || 'all';
+  switchTab('rebalance');
+  switchRebalanceSubTab('guide');
+  rebalanceGuideAccordionOpen[key] = true;
+  reapplyRebalanceGuideAccordionHeights();
+  const btn = document.querySelector(`.rebalance-guide-accordion-btn[data-guide-accordion-key="${CSS.escape(key)}"]`);
+  if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function setAccordionOpen(bodyEl, chevronEl, isOpen) {
   bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
   chevronEl.classList.toggle('rotate-180', isOpen);
@@ -8938,8 +9086,33 @@ function buildMetricItem(label, valueHtml, tooltip) {
 function renderRiskDiagnosisSummary() {
   const container = document.getElementById('riskDiagnosisSummary');
   if (!container) return;
-  const m = state.advancedRiskMetrics;
-  if (!m) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+  const m = getCurrentRiskMetrics();
+
+  // [소유자별 필터 - 캐시 미스] 아직 이 소유자로 한 번도 계산한 적이 없으면(undefined - null과 구분,
+  // null은 "계산 완료했지만 대상 없음") 계산 중 표시를 띄우고 백그라운드로 계산을 시작한다. 계산이
+  // 끝났을 때 사용자가 이미 다른 소유자/전체로 옮겨갔으면(riskCardOwnerRequestToken 불일치) 결과를
+  // 버리고 다시 그리지 않는다 - 빠르게 탭을 연속으로 눌러도 마지막 선택만 반영된다.
+  if (m === undefined) {
+    container.classList.remove('hidden');
+    container.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">계산 중...</p>';
+    const owner = riskCardOwnerFilter;
+    const myToken = riskCardOwnerRequestToken;
+    computeAdvancedRiskMetrics(owner).then((result) => {
+      riskCardOwnerMetricsCache[owner] = result;
+      if (myToken === riskCardOwnerRequestToken) renderRiskSection();
+    });
+    return;
+  }
+  if (!m) {
+    if (riskCardOwnerFilter !== 'all') {
+      container.classList.remove('hidden');
+      container.innerHTML = `<p class="text-sm text-slate-400 py-6 text-center">${escapeHtml(riskCardOwnerFilter)}님의 위험 분석 대상 보유 종목(일반계좌 주식/ETF)이 없습니다.</p>`;
+    } else {
+      container.classList.add('hidden');
+      container.innerHTML = '';
+    }
+    return;
+  }
   container.classList.remove('hidden');
 
   const score = m.riskScore;
@@ -8973,6 +9146,10 @@ function renderRiskDiagnosisSummary() {
     <div class="mt-2.5 space-y-1.5">
       ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
     </div>
+
+    <!-- [⚡ 원클릭 리밸런싱 이동] 지금 보고 있는 소유자(또는 전체) 기준 그대로 리밸런싱 실행 가이드로
+         이동해 그 소유자 아코디언만 펼쳐준다(goToRebalanceGuideForOwner 참고). -->
+    <button type="button" data-goto-rebalance-owner="${escapeHtml(riskCardOwnerFilter)}" class="mt-2.5 w-full sm:w-auto text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 원클릭 리밸런싱 이동${riskCardOwnerFilter !== 'all' ? ` (${escapeHtml(riskCardOwnerFilter)})` : ''}</button>
 
     <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
          (volatilitySpike, computeAdvancedRiskMetrics 참고) - 평소엔 공간을 차지하지 않는다. -->
@@ -9041,12 +9218,23 @@ function renderRiskDiagnosisSummary() {
   }
 }
 
+// [⚡ 원클릭 리밸런싱 이동 - RISK 카드] 이벤트 위임 - riskDiagnosisSummary는 매 렌더링마다 innerHTML로
+// 통째로 다시 그려지므로 컨테이너가 아니라 document에 위임해 재렌더링돼도 리스너가 끊기지 않는다.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-goto-rebalance-owner]');
+  if (!btn) return;
+  goToRebalanceGuideForOwner(btn.dataset.gotoRebalanceOwner);
+});
+
 // [What-If 프리셋 버튼 클릭] 실제 데이터 재조회 없이 computeScenarioRiskMetrics()로 즉시 재계산한다.
+// [소유자별 필터 대응] state.advancedRiskMetrics를 직접 읽지 않고 getCurrentRiskMetrics()로 지금 화면에
+// 보이는 소유자(또는 전체) 기준 지표를 가져온다 - 안 그러면 "신랑" 카드를 보면서 시뮬레이션해도 가구
+// 전체 데이터로 계산되는 불일치가 생긴다.
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-scenario-preset]');
   if (!btn) return;
   const box = document.getElementById('whatIfSimBox');
-  const m = state.advancedRiskMetrics;
+  const m = getCurrentRiskMetrics();
   if (!box || !m || !m.topHolding) return;
   const targetPct = parseFloat(btn.dataset.targetPct);
   const scenario = computeScenarioRiskMetrics(m, { [box.dataset.topTicker]: targetPct / 100 });
@@ -9076,6 +9264,7 @@ document.addEventListener('click', (e) => {
 });
 
 function renderRiskSection() {
+  renderRiskCardOwnerTabs();
   renderRiskDiagnosisSummary();
   const riskyContainer = document.getElementById('riskListContainer');
   const safeContainer = document.getElementById('safeListContainer');
@@ -9087,7 +9276,8 @@ function renderRiskSection() {
   const safeChevron = document.getElementById('safeAccordionChevron');
   if (!riskyContainer || !safeContainer) return;
 
-  const { risky: riskyRaw, safe: safeRaw } = computeRiskClassifiedAssets();
+  // [소유자별 필터] 리스크 감지/안정 목록도 지금 선택된 소유자(또는 전체) 기준으로만 보여준다.
+  const { risky: riskyRaw, safe: safeRaw } = computeRiskClassifiedAssets(riskCardOwnerFilter);
   // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다(두 목록 공통).
   const regionThenAmount = (x, y) => {
     const regionRank = (b) => (b.asset.isDomestic === '해외' ? 0 : 1);
@@ -9095,7 +9285,10 @@ function renderRiskSection() {
   };
   const risky = riskyRaw.sort(regionThenAmount);
   const safe = safeRaw.sort(regionThenAmount);
-  const totalPortfolioCur = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
+  // [소유자별 필터] 비중(%) 계산 분모도 선택된 소유자 기준 총액으로 맞춘다 - '전체'일 때는 기존과 동일.
+  const totalPortfolioCur = state.assets
+    .filter((a) => riskCardOwnerFilter === 'all' || a.owner === riskCardOwnerFilter)
+    .reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   riskyBadge.textContent = `${risky.length}건`;
   safeBadge.textContent = `${safe.length}건`;
@@ -9286,7 +9479,7 @@ function closeRiskAlertModal(viaBackButton) {
 
 document.getElementById('closeRiskAlertModalBtn').addEventListener('click', () => closeRiskAlertModal(false));
 
-// [⚡ 1클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
+// [⚡ 원클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
 document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () => {
   closeRiskAlertModal(false);
   switchTab('rebalance');
@@ -9429,7 +9622,12 @@ async function refreshPricesAndRates() {
   // 최신 상태로 반영된 뒤에 계산해야 종목별 비중/52주 낙폭이 정확하다 - pricesPromise에 체이닝해
   // 순서를 보장한다. 계산 자체는 내부에서 try/catch로 감싸 있어 실패해도 state.advancedRiskMetrics만
   // null이 될 뿐 나머지 갱신엔 영향 없다. (구 지수/20일선 개별 갱신 로직은 이 계산 하나로 흡수되어 제거됨)
-  const riskMetricsPromise = pricesPromise.then(() => computeAdvancedRiskMetrics()).then((m) => { state.advancedRiskMetrics = m; }).catch(() => {});
+  const riskMetricsPromise = pricesPromise.then(() => computeAdvancedRiskMetrics()).then((m) => {
+    state.advancedRiskMetrics = m;
+    // [소유자별 필터 캐시 무효화] 최신 시세로 가구 전체 지표를 다시 계산했으니, 소유자별로 캐시해 둔
+    // 지표도 낡은 시세 기준이 됐다 - 전부 비워서 다음에 그 소유자 탭을 보여줄 때 새로 계산하게 한다.
+    riskCardOwnerMetricsCache = {};
+  }).catch(() => {});
 
   const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
@@ -10455,6 +10653,39 @@ function pick(row, ...keys) {
   return '';
 }
 
+// [추가하기(append) 모드 - 중복 종목 최신 수량 반영] 예전엔 그냥 이어붙였다(concat) - 이미 보유 중인
+// 자산과 소유자/계좌구분/티커가 완전히 같은 종목을 다시 가져오면 똑같은 행이 하나 더 생겨 평가금액이
+// 두 배로 잡히는 사고로 이어졌다. 그다음엔 "추가 매수"처럼 수량을 합산(가중평균 매수단가)해봤지만,
+// 사용자 입장에선 "그 사이 38주에서 50주로 늘었다"는 최신 스냅샷을 반영하려던 것뿐인데 88주로 뻥튀기
+// 되는 문제가 있었다 - 이제 같은 종목(티커가 없는 채권/현금/부동산 등은 소유자+계좌구분+자산군+이름
+// 으로 대신 식별)을 다시 만나면 수량을 더하지도, 무시하지도 않고 **불러온 파일의 값으로 완전히
+// 덮어써(최신 스냅샷으로 갱신)** id만 기존 것을 유지한다. 기존에 없던 완전 신규 종목만 새 행으로
+// 추가한다. newCount/updatedCount를 함께 반환해 "신규 N개 추가, 기존 N개 업데이트" 안내에 쓴다.
+function assetMergeKey(a) {
+  const ticker = String(a.ticker ?? '').trim();
+  return ticker
+    ? `${a.owner}|${a.accountType}|${ticker.toUpperCase()}`
+    : `${a.owner}|${a.accountType}|${a.category}|${a.name}`;
+}
+function mergeAssetsForAppend(existingAssets, incomingAssets) {
+  const merged = existingAssets.map((a) => ({ ...a })); // 원본 배열/객체를 직접 변형하지 않도록 복사
+  const indexByKey = new Map(merged.map((a, i) => [assetMergeKey(a), i]));
+  let newCount = 0, updatedCount = 0;
+  incomingAssets.forEach((incoming) => {
+    const key = assetMergeKey(incoming);
+    const idx = indexByKey.get(key);
+    if (idx === undefined) {
+      merged.push({ ...incoming });
+      indexByKey.set(key, merged.length - 1);
+      newCount++;
+      return;
+    }
+    merged[idx] = { ...incoming, id: merged[idx].id }; // 값은 전부 최신 파일 기준, id만 기존 것 유지
+    updatedCount++;
+  });
+  return { assets: merged, newCount, updatedCount };
+}
+
 // [버그 수정 - "취소"를 눌러도 자산이 중복 추가되던 문제] 예전엔 confirm() 하나로 "덮어쓰기(확인)/추가(취소)"
 // 둘을 억지로 구분했다 - 그 결과 사용자가 정말 가져오기 자체를 그만두고 싶어서 취소를 눌러도 실제로는
 // 기존 데이터 위에 그대로 이어붙여져(추가) 자산이 중복 계산되는 사고로 이어졌다. 이제 [덮어쓰기]/
@@ -10472,7 +10703,13 @@ function closeImportChoiceModal(result, viaBackButton) {
   if (!viaBackButton) popModalHistoryIfNeeded();
   if (importChoiceResolve) { importChoiceResolve(result); importChoiceResolve = null; }
 }
-document.getElementById('importChoiceOverwriteBtn').addEventListener('click', () => closeImportChoiceModal('overwrite'));
+// [덮어쓰기 전 추가 경고] 파일 형식이 옳으면 몇 건인지까지 확인한 뒤 고르는 선택지이지만, "덮어쓰기"는
+// 되돌릴 수 없는 삭제 작업이므로 한 번 더 명시적으로 확인한다 - 취소하면 선택 모달 자체는 그대로 열려
+// 있어 [기존 데이터에 추가]나 [취소]로 다시 고를 수 있다.
+document.getElementById('importChoiceOverwriteBtn').addEventListener('click', () => {
+  if (!confirm('기존 데이터가 모두 삭제됩니다. 계속하시겠습니까?')) return;
+  closeImportChoiceModal('overwrite');
+});
 document.getElementById('importChoiceAppendBtn').addEventListener('click', () => closeImportChoiceModal('append'));
 document.getElementById('importChoiceCancelBtn').addEventListener('click', () => closeImportChoiceModal('cancel'));
 document.getElementById('closeImportChoiceModalBtn').addEventListener('click', () => closeImportChoiceModal('cancel'));
@@ -10508,13 +10745,17 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       if (imported.length === 0) { alert('가져올 데이터가 없습니다. (ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 헤더를 확인하세요)'); return; }
       const choice = await openImportChoiceModal(`${imported.length}건을 불러옵니다.\n기존 데이터를 덮어쓸까요, 추가할까요?`);
       if (choice === 'cancel') return; // 가져오기 자체를 취소 - 아무 것도 바뀌지 않는다.
+      let resultMsg;
       if (choice === 'append') {
-        state.assets = state.assets.concat(imported);
+        const { assets, newCount, updatedCount } = mergeAssetsForAppend(state.assets, imported);
+        state.assets = assets;
+        resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
       } else {
         state.assets = imported;
         state.dayChangeMap = {};
         state.prevCloseMap = {};
         state.sessionMap = {};
+        resultMsg = `엑셀 데이터 ${imported.length}건을 불러왔습니다.`;
       }
       persistAssets();
       renderAll();
@@ -10523,7 +10764,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       // 함수가 "아직 안 채워진 자산"만 골라 처리하므로 여기서 바로 불러 다음 새로고침을 기다리지 않고
       // 즉시 소급 이력을 채운다.
       backfillAllHoldingsDailyPnlHistory();
-      alert(`엑셀 데이터 ${imported.length}건을 불러왔습니다. (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
+      // [가져오기 직후 리스크 즉시 갱신] renderAll()만으로는 시세/RISK 진단(state.advancedRiskMetrics)이
+      // 새 데이터 기준으로 다시 계산되지 않는다 - 5분 자동 갱신이나 수동 새로고침을 기다리지 않고 바로
+      // 새 포트폴리오 기준 위험점수/스트레스 테스트가 보이도록 명시적으로 한 번 더 호출한다.
+      refreshPricesAndRates();
+      alert(`${resultMsg} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
@@ -10572,6 +10817,25 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
 
 document.getElementById('importJsonBtn').addEventListener('click', () => document.getElementById('jsonFileInput').click());
 
+// JSON 백업의 거래 객체를 타입 안전하게 보정한다 - 덮어쓰기/추가하기 두 경로가 공유한다.
+function normalizeImportedTransaction(t) {
+  return {
+    id: t.id || genId(),
+    date: t.date || todayDateStr(),
+    owner: t.owner || '공동',
+    accountType: t.accountType || '일반계좌',
+    ticker: String(t.ticker ?? '').trim(),
+    name: t.name || '이름없음',
+    type: t.type === 'sell' ? 'sell' : 'buy',
+    quantity: num(t.quantity),
+    price: num(t.price),
+    currency: (t.currency === 'USD') ? 'USD' : 'KRW',
+    fee: num(t.fee),
+    origin: t.origin === 'initial' ? 'initial' : 'period',
+    createdAt: t.createdAt || Date.now()
+  };
+}
+
 document.getElementById('jsonFileInput').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -10599,9 +10863,26 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
       const choice = await openImportChoiceModal(`${restored.length}건을 복원합니다.\n기존 데이터를 덮어쓸까요, 추가할까요?`);
       if (choice === 'cancel') return; // 복원 자체를 취소 - 아무 것도 바뀌지 않는다.
+      let resultMsg;
       if (choice === 'append') {
-        state.assets = state.assets.concat(restored);
+        // [추가하기 - 자산] 중복 종목(소유자+계좌구분+티커 동일)은 새 행을 만들지 않고, 불러온 파일의
+        // 최신 값으로 덮어써 갱신한다(mergeAssetsForAppend 참고 - 수량을 더하지 않는다).
+        const { assets, newCount, updatedCount } = mergeAssetsForAppend(state.assets, restored);
+        state.assets = assets;
+        resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
+        // [추가하기 - 거래내역] 예전엔 append 모드에서 거래내역이 통째로 무시돼, 방금 합쳐진 자산
+        // 수량의 근거가 되는 매수 기록이 [거래내역] 탭/기간별 실현손익에 전혀 안 남는 문제가 있었다.
+        // 이제 기존 거래내역 뒤에 이어 붙이되, 같은 id(예: 같은 백업을 실수로 두 번 불러온 경우)를
+        // 가진 거래는 다시 추가하지 않아 이중 계상을 막는다 - 설정(rebalance/projection/환율/일별
+        // 스냅샷)은 "추가"라는 의도에 맞게 건드리지 않는다(덮어쓰기에서만 갱신).
+        if (Array.isArray(parsed.transactions)) {
+          const incomingTx = parsed.transactions.map(normalizeImportedTransaction);
+          const existingIds = new Set(state.transactions.map((t) => t.id));
+          state.transactions = state.transactions.concat(incomingTx.filter((t) => !existingIds.has(t.id)));
+          persistTransactions();
+        }
       } else {
+        resultMsg = `JSON 백업 ${restored.length}건을 복원했습니다.`;
         state.assets = restored;
         state.dayChangeMap = {};
         state.prevCloseMap = {};
@@ -10638,21 +10919,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
           persistProjection();
         }
         if (Array.isArray(parsed.transactions)) {
-          state.transactions = parsed.transactions.map((t) => ({
-            id: t.id || genId(),
-            date: t.date || todayDateStr(),
-            owner: t.owner || '공동',
-            accountType: t.accountType || '일반계좌',
-            ticker: String(t.ticker ?? '').trim(),
-            name: t.name || '이름없음',
-            type: t.type === 'sell' ? 'sell' : 'buy',
-            quantity: num(t.quantity),
-            price: num(t.price),
-            currency: (t.currency === 'USD') ? 'USD' : 'KRW',
-            fee: num(t.fee),
-            origin: t.origin === 'initial' ? 'initial' : 'period',
-            createdAt: t.createdAt || Date.now()
-          }));
+          state.transactions = parsed.transactions.map(normalizeImportedTransaction);
           persistTransactions();
         }
         // [버그 수정] dailySnapshots 복원 누락 - 이 필드가 없으면 백업 시점까지의 추이 차트 히스토리가
@@ -10666,7 +10933,11 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       persistAssets();
       renderAll();
       backfillAllHoldingsDailyPnlHistory(); // 엑셀 업로드와 동일한 이유 - 일괄 복원은 개별 등록 경로를 타지 않는다.
-      showToast(`JSON 백업 ${restored.length}건을 복원했습니다.`, 'success');
+      // [가져오기 직후 리스크 즉시 갱신] renderAll()만으로는 시세/RISK 진단(state.advancedRiskMetrics)이
+      // 새 데이터 기준으로 다시 계산되지 않는다 - 5분 자동 갱신이나 수동 새로고침을 기다리지 않고 바로
+      // 새 포트폴리오 기준 위험점수/스트레스 테스트가 보이도록 명시적으로 한 번 더 호출한다.
+      refreshPricesAndRates();
+      showToast(resultMsg, 'success');
     } catch (err) {
       alert('JSON 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
@@ -10709,6 +10980,12 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.exchangeRate = 1450;
   state.refExchangeRate = 1450;
   state.dailyChangeRate = 0;
+  // [버그 수정 - 초기화해도 RISK 카드가 이전 위험점수를 계속 보여줌] state.advancedRiskMetrics는
+  // localStorage가 아니라 순전히 메모리 캐시(refreshPricesAndRates() 안에서만 갱신됨)라 위 필드들을
+  // 아무리 비워도 이 값은 그대로 남는다 - renderRiskDiagnosisSummary()가 이 캐시를 그대로 읽어 자산이
+  // 0건인데도 직전 포트폴리오의 종합 위험점수/스트레스 테스트를 계속 그려 보였다. 명시적으로 비운다
+  // (자산이 없으니 재계산할 필요도 없이 null이 곧 정답이다).
+  state.advancedRiskMetrics = null;
 
   persistAssets();
   persistRebalance();
