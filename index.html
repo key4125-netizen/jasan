@@ -448,7 +448,7 @@
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
         <h3 class="text-sm font-semibold text-red-600 dark:text-red-400">RISK 관리</h3>
-        <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, RSI 과열·추세 이탈·52주 고점대비 급락·거래량 급증 중 하나라도 해당하면 종목이 감지됩니다."
+        <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, 단기 과열·추세 이탈·52주 고점대비 급락·거래량 급증 중 하나라도 해당하면 종목이 감지됩니다."
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>
@@ -7988,17 +7988,29 @@ async function fetchPriceWithFallback(rawTicker, name) {
 // 심볼(NQ=F 등) 없이 지수만으로 정규장+연장장을 모두 커버한다. 국내 지수(코스피/코스닥)는 실제로
 // 시간외 데이터가 없어(KRX가 지수 자체는 정규장에만 산출) 시간외 시간대엔 raceFetchPrice가 자동으로
 // 직전 정규장 등락률을 그대로 반환한다(사용자 확인된 처리 방식과 일치, 별도 분기 코드 불필요).
-const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500: '^GSPC' };
+const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500: '^GSPC', NASDAQ100: '^NDX', DOW: '^DJI' };
 const RISK_ELIGIBLE_CATEGORIES = ['주식', 'ETF'];
 
-// 자산의 벤치마크 지수를 정한다: 국내는 티커 접미사(.KS→코스피, .KQ→코스닥)로 명확히 구분된다.
-// 미국은 종목마다 실제 추종/소속 지수가 제각각이라(QQQM=나스닥100, SCHD/SPYM=배당·S&P 성격) 정확한
-// 1:1 매핑이 어려우므로, 편의상 S&P500을 미국 자산 공통 벤치마크로 사용한다(과락 감지의 취지상
-// "미국 증시 전반 대비 이례적으로 더 빠진 종목"을 걸러내는 데는 무리 없는 근사치).
+// [벤치마크 다변화] 예전엔 미국 종목을 전부 S&P500 하나로만 비교했다 - 이제 종목 성격별로 더 맞는
+// 벤치마크를 골라 베타(시장 민감도) 정밀도를 높인다: 기술/성장주·성장형 ETF는 나스닥100, 대표적인
+// 배당/가치주·ETF는 다우존스, 그 외 미국 종목은 기존처럼 S&P500(광범위 시장 평균)에 맡긴다. 실제
+// 팩터 모델(Fama-French 스타일)까지는 아니고, 잘 알려진 대형 종목/ETF만 손으로 분류한 근사치다 -
+// 매핑에 없는 종목은 안전하게 S&P500 기본값으로 빠진다.
+const NASDAQ100_STYLE_TICKERS = new Set([
+  'QQQ', 'QQQM', 'TQQQ', 'SOXX', 'SMH', 'NVDA', 'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'TSLA',
+  'AVGO', 'AMD', 'NFLX', 'ADBE', 'CRM', 'ORCL', 'NOW', 'INTU', 'ASML', 'TSM'
+]);
+const DOW_STYLE_TICKERS = new Set([
+  'DIA', 'SCHD', 'VYM', 'HDV', 'VIG', 'NOBL', 'DVY', 'SPYD', 'SDY', 'JPM', 'V', 'MA', 'JNJ', 'UNH', 'XOM',
+  'CVX', 'PG', 'KO'
+]);
 function getBenchmarkKeyForAsset(a) {
   const yahooTicker = sanitizeTicker(a.ticker).yahooTicker;
   if (/\.KQ$/i.test(yahooTicker)) return 'KOSDAQ';
   if (/\.KS$/i.test(yahooTicker)) return 'KOSPI';
+  const upper = yahooTicker.toUpperCase();
+  if (NASDAQ100_STYLE_TICKERS.has(upper)) return 'NASDAQ100';
+  if (DOW_STYLE_TICKERS.has(upper)) return 'DOW';
   return 'SP500';
 }
 
@@ -8132,7 +8144,13 @@ function rsiStateLabel(rsi14) {
 // 실제 2020년 당시 가격을 개별 재조회하는 대신(당시 미상장 종목이 많아 무의미), 지금 계산한 베타를 이
 // 실측 낙폭에 곱해 "시장이 그때처럼 다시 급락하면 내 포트폴리오는 베타만큼 상대적으로 더/덜 흔들린다"는
 // 근사치를 추정한다 - 화면에 항상 "추정치"임을 명시한다.
-const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9 };
+const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9, NASDAQ100: -28.0, DOW: -37.1 };
+// [2022 고금리 기술주 폭락 재현] 2022년 한 해 동안(고점~저점) 실제 벤치마크 지수 낙폭(%, 공개된 역사적
+// 수치) - 미 연준의 급격한 금리 인상으로 특히 기술/성장주가 크게 빠졌던 구간이다. 2020 코로나 폭락과
+// 같은 방식(베타 × 실측 낙폭)으로 근사한다 - "급락"이 아니라 "장기간에 걸친 약세장"이라는 점에서 2020
+// 시나리오와 성격이 달라, 두 시나리오를 함께 보여주면 "짧고 강한 충격" vs "길게 이어지는 하락"을
+// 비교해서 감을 잡을 수 있다.
+const RATE_HIKE_2022_BENCHMARK_DROP_PCT = { KOSPI: -28.6, KOSDAQ: -35.3, SP500: -25.4, NASDAQ100: -35.1, DOW: -21.2 };
 
 /* -------------------------------------------------------------------------
  * 18-1b. [정밀 포트폴리오 리스크 엔진] 섹터/ETF 룩스루 매핑 + 수급 대체 지표 + 6대 위험요인 계산
@@ -8584,15 +8602,21 @@ async function computeAdvancedRiskMetrics() {
     const correlationMatrix = computeFullCorrelationMatrix(withData);
     const weightedAvgCorrelation = withData.length >= 2 ? computeWeightedAvgCorrelation(withData, correlationMatrix) : null;
 
-    // 2020 코로나 폭락 재현 - 종목별 베타 × 그 종목 벤치마크의 실제 2020년 낙폭(데이터 없는 종목은
-    // 시장과 동일하게 움직인다고 가정해 베타 1.0으로 근사, 안전한 기본값).
-    let stressLossKRW = 0;
-    holdings.forEach((h) => {
-      const beta = typeof h.beta === 'number' ? h.beta : 1.0;
-      const benchmarkDrop = COVID_CRASH_BENCHMARK_DROP_PCT[h.benchmarkKey] || -34;
-      stressLossKRW += h.curAmount * (beta * benchmarkDrop / 100);
-    });
-    const stressLossPct = totalCur !== 0 ? (stressLossKRW / totalCur) * 100 : 0;
+    // [역사적 하락장 스트레스 테스트 - 공용 함수] 종목별 베타 × 그 종목 벤치마크의 실제 낙폭(데이터
+    // 없는 종목은 시장과 동일하게 움직인다고 가정해 베타 1.0으로 근사, 안전한 기본값) - 2020 코로나
+    // 폭락(급락형)과 2022 고금리 기술주 폭락(장기 약세장형) 두 시나리오를 같은 방식으로 계산한다.
+    function computeStressScenario(dropPctMap, fallbackDrop) {
+      let lossKRW = 0;
+      holdings.forEach((h) => {
+        const beta = typeof h.beta === 'number' ? h.beta : 1.0;
+        const benchmarkDrop = dropPctMap[h.benchmarkKey] ?? fallbackDrop;
+        lossKRW += h.curAmount * (beta * benchmarkDrop / 100);
+      });
+      const lossPct = totalCur !== 0 ? (lossKRW / totalCur) * 100 : 0;
+      return { lossKRW, lossPct };
+    }
+    const covidStress = computeStressScenario(COVID_CRASH_BENCHMARK_DROP_PCT, -34);
+    const rateHike2022Stress = computeStressScenario(RATE_HIKE_2022_BENCHMARK_DROP_PCT, -28);
 
     // [정밀 포트폴리오 리스크 엔진] 섹터 노출(ETF 룩스루 포함)/HHI/연환산 변동성/MDD/위험기여도를 구하고,
     // 6대 위험요인 → 종합 위험점수(0~100, 높을수록 위험) → 데이터 신뢰도까지 전부 계산해 둔다. 화면은
@@ -8603,6 +8627,14 @@ async function computeAdvancedRiskMetrics() {
     const portfolioMDDPct = computePortfolioMDDFromReturns(portfolioReturns);
     const riskContributions = computeRiskContributions(withData, portfolioReturns);
     holdings.forEach((h) => { h.riskContributionPct = riskContributions[h.ticker] ?? null; });
+
+    // [단기 vs 장기 변동성 이중 추적 - Risk Spike 감지] 위 portfolioVolatilityPct(최근 1년 연환산)에
+    // 더해, 최근 20거래일(약 1개월)만 떼어 같은 방식으로 연환산한 "단기 변동성"을 함께 구한다. 단기가
+    // 장기 평균의 1.5배 이상으로 튀면 "최근 들어 갑자기 흔들림이 커졌다"는 신호로 보고 경고를 띄운다
+    // (장기 변동성 자체가 0에 가까우면 배수 비교가 무의미해지므로 그 경우는 감지하지 않는다).
+    const portfolioVolatilityShortPct = computeAnnualizedVolatilityPct(portfolioReturns.slice(-20));
+    const volatilitySpike = typeof portfolioVolatilityShortPct === 'number' && typeof portfolioVolatilityPct === 'number'
+      && portfolioVolatilityPct > 0 && portfolioVolatilityShortPct >= portfolioVolatilityPct * 1.5;
 
     const scoreInputs = { topWeight, hhi, sectorExposure, portfolioVolatilityPct, portfolioMDDPct, var95Pct, cvarPct, portfolioBeta, weightedAvgCorrelation };
     const subScores = {
@@ -8619,9 +8651,11 @@ async function computeAdvancedRiskMetrics() {
     return {
       totalCur, holdings: sortedByWeight, missingCount, portfolioBeta, var95Pct, cvarPct, sortino,
       var95KRW: totalCur * var95Pct / 100, cvarKRW: totalCur * cvarPct / 100,
-      topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair, stressLossKRW, stressLossPct,
-      hhi, sectorExposure, portfolioVolatilityPct, portfolioMDDPct, weightedAvgCorrelation, correlationMatrix,
-      subScores, riskScore, dataConfidence
+      topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair,
+      stressLossKRW: covidStress.lossKRW, stressLossPct: covidStress.lossPct,
+      stressLossKRW2022: rateHike2022Stress.lossKRW, stressLossPct2022: rateHike2022Stress.lossPct,
+      hhi, sectorExposure, portfolioVolatilityPct, portfolioVolatilityShortPct, volatilitySpike, portfolioMDDPct,
+      weightedAvgCorrelation, correlationMatrix, subScores, riskScore, dataConfidence
     };
   } catch (e) {
     console.warn('[리스크 진단] 계산 실패 - 다음 갱신에서 재시도합니다:', e.message);
@@ -8701,7 +8735,7 @@ function buildRiskActionItems(m) {
 // 걸렸는지에 따라 다르게 보여준다(RSI 과열/추세 이탈/52주 고점대비 급락/거래량 급증 각각에 대응,
 // 우선순위 하나만 골라 보여준다 - 자세한 근거는 [🔍 리스크 진단 보기] 상세 카드에서 전부 보여준다).
 function buildAssetActionTag(tags) {
-  if (tags.includes('RSI 과열')) return '비중 축소 검토';
+  if (tags.includes('단기 과열')) return '비중 축소 검토';
   if (tags.includes('52주 고점대비 급락')) return '방어자산 확보 필요';
   if (tags.includes('추세 이탈')) return '단기 추세 주의';
   if (tags.includes('거래량 급증')) return '변동성 확대 주의';
@@ -8715,7 +8749,7 @@ function buildAssetActionTag(tags) {
 function buildIndividualRiskTags(h) {
   if (!h || !h.hasData) return [];
   const tags = [];
-  if (h.rsiState === '과열') tags.push('RSI 과열');
+  if (h.rsiState === '과열') tags.push('단기 과열');
   if (h.trendBroken) tags.push('추세 이탈');
   if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) tags.push('52주 고점대비 급락');
   if (h.volumeSpike) tags.push('거래량 급증');
@@ -8759,11 +8793,13 @@ function computeRiskClassifiedAssets() {
 function buildIndividualDiagnosisLine(h) {
   if (!h || !h.hasData) return '가격 이력 데이터가 부족해(신규 상장 등) 정밀 진단을 계산할 수 없습니다.';
   const trendPhrase = h.trendBroken ? '20일선 아래로 단기 하락 전환 상태입니다.' : '20일선 위 상승 추세를 유지 중입니다.';
+  // [초보자 용어] 'RSI'라는 전문용어 대신 '과열지수'(0~100, 높을수록 단기간에 너무 급하게 오른 상태)로
+  // 통일해서 표현한다 - 원래 수치(h.rsi14)는 괄호 안에 그대로 남겨 숙련자도 참고할 수 있게 한다.
   const rsiPhrase = h.rsiState === '과열'
-    ? `RSI ${fmtNum(h.rsi14, 0)}로 단기 과열(과매수) 구간입니다.`
+    ? `최근 며칠 너무 가파르게 올라 '숨 고르기'가 필요한 단기 과열 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100).`
     : h.rsiState === '과매도'
-      ? `RSI ${fmtNum(h.rsi14, 0)}로 바닥권(과매도) 구간입니다.`
-      : `RSI ${typeof h.rsi14 === 'number' ? fmtNum(h.rsi14, 0) : '-'}로 과열·과매도 없이 적정 구간입니다.`;
+      ? `단기간 너무 많이 빠져 '바닥 다지기' 구간에 가까운 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100).`
+      : `과열도 과매도도 아닌 적정 구간입니다 (과열지수 ${typeof h.rsi14 === 'number' ? fmtNum(h.rsi14, 0) : '-'}/100).`;
   return `${trendPhrase} ${rsiPhrase}`;
 }
 
@@ -8777,7 +8813,7 @@ function buildIndividualActionItem(h, weightPct) {
     return `계좌 내 비중이 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 목표 비중(15% 이하)까지 서서히 줄여 위험을 분산하세요.`;
   }
   if (h.rsiState === '과열') {
-    return `단기 과열(RSI ${fmtNum(h.rsi14, 0)}) 구간입니다. 추가 매수는 조정 이후로 미루고, 일부 이익 실현을 고려하세요.`;
+    return `단기 과열 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100). 추가 매수는 조정 이후로 미루고, 일부 이익 실현을 고려하세요.`;
   }
   if (h.trendBroken) {
     return '20일선 아래로 단기 추세가 꺾였습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
@@ -8938,6 +8974,14 @@ function renderRiskDiagnosisSummary() {
       ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
     </div>
 
+    <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
+         (volatilitySpike, computeAdvancedRiskMetrics 참고) - 평소엔 공간을 차지하지 않는다. -->
+    ${m.volatilitySpike ? `
+    <div class="mt-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 p-2.5">
+      <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">⚡ 최근 단기 변동성 급증 경고</p>
+      <p class="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
+    </div>` : ''}
+
     <!-- [6대 위험요인 분해] -->
     <div class="mt-4 space-y-3">${barsHtml}</div>
 
@@ -8952,11 +8996,20 @@ function renderRiskDiagnosisSummary() {
     </div>
     ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
 
-    <!-- [역사적 위기 체험하기] 2020년 코로나 폭락 재현 시뮬레이션 -->
-    <div class="mt-3 rounded-lg bg-white/70 dark:bg-black/20 p-3">
-      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 역사적 위기 체험하기 - 2020년 코로나 폭락장 재현 시</p>
-      <p class="text-lg sm:text-xl font-bold text-blue-500">내 계좌 약 ${fmtKRWShort(Math.abs(m.stressLossKRW))}(${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
-      <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 보유 종목별 시장 민감도(널뛰기 위험)를 2020년 실제 지수 낙폭(코스피 -35.7%·S&P500 -33.9%)에 대입한 추정치이며, 실제 결과와 다를 수 있습니다.</p>
+    <!-- [역사적 하락장 체험하기] 2020 코로나(짧고 강한 급락) + 2022 고금리(길게 이어진 약세장) 두 시나리오
+         - 모바일(375px)에서도 카드가 잘리지 않도록 grid-cols-1로 세로로 쌓고, sm 이상에서만 2열로
+         나란히 배치한다. 초보자 눈높이에 맞춰 "금융위기급 폭락이 재현될 경우"처럼 쉬운 말로 설명한다. -->
+    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
+        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020 코로나 폭락 재현 시</p>
+        <p class="text-lg sm:text-xl font-bold text-blue-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
+        <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 코로나 폭락처럼 짧은 기간에 급격히 폭락하는 금융위기급 충격이 재현될 경우 예상 손실액입니다(코스피 -35.7%·S&P500 -33.9% 등 실측 낙폭 대입 추정치).</p>
+      </div>
+      <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
+        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022 고금리 기술주 폭락 재현 시</p>
+        <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW2022))} (${fmtNum(m.stressLossPct2022, 1)}%) 손실 예상</p>
+        <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 2022년처럼 금리가 급격히 오르며 특히 기술/성장주가 길게 이어서 빠지는 약세장이 재현될 경우 예상 손실액입니다(코스피 -28.6%·나스닥100 -35.1% 등 실측 낙폭 대입 추정치).</p>
+      </div>
     </div>
 
     <!-- [What-If 리밸런싱 시뮬레이션] -->
