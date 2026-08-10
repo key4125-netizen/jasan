@@ -6754,12 +6754,31 @@ function changeInlineHtml(p) {
 // [종목 상세 모달 전환] 요약 행/카드를 클릭하면 아코디언으로 펼치는 대신 openAssetDetailModal()이
 // 종목 상세 정보 + 주가 차트 모달을 띄운다(기존 수정 폼으로 이어지던 아코디언·수정 버튼은 제거됨 -
 // 수량/매입단가 수정은 이제 거래내역 탭에서 거래를 등록하는 방식으로 이뤄진다).
+// [무티커 현금/채권 - 수량 대신 평가금액 표시] 달러/국채/현금처럼 티커 없는 현금·채권 자산은 "수량×단가"
+// 개념이 사용자에게 의미가 없다("금액 기반 입력" 관례상 단가는 늘 1로 고정) - 그래서 이 자산군만 수량
+// 칸은 비우고, 현재가 칸에 평가금액을 대신 보여준다. 달러(해외통화)는 환율을 곱하지 않은 "보유 달러
+// 총액"을 헤드라인으로, 그 아래 참고용으로 환율 적용된 원화 총액을 작게 덧붙인다(원화 현금/채권은
+// 애초에 환율 변환이 없으므로 평가금액 하나만 보여주면 충분하다).
+function isCashOrBondNoTicker(r) {
+  return !r.ticker && (r.category === '현금' || r.category === '채권');
+}
+function cashBondValueHtml(r) {
+  if (r.isForeign) {
+    const usdTotal = num(r.quantity) * num(r.currentPrice);
+    return { headline: `$${fmtNum(usdTotal, 2)}`, sub: `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.curAmount)}</div>` };
+  }
+  return { headline: fmtNum(r.curAmount, 0), sub: '' };
+}
+
 function rowHtml(r) {
   const p = derivePresentation(r);
-  const priceUnit = p.priceUnit;
+  const isCashBond = isCashOrBondNoTicker(r);
+  const cashBondValue = isCashBond ? cashBondValueHtml(r) : null;
+  const priceUnit = isCashBond ? '' : p.priceUnit;
+  const priceHeadline = isCashBond ? cashBondValue.headline : `${priceUnit}${fmtNum(r.currentPrice, 2)}`;
   const tickerTitle = p.yahooTickerHint ? ` title="시세조회: ${escapeHtml(p.yahooTickerHint)}"` : '';
   // 해외 자산은 "적용 통화(달러)"와 "환산 원화"를 요약에서 함께 보여준다.
-  const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
   // [종목 통합 표시] 여러 소유자/계좌를 합친 행은 "통합 N건(소유자1+소유자2)"로 구분해 보여주고,
   // 클릭 시 그룹 상세 모달로 라우팅할 수 있도록 data-member-ids를 함께 심어둔다.
   const subtitle = r._isGroup
@@ -6773,8 +6792,8 @@ function rowHtml(r) {
       <div class="font-medium">${escapeHtml(r.name)}${changeInlineHtml(p)}</div>
       <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${subtitle}</div>
     </td>
-    <td class="px-3 py-2.5 text-right">${fmtNum(r.quantity, 4)}</td>
-    <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
+    <td class="px-3 py-2.5 text-right">${isCashBond ? '' : fmtNum(r.quantity, 4)}</td>
+    <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceHeadline}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
     <td class="px-3 py-2.5 text-center"><i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 inline-block"></i></td>
   </tr>`;
 }
@@ -6791,7 +6810,9 @@ function rowHtml(r) {
 // 온전히 보이도록 별도 flex 컨테이너로 감싼다 - 그래야 이름이 길어도 등락률이 잘리지 않는다.
 function cardHtml(r) {
   const p = derivePresentation(r);
-  const priceKrwSub = r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '';
+  const isCashBond = isCashOrBondNoTicker(r);
+  const cashBondValue = isCashBond ? cashBondValueHtml(r) : null;
+  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
   const dailyRateInline = p.hasChange
     ? `<span class="shrink-0 text-[12px] font-semibold ${p.changeColorClass}">${p.changeText}</span>`
     : '';
@@ -6818,8 +6839,8 @@ function cardHtml(r) {
       <p class="mt-1 text-[13.5px] leading-tight font-medium whitespace-nowrap ${profitColor(r.profit)}">(${fmtPct(r.rateOfReturn)} / ${fmtSignedShort(r.profit)})</p>
     </div>
     <div class="text-right shrink-0 pl-2">
-      <p class="text-[10px] text-slate-400">수량 ${fmtNum(r.quantity, 4)}</p>
-      <p class="text-sm font-semibold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
+      <p class="text-[10px] text-slate-400">${isCashBond ? '&nbsp;' : `수량 ${fmtNum(r.quantity, 4)}`}</p>
+      <p class="text-sm font-semibold">${isCashBond ? cashBondValue.headline : `${p.priceUnit}${fmtNum(r.currentPrice, 2)}`}${p.sessionBadge}</p>
       ${priceKrwSub}
       ${p.priceFailBadge}
     </div>
@@ -11112,6 +11133,18 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
           state.dailySnapshots = parsed.dailySnapshots;
           persistDailySnapshots();
+          // [버그 수정 - JSON 복원 후 일별 손익 이중 합산] 아래 backfillAllHoldingsDailyPnlHistory()는
+          // "아직 한 번도 소급 채움을 안 해본 자산"만 골라 그 자산의 하루치 변동분을 dailySnapshots에
+          // += 로 더해 넣는다(여러 자산이 같은 날짜를 공유하므로 원래는 "누적"이 맞는 설계 - 9966번
+          // 줄 주석 참고). 그런데 방금 위에서 이미 완성된 과거 이력을 통째로 복원했으므로, 이 자산들을
+          // "아직 안 채움"으로 다시 처리하면 이미 들어있는 값 위에 똑같은 변동분을 또 더해 그래프 금액이
+          // 배로 부풀어 버린다(특히 [데이터 초기화]는 소급 완료 표시(sam_daily_backfill_done_ids_v1)까지
+          // 함께 지우므로, 초기화 후 같은 백업을 다시 불러오면 100% 재현된다). 방금 복원한 자산들의 id를
+          // 전부 "이미 채워짐"으로 미리 표시해 이중 합산을 막는다 - dailySnapshots가 없는 구버전 백업을
+          // 덮어쓸 때는 이 블록 자체가 실행되지 않으므로 기존처럼 정상적으로 소급 채움이 수행된다.
+          const doneIds = getBackfillDoneIds();
+          state.assets.forEach((a) => doneIds.add(a.id));
+          localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
         }
       }
       persistAssets();
