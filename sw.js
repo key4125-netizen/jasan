@@ -2,13 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v74'; // [무티커 현금/채권 리스트 표시 - 수량 숨김, 현재가 칸에 평가금액]
-// 달러/국채/현금처럼 티커 없는 현금·채권 자산은 투자세부 리스트에서 수량 칸을 비우고, 현재가 칸에
-// 평가금액을 대신 보여준다. 달러는 환율을 곱하지 않은 "보유 달러 총액"을 헤드라인으로 하고 그 아래
-// 참고용 원화환산 총액을 작게 덧붙이며, 원화 현금/국채는 평가금액(원)만 보여준다. v73->v74: 이 값을
-// 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안 바꾸면 GitHub에
-// 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다(activate 핸들러가
-// CACHE_NAME이 다른 캐시만 지우기 때문).
+const CACHE_NAME = 'smart-asset-manager-v76'; // [버그 수정 - 현금 차단 로직이 신규 생성 경로에서 무력화되던 문제]
+// 실제 사용자 엑셀 파일(거래내역 양식)로 대량 업로드를 실측 검증하다가 발견 - findMatchingCashAsset()이
+// "이미 존재하는 현금 자산"과 일치할 때만 차단했는데, 아직 매칭되는 자산이 하나도 없는 최초 대량 업로드
+// 상황에서는 "현금"/"달러" 거래가 그대로 통과해 syncAssetsFromTransactions()가 classifyCategory()로
+// 새 현금 자산을 만들어 버렸다(v75에서 의도한 차단이 신규 생성 시나리오에서는 무력화됨). 이제 매칭되는
+// 기존 자산이 없어도 classifyCategory()의 자동판별 결과가 '현금'이면 동일하게 차단한다.
+// v75->v76: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+// 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
+// (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
   './',
   './index.html',
