@@ -1221,13 +1221,21 @@
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
 
-      <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">③ 수량/좌수</span>
+      <!-- [금액 기반 입력] 직접 입력 모드(채권/현금/부동산 등)에서만 노출된다(updateAssetAmountModeUI 참고).
+           체크 시 수량 필드가 "총 보유금액"이 되고, 매수단가/현재가는 자동으로 1로 고정된다 - 통화별
+           이중환산 문제는 transactionModal의 tx_amountMode 상단 주석과 동일한 이유다. -->
+      <label id="f_amountModeWrap" class="hidden col-span-2 flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer -mt-1">
+        <input type="checkbox" id="f_amountMode" class="rounded">
+        금액으로 입력 (수량 대신 총 보유금액을 입력)
+      </label>
+
+      <label class="col-span-1 text-xs" id="f_quantityFieldWrap">
+        <span class="text-slate-500 dark:text-slate-400" id="f_quantityLabel">③ 수량/좌수</span>
         <input id="f_quantity" type="number" step="any" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-xs" id="f_buyPriceFieldWrap">
         <span class="text-slate-500 dark:text-slate-400">④ 매수단가 <span id="f_buyPriceUnit" class="text-slate-400">(KRW)</span></span>
         <input id="f_buyPrice" type="number" step="any" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
@@ -1262,7 +1270,7 @@
         </select>
       </label>
 
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-xs" id="f_currentPriceFieldWrap">
         <span class="text-slate-500 dark:text-slate-400">현재가 <span id="f_curPriceUnit" class="text-slate-400">(KRW)</span> <span id="f_currentPriceStatus" class="text-slate-400"></span></span>
         <input id="f_currentPrice" type="number" step="any" readonly placeholder="검색 시 실시간 시세로 자동 채워짐"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
@@ -1723,16 +1731,24 @@
         <p id="tx_tickerHint" class="text-[10px] text-slate-400 mt-1">&nbsp;</p>
       </label>
 
-      <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">수량</span>
+      <!-- [금액 기반 입력] 현금/외화/부동산 등 티커 없는 자산은 '수량×단가' 대신 '총 보유금액'으로
+           입력할 수 있다 - 체크 시 통화에 따라 아래 두 필드의 라벨/동작이 바뀐다(updateTxAmountModeUI 참고). -->
+      <label class="col-span-2 flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer -mt-1">
+        <input type="checkbox" id="tx_amountMode" class="rounded">
+        금액으로 입력 (현금/외화/부동산 등 - 수량 대신 총 금액을 입력)
+      </label>
+
+      <label class="col-span-1 text-xs" id="tx_quantityFieldWrap">
+        <span class="text-slate-500 dark:text-slate-400" id="tx_quantityLabel">수량</span>
         <input id="tx_quantity" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
-      <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">매매단가</span>
+      <label class="col-span-1 text-xs" id="tx_priceFieldWrap">
+        <span class="text-slate-500 dark:text-slate-400" id="tx_priceLabel">매매단가</span>
         <input id="tx_price" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
+      <p id="tx_amountPreview" class="hidden col-span-2 text-[10px] text-slate-400 -mt-1.5">&nbsp;</p>
 
       <label class="col-span-1 text-xs">
         <span class="text-slate-500 dark:text-slate-400">통화</span>
@@ -5896,6 +5912,56 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
   }
 }
 
+// [금액 기반 입력] 무티커 자산(현금/외화/부동산 등)은 '수량×단가' 대신 '총 보유금액'으로 입력할 수
+// 있다. 원화는 금액 필드 하나만(수량=금액, 단가=1 고정), 달러는 외화금액 + '적용 환율'(참고용) 두
+// 필드를 보여준다. 적용 환율은 실제 tx.price로 쓰지 않고 tx.appliedRate라는 별도 메타데이터로만
+// 저장한다 - calcRow()가 이미 통화=USD 자산의 매입/평가금액을 매번 "오늘의" state.exchangeRate로
+// 환산하므로(과거 시점 환율을 따로 기억하지 않는 구조), tx.price에 환율을 그대로 넣으면 원화금액이
+// 다시 한번 오늘 환율과 곱해져 이중환산되어 버린다. tx.price는 항상 1로 고정해 quantity(=달러 잔액)가
+// 그대로 자산 수량에 누적되게 하고, 참고삼아 적어둔 환율은 화면 표시/기록용으로만 남긴다.
+function updateTxAmountModeUI() {
+  const isAmount = document.getElementById('tx_amountMode').checked;
+  const isUSD = document.getElementById('tx_currency').value === 'USD';
+  const qtyLabel = document.getElementById('tx_quantityLabel');
+  const priceLabel = document.getElementById('tx_priceLabel');
+  const priceWrap = document.getElementById('tx_priceFieldWrap');
+  const priceInput = document.getElementById('tx_price');
+  if (!isAmount) {
+    qtyLabel.textContent = '수량';
+    priceLabel.textContent = '매매단가';
+    priceWrap.classList.remove('hidden');
+    priceInput.required = true;
+    updateTxAmountPreview();
+    return;
+  }
+  if (isUSD) {
+    qtyLabel.textContent = '외화 금액($)';
+    priceLabel.textContent = '적용 환율(₩, 참고용)';
+    priceWrap.classList.remove('hidden');
+    priceInput.required = false; // 참고용이라 비워도 된다(비우면 최신 환율로 미리보기 계산)
+  } else {
+    qtyLabel.textContent = '금액(원화)';
+    priceWrap.classList.add('hidden');
+    // [버그 수정] required 필드가 숨겨진 채로 남아있으면 네이티브 폼 검증이 걸려 제출 자체가 조용히
+    // 실패한다("An invalid form control with name='' is not focusable.") - 숨길 때는 반드시 꺼야 한다.
+    priceInput.required = false;
+  }
+  updateTxAmountPreview();
+}
+
+function updateTxAmountPreview() {
+  const preview = document.getElementById('tx_amountPreview');
+  const isAmount = document.getElementById('tx_amountMode').checked;
+  const isUSD = document.getElementById('tx_currency').value === 'USD';
+  if (!isAmount || !isUSD) { preview.classList.add('hidden'); return; }
+  const amount = num(document.getElementById('tx_quantity').value);
+  if (amount <= 0) { preview.classList.add('hidden'); return; }
+  const rateInput = num(document.getElementById('tx_price').value);
+  const rate = rateInput > 0 ? rateInput : state.exchangeRate;
+  preview.textContent = `≈ ${fmtKRW(amount * rate)} (참고용 - 실제 평가금액은 항상 최신 환율로 자동 계산됩니다)`;
+  preview.classList.remove('hidden');
+}
+
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
@@ -5904,6 +5970,7 @@ function openTransactionModal(txId) {
   document.getElementById('tx_tickerHint').textContent = ' ';
   document.getElementById('tx_date').value = todayDateStr();
   document.getElementById('tx_fee').value = 0;
+  document.getElementById('tx_amountMode').checked = false;
 
   if (txId) {
     const tx = state.transactions.find((t) => t.id === txId);
@@ -5939,16 +6006,33 @@ document.getElementById('transactionModal').addEventListener('click', (e) => {
   if (e.target.id === 'transactionModal') closeTransactionModal();
 });
 document.getElementById('txSearchStockBtn').addEventListener('click', () => openStockSearchModal());
+document.getElementById('tx_amountMode').addEventListener('change', updateTxAmountModeUI);
+document.getElementById('tx_currency').addEventListener('change', updateTxAmountModeUI);
+document.getElementById('tx_quantity').addEventListener('input', updateTxAmountPreview);
+document.getElementById('tx_price').addEventListener('input', updateTxAmountPreview);
 
 document.getElementById('transactionForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const id = document.getElementById('tx_id').value || genId();
   const name = document.getElementById('tx_name').value.trim();
   if (!name) { showToast('종목명을 입력하세요.', 'warn'); return; }
+  const isAmountMode = document.getElementById('tx_amountMode').checked;
+  const isUSD = document.getElementById('tx_currency').value === 'USD';
   const quantity = num(document.getElementById('tx_quantity').value);
-  if (quantity <= 0) { showToast('수량은 0보다 커야 합니다.', 'warn'); return; }
-  const price = num(document.getElementById('tx_price').value);
-  if (price <= 0) { showToast('매매단가는 0보다 커야 합니다.', 'warn'); return; }
+  if (quantity <= 0) { showToast(isAmountMode ? '금액은 0보다 커야 합니다.' : '수량은 0보다 커야 합니다.', 'warn'); return; }
+  // [금액 기반 입력] price는 항상 1로 고정한다(updateTxAmountModeUI 상단 주석 참고 - 실제 환율은
+  // appliedRate에만 참고용으로 남기고 calcRow의 이중환산을 피한다).
+  let price, appliedRate;
+  if (isAmountMode) {
+    price = 1;
+    if (isUSD) {
+      const rateInput = num(document.getElementById('tx_price').value);
+      appliedRate = rateInput > 0 ? rateInput : undefined;
+    }
+  } else {
+    price = num(document.getElementById('tx_price').value);
+    if (price <= 0) { showToast('매매단가는 0보다 커야 합니다.', 'warn'); return; }
+  }
 
   const existing = state.transactions.find((t) => t.id === id);
   const tx = {
@@ -5962,6 +6046,7 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     quantity, price,
     currency: document.getElementById('tx_currency').value,
     fee: num(document.getElementById('tx_fee').value),
+    appliedRate,
     origin: (existing && existing.origin) || 'period', // 수동 입력은 항상 '기간' 거래로 취급(구분 태그는 엑셀 업로드 전용)
     createdAt: existing ? existing.createdAt : Date.now() // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
   };
@@ -6047,7 +6132,15 @@ function renderTransactionList() {
     const amount = t.quantity * t.price;
     const originTag = t.origin === 'initial'
       ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">최초</span>'
+      : t.origin === 'adjust'
+      ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">조정</span>'
       : '';
+    // [금액 기반 입력 표시] price=1로 저장된 무티커 금액거래는 "1000주 × $1"처럼 보이면 혼란스러우니
+    // quantity를 그대로 금액으로 보여준다. appliedRate(참고용으로 적어둔 환율)가 있으면 함께 표기한다.
+    const isAmountTx = !t.ticker && num(t.price) === 1;
+    const amountLine = isAmountTx
+      ? `${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}${t.appliedRate ? ` · 적용환율 ${fmtNum(t.appliedRate, 1)}원` : ''}`
+      : `${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}`;
     return `
     <div class="py-2.5 flex items-start justify-between gap-2">
       <div class="min-w-0">
@@ -6057,8 +6150,8 @@ function renderTransactionList() {
           <span class="text-sm font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(t.ticker || '')}" data-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
           <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
         </div>
-        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}</p>
-        <p class="text-xs mt-0.5">${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}${t.memo ? ` · ${escapeHtml(t.memo)}` : ''}</p>
+        <p class="text-xs mt-0.5">${amountLine}</p>
       </div>
       <div class="flex items-center gap-1 shrink-0">
         <button type="button" data-edit-tx="${t.id}" title="수정" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
@@ -6858,6 +6951,36 @@ function setAssetFormSearchMode(isManual) {
   });
   document.getElementById('assetSearchRow').classList.toggle('hidden', isManual);
   document.getElementById('f_currentPriceStatus').textContent = '';
+  document.getElementById('f_amountModeWrap').classList.toggle('hidden', !isManual);
+  updateAssetAmountModeUI();
+}
+
+// [금액 기반 입력] "직접 입력" 모드에서만 노출되는 하위 토글 - 켜면 수량 필드가 "총 보유금액"이 되고
+// 매수단가/현재가는 화면에서 숨긴 채 1로 고정한다(원화든 외화든 "1단위=1원/1달러" 취급 - 통화 환산은
+// calcRow가 이미 state.exchangeRate로 일괄 처리하므로 여기서 별도 환율을 곱하면 이중환산이 된다).
+function updateAssetAmountModeUI() {
+  const isManual = document.getElementById('f_manualEntryToggle').checked;
+  const isAmount = isManual && document.getElementById('f_amountMode').checked;
+  const isUSD = document.getElementById('f_currency').value === 'USD';
+  const qtyLabel = document.getElementById('f_quantityLabel');
+  const buyPriceWrap = document.getElementById('f_buyPriceFieldWrap');
+  const curPriceWrap = document.getElementById('f_currentPriceFieldWrap');
+  const qtyWrap = document.getElementById('f_quantityFieldWrap');
+  if (!isAmount) {
+    qtyLabel.textContent = '③ 수량/좌수';
+    buyPriceWrap.classList.remove('hidden');
+    curPriceWrap.classList.remove('hidden');
+    qtyWrap.classList.remove('col-span-2');
+    qtyWrap.classList.add('col-span-1');
+    return;
+  }
+  qtyLabel.textContent = isUSD ? '③ 외화 금액($)' : '③ 금액(원화)';
+  buyPriceWrap.classList.add('hidden');
+  curPriceWrap.classList.add('hidden');
+  qtyWrap.classList.remove('col-span-1');
+  qtyWrap.classList.add('col-span-2');
+  document.getElementById('f_buyPrice').value = 1;
+  document.getElementById('f_currentPrice').value = 1;
 }
 
 function openModal(mode, id) {
@@ -6867,6 +6990,7 @@ function openModal(mode, id) {
   document.getElementById('f_id').value = '';
   document.getElementById('assetSearchStockBtnLabel').textContent = '종목명 또는 티커로 검색...';
   document.getElementById('f_manualEntryToggle').checked = false;
+  document.getElementById('f_amountMode').checked = false;
 
   if (mode === 'edit') {
     const a = state.assets.find(x => x.id === id);
@@ -6896,6 +7020,7 @@ function openModal(mode, id) {
     document.getElementById('f_category').value = '주식';
   }
   updatePriceUnitLabels();
+  updateAssetAmountModeUI();
 }
 
 function showModal() { modal.classList.remove('hidden'); pushModalHistoryState(); }
@@ -6960,10 +7085,11 @@ document.getElementById('closeModalBtn').addEventListener('click', () => closeMo
 document.getElementById('cancelModalBtn').addEventListener('click', () => closeModal());
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyWithDomestic);
-document.getElementById('f_currency').addEventListener('change', updatePriceUnitLabels);
+document.getElementById('f_currency').addEventListener('change', () => { updatePriceUnitLabels(); updateAssetAmountModeUI(); });
 document.getElementById('f_ticker').addEventListener('input', autoClassifyModal);
 document.getElementById('f_name').addEventListener('input', autoClassifyModal);
 document.getElementById('f_manualEntryToggle').addEventListener('change', (e) => setAssetFormSearchMode(e.target.checked));
+document.getElementById('f_amountMode').addEventListener('change', updateAssetAmountModeUI);
 document.getElementById('assetSearchStockBtn').addEventListener('click', () => openStockSearchModal('asset'));
 
 document.getElementById('assetForm').addEventListener('submit', (e) => {
@@ -6972,10 +7098,12 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
   const name = document.getElementById('f_name').value.trim();
   if (!name) { alert('종목명을 입력해주세요.'); return; }
 
-  const buyPriceVal = num(document.getElementById('f_buyPrice').value);
+  const isAmountMode = document.getElementById('f_manualEntryToggle').checked && document.getElementById('f_amountMode').checked;
+  const buyPriceVal = isAmountMode ? 1 : num(document.getElementById('f_buyPrice').value);
   const currentPriceRaw = document.getElementById('f_currentPrice').value;
   // 현재가를 비워두면 매수단가로 자동 초기화 (요구사항 2-3)
-  const currentPriceVal = currentPriceRaw.trim() === '' ? buyPriceVal : num(currentPriceRaw);
+  const currentPriceVal = isAmountMode ? 1 : (currentPriceRaw.trim() === '' ? buyPriceVal : num(currentPriceRaw));
+  const quantityVal = num(document.getElementById('f_quantity').value);
 
   const payload = {
     ticker: document.getElementById('f_ticker').value.trim(),
@@ -6985,7 +7113,7 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     name,
     isDomestic: document.getElementById('f_isDomestic').value,
     currency: document.getElementById('f_currency').value,
-    quantity: num(document.getElementById('f_quantity').value),
+    quantity: quantityVal,
     buyPrice: buyPriceVal,
     // 매입금액은 입력받지 않고 항상 수량×매수단가로 자동 산출된다 (calcRow 참고).
     currentPrice: currentPriceVal
@@ -6993,7 +7121,49 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
 
   if (id) {
     const idx = state.assets.findIndex(x => x.id === id);
-    if (idx >= 0) state.assets[idx] = { ...state.assets[idx], ...payload };
+    if (idx < 0) return;
+    const oldAsset = state.assets[idx];
+    const identityChanged = oldAsset.owner !== payload.owner || oldAsset.accountType !== payload.accountType ||
+      (oldAsset.ticker || '') !== payload.ticker || oldAsset.name !== payload.name;
+    // [잔고조정 거래 자동생성] 이 화면(자산 수정)에서 수량/금액을 직접 고치면 거래내역에는 아무 기록도
+    // 안 남아 장부(거래내역 = source of truth)와 실제 잔고가 어긋난다. 소유자/계좌구분/티커/이름이
+    // 그대로인 "순수 잔고 조정"에 한해(식별자까지 동시에 바꾸면 과거 거래내역과의 연결이 끊어지므로
+    // 대상에서 제외) 차액만큼 origin:'adjust' 거래를 자동 생성해 넣고, 최종 수량/평단가는 항상
+    // syncAssetsFromTransactions()가 거래내역 기준으로 다시 계산하게 한다. 델타는 화면에 보이던
+    // 수량이 아니라 실제 거래내역 장부상의 현재 수량(ledgerQty) 기준으로 계산한다 - "최초등록"으로
+    // 만든 자산은 애초에 거래내역이 하나도 없을 수 있어(장부상 0), 그 차이까지 함께 보정해야 조정 후
+    // 수량이 정확히 사용자가 입력한 값과 일치한다.
+    if (!identityChanged) {
+      const { positions } = computePositionsAndRealizedPnL();
+      const key = `${oldAsset.owner}__${oldAsset.accountType}__${oldAsset.ticker || oldAsset.name}`;
+      const ledgerQty = positions[key] ? positions[key].quantity : 0;
+      const delta = quantityVal - ledgerQty;
+      if (Math.abs(delta) > 1e-9) {
+        state.transactions.push({
+          id: genId(),
+          date: todayDateStr(),
+          owner: oldAsset.owner,
+          accountType: oldAsset.accountType,
+          ticker: oldAsset.ticker || '',
+          name: oldAsset.name,
+          type: delta > 0 ? 'buy' : 'sell',
+          quantity: Math.abs(delta),
+          price: isAmountMode ? 1 : buyPriceVal,
+          currency: payload.currency,
+          fee: 0,
+          origin: 'adjust',
+          memo: '자산 관리 카드 금액/잔고 조정',
+          createdAt: Date.now()
+        });
+        persistTransactions();
+        state.assets[idx] = { ...oldAsset, ...payload };
+        syncAssetsFromTransactions(); // 최종 수량/평단가는 거래내역 기준으로 재계산(= 장부와 항상 일치)
+      } else {
+        state.assets[idx] = { ...oldAsset, ...payload };
+      }
+    } else {
+      state.assets[idx] = { ...oldAsset, ...payload };
+    }
   } else {
     const newAsset = { id: genId(), ...payload };
     state.assets.push(newAsset);
