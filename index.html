@@ -1822,6 +1822,14 @@ const LS_TRANSACTIONS = 'sam_transactions_v1';
 const LS_REF_RATE = 'sam_ref_rate_v1';
 // [일별 손익 추이 팝업] 일자별 자동 스냅샷 저장 키 - state.dailySnapshots 참고.
 const LS_DAILY_SNAPSHOTS = 'sam_daily_snapshot_v1';
+// [데이터 초기화 후 샘플 데이터 재시딩 방지] loadState()는 state.assets가 비어있으면 "이 기기를 처음
+// 켠 신규 사용자"로 보고 데모용 sampleAssets()를 자동으로 채워 넣는다(온보딩 목적) - 그런데 이
+// "비어있음" 판정이 "정말 한 번도 안 켜본 기기"와 "사용자가 [데이터 초기화]를 눌러 의도적으로 비운
+// 상태"를 구분하지 못해서, 초기화 후 앱을 완전히 종료했다가 다시 열면(=loadState 재실행) 매번 샘플
+// 데이터가 되살아나는 버그가 있었다("초기화해도 옛날 데이터가 남아있는 것처럼 보인다"는 사용자 신고의
+// 실제 원인). 이 플래그를 한 번이라도 켠 적 있는 기기에서는 다시는 샘플 데이터를 자동으로 채우지
+// 않는다 - resetDataBtn의 'sam_' 접두사 와일드카드 삭제 목록에서도 반드시 제외해야 한다.
+const LS_HAS_LAUNCHED = 'sam_has_launched_v1';
 // [구글 드라이브 동기화 기능 완전 제거] 이 앱은 다시 기기 로컬 저장(localStorage) 전용으로 동작한다.
 // 예전에 구글 드라이브 연동 기능을 썼던 기기에는 아래 키들이 여전히 남아있을 수 있어(연동 여부 표식,
 // 캐시된 OAuth 토큰, 표시용 사용자 정보, 마지막 로컬 수정 시각) 앱 시작 시 한 번(cleanupLegacyGoogleSyncKeys,
@@ -2283,10 +2291,16 @@ function loadState() {
     state.assets = raw ? JSON.parse(raw) : null;
   } catch (e) { state.assets = null; }
 
-  if (!state.assets || !Array.isArray(state.assets) || state.assets.length === 0) {
+  // [데이터 초기화 후 샘플 재시딩 방지] LS_HAS_LAUNCHED 상단 주석 참고 - 이 기기에서 앱을 이미 한 번이라도
+  // 켜본 적이 있으면(플래그가 남아있으면), 자산이 0건이어도 사용자가 의도적으로 비운 상태로 보고 데모
+  // 데이터를 채우지 않는다. 플래그가 아예 없는 "진짜 첫 실행"일 때만 샘플 데이터로 온보딩한다.
+  const isFirstEverLaunch = localStorage.getItem(LS_HAS_LAUNCHED) !== '1';
+  if (isFirstEverLaunch && (!state.assets || !Array.isArray(state.assets) || state.assets.length === 0)) {
     state.assets = sampleAssets();
     persistAssets();
   }
+  if (!Array.isArray(state.assets)) state.assets = [];
+  localStorage.setItem(LS_HAS_LAUNCHED, '1');
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;
   state.dailyChangeRate = num(localStorage.getItem(LS_DAILY_RATE)) || 0;
@@ -11128,9 +11142,11 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // 소급 백필 완료 표시 sam_daily_backfill_done_ids_v1 등)는 그대로 남아있어서, 초기화 후에도 [일별
   // 손익 추이] 그래프 등에 예전 데이터가 계속 보이는 문제가 있었다. 이제 이 앱이 쓰는 모든 키(sam_
   // 접두사)를 하드코딩된 목록 없이 통째로 지운다 - 새 기능이 새 키를 추가해도 자동으로 다 걸린다.
-  // 다크모드(sam_dark_mode_v5)는 재무 데이터가 아니라 순수 화면 설정이라 예외로 남긴다.
+  // 다크모드(sam_dark_mode_v5)는 재무 데이터가 아니라 순수 화면 설정이라 예외로 남긴다. LS_HAS_LAUNCHED도
+  // 반드시 함께 남겨야 한다 - 이 키까지 지워버리면 다음 실행 때 loadState()가 "진짜 첫 실행"으로 착각해
+  // 방금 비운 자산을 다시 sampleAssets()로 채워버린다(LS_HAS_LAUNCHED 선언부 주석 참고).
   Object.keys(localStorage)
-    .filter((k) => k.startsWith('sam_') && k !== LS_DARKMODE)
+    .filter((k) => k.startsWith('sam_') && k !== LS_DARKMODE && k !== LS_HAS_LAUNCHED)
     .forEach((k) => localStorage.removeItem(k));
 
   state.assets = [];
