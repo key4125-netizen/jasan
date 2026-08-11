@@ -249,6 +249,9 @@
           <button id="resetDataBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 데이터 초기화
           </button>
+          <button id="coreStocksLiveBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <i data-lucide="activity" class="w-3.5 h-3.5"></i> 핵심종목 실시간
+          </button>
         </div>
       </div>
     </div>
@@ -1764,6 +1767,28 @@
   </div>
 </div>
 
+<!-- ============================= 핵심종목 실시간 시세 팝업 =============================
+     헤더 [핵심종목 실시간] 버튼 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 07~20시=국내, 20~07시=해외)의
+     실시간 시세를 즉석 조회해 보여준다. getCoreStockCandidates()/openCoreStocksModal() 참고. -->
+<div id="coreStocksModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 id="coreStocksModalTitle" class="text-sm font-semibold">핵심 종목 실시간 시세</h3>
+      <button type="button" id="closeCoreStocksModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-4 overflow-y-auto">
+      <div id="coreStocksLoading" class="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+        <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+        <span class="text-xs">실시간 시세 조회 중...</span>
+      </div>
+      <p id="coreStocksEmptyMsg" class="hidden text-xs text-slate-400 text-center py-10"></p>
+      <div id="coreStocksList"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 가져오기(엑셀/JSON) 덮어쓰기·추가·취소 선택 모달 =============================
      [버그 수정 - "취소"를 누르면 안전하게 아무 일도 안 일어나야 한다] 예전엔 confirm()의 OK/Cancel 2지선다를
      "덮어쓰기/추가"로 억지로 매핑해서, 사용자가 정말 "그만두고 싶어서" 취소를 눌러도 실제로는 기존 데이터
@@ -2807,6 +2832,112 @@ function getTopHoldings() {
   return Object.values(groups);
 }
 
+/* -------------------------------------------------------------------------
+ * 11-A. [핵심종목 실시간] 헤더 버튼 팝업 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 기준 국내/해외
+ *    자동 전환)의 실시간 시세를 그 자리에서 즉석 조회해 보여준다. 기존 목록/그래프와 달리 저장된 시세를
+ *    쓰지 않고 팝업을 열 때마다 fetchPriceWithFallback()으로 매번 새로 받아온다.
+ * ---------------------------------------------------------------------- */
+// 07:00~20:00(KST)은 국내 장 시간대라 국내 종목을, 그 외(저녁~다음날 아침)는 미국 장 시간대라 해외
+// 종목을 보여준다. hour12:false가 자정을 "24"로 반환하는 일부 브라우저 구현 차이를 %24로 방어한다.
+function getCoreStocksRegion() {
+  const kstHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit' }), 10) % 24;
+  return (kstHour >= 7 && kstHour < 20) ? 'domestic' : 'foreign';
+}
+
+// 무티커 자산(현금/채권/부동산)과 주식/ETF가 아닌 자산은 대상에서 제외한다 - RISK 카드가 쓰는
+// RISK_ELIGIBLE_CATEGORIES(['주식','ETF'])와 동일한 기준. 같은 티커를 소유자별로 나눠 든 경우
+// getTopHoldings()처럼 평가금액을 합산해 하나로 보여준다(신랑+와이프가 같이 든 SK하이닉스가 두 줄로
+// 안 나뉘게).
+function getCoreStockCandidates(region) {
+  const wantDomestic = region === 'domestic';
+  const groups = {};
+  state.assets.forEach((a) => {
+    const ticker = String(a.ticker ?? '').trim();
+    if (!ticker || !RISK_ELIGIBLE_CATEGORIES.includes(a.category)) return;
+    if ((a.isDomestic === '국내') !== wantDomestic) return;
+    if (!groups[ticker]) groups[ticker] = { ticker, name: a.name, curAmount: 0 };
+    groups[ticker].curAmount += calcRow(a).curAmount;
+  });
+  return Object.values(groups).sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
+}
+
+function coreStockRowHtml(c, info) {
+  const isUp = info.changePercent >= 0;
+  const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500' : 'text-blue-500');
+  const unit = info.currency === 'USD' ? '$' : '';
+  const changeAmount = (typeof info.previousClose === 'number' && info.previousClose > 0) ? info.price - info.previousClose : null;
+  const changeAmountText = changeAmount !== null ? `${isUp ? '+' : ''}${unit}${fmtNum(changeAmount, 2)}` : '';
+  return `
+  <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0">
+    <div class="min-w-0">
+      <div class="font-medium text-sm truncate">${escapeHtml(c.name)}</div>
+      <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
+    </div>
+    <div class="text-right shrink-0 pl-2">
+      <div class="text-sm font-semibold">${unit}${fmtNum(info.price, 2)}</div>
+      <div class="text-[12px] font-medium ${colorClass}">${isUp ? '+' : ''}${fmtNum(info.changePercent, 2)}%${changeAmountText ? ` (${changeAmountText})` : ''}</div>
+    </div>
+  </div>`;
+}
+function coreStockRowHtmlError(c) {
+  return `
+  <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0">
+    <div class="min-w-0">
+      <div class="font-medium text-sm truncate">${escapeHtml(c.name)}</div>
+      <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
+    </div>
+    <div class="text-right shrink-0 pl-2 text-[11px] font-medium text-amber-500">⚠️ 시세 조회 실패</div>
+  </div>`;
+}
+
+// 팝업이 열려있는 동안 다시 열거나(리렌더) 닫힌 뒤에 늦게 도착하는 응답이 화면을 덮어쓰지 않도록
+// 매 호출마다 토큰을 새로 발급해 마지막 호출의 응답만 반영한다(다른 비동기 모달들과 동일한 패턴).
+let coreStocksRequestToken = 0;
+async function openCoreStocksModal() {
+  const region = getCoreStocksRegion();
+  const regionLabel = region === 'domestic' ? '국내' : '해외';
+  const timeRangeLabel = region === 'domestic' ? '07:00~20:00' : '20:00~07:00';
+  document.getElementById('coreStocksModalTitle').textContent = `${regionLabel} 핵심 종목 실시간 시세 (${timeRangeLabel})`;
+  document.getElementById('coreStocksModal').classList.remove('hidden');
+  pushModalHistoryState();
+
+  const listEl = document.getElementById('coreStocksList');
+  const loadingEl = document.getElementById('coreStocksLoading');
+  const emptyEl = document.getElementById('coreStocksEmptyMsg');
+  listEl.innerHTML = '';
+  emptyEl.classList.add('hidden');
+  loadingEl.classList.remove('hidden');
+
+  const candidates = getCoreStockCandidates(region);
+  const token = ++coreStocksRequestToken;
+  if (candidates.length === 0) {
+    loadingEl.classList.add('hidden');
+    emptyEl.textContent = `보유 중인 ${regionLabel} 주식/ETF 종목이 없습니다.`;
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+
+  const results = await Promise.allSettled(candidates.map((c) => fetchPriceWithFallback(c.ticker, c.name)));
+  if (token !== coreStocksRequestToken) return; // 그 사이 팝업이 닫히거나 다시 열렸으면 이 응답은 버린다
+
+  loadingEl.classList.add('hidden');
+  listEl.innerHTML = candidates.map((c, i) => {
+    const res = results[i];
+    return res.status === 'fulfilled' ? coreStockRowHtml(c, res.value) : coreStockRowHtmlError(c);
+  }).join('');
+  lucide.createIcons();
+}
+function closeCoreStocksModal(viaBackButton) {
+  coreStocksRequestToken++; // 진행 중이던 조회가 있었다면 그 응답을 무시 처리
+  document.getElementById('coreStocksModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('coreStocksLiveBtn').addEventListener('click', () => openCoreStocksModal());
+document.getElementById('closeCoreStocksModalBtn').addEventListener('click', () => closeCoreStocksModal());
+document.getElementById('coreStocksModal').addEventListener('click', (e) => {
+  if (e.target.id === 'coreStocksModal') closeCoreStocksModal();
+});
+
 // list: 이미 상위 5개로 잘라낸 한 지역(국내 또는 해외)의 합산 종목 배열.
 // grandTotal: 예전엔 비중(%) 계산에 썼으나 [최종 5열 확정] Top5에서 비중 열을 제외하면서 더는 쓰이지
 // 않는다 - 호출부(renderTopHoldings)와의 시그니처 호환을 위해 인자만 남겨둔다.
@@ -3071,7 +3202,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'riskAlertModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'riskAlertModal', 'coreStocksModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -3107,7 +3238,8 @@ const MODAL_CLOSE_FNS = {
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
   scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack),
-  riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack)
+  riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack),
+  coreStocksModal: (viaBack) => closeCoreStocksModal(viaBack)
 };
 
 function findOpenModalId() {
