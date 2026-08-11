@@ -1292,7 +1292,7 @@
      총투자현황 탭의 자산 관리 목록에서 종목을 클릭하면 뜬다(기존 수정 폼 아코디언을 대체) - 읽기 전용
      정보 + 일봉 주가 차트를 보여주고, 자산 삭제만 여기서 계속 할 수 있게 남겨둔다(수정은 더 이상 이
      화면에서 하지 않는다 - 거래내역 탭에서 거래를 등록/수정하면 수량·매입단가가 자동 반영된다). -->
-<div id="assetDetailModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+<div id="assetDetailModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
@@ -1358,7 +1358,7 @@
 <!-- ============================= 비중 차트 확대 모달 (자산군별/소유자별/국내해외 비중 공용) =============================
      대시보드 3개 비중 차트를 클릭/터치하면 같은 데이터를 큼직하게 다시 그려 보여준다 - 작은 차트에서
      하던 툴팁 노출은 여기서는 끄고(작은 차트 쪽은 tooltip.enabled=false), 이 확대 화면에서만 툴팁을 켠다. -->
-<div id="chartZoomModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+<div id="chartZoomModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <h3 id="chartZoomModalTitle" class="text-sm font-semibold">비중 상세</h3>
@@ -1769,8 +1769,10 @@
 
 <!-- ============================= 핵심종목 실시간 시세 팝업 =============================
      헤더 [핵심종목 실시간] 버튼 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 07~20시=국내, 20~07시=해외)의
-     실시간 시세를 즉석 조회해 보여준다. getCoreStockCandidates()/openCoreStocksModal() 참고. -->
-<div id="coreStocksModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+     실시간 시세를 즉석 조회해 보여준다. getCoreStockCandidates()/openCoreStocksModal() 참고. z-[65]로
+     리스크 진단 팝업(riskAlertModal, z-50)보다 위에, 종목 상세(assetDetailModal, z-[70])보다는 아래에
+     둔다 - 이 팝업 안에서 지수/종목을 눌러도 상세 팝업이 그 위에 정상적으로 뜬다. -->
+<div id="coreStocksModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <h3 id="coreStocksModalTitle" class="text-sm font-semibold">핵심 종목 실시간 시세</h3>
@@ -1783,6 +1785,9 @@
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
         <span class="text-xs">실시간 시세 조회 중...</span>
       </div>
+      <!-- [주요 지수 요약] 코스피/코스닥/S&P500/나스닥/다우존스 - 국내/해외 시간대 구분 없이 항상 5개 모두
+           표시한다(getCoreStocksRegion과 무관, MARKET_INDEX_LIST 고정 목록). -->
+      <div id="coreStocksIndexGrid" class="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2 mb-4"></div>
       <p id="coreStocksEmptyMsg" class="hidden text-xs text-slate-400 text-center py-10"></p>
       <div id="coreStocksList"></div>
     </div>
@@ -1993,6 +1998,15 @@ function sanitizeTicker(rawTicker) {
   if (!original) return { original: '', yahooTicker: '', isDomestic: '국내' }; // 티커 없는 채권/현금 등은 원화 자산으로 간주
 
   const upper = original.toUpperCase();
+
+  // ⓪ [핵심종목 실시간 팝업] 지수 심볼(^로 시작, 예: ^KS11 코스피/^GSPC S&P500)은 보유 자산으로 등록될
+  // 일이 없어 기존 규칙(6자리 숫자/.KS·.KQ 접미사)에 걸리지 않는다 - 코스피/코스닥만 원화(국내)로,
+  // 나머지 해외 지수는 달러(해외)로 표시되도록 여기서 먼저 분기한다(openStockDetailModalReadOnly의
+  // 통화 표시 추정용).
+  if (upper.startsWith('^')) {
+    const isDomesticIndex = upper === '^KS11' || upper === '^KQ11';
+    return { original, yahooTicker: upper, isDomestic: isDomesticIndex ? '국내' : '해외' };
+  }
 
   // ① 이미 .KS 또는 .KQ 접미사가 명시된 경우
   if (/\.(KS|KQ)$/.test(upper)) {
@@ -2861,6 +2875,10 @@ function getCoreStockCandidates(region) {
   return Object.values(groups).sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
 }
 
+// [종목명 클릭 시 상세 차트 연동] data-open-stock-detail을 붙여두면 문서 전역 위임 리스너(약
+// 7550번째 줄 근처, openStockDetailModal 참고)가 그대로 처리한다 - 보유 중인 자산이면 실제 보유
+// 정보까지 있는 상세 모달을, 아니면(이 팝업의 지수처럼 보유 자산이 아닌 경우) 차트만 보여주는
+// 경량 버전을 자동으로 골라 연다. 새 리스너를 따로 달 필요가 없다.
 function coreStockRowHtml(c, info) {
   const isUp = info.changePercent >= 0;
   const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500' : 'text-blue-500');
@@ -2868,9 +2886,10 @@ function coreStockRowHtml(c, info) {
   const changeAmount = (typeof info.previousClose === 'number' && info.previousClose > 0) ? info.price - info.previousClose : null;
   const changeAmountText = changeAmount !== null ? `${isUp ? '+' : ''}${unit}${fmtNum(changeAmount, 2)}` : '';
   return `
-  <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0">
+  <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg px-1.5 -mx-1.5"
+    data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
     <div class="min-w-0">
-      <div class="font-medium text-sm truncate">${escapeHtml(c.name)}</div>
+      <div class="font-medium text-sm truncate hover:underline">${escapeHtml(c.name)}</div>
       <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
     </div>
     <div class="text-right shrink-0 pl-2">
@@ -2890,6 +2909,34 @@ function coreStockRowHtmlError(c) {
   </div>`;
 }
 
+// [주요 지수 요약] 국내/해외 시간대 구분 없이 5개 전부 항상 보여준다(요청 사양) - INDEX_TICKERS(RISK
+// 엔진 벤치마크용, 아래쪽에 선언됨)와 별개로 표시 순서/이름을 이 목록에서 직접 관리한다.
+const MARKET_INDEX_LIST = [
+  { ticker: '^KS11', name: '코스피' },
+  { ticker: '^KQ11', name: '코스닥' },
+  { ticker: '^GSPC', name: 'S&P 500' },
+  { ticker: '^IXIC', name: '나스닥' },
+  { ticker: '^DJI', name: '다우존스' }
+];
+function coreIndexCardHtml(c, info) {
+  const isUp = info.changePercent >= 0;
+  const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500' : 'text-blue-500');
+  return `
+  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center cursor-pointer hover:border-brand-300 dark:hover:border-brand-700"
+    data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
+    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
+    <div class="text-[12px] font-semibold truncate">${fmtNum(info.price, 1)}</div>
+    <div class="text-[10px] font-medium ${colorClass}">${isUp ? '+' : ''}${fmtNum(info.changePercent, 2)}%</div>
+  </div>`;
+}
+function coreIndexCardHtmlError(c) {
+  return `
+  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center">
+    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
+    <div class="text-[10px] text-amber-500 mt-1">조회 실패</div>
+  </div>`;
+}
+
 // 팝업이 열려있는 동안 다시 열거나(리렌더) 닫힌 뒤에 늦게 도착하는 응답이 화면을 덮어쓰지 않도록
 // 매 호출마다 토큰을 새로 발급해 마지막 호출의 응답만 반영한다(다른 비동기 모달들과 동일한 패턴).
 let coreStocksRequestToken = 0;
@@ -2904,27 +2951,36 @@ async function openCoreStocksModal() {
   const listEl = document.getElementById('coreStocksList');
   const loadingEl = document.getElementById('coreStocksLoading');
   const emptyEl = document.getElementById('coreStocksEmptyMsg');
+  const indexGridEl = document.getElementById('coreStocksIndexGrid');
   listEl.innerHTML = '';
+  indexGridEl.innerHTML = '';
   emptyEl.classList.add('hidden');
   loadingEl.classList.remove('hidden');
 
   const candidates = getCoreStockCandidates(region);
   const token = ++coreStocksRequestToken;
-  if (candidates.length === 0) {
-    loadingEl.classList.add('hidden');
-    emptyEl.textContent = `보유 중인 ${regionLabel} 주식/ETF 종목이 없습니다.`;
-    emptyEl.classList.remove('hidden');
-    return;
-  }
 
-  const results = await Promise.allSettled(candidates.map((c) => fetchPriceWithFallback(c.ticker, c.name)));
+  const [indexResults, stockResults] = await Promise.all([
+    Promise.allSettled(MARKET_INDEX_LIST.map((c) => fetchPriceWithFallback(c.ticker, c.name))),
+    Promise.allSettled(candidates.map((c) => fetchPriceWithFallback(c.ticker, c.name)))
+  ]);
   if (token !== coreStocksRequestToken) return; // 그 사이 팝업이 닫히거나 다시 열렸으면 이 응답은 버린다
 
   loadingEl.classList.add('hidden');
-  listEl.innerHTML = candidates.map((c, i) => {
-    const res = results[i];
-    return res.status === 'fulfilled' ? coreStockRowHtml(c, res.value) : coreStockRowHtmlError(c);
+  indexGridEl.innerHTML = MARKET_INDEX_LIST.map((c, i) => {
+    const res = indexResults[i];
+    return res.status === 'fulfilled' ? coreIndexCardHtml(c, res.value) : coreIndexCardHtmlError(c);
   }).join('');
+
+  if (candidates.length === 0) {
+    emptyEl.textContent = `보유 중인 ${regionLabel} 주식/ETF 종목이 없습니다.`;
+    emptyEl.classList.remove('hidden');
+  } else {
+    listEl.innerHTML = candidates.map((c, i) => {
+      const res = stockResults[i];
+      return res.status === 'fulfilled' ? coreStockRowHtml(c, res.value) : coreStockRowHtmlError(c);
+    }).join('');
+  }
   lucide.createIcons();
 }
 function closeCoreStocksModal(viaBackButton) {
@@ -3202,7 +3258,10 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [자산 추가 팝업 개선] stockSearchModal이 이제 assetModal 위에도 뜰 수 있게 되어(기존엔 transactionModal
 // 위에서만 떴다), assetModal보다 앞쪽에 와야 한다 - 배열에서 더 앞에 있는 항목이 뒤로가기 시 먼저
 // 닫힌다(자식이 부모보다 앞에 와야 자식부터 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'riskAlertModal', 'coreStocksModal'];
+// [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
+// 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
+// coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -9785,10 +9844,21 @@ function closeRiskAlertModal(viaBackButton) {
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
 
-document.getElementById('closeRiskAlertModalBtn').addEventListener('click', () => closeRiskAlertModal(false));
+// [팝업 내부 터치 닫기] 이 팝업은 화면 대부분을 차지해 바깥 배경(오버레이)을 터치하기 어렵다 - 안쪽
+// 콘텐츠를 눌러도 닫히도록 모달 루트 전체에 클릭 리스너를 하나만 둔다(버블링으로 안쪽 클릭도 여기로
+// 올라옴). 실행 버튼 3개(닫기/원클릭 리밸런싱 이동/상세 리스크관리 이동)는 각자 핸들러에서
+// e.stopPropagation()으로 이 리스너까지 전파되지 않게 막아, 원래 동작만 실행되고 팝업이 예기치 않게
+// 같이 닫히는 일이 없게 한다.
+document.getElementById('riskAlertModal').addEventListener('click', () => closeRiskAlertModal(false));
+
+document.getElementById('closeRiskAlertModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeRiskAlertModal(false);
+});
 
 // [⚡ 원클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
-document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () => {
+document.getElementById('riskAlertRebalanceBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
   closeRiskAlertModal(false);
   switchTab('rebalance');
   switchRebalanceSubTab('target');
@@ -9798,7 +9868,8 @@ document.getElementById('riskAlertRebalanceBtn').addEventListener('click', () =>
 // 부드럽게 스크롤한다 - 아코디언(리스크 감지 목록)도 함께 펼쳐 바로 세부 내용을 볼 수 있게 한다.
 // [🔍 리스크 진단 보기 자동 연동] 가장 비중이 큰 감지 종목의 개별 진단 카드까지 미리 펼쳐두고, 잠시
 // 파란 테두리로 강조해 팝업에서 보던 문제 종목을 바로 찾을 수 있게 한다.
-document.getElementById('riskAlertDetailBtn').addEventListener('click', () => {
+document.getElementById('riskAlertDetailBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
   closeRiskAlertModal(false);
   switchTab('dashboard');
   if (!riskyAccordionOpen) {
@@ -11420,7 +11491,10 @@ async function bootApp() {
   // state.advancedRiskMetrics는 riskMetricsPromise가 별도로 항상 resolve되는 체인이라 이미 채워져
   // 있는데도 팝업만 못 뜨는 상태) - .catch(() => {})로 먼저 흡수해 성공/실패 여부와 무관하게
   // maybeShowRiskAlertPopup()이 항상 실행되도록 한다.
-  refreshPricesAndRates().catch(() => {}).then(() => maybeShowRiskAlertPopup()).finally(() => backfillAllHoldingsDailyPnlHistory());
+  // [핵심종목 실시간 팝업 자동 노출] 요청에 따라 앱을 열 때마다 위험진단 팝업(뜨는 조건이 맞으면)에
+  // 이어 항상 핵심종목 실시간 팝업도 띄운다 - openCoreStocksModal() 호출이 나중이라 DOM에도 나중에
+  // 올라오고, z-[65]가 riskAlertModal(z-50)보다 높아 시각적으로도 항상 그 위에 보인다.
+  refreshPricesAndRates().catch(() => {}).then(() => { maybeShowRiskAlertPopup(); openCoreStocksModal(); }).finally(() => backfillAllHoldingsDailyPnlHistory());
 }
 bootApp();
 </script>
