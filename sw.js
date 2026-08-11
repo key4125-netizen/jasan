@@ -2,13 +2,12 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v80'; // [미래예측 - "현재 구성 유지" 시나리오 부동산 적립금 배분 버그 수정]
-// simulateNonRebalancedGroups()가 매달 월 적립금을 부동산 포함 전체 그룹에 현재 비중대로 배분하고
-// 있었다 - "리밸런싱 후" 3개 시나리오(부동산에 항상 0원 배분)와 달리 이 시나리오만 부동산이 매달
-// 적립금의 상당 부분을 흡수해 복리 성장하는 불일치가 있었다(실측: 15년 후 부동산이 순수 복리 대비
-// 약 3.6억원 부풀려짐). 월 적립금은 이제 부동산을 제외한 금융자산군에만 비중대로 배분한다(보유
-// 자산이 부동산뿐인 극단적 경우만 예외).
-// v79->v80: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v81'; // [헤더에 '핵심종목 실시간' 버튼 + 팝업 추가]
+// 데이터 초기화 버튼 옆에 새 버튼을 추가했다 - 보유 주식/ETF 중 평가금액 상위 5개를(한국시각 07~20시=
+// 국내, 20~07시=해외 자동 전환) 팝업을 열 때마다 실시간으로 즉석 조회해 등락률과 함께 보여준다
+// (openCoreStocksModal/getCoreStockCandidates 참고, 저장된 시세가 아니라 매번 새로 fetchPriceWithFallback
+// 호출).
+// v80->v81: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
