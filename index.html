@@ -2451,6 +2451,9 @@ function calcRow(a) {
 function filteredAssets() {
   const q = String(state.filters.search ?? '').trim().toLowerCase();
   return state.assets.filter(a => {
+    // 전량 매도(수량 0 이하)된 포지션은 레코드는 남겨두되(syncAssetsFromTransactions 정책) 목록에는
+    // 더 이상 노출하지 않는다 - 사용자가 명시적으로 요청한 화면 표시 규칙.
+    if (num(a.quantity) <= 0) return false;
     if (state.filters.owner !== 'ALL' && a.owner !== state.filters.owner) return false;
     if (state.filters.category !== 'ALL' && a.category !== state.filters.category) return false;
     if (state.filters.account !== 'ALL' && a.accountType !== state.filters.account) return false;
@@ -2843,6 +2846,7 @@ function getTopHoldings() {
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return;
+    if (num(a.quantity) <= 0) return; // 전량 매도 포지션은 순위 후보에서 제외(값이 0이라도 실보유가 적으면 순위에 낄 수 있어 명시적으로 뺀다)
     const r = calcRow(a);
     if (!groups[ticker]) {
       groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0, currentPrice: a.currentPrice };
@@ -2879,6 +2883,7 @@ function getCoreStockCandidates(region) {
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker || !RISK_ELIGIBLE_CATEGORIES.includes(a.category)) return;
+    if (num(a.quantity) <= 0) return; // 전량 매도 포지션은 핵심종목 후보에서 제외
     if ((a.isDomestic === '국내') !== wantDomestic) return;
     // assetId: 이 티커를 대표하는 자산 하나의 id - 같은 티커는 통화/현재가가 항상 동일하므로, 아래
     // getCoreStockInfoFromState()가 여기서 굳이 다시 API를 부르지 않고 이미 갱신된 state.assets/
@@ -4149,7 +4154,7 @@ function recalcStockCategoryPct() {
 function getHeldStockCandidates(region) {
   const seen = new Map();
   state.assets
-    .filter((a) => a.isDomestic === region && a.category === '주식' && isRebalanceEligibleAccount(a) && String(a.ticker ?? '').trim() !== '')
+    .filter((a) => a.isDomestic === region && a.category === '주식' && isRebalanceEligibleAccount(a) && String(a.ticker ?? '').trim() !== '' && num(a.quantity) > 0)
     .forEach((a) => {
       const key = a.ticker.toUpperCase();
       if (!seen.has(key)) seen.set(key, a);
@@ -7485,10 +7490,11 @@ function openAssetDetailModal(id) {
     </div>`;
 
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
-  document.getElementById('assetDetailDeleteBtn').classList.remove('hidden');
-  // 티커가 없는 자산(예금/적금/현금성 자산 등)만 [수정] 버튼을 노출한다 - 티커가 있는 자산은 시세
-  // 자동 조회로만 갱신되고 이 화면에서 직접 값을 고칠 방법을 주지 않는다.
+  // 티커가 없는 자산(예금/적금/현금성 자산, 부동산, 수동 관리 채권 등)만 [수정]/[삭제] 버튼을 노출한다 -
+  // 티커가 있는 자산은 거래내역 기반으로 잔고가 자동 연동되므로 이 화면에서 직접 값을 고치거나 지울
+  // 방법을 주지 않는다(지우려면 거래내역에서 매도 처리해야 한다).
   const hasTicker = !!sanitizeTicker(a.ticker).yahooTicker;
+  document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', hasTicker);
   document.getElementById('assetDetailEditBtn').classList.toggle('hidden', hasTicker);
   document.getElementById('assetDetailModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -7499,6 +7505,15 @@ function openAssetDetailModal(id) {
 function assetDetailOwnerRowHtml(m, totalCurAmount) {
   const priceUnit = m.isForeign ? '$' : '';
   const pct = totalCurAmount !== 0 ? (m.curAmount / totalCurAmount * 100) : 0;
+  // 티커가 있는 보유분은 거래내역 기반으로 잔고가 자동 연동되므로 개별 휴지통 아이콘도 숨긴다(상단
+  // 삭제 버튼과 동일한 규칙) - 그룹 모달은 이름이 같은 티커 없는 자산(현금 등)도 묶일 수 있어 그 경우엔
+  // 계속 노출한다.
+  const hasTicker = !!sanitizeTicker(m.ticker).yahooTicker;
+  const deleteBtnHtml = hasTicker ? '' : `
+    <button type="button" data-delete-member="${m.id}" title="이 보유분 삭제"
+      class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
+      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+    </button>`;
   return `
   <div class="flex items-center justify-between gap-2 text-xs border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
     <div class="min-w-0">
@@ -7509,10 +7524,7 @@ function assetDetailOwnerRowHtml(m, totalCurAmount) {
       <p class="font-semibold">${fmtKRW(m.curAmount)}</p>
       <p class="text-slate-400">${fmtNum(pct, 1)}%</p>
     </div>
-    <button type="button" data-delete-member="${m.id}" title="이 보유분 삭제"
-      class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
-      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-    </button>
+    ${deleteBtnHtml}
   </div>`;
 }
 
@@ -8532,7 +8544,7 @@ function getBenchmarkKeyForAsset(a) {
 }
 
 function riskEligibleAssets() {
-  return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '');
+  return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '' && num(a.quantity) > 0);
 }
 
 /* -------------------------------------------------------------------------
