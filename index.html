@@ -1774,7 +1774,9 @@
      둔다 - 이 팝업 안에서 지수/종목을 눌러도 상세 팝업이 그 위에 정상적으로 뜬다. -->
 <div id="coreStocksModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+    <!-- [타이틀 영역 터치 닫기] closeCoreStocksModalBtn(X)은 자체 핸들러에서 stopPropagation으로 이
+         리스너와 분리되어 중복 호출되지 않는다. -->
+    <div id="coreStocksModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
       <h3 id="coreStocksModalTitle" class="text-sm font-semibold">핵심 종목 실시간 시세</h3>
       <button type="button" id="closeCoreStocksModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -1785,9 +1787,12 @@
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
         <span class="text-xs">실시간 시세 조회 중...</span>
       </div>
-      <!-- [주요 지수 요약] 코스피/코스닥/S&P500/나스닥/다우존스 - 국내/해외 시간대 구분 없이 항상 5개 모두
-           표시한다(getCoreStocksRegion과 무관, MARKET_INDEX_LIST 고정 목록). -->
-      <div id="coreStocksIndexGrid" class="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2 mb-4"></div>
+      <!-- [주요 지수 요약] 코스피/코스닥/S&P500/나스닥 - 국내/해외 시간대 구분 없이 항상 모두 표시한다
+           (getCoreStocksRegion과 무관, MARKET_INDEX_LIST 고정 목록). 종목 리스트와는 다르게 자리를 덜
+           차지하는 작은 카드 그리드로 보여준다(coreIndexCardHtml 참고). -->
+      <p class="text-[11px] font-semibold text-slate-400 mb-1">주요 지수</p>
+      <div id="coreStocksIndexGrid" class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-3"></div>
+      <div class="border-t border-slate-100 dark:border-slate-800 mb-1"></div>
       <p id="coreStocksEmptyMsg" class="hidden text-xs text-slate-400 text-center py-10"></p>
       <div id="coreStocksList"></div>
     </div>
@@ -2151,6 +2156,12 @@ const state = {
   // 함께 새로 계산되고, renderRiskSection()/리스크 알림 팝업이 이 값을 그대로 읽어 렌더링한다.
   // 계산 실패(데이터 없음 등)면 null - 휘발성 데이터라 localStorage에는 저장하지 않는다.
   advancedRiskMetrics: null,
+  // [핵심종목 실시간 팝업] 주요 지수(코스피/코스닥/S&P500/나스닥/다우존스) 시세 캐시 - { yahooTicker:
+  // {price, changePercent, previousClose, currency} }. 보유 종목 시세와 마찬가지로
+  // refreshPricesAndRates() 한 번의 갱신 주기 안에서 함께 조회되어 채워진다 - 핵심종목 팝업을 열 때마다
+  // 따로 또 조회하지 않고 이 캐시를 그대로 읽는다(getMarketIndexInfoFromState 참고). 휘발성 데이터라
+  // localStorage에는 저장하지 않는다.
+  marketIndexCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
@@ -2869,10 +2880,30 @@ function getCoreStockCandidates(region) {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker || !RISK_ELIGIBLE_CATEGORIES.includes(a.category)) return;
     if ((a.isDomestic === '국내') !== wantDomestic) return;
-    if (!groups[ticker]) groups[ticker] = { ticker, name: a.name, curAmount: 0 };
+    // assetId: 이 티커를 대표하는 자산 하나의 id - 같은 티커는 통화/현재가가 항상 동일하므로, 아래
+    // getCoreStockInfoFromState()가 여기서 굳이 다시 API를 부르지 않고 이미 갱신된 state.assets/
+    // dayChangeMap/prevCloseMap 값을 그대로 읽어오는 데 쓴다.
+    if (!groups[ticker]) groups[ticker] = { ticker, name: a.name, curAmount: 0, assetId: a.id };
     groups[ticker].curAmount += calcRow(a).curAmount;
   });
   return Object.values(groups).sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
+}
+
+// [중복 조회 제거] 이 팝업이 열리는 시점(부팅 직후는 항상, 수동 버튼도 대부분)은 refreshPricesAndRates()가
+// 이미 모든 보유 자산의 현재가/등락률(state.dayChangeMap)/전일종가(state.prevCloseMap)를 최신으로
+// 받아둔 뒤다 - 보유 상위 5개 종목은 전부 그 안에 포함된 자산이므로, fetchPriceWithFallback을 또
+// 호출하면 방금 끝난 시세 갱신과 똑같은 API를 5번 더 부르는 순수 낭비다(그만큼 팝업이 늦게 뜨고
+// 부팅 체감 로딩도 길어짐 - 실측 신고된 문제). 이미 state에 있는 값을 그대로 재사용한다. 지수(코스피
+// 등)는 보유 자산이 아니라 이 갱신에 포함되지 않으므로 그건 계속 별도로 실시간 조회한다.
+function getCoreStockInfoFromState(candidate) {
+  const asset = state.assets.find((a) => a.id === candidate.assetId);
+  if (!asset || !Number.isFinite(asset.currentPrice) || asset.currentPrice <= 0) return null;
+  return {
+    price: asset.currentPrice,
+    changePercent: num(state.dayChangeMap[asset.id]),
+    previousClose: state.prevCloseMap[asset.id],
+    currency: asset.currency
+  };
 }
 
 // [종목명 클릭 시 상세 차트 연동] data-open-stock-detail을 붙여두면 문서 전역 위임 리스너(약
@@ -2909,15 +2940,15 @@ function coreStockRowHtmlError(c) {
   </div>`;
 }
 
-// [주요 지수 요약] 국내/해외 시간대 구분 없이 5개 전부 항상 보여준다(요청 사양) - INDEX_TICKERS(RISK
+// [주요 지수 요약] 국내/해외 시간대 구분 없이 항상 전부 보여준다(요청 사양) - INDEX_TICKERS(RISK
 // 엔진 벤치마크용, 아래쪽에 선언됨)와 별개로 표시 순서/이름을 이 목록에서 직접 관리한다.
 const MARKET_INDEX_LIST = [
   { ticker: '^KS11', name: '코스피' },
   { ticker: '^KQ11', name: '코스닥' },
   { ticker: '^GSPC', name: 'S&P 500' },
-  { ticker: '^IXIC', name: '나스닥' },
-  { ticker: '^DJI', name: '다우존스' }
+  { ticker: '^IXIC', name: '나스닥' }
 ];
+
 function coreIndexCardHtml(c, info) {
   const isUp = info.changePercent >= 0;
   const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500' : 'text-blue-500');
@@ -2935,6 +2966,15 @@ function coreIndexCardHtmlError(c) {
     <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
     <div class="text-[10px] text-amber-500 mt-1">조회 실패</div>
   </div>`;
+}
+
+// [중복 조회 제거 - 지수] refreshPricesAndRates()가 이 갱신 주기 안에서 지수도 함께 조회해
+// state.marketIndexCache에 채워둔다(위 marketIndexCache 선언부 참고) - 보유 종목과 동일한 이유로,
+// 팝업을 열 때마다 또 조회하지 않고 이 캐시를 먼저 읽는다.
+function getMarketIndexInfoFromState(ticker) {
+  const cached = state.marketIndexCache[ticker];
+  if (!cached || !Number.isFinite(cached.price) || cached.price <= 0) return null;
+  return cached;
 }
 
 // 팝업이 열려있는 동안 다시 열거나(리렌더) 닫힌 뒤에 늦게 도착하는 응답이 화면을 덮어쓰지 않도록
@@ -2960,9 +3000,28 @@ async function openCoreStocksModal() {
   const candidates = getCoreStockCandidates(region);
   const token = ++coreStocksRequestToken;
 
+  // 보유 종목/지수 둘 다 이미 갱신된 state 값을 우선 재사용하고(getCoreStockInfoFromState/
+  // getMarketIndexInfoFromState), 혹시 그 값이 아직 없는 예외적인 경우(예: 시세 갱신이 그 사이
+  // 실패했을 때)에만 그 항목 하나만 개별적으로 실시간 조회로 보충한다 - 정상적인 경우 이 팝업은
+  // 네트워크 요청을 전혀 새로 만들지 않는다.
+  const indexInfoPromises = MARKET_INDEX_LIST.map((c) => {
+    const cached = getMarketIndexInfoFromState(c.ticker);
+    if (cached) return Promise.resolve({ status: 'fulfilled', value: cached });
+    return fetchPriceWithFallback(c.ticker, c.name)
+      .then((value) => ({ status: 'fulfilled', value }))
+      .catch(() => ({ status: 'rejected' }));
+  });
+  const stockInfoPromises = candidates.map((c) => {
+    const cached = getCoreStockInfoFromState(c);
+    if (cached) return Promise.resolve({ status: 'fulfilled', value: cached });
+    return fetchPriceWithFallback(c.ticker, c.name)
+      .then((value) => ({ status: 'fulfilled', value }))
+      .catch(() => ({ status: 'rejected' }));
+  });
+
   const [indexResults, stockResults] = await Promise.all([
-    Promise.allSettled(MARKET_INDEX_LIST.map((c) => fetchPriceWithFallback(c.ticker, c.name))),
-    Promise.allSettled(candidates.map((c) => fetchPriceWithFallback(c.ticker, c.name)))
+    Promise.all(indexInfoPromises),
+    Promise.all(stockInfoPromises)
   ]);
   if (token !== coreStocksRequestToken) return; // 그 사이 팝업이 닫히거나 다시 열렸으면 이 응답은 버린다
 
@@ -2989,7 +3048,13 @@ function closeCoreStocksModal(viaBackButton) {
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
 document.getElementById('coreStocksLiveBtn').addEventListener('click', () => openCoreStocksModal());
-document.getElementById('closeCoreStocksModalBtn').addEventListener('click', () => closeCoreStocksModal());
+// [타이틀 영역 터치 닫기] 헤더(타이틀+X버튼) 전체를 눌러도 닫히도록 - X버튼은 자체 핸들러에서
+// stopPropagation해 이 리스너까지 중복으로 닫기 처리가 전파되지 않게 막는다.
+document.getElementById('coreStocksModalHeader').addEventListener('click', () => closeCoreStocksModal());
+document.getElementById('closeCoreStocksModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeCoreStocksModal();
+});
 document.getElementById('coreStocksModal').addEventListener('click', (e) => {
   if (e.target.id === 'coreStocksModal') closeCoreStocksModal();
 });
@@ -10007,8 +10072,18 @@ async function refreshPricesAndRates() {
     // 지표도 낡은 시세 기준이 됐다 - 전부 비워서 다음에 그 소유자 탭을 보여줄 때 새로 계산하게 한다.
     riskCardOwnerMetricsCache = {};
   }).catch(() => {});
+  // [핵심종목 실시간 팝업 - 지수도 이 갱신 주기에 함께 조회] 보유 종목과 마찬가지로 코스피/코스닥/
+  // S&P500/나스닥/다우존스도 여기서 한 번에 받아 state.marketIndexCache에 채워둔다 - 그래야 핵심종목
+  // 팝업을 열 때 이 5개도 보유 종목처럼 캐시를 그대로 읽기만 하면 되고, 팝업이 열릴 때마다 따로 또
+  // 조회하지 않는다(openCoreStocksModal 참고). 실패한 지수는 캐시를 갱신하지 않고 이전 값을 그대로
+  // 남겨둔다(완전히 값이 없는 것보다 낫다).
+  const indexPromise = Promise.allSettled(MARKET_INDEX_LIST.map((c) => fetchPriceWithFallback(c.ticker, c.name))).then((results) => {
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') state.marketIndexCache[MARKET_INDEX_LIST[i].ticker] = r.value;
+    });
+  });
 
-  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise]);
+  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise, indexPromise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
 
   if (successCount > 0) persistAssets();
