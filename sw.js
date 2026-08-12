@@ -2,13 +2,14 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v84'; // [핵심종목 팝업 - 지수도 캐시 재사용 + UI 조정]
-// ① 지수(코스피/코스닥/S&P500/나스닥)도 이제 보유 종목처럼 refreshPricesAndRates() 갱신 주기 안에서
-// 함께 조회해 state.marketIndexCache에 채워두고, 팝업은 그 캐시를 읽기만 한다(다우존스는 목록에서
-// 제외) - 정상적인 경우 팝업이 자체적으로 새 네트워크 요청을 하나도 만들지 않는다. ② 지수 표시는
-// 종목 리스트와 다른 작은 카드 그리드로(모바일에서도 4개가 한 줄에), 보유 종목은 계속 한 줄씩. ③
-// 팝업 타이틀 영역을 눌러도 닫히도록(X 버튼은 stopPropagation으로 중복 방지).
-// v83->v84: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v86'; // [전량매도 종목 - Top5/핵심종목/리밸런싱후보/RISK진단에서도 제외]
+// v85에서 자산관리/투자세부 목록에서만 숨겼던 전량 매도(수량 0 이하) 포지션을, 티커 기준으로 묶어
+// 순위를 매기는 나머지 화면에도 동일하게 제외한다 - 실보유 종목이 적을 때 0원짜리 유령 티커가
+// 순위에 끼어들거나(getTopHoldings/getCoreStockCandidates/getHeldStockCandidates), 더 이상 보유하지
+// 않는 종목의 추세 이탈 경고가 위험 진단 팝업에 계속 뜨는 문제(riskEligibleAssets)를 근본적으로
+// 막는다. 총평가금액/총평가손익 등 renderKPIs()의 합산 자체는 수량 0이 곱해져 원래부터 0으로
+// 기여했으므로 영향 없음(집계 로직은 그대로, 순위/후보 목록 함수만 수정).
+// v85->v86: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
