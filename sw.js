@@ -2,14 +2,13 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v86'; // [전량매도 종목 - Top5/핵심종목/리밸런싱후보/RISK진단에서도 제외]
-// v85에서 자산관리/투자세부 목록에서만 숨겼던 전량 매도(수량 0 이하) 포지션을, 티커 기준으로 묶어
-// 순위를 매기는 나머지 화면에도 동일하게 제외한다 - 실보유 종목이 적을 때 0원짜리 유령 티커가
-// 순위에 끼어들거나(getTopHoldings/getCoreStockCandidates/getHeldStockCandidates), 더 이상 보유하지
-// 않는 종목의 추세 이탈 경고가 위험 진단 팝업에 계속 뜨는 문제(riskEligibleAssets)를 근본적으로
-// 막는다. 총평가금액/총평가손익 등 renderKPIs()의 합산 자체는 수량 0이 곱해져 원래부터 0으로
-// 기여했으므로 영향 없음(집계 로직은 그대로, 순위/후보 목록 함수만 수정).
-// v85->v86: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v89'; // [부팅 시 자동 팝업 시간대 제한 - 핵심종목/위험진단]
+// 새 헬퍼 isPopupAllowedTimeWindow()가 KST 07~09시/12~13시/15~16시/22~23시, 이 4개 구간에만 true를
+// 반환한다. bootApp()의 자동 팝업 체이닝(maybeShowRiskAlertPopup + openCoreStocksModal)이 이 함수로
+// 감싸져, 지정 시간대가 아니면 위험 점수가 주의/위험이어도, 또 늘 뜨던 핵심종목 팝업도 부팅 시엔
+// 조용히 건너뛴다. 반면 헤더의 [핵심종목 실시간] 버튼(coreStocksLiveBtn)은 이 함수를 전혀 거치지
+// 않고 그대로 openCoreStocksModal()을 호출하므로 시간대와 무관하게 24시간 언제든 수동으로 열 수 있다.
+// v86->v87: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
