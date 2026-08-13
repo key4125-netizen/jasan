@@ -1758,6 +1758,11 @@
         <input id="tx_fee" type="number" step="any" min="0" value="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
+      <label id="tx_appliedRateWrap" class="col-span-1 text-xs hidden">
+        <span class="text-slate-500 dark:text-slate-400">적용 환율(원)</span>
+        <input id="tx_appliedRate" type="number" step="any" min="0"
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+      </label>
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
         <button type="button" id="cancelTxModalBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
@@ -1876,6 +1881,10 @@ const CATEGORY_COLORS = {
 // 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
 // 실시간 시세 조회 대상 및 일간 손익 계산에서 제외한다(사용자가 실수로 티커를 입력해 넣어도 예외).
 const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산'];
+// [해외주식 환율 이력 - 기본값] 거래(매수/매도)에 적용 환율(appliedRate) 기록이 없는 경우(과거 거래,
+// 엑셀 업로드 시 '적용환율' 컬럼 미기재 등) 쓰는 추정 환율. 실현손익이 조회 시점의 실시간 환율에 따라
+// 계속 흔들리지 않도록, "현재 환율"이 아니라 고정된 값을 기본값으로 둔다.
+const DEFAULT_LEGACY_FX_RATE = 1450;
 // [절세 계좌 제외] 미래예측/리밸런싱 계산(일반계좌 미래예측 탭, 일반계좌 리밸런싱 탭)은 연금저축/IRP/ISA
 // 같은 절세 계좌를 제외한 자산만을 대상으로 한다 - 절세 계좌는 세제 혜택 유지를 위해 자유롭게
 // 매도/매수하기 어려운 경우가 많아, 실제로 리밸런싱을 실행할 수 있는 계좌만 계산에 포함시킨다.
@@ -2328,6 +2337,23 @@ function ensureDailyReference() {
   }
 }
 
+// [해외주식 환율 이력 보완 - 1회성 마이그레이션] 거래 등록 UI에 '적용 환율' 입력란이 생기기 전에
+// 저장된 과거 USD 거래는 appliedRate가 비어 있다 - 이 값이 없으면 computePositionsAndRealizedPnL이
+// 매도할 때마다 DEFAULT_LEGACY_FX_RATE로 임시 대체하기만 할 뿐 저장은 안 해서, 사용자가 [거래 수정]
+// 화면에서 그 거래의 실제 적용 환율을 확인/조정할 수 없다. 부팅 시 한 번 훑어서 빈 값을 1,450원으로
+// 실제로 채워 넣어 둔다(이후엔 정상적으로 각 거래를 열어 직접 고칠 수 있음). 되돌릴 필요가 없는
+// 단순 채움이라 버전 플래그 없이 매번 훑어도 안전하다(이미 채워진 거래는 건드리지 않음).
+function migrateLegacyForeignExchangeRates() {
+  let changed = false;
+  state.transactions.forEach((tx) => {
+    if (tx.currency === 'USD' && !(num(tx.appliedRate) > 0)) {
+      tx.appliedRate = DEFAULT_LEGACY_FX_RATE;
+      changed = true;
+    }
+  });
+  if (changed) persistTransactions();
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -2401,6 +2427,7 @@ function loadState() {
     state.transactions = txRaw ? JSON.parse(txRaw) : [];
     if (!Array.isArray(state.transactions)) state.transactions = [];
   } catch (e) { state.transactions = []; }
+  migrateLegacyForeignExchangeRates();
 
   try {
     const snapRaw = localStorage.getItem(LS_DAILY_SNAPSHOTS);
@@ -2866,32 +2893,46 @@ function getTopHoldings() {
  *    자동 전환)의 실시간 시세를 그 자리에서 즉석 조회해 보여준다. 기존 목록/그래프와 달리 저장된 시세를
  *    쓰지 않고 팝업을 열 때마다 fetchPriceWithFallback()으로 매번 새로 받아온다.
  * ---------------------------------------------------------------------- */
-// 07:00~20:00(KST)은 국내 장 시간대라 국내 종목을, 그 외(저녁~다음날 아침)는 미국 장 시간대라 해외
-// 종목을 보여준다. hour12:false가 자정을 "24"로 반환하는 일부 브라우저 구현 차이를 %24로 방어한다.
+// 07:00~21:00(KST)은 국내 장(+시간외 포함) 시간대라 국내 종목을, 그 외(밤 9시~다음날 아침 7시)는
+// 미국 장 시간대라 해외 종목을 보여준다. hour12:false가 자정을 "24"로 반환하는 일부 브라우저 구현
+// 차이를 %24로 방어한다.
 function getCoreStocksRegion() {
   const kstHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit' }), 10) % 24;
-  return (kstHour >= 7 && kstHour < 20) ? 'domestic' : 'foreign';
+  return (kstHour >= 7 && kstHour < 21) ? 'domestic' : 'foreign';
 }
 
-// 무티커 자산(현금/채권/부동산)과 주식/ETF가 아닌 자산은 대상에서 제외한다 - RISK 카드가 쓰는
-// RISK_ELIGIBLE_CATEGORIES(['주식','ETF'])와 동일한 기준. 같은 티커를 소유자별로 나눠 든 경우
-// getTopHoldings()처럼 평가금액을 합산해 하나로 보여준다(신랑+와이프가 같이 든 SK하이닉스가 두 줄로
-// 안 나뉘게).
-function getCoreStockCandidates(region) {
-  const wantDomestic = region === 'domestic';
+// 무티커 자산(현금/채권/부동산)과 주식/ETF가 아닌 자산, 전량 매도 포지션은 공통으로 제외한다 - RISK
+// 카드가 쓰는 RISK_ELIGIBLE_CATEGORIES(['주식','ETF'])와 동일한 기준. 같은 티커를 소유자별로 나눠 든
+// 경우 getTopHoldings()처럼 평가금액을 합산해 하나로 보여준다(신랑+와이프가 같이 든 SK하이닉스가 두
+// 줄로 안 나뉘게). filterFn으로 지역(국내/해외)·통화 조건을 추가로 좁힌다.
+function buildCoreStockGroups(filterFn) {
   const groups = {};
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker || !RISK_ELIGIBLE_CATEGORIES.includes(a.category)) return;
     if (num(a.quantity) <= 0) return; // 전량 매도 포지션은 핵심종목 후보에서 제외
-    if ((a.isDomestic === '국내') !== wantDomestic) return;
+    if (!filterFn(a)) return;
     // assetId: 이 티커를 대표하는 자산 하나의 id - 같은 티커는 통화/현재가가 항상 동일하므로, 아래
     // getCoreStockInfoFromState()가 여기서 굳이 다시 API를 부르지 않고 이미 갱신된 state.assets/
     // dayChangeMap/prevCloseMap 값을 그대로 읽어오는 데 쓴다.
     if (!groups[ticker]) groups[ticker] = { ticker, name: a.name, curAmount: 0, assetId: a.id };
     groups[ticker].curAmount += calcRow(a).curAmount;
   });
-  return Object.values(groups).sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
+  return Object.values(groups).sort((a, b) => b.curAmount - a.curAmount);
+}
+
+// [야간(해외) 시간대 2단계 추출] 국내는 기존대로 isDomestic='국내' 상위 5개 그대로. 해외는 ⓐ해외
+// 통화(USD 등) 종목을 평가금액 내림차순으로 먼저 채우고, ⓐ만으로 5개가 안 차면 ⓑ원화로 거래되는
+// 해외자산군(국내 상장 해외지수 ETF 등)을 평가금액 내림차순으로 이어 붙여 5개를 채운다. ⓐ+ⓑ를 합쳐도
+// 5개 미만이면(보유 해외 종목 자체가 적은 경우) 국내 종목으로 보충하지 않고 있는 만큼만 보여준다.
+function getCoreStockCandidates(region) {
+  if (region === 'domestic') {
+    return buildCoreStockGroups((a) => a.isDomestic === '국내').slice(0, 5);
+  }
+  const foreignCurrency = buildCoreStockGroups((a) => a.isDomestic === '해외' && a.currency === 'USD');
+  if (foreignCurrency.length >= 5) return foreignCurrency.slice(0, 5);
+  const krwDenominated = buildCoreStockGroups((a) => a.isDomestic === '해외' && a.currency !== 'USD');
+  return foreignCurrency.concat(krwDenominated).slice(0, 5);
 }
 
 // [중복 조회 제거] 이 팝업이 열리는 시점(부팅 직후는 항상, 수동 버튼도 대부분)은 refreshPricesAndRates()가
@@ -2988,7 +3029,7 @@ let coreStocksRequestToken = 0;
 async function openCoreStocksModal() {
   const region = getCoreStocksRegion();
   const regionLabel = region === 'domestic' ? '국내' : '해외';
-  const timeRangeLabel = region === 'domestic' ? '07:00~20:00' : '20:00~07:00';
+  const timeRangeLabel = region === 'domestic' ? '07:00~21:00' : '21:00~07:00';
   document.getElementById('coreStocksModalTitle').textContent = `${regionLabel} 핵심 종목 실시간 시세 (${timeRangeLabel})`;
   document.getElementById('coreStocksModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -5979,25 +6020,38 @@ document.getElementById('inflationRateInput').addEventListener('input', (e) => {
 // 이동평균법: 매수 시 (기존 총매입금액+신규 매입금액)/(기존 수량+신규 수량)으로 평단가를 갱신하고,
 // 매도 시 (매도단가-평단가)*매도수량-수수료를 실현손익으로 떼어내되 평단가 자체는 그대로 유지한다.
 // 반환값의 annotated는 각 거래에 그 시점 실현손익(매도 건만)을 붙인 것으로, 기간별 손익 집계에 쓰인다.
+// [해외주식 환차손익 반영] 평단가(avgPrice, 달러 등 거래 통화 기준)와 완전히 같은 방식으로 "매수 시점
+// 환율의 가중평균(avgRate)"도 함께 추적한다 - 분할 매수마다 그때그때의 tx.appliedRate(없으면
+// DEFAULT_LEGACY_FX_RATE)를 수량 가중으로 누적한다. 매도 시 원화 매도금액은 그 매도 건 자신의
+// appliedRate(매도 시점 환율)로, 원화 매입원가는 포지션에 쌓인 avgRate(매수 시점 가중평균 환율)로
+// 각각 환산해 차감하므로, 주가 차익과 환차손익이 하나의 확정 원화 금액에 함께 반영된다. 원화(KRW)
+// 거래는 rate가 항상 1이라 이 로직을 그대로 타도 결과가 기존과 같다(환산이 사실상 없는 것과 동일).
 function computePositionsAndRealizedPnL() {
-  const positions = {}; // key(소유자__계좌구분__티커) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, realizedPnL }
+  const positions = {}; // key(소유자__계좌구분__티커) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, avgRate, totalRateWeighted, realizedPnL }
   const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
   const annotated = sorted.map((tx) => {
     const key = `${tx.owner}__${tx.accountType}__${tx.ticker || tx.name}`;
-    if (!positions[key]) positions[key] = { owner: tx.owner, accountType: tx.accountType, ticker: tx.ticker, name: tx.name, currency: tx.currency, quantity: 0, avgPrice: 0, totalCost: 0, realizedPnL: 0 };
+    if (!positions[key]) positions[key] = { owner: tx.owner, accountType: tx.accountType, ticker: tx.ticker, name: tx.name, currency: tx.currency, quantity: 0, avgPrice: 0, totalCost: 0, avgRate: 1, totalRateWeighted: 0, realizedPnL: 0 };
     const pos = positions[key];
+    const txRate = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : 1;
     let computedRealizedPnL = null, computedSellAmount = null;
     if (tx.type === 'buy') {
       pos.totalCost += tx.quantity * tx.price + num(tx.fee);
+      pos.totalRateWeighted += tx.quantity * txRate;
       pos.quantity += tx.quantity;
       pos.avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
+      pos.avgRate = pos.quantity > 0 ? pos.totalRateWeighted / pos.quantity : 1;
     } else {
       const sellQty = Math.min(tx.quantity, pos.quantity); // 보유수량보다 많이 팔 수 없도록 안전하게 clamp
-      computedRealizedPnL = (tx.price - pos.avgPrice) * sellQty - num(tx.fee);
-      computedSellAmount = tx.price * sellQty;
+      const buyRate = pos.avgRate || DEFAULT_LEGACY_FX_RATE; // 매수 시점 가중평균 환율(원화 매입원가에 적용)
+      const krwSellAmount = tx.price * sellQty * txRate; // 원화 매도금액 = 매도가 × 매도수량 × 매도시점 환율
+      const krwBuyCost = pos.avgPrice * sellQty * buyRate; // 원화 매입원가 = 평단가 × 매도수량 × 매수시점 가중평균 환율
+      computedRealizedPnL = krwSellAmount - krwBuyCost - num(tx.fee) * txRate;
+      computedSellAmount = krwSellAmount;
       pos.realizedPnL += computedRealizedPnL;
       pos.quantity = Math.max(0, pos.quantity - sellQty);
       pos.totalCost = pos.avgPrice * pos.quantity; // 평단가는 유지, 총원가만 남은 수량에 비례해 축소
+      pos.totalRateWeighted = pos.avgRate * pos.quantity; // 가중평균 환율도 동일하게 유지, 누적치만 축소
     }
     pos.name = tx.name || pos.name;
     pos.currency = tx.currency || pos.currency;
@@ -6091,10 +6145,12 @@ function downloadHoldingsAsTxTemplate() {
   const rows = targets.map((a) => ({
     '구분': '최초', '일자': seedDate, '소유자': a.owner, '계좌구분': a.accountType, '종목명': a.name,
     '티커': a.ticker, '거래유형': '매수', '수량': num(a.quantity), '매매단가': num(a.buyPrice),
-    '통화': a.currency, '수수료': 0
+    // [적용환율] 해외통화 보유분은 매수 시점 환율 기록이 없으므로 추정 기본값(DEFAULT_LEGACY_FX_RATE)을
+    // 미리 채워 내려준다 - 실제 매수 시점 환율을 알면 사용자가 직접 고쳐 올릴 수 있다.
+    '통화': a.currency, '적용환율': a.currency === 'USD' ? DEFAULT_LEGACY_FX_RATE : '', '수수료': 0
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 8 }];
+  ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 8 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '거래내역');
   XLSX.writeFile(wb, `거래내역_양식_${todayDateStr()}.xlsx`);
@@ -6157,6 +6213,11 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
           quantity: num(pick(row, '수량', 'quantity')),
           price: num(pick(row, '매매단가', '단가', 'price')),
           currency: currencyRaw === 'USD' ? 'USD' : 'KRW',
+          // [적용환율] '적용환율' 컬럼에 값이 있으면 그대로 쓰고, 해외통화인데 비어 있으면 업로드
+          // 시점의 실시간 환율(state.exchangeRate)을 대신 적용한다(요청 스펙: 미기재 시 실시간 환율).
+          appliedRate: currencyRaw === 'USD'
+            ? (num(pick(row, '적용환율', '환율', 'appliedRate', 'AppliedRate')) || state.exchangeRate)
+            : undefined,
           fee: num(pick(row, '수수료', '세금', '수수료/세금', 'fee')),
           origin,
           createdAt: Date.now()
@@ -6218,6 +6279,17 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
   reader.readAsArrayBuffer(file);
 });
 
+// [해외주식 적용 환율 입력란] 통화가 USD일 때만 '적용 환율' 입력란을 보여준다 - 거래 등록 시점의
+// 실시간 환율(state.exchangeRate)을 기본값으로 채워주되, 이미 값이 있으면(수정 모드에서 기존 저장값을
+// 불러온 경우) 덮어쓰지 않고 사용자가 직접 고쳐 저장할 수 있다.
+function updateTxAppliedRateVisibility() {
+  const isUsd = document.getElementById('tx_currency').value === 'USD';
+  document.getElementById('tx_appliedRateWrap').classList.toggle('hidden', !isUsd);
+  const input = document.getElementById('tx_appliedRate');
+  if (isUsd && !input.value) input.value = state.exchangeRate;
+}
+document.getElementById('tx_currency').addEventListener('change', updateTxAppliedRateVisibility);
+
 // 검색 모달(개별주식 검색)을 'transaction' 모드로 열었을 때 종목 선택 결과를 거래 입력 폼에 채운다.
 // [티커 없는 자산 - 소유자/계좌구분/통화 자동완성] 부동산/채권처럼 티커가 없는 자산은 소유자+계좌구분+
 // 종목명이 정확히 일치해야만 기존 포지션과 연결된다(syncAssetsFromTransactions 참고) - owner/accountType/
@@ -6236,6 +6308,7 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
     if (accountType) document.getElementById('tx_accountType').value = accountType;
     document.getElementById('tx_tickerHint').textContent = '티커 없는 자산 - 소유자/계좌구분이 자동으로 채워졌습니다(매도 시 기존 보유분과 정확히 연결됩니다).';
   }
+  updateTxAppliedRateVisibility();
 }
 
 function openTransactionModal(txId) {
@@ -6262,10 +6335,12 @@ function openTransactionModal(txId) {
     document.getElementById('tx_price').value = tx.price;
     document.getElementById('tx_currency').value = tx.currency;
     document.getElementById('tx_fee').value = tx.fee;
+    document.getElementById('tx_appliedRate').value = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : '';
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
   } else {
     document.getElementById('txModalTitle').textContent = '거래 추가';
   }
+  updateTxAppliedRateVisibility();
   document.getElementById('transactionModal').classList.remove('hidden');
   pushModalHistoryState();
 }
@@ -6313,7 +6388,11 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     quantity, price,
     currency: document.getElementById('tx_currency').value,
     fee: num(document.getElementById('tx_fee').value),
-    appliedRate: existing ? existing.appliedRate : undefined, // 과거 금액 기반 입력으로 남겨둔 참고용 환율은 수정 시에도 보존
+    // [해외주식 적용 환율] 통화가 USD일 때만 의미 있는 값 - 입력란이 비어 있으면(자동 채움 로직을
+    // 우회해 강제로 지운 경우 등) 지금 환율로 안전하게 채운다.
+    appliedRate: document.getElementById('tx_currency').value === 'USD'
+      ? (num(document.getElementById('tx_appliedRate').value) || state.exchangeRate)
+      : undefined,
     origin: (existing && existing.origin) || 'period', // 수동 입력은 항상 '기간' 거래로 취급(구분 태그는 엑셀 업로드 전용)
     createdAt: existing ? existing.createdAt : Date.now() // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
   };
@@ -6405,9 +6484,11 @@ function renderTransactionList() {
     // [금액 기반 입력 표시] price=1로 저장된 무티커 금액거래는 "1000주 × $1"처럼 보이면 혼란스러우니
     // quantity를 그대로 금액으로 보여준다. appliedRate(참고용으로 적어둔 환율)가 있으면 함께 표기한다.
     const isAmountTx = !t.ticker && num(t.price) === 1;
+    // [해외주식 적용 환율 표시] 일반(수량×단가) 거래도 USD면 그 거래에 저장된 적용 환율을 함께 보여준다.
+    const rateSuffix = (t.currency === 'USD' && t.appliedRate) ? ` · 적용환율 ${fmtNum(t.appliedRate, 1)}원` : '';
     const amountLine = isAmountTx
       ? `${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}${t.appliedRate ? ` · 적용환율 ${fmtNum(t.appliedRate, 1)}원` : ''}`
-      : `${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}`;
+      : `${fmtNum(t.quantity, 4)}주 × ${unit}${fmtNum(t.price, 2)} = ${unit}${fmtNum(amount, 2)}${num(t.fee) > 0 ? ` (수수료 ${unit}${fmtNum(t.fee, 2)})` : ''}${rateSuffix}`;
     return `
     <div class="py-2.5 flex items-start justify-between gap-2">
       <div class="min-w-0">
@@ -11543,6 +11624,18 @@ function warnIfRestrictedWebView() {
  *    [구글 드라이브 동기화 기능 제거] 이제 기기 로컬 저장(localStorage) 전용으로 동작한다 - 네트워크
  *    동기화를 기다리지 않고 loadState()로 로컬 데이터를 읽는 즉시 렌더링을 시작한다.
  * ---------------------------------------------------------------------- */
+// [부팅 시 자동 팝업 시간대 제한] 핵심종목/위험진단 팝업이 접속할 때마다 매번 뜨면 성가시므로, 사용자가
+// 실제로 자산을 확인할 법한 4개 시간대(출근 전/점심/국내장 마감 직후/미국장 개장 무렵)에만 부팅 자동
+// 팝업을 허용한다. 헤더의 [핵심종목 실시간] 버튼처럼 사용자가 직접 누르는 수동 트리거는 이 제한과
+// 무관하게 24시간 그대로 동작한다(호출부에서 이 함수를 아예 거치지 않음).
+function isPopupAllowedTimeWindow() {
+  const kstHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit' }), 10) % 24;
+  return (kstHour >= 7 && kstHour < 9)   // 1구간(아침)
+    || (kstHour >= 12 && kstHour < 13)   // 2구간(점심)
+    || (kstHour >= 15 && kstHour < 16)   // 3구간(장마감)
+    || (kstHour >= 22 && kstHour < 23);  // 4구간(야간)
+}
+
 async function bootApp() {
   cleanupLegacyGoogleSyncKeys(); // 예전 구글 드라이브 연동 기능이 남긴 localStorage 키를 1회 정리
   loadState();
@@ -11581,7 +11674,9 @@ async function bootApp() {
   // [핵심종목 실시간 팝업 자동 노출] 요청에 따라 앱을 열 때마다 위험진단 팝업(뜨는 조건이 맞으면)에
   // 이어 항상 핵심종목 실시간 팝업도 띄운다 - openCoreStocksModal() 호출이 나중이라 DOM에도 나중에
   // 올라오고, z-[65]가 riskAlertModal(z-50)보다 높아 시각적으로도 항상 그 위에 보인다.
-  refreshPricesAndRates().catch(() => {}).then(() => { maybeShowRiskAlertPopup(); openCoreStocksModal(); }).finally(() => backfillAllHoldingsDailyPnlHistory());
+  refreshPricesAndRates().catch(() => {}).then(() => {
+    if (isPopupAllowedTimeWindow()) { maybeShowRiskAlertPopup(); openCoreStocksModal(); }
+  }).finally(() => backfillAllHoldingsDailyPnlHistory());
 }
 bootApp();
 </script>
