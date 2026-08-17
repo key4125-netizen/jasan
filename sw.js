@@ -2,13 +2,18 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v89'; // [부팅 시 자동 팝업 시간대 제한 - 핵심종목/위험진단]
-// 새 헬퍼 isPopupAllowedTimeWindow()가 KST 07~09시/12~13시/15~16시/22~23시, 이 4개 구간에만 true를
-// 반환한다. bootApp()의 자동 팝업 체이닝(maybeShowRiskAlertPopup + openCoreStocksModal)이 이 함수로
-// 감싸져, 지정 시간대가 아니면 위험 점수가 주의/위험이어도, 또 늘 뜨던 핵심종목 팝업도 부팅 시엔
-// 조용히 건너뛴다. 반면 헤더의 [핵심종목 실시간] 버튼(coreStocksLiveBtn)은 이 함수를 전혀 거치지
-// 않고 그대로 openCoreStocksModal()을 호출하므로 시간대와 무관하게 24시간 언제든 수동으로 열 수 있다.
-// v86->v87: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v90'; // [버그 수정 - 평일 휴장일 일간손익 이중 반영]
+// 시세 API(Yahoo meta.regularMarketTime, Naver localTradedAt)에서 종목별 "마지막 정규장 체결
+// 식별값"을 받아와 자산에 저장(lastTradeKey, persistAssets로 영속화 - 재부팅해도 비교 기준 유지)해
+// 두고, 다음 조회 때 이 값이 그대로면(=새 정규장이 없었음, 평일 공휴일 등) state.noNewSessionMap을
+// true로 표시한다. calcDailyPnL()이 이 플래그가 true인 종목은 주가 변동분을 0으로 고정하되, 해외
+// 자산은 그날의 환율 변동분(환차손익)만은 그대로 반영한다 - 예전엔 주말만 걸러내고 평일 공휴일은
+// 걸러내지 못해, 직전 거래일의 상승분이 휴장일에 그대로 다시 계산돼 일간손익/누적 평가손익 그래프에
+// 중복 반영되는 버그가 있었다(실사용자가 실제로 겪은 사례로 확인). 부수적으로 이제 일간손익 계산에는
+// 시간외(애프터마켓 등) 틱이 섞일 수 있는 현재가 대신 정규장 기준가(regularMarketPrice)를 우선
+// 쓴다 - 시간외 변동으로 그날의 확정 평가손익/스냅샷이 흔들리지 않는다. 체결 식별값을 안 주는 소스
+// (Stooq 등)는 기존 주말/세션시각 근사 로직(isMarketInDailyResetWindow)으로 그대로 폴백한다.
+// v89->v90: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
