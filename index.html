@@ -2151,6 +2151,13 @@ const state = {
   // 직전 시세 조회에서 정규장 종가 대신 시간외(Pre/Post Market) 시세를 현재가로 채택한 자산 id -> 'post'|'pre'.
   // 테이블에 "시간외" 배지를 표시하는 용도로만 쓰이며, 휘발성 데이터라 localStorage에는 저장하지 않는다.
   sessionMap: {},
+  // [휴장일 이중 반영 방지] 이번 시세 조회에서 받아온 마지막 체결 식별값(lastTradeKey)이 직전 조회 때
+  // 저장해둔 값(asset.lastTradeKey, persistAssets로 영속 저장됨)과 완전히 같았는지 - true면 새 정규장
+  // 체결이 전혀 없었다는 뜻(평일 공휴일 등)이라 calcDailyPnL이 주가 변동분을 0으로 고정한다. 소스가
+  // 체결 식별값을 안 주면(Stooq 등) 키 자체가 없어 undefined로 남고, 그 경우 calcDailyPnL이 기존의
+  // 주말/세션시각 근사 로직(isMarketInDailyResetWindow)으로 폴백한다. 매 조회마다 새로 판정되는
+  // 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  noNewSessionMap: {},
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
   priceFetchFailedIds: new Set(),
@@ -2445,7 +2452,12 @@ function persistAssets() {
   const clean = state.assets.map(a => ({
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
     category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
-    quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
+    quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
+    // [휴장일 이중 반영 방지] 다음 시세 조회 때 "새 체결이 있었는지" 비교할 기준값 - 앱을 껐다 켜도
+    // 비교 기준이 유지되도록 반드시 영속 저장해야 한다(휘발성 상태로 두면 매번 재부팅 시 기준을 잃어
+    // 공휴일 첫 접속에서 이중 반영을 못 걸러낸다). regularMarketPrice는 시간외 틱을 배제한 정규장
+    // 기준가로, calcDailyPnL이 일간손익 계산 시 a.currentPrice 대신 우선 사용한다.
+    lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
 }
@@ -2608,27 +2620,42 @@ function isDomesticAfterHoursIneligible(yahooTicker, name) {
 // 자산 하나의 오늘 하루 손익(KRW)을 계산한다. 우선순위:
 //   1) 전일종가(prevCloseMap)가 있으면 "오늘 평가액 - 어제 종가 기준 평가액"으로 정확히 계산한다.
 //      해외자산은 오늘값에는 현재 환율을, 어제값에는 오늘 하루의 기준환율(refExchangeRate)을 각각
-//      적용해 가격 변동분과 환율 변동분을 모두 반영한다.
+//      적용해 가격 변동분과 환율 변동분을 모두 반영한다. "오늘 평가액"에는 시간외 틱이 섞일 수 있는
+//      a.currentPrice 대신, 정규장 기준가(a.regularMarketPrice, 없으면 a.currentPrice로 폴백)를 쓴다 -
+//      애프터마켓 등락으로 그날의 확정 평가손익/스냅샷이 흔들리지 않게 하기 위함.
 //   2) 전일종가는 없지만 API 등락률(dayChangeMap)만 있으면(예: Stooq 폴백) 근사치로 사용한다.
 //   3) 채권/현금/부동산(NON_TRADABLE_CATEGORIES) 카테고리는 티커 입력 여부와 무관하게 항상 0 -
 //      시세 자체가 없는 자산군이므로 전역 수동 변동률의 영향을 받지 않는다.
 //   4) 그 외 티커가 아예 없는 자산도 시세 조회 대상이 아니므로 항상 0 - 이게 이전 버전의 버그였다
 //      (수동 변동률이 현금/채권에도 적용됨).
 //   5) 티커는 있지만 아직 한 번도 시세를 못 받아온 경우에만 수동 변동률로 추정한다.
-//   6) 시장별(국내는 KST 자정, 미국은 미 동부시간 자정) 리셋 창 안에 있으면(그 시장의 자정은 지났지만
-//      아직 새 거래일 시세가 나오기 전, 또는 주말) 무조건 0 - isMarketInDailyResetWindow() 참고.
+//   6) [휴장일 이중 반영 방지] state.noNewSessionMap[a.id]가 true면(이번에 받아온 체결 식별값이 직전과
+//      완전히 같음 - 평일 공휴일 등으로 새 정규장이 없었다는 뜻) 주가 변동분은 0으로 고정하되, 해외
+//      자산의 환율 변동분(오늘 환율 - 오늘 하루 기준환율)만은 그대로 반영한다 - 환율은 주식시장 휴장
+//      여부와 무관하게 계속 움직이므로.
+//   7) noNewSessionMap이 undefined면(체결 식별값을 안 주는 Stooq 등 소스) 판별 불가 - 기존의 시장별
+//      (국내는 KST 자정, 미국은 미 동부시간 자정) 리셋 창 근사 로직으로 폴백한다 - isMarketInDailyResetWindow() 참고.
 function calcDailyPnL(a, r) {
   if (NON_TRADABLE_CATEGORIES.includes(a.category)) return 0;
   const hasTicker = String(a.ticker ?? '').trim() !== '';
   if (!hasTicker) return 0;
-  if (isMarketInDailyResetWindow(getMarketKeyForTicker(a.ticker))) return 0;
 
   const qty = num(a.quantity);
   const prevClose = state.prevCloseMap[a.id];
+  const todayRate = r.isForeign ? state.exchangeRate : 1;
+  const prevRate = r.isForeign ? (state.refExchangeRate || state.exchangeRate) : 1;
+  const noNewSession = state.noNewSessionMap[a.id];
+
+  if (noNewSession === true) {
+    if (typeof prevClose === 'number' && prevClose > 0) return qty * prevClose * (todayRate - prevRate);
+    return 0; // 전일종가 정보가 없으면 환차손익도 계산할 기준이 없어 안전하게 0
+  }
+  if (noNewSession === undefined && isMarketInDailyResetWindow(getMarketKeyForTicker(a.ticker))) return 0;
+
   if (typeof prevClose === 'number' && prevClose > 0) {
-    const todayRate = r.isForeign ? state.exchangeRate : 1;
-    const prevRate = r.isForeign ? (state.refExchangeRate || state.exchangeRate) : 1;
-    const todayValue = qty * num(a.currentPrice) * todayRate;
+    const regularPrice = a.regularMarketPrice;
+    const effectivePrice = (typeof regularPrice === 'number' && regularPrice > 0) ? regularPrice : num(a.currentPrice);
+    const todayValue = qty * effectivePrice * todayRate;
     const prevValue = qty * prevClose * prevRate;
     return todayValue - prevValue;
   }
@@ -8310,11 +8337,19 @@ function pickCurrentPriceFromChart(result, yahooTicker, name) {
   const prevCloseRaw = (typeof meta.previousClose === 'number') ? meta.previousClose
     : (typeof meta.chartPreviousClose === 'number' ? meta.chartPreviousClose : null);
 
+  // [휴장일 이중 반영 방지 - 정규장 기준값] regularMarketTime/regularMarketPrice는 세션(post/pre/closed)
+  // 판정과 무관하게 항상 meta에서 그대로 가져온다 - price가 시간외 틱으로 바뀌어도 이 둘은 오직 "가장
+  // 최근에 완료된 정규장"만 가리키므로, 일간손익 계산의 안정적인 기준(정규장 종가)이자 새 정규장이
+  // 열렸는지 판별하는 체결 시각으로 쓸 수 있다.
+  const regularMarketTime = typeof meta.regularMarketTime === 'number' ? meta.regularMarketTime : null;
+  const regularMarketPrice = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : null;
   const withChangePercent = (price, session) => ({
     price,
     changePercent: (typeof prevCloseRaw === 'number' && prevCloseRaw > 0) ? ((price - prevCloseRaw) / prevCloseRaw * 100) : 0,
     session,
-    previousClose: prevCloseRaw
+    previousClose: prevCloseRaw,
+    regularMarketTime,
+    regularMarketPrice
   });
 
   // 배열 끝에서부터 null이 아닌 마지막 체결 틱을 찾는다(휴장/거래 없는 구간은 close가 null로 옴).
@@ -8365,6 +8400,10 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
     previousClose: picked.previousClose,
     changePercent: picked.changePercent,
     session: picked.session, // 'post' | 'pre' | 'regular' | 'closed' - 테이블에 시간외/장마감 배지를 표시하는 데 쓰인다
+    regularMarketPrice: picked.regularMarketPrice, // 시간외 틱과 무관한 정규장 기준가 - calcDailyPnL 전용
+    // [휴장일 이중 반영 방지] regularMarketTime(정규장 마지막 체결 epoch초)을 문자열로 그대로 "체결
+    // 식별값"으로 쓴다 - 다음 조회 때 이 값이 그대로면 새 정규장이 없었다는 뜻이다.
+    lastTradeKey: typeof picked.regularMarketTime === 'number' ? String(picked.regularMarketTime) : undefined,
     instrumentType: meta.instrumentType, // 'EQUITY'|'ETF'|'MUTUALFUND' 등 - .KQ 자동 폴백의 오매칭 검증용
     currency: meta.currency, // [자산 추가 팝업 개선] 종목 검색 시 거래 통화 자동 감지용 - Yahoo가 실제 상장 통화를 그대로 내려준다(USD/KRW/JPY 등)
     source: `Yahoo(${proxy.name})`
@@ -8413,7 +8452,10 @@ async function fetchStooqPrice(yahooTicker) {
   const timeWindow = /\.(KS|KQ)$/i.test(yahooTicker) ? resolveDomesticTimeWindow() : resolveForeignTimeWindow();
   // [자산 추가 팝업 개선] Stooq는 통화 필드를 안 주므로 티커 형태로만 추정한다(국내면 KRW, 그 외 USD).
   const currency = /\.(KS|KQ)$/i.test(yahooTicker) ? 'KRW' : 'USD';
-  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', currency, source: 'Stooq' };
+  // [휴장일 이중 반영 방지] Stooq는 체결 시각을 안 주므로 lastTradeKey는 생략한다(undefined) -
+  // calcDailyPnL이 이 경우 기존 주말/세션시각 근사 로직으로 자동 폴백한다. regularMarketPrice는
+  // Stooq가 시간외 구분 없이 항상 종가만 주므로 price와 동일하게 채운다.
+  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', currency, regularMarketPrice: price, source: 'Stooq' };
 }
 
 // 국내(KRX) 티커 전용 - 네이버 금융의 비공식 실시간 API. Yahoo는 meta.preMarketPrice/postMarketPrice
@@ -8486,7 +8528,16 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   // [자산 추가 팝업 개선] 국내(KRX) 종목은 사실상 항상 KRW지만, currencyType.code를 그대로 써서 실제
   // 응답 기준으로 판단한다(하드코딩 방지).
   const currency = (d.currencyType && d.currencyType.code) || 'KRW';
-  return { price, previousClose, changePercent, session, currency, source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)' };
+  // [휴장일 이중 반영 방지] localTradedAt(ISO8601, 예: "2026-08-18T08:37:30.43+09:00")은 이 종목의
+  // 마지막 실제 체결 시각이다 - 다음 조회 때 이 문자열이 그대로면(새 체결이 없으면) 새 정규장이 없었단
+  // 뜻이다. closeRaw는 세션 판정과 무관하게 "가장 최근에 완료된 정규장 종가"만 가리키므로(위 주석
+  // 참고, 시간외 틱으로 덮이지 않음) calcDailyPnL의 정규장 기준가로 그대로 쓸 수 있다.
+  const lastTradeKey = (typeof d.localTradedAt === 'string' && d.localTradedAt) ? d.localTradedAt : undefined;
+  return {
+    price, previousClose, changePercent, session, currency,
+    regularMarketPrice: closeRaw, lastTradeKey,
+    source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)'
+  };
 }
 
 // 네이버 직접 호출 + CORS_PROXIES 경유 재시도를 Promise.any로 동시 경쟁시킨다 - 직접 호출이 배포
@@ -10101,6 +10152,17 @@ async function fetchPricesForTargets(targets) {
         // session 정보 자체가 없는 소스(Stooq 등)만 배지를 아예 띄우지 않도록 sessionMap에서 지운다.
         if (r.value.session) state.sessionMap[r.value.id] = r.value.session;
         else delete state.sessionMap[r.value.id];
+        // [휴장일 이중 반영 방지] 이번에 받아온 체결 식별값(lastTradeKey)을 덮어쓰기 전에 직전 저장값과
+        // 먼저 비교한다 - 완전히 같으면(예: 평일 공휴일이라 새 정규장이 없었음) noNewSessionMap을 true로
+        // 표시해 calcDailyPnL이 주가 변동분을 0으로 고정하게 한다. 소스가 체결 식별값을 안 주면(Stooq)
+        // undefined로 남겨 기존 주말/세션시각 근사 로직으로 폴백시킨다.
+        if (typeof r.value.lastTradeKey === 'string' && r.value.lastTradeKey) {
+          state.noNewSessionMap[r.value.id] = (asset.lastTradeKey === r.value.lastTradeKey);
+          asset.lastTradeKey = r.value.lastTradeKey;
+        } else {
+          delete state.noNewSessionMap[r.value.id];
+        }
+        if (typeof r.value.regularMarketPrice === 'number' && r.value.regularMarketPrice > 0) asset.regularMarketPrice = r.value.regularMarketPrice;
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;
       }
@@ -11342,7 +11404,8 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
     assets: state.assets.map(a => ({
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
-      quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice
+      quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
+      lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
