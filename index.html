@@ -2457,11 +2457,13 @@ function persistAssets() {
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
     category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
     quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
-    // [휴장일 이중 반영 방지] 다음 시세 조회 때 "새 체결이 있었는지" 비교할 기준값 - 앱을 껐다 켜도
-    // 비교 기준이 유지되도록 반드시 영속 저장해야 한다(휘발성 상태로 두면 매번 재부팅 시 기준을 잃어
-    // 공휴일 첫 접속에서 이중 반영을 못 걸러낸다). regularMarketPrice는 시간외 틱을 배제한 정규장
-    // 기준가로, calcDailyPnL이 일간손익 계산 시 a.currentPrice 대신 우선 사용한다.
-    lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice
+    // [휴장일 이중 반영 방지] lastTradeKey는 "가장 최근 조회에서 받은 체결 식별값"(표시/다음 날의
+    // dailyRefTradeKey 산출용), dailyRefTradeKey/Date는 "오늘 하루 동안 고정해 둔 비교 기준값"이다 -
+    // 앱을 껐다 켜도 유지되도록 반드시 영속 저장해야 한다(자세한 이유는 fetchPricesForTargets 참고).
+    // regularMarketPrice는 시간외 틱을 배제한 정규장 기준가로, calcDailyPnL이 일간손익 계산 시
+    // a.currentPrice 대신 우선 사용한다.
+    lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
+    dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
 }
@@ -2532,6 +2534,19 @@ const MARKET_SESSION_START_HOUR = { KR: 8, US: 4 };
 function getMarketKeyForTicker(ticker) {
   const yahooTicker = sanitizeTicker(ticker).yahooTicker;
   return /\.(KS|KQ)$/i.test(yahooTicker) ? 'KR' : 'US';
+}
+
+// [휴장일 이중 반영 방지 - 일자 앵커] marketKey('KR'|'US') 기준 "오늘" 날짜를 YYYY-MM-DD로 반환한다 -
+// 체결 식별값 비교를 "직전 폴링 대비"가 아니라 "그 시장의 오늘 날짜가 시작된 시점 대비"로 고정하기
+// 위한 기준값(아래 fetchPricesForTargets의 dailyRefTradeKey 참고). en-CA 로케일이 YYYY-MM-DD 순서를
+// 그대로 내려준다.
+function getMarketDateKey(marketKey) {
+  const timeZone = MARKET_TIMEZONES[marketKey] || MARKET_TIMEZONES.KR;
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch (e) {
+    return todayDateStr();
+  }
 }
 
 // timeZone 기준 "지금"의 시(hour)와 주말 여부를 안전하게 계산한다. Intl.DateTimeFormat이 타임존을
@@ -10183,12 +10198,24 @@ async function fetchPricesForTargets(targets) {
         // session 정보 자체가 없는 소스(Stooq 등)만 배지를 아예 띄우지 않도록 sessionMap에서 지운다.
         if (r.value.session) state.sessionMap[r.value.id] = r.value.session;
         else delete state.sessionMap[r.value.id];
-        // [휴장일 이중 반영 방지] 이번에 받아온 체결 식별값(lastTradeKey)을 덮어쓰기 전에 직전 저장값과
-        // 먼저 비교한다 - 완전히 같으면(예: 평일 공휴일이라 새 정규장이 없었음) noNewSessionMap을 true로
-        // 표시해 calcDailyPnL이 주가 변동분을 0으로 고정하게 한다. 소스가 체결 식별값을 안 주면(Stooq)
-        // undefined로 남겨 기존 주말/세션시각 근사 로직으로 폴백시킨다.
+        // [휴장일 이중 반영 방지 - 일자 앵커 비교] 직전 "폴링" 대비 비교하면 무료 프록시 캐싱/API 갱신
+        // 지연으로 몇 분 간격 재조회가 우연히 똑같은 값을 돌려줄 때(활발히 거래 중인 정규장 도중에도
+        // 흔함) 정상 거래일까지 "휴장"으로 오판해 그 종목의 당일 상승분이 통째로 0 처리되는 사고가
+        // 실사용에서 확인됐다(예: SK하이닉스 +12.73%인데 일간손익에 거의 반영 안 됨). 그래서 매 폴링마다
+        // 갱신되는 값이 아니라, 그 시장의 "오늘 날짜"가 바뀐 시점에 딱 한 번 고정해 두는 기준값
+        // (dailyRefTradeKey)과 비교한다 - 하루 안에서는 몇 번을 다시 조회해도 이 기준값 자체는 안 바뀌므로
+        // 폴링 타이밍 노이즈에 흔들리지 않고, 오늘 실제로 새 체결이 하나라도 있었다면(기준값과 달라짐)
+        // 그 즉시, 그리고 그 뒤로도 계속 안정적으로 "새 정규장 있음"으로 판정된다.
         if (typeof r.value.lastTradeKey === 'string' && r.value.lastTradeKey) {
-          state.noNewSessionMap[r.value.id] = (asset.lastTradeKey === r.value.lastTradeKey);
+          const marketKey = getMarketKeyForTicker(asset.ticker);
+          const todayMarketDateKey = getMarketDateKey(marketKey);
+          if (asset.dailyRefTradeKeyDate !== todayMarketDateKey) {
+            // 이 시장 기준 "오늘" 첫 조회 - 덮어쓰기 전의 lastTradeKey(=어제까지의 마지막 체결)를
+            // 오늘 하루 동안 쓸 고정 기준값으로 스냅샷한다.
+            asset.dailyRefTradeKey = asset.lastTradeKey;
+            asset.dailyRefTradeKeyDate = todayMarketDateKey;
+          }
+          state.noNewSessionMap[r.value.id] = (typeof asset.dailyRefTradeKey === 'string' && asset.dailyRefTradeKey === r.value.lastTradeKey);
           asset.lastTradeKey = r.value.lastTradeKey;
         } else {
           delete state.noNewSessionMap[r.value.id];
@@ -11436,7 +11463,8 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
-      lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice
+      lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
+      dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
