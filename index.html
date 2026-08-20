@@ -6488,9 +6488,26 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
 
 function deleteTransaction(id) {
   if (!confirm('이 거래 내역을 삭제하시겠습니까? 삭제 시 관련 종목의 수량/평단가가 남은 거래내역 기준으로 다시 계산됩니다.')) return;
+  const removed = state.transactions.find((t) => t.id === id);
   state.transactions = state.transactions.filter((t) => t.id !== id);
   persistTransactions();
   syncAssetsFromTransactions();
+  // [고아 자산 방지] syncAssetsFromTransactions()는 computePositionsAndRealizedPnL()이 만든 positions
+  // 맵을 순회하는데, 이 맵은 "현재 남아있는 거래내역"에서만 만들어진다 - 방금 지운 거래가 그 종목
+  // (소유자+계좌구분+티커/이름)의 마지막 남은 거래였다면 positions에 그 키 자체가 없어져서 sync가
+  // 이 자산을 아예 건드리지 못하고, 자산 수량이 지우기 전 값 그대로 고아 상태로 남는다(전량매도 0
+  // 처리가 안 됨) - 명시적으로 0으로 맞춰준다. 거래 없이 처음부터 수동 등록된 자산(양식다운로드
+  // 워크플로 등)은 이 분기를 절대 타지 않는다 - 오직 "방금 거래를 지운" 그 종목/소유자/계좌 조합에만
+  // 적용되므로, 애초에 거래내역이 없던 자산의 수동 입력 수량을 건드릴 위험이 없다.
+  if (removed) {
+    const stillHasTx = state.transactions.some((t) => t.owner === removed.owner && t.accountType === removed.accountType &&
+      (removed.ticker ? t.ticker === removed.ticker : t.name === removed.name));
+    if (!stillHasTx) {
+      const orphan = state.assets.find((a) => a.owner === removed.owner && a.accountType === removed.accountType &&
+        (removed.ticker ? a.ticker === removed.ticker : (!a.ticker && a.name === removed.name)));
+      if (orphan && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
+    }
+  }
   persistAssets();
   renderTransactionsTab();
   renderAll();
@@ -11499,6 +11516,10 @@ function normalizeImportedTransaction(t) {
     quantity: num(t.quantity),
     price: num(t.price),
     currency: (t.currency === 'USD') ? 'USD' : 'KRW',
+    // [해외주식 적용 환율 - 왕복 보존] 이 필드가 빠지면 JSON 백업을 복원할 때마다(덮어쓰기/추가하기
+    // 둘 다 이 함수를 거친다) 해외주식 거래의 실제 적용 환율이 사라져 DEFAULT_LEGACY_FX_RATE(1,450원)로
+    // 되돌아간다 - 실현손익이 원래 저장했던 값과 달라지는 조용한 데이터 손실이라 반드시 보존해야 한다.
+    appliedRate: (t.currency === 'USD' && Number.isFinite(num(t.appliedRate)) && num(t.appliedRate) > 0) ? num(t.appliedRate) : undefined,
     fee: num(t.fee),
     origin: t.origin === 'initial' ? 'initial' : 'period',
     createdAt: t.createdAt || Date.now()
@@ -11526,7 +11547,14 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         currency: (a.currency === 'USD') ? 'USD' : 'KRW',
         quantity: num(a.quantity),
         buyPrice: num(a.buyPrice),
-        currentPrice: num(a.currentPrice)
+        currentPrice: num(a.currentPrice),
+        // [휴장일 이중 반영 방지 - 왕복 보존] 내보내기(exportJsonBtn)가 이 필드들을 포함하는데 여기서
+        // 빠뜨리면, 복원 직후 하루 동안은 비교 기준이 없어 일간손익 게이팅이 원래대로 안 돌아온다(다음
+        // 정상 시세 조회 때 자연히 다시 채워지긴 하지만, 완전한 왕복 복원을 위해 명시적으로 유지한다).
+        lastTradeKey: typeof a.lastTradeKey === 'string' ? a.lastTradeKey : undefined,
+        regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
+        dailyRefTradeKey: typeof a.dailyRefTradeKey === 'string' ? a.dailyRefTradeKey : undefined,
+        dailyRefTradeKeyDate: typeof a.dailyRefTradeKeyDate === 'string' ? a.dailyRefTradeKeyDate : undefined
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
