@@ -2,15 +2,14 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v104'; // [dailyRefTradeKey 기기 간 불일치 근본 수정]
-// "오늘 새 정규장 체결이 있었는지" 판정을 위해 lastTradeKey를 기기별 localStorage에 스냅샷(dailyRefTradeKey/
-// dailyRefTradeKeyDate)해 비교하던 방식을 완전히 제거했다 - 이 스냅샷이 "기기가 언제 처음 켜졌는지"에
-// 따라 달라져 데스크탑/모바일 간 해외통화 일간손익이 90만원가량 어긋났었다(환율 기준선 수정만으로는
-// 안 잡히던 잔차). 이제 lastTradeKey(=regularMarketTime, API의 절대 체결 시각)가 그 시장 기준 "오늘"
-// 날짜에 속하는지를 getMarketDateKeyForEpoch()로 매번 새로 계산해서만 판정한다 - 기기별 저장이 전혀
-// 없어 어느 기기에서 계산하든 항상 같은 결과가 나온다. asset.lastTradeKey/dailyRefTradeKey/
-// dailyRefTradeKeyDate 필드 자체를 persistAssets/JSON 백업·복원에서도 전부 제거(더 이상 필요 없음).
-// v103->v104: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v105'; // [미니 당일 봉차트 + 정규장/장외 병행표기 + 데스크탑 모바일 뷰]
+// ① 종목 리스트(자산관리 테이블/카드, 핵심종목 팝업) 우측의 차트 아이콘을 오늘 하루 OHLC 미니 캔들
+// (miniCandleSvg, 큰 상세차트와 동일한 getCandleColors 색상 규칙)로 교체 - Yahoo/네이버/Stooq 세
+// 소스 모두에서 시가/고가/저가를 새로 추출한다. ② 실제 프리마켓/애프터마켓 시세가 메인 가격으로
+// 채택된 경우(session 'pre'|'post')에만 "정규장 XXX (X.XX%)" 보조 라인을 표시하고, 정규장 진행 중·
+// 완전 장마감일 때는 숨긴다(extendedHoursSublineHtml). ③ 헤더에 데스크탑에서도 모바일 카드 레이아웃을
+// 바로 확인할 수 있는 [모바일 뷰] 토글 버튼 추가(mobile-view-mode, localStorage 유지).
+// v104->v105: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
