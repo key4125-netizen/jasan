@@ -196,7 +196,7 @@
           <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v101</p>
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v103</p>
         </div>
       </div>
 
@@ -543,6 +543,12 @@
         <div class="flex items-center justify-between gap-2">
           <span class="text-slate-400 shrink-0">달러자산 평가금액</span>
           <span id="kpiForeignValueInline" class="font-semibold text-slate-500 dark:text-slate-400 truncate">0원</span>
+        </div>
+        <!-- [달러자산 누적 환차손익] 해외주식/ETF/달러현금 전체의 매수 시점 환율 대비 현재 환율 변동분만
+             떼어낸 누적 환차손익 - computeForeignFxPnL() 참고. 주가 변동분은 포함하지 않는다. -->
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-slate-400 shrink-0">달러자산 누적 환차손익</span>
+          <span id="kpiForeignFxPnl" class="font-semibold truncate">0원</span>
         </div>
       </div>
       <!-- 그 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
@@ -1960,7 +1966,12 @@ function parseYahooFxChartJson(data) {
   const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
   const price = meta && meta.regularMarketPrice;
   if (typeof price !== 'number' || price <= 0) throw new Error('KRW=X 가격 필드 없음');
-  return { rates: { KRW: price } };
+  // [일간 손익 기준선 - 공식 전일 마감 환율] 주식 시세 조회(fetchPriceWithFallback)와 동일하게 meta의
+  // previousClose(없으면 chartPreviousClose)를 함께 뽑아둔다 - 이 값이 기기와 무관한 "공식 전일 마감
+  // 환율"이라 fetchExchangeRate()가 이걸로 state.refExchangeRate를 정한다(applyOfficialFxReference 참고).
+  const previousCloseRaw = meta && (typeof meta.previousClose === 'number' ? meta.previousClose
+    : (typeof meta.chartPreviousClose === 'number' ? meta.chartPreviousClose : null));
+  return { rates: { KRW: price }, previousClose: Number.isFinite(previousCloseRaw) ? previousCloseRaw : null };
 }
 // [버그 수정 - Promise.any는 순서가 아니라 속도로 뽑는다] 처음엔 Yahoo 소스를 배열 앞쪽에 두면
 // 우선될 거라 생각했는데, 실측해보니 open.er-api류(가벼운 JSON, 직접호출·프록시 없음)가 Yahoo
@@ -2377,23 +2388,19 @@ function daysAgoDateStr(n) {
 // 기존 보유 자산을 거래내역 기초 데이터로 일괄 등록할 때 쓰는 날짜(어제) - seedTransactionsFromAssets 참고.
 function yesterdayDateStr() { return daysAgoDateStr(1); }
 
-// 오늘 하루의 일간 손익 계산 기준 환율(FX의 "전일 종가" 역할)을 확정한다.
-// FX는 24시간 거래되어 진짜 전일 종가가 없으므로, "달력 날짜가 바뀐 시점의 환율"을 그날의 기준값으로
-// 스냅샷해 고정한다 - 그래야 당일 중 [시세 & 환율 갱신]을 여러 번 눌러도 일간 손익이 계속 재기준되지
-// 않고, 오늘 하루 동안의 실제 환율 변동분만 반영된다. 앱을 며칠간 새로고침 없이 켜둔 채 자정을 넘기는
-// 경우까지 대응하도록 loadState() 뿐 아니라 [시세 & 환율 갱신] 클릭 시에도 호출한다.
+// [버그 수정 - 기기 간 일간 손익 기준선 불일치] 예전엔 이 함수가 "달력 날짜가 바뀐 뒤 이 기기가 처음
+// 실행된 순간의 환율"을 그날의 기준값으로 직접 스냅샷해 저장했다 - 그 결과 데스크탑/모바일처럼 서로
+// 다른 시각에 앱을 켜는 기기마다 기준선이 달라져 "일간금융평가손익"이 크게 어긋났다(실사용자 리포트로
+// 확인). 이제 기준선을 이 함수가 임의로 정하지 않는다 - 오늘 날짜로 이미 캐시된 값(직전 fetchExchangeRate
+// 성공 시 applyOfficialFxReference가 Yahoo의 공식 전일 마감 환율로 저장해둔 것)이 있으면 그 값을 읽어
+// 올 뿐이고, 실제 기준값 확정은 항상 applyOfficialFxReference(공식 데이터 기반)가 담당한다. 이 함수는
+// fetchExchangeRate()가 비동기로 끝나기 전까지 화면에 보여줄 즉시 사용 가능한 임시값을 마련하는
+// 역할만 한다(loadState()·[시세 & 환율 갱신] 양쪽에서 호출).
 function ensureDailyReference() {
   const todayKey = todayDateStr();
   let refRaw = null;
-  try { refRaw = JSON.parse(localStorage.getItem(LS_REF_RATE) || 'null'); } catch (e) { /* 손상된 값이면 새로 기록 */ }
-
-  if (!refRaw || refRaw.date !== todayKey) {
-    // 새 날짜 최초 진입: 지금까지의 환율(=어제 마지막으로 알려진 값)을 오늘의 기준값으로 고정한다.
-    state.refExchangeRate = state.exchangeRate;
-    localStorage.setItem(LS_REF_RATE, JSON.stringify({ date: todayKey, rate: state.refExchangeRate }));
-  } else {
-    state.refExchangeRate = refRaw.rate;
-  }
+  try { refRaw = JSON.parse(localStorage.getItem(LS_REF_RATE) || 'null'); } catch (e) { /* 손상된 값이면 무시 */ }
+  state.refExchangeRate = (refRaw && refRaw.date === todayKey && Number.isFinite(refRaw.rate)) ? refRaw.rate : state.exchangeRate;
 }
 
 // [해외주식 환율 이력 보완 - 1회성 마이그레이션] 거래 등록 UI에 '적용 환율' 입력란이 생기기 전에
@@ -2867,6 +2874,23 @@ function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
   }).join('');
 }
 
+// [달러자산 누적 환차손익] 해외주식/ETF/달러현금 전체를 대상으로, 매수 시점 가중평균 환율(buyRate) 대비
+// 현재 환율이 얼마나 움직였는지만 떼어낸 순수 환차손익 합계를 구한다(주가 변동분은 제외) - "총자산
+// 평가금액" 카드의 "달러자산 평가금액" 바로 아래 라인에 표시된다.
+//   - 해외주식/ETF: 수량 × 매수단가($) × (현재환율 - 매수시환율) = buyAmountOriginal × (오늘환율-buyRate)
+//   - 달러현금: 보유 달러($) × (현재환율 - 가중평균 매수환율) - buyPrice가 항상 1로 고정이라 위 공식과
+//     형태는 같지만(수량 자체가 곧 달러 금액이므로) 별도 분기 없이 동일한 식으로 처리된다.
+// buyRate가 아직 없는 자산(거래내역 없이 수동 등록된 경우 등)은 오늘 환율을 그대로 대입해 0으로 처리.
+function computeForeignFxPnL() {
+  let fxPnL = 0;
+  state.assets.forEach((a) => {
+    if (a.currency !== 'USD' || !['주식', 'ETF', '현금'].includes(a.category)) return;
+    const buyRate = Number.isFinite(a.buyRate) && a.buyRate > 0 ? a.buyRate : state.exchangeRate;
+    fxPnL += num(a.quantity) * num(a.buyPrice) * (state.exchangeRate - buyRate);
+  });
+  return fxPnL;
+}
+
 function renderKPIs() {
   let totalBuy = 0, totalCur = 0, foreignCur = 0, dailyProfit = 0;
   // [부동산 제외 - 금융자산 전용 집계] "총금융자산평가손익"/"일간금융평가손익" 카드는 부동산을 뺀
@@ -3017,6 +3041,12 @@ function renderKPIs() {
   // [4가지 구분값 표기] 총자산평가금액 카드의 달러자산 라인 - 예전엔 "(달러자산 ...)"처럼 메인 숫자
   // 옆에 괄호로 병기했으나, 이제 금융자산/부동산과 같은 줄 형식(라벨+금액)으로 통일했다.
   document.getElementById('kpiForeignValueInline').textContent = fmtKRW(foreignCur);
+
+  // [달러자산 누적 환차손익] computeForeignFxPnL 참고 - 기존 손익 색상 규칙(양수=빨강/음수=파랑) 그대로 적용.
+  const fxPnL = computeForeignFxPnL();
+  const fxPnlEl = document.getElementById('kpiForeignFxPnl');
+  fxPnlEl.textContent = fmtSigned(fxPnL);
+  fxPnlEl.className = 'font-semibold truncate ' + profitColor(fxPnL);
 
   // [일별 손익 추이 팝업] 오늘 날짜 스냅샷을 항상 최신값으로 덮어쓴다 - 사용자 입력 없이 렌더링될
   // 때마다 자동으로 쌓이는 히스토리(recordDailySnapshot 참고).
@@ -8619,7 +8649,11 @@ async function fetchFxFromSource(src) {
   const data = src.parse ? await src.parse(res) : await safeParseJsonResponse(res);
   const krw = data && data.rates && data.rates.KRW;
   if (!krw || !Number.isFinite(krw)) throw new Error('KRW 환율 필드 없음');
-  return Math.round(krw * 100) / 100;
+  // [일간 손익 기준선] previousClose는 Yahoo 소스(parseYahooFxChartJson)에만 있고, 하루-1회 스냅샷
+  // 소스(open.er-api 등)는 애초에 "전일 마감" 개념 자체가 없어 항상 null이다 - 호출부가 null을
+  // 받으면 오늘 날짜로 이미 캐시된 공식값을 대신 쓴다(applyOfficialFxReference 참고).
+  const previousClose = (data && Number.isFinite(data.previousClose)) ? Math.round(data.previousClose * 100) / 100 : null;
+  return { rate: Math.round(krw * 100) / 100, previousClose };
 }
 
 // 한 단계(소스 배열)를 Promise.any로 경쟁시킨다 - 가장 먼저 성공하는 소스를 채택하고, 전부 실패하면
@@ -8634,20 +8668,46 @@ async function raceFxSourceTier(sources) {
   }
 }
 
+// [일간 손익 기준선 - 기기 무관 통일] 예전엔 "이 기기가 오늘 처음 로드된 순간의 환율"을 그날의
+// 기준선으로 삼아(ensureDailyReference가 그 순간의 state.exchangeRate를 그대로 저장) 기기마다
+// 서로 다른 값이 굳어지는 문제가 있었다(데스크탑/모바일 접속 시각이 달라 "일간금융평가손익"이
+// 크게 어긋남 - 실사용자 리포트로 확인). 이제 Yahoo KRW=X가 공식으로 제공하는 전일 마감 환율
+// (previousClose/chartPreviousClose)을 그대로 기준선으로 쓴다 - 같은 날짜라면 어느 기기에서
+// 조회하든 Yahoo가 돌려주는 값은 동일하므로 기기 간 "일간" 손익이 원 단위까지 일치하게 된다.
+// previousClose를 못 받은 경우(하루-1회 스냅샷 소스로 폴백했거나 그 소스마저 실패)는, 오늘 날짜로
+// 이미 캐시해 둔 공식값이 있으면 그 값을 그대로 재사용하고(day-keyed, LS_REF_RATE), 오늘 단 한
+// 번도 공식값을 못 받았으면(예: 오늘 첫 실행부터 Yahoo가 전부 막혀 있음) 최후의 수단으로 지금
+// 환율을 그대로 기준선으로 쓴다(이 경우에만 기기 간 값이 갈릴 수 있다 - 정말 예외적인 장애 상황).
+function applyOfficialFxReference(previousClose) {
+  const todayKey = todayDateStr();
+  if (Number.isFinite(previousClose) && previousClose > 0) {
+    state.refExchangeRate = previousClose;
+    localStorage.setItem(LS_REF_RATE, JSON.stringify({ date: todayKey, rate: previousClose }));
+    return;
+  }
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(LS_REF_RATE) || 'null'); } catch (e) { /* 손상된 값이면 무시 */ }
+  state.refExchangeRate = (cached && cached.date === todayKey && Number.isFinite(cached.rate)) ? cached.rate : state.exchangeRate;
+}
+
 async function fetchExchangeRate() {
   // [실시간 우선, 스냅샷은 최종 폴백] 두 단계를 같은 Promise.any 배열에 한꺼번에 넣지 않는다 - 넣으면
   // 가벼운 스냅샷 API가 Yahoo보다 항상 먼저 끝나서 매번 stale한 값이 채택되는 버그가 있었다(위 상수
   // 선언부 주석 참고). 그래서 1단계(실시간)를 먼저 끝까지 시도하고, 그게 전부 실패할 때만 2단계
   // (스냅샷)로 넘어가는 순차 폴백으로 구조를 바꿨다 - 이래야 "순위"가 실제로 순위대로 작동한다.
   try {
-    state.exchangeRate = await raceFxSourceTier(FX_SOURCES_REALTIME);
+    const result = await raceFxSourceTier(FX_SOURCES_REALTIME);
+    state.exchangeRate = result.rate;
     document.getElementById('exchangeRateInput').value = state.exchangeRate;
     persistRate();
+    applyOfficialFxReference(result.previousClose);
   } catch (realtimeErr) {
     try {
-      state.exchangeRate = await raceFxSourceTier(FX_SOURCES_SNAPSHOT_FALLBACK);
+      const result = await raceFxSourceTier(FX_SOURCES_SNAPSHOT_FALLBACK);
+      state.exchangeRate = result.rate;
       document.getElementById('exchangeRateInput').value = state.exchangeRate;
       persistRate();
+      applyOfficialFxReference(result.previousClose);
       console.warn(`[환율조회] 실시간 소스 전부 실패, 스냅샷 소스로 폴백함:\n${realtimeErr.message}`);
     } catch (fallbackErr) {
       console.error(`[환율조회 실패] 모든 소스 실패:\n[실시간]\n${realtimeErr.message}\n[스냅샷]\n${fallbackErr.message}`);

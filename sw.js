@@ -2,13 +2,11 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v101'; // [달러 현금 마이그레이션 - 예전 방식 데이터 오해석 버그 수정]
-// migrateUsdCashAssetsToTransactions()가 무조건 a.quantity를 "달러 금액"으로 가정해 예전 방식(수량=1
-// 등 임의 단위, 매수단가=실제 달러 금액) 자산을 잘못 해석 - "금액 기반 입력" 규칙상 신규 방식은
-// 매수단가가 항상 1이므로, 매수단가가 1이 아니면 예전 방식으로 판단해 실제 금액을 buyPrice에서
-// 가져오고 자산 자체도 신규 규칙(수량=달러금액/매수단가=1/현재가=1)으로 정규화한다 - sync가 손대지
-// 않는 currentPrice까지 미리 맞춰야 이중 오염(실측 +2,953% 같은 터무니없는 환차손익)이 재발하지 않는다.
-// v100->v101: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v103'; // [투자세부 탭 - 달러자산 누적 환차손익 표기 추가]
+// 총자산평가금액 카드의 "달러자산 평가금액" 바로 아래에 "달러자산 누적 환차손익" 라인을 추가했다
+// (computeForeignFxPnL) - 해외주식/ETF/달러현금 전체를 대상으로 매수 시점 가중평균환율(buyRate) 대비
+// 현재 환율 변동분만 떼어낸 순수 환차손익 합계(주가 변동분 제외)를 기존 손익 색상 규칙 그대로 표시한다.
+// v102->v103: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
