@@ -2,16 +2,16 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v94'; // [부팅 자동 팝업 개편 - 위험진단 중지, 핵심종목 상시노출]
-// bootApp()의 자동 팝업 체이닝을 재조정했다. ① maybeShowRiskAlertPopup() 호출을 완전히 제거 - 위험
-// 점수(주의/위험)나 시간대 조건과 무관하게 포트폴리오 위험 진단 팝업은 이제 부팅 시 절대 자동으로
-// 뜨지 않는다(이 함수의 유일한 호출부였음 - RISK 관리 카드 자체는 대시보드에 그대로 남아있음). ②
-// 핵심종목 실시간 팝업은 반대로 isPopupAllowedTimeWindow() 시간대 게이팅을 없애고 접속할 때마다
-// 항상 자동으로 띄운다 - 이제 아무 데서도 안 쓰여 isPopupAllowedTimeWindow() 함수 자체를 삭제했다.
-// 팝업 안에서 국내/해외를 가르는 시간대 판정과 후보 종목 추출(1순위 해외통화/2순위 원화ETF 보충 등)
-// 로직은 이 자동 노출 시점 변경과 완전히 별개라 손대지 않았다 - 언제 자동으로 뜨는지만 바뀌었다.
-// 헤더의 [핵심종목 실시간] 버튼은 원래도 이 로직을 거치지 않는 별도 경로라 변경 없음.
-// v93->v94: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v95'; // [개인 Cloudflare Worker 프록시 추가]
+// 무료 공용 프록시(api.allorigins.win, api.codetabs.com)가 응답을 아예 안 주는 상태(12초 타임아웃까지
+// 무응답)가 되면서 시세 조회가 느려지고 실패가 잦아진 문제의 완화책 - 사용자가 본인 Cloudflare
+// 계정에 직접 배포한 전용 프록시(asset-manager-proxy.key4125.workers.dev, 하루 10만 요청 무료 티어)를
+// Yahoo/Naver 시세용 CORS_PROXIES와 환율용 FX_SOURCES 양쪽 최우선 순위에 추가했다 - 본인 소유 계정이라
+// 공용 무료 프록시들처럼 예고 없이 막히거나 죽을 위험이 낮다. 실측으로 Yahoo/Naver/환율 3종 API 전부
+// 200 OK + 유효 데이터, 실제 앱의 raceFetch 로직에서도 이 프록시가 우승해 정상 데이터를 반환함을
+// 확인했다. sw.js NETWORK_FIRST_HOSTS에도 이 프록시 호스트를 추가해 캐시가 아닌 항상 최신 응답을
+// 받도록 했다(다른 프록시들과 동일한 처리).
+// v94->v95: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
@@ -36,7 +36,8 @@ const NETWORK_FIRST_HOSTS = [
   'corsproxy.io',
   'api.codetabs.com',
   'r.jina.ai',
-  'polling.finance.naver.com'
+  'polling.finance.naver.com',
+  'asset-manager-proxy.key4125.workers.dev'
 ];
 
 self.addEventListener('install', (event) => {
