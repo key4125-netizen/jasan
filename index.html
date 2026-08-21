@@ -1916,7 +1916,13 @@ function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx 
 // corsproxy.io는 2026년부터 localhost/개발환경 외 배포 도메인에서 무료 사용을 막아(HTTP 403,
 // "Free usage is limited to localhost and development environments") 사실상 상시 실패 소스가 되었지만,
 // 향후 정책이 바뀔 수 있고 실패해도 Promise.allSettled 경쟁 구조상 다른 소스가 이어받으므로 그대로 둔다.
+// [개인 Cloudflare Worker 프록시] 사용자가 직접 배포한 전용 프록시(무료 티어 하루 10만 요청, 본인
+// 소유 계정이라 공용 무료 프록시들처럼 예고 없이 막히거나 죽을 위험이 훨씬 낮다) - 실측으로 Yahoo/
+// Naver/환율 API 전부 200 OK + 유효 데이터 확인 후 최우선 순위로 등록한다. 원본 응답을 그대로
+// 돌려주는 'raw' 방식이라 별도 parse가 필요 없다.
+const OWN_WORKER_PROXY_BASE = 'https://asset-manager-proxy.key4125.workers.dev/?url=';
 const CORS_PROXIES = [
+  { name: 'own-worker', build: (url) => OWN_WORKER_PROXY_BASE + encodeURIComponent(url) },
   { name: 'allorigins', build: (url) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url) },
   { name: 'corsproxy.io', build: (url) => 'https://corsproxy.io/?url=' + encodeURIComponent(url) },
   { name: 'codetabs', build: (url) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url) },
@@ -1947,6 +1953,7 @@ const YAHOO_CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 // 유일한 우회 방법이다 - 전부 응답 스키마가 { rates: { KRW: number } } 형태라 파싱을 공유한다.
 const FX_TARGET_URL = 'https://open.er-api.com/v6/latest/USD';
 const FX_SOURCES = [
+  { name: 'open.er-api(own-worker)', url: OWN_WORKER_PROXY_BASE + encodeURIComponent(FX_TARGET_URL) },
   { name: 'open.er-api', url: 'https://open.er-api.com/v6/latest/USD' },
   { name: 'exchangerate-api', url: 'https://api.exchangerate-api.com/v4/latest/USD' },
   { name: 'open.er-api(allorigins)', url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(FX_TARGET_URL) },
