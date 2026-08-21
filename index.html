@@ -196,7 +196,7 @@
           <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v103</p>
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v104</p>
         </div>
       </div>
 
@@ -2214,12 +2214,12 @@ const state = {
   // 직전 시세 조회에서 정규장 종가 대신 시간외(Pre/Post Market) 시세를 현재가로 채택한 자산 id -> 'post'|'pre'.
   // 테이블에 "시간외" 배지를 표시하는 용도로만 쓰이며, 휘발성 데이터라 localStorage에는 저장하지 않는다.
   sessionMap: {},
-  // [휴장일 이중 반영 방지] 이번 시세 조회에서 받아온 마지막 체결 식별값(lastTradeKey)이 직전 조회 때
-  // 저장해둔 값(asset.lastTradeKey, persistAssets로 영속 저장됨)과 완전히 같았는지 - true면 새 정규장
-  // 체결이 전혀 없었다는 뜻(평일 공휴일 등)이라 calcDailyPnL이 주가 변동분을 0으로 고정한다. 소스가
-  // 체결 식별값을 안 주면(Stooq 등) 키 자체가 없어 undefined로 남고, 그 경우 calcDailyPnL이 기존의
-  // 주말/세션시각 근사 로직(isMarketInDailyResetWindow)으로 폴백한다. 매 조회마다 새로 판정되는
-  // 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  // [휴장일 이중 반영 방지] 이번 시세 조회에서 받아온 마지막 체결 식별값(lastTradeKey=regularMarketTime)이
+  // 그 시장 기준 "오늘" 날짜에 속하는지를 API의 절대 시각만으로 매번 새로 판정한다(getMarketDateKeyForEpoch
+  // 참고, 기기별 저장 없음) - false면 새 정규장 체결이 전혀 없었다는 뜻(평일 공휴일 등)이라 calcDailyPnL이
+  // 주가 변동분을 0으로 고정한다. 소스가 체결 식별값을 안 주면(Stooq 등) 키 자체가 없어 undefined로 남고,
+  // 그 경우 calcDailyPnL이 기존의 주말/세션시각 근사 로직(isMarketInDailyResetWindow)으로 폴백한다. 매
+  // 조회마다 새로 판정되는 휘발성 데이터라 localStorage에는 저장하지 않는다.
   noNewSessionMap: {},
   // 직전 [시세 & 환율 갱신]에서 시세 조회에 실패한 자산 id 집합. 테이블에 경고 표시용으로만 쓰이며
   // 휘발성 데이터이므로 localStorage에는 저장하지 않는다. 수동으로 현재가를 고치면 즉시 제거된다.
@@ -2557,13 +2557,12 @@ function persistAssets() {
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
     category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
     quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
-    // [휴장일 이중 반영 방지] lastTradeKey는 "가장 최근 조회에서 받은 체결 식별값"(표시/다음 날의
-    // dailyRefTradeKey 산출용), dailyRefTradeKey/Date는 "오늘 하루 동안 고정해 둔 비교 기준값"이다 -
-    // 앱을 껐다 켜도 유지되도록 반드시 영속 저장해야 한다(자세한 이유는 fetchPricesForTargets 참고).
-    // regularMarketPrice는 시간외 틱을 배제한 정규장 기준가로, calcDailyPnL이 일간손익 계산 시
-    // a.currentPrice 대신 우선 사용한다.
-    lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
-    dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate,
+    // [버그 수정 - 기기 간 판정 불일치 제거] lastTradeKey/dailyRefTradeKey/dailyRefTradeKeyDate를 기기별
+    // localStorage에 스냅샷해 비교하던 방식은 완전히 없앴다 - 이제 "오늘 새 정규장 체결이 있었는지"는
+    // API가 준 절대 시각(regularMarketTime)만으로 매번 새로 판정하므로 저장할 필요 자체가 없어졌다
+    // (getMarketDateKeyForEpoch/fetchPricesForTargets 참고). regularMarketPrice는 시간외 틱을 배제한
+    // 정규장 기준가로, calcDailyPnL이 일간손익 계산 시 a.currentPrice 대신 우선 사용하므로 계속 저장한다.
+    regularMarketPrice: a.regularMarketPrice,
     // [미실현 평가손익 환차 반영] 거래내역에서 계산된 매수 시점 가중평균 환율 - calcRow()가 매입원가
     // 환산에 쓴다(syncAssetsFromTransactions 참고). 반드시 영속 저장해야 재부팅 후에도 유지된다.
     buyRate: a.buyRate
@@ -2645,15 +2644,27 @@ function getMarketKeyForTicker(ticker) {
 }
 
 // [휴장일 이중 반영 방지 - 일자 앵커] marketKey('KR'|'US') 기준 "오늘" 날짜를 YYYY-MM-DD로 반환한다 -
-// 체결 식별값 비교를 "직전 폴링 대비"가 아니라 "그 시장의 오늘 날짜가 시작된 시점 대비"로 고정하기
-// 위한 기준값(아래 fetchPricesForTargets의 dailyRefTradeKey 참고). en-CA 로케일이 YYYY-MM-DD 순서를
-// 그대로 내려준다.
+// 체결 식별값(lastTradeKey)의 날짜(getMarketDateKeyForEpoch)와 비교해 "오늘 새 정규장 체결이 있었는지"를
+// 판정하는 기준값이다(fetchPricesForTargets 참고). en-CA 로케일이 YYYY-MM-DD 순서를 그대로 내려준다.
 function getMarketDateKey(marketKey) {
   const timeZone = MARKET_TIMEZONES[marketKey] || MARKET_TIMEZONES.KR;
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   } catch (e) {
     return todayDateStr();
+  }
+}
+
+// [기기 간 판정 통일] getMarketDateKey()의 "지금" 대신 임의의 epoch(초)를 그 시장 타임존 기준 날짜로
+// 바꾼다 - lastTradeKey(=regularMarketTime, API가 내려준 절대 시각)가 그 시장의 "오늘"에 속하는지
+// 판정하는 데 쓴다(fetchPricesForTargets 참고). 어느 기기에서 계산하든 절대 시각+고정 타임존만으로
+// 결정되므로 항상 같은 결과가 나온다 - 기기별 localStorage 스냅샷이 전혀 필요 없다.
+function getMarketDateKeyForEpoch(marketKey, epochSeconds) {
+  const timeZone = MARKET_TIMEZONES[marketKey] || MARKET_TIMEZONES.KR;
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(epochSeconds * 1000));
+  } catch (e) {
+    return null;
   }
 }
 
@@ -10555,25 +10566,29 @@ async function fetchPricesForTargets(targets) {
         // session 정보 자체가 없는 소스(Stooq 등)만 배지를 아예 띄우지 않도록 sessionMap에서 지운다.
         if (r.value.session) state.sessionMap[r.value.id] = r.value.session;
         else delete state.sessionMap[r.value.id];
-        // [휴장일 이중 반영 방지 - 일자 앵커 비교] 직전 "폴링" 대비 비교하면 무료 프록시 캐싱/API 갱신
-        // 지연으로 몇 분 간격 재조회가 우연히 똑같은 값을 돌려줄 때(활발히 거래 중인 정규장 도중에도
-        // 흔함) 정상 거래일까지 "휴장"으로 오판해 그 종목의 당일 상승분이 통째로 0 처리되는 사고가
-        // 실사용에서 확인됐다(예: SK하이닉스 +12.73%인데 일간손익에 거의 반영 안 됨). 그래서 매 폴링마다
-        // 갱신되는 값이 아니라, 그 시장의 "오늘 날짜"가 바뀐 시점에 딱 한 번 고정해 두는 기준값
-        // (dailyRefTradeKey)과 비교한다 - 하루 안에서는 몇 번을 다시 조회해도 이 기준값 자체는 안 바뀌므로
-        // 폴링 타이밍 노이즈에 흔들리지 않고, 오늘 실제로 새 체결이 하나라도 있었다면(기준값과 달라짐)
-        // 그 즉시, 그리고 그 뒤로도 계속 안정적으로 "새 정규장 있음"으로 판정된다.
+        // [버그 수정 - 기기 간 판정 불일치 제거] 예전엔 "직전 폴링" 대비 비교가 무료 프록시 캐싱/API
+        // 갱신 지연으로 우연히 같은 값을 돌려줄 때(정규장 도중에도 흔함) 정상 거래일을 "휴장"으로
+        // 오판하는 문제가 있어서(예: SK하이닉스 +12.73%인데 일간손익에 거의 반영 안 됨), 그 시장의
+        // "오늘 날짜"가 바뀐 시점의 기준값(dailyRefTradeKey)을 기기별 localStorage에 스냅샷해 비교하는
+        // 방식으로 고쳤었다 - 그런데 이 스냅샷 자체가 기기마다 "언제 처음 켰는지"에 따라 달라져,
+        // 데스크탑/모바일 간 "해외통화" 일간손익이 어긋나는 새 문제를 낳았다(실사용자 리포트로 확인).
+        // 이제 기기별 저장 없이, lastTradeKey(=regularMarketTime, API가 준 절대 체결 시각)가 그 시장
+        // 기준 "오늘" 날짜에 속하는지를 매번 새로 계산해서만 판정한다 - 절대 시각 + 고정 타임존이라
+        // 어느 기기에서 계산하든 항상 같은 결과가 나오고, 폴링 타이밍 노이즈에도 흔들리지 않는다.
         if (typeof r.value.lastTradeKey === 'string' && r.value.lastTradeKey) {
           const marketKey = getMarketKeyForTicker(asset.ticker);
           const todayMarketDateKey = getMarketDateKey(marketKey);
-          if (asset.dailyRefTradeKeyDate !== todayMarketDateKey) {
-            // 이 시장 기준 "오늘" 첫 조회 - 덮어쓰기 전의 lastTradeKey(=어제까지의 마지막 체결)를
-            // 오늘 하루 동안 쓸 고정 기준값으로 스냅샷한다.
-            asset.dailyRefTradeKey = asset.lastTradeKey;
-            asset.dailyRefTradeKeyDate = todayMarketDateKey;
-          }
-          state.noNewSessionMap[r.value.id] = (typeof asset.dailyRefTradeKey === 'string' && asset.dailyRefTradeKey === r.value.lastTradeKey);
-          asset.lastTradeKey = r.value.lastTradeKey;
+          // [버그 수정] lastTradeKey의 실제 형식이 소스마다 다르다 - Yahoo(raceFetchYahooStooq)는
+          // regularMarketTime을 그대로 문자열화한 epoch초("1787320200")를 주지만, 네이버(국내 티커,
+          // fetchNaverKrPrice)는 d.localTradedAt이라는 ISO 8601 문자열("2026-08-21T15:30:00+09:00")을
+          // 준다. Number()만 믿으면 네이버 쪽은 항상 NaN이 되어 국내 종목 전체가 "새 체결 없음"으로
+          // 잘못 판정되고 실제 등락(예: SK하이닉스 +2.3%)이 일간손익에서 0으로 사라지는 사고가 났다 -
+          // Number()가 실패하면 Date 파서로도 시도한다.
+          const asNumber = Number(r.value.lastTradeKey);
+          const asDateMs = new Date(r.value.lastTradeKey).getTime();
+          const tradeEpochSeconds = Number.isFinite(asNumber) ? asNumber : (Number.isFinite(asDateMs) ? asDateMs / 1000 : NaN);
+          const tradeDateKey = Number.isFinite(tradeEpochSeconds) ? getMarketDateKeyForEpoch(marketKey, tradeEpochSeconds) : null;
+          state.noNewSessionMap[r.value.id] = !(tradeDateKey && tradeDateKey === todayMarketDateKey);
         } else {
           delete state.noNewSessionMap[r.value.id];
         }
@@ -11820,8 +11835,7 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
-      lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
-      dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate,
+      regularMarketPrice: a.regularMarketPrice,
       buyRate: a.buyRate
     })),
     transactions: state.transactions,
@@ -11889,13 +11903,10 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         quantity: num(a.quantity),
         buyPrice: num(a.buyPrice),
         currentPrice: num(a.currentPrice),
-        // [휴장일 이중 반영 방지 - 왕복 보존] 내보내기(exportJsonBtn)가 이 필드들을 포함하는데 여기서
-        // 빠뜨리면, 복원 직후 하루 동안은 비교 기준이 없어 일간손익 게이팅이 원래대로 안 돌아온다(다음
-        // 정상 시세 조회 때 자연히 다시 채워지긴 하지만, 완전한 왕복 복원을 위해 명시적으로 유지한다).
-        lastTradeKey: typeof a.lastTradeKey === 'string' ? a.lastTradeKey : undefined,
+        // regularMarketPrice(정규장 기준가)만 왕복 보존한다 - lastTradeKey/dailyRefTradeKey/
+        // dailyRefTradeKeyDate는 기기별 스냅샷 방식 자체를 없애면서 더 이상 쓰지 않는다(다음 정상
+        // 시세 조회 때 API의 절대 시각만으로 매번 새로 판정됨, getMarketDateKeyForEpoch 참고).
         regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
-        dailyRefTradeKey: typeof a.dailyRefTradeKey === 'string' ? a.dailyRefTradeKey : undefined,
-        dailyRefTradeKeyDate: typeof a.dailyRefTradeKeyDate === 'string' ? a.dailyRefTradeKeyDate : undefined,
         buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined
       }));
 
