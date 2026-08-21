@@ -2,16 +2,17 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v95'; // [개인 Cloudflare Worker 프록시 추가]
-// 무료 공용 프록시(api.allorigins.win, api.codetabs.com)가 응답을 아예 안 주는 상태(12초 타임아웃까지
-// 무응답)가 되면서 시세 조회가 느려지고 실패가 잦아진 문제의 완화책 - 사용자가 본인 Cloudflare
-// 계정에 직접 배포한 전용 프록시(asset-manager-proxy.key4125.workers.dev, 하루 10만 요청 무료 티어)를
-// Yahoo/Naver 시세용 CORS_PROXIES와 환율용 FX_SOURCES 양쪽 최우선 순위에 추가했다 - 본인 소유 계정이라
-// 공용 무료 프록시들처럼 예고 없이 막히거나 죽을 위험이 낮다. 실측으로 Yahoo/Naver/환율 3종 API 전부
-// 200 OK + 유효 데이터, 실제 앱의 raceFetch 로직에서도 이 프록시가 우승해 정상 데이터를 반환함을
-// 확인했다. sw.js NETWORK_FIRST_HOSTS에도 이 프록시 호스트를 추가해 캐시가 아닌 항상 최신 응답을
-// 받도록 했다(다른 프록시들과 동일한 처리).
-// v94->v95: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v97'; // [버그 수정 - 환율 실시간 소스가 항상 stale값에 밀림]
+// 어제 Yahoo KRW=X를 FX_SOURCES 배열 맨 앞에 추가했는데, 다 같이 Promise.any로 경쟁시키다 보니
+// 가벼운 open.er-api류(직접호출, 작은 payload)가 무거운 Yahoo chart API(분봉 배열 포함, 항상 프록시
+// 경유)보다 항상 먼저 끝나버려서 배열 순서와 무관하게 매번 하루-1회 스냅샷 값이 채택되고 있었다
+// (실사용자가 실측: 앱은 1394.71원인데 네이버 실시간은 1386.3원 - 최대 24시간 묵은 값이었음). 이제
+// FX_SOURCES를 FX_SOURCES_REALTIME(Yahoo 3개 프록시 경쟁)과 FX_SOURCES_SNAPSHOT_FALLBACK(기존
+// open.er-api류)으로 분리해서, 실시간 소스를 먼저 끝까지 시도하고 그게 전부 실패할 때만 스냅샷
+// 소스로 순차 폴백하도록 fetchExchangeRate()를 다시 짰다 - 이래야 배열 순서가 실제 우선순위로
+// 작동한다. 실측: 새 구조로 1385원대(네이버와 거의 일치) 실시간 값이 200~300ms 안에 반영됨 확인,
+// 강제로 실시간 소스를 전부 실패시켜도 스냅샷 폴백이 정상 작동함도 확인.
+// v96->v97: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
