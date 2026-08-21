@@ -193,6 +193,10 @@
         <div>
           <h1 class="text-xl font-bold tracking-tight">Smart Asset Manager</h1>
           <p class="text-xs text-slate-500 dark:text-slate-400">개인 자산관리 총투자현황</p>
+          <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
+               확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
+               줄도 함께 수정). -->
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v97</p>
         </div>
       </div>
 
@@ -1948,11 +1952,54 @@ const CORS_PROXIES = [
 ];
 const YAHOO_CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 
-// 환율 조회 다중 소스: 1차/2차는 서로 다른 제공처(직접 호출), 3차~5차는 1차를 서로 다른 프록시로 우회.
-// 모바일 웹뷰(APK)에서도 CORS 정책은 데스크톱 Chrome과 동일하게 적용되므로 프록시 경유가 실질적인
-// 유일한 우회 방법이다 - 전부 응답 스키마가 { rates: { KRW: number } } 형태라 파싱을 공유한다.
+// [실시간성 문제 발견] open.er-api/exchangerate-api는 둘 다 하루 1회만 갱신되는 스냅샷 API였다
+// (open.er-api 응답의 time_last_update_utc/time_next_update_utc 필드로 실측 확인 - 다음 갱신까지
+// ~24시간 간격) - 그래서 장중 실제 환율이 계속 움직여도 이 앱은 그날 아침 스냅샷 값만 하루 종일
+//보여주고 있었다(실사용자가 네이버 실시간 환율과 비교해 발견한 괴리, 최대 10원 이상 차이 남).
+// [해결] Yahoo Finance의 KRW=X 티커(보유 종목 시세 조회와 완전히 같은 v8/finance/chart API)는 진짜
+// 실시간이라(실측: 조회 시각과 거의 일치하는 regularMarketTime), 이걸 최우선 소스로 승격했다.
+// 기존 하루-1회 소스들은 Yahoo가 전부 실패할 때만 쓰는 최종 폴백으로 남겨둔다.
+const YAHOO_FX_TARGET_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/KRW=X?interval=1m&range=1d';
+// Yahoo chart API 응답(meta.regularMarketPrice)을 나머지 소스들과 같은 { rates: { KRW } } 스키마로
+// 맞춰주는 공용 변환 함수 - fetchFxFromSource()가 소스 종류와 무관하게 이 스키마 하나만 보고 처리한다.
+function parseYahooFxChartJson(data) {
+  const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
+  const price = meta && meta.regularMarketPrice;
+  if (typeof price !== 'number' || price <= 0) throw new Error('KRW=X 가격 필드 없음');
+  return { rates: { KRW: price } };
+}
+// [버그 수정 - Promise.any는 순서가 아니라 속도로 뽑는다] 처음엔 Yahoo 소스를 배열 앞쪽에 두면
+// 우선될 거라 생각했는데, 실측해보니 open.er-api류(가벼운 JSON, 직접호출·프록시 없음)가 Yahoo
+// chart API(무거운 분봉 배열 payload + 항상 프록시 경유)보다 항상 더 빨리 끝나서 Promise.any가
+// 매번 stale한 open.er-api 값을 채택해버렸다 - Yahoo가 성공해도 이미 늦어서 무시됨. 그래서 배열
+// 하나로 다 같이 경쟁시키는 대신, "실시간 소스 우선 시도 → 전부 실패할 때만 스냅샷 소스로 폴백"
+// 2단계 구조로 바꿨다(아래 fetchExchangeRate 참고) - 순서가 아니라 실제로 그 순서를 강제한다.
 const FX_TARGET_URL = 'https://open.er-api.com/v6/latest/USD';
-const FX_SOURCES = [
+const FX_SOURCES_REALTIME = [
+  {
+    name: 'Yahoo(KRW=X, own-worker)',
+    url: OWN_WORKER_PROXY_BASE + encodeURIComponent(YAHOO_FX_TARGET_URL),
+    parse: async (res) => parseYahooFxChartJson(await safeParseJsonResponse(res))
+  },
+  {
+    name: 'Yahoo(KRW=X, r.jina.ai)',
+    url: 'https://r.jina.ai/' + YAHOO_FX_TARGET_URL,
+    parse: async (res) => {
+      const text = await res.text();
+      const idx = text.indexOf('{');
+      if (idx === -1) throw new Error('JSON 응답 없음');
+      return parseYahooFxChartJson(safeParseJsonText(text.slice(idx)));
+    }
+  },
+  {
+    name: 'Yahoo(KRW=X, allorigins)',
+    url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(YAHOO_FX_TARGET_URL),
+    parse: async (res) => parseYahooFxChartJson(await safeParseJsonResponse(res))
+  }
+];
+// 하루 1회만 갱신되는 스냅샷 소스 - 위 실시간 소스가 전부(own-worker/r.jina.ai/allorigins 다) 실패할
+// 때만 마지막 수단으로 쓰인다.
+const FX_SOURCES_SNAPSHOT_FALLBACK = [
   { name: 'open.er-api(own-worker)', url: OWN_WORKER_PROXY_BASE + encodeURIComponent(FX_TARGET_URL) },
   { name: 'open.er-api', url: 'https://open.er-api.com/v6/latest/USD' },
   { name: 'exchangerate-api', url: 'https://api.exchangerate-api.com/v4/latest/USD' },
@@ -8366,20 +8413,37 @@ async function fetchFxFromSource(src) {
   return Math.round(krw * 100) / 100;
 }
 
-async function fetchExchangeRate() {
-  // Promise.any: allSettled처럼 "전부 끝날 때까지" 기다리지 않고, 가장 먼저 성공(fulfill)하는 소스가
-  // 나오는 즉시 그 값을 채택한다(진짜 "속도" 기준 경쟁 - 이전엔 allSettled + find라 배열상 앞쪽 소스가
-  // 느려도 그게 끝날 때까지 결과 채택 자체가 미뤄지는 문제가 있었다). 전부 실패하면 AggregateError.errors
-  // 배열(입력 순서 그대로 보존됨)로 소스별 실패 사유를 모아 기존과 동일한 형식의 에러를 던진다.
+// 한 단계(소스 배열)를 Promise.any로 경쟁시킨다 - 가장 먼저 성공하는 소스를 채택하고, 전부 실패하면
+// AggregateError.errors(입력 순서 보존)로 소스별 실패 사유를 모은 에러를 던진다.
+async function raceFxSourceTier(sources) {
   try {
-    state.exchangeRate = await Promise.any(FX_SOURCES.map((src) => fetchFxFromSource(src)));
-    document.getElementById('exchangeRateInput').value = state.exchangeRate;
-    persistRate();
+    return await Promise.any(sources.map((src) => fetchFxFromSource(src)));
   } catch (aggregateErr) {
     const reasons = aggregateErr.errors || [];
-    const errors = reasons.map((e, i) => `${FX_SOURCES[i].name}: ${e && e.message}`);
-    console.error('[환율조회 실패] 모든 소스 실패:\n' + errors.map((e, i) => `  ${i + 1}) ${e}`).join('\n'));
+    const errors = reasons.map((e, i) => `${sources[i].name}: ${e && e.message}`);
     throw new Error(errors.join(' | '));
+  }
+}
+
+async function fetchExchangeRate() {
+  // [실시간 우선, 스냅샷은 최종 폴백] 두 단계를 같은 Promise.any 배열에 한꺼번에 넣지 않는다 - 넣으면
+  // 가벼운 스냅샷 API가 Yahoo보다 항상 먼저 끝나서 매번 stale한 값이 채택되는 버그가 있었다(위 상수
+  // 선언부 주석 참고). 그래서 1단계(실시간)를 먼저 끝까지 시도하고, 그게 전부 실패할 때만 2단계
+  // (스냅샷)로 넘어가는 순차 폴백으로 구조를 바꿨다 - 이래야 "순위"가 실제로 순위대로 작동한다.
+  try {
+    state.exchangeRate = await raceFxSourceTier(FX_SOURCES_REALTIME);
+    document.getElementById('exchangeRateInput').value = state.exchangeRate;
+    persistRate();
+  } catch (realtimeErr) {
+    try {
+      state.exchangeRate = await raceFxSourceTier(FX_SOURCES_SNAPSHOT_FALLBACK);
+      document.getElementById('exchangeRateInput').value = state.exchangeRate;
+      persistRate();
+      console.warn(`[환율조회] 실시간 소스 전부 실패, 스냅샷 소스로 폴백함:\n${realtimeErr.message}`);
+    } catch (fallbackErr) {
+      console.error(`[환율조회 실패] 모든 소스 실패:\n[실시간]\n${realtimeErr.message}\n[스냅샷]\n${fallbackErr.message}`);
+      throw new Error(`${realtimeErr.message} | ${fallbackErr.message}`);
+    }
   }
 }
 
