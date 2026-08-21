@@ -2,11 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v103'; // [투자세부 탭 - 달러자산 누적 환차손익 표기 추가]
-// 총자산평가금액 카드의 "달러자산 평가금액" 바로 아래에 "달러자산 누적 환차손익" 라인을 추가했다
-// (computeForeignFxPnL) - 해외주식/ETF/달러현금 전체를 대상으로 매수 시점 가중평균환율(buyRate) 대비
-// 현재 환율 변동분만 떼어낸 순수 환차손익 합계(주가 변동분 제외)를 기존 손익 색상 규칙 그대로 표시한다.
-// v102->v103: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v104'; // [dailyRefTradeKey 기기 간 불일치 근본 수정]
+// "오늘 새 정규장 체결이 있었는지" 판정을 위해 lastTradeKey를 기기별 localStorage에 스냅샷(dailyRefTradeKey/
+// dailyRefTradeKeyDate)해 비교하던 방식을 완전히 제거했다 - 이 스냅샷이 "기기가 언제 처음 켜졌는지"에
+// 따라 달라져 데스크탑/모바일 간 해외통화 일간손익이 90만원가량 어긋났었다(환율 기준선 수정만으로는
+// 안 잡히던 잔차). 이제 lastTradeKey(=regularMarketTime, API의 절대 체결 시각)가 그 시장 기준 "오늘"
+// 날짜에 속하는지를 getMarketDateKeyForEpoch()로 매번 새로 계산해서만 판정한다 - 기기별 저장이 전혀
+// 없어 어느 기기에서 계산하든 항상 같은 결과가 나온다. asset.lastTradeKey/dailyRefTradeKey/
+// dailyRefTradeKeyDate 필드 자체를 persistAssets/JSON 백업·복원에서도 전부 제거(더 이상 필요 없음).
+// v103->v104: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
