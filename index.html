@@ -196,7 +196,7 @@
           <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v97</p>
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v98</p>
         </div>
       </div>
 
@@ -326,11 +326,10 @@
         <!-- [세부내용 버튼 신설] 클릭 시 openTotalProfitModal()로 누적 평가손익 추이(꺾은선) 모달을 연다 -
              다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
         <div class="flex flex-col items-end gap-1 shrink-0">
+          <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼 옆에 있던 원형 아이콘 배지(trending-up)를 없애서
+               버튼이 카드 우측 상단 여백에 그대로 붙도록 정렬을 자연스럽게 맞췄다. -->
           <div class="flex items-center gap-1 sm:gap-1.5">
             <button type="button" id="kpiTotalProfitDetailBtn" class="detail-btn"><i data-lucide="line-chart" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-            <div class="flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center">
-              <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-            </div>
           </div>
           <!-- [총 실현손익 배지] 매도 거래 전체 누적 실현손익(getTotalRealizedPnL) - renderKPIs() 참고,
                매도 내역이 아예 없으면 숨긴다. -->
@@ -355,11 +354,10 @@
              오늘 매도해서 발생한 실현손익은 세부내용 버튼 바로 밑에 별도 배지로만 덧붙인다
              (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다. -->
         <div class="flex flex-col items-end gap-1">
+          <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼 옆 원형 아이콘 배지(activity)를 없애 버튼이
+               카드 우측 상단 여백에 자연스럽게 정렬되도록 했다. -->
           <div class="flex items-center gap-1.5">
             <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn"><i data-lucide="bar-chart-3" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-            <div class="flex w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center">
-              <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-            </div>
           </div>
           <span id="kpiTodayRealizedBadge" class="hidden text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
         </div>
@@ -522,11 +520,10 @@
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-2 gap-1">
         <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총자산평가금액</span>
+        <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼 옆 원형 아이콘 배지(landmark)를 없애 버튼이
+             카드 우측 상단 여백에 자연스럽게 정렬되도록 했다. -->
         <div class="flex items-center gap-1.5 shrink-0">
           <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn"><i data-lucide="search" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/40 flex items-center justify-center">
-            <i data-lucide="landmark" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-300"></i>
-          </div>
         </div>
       </div>
       <p id="kpiTotalValue" class="text-lg font-bold truncate">0원</p>
@@ -561,13 +558,10 @@
        불필요해져 1열로 바꿨다. -->
   <section class="grid grid-cols-1 gap-4 mb-6">
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
+      <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼이 없는 카드라 원형 아이콘 배지(piggy-bank)만 있던
+           우측 칸을 통째로 없애고 라벨 하나만 남겼다. -->
+      <div class="mb-2">
         <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총자산투자금액</span>
-        <div class="flex items-center gap-1.5">
-          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-            <i data-lucide="piggy-bank" class="w-3.5 h-3.5 text-slate-500 dark:text-slate-300"></i>
-          </div>
-        </div>
       </div>
       <!-- [알림 카드 위치 이동] 시세 반영 실패 시 이 카드 내용을 안내 문구로 바꿔치기하던 kpiFetchFailurePanel은
            총투자현황 탭의 [총 평가금액]/[총 평가손익] 카드 바로 위 독립 배너로 옮겨갔다 - 그래서 이 카드는
@@ -1744,7 +1738,7 @@
       </label>
 
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">수량</span>
+        <span id="tx_quantityLabel" class="text-slate-500 dark:text-slate-400">수량</span>
         <input id="tx_quantity" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
@@ -2419,6 +2413,34 @@ function migrateLegacyForeignExchangeRates() {
   if (changed) persistTransactions();
 }
 
+// [달러 현금 - 거래내역 기반 전환 마이그레이션] 이 기능이 생기기 전부터 자산관리 탭에서 직접 관리해온
+// 달러 현금 보유분은 거래내역이 하나도 없다 - computePositionsAndRealizedPnL/syncAssetsFromTransactions가
+// 가중평균 매입환율(avgRate)을 계산하려면 최소 "최초" 매수 거래 1건이 있어야 하므로, 아직 매칭되는
+// 거래가 없는 달러 현금 자산마다 그 시점 수량 그대로 '최초' 매수 거래를 하나 만들어 준다. 실제 매수
+// 시점 환율을 알 수 없으므로 추정 기본값(DEFAULT_LEGACY_FX_RATE)을 적용한다 - 사용자가 [거래 수정]
+// 화면에서 실제 환율을 알면 언제든 고칠 수 있다. 이미 매칭되는 거래가 있으면(재실행이든 이미
+// 전환됐든) 건드리지 않아 자연히 멱등적이다 - 자산 자체는 loadState()가 이미 읽어들인 뒤라 그대로
+// 두고, 뒤이어 bootApp()이 호출하는 syncAssetsFromTransactions()가 이 새 거래를 반영해 buyRate를
+// 채운다(수량/평단가는 원래 값과 같아 겉보기 변화 없음).
+function migrateUsdCashAssetsToTransactions() {
+  let changed = false;
+  state.assets.forEach((a) => {
+    if (a.ticker || a.category !== '현금' || a.currency !== 'USD') return;
+    if (num(a.quantity) <= 0) return;
+    const hasTx = state.transactions.some((t) => !t.ticker && t.owner === a.owner && t.accountType === a.accountType && t.name === a.name);
+    if (hasTx) return;
+    state.transactions.push({
+      id: genId(),
+      date: yesterdayDateStr(),
+      owner: a.owner, accountType: a.accountType, ticker: '', name: a.name,
+      type: 'buy', quantity: num(a.quantity), price: 1, currency: 'USD', fee: 0,
+      appliedRate: DEFAULT_LEGACY_FX_RATE, origin: 'initial', createdAt: Date.now()
+    });
+    changed = true;
+  });
+  if (changed) persistTransactions();
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -2493,6 +2515,7 @@ function loadState() {
     if (!Array.isArray(state.transactions)) state.transactions = [];
   } catch (e) { state.transactions = []; }
   migrateLegacyForeignExchangeRates();
+  migrateUsdCashAssetsToTransactions();
 
   try {
     const snapRaw = localStorage.getItem(LS_DAILY_SNAPSHOTS);
@@ -2517,7 +2540,10 @@ function persistAssets() {
     // regularMarketPrice는 시간외 틱을 배제한 정규장 기준가로, calcDailyPnL이 일간손익 계산 시
     // a.currentPrice 대신 우선 사용한다.
     lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
-    dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate
+    dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate,
+    // [미실현 평가손익 환차 반영] 거래내역에서 계산된 매수 시점 가중평균 환율 - calcRow()가 매입원가
+    // 환산에 쓴다(syncAssetsFromTransactions 참고). 반드시 영속 저장해야 재부팅 후에도 유지된다.
+    buyRate: a.buyRate
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
 }
@@ -2538,9 +2564,14 @@ function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON
 function calcRow(a) {
   const isForeign = a.currency === 'USD';
   const rate = isForeign ? state.exchangeRate : 1;
+  // [미실현 평가손익 - 환차 반영] 매입원가는 오늘 환율이 아니라 매수 시점 가중평균 환율(a.buyRate,
+  // syncAssetsFromTransactions가 거래내역에서 채워둠)로 환산한다 - 평가금액(curAmount)은 계속 오늘
+  // 실시간 환율을 쓰므로, 갱신될 때마다 그 차이만큼이 자연스럽게 평가손익에 환차손익으로 반영된다.
+  // buyRate가 아직 없으면(거래내역 없이 수동 등록된 자산 등) 예전처럼 오늘 환율로 폴백한다.
+  const buyRate = isForeign ? (num(a.buyRate) || rate) : 1;
   const qty = num(a.quantity);
   const buyAmountOriginal = qty * num(a.buyPrice);       // 자산통화 기준 매입금액 (KRW 또는 USD)
-  const buyAmountKRW = buyAmountOriginal * rate;          // 원화 환산 매입금액
+  const buyAmountKRW = buyAmountOriginal * buyRate;       // 원화 환산 매입금액(매수 시점 환율 기준)
   const curAmount = qty * num(a.currentPrice) * rate;
   const profit = curAmount - buyAmountKRW;
   const rateOfReturn = buyAmountKRW !== 0 ? (profit / buyAmountKRW) * 100 : 0;
@@ -2698,7 +2729,10 @@ function isDomesticAfterHoursIneligible(yahooTicker, name) {
 //      애프터마켓 등락으로 그날의 확정 평가손익/스냅샷이 흔들리지 않게 하기 위함.
 //   2) 전일종가는 없지만 API 등락률(dayChangeMap)만 있으면(예: Stooq 폴백) 근사치로 사용한다.
 //   3) 채권/현금/부동산(NON_TRADABLE_CATEGORIES) 카테고리는 티커 입력 여부와 무관하게 항상 0 -
-//      시세 자체가 없는 자산군이므로 전역 수동 변동률의 영향을 받지 않는다.
+//      시세 자체가 없는 자산군이므로 전역 수동 변동률의 영향을 받지 않는다. 단 예외로, 달러(USD)
+//      현금은 가격 변동은 없어도 환율은 매일 움직이므로 qty*(오늘환율-오늘 기준환율)만큼만 반영한다
+//      (아래 함수 맨 앞의 '현금' 분기 참고) - "해외통화" 일간손익 버킷에 달러 현금의 환차손익이
+//      잡히도록 하기 위함.
 //   4) 그 외 티커가 아예 없는 자산도 시세 조회 대상이 아니므로 항상 0 - 이게 이전 버전의 버그였다
 //      (수동 변동률이 현금/채권에도 적용됨).
 //   5) 티커는 있지만 아직 한 번도 시세를 못 받아온 경우에만 수동 변동률로 추정한다.
@@ -2709,6 +2743,14 @@ function isDomesticAfterHoursIneligible(yahooTicker, name) {
 //   7) noNewSessionMap이 undefined면(체결 식별값을 안 주는 Stooq 등 소스) 판별 불가 - 기존의 시장별
 //      (국내는 KST 자정, 미국은 미 동부시간 자정) 리셋 창 근사 로직으로 폴백한다 - isMarketInDailyResetWindow() 참고.
 function calcDailyPnL(a, r) {
+  // [달러 현금 - 환차만 반영] 현금성 자산은 시세(가격) 자체가 없어 주가 변동분은 존재하지 않지만,
+  // 달러라면 원/달러 환율이 매일 움직이므로 그 변동분(오늘 환율 - 오늘 하루 기준환율)만큼은 원화
+  // 평가액이 실제로 바뀐다 - 이걸 반영해야 "해외통화" 일간손익 버킷에 달러 현금의 환차손익이 잡힌다.
+  // 원화 현금/채권/부동산은 이 예외에 해당하지 않아 아래 NON_TRADABLE_CATEGORIES 규칙대로 항상 0이다.
+  if (a.category === '현금') {
+    if (a.currency !== 'USD') return 0;
+    return num(a.quantity) * num(a.currentPrice) * (state.exchangeRate - (state.refExchangeRate || state.exchangeRate));
+  }
   if (NON_TRADABLE_CATEGORIES.includes(a.category)) return 0;
   const hasTicker = String(a.ticker ?? '').trim() !== '';
   if (!hasTicker) return 0;
@@ -6161,16 +6203,22 @@ function computePositionsAndRealizedPnL() {
 }
 
 // [현금/외화현금 - 무티커 자산 유형별 이원화] 부동산/채권/상장 주식·ETF는 계속 거래내역(매수/매도)으로
-// 추적하되, '현금' 카테고리(원화 현금·외화 현금 공통)만 거래내역 자체를 만들 수 없게 막고 자산관리
-// 탭에서 직접 잔고를 수정하는 방식으로 되돌린다. ticker가 있으면 애초에 상장 종목이라 대상이 아니다.
+// 추적한다. 원화 현금은 여기에 더해 거래내역 자체를 만들 수 없게 막고 자산관리 탭에서 직접 잔고를
+// 수정하는 방식을 유지한다(환율 개념이 없어 거래내역화할 실익이 없음). ticker가 있으면 애초에 상장
+// 종목이라 대상이 아니다.
 // [버그 수정 - 신규 생성 경로 누락] 예전엔 "이미 존재하는 현금 자산"과 이름/소유자/계좌구분이 일치할
 // 때만 막았다 - 그런데 대량 거래내역 업로드(엑셀)처럼 아직 매칭되는 자산이 하나도 없는 상태에서
 // "현금"/"달러" 같은 이름의 거래가 처음 들어오면 이 함수가 null을 반환해 그대로 통과되고,
 // syncAssetsFromTransactions()가 classifyCategory()로 '현금'이라고 자동판별해 새 현금 자산을 만들어
 // 버렸다(차단이 무력화됨). 이제 기존 자산 매칭에 더해, classifyCategory()의 자동판별 결과가 '현금'이면
 // (CASH_KEYWORDS 참고) 매칭되는 기존 자산이 없어도 동일하게 차단한다.
-function findMatchingCashAsset(owner, accountType, ticker, name) {
+// [달러(외화) 현금 - 거래내역 기반 전환] 원화와 달리 달러 현금은 매수/매도 시점 환율에 따라 환차손익이
+// 발생한다 - 이걸 추적하려면 주식과 똑같이 거래내역 기반 가중평균 매입환율(computePositionsAndRealizedPnL의
+// avgRate)이 필요하므로, currency==='USD'인 경우는 더 이상 여기서 차단하지 않고 그대로 통과시킨다
+// (호출부가 통화 값을 함께 넘겨줘야 한다).
+function findMatchingCashAsset(owner, accountType, ticker, name, currency) {
   if (ticker) return null;
+  if (currency === 'USD') return null;
   const existing = state.assets.find((a) => !a.ticker && a.category === '현금' && a.owner === owner && a.accountType === accountType && a.name === name);
   if (existing) return existing;
   if (classifyCategory(ticker, name) === '현금') return { owner, accountType, ticker: '', name, category: '현금' };
@@ -6188,16 +6236,17 @@ function findMatchingCashAsset(owner, accountType, ticker, name) {
 // 이미 "티커 || 이름"으로 포지션을 구분해왔으므로 그 결과를 그대로 반영하는 것뿐이다). 같은 소유자·
 // 계좌 안에서 이름까지 같아야 동일 자산으로 보므로, 서로 다른 부동산 2건을 같은 이름으로 적지만
 // 않으면 섞이지 않는다.
-// [현금 자산 보호] '현금' 카테고리는 이제 거래내역을 아예 만들 수 없지만(위 findMatchingCashAsset로
-// 신규 입력을 막음), 이 변경 이전에 이미 쌓여있던 과거 거래(구 잔고조정 등)가 남아 있을 수 있다 - 그런
-// 레거시 거래 때문에 현금 자산의 수동 수정값이 재동기화 때마다 조용히 덮어써지는 일이 없도록, 매칭되는
-// 자산이 '현금' 카테고리면 이 함수가 절대 건드리지 않고 그대로 건너뛴다(수량을 0으로 만드는 것도 포함).
+// [원화 현금 보호] '현금' 카테고리는 원화만 거래내역을 아예 만들 수 없지만(위 findMatchingCashAsset로
+// 신규 입력을 막음), 이 정책 이전에 이미 쌓여있던 과거 거래(구 잔고조정 등)가 남아 있을 수 있다 - 그런
+// 레거시 거래 때문에 원화 현금 자산의 수동 수정값이 재동기화 때마다 조용히 덮어써지는 일이 없도록,
+// 매칭되는 자산이 원화 '현금' 카테고리면 이 함수가 절대 건드리지 않고 그대로 건너뛴다(수량을 0으로
+// 만드는 것도 포함). 달러(외화) 현금은 이제 거래내역 기반으로 관리하므로 이 가드에서 제외한다.
 function syncAssetsFromTransactions() {
   const { positions } = computePositionsAndRealizedPnL();
   Object.values(positions).forEach((pos) => {
     let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType &&
       (pos.ticker ? a.ticker === pos.ticker : (!a.ticker && a.name === pos.name)));
-    if (asset && asset.category === '현금') return; // 현금/외화현금은 자산관리 탭에서만 관리 - 절대 덮어쓰지 않는다
+    if (asset && asset.category === '현금' && asset.currency !== 'USD') return; // 원화 현금만 자산관리 탭 전용 - 절대 덮어쓰지 않는다
     if (pos.quantity <= 0) {
       if (asset) asset.quantity = 0;
       return;
@@ -6214,7 +6263,19 @@ function syncAssetsFromTransactions() {
       asset.quantity = pos.quantity;
       asset.buyPrice = pos.avgPrice;
     }
+    // [미실현 평가손익 환차 반영] 해외통화 포지션이면 거래내역에서 계산된 매수시점 가중평균 환율
+    // (pos.avgRate)을 자산에 함께 저장해둔다 - calcRow()가 매입원가를 오늘 환율이 아니라 이 값으로
+    // 환산해서, 보유 중인(아직 안 판) 포지션의 누적 평가손익에도 환차손익이 반영되게 한다.
+    if (asset && pos.currency === 'USD') asset.buyRate = pos.avgRate;
   });
+}
+
+// [삭제/수정 버튼 게이팅 - 거래내역 추적 여부] 이 자산과 매칭되는 거래(소유자+계좌구분+티커, 티커
+// 없으면 이름)가 거래내역에 하나라도 있으면 true - openAssetDetailModal/assetDetailOwnerRowHtml이
+// 이 값으로 [수정]/[삭제] 버튼을 숨긴다(거래내역이 잔고의 근거이므로 여기서 직접 못 고치게).
+function isTransactionTracked(a) {
+  return state.transactions.some((t) => t.owner === a.owner && t.accountType === a.accountType &&
+    (a.ticker ? t.ticker === a.ticker : (!t.ticker && t.name === a.name)));
 }
 
 // [보유자산 양식 다운로드] 버튼 - 아직 거래내역이 하나도 없는 보유 종목들을, 지금의 수량/매수단가로
@@ -6355,7 +6416,7 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
       // 엑셀 업로드로도 등록할 수 없다 - 자산관리 탭에서 직접 잔고를 수정하도록 유도한다.
       let cashSkippedCount = 0;
       const importable = parsed.filter((t) => {
-        if (findMatchingCashAsset(t.owner, t.accountType, t.ticker, t.name)) { cashSkippedCount++; return false; }
+        if (findMatchingCashAsset(t.owner, t.accountType, t.ticker, t.name, t.currency)) { cashSkippedCount++; return false; }
         return true;
       });
 
@@ -6409,13 +6470,66 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
 // [해외주식 적용 환율 입력란] 통화가 USD일 때만 '적용 환율' 입력란을 보여준다 - 거래 등록 시점의
 // 실시간 환율(state.exchangeRate)을 기본값으로 채워주되, 이미 값이 있으면(수정 모드에서 기존 저장값을
 // 불러온 경우) 덮어쓰지 않고 사용자가 직접 고쳐 저장할 수 있다.
+// [달러 현금 거래 판별] 티커 없고 통화가 USD이면서 종목명이 '현금' 카테고리로 자동분류되는 거래 -
+// findMatchingCashAsset()가 더 이상 차단하지 않는 대상과 정확히 같은 조건이다.
+function isUsdCashTxForm() {
+  const ticker = document.getElementById('tx_ticker').value.trim();
+  const name = document.getElementById('tx_name').value.trim();
+  const currency = document.getElementById('tx_currency').value;
+  return !ticker && currency === 'USD' && classifyCategory(ticker, name) === '현금';
+}
+
+// [달러 현금 거래 - 가격 1 고정] 현금성 자산은 "단가" 개념이 없고 수량 자체가 곧 달러 금액이다 - 매매
+// 단가를 1로 고정해 잠그고, 수량 라벨을 "금액($)"으로 바꿔 사용자가 헷갈리지 않게 한다.
+function updateTxCashPriceLock() {
+  const isCash = isUsdCashTxForm();
+  const priceInput = document.getElementById('tx_price');
+  const qtyLabel = document.getElementById('tx_quantityLabel');
+  priceInput.readOnly = isCash;
+  priceInput.classList.toggle('bg-slate-100', isCash);
+  priceInput.classList.toggle('dark:bg-slate-800/80', isCash);
+  priceInput.classList.toggle('cursor-not-allowed', isCash);
+  if (isCash) priceInput.value = 1;
+  if (qtyLabel) qtyLabel.textContent = isCash ? '금액($)' : '수량';
+}
+
+// [적용 환율 기본값 - 스마트 디폴트] 평소엔 조회 시점의 실시간 환율을 기본값으로 쓰지만, "달러 현금
+// 매도(출금/환전)"만은 예외로 그 포지션의 매수 시점 가중평균 환율(computePositionsAndRealizedPnL의
+// avgRate)을 기본값으로 채운다 - 실제 환전 시 받은 환율을 사용자가 알고 있으면 그 값으로 덮어써서
+// 확정 환차손익을 정확히 기록하고, 모르면 이 가중평균값 그대로 두어도 "원금 그대로 출금"으로
+// 합리적으로 처리된다. 필드에 아직 손대지 않은 경우(autofilled 마커)에만 자동으로 갱신한다 -
+// 사용자가 직접 고친 값은 절대 덮어쓰지 않는다.
+function getSuggestedAppliedRate() {
+  const type = document.getElementById('tx_type').value;
+  if (type === 'sell' && isUsdCashTxForm()) {
+    const owner = document.getElementById('tx_owner').value;
+    const accountType = document.getElementById('tx_accountType').value.trim() || '일반계좌';
+    const name = document.getElementById('tx_name').value.trim();
+    const { positions } = computePositionsAndRealizedPnL();
+    const pos = positions[`${owner}__${accountType}__${name}`];
+    if (pos && pos.quantity > 0 && Number.isFinite(pos.avgRate) && pos.avgRate > 0) return pos.avgRate;
+  }
+  return state.exchangeRate;
+}
+function refreshAppliedRateDefault() {
+  const input = document.getElementById('tx_appliedRate');
+  if (input.value && input.dataset.autofilled !== '1') return; // 사용자가 직접 고친 값은 보존
+  input.value = getSuggestedAppliedRate();
+  input.dataset.autofilled = '1';
+}
+document.getElementById('tx_appliedRate').addEventListener('input', (e) => { delete e.target.dataset.autofilled; });
+
 function updateTxAppliedRateVisibility() {
   const isUsd = document.getElementById('tx_currency').value === 'USD';
   document.getElementById('tx_appliedRateWrap').classList.toggle('hidden', !isUsd);
-  const input = document.getElementById('tx_appliedRate');
-  if (isUsd && !input.value) input.value = state.exchangeRate;
+  updateTxCashPriceLock();
+  if (isUsd) refreshAppliedRateDefault();
 }
 document.getElementById('tx_currency').addEventListener('change', updateTxAppliedRateVisibility);
+document.getElementById('tx_type').addEventListener('change', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
+document.getElementById('tx_name').addEventListener('blur', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
+document.getElementById('tx_owner').addEventListener('change', refreshAppliedRateDefault);
+document.getElementById('tx_accountType').addEventListener('blur', refreshAppliedRateDefault);
 
 // 검색 모달(개별주식 검색)을 'transaction' 모드로 열었을 때 종목 선택 결과를 거래 입력 폼에 채운다.
 // [티커 없는 자산 - 소유자/계좌구분/통화 자동완성] 부동산/채권처럼 티커가 없는 자산은 소유자+계좌구분+
@@ -6446,6 +6560,7 @@ function openTransactionModal(txId) {
   document.getElementById('tx_tickerHint').textContent = ' ';
   document.getElementById('tx_date').value = todayDateStr();
   document.getElementById('tx_fee').value = 0;
+  delete document.getElementById('tx_appliedRate').dataset.autofilled; // 이전 모달 세션의 자동채움 표시 잔재 방지
 
   if (txId) {
     const tx = state.transactions.find((t) => t.id === txId);
@@ -6494,13 +6609,16 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   const txOwnerVal = document.getElementById('tx_owner').value;
   const txAccountTypeVal = document.getElementById('tx_accountType').value.trim() || '일반계좌';
   const txTickerVal = document.getElementById('tx_ticker').value.trim();
-  if (findMatchingCashAsset(txOwnerVal, txAccountTypeVal, txTickerVal, name)) {
+  const txCurrencyVal = document.getElementById('tx_currency').value;
+  if (findMatchingCashAsset(txOwnerVal, txAccountTypeVal, txTickerVal, name, txCurrencyVal)) {
     showToast('현금/외화 자산은 거래내역으로 등록할 수 없습니다. 자산관리 탭의 자산 수정에서 잔고를 직접 고쳐주세요.', 'warn', 6000);
     return;
   }
   const quantity = num(document.getElementById('tx_quantity').value);
   if (quantity <= 0) { showToast('수량은 0보다 커야 합니다.', 'warn'); return; }
-  const price = num(document.getElementById('tx_price').value);
+  // [달러 현금 거래 - 가격 1 고정] UI에서 이미 잠가두지만, 프로그램적으로 폼이 채워지는 경로(검색 선택
+  // 등) 대비 제출 시점에도 한 번 더 강제한다 - 현금성 거래는 수량 자체가 달러 금액이라 단가는 항상 1.
+  const price = isUsdCashTxForm() ? 1 : num(document.getElementById('tx_price').value);
   if (price <= 0) { showToast('매매단가는 0보다 커야 합니다.', 'warn'); return; }
 
   const existing = state.transactions.find((t) => t.id === id);
@@ -7715,12 +7833,13 @@ function openAssetDetailModal(id) {
     </div>`;
 
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
-  // 티커가 없는 자산(예금/적금/현금성 자산, 부동산, 수동 관리 채권 등)만 [수정]/[삭제] 버튼을 노출한다 -
-  // 티커가 있는 자산은 거래내역 기반으로 잔고가 자동 연동되므로 이 화면에서 직접 값을 고치거나 지울
-  // 방법을 주지 않는다(지우려면 거래내역에서 매도 처리해야 한다).
-  const hasTicker = !!sanitizeTicker(a.ticker).yahooTicker;
-  document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', hasTicker);
-  document.getElementById('assetDetailEditBtn').classList.toggle('hidden', hasTicker);
+  // [거래내역 추적 여부 기준] 예전엔 "티커 유무"로 근사했지만, 이제 달러 현금도 티커 없이 거래내역
+  // 기반으로 관리될 수 있어 정확한 기준(실제로 매칭되는 거래가 있는지)으로 판단한다 - 거래내역이
+  // 있으면 그게 잔고의 근거이므로 이 화면에서 직접 고치거나 지우지 못하게 숨긴다(지우려면 거래내역
+  // 에서 매도/출금 처리해야 한다). 부동산/원화현금/아직 거래를 안 넣은 수동 자산만 노출된다.
+  const tracked = isTransactionTracked(a);
+  document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', tracked);
+  document.getElementById('assetDetailEditBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailModal').classList.remove('hidden');
   pushModalHistoryState();
   renderAssetDetailChart(a);
@@ -7730,11 +7849,11 @@ function openAssetDetailModal(id) {
 function assetDetailOwnerRowHtml(m, totalCurAmount) {
   const priceUnit = m.isForeign ? '$' : '';
   const pct = totalCurAmount !== 0 ? (m.curAmount / totalCurAmount * 100) : 0;
-  // 티커가 있는 보유분은 거래내역 기반으로 잔고가 자동 연동되므로 개별 휴지통 아이콘도 숨긴다(상단
-  // 삭제 버튼과 동일한 규칙) - 그룹 모달은 이름이 같은 티커 없는 자산(현금 등)도 묶일 수 있어 그 경우엔
-  // 계속 노출한다.
-  const hasTicker = !!sanitizeTicker(m.ticker).yahooTicker;
-  const deleteBtnHtml = hasTicker ? '' : `
+  // 거래내역으로 추적되는 보유분은 잔고가 거래내역 기반으로 자동 연동되므로 개별 휴지통 아이콘도
+  // 숨긴다(상단 삭제 버튼과 동일한 규칙, isTransactionTracked 참고) - 그룹 모달은 이름이 같은 수동
+  // 관리 자산(원화현금 등)도 묶일 수 있어 그 경우엔 계속 노출한다.
+  const tracked = isTransactionTracked(m);
+  const deleteBtnHtml = tracked ? '' : `
     <button type="button" data-delete-member="${m.id}" title="이 보유분 삭제"
       class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
       <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -8217,8 +8336,14 @@ function buildAssetDetailChart(periodKey) {
       responsive: true, maintainAspectRatio: false,
       parsing: false,
       scales: {
-        x: { type: 'time', time: { unit: 'day' }, ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
-        y: { ticks: { color: textColor, callback: (v) => (isForeign ? '$' : '') + fmtNum(v, isForeign ? 2 : 0) }, grid: { color: 'rgba(148,163,184,.15)' } }
+        // [X축 M/D 표기] 기본 date-fns 포맷은 "Feb 13"처럼 영문 월로 나온다 - displayFormats로
+        // 'M/d'(월/일, 앞자리 0 없음)를 지정해 "2/13" 형식으로 바꾼다.
+        x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'M/d' } }, ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
+        // [Y축 '만' 단위 축약 - 원화만] 달러(isForeign)는 기존 $ 표기 그대로 두고, 원화는 1만원 이상일
+        // 때만 만 단위로 줄인다(예: 23,000 -> "2.3만", 28,500 -> "2.85만") - fmtNum이
+        // maximumFractionDigits만 쓰므로 2.30처럼 불필요한 끝자리 0은 자동으로 안 붙는다. 1만원 미만은
+        // 기존처럼 원 단위 정수로 그대로 표기한다.
+        y: { ticks: { color: textColor, callback: (v) => isForeign ? ('$' + fmtNum(v, 2)) : (v >= 10000 ? fmtNum(v / 10000, 2) + '만' : fmtNum(v, 0)) }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
         // 이동평균선/평단가 범례는 차트 위 커스텀 HTML(#assetDetailMaLegend)로 대체하므로 Chart.js 기본
@@ -11552,7 +11677,8 @@ document.getElementById('exportJsonBtn').addEventListener('click', () => {
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
       lastTradeKey: a.lastTradeKey, regularMarketPrice: a.regularMarketPrice,
-      dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate
+      dailyRefTradeKey: a.dailyRefTradeKey, dailyRefTradeKeyDate: a.dailyRefTradeKeyDate,
+      buyRate: a.buyRate
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
@@ -11625,7 +11751,8 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         lastTradeKey: typeof a.lastTradeKey === 'string' ? a.lastTradeKey : undefined,
         regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
         dailyRefTradeKey: typeof a.dailyRefTradeKey === 'string' ? a.dailyRefTradeKey : undefined,
-        dailyRefTradeKeyDate: typeof a.dailyRefTradeKeyDate === 'string' ? a.dailyRefTradeKeyDate : undefined
+        dailyRefTradeKeyDate: typeof a.dailyRefTradeKeyDate === 'string' ? a.dailyRefTradeKeyDate : undefined,
+        buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
