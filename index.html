@@ -168,6 +168,23 @@
      새로고침해버리는 제스처를 최상위 스크롤 지점에서 차단한다. */
   html, body { overscroll-behavior-y: contain; }
   #app { overscroll-behavior-y: contain; }
+
+  /* [데스크탑 모바일 뷰 전환] Tailwind의 sm: 브레이크포인트는 실제 브라우저 뷰포트 폭 기준으로
+     동작해서 body에 클래스 하나 붙인다고 저절로 바뀌지 않는다 - #app 폭을 모바일 기기 규격으로
+     좁히는 것과 별개로, 이 앱이 실제로 쓰는 sm: 조합(자산 테이블↔카드 전환 등)을 직접 나열해
+     뒤집어야 진짜 모바일 카드 레이아웃이 나온다. 새로 추가되는 sm: 조합이 있다면 이 목록도 함께
+     늘려야 한다. */
+  body.mobile-view-mode #app {
+    max-width: 430px; margin-left: auto; margin-right: auto; font-size: 14px;
+    padding-left: 1rem; padding-right: 1rem;
+    box-shadow: 0 0 0 1px rgba(148,163,184,.25), 0 8px 30px rgba(0,0,0,.12);
+    border-radius: 1.25rem;
+  }
+  body.mobile-view-mode .hidden.sm\:block { display: none !important; }
+  body.mobile-view-mode div.sm\:hidden { display: block !important; }
+  body.mobile-view-mode span.hidden.sm\:inline { display: none !important; }
+  body.mobile-view-mode p.sm\:hidden { display: block !important; }
+  body.mobile-view-mode br.sm\:hidden { display: inline !important; }
 </style>
 </head>
 
@@ -196,7 +213,7 @@
           <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v104</p>
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v105</p>
         </div>
       </div>
 
@@ -224,6 +241,12 @@
 
         <button id="darkModeBtn" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
           <i data-lucide="moon" class="w-4 h-4"></i>
+        </button>
+
+        <!-- [데스크탑 모바일 뷰 전환] 넓은 화면에서도 모바일 레이아웃(카드형 3줄 뷰 등)을 그 자리에서
+             바로 확인할 수 있게 하는 토글 - mobileViewToggleBtn 클릭 핸들러 참고. -->
+        <button id="mobileViewToggleBtn" title="모바일 화면으로 미리보기" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
+          <i data-lucide="smartphone" class="w-4 h-4"></i>
         </button>
 
 
@@ -1854,6 +1877,7 @@ const LS_ASSETS = 'sam_assets_v5';
 const LS_RATE = 'sam_exchange_rate_v5';
 const LS_DAILY_RATE = 'sam_daily_rate_v5';
 const LS_DARKMODE = 'sam_dark_mode_v5';
+const LS_MOBILE_VIEW = 'sam_mobile_view_v1';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
@@ -2549,6 +2573,11 @@ function loadState() {
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
   }
+  // [데스크탑 모바일 뷰 전환] 새로고침해도 마지막으로 선택한 뷰 모드가 유지되도록 body에 클래스를
+  // 미리 적용해둔다(토글 버튼 클릭 핸들러 참고).
+  if (localStorage.getItem(LS_MOBILE_VIEW) === '1') {
+    document.body.classList.add('mobile-view-mode');
+  }
 }
 
 // 자산 스키마에 정의된 필드만 저장 (dayChangeMap 등 휘발성 데이터는 제외)
@@ -2563,6 +2592,10 @@ function persistAssets() {
     // (getMarketDateKeyForEpoch/fetchPricesForTargets 참고). regularMarketPrice는 시간외 틱을 배제한
     // 정규장 기준가로, calcDailyPnL이 일간손익 계산 시 a.currentPrice 대신 우선 사용하므로 계속 저장한다.
     regularMarketPrice: a.regularMarketPrice,
+    // [미니 당일 봉차트] 당일 시가/고가/저가 - miniCandleSvg가 현재가와 함께 캔들 하나로 그린다. 매
+    // 조회마다 최신값으로 덮어쓰이므로(fetchPricesForTargets) 재부팅 직후 다음 조회 전까지의 표시용으로만
+    // 영속 저장한다.
+    todayOpen: a.todayOpen, todayHigh: a.todayHigh, todayLow: a.todayLow,
     // [미실현 평가손익 환차 반영] 거래내역에서 계산된 매수 시점 가중평균 환율 - calcRow()가 매입원가
     // 환산에 쓴다(syncAssetsFromTransactions 참고). 반드시 영속 저장해야 재부팅 후에도 유지된다.
     buyRate: a.buyRate
@@ -3154,7 +3187,9 @@ function getCoreStockInfoFromState(candidate) {
     changePercent: num(state.dayChangeMap[asset.id]),
     previousClose: state.prevCloseMap[asset.id],
     currency: asset.currency,
-    session: state.sessionMap[asset.id] // 자산관리 카드와 동일한 세션 배지(프리/정규/애프터/장마감)에 쓰인다
+    session: state.sessionMap[asset.id], // 자산관리 카드와 동일한 세션 배지(프리/정규/애프터/장마감)에 쓰인다
+    regularMarketPrice: asset.regularMarketPrice, // 정규장/장외 병행 표기(extendedHoursSublineHtml)용
+    todayOpen: asset.todayOpen, todayHigh: asset.todayHigh, todayLow: asset.todayLow // 미니 당일 봉차트용
   };
 }
 
@@ -3181,6 +3216,8 @@ function coreStockRowHtml(c, info) {
   const sessionBadge = sessionMeta
     ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
     : '';
+  const extendedHoursSub = extendedHoursSublineHtml(info.session, info.regularMarketPrice, info.previousClose, isForeign);
+  const candle = miniCandleSvg(info.todayOpen, info.todayHigh, info.todayLow, info.price);
   return `
   <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg px-1.5 -mx-1.5"
     data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
@@ -3188,8 +3225,12 @@ function coreStockRowHtml(c, info) {
       <div class="font-medium text-sm truncate hover:underline">${escapeHtml(c.name)}${changeInline}</div>
       <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
     </div>
-    <div class="text-right shrink-0 pl-2">
-      <div class="text-sm font-semibold">${unit}${fmtNum(info.price, 2)}${sessionBadge}</div>
+    <div class="flex items-center gap-2 shrink-0 pl-2">
+      <div class="text-right">
+        <div class="text-sm font-semibold">${unit}${fmtNum(info.price, 2)}${sessionBadge}</div>
+        ${extendedHoursSub}
+      </div>
+      ${candle}
     </div>
   </div>`;
 }
@@ -7408,7 +7449,24 @@ function derivePresentation(r) {
     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300'
     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300';
 
-  return { priceUnit, hasChange, changeColorClass, changeText, dailyChangeAmount, isForeign: r.isForeign, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass };
+  // [정규장/장외 병행 표기] 지금 메인 가격이 실제 프리마켓/애프터마켓 시세일 때만(session 'pre'|'post')
+  // 정규장 종가를 소형 보조 라인으로 병기한다 - 정규장 진행 중이거나 시간외 데이터 자체가 없는 완전
+  // 장마감일 때는 굳이 같은 값을 두 번 보여줄 필요가 없어 숨긴다(extendedHoursSublineHtml 참고).
+  const extendedHoursSub = extendedHoursSublineHtml(session, r.regularMarketPrice, state.prevCloseMap[r.id], r.isForeign);
+
+  return { priceUnit, hasChange, changeColorClass, changeText, dailyChangeAmount, isForeign: r.isForeign, sessionBadge, yahooTickerHint, priceFetchFailed, priceCellClass, priceFailBadge, isDomesticBadgeClass, currencyBadgeClass, extendedHoursSub };
+}
+
+// [정규장/장외 병행 표기] session이 'pre'(프리마켓) 또는 'post'(애프터마켓)일 때만 정규장 종가와 그
+// 자체 등락률을 "정규장 XXX.XX (X.XX%)" 형태의 소형 회색 라인으로 반환한다 - 그 외(정규장 진행 중,
+// 시간외 데이터 없는 장마감)에는 빈 문자열을 반환해 보조 라인 자체를 숨긴다.
+function extendedHoursSublineHtml(session, regularMarketPrice, previousClose, isForeign) {
+  if (session !== 'pre' && session !== 'post') return '';
+  if (!Number.isFinite(regularMarketPrice) || regularMarketPrice <= 0) return '';
+  const unit = isForeign ? '$' : '';
+  const pct = (Number.isFinite(previousClose) && previousClose > 0) ? ((regularMarketPrice - previousClose) / previousClose * 100) : null;
+  const pctText = pct !== null ? ` (${fmtPct(pct)})` : '';
+  return `<div class="text-[10px] text-slate-400 font-normal">정규장 ${unit}${fmtNum(regularMarketPrice, 2)}${pctText}</div>`;
 }
 
 // 당일 손익변동 금액을 거래 통화 그대로(원화 환산 없이) +/- 부호와 함께 표기한다 - fmtSigned()는 항상
@@ -7451,6 +7509,30 @@ function cashBondValueHtml(r) {
   return { headline: fmtNum(r.curAmount, 0), sub: '' };
 }
 
+// [미니 당일 봉차트] 종목 리스트 우측 끝(예전 차트 아이콘 자리)에 오늘 하루치 OHLC를 캔들 하나로
+// 압축해서 보여준다 - 자산 상세의 큰 캔들 차트와 동일한 색상 규칙(getCandleColors, 양봉=빨강/음봉=파랑)을
+// 그대로 쓴다. OHLC 중 하나라도 없거나(무티커 자산, 소스가 값을 못 준 경우 등) 유효하지 않으면 빈
+// 문자열을 반환해 그 자리를 조용히 비운다 - 클릭 시 상세 모달을 여는 기존 동작(부모 요소의
+// data-action="open-detail")에는 전혀 영향 없다.
+function miniCandleSvg(open, high, low, price) {
+  if (![open, high, low, price].every((v) => Number.isFinite(v) && v > 0)) return '';
+  if (high < low) return '';
+  const isUp = price >= open;
+  const color = isUp ? getCandleColors().up : getCandleColors().down;
+  const W = 14, H = 26, PAD = 2;
+  const usableH = H - PAD * 2;
+  const range = (high - low) || 1; // 고가=저가(변동 전무)일 때 0 나눗셈 방지
+  const yFor = (v) => PAD + (1 - (v - low) / range) * usableH;
+  const bodyTop = yFor(Math.max(open, price));
+  const bodyBottomY = yFor(Math.min(open, price));
+  const bodyHeight = Math.max(bodyBottomY - bodyTop, 1.5); // 시가=현재가일 때도 얇은 선으로는 보이게
+  const cx = W / 2, bodyW = 8;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="inline-block align-middle" aria-hidden="true">
+    <line x1="${cx}" y1="${yFor(high).toFixed(2)}" x2="${cx}" y2="${yFor(low).toFixed(2)}" stroke="${color}" stroke-width="1.4"></line>
+    <rect x="${(cx - bodyW / 2).toFixed(2)}" y="${bodyTop.toFixed(2)}" width="${bodyW}" height="${bodyHeight.toFixed(2)}" fill="${color}" rx="1"></rect>
+  </svg>`;
+}
+
 function rowHtml(r) {
   const p = derivePresentation(r);
   const isCashBond = isCashOrBondNoTicker(r);
@@ -7474,8 +7556,8 @@ function rowHtml(r) {
       <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${subtitle}</div>
     </td>
     <td class="px-3 py-2.5 text-right">${isCashBond ? '' : fmtNum(r.quantity, 4)}</td>
-    <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceHeadline}${p.sessionBadge}${priceKrwSub}${p.priceFailBadge}</td>
-    <td class="px-3 py-2.5 text-center"><i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 inline-block"></i></td>
+    <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceHeadline}${p.sessionBadge}${priceKrwSub}${p.extendedHoursSub}${p.priceFailBadge}</td>
+    <td class="px-3 py-2.5 text-center">${miniCandleSvg(r.todayOpen, r.todayHigh, r.todayLow, r.currentPrice)}</td>
   </tr>`;
 }
 
@@ -7523,9 +7605,10 @@ function cardHtml(r) {
       <p class="text-[10px] text-slate-400">${isCashBond ? '&nbsp;' : `수량 ${fmtNum(r.quantity, 4)}`}</p>
       <p class="text-sm font-semibold">${isCashBond ? cashBondValue.headline : `${p.priceUnit}${fmtNum(r.currentPrice, 2)}`}${p.sessionBadge}</p>
       ${priceKrwSub}
+      ${p.extendedHoursSub}
       ${p.priceFailBadge}
     </div>
-    <i data-lucide="line-chart" class="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0"></i>
+    <span class="shrink-0">${miniCandleSvg(r.todayOpen, r.todayHigh, r.todayLow, r.currentPrice)}</span>
   </div>`;
 }
 
@@ -8757,13 +8840,29 @@ function pickCurrentPriceFromChart(result, yahooTicker, name) {
   // 열렸는지 판별하는 체결 시각으로 쓸 수 있다.
   const regularMarketTime = typeof meta.regularMarketTime === 'number' ? meta.regularMarketTime : null;
   const regularMarketPrice = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : null;
+  // [미니 당일 봉차트용 OHLC] range=1d 응답의 분봉 배열(open/high/low)에서 당일 시가·고가·저가를
+  // 뽑아낸다 - open은 체결이 있었던 첫 봉의 시가, high/low는 체결이 있었던 봉들의 고가/저가 중
+  // 최댓값/최솟값이다. 데이터가 아예 없으면(소스 실패 등) null로 남겨 미니 차트가 조용히 숨겨지게 한다
+  // (miniCandleSvg 참고).
+  const quote0 = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+  const opens = quote0.open || [];
+  const highs = quote0.high || [];
+  const lows = quote0.low || [];
+  let todayOpen = null, todayHigh = null, todayLow = null;
+  for (let i = 0; i < ts.length; i++) {
+    if (typeof closes[i] !== 'number') continue;
+    if (todayOpen === null && typeof opens[i] === 'number') todayOpen = opens[i];
+    if (typeof highs[i] === 'number') todayHigh = (todayHigh === null) ? highs[i] : Math.max(todayHigh, highs[i]);
+    if (typeof lows[i] === 'number') todayLow = (todayLow === null) ? lows[i] : Math.min(todayLow, lows[i]);
+  }
   const withChangePercent = (price, session) => ({
     price,
     changePercent: (typeof prevCloseRaw === 'number' && prevCloseRaw > 0) ? ((price - prevCloseRaw) / prevCloseRaw * 100) : 0,
     session,
     previousClose: prevCloseRaw,
     regularMarketTime,
-    regularMarketPrice
+    regularMarketPrice,
+    todayOpen, todayHigh, todayLow
   });
 
   // 배열 끝에서부터 null이 아닌 마지막 체결 틱을 찾는다(휴장/거래 없는 구간은 close가 null로 옴).
@@ -8820,6 +8919,8 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
     lastTradeKey: typeof picked.regularMarketTime === 'number' ? String(picked.regularMarketTime) : undefined,
     instrumentType: meta.instrumentType, // 'EQUITY'|'ETF'|'MUTUALFUND' 등 - .KQ 자동 폴백의 오매칭 검증용
     currency: meta.currency, // [자산 추가 팝업 개선] 종목 검색 시 거래 통화 자동 감지용 - Yahoo가 실제 상장 통화를 그대로 내려준다(USD/KRW/JPY 등)
+    // [미니 당일 봉차트] 당일 시가/고가/저가 - miniCandleSvg가 현재가(picked.price)와 함께 캔들 하나로 그린다.
+    todayOpen: picked.todayOpen, todayHigh: picked.todayHigh, todayLow: picked.todayLow,
     source: `Yahoo(${proxy.name})`
   };
 }
@@ -8859,6 +8960,19 @@ async function fetchStooqPrice(yahooTicker) {
   if (!closeRaw || closeRaw.toUpperCase() === 'N/D') throw new Error('시세 없음(N/D)');
   const price = parseFloat(closeRaw);
   if (!Number.isFinite(price) || price <= 0) throw new Error('유효하지 않은 가격 값');
+  // [미니 당일 봉차트용 OHLC] 요청 URL의 f=sd2t2ohlcv가 이미 시가/고가/저가 컬럼을 포함하고 있어
+  // 그대로 재사용한다 - Close와 마찬가지로 값이 없거나 N/D면 null로 남겨 미니 차트를 숨긴다.
+  const readCsvNum = (colName) => {
+    const idx = header.indexOf(colName);
+    if (idx === -1) return null;
+    const raw = (rows[1][idx] || '').trim();
+    if (!raw || raw.toUpperCase() === 'N/D') return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) ? v : null;
+  };
+  const todayOpen = readCsvNum('open');
+  const todayHigh = readCsvNum('high');
+  const todayLow = readCsvNum('low');
   // Stooq 무료 CSV는 등락률/전일종가/시간외 시세를 별도 제공하지 않는다 - 일간 손익 계산은 수동
   // 변동률로 폴백된다. [버그 수정] 라벨은 예전엔 항상 '정규장'이었는데, 이 값은 그냥 마지막 종가일
   // 뿐이라 장이 마감된 뒤에도 '정규장'으로 잘못 표기됐다. Stooq엔 프리/애프터 시세가 없으므로, 지금이
@@ -8869,7 +8983,7 @@ async function fetchStooqPrice(yahooTicker) {
   // [휴장일 이중 반영 방지] Stooq는 체결 시각을 안 주므로 lastTradeKey는 생략한다(undefined) -
   // calcDailyPnL이 이 경우 기존 주말/세션시각 근사 로직으로 자동 폴백한다. regularMarketPrice는
   // Stooq가 시간외 구분 없이 항상 종가만 주므로 price와 동일하게 채운다.
-  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', currency, regularMarketPrice: price, source: 'Stooq' };
+  return { price, previousClose: null, changePercent: 0, session: timeWindow === 'regular' ? 'regular' : 'closed', currency, regularMarketPrice: price, todayOpen, todayHigh, todayLow, source: 'Stooq' };
 }
 
 // 국내(KRX) 티커 전용 - 네이버 금융의 비공식 실시간 API. Yahoo는 meta.preMarketPrice/postMarketPrice
@@ -8899,6 +9013,11 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
 
   const closeRaw = parseNaverNum(d.closePriceRaw);
   const diffRaw = parseNaverNum(d.compareToPreviousClosePriceRaw);
+  // [미니 당일 봉차트용 OHLC] 종가(closePriceRaw)와 동일한 명명 규칙의 시가/고가/저가 필드 - 값이
+  // 없거나 형식이 다르면 parseNaverNum이 null을 반환해 미니 차트가 조용히 숨겨진다(miniCandleSvg 참고).
+  const todayOpen = parseNaverNum(d.openPriceRaw);
+  const todayHigh = parseNaverNum(d.highPriceRaw);
+  const todayLow = parseNaverNum(d.lowPriceRaw);
   // [0원/깡통 데이터 방지 세이프가드] null뿐 아니라 0 이하도 무효로 본다 - 0원이 그대로 현재가로
   // 반영되면 평가금액이 순간적으로 0원이 되는 사고로 이어진다. 이 경우도 실패로 던져 호출부가
   // 기존 값을 그대로 유지하게 한다(다른 소스들과 동일한 방어 방식 - fetchStooqPrice 참고).
@@ -8950,6 +9069,7 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   return {
     price, previousClose, changePercent, session, currency,
     regularMarketPrice: closeRaw, lastTradeKey,
+    todayOpen, todayHigh, todayLow,
     source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)'
   };
 }
@@ -10593,6 +10713,11 @@ async function fetchPricesForTargets(targets) {
           delete state.noNewSessionMap[r.value.id];
         }
         if (typeof r.value.regularMarketPrice === 'number' && r.value.regularMarketPrice > 0) asset.regularMarketPrice = r.value.regularMarketPrice;
+        // [미니 당일 봉차트] 소스가 OHLC를 제공하지 못하면(값이 숫자가 아니면) 이전 값을 지워 미니
+        // 차트가 어제 값으로 잘못 그려지지 않고 조용히 숨겨지게 한다(miniCandleSvg 참고).
+        asset.todayOpen = Number.isFinite(r.value.todayOpen) ? r.value.todayOpen : undefined;
+        asset.todayHigh = Number.isFinite(r.value.todayHigh) ? r.value.todayHigh : undefined;
+        asset.todayLow = Number.isFinite(r.value.todayLow) ? r.value.todayLow : undefined;
         state.priceFetchFailedIds.delete(t.id); // 이번 갱신에서 성공했으므로 과거 실패 표시를 지운다
         successCount++;
       }
@@ -12087,6 +12212,18 @@ document.getElementById('darkModeBtn').addEventListener('click', () => {
   // 전환하면 축/범례 텍스트가 이전 테마 색 그대로 남아 새 배경과 겹쳐 안 보이는 문제가 있었다(탭을
   // 나갔다 다시 들어오면 switchRebalanceSubTab()이 다시 그려줘서 우연히 정상으로 보였을 뿐). 이
   // 서브탭을 보고 있을 때만 다시 그린다 - 숨겨진 캔버스에 그리면 크기가 0이 되므로 호출하지 않는다.
+  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection();
+});
+
+/* -------------------------------------------------------------------------
+ * 24-1. 데스크탑 모바일 뷰 전환
+ * ---------------------------------------------------------------------- */
+document.getElementById('mobileViewToggleBtn').addEventListener('click', () => {
+  const isOn = document.body.classList.toggle('mobile-view-mode');
+  localStorage.setItem(LS_MOBILE_VIEW, isOn ? '1' : '0');
+  // 차트 캔버스는 컨테이너 폭이 바뀌어도 스스로 다시 그리지 않으므로(Chart.js는 resize 이벤트 기준),
+  // 다크모드 전환과 동일하게 명시적으로 다시 그려 새 폭에 맞춘다.
+  renderCharts();
   if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection();
 });
 
