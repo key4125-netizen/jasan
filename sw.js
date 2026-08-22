@@ -2,14 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v105'; // [미니 당일 봉차트 + 정규장/장외 병행표기 + 데스크탑 모바일 뷰]
-// ① 종목 리스트(자산관리 테이블/카드, 핵심종목 팝업) 우측의 차트 아이콘을 오늘 하루 OHLC 미니 캔들
-// (miniCandleSvg, 큰 상세차트와 동일한 getCandleColors 색상 규칙)로 교체 - Yahoo/네이버/Stooq 세
-// 소스 모두에서 시가/고가/저가를 새로 추출한다. ② 실제 프리마켓/애프터마켓 시세가 메인 가격으로
-// 채택된 경우(session 'pre'|'post')에만 "정규장 XXX (X.XX%)" 보조 라인을 표시하고, 정규장 진행 중·
-// 완전 장마감일 때는 숨긴다(extendedHoursSublineHtml). ③ 헤더에 데스크탑에서도 모바일 카드 레이아웃을
-// 바로 확인할 수 있는 [모바일 뷰] 토글 버튼 추가(mobile-view-mode, localStorage 유지).
-// v104->v105: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v106'; // [RISK 카드 모달 분리 + 상단 필터/검색 팝업 독립화]
+// ① RISK 관리 카드의 "6대 위험요인/정밀 수치/2020·2022 폭락 재현/What-If 시뮬레이션"을 메인 카드에서
+// 분리해 [🔍 세부내용] 버튼으로 여는 별도 모달(riskDetailModal)로 옮기고, 원클릭 리밸런싱 버튼은
+// 제거했다 - 명의 탭(전체/신랑/와이프) 전환 시 모달이 열려 있어도 그 안 내용이 함께 갱신된다
+// (refreshRiskDetailModalIfOpen). ② 투자세부 탭 상단 도넛 차트 필터(소유자/자산군/계좌)가 더 이상
+// 자산 관리 목록에 영향을 주지 않도록 완전히 분리했고(tableAssets()), 목록 옆 "전체 자산군" 드롭다운은
+// 삭제했다. ③ 자산 관리 검색창은 실시간 필터 대신 Enter/[검색] 버튼으로만 동작하며, 매칭 결과는 별도
+// 팝업(assetSearchResultModal)으로, 매칭이 없으면 안내 알림으로 보여준다.
+// v105->v106: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
