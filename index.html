@@ -213,7 +213,7 @@
           <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v105</p>
+          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v106</p>
         </div>
       </div>
 
@@ -651,30 +651,31 @@
   </section>
 
   <!-- ============================= TABLE ============================= -->
-  <!-- [자산 관리 카드 - 계층별 독립 아코디언 구조] 요약 정보(tableCountLabel)와 검색/자산군 필터는
+  <!-- [자산 관리 카드 - 계층별 독립 아코디언 구조] 요약 정보(tableCountLabel)와 검색창은
        접힘/펼침과 무관하게 항상 최상단에 고정 노출된다. 그 아래 [전체]/[소유자별]/[국내·해외별]/
        [자산군별] 4개 보기 방식이 더 이상 토글 버튼으로 하나만 골라 보는 방식이 아니라, 각자 독립적으로
        접고 펼 수 있는 별도 아코디언 섹션으로 나란히 쌓여 있다 - assetGroupAccordionOpen{mode: bool}로
        각 섹션의 열림 상태를 개별 관리한다(assetManagementAccordionOpen 단일 변수 방식에서 전환).
-       모든 섹션이 같은 검색/필터 결과(rawRows)를 공유하며 그룹핑 방식만 다르게 보여줄 뿐이라 헤더 요약
-       (총 건수·총 평가액)도 4곳 모두 동일하다. 거래 목록 아코디언(txListAccordionBtn)과 동일한
-       setAccordionOpen(max-height 트랜지션 + chevron 회전) 패턴을 섹션마다 재사용한다. -->
+       모든 섹션이 같은 목록(tableAssets(), 상단 FILTER BAR와 무관)을 공유하며 그룹핑 방식만 다르게
+       보여줄 뿐이라 헤더 요약(총 건수·총 평가액)도 4곳 모두 동일하다. 거래 목록 아코디언
+       (txListAccordionBtn)과 동일한 setAccordionOpen(max-height 트랜지션 + chevron 회전) 패턴을
+       섹션마다 재사용한다. -->
   <section id="assetManagementSection" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
     <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
       <div class="flex items-center gap-2 mb-2">
         <h3 class="text-sm font-semibold shrink-0">자산 관리</h3>
         <span id="tableCountLabel" class="text-xs text-slate-400"></span>
       </div>
-      <!-- 자산 목록 전용 검색/자산군 필터. 상단 FILTER BAR의 '전체 자산군' 선택과 값이 서로 동기화된다. -->
+      <!-- [PART B] 자산 목록 전용 검색 - 더 이상 상단 FILTER BAR와 동기화되지 않으며(완전 독립),
+           입력만으로는 목록을 실시간으로 필터링하지 않는다. Enter 또는 [검색] 버튼을 눌러야 검색이
+           실행되고, 결과는 별도 팝업(assetSearchResultModal)으로 열린다. -->
       <div class="flex flex-wrap items-center gap-2">
         <div class="relative">
           <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-          <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색"
+          <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색 후 Enter"
             class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
         </div>
-        <select id="tableCategoryFilter" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-          <option value="ALL">전체 자산군</option>
-        </select>
+        <button type="button" id="assetSearchBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
       </div>
     </div>
 
@@ -1835,6 +1836,65 @@
   </div>
 </div>
 
+<!-- ============================= RISK 관리 - 상세 분석 & 시뮬레이션 팝업 =============================
+     메인 RISK 카드의 [🔍 세부내용] 버튼으로 연다(openRiskDetailModal) - 6대 위험요인 막대그래프/정밀
+     수치/역사적 하락장 재현/What-If 시뮬레이션처럼 자리를 많이 차지하는 상세 콘텐츠를 여기로 격리해
+     메인 카드는 한눈에 훑어볼 요약만 남긴다. 상단 명의 탭(전체/신랑/와이프) 전환 시 selectRiskCardOwner가
+     이 모달이 열려 있으면 함께 다시 그려 항상 지금 선택된 명의 기준 데이터를 보여준다. -->
+<div id="riskDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div id="riskDetailModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
+      <h3 class="text-sm font-semibold">📊 RISK 상세 분석 &amp; 시뮬레이션</h3>
+      <button type="button" id="closeRiskDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div id="riskDetailModalBody" class="px-5 py-4 overflow-y-auto"></div>
+  </div>
+</div>
+
+<!-- ============================= 자산 관리 - 검색 결과 팝업 =============================
+     검색창(assetSearchInput)에서 Enter 또는 [검색] 버튼을 눌렀을 때만 열린다 - 매칭된 자산을 소유자/
+     계좌별로 합치지 않고 개별 행 그대로 보여준다(rowHtml/cardHtml 재사용, handleAssetListClick 위임도
+     그대로 연결해 행을 누르면 기존 상세 모달이 뜬다). 모달 안의 입력창으로 같은 흐름으로 재검색할 수
+     있다. -->
+<div id="assetSearchResultModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div id="assetSearchResultModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
+      <h3 class="text-sm font-semibold">🔍 검색 결과 <span id="assetSearchResultCountLabel" class="text-xs font-normal text-slate-400"></span></h3>
+      <button type="button" id="closeAssetSearchResultModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input id="assetSearchResultInput" type="text" placeholder="종목명·티커·계좌·소유자 검색 후 Enter"
+            class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
+        </div>
+        <button type="button" id="assetSearchResultSearchBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
+      </div>
+    </div>
+    <div class="px-5 py-4 overflow-y-auto">
+      <div class="hidden sm:block overflow-x-auto">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+              <th class="px-3 py-2">종목명</th>
+              <th class="px-3 py-2 text-right">수량</th>
+              <th class="px-3 py-2 text-right">현재가</th>
+              <th class="px-3 py-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody id="assetSearchResultTableBody"></tbody>
+        </table>
+      </div>
+      <div id="assetSearchResultCardList" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============================= 가져오기(엑셀/JSON) 덮어쓰기·추가·취소 선택 모달 =============================
      [버그 수정 - "취소"를 누르면 안전하게 아무 일도 안 일어나야 한다] 예전엔 confirm()의 OK/Cancel 2지선다를
      "덮어쓰기/추가"로 억지로 매핑해서, 사용자가 정말 "그만두고 싶어서" 취소를 눌러도 실제로는 기존 데이터
@@ -2226,7 +2286,10 @@ const state = {
   // 달력 날짜 전환 시점에 스냅샷하며, 당일 중에는 exchangeRate가 갱신되어도 이 값은 고정된다.
   refExchangeRate: 1450,
   dailyChangeRate: 0,
-  filters: { owner: 'ALL', category: 'ALL', account: 'ALL', search: '' },
+  // [PART B - 상단 필터/목록 상태 분리] filters는 이제 상단 도넛 차트 3개에만 쓰인다(자산 관리
+  // 목록은 더 이상 이 값의 영향을 받지 않음 - tableAssets() 참고). 검색어는 목록 실시간 필터가 아니라
+  // Enter/버튼으로만 트리거되는 별도 팝업 검색(runAssetSearch)이라 여기 보관할 필요가 없어졌다.
+  filters: { owner: 'ALL', category: 'ALL', account: 'ALL' },
   sort: { key: null, dir: 1 },
   // 시세 자동조회로 얻은 종목별 당일 등락률(%). 새로고침마다 초기화되는 휘발성 데이터라
   // localStorage에는 저장하지 않고 자산 id -> 등락률(%) 맵으로만 메모리에 보관한다.
@@ -2633,8 +2696,10 @@ function calcRow(a) {
   return { isForeign, buyAmountOriginal, buyAmount: buyAmountKRW, curAmount, profit, rateOfReturn };
 }
 
+// [PART B - 상단 필터 독립화] 상단 FILTER BAR(전체 소유자/자산군/계좌)는 이제 상단 도넛 차트 3개
+// (renderCharts/openChartZoomModal)에만 쓰인다 - 자산 관리 목록은 tableAssets()를 따로 써서 이 필터의
+// 영향을 전혀 받지 않는다.
 function filteredAssets() {
-  const q = String(state.filters.search ?? '').trim().toLowerCase();
   return state.assets.filter(a => {
     // 전량 매도(수량 0 이하)된 포지션은 레코드는 남겨두되(syncAssetsFromTransactions 정책) 목록에는
     // 더 이상 노출하지 않는다 - 사용자가 명시적으로 요청한 화면 표시 규칙.
@@ -2642,18 +2707,27 @@ function filteredAssets() {
     if (state.filters.owner !== 'ALL' && a.owner !== state.filters.owner) return false;
     if (state.filters.category !== 'ALL' && a.category !== state.filters.category) return false;
     if (state.filters.account !== 'ALL' && a.accountType !== state.filters.account) return false;
-    if (q) {
-      // 종목명/티커/계좌구분/소유자를 대상으로 대소문자 구분 없이 부분 일치 검색한다.
-      const hay = [a.name, a.ticker, a.accountType, a.owner].map(v => String(v ?? '').toLowerCase()).join(' ');
-      if (!hay.includes(q)) return false;
-    }
     return true;
   });
 }
 
-function hasActiveListFilter() {
-  return state.filters.owner !== 'ALL' || state.filters.category !== 'ALL' || state.filters.account !== 'ALL'
-    || String(state.filters.search ?? '').trim() !== '';
+// [PART B - 자산 관리 목록 전용] 상단 필터/검색어와 완전히 무관하게 항상 보유 중인(수량>0) 자산 전체를
+// 반환한다 - 목록 화면은 이제 검색 팝업(runAssetSearch)을 통해서만 부분집합을 별도로 보여줄 뿐, 화면에
+// 상시 노출되는 목록 자체는 필터링되지 않는다.
+function tableAssets() {
+  return state.assets.filter(a => num(a.quantity) > 0);
+}
+
+// 검색어(종목명/티커/계좌구분/소유자)에 매칭되는 보유 자산을 찾는다 - 자산 관리 목록의 검색창(Enter
+// 또는 [검색] 버튼)과 검색 결과 팝업 내부 재검색이 공유한다. 상단 필터/목록 필터와 무관한 별도 경로.
+function searchAssetsByQuery(query) {
+  const q = String(query ?? '').trim().toLowerCase();
+  if (!q) return [];
+  return state.assets.filter(a => {
+    if (num(a.quantity) <= 0) return false;
+    const hay = [a.name, a.ticker, a.accountType, a.owner].map(v => String(v ?? '').toLowerCase()).join(' ');
+    return hay.includes(q);
+  });
 }
 
 /* -------------------------------------------------------------------------
@@ -3420,7 +3494,6 @@ function populateFilterOptions() {
   fillSelect('filterOwner', owners, '전체 소유자', state.filters.owner);
   fillSelect('filterCategory', categories, '전체 자산군', state.filters.category);
   fillSelect('filterAccount', accounts, '전체 계좌', state.filters.account);
-  fillSelect('tableCategoryFilter', categories, '전체 자산군', state.filters.category); // 자산 관리 목록 상단의 동기화된 자산군 필터
 }
 
 function fillSelect(id, values, allLabel, current) {
@@ -3631,7 +3704,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -3668,7 +3741,9 @@ const MODAL_CLOSE_FNS = {
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
   scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack),
   riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack),
-  coreStocksModal: (viaBack) => closeCoreStocksModal(viaBack)
+  coreStocksModal: (viaBack) => closeCoreStocksModal(viaBack),
+  riskDetailModal: (viaBack) => closeRiskDetailModal(viaBack),
+  assetSearchResultModal: (viaBack) => closeAssetSearchResultModal(viaBack)
 };
 
 function findOpenModalId() {
@@ -7315,7 +7390,9 @@ function reapplyAssetGroupAccordionHeights() {
 }
 
 function renderTable() {
-  const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
+  // [PART B] 상단 필터 바와 완전히 분리된 tableAssets()를 쓴다 - 자산 관리 목록은 이제 항상 보유
+  // 자산 전체를 보여주고, 부분집합 확인은 검색 팝업(runAssetSearch)으로만 한다.
+  const rawRows = tableAssets().map(a => ({ ...a, ...calcRow(a) }));
   const emptyMsg = document.getElementById('emptyTableMsg');
 
   if (rawRows.length === 0) {
@@ -7323,10 +7400,7 @@ function renderTable() {
       document.getElementById(`assetTableBody${suffix}`).innerHTML = '';
       document.getElementById(`assetCardList${suffix}`).innerHTML = '';
     });
-    // 검색어/필터 때문에 0건인 것과 애초에 자산이 없는 것을 구분해 정확한 안내를 보여준다.
-    emptyMsg.textContent = hasActiveListFilter()
-      ? '검색/필터 조건에 맞는 자산이 없습니다.'
-      : '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
+    emptyMsg.textContent = '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
     emptyMsg.classList.remove('hidden');
     document.getElementById('tableCountLabel').textContent = '총 0건';
     Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
@@ -7611,6 +7685,63 @@ function cardHtml(r) {
     <span class="shrink-0">${miniCandleSvg(r.todayOpen, r.todayHigh, r.todayLow, r.currentPrice)}</span>
   </div>`;
 }
+
+// [PART B - 검색 팝업] 검색창(Enter/[검색] 버튼)이나 검색 결과 팝업 내부 재검색이 공통으로 호출한다.
+// 매칭이 있으면 팝업을 열어 결과를 보여주고, 없으면 안내 알림을 띄운다(기존 앱 전반의 alert() 관례를
+// 그대로 따른다).
+function runAssetSearch(query) {
+  const results = searchAssetsByQuery(query);
+  if (results.length === 0) {
+    alert('검색 결과가 없습니다. 종목명이나 티커를 다시 확인해 주세요.');
+    return;
+  }
+  openAssetSearchResultModal(query, results);
+}
+
+// 매칭된 자산은 buildMergedRows로 합치지 않고 각 소유자/계좌 보유분을 개별 행 그대로 보여준다 -
+// "소유자/계좌/수량/매수단가/현재가/평가금액/평가손익/수익률"을 항목별로 정확히 구분해 확인할 수 있게
+// (rowHtml/cardHtml을 클릭하면 기존 상세 모달이 그 전체 항목을 보여준다).
+function renderAssetSearchResultModalBody(results) {
+  const rows = sortRows(results.map((a) => ({ ...a, ...calcRow(a) })));
+  document.getElementById('assetSearchResultCountLabel').textContent = `(총 ${rows.length}건)`;
+  document.getElementById('assetSearchResultTableBody').innerHTML = rows.map((r) => rowHtml(r)).join('');
+  document.getElementById('assetSearchResultCardList').innerHTML = rows.map((r) => cardHtml(r)).join('');
+  lucide.createIcons();
+}
+function openAssetSearchResultModal(query, results) {
+  document.getElementById('assetSearchResultInput').value = query;
+  renderAssetSearchResultModalBody(results);
+  document.getElementById('assetSearchResultModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeAssetSearchResultModal(viaBackButton) {
+  document.getElementById('assetSearchResultModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('assetSearchResultModalHeader').addEventListener('click', () => closeAssetSearchResultModal());
+document.getElementById('closeAssetSearchResultModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeAssetSearchResultModal();
+});
+document.getElementById('assetSearchResultModal').addEventListener('click', (e) => {
+  if (e.target.id === 'assetSearchResultModal') closeAssetSearchResultModal();
+});
+// [팝업 안 재검색] 매칭이 없으면 팝업을 닫지 않고 그 자리에서 바로 alert만 띄운다 - 사용자가 입력을
+// 고쳐 바로 다시 시도할 수 있게(팝업이 닫혀버리면 처음부터 다시 열어야 해서 불편하다).
+document.getElementById('assetSearchResultInput').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const results = searchAssetsByQuery(e.target.value);
+  if (results.length === 0) { alert('검색 결과가 없습니다. 종목명이나 티커를 다시 확인해 주세요.'); return; }
+  renderAssetSearchResultModalBody(results);
+});
+document.getElementById('assetSearchResultSearchBtn').addEventListener('click', () => {
+  const results = searchAssetsByQuery(document.getElementById('assetSearchResultInput').value);
+  if (results.length === 0) { alert('검색 결과가 없습니다. 종목명이나 티커를 다시 확인해 주세요.'); return; }
+  renderAssetSearchResultModalBody(results);
+});
+// rowHtml/cardHtml이 자산 관리 목록과 동일한 data-action="open-detail" 규약을 쓰므로, 같은 위임
+// 핸들러(handleAssetListClick)를 이 팝업 컨테이너에도 연결해 행을 누르면 기존 상세 모달이 뜨게 한다.
+document.getElementById('assetSearchResultModal').addEventListener('click', handleAssetListClick);
 
 function renderTableFooter(rows) {
   const totalBuy = rows.reduce((s, r) => s + r.buyAmount, 0);
@@ -8637,21 +8768,17 @@ document.querySelectorAll('th.sortable').forEach(th => {
 
 /* -------------------------------------------------------------------------
  * 15. 필터 이벤트
+ * [PART B - 상단 필터 독립화] 이 3개 필터(소유자/자산군/계좌)는 이제 상단 도넛 차트 3개(renderCharts)
+ * 에만 영향을 준다 - 아래 자산 관리 목록(renderTable)은 tableAssets()를 써서 항상 전체를 보여주므로
+ * 여기서 더 이상 renderTable()을 호출하지 않는다(상태 간섭 완전 차단).
  * ---------------------------------------------------------------------- */
-document.getElementById('filterOwner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderCharts(); renderTable(); });
-document.getElementById('filterCategory').addEventListener('change', (e) => {
-  state.filters.category = e.target.value;
-  document.getElementById('tableCategoryFilter').value = e.target.value; // 자산 관리 목록 상단 필터와 동기화
-  renderCharts();
-  renderTable();
-});
-document.getElementById('filterAccount').addEventListener('change', (e) => { state.filters.account = e.target.value; renderCharts(); renderTable(); });
+document.getElementById('filterOwner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderCharts(); });
+document.getElementById('filterCategory').addEventListener('change', (e) => { state.filters.category = e.target.value; renderCharts(); });
+document.getElementById('filterAccount').addEventListener('change', (e) => { state.filters.account = e.target.value; renderCharts(); });
 document.getElementById('filterResetBtn').addEventListener('click', () => {
-  state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL', search: '' };
-  document.getElementById('assetSearchInput').value = '';
+  state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   populateFilterOptions();
   renderCharts();
-  renderTable();
 });
 
 // [자산 관리 카드 - 계층별 독립 아코디언] 4개 섹션(전체/소유자별/국내해외별/자산군별) 각각의 헤더를
@@ -8664,18 +8791,15 @@ Object.keys(ASSET_GROUP_MODE_SUFFIX).forEach((mode) => {
   });
 });
 
-// 자산 관리 목록 상단의 검색창 - 종목명/티커/계좌구분/소유자 실시간 검색(차트에는 영향 없음, 목록만 필터링).
-document.getElementById('assetSearchInput').addEventListener('input', (e) => {
-  state.filters.search = e.target.value;
-  renderTable();
+// [PART B - 검색 팝업화] 자산 관리 목록 상단의 검색창은 더 이상 입력할 때마다 목록을 실시간으로
+// 필터링하지 않는다(tableAssets()가 항상 전체를 그린다) - Enter 또는 [검색] 버튼을 눌렀을 때만
+// searchAssetsByQuery()로 검색해 결과를 팝업(assetSearchResultModal)으로 보여주거나, 매칭이 없으면
+// 안내 알림을 띄운다.
+document.getElementById('assetSearchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runAssetSearch(e.target.value);
 });
-// 자산 관리 목록 상단의 자산군 필터 - 상단 FILTER BAR의 filterCategory와 같은 state.filters.category를
-// 공유하므로, 값이 바뀌면 서로 동기화하고 차트까지 함께 갱신한다.
-document.getElementById('tableCategoryFilter').addEventListener('change', (e) => {
-  state.filters.category = e.target.value;
-  document.getElementById('filterCategory').value = e.target.value;
-  renderCharts();
-  renderTable();
+document.getElementById('assetSearchBtn').addEventListener('click', () => {
+  runAssetSearch(document.getElementById('assetSearchInput').value);
 });
 
 
@@ -10127,19 +10251,6 @@ function renderRiskCardOwnerTabs() {
     btn.addEventListener('click', () => selectRiskCardOwner(btn.dataset.riskOwner));
   });
 }
-// [⚡ 원클릭 리밸런싱 이동 - RISK 카드 전용] 리밸런싱 탭의 "종목별 실행 가이드" 서브탭으로 이동해,
-// 지금 리스크 카드에서 보고 있던 소유자(또는 전체)의 아코디언만 자동으로 펼치고 그 자리로 스크롤한다 -
-// "누가 무엇을 사고팔아야 하는지"를 바로 확인할 수 있게 연결한다.
-function goToRebalanceGuideForOwner(owner) {
-  const key = owner || 'all';
-  switchTab('rebalance');
-  switchRebalanceSubTab('guide');
-  rebalanceGuideAccordionOpen[key] = true;
-  reapplyRebalanceGuideAccordionHeights();
-  const btn = document.querySelector(`.rebalance-guide-accordion-btn[data-guide-accordion-key="${CSS.escape(key)}"]`);
-  if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 function setAccordionOpen(bodyEl, chevronEl, isOpen) {
   bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
   chevronEl.classList.toggle('rotate-180', isOpen);
@@ -10200,6 +10311,7 @@ function renderRiskDiagnosisSummary() {
       riskCardOwnerMetricsCache[owner] = result;
       if (myToken === riskCardOwnerRequestToken) renderRiskSection();
     });
+    refreshRiskDetailModalIfOpen();
     return;
   }
   if (!m) {
@@ -10210,6 +10322,7 @@ function renderRiskDiagnosisSummary() {
       container.classList.add('hidden');
       container.innerHTML = '';
     }
+    refreshRiskDetailModalIfOpen();
     return;
   }
   container.classList.remove('hidden');
@@ -10218,10 +10331,56 @@ function renderRiskDiagnosisSummary() {
   const level = riskLevelFromScore(score);
   const diagnosisLine = buildRiskDiagnosisLine(m);
   const actionItems = buildRiskActionItems(m);
-  const sortinoGrade = sortinoToGrade(m.sortino) || '-';
   const conf = m.dataConfidence;
   const confLevel = conf.score >= 80 ? 'text-emerald-500' : conf.score >= 50 ? 'text-amber-500' : 'text-red-500';
 
+  container.innerHTML = `
+  <div class="rounded-xl border p-3.5 ${level.bgClass}">
+    <div class="flex items-start justify-between gap-2 flex-wrap">
+      <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <span class="shrink-0 text-xs font-semibold ${confLevel} flex items-center gap-1 whitespace-nowrap">
+        분석 신뢰도 ${conf.score}%
+        <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" id="riskDetailBtn" class="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 whitespace-nowrap">🔍 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+      </span>
+    </div>
+    <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
+    <div class="mt-2.5 space-y-1.5">
+      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+    </div>
+
+    <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
+         (volatilitySpike, computeAdvancedRiskMetrics 참고) - 평소엔 공간을 차지하지 않는다. -->
+    ${m.volatilitySpike ? `
+    <div class="mt-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 p-2.5">
+      <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">⚡ 최근 단기 변동성 급증 경고</p>
+      <p class="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
+    </div>` : ''}
+  </div>`;
+
+  lucide.createIcons();
+  refreshRiskDetailModalIfOpen();
+}
+
+// [🔍 세부내용 모달] 6대 위험요인 분해/정밀 수치/과거 폭락장 재현 시나리오/What-If 시뮬레이션 -
+// 메인 RISK 카드에서 분리해 이 모달 전용 컨테이너(#riskDetailModalBody)에 그린다. 메인 카드와 동일하게
+// getCurrentRiskMetrics()로 "지금 선택된 소유자(또는 전체)" 기준 지표를 읽으므로, 모달이 열린 채로 상단
+// 명의 탭을 바꾸면(refreshRiskDetailModalIfOpen 경유) 내용이 그 소유자 기준으로 다시 그려진다.
+function renderRiskDetailModal() {
+  const body = document.getElementById('riskDetailModalBody');
+  if (!body) return;
+  const m = getCurrentRiskMetrics();
+
+  if (m === undefined) {
+    body.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">계산 중...</p>';
+    return;
+  }
+  if (!m) {
+    body.innerHTML = `<p class="text-sm text-slate-400 py-6 text-center">${riskCardOwnerFilter !== 'all' ? escapeHtml(riskCardOwnerFilter) + '님의 ' : ''}위험 분석 대상 보유 종목(일반계좌 주식/ETF)이 없습니다.</p>`;
+    return;
+  }
+
+  const sortinoGrade = sortinoToGrade(m.sortino) || '-';
   const s = m.subScores;
   const barsHtml = [
     buildFactorBarRow('🎯 몰빵위험', s.concentration, '100점에 가까울수록 위험해요. 한 종목/업종에 돈이 쏠려 있으면 그 종목이 흔들릴 때 계좌 전체가 같이 흔들립니다.'),
@@ -10232,34 +10391,9 @@ function renderRiskDiagnosisSummary() {
     buildFactorBarRow('🔥 과열·수급', s.technical, '100점에 가까울수록 위험해요. 보유 종목이 단기간에 너무 많이 올라 숨고르기가 필요하거나, 거래량이 심상치 않은 정도입니다.')
   ].join('');
 
-  container.innerHTML = `
-  <div class="rounded-xl border p-3.5 ${level.bgClass}">
-    <div class="flex items-start justify-between gap-2 flex-wrap">
-      <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
-      <span class="shrink-0 text-xs font-semibold ${confLevel} flex items-center gap-0.5 whitespace-nowrap">
-        분석 신뢰도 ${conf.score}%
-        <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
-      </span>
-    </div>
-    <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
-    <div class="mt-2.5 space-y-1.5">
-      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
-    </div>
-
-    <!-- [⚡ 원클릭 리밸런싱 이동] 지금 보고 있는 소유자(또는 전체) 기준 그대로 리밸런싱 실행 가이드로
-         이동해 그 소유자 아코디언만 펼쳐준다(goToRebalanceGuideForOwner 참고). -->
-    <button type="button" data-goto-rebalance-owner="${escapeHtml(riskCardOwnerFilter)}" class="mt-2.5 w-full sm:w-auto text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 원클릭 리밸런싱 이동${riskCardOwnerFilter !== 'all' ? ` (${escapeHtml(riskCardOwnerFilter)})` : ''}</button>
-
-    <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
-         (volatilitySpike, computeAdvancedRiskMetrics 참고) - 평소엔 공간을 차지하지 않는다. -->
-    ${m.volatilitySpike ? `
-    <div class="mt-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 p-2.5">
-      <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">⚡ 최근 단기 변동성 급증 경고</p>
-      <p class="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
-    </div>` : ''}
-
+  body.innerHTML = `
     <!-- [6대 위험요인 분해] -->
-    <div class="mt-4 space-y-3">${barsHtml}</div>
+    <div class="space-y-3">${barsHtml}</div>
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
@@ -10307,22 +10441,42 @@ function renderRiskDiagnosisSummary() {
     </div>` : ''}
 
     ${m.missingCount > 0 ? `<p class="text-sm text-slate-400 mt-2.5">* ${m.missingCount}개 종목은 가격 이력이 부족해(신규 상장 등) 이 진단에서 제외되었습니다.</p>` : ''}
-  </div>`;
+  `;
 
   lucide.createIcons();
   // 진입 시 "균형" 시나리오를 기본으로 미리 계산해 보여준다(클릭 없이도 바로 가치를 확인할 수 있게).
   if (m.topHolding) {
-    const balancedBtn = container.querySelector('[data-scenario-preset="balanced"]');
+    const balancedBtn = body.querySelector('[data-scenario-preset="balanced"]');
     if (balancedBtn) balancedBtn.click();
   }
 }
 
-// [⚡ 원클릭 리밸런싱 이동 - RISK 카드] 이벤트 위임 - riskDiagnosisSummary는 매 렌더링마다 innerHTML로
-// 통째로 다시 그려지므로 컨테이너가 아니라 document에 위임해 재렌더링돼도 리스너가 끊기지 않는다.
+// [모달 열림 중 명의 탭 전환 대응] renderRiskDiagnosisSummary()가 매 렌더링마다(탭 전환 포함) 호출하여,
+// 모달이 열려 있을 때만 그 안의 내용도 함께 새로고침한다 - 닫혀 있으면 불필요한 재계산을 피한다.
+function refreshRiskDetailModalIfOpen() {
+  const modal = document.getElementById('riskDetailModal');
+  if (modal && !modal.classList.contains('hidden')) renderRiskDetailModal();
+}
+
+function openRiskDetailModal() {
+  renderRiskDetailModal();
+  document.getElementById('riskDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeRiskDetailModal(viaBackButton) {
+  document.getElementById('riskDetailModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-goto-rebalance-owner]');
-  if (!btn) return;
-  goToRebalanceGuideForOwner(btn.dataset.gotoRebalanceOwner);
+  if (e.target.closest('#riskDetailBtn')) openRiskDetailModal();
+});
+document.getElementById('riskDetailModalHeader').addEventListener('click', () => closeRiskDetailModal());
+document.getElementById('closeRiskDetailModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeRiskDetailModal();
+});
+document.getElementById('riskDetailModal').addEventListener('click', (e) => {
+  if (e.target.id === 'riskDetailModal') closeRiskDetailModal();
 });
 
 // [What-If 프리셋 버튼 클릭] 실제 데이터 재조회 없이 computeScenarioRiskMetrics()로 즉시 재계산한다.
