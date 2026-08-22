@@ -202,22 +202,41 @@
 
   <!-- ============================= HEADER ============================= -->
   <header class="mb-6">
-    <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/30">
-          <i data-lucide="wallet" class="w-5 h-5"></i>
+    <!-- [상단 헤더 재배치] 모바일에서 타이틀 블록을 압축해 우측 공간을 확보하고, 그 자리에 핵심 버튼
+         2개(1번: 시세&환율 갱신, 2번: 핵심종목 실시간)를 세로로 쌓아 배치한다(사용자 스크린샷의
+         1번/2번 위치). xl 이상(데스크탑)에서는 이 줄이 콘텐츠 폭만큼만 차지하도록 xl:w-auto로 바꿔
+         내부 justify-between이 더 이상 벌어지지 않게 하고, 아래 나머지 버튼 묶음은 xl:ml-auto로 화면
+         우측 끝에 붙여 기존 데스크탑 모습에 가깝게 유지한다. -->
+    <div class="flex flex-col xl:flex-row xl:items-center gap-3 xl:gap-4">
+      <div class="flex items-start justify-between gap-3 w-full xl:w-auto">
+        <div class="flex items-center gap-2 xl:gap-3 min-w-0">
+          <div class="w-9 h-9 xl:w-10 xl:h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/30 shrink-0">
+            <i data-lucide="wallet" class="w-4 h-4 xl:w-5 xl:h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <h1 class="text-base xl:text-xl font-bold tracking-tight truncate">Smart Asset Manager</h1>
+            <p class="text-[11px] xl:text-xs text-slate-500 dark:text-slate-400 truncate">개인 자산관리 총투자현황</p>
+            <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
+                 확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
+                 줄도 함께 수정). -->
+            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v108</p>
+          </div>
         </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">Smart Asset Manager</h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400">개인 자산관리 총투자현황</p>
-          <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
-               확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
-               줄도 함께 수정). -->
-          <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v106</p>
+
+        <!-- [1번/2번 핵심 버튼] 타이틀 우측에 세로로 붙는다 - id/클릭 핸들러는 그대로라 위치만 옮겨도
+             JS 쪽 수정이 필요 없다. -->
+        <div class="flex flex-col gap-1.5 shrink-0 xl:flex-row xl:gap-1.5">
+          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-[11px] xl:text-xs font-semibold px-2.5 xl:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+            <i id="refreshBtnIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0"></i>
+            <span id="refreshBtnText">시세 &amp; 환율 갱신</span>
+          </button>
+          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-[11px] xl:text-xs font-medium px-2.5 xl:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
+            <i data-lucide="activity" class="w-3.5 h-3.5 shrink-0"></i> 핵심종목 실시간
+          </button>
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
         <!-- [모바일 한 줄 배치] 환율 뱃지+환율보기+다크모드 버튼이 375px 화면에서도 한 줄에 나란히
              들어가도록, 좁은 화면에서만 라벨 텍스트를 줄이고(icon-only 환율보기, "현재 환율" 문구 생략)
              입력창 너비/여백을 압축한다(sm 이상에서는 기존과 동일). -->
@@ -249,35 +268,31 @@
           <i data-lucide="smartphone" class="w-4 h-4"></i>
         </button>
 
-
-        <!-- 메인 액션 버튼 그룹 -->
-        <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm flex-wrap">
-          <button id="refreshAllBtn" class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed">
-            <i id="refreshBtnIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-            <span id="refreshBtnText">시세 &amp; 환율 갱신</span>
+        <!-- [하단 액션 버튼 3열×2행 그리드] 시세갱신/핵심종목 실시간을 위로 올리고 나면 남는 6개
+             버튼(최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·JSON 불러오기·데이터 초기화)을 모바일
+             에서는 grid-cols-3로 가지런히 3개씩 2줄로, 데스크탑에서는 기존처럼 한 줄 flex로 배치한다.
+             DOM 순서가 그대로 첫 줄/둘째 줄 배치와 일치하므로(그리드 auto-flow) 별도 재배치가 필요
+             없다 - 사이사이의 숨김 file input은 display:none이라 그리드 흐름에서 자동으로 빠진다. -->
+        <div class="grid grid-cols-3 xl:flex xl:items-center gap-1.5 xl:gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 xl:p-1 shadow-sm w-full xl:w-auto">
+          <button id="addAssetBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
+            <i data-lucide="plus" class="w-3.5 h-3.5 shrink-0"></i> <span>최초등록</span>
           </button>
-          <button id="addAssetBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="plus" class="w-3.5 h-3.5"></i> 최초등록
+          <button id="exportExcelBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
+            <i data-lucide="download" class="w-3.5 h-3.5 shrink-0"></i> <span>엑셀 내보내기</span>
           </button>
-          <button id="exportExcelBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i> 엑셀 내보내기
-          </button>
-          <button id="importExcelBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="upload" class="w-3.5 h-3.5"></i> 엑셀 업로드
+          <button id="importExcelBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
+            <i data-lucide="upload" class="w-3.5 h-3.5 shrink-0"></i> <span>엑셀 업로드</span>
           </button>
           <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
-          <button id="exportJsonBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="모바일 기기 간 데이터 이동에 적합한 완전 백업(JSON)">
-            <i data-lucide="save" class="w-3.5 h-3.5"></i> JSON 백업
+          <button id="exportJsonBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight" title="모바일 기기 간 데이터 이동에 적합한 완전 백업(JSON)">
+            <i data-lucide="save" class="w-3.5 h-3.5 shrink-0"></i> <span>JSON 백업</span>
           </button>
-          <button id="importJsonBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="folder-open" class="w-3.5 h-3.5"></i> JSON 불러오기
+          <button id="importJsonBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5 shrink-0"></i> <span>JSON 불러오기</span>
           </button>
           <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
-          <button id="resetDataBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500">
-            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 데이터 초기화
-          </button>
-          <button id="coreStocksLiveBtn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i data-lucide="activity" class="w-3.5 h-3.5"></i> 핵심종목 실시간
+          <button id="resetDataBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 text-center leading-tight">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0"></i> <span>데이터 초기화</span>
           </button>
         </div>
       </div>
@@ -10341,8 +10356,11 @@ function renderRiskDiagnosisSummary() {
       <span class="shrink-0 text-xs font-semibold ${confLevel} flex items-center gap-1 whitespace-nowrap">
         분석 신뢰도 ${conf.score}%
         <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
-        <button type="button" id="riskDetailBtn" class="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 whitespace-nowrap">🔍 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
       </span>
+      <!-- [모바일 시인성 개선] 카드 다른 곳의 "세부내용" 버튼과 같은 .detail-btn(테두리 있는 버튼 모양)
+           스타일로 통일하고, ml-auto로 항상 이 줄의 맨 오른쪽 끝에 붙인다 - 분석 신뢰도 텍스트와 줄바꿈
+           돼도(좁은 모바일 폭) 왼쪽 끝이 아니라 우측 끝에 자리잡는다. -->
+      <button type="button" id="riskDetailBtn" class="detail-btn ml-auto">🔍 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
     </div>
     <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
     <div class="mt-2.5 space-y-1.5">
