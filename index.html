@@ -91,7 +91,10 @@
 
   /* 노치/펀치홀 기기 대응: viewport-fit=cover와 짝을 이뤄 안전 영역만큼 여백을 확보한다 */
   #app { padding-top: max(1.25rem, env(safe-area-inset-top)); padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
-  #toastContainer { top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); }
+  /* [토스트 하단 이동] 헤더 타이틀/[시세&환율 갱신][핵심종목 실시간] 버튼을 가리지 않도록 우상단
+     고정에서 화면 하단 중앙 고정으로 변경 - safe-area-inset-bottom을 더해 노치/제스처바가 있는
+     기기에서도 하단 24px보다 더 깊이 안 잘리게 한다. */
+  #toastContainer { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); }
 
   /* 모바일 터치 영역 확대: 44px는 iOS/Android 공통 권장 최소 터치 타깃 크기 */
   @media (max-width: 639px) {
@@ -191,7 +194,10 @@
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen">
 
 <!-- 토스트 알림 컨테이너: 시세/환율 갱신 실패 등 즉시성 있는 알림을 화면 우상단에 띄운다 -->
-<div id="toastContainer" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 items-end max-w-[90vw]"></div>
+<!-- [갱신 완료/실패 토스트 위치 이동] 우상단(헤더 근처) 고정에서 화면 하단 중앙 고정으로 변경 -
+     showToast()가 만드는 모든 성공/실패/경고 토스트가 공통으로 이 컨테이너를 쓰므로 한 곳만 바꾸면
+     전부 적용된다. -->
+<div id="toastContainer" class="fixed left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 max-w-[90vw] w-full sm:w-auto px-4 sm:px-0 pointer-events-none"></div>
 
 <!-- [초보자용 (i) 툴팁] 싱글톤 팝오버 하나를 재사용 - data-info-tip="설명문구"가 붙은 (i) 버튼을 탭하면
      그 버튼 바로 아래에 뜬다(마우스오버가 없는 모바일에서도 탭으로 동작). 화면 밖으로 넘치지 않게 좌우
@@ -219,7 +225,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v108</p>
+            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v109</p>
           </div>
         </div>
 
@@ -631,20 +637,21 @@
   </section>
 
   <!-- ============================= FILTER BAR ============================= -->
-  <section class="flex flex-wrap items-center gap-3 mb-4">
-    <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mr-1">
-      <i data-lucide="filter" class="w-3.5 h-3.5"></i> 필터
-    </div>
-    <select id="filterOwner" class="text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 outline-none">
+  <!-- [가로 1줄 재배치] 'Y 필터' 아이콘/텍스트를 없애고 그 자리에 [필터 초기화] 버튼을 배치, 이어서
+       3개 드롭다운을 한 줄로 나열한다. flex-nowrap + overflow-x-auto로 375px처럼 좁은 화면에서도
+       절대 2줄로 줄바꿈되지 않고(필요하면 가로 스크롤), 대신 padding/font-size를 컴팩트하게 줄여
+       실제로는 375px에서도 스크롤 없이 한 줄에 다 들어가도록 맞췄다. -->
+  <section class="flex flex-nowrap items-center gap-1.5 sm:gap-2 mb-4 overflow-x-auto">
+    <button id="filterResetBtn" class="shrink-0 text-[11px] sm:text-xs font-medium px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap">필터 초기화</button>
+    <select id="filterOwner" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 소유자</option>
     </select>
-    <select id="filterCategory" class="text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 outline-none">
+    <select id="filterCategory" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 자산군</option>
     </select>
-    <select id="filterAccount" class="text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 outline-none">
+    <select id="filterAccount" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 계좌</option>
     </select>
-    <button id="filterResetBtn" class="text-xs text-brand-600 dark:text-brand-300 hover:underline ml-1">필터 초기화</button>
   </section>
 
   <!-- ============================= CHARTS ============================= -->
@@ -7778,7 +7785,8 @@ function escapeHtml(str) {
 
 /* -------------------------------------------------------------------------
  * 11-1. 토스트 알림
- *    - 시세/환율 갱신 실패처럼 "지금 막 벌어진 일"을 화면 우상단에 잠깐 띄워 알린다.
+ *    - 시세/환율 갱신 실패처럼 "지금 막 벌어진 일"을 화면 하단 중앙에 잠깐 띄워 알린다(헤더 타이틀/
+ *      버튼을 가리지 않도록 #toastContainer 위치를 하단으로 옮김 - CSS 쪽 참고).
  *    - 상세 원인은 console.error/warn에 남기고, 토스트에는 요약만 표시한다.
  * ---------------------------------------------------------------------- */
 function showToast(message, type = 'info', duration = 6000) {
@@ -7790,7 +7798,9 @@ function showToast(message, type = 'info', duration = 6000) {
   };
   const container = document.getElementById('toastContainer');
   const el = document.createElement('div');
-  el.className = `modal-anim ${colors[type] || colors.info} text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-start gap-3`;
+  // [클릭 가능 영역 복구] 컨테이너 자체는 pointer-events-none(빈 공간이 아래 화면 클릭을 막지 않게)
+  // 이지만, 실제 토스트 알약 하나하나는 닫기(✕) 버튼을 눌러야 하니 pointer-events-auto로 되살린다.
+  el.className = `modal-anim pointer-events-auto ${colors[type] || colors.info} text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-start gap-3`;
   el.innerHTML = `<span class="flex-1 leading-relaxed">${escapeHtml(message)}</span><button class="opacity-70 hover:opacity-100 shrink-0" aria-label="닫기">✕</button>`;
   el.querySelector('button').addEventListener('click', () => el.remove());
   container.appendChild(el);
