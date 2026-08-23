@@ -225,7 +225,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v109</p>
+            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v110</p>
           </div>
         </div>
 
@@ -279,27 +279,17 @@
              에서는 grid-cols-3로 가지런히 3개씩 2줄로, 데스크탑에서는 기존처럼 한 줄 flex로 배치한다.
              DOM 순서가 그대로 첫 줄/둘째 줄 배치와 일치하므로(그리드 auto-flow) 별도 재배치가 필요
              없다 - 사이사이의 숨김 file input은 display:none이라 그리드 흐름에서 자동으로 빠진다. -->
-        <div class="grid grid-cols-3 xl:flex xl:items-center gap-1.5 xl:gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 xl:p-1 shadow-sm w-full xl:w-auto">
-          <button id="addAssetBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
-            <i data-lucide="plus" class="w-3.5 h-3.5 shrink-0"></i> <span>최초등록</span>
-          </button>
-          <button id="exportExcelBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
-            <i data-lucide="download" class="w-3.5 h-3.5 shrink-0"></i> <span>엑셀 내보내기</span>
-          </button>
-          <button id="importExcelBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
-            <i data-lucide="upload" class="w-3.5 h-3.5 shrink-0"></i> <span>엑셀 업로드</span>
-          </button>
+        <!-- [아이콘 제거 + 슬림 알약형 버튼] 아이콘을 없애고 텍스트만 중앙 정렬로 표시하면서, 그만큼
+             줄어든 내용물 높이에 맞춰 padding/카드 여백도 함께 슬림하게 줄였다(rounded-full 알약 모양). -->
+        <div class="grid grid-cols-3 xl:flex xl:items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full xl:w-auto">
+          <button id="addAssetBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">최초등록</button>
+          <button id="exportExcelBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 내보내기</button>
+          <button id="importExcelBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 업로드</button>
           <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
-          <button id="exportJsonBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight" title="모바일 기기 간 데이터 이동에 적합한 완전 백업(JSON)">
-            <i data-lucide="save" class="w-3.5 h-3.5 shrink-0"></i> <span>JSON 백업</span>
-          </button>
-          <button id="importJsonBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-center leading-tight">
-            <i data-lucide="folder-open" class="w-3.5 h-3.5 shrink-0"></i> <span>JSON 불러오기</span>
-          </button>
+          <button id="exportJsonBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap" title="모바일 기기 간 데이터 이동에 적합한 완전 백업(JSON)">JSON 백업</button>
+          <button id="importJsonBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">JSON 불러오기</button>
           <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
-          <button id="resetDataBtn" class="flex flex-col xl:flex-row items-center justify-center gap-1 xl:gap-1.5 text-[10.5px] xl:text-xs font-medium px-1.5 xl:px-3 py-2 xl:py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 text-center leading-tight">
-            <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0"></i> <span>데이터 초기화</span>
-          </button>
+          <button id="resetDataBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-950 text-red-500 whitespace-nowrap">데이터 초기화</button>
         </div>
       </div>
     </div>
@@ -435,47 +425,60 @@
        가로로 삐져나오지 않게 하고, 상품명만 truncate로 말줄임 처리한다. 폰트를 text-[10px]로 줄이고
        각 숫자 열은 손익률을 금액 아래 두 줄로 쌓지 않고 한 열의 한 줄 값으로만 표시해(renderTopHoldingsTable
        참고) 320~375px 폭에서도 가로 스크롤 없이 한 줄에 다 들어간다. -->
+  <!-- [드롭다운(아코디언)화] 공간 절약을 위해 기본 접힘 상태로 시작하고, 헤더를 누르면 펼쳐진다 -
+       자산 관리 카드의 계층별 아코디언(setAccordionOpen, max-height 트랜지션)과 동일한 패턴을
+       재사용한다(topHoldingsAccordionOpen, reapplyTopHoldingsAccordionHeights 참고). -->
   <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <h3 class="text-sm font-semibold mb-3">국내 자산 Top 5</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
-          <colgroup>
-            <col style="width:20%"><col style="width:23%"><col style="width:15%">
-            <col style="width:19%"><col style="width:23%">
-          </colgroup>
-          <thead>
-            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-              <th class="text-right font-medium py-1.5 px-1">현재가</th>
-              <th class="text-right font-medium py-1.5 px-1">등락률</th>
-              <th class="text-right font-medium py-1.5 px-1">당일손익</th>
-              <th class="text-right font-medium py-1.5 pl-1">총손익</th>
-            </tr>
-          </thead>
-          <tbody id="topHoldingsDomestic"></tbody>
-        </table>
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      <button type="button" id="topHoldingsDomesticToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <h3 class="text-sm font-semibold">국내 자산 Top 5</h3>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsDomesticChevron"></i>
+      </button>
+      <div id="topHoldingsDomesticBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4 overflow-x-auto">
+          <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
+            <colgroup>
+              <col style="width:20%"><col style="width:23%"><col style="width:15%">
+              <col style="width:19%"><col style="width:23%">
+            </colgroup>
+            <thead>
+              <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+                <th class="text-left font-medium py-1.5 pr-1">상품명</th>
+                <th class="text-right font-medium py-1.5 px-1">현재가</th>
+                <th class="text-right font-medium py-1.5 px-1">등락률</th>
+                <th class="text-right font-medium py-1.5 px-1">당일손익</th>
+                <th class="text-right font-medium py-1.5 pl-1">총손익</th>
+              </tr>
+            </thead>
+            <tbody id="topHoldingsDomestic"></tbody>
+          </table>
+        </div>
       </div>
     </div>
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-      <h3 class="text-sm font-semibold mb-3">해외 자산 Top 5</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
-          <colgroup>
-            <col style="width:20%"><col style="width:23%"><col style="width:15%">
-            <col style="width:19%"><col style="width:23%">
-          </colgroup>
-          <thead>
-            <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-              <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-              <th class="text-right font-medium py-1.5 px-1">현재가</th>
-              <th class="text-right font-medium py-1.5 px-1">등락률</th>
-              <th class="text-right font-medium py-1.5 px-1">당일손익</th>
-              <th class="text-right font-medium py-1.5 pl-1">총손익</th>
-            </tr>
-          </thead>
-          <tbody id="topHoldingsForeign"></tbody>
-        </table>
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      <button type="button" id="topHoldingsForeignToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <h3 class="text-sm font-semibold">해외 자산 Top 5</h3>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsForeignChevron"></i>
+      </button>
+      <div id="topHoldingsForeignBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-4 pb-4 overflow-x-auto">
+          <table class="w-full table-fixed text-[10px] sm:text-xs whitespace-nowrap">
+            <colgroup>
+              <col style="width:20%"><col style="width:23%"><col style="width:15%">
+              <col style="width:19%"><col style="width:23%">
+            </colgroup>
+            <thead>
+              <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+                <th class="text-left font-medium py-1.5 pr-1">상품명</th>
+                <th class="text-right font-medium py-1.5 px-1">현재가</th>
+                <th class="text-right font-medium py-1.5 px-1">등락률</th>
+                <th class="text-right font-medium py-1.5 px-1">당일손익</th>
+                <th class="text-right font-medium py-1.5 pl-1">총손익</th>
+              </tr>
+            </thead>
+            <tbody id="topHoldingsForeign"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>
@@ -3503,7 +3506,30 @@ function renderTopHoldings() {
   const foreign = groups.filter((g) => g.isDomestic === '해외').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
   renderTopHoldingsTable('topHoldingsDomestic', domestic, grandTotal);
   renderTopHoldingsTable('topHoldingsForeign', foreign, grandTotal);
+  // 시세 갱신 등으로 표 내용(행 수)이 바뀌면 펼쳐진 상태의 max-height도 새 내용 높이에 맞게 갱신해야
+  // 한다 - 자산 관리 카드의 reapplyAssetGroupAccordionHeights와 동일한 이유.
+  reapplyTopHoldingsAccordionHeights();
 }
+
+// [Top 5 드롭다운(아코디언)] 공간 절약을 위해 기본은 접힘 상태 - 헤더를 누르면 펼쳐진다.
+let topHoldingsAccordionOpen = { domestic: false, foreign: false };
+function reapplyTopHoldingsAccordionHeights() {
+  const suffixMap = { domestic: 'Domestic', foreign: 'Foreign' };
+  Object.keys(suffixMap).forEach((key) => {
+    const suffix = suffixMap[key];
+    const body = document.getElementById(`topHoldings${suffix}Body`);
+    const chevron = document.getElementById(`topHoldings${suffix}Chevron`);
+    if (body && chevron) setAccordionOpen(body, chevron, topHoldingsAccordionOpen[key]);
+  });
+}
+document.getElementById('topHoldingsDomesticToggleBtn').addEventListener('click', () => {
+  topHoldingsAccordionOpen.domestic = !topHoldingsAccordionOpen.domestic;
+  reapplyTopHoldingsAccordionHeights();
+});
+document.getElementById('topHoldingsForeignToggleBtn').addEventListener('click', () => {
+  topHoldingsAccordionOpen.foreign = !topHoldingsAccordionOpen.foreign;
+  reapplyTopHoldingsAccordionHeights();
+});
 
 /* -------------------------------------------------------------------------
  * 9. 필터 옵션 채우기
