@@ -2,14 +2,12 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v109'; // [필터 바 1줄 재배치 + 토스트 하단 이동]
-// ① 도넛 차트 상단 필터 바에서 'Y 필터' 아이콘/텍스트를 없애고 그 자리에 [필터 초기화] 버튼을 배치,
-// flex-nowrap + overflow-x-auto와 컴팩트한 padding/font-size로 375px에서도 [필터 초기화] [전체 소유자]
-// [전체 자산군] [전체 계좌]가 줄바꿈 없이 한 줄에 들어간다. ② showToast()가 쓰는 #toastContainer를
-// 우상단 고정에서 화면 하단 중앙 고정(bottom, safe-area-inset-bottom 반영)으로 옮겨, 시세/환율 갱신
-// 완료·실패 토스트가 더 이상 헤더 타이틀/[시세&환율 갱신][핵심종목 실시간] 버튼을 가리지 않는다 -
-// showToast를 쓰는 모든 호출부에 공통 적용됨.
-// v108->v109: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
+const CACHE_NAME = 'smart-asset-manager-v110'; // [액션 버튼 아이콘 제거·슬림화 + Top5 아코디언화]
+// ① 헤더의 6개 액션 버튼(최초등록/엑셀 내보내기/엑셀 업로드/JSON 백업/JSON 불러오기/데이터 초기화)에서
+// 아이콘을 완전히 없애고 텍스트만 남겨 rounded-full 알약 버튼으로 슬림화, padding도 줄여 카드 세로
+// 높이를 축소했다. ② 총금융투자현황 탭의 '국내 자산 Top 5' / '해외 자산 Top 5' 카드를 기본 접힘
+// 아코디언으로 바꿔(자산 관리 카드와 동일한 setAccordionOpen 패턴) 공간을 절약한다.
+// v109->v110: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
 // 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
 // (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
 const APP_SHELL = [
