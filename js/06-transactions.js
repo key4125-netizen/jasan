@@ -95,7 +95,10 @@ function syncAssetsFromTransactions() {
       (pos.ticker ? a.ticker === pos.ticker : (!a.ticker && a.name === pos.name)));
     if (asset && asset.category === '현금' && asset.currency !== 'USD') return; // 원화 현금만 자산관리 탭 전용 - 절대 덮어쓰지 않는다
     if (pos.quantity <= 0) {
-      if (asset) asset.quantity = 0;
+      // [가족 동기화 - 스마트 머지] 값이 실제로 바뀔 때만 updatedAt을 찍는다 - 이 함수는 부팅마다
+      // 실행되는 안전망 재계산이라, 매번 무조건 찍으면 아무것도 안 바뀌었는데도 "방금 수정됨"으로
+      // 보여 병합 시 진짜 편집을 이겨버릴 수 있다.
+      if (asset && asset.quantity !== 0) { asset.quantity = 0; asset.updatedAt = Date.now(); }
       return;
     }
     if (!asset) {
@@ -106,14 +109,18 @@ function syncAssetsFromTransactions() {
       // 멱등적이다). 네트워크 호출이라 굳이 기다리지 않고 백그라운드로 흘려보낸다. 티커가 없는 자산
       // (부동산/실물채권 등)은 시세 조회 자체가 불가능하므로 호출하지 않는다.
       if (pos.ticker) backfillDailyPnlHistory(asset);
-    } else {
+    } else if (asset.quantity !== pos.quantity || asset.buyPrice !== pos.avgPrice) {
       asset.quantity = pos.quantity;
       asset.buyPrice = pos.avgPrice;
+      asset.updatedAt = Date.now();
     }
     // [미실현 평가손익 환차 반영] 해외통화 포지션이면 거래내역에서 계산된 매수시점 가중평균 환율
     // (pos.avgRate)을 자산에 함께 저장해둔다 - calcRow()가 매입원가를 오늘 환율이 아니라 이 값으로
     // 환산해서, 보유 중인(아직 안 판) 포지션의 누적 평가손익에도 환차손익이 반영되게 한다.
-    if (asset && pos.currency === 'USD') asset.buyRate = pos.avgRate;
+    if (asset && pos.currency === 'USD' && asset.buyRate !== pos.avgRate) {
+      asset.buyRate = pos.avgRate;
+      asset.updatedAt = Date.now();
+    }
   });
 }
 
@@ -257,7 +264,8 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
             : undefined,
           fee: num(pick(row, '수수료', '세금', '수수료/세금', 'fee')),
           origin,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          updatedAt: Date.now() // [가족 동기화 - 스마트 머지]
         };
       }).filter((t) => t.quantity > 0 && t.price > 0 && t.name);
 
@@ -488,7 +496,8 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
       ? (num(document.getElementById('tx_appliedRate').value) || state.exchangeRate)
       : undefined,
     origin: (existing && existing.origin) || 'period', // 수동 입력은 항상 '기간' 거래로 취급(구분 태그는 엑셀 업로드 전용)
-    createdAt: existing ? existing.createdAt : Date.now() // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
+    createdAt: existing ? existing.createdAt : Date.now(), // 정렬 안정성을 위해 최초 생성 시각은 수정해도 유지
+    updatedAt: Date.now() // [가족 동기화 - 스마트 머지] 추가든 수정이든 항상 "지금"으로 갱신
   };
 
   if (existing) {

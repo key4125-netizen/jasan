@@ -2,14 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v113'; // [단일 인라인 스크립트를 js/*.js 13개 파일로 분리]
-// 기존에는 index.html 안의 <script>...</script> 하나(약 1만 줄)에 전체 앱 로직이 들어 있었으나,
-// 유지보수성을 위해 물리적 순서를 그대로 보존한 13개 외부 스크립트(js/01-core-state.js ~
-// js/13-settings-boot.js)로 분리하고 index.html에는 <script src="js/...">를 순서대로 나열했다 -
-// 번들러/모듈 없이 동작해야 하므로(정적 호스팅 + file:// 겸용) 각 파일의 최상위 코드가 이전과
-// 완전히 동일한 순서로 실행되도록 슬라이스 경계를 섹션 주석 경계에 정확히 맞췄다. index.html의
-// 마크업(<script> 태그 목록)과 새로 추가된 js/*.js 13개 파일이 전부 캐시 대상이므로, v112->v113으로
-// 올려 PWA가 캐시된 예전 단일 스크립트 버전을 버리고 새 파일들을 전부 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v115'; // [가족 동기화 - 스마트 머지(Smart Merge) 도입]
+// 지금까지는 push/pull 둘 다 전체 데이터를 통째로 주고받는 최종수정우선(Last-Write-Wins) 방식이라,
+// 부부가 비슷한 시간에 각자 자산/거래를 입력하면 나중에 동기화하는 쪽이 상대 데이터를 통째로 덮어써
+// 사라지는 문제가 있었다. 이제 자산/거래내역 각 레코드에 updatedAt을 부여하고, id 기준으로 로컬/
+// 원격을 병합한다(같은 id면 더 최신 쪽 채택, 한쪽에만 있으면 "마지막 병합 시점에 이미 알고 있던
+// id였는지" 기준선으로 신규/삭제를 구분). push도 업로드 직전에 먼저 병합하도록 바꿔, 어느 쪽이
+// 먼저 push하든 데이터가 사라지지 않는다(js/12-import-export-sync.js의 mergeCollectionById,
+// test/merge.test.js 참고). index.html의 정적 마크업은 안 바뀌었지만 js/01·06·07·12 스크립트가
+// 바뀌었으므로 v114->v115로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',

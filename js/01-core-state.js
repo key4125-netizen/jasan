@@ -15,7 +15,6 @@ const LS_ASSETS = 'sam_assets_v5';
 const LS_RATE = 'sam_exchange_rate_v5';
 const LS_DAILY_RATE = 'sam_daily_rate_v5';
 const LS_DARKMODE = 'sam_dark_mode_v5';
-const LS_MOBILE_VIEW = 'sam_mobile_view_v1';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
@@ -52,6 +51,11 @@ const LS_SYNC_PASSWORD = 'sam_sync_password_v1';
 const LS_SYNC_ENABLED = 'sam_sync_enabled_v1';
 const LS_SYNC_LAST_VERSION = 'sam_sync_last_version_v1';
 const LS_SYNC_LAST_SYNCED_AT = 'sam_sync_last_synced_at_v1';
+// [스마트 머지 - 삭제 판정 기준선] 마지막으로 병합에 성공했을 때 이 기기가 알고 있던 자산/거래내역
+// id 목록 - "한쪽에만 있는 id"가 "새로 생김"인지 "상대가 지움"인지 구분하는 데 쓰인다(js/12의
+// mergeCollectionById 참고).
+const LS_SYNC_MERGED_ASSET_IDS = 'sam_sync_merged_asset_ids_v1';
+const LS_SYNC_MERGED_TX_IDS = 'sam_sync_merged_tx_ids_v1';
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',
@@ -524,7 +528,11 @@ function makeAsset(raw) {
     buyPrice,
     // 매입금액은 더 이상 별도 입력을 받지 않고 항상 수량×매수단가로 자동 산출한다(calcRow에서 계산, 통화 기준).
     // 현재가는 업로드/생성 직후 기본적으로 매수단가로 초기화되며, [시세 갱신] 버튼으로 최신화된다.
-    currentPrice: (raw.currentPrice !== undefined && raw.currentPrice !== '' && raw.currentPrice !== null) ? num(raw.currentPrice) : buyPrice
+    currentPrice: (raw.currentPrice !== undefined && raw.currentPrice !== '' && raw.currentPrice !== null) ? num(raw.currentPrice) : buyPrice,
+    // [가족 동기화 - 스마트 머지] 이 자산 레코드가 마지막으로 실제 변경된 시각 - mergeCollectionById()가
+    // 같은 id가 로컬/원격 양쪽에 있을 때 어느 쪽을 채택할지 이 값으로 판단한다(js/12 참고). 시세 자동
+    // 갱신(fetchPricesForTargets)처럼 "진짜 편집"이 아닌 배경 갱신은 절대 이 값을 건드리지 않는다.
+    updatedAt: Date.now()
   };
 }
 
@@ -589,6 +597,7 @@ function migrateLegacyForeignExchangeRates() {
   state.transactions.forEach((tx) => {
     if (tx.currency === 'USD' && !(num(tx.appliedRate) > 0)) {
       tx.appliedRate = DEFAULT_LEGACY_FX_RATE;
+      tx.updatedAt = Date.now(); // 실제 값 교정이므로 스마트 머지 기준으로도 "진짜 수정"으로 취급
       changed = true;
     }
   });
@@ -626,13 +635,14 @@ function migrateUsdCashAssetsToTransactions() {
       a.quantity = dollarAmount;
       a.buyPrice = 1;
       a.currentPrice = 1;
+      a.updatedAt = Date.now(); // 실제 값 교정이므로 스마트 머지 기준으로도 "진짜 수정"으로 취급
     }
     state.transactions.push({
       id: genId(),
       date: yesterdayDateStr(),
       owner: a.owner, accountType: a.accountType, ticker: '', name: a.name,
       type: 'buy', quantity: dollarAmount, price: 1, currency: 'USD', fee: 0,
-      appliedRate: DEFAULT_LEGACY_FX_RATE, origin: 'initial', createdAt: Date.now()
+      appliedRate: DEFAULT_LEGACY_FX_RATE, origin: 'initial', createdAt: Date.now(), updatedAt: Date.now()
     });
     changed = true;
   });
@@ -654,6 +664,10 @@ function loadState() {
     persistAssets();
   }
   if (!Array.isArray(state.assets)) state.assets = [];
+  // [가족 동기화 - 스마트 머지 마이그레이션] 이 필드가 생기기 전부터 있던 자산은 updatedAt이 없다 -
+  // 최초 1회 "지금"으로 채워 넣는다(이후로는 실제 수정 시각이 정확히 기록됨). 되돌릴 필요 없는 단순
+  // 채움이라 매번 훑어도 안전하다(이미 값이 있으면 건드리지 않음).
+  state.assets.forEach((a) => { if (!a.updatedAt) a.updatedAt = Date.now(); });
   localStorage.setItem(LS_HAS_LAUNCHED, '1');
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;
@@ -712,6 +726,9 @@ function loadState() {
     state.transactions = txRaw ? JSON.parse(txRaw) : [];
     if (!Array.isArray(state.transactions)) state.transactions = [];
   } catch (e) { state.transactions = []; }
+  // [가족 동기화 - 스마트 머지 마이그레이션] 자산과 동일한 이유 - updatedAt이 없는 기존 거래는
+  // createdAt(그마저 없으면 지금)으로 채운다.
+  state.transactions.forEach((t) => { if (!t.updatedAt) t.updatedAt = t.createdAt || Date.now(); });
   migrateLegacyForeignExchangeRates();
   migrateUsdCashAssetsToTransactions();
 
@@ -723,11 +740,6 @@ function loadState() {
 
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
-  }
-  // [데스크탑 모바일 뷰 전환] 새로고침해도 마지막으로 선택한 뷰 모드가 유지되도록 body에 클래스를
-  // 미리 적용해둔다(토글 버튼 클릭 핸들러 참고).
-  if (localStorage.getItem(LS_MOBILE_VIEW) === '1') {
-    document.body.classList.add('mobile-view-mode');
   }
 }
 
@@ -749,7 +761,10 @@ function persistAssets(skipPush) {
     todayOpen: a.todayOpen, todayHigh: a.todayHigh, todayLow: a.todayLow,
     // [미실현 평가손익 환차 반영] 거래내역에서 계산된 매수 시점 가중평균 환율 - calcRow()가 매입원가
     // 환산에 쓴다(syncAssetsFromTransactions 참고). 반드시 영속 저장해야 재부팅 후에도 유지된다.
-    buyRate: a.buyRate
+    buyRate: a.buyRate,
+    // [가족 동기화 - 스마트 머지] makeAsset() 주석 참고 - 저장 안 하면 새로고침할 때마다 사라져서
+    // 병합 시 항상 "값 없음"으로 취급돼(0으로 폴백) 병합이 무의미해진다.
+    updatedAt: a.updatedAt
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();
