@@ -87,18 +87,6 @@ document.getElementById('darkModeBtn').addEventListener('click', () => {
 });
 
 /* -------------------------------------------------------------------------
- * 24-1. 데스크탑 모바일 뷰 전환
- * ---------------------------------------------------------------------- */
-document.getElementById('mobileViewToggleBtn').addEventListener('click', () => {
-  const isOn = document.body.classList.toggle('mobile-view-mode');
-  localStorage.setItem(LS_MOBILE_VIEW, isOn ? '1' : '0');
-  // 차트 캔버스는 컨테이너 폭이 바뀌어도 스스로 다시 그리지 않으므로(Chart.js는 resize 이벤트 기준),
-  // 다크모드 전환과 동일하게 명시적으로 다시 그려 새 폭에 맞춘다.
-  renderCharts();
-  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection();
-});
-
-/* -------------------------------------------------------------------------
  * 26. PWA: 서비스 워커 등록 (있으면 오프라인 캐싱 활성화, 없으면 조용히 무시)
  *    - sw.js는 index.html과 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅된 경우에만
  *      브라우저가 등록을 허용한다. file:// 로컬 실행이나 sw.js가 없는 경우 catch로 조용히 넘어가고
@@ -139,6 +127,11 @@ async function bootApp() {
   cleanupLegacyGoogleSyncKeys(); // 예전 구글 드라이브 연동 기능이 남긴 localStorage 키를 1회 정리
   loadState();
   loadSyncState();
+  // [동기화 상태 버튼 초기 표시] pullFromCloud()는 아래에서 await 없이 비동기로 실행되므로, 그 결과가
+  // 나오기 전까지 버튼이 잠깐 정적 기본값("동기화중지")으로 보이는 걸 막기 위해 loadSyncState() 직후
+  // 한 번 더 갱신해 최소한 켜짐/꺼짐 여부는 즉시 정확하게 보이게 한다(오류 여부는 pull 결과가 나온
+  // 뒤 반영됨).
+  updateSyncStatusUI();
   // 거래내역이 있으면 자산 목록을 항상 최신 계산값으로 맞춰둔 뒤 첫 렌더링을 시작한다(구조 변경/수동
   // localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치).
   if (state.transactions.length > 0) {

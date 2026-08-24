@@ -172,22 +172,6 @@
   html, body { overscroll-behavior-y: contain; }
   #app { overscroll-behavior-y: contain; }
 
-  /* [데스크탑 모바일 뷰 전환] Tailwind의 sm: 브레이크포인트는 실제 브라우저 뷰포트 폭 기준으로
-     동작해서 body에 클래스 하나 붙인다고 저절로 바뀌지 않는다 - #app 폭을 모바일 기기 규격으로
-     좁히는 것과 별개로, 이 앱이 실제로 쓰는 sm: 조합(자산 테이블↔카드 전환 등)을 직접 나열해
-     뒤집어야 진짜 모바일 카드 레이아웃이 나온다. 새로 추가되는 sm: 조합이 있다면 이 목록도 함께
-     늘려야 한다. */
-  body.mobile-view-mode #app {
-    max-width: 430px; margin-left: auto; margin-right: auto; font-size: 14px;
-    padding-left: 1rem; padding-right: 1rem;
-    box-shadow: 0 0 0 1px rgba(148,163,184,.25), 0 8px 30px rgba(0,0,0,.12);
-    border-radius: 1.25rem;
-  }
-  body.mobile-view-mode .hidden.sm\:block { display: none !important; }
-  body.mobile-view-mode div.sm\:hidden { display: block !important; }
-  body.mobile-view-mode span.hidden.sm\:inline { display: none !important; }
-  body.mobile-view-mode p.sm\:hidden { display: block !important; }
-  body.mobile-view-mode br.sm\:hidden { display: inline !important; }
 </style>
 </head>
 
@@ -225,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v113</p>
+            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v115</p>
           </div>
         </div>
 
@@ -268,17 +252,11 @@
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
 
-        <!-- [데스크탑 모바일 뷰 전환] 넓은 화면에서도 모바일 레이아웃(카드형 3줄 뷰 등)을 그 자리에서
-             바로 확인할 수 있게 하는 토글 - mobileViewToggleBtn 클릭 핸들러 참고. -->
-        <button id="mobileViewToggleBtn" title="모바일 화면으로 미리보기" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
-          <i data-lucide="smartphone" class="w-4 h-4"></i>
-        </button>
-
-        <!-- [가족 동기화 설정] 6개 버튼 그리드(grid-cols-3)에 넣으면 7번째 항목이 돼 모바일 3열 배치가
-             깨지므로, darkModeBtn/mobileViewToggleBtn과 같은 독립 아이콘 버튼으로 둔다. -->
-        <button id="syncSettingsBtn" title="가족 동기화 설정" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        </button>
+        <!-- [가족 동기화 설정 - 텍스트 상태 버튼] 6개 버튼 그리드(grid-cols-3)에 넣으면 7번째 항목이 돼
+             모바일 3열 배치가 깨지므로, darkModeBtn과 같은 독립 버튼으로 둔다. 아이콘 없이 텍스트만으로
+             현재 동기화 상태(동기화중/동기화중지/동기화오류)를 보여준다 - updateSyncStatusUI() 참고,
+             색상 클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값). -->
+        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-3 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">동기화중지</button>
 
         <!-- [하단 액션 버튼 3열×2행 그리드] 시세갱신/핵심종목 실시간을 위로 올리고 나면 남는 6개
              버튼(최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·JSON 불러오기·데이터 초기화)을 모바일
@@ -1966,20 +1944,28 @@
       </button>
     </div>
     <div class="px-5 py-4 space-y-3">
+      <!-- [상태값을 위로] 암호 입력란보다 먼저 눈에 띄게 - updateSyncStatusUI()가 텍스트/색상을
+           갱신한다(헤더의 syncSettingsBtn과 동일한 3색 규칙: 켜짐/꺼짐/오류). -->
+      <p id="syncStatusText" class="text-sm font-semibold px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">동기화 꺼짐</p>
       <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">가족(부부)이 함께 쓸 암호를 정해 양쪽 기기에 똑같이 입력하세요. 암호는 이 기기에만 저장되며, 데이터는 항상 암호화된 상태로만 클라우드를 거칩니다.</p>
       <div>
         <label class="text-xs font-medium text-slate-600 dark:text-slate-300">가족 공유 암호</label>
-        <input type="password" id="syncPasswordInput" placeholder="양쪽 기기에 동일하게 입력" class="mt-1 w-full text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <!-- [암호 보기/숨기기] 모바일/PC 간 오타·공백 방지 - toggleSyncPasswordVisibility() 참고. -->
+        <div class="relative mt-1">
+          <input type="password" id="syncPasswordInput" placeholder="양쪽 기기에 동일하게 입력" class="w-full text-sm pl-3 pr-10 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <button type="button" id="syncPasswordToggleBtn" title="암호 보기/숨기기" class="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <i data-lucide="eye" class="w-4 h-4"></i>
+          </button>
+        </div>
       </div>
       <div id="syncDecryptErrorBox" class="hidden text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">비밀번호가 올바르지 않아 복호화에 실패했습니다. 위에 올바른 암호를 다시 입력하고 저장해주세요.</div>
       <!-- [오타 방지] "클라우드에 아직 아무 데이터도 없음"은 (a) 정말 이 기기가 최초 설정이거나
            (b) 배우자 기기와 다른 암호를 잘못 입력했을 때 똑같이 발생한다 - 구분할 방법이 없으므로,
            바로 업로드하지 않고 한 번 더 확인을 받는다(onSyncPasswordSaved 참고). -->
       <div id="syncUploadConfirmBox" class="hidden text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded-lg px-3 py-2 space-y-2">
-        <p>클라우드에 저장된 데이터가 없습니다. 배우자 기기와 <b>정확히 같은 암호</b>인지 다시 한번 확인해주세요. 이 기기가 맞게 처음 설정하는 것이라면 아래 버튼으로 이 기기 데이터를 업로드하세요.</p>
+        <p>클라우드에 저장된 데이터가 없거나 입력한 암호가 일치하지 않습니다. 모바일/상대 기기에서 설정한 암호와 대소문자 및 공백이 완벽히 같은지 확인해 주세요. 이 기기가 맞게 처음 설정하는 것이라면 아래 버튼으로 이 기기 데이터를 업로드하세요.</p>
         <button type="button" id="syncUploadConfirmBtn" class="w-full text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">이 기기 데이터 업로드</button>
       </div>
-      <p id="syncStatusText" class="text-xs text-slate-500 dark:text-slate-400">동기화 꺼짐</p>
     </div>
     <div class="px-5 pb-5 flex flex-col gap-2">
       <button type="button" id="syncPasswordSaveBtn" class="w-full text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장하고 동기화 시작</button>

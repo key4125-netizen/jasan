@@ -835,9 +835,9 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     // 수치를 다시 덮어써 버리는 문제가 있었다. 이제 자산 수정은 항상 화면에 입력한 값을 그대로
     // state.assets에 반영한다 - 거래내역은 건드리지 않는다(부동산/채권/주식은 거래내역 탭에서 매수/매도로
     // 별도 추적하고, 현금/외화는 거래내역 자체를 만들 수 없으므로 이 화면이 유일한 관리 창구다).
-    state.assets[idx] = { ...oldAsset, ...payload };
+    state.assets[idx] = { ...oldAsset, ...payload, updatedAt: Date.now() }; // [가족 동기화 - 스마트 머지]
   } else {
-    const newAsset = { id: genId(), ...payload };
+    const newAsset = { id: genId(), ...payload, updatedAt: Date.now() }; // [가족 동기화 - 스마트 머지]
     state.assets.push(newAsset);
     // [최초 등록 소급 히스토리] "자산 추가"로 직접 만든 신규 자산도 대상 - 티커 없는 자산(채권/현금 등)은
     // backfillDailyPnlHistory 안에서 자연히 건너뛴다.

@@ -179,7 +179,10 @@ function buildSyncBlob() {
       category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
       regularMarketPrice: a.regularMarketPrice,
-      buyRate: a.buyRate
+      buyRate: a.buyRate,
+      // [가족 동기화 - 스마트 머지] mergeCollectionById()가 이 값으로 로컬/원격 중 더 최신 레코드를
+      // 고른다 - 빠지면 항상 0으로 취급돼 병합이 무의미해진다.
+      updatedAt: a.updatedAt
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
@@ -224,7 +227,10 @@ function normalizeImportedTransaction(t) {
     appliedRate: (t.currency === 'USD' && Number.isFinite(num(t.appliedRate)) && num(t.appliedRate) > 0) ? num(t.appliedRate) : undefined,
     fee: num(t.fee),
     origin: t.origin === 'initial' ? 'initial' : 'period',
-    createdAt: t.createdAt || Date.now()
+    createdAt: t.createdAt || Date.now(),
+    // [가족 동기화 - 스마트 머지] mergeCollectionById()가 이 값을 읽는다 - 없으면 createdAt으로,
+    // 그마저 없으면(아주 오래된 백업 등) 지금 시각으로 폴백한다.
+    updatedAt: t.updatedAt || t.createdAt || Date.now()
   };
 }
 
@@ -311,7 +317,10 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
  *      1회 + 10초 주기 폴링으로 실행한다. 충돌 해소는 단순 최종 수정 우선(version=Date.now() 비교) -
  *      부부 2인 저빈도 편집 환경에서는 병합 로직 없이 이걸로 충분하다.
  * ---------------------------------------------------------------------- */
-let syncState = { enabled: false, password: '', lastVersion: 0 };
+// hasError: 직전 push/pull 시도가 통신 오류(네트워크 실패 등)로 끝났는지 - 헤더의 동기화 상태
+// 버튼(동기화중/동기화중지/동기화오류)이 이 값을 읽는다. 비밀번호가 틀려 복호화가 실패한 경우는
+// 별도의 syncDecryptErrorBox 안내가 이미 있으므로 여기 hasError에는 포함시키지 않는다.
+let syncState = { enabled: false, password: '', lastVersion: 0, hasError: false };
 function loadSyncState() {
   syncState.password = localStorage.getItem(LS_SYNC_PASSWORD) || '';
   syncState.enabled = localStorage.getItem(LS_SYNC_ENABLED) === '1' && !!syncState.password;
@@ -362,11 +371,9 @@ async function decryptSyncBlob({ ciphertext, iv, salt }, password) {
   return JSON.parse(new TextDecoder().decode(plainBuf));
 }
 
-// [가족 동기화 + JSON 백업 복원 공용] 전체 상태를 원격(또는 파일)에서 받은 데이터로 완전히 덮어쓴다.
-// 예전엔 이 로직이 JSON 백업 복원의 "덮어쓰기" 분기 안에만 인라인으로 있었다 - 클라우드 pull도 똑같은
-// 복원이 필요해 함수로 뽑아 공유한다(로직이 둘로 갈라지면 한쪽만 고치고 잊어버리는 사고가 나기 쉽다).
-async function applyRemoteState(parsed) {
-  const restored = (Array.isArray(parsed.assets) ? parsed.assets : []).map(a => ({
+// JSON 백업/원격 동기화 공용 - 자산 객체를 타입 안전하게 보정한다(normalizeImportedTransaction과 짝).
+function normalizeImportedAsset(a) {
+  return {
     id: a.id || genId(),
     ticker: String(a.ticker ?? '').trim(),
     owner: a.owner || '공동',
@@ -379,13 +386,39 @@ async function applyRemoteState(parsed) {
     buyPrice: num(a.buyPrice),
     currentPrice: num(a.currentPrice),
     regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
-    buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined
-  }));
-  state.assets = restored;
+    buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
+    // [가족 동기화 - 스마트 머지] mergeCollectionById() 참고 - 없으면 지금 시각으로 폴백(오래된 백업 등).
+    updatedAt: a.updatedAt || Date.now()
+  };
+}
+
+// [JSON 백업/파일 복원 전용 - "덮어쓰기"] 자산/거래내역을 원격(파일) 데이터로 완전히 교체한다 - 백업
+// 복원은 "이 시점으로 되돌리기"가 목적이므로 병합이 아니라 통째 교체가 맞는 동작이다. 클라우드 동기화
+// (pullFromCloud/pushToCloud)는 이 함수를 쓰지 않고 mergeAssetsAndTransactionsWithRemote()로 병합한다
+// - 부부가 비슷한 시간에 각자 입력한 데이터가 한쪽 push/pull로 통째 덮어써져 사라지는 걸 막기 위함.
+async function applyRemoteState(parsed) {
+  state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
   state.dayChangeMap = {};
   state.prevCloseMap = {};
   state.sessionMap = {};
   state.priceFetchFailedIds = new Set();
+  applyRemoteScalarFields(parsed);
+  if (Array.isArray(parsed.transactions)) {
+    state.transactions = parsed.transactions.map(normalizeImportedTransaction);
+    persistTransactions();
+  }
+  persistAssets();
+  renderAll();
+  backfillAllHoldingsDailyPnlHistory();
+  refreshPricesAndRates();
+}
+
+// [가족 동기화 + JSON 백업 복원 공용] 환율/일간변동률/리밸런싱 목표/자산예측 설정/일별 스냅샷처럼
+// "배열이 아닌" 설정값들을 원격 데이터에서 반영한다 - 자산/거래내역(배열)은 호출부가 각자 다르게
+// 처리한다(applyRemoteState는 통째 교체, mergeAssetsAndTransactionsWithRemote는 병합). 요청 범위가
+// 자산/거래내역 병합으로 명시돼 있어 이 스칼라 설정값들은 지금처럼 "원격이 더 최신이면 그대로 채택"
+// 방식을 유지한다(호출부에서 이미 remote.version > lastVersion을 확인한 뒤에만 호출됨).
+function applyRemoteScalarFields(parsed) {
   if (Number.isFinite(num(parsed.exchangeRate)) && num(parsed.exchangeRate) > 0) {
     state.exchangeRate = num(parsed.exchangeRate);
     document.getElementById('exchangeRateInput').value = state.exchangeRate;
@@ -416,25 +449,61 @@ async function applyRemoteState(parsed) {
     };
     persistProjection();
   }
-  if (Array.isArray(parsed.transactions)) {
-    state.transactions = parsed.transactions.map(normalizeImportedTransaction);
-    persistTransactions();
-  }
   if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
     state.dailySnapshots = parsed.dailySnapshots;
     persistDailySnapshots();
     // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
-    // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 복원했으므로
-    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 복원한 자산 id를 전부 "이미 채워짐"으로
+    // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
+    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산 id를 전부 "이미 채워짐"으로
     // 미리 표시해 이중 합산을 막는다.
     const doneIds = getBackfillDoneIds();
     state.assets.forEach((a) => doneIds.add(a.id));
     localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
   }
-  persistAssets();
-  renderAll();
-  backfillAllHoldingsDailyPnlHistory();
-  refreshPricesAndRates();
+}
+
+// [가족 동기화 - 스마트 머지] "id가 한쪽에만 있음"은 "새로 생김"과 "상대가 지움" 둘 다일 수 있어
+// lastSyncedIds(직전 병합 성공 시점에 이 기기가 알던 id 집합) 없이는 구분이 안 된다:
+//   - 로컬에만 있음 + lastSyncedIds에 있었음  -> 원격이 그 사이 지웠다는 뜻 -> 버림
+//   - 로컬에만 있음 + lastSyncedIds에 없었음  -> 아직 동기화 안 된 순수 신규 로컬 항목 -> 살림
+//   - 원격에만 있음 + lastSyncedIds에 있었음  -> 로컬이 그 사이 지웠다는 뜻 -> 버림(되살리지 않음)
+//   - 원격에만 있음 + lastSyncedIds에 없었음  -> 상대가 새로 만든 항목 -> 살림
+// 양쪽에 다 있으면 updatedAt이 더 최신인 쪽을 통째로 채택한다(필드 단위 병합은 하지 않음 - 부부 2인
+// 저빈도 편집 환경에서는 "레코드 단위 최신 채택"으로 충분하고 필드별 병합보다 훨씬 예측하기 쉽다).
+// [순수 함수 - 의존성 없음] 전역 num() 헬퍼조차 쓰지 않고 자체적으로 숫자 변환한다 - test/merge.test.js가
+// 이 파일 전체를 require()하지 않고도(브라우저 전용 top-level DOM 배선 코드가 많아 Node에서 그대로
+// 실행할 수 없다) 이 함수 하나만 순수 로직으로 독립 검증할 수 있게 하기 위함이다.
+function mergeCollectionById(localArr, remoteArr, lastSyncedIds) {
+  const toTs = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const localMap = new Map(localArr.map((x) => [x.id, x]));
+  const remoteMap = new Map(remoteArr.map((x) => [x.id, x]));
+  const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
+  const merged = [];
+  allIds.forEach((id) => {
+    const l = localMap.get(id);
+    const r = remoteMap.get(id);
+    if (l && r) {
+      merged.push(toTs(r.updatedAt) > toTs(l.updatedAt) ? r : l);
+    } else if (l && !r) {
+      if (!lastSyncedIds.has(id)) merged.push(l);
+    } else if (r && !l) {
+      if (!lastSyncedIds.has(id)) merged.push(r);
+    }
+  });
+  return merged;
+}
+function getMergeBaseline(key) {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch (e) { return new Set(); }
+}
+// state.assets/state.transactions만 병합하고 스칼라 필드는 건드리지 않는다(요청 범위 - 자산/거래내역).
+// 호출부(pullFromCloud/pushToCloud)가 persistAssets()/persistTransactions()/renderAll()을 알아서 호출한다.
+function mergeAssetsAndTransactionsWithRemote(parsed) {
+  const remoteAssets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
+  const remoteTx = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(normalizeImportedTransaction);
+  state.assets = mergeCollectionById(state.assets, remoteAssets, getMergeBaseline(LS_SYNC_MERGED_ASSET_IDS));
+  state.transactions = mergeCollectionById(state.transactions, remoteTx, getMergeBaseline(LS_SYNC_MERGED_TX_IDS));
+  localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
+  localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
 }
 
 let pushDebounceTimer = null;
@@ -448,41 +517,106 @@ function schedulePush() {
 }
 async function pushToCloud() {
   if (!syncState.enabled) return;
-  const version = Date.now();
-  const encrypted = await encryptSyncBlob(buildSyncBlob(), syncState.password);
-  const kvKey = await deriveKvKey(syncState.password);
-  const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...encrypted, version, updatedAt: new Date().toISOString() })
-  });
-  if (!res.ok) throw new Error('push failed: ' + res.status);
-  syncState.lastVersion = version;
-  localStorage.setItem(LS_SYNC_LAST_VERSION, String(version));
-  localStorage.setItem(LS_SYNC_LAST_SYNCED_AT, new Date().toISOString());
-  updateSyncStatusUI();
+  try {
+    const kvKey = await deriveKvKey(syncState.password);
+    // [스마트 머지 - 덮어쓰기 전 병합] 업로드 직전에 클라우드를 먼저 확인해, 로컬이 아직 못 받은 더
+    // 최신 원격 데이터가 있으면 push하기 전에 먼저 병합한다 - 안 그러면 배우자가 방금 추가한 자산/
+    // 거래가 이 push 한 번으로 통째 덮어써져 사라질 수 있다(부부가 비슷한 시간에 각자 입력하는 경우
+    // 정확히 이 시나리오였다). 비밀번호가 틀려 복호화가 실패하면 아래 catch가 잡아 push 자체를
+    // 중단한다 - 검증 안 된 원격 위에 무작정 덮어쓰지 않기 위함이다.
+    const getRes = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
+    if (getRes.ok) {
+      const remote = await getRes.json();
+      if (remote.version && remote.version > syncState.lastVersion) {
+        const parsed = await decryptSyncBlob(remote, syncState.password);
+        applyingRemoteUpdate = true;
+        try {
+          mergeAssetsAndTransactionsWithRemote(parsed);
+          persistAssets();
+          persistTransactions();
+        } finally {
+          applyingRemoteUpdate = false;
+        }
+        syncState.lastVersion = remote.version;
+        renderAll();
+      }
+    }
+    const version = Date.now();
+    const encrypted = await encryptSyncBlob(buildSyncBlob(), syncState.password);
+    const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...encrypted, version, updatedAt: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error('push failed: ' + res.status);
+    syncState.lastVersion = version;
+    syncState.hasError = false;
+    localStorage.setItem(LS_SYNC_LAST_VERSION, String(version));
+    localStorage.setItem(LS_SYNC_LAST_SYNCED_AT, new Date().toISOString());
+    // [스마트 머지 - 기준선 갱신] 병합을 안 거치고 곧장 push한 경우(원격이 비어있던 최초 push 등)에도
+    // 기준선을 반드시 갱신해야 한다 - 안 그러면 이 기기의 기준선이 계속 비어있는 채로 남아, 다음 번
+    // 상대의 삭제가 이 기기에서 "삭제로 인식"되지 못하고 되살아나 버린다.
+    localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
+    localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+    updateSyncStatusUI();
+  } catch (e) {
+    syncState.hasError = true;
+    updateSyncStatusUI();
+    throw e; // schedulePush()의 .catch(console.warn)이 계속 받아 로그로 남기도록 그대로 전파
+  }
 }
 // 반환값은 호출부(특히 onSyncPasswordSaved의 최초 페어링 분기)가 상황을 구분하는 데 쓰인다.
+// opts.fullAdopt: 이 기기가 이번에 처음 동기화를 켤 때만 true로 넘어온다(onSyncPasswordSaved 참고) -
+// [최초 페어링 - 병합하지 않고 통째로 채택하는 이유] 병합 기준선이 아직 하나도 없는 상태에서 일반
+// 병합을 그대로 적용하면, 이 기기의 기존 로컬 데이터(특히 와이프님 폰처럼 아직 안 지운 샘플/데모
+// 자산 6건)까지 전부 "아직 동기화 안 된 신규 항목"으로 오인해 배우자의 진짜 데이터와 합쳐(union)
+// 버린다 - 그 결과 신랑님의 실제 자산 목록에 와이프님 폰의 샘플 자산이 섞여 들어가는 사고가 난다.
+// 최초 1회만은 예전처럼 원격을 통째로 "채택"해 이 문제를 원천 차단하고, 이후 편집분부터는 정상적으로
+// 병합된다(기준선이 이 시점에 채택된 id 목록으로 설정되므로).
 async function pullFromCloud(opts) {
   const silent = opts && opts.silent;
+  const fullAdopt = opts && opts.fullAdopt;
   if (!syncState.enabled) return 'disabled';
   try {
     const kvKey = await deriveKvKey(syncState.password);
     const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
-    if (res.status === 404) return 'not_found'; // 아직 아무도 push 안 함(최초 페어링 - 이 기기 데이터가 기준)
+    if (res.status === 404) { // 아직 아무도 push 안 함(최초 페어링 - 이 기기 데이터가 기준) - 통신 자체는 성공
+      syncState.hasError = false;
+      updateSyncStatusUI();
+      return 'not_found';
+    }
     if (!res.ok) throw new Error('pull failed: ' + res.status);
     const remote = await res.json();
-    if (!remote.version || remote.version <= syncState.lastVersion) return 'up_to_date';
+    syncState.hasError = false; // 여기까지 왔으면 통신은 정상 - 이후 분기는 통신 오류가 아니다
+    if (!remote.version || remote.version <= syncState.lastVersion) { updateSyncStatusUI(); return 'up_to_date'; }
     let parsed;
     try {
       parsed = await decryptSyncBlob(remote, syncState.password);
     } catch (e) {
       showSyncDecryptFailure();
+      updateSyncStatusUI();
       return 'decrypt_failed';
     }
     applyingRemoteUpdate = true;
     try {
-      await applyRemoteState(parsed);
+      if (fullAdopt) {
+        // [최초 페어링 전용] 위 주석 참고 - 병합 없이 원격을 통째로 채택하고, 그 결과를 기준선으로 삼는다.
+        state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
+        state.transactions = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(normalizeImportedTransaction);
+        localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
+        localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+      } else {
+        // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.
+        mergeAssetsAndTransactionsWithRemote(parsed);
+      }
+      // 나머지 설정값(환율/리밸런싱/자산예측 등)은 두 경로 모두 기존처럼 원격 값을 그대로 채택한다
+      // (이미 위에서 remote.version > lastVersion을 확인한 뒤라 원격이 더 최신).
+      applyRemoteScalarFields(parsed);
+      persistAssets();
+      persistTransactions();
+      renderAll();
+      backfillAllHoldingsDailyPnlHistory();
+      refreshPricesAndRates();
     } finally {
       applyingRemoteUpdate = false;
     }
@@ -494,18 +628,61 @@ async function pullFromCloud(opts) {
     return 'applied';
   } catch (e) {
     console.warn('[동기화] 다운로드 실패', e); // 네트워크 오류는 조용히 무시 - 다음 10초 주기에 재시도
+    syncState.hasError = true;
+    updateSyncStatusUI();
     return 'error';
   }
 }
 
+// [동기화 상태 색상 3세트] 아이콘 없이 텍스트+배경색만으로 상태를 구분한다(요청에 따라 아이콘 완전
+// 제거) - 헤더의 syncSettingsBtn과 모달 안의 syncStatusText가 이 색상 세트를 공유한다.
+// updateSyncStatusUI()가 매번 세 세트를 전부 지운 뒤 현재 상태에 맞는 세트만 다시 붙이는 방식이라,
+// 상태가 바뀔 때마다 이전 색이 남아있을 걱정 없이 항상 정확한 한 가지 색만 적용된다.
+const SYNC_COLOR_ACTIVE = ['bg-brand-50', 'dark:bg-brand-950/40', 'border-brand-200', 'dark:border-brand-800', 'text-brand-600', 'dark:text-brand-400'];
+const SYNC_COLOR_INACTIVE = ['bg-white', 'dark:bg-slate-900', 'border-slate-200', 'dark:border-slate-800', 'text-slate-400', 'dark:text-slate-500'];
+const SYNC_COLOR_ERROR = ['bg-red-50', 'dark:bg-red-950/40', 'border-red-200', 'dark:border-red-800', 'text-red-600', 'dark:text-red-400'];
+const SYNC_ALL_COLOR_CLASSES = [...SYNC_COLOR_ACTIVE, ...SYNC_COLOR_INACTIVE, ...SYNC_COLOR_ERROR];
 function updateSyncStatusUI() {
   const toggleBtn = document.getElementById('syncSettingsBtn');
-  if (toggleBtn) toggleBtn.classList.toggle('text-brand-600', syncState.enabled);
+  if (toggleBtn) {
+    toggleBtn.classList.remove(...SYNC_ALL_COLOR_CLASSES);
+    if (!syncState.enabled) {
+      toggleBtn.textContent = '동기화중지';
+      toggleBtn.classList.add(...SYNC_COLOR_INACTIVE);
+    } else if (syncState.hasError) {
+      toggleBtn.textContent = '동기화오류';
+      toggleBtn.classList.add(...SYNC_COLOR_ERROR);
+    } else {
+      toggleBtn.textContent = '동기화중';
+      toggleBtn.classList.add(...SYNC_COLOR_ACTIVE);
+    }
+  }
+  // [모달 안 상태 배지] 암호 입력란보다 위에서 크게 보여준다(요청에 따라 위치 이동) - 헤더 버튼과
+  // 같은 3색 규칙 + 마지막 동기화 시각까지 함께 표기한다.
   const statusEl = document.getElementById('syncStatusText');
-  if (!statusEl) return;
-  if (!syncState.enabled) { statusEl.textContent = '동기화 꺼짐'; return; }
-  const lastAt = localStorage.getItem(LS_SYNC_LAST_SYNCED_AT);
-  statusEl.textContent = lastAt ? `동기화 켜짐 · 마지막 동기화 ${new Date(lastAt).toLocaleString('ko-KR')}` : '동기화 켜짐 · 동기화 대기 중...';
+  if (statusEl) {
+    statusEl.classList.remove(...SYNC_ALL_COLOR_CLASSES);
+    if (!syncState.enabled) {
+      statusEl.textContent = '동기화중지';
+      statusEl.classList.add(...SYNC_COLOR_INACTIVE);
+    } else if (syncState.hasError) {
+      statusEl.textContent = '동기화오류 · 네트워크 연결을 확인해주세요';
+      statusEl.classList.add(...SYNC_COLOR_ERROR);
+    } else {
+      const lastAt = localStorage.getItem(LS_SYNC_LAST_SYNCED_AT);
+      statusEl.textContent = lastAt ? `동기화중 · 마지막 동기화 ${new Date(lastAt).toLocaleString('ko-KR')}` : '동기화중 · 동기화 대기 중...';
+      statusEl.classList.add(...SYNC_COLOR_ACTIVE);
+    }
+  }
+}
+// [암호 보기/숨기기] input type을 text<->password로 토글하고 눈 아이콘도 함께 바꾼다.
+function toggleSyncPasswordVisibility() {
+  const input = document.getElementById('syncPasswordInput');
+  const btn = document.getElementById('syncPasswordToggleBtn');
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.innerHTML = `<i data-lucide="${showing ? 'eye' : 'eye-off'}" class="w-4 h-4"></i>`;
+  lucide.createIcons();
 }
 function showSyncDecryptFailure() {
   document.getElementById('syncDecryptErrorBox')?.classList.remove('hidden');
@@ -536,15 +713,19 @@ async function onSyncPasswordSaved(password) {
   localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
   document.getElementById('syncDecryptErrorBox')?.classList.add('hidden');
   document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
-  const result = await pullFromCloud();
+  const result = await pullFromCloud({ fullAdopt: true }); // 최초 페어링 - 병합 대신 통째 채택(위 pullFromCloud 주석 참고)
   updateSyncStatusUI();
-  if (result === 'applied') showToast('클라우드 데이터를 이 기기에 반영했습니다.', 'success');
+  if (result === 'applied') {
+    showToast('클라우드 데이터를 이 기기에 반영했습니다.', 'success');
+    closeSyncSettingsModal(); // [자동 닫기] 저장이 실제로 성공(=최신 데이터 반영)했을 때만 닫는다
+  }
   else if (result === 'not_found') document.getElementById('syncUploadConfirmBox')?.classList.remove('hidden');
   else if (result === 'decrypt_failed') showToast('비밀번호가 올바르지 않습니다.', 'error');
   else if (result === 'error') showToast('네트워크 오류로 동기화에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
 }
 
 document.getElementById('syncSettingsBtn').addEventListener('click', () => openSyncSettingsModal());
+document.getElementById('syncPasswordToggleBtn').addEventListener('click', () => toggleSyncPasswordVisibility());
 document.getElementById('closeSyncSettingsModalBtn').addEventListener('click', () => closeSyncSettingsModal());
 document.getElementById('syncSettingsModal').addEventListener('click', (e) => { if (e.target.id === 'syncSettingsModal') closeSyncSettingsModal(); });
 document.getElementById('syncPasswordSaveBtn').addEventListener('click', async () => {
@@ -553,15 +734,27 @@ document.getElementById('syncPasswordSaveBtn').addEventListener('click', async (
   await onSyncPasswordSaved(pw);
 });
 document.getElementById('syncUploadConfirmBtn').addEventListener('click', async () => {
-  await pushToCloud();
-  document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
-  updateSyncStatusUI();
-  showToast('이 기기의 데이터를 클라우드에 업로드했습니다.', 'success');
+  try {
+    await pushToCloud();
+    document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
+    updateSyncStatusUI();
+    showToast('이 기기의 데이터를 클라우드에 업로드했습니다.', 'success');
+    closeSyncSettingsModal(); // [자동 닫기] 업로드가 실제로 성공했을 때만 닫는다
+  } catch (e) {
+    showToast('네트워크 오류로 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+  }
 });
 document.getElementById('syncDisableBtn').addEventListener('click', () => {
   syncState.enabled = false;
+  syncState.hasError = false;
   localStorage.setItem(LS_SYNC_ENABLED, '0');
   updateSyncStatusUI();
   showToast('동기화를 껐습니다.', 'info');
 });
+
+// [테스트 전용] 브라우저에는 `module`이 없으므로 이 블록은 그냥 무시된다 - Node의 test/merge.test.js가
+// mergeCollectionById()를 require해서 순수 함수 단위로 검증할 수 있도록 노출만 해준다.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { mergeCollectionById };
+}
 
