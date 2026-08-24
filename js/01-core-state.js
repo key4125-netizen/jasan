@@ -56,6 +56,10 @@ const LS_SYNC_LAST_SYNCED_AT = 'sam_sync_last_synced_at_v1';
 // mergeCollectionById 참고).
 const LS_SYNC_MERGED_ASSET_IDS = 'sam_sync_merged_asset_ids_v1';
 const LS_SYNC_MERGED_TX_IDS = 'sam_sync_merged_tx_ids_v1';
+// [JSON 자동 백업] 토글 on/off 상태와 "오늘 이미 백업했는지" 판정 기준 날짜(로컬 타임존, todayDateStr()
+// 형식) - js/12-import-export-sync.js의 downloadJsonBackup()/runAutoBackupIfDue() 참고.
+const LS_AUTO_BACKUP_ENABLED = 'sam_auto_backup_enabled_v1';
+const LS_LAST_AUTO_BACKUP_DATE = 'sam_last_auto_backup_date_v1';
 
 const CATEGORY_COLORS = {
   '주식': '#6366f1', 'ETF': '#06b6d4', '채권': '#10b981',

@@ -132,6 +132,9 @@ async function bootApp() {
   // 한 번 더 갱신해 최소한 켜짐/꺼짐 여부는 즉시 정확하게 보이게 한다(오류 여부는 pull 결과가 나온
   // 뒤 반영됨).
   updateSyncStatusUI();
+  // [JSON 자동 백업] 토글 상태 표시 + 오늘 아직 안 했으면 1회 자동 다운로드(꺼져 있으면 no-op).
+  updateAutoBackupToggleUI();
+  runAutoBackupIfDue();
   // 거래내역이 있으면 자산 목록을 항상 최신 계산값으로 맞춰둔 뒤 첫 렌더링을 시작한다(구조 변경/수동
   // localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치).
   if (state.transactions.length > 0) {
