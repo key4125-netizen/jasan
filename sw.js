@@ -2,12 +2,11 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v117'; // [동기화 상태 라벨에 "서버" 표기 추가]
-// 헤더 버튼/설정 모달의 동기화 상태 문구를 "동기화중/동기화중지/동기화오류"에서 "서버 동기화중/
-// 서버 동기화중지/서버 동기화오류"로 바꿨다 - 무엇을 동기화하는 상태인지(클라우드 서버와의 동기화)
-// 더 명확히 드러내기 위함이며, 색상 규칙(활성=브랜드색/비활성=무채색/오류=빨강)은 그대로다
-// (js/12-import-export-sync.js의 updateSyncStatusUI 참고). index.html/js/12 스크립트가
-// 바뀌었으므로 v116->v117로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v118'; // [헤더 버전 표시 눈에 띄게 강조]
+// #appVersionLabel(헤더의 "v117" 등 버전 숫자)이 text-[10px]+slate-300(거의 안 보이는 옅은 회색)
+// 이라 실제 배포 버전을 확인하기 어려웠다 - text-xs(12px)+font-bold+slate-500/400으로 키우고
+// 진하게 해서 한눈에 보이게 했다. index.html만 바뀌었지만 헤더 마크업이 바뀌었으므로 v117->v118로
+// 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',
