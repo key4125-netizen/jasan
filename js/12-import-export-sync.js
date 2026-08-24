@@ -192,18 +192,63 @@ function buildSyncBlob() {
   };
 }
 
-document.getElementById('exportJsonBtn').addEventListener('click', () => {
+// [JSON 백업 다운로드 - 수동/자동 공용] 예전엔 exportJsonBtn 클릭 핸들러에만 인라인으로 있었다 - 이제
+// 자동 백업 토글(즉시 1회 실행 + 매일 부팅 체크) 양쪽에서도 똑같이 써야 해서 함수로 뽑았다.
+function downloadJsonBackup() {
   const backup = buildSyncBlob();
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `자산관리_백업_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `자산관리_백업_${todayDateStr()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  showToast('JSON 백업 파일을 다운로드했습니다.', 'success');
+}
+
+// [JSON 자동 백업 토글] 상태 텍스트/색상 갱신 - syncSettingsBtn과 같은 "색상 세트 전부 지운 뒤 현재
+// 상태만 다시 붙이기" 패턴을 쓴다.
+const AUTO_BACKUP_ON_CLASSES = ['bg-brand-50', 'dark:bg-brand-950/40', 'text-brand-600', 'dark:text-brand-400'];
+const AUTO_BACKUP_OFF_CLASSES = ['text-slate-600', 'dark:text-slate-300', 'hover:bg-slate-100', 'dark:hover:bg-slate-800'];
+function isAutoBackupEnabled() {
+  return localStorage.getItem(LS_AUTO_BACKUP_ENABLED) === '1';
+}
+function updateAutoBackupToggleUI() {
+  const btn = document.getElementById('autoBackupToggleBtn');
+  if (!btn) return;
+  btn.classList.remove(...AUTO_BACKUP_ON_CLASSES, ...AUTO_BACKUP_OFF_CLASSES);
+  if (isAutoBackupEnabled()) {
+    btn.textContent = 'JSON 자동 백업중';
+    btn.classList.add(...AUTO_BACKUP_ON_CLASSES);
+  } else {
+    btn.textContent = 'JSON 자동 백업 종료';
+    btn.classList.add(...AUTO_BACKUP_OFF_CLASSES);
+  }
+}
+// [매일 부팅 시 자동 백업] 토글이 켜져 있고 오늘 날짜로는 아직 실행한 적이 없으면 1회 다운로드한다.
+// bootApp()에서 호출되고, 토글을 켜는 순간의 "즉시 1회 백업"과 별개다(그쪽은 항상 강제 실행).
+function runAutoBackupIfDue() {
+  if (!isAutoBackupEnabled()) return;
+  const today = todayDateStr();
+  if (localStorage.getItem(LS_LAST_AUTO_BACKUP_DATE) === today) return; // 오늘 이미 실행함
+  downloadJsonBackup();
+  localStorage.setItem(LS_LAST_AUTO_BACKUP_DATE, today);
+}
+
+document.getElementById('autoBackupToggleBtn').addEventListener('click', () => {
+  const turningOn = !isAutoBackupEnabled();
+  localStorage.setItem(LS_AUTO_BACKUP_ENABLED, turningOn ? '1' : '0');
+  updateAutoBackupToggleUI();
+  if (turningOn) {
+    // [즉시 1회 백업] 켜는 순간 바로 백업하고 오늘 날짜를 기록해둔다 - 하루에 또 백업하고 싶으면
+    // 껐다 켜는 것으로 수동 백업을 대신할 수 있다(요청 사항).
+    downloadJsonBackup();
+    localStorage.setItem(LS_LAST_AUTO_BACKUP_DATE, todayDateStr());
+    showToast('JSON 자동 백업을 켰습니다 - 지금 1회 백업 파일을 내려받았습니다. 앞으로 매일 접속 시 자동으로 백업됩니다.', 'success', 6000);
+  } else {
+    showToast('JSON 자동 백업을 껐습니다.', 'info');
+  }
 });
 
 document.getElementById('importJsonBtn').addEventListener('click', () => document.getElementById('jsonFileInput').click());
