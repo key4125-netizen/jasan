@@ -2,14 +2,12 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v116'; // [JSON 자동 백업 토글 추가]
-// 헤더의 "JSON 백업" 버튼(눌러야만 그때 한 번 백업)을 "JSON 자동 백업" 토글로 바꿨다 - 켜두면
-// 앱을 열 때마다(하루 1건 제한) 자동으로 백업 JSON 파일을 내려받고, 토글을 켜는 순간에는 안내
-// 토스트와 함께 즉시 1회 백업도 함께 실행한다(하루에 여러 번 백업하고 싶으면 껐다 켜면 됨).
-// 상태는 localStorage(sam_auto_backup_enabled_v1)에 영구 저장되고, 마지막 실행 날짜는
-// sam_last_auto_backup_date_v1로 관리한다(js/12-import-export-sync.js의 downloadJsonBackup/
-// runAutoBackupIfDue 참고). index.html/js/01·12·13 스크립트가 바뀌었으므로 v115->v116으로 올려
-// PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v117'; // [동기화 상태 라벨에 "서버" 표기 추가]
+// 헤더 버튼/설정 모달의 동기화 상태 문구를 "동기화중/동기화중지/동기화오류"에서 "서버 동기화중/
+// 서버 동기화중지/서버 동기화오류"로 바꿨다 - 무엇을 동기화하는 상태인지(클라우드 서버와의 동기화)
+// 더 명확히 드러내기 위함이며, 색상 규칙(활성=브랜드색/비활성=무채색/오류=빨강)은 그대로다
+// (js/12-import-export-sync.js의 updateSyncStatusUI 참고). index.html/js/12 스크립트가
+// 바뀌었으므로 v116->v117로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',

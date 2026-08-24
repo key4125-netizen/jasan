@@ -209,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v116</p>
+            <p id="appVersionLabel" class="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">v117</p>
           </div>
         </div>
 
@@ -254,9 +254,9 @@
 
         <!-- [가족 동기화 설정 - 텍스트 상태 버튼] 6개 버튼 그리드(grid-cols-3)에 넣으면 7번째 항목이 돼
              모바일 3열 배치가 깨지므로, darkModeBtn과 같은 독립 버튼으로 둔다. 아이콘 없이 텍스트만으로
-             현재 동기화 상태(동기화중/동기화중지/동기화오류)를 보여준다 - updateSyncStatusUI() 참고,
+             현재 동기화 상태(서버 동기화중/서버 동기화중지/서버 동기화오류)를 보여준다 - updateSyncStatusUI() 참고,
              색상 클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값). -->
-        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-3 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">동기화중지</button>
+        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-3 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
 
         <!-- [하단 액션 버튼 3열×2행 그리드] 시세갱신/핵심종목 실시간을 위로 올리고 나면 남는 6개
              버튼(최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·JSON 불러오기·데이터 초기화)을 모바일
@@ -1949,7 +1949,7 @@
     <div class="px-5 py-4 space-y-3">
       <!-- [상태값을 위로] 암호 입력란보다 먼저 눈에 띄게 - updateSyncStatusUI()가 텍스트/색상을
            갱신한다(헤더의 syncSettingsBtn과 동일한 3색 규칙: 켜짐/꺼짐/오류). -->
-      <p id="syncStatusText" class="text-sm font-semibold px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">동기화 꺼짐</p>
+      <p id="syncStatusText" class="text-sm font-semibold px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">서버 동기화중지</p>
       <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">가족(부부)이 함께 쓸 암호를 정해 양쪽 기기에 똑같이 입력하세요. 암호는 이 기기에만 저장되며, 데이터는 항상 암호화된 상태로만 클라우드를 거칩니다.</p>
       <div>
         <label class="text-xs font-medium text-slate-600 dark:text-slate-300">가족 공유 암호</label>
