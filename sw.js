@@ -2,18 +2,31 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v110'; // [액션 버튼 아이콘 제거·슬림화 + Top5 아코디언화]
-// ① 헤더의 6개 액션 버튼(최초등록/엑셀 내보내기/엑셀 업로드/JSON 백업/JSON 불러오기/데이터 초기화)에서
-// 아이콘을 완전히 없애고 텍스트만 남겨 rounded-full 알약 버튼으로 슬림화, padding도 줄여 카드 세로
-// 높이를 축소했다. ② 총금융투자현황 탭의 '국내 자산 Top 5' / '해외 자산 Top 5' 카드를 기본 접힘
-// 아코디언으로 바꿔(자산 관리 카드와 동일한 setAccordionOpen 패턴) 공간을 절약한다.
-// v109->v110: 이 값을 바꿔야 PWA가 캐시해 둔 예전 index.html을 버리고 새 index.html을 다시 받아온다 - 안
-// 바꾸면 GitHub에 새 index.html을 올려도 이미 설치된 모바일 PWA는 계속 캐시된 예전 버전만 보여준다
-// (activate 핸들러가 CACHE_NAME이 다른 캐시만 지우기 때문).
+const CACHE_NAME = 'smart-asset-manager-v113'; // [단일 인라인 스크립트를 js/*.js 13개 파일로 분리]
+// 기존에는 index.html 안의 <script>...</script> 하나(약 1만 줄)에 전체 앱 로직이 들어 있었으나,
+// 유지보수성을 위해 물리적 순서를 그대로 보존한 13개 외부 스크립트(js/01-core-state.js ~
+// js/13-settings-boot.js)로 분리하고 index.html에는 <script src="js/...">를 순서대로 나열했다 -
+// 번들러/모듈 없이 동작해야 하므로(정적 호스팅 + file:// 겸용) 각 파일의 최상위 코드가 이전과
+// 완전히 동일한 순서로 실행되도록 슬라이스 경계를 섹션 주석 경계에 정확히 맞췄다. index.html의
+// 마크업(<script> 태그 목록)과 새로 추가된 js/*.js 13개 파일이 전부 캐시 대상이므로, v112->v113으로
+// 올려 PWA가 캐시된 예전 단일 스크립트 버전을 버리고 새 파일들을 전부 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './js/01-core-state.js',
+  './js/02-dashboard-kpi.js',
+  './js/03-filters-charts-tabs.js',
+  './js/04-rebalancing.js',
+  './js/05-future-projection.js',
+  './js/06-transactions.js',
+  './js/07-table-render-modals.js',
+  './js/08-detail-modal-fx.js',
+  './js/09-price-fx-risk-engine.js',
+  './js/10-risk-translation-alerts.js',
+  './js/11-refresh-history.js',
+  './js/12-import-export-sync.js',
+  './js/13-settings-boot.js'
 ];
 
 // 외부 시세/환율 API 및 CORS 프록시는 항상 최신 데이터가 우선이므로 네트워크를 먼저 시도하고,
@@ -33,7 +46,9 @@ const NETWORK_FIRST_HOSTS = [
   'api.codetabs.com',
   'r.jina.ai',
   'polling.finance.naver.com',
-  'asset-manager-proxy.key4125.workers.dev'
+  'asset-manager-proxy.key4125.workers.dev',
+  // [가족 동기화] 동기화 데이터는 항상 최신이어야 하므로 캐시에 절대 의존하면 안 된다.
+  'steep-haze-01f0.key4125.workers.dev'
 ];
 
 self.addEventListener('install', (event) => {
