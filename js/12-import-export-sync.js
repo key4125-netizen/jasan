@@ -363,7 +363,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
  *      부부 2인 저빈도 편집 환경에서는 병합 로직 없이 이걸로 충분하다.
  * ---------------------------------------------------------------------- */
 // hasError: 직전 push/pull 시도가 통신 오류(네트워크 실패 등)로 끝났는지 - 헤더의 동기화 상태
-// 버튼(동기화중/동기화중지/동기화오류)이 이 값을 읽는다. 비밀번호가 틀려 복호화가 실패한 경우는
+// 버튼(서버 동기화중/서버 동기화중지/서버 동기화오류)이 이 값을 읽는다. 비밀번호가 틀려 복호화가 실패한 경우는
 // 별도의 syncDecryptErrorBox 안내가 이미 있으므로 여기 hasError에는 포함시키지 않는다.
 let syncState = { enabled: false, password: '', lastVersion: 0, hasError: false };
 function loadSyncState() {
@@ -692,13 +692,13 @@ function updateSyncStatusUI() {
   if (toggleBtn) {
     toggleBtn.classList.remove(...SYNC_ALL_COLOR_CLASSES);
     if (!syncState.enabled) {
-      toggleBtn.textContent = '동기화중지';
+      toggleBtn.textContent = '서버 동기화중지';
       toggleBtn.classList.add(...SYNC_COLOR_INACTIVE);
     } else if (syncState.hasError) {
-      toggleBtn.textContent = '동기화오류';
+      toggleBtn.textContent = '서버 동기화오류';
       toggleBtn.classList.add(...SYNC_COLOR_ERROR);
     } else {
-      toggleBtn.textContent = '동기화중';
+      toggleBtn.textContent = '서버 동기화중';
       toggleBtn.classList.add(...SYNC_COLOR_ACTIVE);
     }
   }
@@ -708,14 +708,14 @@ function updateSyncStatusUI() {
   if (statusEl) {
     statusEl.classList.remove(...SYNC_ALL_COLOR_CLASSES);
     if (!syncState.enabled) {
-      statusEl.textContent = '동기화중지';
+      statusEl.textContent = '서버 동기화중지';
       statusEl.classList.add(...SYNC_COLOR_INACTIVE);
     } else if (syncState.hasError) {
-      statusEl.textContent = '동기화오류 · 네트워크 연결을 확인해주세요';
+      statusEl.textContent = '서버 동기화오류 · 네트워크 연결을 확인해주세요';
       statusEl.classList.add(...SYNC_COLOR_ERROR);
     } else {
       const lastAt = localStorage.getItem(LS_SYNC_LAST_SYNCED_AT);
-      statusEl.textContent = lastAt ? `동기화중 · 마지막 동기화 ${new Date(lastAt).toLocaleString('ko-KR')}` : '동기화중 · 동기화 대기 중...';
+      statusEl.textContent = lastAt ? `서버 동기화중 · 마지막 동기화 ${new Date(lastAt).toLocaleString('ko-KR')}` : '서버 동기화중 · 동기화 대기 중...';
       statusEl.classList.add(...SYNC_COLOR_ACTIVE);
     }
   }
