@@ -209,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v118</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v119</p>
           </div>
         </div>
 
@@ -406,6 +406,13 @@
     </div>
   </section>
 
+  <!-- ============================= 종목 분석 & 투자 검토 보고서 진입 버튼 =============================
+       국내자산 Top 5 카드 바로 위 - 보유 여부와 무관하게 아무 티커나 입력해 정밀 분석 결과를 볼 수
+       있다(openStockAnalysisModal, js/10-risk-translation-alerts.js 참고). -->
+  <button type="button" id="stockAnalysisBtn" class="w-full mb-4 rounded-2xl border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-colors px-4 py-3 text-sm font-semibold text-brand-700 dark:text-brand-300">
+    🔍 종목 분석 &amp; 투자 검토 보고서
+  </button>
+
   <!-- ============================= 주요 금융 자산 TOP 5 =============================
        [탭 재배치] 투자세부 탭에 있던 국내/해외 자산 Top5를 총투자현황의 [일간 평가손익] 카드 바로
        다음 자리로 옮겨왔다 - 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings
@@ -485,6 +492,20 @@
        [아코디언 UI] 두 그룹을 클릭해서 펼치는 접이식 헤더로 나눈다 - 기본값은 둘 다 접힘이고, 헤더를
        탭해야 펼쳐진다(riskyAccordionOpen/safeAccordionOpen, renderRiskSection 하단 참고). -->
   <section id="riskManagementSection" class="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 shadow-sm mb-6">
+    <!-- ============================= 시장 현황 & 매크로 브리핑 =============================
+         RISK 관리 카드 최상단 - VIX(공포지수)/원달러 환율/미 10년물 국채금리/코스피(주요지수 대표)를
+         날씨·신호등 아이콘으로 초보자도 한눈에 보게 하고, 내 포트폴리오의 외화 비중과 엮은 맞춤 진단
+         문구를 함께 보여준다. renderMacroBriefing()이 채운다 - refreshPricesAndRates() 갱신 주기에
+         함께 계산되며 별도 폴링은 하지 않는다. -->
+    <div id="macroBriefingSection" class="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div class="flex items-center gap-1.5 mb-2">
+        <span class="text-base leading-none">🌍</span>
+        <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
+      </div>
+      <div id="macroBriefingGrid" class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-2"></div>
+      <p id="macroBriefingDiagnosis" class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed"></p>
+    </div>
+
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
@@ -1864,6 +1885,39 @@
       </button>
     </div>
     <div id="riskDetailModalBody" class="px-5 py-4 overflow-y-auto"></div>
+  </div>
+</div>
+
+<!-- ============================= 종목 분석 & 투자 검토 보고서 팝업 =============================
+     대시보드의 [🔍 종목 분석 & 투자 검토 보고서] 버튼으로 연다(openStockAnalysisModal) - 보유 여부와
+     무관하게 아무 티커나 입력해 기술적 분석(이평선/RSI/볼린저밴드)·리스크 분석(MDD/베타)·포트폴리오
+     적합도(편입 시뮬레이션)를 한 번에 보여준다. 계산은 js/09-price-fx-risk-engine.js의
+     analyzeTickerForModal()/simulatePortfolioAddition()이 전담하고, 여기서는 그 결과를 옮겨 적기만
+     한다(renderStockAnalysisResult, js/10-risk-translation-alerts.js). -->
+<div id="stockAnalysisModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div id="stockAnalysisModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
+      <h3 class="text-sm font-semibold">🔍 종목 분석 &amp; 투자 검토 보고서</h3>
+      <button type="button" id="closeStockAnalysisModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-4 overflow-y-auto">
+      <div class="flex items-center gap-2 mb-1.5">
+        <input type="text" id="stockAnalysisTickerInput" placeholder="티커 입력 (예: AAPL, 005930)"
+          class="flex-1 min-w-0 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800">
+        <button type="button" id="stockAnalysisSearchBtn" class="shrink-0 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold">분석</button>
+      </div>
+      <input type="number" id="stockAnalysisAmountInput" placeholder="매수 검토 금액(원, 선택 - 입력 시 포트폴리오 적합도까지 분석)"
+        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs mb-3 bg-white dark:bg-slate-800">
+
+      <div id="stockAnalysisLoading" class="hidden flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+        <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+        <span class="text-xs">분석 중...</span>
+      </div>
+      <p id="stockAnalysisErrorMsg" class="hidden text-xs text-amber-600 dark:text-amber-400 py-2"></p>
+      <div id="stockAnalysisResult" class="hidden"></div>
+    </div>
   </div>
 </div>
 

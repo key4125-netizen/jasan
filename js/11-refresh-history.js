@@ -153,8 +153,16 @@ async function refreshPricesAndRates() {
       if (r.status === 'fulfilled') state.marketIndexCache[MARKET_INDEX_LIST[i].ticker] = r.value;
     });
   });
+  // [시장 현황 & 매크로 브리핑] VIX/미 10년물 국채금리도 위 지수 조회와 완전히 같은 방식으로 같은
+  // 갱신 주기에 함께 받아 state.macroIndicatorCache에 채운다 - 별도 폴링 루프를 만들지 않는다.
+  const macroKeys = Object.keys(MACRO_TICKERS);
+  const macroPromise = Promise.allSettled(macroKeys.map((key) => fetchPriceWithFallback(MACRO_TICKERS[key], key))).then((results) => {
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') state.macroIndicatorCache[macroKeys[i]] = r.value;
+    });
+  });
 
-  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise, indexPromise]);
+  const [rateOk, priceResult] = await Promise.all([ratePromise, pricesPromise, riskMetricsPromise, indexPromise, macroPromise]);
   const { targetCount, successCount, failCount, failedNames } = priceResult;
 
   if (successCount > 0) persistAssets(true); // 배경 자동 갱신 - 동기화 push 안 함(persistRate skipPush 주석 참고)
