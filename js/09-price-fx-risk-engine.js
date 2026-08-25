@@ -334,10 +334,19 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   // 뜻이다. closeRaw는 세션 판정과 무관하게 "가장 최근에 완료된 정규장 종가"만 가리키므로(위 주석
   // 참고, 시간외 틱으로 덮이지 않음) calcDailyPnL의 정규장 기준가로 그대로 쓸 수 있다.
   const lastTradeKey = (typeof d.localTradedAt === 'string' && d.localTradedAt) ? d.localTradedAt : undefined;
+  // [종목 분석 모달 - 실제 종목명 확보] 이 API가 실제로 정식 한글 종목명을 어느 필드로 내려주는지
+  // 공식 문서가 없어(비공개 API) 알려진 후보 필드명들을 순서대로 시도한다 - 전부 없으면 name은 그냥
+  // undefined로 남고, 호출부(analyzeTickerForModal)가 기존처럼 KR_STOCK_NAMES/원본 입력값으로
+  // 안전하게 폴백한다(필드명을 잘못 짚어도 동작에 영향 없음).
+  const stockName = (typeof d.stockName === 'string' && d.stockName)
+    || (typeof d.itemName === 'string' && d.itemName)
+    || (typeof d.name === 'string' && d.name)
+    || undefined;
   return {
     price, previousClose, changePercent, session, currency,
     regularMarketPrice: closeRaw, lastTradeKey,
     todayOpen, todayHigh, todayLow,
+    name: stockName,
     source: proxy ? `Naver(${proxy.name})` : 'Naver(직접)'
   };
 }
@@ -691,7 +700,7 @@ const KR_STOCK_NAMES = {
   '036570.KS': '엔씨소프트', '352820.KS': '하이브', '138040.KS': '메리츠금융지주', '030200.KS': 'KT',
   '017670.KS': 'SK텔레콤', '033780.KS': 'KT&G', '005940.KS': 'NH투자증권', '016360.KS': '삼성증권',
   '039490.KS': '키움증권', '012450.KS': '한화에어로스페이스', '042660.KS': '한화오션', '004020.KS': '현대제철',
-  '001040.KS': 'CJ', '097950.KS': 'CJ제일제당',
+  '001040.KS': 'CJ', '097950.KS': 'CJ제일제당', '128940.KS': '한미약품',
   // 코스닥 주요종목
   '247540.KQ': '에코프로비엠', '086520.KQ': '에코프로', '196170.KQ': '알테오젠', '328130.KQ': '루닛',
   '263750.KQ': '펄어비스', '293490.KQ': '카카오게임즈', '041510.KQ': '에스엠', '035900.KQ': 'JYP Ent.',
@@ -1218,25 +1227,31 @@ function findTickerByKoreanName(query) {
   const q = String(query || '').trim();
   if (!q) return null;
   const heldWithTicker = state.assets.filter((a) => String(a.ticker ?? '').trim() !== '');
+  const learnedEntries = Object.entries(state.learnedTickerNames || {});
 
   const heldExact = heldWithTicker.find((a) => a.name === q);
   if (heldExact) return { ticker: sanitizeTicker(heldExact.ticker).yahooTicker, name: heldExact.name };
   const mapExactEntry = Object.entries(KR_STOCK_NAMES).find(([, name]) => name === q);
   if (mapExactEntry) return { ticker: mapExactEntry[0], name: mapExactEntry[1] };
+  const learnedExactEntry = learnedEntries.find(([, name]) => name === q);
+  if (learnedExactEntry) return { ticker: learnedExactEntry[0], name: learnedExactEntry[1] };
 
   const heldPartial = heldWithTicker.filter((a) => a.name.includes(q));
   const mapPartial = Object.entries(KR_STOCK_NAMES).filter(([, name]) => name.includes(q));
+  const learnedPartial = learnedEntries.filter(([, name]) => name.includes(q));
   const candidates = [
     ...heldPartial.map((a) => ({ ticker: sanitizeTicker(a.ticker).yahooTicker, name: a.name })),
-    ...mapPartial.map(([ticker, name]) => ({ ticker, name }))
+    ...mapPartial.map(([ticker, name]) => ({ ticker, name })),
+    ...learnedPartial.map(([ticker, name]) => ({ ticker, name }))
   ];
   const uniqueTickers = new Set(candidates.map((c) => c.ticker));
   if (uniqueTickers.size === 1) return candidates[0];
   return null;
 }
 
-// [종목 분석 모달 - 검색 추천 목록] 보유 자산 + KR_STOCK_NAMES 주요 종목을 대상으로 이름/티커 부분일치
-// 후보를 모아 드롭다운에 보여준다. 한글이 아닌 입력(영문 티커 등)도 그대로 지원한다.
+// [종목 분석 모달 - 검색 추천 목록] 보유 자산 + KR_STOCK_NAMES 주요 종목 + learnedTickerNames(이전에
+// 검색해서 학습된 종목)를 대상으로 이름/티커 부분일치 후보를 모아 드롭다운에 보여준다. 한글이 아닌
+// 입력(영문 티커 등)도 그대로 지원한다.
 function searchStockAnalysisCandidates(query) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
@@ -1256,6 +1271,12 @@ function searchStockAnalysisCandidates(query) {
     if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
     seen.add(ticker);
     results.push({ ticker, name, sub: '주요 종목' });
+  });
+  Object.entries(state.learnedTickerNames || {}).forEach(([ticker, name]) => {
+    if (seen.has(ticker)) return;
+    if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
+    seen.add(ticker);
+    results.push({ ticker, name, sub: '최근 검색' });
   });
   return results.slice(0, 8);
 }
@@ -1308,9 +1329,16 @@ async function analyzeTickerForModal(rawInput) {
   const week52High = Math.max(...closes, currentPrice || 0);
   const rsi14 = computeRSI14(closes);
 
-  // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130')에도, 그 티커가
-  // KR_STOCK_NAMES에 있으면 원본 입력 그대로("273130")가 아니라 정식 한글명을 보여준다.
-  const displayName = resolvedName || KR_STOCK_NAMES[yahooTicker] || (priceInfo && priceInfo.name) || trimmedRaw;
+  // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940')에도,
+  // 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 이번에 API가 실제 이름을 내려줬으면 원본
+  // 입력 그대로가 아니라 정식 종목명을 보여준다.
+  const displayName = resolvedName || KR_STOCK_NAMES[yahooTicker] || state.learnedTickerNames[yahooTicker] || (priceInfo && priceInfo.name) || trimmedRaw;
+  // [학습된 종목명 캐시에 기록] 지금 막 진짜 이름을 확인했으면(=trimmedRaw/티커를 그대로 되돌려준 게
+  // 아니면) 다음부터는 이 기기에서 티커든 이름이든 바로 찾을 수 있도록 남겨둔다 - 이미 KR_STOCK_NAMES에
+  // 있던 값이어도 다시 저장은 되지만 rememberTickerName이 값이 같으면 조용히 건너뛴다.
+  if (displayName !== trimmedRaw && displayName !== yahooTicker && displayName !== searchTicker) {
+    rememberTickerName(yahooTicker, displayName);
+  }
   return {
     ticker: yahooTicker,
     name: displayName,

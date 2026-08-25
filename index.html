@@ -209,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v124</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v126</p>
           </div>
         </div>
 
@@ -504,7 +504,7 @@
         <span class="text-base leading-none">🌍</span>
         <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
-      <div id="macroBriefingGrid" class="grid grid-cols-2 gap-1.5 sm:gap-2 mb-2"></div>
+      <div id="macroBriefingGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mb-2"></div>
       <div id="macroBriefingDiagnosis" class="space-y-1"></div>
     </div>
 
@@ -1904,7 +1904,11 @@
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
-    <div class="px-5 py-4 overflow-y-auto">
+    <!-- [검색창 상단 고정] 종목이 많이 검색될 때(예: '채권') 아래 결과 영역만 스크롤되고, 입력창+확인
+         버튼은 항상 이 자리에 고정된다 - 스크롤 영역(다음 div) 밖에 별도 shrink-0 섹션으로 분리해서
+         sticky 트릭 없이 확실하게 고정한다. 추천 드롭다운(stockAnalysisSuggestions)도 이 고정 섹션
+         안에 있어 결과가 아무리 길어져도 항상 입력창 바로 아래에 제대로 걸쳐 뜬다. -->
+    <div class="px-5 pt-4 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <!-- [한글 종목명 검색 지원] 티커를 몰라도 '현대차'처럼 이름으로 입력/검색할 수 있다 - 두 글자
            이상 입력하면 보유 자산 + 주요 종목표(KR_STOCK_NAMES)에서 추천 목록이 뜬다
            (renderStockAnalysisSuggestions, js/10). 목록에서 고르면 즉시 분석까지 실행된다. -->
@@ -1914,11 +1918,15 @@
             class="flex-1 min-w-0 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800">
           <button type="button" id="stockAnalysisSearchBtn" class="shrink-0 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold">확인</button>
         </div>
-        <div id="stockAnalysisSuggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"></div>
+        <!-- [드롭다운 스크롤] 연관 종목이 많으면(예: '채권') 최대 280px까지만 늘어나고 그 안에서
+             세로 스크롤된다 - overscroll-contain으로 목록 끝까지 스크롤해도 뒤 페이지가 같이
+             스크롤되는 걸 막는다. -->
+        <div id="stockAnalysisSuggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-10 max-h-[280px] overflow-y-auto overscroll-contain bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg"></div>
       </div>
       <input type="number" id="stockAnalysisAmountInput" placeholder="매수 검토 금액(원, 선택 - 입력 시 포트폴리오 적합도까지 분석)"
-        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs mb-3 bg-white dark:bg-slate-800">
-
+        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs bg-white dark:bg-slate-800">
+    </div>
+    <div class="px-5 py-4 overflow-y-auto">
       <div id="stockAnalysisLoading" class="hidden flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
         <span class="text-xs">분석 중...</span>

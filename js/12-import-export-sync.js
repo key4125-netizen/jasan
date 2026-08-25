@@ -188,7 +188,10 @@ function buildSyncBlob() {
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
     // 빠져 있었다 - 이 필드가 없으면 새 기기에서 복원해도 일별손익/총평가금액/누적평가손익 추이 차트의
     // 과거 히스토리가 전부 사라진다(복원 이후 날짜부터 새로 쌓이기 시작).
-    dailySnapshots: state.dailySnapshots
+    dailySnapshots: state.dailySnapshots,
+    // [종목 분석 모달 - 학습된 종목명 캐시] 다른 기기에서 검색해서 익힌 티커→이름도 JSON 백업/복원과
+    // 클라우드 동기화로 함께 넘어가야 그 기기에서 처음 검색하는 종목도 바로 이름이 뜬다.
+    learnedTickerNames: state.learnedTickerNames
   };
 }
 
@@ -452,6 +455,9 @@ async function applyRemoteState(parsed) {
     state.transactions = parsed.transactions.map(normalizeImportedTransaction);
     persistTransactions();
   }
+  // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
+  state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
+  persistLearnedTickerNames();
   persistAssets();
   renderAll();
   backfillAllHoldingsDailyPnlHistory();
@@ -542,6 +548,9 @@ function getMergeBaseline(key) {
 }
 // state.assets/state.transactions만 병합하고 스칼라 필드는 건드리지 않는다(요청 범위 - 자산/거래내역).
 // 호출부(pullFromCloud/pushToCloud)가 persistAssets()/persistTransactions()/renderAll()을 알아서 호출한다.
+// [학습된 종목명 캐시는 예외적으로 여기서 함께 병합] exchangeRate/rebalance 같은 "현재 설정값"과 달리
+// 이건 순수 추가형 캐시라 원격이 최신이라고 통째 덮어쓰면 이 기기가 그 사이 배운 종목명을 잃는다 -
+// 충돌 없이 그냥 두 쪽 키를 합친다(같은 티커가 양쪽에 있으면 로컬 값을 우선 - 사실상 항상 같은 값).
 function mergeAssetsAndTransactionsWithRemote(parsed) {
   const remoteAssets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
   const remoteTx = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(normalizeImportedTransaction);
@@ -549,6 +558,10 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
   state.transactions = mergeCollectionById(state.transactions, remoteTx, getMergeBaseline(LS_SYNC_MERGED_TX_IDS));
   localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
   localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+  if (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) {
+    state.learnedTickerNames = { ...parsed.learnedTickerNames, ...state.learnedTickerNames };
+    persistLearnedTickerNames();
+  }
 }
 
 let pushDebounceTimer = null;
@@ -650,6 +663,12 @@ async function pullFromCloud(opts) {
         state.transactions = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(normalizeImportedTransaction);
         localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
         localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+        // [학습된 종목명 캐시는 최초 페어링이어도 병합] 자산/거래내역과 달리 "잘못 섞이면 안 되는 진짜
+        // 데이터"가 아니라 순수 도움용 캐시라, 이 기기가 이미 배운 이름을 굳이 버릴 이유가 없다.
+        if (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) {
+          state.learnedTickerNames = { ...parsed.learnedTickerNames, ...state.learnedTickerNames };
+          persistLearnedTickerNames();
+        }
       } else {
         // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.
         mergeAssetsAndTransactionsWithRemote(parsed);

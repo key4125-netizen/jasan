@@ -18,6 +18,7 @@ const LS_DARKMODE = 'sam_dark_mode_v5';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
+const LS_LEARNED_TICKER_NAMES = 'sam_learned_ticker_names_v1';
 // 일간 손익 계산에 쓰이는 "오늘 하루의 기준 환율"(전일 종가 개념) 저장 키.
 // FX는 24시간 거래되어 명확한 "전일 종가"가 없으므로, 달력 날짜가 바뀔 때 그 시점의 환율을
 // 스냅샷해서 그날 하루 동안 고정 기준값으로 사용한다(당일 중 환율이 갱신되어도 기준값은 안 바뀜).
@@ -446,6 +447,12 @@ const state = {
   // 오버라이드 - { [key]: { label, conservative, normal, optimistic } }, key는 sanitizeTicker().yahooTicker
   // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
   projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {} },
+  // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
+  // 검색해서 실제 종목명(API 응답 또는 한글 매핑표)이 확인될 때마다 rememberTickerName()이 여기 채워
+  // 넣는다. KR_STOCK_NAMES(js/09, 큐레이션된 고정 표)와 달리 이건 "한 번이라도 조회에 성공한 종목"을
+  // 기기가 스스로 계속 넓혀가는 캐시라서, 미리 등록해두지 않은 종목도 두 번째 검색부터는 한글 이름으로
+  // 찾고 드롭다운에도 나온다. localStorage/JSON 백업/클라우드 동기화에 모두 저장됨(buildSyncBlob 참고).
+  learnedTickerNames: {},
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
   transactions: [],
@@ -746,6 +753,12 @@ function loadState() {
     state.dailySnapshots = (parsedSnap && typeof parsedSnap === 'object' && !Array.isArray(parsedSnap)) ? parsedSnap : {};
   } catch (e) { state.dailySnapshots = {}; }
 
+  try {
+    const learnedRaw = localStorage.getItem(LS_LEARNED_TICKER_NAMES);
+    const parsedLearned = learnedRaw ? JSON.parse(learnedRaw) : null;
+    state.learnedTickerNames = (parsedLearned && typeof parsedLearned === 'object' && !Array.isArray(parsedLearned)) ? parsedLearned : {};
+  } catch (e) { state.learnedTickerNames = {}; }
+
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
   }
@@ -792,6 +805,17 @@ function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(
 function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
 function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
+function persistLearnedTickerNames() { localStorage.setItem(LS_LEARNED_TICKER_NAMES, JSON.stringify(state.learnedTickerNames)); schedulePush(); }
+// [종목 분석 모달] 조회에 성공해 실제 종목명을 확인한 티커를 캐시에 기록한다 - trimmedRaw(사용자가
+// 입력한 원문 그대로)와 다를 때만 저장한다(같으면 "이름을 못 찾아서 입력값을 그대로 돌려준 것"뿐이라
+// 저장할 가치가 없다). 이미 같은 이름으로 저장돼 있으면 조용히 건너뛴다(불필요한 매 검색마다 push
+// 유발 방지).
+function rememberTickerName(yahooTicker, name) {
+  if (!yahooTicker || !name) return;
+  if (state.learnedTickerNames[yahooTicker] === name) return;
+  state.learnedTickerNames[yahooTicker] = name;
+  persistLearnedTickerNames();
+}
 
 /* -------------------------------------------------------------------------
  * 7. 파생 계산 (매입금액/평가금액/손익/수익률 - 전부 KRW 환산)
