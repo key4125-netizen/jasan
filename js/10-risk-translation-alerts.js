@@ -572,11 +572,58 @@ function macroTileHtml(label, valueText, sub, icon) {
   </div>`;
 }
 // [맞춤형 연계 진단] 원/달러 환율 방향 × 내 포트폴리오의 외화(달러) 자산 비중을 엮어 한 줄로 설명한다.
-function buildMacroDiagnosisLine(fxChangePct, foreignWeightPct) {
-  if (typeof foreignWeightPct !== 'number') return '';
-  const fxDirection = fxChangePct > 0.05 ? '오르면' : (fxChangePct < -0.05 ? '내리면' : '보합이면');
-  const effect = fxChangePct > 0.05 ? '유리해집니다' : (fxChangePct < -0.05 ? '불리해집니다' : '큰 영향이 없습니다');
-  return `현재 외화(달러) 자산 비중은 전체의 ${fmtNum(foreignWeightPct, 0)}%입니다 - 환율이 ${fxDirection} 원화 환산 평가금액이 ${effect}.`;
+// [매크로 종합 해설] VIX/환율/미10년물/코스피 4개 신호를 규칙 기반으로 조합해 "핵심 원인 → 내
+// 포트폴리오 영향 → 대응 가이드" 3단으로 설명한다 - buildRiskDiagnosisLine/buildRiskActionItems와
+// 같은 우선순위 규칙 패턴(더 구체적이거나 심각한 조합을 먼저 검사하고, 해당하는 첫 규칙만 채택).
+// 방향 판정 임계값(±0.05%)은 trendArrowIcon과 동일해 지표별 화살표 아이콘과 해설 문구의 방향이
+// 항상 일치한다.
+function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, foreignWeightPct }) {
+  const isUp = (v) => typeof v === 'number' && v > 0.05;
+  const isDown = (v) => typeof v === 'number' && v < -0.05;
+  const fw = typeof foreignWeightPct === 'number' ? fmtNum(foreignWeightPct, 0) : null;
+
+  if (typeof vix === 'number' && vix >= 30) {
+    return {
+      cause: `시장 전반의 공포심리(VIX ${fmtNum(vix, 1)})가 높아진 고변동성 국면입니다.`,
+      impact: '주식 비중이 높을수록 단기 등락폭이 커질 수 있어 계좌 변동성이 확대될 수 있습니다.',
+      guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
+    };
+  }
+  if (isUp(ust10yChangePct) && isUp(fxChangePct)) {
+    return {
+      cause: '미국 금리와 원/달러 환율이 동반 상승 중입니다.',
+      impact: fw !== null
+        ? `달러 자산(전체의 ${fw}%) 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.`
+        : '달러 자산 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.',
+      guide: '신규 매수는 서두르지 말고 분할로 접근하는 것이 유리합니다.'
+    };
+  }
+  if (isDown(ust10yChangePct) && isUp(kospiChangePct)) {
+    return {
+      cause: '금리가 진정되며 위험자산 선호 심리가 살아나는 분위기입니다.',
+      impact: '국내 주식 비중이 있는 계좌에는 우호적인 환경입니다.',
+      guide: '기존에 계획한 투자 전략을 그대로 유지해도 무방한 국면입니다.'
+    };
+  }
+  if (isDown(fxChangePct) && isUp(kospiChangePct)) {
+    return {
+      cause: '원화가 강세를 보이며 국내 증시에 우호적인 자금 유입이 기대되는 분위기입니다.',
+      impact: '달러 자산 평가액은 다소 줄어들 수 있으나, 국내 자산 비중에는 긍정적입니다.',
+      guide: '달러 환전이나 해외 자산 매수 계획이 있다면 상대적으로 유리한 시점일 수 있습니다.'
+    };
+  }
+  if (isDown(kospiChangePct) && typeof vix === 'number' && vix >= 20) {
+    return {
+      cause: '국내 증시가 조정을 받고 있고 시장 불안 심리도 다소 높아진 상태입니다.',
+      impact: '단기 변동성 확대에 유의할 필요가 있습니다.',
+      guide: '무리한 추가 매수보다는 관망 후 저가 분할매수를 고려해보세요.'
+    };
+  }
+  return {
+    cause: 'VIX·환율·금리·지수 모두 특별한 쏠림 없이 대체로 평이한 흐름입니다.',
+    impact: '포트폴리오에 미치는 특별한 매크로 압력은 없는 편입니다.',
+    guide: '평소처럼 계획한 투자 전략을 유지하시면 됩니다.'
+  };
 }
 function renderMacroBriefing() {
   const gridEl = document.getElementById('macroBriefingGrid');
@@ -605,7 +652,17 @@ function renderMacroBriefing() {
   const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
   const totalAmount = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
   const foreignWeightPct = totalAmount > 0 ? (foreignAmount / totalAmount) * 100 : null;
-  diagnosisEl.textContent = buildMacroDiagnosisLine(fxChangePct, foreignWeightPct);
+
+  const commentary = buildMacroCommentary({
+    vix, fxChangePct,
+    ust10yChangePct: ust10yInfo ? ust10yInfo.changePercent : null,
+    kospiChangePct: kospiInfo ? kospiInfo.changePercent : null,
+    foreignWeightPct
+  });
+  diagnosisEl.innerHTML = `
+    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 핵심 원인</span> ${escapeHtml(commentary.cause)}</p>
+    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
+    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>`;
 }
 
 function renderRiskSection() {
@@ -905,12 +962,42 @@ function buildStockAnalysisReportLine(a, sim) {
   return `주의 신호: ${flags.join(' · ')}. 편입 전 비중을 신중히 검토하세요 - 과거 데이터 기반 참고 정보이며 투자 판단과 책임은 본인에게 있습니다.`;
 }
 
-function stockAnalysisStatTile(label, valueText) {
+// [초보자용 지표 가이드] guideText가 있으면 값 아래에 작은 회색 캡션으로 항상 보여준다 - 아이콘을
+// 눌러야 보이는 호버 툴팁 대신 항상 노출되는 캡션을 택했다(모바일에서는 호버가 없어 툴팁이 잘 안
+// 보이는 문제를 피하기 위함, 이 앱의 다른 "초보자용" 설명들도 대부분 이 방식을 쓴다).
+function stockAnalysisStatTile(label, valueText, guideText) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-2.5 py-2">
     <div class="text-[10px] text-slate-400">${escapeHtml(label)}</div>
     <div class="text-xs font-semibold mt-0.5">${valueText}</div>
+    ${guideText ? `<div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">${escapeHtml(guideText)}</div>` : ''}
   </div>`;
+}
+
+// [지표별 쉬운 설명] 계산된 상태(state)에 맞춰 매번 다른 문구를 보여준다 - 정적인 정의 하나만 보여주는
+// 것보다, "지금 이 종목이 어떤 상태인지"까지 함께 알려줘야 초보자가 실제로 판단에 쓸 수 있다.
+function maTrendGuideText(trendLabel) {
+  if (trendLabel === '정배열(상승추세)') return '단기>중기>장기 이동평균 순으로 배열되어 상승 흐름이 이어지는 모양이에요.';
+  if (trendLabel === '역배열(하락추세)') return '단기<중기<장기 이동평균 순으로 배열되어 하락 흐름이 이어지는 모양이에요.';
+  if (trendLabel === '혼조(추세 불분명)') return '뚜렷한 방향 없이 등락을 반복하는 구간이라 관망이 무난해요.';
+  return '';
+}
+function rsiGuideText(rsiState) {
+  if (rsiState === '과열') return '70 이상은 단기 과열 구간이에요 - 추격 매수는 주의하세요.';
+  if (rsiState === '과매도') return '30 이하는 과매도 구간이에요 - 단기 반등을 기대해볼 수 있어요.';
+  if (rsiState === '적정') return '30~70 사이는 특별히 과열되거나 침체되지 않은 평이한 구간이에요.';
+  return '';
+}
+function bollingerGuideText(bollinger) {
+  if (!bollinger || typeof bollinger.pctB !== 'number') return '';
+  return '최근 20일 평균 주가 대비 얼마나 벗어나 있는지 보여주는 지표예요.';
+}
+const MDD_GUIDE_TEXT = '최근 1년 중 고점 대비 가장 크게 떨어졌던 폭이에요 - 손실 위험도를 가늠하는 지표예요.';
+function betaGuideText(beta) {
+  if (typeof beta !== 'number') return '';
+  if (beta >= 1.15) return '베타 1.0 기준, 시장보다 더 민감하게 움직이는 공격형 종목이에요.';
+  if (beta <= 0.85) return '베타 1.0 기준, 시장보다 덜 움직이는 안정적인 방어형 종목이에요.';
+  return '베타 1.0 기준, 시장과 비슷한 정도로 움직이는 종목이에요.';
 }
 
 function renderStockAnalysisResult(a, sim) {
@@ -941,17 +1028,17 @@ function renderStockAnalysisResult(a, sim) {
   <div class="mb-3">
     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 기술적 분석</p>
     <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('이동평균 배열(20/60/120일)', a.trendLabel || '데이터 부족')}
-      ${stockAnalysisStatTile('과열지수 RSI(14)', typeof a.rsi14 === 'number' ? `${fmtNum(a.rsi14, 0)} (${a.rsiState})` : '데이터 부족')}
-      <div class="col-span-2">${stockAnalysisStatTile('볼린저 밴드 위치', bollingerPositionLabel(a.bollinger))}</div>
+      ${stockAnalysisStatTile('이동평균 배열(20/60/120일)', a.trendLabel || '데이터 부족', maTrendGuideText(a.trendLabel))}
+      ${stockAnalysisStatTile('과열지수 RSI(14)', typeof a.rsi14 === 'number' ? `${fmtNum(a.rsi14, 0)} (${a.rsiState})` : '데이터 부족', rsiGuideText(a.rsiState))}
+      <div class="col-span-2">${stockAnalysisStatTile('볼린저 밴드 위치', bollingerPositionLabel(a.bollinger), bollingerGuideText(a.bollinger))}</div>
     </div>
   </div>
 
   <div class="mb-3">
     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">⚠️ 리스크 분석</p>
     <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족')}
-      ${stockAnalysisStatTile('베타(시장 민감도)', typeof a.beta === 'number' ? `${fmtNum(a.beta, 2)}배` : '데이터 부족')}
+      ${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', typeof a.mdd === 'number' ? MDD_GUIDE_TEXT : '')}
+      ${stockAnalysisStatTile('베타(시장 민감도)', typeof a.beta === 'number' ? `${fmtNum(a.beta, 2)}배` : '데이터 부족', betaGuideText(a.beta))}
       <div class="col-span-2">${stockAnalysisStatTile('52주 고점 대비', typeof a.week52DrawdownPct === 'number' ? `${fmtNum(a.week52DrawdownPct, 1)}%` : '데이터 부족')}</div>
     </div>
   </div>
@@ -964,8 +1051,49 @@ function renderStockAnalysisResult(a, sim) {
   </div>`;
 }
 
+// [한글 종목명 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/주요종목 후보를
+// 클릭 가능한 목록으로 보여준다 - 고르면 입력창에 이름을 채우고 즉시 분석까지 실행한다(모호한 부분
+// 일치(예: '삼성')를 findTickerByKoreanName()이 스스로 판단하지 못하는 문제를 여기서 해결).
+function hideStockAnalysisSuggestions() {
+  const el = document.getElementById('stockAnalysisSuggestions');
+  el.classList.add('hidden');
+  el.innerHTML = '';
+}
+function renderStockAnalysisSuggestions(candidates) {
+  const el = document.getElementById('stockAnalysisSuggestions');
+  if (candidates.length === 0) { hideStockAnalysisSuggestions(); return; }
+  el.innerHTML = candidates.map((c) => `
+    <button type="button" data-suggest-name="${escapeHtml(c.name)}" class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">
+      <span class="truncate">${escapeHtml(c.name)} <span class="text-slate-400 text-xs">${escapeHtml(c.ticker)}</span></span>
+      <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${escapeHtml(c.sub)}</span>
+    </button>`).join('');
+  el.classList.remove('hidden');
+  el.querySelectorAll('button[data-suggest-name]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.getElementById('stockAnalysisTickerInput').value = btn.dataset.suggestName;
+      hideStockAnalysisSuggestions();
+      runStockAnalysis();
+    });
+  });
+}
+let stockAnalysisSuggestDebounceTimer = null;
+document.getElementById('stockAnalysisTickerInput').addEventListener('input', (e) => {
+  clearTimeout(stockAnalysisSuggestDebounceTimer);
+  const query = e.target.value.trim();
+  if (query.length < 2) { hideStockAnalysisSuggestions(); return; }
+  stockAnalysisSuggestDebounceTimer = setTimeout(() => {
+    renderStockAnalysisSuggestions(searchStockAnalysisCandidates(query));
+  }, 200);
+});
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('stockAnalysisTickerInput');
+  if (!wrap) return;
+  if (e.target !== wrap && !document.getElementById('stockAnalysisSuggestions').contains(e.target)) hideStockAnalysisSuggestions();
+});
+
 let stockAnalysisRequestToken = 0;
 async function runStockAnalysis() {
+  hideStockAnalysisSuggestions();
   const tickerInput = document.getElementById('stockAnalysisTickerInput');
   const amountInput = document.getElementById('stockAnalysisAmountInput');
   const raw = tickerInput.value.trim();
@@ -1000,11 +1128,13 @@ function openStockAnalysisModal() {
   document.getElementById('stockAnalysisResult').classList.add('hidden');
   document.getElementById('stockAnalysisTickerInput').value = '';
   document.getElementById('stockAnalysisAmountInput').value = '';
+  hideStockAnalysisSuggestions();
   pushModalHistoryState();
   setTimeout(() => document.getElementById('stockAnalysisTickerInput').focus(), 50);
 }
 function closeStockAnalysisModal(viaBackButton) {
   stockAnalysisRequestToken++; // 진행 중이던 조회가 있었다면 그 응답을 무시 처리
+  hideStockAnalysisSuggestions();
   document.getElementById('stockAnalysisModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }

@@ -666,6 +666,16 @@ const SECTOR_MAP = {
   'META': 'IT/인터넷', 'TSLA': '자동차', 'NFLX': '미디어', 'JPM': '금융', 'V': '금융', 'MA': '금융',
   'JNJ': '헬스케어', 'UNH': '헬스케어', 'XOM': '에너지', 'CVX': '에너지', 'PG': '필수소비재', 'KO': '필수소비재'
 };
+// [종목 분석 모달 - 한글 종목명 매칭] Yahoo Finance 검색 API(searchYahooStocks, js/04)가 한글을 지원하지
+// 않아, 국내 대형주는 위 SECTOR_MAP과 동일한 티커 목록에 한글 종목명을 붙인 별도 표로 관리한다 -
+// findTickerByKoreanName()이 이 표와 보유 자산 이름을 함께 검색해 티커로 변환한다.
+const KR_STOCK_NAMES = {
+  '005930.KS': '삼성전자', '000660.KS': 'SK하이닉스', '035420.KS': 'NAVER', '035720.KS': '카카오',
+  '051910.KS': 'LG화학', '006400.KS': '삼성SDI', '373220.KS': 'LG에너지솔루션', '005380.KS': '현대차',
+  '000270.KS': '기아', '105560.KS': 'KB금융', '055550.KS': '신한지주', '086790.KS': '하나금융지주',
+  '207940.KS': '삼성바이오로직스', '068270.KS': '셀트리온', '028260.KS': '삼성물산', '015760.KS': '한국전력',
+  '069500.KS': 'KODEX 200', '102110.KS': 'TIGER 200'
+};
 // ETF는 "섹터 비중맵"(합계 약 1.0)으로 등록해 실질 룩스루 노출 계산에 쓴다 - 운용사 팩트시트 기준
 // 대략적인 값이며 실시간 구성종목 API가 아니므로 실제 비중과 차이가 있을 수 있다(화면에 항상 명시).
 const ETF_HOLDINGS_MAP = {
@@ -1172,21 +1182,85 @@ async function computeAdvancedRiskMetrics(ownerFilter) {
  *      재사용할 수 있다. RISK 관리 카드와 달리 1년치 데이터가 없으면(신규상장 등) 에러 메시지만
  *      반환하고 조용히 실패한다(호출부가 그대로 화면에 안내문으로 보여줌).
  * ---------------------------------------------------------------------- */
+// [종목 분석 모달 - 한글 종목명 자동 매칭] 보유 자산 이름(전체 포트폴리오, 완전일치 우선)과
+// KR_STOCK_NAMES(주요 대형주 표)를 함께 검색해 야후 티커로 변환한다. 완전일치가 없고 부분일치가
+// 여럿이면(예: '삼성'→삼성전자/삼성SDI/삼성바이오로직스/삼성물산) 어느 것인지 특정할 수 없으므로
+// null을 반환해 호출부가 "검색창 추천 목록에서 선택하라"고 안내하게 한다 - 잘못된 종목을 임의로
+// 골라 분석 결과를 보여주는 것보다 안전하다.
+function findTickerByKoreanName(query) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+  const heldWithTicker = state.assets.filter((a) => String(a.ticker ?? '').trim() !== '');
+
+  const heldExact = heldWithTicker.find((a) => a.name === q);
+  if (heldExact) return { ticker: sanitizeTicker(heldExact.ticker).yahooTicker, name: heldExact.name };
+  const mapExactEntry = Object.entries(KR_STOCK_NAMES).find(([, name]) => name === q);
+  if (mapExactEntry) return { ticker: mapExactEntry[0], name: mapExactEntry[1] };
+
+  const heldPartial = heldWithTicker.filter((a) => a.name.includes(q));
+  const mapPartial = Object.entries(KR_STOCK_NAMES).filter(([, name]) => name.includes(q));
+  const candidates = [
+    ...heldPartial.map((a) => ({ ticker: sanitizeTicker(a.ticker).yahooTicker, name: a.name })),
+    ...mapPartial.map(([ticker, name]) => ({ ticker, name }))
+  ];
+  const uniqueTickers = new Set(candidates.map((c) => c.ticker));
+  if (uniqueTickers.size === 1) return candidates[0];
+  return null;
+}
+
+// [종목 분석 모달 - 검색 추천 목록] 보유 자산 + KR_STOCK_NAMES 주요 종목을 대상으로 이름/티커 부분일치
+// 후보를 모아 드롭다운에 보여준다. 한글이 아닌 입력(영문 티커 등)도 그대로 지원한다.
+function searchStockAnalysisCandidates(query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return [];
+  const results = [];
+  const seen = new Set();
+  state.assets.forEach((a) => {
+    const ticker = String(a.ticker ?? '').trim();
+    if (!ticker) return;
+    const yahooTicker = sanitizeTicker(ticker).yahooTicker;
+    if (seen.has(yahooTicker)) return;
+    if (!`${a.name} ${ticker}`.toLowerCase().includes(q)) return;
+    seen.add(yahooTicker);
+    results.push({ ticker: yahooTicker, name: a.name, sub: '보유 중' });
+  });
+  Object.entries(KR_STOCK_NAMES).forEach(([ticker, name]) => {
+    if (seen.has(ticker)) return;
+    if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
+    seen.add(ticker);
+    results.push({ ticker, name, sub: '주요 종목' });
+  });
+  return results.slice(0, 8);
+}
+
 async function analyzeTickerForModal(rawInput) {
   const trimmedRaw = String(rawInput || '').trim();
   if (!trimmedRaw) return { error: '티커를 입력해 주세요.' };
 
+  // [한글 종목명 자동 매칭] 한글이 섞인 입력은 티커가 아니라 종목명으로 간주하고 먼저 변환을 시도한다
+  // - 순수 티커/코드(영문·숫자)는 이 분기를 타지 않고 기존 로직 그대로 진행된다.
+  let searchTicker = trimmedRaw;
+  let resolvedName = null;
+  if (/[가-힣]/.test(trimmedRaw)) {
+    const krMatch = findTickerByKoreanName(trimmedRaw);
+    if (!krMatch) {
+      return { error: `'${trimmedRaw}' 이름으로 종목을 특정할 수 없습니다 - 검색창에 두 글자 이상 입력하면 뜨는 추천 목록에서 선택해 주세요.` };
+    }
+    searchTicker = krMatch.ticker;
+    resolvedName = krMatch.name;
+  }
+
   // 현재가/등락률은 실패해도(예: 장중 프록시 일시 장애) 아래 기술적 분석은 계속 진행한다 - 표시용
   // 보조 정보일 뿐, 핵심 분석은 1년치 종가 이력(closes)만 있으면 가능하다.
   let priceInfo = null;
-  try { priceInfo = await fetchPriceWithFallback(trimmedRaw, trimmedRaw); } catch (e) { /* 무시 - 아래 폴백으로 계속 */ }
+  try { priceInfo = await fetchPriceWithFallback(searchTicker, resolvedName || searchTicker); } catch (e) { /* 무시 - 아래 폴백으로 계속 */ }
 
-  let yahooTicker = sanitizeTicker(trimmedRaw).yahooTicker;
+  let yahooTicker = sanitizeTicker(searchTicker).yahooTicker;
   let data = await getCachedDailyCloses(yahooTicker);
   // [코스닥 구제] 접미사 없는 6자리 국내코드가 코스피(.KS) 조회로 실패하면 코스닥(.KQ)으로 한 번 더
   // 시도한다 - fetchPriceWithFallback의 동일한 구제 로직을 여기서도 재현.
-  if ((!data || !data.closes || data.closes.length < 20) && /^\d{6}$/.test(trimmedRaw)) {
-    const kqTicker = trimmedRaw + '.KQ';
+  if ((!data || !data.closes || data.closes.length < 20) && /^\d{6}$/.test(searchTicker)) {
+    const kqTicker = searchTicker + '.KQ';
     const kqData = await getCachedDailyCloses(kqTicker);
     if (kqData && kqData.closes && kqData.closes.length >= 20) { yahooTicker = kqTicker; data = kqData; }
   }
@@ -1209,7 +1283,7 @@ async function analyzeTickerForModal(rawInput) {
 
   return {
     ticker: yahooTicker,
-    name: (priceInfo && priceInfo.name) || trimmedRaw,
+    name: resolvedName || (priceInfo && priceInfo.name) || trimmedRaw,
     currentPrice,
     changePercent: priceInfo ? priceInfo.changePercent : null,
     ma20, ma60, ma120, trendLabel: maTrendLabel(ma20, ma60, ma120),
