@@ -625,6 +625,34 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
     guide: '평소처럼 계획한 투자 전략을 유지하시면 됩니다.'
   };
 }
+// [자산간 상관관계 가이드] 금리(美 10년물) ↔ 채권가격/성장주/달러가치는 교과서적으로 항상 반대·같은
+// 방향으로 움직이는 구조적 관계라, buildMacroCommentary의 "지금 국면이 무엇이냐"와 달리 다른 조건
+// 분기 없이 지금 금리 방향 하나로만 세 화살표가 통째로 뒤집힌다. 추가로 지금 환율이 그 교과서적
+// 방향과 실제로 일치하는지도 한 줄 참고 문구로 덧붙인다(다른 재료가 더 세게 작용 중인지 가늠하는 용도).
+function buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct }) {
+  const rateUp = typeof ust10yChangePct === 'number' && ust10yChangePct > 0.05;
+  const rateDown = typeof ust10yChangePct === 'number' && ust10yChangePct < -0.05;
+  const rateArrow = rateUp ? '📈' : (rateDown ? '📉' : '➡️');
+  const oppArrow = rateUp ? '📉' : (rateDown ? '📈' : '➡️');
+
+  const lines = [
+    `금리 ${rateArrow} → 채권가격 ${oppArrow} : 금리와 채권가격은 반대로 움직여요 - 새로 나오는 채권 금리가 더 매력적이면 기존 채권 가격은 떨어져요.`,
+    `금리 ${rateArrow} → 성장주(고PER주) ${oppArrow} : 미래 이익을 지금 가치로 환산할 때 할인폭이 ${rateUp ? '커져서 주가에 부담이 돼요' : '작아져서 주가에 우호적이에요'}.`,
+    `금리 ${rateArrow} → 달러 가치 ${rateArrow} : 금리가 오르면 더 높은 이자를 좇아 자금이 몰려 달러가 ${rateUp ? '강해지는' : '약해지는'} 경향이 있어요.`
+  ];
+
+  let note;
+  if (rateUp || rateDown) {
+    const fxMatches = rateUp ? fxChangePct > 0.05 : fxChangePct < -0.05;
+    note = fxMatches
+      ? '지금은 환율도 이 교과서적인 방향과 같이 움직이고 있어요.'
+      : '다만 지금 환율은 이 방향과 다르게 움직이고 있어요 - 금리 외에 다른 요인(수급, 지정학 이슈 등)이 더 크게 작용하고 있을 수 있어요.';
+  } else {
+    note = '지금은 금리 변동이 크지 않아 이 관계가 뚜렷하게 나타나지 않는 구간이에요.';
+  }
+  return { lines, note };
+}
+
 function renderMacroBriefing() {
   const gridEl = document.getElementById('macroBriefingGrid');
   const diagnosisEl = document.getElementById('macroBriefingDiagnosis');
@@ -636,17 +664,27 @@ function renderMacroBriefing() {
 
   const ust10yInfo = state.macroIndicatorCache['UST10Y'];
   const ust10y = ust10yInfo ? ust10yInfo.price : null;
+  const ust10yChangePct = ust10yInfo ? ust10yInfo.changePercent : null;
 
   const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0)
     ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : 0;
 
   const kospiInfo = getMarketIndexInfoFromState(INDEX_TICKERS.KOSPI);
+  const kosdaqInfo = getMarketIndexInfoFromState(INDEX_TICKERS.KOSDAQ);
+  const sp500Info = getMarketIndexInfoFromState(INDEX_TICKERS.SP500);
+  const nasdaqInfo = getMarketIndexInfoFromState(INDEX_TICKERS.NASDAQ);
+  const dowInfo = state.macroIndicatorCache['DOW'];
+  const indexTile = (label, info) => macroTileHtml(label, info ? fmtNum(info.price, 1) : '-', info ? `${info.changePercent >= 0 ? '+' : ''}${fmtNum(info.changePercent, 2)}%` : '조회 전', trendArrowIcon(info ? info.changePercent : null));
 
   gridEl.innerHTML = [
     macroTileHtml('VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon),
     macroTileHtml('원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct)),
-    macroTileHtml('美 10년물 금리', typeof ust10y === 'number' ? `${fmtNum(ust10y, 2)}%` : '-', '국채 수익률', trendArrowIcon(ust10yInfo ? ust10yInfo.changePercent : null)),
-    macroTileHtml('코스피', kospiInfo ? fmtNum(kospiInfo.price, 1) : '-', kospiInfo ? `${kospiInfo.changePercent >= 0 ? '+' : ''}${fmtNum(kospiInfo.changePercent, 2)}%` : '조회 전', trendArrowIcon(kospiInfo ? kospiInfo.changePercent : null))
+    macroTileHtml('美 10년물 금리', typeof ust10y === 'number' ? `${fmtNum(ust10y, 2)}%` : '-', '국채 수익률', trendArrowIcon(ust10yChangePct)),
+    indexTile('코스피', kospiInfo),
+    indexTile('코스닥', kosdaqInfo),
+    indexTile('S&P 500', sp500Info),
+    indexTile('나스닥', nasdaqInfo),
+    indexTile('다우', dowInfo)
   ].join('');
 
   const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
@@ -655,14 +693,22 @@ function renderMacroBriefing() {
 
   const commentary = buildMacroCommentary({
     vix, fxChangePct,
-    ust10yChangePct: ust10yInfo ? ust10yInfo.changePercent : null,
+    ust10yChangePct,
     kospiChangePct: kospiInfo ? kospiInfo.changePercent : null,
     foreignWeightPct
   });
+  const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });
   diagnosisEl.innerHTML = `
     <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 핵심 원인</span> ${escapeHtml(commentary.cause)}</p>
     <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
-    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>`;
+    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
+    <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+      <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">💡 자산간 상관관계 가이드</p>
+      <ul class="space-y-1 list-none">
+        ${correlation.lines.map((l) => `<li class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
+      </ul>
+      <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
+    </div>`;
 }
 
 function renderRiskSection() {
@@ -1018,7 +1064,7 @@ function renderStockAnalysisResult(a, sim) {
 
   return `
   <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
-    <h4 class="text-sm font-bold truncate">${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
+    <h4 class="text-sm font-bold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}" title="차트 보기">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
     <div class="text-right shrink-0">
       <div class="text-sm font-semibold">${fmtNum(a.currentPrice, a.currentPrice < 100 ? 2 : 0)}</div>
       <div class="text-xs font-medium ${changeColor}">${changeText}</div>
@@ -1093,7 +1139,6 @@ document.addEventListener('click', (e) => {
 
 let stockAnalysisRequestToken = 0;
 async function runStockAnalysis() {
-  hideStockAnalysisSuggestions();
   const tickerInput = document.getElementById('stockAnalysisTickerInput');
   const amountInput = document.getElementById('stockAnalysisAmountInput');
   const raw = tickerInput.value.trim();
@@ -1102,7 +1147,23 @@ async function runStockAnalysis() {
   const loadingEl = document.getElementById('stockAnalysisLoading');
   errorEl.classList.add('hidden');
   resultEl.classList.add('hidden');
-  if (!raw) { errorEl.textContent = '티커를 입력해 주세요.'; errorEl.classList.remove('hidden'); return; }
+  if (!raw) { errorEl.textContent = '종목명 또는 티커를 입력해 주세요.'; errorEl.classList.remove('hidden'); return; }
+
+  // [정확 일치 vs 모호한 입력] 한글 이름인데 정확히 하나로 특정되지 않으면(예: '삼성') 바로 에러를
+  // 보여주는 대신 추천 드롭다운을 띄운다 - '삼성전자'처럼 완전히 일치하는 이름/티커/영문 입력은
+  // findTickerByKoreanName이 바로 매칭되므로 이 분기를 타지 않고 곧장 분석으로 진행된다.
+  if (/[가-힣]/.test(raw) && !findTickerByKoreanName(raw)) {
+    const candidates = searchStockAnalysisCandidates(raw);
+    if (candidates.length >= 2) { renderStockAnalysisSuggestions(candidates); return; }
+    hideStockAnalysisSuggestions();
+    if (candidates.length === 0) {
+      errorEl.textContent = `'${raw}' 이름으로 종목을 찾을 수 없습니다 - 검색창에 두 글자 이상 입력하면 뜨는 추천 목록에서 선택하거나 티커를 직접 입력해 주세요.`;
+      errorEl.classList.remove('hidden');
+      return;
+    }
+  } else {
+    hideStockAnalysisSuggestions();
+  }
 
   loadingEl.classList.remove('hidden');
   const token = ++stockAnalysisRequestToken;

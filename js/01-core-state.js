@@ -451,8 +451,8 @@ const state = {
   transactions: [],
   // 거래내역 탭의 현재 조회 필터(세션 휘발성 - 새로고침 시 초기화).
   txFilters: { from: '', to: '', account: 'ALL', type: 'ALL', search: '' },
-  // 기간별 실현손익 섹션의 현재 보기 단위/기준일(세션 휘발성).
-  pnlPeriod: { granularity: 'monthly', refDate: todayDateStr() },
+  // 기간별 실현손익 섹션의 현재 보기 단위/기준일(세션 휘발성) - 기본값 '일별'.
+  pnlPeriod: { granularity: 'daily', refDate: todayDateStr() },
   // [일별 손익 추이 팝업] 일자별 자동 스냅샷 - { 'YYYY-MM-DD': { total:{cur,dailyPnL}, byOwner:{owner:{cur,dailyPnL}} } }.
   // 사용자 입력 없이 renderKPIs()가 매 렌더링마다 "오늘" 키를 최신값으로 덮어써 기록한다(하루 중 여러 번
   // 갱신해도 그날의 가장 최근 값만 남는다 - 앱을 열지 않은 날은 자연히 기록이 비어 있다).
