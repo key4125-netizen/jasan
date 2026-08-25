@@ -699,9 +699,9 @@ function renderMacroBriefing() {
   });
   const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });
   diagnosisEl.innerHTML = `
-    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 핵심 원인</span> ${escapeHtml(commentary.cause)}</p>
-    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
-    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
+    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 핵심 원인</span> ${escapeHtml(commentary.cause)}</p>
+    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
+    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
       <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">💡 자산간 상관관계 가이드</p>
       <ul class="space-y-1 list-none">
