@@ -564,7 +564,7 @@ function trendArrowIcon(changePercent) {
 }
 function macroTileHtml(label, valueText, sub, icon) {
   return `
-  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center">
+  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 py-2 text-center">
     <div class="text-[10px] text-slate-400 truncate">${escapeHtml(label)}</div>
     <div class="text-base leading-tight my-0.5">${icon}</div>
     <div class="text-[11px] font-semibold truncate">${escapeHtml(valueText)}</div>

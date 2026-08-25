@@ -2,16 +2,12 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v126'; // [종목명 학습 캐시 - 티커 검색 시 실제 이름 표시]
-// 'a128940'/'128940'처럼 티커로 검색해도 KR_STOCK_NAMES 표(약 70개)에 없으면 입력값 그대로가 이름으로
-// 뜨던 문제를 고쳤다. (1) 국내 실시간 시세 소스(Naver)가 실제로 내려주는 종목명 필드(stockName 등)를
-// 처음으로 파싱해서 쓴다(fetchNaverKrPrice) - 큐레이션 표에 없는 종목도 API가 이름을 주면 바로 뜬다.
-// (2) 이렇게 확인된 이름은 state.learnedTickerNames에 캐시돼(localStorage 영구 저장) 다음부터는 티커
-// 든 한글 이름이든 바로 찾고 추천 드롭다운("최근 검색")에도 나온다 - findTickerByKoreanName/
-// searchStockAnalysisCandidates가 이 캐시도 함께 검색한다. (3) 이 캐시는 JSON 백업/복원과 클라우드
-// 동기화에도 포함되어(buildSyncBlob) 다른 기기에서도 그대로 유지된다 - 동기화 시 순수 추가형 데이터라
-// 자산/거래내역과 달리 병합(합집합) 방식을 쓴다. 128940(한미약품)도 표에 직접 추가했다. js/01,09,12가
-// 바뀌었으므로 v125->v126으로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v127'; // [매크로 브리핑 - 모바일도 4열 2행 고정]
+// 지난 버전에서 데스크톱만 4열(모바일은 2열 4행)이었던 걸, 모바일에서도 항상 4열×2행으로 보이도록
+// 통일했다(grid-cols-2 sm:grid-cols-4 -> grid-cols-4). 타일 폭이 좁아진 만큼 좌우 패딩/간격을 살짝
+// 줄여(px-1.5->px-1, gap-1.5->gap-1, 모바일 기준) 375px에서도 8개 타일이 한 화면에 여유 있게 들어가는
+// 것을 실측 확인했다. index.html과 js/10이 바뀌었으므로 v126->v127로 올려 PWA가 캐시된 예전 버전을
+// 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',
