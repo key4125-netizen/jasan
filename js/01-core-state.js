@@ -424,6 +424,10 @@ const state = {
   // 따로 또 조회하지 않고 이 캐시를 그대로 읽는다(getMarketIndexInfoFromState 참고). 휘발성 데이터라
   // localStorage에는 저장하지 않는다.
   marketIndexCache: {},
+  // [시장 현황 & 매크로 브리핑] VIX(공포지수)/미국 10년물 국채금리 시세 캐시 - marketIndexCache와
+  // 완전히 동일한 구조·갱신 주기(refreshPricesAndRates 한 번에 함께 조회)를 쓴다. 휘발성 데이터라
+  // localStorage에는 저장하지 않는다.
+  macroIndicatorCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).

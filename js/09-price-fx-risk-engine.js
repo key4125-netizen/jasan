@@ -452,6 +452,11 @@ async function fetchPriceWithFallback(rawTicker, name) {
 // 시간외 데이터가 없어(KRX가 지수 자체는 정규장에만 산출) 시간외 시간대엔 raceFetchPrice가 자동으로
 // 직전 정규장 등락률을 그대로 반환한다(사용자 확인된 처리 방식과 일치, 별도 분기 코드 불필요).
 const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500: '^GSPC', NASDAQ100: '^NDX', DOW: '^DJI' };
+// [시장 현황 & 매크로 브리핑] 보유종목과 무관한 시장 전체 심리/금리 지표 - 위 INDEX_TICKERS와 동일한
+// Yahoo chart 엔드포인트(raceFetchPrice/fetchPriceWithFallback)로 그대로 조회되므로 새 API 연동이
+// 필요 없다. [확인됨] v8/finance/chart 응답의 ^TNX(미 10년물) price는 실제 수익률(%) 값 그대로 내려온다
+// (예: 4.7 → 4.7%, 별도 스케일링 불필요 - 실측으로 확인, renderMacroBriefing() 참고).
+const MACRO_TICKERS = { VIX: '^VIX', UST10Y: '^TNX' };
 const RISK_ELIGIBLE_CATEGORIES = ['주식', 'ETF'];
 
 // [벤치마크 다변화] 예전엔 미국 종목을 전부 S&P500 하나로만 비교했다 - 이제 종목 성격별로 더 맞는
@@ -467,14 +472,18 @@ const DOW_STYLE_TICKERS = new Set([
   'DIA', 'SCHD', 'VYM', 'HDV', 'VIG', 'NOBL', 'DVY', 'SPYD', 'SDY', 'JPM', 'V', 'MA', 'JNJ', 'UNH', 'XOM',
   'CVX', 'PG', 'KO'
 ]);
-function getBenchmarkKeyForAsset(a) {
-  const yahooTicker = sanitizeTicker(a.ticker).yahooTicker;
+// [종목 분석 모달 재사용] 보유자산(a) 대신 야후 티커 문자열만으로도 벤치마크를 고를 수 있도록 분리했다
+// - 미보유 관심종목(analyzeTickerForModal)은 애초에 자산 객체가 없어 이 함수가 필요하다.
+function getBenchmarkKeyForTicker(yahooTicker) {
   if (/\.KQ$/i.test(yahooTicker)) return 'KOSDAQ';
   if (/\.KS$/i.test(yahooTicker)) return 'KOSPI';
-  const upper = yahooTicker.toUpperCase();
+  const upper = (yahooTicker || '').toUpperCase();
   if (NASDAQ100_STYLE_TICKERS.has(upper)) return 'NASDAQ100';
   if (DOW_STYLE_TICKERS.has(upper)) return 'DOW';
   return 'SP500';
+}
+function getBenchmarkKeyForAsset(a) {
+  return getBenchmarkKeyForTicker(sanitizeTicker(a.ticker).yahooTicker);
 }
 
 function riskEligibleAssets() {
@@ -601,6 +610,30 @@ function rsiStateLabel(rsi14) {
   if (rsi14 >= 70) return '과열';
   if (rsi14 <= 30) return '과매도';
   return '적정';
+}
+
+// [종목 분석 모달] 볼린저 밴드(20일, ±2표준편차) - 중심선(SMA20)과 상/하단, 그리고 현재가가 그 밴드
+// 안 어디쯤 있는지(%b, 0=하단 1=상단 0.5=중심선)까지 함께 반환한다.
+function computeBollingerBands(closes, period = 20, mult = 2) {
+  if (!closes || closes.length < period) return null;
+  const recent = closes.slice(-period);
+  const mid = statMean(recent);
+  const variance = recent.reduce((s, c) => s + (c - mid) ** 2, 0) / recent.length;
+  const sd = Math.sqrt(variance);
+  const upper = mid + mult * sd;
+  const lower = mid - mult * sd;
+  const last = closes[closes.length - 1];
+  const pctB = (upper - lower) > 0 ? (last - lower) / (upper - lower) : null;
+  return { mid, upper, lower, pctB };
+}
+
+// [종목 분석 모달] 이동평균 정배열(20>60>120, 상승추세)/역배열(20<60<120, 하락추세)/혼조 판정 - 셋 중
+// 하나라도 값이 없으면(가격 이력 부족) null로 안전하게 빠진다.
+function maTrendLabel(ma20, ma60, ma120) {
+  if (typeof ma20 !== 'number' || typeof ma60 !== 'number' || typeof ma120 !== 'number') return null;
+  if (ma20 > ma60 && ma60 > ma120) return '정배열(상승추세)';
+  if (ma20 < ma60 && ma60 < ma120) return '역배열(하락추세)';
+  return '혼조(추세 불분명)';
 }
 
 // [2020 코로나 폭락 재현] 2020-02-19~2020-03-23 실제 벤치마크 지수 낙폭(%, 공개된 역사적 수치) - 종목별
@@ -1129,5 +1162,104 @@ async function computeAdvancedRiskMetrics(ownerFilter) {
     console.warn('[리스크 진단] 계산 실패 - 다음 갱신에서 재시도합니다:', e.message);
     return null;
   }
+}
+
+/* -------------------------------------------------------------------------
+ * 18-4. [종목 분석 & 투자 검토 보고서] 신규 관심종목(미보유 포함) 정밀 분석 엔진
+ *    - 보유종목 전용이던 위 엔진(getCachedDailyCloses/computeRSI14/computeSMA/computeBollingerBands/
+ *      computeMDDFromCloses/computeBetaFromReturns)이 애초에 "야후 티커 문자열" 하나만 있으면 동작
+ *      하도록 범용으로 짜여 있어, 어떤 티커를 넣어도(보유 중이 아니어도) 새 API 연동 없이 그대로
+ *      재사용할 수 있다. RISK 관리 카드와 달리 1년치 데이터가 없으면(신규상장 등) 에러 메시지만
+ *      반환하고 조용히 실패한다(호출부가 그대로 화면에 안내문으로 보여줌).
+ * ---------------------------------------------------------------------- */
+async function analyzeTickerForModal(rawInput) {
+  const trimmedRaw = String(rawInput || '').trim();
+  if (!trimmedRaw) return { error: '티커를 입력해 주세요.' };
+
+  // 현재가/등락률은 실패해도(예: 장중 프록시 일시 장애) 아래 기술적 분석은 계속 진행한다 - 표시용
+  // 보조 정보일 뿐, 핵심 분석은 1년치 종가 이력(closes)만 있으면 가능하다.
+  let priceInfo = null;
+  try { priceInfo = await fetchPriceWithFallback(trimmedRaw, trimmedRaw); } catch (e) { /* 무시 - 아래 폴백으로 계속 */ }
+
+  let yahooTicker = sanitizeTicker(trimmedRaw).yahooTicker;
+  let data = await getCachedDailyCloses(yahooTicker);
+  // [코스닥 구제] 접미사 없는 6자리 국내코드가 코스피(.KS) 조회로 실패하면 코스닥(.KQ)으로 한 번 더
+  // 시도한다 - fetchPriceWithFallback의 동일한 구제 로직을 여기서도 재현.
+  if ((!data || !data.closes || data.closes.length < 20) && /^\d{6}$/.test(trimmedRaw)) {
+    const kqTicker = trimmedRaw + '.KQ';
+    const kqData = await getCachedDailyCloses(kqTicker);
+    if (kqData && kqData.closes && kqData.closes.length >= 20) { yahooTicker = kqTicker; data = kqData; }
+  }
+  if (!data || !data.closes || data.closes.length < 20) {
+    return { error: `'${trimmedRaw}'의 가격 이력을 찾을 수 없습니다 - 티커를 확인해 주세요 (예: 해외는 AAPL, 국내는 005930).` };
+  }
+
+  const closes = data.closes;
+  const returns = dailyReturnsFromCloses(closes);
+  const benchmarkKey = getBenchmarkKeyForTicker(yahooTicker);
+  const benchmarkData = await getCachedDailyCloses(INDEX_TICKERS[benchmarkKey]);
+  const benchmarkReturns = benchmarkData ? dailyReturnsFromCloses(benchmarkData.closes) : null;
+
+  const currentPrice = (priceInfo && Number.isFinite(priceInfo.price)) ? priceInfo.price : closes[closes.length - 1];
+  const ma20 = computeSMA(closes, 20);
+  const ma60 = computeSMA(closes, 60);
+  const ma120 = computeSMA(closes, 120);
+  const week52High = Math.max(...closes, currentPrice || 0);
+  const rsi14 = computeRSI14(closes);
+
+  return {
+    ticker: yahooTicker,
+    name: (priceInfo && priceInfo.name) || trimmedRaw,
+    currentPrice,
+    changePercent: priceInfo ? priceInfo.changePercent : null,
+    ma20, ma60, ma120, trendLabel: maTrendLabel(ma20, ma60, ma120),
+    rsi14, rsiState: rsiStateLabel(rsi14),
+    bollinger: computeBollingerBands(closes, 20, 2),
+    mdd: computeMDDFromCloses(closes),
+    beta: (returns && benchmarkReturns) ? computeBetaFromReturns(returns, benchmarkReturns) : null,
+    benchmarkKey,
+    week52High,
+    week52DrawdownPct: week52High > 0 ? ((currentPrice - week52High) / week52High) * 100 : null
+  };
+}
+
+// [포트폴리오 적합도 시뮬레이션] 관심종목을 지정한 금액(원)만큼 가상으로 추가 매수했다고 가정하고,
+// 이미 계산되어 있는 state.advancedRiskMetrics(RISK 관리 카드와 동일한 데이터, 재계산 없음)의 섹터
+// 노출/HHI/최대비중을 "추가 전 vs 추가 후"로 비교한다. RISK 관리 카드를 한 번도 갱신하지 않아
+// advancedRiskMetrics가 아직 없으면(null) 시뮬레이션을 건너뛰고 null을 반환 - 호출부가 이 경우 해당
+// 섹션을 조용히 숨긴다.
+function simulatePortfolioAddition(candidateTicker, addAmountKRW) {
+  const m = state.advancedRiskMetrics;
+  if (!m || !m.holdings || m.holdings.length === 0) return null;
+  if (!(addAmountKRW > 0)) return null;
+  const totalCur = m.totalCur;
+  if (!(totalCur > 0)) return null;
+  const newTotal = totalCur + addAmountKRW;
+
+  const yahooTicker = sanitizeTicker(candidateTicker).yahooTicker;
+  const rescaled = m.holdings.map((h) => ({ ...h, weight: h.curAmount / newTotal }));
+  const existing = rescaled.find((h) => h.ticker === yahooTicker);
+  const addedWeight = addAmountKRW / newTotal;
+  if (existing) {
+    existing.weight += addedWeight;
+  } else {
+    rescaled.push({ ticker: yahooTicker, name: candidateTicker, weight: addedWeight, curAmount: addAmountKRW });
+  }
+
+  const afterSector = computeSectorExposure(rescaled);
+  const afterHHI = computeHHI(rescaled);
+  const afterTop = [...rescaled].sort((a, b) => b.weight - a.weight)[0];
+
+  return {
+    before: {
+      topSector: m.sectorExposure.topSector, topSectorWeight: m.sectorExposure.topSectorWeight,
+      hhi: m.hhi, topWeightPct: m.topWeight, topHoldingName: m.topHolding ? m.topHolding.name : null
+    },
+    after: {
+      topSector: afterSector.topSector, topSectorWeight: afterSector.topSectorWeight,
+      hhi: afterHHI, topWeightPct: afterTop.weight * 100, topHoldingName: afterTop.name
+    },
+    addedWeightPct: addedWeight * 100
+  };
 }
 

@@ -541,7 +541,75 @@ function setActiveScenarioPresetButton(activeBtn) {
   });
 }
 
+/* -------------------------------------------------------------------------
+ * 18-5. [시장 현황 & 매크로 브리핑] RISK 관리 카드 최상단 - VIX/원달러/미10년물/주요지수 4대 지표를
+ *    날씨·신호등 아이콘으로 보여주고, 사용자의 원화/외화 자산 비중과 엮은 맞춤 진단 문구를 만든다.
+ *    데이터는 refreshPricesAndRates()가 한 번의 갱신 주기에 함께 조회해 state.macroIndicatorCache/
+ *    state.marketIndexCache/state.exchangeRate에 채워둔 것을 그대로 읽기만 한다(여기서 새로 조회 안 함).
+ * ---------------------------------------------------------------------- */
+// VIX(공포·탐욕 지수) 수준 → 날씨 아이콘. 20 미만 안정, 20~30 주의, 30 이상 긴장 - 널리 쓰이는 통상적
+// 구간(20=평상시 평균 근방, 30=시장이 눈에 띄게 불안해하는 구간)을 참고한 근사치.
+function vixWeatherIcon(vix) {
+  if (typeof vix !== 'number' || !Number.isFinite(vix)) return { icon: '❓', label: '조회 실패' };
+  if (vix < 20) return { icon: '😌', label: '안정' };
+  if (vix < 30) return { icon: '😐', label: '주의' };
+  return { icon: '😰', label: '긴장' };
+}
+// 등락률 → 방향 화살표(±0.05%는 보합으로 처리해 미세한 노이즈에 화살표가 계속 바뀌지 않게 한다).
+function trendArrowIcon(changePercent) {
+  if (typeof changePercent !== 'number' || !Number.isFinite(changePercent)) return '❓';
+  if (changePercent > 0.05) return '📈';
+  if (changePercent < -0.05) return '📉';
+  return '➡️';
+}
+function macroTileHtml(label, valueText, sub, icon) {
+  return `
+  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center">
+    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(label)}</div>
+    <div class="text-base leading-tight my-0.5">${icon}</div>
+    <div class="text-[11px] font-semibold truncate">${escapeHtml(valueText)}</div>
+    <div class="text-[9px] text-slate-400 truncate">${escapeHtml(sub)}</div>
+  </div>`;
+}
+// [맞춤형 연계 진단] 원/달러 환율 방향 × 내 포트폴리오의 외화(달러) 자산 비중을 엮어 한 줄로 설명한다.
+function buildMacroDiagnosisLine(fxChangePct, foreignWeightPct) {
+  if (typeof foreignWeightPct !== 'number') return '';
+  const fxDirection = fxChangePct > 0.05 ? '오르면' : (fxChangePct < -0.05 ? '내리면' : '보합이면');
+  const effect = fxChangePct > 0.05 ? '유리해집니다' : (fxChangePct < -0.05 ? '불리해집니다' : '큰 영향이 없습니다');
+  return `현재 외화(달러) 자산 비중은 전체의 ${fmtNum(foreignWeightPct, 0)}%입니다 - 환율이 ${fxDirection} 원화 환산 평가금액이 ${effect}.`;
+}
+function renderMacroBriefing() {
+  const gridEl = document.getElementById('macroBriefingGrid');
+  const diagnosisEl = document.getElementById('macroBriefingDiagnosis');
+  if (!gridEl || !diagnosisEl) return;
+
+  const vixInfo = state.macroIndicatorCache['VIX'];
+  const vix = vixInfo ? vixInfo.price : null;
+  const vixWeather = vixWeatherIcon(vix);
+
+  const ust10yInfo = state.macroIndicatorCache['UST10Y'];
+  const ust10y = ust10yInfo ? ust10yInfo.price : null;
+
+  const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0)
+    ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : 0;
+
+  const kospiInfo = getMarketIndexInfoFromState(INDEX_TICKERS.KOSPI);
+
+  gridEl.innerHTML = [
+    macroTileHtml('VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon),
+    macroTileHtml('원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct)),
+    macroTileHtml('美 10년물 금리', typeof ust10y === 'number' ? `${fmtNum(ust10y, 2)}%` : '-', '국채 수익률', trendArrowIcon(ust10yInfo ? ust10yInfo.changePercent : null)),
+    macroTileHtml('코스피', kospiInfo ? fmtNum(kospiInfo.price, 1) : '-', kospiInfo ? `${kospiInfo.changePercent >= 0 ? '+' : ''}${fmtNum(kospiInfo.changePercent, 2)}%` : '조회 전', trendArrowIcon(kospiInfo ? kospiInfo.changePercent : null))
+  ].join('');
+
+  const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
+  const totalAmount = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const foreignWeightPct = totalAmount > 0 ? (foreignAmount / totalAmount) * 100 : null;
+  diagnosisEl.textContent = buildMacroDiagnosisLine(fxChangePct, foreignWeightPct);
+}
+
 function renderRiskSection() {
+  renderMacroBriefing();
   renderRiskCardOwnerTabs();
   renderRiskDiagnosisSummary();
   const riskyContainer = document.getElementById('riskListContainer');
@@ -803,5 +871,153 @@ document.getElementById('riskAlertDetailBtn').addEventListener('click', (e) => {
       }
     }
   }, 50);
+});
+
+/* -------------------------------------------------------------------------
+ * 18-6. [종목 분석 & 투자 검토 보고서] 모달 - analyzeTickerForModal()/simulatePortfolioAddition()
+ *    (js/09)이 계산해 둔 값을 화면에 옮겨 적기만 한다(18-3 구간의 "엔진은 09, 번역은 10" 원칙과 동일).
+ * ---------------------------------------------------------------------- */
+function bollingerPositionLabel(bollinger) {
+  if (!bollinger || typeof bollinger.pctB !== 'number') return '데이터 부족';
+  const pctB = bollinger.pctB;
+  if (pctB >= 1) return '상단 밴드 상회(단기 과열 가능)';
+  if (pctB >= 0.8) return '상단 부근(단기 과열 구간에 근접)';
+  if (pctB <= 0) return '하단 밴드 하회(단기 급락 상태)';
+  if (pctB <= 0.2) return '하단 부근(단기 반등 대기 구간 가능)';
+  return '중심선 부근(평상시 변동 범위)';
+}
+
+// [종합 1줄 리포트] 감지된 신호를 규칙 기반으로 모아 한 문장으로 요약한다 - buildRiskDiagnosisLine과
+// 동일한 "왜 그런가"를 보여주는 톤.
+function buildStockAnalysisReportLine(a, sim) {
+  const flags = [];
+  if (a.rsiState === '과열') flags.push(`단기 과열(RSI ${fmtNum(a.rsi14, 0)})`);
+  if (a.trendLabel === '역배열(하락추세)') flags.push('이동평균 역배열(하락추세)');
+  if (typeof a.week52DrawdownPct === 'number' && a.week52DrawdownPct <= -30) flags.push(`52주 고점 대비 ${fmtNum(Math.abs(a.week52DrawdownPct), 0)}% 낙폭`);
+  if (typeof a.beta === 'number' && a.beta >= 1.3) flags.push(`시장 대비 변동성 높음(베타 ${fmtNum(a.beta, 1)})`);
+  if (sim && (sim.after.topSectorWeight - sim.before.topSectorWeight) >= 10) {
+    flags.push(`편입 시 '${sim.after.topSector}' 섹터 쏠림 심화(${fmtNum(sim.before.topSectorWeight, 0)}%→${fmtNum(sim.after.topSectorWeight, 0)}%)`);
+  }
+  if (sim && (sim.after.topWeightPct - sim.before.topWeightPct) >= 5 && sim.after.topHoldingName === (a.name || a.ticker)) {
+    flags.push(`이 종목이 계좌 내 최대비중(${fmtNum(sim.after.topWeightPct, 0)}%)이 됨`);
+  }
+  if (flags.length === 0) return '기술적 신호와 포트폴리오 영향 모두 특별한 경고 신호가 없는 편입니다. 다만 이는 과거 데이터 기반 참고 정보이며, 투자 판단과 책임은 본인에게 있습니다.';
+  return `주의 신호: ${flags.join(' · ')}. 편입 전 비중을 신중히 검토하세요 - 과거 데이터 기반 참고 정보이며 투자 판단과 책임은 본인에게 있습니다.`;
+}
+
+function stockAnalysisStatTile(label, valueText) {
+  return `
+  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-2.5 py-2">
+    <div class="text-[10px] text-slate-400">${escapeHtml(label)}</div>
+    <div class="text-xs font-semibold mt-0.5">${valueText}</div>
+  </div>`;
+}
+
+function renderStockAnalysisResult(a, sim) {
+  const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500' : 'text-blue-500') : 'text-slate-400';
+  const changeText = typeof a.changePercent === 'number' ? `${a.changePercent >= 0 ? '+' : ''}${fmtNum(a.changePercent, 2)}%` : '조회 실패';
+
+  let simHtml = '';
+  if (sim) {
+    simHtml = `
+    <div class="mb-3">
+      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🧩 포트폴리오 적합도 (편입 시 예상 변화, +${fmtNum(sim.addedWeightPct, 1)}%p)</p>
+      <div class="grid grid-cols-2 gap-2">
+        ${stockAnalysisStatTile('섹터 쏠림 (최대 섹터)', `${escapeHtml(sim.before.topSector || '-')} ${fmtNum(sim.before.topSectorWeight, 0)}% → ${escapeHtml(sim.after.topSector || '-')} ${fmtNum(sim.after.topSectorWeight, 0)}%`)}
+        ${stockAnalysisStatTile('최대 종목 비중', `${fmtNum(sim.before.topWeightPct, 0)}% → ${fmtNum(sim.after.topWeightPct, 0)}%`)}
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
+    <h4 class="text-sm font-bold truncate">${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
+    <div class="text-right shrink-0">
+      <div class="text-sm font-semibold">${fmtNum(a.currentPrice, a.currentPrice < 100 ? 2 : 0)}</div>
+      <div class="text-xs font-medium ${changeColor}">${changeText}</div>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 기술적 분석</p>
+    <div class="grid grid-cols-2 gap-2">
+      ${stockAnalysisStatTile('이동평균 배열(20/60/120일)', a.trendLabel || '데이터 부족')}
+      ${stockAnalysisStatTile('과열지수 RSI(14)', typeof a.rsi14 === 'number' ? `${fmtNum(a.rsi14, 0)} (${a.rsiState})` : '데이터 부족')}
+      <div class="col-span-2">${stockAnalysisStatTile('볼린저 밴드 위치', bollingerPositionLabel(a.bollinger))}</div>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">⚠️ 리스크 분석</p>
+    <div class="grid grid-cols-2 gap-2">
+      ${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족')}
+      ${stockAnalysisStatTile('베타(시장 민감도)', typeof a.beta === 'number' ? `${fmtNum(a.beta, 2)}배` : '데이터 부족')}
+      <div class="col-span-2">${stockAnalysisStatTile('52주 고점 대비', typeof a.week52DrawdownPct === 'number' ? `${fmtNum(a.week52DrawdownPct, 1)}%` : '데이터 부족')}</div>
+    </div>
+  </div>
+
+  ${simHtml}
+
+  <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-2.5">
+    <p class="text-xs font-semibold text-brand-700 dark:text-brand-300">📝 종합 진단</p>
+    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">${escapeHtml(buildStockAnalysisReportLine(a, sim))}</p>
+  </div>`;
+}
+
+let stockAnalysisRequestToken = 0;
+async function runStockAnalysis() {
+  const tickerInput = document.getElementById('stockAnalysisTickerInput');
+  const amountInput = document.getElementById('stockAnalysisAmountInput');
+  const raw = tickerInput.value.trim();
+  const errorEl = document.getElementById('stockAnalysisErrorMsg');
+  const resultEl = document.getElementById('stockAnalysisResult');
+  const loadingEl = document.getElementById('stockAnalysisLoading');
+  errorEl.classList.add('hidden');
+  resultEl.classList.add('hidden');
+  if (!raw) { errorEl.textContent = '티커를 입력해 주세요.'; errorEl.classList.remove('hidden'); return; }
+
+  loadingEl.classList.remove('hidden');
+  const token = ++stockAnalysisRequestToken;
+  const a = await analyzeTickerForModal(raw);
+  if (token !== stockAnalysisRequestToken) return; // 그 사이 재검색/모달 닫힘 - 늦게 온 응답은 버림
+  loadingEl.classList.add('hidden');
+
+  if (a.error) {
+    errorEl.textContent = a.error;
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  const addAmountKRW = num(amountInput.value);
+  const sim = addAmountKRW > 0 ? simulatePortfolioAddition(a.ticker, addAmountKRW) : null;
+  resultEl.innerHTML = renderStockAnalysisResult(a, sim);
+  resultEl.classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function openStockAnalysisModal() {
+  document.getElementById('stockAnalysisModal').classList.remove('hidden');
+  document.getElementById('stockAnalysisErrorMsg').classList.add('hidden');
+  document.getElementById('stockAnalysisResult').classList.add('hidden');
+  document.getElementById('stockAnalysisTickerInput').value = '';
+  document.getElementById('stockAnalysisAmountInput').value = '';
+  pushModalHistoryState();
+  setTimeout(() => document.getElementById('stockAnalysisTickerInput').focus(), 50);
+}
+function closeStockAnalysisModal(viaBackButton) {
+  stockAnalysisRequestToken++; // 진행 중이던 조회가 있었다면 그 응답을 무시 처리
+  document.getElementById('stockAnalysisModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('stockAnalysisBtn').addEventListener('click', () => openStockAnalysisModal());
+document.getElementById('stockAnalysisSearchBtn').addEventListener('click', () => runStockAnalysis());
+document.getElementById('stockAnalysisTickerInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
+document.getElementById('stockAnalysisAmountInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
+document.getElementById('stockAnalysisModalHeader').addEventListener('click', () => closeStockAnalysisModal());
+document.getElementById('closeStockAnalysisModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeStockAnalysisModal();
+});
+document.getElementById('stockAnalysisModal').addEventListener('click', (e) => {
+  if (e.target.id === 'stockAnalysisModal') closeStockAnalysisModal();
 });
 
