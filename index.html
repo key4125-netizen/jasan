@@ -209,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v119</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v122</p>
           </div>
         </div>
 
@@ -503,7 +503,7 @@
         <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
       <div id="macroBriefingGrid" class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-2"></div>
-      <p id="macroBriefingDiagnosis" class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed"></p>
+      <div id="macroBriefingDiagnosis" class="space-y-1"></div>
     </div>
 
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
@@ -1903,10 +1903,16 @@
       </button>
     </div>
     <div class="px-5 py-4 overflow-y-auto">
-      <div class="flex items-center gap-2 mb-1.5">
-        <input type="text" id="stockAnalysisTickerInput" placeholder="티커 입력 (예: AAPL, 005930)"
-          class="flex-1 min-w-0 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800">
-        <button type="button" id="stockAnalysisSearchBtn" class="shrink-0 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold">분석</button>
+      <!-- [한글 종목명 검색 지원] 티커를 몰라도 '현대차'처럼 이름으로 입력/검색할 수 있다 - 두 글자
+           이상 입력하면 보유 자산 + 주요 종목표(KR_STOCK_NAMES)에서 추천 목록이 뜬다
+           (renderStockAnalysisSuggestions, js/10). 목록에서 고르면 즉시 분석까지 실행된다. -->
+      <div class="relative mb-1.5">
+        <div class="flex items-center gap-2">
+          <input type="text" id="stockAnalysisTickerInput" placeholder="종목명 또는 티커 입력 (예: 현대차, AAPL, 005930)" autocomplete="off"
+            class="flex-1 min-w-0 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800">
+          <button type="button" id="stockAnalysisSearchBtn" class="shrink-0 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold">분석</button>
+        </div>
+        <div id="stockAnalysisSuggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"></div>
       </div>
       <input type="number" id="stockAnalysisAmountInput" placeholder="매수 검토 금액(원, 선택 - 입력 시 포트폴리오 적합도까지 분석)"
         class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs mb-3 bg-white dark:bg-slate-800">
