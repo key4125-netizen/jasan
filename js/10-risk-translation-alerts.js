@@ -1414,11 +1414,13 @@ const STOCK_ANALYSIS_TAG_COLOR_CLASSES = {
   blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
 };
 
-function renderStockAnalysisResult(a, sim) {
-  const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500' : 'text-blue-500') : 'text-slate-400';
-  const changeText = typeof a.changePercent === 'number' ? `${a.changePercent >= 0 ? '+' : ''}${fmtNum(a.changePercent, 2)}%` : '조회 실패';
-  const status = buildStockStatusSummary(a);
+// [종목 분석 모달 + 보유종목 상세 모달 공용] 6섹션 리포트 본문(핵심요약~고지문)만 만든다 - 종목명/
+// 현재가 헤더는 호출부마다 다르게 필요해서(종목 분석 모달은 자체 헤더가 있고, 보유종목 상세 모달은
+// 이미 위에 이름/차트가 있어 헤더를 또 반복하면 중복된다) 별도로 뺐다. attachStockAnalysisReportTo
+// DetailModal()(js/08)이 보유종목 상세 모달에서 이 함수를 그대로 재사용한다.
+function renderStockAnalysisReportBody(a, sim) {
   const priceDecimals = a.currentPrice < 100 ? 2 : 0;
+  const status = buildStockStatusSummary(a);
 
   let simHtml = '';
   if (sim) {
@@ -1433,14 +1435,6 @@ function renderStockAnalysisResult(a, sim) {
   }
 
   return `
-  <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
-    <h4 class="text-sm font-bold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}" title="차트 보기">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
-    <div class="text-right shrink-0">
-      <div class="text-sm font-semibold">${fmtNum(a.currentPrice, priceDecimals)}</div>
-      <div class="text-xs font-medium ${changeColor}">${changeText}</div>
-    </div>
-  </div>
-
   <div class="mb-3">
     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📌 핵심 요약 &amp; 현재 상태</p>
     <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 flex items-start gap-2">
@@ -1497,6 +1491,24 @@ function renderStockAnalysisResult(a, sim) {
   </div>
 
   <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
+}
+
+// [종목 분석 모달 전용] 종목명/현재가 헤더 + 위 6섹션 본문을 합친다 - 종목 분석 모달은 자체 헤더가
+// 필요하지만, 보유종목 상세 모달에 이어붙일 때는(attachStockAnalysisReportToDetailModal, js/08)
+// 그 모달에 이미 이름/차트가 있어 헤더 없이 renderStockAnalysisReportBody()만 그대로 쓴다.
+function renderStockAnalysisResult(a, sim) {
+  const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500' : 'text-blue-500') : 'text-slate-400';
+  const changeText = typeof a.changePercent === 'number' ? `${a.changePercent >= 0 ? '+' : ''}${fmtNum(a.changePercent, 2)}%` : '조회 실패';
+  const priceDecimals = a.currentPrice < 100 ? 2 : 0;
+  return `
+  <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
+    <h4 class="text-sm font-bold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}" title="차트 보기">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
+    <div class="text-right shrink-0">
+      <div class="text-sm font-semibold">${fmtNum(a.currentPrice, priceDecimals)}</div>
+      <div class="text-xs font-medium ${changeColor}">${changeText}</div>
+    </div>
+  </div>
+  ${renderStockAnalysisReportBody(a, sim)}`;
 }
 
 // [한글 종목명 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/주요종목 후보를

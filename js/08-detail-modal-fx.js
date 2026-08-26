@@ -30,6 +30,42 @@ function usdCashInfoGridHtml(quantity, buyRate, curAmount, profit, rateOfReturn,
     </div>`;
 }
 
+// [종목 분석 리포트 통합] 종목 상세 모달(단일/그룹/미보유 읽기전용 3가지 진입 경로 공용) 하단에
+// 종목 분석 모달과 동일한 6섹션 리포트를 이어 붙인다 - analyzeTickerForModal()(js/09)로 데이터를
+// 계산하고 renderStockAnalysisReportBody()(js/10)로 그린다(종목 분석 모달과 완전히 같은 함수라
+// 로직이 두 곳으로 갈라지지 않는다). 티커가 없는 자산(부동산/현금 등)이면 애초에 분석할 대상이
+// 없으므로 섹션 자체를 숨긴다. 포트폴리오 적합도 섹션(sim)은 이 모달엔 매수 검토 금액 입력창이
+// 없어 항상 생략한다(null).
+let assetDetailAnalysisToken = 0;
+async function attachStockAnalysisReportToDetailModal(ticker) {
+  const section = document.getElementById('assetDetailAnalysisSection');
+  const body = document.getElementById('assetDetailAnalysisBody');
+  if (!section || !body) return;
+
+  const trimmed = String(ticker || '').trim();
+  if (!trimmed) { section.classList.add('hidden'); return; }
+
+  section.classList.remove('hidden');
+  body.innerHTML = `
+    <div class="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
+      <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+      <span class="text-xs">종목 분석 리포트를 불러오는 중...</span>
+    </div>`;
+  lucide.createIcons();
+
+  const token = ++assetDetailAnalysisToken;
+  const a = await analyzeTickerForModal(trimmed);
+  // 그 사이 모달이 닫히거나 다른 종목으로 바뀌었으면(늦게 도착한 응답) 버린다.
+  if (token !== assetDetailAnalysisToken || document.getElementById('assetDetailModal').classList.contains('hidden')) return;
+
+  if (a.error) {
+    body.innerHTML = `<p class="text-xs text-amber-600 dark:text-amber-400 py-2">${escapeHtml(a.error)}</p>`;
+    return;
+  }
+  body.innerHTML = renderStockAnalysisReportBody(a, null);
+  lucide.createIcons();
+}
+
 function openAssetDetailModal(id) {
   const a = state.assets.find((x) => x.id === id);
   if (!a) return;
@@ -64,6 +100,7 @@ function openAssetDetailModal(id) {
   document.getElementById('assetDetailModal').classList.remove('hidden');
   pushModalHistoryState();
   renderAssetDetailChart(a);
+  attachStockAnalysisReportToDetailModal(a.ticker);
 }
 
 // 소유자별 보유 세부 현황 한 줄 - 통합(그룹) 상세 모달 전용.
@@ -161,6 +198,7 @@ function openAssetDetailModalGroup(members) {
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart(priced, avgBuyPriceNative, byOwnerAvgPriceNative); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그리되, 평단가선은 통합 평균 매수단가를 쓰고 범례에 소유자별 평단가를 병기한다
+  attachStockAnalysisReportToDetailModal(first.ticker);
 }
 
 function closeAssetDetailModal(viaBackButton) {
@@ -258,6 +296,7 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
+  attachStockAnalysisReportToDetailModal(s.yahooTicker);
 }
 
 document.addEventListener('click', (e) => {
