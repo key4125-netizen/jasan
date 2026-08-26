@@ -228,9 +228,6 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
 // 기본값: 두 섹션 모두 접힘(요청된 기본 상태) - 헤더를 탭해야만 펼쳐진다.
 let riskyAccordionOpen = false;
 let safeAccordionOpen = false;
-// [🔍 리스크 진단 보기] 리스크 감지 종목마다 개별 펼침 상태를 종목 키(티커, 없으면 이름) 단위로
-// 기억한다 - riskyAccordionOpen과 마찬가지로 5분 자동 갱신에도 사용자가 펼쳐 둔 카드가 유지된다.
-let openStockDetailKeys = new Set();
 
 // [RISK 카드 - 소유자별 필터] 'all'이면 지금까지처럼 state.advancedRiskMetrics(가구 전체, 5분 자동
 // 갱신/새로고침 버튼이 채움)를 그대로 쓴다. 특정 소유자를 고르면 그 소유자 보유분만으로 같은 엔진
@@ -1061,7 +1058,7 @@ function renderRiskSection() {
 
   riskyContainer.innerHTML = risky.length === 0
     ? '<p class="text-xs text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
-    : risky.map(({ key, asset: a, row: r, tags, owners, curAmount, holding }) => {
+    : risky.map(({ key, asset: a, row: r, tags, owners, curAmount }) => {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
       const tagHtml = tags.map((t) =>
@@ -1080,13 +1077,7 @@ function renderRiskSection() {
           </div>
           <div class="text-right shrink-0 pl-2">
             <p class="text-base font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
-            <button type="button" data-risk-detail-toggle class="mt-1.5 inline-flex items-center gap-0.5 py-1 pl-2 -mr-2 text-xs font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
-              🔍 리스크 진단 보기 <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" data-risk-detail-chevron></i>
-            </button>
           </div>
-        </div>
-        <div data-risk-detail-body class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          ${buildIndividualRiskDetailHtml(holding, weightPct)}
         </div>
       </div>`;
     }).join('');
@@ -1116,38 +1107,7 @@ function renderRiskSection() {
   if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, riskyAccordionOpen);
   if (safeBody && safeChevron) setAccordionOpen(safeBody, safeChevron, safeAccordionOpen);
 
-  // [🔍 리스크 진단 보기] 새로 그려진 종목 행마다 data-lucide 아이콘을 실제 SVG로 바꿔주고, 이 종목이
-  // openStockDetailKeys에 펼쳐진 상태로 기록돼 있으면 높이/화살표를 즉시 재적용한다(reapplyRiskDetailPanelHeights).
-  // 그 다음 바깥 "리스크 감지" 아코디언 높이도 늘어난 내용에 맞춰 다시 계산한다(중첩 아코디언 버그 수정).
   lucide.createIcons();
-  reapplyRiskDetailPanelHeights();
-  reapplyRiskyOuterAccordionHeight();
-}
-
-// riskyContainer 안의 각 종목 행을 순회하며 openStockDetailKeys에 있는 종목만 펼친 상태로 되돌린다 -
-// setAccordionOpen과 동일한 max-height 트릭이지만 종목별로 여러 개를 동시에 다뤄야 해 별도 함수로 뺐다.
-function reapplyRiskDetailPanelHeights() {
-  document.querySelectorAll('#riskListContainer [data-risk-row]').forEach((rowEl) => {
-    const key = rowEl.dataset.riskKey;
-    const bodyEl = rowEl.querySelector('[data-risk-detail-body]');
-    const chevronEl = rowEl.querySelector('[data-risk-detail-chevron]');
-    if (!bodyEl) return;
-    const isOpen = openStockDetailKeys.has(key);
-    bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
-    if (chevronEl) chevronEl.classList.toggle('rotate-180', isOpen);
-  });
-}
-
-// [중첩 아코디언 높이 버그 수정] "리스크 감지" 바깥 아코디언(riskyAccordionBody)의 max-height는 종목
-// 리스트가 그려질 때의 높이로 한 번 고정되는데, 그 안의 개별 [🔍 리스크 진단 보기] 카드가 나중에
-// 펼쳐지면 바깥 컨테이너 높이가 더 늘어나야 한다 - 그렇지 않으면 안쪽 카드가 잘려 보인다. 안쪽 카드가
-// CSS transition으로 서서히 커지는 도중에는 scrollHeight를 읽어도 아직 다 커지지 않은 중간값이 잡히므로,
-// 즉시 한 번 + 안쪽 transition(300ms)이 끝난 뒤 한 번 더 재계산해 확실히 맞춘다.
-function reapplyRiskyOuterAccordionHeight() {
-  const riskyBody = document.getElementById('riskyAccordionBody');
-  if (!riskyBody || !riskyAccordionOpen) return;
-  riskyBody.style.maxHeight = riskyBody.scrollHeight + 'px';
-  setTimeout(() => { if (riskyAccordionOpen) riskyBody.style.maxHeight = riskyBody.scrollHeight + 'px'; }, 320);
 }
 
 document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
@@ -1157,24 +1117,6 @@ document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
 document.getElementById('safeAccordionBtn').addEventListener('click', () => {
   safeAccordionOpen = !safeAccordionOpen;
   setAccordionOpen(document.getElementById('safeAccordionBody'), document.getElementById('safeAccordionChevron'), safeAccordionOpen);
-});
-
-// [🔍 리스크 진단 보기] 종목 행 안의 토글 버튼 클릭 - 위임(delegated) 리스너 하나로 재렌더링 여부와
-// 무관하게 항상 동작한다(data-open-stock-detail과 동일한 패턴). 아코디언이 펼쳐지면서 detail 카드
-// 안의 실제 렌더링된 높이(scrollHeight)를 그대로 max-height에 반영해 자연스럽게 슬라이드된다.
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-risk-detail-toggle]');
-  if (!btn) return;
-  const rowEl = btn.closest('[data-risk-row]');
-  if (!rowEl) return;
-  const key = rowEl.dataset.riskKey;
-  const bodyEl = rowEl.querySelector('[data-risk-detail-body]');
-  const chevronEl = rowEl.querySelector('[data-risk-detail-chevron]');
-  const isOpen = !openStockDetailKeys.has(key);
-  if (isOpen) openStockDetailKeys.add(key); else openStockDetailKeys.delete(key);
-  if (bodyEl) bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
-  if (chevronEl) chevronEl.classList.toggle('rotate-180', isOpen);
-  reapplyRiskyOuterAccordionHeight();
 });
 
 /* -------------------------------------------------------------------------
@@ -1265,8 +1207,8 @@ document.getElementById('riskAlertRebalanceBtn').addEventListener('click', (e) =
 
 // [📊 상세 리스크 관리 카드로 이동] 팝업을 닫고 대시보드 탭으로 전환한 뒤, RISK 관리 카드 위치까지
 // 부드럽게 스크롤한다 - 아코디언(리스크 감지 목록)도 함께 펼쳐 바로 세부 내용을 볼 수 있게 한다.
-// [🔍 리스크 진단 보기 자동 연동] 가장 비중이 큰 감지 종목의 개별 진단 카드까지 미리 펼쳐두고, 잠시
-// 파란 테두리로 강조해 팝업에서 보던 문제 종목을 바로 찾을 수 있게 한다.
+// 가장 비중이 큰 감지 종목 행을 잠시 파란 테두리로 강조해 팝업에서 보던 문제 종목을 바로 찾을 수
+// 있게 한다(개별 정밀 진단 카드는 이제 종목명을 눌러 여는 상세 모달 안으로 이동했다).
 document.getElementById('riskAlertDetailBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   closeRiskAlertModal(false);
@@ -1277,10 +1219,6 @@ document.getElementById('riskAlertDetailBtn').addEventListener('click', (e) => {
   }
   const { risky } = computeRiskClassifiedAssets();
   const primary = risky.slice().sort((a, b) => b.curAmount - a.curAmount)[0] || null;
-  if (primary) {
-    openStockDetailKeys.add(primary.key);
-    renderRiskSection();
-  }
   setTimeout(() => {
     document.getElementById('riskManagementSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (primary) {
