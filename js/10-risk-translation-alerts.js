@@ -740,6 +740,43 @@ const MACRO_INDICATOR_INFO = {
 
 let macroDetailSnapshot = {};
 let currentMacroDetailKey = null;
+let macroDetailRequestToken = 0;
+
+// [실제 5일/20일 추세] 키 -> 야후 티커. usdkrw/us10y/vix/dow는 macroIndicatorCache 조회에 쓰던 티커와
+// 동일, kospi 등 지수는 이미 있는 INDEX_TICKERS를 그대로 재사용한다(js/09).
+const MACRO_KEY_TICKERS = {
+  vix: '^VIX', usdkrw: 'KRW=X', us10y: '^TNX',
+  kospi: INDEX_TICKERS.KOSPI, kosdaq: INDEX_TICKERS.KOSDAQ,
+  sp500: INDEX_TICKERS.SP500, nasdaq: INDEX_TICKERS.NASDAQ, dow: '^DJI'
+};
+// [박스권 판정 임계값] 지표마다 평소 변동폭이 크게 달라(VIX는 일상적으로 수십% 출렁이지만 환율은
+// 1%만 움직여도 큰 변화) 5일/20일 등락률이 몇 %부터 "추세"로 볼지 지표군별로 다르게 잡는다 - 정밀한
+// 통계적 기준이 아니라 초보자 설명용 근사치다.
+const MACRO_TREND_THRESHOLDS = {
+  vix: { d5: 15, d20: 25 },
+  usdkrw: { d5: 0.8, d20: 1.5 },
+  us10y: { d5: 3, d20: 5 },
+  kospi: { d5: 2, d20: 4 }, kosdaq: { d5: 2.5, d20: 5 },
+  sp500: { d5: 1.5, d20: 3 }, nasdaq: { d5: 2, d20: 4 }, dow: { d5: 1.5, d20: 3 }
+};
+
+// [5일/20일 종가 비교] getCachedDailyCloses(js/09)가 이미 RISK 엔진/종목 분석용으로 쓰는 1년치 일별
+// 종가 캐시를 그대로 재사용한다 - 팝업을 열 때만(온디맨드) 호출하므로 5분 자동 갱신 주기에 8개 지표
+// 전부의 1년치 이력을 추가로 불러오는 부담이 없다.
+async function fetchMacroShortTermTrend(key) {
+  const ticker = MACRO_KEY_TICKERS[key];
+  if (!ticker) return null;
+  const data = await getCachedDailyCloses(ticker);
+  if (!data || !Array.isArray(data.closes) || data.closes.length < 21) return null;
+  const closes = data.closes;
+  const last = closes[closes.length - 1];
+  const c5 = closes[closes.length - 6];
+  const c20 = closes[closes.length - 21];
+  return {
+    change5d: (typeof c5 === 'number' && c5 > 0) ? ((last - c5) / c5) * 100 : null,
+    change20d: (typeof c20 === 'number' && c20 > 0) ? ((last - c20) / c20) * 100 : null
+  };
+}
 
 function macroDirectionLabel(changePercent) {
   if (typeof changePercent !== 'number') return '보합';
@@ -767,28 +804,67 @@ function macroDetailValueText(key, s) {
   return fmtNum(s.value, 1);
 }
 
-// [📈 최근 시장 동향 & 해설] 지금 값/방향을 문장으로 풀어 설명한다 - "그러니 사라/팔라"로 넘어가지
-// 않고 "이 수치가 시장에서 통상 어떤 의미인지"까지만 설명한다(투자자문 경계 - 이 세션 내내 지켜온
-// 원칙과 동일).
+// [지표별 "그래서 무슨 뜻인지" 꼬리 문장] 1일/5일/20일 어느 조합으로 문장을 구성하든 마지막에 똑같이
+// 붙는다 - VIX는 상태(안정/주의/긴장) 자체가 이미 의미를 담고 있어 별도 꼬리가 없다.
+function macroMeaningTail(key) {
+  if (key === 'usdkrw') return '환율이 오르면 보유 중인 달러 자산의 원화 환산 평가액은 늘고, 내리면 줄어듭니다.';
+  if (key === 'us10y') return '금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.';
+  if (key === 'vix') return null;
+  return '지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.';
+}
+
+// [📈 최근 시장 동향 & 해설] 예전엔 오늘 하루 등락률만으로 "최근 동향"이라고 표시해 실제로는 하루짜리
+// 스냅샷을 추세처럼 보이게 하는 착시가 있었다 - 이제 실제 5일/20일 종가 비교(fetchMacroShortTermTrend)
+// 로 진짜 단기 추세를 판정하고, 오늘 하루가 그 추세와 반대 방향이면("최근 5일 조정 중 오늘 반등") 그
+// 것까지 짚어준다. 이력 데이터를 못 가져온 경우(s.change5d가 null/undefined)에는 예전처럼 오늘 하루
+// 등락만으로 안전하게 폴백한다. "그러니 사라/팔라"로 넘어가지 않고 "무슨 뜻인지"까지만 설명한다
+// (투자자문 경계 - 이 세션 내내 지켜온 원칙과 동일).
 function buildMacroDetailTrendText(key, s) {
   if (!s || typeof s.value !== 'number') return '아직 데이터를 불러오지 못했습니다 - 잠시 후 다시 확인해 주세요.';
-  const dir = macroDirectionLabel(s.changePercent);
-  const changeText = typeof s.changePercent === 'number' ? `${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%` : '';
+  const fmtPct = (v) => `${v >= 0 ? '+' : ''}${fmtNum(v, key === 'vix' ? 1 : 2)}%`;
+
   if (key === 'vix') {
     const w = vixWeatherIcon(s.value);
     const tail = w.label === '긴장'
       ? '시장 전반의 단기 변동성이 커진 상태라 계좌 등락폭도 함께 확대될 수 있습니다.'
       : (w.label === '주의' ? '평상시보다 다소 경계심이 높아진 수준입니다.' : '투자자들이 단기 변동성을 크게 우려하지 않는 평온한 구간입니다.');
-    return `현재 VIX는 ${fmtNum(s.value, 1)}로 '${w.label}' 구간입니다. ${tail}`;
+    let text = `현재 VIX는 ${fmtNum(s.value, 1)}로 '${w.label}' 구간입니다. ${tail}`;
+    if (typeof s.change5d === 'number') text += ` 최근 5일간 ${fmtPct(s.change5d)} 움직였습니다.`;
+    return text;
   }
-  if (key === 'usdkrw') {
-    return `원/달러 환율이 ${dir}(${changeText}) 중입니다. 환율이 오르면 보유 중인 달러 자산의 원화 환산 평가액은 늘고, 내리면 줄어듭니다.`;
+
+  // [1일 폴백] 이력 데이터를 못 가져왔으면 예전 방식(오늘 하루 등락만)으로 안전하게 대체한다.
+  if (typeof s.change5d !== 'number') {
+    const dir = macroDirectionLabel(s.changePercent);
+    const changeText = typeof s.changePercent === 'number' ? fmtPct(s.changePercent) : '';
+    const info = MACRO_INDICATOR_INFO[key];
+    const base = key === 'usdkrw'
+      ? `원/달러 환율이 ${dir}(${changeText}) 중입니다.`
+      : (key === 'us10y' ? `미 10년물 금리가 ${dir} 흐름입니다.` : `${info.label}가 ${dir}(${changeText}) 흐름을 보이고 있습니다.`);
+    const tail = macroMeaningTail(key);
+    return tail ? `${base} ${tail}` : base;
   }
-  if (key === 'us10y') {
-    return `미 10년물 금리가 ${dir} 흐름입니다. 금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.`;
+
+  const th = MACRO_TREND_THRESHOLDS[key] || { d5: 2, d20: 4 };
+  const dirWord = (pct, threshold) => pct > threshold ? '상승' : (pct < -threshold ? '하락' : '박스권(보합)');
+  const dir5 = dirWord(s.change5d, th.d5);
+  const label = key === 'usdkrw' ? '원/달러 환율' : (key === 'us10y' ? '미 10년물 금리' : MACRO_INDICATOR_INFO[key].label);
+
+  // [조사(이/가·은/는) 회피] label에 영문(S&P 500 등)이 섞여 있어 받침 유무로 조사를 고를 수 없다 -
+  // "~의 최근 5일 등락률은" 형태로 어떤 label이 와도 자연스럽게 이어지도록 문장을 구성한다.
+  const parts = [`${label}의 최근 5일 등락률은 ${fmtPct(s.change5d)}로 ${dir5} 흐름입니다.`];
+  if (typeof s.change20d === 'number') {
+    parts.push(`최근 20일 기준으로는 ${fmtPct(s.change20d)}로 ${dirWord(s.change20d, th.d20)} 흐름이에요.`);
   }
-  const info = MACRO_INDICATOR_INFO[key];
-  return `${info.label}가 ${dir}(${changeText}) 흐름을 보이고 있습니다. 지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.`;
+  // [오늘이 추세와 반대 방향이면 짚어주기] 사용자가 요청한 "최근 5일간 조정 중 오늘 소폭 반등" 패턴.
+  if (dir5 !== '박스권(보합)' && typeof s.changePercent === 'number') {
+    const todayDir = macroDirectionLabel(s.changePercent);
+    if (dir5 === '하락' && todayDir === '상승') parts.push(`다만 오늘 하루는 ${fmtPct(s.changePercent)} 소폭 반등했습니다.`);
+    else if (dir5 === '상승' && todayDir === '하락') parts.push(`다만 오늘 하루는 ${fmtPct(s.changePercent)} 소폭 조정받았습니다.`);
+  }
+  const tail = macroMeaningTail(key);
+  if (tail) parts.push(tail);
+  return parts.join(' ');
 }
 
 const MACRO_TAG_COLOR_CLASSES = {
@@ -829,12 +905,24 @@ function renderMacroDetailModal(key) {
     </div>`;
 }
 
-function openMacroDetailModal(key) {
+async function openMacroDetailModal(key) {
   if (!MACRO_INDICATOR_INFO[key]) return;
   currentMacroDetailKey = key;
-  renderMacroDetailModal(key);
+  renderMacroDetailModal(key); // 1차: 오늘 하루 등락 기준으로 먼저 보여준다(항상 즉시 응답).
   document.getElementById('macroDetailModal').classList.remove('hidden');
   pushModalHistoryState();
+
+  // [5일/20일 추세 - 온디맨드 조회] 이미 오늘자로 캐시돼 있으면(getCachedDailyCloses가 날짜 단위로
+  // 캐싱) 즉시 반영되고, 처음 조회하는 지표라면 1년치 종가를 새로 받아온 뒤 문장을 다시 그린다.
+  const token = ++macroDetailRequestToken;
+  const trend = await fetchMacroShortTermTrend(key);
+  if (token !== macroDetailRequestToken || currentMacroDetailKey !== key) return; // 그 사이 닫히거나 다른 지표로 전환됐으면 버림
+  const s = macroDetailSnapshot[key];
+  if (s) {
+    s.change5d = trend ? trend.change5d : null;
+    s.change20d = trend ? trend.change20d : null;
+  }
+  renderMacroDetailModal(key); // 2차: 실제 5일/20일 추세 반영
 }
 function closeMacroDetailModal(viaBackButton) {
   currentMacroDetailKey = null;
@@ -894,15 +982,19 @@ function renderMacroBriefing() {
   // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(openMacroDetailModal) 다시 조회하지 않고 이 갱신
   // 주기에서 이미 받아온 값을 그대로 재사용한다 - 8개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가
   // 지표별 원본 소스(macroIndicatorCache/marketIndexCache/exchangeRate)를 몰라도 된다.
+  // [5일/20일 추세 보존] change5d/change20d는 팝업을 열 때만 온디맨드로 채워지는데(openMacroDetailModal),
+  // 여기서 매번 객체를 통째로 새로 만들면 그 값이 갱신 주기마다 날아가 버린다 - 이전 스냅샷에 남아있던
+  // 값을 그대로 이어받는다(1년치 종가는 자주 안 바뀌므로 5분마다 다시 불러올 필요가 없다).
+  const prevMacroSnapshot = macroDetailSnapshot;
   macroDetailSnapshot = {
-    vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null },
-    usdkrw: { value: state.exchangeRate, changePercent: fxChangePct },
-    us10y: { value: ust10y, changePercent: ust10yChangePct },
-    kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null },
-    kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null },
-    sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null },
-    nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null },
-    dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null }
+    vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null, change5d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change5d, change20d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change20d },
+    usdkrw: { value: state.exchangeRate, changePercent: fxChangePct, change5d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change5d, change20d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change20d },
+    us10y: { value: ust10y, changePercent: ust10yChangePct, change5d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change5d, change20d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change20d },
+    kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null, change5d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change5d, change20d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change20d },
+    kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null, change5d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change5d, change20d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change20d },
+    sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null, change5d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change5d, change20d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change20d },
+    nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null, change5d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change5d, change20d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change20d },
+    dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null, change5d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change5d, change20d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change20d }
   };
   if (!document.getElementById('macroDetailModal').classList.contains('hidden') && currentMacroDetailKey) {
     renderMacroDetailModal(currentMacroDetailKey); // 팝업이 열려있는 동안 갱신 주기가 돌면 값도 함께 최신화
@@ -920,7 +1012,7 @@ function renderMacroBriefing() {
   });
   const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });
   diagnosisEl.innerHTML = `
-    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 핵심 원인</span> ${escapeHtml(commentary.cause)}</p>
+    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 시장 종합 평가</span> ${escapeHtml(commentary.cause)}</p>
     <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
     <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
