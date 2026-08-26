@@ -188,45 +188,50 @@
      위치를 보정한다(리스크 엔진 JS 섹션의 openInfoTip 참고). -->
 <div id="infoTipPopover" class="hidden fixed z-[9999] max-w-[280px] text-sm leading-relaxed bg-slate-800 dark:bg-slate-700 text-white rounded-lg shadow-lg px-3.5 py-2.5"></div>
 
-<div id="app" class="max-w-[1680px] mx-auto px-4 md:px-6 py-5">
+<!-- [토스트 가림 방지] 하단 고정 토스트(#toastContainer)가 뜰 때 페이지 맨 아래 내용(특히 매크로
+     브리핑 하단 해설 문구)과 겹치지 않도록, 페이지 바닥에 토스트 높이+여백을 감안한 여유 공간을
+     항상 남겨둔다(pb-5 -> pb-24). z-index는 이미 토스트가 9999로 가장 높아 어차피 위에 그려지지만,
+     "화면에 계속 남아 가려버리는" 느낌을 주지 않도록 애초에 겹칠 일이 적게 만드는 쪽을 택했다. -->
+<div id="app" class="max-w-[1680px] mx-auto px-4 md:px-6 pt-5 pb-24">
 
   <!-- ============================= HEADER ============================= -->
   <header class="mb-6">
     <!-- [상단 헤더 재배치] 모바일에서 타이틀 블록을 압축해 우측 공간을 확보하고, 그 자리에 핵심 버튼
          2개(1번: 시세&환율 갱신, 2번: 핵심종목 실시간)를 세로로 쌓아 배치한다(사용자 스크린샷의
-         1번/2번 위치). xl 이상(데스크탑)에서는 이 줄이 콘텐츠 폭만큼만 차지하도록 xl:w-auto로 바꿔
-         내부 justify-between이 더 이상 벌어지지 않게 하고, 아래 나머지 버튼 묶음은 xl:ml-auto로 화면
-         우측 끝에 붙여 기존 데스크탑 모습에 가깝게 유지한다. -->
-    <div class="flex flex-col xl:flex-row xl:items-center gap-3 xl:gap-4">
-      <div class="flex items-start justify-between gap-3 w-full xl:w-auto">
-        <div class="flex items-center gap-2 xl:gap-3 min-w-0">
-          <div class="w-9 h-9 xl:w-10 xl:h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/30 shrink-0">
-            <i data-lucide="wallet" class="w-4 h-4 xl:w-5 xl:h-5"></i>
+         1번/2번 위치). [태블릿 레이아웃 정돈] 예전엔 이 전환점이 xl(1280px)이라 768~1279px 태블릿이
+         전부 폰과 같은 세로 스택 레이아웃을 썼다 - lg(1024px)로 앞당겨서 가로 폭이 넉넉한 랜드스케이프
+         태블릿(1024px~)부터는 데스크탑처럼 한 줄 배치가 되게 하고, 세로 태블릿(~1023px)은 기존 폰
+         레이아웃을 그대로 물려받아(이미 sm: 단계별로 다듬어져 있어 안정적) 별도로 손대지 않는다. -->
+    <div class="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4">
+      <div class="flex items-start justify-between gap-3 w-full lg:w-auto">
+        <div class="flex items-center gap-2 lg:gap-3 min-w-0">
+          <div class="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/30 shrink-0">
+            <i data-lucide="wallet" class="w-4 h-4 lg:w-5 lg:h-5"></i>
           </div>
           <div class="min-w-0">
-            <h1 class="text-base xl:text-xl font-bold tracking-tight truncate">Smart Asset Manager</h1>
-            <p class="text-[11px] xl:text-xs text-slate-500 dark:text-slate-400 truncate">개인 자산관리 총투자현황</p>
+            <h1 class="text-base lg:text-xl font-bold tracking-tight truncate">Smart Asset Manager</h1>
+            <p class="text-[11px] lg:text-xs text-slate-500 dark:text-slate-400 truncate">개인 자산관리 총투자현황</p>
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v130</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v132</p>
           </div>
         </div>
 
         <!-- [1번/2번 핵심 버튼] 타이틀 우측에 세로로 붙는다 - id/클릭 핸들러는 그대로라 위치만 옮겨도
              JS 쪽 수정이 필요 없다. -->
-        <div class="flex flex-col gap-1.5 shrink-0 xl:flex-row xl:gap-1.5">
-          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-[11px] xl:text-xs font-semibold px-2.5 xl:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+        <div class="flex flex-col gap-1.5 shrink-0 lg:flex-row lg:gap-1.5">
+          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-[11px] lg:text-xs font-semibold px-2.5 lg:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
             <i id="refreshBtnIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0"></i>
             <span id="refreshBtnText">시세 &amp; 환율 갱신</span>
           </button>
-          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-[11px] xl:text-xs font-medium px-2.5 xl:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
+          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-[11px] lg:text-xs font-medium px-2.5 lg:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
             <i data-lucide="activity" class="w-3.5 h-3.5 shrink-0"></i> 핵심종목 실시간
           </button>
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
+      <div class="flex flex-wrap items-center gap-2 lg:ml-auto">
         <!-- [모바일 레이아웃] 환율 뱃지 내부는 좁은 화면에서 패딩/입력창 너비/"현재 환율" 접두문구를
              압축해 공간을 아끼되, [환율보기] 라벨만큼은 잘려서 아이콘만 남지 않도록 항상 텍스트를
              보여준다(과거엔 sm 미만에서 hidden 처리돼 모바일에서 아이콘만 보이는 문제가 있었다). 그
@@ -267,18 +272,18 @@
              없다 - 사이사이의 숨김 file input은 display:none이라 그리드 흐름에서 자동으로 빠진다. -->
         <!-- [아이콘 제거 + 슬림 알약형 버튼] 아이콘을 없애고 텍스트만 중앙 정렬로 표시하면서, 그만큼
              줄어든 내용물 높이에 맞춰 padding/카드 여백도 함께 슬림하게 줄였다(rounded-full 알약 모양). -->
-        <div class="grid grid-cols-3 xl:flex xl:items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full xl:w-auto">
-          <button id="addAssetBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">최초등록</button>
-          <button id="exportExcelBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 내보내기</button>
-          <button id="importExcelBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 업로드</button>
+        <div class="grid grid-cols-3 lg:flex lg:items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full lg:w-auto">
+          <button id="addAssetBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">최초등록</button>
+          <button id="exportExcelBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 내보내기</button>
+          <button id="importExcelBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 업로드</button>
           <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
           <!-- [JSON 자동 백업 토글] 예전엔 눌러야만 백업되는 버튼이었으나, 매일 부팅 시 자동으로
                백업 파일을 받도록 켜고 끄는 토글로 바꿨다 - 상태 텍스트/색상은
                updateAutoBackupToggleUI()(js/12)가 관리한다. -->
-          <button id="autoBackupToggleBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full whitespace-nowrap" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
-          <button id="importJsonBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">JSON 불러오기</button>
+          <button id="autoBackupToggleBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full whitespace-nowrap" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
+          <button id="importJsonBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">JSON 불러오기</button>
           <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
-          <button id="resetDataBtn" class="flex items-center justify-center text-[10.5px] xl:text-xs font-medium px-2 xl:px-3 py-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-950 text-red-500 whitespace-nowrap">데이터 초기화</button>
+          <button id="resetDataBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-950 text-red-500 whitespace-nowrap">데이터 초기화</button>
         </div>
       </div>
     </div>
@@ -294,16 +299,16 @@
        더 볼 내용이 없어지면(JS의 updateTabScrollHint) 자동으로 숨긴다. -->
   <div class="relative mb-6 w-full sm:w-fit sm:max-w-full">
     <div id="tabScrollContainer" class="grid grid-cols-2 sm:flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full sm:w-fit overflow-x-auto sm:max-w-full">
-      <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+      <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총금융투자현황
       </button>
-      <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+      <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 투자세부
       </button>
-      <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+      <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
-      <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">
+      <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="scale" class="w-3.5 h-3.5"></i> 리밸런싱/자산예측
       </button>
     </div>
@@ -504,6 +509,10 @@
         <span class="text-base leading-none">🌍</span>
         <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
+      <!-- [항상 4열×2행 고정] 태블릿 세로(768~1023px)에서 2열로 바꿨더니 VIX/원달러/미10년물/코스피가
+           1행에 나란히 있어야 하는 배치가 깨졌다 - 화면 크기와 무관하게 예외 없이 grid-cols-4로
+           고정한다. 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부 패딩/폰트를
+           키우는 쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
       <div id="macroBriefingGrid" class="grid grid-cols-4 gap-1 sm:gap-2 mb-2"></div>
       <div id="macroBriefingDiagnosis" class="space-y-1"></div>
     </div>
@@ -872,9 +881,11 @@
       </div>
     </div>
 
-    <!-- 필터 -->
+    <!-- 필터 - [태블릿 가로(1024px~) 1줄 배치] sm 이상에서는 이미 조회기간(2)+계좌(1)+거래유형(1)=
+         4칸 한 줄, 검색어 4칸 한 줄로 2줄까지 정리돼 있다. lg: 이상은 폭이 더 넉넉해지므로 6열로
+         늘려 검색어 칸의 span만 4->2로 줄여 네 필드를 전부 한 줄에 배치한다(수직 공간 절약). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
         <div class="col-span-2 text-xs">
           <span class="text-slate-500 dark:text-slate-400">조회기간</span>
           <div class="flex items-center gap-1.5 mt-1">
@@ -897,7 +908,7 @@
             <option value="sell">매도</option>
           </select>
         </label>
-        <label class="col-span-2 sm:col-span-4 text-xs">
+        <label class="col-span-2 sm:col-span-4 lg:col-span-2 text-xs">
           <span class="text-slate-500 dark:text-slate-400">종목명/티커 검색</span>
           <input id="txFilterSearch" type="text" placeholder="종목명 또는 티커로 검색"
             class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
