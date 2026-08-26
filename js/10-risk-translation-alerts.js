@@ -565,13 +565,17 @@ function trendArrowIcon(changePercent) {
 // [지표 상세 팝업 클릭 진입점] key(vix/usdkrw/us10y/kospi/kosdaq/sp500/nasdaq/dow)를 data-macro-key로
 // 붙여두면 문서 전역 위임 리스너(아래) 하나가 어떤 타일을 눌러도 openMacroDetailModal을 연다 -
 // data-open-stock-detail과 동일한 위임 패턴.
+// [열 수는 항상 4로 고정 - 답답함은 패딩/폰트로 해결] grid-cols-4가 모든 화면에서 예외 없이
+// 적용되므로(index.html), 좁은 화면에서 답답해 보이는 문제를 열 수를 줄이는 대신 카드 내부 패딩과
+// 글자 크기로 대응한다. md:(768px)부터 태블릿 세로를 포함한 모든 비-폰 화면에 동일하게 적용된다 -
+// 이전엔 lg:(1024px)부터만 적용돼 768~1023px 태블릿 세로가 폰과 똑같이 빽빽했다.
 function macroTileHtml(key, label, valueText, sub, icon) {
   return `
-  <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 py-2 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5" data-macro-key="${key}">
-    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(label)}</div>
-    <div class="text-base leading-tight my-0.5">${icon}</div>
-    <div class="text-[11px] font-semibold truncate">${escapeHtml(valueText)}</div>
-    <div class="text-[9px] text-slate-400 truncate">${escapeHtml(sub)}</div>
+  <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 md:px-2 py-2 md:py-2.5 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5" data-macro-key="${key}">
+    <div class="text-[10px] md:text-xs text-slate-400 truncate">${escapeHtml(label)}</div>
+    <div class="text-base md:text-lg leading-tight my-0.5">${icon}</div>
+    <div class="text-[11px] md:text-sm font-semibold truncate">${escapeHtml(valueText)}</div>
+    <div class="text-[9px] md:text-[11px] text-slate-400 truncate">${escapeHtml(sub)}</div>
   </div>`;
 }
 // [맞춤형 연계 진단] 원/달러 환율 방향 × 내 포트폴리오의 외화(달러) 자산 비중을 엮어 한 줄로 설명한다.
