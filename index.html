@@ -209,7 +209,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v127</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v129</p>
           </div>
         </div>
 
@@ -1870,6 +1870,23 @@
       <p id="coreStocksEmptyMsg" class="hidden text-xs text-slate-400 text-center py-10"></p>
       <div id="coreStocksList"></div>
     </div>
+  </div>
+</div>
+
+<!-- ============================= 매크로 브리핑 - 지표 상세 설명 팝업 =============================
+     시장 현황 & 매크로 브리핑 카드의 8개 타일(VIX/원달러/미10년물/코스피/코스닥/S&P500/나스닥/다우)
+     아무거나 클릭하면 열린다 - 타일마다 data-macro-key가 있고, 문서 전역 위임 리스너 하나가 처리한다
+     (openMacroDetailModal, js/10-risk-translation-alerts.js). 개념 설명은 고정 텍스트, 현재값/등락/
+     동향 해설은 renderMacroBriefing()이 매 갱신마다 캡처해두는 macroDetailSnapshot을 그대로 쓴다. -->
+<div id="macroDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
+    <div id="macroDetailModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
+      <h3 id="macroDetailModalTitle" class="text-sm font-semibold">📊 지표명</h3>
+      <button type="button" id="closeMacroDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div id="macroDetailModalBody" class="px-5 py-4 overflow-y-auto"></div>
   </div>
 </div>
 

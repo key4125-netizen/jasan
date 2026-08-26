@@ -562,9 +562,12 @@ function trendArrowIcon(changePercent) {
   if (changePercent < -0.05) return '📉';
   return '➡️';
 }
-function macroTileHtml(label, valueText, sub, icon) {
+// [지표 상세 팝업 클릭 진입점] key(vix/usdkrw/us10y/kospi/kosdaq/sp500/nasdaq/dow)를 data-macro-key로
+// 붙여두면 문서 전역 위임 리스너(아래) 하나가 어떤 타일을 눌러도 openMacroDetailModal을 연다 -
+// data-open-stock-detail과 동일한 위임 패턴.
+function macroTileHtml(key, label, valueText, sub, icon) {
   return `
-  <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 py-2 text-center">
+  <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 py-2 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5" data-macro-key="${key}">
     <div class="text-[10px] text-slate-400 truncate">${escapeHtml(label)}</div>
     <div class="text-base leading-tight my-0.5">${icon}</div>
     <div class="text-[11px] font-semibold truncate">${escapeHtml(valueText)}</div>
@@ -653,6 +656,207 @@ function buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct }) {
   return { lines, note };
 }
 
+/* -------------------------------------------------------------------------
+ * 18-6. [매크로 브리핑 - 지표 상세 설명 팝업] 8개 타일을 눌렀을 때 "이 지표가 뭔지 + 지금 수치가
+ *    뭘 뜻하는지 + 뭘 지켜봐야 하는지"를 보여준다. 개념/관전포인트는 고정 텍스트(초보자용 정의라
+ *    실시간으로 바뀔 이유가 없음), 현재값·등락·동향 해설만 renderMacroBriefing()이 매 갱신마다
+ *    채워두는 macroDetailSnapshot을 읽어 동적으로 만든다. buildMacroCommentary/buildAssetCorrelation
+ *    Guide와 마찬가지로 "지금 상태를 설명"까지만 하고 매수/매도 판단은 담지 않는다.
+ * ---------------------------------------------------------------------- */
+const MACRO_INDICATOR_INFO = {
+  vix: {
+    label: 'VIX (공포·탐욕 지수)',
+    concept: '옵션 시장에서 예상하는 향후 변동성을 지수화한 값으로, 흔히 "공포지수"라고 불려요. 낮을수록 투자자들이 안정적이라고 느끼고, 높을수록 단기적인 불안 심리가 크다는 뜻이에요.',
+    watchPoints: [
+      '20 미만은 평상시 수준, 30 이상이면 시장 전반이 긴장한 상태로 봅니다.',
+      'VIX가 급등하면 주식 비중이 높은 계좌일수록 단기 등락폭이 커질 수 있어요.',
+      '짧게 튀었다가 가라앉는 경우가 많아, 한 번의 급등만으로 판단하기보다는 며칠간 추이를 함께 지켜보는 게 좋아요.'
+    ]
+  },
+  usdkrw: {
+    label: '원/달러 환율',
+    concept: '1달러를 사는 데 필요한 원화 금액이에요. 환율이 오르면(원화 약세) 달러 자산의 원화 환산 가치가 커지고, 내리면(원화 강세) 작아져요.',
+    watchPoints: [
+      '달러 자산을 보유 중이라면 환율 상승은 평가액 증가, 하락은 감소로 이어집니다.',
+      '환율은 미국 금리·무역수지·글로벌 위험회피 심리 등 여러 요인이 함께 작용해 움직여요.',
+      '환전 계획이 있다면 하루 등락보다 며칠~몇 주 단위의 추세를 함께 참고하는 게 도움이 됩니다.'
+    ]
+  },
+  us10y: {
+    label: '美 10년물 국채금리',
+    concept: '미국 정부가 10년 만기로 발행한 국채의 시장 수익률이에요. 전 세계 금리·자산 가격의 기준점 역할을 해서 "글로벌 금리의 나침반"이라고도 불려요.',
+    watchPoints: [
+      '금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있어요.',
+      '금리가 내리면 반대로 위험자산(주식) 선호 심리가 살아나는 경우가 많아요.',
+      '미국 연준(Fed) 통화정책 발표나 물가지표 발표 전후로 변동성이 커지는 경우가 많습니다.'
+    ]
+  },
+  kospi: {
+    label: '코스피 지수',
+    concept: '국내 코스피 시장에 상장된 기업 전체의 시가총액 흐름을 지수화한, 한국을 대표하는 주가지수예요.',
+    watchPoints: [
+      '국내 주식 비중이 있는 계좌라면 코스피 방향과 계좌 성과가 대체로 함께 움직이는 경향이 있어요.',
+      '반도체 등 특정 대형주 비중이 높아, 개별 대형주 이슈에도 지수 전체가 크게 흔들릴 수 있어요.',
+      '환율·외국인 수급과 함께 움직이는 경우가 많아 원/달러 환율 흐름도 같이 참고하면 도움이 됩니다.'
+    ]
+  },
+  kosdaq: {
+    label: '코스닥 지수',
+    concept: '코스닥에 상장된 중소형·성장주 중심 기업들의 흐름을 보여주는 지수예요. 코스피보다 변동성이 큰 편이에요.',
+    watchPoints: [
+      '성장주 비중이 높아 금리·투자심리 변화에 코스피보다 민감하게 반응하는 경향이 있어요.',
+      '개별 종목 이슈(실적, 테마)에 따라 지수 전체 변동성이 커질 수 있습니다.',
+      '코스닥 비중이 있는 계좌는 지수 등락폭이 더 클 수 있다는 점을 감안하는 게 좋아요.'
+    ]
+  },
+  sp500: {
+    label: 'S&P 500 지수',
+    concept: '미국 대형 우량기업 500개로 구성된, 미국 증시를 가장 폭넓게 대표하는 지수예요.',
+    watchPoints: [
+      '미국 주식/ETF 비중이 있는 계좌라면 이 지수 흐름과 대체로 함께 움직이는 경향이 있어요.',
+      '미국 금리·물가지표·기업실적 발표 시즌에 변동성이 커지는 경우가 많습니다.',
+      '나스닥보다는 업종이 고르게 분산돼 있어 상대적으로 변동성이 완만한 편이에요.'
+    ]
+  },
+  nasdaq: {
+    label: '나스닥 종합지수',
+    concept: '미국 기술주 비중이 특히 높은 지수로, 성장주·기술주에 대한 투자심리를 잘 반영해요.',
+    watchPoints: [
+      '금리 변화에 S&P500보다 더 민감하게 반응하는 경향이 있어요(성장주는 금리에 더 취약).',
+      'QQQM 등 나스닥100 추종 ETF를 보유 중이라면 이 지수 흐름을 함께 참고하면 좋아요.',
+      '기술주 실적 발표 시즌에 변동성이 커지는 경우가 많습니다.'
+    ]
+  },
+  dow: {
+    label: '다우존스 지수',
+    concept: '오래되고 안정적인 미국 대형 우량기업 30개로 구성된 지수예요. S&P500·나스닥보다 변동성이 낮은 편이에요.',
+    watchPoints: [
+      '전통 산업/금융 비중이 높아 기술주 중심의 나스닥과는 다르게 움직이는 경우가 있어요.',
+      '다른 미국 지수와 방향이 엇갈릴 때는 시장 내 업종별 온도차가 있다는 신호로 볼 수 있어요.',
+      '장기적으로 미국 경기 전반의 체감 지표로 함께 참고하면 좋습니다.'
+    ]
+  }
+};
+
+let macroDetailSnapshot = {};
+let currentMacroDetailKey = null;
+
+function macroDirectionLabel(changePercent) {
+  if (typeof changePercent !== 'number') return '보합';
+  if (changePercent > 0.05) return '상승';
+  if (changePercent < -0.05) return '하락';
+  return '보합';
+}
+
+// [상태 뱃지] VIX는 안정/주의/긴장 3단계, 나머지는 상승/하락/보합 - 국내 관행대로 상승=빨강/하락=파랑.
+function macroStatusTag(key, s) {
+  if (!s || typeof s.value !== 'number') return { text: '데이터 없음', color: 'slate' };
+  if (key === 'vix') {
+    const w = vixWeatherIcon(s.value);
+    return { text: w.label, color: w.label === '긴장' ? 'red' : (w.label === '주의' ? 'amber' : 'green') };
+  }
+  const dir = macroDirectionLabel(s.changePercent);
+  return { text: dir, color: dir === '상승' ? 'red' : (dir === '하락' ? 'blue' : 'slate') };
+}
+
+function macroDetailValueText(key, s) {
+  if (!s || typeof s.value !== 'number') return '-';
+  if (key === 'usdkrw') return `${fmtNum(s.value, 0)}원`;
+  if (key === 'us10y') return `${fmtNum(s.value, 2)}%`;
+  if (key === 'vix') return fmtNum(s.value, 1);
+  return fmtNum(s.value, 1);
+}
+
+// [📈 최근 시장 동향 & 해설] 지금 값/방향을 문장으로 풀어 설명한다 - "그러니 사라/팔라"로 넘어가지
+// 않고 "이 수치가 시장에서 통상 어떤 의미인지"까지만 설명한다(투자자문 경계 - 이 세션 내내 지켜온
+// 원칙과 동일).
+function buildMacroDetailTrendText(key, s) {
+  if (!s || typeof s.value !== 'number') return '아직 데이터를 불러오지 못했습니다 - 잠시 후 다시 확인해 주세요.';
+  const dir = macroDirectionLabel(s.changePercent);
+  const changeText = typeof s.changePercent === 'number' ? `${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%` : '';
+  if (key === 'vix') {
+    const w = vixWeatherIcon(s.value);
+    const tail = w.label === '긴장'
+      ? '시장 전반의 단기 변동성이 커진 상태라 계좌 등락폭도 함께 확대될 수 있습니다.'
+      : (w.label === '주의' ? '평상시보다 다소 경계심이 높아진 수준입니다.' : '투자자들이 단기 변동성을 크게 우려하지 않는 평온한 구간입니다.');
+    return `현재 VIX는 ${fmtNum(s.value, 1)}로 '${w.label}' 구간입니다. ${tail}`;
+  }
+  if (key === 'usdkrw') {
+    return `원/달러 환율이 ${dir}(${changeText}) 중입니다. 환율이 오르면 보유 중인 달러 자산의 원화 환산 평가액은 늘고, 내리면 줄어듭니다.`;
+  }
+  if (key === 'us10y') {
+    return `미 10년물 금리가 ${dir} 흐름입니다. 금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.`;
+  }
+  const info = MACRO_INDICATOR_INFO[key];
+  return `${info.label}가 ${dir}(${changeText}) 흐름을 보이고 있습니다. 지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.`;
+}
+
+const MACRO_TAG_COLOR_CLASSES = {
+  red: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400',
+  blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400',
+  green: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400',
+  amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400',
+  slate: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+};
+
+function renderMacroDetailModal(key) {
+  const info = MACRO_INDICATOR_INFO[key];
+  if (!info) return;
+  const s = macroDetailSnapshot[key];
+  const tag = macroStatusTag(key, s);
+  const hasChange = s && typeof s.changePercent === 'number';
+
+  document.getElementById('macroDetailModalTitle').textContent = `📊 ${info.label}`;
+  document.getElementById('macroDetailModalBody').innerHTML = `
+    <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div class="text-xl font-bold">${escapeHtml(macroDetailValueText(key, s))}</div>
+      <div class="flex items-center gap-2">
+        ${hasChange ? `<span class="text-sm font-medium ${s.changePercent >= 0 ? 'text-red-500' : 'text-blue-500'}">${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%</span>` : ''}
+        <span class="text-xs font-semibold px-2 py-1 rounded-full ${MACRO_TAG_COLOR_CLASSES[tag.color]}">${escapeHtml(tag.text)}</span>
+      </div>
+    </div>
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">💡 지표 기본 개념</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(info.concept)}</p>
+    </div>
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 최근 시장 동향 &amp; 해설</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(buildMacroDetailTrendText(key, s))}</p>
+    </div>
+    <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-3">
+      <p class="text-xs font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 관전 포인트 &amp; 대응 팁</p>
+      ${info.watchPoints.map((w, i) => `<p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">${i + 1}. ${escapeHtml(w)}</p>`).join('')}
+    </div>`;
+}
+
+function openMacroDetailModal(key) {
+  if (!MACRO_INDICATOR_INFO[key]) return;
+  currentMacroDetailKey = key;
+  renderMacroDetailModal(key);
+  document.getElementById('macroDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeMacroDetailModal(viaBackButton) {
+  currentMacroDetailKey = null;
+  document.getElementById('macroDetailModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('macroDetailModalHeader').addEventListener('click', () => closeMacroDetailModal());
+document.getElementById('closeMacroDetailModalBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeMacroDetailModal();
+});
+document.getElementById('macroDetailModal').addEventListener('click', (e) => {
+  if (e.target.id === 'macroDetailModal') closeMacroDetailModal();
+});
+// [이벤트 위임] 8개 타일이 renderMacroBriefing()마다 매번 새로 그려지므로(innerHTML 교체), 타일 각각에
+// 리스너를 다는 대신 문서 전역에 한 번만 걸어둔다 - data-open-stock-detail과 동일한 패턴.
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-macro-key]');
+  if (!el) return;
+  openMacroDetailModal(el.dataset.macroKey);
+});
+
 function renderMacroBriefing() {
   const gridEl = document.getElementById('macroBriefingGrid');
   const diagnosisEl = document.getElementById('macroBriefingDiagnosis');
@@ -674,18 +878,35 @@ function renderMacroBriefing() {
   const sp500Info = getMarketIndexInfoFromState(INDEX_TICKERS.SP500);
   const nasdaqInfo = getMarketIndexInfoFromState(INDEX_TICKERS.NASDAQ);
   const dowInfo = state.macroIndicatorCache['DOW'];
-  const indexTile = (label, info) => macroTileHtml(label, info ? fmtNum(info.price, 1) : '-', info ? `${info.changePercent >= 0 ? '+' : ''}${fmtNum(info.changePercent, 2)}%` : '조회 전', trendArrowIcon(info ? info.changePercent : null));
+  const indexTile = (key, label, info) => macroTileHtml(key, label, info ? fmtNum(info.price, 1) : '-', info ? `${info.changePercent >= 0 ? '+' : ''}${fmtNum(info.changePercent, 2)}%` : '조회 전', trendArrowIcon(info ? info.changePercent : null));
 
   gridEl.innerHTML = [
-    macroTileHtml('VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon),
-    macroTileHtml('원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct)),
-    macroTileHtml('美 10년물 금리', typeof ust10y === 'number' ? `${fmtNum(ust10y, 2)}%` : '-', '국채 수익률', trendArrowIcon(ust10yChangePct)),
-    indexTile('코스피', kospiInfo),
-    indexTile('코스닥', kosdaqInfo),
-    indexTile('S&P 500', sp500Info),
-    indexTile('나스닥', nasdaqInfo),
-    indexTile('다우', dowInfo)
+    macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon),
+    macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct)),
+    macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct)),
+    indexTile('kospi', '코스피', kospiInfo),
+    indexTile('kosdaq', '코스닥', kosdaqInfo),
+    indexTile('sp500', 'S&P 500', sp500Info),
+    indexTile('nasdaq', '나스닥', nasdaqInfo),
+    indexTile('dow', '다우', dowInfo)
   ].join('');
+
+  // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(openMacroDetailModal) 다시 조회하지 않고 이 갱신
+  // 주기에서 이미 받아온 값을 그대로 재사용한다 - 8개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가
+  // 지표별 원본 소스(macroIndicatorCache/marketIndexCache/exchangeRate)를 몰라도 된다.
+  macroDetailSnapshot = {
+    vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null },
+    usdkrw: { value: state.exchangeRate, changePercent: fxChangePct },
+    us10y: { value: ust10y, changePercent: ust10yChangePct },
+    kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null },
+    kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null },
+    sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null },
+    nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null },
+    dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null }
+  };
+  if (!document.getElementById('macroDetailModal').classList.contains('hidden') && currentMacroDetailKey) {
+    renderMacroDetailModal(currentMacroDetailKey); // 팝업이 열려있는 동안 갱신 주기가 돌면 값도 함께 최신화
+  }
 
   const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
   const totalAmount = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
@@ -991,7 +1212,8 @@ function bollingerPositionLabel(bollinger) {
 }
 
 // [종합 1줄 리포트] 감지된 신호를 규칙 기반으로 모아 한 문장으로 요약한다 - buildRiskDiagnosisLine과
-// 동일한 "왜 그런가"를 보여주는 톤.
+// 동일한 "왜 그런가"를 보여주는 톤. 고지문은 renderStockAnalysisResult 하단에 한 번만 붙이므로 여기서는
+// 중복하지 않는다.
 function buildStockAnalysisReportLine(a, sim) {
   const flags = [];
   if (a.rsiState === '과열') flags.push(`단기 과열(RSI ${fmtNum(a.rsi14, 0)})`);
@@ -1004,9 +1226,53 @@ function buildStockAnalysisReportLine(a, sim) {
   if (sim && (sim.after.topWeightPct - sim.before.topWeightPct) >= 5 && sim.after.topHoldingName === (a.name || a.ticker)) {
     flags.push(`이 종목이 계좌 내 최대비중(${fmtNum(sim.after.topWeightPct, 0)}%)이 됨`);
   }
-  if (flags.length === 0) return '기술적 신호와 포트폴리오 영향 모두 특별한 경고 신호가 없는 편입니다. 다만 이는 과거 데이터 기반 참고 정보이며, 투자 판단과 책임은 본인에게 있습니다.';
-  return `주의 신호: ${flags.join(' · ')}. 편입 전 비중을 신중히 검토하세요 - 과거 데이터 기반 참고 정보이며 투자 판단과 책임은 본인에게 있습니다.`;
+  if (flags.length === 0) return '기술적 신호와 포트폴리오 영향 모두 특별한 경고 신호가 없는 편입니다.';
+  return `주의 신호: ${flags.join(' · ')}. 편입 전 비중을 신중히 검토하세요.`;
 }
+
+// [📌 핵심 요약 & 현재 상태] 이동평균/RSI/52주 낙폭을 한데 모아 초보자가 한눈에 이해할 수 있는 상태
+// 뱃지 + 쉬운 문장 하나로 압축한다. 🟡(주의)는 과열·역배열·큰 낙폭 중 하나라도 걸릴 때, 🔵(관심)은
+// 과매도(단기 급락 후 바닥권), 그 외는 🟢(안정)로 분류한다 - "사라/팔라"가 아니라 "지금 상태가 어떤지"
+// 까지만 알려준다.
+function buildStockStatusSummary(a) {
+  const isOverbought = a.rsiState === '과열';
+  const isOversold = a.rsiState === '과매도';
+  const isDownTrend = a.trendLabel === '역배열(하락추세)';
+  const bigDrawdown = typeof a.week52DrawdownPct === 'number' && a.week52DrawdownPct <= -30;
+
+  let trendPhrase;
+  if (a.trendLabel === '정배열(상승추세)') trendPhrase = '꾸준히 오르는 흐름을 이어가고 있어요';
+  else if (a.trendLabel === '역배열(하락추세)') trendPhrase = '하락 흐름이 이어지는 숨고르기(조정) 구간이에요';
+  else trendPhrase = '뚜렷한 방향 없이 등락을 반복하는 구간이에요';
+
+  let extra = '';
+  if (isOverbought) extra = ' 최근 단기간 빠르게 올라 잠시 쉬어가기 좋은 위치일 수 있어요.';
+  else if (isOversold) extra = ' 단기간 많이 빠져서 관심 있게 지켜볼 만한 구간이에요.';
+
+  let tag = { emoji: '🟢', label: '안정적', color: 'green' };
+  if (isOverbought || isDownTrend || bigDrawdown) tag = { emoji: '🟡', label: '주의 필요', color: 'amber' };
+  else if (isOversold) tag = { emoji: '🔵', label: '관심 구간', color: 'blue' };
+
+  return { tag, summaryText: trendPhrase + '.' + extra };
+}
+
+// [🏦 거래량 & 시장 관심도] analyzeTickerForModal()이 계산해 둔 volumeTrend(최근 5일 평균 vs 그 전
+// 15일 평균)를 문장으로 옮긴다.
+function buildVolumeTrendText(volumeTrend) {
+  if (!volumeTrend) return '거래량 데이터가 부족해 관심도 추이를 계산할 수 없어요.';
+  if (volumeTrend.direction === 'up') return '최근 사람들의 관심(거래량)이 늘어나며 주가를 받쳐주는 모습이에요.';
+  if (volumeTrend.direction === 'down') return '최근 거래량이 줄어들며 잠시 숨고르기 양상을 보이고 있어요.';
+  return '최근 거래량은 평소와 비슷한 수준을 유지하고 있어요.';
+}
+
+// [🎯 위험 관리 안내] 이 종목의 현재 가격/지표와 무관하게 어떤 종목을 보든 똑같이 적용되는 일반
+// 원칙만 담는다 - 특정 가격대·비중·시점을 지정하면 개인화된 매매 지시가 되므로, 의도적으로 이
+// 종목의 수치를 전혀 참조하지 않는 고정 문구다.
+const STOCK_ANALYSIS_RISK_TIPS = [
+  '한 번에 다 사기보다 나누어 접근하면 가격 변동에 따른 부담을 줄일 수 있어요.',
+  '단기간 급하게 오른 자산을 추격 매수하기보다는, 흐름을 지켜본 뒤 판단하는 투자자가 많아요.',
+  '여러 종목/자산군에 나눠 담으면 한 종목의 등락이 전체 계좌에 미치는 영향을 줄일 수 있어요.'
+];
 
 // [초보자용 지표 가이드] guideText가 있으면 값 아래에 작은 회색 캡션으로 항상 보여준다 - 아이콘을
 // 눌러야 보이는 호버 툴팁 대신 항상 노출되는 캡션을 택했다(모바일에서는 호버가 없어 툴팁이 잘 안
@@ -1046,9 +1312,17 @@ function betaGuideText(beta) {
   return '베타 1.0 기준, 시장과 비슷한 정도로 움직이는 종목이에요.';
 }
 
+const STOCK_ANALYSIS_TAG_COLOR_CLASSES = {
+  green: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400',
+  amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400',
+  blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
+};
+
 function renderStockAnalysisResult(a, sim) {
   const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500' : 'text-blue-500') : 'text-slate-400';
   const changeText = typeof a.changePercent === 'number' ? `${a.changePercent >= 0 ? '+' : ''}${fmtNum(a.changePercent, 2)}%` : '조회 실패';
+  const status = buildStockStatusSummary(a);
+  const priceDecimals = a.currentPrice < 100 ? 2 : 0;
 
   let simHtml = '';
   if (sim) {
@@ -1066,8 +1340,25 @@ function renderStockAnalysisResult(a, sim) {
   <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
     <h4 class="text-sm font-bold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}" title="차트 보기">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
     <div class="text-right shrink-0">
-      <div class="text-sm font-semibold">${fmtNum(a.currentPrice, a.currentPrice < 100 ? 2 : 0)}</div>
+      <div class="text-sm font-semibold">${fmtNum(a.currentPrice, priceDecimals)}</div>
       <div class="text-xs font-medium ${changeColor}">${changeText}</div>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📌 핵심 요약 &amp; 현재 상태</p>
+    <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 flex items-start gap-2">
+      <span class="text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${STOCK_ANALYSIS_TAG_COLOR_CLASSES[status.tag.color]}">${status.tag.emoji} ${escapeHtml(status.tag.label)}</span>
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(status.summaryText)}</p>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 주요 가격대 참고</p>
+    <div class="grid grid-cols-2 gap-2">
+      ${stockAnalysisStatTile('단기 벽 (최근 3개월 최고가)', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 가격이에요 - 이 부근에서 상승 속도가 둔해진 적이 있어요.')}
+      ${stockAnalysisStatTile('1차 버팀목 (최근 3개월 최저가)', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 가격이에요 - 이 부근에서 하락이 멈췄던 적이 있어요.')}
+      <div class="col-span-2">${stockAnalysisStatTile('52주 고점 대비', typeof a.week52DrawdownPct === 'number' ? `${fmtNum(a.week52DrawdownPct, 1)}%` : '데이터 부족', '1년 중 가장 높았던 가격 대비 지금 얼마나 내려와 있는지 보여줘요.')}</div>
     </div>
   </div>
 
@@ -1081,20 +1372,35 @@ function renderStockAnalysisResult(a, sim) {
   </div>
 
   <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🏦 거래량 &amp; 시장 관심도</p>
+    <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5">
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(buildVolumeTrendText(a.volumeTrend))}</p>
+    </div>
+  </div>
+
+  <div class="mb-3">
     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">⚠️ 리스크 분석</p>
     <div class="grid grid-cols-2 gap-2">
       ${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', typeof a.mdd === 'number' ? MDD_GUIDE_TEXT : '')}
       ${stockAnalysisStatTile('베타(시장 민감도)', typeof a.beta === 'number' ? `${fmtNum(a.beta, 2)}배` : '데이터 부족', betaGuideText(a.beta))}
-      <div class="col-span-2">${stockAnalysisStatTile('52주 고점 대비', typeof a.week52DrawdownPct === 'number' ? `${fmtNum(a.week52DrawdownPct, 1)}%` : '데이터 부족')}</div>
     </div>
   </div>
 
   ${simHtml}
 
+  <div class="mb-3">
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🎯 위험 관리 안내</p>
+    <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 space-y-1">
+      ${STOCK_ANALYSIS_RISK_TIPS.map((tip, i) => `<p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${escapeHtml(tip)}</p>`).join('')}
+    </div>
+  </div>
+
   <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-2.5">
     <p class="text-xs font-semibold text-brand-700 dark:text-brand-300">📝 종합 진단</p>
     <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">${escapeHtml(buildStockAnalysisReportLine(a, sim))}</p>
-  </div>`;
+  </div>
+
+  <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
 }
 
 // [한글 종목명 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/주요종목 후보를

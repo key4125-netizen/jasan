@@ -1329,6 +1329,26 @@ async function analyzeTickerForModal(rawInput) {
   const week52High = Math.max(...closes, currentPrice || 0);
   const rsi14 = computeRSI14(closes);
 
+  // [주가 위치 참고선 - 액션 지시 아님] "최근 3개월(약 60거래일) 동안 가장 높았던/낮았던 가격"을
+  // 순수 참고 정보로만 계산한다. "이 가격에 사라/팔라"는 구간 카드는 만들지 않는다 - 투자자문 경계.
+  const recentWindow = closes.slice(-60);
+  const recentHigh = recentWindow.length ? Math.max(...recentWindow) : null;
+  const recentLow = recentWindow.length ? Math.min(...recentWindow) : null;
+
+  // [거래량 & 시장 관심도] 최근 5거래일 평균 거래량을 그 이전 15거래일 평균과 비교해 "관심이 늘고
+  // 있는지/줄고 있는지"를 판정한다 - RISK 관리 카드의 20일 평균 거래량 급증 판정과는 별개로, 여기서는
+  // "최근으로 갈수록 관심이 느는 추세인지"를 보고 싶어서 최근-이전 두 구간을 직접 비교한다.
+  const volumes = data.volumes;
+  let volumeTrend = null;
+  if (Array.isArray(volumes) && volumes.length >= 20) {
+    const recent5 = volumes.slice(-5);
+    const prior15 = volumes.slice(-20, -5);
+    const recentAvg = recent5.reduce((a, b) => a + b, 0) / recent5.length;
+    const priorAvg = prior15.reduce((a, b) => a + b, 0) / prior15.length;
+    const ratio = priorAvg > 0 ? recentAvg / priorAvg : 1;
+    volumeTrend = { recentAvg, priorAvg, direction: ratio >= 1.3 ? 'up' : (ratio <= 0.7 ? 'down' : 'flat') };
+  }
+
   // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940')에도,
   // 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 이번에 API가 실제 이름을 내려줬으면 원본
   // 입력 그대로가 아니라 정식 종목명을 보여준다.
@@ -1351,7 +1371,8 @@ async function analyzeTickerForModal(rawInput) {
     beta: (returns && benchmarkReturns) ? computeBetaFromReturns(returns, benchmarkReturns) : null,
     benchmarkKey,
     week52High,
-    week52DrawdownPct: week52High > 0 ? ((currentPrice - week52High) / week52High) * 100 : null
+    week52DrawdownPct: week52High > 0 ? ((currentPrice - week52High) / week52High) * 100 : null,
+    recentHigh, recentLow, volumeTrend
   };
 }
 
