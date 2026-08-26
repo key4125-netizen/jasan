@@ -2,14 +2,14 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v133'; // [보유종목 상세 모달에 종목 분석 리포트 통합]
-// 보유종목 클릭 시 뜨는 상세 모달(차트+평가손익+소유자별 현황) 하단에, 종목 분석 모달과 완전히 같은
-// 6섹션 리포트(핵심요약/가격대참고/기술적분석/거래량/리스크/위험관리안내/종합진단+고지문)를 이어
-// 붙였다. renderStockAnalysisResult()를 헤더 부분과 renderStockAnalysisReportBody()로 분리해서(js/10)
-// 두 모달이 완전히 같은 본문 렌더링 로직을 공유하게 했고, 새 attachStockAnalysisReportToDetailModal()
-// (js/08)이 단일/그룹/미보유 읽기전용 3가지 진입 경로 모두에서 이를 호출한다. 티커 없는 자산(부동산/
-// 현금 등)은 섹션 자체를 숨긴다. index.html과 js/08,10이 바뀌었으므로 v132->v133으로 올려 PWA가
-// 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v134'; // [버그 수정 - 해외 종목명이 티커로 표시되는 문제]
+// 종목 분석 모달에서 해외 티커(예: 'spck')를 검색하면 실제 기업명 대신 입력한 티커가 그대로 종목명에
+// 노출되던 문제를 고쳤다. (1) fetchYahooViaProxy가 이제 meta.longName/shortName을 파싱해 실제 기업명을
+// 돌려준다(국내 종목의 Naver stockName 파싱과 동일한 패턴) - 'aapl'->'Apple Inc.', 'tsla'->'Tesla, Inc.'
+// 로 확인됨. (2) 그래도 이름을 하나도 못 찾는 극히 드문 경우의 최종 폴백을 trimmedRaw(사용자가 입력한
+// 원본 대소문자, 예: 'spck')에서 yahooTicker(항상 대문자로 정돈됨, 'SPCK')로 바꿔 "spck SPCK"처럼
+// 이름과 티커의 대소문자가 서로 다르게 보이던 문제도 함께 없앴다. js/09가 바뀌었으므로 v133->v134로
+// 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',

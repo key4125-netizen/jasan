@@ -187,6 +187,10 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
     lastTradeKey: typeof picked.regularMarketTime === 'number' ? String(picked.regularMarketTime) : undefined,
     instrumentType: meta.instrumentType, // 'EQUITY'|'ETF'|'MUTUALFUND' 등 - .KQ 자동 폴백의 오매칭 검증용
     currency: meta.currency, // [자산 추가 팝업 개선] 종목 검색 시 거래 통화 자동 감지용 - Yahoo가 실제 상장 통화를 그대로 내려준다(USD/KRW/JPY 등)
+    // [종목 분석 모달 - 해외 종목명] meta.longName/shortName이 있으면 실제 기업명을 그대로 쓴다 -
+    // 없는 티커(신규상장 등)도 있어 필드 존재를 보장할 수 없으므로 둘 다 없으면 undefined로 남기고
+    // analyzeTickerForModal()이 기존처럼 KR_STOCK_NAMES/learnedTickerNames/티커로 안전하게 폴백한다.
+    name: (typeof meta.longName === 'string' && meta.longName) || (typeof meta.shortName === 'string' && meta.shortName) || undefined,
     // [미니 당일 봉차트] 당일 시가/고가/저가 - miniCandleSvg가 현재가(picked.price)와 함께 캔들 하나로 그린다.
     todayOpen: picked.todayOpen, todayHigh: picked.todayHigh, todayLow: picked.todayLow,
     source: `Yahoo(${proxy.name})`
@@ -1349,10 +1353,13 @@ async function analyzeTickerForModal(rawInput) {
     volumeTrend = { recentAvg, priorAvg, direction: ratio >= 1.3 ? 'up' : (ratio <= 0.7 ? 'down' : 'flat') };
   }
 
-  // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940')에도,
-  // 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 이번에 API가 실제 이름을 내려줬으면 원본
-  // 입력 그대로가 아니라 정식 종목명을 보여준다.
-  const displayName = resolvedName || KR_STOCK_NAMES[yahooTicker] || state.learnedTickerNames[yahooTicker] || (priceInfo && priceInfo.name) || trimmedRaw;
+  // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940', 'spck')
+  // 에도, 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 API가 실제 이름(국내는 Naver의
+  // stockName, 해외는 Yahoo meta.longName/shortName)을 내려줬으면 원본 입력 그대로가 아니라 정식
+  // 종목명을 보여준다. [대소문자 버그 수정] 정말 아무 이름도 못 찾은 최후의 폴백은 trimmedRaw(사용자가
+  // 입력한 원본 대소문자, 예: 'spck')가 아니라 yahooTicker(항상 대문자로 정돈됨, 'SPCK')를 쓴다 -
+  // 안 그러면 제목엔 'spck SPCK'처럼 이름과 티커의 대소문자가 서로 다르게 보이는 문제가 있었다.
+  const displayName = resolvedName || KR_STOCK_NAMES[yahooTicker] || state.learnedTickerNames[yahooTicker] || (priceInfo && priceInfo.name) || yahooTicker || trimmedRaw;
   // [학습된 종목명 캐시에 기록] 지금 막 진짜 이름을 확인했으면(=trimmedRaw/티커를 그대로 되돌려준 게
   // 아니면) 다음부터는 이 기기에서 티커든 이름이든 바로 찾을 수 있도록 남겨둔다 - 이미 KR_STOCK_NAMES에
   // 있던 값이어도 다시 저장은 되지만 rememberTickerName이 값이 같으면 조용히 건너뛴다.
