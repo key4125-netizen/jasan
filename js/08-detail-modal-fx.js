@@ -66,6 +66,37 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
   lucide.createIcons();
 }
 
+// [🔍 리스크 진단 보기 통합] 메인 화면 RISK 관리 카드에서 리스크 감지 종목마다 있던 개별 펼침 카드
+// (🔍 리스크 진단 보기)를 이 모달 하단으로 완전히 이관한다 - buildIndividualRiskDetailHtml()(js/10)이
+// 이미 계산해 둔 진단 문구/신호등/지표를 그대로 그려서(computeAdvancedRiskMetrics()의 계산 결과 재사용,
+// 로직 중복 없음) RISK 카드와 항상 같은 값을 보여준다. 예전엔 "리스크 감지" 태그가 붙은 종목에만 이
+// 카드가 있었지만(안정 종목은 펼침 버튼 자체가 없었음), 모달로 옮긴 뒤로는 리스크 지표가 계산된
+// 종목이면 안정/감지 여부와 무관하게 항상 보여준다 - 어차피 특정 종목을 결정한 이 상세 모달 안에서는
+// "이 종목이 안전한지"도 똑같이 궁금한 정보이기 때문이다. computeAdvancedRiskMetrics()가 아직 안
+// 돌았거나(부팅 직후), 티커가 없거나, 리스크 계산 대상이 아닌 자산(부동산/현금 등)이면 영역 자체를
+// 숨긴다(신규 상장·데이터 부족 자체는 buildIndividualRiskDetailHtml이 알아서 "데이터 부족" 문구로 처리).
+function attachRiskDiagnosisToDetailModal(ticker) {
+  const section = document.getElementById('assetDetailRiskSection');
+  const body = document.getElementById('assetDetailRiskBody');
+  if (!section || !body) return;
+
+  const yahoo = sanitizeTicker(ticker).yahooTicker;
+  const m = state.advancedRiskMetrics;
+  const holding = (yahoo && m && m.holdings) ? m.holdings.find((h) => h.ticker === yahoo) || null : null;
+  if (!yahoo || !holding) { section.classList.add('hidden'); return; }
+
+  // 이 종목을 신랑/와이프 등 여러 소유자가 나눠 보유해도 RISK 카드와 같은 방식으로 항상 전체 보유분을
+  // 합산한 "가구 전체 기준" 비중을 보여준다(단일/그룹 어느 진입 경로로 열어도 값이 갈리지 않는다).
+  const totalCur = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const tickerCur = state.assets
+    .filter((a) => sanitizeTicker(a.ticker).yahooTicker === yahoo)
+    .reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const weightPct = totalCur !== 0 ? (tickerCur / totalCur) * 100 : 0;
+
+  section.classList.remove('hidden');
+  body.innerHTML = buildIndividualRiskDetailHtml(holding, weightPct);
+}
+
 function openAssetDetailModal(id) {
   const a = state.assets.find((x) => x.id === id);
   if (!a) return;
@@ -100,6 +131,7 @@ function openAssetDetailModal(id) {
   document.getElementById('assetDetailModal').classList.remove('hidden');
   pushModalHistoryState();
   renderAssetDetailChart(a);
+  attachRiskDiagnosisToDetailModal(a.ticker);
   attachStockAnalysisReportToDetailModal(a.ticker);
 }
 
@@ -198,6 +230,7 @@ function openAssetDetailModalGroup(members) {
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart(priced, avgBuyPriceNative, byOwnerAvgPriceNative); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그리되, 평단가선은 통합 평균 매수단가를 쓰고 범례에 소유자별 평단가를 병기한다
+  attachRiskDiagnosisToDetailModal(first.ticker);
   attachStockAnalysisReportToDetailModal(first.ticker);
 }
 
@@ -296,6 +329,7 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
+  attachRiskDiagnosisToDetailModal(s.yahooTicker);
   attachStockAnalysisReportToDetailModal(s.yahooTicker);
 }
 
