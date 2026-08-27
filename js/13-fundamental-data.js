@@ -71,6 +71,23 @@ function fmtKisPct(v) {
   if (!Number.isFinite(n)) return '데이터 없음';
   return (n >= 0 ? '+' : '') + numFmt2.format(n) + '%';
 }
+// [기준 시각 배지] handlePrice(Worker)가 실제로 KIS를 조회한 시각(fetchedAt)을 "OO:OO 기준"으로
+// 보여준다 - "정규장/시간외" 같은 장 상태 라벨은 KIS 응답에서 확인되지 않아 붙이지 않고, 대신 이
+// 값이 언제 조회된 것인지만 정확히 알려줘서 사용자가 최신 시세로 오인하지 않게 한다(KV 캐시로 응답이
+// 재사용돼도 이 시각은 최초 조회 시점 그대로라 여전히 정확하다).
+function fmtKisTime(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// [장외/에러 공통 폴백 문구] KIS 응답 실패(네트워크 오류/500 등)와, 장외 시간·휴장일이라 유효한 값이
+// 없는 경우를 프론트엔드에서 구분할 방법이 없다(Worker가 실패 원인을 세분화해 내려주지 않음) - 그래서
+// 사용자에게는 두 경우를 하나의 안내문으로 뭉뚱그려 보여준다. 원인을 정확히 구분해 보여주려 들면
+// 오히려 "장 마감이라 그런 겁니다"처럼 실제로는 아닐 수도 있는 원인을 단정하는 꼴이 되기 쉽다.
+const KIS_FALLBACK_MESSAGE = '장외 시간/점검 중이거나 데이터를 불러올 수 없습니다.';
+function kisFallbackHtml() {
+  return `<p class="text-xs text-amber-600 dark:text-amber-400 py-2">${escapeHtml(KIS_FALLBACK_MESSAGE)}</p>`;
+}
 
 function fundamentalMetricTileHtml(label, value) {
   return `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-2">
@@ -82,12 +99,15 @@ function fundamentalMetricTileHtml(label, value) {
 function buildFundamentalCardHtml(kis) {
   const p = kis.price;
   const f = kis.fundamentals;
-  if (!p && !f) {
-    return '<p class="text-xs text-amber-600 dark:text-amber-400 py-2">KIS 재무 데이터를 불러오지 못했습니다(일시적 오류일 수 있습니다).</p>';
-  }
+  if (!p && !f) return kisFallbackHtml();
+
+  const asOfTime = p ? fmtKisTime(p.fetchedAt) : null;
   return `
   <div>
-    <p class="text-sm font-semibold text-slate-400 mb-1.5">📊 재무 펀더멘털 ${f && f.period ? `<span class="text-xs font-normal text-slate-400">(결산 ${escapeHtml(String(f.period))} 기준)</span>` : ''}</p>
+    <p class="text-sm font-semibold text-slate-400 mb-1.5">📊 재무 펀더멘털
+      ${f && f.period ? `<span class="text-xs font-normal text-slate-400">(결산 ${escapeHtml(String(f.period))} 기준)</span>` : ''}
+      ${asOfTime ? `<span class="ml-1 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 align-middle">시세 ${escapeHtml(asOfTime)} 기준</span>` : ''}
+    </p>
     <div class="grid grid-cols-3 gap-1.5">
       ${fundamentalMetricTileHtml('PER', p ? fmtKisRaw(p.per) : '데이터 없음')}
       ${fundamentalMetricTileHtml('PBR', p ? fmtKisRaw(p.pbr) : '데이터 없음')}
@@ -108,9 +128,7 @@ function buildFundamentalCardHtml(kis) {
 
 function buildInvestorFlowCardHtml(kis) {
   const iv = kis.investorFlow;
-  if (!iv) {
-    return '<p class="text-xs text-amber-600 dark:text-amber-400 py-2">수급 동향 데이터를 불러오지 못했습니다(일시적 오류일 수 있습니다).</p>';
-  }
+  if (!iv) return `<div class="mt-3">${kisFallbackHtml()}</div>`;
   const sign = (n) => (typeof n === 'number' && n >= 0 ? '+' : '');
   const qty = (n) => (typeof n === 'number' ? `${sign(n)}${n.toLocaleString('ko-KR')}주` : '데이터 없음');
   return `
@@ -120,6 +138,21 @@ function buildInvestorFlowCardHtml(kis) {
       최근 5일간 외국인 ${qty(iv.foreignNet5d)} 순매수 / 기관 ${qty(iv.institutionNet5d)} 순매수
     </p>
     <p class="text-xs text-slate-400 mt-1">최근 20일 누적: 외국인 ${qty(iv.foreignNet20d)} · 기관 ${qty(iv.institutionNet20d)}</p>
+  </div>`;
+}
+
+// [스켈레톤 UI] 실제 카드가 나올 자리에 미리 회색 뼈대를 보여준다 - 완성될 그리드(3열 x 2행 타일 +
+// 수급 문구 한 줄) 모양을 그대로 흉내내서, 데이터가 도착했을 때 레이아웃이 갑자기 늘어나거나
+// 줄어드는 느낌 없이 자연스럽게 교체되도록 한다. Tailwind 기본 유틸(animate-pulse)만 쓰고 별도
+// 라이브러리는 추가하지 않는다.
+function fundamentalSkeletonHtml() {
+  const tile = '<div class="h-11 rounded-md bg-slate-200 dark:bg-slate-700"></div>';
+  return `
+  <div class="animate-pulse">
+    <div class="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+    <div class="grid grid-cols-3 gap-1.5">${tile.repeat(6)}</div>
+    <div class="h-4 w-40 bg-slate-200 dark:bg-slate-700 rounded mt-4 mb-1.5"></div>
+    <div class="h-10 rounded-md bg-slate-200 dark:bg-slate-700"></div>
   </div>`;
 }
 
@@ -136,21 +169,13 @@ async function attachFundamentalSection(rawTicker, sectionId, bodyId) {
   if (!code) { section.classList.add('hidden'); return; }
 
   section.classList.remove('hidden');
-  body.innerHTML = `
-    <div class="flex flex-col items-center justify-center gap-2 py-6 text-slate-400">
-      <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-      <span class="text-xs">재무·수급 데이터를 불러오는 중...</span>
-    </div>`;
-  lucide.createIcons();
+  body.innerHTML = fundamentalSkeletonHtml();
 
   const token = ++fundamentalSectionRequestToken;
   const kis = await getCachedKisData(rawTicker);
   if (token !== fundamentalSectionRequestToken) return; // 그 사이 다른 종목으로 바뀌어 늦게 도착한 응답 - 버림
 
-  if (!kis) {
-    body.innerHTML = '<p class="text-xs text-amber-600 dark:text-amber-400 py-2">KIS 데이터를 불러오지 못했습니다(일시적 오류일 수 있습니다).</p>';
-    return;
-  }
+  if (!kis) { body.innerHTML = kisFallbackHtml(); return; }
   body.innerHTML = buildFundamentalCardHtml(kis) + buildInvestorFlowCardHtml(kis);
   lucide.createIcons();
 }
