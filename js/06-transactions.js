@@ -336,50 +336,19 @@ function isUsdCashTxForm() {
   return !ticker && currency === 'USD' && classifyCategory(ticker, name) === '현금';
 }
 
-// [채권 매매 계산식] 주식/ETF는 "수량 × 단가"지만 채권은 "액면가(원) × (매매단가/10,000)"이 총
-// 거래금액이다(KIS 채권 시세가 1만원 액면 기준 단가를 내려주는 관례를 그대로 따름 - handleBondPrice,
-// cloudflare-worker-kis-proxy.js). tx_ticker에 ISIN이 들어있을 때만 이 계산식으로 전환한다.
-function isTxBondMode() {
-  return isBondTicker(document.getElementById('tx_ticker').value.trim());
-}
-
-// [수량/단가 라벨 + 잠금 + 채권 계산 미리보기] 세 가지 특수 입력 모드(달러 현금/채권/일반)를 한 곳에서
-// 판정한다 - 예전엔 달러 현금 전용 함수(updateTxCashPriceLock)였는데, 채권 모드도 같은 라벨 자리
-// (tx_quantityLabel)를 두고 경합하게 되어 하나로 합쳤다(그렇지 않으면 두 함수가 서로의 라벨 변경을
-// 덮어쓸 수 있음). 두 모드는 동시에 성립할 수 없으므로(채권 ISIN이 USD 현금일 리 없음) 우선순위
-// 걱정 없이 if/else로 나눈다.
-function updateTxQuantityPriceUI() {
+// [달러 현금 거래 - 가격 1 고정] 현금성 자산은 "단가" 개념이 없고 수량 자체가 곧 달러 금액이다 - 매매
+// 단가를 1로 고정해 잠그고, 수량 라벨을 "금액($)"으로 바꿔 사용자가 헷갈리지 않게 한다.
+function updateTxCashPriceLock() {
   const isCash = isUsdCashTxForm();
-  const isBond = !isCash && isTxBondMode();
   const priceInput = document.getElementById('tx_price');
   const qtyLabel = document.getElementById('tx_quantityLabel');
-  const priceLabel = document.getElementById('tx_priceLabel');
-  const bondPreview = document.getElementById('tx_bondCalcPreview');
-
   priceInput.readOnly = isCash;
   priceInput.classList.toggle('bg-slate-100', isCash);
   priceInput.classList.toggle('dark:bg-slate-800/80', isCash);
   priceInput.classList.toggle('cursor-not-allowed', isCash);
   if (isCash) priceInput.value = 1;
-
-  if (qtyLabel) qtyLabel.textContent = isCash ? '금액($)' : (isBond ? '액면가(원)' : '수량');
-  if (priceLabel) priceLabel.textContent = isBond ? '매매단가(10,000원당)' : '매매단가';
-
-  if (bondPreview) {
-    if (!isBond) {
-      bondPreview.classList.add('hidden');
-    } else {
-      const faceValue = num(document.getElementById('tx_quantity').value);
-      const unitPrice = num(priceInput.value);
-      bondPreview.textContent = (faceValue > 0 && unitPrice > 0)
-        ? `총 거래금액: ${Math.round(faceValue * (unitPrice / 10000)).toLocaleString('ko-KR')}원`
-        : '액면가와 매매단가를 입력하면 총 거래금액이 자동 계산됩니다.';
-      bondPreview.classList.remove('hidden');
-    }
-  }
+  if (qtyLabel) qtyLabel.textContent = isCash ? '금액($)' : '수량';
 }
-document.getElementById('tx_quantity').addEventListener('input', updateTxQuantityPriceUI);
-document.getElementById('tx_price').addEventListener('input', updateTxQuantityPriceUI);
 
 // [적용 환율 기본값 - 스마트 디폴트] 평소엔 조회 시점의 실시간 환율을 기본값으로 쓰지만, "달러 현금
 // 매도(출금/환전)"만은 예외로 그 포지션의 매수 시점 가중평균 환율(computePositionsAndRealizedPnL의
@@ -410,12 +379,12 @@ document.getElementById('tx_appliedRate').addEventListener('input', (e) => { del
 function updateTxAppliedRateVisibility() {
   const isUsd = document.getElementById('tx_currency').value === 'USD';
   document.getElementById('tx_appliedRateWrap').classList.toggle('hidden', !isUsd);
-  updateTxQuantityPriceUI();
+  updateTxCashPriceLock();
   if (isUsd) refreshAppliedRateDefault();
 }
 document.getElementById('tx_currency').addEventListener('change', updateTxAppliedRateVisibility);
-document.getElementById('tx_type').addEventListener('change', () => { updateTxQuantityPriceUI(); refreshAppliedRateDefault(); });
-document.getElementById('tx_name').addEventListener('blur', () => { updateTxQuantityPriceUI(); refreshAppliedRateDefault(); });
+document.getElementById('tx_type').addEventListener('change', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
+document.getElementById('tx_name').addEventListener('blur', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
 document.getElementById('tx_owner').addEventListener('change', refreshAppliedRateDefault);
 document.getElementById('tx_accountType').addEventListener('blur', refreshAppliedRateDefault);
 
@@ -428,10 +397,7 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
   document.getElementById('tx_name').value = name;
   document.getElementById('tx_ticker').value = ticker;
   if (ticker) {
-    // [채권 ISIN 대응] 예전엔 ".KS/.KQ 접미사"나 "숫자 6자리"만 국내로 봤는데, 채권 ISIN(예:
-    // KR103502G990)은 둘 다 아니라서 이 규칙만으로는 USD로 잘못 분류됐다 - sanitizeTicker()가 이미
-    // ISIN까지 판별하므로 그걸 그대로 재사용해 기준을 하나로 통일한다.
-    const isKr = sanitizeTicker(ticker).isDomestic === '국내';
+    const isKr = /\.(KS|KQ)$/i.test(ticker) || /^\d{6}$/.test(ticker);
     document.getElementById('tx_currency').value = isKr ? 'KRW' : 'USD';
     document.getElementById('tx_tickerHint').textContent = `선택된 티커: ${ticker}`;
   } else {
@@ -459,7 +425,7 @@ document.getElementById('tx_manualEntryToggle').addEventListener('change', () =>
   document.getElementById('tx_name').value = '';
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
-  updateTxQuantityPriceUI();
+  updateTxCashPriceLock();
 });
 document.getElementById('tx_name').addEventListener('click', () => {
   if (!document.getElementById('tx_manualEntryToggle').checked) openStockSearchModal();
@@ -486,10 +452,7 @@ function openTransactionModal(txId) {
     document.getElementById('tx_accountType').value = tx.accountType;
     document.getElementById('tx_name').value = tx.name;
     document.getElementById('tx_ticker').value = tx.ticker || '';
-    // [채권 - 저장된 수량을 다시 액면가로] 저장 시 quantity = 액면가÷10000으로 바꿔뒀으므로(제출
-    // 핸들러 참고), 수정 화면을 다시 열 때는 반대로 ×10000해서 사용자가 입력했던 원래 액면가 그대로
-    // 보여준다.
-    document.getElementById('tx_quantity').value = isBondTicker(tx.ticker) ? tx.quantity * 10000 : tx.quantity;
+    document.getElementById('tx_quantity').value = tx.quantity;
     document.getElementById('tx_price').value = tx.price;
     document.getElementById('tx_currency').value = tx.currency;
     document.getElementById('tx_fee').value = tx.fee;
@@ -533,15 +496,8 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     showToast('현금/외화 자산은 거래내역으로 등록할 수 없습니다. 자산관리 탭의 자산 수정에서 잔고를 직접 고쳐주세요.', 'warn', 6000);
     return;
   }
-  // [채권 액면가 -> 저장용 수량 변환] 입력칸에는 사용자가 이해하기 쉬운 "액면가(원)" 그대로 받지만,
-  // 이 앱 전체의 평가금액 계산은 어디서나 "수량 × 현재가"다(js/02 KPI, js/04 리밸런싱, 테이블 렌더링
-  // 등 수십 곳). 채권도 그 공식을 그대로 타게 하려고, KIS가 "1만원 액면 기준 단가"를 내려주는 관례에
-  // 맞춰 저장 시점에 quantity를 "액면가 ÷ 10,000"으로 바꿔둔다 - 그러면 quantity × price가 정확히
-  // 실제 평가금액이 되어, 채권이라고 앱 곳곳에 별도 계산식을 추가할 필요가 없다. 화면에는 항상 원래
-  // 액면가로 되돌려 보여준다(openTransactionModal의 edit-load 부분, renderTransactionsTable 등).
-  const rawQuantityInput = num(document.getElementById('tx_quantity').value);
-  const quantity = isTxBondMode() ? rawQuantityInput / 10000 : rawQuantityInput;
-  if (quantity <= 0) { showToast(isTxBondMode() ? '액면가는 0보다 커야 합니다.' : '수량은 0보다 커야 합니다.', 'warn'); return; }
+  const quantity = num(document.getElementById('tx_quantity').value);
+  if (quantity <= 0) { showToast('수량은 0보다 커야 합니다.', 'warn'); return; }
   // [달러 현금 거래 - 가격 1 고정] UI에서 이미 잠가두지만, 프로그램적으로 폼이 채워지는 경로(검색 선택
   // 등) 대비 제출 시점에도 한 번 더 강제한다 - 현금성 거래는 수량 자체가 달러 금액이라 단가는 항상 1.
   const price = isUsdCashTxForm() ? 1 : num(document.getElementById('tx_price').value);

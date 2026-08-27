@@ -220,7 +220,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v147</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v146</p>
           </div>
         </div>
 
@@ -1782,33 +1782,13 @@
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
-    <div id="stockSearchNormalSection" class="px-5 py-3 shrink-0">
+    <div class="px-5 py-3 shrink-0">
       <input id="stockSearchInput" type="text" placeholder="종목명(영문) 또는 티커/코드 검색 - 예: Samsung, 005930, QQQM"
         class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 outline-none focus:border-brand-400">
       <p id="stockSearchHint" class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.</p>
-      <!-- [채권 모드 진입] 채권은 전종목 마스터가 없어(아직 KIS 공개 다운로드가 확인 안 됨) 이름으로
-           검색할 수 없다 - ISIN 직접 입력 모드로 전환한다(openStockSearchModal('bond')와 동일 동작). -->
-      <button type="button" id="switchToBondModeBtn" class="mt-2 text-[11px] text-brand-600 dark:text-brand-400 hover:underline">채권은 ISIN 코드로 검색 →</button>
     </div>
     <div id="stockSearchResults" class="flex-1 overflow-y-auto px-2 pb-3 min-h-[140px]">
       <p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>
-    </div>
-
-    <!-- [채권 ISIN 직접 입력 모드] 국내 채권은 종목마다 12자리 표준코드(ISIN)가 있고, 이 앱은 아직
-         채권 전종목 마스터가 없어(js/09 tickerMasterRecords와 별개 - 결정사항: 마스터 없이 시작) 이름
-         검색 대신 ISIN을 직접 입력받아 KIS 발행정보 API로 실시간 조회/확인하는 방식을 쓴다. -->
-    <div id="bondIsinEntrySection" class="hidden px-5 py-3 flex-1 overflow-y-auto">
-      <button type="button" id="switchToNormalSearchBtn" class="mb-2 text-[11px] text-slate-400 hover:underline">← 종목 검색으로 돌아가기</button>
-      <label class="block text-xs">
-        <span class="text-slate-500 dark:text-slate-400">채권 표준코드(ISIN, 12자리)</span>
-        <div class="flex gap-1.5 mt-1">
-          <input id="bondIsinInput" type="text" placeholder="예: KR2033022D33" maxlength="12" autocapitalize="characters"
-            class="flex-1 min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 outline-none focus:border-brand-400 uppercase tracking-wider">
-          <button type="button" id="bondIsinLookupBtn" class="shrink-0 px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold">조회</button>
-        </div>
-      </label>
-      <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">한국거래소(KRX)/증권사 HTS·MTS의 채권 상세 화면에서 확인할 수 있는 12자리 코드입니다.</p>
-      <div id="bondIsinResult" class="mt-4"></div>
     </div>
   </div>
 </div>
@@ -1885,13 +1865,10 @@
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
       <label class="col-span-1 text-xs">
-        <span id="tx_priceLabel" class="text-slate-500 dark:text-slate-400">매매단가</span>
+        <span class="text-slate-500 dark:text-slate-400">매매단가</span>
         <input id="tx_price" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
-      <!-- [채권 매매금액 자동계산 미리보기] 액면가×(매매단가/10,000) - isTxBondMode()일 때만 보인다
-           (updateTxQuantityPriceUI, js/06). -->
-      <p id="tx_bondCalcPreview" class="hidden col-span-2 text-[11px] text-brand-600 dark:text-brand-400 font-medium -mt-1">&nbsp;</p>
 
       <label class="col-span-1 text-xs">
         <span class="text-slate-500 dark:text-slate-400">통화</span>
@@ -1982,47 +1959,6 @@
       </button>
     </div>
     <div id="riskDetailModalBody" class="px-5 py-4 overflow-y-auto"></div>
-  </div>
-</div>
-
-<!-- ============================= 채권 현황 모달 =============================
-     '채권' 카테고리 KPI 태그(data-open-bond-detail) 클릭으로 연다(openBondDetailModal, js/15-bond-
-     management.js). 예전엔 채권이 전부 무티커라 이 자리에 "티커 없음 - 차트 불가" 안내문만 떴지만,
-     이제 개별 채권(ISIN 티커)마다 KIS 실시간 시세/발행정보를 붙여 총평가액/이자수입/현금흐름까지
-     보여준다. -->
-<div id="bondDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-base font-bold">💵 채권 현황</h3>
-      <button type="button" id="closeBondDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-    <div class="px-5 py-4 overflow-y-auto flex-1 min-h-0">
-      <!-- 상단: 총평가액/총손익률/연간 예상 이자수입 -->
-      <div id="bondDetailSummary" class="grid grid-cols-3 gap-2 mb-4"></div>
-
-      <!-- 보유 채권 리스트 -->
-      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📋 보유 채권 목록</p>
-      <p class="text-xs text-slate-400 mb-2">종목을 선택하면 아래 지표 카드에 상세 정보가 표시됩니다.</p>
-      <div id="bondDetailList" class="space-y-2 mb-4"></div>
-
-      <!-- 채권 지표 & 설명 카드 -->
-      <div class="border-t border-slate-100 dark:border-slate-800 pt-4 mb-4">
-        <p id="bondDetailIndicatorTitle" class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 채권 지표</p>
-        <div id="bondDetailIndicatorCards" class="grid grid-cols-2 gap-2"></div>
-      </div>
-
-      <!-- 현금흐름 현황 -->
-      <div class="border-t border-slate-100 dark:border-slate-800 pt-4">
-        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">💰 현금흐름 현황</p>
-        <div id="bondDetailCashFlowSummary" class="grid grid-cols-2 gap-2 mb-3"></div>
-        <p class="text-xs text-slate-400 mb-1.5">다가오는 이자 지급일</p>
-        <div id="bondDetailCashFlowTimeline" class="space-y-1.5"></div>
-      </div>
-
-      <p class="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">시세/발행정보는 한국투자증권(KIS) API 기준이며, 만기수익률(YTM)·이자지급일 등은 KIS 응답을 그대로 옮긴 참고 정보입니다 - 실제 지급 조건은 반드시 증권사 앱/발행 조건을 다시 확인하세요.</p>
-    </div>
   </div>
 </div>
 
@@ -2202,7 +2138,6 @@
 <script src="js/11-refresh-history.js"></script>
 <script src="js/12-import-export-sync.js"></script>
 <script src="js/13-fundamental-data.js"></script>
-<script src="js/15-bond-management.js"></script>
 <script src="js/14-settings-boot.js"></script>
 </body>
 </html>

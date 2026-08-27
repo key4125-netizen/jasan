@@ -452,30 +452,6 @@ async function fetchPriceWithFallback(rawTicker, name) {
   }
 }
 
-// [채권 시세 - KIS 전용] 개별 채권(ISIN 티커)은 Yahoo/네이버가 아예 다루지 않는 상품이라
-// fetchPriceWithFallback과 완전히 별도 경로로 KIS 채권 시세 API(js/13 fetchKisBondPriceSnapshot,
-// cloudflare-worker-kis-proxy.js의 /api/kis/bond-price)를 호출한다. fetchPricesForTargets(js/11)가
-// 기대하는 것과 같은 응답 모양({price, changePercent, previousClose, ...})으로 맞춰 반환해, 그 이후의
-// dayChangeMap/prevCloseMap 반영 로직을 채권이라고 따로 분기하지 않아도 되게 한다. 채권은 정규장/
-// 시간외 개념이 없어 session/lastTradeKey는 항상 undefined로 둔다(noNewSessionMap 판정이 자동으로
-// "판별 불가 → 기존 리셋 창 근사 로직" 경로를 타게 됨, js/11 주석 참고).
-async function fetchBondPriceWithFallback(isin) {
-  const data = await fetchKisBondPriceSnapshot(isin);
-  if (!data || !Number.isFinite(data.price)) {
-    throw new Error(`[채권 시세조회 실패] isin="${isin}" - KIS 응답 없음 또는 가격 필드 누락(cloudflare-worker-kis-proxy.js handleBondPrice의 필드명 추정이 틀렸을 가능성 - raw 필드로 실제 응답 확인 필요)`);
-  }
-  return {
-    price: data.price,
-    changePercent: data.changePct ?? null,
-    previousClose: data.prevClose ?? null,
-    regularMarketPrice: data.price,
-    todayHigh: data.high,
-    todayLow: data.low,
-    session: undefined,
-    lastTradeKey: undefined
-  };
-}
-
 /* -------------------------------------------------------------------------
  * 18-1. [RISK 관리] 개별 종목 정밀 주가 분석 감지 로직
  *    - RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락(-30% 이하)/거래량 급증(20일
