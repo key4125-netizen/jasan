@@ -121,7 +121,16 @@ document.getElementById('retryFailedPricesBtn').addEventListener('click', () => 
 // (모바일 pull-to-refresh 포함) 양쪽에서 호출한다. fetchExchangeRate/fetchAllPrices는 내부적으로
 // 이미 실패를 안전하게 흡수하므로(catch), 네트워크 오류가 나도 이 함수가 예외를 던지는 일은 없고
 // LocalStorage에 저장된 기존 시세/환율은 그대로 보존된다.
+// [버그 수정 - 완료 토스트 중복 노출] 5분 자동갱신/탭 재진입 갱신은 호출 전에 refreshBtn.disabled를
+// 직접 확인해 중복 호출을 막고 있었지만, pullFromCloud()(js/12, 원격에 새 데이터가 있으면 반영 직후
+// 자동 호출)는 그 확인 없이 이 함수를 그대로 불렀다 - 그 결과 부팅 직후처럼 "부팅 시 최초 1회
+// refreshPricesAndRates() 호출"과 "부팅 시 pullFromCloud() 호출이 마침 새 원격 데이터를 발견해 다시
+// refreshPricesAndRates() 호출"이 겹치면 완료 갱신 주기 두 개가 동시에 돌아 완료 토스트도 두 번 떴다.
+// 이 함수 자체에 재진입 가드를 둬서, 앞으로 어떤 호출부가 사전 확인을 빼먹어도 이미 진행 중인 갱신과
+// 겹쳐 실행되는 일 자체가 없도록 근본적으로 막는다(완료 토스트만 감추는 게 아니라 중복 네트워크
+// 호출 자체를 없앤다).
 async function refreshPricesAndRates() {
+  if (refreshBtn.disabled) return; // 이미 갱신이 진행 중이면 재진입 무시
   setRefreshingUI(true);
   refreshStatusMsg.classList.add('hidden');
   // 앱을 며칠간 새로고침 없이 켜둔 채 자정을 넘긴 경우까지 대응하기 위해, 갱신 직전에도 날짜 전환을 재확인한다.

@@ -85,7 +85,7 @@ function buildIndividualRiskTags(h) {
   if (!h || !h.hasData) return [];
   const tags = [];
   if (h.rsiState === '과열') tags.push('단기 과열');
-  if (h.trendBroken) tags.push('추세 이탈');
+  if (h.trendLabel === '역배열(하락추세)') tags.push('추세 이탈');
   if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) tags.push('52주 고점대비 급락');
   if (h.volumeSpike) tags.push('거래량 급증');
   return tags;
@@ -134,7 +134,12 @@ function computeRiskClassifiedAssets() {
 // (Sortino)/계좌 내 비중/52주 고점 대비 낙폭 + 초직관적 행동 지침을 전부 holding(h) 하나에서 뽑는다.
 function buildIndividualDiagnosisLine(h) {
   if (!h || !h.hasData) return '가격 이력 데이터가 부족해(신규 상장 등) 정밀 진단을 계산할 수 없습니다.';
-  const trendPhrase = h.trendBroken ? '20일선 아래로 단기 하락 전환 상태입니다.' : '20일선 위 상승 추세를 유지 중입니다.';
+  // [버그 수정 - 추세 판정 기준 통일] 6섹션 리포트의 핵심 요약(buildStockStatusSummary)과 완전히 같은
+  // h.trendLabel(20/60/120일 정배열 기준, maTrendLabel)을 쓴다 - 예전엔 여기만 "현재가 vs 20일선"
+  // 단순 이진 판정이라 같은 종목인데 리포트와 반대 신호(🟢인데 리포트는 🟡)를 보여주는 문제가 있었다.
+  const trendPhrase = h.trendLabel === '정배열(상승추세)' ? '20/60/120일 이동평균이 정배열로 상승 추세를 유지하고 있습니다.'
+    : h.trendLabel === '역배열(하락추세)' ? '20/60/120일 이동평균이 역배열로 하락 추세가 이어지고 있습니다.'
+    : '이동평균이 뚜렷한 방향 없이 혼조 상태입니다.';
   // [초보자 용어] 'RSI'라는 전문용어 대신 '과열지수'(0~100, 높을수록 단기간에 너무 급하게 오른 상태)로
   // 통일해서 표현한다 - 원래 수치(h.rsi14)는 괄호 안에 그대로 남겨 숙련자도 참고할 수 있게 한다.
   const rsiPhrase = h.rsiState === '과열'
@@ -157,8 +162,8 @@ function buildIndividualActionItem(h, weightPct) {
   if (h.rsiState === '과열') {
     return `단기 과열 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100). 추가 매수는 조정 이후로 미루고, 일부 이익 실현을 고려하세요.`;
   }
-  if (h.trendBroken) {
-    return '20일선 아래로 단기 추세가 꺾였습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
+  if (h.trendLabel === '역배열(하락추세)') {
+    return '이동평균이 역배열로 하락 추세가 이어지고 있습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
   }
   if (h.flowSignal === 'outflow') {
     return '최근 거래량이 급증하면서 하락한 매물 압박(추정) 흐름입니다. 추가 매수는 안정 여부를 확인한 뒤 판단하세요.';
@@ -172,15 +177,21 @@ function buildIndividualActionItem(h, weightPct) {
   return '현재 특별한 위험 신호가 없습니다.';
 }
 
-// [추세/과열도/수급 신호등] 3개 항목을 초보자용 신호등 색+짧은 문구로 보여준다 - 각각 h.trendBroken/
-// h.rsiState/h.flowSignal(거래량+가격 기반 대체 수급 지표)에서 그대로 가져온다.
+// [추세/과열도/수급 신호등] 3개 항목을 초보자용 신호등 색+짧은 문구로 보여준다 - 각각 h.trendLabel/
+// h.rsiState/h.flowSignal(거래량+가격 기반 대체 수급 지표, 국내 종목은 attachRiskDiagnosisToDetailModal이
+// 렌더링 직후 KIS 실제 수급으로 다시 갱신함 - js/08 참고)에서 그대로 가져온다.
 function buildIndividualSignalLightsHtml(h) {
   if (!h || !h.hasData) {
     return `<div class="grid grid-cols-3 gap-1.5 text-center">
       ${['추세', '과열도', '수급(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-xs text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
     </div>`;
   }
-  const trendHtml = h.trendBroken ? '🔴 하락 전환' : '🟢 상승 흐름';
+  // [버그 수정 - 추세 판정 기준 통일] h.trendLabel(20/60/120일 정배열 기준)을 6섹션 리포트의 핵심요약과
+  // 완전히 같은 3단계로 표시한다 - 예전엔 여기만 "현재가 vs 20일선" 이진 판정(🟢/🔴 둘뿐)이라 혼조 구간도
+  // 무조건 초록불로 보여, 바로 아래 리포트의 🟡(주의 필요) 판정과 어긋나 보였다.
+  const trendHtml = h.trendLabel === '정배열(상승추세)' ? '🟢 상승 추세'
+    : h.trendLabel === '역배열(하락추세)' ? '🔴 하락 추세'
+    : '🟡 방향 혼조';
   const rsiHtml = h.rsiState === '과열' ? '🔥 단기 과열' : h.rsiState === '과매도' ? '🛡️ 바닥권' : '🟢 적정';
   const flow = flowSignalLabel(h.flowSignal);
   return `
@@ -194,8 +205,8 @@ function buildIndividualSignalLightsHtml(h) {
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${rsiHtml}</p>
     </div>
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-xs text-slate-400">수급(추정)</p>
-      <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${flow.emoji} ${flow.label}</p>
+      <p class="text-xs text-slate-400" data-flow-tile-label>수급(추정)</p>
+      <p class="text-sm font-semibold text-slate-700 dark:text-slate-200" data-flow-tile-value>${flow.emoji} ${flow.label}</p>
     </div>
   </div>`;
 }
@@ -213,9 +224,9 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
-      ${buildMetricItem('⚡ 지수 대비 널뛰기 심함', betaText, '시장이 1% 움직일 때 이 종목이 대략 몇 % 움직이는지 나타냅니다. 1보다 크면 시장보다 더 크게 흔들려요.')}
+      ${buildMetricItem('⚡ 종목 변동성(베타) - 지수 대비 널뛰기 심함', betaText, '시장이 1% 움직일 때 이 종목이 대략 몇 % 움직이는지 나타냅니다(포트폴리오 전체 베타와는 다른, 이 종목 하나만의 수치입니다). 1보다 크면 시장보다 더 크게 흔들려요.')}
       ${buildMetricItem('폭락장 방어 성적표', sortinoText, '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
-      ${buildMetricItem('계좌 내 비중', fmtNum(weightPct, 1) + '%', '전체 계좌에서 이 종목이 차지하는 평가금액 비중입니다.')}
+      ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "한 종목 몰빵 위험"(RISK 세부내용 모달, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('52주 고점 대비', drawdownText, '최근 1년 최고가 대비 현재 주가가 얼마나 낮은지 나타냅니다.')}
       ${buildMetricItem('💣 진짜 위험 만드는 주범', contribText, "투자 비중이 아니라 '실제로 내 계좌를 흔드는 힘'이 몇 %인지 보여줍니다. 이 숫자가 투자 비중보다 훨씬 크면 겉보기보다 훨씬 위험한 종목이에요.")}
     </div>
@@ -307,8 +318,12 @@ function renderRiskDiagnosisSummary() {
       <button type="button" id="riskDetailBtn" class="detail-btn ml-auto">🔍 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
     </div>
     <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
+    <!-- [F2 - 메인 카드 간소화] 우선순위 지침은 최대 2개까지만 보여준다 - 나머지(있다면)는 세부내용
+         모달에 전부 나열되므로 "🔍 세부내용" 버튼으로 유도한다. 6대 위험요인 막대그래프/섹터 노출
+         상세는 원래도 메인 카드에 없고 세부내용 모달 전용이었다(역할 분리가 이미 되어 있던 부분). -->
     <div class="mt-2.5 space-y-1.5">
-      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+      ${actionItems.slice(0, 2).map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+      ${actionItems.length > 2 ? `<p class="text-xs text-slate-400">그 외 ${actionItems.length - 2}건 더 - 🔍 세부내용에서 전부 확인할 수 있습니다.</p>` : ''}
     </div>
 
     <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
@@ -347,14 +362,23 @@ function renderRiskDetailModal() {
     buildFactorBarRow('🔥 과열·수급', s.technical, '100점에 가까울수록 위험해요. 보유 종목이 단기간에 너무 많이 올라 숨고르기가 필요하거나, 거래량이 심상치 않은 정도입니다.')
   ].join('');
 
+  // [F2 - 세부내용 모달로 이관] 메인 카드는 우선순위 지침 최대 2개만 보여주므로, 전체 목록은 여기서
+  // 빠짐없이 보여준다(buildRiskActionItems는 메인 카드와 완전히 같은 계산 결과를 재사용 - 중복 계산 없음).
+  const actionItems = buildRiskActionItems(m);
+  const actionItemsHtml = actionItems.length ? `
+    <div class="mb-3.5 space-y-1.5">
+      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+    </div>` : '';
+
   body.innerHTML = `
+    ${actionItemsHtml}
     <!-- [6대 위험요인 분해] -->
     <div class="space-y-3">${barsHtml}</div>
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 지수 대비 널뛰기 심함', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '시장이 1% 움직일 때 내 포트폴리오가 대략 몇 % 움직이는지 나타냅니다. 1보다 크면 시장보다 더 크게 흔들린다는 뜻이에요.')}
-      ${buildMetricItem('🎯 한 종목 몰빵 위험', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '특정 종목 하나에 자산이 얼마나 쏠려 있는지 보여줍니다. 비중이 클수록 그 종목 하나의 움직임에 계좌 전체가 휘둘려요.')}
+      ${buildMetricItem('⚡ 포트폴리오 변동성(베타) - 지수 대비 널뛰기 심함', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '시장이 1% 움직일 때 내 포트폴리오 전체가 대략 몇 % 움직이는지 나타냅니다(종목 상세의 개별 종목 베타와는 다른, 보유종목 전체를 합친 수치입니다). 1보다 크면 시장보다 더 크게 흔들린다는 뜻이에요.')}
+      ${buildMetricItem('🎯 한 종목 몰빵 위험 (주식·ETF 중)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 평소 하락장 하루 최대 손실 예상액', fmtKRWShort(Math.abs(m.var95KRW)), '일상적인 하락장에서 95% 확률로 겪을 수 있는 하루 손실액입니다.')}
       ${buildMetricItem('💥 대폭락장(금융위기급) 손실 예상액', fmtKRWShort(Math.abs(m.cvarKRW)), '2020년 코로나 폭락 같은 극단적인 위기 상황이 실제로 벌어졌을 때 예상되는 평균 손실액입니다.')}
       ${buildMetricItem('폭락장 방어 성적표', sortinoGrade + '등급', '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
@@ -954,18 +978,43 @@ function renderMacroBriefing() {
     foreignWeightPct
   });
   const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });
+  // [타이포그래피 통일] 예전엔 이 3줄이 text-lg라 바로 아래 RISK 카드의 같은 성격 텍스트(권장 행동
+  // 지침 등, text-sm)보다 눈에 띄게 크게 보였다 - RISK 카드와 동일한 text-sm/leading-relaxed로 맞춰
+  // 두 카드의 본문 글자 크기가 균일하게 보이도록 했다.
   diagnosisEl.innerHTML = `
-    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 시장 종합 평가</span> ${escapeHtml(commentary.cause)}</p>
-    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
-    <p class="text-lg text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
+    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 시장 종합 평가</span> ${escapeHtml(commentary.cause)}</p>
+    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
+    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-      <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">💡 자산간 상관관계 가이드</p>
-      <ul class="space-y-1 list-none">
-        ${correlation.lines.map((l) => `<li class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
-      </ul>
-      <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
+      <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
+        <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="correlationGuideChevron"></i>
+      </button>
+      <div id="correlationGuideBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <ul class="space-y-1 list-none mt-1.5">
+          ${correlation.lines.map((l) => `<li class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
+        </ul>
+        <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
+      </div>
     </div>`;
+
+  // [F1 - 상관관계 가이드 아코디언화] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이
+  // 통째로 새로 그려지므로, 버튼 요소 자체가 매번 새로 생긴다 - 펼침 상태(correlationGuideOpen)를
+  // 모듈 전역 변수로 기억해 뒀다가 방금 새로 그린 DOM에 재적용한다(다른 아코디언들과 동일한 패턴).
+  const guideBody = document.getElementById('correlationGuideBody');
+  const guideChevron = document.getElementById('correlationGuideChevron');
+  if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
 }
+
+// 매번 새로 그려지는 버튼이라 위임(delegated) 리스너 하나로 처리한다(data-info-tip과 동일한 이유).
+let correlationGuideOpen = false;
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#correlationGuideToggleBtn')) return;
+  correlationGuideOpen = !correlationGuideOpen;
+  const guideBody = document.getElementById('correlationGuideBody');
+  const guideChevron = document.getElementById('correlationGuideChevron');
+  if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
+});
 
 function renderRiskSection() {
   renderMacroBriefing();
@@ -1256,12 +1305,10 @@ function renderStockAnalysisReportBody(a, sim) {
 
   ${simHtml}
 
-  <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🎯 위험 관리 안내</p>
-    <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 space-y-1">
-      ${STOCK_ANALYSIS_RISK_TIPS.map((tip, i) => `<p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${escapeHtml(tip)}</p>`).join('')}
-    </div>
-  </div>
+  <p class="text-xs text-slate-400 flex items-center gap-1 mb-1">
+    🎯 위험 관리 일반 원칙
+    <button type="button" data-info-tip="${escapeHtml(STOCK_ANALYSIS_RISK_TIPS.map((t, i) => `${i + 1}. ${t}`).join(' '))}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+  </p>
 
   <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
 }
