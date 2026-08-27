@@ -235,6 +235,12 @@ const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가'
 
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
+  // [개별 채권 - ISIN 우선 판정] 12자리 채권 표준코드(ISIN)가 티커로 들어오면 이름에 뭐가 적혀있든
+  // 무조건 '채권'이다 - 아래 키워드 매칭보다 훨씬 확실한 신호라 가장 먼저 검사한다. 이 경우
+  // NON_TRADABLE_CATEGORIES에 있어도 isBondTicker() 체크로 시세갱신 대상에는 포함된다(js/11 참고) -
+  // "채권이라 시세조회 제외"였던 기존 규칙은 원래 '무티커라 조회할 시세가 없는' 채권을 가리킨 것이었지,
+  // ISIN이 있는 지금의 개별 채권까지 막으려는 의도가 아니었다.
+  if (isBondTicker(ticker)) return '채권';
   // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
   // 미국채10년선물 같은 채권형 ETF) 만기까지 들고 가는 개별 채권과 달리 매일 시세가 변하는 상장 상품이므로
   // '채권'(NON_TRADABLE_CATEGORIES에 포함되어 시세조회 대상에서 빠짐) 대신 ETF로 분류해 실시간 시세가
@@ -289,8 +295,21 @@ function sanitizeTicker(rawTicker) {
   if (/^\d{6}$/.test(upper)) {
     return { original, yahooTicker: upper + '.KS', isDomestic: '국내' };
   }
+  // ⑤ [채권 ISIN] 12자리 표준코드(예: KR103502G990) - ISO 6166 형식(국가코드 2자 + 영숫자 9자 +
+  // 검사숫자 1자)을 그대로 티커로 쓴다. 국내 채권은 항상 'KR'로 시작하므로 그때만 국내(원화)로 보고,
+  // 그 외(해외 채권 확장 대비)는 해외로 둔다 - isBondTicker()가 이 정규식을 그대로 재사용한다.
+  if (/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(upper)) {
+    return { original, yahooTicker: upper, isDomestic: upper.startsWith('KR') ? '국내' : '해외' };
+  }
   // ④ 위 한국 종목코드 규격에 해당하지 않으면 해외 티커로 간주 (GOOGL, MSFT, QQQM 등)
   return { original, yahooTicker: upper, isDomestic: '해외' };
+}
+
+// [채권 ISIN 판별] sanitizeTicker()의 ⑤번 규칙과 정확히 같은 정규식을 공유한다 - 여기저기서 "이 티커가
+// 채권인가?"를 판단할 때(가격 갱신 대상 포함 여부, 거래 입력 폼의 액면가/매매단가 계산식 전환, KIS
+// 채권 API 라우팅 등) 전부 이 함수 하나로 통일해서 판정 기준이 흩어지지 않게 한다.
+function isBondTicker(rawTicker) {
+  return /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(String(rawTicker ?? '').trim().toUpperCase());
 }
 
 function classifyIsDomestic(ticker) {
@@ -445,6 +464,12 @@ const state = {
   // API에서 언제든 다시 받아올 수 있는 값이라, 새 localStorage 키를 늘려 JSON 백업/가족 동기화 로직
   // (buildSyncBlob 등)의 손이 닿는 범위를 넓히지 않는다.
   fundamentalCache: {},
+  // [채권 발행정보 캐시] { isin: { name, issuer, maturityDate, couponRatePct, paymentFreqMonths,
+  // prevCouponDate, nextCouponDate, issueDate, raw, fetchedAt } } - fundamentalCache와 같은 이유로
+  // 휘발성(localStorage 미저장)이다. 만기일/표면금리는 발행 후 절대 안 바뀌는 값이라 fundamentalCache와
+  // 달리 "하루 지나면 재조회"가 아니라 "한 번 성공하면 새로고침 전까지 그대로 재사용"한다
+  // (getCachedBondInfo, js/13).
+  bondInfoCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).

@@ -421,6 +421,7 @@ function openStockSearchModal(mode) {
   const input = document.getElementById('stockSearchInput');
   input.value = '';
   document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
+  setStockSearchBondMode(false); // 매번 일반 검색 화면으로 시작(직전 세션에서 채권 모드였어도 초기화)
   setTimeout(() => input.focus(), 50);
 }
 
@@ -433,6 +434,64 @@ document.getElementById('closeStockSearchModalBtn').addEventListener('click', ()
 document.getElementById('stockSearchModal').addEventListener('click', (e) => {
   if (e.target.id === 'stockSearchModal') closeStockSearchModal(); // 배경(오버레이) 클릭 시 닫기
 });
+
+// [채권 ISIN 직접 입력 모드] 결정사항(2026-08): 채권은 아직 전종목 마스터가 없어(KIS 공개 일괄
+// 다운로드 미확인) 이름 검색 대신 ISIN을 직접 받아 KIS 발행정보 API로 실시간 확인한다. 같은 모달
+// 안에서 "일반 검색 화면"과 "채권 ISIN 입력 화면"을 토글만 하고(stockSearchTargetMode는 그대로 두어
+// 어느 폼에 채울지는 기존 로직이 그대로 판단하게 한다), 검색 결과 목록 클릭 흐름은 타지 않고
+// [이 채권 선택] 버튼에서 바로 apply 함수를 호출한다.
+function setStockSearchBondMode(isBondMode) {
+  document.getElementById('stockSearchNormalSection').classList.toggle('hidden', isBondMode);
+  document.getElementById('stockSearchResults').classList.toggle('hidden', isBondMode);
+  document.getElementById('bondIsinEntrySection').classList.toggle('hidden', !isBondMode);
+  if (isBondMode) {
+    document.getElementById('bondIsinInput').value = '';
+    document.getElementById('bondIsinResult').innerHTML = '';
+    setTimeout(() => document.getElementById('bondIsinInput').focus(), 50);
+  }
+}
+document.getElementById('switchToBondModeBtn').addEventListener('click', () => setStockSearchBondMode(true));
+document.getElementById('switchToNormalSearchBtn').addEventListener('click', () => setStockSearchBondMode(false));
+
+async function lookupBondIsinAndRender() {
+  const isin = document.getElementById('bondIsinInput').value.trim().toUpperCase();
+  const resultEl = document.getElementById('bondIsinResult');
+  if (!isBondTicker(isin)) {
+    resultEl.innerHTML = '<p class="text-xs text-amber-600 dark:text-amber-400">ISIN 형식이 올바르지 않습니다 - 국가코드 2자리(국내는 KR) + 영숫자 9자리 + 검사숫자 1자리, 총 12자리여야 합니다.</p>';
+    return;
+  }
+  resultEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">조회 중...</p>';
+  // [필드명 미검증 경고] getCachedBondInfo(js/13)가 부르는 KIS 응답 필드 추출은 실제 응답으로 검증되지
+  // 않은 추정치다(cloudflare-worker-kis-proxy.js handleBondInfo 주석 참고) - 이름 인식에 실패하면
+  // 코드가 틀린 게 아니라 이 필드명 추정이 틀렸을 가능성이 높다.
+  const info = await getCachedBondInfo(isin);
+  if (!info || !info.name) {
+    resultEl.innerHTML = `<p class="text-xs text-amber-600 dark:text-amber-400">'${escapeHtml(isin)}' 종목 정보를 찾을 수 없습니다 - ISIN을 다시 확인해 주세요(또는 KIS 응답 필드명 추정이 아직 실측 검증 전이라 이름 인식에 실패했을 수 있습니다).</p>`;
+    return;
+  }
+  resultEl.innerHTML = `
+    <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+      <p class="text-sm font-semibold">${escapeHtml(info.name)}</p>
+      <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(info.issuer || '')} ${info.issuer ? '· ' : ''}${escapeHtml(isin)}</p>
+      ${info.maturityDate ? `<p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">만기일: ${escapeHtml(formatKisDate(info.maturityDate))}</p>` : ''}
+      ${Number.isFinite(info.couponRatePct) ? `<p class="text-[11px] text-slate-500 dark:text-slate-400">표면금리: ${info.couponRatePct}%</p>` : ''}
+      <button type="button" id="bondIsinConfirmBtn" class="mt-2 w-full text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">이 채권 선택</button>
+    </div>`;
+  document.getElementById('bondIsinConfirmBtn').addEventListener('click', () => {
+    // [자산 추가 모달(mode='asset') 경로는 이번 스코프 밖] applyStockPickToAssetForm은 내부적으로
+    // fetchPriceWithFallback(Yahoo/네이버)로 현재가를 채우려 하는데, 이는 채권에 안 맞는 소스다 -
+    // 이번 개편은 "거래 등록 -> KIS 시세 연동" 경로가 핵심이라 거래 모달(기본 모드)에서만 정상 동작을
+    // 보장한다. 자산 추가 팝업에서 채권을 고르면 이름/티커는 채워지지만 현재가는 비어있을 수 있다.
+    if (stockSearchTargetMode === 'asset') {
+      applyStockPickToAssetForm(isin, info.name);
+    } else {
+      applyStockPickToTransactionForm(isin, info.name);
+    }
+    closeStockSearchModal();
+  });
+}
+document.getElementById('bondIsinLookupBtn').addEventListener('click', () => lookupBondIsinAndRender());
+document.getElementById('bondIsinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupBondIsinAndRender(); });
 
 function renderStockSearchResults(results, seq) {
   if (seq !== stockSearchRequestSeq) return; // 더 최신 검색이 이미 진행 중이면 이 응답은 버린다
