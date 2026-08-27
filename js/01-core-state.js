@@ -464,10 +464,11 @@ const state = {
   // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
   projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {} },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
-  // 검색해서 실제 종목명(API 응답 또는 한글 매핑표)이 확인될 때마다 rememberTickerName()이 여기 채워
-  // 넣는다. KR_STOCK_NAMES(js/09, 큐레이션된 고정 표)와 달리 이건 "한 번이라도 조회에 성공한 종목"을
-  // 기기가 스스로 계속 넓혀가는 캐시라서, 미리 등록해두지 않은 종목도 두 번째 검색부터는 한글 이름으로
-  // 찾고 드롭다운에도 나온다. localStorage/JSON 백업/클라우드 동기화에 모두 저장됨(buildSyncBlob 참고).
+  // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
+  // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
+  // 달리 이건 "한 번이라도 조회에 성공한 종목"을 기기가 스스로 계속 넓혀가는 캐시라서, 마스터에도 없는
+  // 종목(신규상장 등 아직 마스터가 안 받아온 종목)도 두 번째 검색부터는 이름으로 찾고 드롭다운에도
+  // 나온다. localStorage/JSON 백업/클라우드 동기화에 모두 저장됨(buildSyncBlob 참고).
   learnedTickerNames: {},
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.

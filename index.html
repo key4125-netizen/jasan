@@ -86,6 +86,12 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: translateY(0);} }
   .modal-anim { animation: fadeIn .15s ease-out; }
 
+  /* [모바일 키보드 대응] 키보드가 뜨고 닫힐 때 JS가 이 모달의 위치/높이를 바꾸는데, transition을
+     걸어 화면이 뚝뚝 끊기지 않고 자연스럽게 움직이도록 한다(다른 모달의 fadeIn 애니메이션과는
+     별개라 여기서만 범위를 좁혀 적용). */
+  #stockAnalysisModal { transition: top .2s ease, height .2s ease, padding-top .2s ease; }
+  #stockAnalysisModal .modal-anim { transition: max-height .2s ease; }
+
   .kpi-card { transition: box-shadow .15s ease, transform .15s ease; }
   .kpi-card:hover { transform: translateY(-2px); }
 
@@ -214,7 +220,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v143</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v145</p>
           </div>
         </div>
 
@@ -434,7 +440,7 @@
   <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
       <button type="button" id="topHoldingsDomesticToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <h3 class="text-sm font-semibold">국내 자산 Top 5</h3>
+        <h3 class="text-base font-bold">국내 자산 Top 5</h3>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsDomesticChevron"></i>
       </button>
       <div id="topHoldingsDomesticBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
@@ -460,7 +466,7 @@
     </div>
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
       <button type="button" id="topHoldingsForeignToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <h3 class="text-sm font-semibold">해외 자산 Top 5</h3>
+        <h3 class="text-base font-bold">해외 자산 Top 5</h3>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsForeignChevron"></i>
       </button>
       <div id="topHoldingsForeignBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
@@ -513,7 +519,7 @@
     <div id="macroBriefingSection" class="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
       <div class="flex items-center gap-1.5 mb-1">
         <span class="text-base leading-none">🌍</span>
-        <h4 class="text-sm font-semibold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
+        <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
       <!-- [항상 4열×2행 고정] 태블릿 세로(768~1023px)에서 2열로 바꿨더니 VIX/원달러/미10년물/코스피가
            1행에 나란히 있어야 하는 배치가 깨졌다 - 화면 크기와 무관하게 예외 없이 grid-cols-4로
@@ -526,14 +532,14 @@
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
-        <h3 class="text-sm font-semibold text-red-600 dark:text-red-400">RISK 관리</h3>
+        <h3 class="text-base font-bold text-red-600 dark:text-red-400">RISK 관리</h3>
         <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, 단기 과열·추세 이탈·52주 고점대비 급락·거래량 급증 중 하나라도 해당하면 종목이 감지됩니다."
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>
       </div>
     </div>
-    <p class="text-xs text-slate-400 mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
+    <p class="text-sm text-slate-400 leading-relaxed break-keep mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
     <p class="text-[11px] text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권/부동산 등은 가격 변동성 진단 대상이 아니라 제외)</p>
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
@@ -1367,7 +1373,7 @@
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
-        <h3 id="assetDetailName" class="text-sm font-semibold truncate">-</h3>
+        <h3 id="assetDetailName" class="text-base font-bold truncate">-</h3>
         <p id="assetDetailTicker" class="text-[11px] font-mono text-slate-400 truncate">-</p>
       </div>
       <button type="button" id="closeAssetDetailModalBtn" class="shrink-0 ml-3 text-slate-400 hover:text-slate-700 dark:hover:text-white">
@@ -1428,9 +1434,14 @@
            6섹션 리포트를 이 자리에 이어서 보여준다 - renderStockAnalysisReportBody()(js/10)를 그대로
            재사용해서(analyzeTickerForModal()이 계산한 데이터), 두 곳의 로직이 갈라지지 않게 한다.
            티커 없는 자산(부동산/현금 등)이면 attachStockAnalysisReportToDetailModal()이 이 영역
-           자체를 숨긴다. -->
+           자체를 숨긴다.
+           [지수/매크로 지표 예외] 코스피/코스닥/S&P500/나스닥/다우/VIX처럼 "종목"이 아니라 시장 지표를
+           연 경우(핵심종목 실시간 팝업의 주요 지수 타일 등)는 종목 매매 관점 문구(단기 벽/버팀목 등)가
+           맞지 않으므로, 같은 자리에 매크로 브리핑 상세 팝업과 동일한 지표 설명 콘텐츠를 대신 보여준다
+           - attachStockAnalysisReportToDetailModal()이 getMacroKeyForTicker()로 감지해 분기하며, 이
+           제목도 그때 "📊 지수/지표 정보"로 바꿔치기한다(assetDetailAnalysisTitle). -->
       <div id="assetDetailAnalysisSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-6 pt-6">
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">🔍 종목 분석 &amp; 위험 관리</h4>
+        <h4 id="assetDetailAnalysisTitle" class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">🔍 종목 분석 &amp; 위험 관리</h4>
         <div id="assetDetailAnalysisBody">
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
             <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
@@ -1913,7 +1924,7 @@
 <div id="macroDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
     <div id="macroDetailModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
-      <h3 id="macroDetailModalTitle" class="text-sm font-semibold">📊 지표명</h3>
+      <h3 id="macroDetailModalTitle" class="text-base font-bold">📊 지표명</h3>
       <button type="button" id="closeMacroDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -1930,7 +1941,7 @@
 <div id="riskDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div id="riskDetailModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
-      <h3 class="text-sm font-semibold">📊 RISK 상세 분석 &amp; 시뮬레이션</h3>
+      <h3 class="text-base font-bold">📊 RISK 상세 분석 &amp; 시뮬레이션</h3>
       <button type="button" id="closeRiskDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -1946,9 +1957,9 @@
      analyzeTickerForModal()/simulatePortfolioAddition()이 전담하고, 여기서는 그 결과를 옮겨 적기만
      한다(renderStockAnalysisResult, js/10-risk-translation-alerts.js). -->
 <div id="stockAnalysisModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85dvh] flex flex-col">
     <div id="stockAnalysisModalHeader" class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
-      <h3 class="text-sm font-semibold">🔍 종목 분석 &amp; 투자 검토 보고서</h3>
+      <h3 class="text-base font-bold">🔍 종목 분석 &amp; 투자 검토 보고서</h3>
       <button type="button" id="closeStockAnalysisModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -1958,8 +1969,9 @@
          sticky 트릭 없이 확실하게 고정한다. 추천 드롭다운(stockAnalysisSuggestions)도 이 고정 섹션
          안에 있어 결과가 아무리 길어져도 항상 입력창 바로 아래에 제대로 걸쳐 뜬다. -->
     <div class="px-5 pt-4 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <!-- [한글 종목명 검색 지원] 티커를 몰라도 '현대차'처럼 이름으로 입력/검색할 수 있다 - 두 글자
-           이상 입력하면 보유 자산 + 주요 종목표(KR_STOCK_NAMES)에서 추천 목록이 뜬다
+      <!-- [종목명 검색 지원] 티커를 몰라도 '현대차'처럼 이름으로 입력/검색할 수 있다 - 두 글자 이상
+           입력하면 보유 자산 + 종목 마스터(국내 코스피/코스닥 전종목 + 미국 나스닥/뉴욕/아멕스 주요
+           종목, 매달 GitHub Actions가 갱신 - js/09 tickerMasterRecords)에서 추천 목록이 뜬다
            (renderStockAnalysisSuggestions, js/10). 목록에서 고르면 즉시 분석까지 실행된다. -->
       <div class="relative mb-1.5">
         <div class="flex items-center gap-2">
@@ -1975,7 +1987,7 @@
       <input type="number" id="stockAnalysisAmountInput" placeholder="매수 검토 금액(원, 선택 - 입력 시 포트폴리오 적합도까지 분석)"
         class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs bg-white dark:bg-slate-800">
     </div>
-    <div id="stockAnalysisModalBody" class="px-5 py-4 overflow-y-auto">
+    <div id="stockAnalysisModalBody" class="px-5 py-4 overflow-y-auto flex-1 min-h-0">
       <div id="stockAnalysisLoading" class="hidden flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
         <span class="text-xs">분석 중...</span>
