@@ -214,7 +214,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v135</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v136</p>
           </div>
         </div>
 
@@ -1427,6 +1427,12 @@
         <div id="assetDetailRiskBody"></div>
       </div>
 
+      <!-- [한국투자증권(KIS) 재무/수급 데이터] 국내주식만 해당(attachFundamentalSection이 해외 티커/
+           티커 없는 자산이면 이 영역 자체를 숨긴다). js/13 참고. -->
+      <div id="assetDetailFundamentalSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-6 pt-6">
+        <div id="assetDetailFundamentalBody"></div>
+      </div>
+
       <!-- [종목 분석 리포트 통합] 티커가 있는 종목이면(자산군 캐치올 항목 제외) 종목 분석 모달과 같은
            6섹션 리포트를 이 자리에 이어서 보여준다 - renderStockAnalysisReportBody()(js/10)를 그대로
            재사용해서(analyzeTickerForModal()이 계산한 데이터), 두 곳의 로직이 갈라지지 않게 한다.
@@ -1985,6 +1991,11 @@
       </div>
       <p id="stockAnalysisErrorMsg" class="hidden text-xs text-amber-600 dark:text-amber-400 py-2"></p>
       <div id="stockAnalysisResult" class="hidden"></div>
+
+      <!-- [한국투자증권(KIS) 재무/수급 데이터] 국내주식만 해당 - js/13 참고. -->
+      <div id="stockAnalysisFundamentalSection" class="hidden border-t border-slate-200 dark:border-slate-800 mt-4 pt-4">
+        <div id="stockAnalysisFundamentalBody"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2111,6 +2122,7 @@
 <script src="js/10-risk-translation-alerts.js"></script>
 <script src="js/11-refresh-history.js"></script>
 <script src="js/12-import-export-sync.js"></script>
-<script src="js/13-settings-boot.js"></script>
+<script src="js/13-fundamental-data.js"></script>
+<script src="js/14-settings-boot.js"></script>
 </body>
 </html>

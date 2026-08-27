@@ -132,6 +132,7 @@ function openAssetDetailModal(id) {
   pushModalHistoryState();
   renderAssetDetailChart(a);
   attachRiskDiagnosisToDetailModal(a.ticker);
+  attachFundamentalSection(a.ticker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
   attachStockAnalysisReportToDetailModal(a.ticker);
 }
 
@@ -231,6 +232,7 @@ function openAssetDetailModalGroup(members) {
   lucide.createIcons();
   renderAssetDetailChart(priced, avgBuyPriceNative, byOwnerAvgPriceNative); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그리되, 평단가선은 통합 평균 매수단가를 쓰고 범례에 소유자별 평단가를 병기한다
   attachRiskDiagnosisToDetailModal(first.ticker);
+  attachFundamentalSection(first.ticker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
   attachStockAnalysisReportToDetailModal(first.ticker);
 }
 
@@ -330,6 +332,7 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   lucide.createIcons();
   renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
   attachRiskDiagnosisToDetailModal(s.yahooTicker);
+  attachFundamentalSection(s.yahooTicker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
   attachStockAnalysisReportToDetailModal(s.yahooTicker);
 }
 
