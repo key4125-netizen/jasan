@@ -1526,6 +1526,7 @@ async function runStockAnalysis() {
   if (a.error) {
     errorEl.textContent = a.error;
     errorEl.classList.remove('hidden');
+    document.getElementById('stockAnalysisFundamentalSection').classList.add('hidden');
     return;
   }
   const addAmountKRW = num(amountInput.value);
@@ -1533,12 +1534,14 @@ async function runStockAnalysis() {
   resultEl.innerHTML = renderStockAnalysisResult(a, sim);
   resultEl.classList.remove('hidden');
   lucide.createIcons();
+  attachFundamentalSection(a.ticker, 'stockAnalysisFundamentalSection', 'stockAnalysisFundamentalBody');
 }
 
 function openStockAnalysisModal() {
   document.getElementById('stockAnalysisModal').classList.remove('hidden');
   document.getElementById('stockAnalysisErrorMsg').classList.add('hidden');
   document.getElementById('stockAnalysisResult').classList.add('hidden');
+  document.getElementById('stockAnalysisFundamentalSection').classList.add('hidden');
   document.getElementById('stockAnalysisTickerInput').value = '';
   document.getElementById('stockAnalysisAmountInput').value = '';
   hideStockAnalysisSuggestions();

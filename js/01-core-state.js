@@ -133,6 +133,16 @@ const CORS_PROXIES = [
 ];
 const YAHOO_CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 
+// [한국투자증권(KIS) 시세/재무 프록시] 국내주식 전용 - 사용자가 직접 배포한 cloudflare-worker-kis-proxy.js
+// Worker 주소다. KIS 앱키/앱시크릿은 이 Worker 안(서버 사이드)에만 있고 클라이언트 코드에는 전혀
+// 노출되지 않는다. KIS_CLIENT_SHARED_SECRET은 이 Worker가 매 요청마다 X-App-Secret 헤더로 검증하는
+// 공유 비밀키인데, 이 저장소는 공개(public) GitHub 저장소라 여기 적힌 값도 사실상 누구나 볼 수 있다 -
+// 그래서 이건 "진짜 비밀"이 아니라 무작위 봇의 무차별 스캔을 막는 최소한의 문턱 정도로만 취급한다
+// (실제 방어선은 이 Worker 코드에 주문/계좌 라우트를 아예 만들지 않은 것 - cloudflare-worker-kis-proxy.js
+// 참고). 값이 새어나가 남용되면 Cloudflare 대시보드에서 이 값만 새로 바꾸면 된다.
+const KIS_PROXY_URL = 'https://keymaster.key4125.workers.dev';
+const KIS_CLIENT_SHARED_SECRET = 'KeymasterSecret2026!';
+
 // [실시간성 문제 발견] open.er-api/exchangerate-api는 둘 다 하루 1회만 갱신되는 스냅샷 API였다
 // (open.er-api 응답의 time_last_update_utc/time_next_update_utc 필드로 실측 확인 - 다음 갱신까지
 // ~24시간 간격) - 그래서 장중 실제 환율이 계속 움직여도 이 앱은 그날 아침 스냅샷 값만 하루 종일
@@ -429,6 +439,12 @@ const state = {
   // 완전히 동일한 구조·갱신 주기(refreshPricesAndRates 한 번에 함께 조회)를 쓴다. 휘발성 데이터라
   // localStorage에는 저장하지 않는다.
   macroIndicatorCache: {},
+  // [한국투자증권(KIS) 재무/수급 데이터] 국내주식 전용 - { yahooTicker: { date, price, fundamentals,
+  // investorFlow } }. riskHistoryCache/macroIndicatorCache와 완전히 같은 방식(하루 한 번만 갱신,
+  // localStorage에는 저장하지 않는 휘발성 캐시)이다 - 이 데이터는 사용자가 입력한 값이 아니라 외부
+  // API에서 언제든 다시 받아올 수 있는 값이라, 새 localStorage 키를 늘려 JSON 백업/가족 동기화 로직
+  // (buildSyncBlob 등)의 손이 닿는 범위를 넓히지 않는다.
+  fundamentalCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
