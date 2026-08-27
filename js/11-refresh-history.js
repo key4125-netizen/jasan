@@ -28,14 +28,8 @@ function setRefreshingUI(isRefreshing, statusText) {
 async function fetchPricesForTargets(targets) {
   targets.forEach((a) => { a.fetchStatus = 'pending'; });
 
-  // [채권은 완전히 다른 API로 분기] 개별 채권(ISIN 티커)은 Yahoo/네이버가 다루지 않는 상품이라
-  // fetchPriceWithFallback 대신 KIS 채권 시세(fetchBondPriceWithFallback, js/09)를 부른다 - 반환
-  // 모양을 맞춰뒀기 때문에 아래 결과 반영 로직은 채권 여부를 따로 신경 쓰지 않아도 된다.
   const results = await Promise.allSettled(
-    targets.map(a => {
-      const fetcher = isBondTicker(a.ticker) ? fetchBondPriceWithFallback(a.ticker) : fetchPriceWithFallback(a.ticker, a.name);
-      return fetcher.then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r }));
-    })
+    targets.map(a => fetchPriceWithFallback(a.ticker, a.name).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
   );
 
   let successCount = 0, failCount = 0;
@@ -100,15 +94,7 @@ async function fetchPricesForTargets(targets) {
 }
 
 async function fetchAllPrices() {
-  // [개별 채권 예외] '채권' 카테고리는 원래 시세 자체가 없는 무티커 자산을 가리키던 것이었다 - ISIN
-  // 티커가 있는 개별 채권은 실제로 KIS에서 매일 시세가 갱신되는 상품이므로, NON_TRADABLE_CATEGORIES에
-  // '채권'이 있어도 isBondTicker()로 예외를 둬 갱신 대상에 포함시킨다.
-  const targets = state.assets.filter(a => {
-    const ticker = String(a.ticker ?? '').trim();
-    if (!ticker) return false;
-    if (isBondTicker(ticker)) return true;
-    return !NON_TRADABLE_CATEGORIES.includes(a.category);
-  });
+  const targets = state.assets.filter(a => String(a.ticker ?? '').trim() && !NON_TRADABLE_CATEGORIES.includes(a.category));
   return fetchPricesForTargets(targets);
 }
 
@@ -342,12 +328,7 @@ function dateKeyFromDate(d) {
 //     이 함수가 다른 신규 자산에도 반복 호출될 수 있으므로 항상 "누적"이 맞다.
 async function backfillDailyPnlHistory(asset) {
   const sanitized = sanitizeTicker(asset.ticker);
-  if (!sanitized.yahooTicker) return; // 티커 없는 자산(현금/부동산 등)은 시세 자체가 없어 대상 아님
-  // [개별 채권 - 소급 히스토리 대상 제외] fetchDailyHistory는 Yahoo 1년치 일봉 API라 ISIN을 못 알아듣고
-  // 그냥 실패한다(try/catch로 무해하게 흡수되긴 하지만, 실패가 뻔한 네트워크 호출과 콘솔 경고를 매번
-  // 반복할 이유가 없다) - KIS 채권 API는 장기 일별 종가 이력을 제공하지 않아 이 기능 자체를 채권에는
-  // 적용하지 않는다(요청 범위에도 없음).
-  if (isBondTicker(sanitized.yahooTicker)) return;
+  if (!sanitized.yahooTicker) return; // 티커 없는 자산(채권/현금 등)은 시세 자체가 없어 대상 아님
   const qty = num(asset.quantity);
   if (qty <= 0) return;
 

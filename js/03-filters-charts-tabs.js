@@ -244,7 +244,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'macroDetailModal', 'bondDetailModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'macroDetailModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -286,8 +286,7 @@ const MODAL_CLOSE_FNS = {
   assetSearchResultModal: (viaBack) => closeAssetSearchResultModal(viaBack),
   syncSettingsModal: (viaBack) => closeSyncSettingsModal(viaBack),
   stockAnalysisModal: (viaBack) => closeStockAnalysisModal(viaBack),
-  macroDetailModal: (viaBack) => closeMacroDetailModal(viaBack),
-  bondDetailModal: (viaBack) => closeBondDetailModal(viaBack)
+  macroDetailModal: (viaBack) => closeMacroDetailModal(viaBack)
 };
 
 function findOpenModalId() {

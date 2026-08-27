@@ -160,9 +160,7 @@ function calcDailyPnL(a, r) {
     if (a.currency !== 'USD') return 0;
     return num(a.quantity) * num(a.currentPrice) * (state.exchangeRate - (state.refExchangeRate || state.exchangeRate));
   }
-  // [개별 채권 예외] ISIN 티커가 있는 채권은 실제로 매일 시세가 갱신되므로(js/11 fetchAllPrices),
-  // NON_TRADABLE_CATEGORIES에 '채권'이 있어도 여기서 막지 않고 아래 일반 티커 기반 계산으로 넘긴다.
-  if (NON_TRADABLE_CATEGORIES.includes(a.category) && !isBondTicker(a.ticker)) return 0;
+  if (NON_TRADABLE_CATEGORIES.includes(a.category)) return 0;
   const hasTicker = String(a.ticker ?? '').trim() !== '';
   if (!hasTicker) return 0;
 
@@ -229,13 +227,7 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored,
   container.classList.add('flex');
   container.innerHTML = entries.map(e => {
     const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
-    // [채권 태그 - 채권 현황 모달 진입점] '채권' 카테고리 태그만 클릭 가능하게 만든다 - 개별 채권이
-    // ISIN 티커를 갖게 되면서(2026-08) 더 이상 "티커 없음이라 상세 볼 게 없는" 자산군이 아니게 됐다.
-    // data-open-bond-detail 위임 리스너는 js/15-bond-management.js에 있다.
-    const isBondTag = e.cat === '채권';
-    const clickableAttrs = isBondTag ? ' data-open-bond-detail role="button" tabindex="0"' : '';
-    const clickableClass = isBondTag ? ' cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors' : '';
-    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}${clickableClass}"${clickableAttrs}>${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
+    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
   }).join('');
 }
 
