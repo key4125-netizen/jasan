@@ -22,27 +22,16 @@ function extractKisDomesticCode(rawTicker) {
 // [공통 Worker 호출] 실패해도(네트워크 오류/401/502 등) 예외를 던지지 않고 null을 반환한다 - 재무
 // 데이터는 어디까지나 참고용 부가 정보라, 조회에 실패해도 화면의 다른 부분(가격/보유정보/리스크
 // 진단)에는 영향이 없어야 한다.
-// [버그 수정 - 타임아웃 없음] 이 함수는 원래 종목 상세 모달을 열 때만(온디맨드) 호출됐는데, 채권 시세
-// 연동(js/09 fetchBondPriceWithFallback)이 이 함수를 [시세 & 환율 갱신] 버튼의 일괄 갱신 경로
-// (fetchPricesForTargets, js/11)에 새로 끌어들이면서 문제가 커졌다 - fetchPricesForTargets는
-// Promise.allSettled로 모든 종목의 조회가 끝날 때까지 기다리는데, 이 함수에 타임아웃이 전혀 없어서
-// (다른 소스들은 fetchWithTimeout으로 8~12초 제한을 걸어두는 것과 다름) KIS Worker/네트워크가 응답을
-// 미루면 채권 하나 때문에 전체 갱신이 브라우저 기본 타임아웃(수십 초~수 분)까지 무한정 느려지거나
-// 멈춘 것처럼 보일 수 있었다. AbortController로 10초 제한을 걸어 다른 소스들과 비슷한 수준으로 맞춘다.
 async function kisProxyFetch(path, code, extraParams) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const url = new URL(KIS_PROXY_URL + path);
     url.searchParams.set('ticker', code);
     Object.entries(extraParams || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url.toString(), { headers: { 'X-App-Secret': KIS_CLIENT_SHARED_SECRET }, signal: controller.signal });
+    const res = await fetch(url.toString(), { headers: { 'X-App-Secret': KIS_CLIENT_SHARED_SECRET } });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
