@@ -41,21 +41,43 @@ async function fetchKisInvestorFlowRaw(code) { return kisProxyFetch('/api/kis/in
 
 // [당일 캐시] getCachedDailyCloses(js/09)와 완전히 같은 패턴 - 하루 안에는 다시 조회하지 않는다.
 // 세 가지를 동시에 요청해 왕복 시간을 줄인다.
+// [동시 호출 중복 방지] 리스크 정밀 진단 카드(수급 신호등 갱신용)와 재무 펀더멘털 섹션이 같은 종목
+// 상세 모달을 열 때 거의 동시에 이 함수를 각자 호출한다 - 완료된 캐시(state.fundamentalCache)만
+// 확인하면 아직 둘 다 응답 전이라 서로의 존재를 모르고 Worker를 두 번(총 6건) 부르게 된다. 진행 중인
+// Promise 자체를 kisFetchInFlight에 잠깐 등록해 두 번째 호출은 그 Promise를 그대로 재사용하게 한다.
+const kisFetchInFlight = {};
 async function getCachedKisData(yahooTicker) {
   const code = extractKisDomesticCode(yahooTicker);
   if (!code) return null;
   const today = new Date().toISOString().slice(0, 10);
   const cached = state.fundamentalCache[yahooTicker];
   if (cached && cached.date === today) return cached;
+  if (kisFetchInFlight[yahooTicker]) return kisFetchInFlight[yahooTicker];
 
-  const [price, fundamentals, investorFlow] = await Promise.all([
-    fetchKisPriceSnapshot(code),
-    fetchKisFundamentalsRaw(code),
-    fetchKisInvestorFlowRaw(code)
-  ]);
-  const data = { date: today, price, fundamentals, investorFlow };
-  state.fundamentalCache[yahooTicker] = data;
-  return data;
+  const promise = (async () => {
+    const [price, fundamentals, investorFlow] = await Promise.all([
+      fetchKisPriceSnapshot(code),
+      fetchKisFundamentalsRaw(code),
+      fetchKisInvestorFlowRaw(code)
+    ]);
+    const data = { date: today, price, fundamentals, investorFlow };
+    state.fundamentalCache[yahooTicker] = data;
+    delete kisFetchInFlight[yahooTicker];
+    return data;
+  })();
+  kisFetchInFlight[yahooTicker] = promise;
+  return promise;
+}
+
+// [C - 수급 신호등 KIS 일원화] 거래량 기반 추정(computeFlowSignal, js/09) 대신 KIS 실제 외국인/기관
+// 5일 순매수 데이터로 수급 신호를 판정한다 - 둘 다 순매수면 매수 우위, 둘 다 순매도면 매도 이탈,
+// 나머지(하나만 순매수거나 데이터 부족)는 혼조로 본다. 데이터가 없으면 null을 반환해 호출부가 기존
+// 추정치 표시를 그대로 유지하게 한다(국내 종목이라도 KIS 조회 실패 시 안전한 폴백).
+function buildFlowLabelFromKis(investorFlow) {
+  if (!investorFlow || typeof investorFlow.foreignNet5d !== 'number' || typeof investorFlow.institutionNet5d !== 'number') return null;
+  if (investorFlow.foreignNet5d > 0 && investorFlow.institutionNet5d > 0) return { emoji: '🟢', label: '수급 우위' };
+  if (investorFlow.foreignNet5d < 0 && investorFlow.institutionNet5d < 0) return { emoji: '🔴', label: '수급 이탈' };
+  return { emoji: '🟡', label: '수급 혼조' };
 }
 
 // [단위 안내] KIS 응답의 매출액/영업이익/순이익(income-statement)과 자산·부채·자본총계(balance-sheet)는

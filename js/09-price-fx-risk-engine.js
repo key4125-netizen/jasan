@@ -934,7 +934,7 @@ function computeTechnicalFlowRiskScore(holdings) {
         : h.rsi14 <= 30 ? 55
         : 30;
     }
-    if (h.trendBroken) score += 15;
+    if (h.trendLabel === '역배열(하락추세)') score += 15;
     if (h.flowSignal === 'outflow') score += 15;
     if (h.flowSignal === 'inflow') score -= 5;
     return s + Math.max(0, Math.min(100, score)) * h.weight;
@@ -1087,13 +1087,20 @@ async function computeAdvancedRiskMetrics() {
         h.rsiState = rsiStateLabel(h.rsi14);
         h.ma20 = computeSMA(h.closes, 20);
         h.ma60 = computeSMA(h.closes, 60);
+        // [버그 수정 - 추세 판정 기준 통일] 예전엔 여기(리스크 카드)는 "현재가가 20일선 위/아래인지"
+        // 만 보는 단순 이진 판정(trendBroken)을, 종목 분석 리포트(analyzeTickerForModal)는 20/60/120일선
+        // 정배열 여부를 보는 3단계 판정(maTrendLabel)을 따로 써서, 같은 종목의 "추세"가 종목 상세
+        // 모달 안에서 리스크 카드는 🟢, 바로 아래 리포트는 🟡로 서로 다르게 보이는 문제가 있었다.
+        // 이제 이 카드도 ma120까지 계산해 완전히 같은 maTrendLabel() 함수로 판정하므로 두 곳이 항상
+        // 일치한다.
+        h.ma120 = computeSMA(h.closes, 120);
+        h.trendLabel = maTrendLabel(h.ma20, h.ma60, h.ma120);
         const latestPrice = typeof h.currentPrice === 'number' ? h.currentPrice : h.closes[h.closes.length - 1];
         h.week52High = Math.max(...h.closes, latestPrice || 0);
         h.week52DrawdownPct = h.week52High > 0 ? ((latestPrice - h.week52High) / h.week52High) * 100 : null;
-        h.trendBroken = typeof h.ma20 === 'number' && typeof latestPrice === 'number' ? latestPrice < h.ma20 : false;
       } else {
-        h.rsi14 = null; h.rsiState = null; h.ma20 = null; h.ma60 = null;
-        h.week52High = null; h.week52DrawdownPct = null; h.trendBroken = false;
+        h.rsi14 = null; h.rsiState = null; h.ma20 = null; h.ma60 = null; h.ma120 = null; h.trendLabel = null;
+        h.week52High = null; h.week52DrawdownPct = null;
       }
       if (h.volumes) {
         h.volMA20 = computeSMA(h.volumes, 20);

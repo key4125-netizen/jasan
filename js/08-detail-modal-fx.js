@@ -75,6 +75,7 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
 // "이 종목이 안전한지"도 똑같이 궁금한 정보이기 때문이다. computeAdvancedRiskMetrics()가 아직 안
 // 돌았거나(부팅 직후), 티커가 없거나, 리스크 계산 대상이 아닌 자산(부동산/현금 등)이면 영역 자체를
 // 숨긴다(신규 상장·데이터 부족 자체는 buildIndividualRiskDetailHtml이 알아서 "데이터 부족" 문구로 처리).
+let riskFlowTileRequestToken = 0;
 function attachRiskDiagnosisToDetailModal(ticker) {
   const section = document.getElementById('assetDetailRiskSection');
   const body = document.getElementById('assetDetailRiskBody');
@@ -95,6 +96,22 @@ function attachRiskDiagnosisToDetailModal(ticker) {
 
   section.classList.remove('hidden');
   body.innerHTML = buildIndividualRiskDetailHtml(holding, weightPct);
+
+  // [C - 수급 신호등 KIS 일원화] 국내 종목이면 거래량 기반 추정 대신 KIS 실제 외국인/기관 5일 순매수로
+  // 수급 신호등을 갱신한다 - 카드 전체를 다시 그리기엔(비동기 대기) 이 카드만 유독 느려지므로, 먼저
+  // 위에서 추정치로 즉시 그린 뒤 KIS 응답이 도착하면 수급 타일만 조용히 교체한다(다른 지표는 그대로).
+  // getCachedKisData()(js/13)는 재무 펀더멘털 섹션(attachFundamentalSection)도 같은 종목에 대해 거의
+  // 동시에 호출하는데, 그쪽과 진행 중인 요청을 공유해 KIS Worker를 중복 호출하지 않는다.
+  const token = ++riskFlowTileRequestToken;
+  getCachedKisData(yahoo).then((kis) => {
+    if (token !== riskFlowTileRequestToken) return; // 그 사이 다른 종목으로 바뀜 - 버림
+    const flow = kis && buildFlowLabelFromKis(kis.investorFlow);
+    if (!flow) return;
+    const labelEl = body.querySelector('[data-flow-tile-label]');
+    const valueEl = body.querySelector('[data-flow-tile-value]');
+    if (labelEl) labelEl.textContent = '수급(외국인·기관)';
+    if (valueEl) valueEl.textContent = `${flow.emoji} ${flow.label}`;
+  });
 }
 
 // [모바일 스크롤 위치 버그 수정] 이 모달은 닫아도 DOM에서 제거되지 않고 그냥 hidden 처리만 되므로,
