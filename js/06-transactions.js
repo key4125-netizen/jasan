@@ -409,6 +409,28 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
   updateTxAppliedRateVisibility();
 }
 
+// [수동입력 토글 UI 반영] OFF(검색 모드, 기본값)면 종목명 입력칸을 readonly로 잠그고 클릭/돋보기
+// 버튼으로 개별주식 검색 팝업을 띄운다 - ON(수동입력)이면 돋보기를 숨기고 입력칸을 자유 텍스트로
+// 바꿔 현금/부동산/예적금처럼 티커가 없는 자산명을 직접 타이핑해 저장할 수 있게 한다.
+function applyTxManualEntryModeUI() {
+  const manual = document.getElementById('tx_manualEntryToggle').checked;
+  const nameInput = document.getElementById('tx_name');
+  nameInput.readOnly = !manual;
+  nameInput.classList.toggle('cursor-pointer', !manual);
+  nameInput.placeholder = manual ? '예: 정기예금, 부동산(강남 아파트) 등 자유롭게 입력' : '클릭해서 종목 검색';
+  document.getElementById('txSearchStockBtn').classList.toggle('hidden', manual);
+}
+document.getElementById('tx_manualEntryToggle').addEventListener('change', () => {
+  applyTxManualEntryModeUI();
+  document.getElementById('tx_name').value = '';
+  document.getElementById('tx_ticker').value = '';
+  document.getElementById('tx_tickerHint').textContent = ' ';
+  updateTxCashPriceLock();
+});
+document.getElementById('tx_name').addEventListener('click', () => {
+  if (!document.getElementById('tx_manualEntryToggle').checked) openStockSearchModal();
+});
+
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
@@ -436,9 +458,12 @@ function openTransactionModal(txId) {
     document.getElementById('tx_fee').value = tx.fee;
     document.getElementById('tx_appliedRate').value = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : '';
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
+    document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
   } else {
     document.getElementById('txModalTitle').textContent = '거래 추가';
+    document.getElementById('tx_manualEntryToggle').checked = false;
   }
+  applyTxManualEntryModeUI();
   updateTxAppliedRateVisibility();
   document.getElementById('transactionModal').classList.remove('hidden');
   pushModalHistoryState();
