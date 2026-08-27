@@ -1,0 +1,7 @@
+{
+  "generatedAt": null,
+  "sourceNote": "GitHub Actions(.github/workflows/update-ticker-master.yml)가 아직 한 번도 실행되지 않았습니다 - Actions 탭에서 수동 실행(workflow_dispatch)하거나 매달 1일 자동 실행을 기다리면 이 자리가 실제 종목 마스터로 채워집니다.",
+  "failedMarkets": [],
+  "counts": {},
+  "items": []
+}

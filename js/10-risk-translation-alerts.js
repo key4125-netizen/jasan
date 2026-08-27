@@ -4,6 +4,19 @@
  *      집중도)는 computeAdvancedRiskMetrics()가 이미 실제로 계산해 둔 값을 그대로 쓰고, 여기서는
  *      "쉬운 한글 설명 + 점수 + 행동 제안"으로 옮겨 적기만 한다.
  * ---------------------------------------------------------------------- */
+// [내어쓰기(Hanging Indent) 공용 헬퍼] "💡 1. ~~", "📌 시장 종합 평가 ~~"처럼 이모지/번호 접두사 뒤에
+// 본문이 이어지는 문장이 모바일 좁은 화면에서 줄바꿈될 때, 예전엔 한 <p> 태그 안에 접두사+본문을
+// 그대로 이어 붙여서 둘째 줄이 접두사 밑(맨 왼쪽)부터 시작해 버렸다 - flex로 접두사(shrink-0, 줄바꿈
+// 없음)와 본문(자기 줄바꿈은 자기 시작 위치에 맞춰짐)을 분리해서, 둘째 줄이 첫 줄의 "본문 시작 위치"에
+// 맞춰지도록 한다(내어쓰기). break-keep(word-break:keep-all)으로 "~면", "~로" 같은 조사나 "(TLT)" 같은
+// 괄호 단어가 중간에서 끊기지 않게 하고, break-words(overflow-wrap:break-word)로 그래도 화면보다 긴
+// 단일 토큰(에: 아주 긴 영문 티커)이 있으면 그것만 예외적으로 줄바꿈해 넘치지 않게 한다.
+function hangingIndentLine(prefixHtml, textHtml, extraClass) {
+  return `<div class="flex items-start gap-1.5 ${extraClass || ''}">
+    <span class="shrink-0">${prefixHtml}</span>
+    <span class="break-keep break-words min-w-0">${textHtml}</span>
+  </div>`;
+}
 // [Sortino Ratio → 폭락장 방어 성적표 A~F] 연율화 Sortino 비율을 직관적인 학점으로 변환한다 - 학술적
 // 컷오프가 아니라 일반 투자자가 감을 잡기 위한 참고용 구간이다.
 function sortinoToGrade(sortino) {
@@ -322,7 +335,7 @@ function renderRiskDiagnosisSummary() {
          모달에 전부 나열되므로 "🔍 세부내용" 버튼으로 유도한다. 6대 위험요인 막대그래프/섹터 노출
          상세는 원래도 메인 카드에 없고 세부내용 모달 전용이었다(역할 분리가 이미 되어 있던 부분). -->
     <div class="mt-2.5 space-y-1.5">
-      ${actionItems.slice(0, 2).map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+      ${actionItems.slice(0, 2).map((item, i) => hangingIndentLine(`💡 ${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}
       ${actionItems.length > 2 ? `<p class="text-xs text-slate-400">그 외 ${actionItems.length - 2}건 더 - 🔍 세부내용에서 전부 확인할 수 있습니다.</p>` : ''}
     </div>
 
@@ -367,7 +380,7 @@ function renderRiskDetailModal() {
   const actionItems = buildRiskActionItems(m);
   const actionItemsHtml = actionItems.length ? `
     <div class="mb-3.5 space-y-1.5">
-      ${actionItems.map((item, i) => `<p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">💡 ${i + 1}. ${item}</p>`).join('')}
+      ${actionItems.map((item, i) => hangingIndentLine(`💡 ${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}
     </div>` : '';
 
   body.innerHTML = `
@@ -842,15 +855,23 @@ const MACRO_TAG_COLOR_CLASSES = {
   slate: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
 };
 
-function renderMacroDetailModal(key) {
+// [지수/매크로 티커 → 지표 키 역조회] 코스피/코스닥/S&P500/나스닥/다우/VIX처럼 "종목이 아닌 시장
+// 지표"를 종목 상세 모달로 열었을 때(핵심종목 실시간 팝업의 주요 지수 타일 등) 이 함수로 감지해서,
+// 이 지표 전용 콘텐츠(buildMacroDetailBodyHtml)를 보여줄지 판단한다.
+function getMacroKeyForTicker(yahooTicker) {
+  return Object.keys(MACRO_KEY_TICKERS).find((k) => MACRO_KEY_TICKERS[k] === yahooTicker) || null;
+}
+
+// [매크로 지표 상세 본문] renderMacroDetailModal(#macroDetailModal 전용)과 attachMacroDetailToAssetDetailModal
+// (js/08, 종목 상세 모달에서 지수를 열었을 때) 양쪽이 공유한다 - 지표 설명 콘텐츠가 두 군데서 서로
+// 다르게 작성되는 걸 막는다.
+function buildMacroDetailBodyHtml(key) {
   const info = MACRO_INDICATOR_INFO[key];
-  if (!info) return;
+  if (!info) return '';
   const s = macroDetailSnapshot[key];
   const tag = macroStatusTag(key, s);
   const hasChange = s && typeof s.changePercent === 'number';
-
-  document.getElementById('macroDetailModalTitle').textContent = `📊 ${info.label}`;
-  document.getElementById('macroDetailModalBody').innerHTML = `
+  return `
     <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
       <div class="text-xl font-bold">${escapeHtml(macroDetailValueText(key, s))}</div>
       <div class="flex items-center gap-2">
@@ -859,17 +880,49 @@ function renderMacroDetailModal(key) {
       </div>
     </div>
     <div class="mb-4">
-      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">💡 지표 기본 개념</p>
-      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(info.concept)}</p>
+      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">💡 지표 기본 개념</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep break-words">${escapeHtml(info.concept)}</p>
     </div>
     <div class="mb-4">
-      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 최근 시장 동향 &amp; 해설</p>
-      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(buildMacroDetailTrendText(key, s))}</p>
+      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 최근 시장 동향 &amp; 해설</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep break-words">${escapeHtml(buildMacroDetailTrendText(key, s))}</p>
     </div>
     <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-3">
-      <p class="text-xs font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 관전 포인트 &amp; 대응 팁</p>
-      ${info.watchPoints.map((w, i) => `<p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">${i + 1}. ${escapeHtml(w)}</p>`).join('')}
+      <p class="text-sm font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 관전 포인트 &amp; 대응 팁</p>
+      ${info.watchPoints.map((w, i) => hangingIndentLine(`${i + 1}.`, escapeHtml(w), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed mt-1')).join('')}
     </div>`;
+}
+
+// [지수 모달 - 주가 위치 참고 카드] analyzeTickerForModal()(js/09, 종목/지수 공용 계산)이 뽑아 둔
+// recentHigh/recentLow/mdd를 지수 상세 콘텐츠 하단에 덧붙인다 - stockAnalysisStatTile을 그대로
+// 재사용해 종목 6섹션 리포트의 "주가 위치 & 기술적 참고" 카드와 같은 모양을 쓰되, "단기 벽"/"1차
+// 버팀목"처럼 매수/매도를 전제한 종목 용어 대신 지수에 맞는 "3개월 최고가"/"3개월 최저가"로 바꿔
+// 부른다.
+function buildIndexPriceLevelsHtml(a) {
+  if (!a || a.error) return '';
+  const priceDecimals = typeof a.currentPrice === 'number' && a.currentPrice < 100 ? 2 : 0;
+  return `
+  <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 참고</p>
+    <div class="grid grid-cols-2 gap-2">
+      ${stockAnalysisStatTile('3개월 최고가', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 지수 값이에요.')}
+      ${stockAnalysisStatTile('3개월 최저가', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 지수 값이에요.')}
+      <div class="col-span-2">${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', MDD_GUIDE_TEXT)}</div>
+    </div>
+  </div>`;
+}
+
+// [지수 모달 - 하단 캡션] "개별 매수/보유 대상이 아닙니다" 안내를 모달 상단이 아니라 콘텐츠 맨 끝에
+// 옅은 텍스트로 배치해, 열자마자 보이는 상단은 차트+지표 설명으로 바로 채워지도록 한다.
+function macroIndexFooterCaptionHtml() {
+  return '<p class="text-xs text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표(지수)입니다.</p>';
+}
+
+function renderMacroDetailModal(key) {
+  const info = MACRO_INDICATOR_INFO[key];
+  if (!info) return;
+  document.getElementById('macroDetailModalTitle').textContent = `📊 ${info.label}`;
+  document.getElementById('macroDetailModalBody').innerHTML = buildMacroDetailBodyHtml(key);
 }
 
 async function openMacroDetailModal(key) {
@@ -981,10 +1034,12 @@ function renderMacroBriefing() {
   // [타이포그래피 통일] 예전엔 이 3줄이 text-lg라 바로 아래 RISK 카드의 같은 성격 텍스트(권장 행동
   // 지침 등, text-sm)보다 눈에 띄게 크게 보였다 - RISK 카드와 동일한 text-sm/leading-relaxed로 맞춰
   // 두 카드의 본문 글자 크기가 균일하게 보이도록 했다.
+  // [내어쓰기] "📌 시장 종합 평가"처럼 라벨+본문이 한 줄에 이어지던 걸 hangingIndentLine으로 분리해,
+  // 문장이 길어 줄바꿈되면 둘째 줄이 라벨 밑이 아니라 본문 시작 위치에 맞춰지도록 했다.
   diagnosisEl.innerHTML = `
-    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">📌 시장 종합 평가</span> ${escapeHtml(commentary.cause)}</p>
-    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">💰 내 포트폴리오 영향</span> ${escapeHtml(commentary.impact)}</p>
-    <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><span class="font-semibold">🧭 대응 가이드</span> ${escapeHtml(commentary.guide)}</p>
+    ${hangingIndentLine('<span class="font-semibold">📌 시장 종합 평가</span>', escapeHtml(commentary.cause), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${hangingIndentLine('<span class="font-semibold">💰 내 포트폴리오 영향</span>', escapeHtml(commentary.impact), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${hangingIndentLine('<span class="font-semibold">🧭 대응 가이드</span>', escapeHtml(commentary.guide), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
         <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
@@ -1131,7 +1186,7 @@ function openRiskAlertModal() {
   const actionItems = buildRiskActionItems(m);
   document.getElementById('riskAlertActionItems').innerHTML = `
     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
-    ${actionItems.map((item, i) => `<p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${item}</p>`).join('')}`;
+    ${actionItems.map((item, i) => hangingIndentLine(`${i + 1}.`, item, 'text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}`;
 
   document.getElementById('riskAlertModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -1331,9 +1386,14 @@ function renderStockAnalysisResult(a, sim) {
   ${renderStockAnalysisReportBody(a, sim)}`;
 }
 
-// [한글 종목명 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/주요종목 후보를
-// 클릭 가능한 목록으로 보여준다 - 고르면 입력창에 이름을 채우고 즉시 분석까지 실행한다(모호한 부분
+// [종목 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/종목 마스터 후보를
+// 클릭 가능한 목록으로 보여준다 - 고르면 입력창에 "티커"를 채우고 즉시 분석까지 실행한다(모호한 부분
 // 일치(예: '삼성')를 findTickerByKoreanName()이 스스로 판단하지 못하는 문제를 여기서 해결).
+// [2026-08 - 티커로 채우도록 수정] 종목 마스터 도입 전에는 후보가 전부 국내(한글명) 종목이라 입력창에
+// "이름"을 채워도 findTickerByKoreanName()이 문제없이 다시 티커로 바꿔줬다. 이제 미국 종목(영문명)도
+// 후보에 섞이는데, 영문명은 한글이 아니라서 그 자동 변환 분기를 안 타고 이름 문자열 그대로 조회를
+// 시도해 실패한다 - 애초에 티커를 채우면 국내/해외 어느 쪽이든 곧장 정확하게 조회되므로 이렇게
+// 통일했다(데이터셋에 티커 없이 이름만 있는 경우가 없어 안전).
 function hideStockAnalysisSuggestions() {
   const el = document.getElementById('stockAnalysisSuggestions');
   el.classList.add('hidden');
@@ -1343,14 +1403,14 @@ function renderStockAnalysisSuggestions(candidates) {
   const el = document.getElementById('stockAnalysisSuggestions');
   if (candidates.length === 0) { hideStockAnalysisSuggestions(); return; }
   el.innerHTML = candidates.map((c) => `
-    <button type="button" data-suggest-name="${escapeHtml(c.name)}" class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">
+    <button type="button" data-suggest-ticker="${escapeHtml(c.ticker)}" class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">
       <span class="truncate">${escapeHtml(c.name)} <span class="text-slate-400 text-xs">${escapeHtml(c.ticker)}</span></span>
       <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${escapeHtml(c.sub)}</span>
     </button>`).join('');
   el.classList.remove('hidden');
-  el.querySelectorAll('button[data-suggest-name]').forEach((btn) => {
+  el.querySelectorAll('button[data-suggest-ticker]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.getElementById('stockAnalysisTickerInput').value = btn.dataset.suggestName;
+      document.getElementById('stockAnalysisTickerInput').value = btn.dataset.suggestTicker;
       hideStockAnalysisSuggestions();
       runStockAnalysis();
     });
@@ -1427,6 +1487,41 @@ async function runStockAnalysis() {
   attachFundamentalSection(a.ticker, 'stockAnalysisFundamentalSection', 'stockAnalysisFundamentalBody');
 }
 
+// [모바일 키보드 대응] 검색창에 포커스가 가서 온스크린 키보드가 뜨면, 모바일 브라우저는 이 모달의
+// 기준인 레이아웃 뷰포트는 줄이지 않고 시각적 뷰포트(visualViewport)만 줄인다 - 그 결과 가운데
+// 정렬된 모달이 키보드에 가려지거나 화면 중간의 어중간한 위치에 뜬 채로 안 움직이는 문제가 있었다.
+// window.visualViewport로 실제 보이는 영역(높이/오프셋)을 추적해 모달을 그 영역 상단에 붙이고,
+// 카드 자체의 max-height도 그 영역에 맞게 동적으로 줄여서 입력창과 결과 일부가 항상 함께 보이게
+// 한다. visualViewport를 지원하지 않는 구형 브라우저/데스크톱에서는 이 함수가 조용히 아무 것도
+// 하지 않고, CSS의 max-h-[85dvh] + 기본 중앙 정렬로 자연스럽게 폴백된다.
+function repositionStockAnalysisModalForViewport() {
+  const vv = window.visualViewport;
+  const overlay = document.getElementById('stockAnalysisModal');
+  const card = overlay ? overlay.querySelector('.modal-anim') : null;
+  if (!vv || !overlay || !card || overlay.classList.contains('hidden')) return;
+  const topPad = 16;
+  overlay.style.top = vv.offsetTop + 'px';
+  overlay.style.height = vv.height + 'px';
+  overlay.style.alignItems = 'flex-start';
+  overlay.style.paddingTop = topPad + 'px';
+  card.style.maxHeight = Math.max(200, vv.height - topPad * 2) + 'px';
+}
+function resetStockAnalysisModalViewportStyles() {
+  const overlay = document.getElementById('stockAnalysisModal');
+  const card = overlay ? overlay.querySelector('.modal-anim') : null;
+  if (overlay) {
+    overlay.style.top = '';
+    overlay.style.height = '';
+    overlay.style.alignItems = '';
+    overlay.style.paddingTop = '';
+  }
+  if (card) card.style.maxHeight = '';
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', repositionStockAnalysisModalForViewport);
+  window.visualViewport.addEventListener('scroll', repositionStockAnalysisModalForViewport);
+}
+
 function openStockAnalysisModal() {
   document.getElementById('stockAnalysisModal').classList.remove('hidden');
   document.getElementById('stockAnalysisErrorMsg').classList.add('hidden');
@@ -1441,18 +1536,32 @@ function openStockAnalysisModal() {
   // 입력할 수 있게 함)는 유지하되 preventScroll로 포커스 이동이 스크롤을 다시 끌어내리지 않게 막는다.
   const body = document.getElementById('stockAnalysisModalBody');
   if (body) body.scrollTop = 0;
+  repositionStockAnalysisModalForViewport();
   setTimeout(() => document.getElementById('stockAnalysisTickerInput').focus({ preventScroll: true }), 50);
 }
 function closeStockAnalysisModal(viaBackButton) {
   stockAnalysisRequestToken++; // 진행 중이던 조회가 있었다면 그 응답을 무시 처리
   hideStockAnalysisSuggestions();
   document.getElementById('stockAnalysisModal').classList.add('hidden');
+  resetStockAnalysisModalViewportStyles();
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
 document.getElementById('stockAnalysisBtn').addEventListener('click', () => openStockAnalysisModal());
 document.getElementById('stockAnalysisSearchBtn').addEventListener('click', () => runStockAnalysis());
 document.getElementById('stockAnalysisTickerInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
 document.getElementById('stockAnalysisAmountInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
+// [모바일 키보드 대응] 포커스 직후 바로 repositionStockAnalysisModalForViewport()를 부르면 아직
+// 키보드가 올라오는 애니메이션 중이라 visualViewport 값이 최종 크기가 아닐 수 있다 - 키보드 표시
+// 애니메이션이 끝날 시간(약 300ms)을 준 뒤 재배치하고, 입력창 자체도 부드럽게 보이는 영역으로
+// 스크롤한다(대부분은 이미 화면 상단에 있어 움직이지 않지만, 안전장치로 둔다).
+['stockAnalysisTickerInput', 'stockAnalysisAmountInput'].forEach((id) => {
+  document.getElementById(id).addEventListener('focus', () => {
+    setTimeout(() => {
+      repositionStockAnalysisModalForViewport();
+      document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+  });
+});
 document.getElementById('stockAnalysisModalHeader').addEventListener('click', () => closeStockAnalysisModal());
 document.getElementById('closeStockAnalysisModalBtn').addEventListener('click', (e) => {
   e.stopPropagation();

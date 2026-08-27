@@ -126,6 +126,10 @@ function warnIfRestrictedWebView() {
 async function bootApp() {
   cleanupLegacyGoogleSyncKeys(); // 예전 구글 드라이브 연동 기능이 남긴 localStorage 키를 1회 정리
   loadState();
+  // [종목 마스터 데이터] localStorage 캐시가 있으면 이 호출 안에서 즉시(동기적으로) 반영되고, 네트워크
+  // 갱신은 await 없이 백그라운드에서 진행된다(js/09 loadTickerMaster() 참고) - renderAll() 전에
+  // 불러서 첫 렌더링부터 종목 검색이 바로 되게 한다.
+  loadTickerMaster().catch(() => {});
   loadSyncState();
   // [동기화 상태 버튼 초기 표시] pullFromCloud()는 아래에서 await 없이 비동기로 실행되므로, 그 결과가
   // 나오기 전까지 버튼이 잠깐 정적 기본값("동기화중지")으로 보이는 걸 막기 위해 loadSyncState() 직후

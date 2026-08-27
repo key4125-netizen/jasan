@@ -1,0 +1,48 @@
+name: Update ticker master
+
+# [매달 1일 자동 갱신] KIS 종목 마스터(국내 코스피/코스닥 + 해외 나스닥/뉴욕/아멕스)를 새로 받아
+# data/ticker-master.json을 갱신하고 커밋한다. 앱은 이 파일을 jsDelivr CDN 경유로 fetch해서 종목
+# 검색에 쓴다(js/09-price-fx-risk-engine.js의 loadTickerMaster() 참고).
+#
+# workflow_dispatch(수동 실행 - Actions 탭에서 "Run workflow" 버튼)와 repository_dispatch(외부에서
+# curl/API로 트리거)도 함께 열어둬서, 정기 스케줄을 기다리지 않고도 언제든 즉시 갱신할 수 있다.
+on:
+  schedule:
+    # 매달 1일 00:00 UTC(=한국시간 오전 9시). GitHub Actions의 스케줄 cron은 UTC 기준.
+    - cron: '0 0 1 * *'
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [update-ticker-master]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install script dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Download and parse KIS ticker master
+        run: node scripts/update-ticker-master.js
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/ticker-master.json; then
+            echo "변경 없음 - 커밋을 건너뜁니다."
+            exit 0
+          fi
+          git add data/ticker-master.json
+          git commit -m "chore: update ticker master data ($(date -u +%Y-%m-%d))"
+          git push

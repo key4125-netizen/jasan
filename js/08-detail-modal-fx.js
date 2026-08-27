@@ -40,10 +40,40 @@ let assetDetailAnalysisToken = 0;
 async function attachStockAnalysisReportToDetailModal(ticker) {
   const section = document.getElementById('assetDetailAnalysisSection');
   const body = document.getElementById('assetDetailAnalysisBody');
+  const titleEl = document.getElementById('assetDetailAnalysisTitle');
   if (!section || !body) return;
 
   const trimmed = String(ticker || '').trim();
   if (!trimmed) { section.classList.add('hidden'); return; }
+
+  // [지수/매크로 지표는 종목 리포트 대신 지표 설명을 보여준다] 코스피/코스닥/S&P500/나스닥/다우/VIX
+  // 같은 시장 지표를 종목 상세 모달로 열면(핵심종목 실시간 팝업의 주요 지수 타일 등), 예전엔 여기가
+  // "종목 분석 & 위험 관리" 6섹션 리포트를 그대로 보여줘서 "단기 벽/1차 버팀목", "숨고르기(조정) 구간"
+  // 같은 개별 종목 매매 관점 문구가 지수에도 그대로 붙는 문제가 있었다(지수는 매수/매도 대상이 아님).
+  // 매크로 브리핑 상세 팝업(#macroDetailModal)이 이미 지수 전용으로 잘 만들어져 있으므로, 그 콘텐츠
+  // (buildMacroDetailBodyHtml, js/10)를 이 자리에 그대로 재사용한다 - 새 문구를 따로 만들지 않는다.
+  const macroKey = getMacroKeyForTicker(sanitizeTicker(trimmed).yahooTicker);
+  if (macroKey) {
+    section.classList.remove('hidden');
+    if (titleEl) titleEl.textContent = '📊 지수/지표 정보';
+    body.innerHTML = buildMacroDetailBodyHtml(macroKey) + macroIndexFooterCaptionHtml();
+    lucide.createIcons();
+
+    // [실제 5일/20일 추세 + 3개월 고/저점·MDD 온디맨드 반영] 5일/20일 추세는 openMacroDetailModal()과
+    // 동일한 2단계 패턴(먼저 캐시로 즉시 보여준 뒤 1년치 종가로 정확히 다시 그림)이고, 3개월 고/저점·
+    // MDD는 종목/지수 공용 계산기인 analyzeTickerForModal()(js/09)을 그대로 재사용한다(별도 계산
+    // 로직을 새로 만들지 않음). macroDetailModal 전용 토큰(macroDetailRequestToken)과는 별개 토큰을
+    // 써서, 두 팝업이 동시에 다른 지표를 보고 있어도 서로의 렌더링을 덮어쓰지 않는다.
+    const token = ++assetDetailAnalysisToken;
+    const [trend, a] = await Promise.all([fetchMacroShortTermTrend(macroKey), analyzeTickerForModal(trimmed)]);
+    if (token !== assetDetailAnalysisToken || document.getElementById('assetDetailModal').classList.contains('hidden')) return;
+    const s = macroDetailSnapshot[macroKey];
+    if (s) { s.change5d = trend ? trend.change5d : null; s.change20d = trend ? trend.change20d : null; }
+    body.innerHTML = buildMacroDetailBodyHtml(macroKey) + buildIndexPriceLevelsHtml(a) + macroIndexFooterCaptionHtml();
+    lucide.createIcons();
+    return;
+  }
+  if (titleEl) titleEl.textContent = '🔍 종목 분석 & 위험 관리';
 
   section.classList.remove('hidden');
   body.innerHTML = `
@@ -353,9 +383,17 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   const s = sanitized || sanitizeTicker(ticker);
   document.getElementById('assetDetailName').textContent = name || ticker || '(이름 없음)';
   document.getElementById('assetDetailTicker').textContent = ticker || '티커 없음';
-  document.getElementById('assetDetailInfoGrid').innerHTML = s.yahooTicker
-    ? '<p class="col-span-2 sm:col-span-4 text-slate-400">현재 보유 중인 자산이 아닙니다(매도 완료 등). 아래에서 시세 차트만 확인할 수 있습니다.</p>'
-    : '<p class="col-span-2 sm:col-span-4 text-slate-400">특정 종목이 아닌 자산군 항목이라 상세 정보/차트를 제공할 수 없습니다.</p>';
+  // [지수/매크로 지표 안내 문구 구분 - 상단 스크롤 절약] 지수는 상단에 안내문을 따로 두지 않는다
+  // (아래 attachStockAnalysisReportToDetailModal의 매크로 분기가 지표 콘텐츠 맨 끝에 작은 캡션으로
+  // 옮겨 붙인다) - 차트 바로 아래에서 곧장 지표 설명이 시작되도록 상단 스크롤을 줄인다. "매도 완료
+  // 등" 문구는 한때 보유했다가 판 개별 종목에는 맞지만, 코스피/코스닥 같은 시장 지표는 애초에
+  // 매수/매도 대상이 아니라서 그대로 쓰면 어색해 지수는 이 문구 자체를 두지 않는다.
+  const macroKey = getMacroKeyForTicker(s.yahooTicker);
+  document.getElementById('assetDetailInfoGrid').innerHTML = macroKey
+    ? ''
+    : s.yahooTicker
+      ? '<p class="col-span-2 sm:col-span-4 text-slate-400">현재 보유 중인 자산이 아닙니다(매도 완료 등). 아래에서 시세 차트만 확인할 수 있습니다.</p>'
+      : '<p class="col-span-2 sm:col-span-4 text-slate-400">특정 종목이 아닌 자산군 항목이라 상세 정보/차트를 제공할 수 없습니다.</p>';
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
   document.getElementById('assetDetailEditBtn').classList.add('hidden');

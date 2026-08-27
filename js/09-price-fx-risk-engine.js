@@ -189,7 +189,7 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
     currency: meta.currency, // [자산 추가 팝업 개선] 종목 검색 시 거래 통화 자동 감지용 - Yahoo가 실제 상장 통화를 그대로 내려준다(USD/KRW/JPY 등)
     // [종목 분석 모달 - 해외 종목명] meta.longName/shortName이 있으면 실제 기업명을 그대로 쓴다 -
     // 없는 티커(신규상장 등)도 있어 필드 존재를 보장할 수 없으므로 둘 다 없으면 undefined로 남기고
-    // analyzeTickerForModal()이 기존처럼 KR_STOCK_NAMES/learnedTickerNames/티커로 안전하게 폴백한다.
+    // analyzeTickerForModal()이 기존처럼 TICKER_NAME_FALLBACK_SEED/learnedTickerNames/티커로 안전하게 폴백한다.
     name: (typeof meta.longName === 'string' && meta.longName) || (typeof meta.shortName === 'string' && meta.shortName) || undefined,
     // [미니 당일 봉차트] 당일 시가/고가/저가 - miniCandleSvg가 현재가(picked.price)와 함께 캔들 하나로 그린다.
     todayOpen: picked.todayOpen, todayHigh: picked.todayHigh, todayLow: picked.todayLow,
@@ -340,7 +340,7 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   const lastTradeKey = (typeof d.localTradedAt === 'string' && d.localTradedAt) ? d.localTradedAt : undefined;
   // [종목 분석 모달 - 실제 종목명 확보] 이 API가 실제로 정식 한글 종목명을 어느 필드로 내려주는지
   // 공식 문서가 없어(비공개 API) 알려진 후보 필드명들을 순서대로 시도한다 - 전부 없으면 name은 그냥
-  // undefined로 남고, 호출부(analyzeTickerForModal)가 기존처럼 KR_STOCK_NAMES/원본 입력값으로
+  // undefined로 남고, 호출부(analyzeTickerForModal)가 기존처럼 TICKER_NAME_FALLBACK_SEED/원본 입력값으로
   // 안전하게 폴백한다(필드명을 잘못 짚어도 동작에 영향 없음).
   const stockName = (typeof d.stockName === 'string' && d.stockName)
     || (typeof d.itemName === 'string' && d.itemName)
@@ -688,16 +688,19 @@ const SECTOR_MAP = {
   'JNJ': '헬스케어', 'UNH': '헬스케어', 'XOM': '에너지', 'CVX': '에너지', 'PG': '필수소비재', 'KO': '필수소비재'
 };
 // [종목 분석 모달 - 한글 종목명 매칭] Yahoo Finance 검색 API(searchYahooStocks, js/04)가 한글을 지원하지
-// 않아, 국내 대형주는 위 SECTOR_MAP과 동일한 티커 목록에 한글 종목명을 붙인 별도 표로 관리한다 -
-// findTickerByKoreanName()이 이 표와 보유 자산 이름을 함께 검색해 티커로 변환한다.
-// [2026-08 확장] 18개 대형주만으로는 채권/배당 ETF 등이 검색되지 않는다는 신고를 받아 코스피/코스닥
-// 주요종목과 국내 상장 ETF를 대폭 늘렸다. 진짜 KRX 전종목(코스피+코스닥 약 2,800개 이상)을 실시간
-// 검색하려면 비공개 자동완성 API(예: 네이버 증권)를 붙여야 하는데, 이 프로젝트를 진행하는 개발 환경
-// 에서는 그 API가 실제로 어떤 응답을 주는지 확인할 방법이 없어(네트워크 접근 차단) 검증되지 않은
-// 파싱 코드를 넣는 대신 이렇게 직접 검증 가능한 정적 표를 큐레이션하는 방식을 택했다. 티커를 확신할
-// 수 없는 종목(합병/개명 이력이 있거나 시리즈가 여러 개인 ETF 등)은 잘못된 종목을 보여주는 사고를
-// 막기 위해 일부러 빼뒀다 - 그래서 "전종목"이 아니라 "자주 찾을 만한 주요 종목"까지가 이 표의 범위다.
-const KR_STOCK_NAMES = {
+// 않아, 국내 종목명은 별도 표/데이터로 관리한다 - findTickerByKoreanName()이 이 데이터와 보유 자산
+// 이름을 함께 검색해 티커로 변환한다.
+// [2026-08 - 전종목 마스터 도입] 예전엔 이 정적 표(당시 KR_STOCK_NAMES) 하나가 유일한 검색 소스라
+// 코스피/코스닥 주요종목 약 90개 밖에 못 찾았다("대덕전자" 등 표에 없는 종목은 검색 자체가 안 됨).
+// 이제는 GitHub Actions가 매달 KIS 공식 종목 마스터(코스피/코스닥 전종목 + 나스닥/뉴욕/아멕스 주요
+// 종목)를 내려받아 data/ticker-master.json으로 커밋해두고, loadTickerMaster()(바로 아래)가 앱 부팅
+// 시 이걸 jsDelivr CDN 경유로 받아와 tickerMasterRecords 등에 채워 넣는다 - 실질적인 검색은 이제
+// 이 데이터가 1차로 담당한다.
+// 이 상수(TICKER_NAME_FALLBACK_SEED)는 이름 그대로 "혹시 그 다운로드/캐시가 실패했을 때"의 최소
+// 안전망으로만 남겨뒀다 - 오프라인 최초 실행, jsDelivr 장애, 아직 Actions가 한 번도 안 돌았을 때도
+// 최소한 대형주 검색은 되게 한다. 정상적으로 마스터 데이터가 로드되면 이 표의 항목들은 마스터 데이터에
+// 그대로 포함돼 있어 실질적으로 안 쓰인다(findTickerByKoreanName/searchStockAnalysisCandidates 참고).
+const TICKER_NAME_FALLBACK_SEED = {
   // 코스피 대형주
   '005930.KS': '삼성전자', '000660.KS': 'SK하이닉스', '373220.KS': 'LG에너지솔루션', '207940.KS': '삼성바이오로직스',
   '005380.KS': '현대차', '000270.KS': '기아', '068270.KS': '셀트리온', '005490.KS': 'POSCO홀딩스',
@@ -722,6 +725,79 @@ const KR_STOCK_NAMES = {
   '273130.KS': 'KODEX 종합채권(AA-이상)액티브', '363570.KS': 'KODEX 장기종합채권(AA-이상)액티브',
   '451540.KS': 'TIGER 종합채권(AA-이상)액티브', '329750.KS': 'TIGER 미국달러단기채권액티브', '435420.KS': 'TIGER 미국나스닥100채권혼합50'
 };
+
+/* -------------------------------------------------------------------------
+ * [종목 마스터 데이터 로딩] data/ticker-master.json(scripts/update-ticker-master.js가 매달 생성,
+ * .github/workflows/update-ticker-master.yml 참고)을 jsDelivr CDN 경유로 받아와 검색용 인덱스를
+ * 만든다. localStorage에 캐싱해두고 20일 넘게 지났을 때만 다시 fetch한다(매달 1일에나 바뀌는
+ * 데이터를 매번 새로 받을 필요는 없음 - 다른 day-cache 패턴들과 동일한 절약 철학).
+ * ---------------------------------------------------------------------- */
+const TICKER_MASTER_CDN_URL = 'https://cdn.jsdelivr.net/gh/key4125-netizen/jasan@main/data/ticker-master.json';
+const LS_TICKER_MASTER_CACHE = 'sam_ticker_master_cache_v1';
+const TICKER_MASTER_REFRESH_DAYS = 20;
+const TICKER_MASTER_MIN_SANE_COUNT = 1000; // 이보다 적으면(다운로드 실패로 빈 placeholder만 받은 경우 등) 무시하고 폴백 시드만 쓴다
+
+let tickerMasterRecords = []; // 부분일치 검색용 원본 배열(이름/티커 소문자 미리 계산해 둠)
+let tickerMasterByTicker = {}; // yahooTicker -> record, 완전일치 O(1) 조회용
+let tickerMasterByExactName = {}; // 한글명/영문명 완전일치 -> record
+let tickerMasterLoaded = false;
+
+function applyTickerMasterData(json) {
+  const items = (json && Array.isArray(json.items)) ? json.items : [];
+  if (items.length < TICKER_MASTER_MIN_SANE_COUNT) return; // 비정상적으로 적은 데이터는 아예 반영하지 않음(폴백 시드 유지)
+  tickerMasterRecords = items.map((it) => ({
+    ...it,
+    _nameKrLower: (it.nameKr || '').toLowerCase(),
+    _nameEnLower: (it.nameEn || '').toLowerCase(),
+    _tickerLower: (it.yahooTicker || '').toLowerCase()
+  }));
+  tickerMasterByTicker = {};
+  tickerMasterByExactName = {};
+  tickerMasterRecords.forEach((r) => {
+    tickerMasterByTicker[r.yahooTicker] = r;
+    if (r.nameKr) tickerMasterByExactName[r.nameKr] = r;
+    if (r.nameEn) tickerMasterByExactName[r.nameEn] = r;
+  });
+  tickerMasterLoaded = true;
+}
+
+// localStorage 캐시를 동기적으로 즉시 반영한다(있으면) - fetch 완료를 기다리지 않고도 앱을 켜자마자
+// 검색이 되게 하기 위해서다. 반환값은 캐시가 저장된 시각(ms) - 없으면 null.
+function loadTickerMasterFromCache() {
+  try {
+    const raw = localStorage.getItem(LS_TICKER_MASTER_CACHE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.data || !parsed.fetchedAt) return null;
+    applyTickerMasterData(parsed.data);
+    return parsed.fetchedAt;
+  } catch (e) {
+    return null;
+  }
+}
+
+// [부팅 시 1회 호출, await 없이 fire-and-forget] 이 함수 자체는 async지만, 첫 줄
+// loadTickerMasterFromCache()가 동기 함수라 캐시가 있으면 이 호출이 반환되기 전에(=같은 동기 실행
+// 구간 안에서) 이미 검색 가능한 상태가 된다 - refreshPricesAndRates() 등 기존 부팅 패턴과 동일하게
+// 네트워크 갱신은 백그라운드에서 조용히 진행된다.
+async function loadTickerMaster() {
+  const fetchedAt = loadTickerMasterFromCache();
+  const ageDays = fetchedAt ? (Date.now() - fetchedAt) / 86400000 : Infinity;
+  if (fetchedAt && ageDays < TICKER_MASTER_REFRESH_DAYS) return; // 캐시가 충분히 최신이면 네트워크 요청 생략
+
+  try {
+    const res = await fetch(TICKER_MASTER_CDN_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('fetch_failed_' + res.status);
+    const data = await res.json();
+    applyTickerMasterData(data);
+    if (tickerMasterLoaded) localStorage.setItem(LS_TICKER_MASTER_CACHE, JSON.stringify({ fetchedAt: Date.now(), data }));
+  } catch (e) {
+    // 네트워크 실패/최초 실행 전(placeholder만 있는 상태)이어도 조용히 무시한다 - findTickerByKoreanName/
+    // searchStockAnalysisCandidates가 자동으로 TICKER_NAME_FALLBACK_SEED + learnedTickerNames로
+    // 계속 동작하므로 검색 기능 자체가 죽지는 않는다(대상 범위만 좁아질 뿐).
+  }
+}
+
 // ETF는 "섹터 비중맵"(합계 약 1.0)으로 등록해 실질 룩스루 노출 계산에 쓴다 - 운용사 팩트시트 기준
 // 대략적인 값이며 실시간 구성종목 API가 아니므로 실제 비중과 차이가 있을 수 있다(화면에 항상 명시).
 const ETF_HOLDINGS_MAP = {
@@ -1231,11 +1307,12 @@ async function computeAdvancedRiskMetrics() {
  *      재사용할 수 있다. RISK 관리 카드와 달리 1년치 데이터가 없으면(신규상장 등) 에러 메시지만
  *      반환하고 조용히 실패한다(호출부가 그대로 화면에 안내문으로 보여줌).
  * ---------------------------------------------------------------------- */
-// [종목 분석 모달 - 한글 종목명 자동 매칭] 보유 자산 이름(전체 포트폴리오, 완전일치 우선)과
-// KR_STOCK_NAMES(주요 대형주 표)를 함께 검색해 야후 티커로 변환한다. 완전일치가 없고 부분일치가
-// 여럿이면(예: '삼성'→삼성전자/삼성SDI/삼성바이오로직스/삼성물산) 어느 것인지 특정할 수 없으므로
-// null을 반환해 호출부가 "검색창 추천 목록에서 선택하라"고 안내하게 한다 - 잘못된 종목을 임의로
-// 골라 분석 결과를 보여주는 것보다 안전하다.
+// [종목 분석 모달 - 한글 종목명 자동 매칭] 보유 자산 이름(전체 포트폴리오, 완전일치 우선) +
+// tickerMasterRecords(매달 갱신되는 국내 전종목+미국 주요종목, 로드 안 됐으면 건너뜀) +
+// TICKER_NAME_FALLBACK_SEED(최소 안전망)를 함께 검색해 야후 티커로 변환한다. 완전일치가 없고
+// 부분일치가 여럿이면(예: '삼성'→삼성전자/삼성SDI/삼성바이오로직스/삼성물산...) 어느 것인지 특정할
+// 수 없으므로 null을 반환해 호출부가 "검색창 추천 목록에서 선택하라"고 안내하게 한다 - 잘못된 종목을
+// 임의로 골라 분석 결과를 보여주는 것보다 안전하다.
 function findTickerByKoreanName(query) {
   const q = String(query || '').trim();
   if (!q) return null;
@@ -1244,17 +1321,21 @@ function findTickerByKoreanName(query) {
 
   const heldExact = heldWithTicker.find((a) => a.name === q);
   if (heldExact) return { ticker: sanitizeTicker(heldExact.ticker).yahooTicker, name: heldExact.name };
-  const mapExactEntry = Object.entries(KR_STOCK_NAMES).find(([, name]) => name === q);
-  if (mapExactEntry) return { ticker: mapExactEntry[0], name: mapExactEntry[1] };
+  const masterExact = tickerMasterByExactName[q];
+  if (masterExact) return { ticker: masterExact.yahooTicker, name: masterExact.nameKr || masterExact.nameEn };
+  const seedExactEntry = Object.entries(TICKER_NAME_FALLBACK_SEED).find(([, name]) => name === q);
+  if (seedExactEntry) return { ticker: seedExactEntry[0], name: seedExactEntry[1] };
   const learnedExactEntry = learnedEntries.find(([, name]) => name === q);
   if (learnedExactEntry) return { ticker: learnedExactEntry[0], name: learnedExactEntry[1] };
 
   const heldPartial = heldWithTicker.filter((a) => a.name.includes(q));
-  const mapPartial = Object.entries(KR_STOCK_NAMES).filter(([, name]) => name.includes(q));
+  const masterPartial = tickerMasterRecords.filter((r) => r.nameKr && r.nameKr.includes(q));
+  const seedPartial = Object.entries(TICKER_NAME_FALLBACK_SEED).filter(([, name]) => name.includes(q));
   const learnedPartial = learnedEntries.filter(([, name]) => name.includes(q));
   const candidates = [
     ...heldPartial.map((a) => ({ ticker: sanitizeTicker(a.ticker).yahooTicker, name: a.name })),
-    ...mapPartial.map(([ticker, name]) => ({ ticker, name })),
+    ...masterPartial.map((r) => ({ ticker: r.yahooTicker, name: r.nameKr })),
+    ...seedPartial.map(([ticker, name]) => ({ ticker, name })),
     ...learnedPartial.map(([ticker, name]) => ({ ticker, name }))
   ];
   const uniqueTickers = new Set(candidates.map((c) => c.ticker));
@@ -1262,14 +1343,19 @@ function findTickerByKoreanName(query) {
   return null;
 }
 
-// [종목 분석 모달 - 검색 추천 목록] 보유 자산 + KR_STOCK_NAMES 주요 종목 + learnedTickerNames(이전에
-// 검색해서 학습된 종목)를 대상으로 이름/티커 부분일치 후보를 모아 드롭다운에 보여준다. 한글이 아닌
-// 입력(영문 티커 등)도 그대로 지원한다.
+// [종목 분석 모달 - 검색 추천 목록] 보유 자산 + tickerMasterRecords(국내 전종목+미국 주요종목,
+// 이름/티커 소문자를 미리 계산해 둬서 키 입력마다 매번 toLowerCase()를 반복하지 않는다) +
+// learnedTickerNames(이전에 검색해서 학습된 종목)를 대상으로 이름/티커 부분일치 후보를 모아 드롭다운에
+// 보여준다. 원하는 개수(8개)를 채우면 나머지 수천 건은 순회하지 않고 즉시 멈춰서(early-break) 검색
+// 목록이 커져도 체감 속도가 떨어지지 않게 한다. 마스터 데이터가 아직 로드되지 않았을 때만
+// TICKER_NAME_FALLBACK_SEED로 보충한다(로드된 뒤에는 그 90여 개가 마스터 데이터에 이미 포함돼 있어
+// 중복 표시를 막기 위함).
 function searchStockAnalysisCandidates(query) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
   const results = [];
   const seen = new Set();
+  const MAX_RESULTS = 8;
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return;
@@ -1279,19 +1365,30 @@ function searchStockAnalysisCandidates(query) {
     seen.add(yahooTicker);
     results.push({ ticker: yahooTicker, name: a.name, sub: '보유 중' });
   });
-  Object.entries(KR_STOCK_NAMES).forEach(([ticker, name]) => {
-    if (seen.has(ticker)) return;
-    if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
-    seen.add(ticker);
-    results.push({ ticker, name, sub: '주요 종목' });
-  });
+  for (const r of tickerMasterRecords) {
+    if (results.length >= MAX_RESULTS) break;
+    if (seen.has(r.yahooTicker)) continue;
+    if (!(r._nameKrLower.includes(q) || r._nameEnLower.includes(q) || r._tickerLower.includes(q))) continue;
+    seen.add(r.yahooTicker);
+    results.push({ ticker: r.yahooTicker, name: r.nameKr || r.nameEn, sub: r.exchange });
+  }
+  if (!tickerMasterLoaded) {
+    Object.entries(TICKER_NAME_FALLBACK_SEED).forEach(([ticker, name]) => {
+      if (results.length >= MAX_RESULTS) return;
+      if (seen.has(ticker)) return;
+      if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
+      seen.add(ticker);
+      results.push({ ticker, name, sub: '주요 종목' });
+    });
+  }
   Object.entries(state.learnedTickerNames || {}).forEach(([ticker, name]) => {
+    if (results.length >= MAX_RESULTS) return;
     if (seen.has(ticker)) return;
     if (!`${name} ${ticker}`.toLowerCase().includes(q)) return;
     seen.add(ticker);
     results.push({ ticker, name, sub: '최근 검색' });
   });
-  return results.slice(0, 8);
+  return results.slice(0, MAX_RESULTS);
 }
 
 async function analyzeTickerForModal(rawInput) {
@@ -1349,14 +1446,15 @@ async function analyzeTickerForModal(rawInput) {
   const recentLow = recentWindow.length ? Math.min(...recentWindow) : null;
 
   // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940', 'spck')
-  // 에도, 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 API가 실제 이름(국내는 Naver의
+  // 에도, 그 티커가 TICKER_NAME_FALLBACK_SEED/learnedTickerNames에 있거나 API가 실제 이름(국내는 Naver의
   // stockName, 해외는 Yahoo meta.longName/shortName)을 내려줬으면 원본 입력 그대로가 아니라 정식
   // 종목명을 보여준다. [대소문자 버그 수정] 정말 아무 이름도 못 찾은 최후의 폴백은 trimmedRaw(사용자가
   // 입력한 원본 대소문자, 예: 'spck')가 아니라 yahooTicker(항상 대문자로 정돈됨, 'SPCK')를 쓴다 -
   // 안 그러면 제목엔 'spck SPCK'처럼 이름과 티커의 대소문자가 서로 다르게 보이는 문제가 있었다.
-  const displayName = resolvedName || KR_STOCK_NAMES[yahooTicker] || state.learnedTickerNames[yahooTicker] || (priceInfo && priceInfo.name) || yahooTicker || trimmedRaw;
+  const masterRecord = tickerMasterByTicker[yahooTicker];
+  const displayName = resolvedName || (masterRecord && (masterRecord.nameKr || masterRecord.nameEn)) || TICKER_NAME_FALLBACK_SEED[yahooTicker] || state.learnedTickerNames[yahooTicker] || (priceInfo && priceInfo.name) || yahooTicker || trimmedRaw;
   // [학습된 종목명 캐시에 기록] 지금 막 진짜 이름을 확인했으면(=trimmedRaw/티커를 그대로 되돌려준 게
-  // 아니면) 다음부터는 이 기기에서 티커든 이름이든 바로 찾을 수 있도록 남겨둔다 - 이미 KR_STOCK_NAMES에
+  // 아니면) 다음부터는 이 기기에서 티커든 이름이든 바로 찾을 수 있도록 남겨둔다 - 이미 TICKER_NAME_FALLBACK_SEED에
   // 있던 값이어도 다시 저장은 되지만 rememberTickerName이 값이 같으면 조용히 건너뛴다.
   if (displayName !== trimmedRaw && displayName !== yahooTicker && displayName !== searchTicker) {
     rememberTickerName(yahooTicker, displayName);
