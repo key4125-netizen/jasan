@@ -98,17 +98,20 @@ function buildIndividualRiskTags(h) {
 // 종목이 태그 없음(안정)으로 잠시 보였다가, 계산이 끝나면 다음 렌더링에서 정상 분류된다.
 // 신랑/와이프가 같은 종목을 나눠 보유해도 태그는 시세 데이터 기준(종목당 공통)이라 소유자별로 갈릴
 // 일이 없다 - owners는 표시용으로만 병합한다(티커, 없으면 이름 기준 - 다른 병합 로직과 동일).
-// [RISK 카드 - 소유자별 필터] ownerFilter가 있으면 그 소유자 보유분만 걸러서 리스트를 만들고, 태그
-// 판정용 holding도 (전체가 아니라) 그 소유자 기준으로 다시 계산된 지표(getCurrentRiskMetrics 참고)를
-// 쓴다 - 위험기여도(riskContributionPct) 같은 값은 소유자 범위에 따라 달라지기 때문이다.
-function computeRiskClassifiedAssets(ownerFilter) {
-  const m = (!ownerFilter || ownerFilter === 'all') ? state.advancedRiskMetrics : riskCardOwnerMetricsCache[ownerFilter];
+// [버그 수정 - 신랑+와이프 중복 보유 종목 미병합] 원래 이 merge key가 자산의 원본 ticker 문자열
+// (a.ticker, 예: "000660"/"A000660"/"000660.KS" 등 사용자가 입력한 그대로)을 그대로 썼는데, 같은
+// 종목이라도 신랑/와이프가 서로 다른 표기로 입력했으면 다른 key로 갈려서 리스크 감지 목록에 같은
+// 종목이 2줄로 따로 나타나는 문제가 있었다. sanitizeTicker()로 정규화한 yahooTicker를 key로 써서
+// 표기가 달라도 항상 하나로 합쳐지도록 고쳤다(항상 가구 전체 기준 - 소유자별 필터는 요청에 따라
+// 완전히 제거됨).
+function computeRiskClassifiedAssets() {
+  const m = state.advancedRiskMetrics;
   const holdingsByTicker = new Map(((m && m.holdings) || []).map((h) => [h.ticker, h]));
 
   const byKey = new Map();
-  riskEligibleAssets().filter((a) => !ownerFilter || ownerFilter === 'all' || a.owner === ownerFilter).forEach((a) => {
+  riskEligibleAssets().forEach((a) => {
     const yahoo = sanitizeTicker(a.ticker).yahooTicker;
-    const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
+    const key = yahoo || `__name__${a.name}`;
     const row = { ...a, ...calcRow(a) };
     if (!byKey.has(key)) byKey.set(key, { key, asset: a, row, owners: new Set(), curAmount: 0, buyAmount: 0, holding: holdingsByTicker.get(yahoo) || null });
     const bucket = byKey.get(key);
@@ -223,42 +226,11 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
   </div>`;
 }
 
-// [RISK 관리 아코디언] 리스크 감지/안정 종목 두 섹션의 펼침 상태를 렌더링 사이에도 기억한다 - 5분
-// 자동 갱신 등으로 renderRiskSection이 반복 호출돼도 사용자가 열어/닫아 둔 상태가 되돌아가지 않게 한다.
-// 기본값: 두 섹션 모두 접힘(요청된 기본 상태) - 헤더를 탭해야만 펼쳐진다.
+// [RISK 관리 아코디언] 리스크 감지 목록의 펼침 상태를 렌더링 사이에도 기억한다 - 5분 자동 갱신 등으로
+// renderRiskSection이 반복 호출돼도 사용자가 열어/닫아 둔 상태가 되돌아가지 않게 한다. 기본값: 접힘
+// (요청된 기본 상태) - 헤더를 탭해야만 펼쳐진다.
 let riskyAccordionOpen = false;
-let safeAccordionOpen = false;
 
-// [RISK 카드 - 소유자별 필터] 'all'이면 지금까지처럼 state.advancedRiskMetrics(가구 전체, 5분 자동
-// 갱신/새로고침 버튼이 채움)를 그대로 쓴다. 특정 소유자를 고르면 그 소유자 보유분만으로 같은 엔진
-// (computeAdvancedRiskMetrics)을 다시 돌린 결과를 riskCardOwnerMetricsCache에 담아 재사용한다 - 종목별
-// 1년 시세 이력은 이미 state.riskHistoryCache에 캐시돼 있어 네트워크 재호출 없이 즉시 계산된다.
-let riskCardOwnerFilter = 'all';
-let riskCardOwnerMetricsCache = {}; // { 소유자명: 계산결과 | null(계산 완료, 대상 없음) } - undefined면 "아직 계산 전"
-let riskCardOwnerRequestToken = 0; // 소유자를 빠르게 연속 전환해도 가장 마지막 선택만 반영되도록 하는 가드
-function getCurrentRiskMetrics() {
-  return riskCardOwnerFilter === 'all' ? state.advancedRiskMetrics : riskCardOwnerMetricsCache[riskCardOwnerFilter];
-}
-function selectRiskCardOwner(owner) {
-  riskCardOwnerFilter = owner;
-  riskCardOwnerRequestToken++;
-  renderRiskCardOwnerTabs();
-  renderRiskSection();
-}
-function renderRiskCardOwnerTabs() {
-  const wrap = document.getElementById('riskCardOwnerTabs');
-  if (!wrap) return;
-  const owners = getDailyPnlOwnerList();
-  if (owners.length < 2) { wrap.innerHTML = ''; wrap.classList.add('hidden'); return; } // 소유자가 1명뿐이면 구분할 의미가 없다
-  wrap.classList.remove('hidden');
-  const tabs = [{ key: 'all', label: '전체' }, ...owners.map((o) => ({ key: o, label: o }))];
-  wrap.innerHTML = tabs.map((t) => `
-    <button type="button" data-risk-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === riskCardOwnerFilter ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 whitespace-nowrap">${escapeHtml(t.label)}</button>
-  `).join('');
-  wrap.querySelectorAll('button[data-risk-owner]').forEach((btn) => {
-    btn.addEventListener('click', () => selectRiskCardOwner(btn.dataset.riskOwner));
-  });
-}
 function setAccordionOpen(bodyEl, chevronEl, isOpen) {
   bodyEl.style.maxHeight = isOpen ? bodyEl.scrollHeight + 'px' : '0px';
   chevronEl.classList.toggle('rotate-180', isOpen);
@@ -304,32 +276,11 @@ function buildMetricItem(label, valueHtml, tooltip) {
 function renderRiskDiagnosisSummary() {
   const container = document.getElementById('riskDiagnosisSummary');
   if (!container) return;
-  const m = getCurrentRiskMetrics();
+  const m = state.advancedRiskMetrics;
 
-  // [소유자별 필터 - 캐시 미스] 아직 이 소유자로 한 번도 계산한 적이 없으면(undefined - null과 구분,
-  // null은 "계산 완료했지만 대상 없음") 계산 중 표시를 띄우고 백그라운드로 계산을 시작한다. 계산이
-  // 끝났을 때 사용자가 이미 다른 소유자/전체로 옮겨갔으면(riskCardOwnerRequestToken 불일치) 결과를
-  // 버리고 다시 그리지 않는다 - 빠르게 탭을 연속으로 눌러도 마지막 선택만 반영된다.
-  if (m === undefined) {
-    container.classList.remove('hidden');
-    container.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">계산 중...</p>';
-    const owner = riskCardOwnerFilter;
-    const myToken = riskCardOwnerRequestToken;
-    computeAdvancedRiskMetrics(owner).then((result) => {
-      riskCardOwnerMetricsCache[owner] = result;
-      if (myToken === riskCardOwnerRequestToken) renderRiskSection();
-    });
-    refreshRiskDetailModalIfOpen();
-    return;
-  }
   if (!m) {
-    if (riskCardOwnerFilter !== 'all') {
-      container.classList.remove('hidden');
-      container.innerHTML = `<p class="text-sm text-slate-400 py-6 text-center">${escapeHtml(riskCardOwnerFilter)}님의 위험 분석 대상 보유 종목(일반계좌 주식/ETF)이 없습니다.</p>`;
-    } else {
-      container.classList.add('hidden');
-      container.innerHTML = '';
-    }
+    container.classList.add('hidden');
+    container.innerHTML = '';
     refreshRiskDetailModalIfOpen();
     return;
   }
@@ -374,20 +325,14 @@ function renderRiskDiagnosisSummary() {
 }
 
 // [🔍 세부내용 모달] 6대 위험요인 분해/정밀 수치/과거 폭락장 재현 시나리오/What-If 시뮬레이션 -
-// 메인 RISK 카드에서 분리해 이 모달 전용 컨테이너(#riskDetailModalBody)에 그린다. 메인 카드와 동일하게
-// getCurrentRiskMetrics()로 "지금 선택된 소유자(또는 전체)" 기준 지표를 읽으므로, 모달이 열린 채로 상단
-// 명의 탭을 바꾸면(refreshRiskDetailModalIfOpen 경유) 내용이 그 소유자 기준으로 다시 그려진다.
+// 메인 RISK 카드에서 분리해 이 모달 전용 컨테이너(#riskDetailModalBody)에 그린다.
 function renderRiskDetailModal() {
   const body = document.getElementById('riskDetailModalBody');
   if (!body) return;
-  const m = getCurrentRiskMetrics();
+  const m = state.advancedRiskMetrics;
 
-  if (m === undefined) {
-    body.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">계산 중...</p>';
-    return;
-  }
   if (!m) {
-    body.innerHTML = `<p class="text-sm text-slate-400 py-6 text-center">${riskCardOwnerFilter !== 'all' ? escapeHtml(riskCardOwnerFilter) + '님의 ' : ''}위험 분석 대상 보유 종목(일반계좌 주식/ETF)이 없습니다.</p>`;
+    body.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">위험 분석 대상 보유 종목(주식/ETF)이 없습니다.</p>';
     return;
   }
 
@@ -491,14 +436,11 @@ document.getElementById('riskDetailModal').addEventListener('click', (e) => {
 });
 
 // [What-If 프리셋 버튼 클릭] 실제 데이터 재조회 없이 computeScenarioRiskMetrics()로 즉시 재계산한다.
-// [소유자별 필터 대응] state.advancedRiskMetrics를 직접 읽지 않고 getCurrentRiskMetrics()로 지금 화면에
-// 보이는 소유자(또는 전체) 기준 지표를 가져온다 - 안 그러면 "신랑" 카드를 보면서 시뮬레이션해도 가구
-// 전체 데이터로 계산되는 불일치가 생긴다.
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-scenario-preset]');
   if (!btn) return;
   const box = document.getElementById('whatIfSimBox');
-  const m = getCurrentRiskMetrics();
+  const m = state.advancedRiskMetrics;
   if (!box || !m || !m.topHolding) return;
   const targetPct = parseFloat(btn.dataset.targetPct);
   const scenario = computeScenarioRiskMetrics(m, { [box.dataset.topTicker]: targetPct / 100 });
@@ -1027,34 +969,26 @@ function renderMacroBriefing() {
 
 function renderRiskSection() {
   renderMacroBriefing();
-  renderRiskCardOwnerTabs();
   renderRiskDiagnosisSummary();
   const riskyContainer = document.getElementById('riskListContainer');
-  const safeContainer = document.getElementById('safeListContainer');
   const riskyBadge = document.getElementById('riskyCountBadge');
-  const safeBadge = document.getElementById('safeCountBadge');
   const riskyBody = document.getElementById('riskyAccordionBody');
-  const safeBody = document.getElementById('safeAccordionBody');
   const riskyChevron = document.getElementById('riskyAccordionChevron');
-  const safeChevron = document.getElementById('safeAccordionChevron');
-  if (!riskyContainer || !safeContainer) return;
+  if (!riskyContainer) return;
 
-  // [소유자별 필터] 리스크 감지/안정 목록도 지금 선택된 소유자(또는 전체) 기준으로만 보여준다.
-  const { risky: riskyRaw, safe: safeRaw } = computeRiskClassifiedAssets(riskCardOwnerFilter);
-  // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다(두 목록 공통).
+  // [안정적인 종목 목록 제거] 리스크가 감지된 종목만 노출한다는 요청에 따라 safe 목록은 더 이상 화면에
+  // 그리지 않는다 - computeRiskClassifiedAssets()가 여전히 safe를 함께 반환하지만(다른 곳에서 쓸 수도
+  // 있어 반환값 자체는 그대로 둠), 여기서는 risky만 사용한다.
+  const { risky: riskyRaw } = computeRiskClassifiedAssets();
+  // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다.
   const regionThenAmount = (x, y) => {
     const regionRank = (b) => (b.asset.isDomestic === '해외' ? 0 : 1);
     return regionRank(x) - regionRank(y) || y.curAmount - x.curAmount;
   };
   const risky = riskyRaw.sort(regionThenAmount);
-  const safe = safeRaw.sort(regionThenAmount);
-  // [소유자별 필터] 비중(%) 계산 분모도 선택된 소유자 기준 총액으로 맞춘다 - '전체'일 때는 기존과 동일.
-  const totalPortfolioCur = state.assets
-    .filter((a) => riskCardOwnerFilter === 'all' || a.owner === riskCardOwnerFilter)
-    .reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const totalPortfolioCur = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   riskyBadge.textContent = `${risky.length}건`;
-  safeBadge.textContent = `${safe.length}건`;
 
   riskyContainer.innerHTML = risky.length === 0
     ? '<p class="text-xs text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
@@ -1082,30 +1016,9 @@ function renderRiskSection() {
       </div>`;
     }).join('');
 
-  safeContainer.innerHTML = safe.length === 0
-    ? '<p class="text-sm text-slate-400 py-1">아직 안정 상태로 분류된 종목이 없습니다.</p>'
-    : safe.map(({ asset: a, row: r, owners, curAmount }) => {
-      const p = derivePresentation(r);
-      const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
-      return `
-      <div class="flex items-start justify-between gap-2 py-2.5 border-b last:border-b-0 border-emerald-100 dark:border-emerald-900/40">
-        <div class="min-w-0">
-          <p class="text-base font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-xs font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-          <div class="flex items-center gap-1.5 mt-1.5">
-            <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 font-semibold">특이사항 없음</span>
-            <span class="text-xs text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span>
-          </div>
-        </div>
-        <div class="text-right shrink-0 pl-2">
-          <p class="text-base font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
-        </div>
-      </div>`;
-    }).join('');
-
   // 방금 다시 그린 내용 기준으로 펼침 상태를 재적용한다 - 펼쳐진 채로 데이터가 바뀌어도(5분 자동
-  // 갱신 등) 높이가 새 내용에 맞게 갱신되고, 접힌 쪽은 계속 접힌 채로 유지된다.
+  // 갱신 등) 높이가 새 내용에 맞게 갱신되고, 접혀 있으면 계속 접힌 채로 유지된다.
   if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, riskyAccordionOpen);
-  if (safeBody && safeChevron) setAccordionOpen(safeBody, safeChevron, safeAccordionOpen);
 
   lucide.createIcons();
 }
@@ -1113,10 +1026,6 @@ function renderRiskSection() {
 document.getElementById('riskyAccordionBtn').addEventListener('click', () => {
   riskyAccordionOpen = !riskyAccordionOpen;
   setAccordionOpen(document.getElementById('riskyAccordionBody'), document.getElementById('riskyAccordionChevron'), riskyAccordionOpen);
-});
-document.getElementById('safeAccordionBtn').addEventListener('click', () => {
-  safeAccordionOpen = !safeAccordionOpen;
-  setAccordionOpen(document.getElementById('safeAccordionBody'), document.getElementById('safeAccordionChevron'), safeAccordionOpen);
 });
 
 /* -------------------------------------------------------------------------
@@ -1245,25 +1154,6 @@ function bollingerPositionLabel(bollinger) {
   return '중심선 부근(평상시 변동 범위)';
 }
 
-// [종합 1줄 리포트] 감지된 신호를 규칙 기반으로 모아 한 문장으로 요약한다 - buildRiskDiagnosisLine과
-// 동일한 "왜 그런가"를 보여주는 톤. 고지문은 renderStockAnalysisResult 하단에 한 번만 붙이므로 여기서는
-// 중복하지 않는다.
-function buildStockAnalysisReportLine(a, sim) {
-  const flags = [];
-  if (a.rsiState === '과열') flags.push(`단기 과열(RSI ${fmtNum(a.rsi14, 0)})`);
-  if (a.trendLabel === '역배열(하락추세)') flags.push('이동평균 역배열(하락추세)');
-  if (typeof a.week52DrawdownPct === 'number' && a.week52DrawdownPct <= -30) flags.push(`52주 고점 대비 ${fmtNum(Math.abs(a.week52DrawdownPct), 0)}% 낙폭`);
-  if (typeof a.beta === 'number' && a.beta >= 1.3) flags.push(`시장 대비 변동성 높음(베타 ${fmtNum(a.beta, 1)})`);
-  if (sim && (sim.after.topSectorWeight - sim.before.topSectorWeight) >= 10) {
-    flags.push(`편입 시 '${sim.after.topSector}' 섹터 쏠림 심화(${fmtNum(sim.before.topSectorWeight, 0)}%→${fmtNum(sim.after.topSectorWeight, 0)}%)`);
-  }
-  if (sim && (sim.after.topWeightPct - sim.before.topWeightPct) >= 5 && sim.after.topHoldingName === (a.name || a.ticker)) {
-    flags.push(`이 종목이 계좌 내 최대비중(${fmtNum(sim.after.topWeightPct, 0)}%)이 됨`);
-  }
-  if (flags.length === 0) return '기술적 신호와 포트폴리오 영향 모두 특별한 경고 신호가 없는 편입니다.';
-  return `주의 신호: ${flags.join(' · ')}. 편입 전 비중을 신중히 검토하세요.`;
-}
-
 // [📌 핵심 요약 & 현재 상태] 이동평균/RSI/52주 낙폭을 한데 모아 초보자가 한눈에 이해할 수 있는 상태
 // 뱃지 + 쉬운 문장 하나로 압축한다. 🟡(주의)는 과열·역배열·큰 낙폭 중 하나라도 걸릴 때, 🔵(관심)은
 // 과매도(단기 급락 후 바닥권), 그 외는 🟢(안정)로 분류한다 - "사라/팔라"가 아니라 "지금 상태가 어떤지"
@@ -1290,15 +1180,6 @@ function buildStockStatusSummary(a) {
   return { tag, summaryText: trendPhrase + '.' + extra };
 }
 
-// [🏦 거래량 & 시장 관심도] analyzeTickerForModal()이 계산해 둔 volumeTrend(최근 5일 평균 vs 그 전
-// 15일 평균)를 문장으로 옮긴다.
-function buildVolumeTrendText(volumeTrend) {
-  if (!volumeTrend) return '거래량 데이터가 부족해 관심도 추이를 계산할 수 없어요.';
-  if (volumeTrend.direction === 'up') return '최근 사람들의 관심(거래량)이 늘어나며 주가를 받쳐주는 모습이에요.';
-  if (volumeTrend.direction === 'down') return '최근 거래량이 줄어들며 잠시 숨고르기 양상을 보이고 있어요.';
-  return '최근 거래량은 평소와 비슷한 수준을 유지하고 있어요.';
-}
-
 // [🎯 위험 관리 안내] 이 종목의 현재 가격/지표와 무관하게 어떤 종목을 보든 똑같이 적용되는 일반
 // 원칙만 담는다 - 특정 가격대·비중·시점을 지정하면 개인화된 매매 지시가 되므로, 의도적으로 이
 // 종목의 수치를 전혀 참조하지 않는 고정 문구다.
@@ -1322,29 +1203,11 @@ function stockAnalysisStatTile(label, valueText, guideText) {
 
 // [지표별 쉬운 설명] 계산된 상태(state)에 맞춰 매번 다른 문구를 보여준다 - 정적인 정의 하나만 보여주는
 // 것보다, "지금 이 종목이 어떤 상태인지"까지 함께 알려줘야 초보자가 실제로 판단에 쓸 수 있다.
-function maTrendGuideText(trendLabel) {
-  if (trendLabel === '정배열(상승추세)') return '단기>중기>장기 이동평균 순으로 배열되어 상승 흐름이 이어지는 모양이에요.';
-  if (trendLabel === '역배열(하락추세)') return '단기<중기<장기 이동평균 순으로 배열되어 하락 흐름이 이어지는 모양이에요.';
-  if (trendLabel === '혼조(추세 불분명)') return '뚜렷한 방향 없이 등락을 반복하는 구간이라 관망이 무난해요.';
-  return '';
-}
-function rsiGuideText(rsiState) {
-  if (rsiState === '과열') return '70 이상은 단기 과열 구간이에요 - 추격 매수는 주의하세요.';
-  if (rsiState === '과매도') return '30 이하는 과매도 구간이에요 - 단기 반등을 기대해볼 수 있어요.';
-  if (rsiState === '적정') return '30~70 사이는 특별히 과열되거나 침체되지 않은 평이한 구간이에요.';
-  return '';
-}
 function bollingerGuideText(bollinger) {
   if (!bollinger || typeof bollinger.pctB !== 'number') return '';
   return '최근 20일 평균 주가 대비 얼마나 벗어나 있는지 보여주는 지표예요.';
 }
 const MDD_GUIDE_TEXT = '최근 1년 중 고점 대비 가장 크게 떨어졌던 폭이에요 - 손실 위험도를 가늠하는 지표예요.';
-function betaGuideText(beta) {
-  if (typeof beta !== 'number') return '';
-  if (beta >= 1.15) return '베타 1.0 기준, 시장보다 더 민감하게 움직이는 공격형 종목이에요.';
-  if (beta <= 0.85) return '베타 1.0 기준, 시장보다 덜 움직이는 안정적인 방어형 종목이에요.';
-  return '베타 1.0 기준, 시장과 비슷한 정도로 움직이는 종목이에요.';
-}
 
 const STOCK_ANALYSIS_TAG_COLOR_CLASSES = {
   green: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400',
@@ -1382,35 +1245,12 @@ function renderStockAnalysisReportBody(a, sim) {
   </div>
 
   <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 주요 가격대 참고</p>
+    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 기술적 참고</p>
     <div class="grid grid-cols-2 gap-2">
       ${stockAnalysisStatTile('단기 벽 (최근 3개월 최고가)', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 가격이에요 - 이 부근에서 상승 속도가 둔해진 적이 있어요.')}
       ${stockAnalysisStatTile('1차 버팀목 (최근 3개월 최저가)', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 가격이에요 - 이 부근에서 하락이 멈췄던 적이 있어요.')}
-      <div class="col-span-2">${stockAnalysisStatTile('52주 고점 대비', typeof a.week52DrawdownPct === 'number' ? `${fmtNum(a.week52DrawdownPct, 1)}%` : '데이터 부족', '1년 중 가장 높았던 가격 대비 지금 얼마나 내려와 있는지 보여줘요.')}</div>
-    </div>
-  </div>
-
-  <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📈 기술적 분석</p>
-    <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('이동평균 배열(20/60/120일)', a.trendLabel || '데이터 부족', maTrendGuideText(a.trendLabel))}
-      ${stockAnalysisStatTile('과열지수 RSI(14)', typeof a.rsi14 === 'number' ? `${fmtNum(a.rsi14, 0)} (${a.rsiState})` : '데이터 부족', rsiGuideText(a.rsiState))}
       <div class="col-span-2">${stockAnalysisStatTile('볼린저 밴드 위치', bollingerPositionLabel(a.bollinger), bollingerGuideText(a.bollinger))}</div>
-    </div>
-  </div>
-
-  <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🏦 거래량 &amp; 시장 관심도</p>
-    <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5">
-      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(buildVolumeTrendText(a.volumeTrend))}</p>
-    </div>
-  </div>
-
-  <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">⚠️ 리스크 분석</p>
-    <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', typeof a.mdd === 'number' ? MDD_GUIDE_TEXT : '')}
-      ${stockAnalysisStatTile('베타(시장 민감도)', typeof a.beta === 'number' ? `${fmtNum(a.beta, 2)}배` : '데이터 부족', betaGuideText(a.beta))}
+      <div class="col-span-2">${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', typeof a.mdd === 'number' ? MDD_GUIDE_TEXT : '')}</div>
     </div>
   </div>
 
@@ -1421,11 +1261,6 @@ function renderStockAnalysisReportBody(a, sim) {
     <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 space-y-1">
       ${STOCK_ANALYSIS_RISK_TIPS.map((tip, i) => `<p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${i + 1}. ${escapeHtml(tip)}</p>`).join('')}
     </div>
-  </div>
-
-  <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-2.5">
-    <p class="text-xs font-semibold text-brand-700 dark:text-brand-300">📝 종합 진단</p>
-    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">${escapeHtml(buildStockAnalysisReportLine(a, sim))}</p>
   </div>
 
   <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
@@ -1493,7 +1328,7 @@ let stockAnalysisRequestToken = 0;
 async function runStockAnalysis() {
   const tickerInput = document.getElementById('stockAnalysisTickerInput');
   const amountInput = document.getElementById('stockAnalysisAmountInput');
-  const raw = tickerInput.value.trim();
+  let raw = tickerInput.value.trim();
   const errorEl = document.getElementById('stockAnalysisErrorMsg');
   const resultEl = document.getElementById('stockAnalysisResult');
   const loadingEl = document.getElementById('stockAnalysisLoading');
@@ -1513,6 +1348,14 @@ async function runStockAnalysis() {
       errorEl.classList.remove('hidden');
       return;
     }
+    // [자동완성 1순위 자동 선택] 완전일치는 없지만 부분일치 후보가 정확히 1개면(candidates.length===1),
+    // 사용자가 드롭다운을 따로 클릭하지 않고 [확인]/Enter만 눌러도 그 종목으로 바로 분석을 진행한다.
+    // findTickerByKoreanName 자체도 "이름에 부분일치하는 고유 티커가 1개"면 이미 자동 매칭하지만,
+    // 그 판정 기준(이름만 부분일치)과 이 후보 목록의 판정 기준(이름+티커, 대소문자 무시)이 완전히
+    // 같지는 않아 서로 어긋나는 극히 드문 경우를 대비한 안전망이다 - 후보의 정식 이름으로 바꿔치기해
+    // 아래 analyzeTickerForModal이 그 이름으로 다시 정확히 매칭하도록 한다.
+    raw = candidates[0].name;
+    tickerInput.value = raw;
   } else {
     hideStockAnalysisSuggestions();
   }
@@ -1546,7 +1389,12 @@ function openStockAnalysisModal() {
   document.getElementById('stockAnalysisAmountInput').value = '';
   hideStockAnalysisSuggestions();
   pushModalHistoryState();
-  setTimeout(() => document.getElementById('stockAnalysisTickerInput').focus(), 50);
+  // [모바일 스크롤 위치 버그 수정] 이전 검색 결과가 길어서 스크롤을 내린 채로 닫았다가 다시 열면
+  // 그 위치가 그대로 남아있던 문제 - 매번 최상단으로 되돌린다. 검색창 자동 포커스(기존 동작, 바로
+  // 입력할 수 있게 함)는 유지하되 preventScroll로 포커스 이동이 스크롤을 다시 끌어내리지 않게 막는다.
+  const body = document.getElementById('stockAnalysisModalBody');
+  if (body) body.scrollTop = 0;
+  setTimeout(() => document.getElementById('stockAnalysisTickerInput').focus({ preventScroll: true }), 50);
 }
 function closeStockAnalysisModal(viaBackButton) {
   stockAnalysisRequestToken++; // 진행 중이던 조회가 있었다면 그 응답을 무시 처리

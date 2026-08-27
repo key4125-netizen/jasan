@@ -501,8 +501,14 @@ function getBenchmarkKeyForAsset(a) {
   return getBenchmarkKeyForTicker(sanitizeTicker(a.ticker).yahooTicker);
 }
 
+// [버그 수정 - 세제혜택계좌 종목 리스크 진단 누락] 원래 isRebalanceEligibleAccount(연금저축/IRP/ISA
+// 제외)까지 걸려 있었다 - 리밸런싱 대상 선정 기준(자유롭게 매도하기 어려운 계좌는 제외)을 그대로
+// 재사용한 것인데, 리스크 진단은 "이 종목이 얼마나 위험한가"를 보는 것이라 계좌의 세제 혜택 여부와
+// 무관하다(당장 리밸런싱 실행은 못 해도 그 종목이 위험한지는 여전히 알고 싶은 정보다). 이 필터 때문에
+// 연금저축 등에 담긴 주식/ETF가 "리스크 감지"에도 "안정적인 종목"에도 전혀 나타나지 않고 조용히
+// 통째로 빠지는 문제가 있었다 - 이제 계좌 구분과 무관하게 주식/ETF 전부를 진단 대상으로 삼는다.
 function riskEligibleAssets() {
-  return state.assets.filter((a) => isRebalanceEligibleAccount(a) && RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '' && num(a.quantity) > 0);
+  return state.assets.filter((a) => RISK_ELIGIBLE_CATEGORIES.includes(a.category) && String(a.ticker ?? '').trim() !== '' && num(a.quantity) > 0);
 }
 
 /* -------------------------------------------------------------------------
@@ -704,7 +710,7 @@ const KR_STOCK_NAMES = {
   '036570.KS': '엔씨소프트', '352820.KS': '하이브', '138040.KS': '메리츠금융지주', '030200.KS': 'KT',
   '017670.KS': 'SK텔레콤', '033780.KS': 'KT&G', '005940.KS': 'NH투자증권', '016360.KS': '삼성증권',
   '039490.KS': '키움증권', '012450.KS': '한화에어로스페이스', '042660.KS': '한화오션', '004020.KS': '현대제철',
-  '001040.KS': 'CJ', '097950.KS': 'CJ제일제당', '128940.KS': '한미약품',
+  '001040.KS': 'CJ', '097950.KS': 'CJ제일제당', '128940.KS': '한미약품', '042700.KS': '한미반도체',
   // 코스닥 주요종목
   '247540.KQ': '에코프로비엠', '086520.KQ': '에코프로', '196170.KQ': '알테오젠', '328130.KQ': '루닛',
   '263750.KQ': '펄어비스', '293490.KQ': '카카오게임즈', '041510.KQ': '에스엠', '035900.KQ': 'JYP Ent.',
@@ -1031,16 +1037,12 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
   return { topWeight, portfolioVolatilityPct, portfolioMDDPct, var95Pct, cvarPct, portfolioBeta, subScores, riskScore };
 }
 
-// 포트폴리오 전체의 리스크 지표를 계산한다 - 실패해도(네트워크 전면 실패 등) null을 반환할 뿐 예외를
-// 던지지 않아 refreshPricesAndRates()의 나머지 갱신을 막지 않는다.
-// [RISK 카드 - 소유자별 필터] ownerFilter를 생략하거나 'all'이면 지금까지처럼 가구 전체 기준이고,
-// 특정 소유자명을 넘기면 그 소유자 보유분(riskEligibleAssets 기준)만으로 같은 계산을 전부 다시 돈다 -
-// 종목 단위 1년 시세 이력은 getCachedDailyCloses가 이미 캐시해 둔 값을 재사용하므로 네트워크 재조회가
-// 없다(같은 날 안에서는 사실상 즉시 계산된다).
-async function computeAdvancedRiskMetrics(ownerFilter) {
+// 포트폴리오 전체(가구 전체 기준, 소유자별 필터는 요청에 따라 제거됨)의 리스크 지표를 계산한다 -
+// 실패해도(네트워크 전면 실패 등) null을 반환할 뿐 예외를 던지지 않아 refreshPricesAndRates()의
+// 나머지 갱신을 막지 않는다.
+async function computeAdvancedRiskMetrics() {
   try {
-    let assets = riskEligibleAssets();
-    if (ownerFilter && ownerFilter !== 'all') assets = assets.filter((a) => a.owner === ownerFilter);
+    const assets = riskEligibleAssets();
     if (assets.length === 0) return null;
     const totalCur = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
     if (totalCur === 0) return null;
@@ -1339,20 +1341,6 @@ async function analyzeTickerForModal(rawInput) {
   const recentHigh = recentWindow.length ? Math.max(...recentWindow) : null;
   const recentLow = recentWindow.length ? Math.min(...recentWindow) : null;
 
-  // [거래량 & 시장 관심도] 최근 5거래일 평균 거래량을 그 이전 15거래일 평균과 비교해 "관심이 늘고
-  // 있는지/줄고 있는지"를 판정한다 - RISK 관리 카드의 20일 평균 거래량 급증 판정과는 별개로, 여기서는
-  // "최근으로 갈수록 관심이 느는 추세인지"를 보고 싶어서 최근-이전 두 구간을 직접 비교한다.
-  const volumes = data.volumes;
-  let volumeTrend = null;
-  if (Array.isArray(volumes) && volumes.length >= 20) {
-    const recent5 = volumes.slice(-5);
-    const prior15 = volumes.slice(-20, -5);
-    const recentAvg = recent5.reduce((a, b) => a + b, 0) / recent5.length;
-    const priorAvg = prior15.reduce((a, b) => a + b, 0) / prior15.length;
-    const ratio = priorAvg > 0 ? recentAvg / priorAvg : 1;
-    volumeTrend = { recentAvg, priorAvg, direction: ratio >= 1.3 ? 'up' : (ratio <= 0.7 ? 'down' : 'flat') };
-  }
-
   // [종목명 표시 개선] 한글 이름으로 안 찾고 티커를 직접 입력한 경우(예: '273130', 'a128940', 'spck')
   // 에도, 그 티커가 KR_STOCK_NAMES/learnedTickerNames에 있거나 API가 실제 이름(국내는 Naver의
   // stockName, 해외는 Yahoo meta.longName/shortName)을 내려줬으면 원본 입력 그대로가 아니라 정식
@@ -1379,7 +1367,7 @@ async function analyzeTickerForModal(rawInput) {
     benchmarkKey,
     week52High,
     week52DrawdownPct: week52High > 0 ? ((currentPrice - week52High) / week52High) * 100 : null,
-    recentHigh, recentLow, volumeTrend
+    recentHigh, recentLow
   };
 }
 

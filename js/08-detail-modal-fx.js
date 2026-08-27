@@ -97,6 +97,19 @@ function attachRiskDiagnosisToDetailModal(ticker) {
   body.innerHTML = buildIndividualRiskDetailHtml(holding, weightPct);
 }
 
+// [모바일 스크롤 위치 버그 수정] 이 모달은 닫아도 DOM에서 제거되지 않고 그냥 hidden 처리만 되므로,
+// 예전에 스크롤을 내린 채로 닫았다가 다른 종목으로 다시 열면 스크롤이 그 위치(예: "폭락장 방어
+// 성적표" 카드 근처)에 그대로 남아있는 채로 나타나는 문제가 있었다 - 3가지 진입 경로(단일/그룹/읽기
+// 전용) 전부 이 함수를 맨 먼저 호출해 스크롤을 최상단으로 되돌린다. 닫기 버튼(이미 포커스 가능한
+// 실제 button 요소)에 포커스를 옮겨서 모바일 스크린리더/키보드 사용자에게도 모달이 열렸음을 알리되,
+// { preventScroll: true }로 포커스 이동 자체가 스크롤을 다시 끌어내리지 않게 막는다.
+function resetAssetDetailModalScroll() {
+  const body = document.getElementById('assetDetailModalBody');
+  if (body) body.scrollTop = 0;
+  const closeBtn = document.getElementById('closeAssetDetailModalBtn');
+  if (closeBtn) closeBtn.focus({ preventScroll: true });
+}
+
 function openAssetDetailModal(id) {
   const a = state.assets.find((x) => x.id === id);
   if (!a) return;
@@ -129,6 +142,7 @@ function openAssetDetailModal(id) {
   document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailEditBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailModal').classList.remove('hidden');
+  resetAssetDetailModalScroll();
   pushModalHistoryState();
   renderAssetDetailChart(a);
   attachRiskDiagnosisToDetailModal(a.ticker);
@@ -228,6 +242,7 @@ function openAssetDetailModalGroup(members) {
   document.getElementById('assetDetailEditBtn').classList.add('hidden');
 
   document.getElementById('assetDetailModal').classList.remove('hidden');
+  resetAssetDetailModalScroll();
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart(priced, avgBuyPriceNative, byOwnerAvgPriceNative); // 차트는 대표(시세 정상 조회된) 멤버의 티커/통화 기준으로 그리되, 평단가선은 통합 평균 매수단가를 쓰고 범례에 소유자별 평단가를 병기한다
@@ -328,6 +343,7 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
   document.getElementById('assetDetailEditBtn').classList.add('hidden');
   document.getElementById('assetDetailModal').classList.remove('hidden');
+  resetAssetDetailModalScroll();
   pushModalHistoryState();
   lucide.createIcons();
   renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
