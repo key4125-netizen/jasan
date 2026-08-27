@@ -220,7 +220,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v145</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v146</p>
           </div>
         </div>
 
@@ -1834,8 +1834,20 @@
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
 
-      <label class="col-span-2 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">종목명/티커</span>
+      <!-- [수동입력 토글] 기본은 검색 모드(readonly - 입력칸/돋보기를 누르면 개별주식 검색 팝업이 뜬다,
+           마스터 DB 기반 검색은 searchTickerMaster/js/04 참고) - 현금·부동산·예적금처럼 시세가 없는
+           자산은 이 체크박스를 켜서 이름을 자유롭게 직접 입력할 수 있다(티커 없이 저장됨). 원래 <label>
+           하나가 이름칸 전체를 감쌌지만, 이제 체크박스라는 별도 컨트롤이 하나 더 생겨 그 구조를 그대로
+           쓰면 라벨이 두 컨트롤을 동시에 가리키는 무효한 중첩이 되므로 바깥은 <div>로 바꾸고, 체크박스만
+           자신의 <label>로 따로 감쌌다. -->
+      <div class="col-span-2 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 dark:text-slate-400">종목명/티커</span>
+          <label class="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+            <input type="checkbox" id="tx_manualEntryToggle" class="w-3.5 h-3.5 accent-brand-600">
+            수동입력
+          </label>
+        </div>
         <div class="flex gap-1.5 mt-1">
           <input id="tx_name" type="text" placeholder="검색 버튼으로 선택하거나 직접 입력" required
             class="flex-1 min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -1845,7 +1857,7 @@
           </button>
         </div>
         <p id="tx_tickerHint" class="text-[10px] text-slate-400 mt-1">&nbsp;</p>
-      </label>
+      </div>
 
       <label class="col-span-1 text-xs">
         <span id="tx_quantityLabel" class="text-slate-500 dark:text-slate-400">수량</span>

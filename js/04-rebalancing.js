@@ -358,18 +358,47 @@ async function searchYahooStocks(query) {
     .map((q) => ({ symbol: q.symbol, name: q.shortname || q.longname || q.symbol, exch: q.exchDisp || q.exchange || '', type: q.quoteType }));
 }
 
-async function searchStockCandidates(query) {
-  const local = searchLocalHoldings(query);
-  const remote = await searchYahooStocks(query);
-  const seen = new Set(local.map((r) => r.symbol.toUpperCase()));
-  const merged = [...local];
-  remote.forEach((r) => {
-    const key = r.symbol.toUpperCase();
+// [종목 마스터 검색] tickerMasterRecords(js/09, GitHub Actions가 매달 갱신하는 국내 코스피/코스닥
+// 전종목 + 미국 나스닥/뉴욕/아멕스 주요종목)에서 이름/티커 부분일치 후보를 찾는다. 이 파일(js/04)이
+// js/09보다 먼저 로드되지만, tickerMasterRecords 참조는 함수 "본문" 안에만 있어 실제 호출 시점
+// (사용자가 검색창에 입력한 뒤, 즉 전체 스크립트가 다 로드된 뒤)에는 이미 값이 채워져 있다 - 이
+// 프로젝트가 다른 곳(예: js/10)에서도 쓰는 것과 같은 로드 순서 안전 패턴. Yahoo 검색과 달리 로컬에
+// 이미 캐싱된 데이터라 네트워크 없이 즉시 결과가 나온다.
+function searchTickerMaster(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const results = [];
+  for (const r of tickerMasterRecords) {
+    if (results.length >= 15) break;
+    if (!(r._nameKrLower.includes(q) || r._nameEnLower.includes(q) || r._tickerLower.includes(q))) continue;
+    results.push({ symbol: r.yahooTicker, name: r.nameKr || r.nameEn, exch: r.exchange, type: r.market === 'KR' ? '국내' : '해외' });
+  }
+  return results;
+}
+
+// [검색 결과 소스 병합 - 중복 제거] 티커가 있는 결과는 티커(대문자)로, 티커 없는 결과(부동산/채권 등
+// 보유 자산)는 소유자+계좌구분+이름으로 중복을 가른다 - searchLocalHoldings() 내부의 중복 판정 기준과
+// 반드시 같아야 한다(그렇지 않으면 계좌가 다른 두 무-티커 자산이 같은 항목으로 잘못 합쳐진다).
+function stockSearchResultKey(r) {
+  return r.symbol ? r.symbol.toUpperCase() : `NOTICKER:${r.owner || ''}__${r.accountType || ''}__${r.name}`;
+}
+function mergeStockSearchResults(...sourceArrays) {
+  const seen = new Set();
+  const merged = [];
+  sourceArrays.flat().forEach((r) => {
+    const key = stockSearchResultKey(r);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(r);
   });
   return merged.slice(0, 15);
+}
+
+async function searchStockCandidates(query) {
+  const local = searchLocalHoldings(query);
+  const master = searchTickerMaster(query);
+  const remote = await searchYahooStocks(query);
+  return mergeStockSearchResults(local, master, remote);
 }
 
 // 티커 접미사(.KS/.KQ)로 국내/해외를 판별한다 - sanitizeTicker와 동일한 기준(getMarketKeyForTicker 등
@@ -452,8 +481,15 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
   document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 중...</p>';
   stockSearchDebounceTimer = setTimeout(async () => {
     const seq = ++stockSearchRequestSeq;
-    const results = await searchStockCandidates(query);
-    renderStockSearchResults(results, seq);
+    // [즉시 표시] 보유 자산 + 종목 마스터는 로컬 데이터라 네트워크 없이 즉시 결과가 나온다 - Yahoo
+    // 검색(느릴 때 8~12초까지 걸림)을 기다리지 않고 먼저 보여준 뒤, Yahoo 응답이 도착하면 새로 찾은
+    // 종목만 추가로 이어붙인다. 결과가 하나도 없으면(로컬/마스터 둘 다 무매칭) "검색 중..." 문구를
+    // 그대로 둔다 - 비워서 렌더링하면 Yahoo 결과가 아직 안 왔는데도 "결과 없음"이 잠깐 깜빡여 보인다.
+    const instant = mergeStockSearchResults(searchLocalHoldings(query), searchTickerMaster(query));
+    if (instant.length > 0) renderStockSearchResults(instant, seq);
+    const remote = await searchYahooStocks(query);
+    const merged = mergeStockSearchResults(instant, remote);
+    renderStockSearchResults(merged, seq);
   }, 350);
 });
 
