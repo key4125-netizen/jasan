@@ -166,7 +166,32 @@ document.getElementById('chartZoomModal').addEventListener('click', (e) => {
 /* -------------------------------------------------------------------------
  * 10-1. 탭 전환
  * ---------------------------------------------------------------------- */
+// [버그 수정 - 탭 이동 후에도 아코디언이 펼쳐진 채로 남는 문제] 아코디언을 펼친 채로 다른 탭에
+// 갔다가 돌아오면 그대로 펼쳐져 있던 문제 - 탭을 전환할 때마다 앱 안의 모든 드롭다운/아코디언을
+// 기본(접힘) 상태로 되돌린다. investmentDetail/transactions/rebalance 탭의 아코디언은 상태 변수만
+// 초기화해도 충분하다 - switchTab() 아래에서 그 탭의 render 함수가 곧바로 다시 호출되면서(이미 각
+// render 함수 안에 setAccordionOpen(..., 그 상태 변수) 호출이 내장돼 있음) 자연히 접힌 채로 다시
+// 그려진다. 반면 대시보드 탭(RISK 관리/Top5 보유종목)의 아코디언은 탭을 전환해도 renderAll()이 당장
+// 다시 호출되지 않으므로, 이미 그려져 있는 DOM을 여기서 직접 접어준다.
+function resetAllAccordionsOnTabSwitch() {
+  riskyAccordionOpen = false;
+  const riskyBody = document.getElementById('riskyAccordionBody');
+  const riskyChevron = document.getElementById('riskyAccordionChevron');
+  if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, false);
+
+  topHoldingsAccordionOpen.domestic = false;
+  topHoldingsAccordionOpen.foreign = false;
+  reapplyTopHoldingsAccordionHeights();
+
+  Object.keys(rebalanceGuideAccordionOpen).forEach((k) => { rebalanceGuideAccordionOpen[k] = false; });
+  detailCardAccordionOpen.rate = false;
+  detailCardAccordionOpen.allocation = false;
+  txListAccordionOpen = false;
+  Object.keys(assetGroupAccordionOpen).forEach((k) => { assetGroupAccordionOpen[k] = false; });
+}
+
 function switchTab(tab) {
+  resetAllAccordionsOnTabSwitch();
   state.activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
   document.getElementById('tabPanelDashboard').classList.toggle('hidden', tab !== 'dashboard');

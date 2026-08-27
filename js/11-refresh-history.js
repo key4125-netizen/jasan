@@ -139,9 +139,6 @@ async function refreshPricesAndRates() {
   // null이 될 뿐 나머지 갱신엔 영향 없다. (구 지수/20일선 개별 갱신 로직은 이 계산 하나로 흡수되어 제거됨)
   const riskMetricsPromise = pricesPromise.then(() => computeAdvancedRiskMetrics()).then((m) => {
     state.advancedRiskMetrics = m;
-    // [소유자별 필터 캐시 무효화] 최신 시세로 가구 전체 지표를 다시 계산했으니, 소유자별로 캐시해 둔
-    // 지표도 낡은 시세 기준이 됐다 - 전부 비워서 다음에 그 소유자 탭을 보여줄 때 새로 계산하게 한다.
-    riskCardOwnerMetricsCache = {};
   }).catch(() => {});
   // [핵심종목 실시간 팝업 - 지수도 이 갱신 주기에 함께 조회] 보유 종목과 마찬가지로 코스피/코스닥/
   // S&P500/나스닥/다우존스도 여기서 한 번에 받아 state.marketIndexCache에 채워둔다 - 그래야 핵심종목
