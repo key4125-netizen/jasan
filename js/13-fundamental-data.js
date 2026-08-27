@@ -39,6 +39,33 @@ async function fetchKisPriceSnapshot(code) { return kisProxyFetch('/api/kis/pric
 async function fetchKisFundamentalsRaw(code) { return kisProxyFetch('/api/kis/fundamentals', code); }
 async function fetchKisInvestorFlowRaw(code) { return kisProxyFetch('/api/kis/investor-flow', code); }
 
+// [채권 ISIN 추출] 국내주식의 extractKisDomesticCode(6자리)와 형식이 완전히 달라 별도 함수로 뺐다 -
+// isBondTicker(js/01)가 이미 검증한 12자리 ISIN 정규식을 그대로 재사용한다.
+function extractBondIsin(rawTicker) {
+  const t = String(rawTicker ?? '').trim().toUpperCase();
+  return isBondTicker(t) ? t : null;
+}
+async function fetchKisBondPriceSnapshot(isin) { return kisProxyFetch('/api/kis/bond-price', isin); }
+async function fetchKisBondInfoRaw(isin) { return kisProxyFetch('/api/kis/bond-info', isin); }
+
+// [채권 발행정보 캐시] fundamentalCache(위 getCachedKisData)와 달리 "하루 지나면 재조회"가 아니라
+// "한 번 성공하면 새로고침 전까지 그대로 재사용"한다 - 만기일/표면금리는 발행 후 절대 안 바뀌는 값이라
+// 매일 다시 받을 이유가 없다(Worker 쪽 KV 캐시도 30일로 길게 잡아둠, cloudflare-worker-kis-proxy.js
+// 참고). 조회 실패(null)는 캐시하지 않아 다음 호출 때 다시 시도된다.
+const bondInfoFetchInFlight = {};
+async function getCachedBondInfo(isin) {
+  if (state.bondInfoCache[isin]) return state.bondInfoCache[isin];
+  if (bondInfoFetchInFlight[isin]) return bondInfoFetchInFlight[isin];
+  const promise = (async () => {
+    const info = await fetchKisBondInfoRaw(isin);
+    if (info) state.bondInfoCache[isin] = info;
+    delete bondInfoFetchInFlight[isin];
+    return info;
+  })();
+  bondInfoFetchInFlight[isin] = promise;
+  return promise;
+}
+
 // [당일 캐시] getCachedDailyCloses(js/09)와 완전히 같은 패턴 - 하루 안에는 다시 조회하지 않는다.
 // 세 가지를 동시에 요청해 왕복 시간을 줄인다.
 // [동시 호출 중복 방지] 리스크 정밀 진단 카드(수급 신호등 갱신용)와 재무 펀더멘털 섹션이 같은 종목

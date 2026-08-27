@@ -11,6 +11,13 @@
 // 권한이 실전투자용이라 하더라도 이 Worker 코드에는 아예 만들지 않는다 - "권한이 있어도 코드가
 // 없으면 실행될 수 없다"가 이 프로젝트의 보안 원칙이다.
 //
+// [2026-08 - 개별 채권 라우트 추가] /api/kis/bond-price(실시간 매매단가+수익비율), /api/kis/bond-info
+// (만기일/표면금리/이자지급일 등 발행정보, 훨씬 긴 캐시 TTL)를 추가했다 - ticker 파라미터는 6자리
+// 국내주식코드 대신 12자리 채권표준코드(ISIN, 예: KR2033022D33)를 받는다. 두 라우트의 응답 필드
+// 추출부(handleBondPrice/handleBondInfo)는 KIS 응답을 실제로 받아본 적 없는 상태(개발 환경 네트워크
+// 차단)에서 만든 추정치다 - 각 함수 바로 위 주석 참고, raw 필드로 원본을 항상 함께 내려주니 실배포
+// 후 필드명이 틀린 게 확인되면 그 함수만 고치면 된다.
+//
 // [배포 절차]
 // 1. Cloudflare 대시보드 -> Workers & Pages -> Create -> "Create Worker"
 // 2. 편집기에 이 파일 내용을 그대로 붙여넣고 Deploy
@@ -38,6 +45,9 @@ const TOKEN_KV_KEY = 'kis_access_token';
 // 매번 다시 때리지 않고 KV에 저장된 값을 그대로 돌려준다 - 재무제표/수급 동향은 하루 중 자주 바뀌는
 // 데이터가 아니라 20분 정도 지연되어 보여도 실사용에 문제가 없다.
 const RESPONSE_CACHE_TTL_SECONDS = 20 * 60; // 20분
+// [채권 발행정보 전용 - 훨씬 긴 TTL] 만기일/표면금리 등은 채권이 발행된 뒤 절대 바뀌지 않는 값이라
+// 20분마다 다시 받을 이유가 없다 - 30일로 넉넉히 잡는다(가격 라우트는 위 20분 TTL 그대로 사용).
+const BOND_INFO_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30일
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -56,6 +66,12 @@ function jsonResponse(obj, status = 200) {
 // KIS 쪽에서도 정상 조회가 안 되므로 여기서 미리 걸러 불필요한 상위 API 호출을 막는다.
 function isValidDomesticCode(code) {
   return /^\d{6}$/.test(code);
+}
+
+// [채권 ISIN 검증] 12자리 표준코드(ISO 6166 - 국가코드 2자 + 영숫자 9자 + 검사숫자 1자, 예:
+// 'KR2033022D33'). 프론트엔드(js/01-core-state.js isBondTicker)와 정확히 같은 정규식을 쓴다.
+function isValidBondIsin(code) {
+  return /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(code);
 }
 
 // [토큰 발급/캐시] KV에 캐시된 토큰이 있고 만료 10분 이상 남았으면 그대로 재사용, 아니면 새로 발급받아
@@ -241,11 +257,61 @@ async function handleInvestorFlow(env, code) {
   };
 }
 
+// [채권 실시간 시세] KIS 공식 GitHub 샘플(domestic_bond/inquire_price)의 독스트링 예제
+// (`inquire_price('B', 'KR2033022D33')`)를 1차 소스로 확인해 시장구분코드 'B'(Bond)와 ISIN을 그대로
+// FID_INPUT_ISCD에 넣는 방식임을 검증했다. tr_id/URL도 같은 샘플에서 확인.
+// [응답 필드명 - 미검증 경고] 이 Worker를 만든 개발 환경은 KIS 서버로 실제 호출이 막혀 있어(네트워크
+// 차단) 아래 필드 추출은 KIS 공식 샘플의 "컬럼명 매핑 딕셔너리"(사람이 읽을 한글 라벨 목록일 뿐,
+// 실제 JSON 응답의 영문 키 이름이 아님)만 보고 기존 주식 API의 로마자 축약 관례(stck_prpr 등)를
+// 그대로 유추해 만든 추정치다. 첫 실배포 후 이 라우트를 한 번 호출해 실제 응답을 확인하면 아래
+// 필드명이 몇 개 틀렸을 가능성이 높다 - 그래서 추정 필드 추출과 별개로 원본 output 전체(raw)도 항상
+// 함께 내려준다. 프론트엔드는 추정 필드가 비어있으면(null) raw를 참고해 고칠 수 있다.
+async function handleBondPrice(env, isin) {
+  const data = await callKis(env, '/uapi/domestic-bond/v1/quotations/inquire-price', 'FHKBJ773400C0', {
+    FID_COND_MRKT_DIV_CODE: 'B',
+    FID_INPUT_ISCD: isin
+  });
+  const o = data.output || {};
+  return {
+    price: numOrNull(o.bond_prpr ?? o.prpr), // 채권현재가(1만원 액면 기준 매매단가)
+    changePct: numOrNull(o.prdy_ctrt),
+    prevClose: numOrNull(o.bond_prdy_clpr ?? o.prdy_clpr),
+    high: numOrNull(o.bond_hgpr ?? o.hgpr),
+    low: numOrNull(o.bond_lwpr ?? o.lwpr),
+    yieldPct: numOrNull(o.bond_ytm ?? o.prfi_rt ?? o.srfc_inrt), // 수익비율(YTM류) - 필드명 미확정
+    raw: o,
+    fetchedAt: Date.now()
+  };
+}
+
+// [채권 발행정보(정적)] 만기일/표면금리/이표 관련 필드는 채권이 발행된 뒤 절대 바뀌지 않는 값이라
+// getCachedOrFetch 호출 시 아래 route dispatcher에서 훨씬 긴 캐시 TTL을 준다(가격과 다른 캐시 정책).
+// 필드명 미검증 경고는 handleBondPrice와 동일 - raw를 항상 함께 내려준다.
+async function handleBondInfo(env, isin) {
+  const data = await callKis(env, '/uapi/domestic-bond/v1/quotations/search-bond-info', 'CTPF1114R', {
+    PDNO: isin,
+    PRDT_TYPE_CD: '302'
+  });
+  const o = data.output || {};
+  return {
+    name: o.prdt_name ?? o.bond_name ?? null,
+    issuer: o.issu_istt_name ?? o.isur_name ?? null,
+    maturityDate: o.rdpt_date ?? o.expd_date ?? o.mtrt_date ?? null, // 상환일자(만기)
+    couponRatePct: numOrNull(o.srfc_inrt ?? o.bond_srfc_inrt), // 표면이율
+    paymentFreqMonths: numOrNull(o.int_calc_mcnt ?? o.intt_cmpt_prd_mcnt), // 이자계산기간개월수(이표주기)
+    prevCouponDate: o.bf_dtm_int_pymt_dt ?? o.prv_int_pay_dt ?? null, // 직전이자지급일자
+    nextCouponDate: o.nxdy_int_pymt_dt ?? o.nxt_int_pay_dt ?? null, // 차기이자지급일자
+    issueDate: o.iss_date ?? o.issu_date ?? null, // 발행일자
+    raw: o,
+    fetchedAt: Date.now()
+  };
+}
+
 // [응답 KV 캐싱] 같은 종목/라우트를 짧은 시간 안에 다시 요청하면(같은 종목 상세를 재방문하는 등) KIS를
 // 다시 호출하지 않고 KV에 저장된 값을 그대로 돌려준다. KV 조회/저장이 실패해도(일시적 KV 장애 등)
 // 캐시는 어디까지나 최적화일 뿐이므로 무시하고 정상적으로 KIS를 호출해 응답한다 - 캐시 문제로 기능
 // 자체가 죽으면 안 된다.
-async function getCachedOrFetch(env, cacheKey, fetchFn) {
+async function getCachedOrFetch(env, cacheKey, fetchFn, ttlSeconds) {
   try {
     const cached = await env.KIS_KV.get(cacheKey, 'json');
     if (cached) return cached;
@@ -253,7 +319,7 @@ async function getCachedOrFetch(env, cacheKey, fetchFn) {
 
   const fresh = await fetchFn();
   try {
-    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: RESPONSE_CACHE_TTL_SECONDS });
+    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: ttlSeconds || RESPONSE_CACHE_TTL_SECONDS });
   } catch (e) { /* KV 저장 실패해도 응답 자체는 정상 반환 */ }
   return fresh;
 }
@@ -275,7 +341,12 @@ export default {
 
     const url = new URL(request.url);
     const code = (url.searchParams.get('ticker') || '').trim();
-    if (!isValidDomesticCode(code)) {
+    // [채권 라우트는 별도 검증] ISIN(12자리)은 6자리 국내주식코드 형식과 아예 다르므로, 이 두 라우트만
+    // isValidBondIsin으로 따로 걸러낸다 - 나머지(주식/재무/수급) 라우트는 기존 그대로 6자리만 허용.
+    const isBondRoute = url.pathname === '/api/kis/bond-price' || url.pathname === '/api/kis/bond-info';
+    if (isBondRoute) {
+      if (!isValidBondIsin(code)) return jsonResponse({ error: 'bad_isin' }, 400);
+    } else if (!isValidDomesticCode(code)) {
       return jsonResponse({ error: 'bad_ticker' }, 400);
     }
 
@@ -291,6 +362,14 @@ export default {
       }
       if (url.pathname === '/api/kis/investor-flow') {
         const data = await getCachedOrFetch(env, `kis_cache:investor-flow:${code}`, () => handleInvestorFlow(env, code));
+        return jsonResponse(data);
+      }
+      if (url.pathname === '/api/kis/bond-price') {
+        const data = await getCachedOrFetch(env, `kis_cache:bond-price:${code}`, () => handleBondPrice(env, code));
+        return jsonResponse(data);
+      }
+      if (url.pathname === '/api/kis/bond-info') {
+        const data = await getCachedOrFetch(env, `kis_cache:bond-info:${code}`, () => handleBondInfo(env, code), BOND_INFO_CACHE_TTL_SECONDS);
         return jsonResponse(data);
       }
       return jsonResponse({ error: 'not_found' }, 404);
