@@ -15,8 +15,8 @@
 // 1. Cloudflare 대시보드 -> Workers & Pages -> Create -> "Create Worker"
 // 2. 편집기에 이 파일 내용을 그대로 붙여넣고 Deploy
 // 3. Settings -> Variables -> "KV Namespace Bindings"에서 새 KV 네임스페이스를 하나 만들고,
-//    바인딩 이름을 반드시 KIS_KV로 지정(아래 코드가 이 이름을 그대로 참조한다) - KIS 접근토큰을
-//    캐싱해 두는 용도로만 쓰인다(다른 데이터는 저장하지 않음).
+//    바인딩 이름을 반드시 KIS_KV로 지정(아래 코드가 이 이름을 그대로 참조한다) - KIS 접근토큰
+//    캐싱과, 종목/라우트별 응답 캐싱(RESPONSE_CACHE_TTL_SECONDS 참고) 두 가지 용도로 쓰인다.
 // 4. Settings -> Variables -> "Secrets"(암호화 변수)에 아래 3개를 등록한다(절대 코드에 직접 쓰지
 //    않는다 - 이 파일에는 어떤 키/시크릿 값도 없다):
 //      - KIS_APP_KEY      : 한국투자증권 개발자센터에서 발급받은 앱키
@@ -34,6 +34,10 @@
 
 const KIS_BASE_URL = 'https://openapi.koreainvestment.com:9443';
 const TOKEN_KV_KEY = 'kis_access_token';
+// [응답 캐싱 TTL] 같은 종목을 짧은 시간 안에 여러 번 조회해도(같은 종목 상세를 다시 여는 등) KIS를
+// 매번 다시 때리지 않고 KV에 저장된 값을 그대로 돌려준다 - 재무제표/수급 동향은 하루 중 자주 바뀌는
+// 데이터가 아니라 20분 정도 지연되어 보여도 실사용에 문제가 없다.
+const RESPONSE_CACHE_TTL_SECONDS = 20 * 60; // 20분
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -135,6 +139,11 @@ async function callKis(env, path, trId, params) {
 // [현재가 스냅샷] PER/PBR/EPS/BPS/시가총액은 이 API(현재가 시세) 하나에 다 들어있다(연/분기 재무제표
 // API와 달리 output이 배열이 아니라 객체 하나). 필요한 필드만 화이트리스트로 추려 반환한다(원본
 // 응답을 그대로 넘기지 않음 - 불필요한 필드 노출 최소화).
+// [기준 시각 안내] KIS 응답 자체에 "이 시세가 정규장/시간외 중 언제 것인지"를 명확히 알려주는 필드가
+// 확인되지 않아(1차 소스로 검증 못함), 장 상태를 추측해서 라벨을 붙이는 대신 이 값을 실제로 조회한
+// 서버 시각(fetchedAt)을 그대로 내려준다 - 프론트엔드가 "OO:OO 기준" 배지로 보여주면 최소한 사용자가
+// "이 숫자가 언제 것인지"는 오인하지 않는다(KV 캐시로 응답이 재사용돼도 이 값은 최초 조회 시각 그대로
+// 유지되므로 정확하다).
 async function handlePrice(env, code) {
   const data = await callKis(env, '/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
     FID_COND_MRKT_DIV_CODE: 'J',
@@ -149,7 +158,8 @@ async function handlePrice(env, code) {
     eps: o.eps ?? null,
     bps: o.bps ?? null,
     marketCapEok: o.hts_avls ?? null, // 억원 단위(KIS 관례)
-    week52High: o.w52_hgpr ?? null
+    week52High: o.w52_hgpr ?? null,
+    fetchedAt: Date.now()
   };
 }
 
@@ -185,7 +195,8 @@ async function handleFundamentals(env, code, divCode) {
     netIncome: i0.thtr_ntin ?? null,
     totalAssets: b0.total_aset ?? null,
     totalLiabilities: b0.total_lblt ?? null,
-    totalEquity: b0.total_cptl ?? null
+    totalEquity: b0.total_cptl ?? null,
+    fetchedAt: Date.now()
   };
 }
 
@@ -210,15 +221,41 @@ async function handleInvestorFlow(env, code) {
     institutionNetQty: numOrNull(r.orgn_ntby_qty),
     individualNetQty: numOrNull(r.prsn_ntby_qty)
   }));
-  const sumOver = (n, key) => daily.slice(0, n).reduce((s, d) => s + (d[key] || 0), 0);
+
+  // [당일 미마감 데이터 제외] 실제 배포 후 장중에 호출해 확인한 사실 - 배열 맨 앞(가장 최근 날짜) 행이
+  // 그날 거래가 아직 마감 집계되지 않은 상태면 외국인/기관/개인 순매수가 전부 0으로 온다. 이 상태로
+  // "최근 5일 합계"를 구하면 완결된 4일치만 반영돼 실제보다 적게 보인다 - 맨 앞 행의 세 값이 전부
+  // 0이면 미마감으로 보고 건너뛰고, 그 다음 행부터 완결된 거래일 기준으로 5일/20일을 합산한다.
+  const isUnsettledToday = daily.length > 0 &&
+    daily[0].foreignNetQty === 0 && daily[0].institutionNetQty === 0 && daily[0].individualNetQty === 0;
+  const settledStart = isUnsettledToday ? 1 : 0;
+  const sumOver = (n, key) => daily.slice(settledStart, settledStart + n).reduce((s, d) => s + (d[key] || 0), 0);
 
   return {
     daily: daily.slice(0, 20),
     foreignNet5d: sumOver(5, 'foreignNetQty'),
     foreignNet20d: sumOver(20, 'foreignNetQty'),
     institutionNet5d: sumOver(5, 'institutionNetQty'),
-    institutionNet20d: sumOver(20, 'institutionNetQty')
+    institutionNet20d: sumOver(20, 'institutionNetQty'),
+    fetchedAt: Date.now()
   };
+}
+
+// [응답 KV 캐싱] 같은 종목/라우트를 짧은 시간 안에 다시 요청하면(같은 종목 상세를 재방문하는 등) KIS를
+// 다시 호출하지 않고 KV에 저장된 값을 그대로 돌려준다. KV 조회/저장이 실패해도(일시적 KV 장애 등)
+// 캐시는 어디까지나 최적화일 뿐이므로 무시하고 정상적으로 KIS를 호출해 응답한다 - 캐시 문제로 기능
+// 자체가 죽으면 안 된다.
+async function getCachedOrFetch(env, cacheKey, fetchFn) {
+  try {
+    const cached = await env.KIS_KV.get(cacheKey, 'json');
+    if (cached) return cached;
+  } catch (e) { /* KV 조회 실패 - 캐시 없이 진행 */ }
+
+  const fresh = await fetchFn();
+  try {
+    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: RESPONSE_CACHE_TTL_SECONDS });
+  } catch (e) { /* KV 저장 실패해도 응답 자체는 정상 반환 */ }
+  return fresh;
 }
 
 export default {
@@ -244,14 +281,17 @@ export default {
 
     try {
       if (url.pathname === '/api/kis/price') {
-        return jsonResponse(await handlePrice(env, code));
+        const data = await getCachedOrFetch(env, `kis_cache:price:${code}`, () => handlePrice(env, code));
+        return jsonResponse(data);
       }
       if (url.pathname === '/api/kis/fundamentals') {
         const divCode = url.searchParams.get('period') === 'quarter' ? '1' : '0';
-        return jsonResponse(await handleFundamentals(env, code, divCode));
+        const data = await getCachedOrFetch(env, `kis_cache:fundamentals:${code}:${divCode}`, () => handleFundamentals(env, code, divCode));
+        return jsonResponse(data);
       }
       if (url.pathname === '/api/kis/investor-flow') {
-        return jsonResponse(await handleInvestorFlow(env, code));
+        const data = await getCachedOrFetch(env, `kis_cache:investor-flow:${code}`, () => handleInvestorFlow(env, code));
+        return jsonResponse(data);
       }
       return jsonResponse({ error: 'not_found' }, 404);
     } catch (e) {
