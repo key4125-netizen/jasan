@@ -2,18 +2,23 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v154'; // [중복 조회 제거 - 종목 상세 모달]
-// 사용자 질문("모듈별로 시세를 개별 요청해서 한 종목이 여러 번 요청되는 경우는 없나?")에 답하며 전체
-// fetchPriceWithFallback 호출부를 전수 점검했다 - js/02(핵심종목 실시간 팝업)는 이미
-// getCoreStockInfoFromState로 state 값을 재사용하고 있었고(주석만 낡아 있었음), js/07(신규 자산 추가
-// 검색)은 아직 보유하지 않은 종목이라 애초에 겹칠 일이 없었다. 그런데 analyzeTickerForModal()
-// (js/09, 종목 상세 모달 하단 "종목 분석 & 위험 관리" 리포트 - 자산관리 목록에서 종목을 클릭해 상세를
-// 여는, 가장 흔한 진입 경로에서 매번 실행됨)은 이미 보유 중인 종목이어도 항상 fetchPriceWithFallback을
-// 새로 불렀다 - refreshPricesAndRates()가 방금 갱신해둔 값이 state.assets에 있는데도 매번 낭비였다.
-// [수정] js/09: analyzeTickerForModal()도 같은 티커의 보유 자산이 있으면(currentPrice가 유효하면)
-// state 값을 그대로 재사용하고, 미보유 종목(매도 완료/관심종목 검색)일 때만 새로 조회한다 -
-// getCoreStockInfoFromState와 동일한 패턴.
-// js/09가 바뀌었으므로 v153->v154로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v156'; // [동시요청 제한 + 국내 시세 KIS 최종 안전망]
+// (1) [근본 원인 수정] v151~v154로도 20초+가 재현된 진짜 원인: 티커 하나당 raceFetchPrice()가
+// 내부적으로 최대 12건의 HTTP 요청(네이버 직접+프록시5, Yahoo 프록시5+Stooq)을 동시에 쏘는데,
+// 보유종목 20~30개가 한꺼번에 갱신되면 own-worker 하나에만 순간적으로 수십 건이 몰려 Yahoo 쪽 비공식
+// API의 자체 rate-limit(429)을 유발하는 것을 실측으로 확인했다(own-worker 자체는 정상인데도 429
+// 반환) - "동시에 너무 많이 쏴서 스스로 병목시키는" 문제. js/09: 티커 단위 동시 진행 개수를 5로
+// 제한하는 세마포어(priceRequestLimiter)를 두고 fetchPriceWithFallback/fetchDailyCloses가 공유한다 -
+// 이 앱에서 시세를 조회하는 모든 경로(일괄 갱신/지수/매크로/상세 모달/리스크 진단/신규 자산 검색)가
+// 자동으로 적용받는다.
+// (2) [국내 시세 KIS 최종 안전망] 네이버+Yahoo/Stooq가 전부 실패했을 때만(정상 상황에서는 거의 호출
+// 안 됨) 이미 배포된 KIS Worker(/api/kis/price, 원래 종목 상세 재무 데이터용)를 3순위 폴백으로
+// 재사용한다 - 병렬 분산이 아니라 순차 최종 시도라 KIS 쪽 엄격한 동시요청 제한(Worker 자체 실측
+// 기록: 3~5건만으로도 500 에러 재현됨)에 걸릴 위험이 없다. 시간외 시세/당일 시가고가저가는 KIS
+// 응답에 없어 못 주지만, 완전 실패보다는 정규장 기준가라도 보여주는 게 낫다. 겸사겸사 js/13
+// kisProxyFetch()에 타임아웃(10초)도 추가했다 - 채권 기능 때 있었다가 되돌리기에 같이 딸려 사라진
+// 것을, 이 안전망이 무한정 멈추지 않도록 다시 넣었다.
+// js/09·js/13이 바뀌었으므로 v155->v156으로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',
