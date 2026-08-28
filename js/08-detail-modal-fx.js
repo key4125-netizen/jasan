@@ -50,8 +50,9 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
   // 같은 시장 지표를 종목 상세 모달로 열면(핵심종목 실시간 팝업의 주요 지수 타일 등), 예전엔 여기가
   // "종목 분석 & 위험 관리" 6섹션 리포트를 그대로 보여줘서 "단기 벽/1차 버팀목", "숨고르기(조정) 구간"
   // 같은 개별 종목 매매 관점 문구가 지수에도 그대로 붙는 문제가 있었다(지수는 매수/매도 대상이 아님).
-  // 매크로 브리핑 상세 팝업(#macroDetailModal)이 이미 지수 전용으로 잘 만들어져 있으므로, 그 콘텐츠
-  // (buildMacroDetailBodyHtml, js/10)를 이 자리에 그대로 재사용한다 - 새 문구를 따로 만들지 않는다.
+  // 지수 전용 콘텐츠(buildMacroDetailBodyHtml, js/10)를 이 자리에 그대로 재사용한다 - 새 문구를 따로
+  // 만들지 않는다. 매크로 브리핑 카드의 8개 타일도 이제 이 종목 상세 모달을 그대로 여는 방식으로
+  // 통일돼 있어(macroTileHtml, js/10), 어느 진입 경로로 지수를 열어도 이 콘텐츠 하나만 쓰인다.
   const macroKey = getMacroKeyForTicker(sanitizeTicker(trimmed).yahooTicker);
   if (macroKey) {
     section.classList.remove('hidden');
@@ -59,11 +60,11 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
     body.innerHTML = buildMacroDetailBodyHtml(macroKey) + macroIndexFooterCaptionHtml();
     lucide.createIcons();
 
-    // [실제 5일/20일 추세 + 3개월 고/저점·MDD 온디맨드 반영] 5일/20일 추세는 openMacroDetailModal()과
-    // 동일한 2단계 패턴(먼저 캐시로 즉시 보여준 뒤 1년치 종가로 정확히 다시 그림)이고, 3개월 고/저점·
-    // MDD는 종목/지수 공용 계산기인 analyzeTickerForModal()(js/09)을 그대로 재사용한다(별도 계산
-    // 로직을 새로 만들지 않음). macroDetailModal 전용 토큰(macroDetailRequestToken)과는 별개 토큰을
-    // 써서, 두 팝업이 동시에 다른 지표를 보고 있어도 서로의 렌더링을 덮어쓰지 않는다.
+    // [실제 5일/20일 추세 + 3개월 고/저점·MDD 온디맨드 반영] 2단계 패턴(먼저 캐시로 즉시 보여준 뒤
+    // 1년치 종가로 정확히 다시 그림)이고, 3개월 고/저점·MDD는 종목/지수 공용 계산기인
+    // analyzeTickerForModal()(js/09)을 그대로 재사용한다(별도 계산 로직을 새로 만들지 않음).
+    // assetDetailAnalysisToken(이 모달 전용)으로 늦게 도착한 응답이 다른 지표로 전환된 뒤 화면을
+    // 덮어쓰지 않게 막는다.
     const token = ++assetDetailAnalysisToken;
     const [trend, a] = await Promise.all([fetchMacroShortTermTrend(macroKey), analyzeTickerForModal(trimmed)]);
     if (token !== assetDetailAnalysisToken || document.getElementById('assetDetailModal').classList.contains('hidden')) return;
