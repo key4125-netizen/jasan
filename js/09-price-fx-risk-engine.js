@@ -169,7 +169,10 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
   // 시간외 틱을 찾아야 한다(위 pickCurrentPriceFromChart 참고). 1분봉 대신 2분봉을 써서 모바일 트래픽
   // 부담을 줄인다 - 시간외 거래 자체가 체결이 뜸해 2분 단위로도 최신 틱을 놓치지 않는다.
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=2m&range=1d&includePrePost=true';
-  const res = await fetchWithTimeout(proxy.build(target));
+  // [지연 문제 수정] 기본 타임아웃(12초)이 너무 길어, 프록시 하나가 죽어있으면 그 하나 때문에 전체
+  // 갱신이 12초 가까이 묶이는 일이 잦았다 - 정상 응답은 보통 1~2초 안에 오므로 7초면 "느리지만 살아있음"과
+  // "사실상 죽음"을 충분히 구분할 수 있다.
+  const res = await fetchWithTimeout(proxy.build(target), 7000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
   const result = data && data.chart && data.chart.result && data.chart.result[0];
@@ -212,12 +215,14 @@ async function fetchStooqPrice(yahooTicker) {
 
   let text;
   try {
-    const res = await fetchWithTimeout(url, 12000, 'text/csv, text/plain, */*');
+    // [지연 문제 수정] 아래 두 시도가 실패 시 순차로(직접호출 실패 → 프록시 재시도) 더해지므로, 각각의
+    // 타임아웃이 길면 Stooq 하나가 최악 24초까지 걸릴 수 있었다 - 7초로 낮춰 상한을 좁힌다.
+    const res = await fetchWithTimeout(url, 7000, 'text/csv, text/plain, */*');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     text = await res.text();
   } catch (directErr) {
     // stooq.com이 CORS를 막아둔 경우 프록시로 재시도
-    const res = await fetchWithTimeout(CORS_PROXIES[0].build(url), 12000, 'text/csv, text/plain, */*');
+    const res = await fetchWithTimeout(CORS_PROXIES[0].build(url), 7000, 'text/csv, text/plain, */*');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     text = await res.text();
   }
@@ -277,7 +282,10 @@ async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   const code = yahooTicker.replace(/\.(KS|KQ)$/i, '');
   if (!/^\d{6}$/.test(code)) throw new Error('국내 종목 코드 형식이 아님');
   const target = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
-  const res = await fetchWithTimeout(proxy ? proxy.build(target) : target, 8000);
+  // [지연 문제 수정] 8초 -> 5초. 정상 응답은 보통 1초 이내라 5초면 충분하고, 국내 티커는 이 함수가
+  // 먼저 실패해야(구조 변경 후에는 Yahoo/Stooq와 동시에 시작하므로 "먼저"라는 의미는 약해졌지만) 값을
+  // 넘기므로 타임아웃을 줄이는 게 곧 전체 지연 상한을 줄이는 것과 직결된다.
+  const res = await fetchWithTimeout(proxy ? proxy.build(target) : target, 5000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = proxy && proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
   const d = json && json.datas && json.datas[0];
@@ -396,15 +404,24 @@ async function raceFetchPrice(yahooTicker, name) {
   const isKr = /\.(KS|KQ)$/i.test(yahooTicker);
   if (!isKr) return raceFetchYahooStooq(yahooTicker, name);
 
-  // 국내 티커는 "가장 빠른 소스"가 아니라 네이버(직접+프록시 경쟁)를 항상 먼저 시도한다 - 시간외
-  // 시세를 실제로 제공하는 유일한 소스라서, 순수 속도 경쟁에 맡기면 우연히 더 빨리 응답한 Yahoo
-  // (정규장가로만 폴백됨)가 이겨 시간외 시세가 묻히는 경우가 생길 수 있다. 네이버 쪽(직접+프록시 전부)이
-  // 실패할 때만 Yahoo/Stooq 경쟁으로 폴백한다.
+  // 국내 티커는 "가장 빠른 소스"가 아니라 네이버(직접+프록시 경쟁)를 우선 채택한다 - 시간외 시세를
+  // 실제로 제공하는 유일한 소스라서, 순수 속도 경쟁에 맡기면 우연히 더 빨리 응답한 Yahoo(정규장가로만
+  // 폴백됨)가 이겨 시간외 시세가 묻히는 경우가 생길 수 있다.
+  // [지연 문제 수정] 예전에는 네이버가 "완전히 실패한 후에야" Yahoo/Stooq 경쟁을 시작했다 - 네이버 쪽
+  // 프록시 전부가 막혀있는 종목(예: 실측으로 확인된 0052D0.KS)은 네이버 타임아웃(5초)을 다 채운 뒤에야
+  // Yahoo 경쟁(최대 7초)이 시작돼, 최악의 경우 한 종목 때문에 12초 넘게 걸렸다 - 전체 갱신은
+  // Promise.all로 가장 느린 종목 하나를 기다리는 구조라 이 한 종목이 전체 갱신 시간을 그대로 끌어올렸다.
+  // 이제 네이버와 Yahoo/Stooq를 처음부터 동시에 시작해두고, 네이버가 성공하면 그 값을 우선 채택하되
+  // (진행 중이던 Yahoo/Stooq 결과는 버림) 네이버가 실패할 때만 이미 진행 중이던 Yahoo/Stooq 결과를
+  // 그대로 기다린다 - 추가 대기시간 없이 상한이 두 경쟁 중 더 긴 쪽(약 7초)으로 줄어든다.
+  const naverPromise = raceFetchNaverKr(yahooTicker, name);
+  const fallbackPromise = raceFetchYahooStooq(yahooTicker, name);
+  fallbackPromise.catch(() => {}); // 네이버가 성공해 폴백을 안 기다리게 되는 경우 unhandledrejection 방지용
   try {
-    return await raceFetchNaverKr(yahooTicker, name);
+    return await naverPromise;
   } catch (naverErr) {
     try {
-      return await raceFetchYahooStooq(yahooTicker, name);
+      return await fallbackPromise;
     } catch (restErr) {
       throw new Error(`Naver: ${naverErr.message} | ${restErr.message}`);
     }
