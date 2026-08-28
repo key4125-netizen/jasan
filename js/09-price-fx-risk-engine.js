@@ -169,10 +169,14 @@ async function fetchYahooViaProxy(yahooTicker, proxy, name) {
   // 시간외 틱을 찾아야 한다(위 pickCurrentPriceFromChart 참고). 1분봉 대신 2분봉을 써서 모바일 트래픽
   // 부담을 줄인다 - 시간외 거래 자체가 체결이 뜸해 2분 단위로도 최신 틱을 놓치지 않는다.
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=2m&range=1d&includePrePost=true';
-  // [지연 문제 수정] 기본 타임아웃(12초)이 너무 길어, 프록시 하나가 죽어있으면 그 하나 때문에 전체
-  // 갱신이 12초 가까이 묶이는 일이 잦았다 - 정상 응답은 보통 1~2초 안에 오므로 7초면 "느리지만 살아있음"과
-  // "사실상 죽음"을 충분히 구분할 수 있다.
-  const res = await fetchWithTimeout(proxy.build(target), 7000);
+  // [v151->v152 수정 되돌림] 여기 타임아웃을 12초->7초로 줄였다가, 실측해보니 allorigins-get 프록시가
+  // "정상 작동하지만 13초 넘게 걸리는" 경우가 실제로 있어(고장이 아니라 그냥 느림) 7초 컷오프에 걸려
+  // 유효한 백업까지 잘라내는 부작용이 있었다 - 빠른 소스(own-worker/r.jina.ai)가 하필 동시에 막힌
+  // 순간엔 이 백업이 유일하게 살아있는 경로일 수 있는데 조기 컷오프로 완전 실패가 됐다. 애초에
+  // 20초+ 지연의 핵심 원인은 이 값 자체가 아니라 raceFetchPrice/fetchPriceWithFallback의 "순차 대기"
+  // 구조였고(위 두 함수 참고, 이제 동시 경쟁으로 고쳐짐), 개별 타임아웃은 원래 값(12초)으로 되돌려도
+  // 그 구조 수정만으로 최악 상한이 이미 크게 줄어든다.
+  const res = await fetchWithTimeout(proxy.build(target));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = proxy.parse ? await proxy.parse(res) : await safeParseJsonResponse(res);
   const result = data && data.chart && data.chart.result && data.chart.result[0];
@@ -215,14 +219,16 @@ async function fetchStooqPrice(yahooTicker) {
 
   let text;
   try {
-    // [지연 문제 수정] 아래 두 시도가 실패 시 순차로(직접호출 실패 → 프록시 재시도) 더해지므로, 각각의
-    // 타임아웃이 길면 Stooq 하나가 최악 24초까지 걸릴 수 있었다 - 7초로 낮춰 상한을 좁힌다.
-    const res = await fetchWithTimeout(url, 7000, 'text/csv, text/plain, */*');
+    // [v151->v152 수정 되돌림] 여기도 7초로 줄였다가 fetchYahooViaProxy와 같은 이유로 되돌린다 - 이
+    // 함수는 raceFetchYahooStooq 안에서 Promise.any로 다른 소스들과 경쟁하는 한 참가자일 뿐이라,
+    // 다른 소스가 먼저 성공하면 이 타임아웃 값 자체는 전혀 대기시간에 영향을 주지 않는다(전부 실패할
+    // 때만 상한으로 작동). 원래 값(12초)으로 되돌려 "정상이지만 느린" 응답도 살릴 여지를 남긴다.
+    const res = await fetchWithTimeout(url, 12000, 'text/csv, text/plain, */*');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     text = await res.text();
   } catch (directErr) {
     // stooq.com이 CORS를 막아둔 경우 프록시로 재시도
-    const res = await fetchWithTimeout(CORS_PROXIES[0].build(url), 7000, 'text/csv, text/plain, */*');
+    const res = await fetchWithTimeout(CORS_PROXIES[0].build(url), 12000, 'text/csv, text/plain, */*');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     text = await res.text();
   }
@@ -438,35 +444,55 @@ async function fetchPriceWithFallback(rawTicker, name) {
   const trimmedRaw = String(rawTicker ?? '').trim();
   const isAmbiguousKrxCode = /^\d{6}$/.test(trimmedRaw);
 
-  try {
-    return await raceFetchPrice(yahooTicker, name);
-  } catch (ksErr) {
-    if (!isAmbiguousKrxCode) {
+  if (!isAmbiguousKrxCode) {
+    try {
+      return await raceFetchPrice(yahooTicker, name);
+    } catch (ksErr) {
       console.error(`[시세조회 실패] ticker="${rawTicker}" (조회용: "${yahooTicker}") - 모든 소스 실패:\n${ksErr.message}`);
       throw ksErr;
     }
-    const kqTicker = trimmedRaw + '.KQ';
-    try {
-      const result = await raceFetchPrice(kqTicker, name);
-      // [오매칭 안전장치] 실제로 확인된 사례: 같은 6자리 코드가 KOSDAQ 쪽 전혀 다른 상품(예: 뮤추얼펀드)과
-      // 우연히 겹쳐서, 코스피 종목(예: 삼성전자 005930)의 .KS 조회가 일시적으로 실패했을 때 .KQ 쪽이
-      // "성공"처럼 보이지만 실제로는 완전히 무관한 상품의 가격을 돌려주는 경우가 있었다(005930.KQ가
-      // 삼성전자와 무관한 뮤추얼펀드를 가리킴 - 가격이 전혀 다르게 나옴). Yahoo에서 온 결과는
-      // instrumentType이 EQUITY/ETF일 때만 정상적인 폴백으로 인정하고, 그 외는 오매칭으로 간주해
-      // 실패 처리한다(엉뚱한 가격을 자산에 잘못 반영하는 것보다 실패로 남기고 기존 값을 유지하는 편이
-      // 안전하다). Stooq 등 instrumentType이 없는 소스는 이 검증을 건너뛴다.
-      const isYahooResult = typeof result.source === 'string' && result.source.startsWith('Yahoo(');
-      const looksLikeWrongInstrument = isYahooResult && result.instrumentType && !['EQUITY', 'ETF'].includes(result.instrumentType);
-      if (looksLikeWrongInstrument) {
-        throw new Error(`.KQ(${kqTicker}) 응답이 예상과 다른 종류의 상품(${result.instrumentType})으로 확인되어 폴백을 신뢰할 수 없음`);
-      }
-      console.warn(`[코스닥 폴백 성공] ticker="${rawTicker}" - .KS(${yahooTicker}) 조회 실패 후 .KQ(${kqTicker})로 재시도해 성공했습니다.`);
-      return result;
-    } catch (kqErr) {
-      console.error(`[시세조회 실패] ticker="${rawTicker}" - .KS/.KQ 모두 실패:\n  [.KS] ${ksErr.message}\n  [.KQ] ${kqErr.message}`);
-      throw new Error(`${ksErr.message} | (.KQ 재시도도 실패: ${kqErr.message})`);
-    }
   }
+
+  // [지연 문제 수정] 예전에는 .KS 조회가 "완전히 실패한 후에야" .KQ를 순차로 재시도해서, 코드가
+  // 애매한(접미사 없는 6자리) 종목 하나가 .KS에서 실패하면 그 종목 하나 때문에 raceFetchPrice() 한
+  // 사이클(약 7초 상한)이 통째로 두 번 더해졌다 - 전체 갱신은 가장 느린 종목 하나를 기다리는 구조라
+  // 이런 종목이 하나만 있어도 v151에서 줄여둔 지연 상한(약 7초)이 무색하게 다시 14초 이상으로
+  // 늘어났다. .KS/.KQ를 처음부터 동시에 시작해두고, 결과 채택 우선순위(.KS 우선, 실패 시에만 .KQ +
+  // 오매칭 검증)는 그대로 유지하되 추가 대기 없이 상한을 한 번의 raceFetchPrice 사이클로 되돌린다.
+  const kqTicker = trimmedRaw + '.KQ';
+  const ksPromise = raceFetchPrice(yahooTicker, name);
+  const kqPromise = raceFetchPrice(kqTicker, name);
+  ksPromise.catch(() => {}); // 아래서 각각 개별적으로 await하므로 unhandledrejection 방지용
+  kqPromise.catch(() => {});
+
+  const [ksSettled, kqSettled] = await Promise.allSettled([ksPromise, kqPromise]);
+
+  if (ksSettled.status === 'fulfilled') return ksSettled.value;
+
+  const ksErr = ksSettled.reason;
+  if (kqSettled.status === 'rejected') {
+    const kqErr = kqSettled.reason;
+    console.error(`[시세조회 실패] ticker="${rawTicker}" - .KS/.KQ 모두 실패:\n  [.KS] ${ksErr.message}\n  [.KQ] ${kqErr.message}`);
+    throw new Error(`${ksErr.message} | (.KQ 재시도도 실패: ${kqErr.message})`);
+  }
+
+  const result = kqSettled.value;
+  // [오매칭 안전장치] 실제로 확인된 사례: 같은 6자리 코드가 KOSDAQ 쪽 전혀 다른 상품(예: 뮤추얼펀드)과
+  // 우연히 겹쳐서, 코스피 종목(예: 삼성전자 005930)의 .KS 조회가 일시적으로 실패했을 때 .KQ 쪽이
+  // "성공"처럼 보이지만 실제로는 완전히 무관한 상품의 가격을 돌려주는 경우가 있었다(005930.KQ가
+  // 삼성전자와 무관한 뮤추얼펀드를 가리킴 - 가격이 전혀 다르게 나옴). Yahoo에서 온 결과는
+  // instrumentType이 EQUITY/ETF일 때만 정상적인 폴백으로 인정하고, 그 외는 오매칭으로 간주해
+  // 실패 처리한다(엉뚱한 가격을 자산에 잘못 반영하는 것보다 실패로 남기고 기존 값을 유지하는 편이
+  // 안전하다). Stooq 등 instrumentType이 없는 소스는 이 검증을 건너뛴다.
+  const isYahooResult = typeof result.source === 'string' && result.source.startsWith('Yahoo(');
+  const looksLikeWrongInstrument = isYahooResult && result.instrumentType && !['EQUITY', 'ETF'].includes(result.instrumentType);
+  if (looksLikeWrongInstrument) {
+    const kqErr = new Error(`.KQ(${kqTicker}) 응답이 예상과 다른 종류의 상품(${result.instrumentType})으로 확인되어 폴백을 신뢰할 수 없음`);
+    console.error(`[시세조회 실패] ticker="${rawTicker}" - .KS 실패 + .KQ 오매칭:\n  [.KS] ${ksErr.message}\n  [.KQ] ${kqErr.message}`);
+    throw new Error(`${ksErr.message} | (.KQ 재시도도 실패: ${kqErr.message})`);
+  }
+  console.warn(`[코스닥 폴백 성공] ticker="${rawTicker}" - .KS(${yahooTicker}) 조회 실패 후 .KQ(${kqTicker})로 재시도해 성공했습니다.`);
+  return result;
 }
 
 /* -------------------------------------------------------------------------
@@ -544,6 +570,9 @@ function riskEligibleAssets() {
 // 1년 - 52주 최고가/거래량 이동평균까지 한 번의 조회로 함께 커버하기 위해 6개월에서 1년으로 늘렸다).
 async function fetchDailyCloses(yahooTicker, range = '1y') {
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
+  // [v152 수정 되돌림] 여기도 7초로 줄였다가 fetchYahooViaProxy와 같은 이유로 되돌린다 - 이 함수 역시
+  // Promise.any 경쟁이라 타임아웃 값은 "전부 실패할 때만" 상한으로 작동하고, allorigins-get처럼
+  // 정상이지만 13초 가까이 걸리는 프록시를 조기에 잘라내는 부작용이 실측으로 확인됐다.
   const attempts = CORS_PROXIES.map((proxy) => async () => {
     const res = await fetchWithTimeout(proxy.build(target));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
