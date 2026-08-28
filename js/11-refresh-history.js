@@ -28,8 +28,20 @@ function setRefreshingUI(isRefreshing, statusText) {
 async function fetchPricesForTargets(targets) {
   targets.forEach((a) => { a.fetchStatus = 'pending'; });
 
+  // [지연/신뢰성 문제 수정] 같은 종목을 여러 계좌/소유자가 나눠 보유하는 경우(가족 공유 자산관리 앱의
+  // 흔한 패턴 - 신랑/와이프가 같은 종목을 각자 계좌에 나눠 담는 경우) 예전에는 자산 row 개수만큼
+  // 완전히 독립된 fetchPriceWithFallback 호출이 나갔다 - 같은 티커에 대한 동시 중복 요청이 같은
+  // 프록시 풀(특히 own-worker/r.jina.ai)에 몰려 서로 경쟁하며 자기 자신 때문에 rate limit(429)이
+  // 걸리는 경우가 실측으로 확인됐다(동일 티커 2건 중 1건은 성공, 동시에 쏜 나머지 1건은 429로 실패).
+  // 이제 티커별로 fetchPriceWithFallback을 딱 한 번만 호출하고, 같은 티커를 가진 모든 자산이 그
+  // 결과(Promise)를 공유한다 - Promise는 여러 곳에서 await해도 실제 네트워크 요청은 한 번만 나간다.
+  const fetchByTicker = new Map();
+  targets.forEach((a) => {
+    if (!fetchByTicker.has(a.ticker)) fetchByTicker.set(a.ticker, fetchPriceWithFallback(a.ticker, a.name));
+  });
+
   const results = await Promise.allSettled(
-    targets.map(a => fetchPriceWithFallback(a.ticker, a.name).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
+    targets.map(a => fetchByTicker.get(a.ticker).then(r => ({ id: a.id, name: a.name, ticker: a.ticker, ...r })))
   );
 
   let successCount = 0, failCount = 0;
