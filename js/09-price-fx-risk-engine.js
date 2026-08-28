@@ -1454,12 +1454,25 @@ async function analyzeTickerForModal(rawInput) {
     resolvedName = krMatch.name;
   }
 
+  let yahooTicker = sanitizeTicker(searchTicker).yahooTicker;
+
+  // [중복 조회 제거] 이 티커를 이미 보유 중이면(자산관리 목록에서 종목을 클릭해 상세를 여는, 가장 흔한
+  // 진입 경로) refreshPricesAndRates()가 이미 받아둔 현재가/등락률이 state.assets/dayChangeMap에 있다
+  // - getCoreStockInfoFromState(js/02, 핵심종목 실시간 팝업)와 동일한 이유·동일한 패턴으로 그 값을
+  // 그대로 재사용한다. 미보유 종목 검색(매도 완료/관심종목)이거나 currentPrice가 아직 없으면(최초
+  // 조회 전 등) 그때만 새로 조회한다. 실패한 지난 갱신이라도 asset.currentPrice는 항상 "마지막으로
+  // 성공한 값"이 그대로 남아있으므로(다른 곳과 동일한 원칙) fetchStatus는 따로 확인하지 않는다.
+  const heldMatch = yahooTicker
+    ? state.assets.find((a) => Number.isFinite(a.currentPrice) && a.currentPrice > 0 && sanitizeTicker(a.ticker).yahooTicker === yahooTicker)
+    : null;
   // 현재가/등락률은 실패해도(예: 장중 프록시 일시 장애) 아래 기술적 분석은 계속 진행한다 - 표시용
   // 보조 정보일 뿐, 핵심 분석은 1년치 종가 이력(closes)만 있으면 가능하다.
   let priceInfo = null;
-  try { priceInfo = await fetchPriceWithFallback(searchTicker, resolvedName || searchTicker); } catch (e) { /* 무시 - 아래 폴백으로 계속 */ }
-
-  let yahooTicker = sanitizeTicker(searchTicker).yahooTicker;
+  if (heldMatch) {
+    priceInfo = { price: heldMatch.currentPrice, changePercent: num(state.dayChangeMap[heldMatch.id]), name: heldMatch.name };
+  } else {
+    try { priceInfo = await fetchPriceWithFallback(searchTicker, resolvedName || searchTicker); } catch (e) { /* 무시 - 아래 폴백으로 계속 */ }
+  }
   let data = await getCachedDailyCloses(yahooTicker);
   // [코스닥 구제] 접미사 없는 6자리 국내코드가 코스피(.KS) 조회로 실패하면 코스닥(.KQ)으로 한 번 더
   // 시도한다 - fetchPriceWithFallback의 동일한 구제 로직을 여기서도 재현.

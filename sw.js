@@ -2,26 +2,18 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v153'; // [버그 수정 - 해외 종목 조회 실패/지연 재발]
-// v151/v152에서 Yahoo/Stooq/fetchDailyCloses 개별 타임아웃을 12초->7초로 줄였는데, 실제로 프록시별
-// 응답시간을 직접 재보니 이게 오히려 신뢰성을 깎아먹는 부작용이 있었다: allorigins-get 프록시는
-// "고장"이 아니라 정상 작동하되 그냥 13초 가까이 걸리는 경우가 실제로 있었고, 빠른 소스(own-worker/
-// r.jina.ai)가 하필 동시에 막힌(rate limit 등) 순간엔 이 느리지만 정상인 백업이 유일하게 살아있는
-// 경로일 수 있는데 7초 컷오프가 그것까지 잘라내 완전 실패로 이어졌다(실측으로 GOOGL 조회가 7개 소스
-// 전부 실패하는 것을 재현). 애초에 20초+ 지연의 핵심 원인은 개별 타임아웃 값이 아니라
-// raceFetchPrice/fetchPriceWithFallback의 "순차 대기" 구조였고(v151/v152에서 이미 동시 경쟁으로
-// 고침), 개별 타임아웃 자체는 Promise.any 경쟁에서 "전부 실패할 때만" 상한으로 작동하므로 원래
-// 값(12초)으로 되돌려도 구조 수정의 이득은 그대로 유지된다.
-// [수정 1] js/09: fetchYahooViaProxy/fetchStooqPrice/fetchDailyCloses의 타임아웃을 12초(기본값)로
-// 되돌림. v151/v152의 구조 변경(동시 경쟁)은 그대로 유지. 네이버(fetchNaverKrPrice, 5초)는 별개의
-// 안정적인 단일 소스라 그대로 둔다.
-// [수정 2 - 별개의 발견, js/11] 같은 종목을 여러 계좌/소유자가 나눠 보유하는 경우(부부가 같은
-// 종목을 각자 계좌에 나눠 담는 이 앱의 흔한 실사용 패턴) fetchPricesForTargets()가 자산 row
-// 개수만큼 완전히 독립된 조회를 중복으로 쏘고 있었다 - 같은 티커에 대한 동시 중복 요청이 같은
-// 프록시(특히 own-worker/r.jina.ai)에 몰려 서로 경쟁하며 자기 자신 때문에 rate limit(429)을
-// 유발하는 것을 실측으로 재현했다. 이제 티커별로 딱 한 번만 조회하고 같은 티커를 가진 모든 자산이
-// 그 결과를 공유한다.
-// js/09·js/11이 바뀌었으므로 v152->v153으로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+const CACHE_NAME = 'smart-asset-manager-v154'; // [중복 조회 제거 - 종목 상세 모달]
+// 사용자 질문("모듈별로 시세를 개별 요청해서 한 종목이 여러 번 요청되는 경우는 없나?")에 답하며 전체
+// fetchPriceWithFallback 호출부를 전수 점검했다 - js/02(핵심종목 실시간 팝업)는 이미
+// getCoreStockInfoFromState로 state 값을 재사용하고 있었고(주석만 낡아 있었음), js/07(신규 자산 추가
+// 검색)은 아직 보유하지 않은 종목이라 애초에 겹칠 일이 없었다. 그런데 analyzeTickerForModal()
+// (js/09, 종목 상세 모달 하단 "종목 분석 & 위험 관리" 리포트 - 자산관리 목록에서 종목을 클릭해 상세를
+// 여는, 가장 흔한 진입 경로에서 매번 실행됨)은 이미 보유 중인 종목이어도 항상 fetchPriceWithFallback을
+// 새로 불렀다 - refreshPricesAndRates()가 방금 갱신해둔 값이 state.assets에 있는데도 매번 낭비였다.
+// [수정] js/09: analyzeTickerForModal()도 같은 티커의 보유 자산이 있으면(currentPrice가 유효하면)
+// state 값을 그대로 재사용하고, 미보유 종목(매도 완료/관심종목 검색)일 때만 새로 조회한다 -
+// getCoreStockInfoFromState와 동일한 패턴.
+// js/09가 바뀌었으므로 v153->v154로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
 const APP_SHELL = [
   './',
   './index.html',
