@@ -212,7 +212,7 @@ function computeIndividualRebalanceGuide(ownerFilter) {
 // 목표금액-현재금액 차액(diff)의 색상 관례 - renderRebalanceResultGroup에서 처음 정한 것을 공유한다:
 // 매수 필요(부족, 양수)=파랑, 매도 필요(과다, 음수)=빨강. 1원 미만 차이는 오차로 보고 중립색 처리한다.
 function rebalanceDiffColorClass(diff) {
-  return diff > 1 ? 'text-blue-500' : (diff < -1 ? 'text-red-500' : 'text-slate-400');
+  return diff > 1 ? 'text-blue-500 dark:text-blue-400' : (diff < -1 ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
 }
 
 // 리밸런싱 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=리밸런싱 가능한)" 자산만 합산한다.
@@ -1272,7 +1272,7 @@ function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, ta
     const isSell = diff < -1;
     if (isBuy) totalBuy += diff;
     if (isSell) totalSell += Math.abs(diff);
-    const colorClass = isBuy ? 'text-blue-500' : (isSell ? 'text-red-500' : 'text-slate-400');
+    const colorClass = isBuy ? 'text-blue-500 dark:text-blue-400' : (isSell ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
     const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
       : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
       : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');
@@ -1320,7 +1320,7 @@ function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetB
     const isSell = diff < -1;
     if (isBuy) totalBuy += diff;
     if (isSell) totalSell += Math.abs(diff);
-    const colorClass = isBuy ? 'text-blue-500' : (isSell ? 'text-red-500' : 'text-slate-400');
+    const colorClass = isBuy ? 'text-blue-500 dark:text-blue-400' : (isSell ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
     const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
       : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
       : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');

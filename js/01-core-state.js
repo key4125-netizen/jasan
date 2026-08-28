@@ -484,7 +484,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
+let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, stockAnalysis: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -500,7 +500,11 @@ function fmtKRW(v) { return krwFmt.format(Math.round(num(v))) + '원'; }
 function fmtNum(v, digits = 2) { return new Intl.NumberFormat('ko-KR', { maximumFractionDigits: digits }).format(num(v)); }
 function fmtPct(v) { const n = num(v); return (n >= 0 ? '+' : '') + numFmt2.format(n) + '%'; }
 function fmtSigned(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '') + krwFmt.format(n) + '원'; }
-function profitColor(v) { const n = num(v); return n > 0 ? 'text-red-500' : (n < 0 ? 'text-blue-500' : 'text-slate-400'); }
+// [야간 모드 시인성 개선] 500 굵기 색상은 채도가 높아 거의 검정에 가까운 배경(dark:bg-slate-950)
+// 위에서 대비가 지나치게 강해 눈부심처럼 느껴진다 - Tailwind 다크모드 관례대로 한 단계 연한 400
+// 굵기를 다크모드 전용으로 함께 써서, 밝은 화면에서의 색감은 그대로 유지하면서 어두운 화면에서만
+// 더 부드럽게 보이게 한다.
+function profitColor(v) { const n = num(v); return n > 0 ? 'text-red-500 dark:text-red-400' : (n < 0 ? 'text-blue-500 dark:text-blue-400' : 'text-slate-400'); }
 // 국내 주식시장 관례상 상승=빨강, 하락=파랑 컬러 사용
 
 // KPI 카드 하단의 자산군별 세부 집계 태그처럼 좁은 공간에 큰 금액을 표기할 때 쓰는 축약 표기

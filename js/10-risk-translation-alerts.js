@@ -17,6 +17,18 @@ function hangingIndentLine(prefixHtml, textHtml, extraClass) {
     <span class="break-keep break-words min-w-0">${textHtml}</span>
   </div>`;
 }
+// [타이틀 기준 정렬 - 라벨/본문을 세로로 분리] hangingIndentLine은 라벨(prefix)과 본문을 "한 줄에
+// 나란히" 놓고, 본문이 줄바꿈되면 둘째 줄이 본문 시작 위치(라벨 오른쪽)에 맞춰진다 - "💡 1. ~~"류
+// 번호 매김 목록엔 맞는 동작이지만, "📌 시장 종합 평가"처럼 라벨 자체가 하나의 제목이고 그 아래
+// 설명 문장이 이어지는 경우엔 사용자가 "줄바꿈된 둘째 줄이 라벨의 첫 글자(예: '시')와 같은 수직
+// 선에 맞춰지길" 기대한다 - 라벨과 본문을 애초에 서로 다른 줄(세로 스택)에 두면, 본문이 몇 줄로
+// 줄바꿈되든 전부 이 컨테이너의 왼쪽 여백(=라벨의 왼쪽 여백과 동일)에 자연스럽게 맞춰진다.
+function stackedTitleBody(titleHtml, bodyHtml, extraClass) {
+  return `<div class="${extraClass || ''}">
+    <p class="font-semibold mb-0.5">${titleHtml}</p>
+    <p class="break-keep break-words">${bodyHtml}</p>
+  </div>`;
+}
 // [Sortino Ratio → 폭락장 방어 성적표 A~F] 연율화 Sortino 비율을 직관적인 학점으로 변환한다 - 학술적
 // 컷오프가 아니라 일반 투자자가 감을 잡기 위한 참고용 구간이다.
 function sortinoToGrade(sortino) {
@@ -315,7 +327,7 @@ function renderRiskDiagnosisSummary() {
   const diagnosisLine = buildRiskDiagnosisLine(m);
   const actionItems = buildRiskActionItems(m);
   const conf = m.dataConfidence;
-  const confLevel = conf.score >= 80 ? 'text-emerald-500' : conf.score >= 50 ? 'text-amber-500' : 'text-red-500';
+  const confLevel = conf.score >= 80 ? 'text-emerald-500 dark:text-emerald-400' : conf.score >= 50 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400';
 
   container.innerHTML = `
   <div class="rounded-xl border p-3.5 ${level.bgClass}">
@@ -405,7 +417,7 @@ function renderRiskDetailModal() {
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020 코로나 폭락 재현 시</p>
-        <p class="text-lg sm:text-xl font-bold text-blue-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
+        <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
         <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 코로나 폭락처럼 짧은 기간에 급격히 폭락하는 금융위기급 충격이 재현될 경우 예상 손실액입니다(코스피 -35.7%·S&P500 -33.9% 등 실측 낙폭 대입 추정치).</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
@@ -492,7 +504,7 @@ document.addEventListener('click', (e) => {
       <span class="text-2xl font-extrabold ${beforeLevel.colorClass}">${m.riskScore}</span>
       <span class="text-slate-400">→</span>
       <span class="text-2xl font-extrabold ${afterLevel.colorClass}">${scenario.riskScore}</span>
-      <span class="text-sm font-semibold ${delta <= 0 ? 'text-emerald-500' : 'text-red-500'}">${delta <= 0 ? '▼' : '▲'}${Math.abs(Math.round(delta))}</span>
+      <span class="text-sm font-semibold ${delta <= 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}">${delta <= 0 ? '▼' : '▲'}${Math.abs(Math.round(delta))}</span>
       <span class="text-sm text-slate-500 dark:text-slate-400">${afterLevel.emoji} ${afterLevel.label}</span>
     </div>
     <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
@@ -875,7 +887,7 @@ function buildMacroDetailBodyHtml(key) {
     <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
       <div class="text-xl font-bold">${escapeHtml(macroDetailValueText(key, s))}</div>
       <div class="flex items-center gap-2">
-        ${hasChange ? `<span class="text-sm font-medium ${s.changePercent >= 0 ? 'text-red-500' : 'text-blue-500'}">${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%</span>` : ''}
+        ${hasChange ? `<span class="text-sm font-medium ${s.changePercent >= 0 ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'}">${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%</span>` : ''}
         <span class="text-xs font-semibold px-2 py-1 rounded-full ${MACRO_TAG_COLOR_CLASSES[tag.color]}">${escapeHtml(tag.text)}</span>
       </div>
     </div>
@@ -1034,12 +1046,14 @@ function renderMacroBriefing() {
   // [타이포그래피 통일] 예전엔 이 3줄이 text-lg라 바로 아래 RISK 카드의 같은 성격 텍스트(권장 행동
   // 지침 등, text-sm)보다 눈에 띄게 크게 보였다 - RISK 카드와 동일한 text-sm/leading-relaxed로 맞춰
   // 두 카드의 본문 글자 크기가 균일하게 보이도록 했다.
-  // [내어쓰기] "📌 시장 종합 평가"처럼 라벨+본문이 한 줄에 이어지던 걸 hangingIndentLine으로 분리해,
-  // 문장이 길어 줄바꿈되면 둘째 줄이 라벨 밑이 아니라 본문 시작 위치에 맞춰지도록 했다.
+  // [타이틀 기준 정렬] "📌 시장 종합 평가"를 라벨+본문이 한 줄에 이어지는 hangingIndentLine 대신
+  // stackedTitleBody로 세로로 분리해, 문장이 길어 줄바꿈되면 모든 줄이 라벨의 첫 글자(왼쪽 여백)와
+  // 같은 수직선에 맞춰지도록 했다 - 사용자가 실제로 요구한 정렬 기준이 "본문 시작 위치"가 아니라
+  // "타이틀 시작 위치"였다(위 hangingIndentLine 주석 참고 - 그건 "1. ~~" 같은 번호 매김 목록 전용).
   diagnosisEl.innerHTML = `
-    ${hangingIndentLine('<span class="font-semibold">📌 시장 종합 평가</span>', escapeHtml(commentary.cause), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
-    ${hangingIndentLine('<span class="font-semibold">💰 내 포트폴리오 영향</span>', escapeHtml(commentary.impact), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
-    ${hangingIndentLine('<span class="font-semibold">🧭 대응 가이드</span>', escapeHtml(commentary.guide), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${stackedTitleBody('📌 시장 종합 평가', escapeHtml(commentary.cause), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${stackedTitleBody('💰 내 포트폴리오 영향', escapeHtml(commentary.impact), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${stackedTitleBody('🧭 대응 가이드', escapeHtml(commentary.guide), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
         <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
@@ -1319,11 +1333,16 @@ const STOCK_ANALYSIS_TAG_COLOR_CLASSES = {
   blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
 };
 
-// [종목 분석 모달 + 보유종목 상세 모달 공용] 6섹션 리포트 본문(핵심요약~고지문)만 만든다 - 종목명/
-// 현재가 헤더는 호출부마다 다르게 필요해서(종목 분석 모달은 자체 헤더가 있고, 보유종목 상세 모달은
-// 이미 위에 이름/차트가 있어 헤더를 또 반복하면 중복된다) 별도로 뺐다. attachStockAnalysisReportTo
-// DetailModal()(js/08)이 보유종목 상세 모달에서 이 함수를 그대로 재사용한다.
-function renderStockAnalysisReportBody(a, sim) {
+// [종목 분석 모달 + 보유종목 상세 모달 공용 - 앞부분] 핵심 요약&현재 상태 / 주가 위치&기술적 참고
+// (+포트폴리오 적합도) 섹션만 만든다. [섹션 재배치] 예전엔 이 함수(당시 이름 renderStockAnalysisReportBody)
+// 하나가 핵심요약~위험관리원칙~고지문까지 한 번에 문자열로 만들어 반환했는데, 종목 분석 모달에 재무
+// 펀더멘털(KIS) 섹션을 "핵심요약/주가위치 다음, 위험관리원칙 앞"에 끼워 넣어야 하면서(위험관리원칙은
+// 데이터 유무와 무관하게 항상 맨 마지막이어야 한다는 요구사항) 앞부분(Main)과 뒷부분(Footer)을 분리해야
+// 했다 - 재무 펀더멘털은 별도 비동기 DOM 섹션(attachFundamentalSection)이라 이 사이에 그대로 끼워 넣을
+// 수 있다. 보유종목 상세 모달(attachStockAnalysisReportToDetailModal, js/08)은 재무 펀더멘털을 이미
+// 별도의 독립 섹션으로 먼저 보여주고 있어 이 분리가 필요 없지만, 호출부를 하나로 유지하려고 아래
+// renderStockAnalysisReportBody()가 Main+Footer를 그대로 이어붙여 기존과 동일하게 동작한다.
+function renderStockAnalysisReportMain(a, sim) {
   const priceDecimals = a.currentPrice < 100 ? 2 : 0;
   const status = buildStockStatusSummary(a);
 
@@ -1358,8 +1377,13 @@ function renderStockAnalysisReportBody(a, sim) {
     </div>
   </div>
 
-  ${simHtml}
+  ${simHtml}`;
+}
 
+// [종목 분석 모달 + 보유종목 상세 모달 공용 - 뒷부분] 위험 관리 일반 원칙 + 고지문 - 데이터 유무와
+// 무관하게 리포트의 항상 맨 마지막에 와야 하는 고정 섹션이라 Main과 분리했다(위 주석 참고).
+function renderStockAnalysisReportFooter(a) {
+  return `
   <p class="text-xs text-slate-400 flex items-center gap-1 mb-1">
     🎯 위험 관리 일반 원칙
     <button type="button" data-info-tip="${escapeHtml(STOCK_ANALYSIS_RISK_TIPS.map((t, i) => `${i + 1}. ${t}`).join(' '))}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
@@ -1368,22 +1392,28 @@ function renderStockAnalysisReportBody(a, sim) {
   <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
 }
 
-// [종목 분석 모달 전용] 종목명/현재가 헤더 + 위 6섹션 본문을 합친다 - 종목 분석 모달은 자체 헤더가
-// 필요하지만, 보유종목 상세 모달에 이어붙일 때는(attachStockAnalysisReportToDetailModal, js/08)
-// 그 모달에 이미 이름/차트가 있어 헤더 없이 renderStockAnalysisReportBody()만 그대로 쓴다.
-function renderStockAnalysisResult(a, sim) {
-  const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500' : 'text-blue-500') : 'text-slate-400';
+// [보유종목 상세 모달 전용] Main+Footer를 그대로 이어붙인다 - attachStockAnalysisReportToDetailModal()
+// (js/08)이 이 함수를 그대로 쓴다(그 모달은 재무 펀더멘털이 이미 별도 독립 섹션이라 Main/Footer를
+// 나눠 끼워 넣을 필요가 없다).
+function renderStockAnalysisReportBody(a, sim) {
+  return renderStockAnalysisReportMain(a, sim) + renderStockAnalysisReportFooter(a);
+}
+
+// [종목 분석 모달 전용] 종목명/현재가 헤더만 만든다 - 차트/본문/재무/위험관리원칙은 이제 각자 별도
+// 컨테이너(#stockAnalysisHeaderArea 등)에 나눠 들어가므로(runStockAnalysis 참고), 이 함수는 더 이상
+// 본문을 이어붙이지 않는다.
+function renderStockAnalysisHeaderHtml(a) {
+  const changeColor = typeof a.changePercent === 'number' ? (a.changePercent >= 0 ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400') : 'text-slate-400';
   const changeText = typeof a.changePercent === 'number' ? `${a.changePercent >= 0 ? '+' : ''}${fmtNum(a.changePercent, 2)}%` : '조회 실패';
   const priceDecimals = a.currentPrice < 100 ? 2 : 0;
   return `
-  <div class="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-baseline justify-between gap-2">
-    <h4 class="text-sm font-bold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}" title="차트 보기">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
+  <div class="flex items-baseline justify-between gap-2">
+    <h4 class="text-sm font-bold truncate">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
     <div class="text-right shrink-0">
       <div class="text-sm font-semibold">${fmtNum(a.currentPrice, priceDecimals)}</div>
       <div class="text-xs font-medium ${changeColor}">${changeText}</div>
     </div>
-  </div>
-  ${renderStockAnalysisReportBody(a, sim)}`;
+  </div>`;
 }
 
 // [종목 검색 추천 목록] searchStockAnalysisCandidates()(js/09)가 찾은 보유자산/종목 마스터 후보를
@@ -1477,13 +1507,23 @@ async function runStockAnalysis() {
     errorEl.textContent = a.error;
     errorEl.classList.remove('hidden');
     document.getElementById('stockAnalysisFundamentalSection').classList.add('hidden');
+    document.getElementById('stockAnalysisFooterBody').classList.add('hidden');
     return;
   }
   const addAmountKRW = num(amountInput.value);
   const sim = addAmountKRW > 0 ? simulatePortfolioAddition(a.ticker, addAmountKRW) : null;
-  resultEl.innerHTML = renderStockAnalysisResult(a, sim);
+  // [섹션 순서 - 보유종목 세부내용 팝업과 동일하게] 1.헤더 2.차트(비보유 종목도 항상 그림) 3~4.본문
+  // (핵심요약/주가위치기술적) 5.재무 펀더멘털(별도 섹션, attachFundamentalSection이 채움) 후,
+  // 위험관리원칙+고지문은 항상 맨 마지막 footer 컨테이너에 별도로 넣는다.
+  document.getElementById('stockAnalysisHeaderArea').innerHTML = renderStockAnalysisHeaderHtml(a);
+  document.getElementById('stockAnalysisMainBody').innerHTML = renderStockAnalysisReportMain(a, sim);
+  const footerEl = document.getElementById('stockAnalysisFooterBody');
+  footerEl.innerHTML = renderStockAnalysisReportFooter(a);
+  footerEl.classList.remove('hidden');
   resultEl.classList.remove('hidden');
   lucide.createIcons();
+  const isForeign = !/\.(KS|KQ)$/i.test(a.ticker);
+  renderStockAnalysisChart(a.ticker, a.name, isForeign);
   attachFundamentalSection(a.ticker, 'stockAnalysisFundamentalSection', 'stockAnalysisFundamentalBody');
 }
 
@@ -1527,6 +1567,7 @@ function openStockAnalysisModal() {
   document.getElementById('stockAnalysisErrorMsg').classList.add('hidden');
   document.getElementById('stockAnalysisResult').classList.add('hidden');
   document.getElementById('stockAnalysisFundamentalSection').classList.add('hidden');
+  document.getElementById('stockAnalysisFooterBody').classList.add('hidden');
   document.getElementById('stockAnalysisTickerInput').value = '';
   document.getElementById('stockAnalysisAmountInput').value = '';
   hideStockAnalysisSuggestions();
