@@ -702,40 +702,48 @@ async function pullFromCloud(opts) {
 // 제거) - 헤더의 syncSettingsBtn과 모달 안의 syncStatusText가 이 색상 세트를 공유한다.
 // updateSyncStatusUI()가 매번 세 세트를 전부 지운 뒤 현재 상태에 맞는 세트만 다시 붙이는 방식이라,
 // 상태가 바뀔 때마다 이전 색이 남아있을 걱정 없이 항상 정확한 한 가지 색만 적용된다.
+// [버그 수정] 위 방식은 상태가 안 바뀌어도(예: 10초 주기 pullFromCloud가 계속 "동기화중" 유지) 매번
+// classList를 지웠다가 다시 붙여서, 안 바뀐 배경색까지 매번 transition-colors(150ms)를 재시작시켰다
+// - 그 결과 실기기에서 애니메이션이 자주 리셋되며 완료 직전 프레임(옅은/흰색 배경)에 계속 머무는 것처럼
+// 보이는 현상이 있었다. 목표 색상 세트가 실제로 바뀔 때만 classList를 건드리도록 고쳤다.
 const SYNC_COLOR_ACTIVE = ['bg-brand-50', 'dark:bg-brand-950/40', 'border-brand-200', 'dark:border-brand-800', 'text-brand-600', 'dark:text-brand-400'];
 const SYNC_COLOR_INACTIVE = ['bg-white', 'dark:bg-slate-900', 'border-slate-200', 'dark:border-slate-800', 'text-slate-400', 'dark:text-slate-500'];
 const SYNC_COLOR_ERROR = ['bg-red-50', 'dark:bg-red-950/40', 'border-red-200', 'dark:border-red-800', 'text-red-600', 'dark:text-red-400'];
 const SYNC_ALL_COLOR_CLASSES = [...SYNC_COLOR_ACTIVE, ...SYNC_COLOR_INACTIVE, ...SYNC_COLOR_ERROR];
+function applySyncColorSet(el, state) {
+  if (el.dataset.syncColorState === state) return; // 이미 이 색상 세트라면 classList를 건드리지 않는다
+  el.classList.remove(...SYNC_ALL_COLOR_CLASSES);
+  el.classList.add(...(state === 'inactive' ? SYNC_COLOR_INACTIVE : state === 'error' ? SYNC_COLOR_ERROR : SYNC_COLOR_ACTIVE));
+  el.dataset.syncColorState = state;
+}
 function updateSyncStatusUI() {
   const toggleBtn = document.getElementById('syncSettingsBtn');
   if (toggleBtn) {
-    toggleBtn.classList.remove(...SYNC_ALL_COLOR_CLASSES);
     if (!syncState.enabled) {
       toggleBtn.textContent = '서버 동기화중지';
-      toggleBtn.classList.add(...SYNC_COLOR_INACTIVE);
+      applySyncColorSet(toggleBtn, 'inactive');
     } else if (syncState.hasError) {
       toggleBtn.textContent = '서버 동기화오류';
-      toggleBtn.classList.add(...SYNC_COLOR_ERROR);
+      applySyncColorSet(toggleBtn, 'error');
     } else {
       toggleBtn.textContent = '서버 동기화중';
-      toggleBtn.classList.add(...SYNC_COLOR_ACTIVE);
+      applySyncColorSet(toggleBtn, 'active');
     }
   }
   // [모달 안 상태 배지] 암호 입력란보다 위에서 크게 보여준다(요청에 따라 위치 이동) - 헤더 버튼과
   // 같은 3색 규칙 + 마지막 동기화 시각까지 함께 표기한다.
   const statusEl = document.getElementById('syncStatusText');
   if (statusEl) {
-    statusEl.classList.remove(...SYNC_ALL_COLOR_CLASSES);
     if (!syncState.enabled) {
       statusEl.textContent = '서버 동기화중지';
-      statusEl.classList.add(...SYNC_COLOR_INACTIVE);
+      applySyncColorSet(statusEl, 'inactive');
     } else if (syncState.hasError) {
       statusEl.textContent = '서버 동기화오류 · 네트워크 연결을 확인해주세요';
-      statusEl.classList.add(...SYNC_COLOR_ERROR);
+      applySyncColorSet(statusEl, 'error');
     } else {
       const lastAt = localStorage.getItem(LS_SYNC_LAST_SYNCED_AT);
       statusEl.textContent = lastAt ? `서버 동기화중 · 마지막 동기화 ${new Date(lastAt).toLocaleString('ko-KR')}` : '서버 동기화중 · 동기화 대기 중...';
-      statusEl.classList.add(...SYNC_COLOR_ACTIVE);
+      applySyncColorSet(statusEl, 'active');
     }
   }
 }

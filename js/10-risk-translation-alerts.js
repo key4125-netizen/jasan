@@ -550,16 +550,26 @@ function trendArrowIcon(changePercent) {
   if (changePercent < -0.05) return '📉';
   return '➡️';
 }
-// [지표 상세 팝업 클릭 진입점] key(vix/usdkrw/us10y/kospi/kosdaq/sp500/nasdaq/dow)를 data-macro-key로
-// 붙여두면 문서 전역 위임 리스너(아래) 하나가 어떤 타일을 눌러도 openMacroDetailModal을 연다 -
-// data-open-stock-detail과 동일한 위임 패턴.
+// [지표 상세 팝업 - 핵심종목 팝업과 통일] 예전엔 이 타일이 data-macro-key로 전용 팝업(openMacroDetailModal,
+// #macroDetailModal)을 열었는데, 핵심종목 실시간 팝업에서 지수를 클릭했을 때 뜨는 팝업(종목 상세
+// 모달 #assetDetailModal의 읽기전용 변형 - openStockDetailModal, js/08)과 모양·크기·구조가 서로 달라
+// 일관성이 없다는 지적이 있었다. data-open-stock-detail data-ticker/data-name으로 바꿔서 문서 전역의
+// 그 위임 리스너를 그대로 태우면, attachStockAnalysisReportToDetailModal(js/08)이 getMacroKeyForTicker로
+// 이 티커가 매크로 지표임을 감지해 완전히 같은 지표 콘텐츠(buildMacroDetailBodyHtml)를 완전히 같은
+// 팝업(assetDetailModal) 안에 보여준다 - 두 진입 경로(핵심종목 팝업/매크로 브리핑)가 이제 정확히
+// 하나의 팝업을 공유한다. MARKET_INDEX_LIST(코스피/코스닥/S&P500/나스닥 4개)에 없는 지표(VIX/환율/
+// 미국채 10년물)도 MACRO_KEY_TICKERS에만 등록돼 있으면 getMacroKeyForTicker가 그대로 인식하므로 별도
+// 예외 처리 없이 동일하게 동작한다. 전용 팝업(openMacroDetailModal 등)은 이제 아무도 열지 않는 죽은
+// 코드가 되어 함께 제거했다.
 // [열 수는 항상 4로 고정 - 답답함은 패딩/폰트로 해결] grid-cols-4가 모든 화면에서 예외 없이
 // 적용되므로(index.html), 좁은 화면에서 답답해 보이는 문제를 열 수를 줄이는 대신 카드 내부 패딩과
 // 글자 크기로 대응한다. md:(768px)부터 태블릿 세로를 포함한 모든 비-폰 화면에 동일하게 적용된다 -
 // 이전엔 lg:(1024px)부터만 적용돼 768~1023px 태블릿 세로가 폰과 똑같이 빽빽했다.
 function macroTileHtml(key, label, valueText, sub, icon) {
+  const ticker = MACRO_KEY_TICKERS[key];
   return `
-  <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 md:px-2 py-2 md:py-2.5 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5" data-macro-key="${key}">
+  <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 md:px-2 py-2 md:py-2.5 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5"
+    data-open-stock-detail data-ticker="${escapeHtml(ticker)}" data-name="${escapeHtml(label)}">
     <div class="text-[10px] md:text-xs text-slate-400 truncate">${escapeHtml(label)}</div>
     <div class="text-base md:text-lg leading-tight my-0.5">${icon}</div>
     <div class="text-[11px] md:text-sm font-semibold truncate">${escapeHtml(valueText)}</div>
@@ -731,8 +741,6 @@ const MACRO_INDICATOR_INFO = {
 };
 
 let macroDetailSnapshot = {};
-let currentMacroDetailKey = null;
-let macroDetailRequestToken = 0;
 
 // [실제 5일/20일 추세] 키 -> 야후 티커. usdkrw/us10y/vix/dow는 macroIndicatorCache 조회에 쓰던 티커와
 // 동일, kospi 등 지수는 이미 있는 INDEX_TICKERS를 그대로 재사용한다(js/09).
@@ -874,9 +882,9 @@ function getMacroKeyForTicker(yahooTicker) {
   return Object.keys(MACRO_KEY_TICKERS).find((k) => MACRO_KEY_TICKERS[k] === yahooTicker) || null;
 }
 
-// [매크로 지표 상세 본문] renderMacroDetailModal(#macroDetailModal 전용)과 attachMacroDetailToAssetDetailModal
-// (js/08, 종목 상세 모달에서 지수를 열었을 때) 양쪽이 공유한다 - 지표 설명 콘텐츠가 두 군데서 서로
-// 다르게 작성되는 걸 막는다.
+// [매크로 지표 상세 본문] attachStockAnalysisReportToDetailModal(js/08, 종목 상세 모달에서 지수를
+// 열었을 때의 매크로 분기)이 이 콘텐츠를 그대로 재사용한다 - 지수 클릭 팝업이 하나로 통일되면서
+// 이제 이 함수를 부르는 곳도 그 한 군데뿐이다.
 function buildMacroDetailBodyHtml(key) {
   const info = MACRO_INDICATOR_INFO[key];
   if (!info) return '';
@@ -930,52 +938,10 @@ function macroIndexFooterCaptionHtml() {
   return '<p class="text-xs text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표(지수)입니다.</p>';
 }
 
-function renderMacroDetailModal(key) {
-  const info = MACRO_INDICATOR_INFO[key];
-  if (!info) return;
-  document.getElementById('macroDetailModalTitle').textContent = `📊 ${info.label}`;
-  document.getElementById('macroDetailModalBody').innerHTML = buildMacroDetailBodyHtml(key);
-}
-
-async function openMacroDetailModal(key) {
-  if (!MACRO_INDICATOR_INFO[key]) return;
-  currentMacroDetailKey = key;
-  renderMacroDetailModal(key); // 1차: 오늘 하루 등락 기준으로 먼저 보여준다(항상 즉시 응답).
-  document.getElementById('macroDetailModal').classList.remove('hidden');
-  pushModalHistoryState();
-
-  // [5일/20일 추세 - 온디맨드 조회] 이미 오늘자로 캐시돼 있으면(getCachedDailyCloses가 날짜 단위로
-  // 캐싱) 즉시 반영되고, 처음 조회하는 지표라면 1년치 종가를 새로 받아온 뒤 문장을 다시 그린다.
-  const token = ++macroDetailRequestToken;
-  const trend = await fetchMacroShortTermTrend(key);
-  if (token !== macroDetailRequestToken || currentMacroDetailKey !== key) return; // 그 사이 닫히거나 다른 지표로 전환됐으면 버림
-  const s = macroDetailSnapshot[key];
-  if (s) {
-    s.change5d = trend ? trend.change5d : null;
-    s.change20d = trend ? trend.change20d : null;
-  }
-  renderMacroDetailModal(key); // 2차: 실제 5일/20일 추세 반영
-}
-function closeMacroDetailModal(viaBackButton) {
-  currentMacroDetailKey = null;
-  document.getElementById('macroDetailModal').classList.add('hidden');
-  if (!viaBackButton) popModalHistoryIfNeeded();
-}
-document.getElementById('macroDetailModalHeader').addEventListener('click', () => closeMacroDetailModal());
-document.getElementById('closeMacroDetailModalBtn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  closeMacroDetailModal();
-});
-document.getElementById('macroDetailModal').addEventListener('click', (e) => {
-  if (e.target.id === 'macroDetailModal') closeMacroDetailModal();
-});
-// [이벤트 위임] 8개 타일이 renderMacroBriefing()마다 매번 새로 그려지므로(innerHTML 교체), 타일 각각에
-// 리스너를 다는 대신 문서 전역에 한 번만 걸어둔다 - data-open-stock-detail과 동일한 패턴.
-document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-macro-key]');
-  if (!el) return;
-  openMacroDetailModal(el.dataset.macroKey);
-});
+// [전용 팝업 제거됨] renderMacroDetailModal/openMacroDetailModal/closeMacroDetailModal과 #macroDetailModal
+// 전용 모달은 지수 클릭 팝업을 핵심종목 팝업과 통일하면서(macroTileHtml 주석 참고, data-open-stock-detail로
+// 전환) 더 이상 어디서도 열리지 않게 되어 제거했다 - buildMacroDetailBodyHtml/macroDetailSnapshot 등
+// 콘텐츠 자체는 attachStockAnalysisReportToDetailModal(js/08)이 그대로 재사용하므로 그대로 남아있다.
 
 function renderMacroBriefing() {
   const gridEl = document.getElementById('macroBriefingGrid');
@@ -1011,10 +977,11 @@ function renderMacroBriefing() {
     indexTile('dow', '다우', dowInfo)
   ].join('');
 
-  // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(openMacroDetailModal) 다시 조회하지 않고 이 갱신
-  // 주기에서 이미 받아온 값을 그대로 재사용한다 - 8개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가
-  // 지표별 원본 소스(macroIndicatorCache/marketIndexCache/exchangeRate)를 몰라도 된다.
-  // [5일/20일 추세 보존] change5d/change20d는 팝업을 열 때만 온디맨드로 채워지는데(openMacroDetailModal),
+  // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(종목 상세 모달의 매크로 분기,
+  // attachStockAnalysisReportToDetailModal - js/08) 다시 조회하지 않고 이 갱신 주기에서 이미 받아온
+  // 값을 그대로 재사용한다 - 8개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가 지표별 원본 소스
+  // (macroIndicatorCache/marketIndexCache/exchangeRate)를 몰라도 된다.
+  // [5일/20일 추세 보존] change5d/change20d는 팝업을 열 때만 온디맨드로 채워지는데(위 js/08 참고),
   // 여기서 매번 객체를 통째로 새로 만들면 그 값이 갱신 주기마다 날아가 버린다 - 이전 스냅샷에 남아있던
   // 값을 그대로 이어받는다(1년치 종가는 자주 안 바뀌므로 5분마다 다시 불러올 필요가 없다).
   const prevMacroSnapshot = macroDetailSnapshot;
@@ -1028,9 +995,6 @@ function renderMacroBriefing() {
     nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null, change5d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change5d, change20d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change20d },
     dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null, change5d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change5d, change20d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change20d }
   };
-  if (!document.getElementById('macroDetailModal').classList.contains('hidden') && currentMacroDetailKey) {
-    renderMacroDetailModal(currentMacroDetailKey); // 팝업이 열려있는 동안 갱신 주기가 돌면 값도 함께 최신화
-  }
 
   const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
   const totalAmount = state.assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
