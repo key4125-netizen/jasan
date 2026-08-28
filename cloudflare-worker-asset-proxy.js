@@ -15,8 +15,18 @@
 // 과부하로 rate-limit에 걸리는 문제로 이어졌다.
 // 이 파일은 프론트엔드(js/01-core-state.js의 OWN_WORKER_PROXY_BASE/CORS_PROXIES 'own-worker' 항목,
 // FX_SOURCES_REALTIME)가 실제로 기대하는 호출 계약(요청 형식·응답 형식)을 프론트엔드 코드 전체를
-// 역추적해 정확히 맞춰 새로 작성한 것이다 - 원본 코드 자체와 바이트 단위로 같다고 보장할 수는 없지만,
-// 프론트엔드가 필요로 하는 동작은 100% 일치한다.
+// 역추적해 정확히 맞춰 새로 작성한 것이다.
+//
+// [2026-08 - User-Agent 헤더 복원, 반드시 읽을 것] 위 재작성판은 최초 배포 이후에도 own-worker가
+// 단일 요청 하나에도 즉시 429(Yahoo 쪽 rate-limit)를 반환하는 문제가 계속됐다 - 사용자가 공유해준
+// 이 프로젝트의 예전 설계 대화 기록(Gemini와 나눈 원본 개발 히스토리)을 다시 확인해보니, 진짜 원본
+// 코드는 Yahoo/Naver에 요청을 보낼 때 실제 Chrome 브라우저처럼 보이는 User-Agent 헤더를 명시적으로
+// 붙이고 있었다("Cloudflare 서버가 일반 PC 웹 브라우저인 척 하고 목표 서버에 접근" - 원본 설계
+// 대화의 설명 그대로) - 이 재작성판은 그 헤더를 빠뜨려서, Cloudflare Worker의 기본(비브라우저)
+// 요청 헤더로 Yahoo에 접근하고 있었다. 서버 간 요청은 브라우저 요청보다 봇으로 식별되기 훨씬 쉬워
+// Yahoo의 비공식 API가 더 공격적으로 rate-limit을 걸었을 가능성이 높다 - 원본과 동일하게 이 헤더를
+// 복원한다. 응답 쪽 Cache-Control: no-store도 원본에 있던 걸 그대로 되살렸다(중간에 응답이 어딘가
+// 캐시되어 오래된 시세가 나가는 걸 막는 안전장치).
 //
 // [동작] "GET /?url=<encodeURIComponent된 대상 URL>"을 받아, 그 URL을 서버 쪽(Cloudflare 엣지)에서
 // 대신 fetch해 응답을 그대로(raw) 돌려준다 - 브라우저가 Yahoo Finance/네이버/환율 API를 직접 부르면
@@ -36,8 +46,12 @@
 
 const ALLOWED_TARGET_HOSTS = [
   'query1.finance.yahoo.com', // 보유 종목 시세, KRW=X 환율 차트
+  'query2.finance.yahoo.com', // [원본 설계 대화에서 복원] 현재 프론트엔드는 안 쓰지만, Yahoo가 query1/
+  // query2로 부하분산하는 경우를 대비해 원본에 있던 그대로 남겨둔다 - 비워둬서 아낄 이유가 없다.
   'polling.finance.naver.com', // 국내 종목 실시간(장전/장후 시간외 포함) 시세
   'open.er-api.com', // 환율 스냅샷(하루 1회 갱신, 최종 폴백 소스)
+  'api.exchangerate-api.com', // [원본 설계 대화에서 복원] 지금은 FX_SOURCES_SNAPSHOT_FALLBACK에서
+  // 프록시 없이 직접 호출되고 있어 당장 이 Worker로 오는 요청은 없지만, 원본에 있던 호스트라 그대로 둔다.
   'stooq.com' // [배포 후 실측으로 발견 - 처음에 빠뜨림] fetchStooqPrice(js/09)가 직접 호출이 CORS로
   // 막히면 CORS_PROXIES[0](=own-worker, 바로 이 Worker)으로 재시도한다 - 이 호스트가 빠져있으면
   // Stooq 폴백 경로 전체가 항상 403으로 죽는다(실제로 배포 직후 Cloudflare 대시보드 Subrequests에서
@@ -84,11 +98,16 @@ export default {
       // [원본 그대로 전달] 이 프록시를 쓰는 모든 호출부(fetchYahooViaProxy/fetchNaverKrPrice/FX 소스)가
       // "raw" 방식(별도 parse 없이 그대로 JSON 파싱)을 기대하므로, 응답 바디와 Content-Type을 그대로
       // 넘긴다 - allorigins-get처럼 {contents:"..."}로 감싸면 프론트엔드 파싱이 깨진다.
-      const upstream = await fetch(targetUrl.toString());
+      // [User-Agent] 실제 Chrome 브라우저처럼 보이게 해 Yahoo/Naver 쪽 봇 탐지·rate-limit을 피한다 -
+      // 위 changelog 참고, 원본 설계에 있었다가 재작성 과정에서 누락됐던 걸 복원한 것.
+      const upstream = await fetch(targetUrl.toString(), {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+      });
       const body = await upstream.arrayBuffer();
       const headers = new Headers(CORS_HEADERS);
       const contentType = upstream.headers.get('Content-Type');
       if (contentType) headers.set('Content-Type', contentType);
+      headers.set('Cache-Control', 'no-store'); // 원본에 있던 헤더 - 중간 캐시로 오래된 시세가 나가는 것 방지
       return new Response(body, { status: upstream.status, headers });
     } catch (e) {
       return errorResponse('upstream_fetch_failed', 502);
