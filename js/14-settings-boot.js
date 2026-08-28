@@ -152,9 +152,18 @@ async function bootApp() {
   // switchTab()이 클릭/스와이프로 호출될 때뿐이었다 - 그 결과 첫 진입 시엔 내용은 정상인데 상단
   // 탭 버튼만 활성 색상이 안 입혀진 채로 보였다(다른 탭을 눌렀다 돌아오면 그때 switchTab()이 실행돼
   // 정상으로 보였을 뿐). 부팅 시 한 번 명시적으로 호출해 버튼 스타일을 내용과 맞춘다.
-  switchTab(state.activeTab);
-  lucide.createIcons();
-  warnIfRestrictedWebView();
+  // [버그 수정 - 특정 기기에서 최초 접속 시 자동 시세갱신이 아예 시작되지 않던 문제] switchTab/
+  // lucide.createIcons/warnIfRestrictedWebView 중 하나가 특정 브라우저/기기 환경에서 예외를 던지면,
+  // 자바스크립트 특성상 같은 함수(bootApp) 안에서 그 아래에 있는 모든 코드(바로 다음의
+  // refreshPricesAndRates() 자동 호출 포함)가 통째로 실행되지 않는다 - 화면은 renderAll()까지는
+  // 이미 정상적으로 그려진 뒤라 사용자 눈에는 "그냥 자동 갱신만 안 되는" 것처럼 보인다(실제 신고 사례:
+  // [시세 & 환율 갱신] 버튼이 "갱신 중" 상태로 바뀌지도 않음 = 그 호출까지 도달하지 못했다는 뜻). 이
+  // 셋 각각을 독립적으로 try/catch로 감싸, 어느 하나가 실패해도 나머지와 그 아래 자동 갱신 호출은
+  // 항상 실행되게 한다 - 5분 주기 자동 갱신(js/11의 별도 setInterval, bootApp()과 무관하게 등록됨)은
+  // 이 문제와 상관없이 항상 정상 작동했던 것도 이 진단과 일치한다.
+  try { switchTab(state.activeTab); } catch (e) { console.error('[부팅] switchTab 실패 - 자동 갱신은 계속 진행:', e); }
+  try { lucide.createIcons(); } catch (e) { console.error('[부팅] lucide.createIcons 실패 - 자동 갱신은 계속 진행:', e); }
+  try { warnIfRestrictedWebView(); } catch (e) { console.error('[부팅] warnIfRestrictedWebView 실패 - 자동 갱신은 계속 진행:', e); }
   // 최신 시세/환율은 비동기로 갱신한다(awaited하지 않으므로 초기 렌더링을 지연시키지 않는다) - 일간
   // 평가손익 등이 오늘자 실제 가격을 반영하려면 페이지를 열 때마다(또는 버튼 클릭 시) 이 호출이
   // 반드시 필요하다.
