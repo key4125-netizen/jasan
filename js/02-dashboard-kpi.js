@@ -553,7 +553,10 @@ function coreStockRowHtml(c, info) {
   const dailyChangeAmount = (typeof info.previousClose === 'number' && info.previousClose > 0)
     ? c.qty * (info.price - info.previousClose)
     : c.qty * info.price * (info.changePercent / 100);
-  const changeInline = ` <span class="text-[11px] font-medium ${changeColorClass}">(${changeText} / ${fmtSignedNative(dailyChangeAmount, isForeign)})</span>`;
+  // [등락률/금액 위치 변경] 종목명 옆(괄호)이 아니라, 원래 티커가 있던 두 번째 줄 자리에 표시한다 -
+  // 티커 자체는 이제 화면에 안 보인다(data-ticker 속성에는 그대로 남아있어 클릭 시 상세 모달 연동은
+  // 그대로 동작한다).
+  const changeLine = `<span class="text-[11px] font-medium ${changeColorClass}">${changeText} / ${fmtSignedNative(dailyChangeAmount, isForeign)}</span>`;
   const sessionMeta = SESSION_BADGE_META[info.session];
   const sessionBadge = sessionMeta
     ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
@@ -564,8 +567,8 @@ function coreStockRowHtml(c, info) {
   <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-lg px-1.5 -mx-1.5"
     data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
     <div class="min-w-0">
-      <div class="font-medium text-sm truncate hover:underline">${escapeHtml(c.name)}${changeInline}</div>
-      <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
+      <div class="font-medium text-sm truncate hover:underline">${escapeHtml(c.name)}</div>
+      <div class="truncate">${changeLine}</div>
     </div>
     <div class="flex items-center gap-2 shrink-0 pl-2">
       <div class="text-right">
@@ -583,7 +586,7 @@ function coreStockRowHtmlError(c) {
       <div class="font-medium text-sm truncate">${escapeHtml(c.name)}</div>
       <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
     </div>
-    <div class="text-right shrink-0 pl-2 text-[11px] font-medium text-amber-500">⚠️ 시세 조회 실패</div>
+    <div class="text-right shrink-0 pl-2 text-[11px] font-medium text-amber-500 dark:text-amber-400">⚠️ 시세 조회 실패</div>
   </div>`;
 }
 
@@ -598,7 +601,7 @@ const MARKET_INDEX_LIST = [
 
 function coreIndexCardHtml(c, info) {
   const isUp = info.changePercent >= 0;
-  const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500' : 'text-blue-500');
+  const colorClass = info.changePercent === 0 ? 'text-slate-400 dark:text-slate-500' : (isUp ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400');
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center cursor-pointer hover:border-brand-300 dark:hover:border-brand-700"
     data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
@@ -611,7 +614,7 @@ function coreIndexCardHtmlError(c) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center">
     <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
-    <div class="text-[10px] text-amber-500 mt-1">조회 실패</div>
+    <div class="text-[10px] text-amber-500 dark:text-amber-400 mt-1">조회 실패</div>
   </div>`;
 }
 
@@ -740,6 +743,41 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
   }).join('');
 }
 
+// [모바일 2단(두 줄) 카드 레이아웃] 640px 미만 전용 - 좁은 화면에서 5열 표(text-[10px])가 너무 작아
+// 읽기 어렵다는 신고에 따라, 종목당 두 줄짜리 큼직한 카드로 대체한다(위 hidden sm:block 표와 데이터는
+// 완전히 동일, 화면 폭에 따라 둘 중 하나만 보임 - index.html 참고). 1줄: 종목명 + 현재가/등락률,
+// 2줄: 당일손익 + 총손익. 계산 로직(dailyRate/profit/valueHtml)은 renderTopHoldingsTable과 동일하게
+// 맞춰 두 레이아웃의 숫자가 항상 일치하도록 한다.
+function renderTopHoldingsMobileCards(containerId, list) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (list.length === 0) {
+    container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">보유 종목 없음</p>`;
+    return;
+  }
+  container.innerHTML = list.map((g) => {
+    const profit = g.curAmount - g.buyAmount;
+    const prevDayAmount = g.curAmount - g.dailyPnL;
+    const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
+    const valueHtml = g.isForeign ? `$${fmtNum(g.currentPrice, 2)}` : `${krwFmt.format(Math.round(num(g.currentPrice)))}원`;
+    return `
+    <div class="rounded-xl border border-slate-100 dark:border-slate-800 px-3.5 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
+      data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-base font-semibold truncate min-w-0">${escapeHtml(g.name)}</span>
+        <span class="flex items-baseline gap-1.5 shrink-0">
+          <span class="text-base font-semibold">${valueHtml}</span>
+          <span class="text-sm font-semibold ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</span>
+        </span>
+      </div>
+      <div class="flex items-baseline justify-between gap-2 mt-2">
+        <span class="text-sm"><span class="text-slate-400 dark:text-slate-500">당일손익</span> <span class="font-semibold ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</span></span>
+        <span class="text-sm"><span class="text-slate-400 dark:text-slate-500">총손익</span> <span class="font-semibold ${profitColor(profit)}">${fmtSignedShort(profit)}</span></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderTopHoldings() {
   const groups = getTopHoldings();
   // 비중(%)의 분모는 국내/해외를 합친 "티커가 존재하는 전체 상품"의 합계 평가금액 하나로 통일한다 -
@@ -749,6 +787,8 @@ function renderTopHoldings() {
   const foreign = groups.filter((g) => g.isDomestic === '해외').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
   renderTopHoldingsTable('topHoldingsDomestic', domestic, grandTotal);
   renderTopHoldingsTable('topHoldingsForeign', foreign, grandTotal);
+  renderTopHoldingsMobileCards('topHoldingsDomesticMobile', domestic);
+  renderTopHoldingsMobileCards('topHoldingsForeignMobile', foreign);
   // 시세 갱신 등으로 표 내용(행 수)이 바뀌면 펼쳐진 상태의 max-height도 새 내용 높이에 맞게 갱신해야
   // 한다 - 자산 관리 카드의 reapplyAssetGroupAccordionHeights와 동일한 이유.
   reapplyTopHoldingsAccordionHeights();

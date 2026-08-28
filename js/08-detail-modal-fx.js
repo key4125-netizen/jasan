@@ -802,6 +802,199 @@ async function renderAssetDetailChart(asset, avgPriceOverride, byOwnerAvgPriceOv
 }
 
 /* -------------------------------------------------------------------------
+ * 13-1. [종목 분석 & 투자 검토 보고서 모달 전용 차트] 위 assetDetail 차트와 완전히 같은 캔들+이동평균+
+ *    기간버튼+확대축소 기능을 제공하되, 이 모달은 미보유 종목(관심종목/검색)도 열 수 있어 평단가
+ *    기준선(avgPrice)만 뺀 버전이다 - buildMaLegendHtml에 avgPrice=0을 넘기면 그 부분만 조용히
+ *    비어서(기존 함수 그대로 재사용) 별도 분기 없이 처리된다. assetDetail과 별개의 상태(캐시된 전체
+ *    시세/이동평균/활성 기간/토큰)를 쓰는 이유는 두 모달이 서로 다른 종목을 독립적으로 보여줄 수
+ *    있어야 하기 때문이다 - 여기서 개발 게시 안 되고 있는 사이 다시 assetDetail을 열어도 서로의
+ *    차트 상태를 덮어쓰지 않는다.
+ * ---------------------------------------------------------------------- */
+let stockAnalysisFullPoints = [];
+let stockAnalysisFullMA = {};
+let stockAnalysisChartMeta = { name: '', isForeign: false };
+let stockAnalysisActivePeriod = '6m';
+let stockAnalysisChartToken = 0;
+
+function rebuildStockAnalysisFullMA() {
+  stockAnalysisFullMA = {};
+  MA_PERIODS.forEach((period) => { stockAnalysisFullMA[period] = computeMA(stockAnalysisFullPoints, period); });
+}
+
+function renderStockAnalysisPeriodButtons() {
+  const wrap = document.getElementById('stockAnalysisPeriodButtons');
+  wrap.innerHTML = Object.keys(PERIOD_LABELS).map((key) => `
+    <button type="button" data-period-btn="${key}" class="period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
+  `).join('');
+  wrap.querySelectorAll('button[data-period-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => buildStockAnalysisChart(btn.dataset.periodBtn));
+  });
+}
+function updateStockAnalysisPeriodButtonActiveUI(activeKey) {
+  document.querySelectorAll('#stockAnalysisPeriodButtons button[data-period-btn]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.periodBtn === activeKey);
+  });
+}
+
+function rescaleStockAnalysisYAxis(chart) {
+  const xScale = chart.scales.x;
+  const candleData = chart.data.datasets[0].data;
+  let lo = Infinity, hi = -Infinity;
+  for (const p of candleData) {
+    if (!p || p.x < xScale.min || p.x > xScale.max) continue;
+    if (typeof p.l === 'number' && p.l < lo) lo = p.l;
+    if (typeof p.h === 'number' && p.h > hi) hi = p.h;
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+  const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
+  chart.options.scales.y.min = lo - pad;
+  chart.options.scales.y.max = hi + pad;
+  chart.update('none');
+}
+
+const STOCK_ANALYSIS_MIN_ZOOM_SPAN_MS = 3 * 24 * 60 * 60 * 1000;
+function zoomStockAnalysisChart(factor) {
+  const chart = charts.stockAnalysis;
+  if (!chart) return;
+  const candleData = chart.data.datasets[0].data;
+  if (!candleData || candleData.length === 0) return;
+  const overallMin = candleData[0].x;
+  const overallMax = candleData[candleData.length - 1].x;
+  const xScale = chart.scales.x;
+  const currentMin = (typeof xScale.min === 'number') ? xScale.min : overallMin;
+  const currentMax = (typeof xScale.max === 'number') ? xScale.max : overallMax;
+  const currentSpan = Math.max(currentMax - currentMin, STOCK_ANALYSIS_MIN_ZOOM_SPAN_MS);
+  const newSpan = Math.max(currentSpan / factor, STOCK_ANALYSIS_MIN_ZOOM_SPAN_MS);
+  const newMin = Math.max(overallMax - newSpan, overallMin);
+  chart.zoomScale('x', { min: newMin, max: overallMax }, 'none');
+  rescaleStockAnalysisYAxis(chart);
+}
+
+function buildStockAnalysisChart(periodKey) {
+  if (stockAnalysisFullPoints.length === 0) return;
+  stockAnalysisActivePeriod = periodKey;
+  updateStockAnalysisPeriodButtonActiveUI(periodKey);
+
+  const canvas = document.getElementById('stockAnalysisChart');
+  if (charts.stockAnalysis) { charts.stockAnalysis.destroy(); charts.stockAnalysis = null; }
+
+  const days = PERIOD_TRADING_DAYS[periodKey];
+  const total = stockAnalysisFullPoints.length;
+  const startIdx = Number.isFinite(days) ? Math.max(0, total - days) : 0;
+  const points = stockAnalysisFullPoints.slice(startIdx);
+  if (points.length === 0) return;
+
+  const textColor = chartTextColor();
+  const { name, isForeign } = stockAnalysisChartMeta;
+
+  const maColors = getMaColors();
+  const maByPeriod = {};
+  MA_PERIODS.forEach((period) => {
+    const full = stockAnalysisFullMA[period];
+    maByPeriod[period] = full ? full.slice(startIdx) : null;
+  });
+  document.getElementById('stockAnalysisMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign, 0, undefined);
+
+  const maDatasets = MA_PERIODS
+    .filter((period) => maByPeriod[period])
+    .map((period) => ({
+      type: 'line',
+      label: `MA${period}`,
+      data: points.map((p, i) => ({ x: p.date.getTime(), y: maByPeriod[period][i] })),
+      borderColor: maColors[period],
+      backgroundColor: 'transparent',
+      borderWidth: 1.2,
+      pointRadius: 0,
+      tension: 0.15,
+      spanGaps: false,
+      order: 1
+    }));
+
+  const candleColors = getCandleColors();
+  charts.stockAnalysis = new Chart(canvas, {
+    type: 'candlestick',
+    data: {
+      datasets: [
+        {
+          type: 'candlestick',
+          label: name,
+          data: points.map((p) => ({ x: p.date.getTime(), o: p.open, h: p.high, l: p.low, c: p.close })),
+          color: { up: candleColors.up, down: candleColors.down, unchanged: candleColors.up },
+          borderColor: { up: candleColors.up, down: candleColors.down, unchanged: candleColors.up },
+          order: 2
+        },
+        ...maDatasets
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      parsing: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'M/d' } }, ticks: { color: textColor, maxTicksLimit: 6 }, grid: { display: false } },
+        y: {
+          ticks: { color: textColor, callback: (v) => isForeign ? ('$' + fmtNum(v, 2)) : (v >= 10000 ? fmtNum(v / 10000, 2) + '만' : fmtNum(v, 0)) },
+          grid: { color: 'rgba(148,163,184,.15)' },
+          afterFit: (scale) => { scale.width = 56; }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+        zoom: {
+          pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => rescaleStockAnalysisYAxis(chart) },
+          zoom: { wheel: { enabled: false }, pinch: { enabled: false }, mode: 'x' },
+          limits: { x: { min: 'original', max: 'original' } }
+        }
+      }
+    }
+  });
+  requestAnimationFrame(() => { if (charts.stockAnalysis) charts.stockAnalysis.resize(); });
+}
+
+// [종목 분석 모달 전용] 보유 여부와 무관하게 항상 호출된다 - 티커가 없으면(이론상 analyzeTickerForModal이
+// 이미 에러로 걸러내지만 방어적으로) 안내 문구만 보여준다.
+async function renderStockAnalysisChart(yahooTicker, name, isForeign) {
+  const canvas = document.getElementById('stockAnalysisChart');
+  const msgEl = document.getElementById('stockAnalysisChartMsg');
+  const legendEl = document.getElementById('stockAnalysisMaLegend');
+  const myToken = ++stockAnalysisChartToken;
+  if (charts.stockAnalysis) { charts.stockAnalysis.destroy(); charts.stockAnalysis = null; }
+  legendEl.innerHTML = '';
+  document.getElementById('stockAnalysisPeriodButtons').innerHTML = '';
+
+  if (!yahooTicker) {
+    canvas.classList.add('hidden');
+    msgEl.textContent = '티커가 없는 항목은 주가 차트를 제공할 수 없습니다.';
+    msgEl.classList.remove('hidden');
+    return;
+  }
+
+  canvas.classList.add('hidden');
+  msgEl.textContent = '차트 불러오는 중...';
+  msgEl.classList.remove('hidden');
+
+  let points;
+  try {
+    points = await fetchDailyHistory(yahooTicker);
+  } catch (e) {
+    if (myToken === stockAnalysisChartToken) msgEl.textContent = '주가 차트를 불러오지 못했습니다.';
+    return;
+  }
+  if (myToken !== stockAnalysisChartToken) return;
+
+  stockAnalysisFullPoints = points;
+  rebuildStockAnalysisFullMA();
+  stockAnalysisChartMeta = { name, isForeign };
+
+  msgEl.classList.add('hidden');
+  canvas.classList.remove('hidden');
+  renderStockAnalysisPeriodButtons();
+  buildStockAnalysisChart('6m');
+}
+document.getElementById('stockAnalysisZoomInBtn').addEventListener('click', () => zoomStockAnalysisChart(1.3));
+document.getElementById('stockAnalysisZoomOutBtn').addEventListener('click', () => zoomStockAnalysisChart(0.7));
+
+/* -------------------------------------------------------------------------
  * 14. 정렬 (테이블 헤더 클릭)
  * ---------------------------------------------------------------------- */
 document.querySelectorAll('th.sortable').forEach(th => {

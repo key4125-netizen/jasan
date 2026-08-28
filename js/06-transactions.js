@@ -618,7 +618,7 @@ function renderTransactionList() {
 
   container.innerHTML = list.map((t) => {
     const typeLabel = t.type === 'buy' ? '매수' : '매도';
-    const typeClass = t.type === 'buy' ? 'bg-red-50 dark:bg-red-950 text-red-500' : 'bg-blue-50 dark:bg-blue-950 text-blue-500';
+    const typeClass = t.type === 'buy' ? 'bg-red-50 dark:bg-red-950 text-red-500 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-950 text-blue-500 dark:text-blue-400';
     const unit = t.currency === 'USD' ? '$' : '';
     const amount = t.quantity * t.price;
     const originTag = t.origin === 'initial'

@@ -152,13 +152,13 @@ function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
   return pv * growth + monthlyContribution * (1 + monthlyRate) * ((growth - 1) / monthlyRate);
 }
 
-// 실제 달력상의 5년 단위 연도(2030년/2035년/2040년/2045년처럼 5의 배수인 해)를 마일스톤으로 잡는다 -
-// "오늘로부터 5년 후/10년 후"가 아니라 진짜 5의 배수 연도를 의미한다. 오늘이 마침 5의 배수 해라면
-// 그 해는 "현재" 행과 중복되므로 제외하고 항상 다음 5년 단위부터 4개를 고른다(20년 시야 안에 들어옴).
+// [고정 5년 간격 마일스톤] 예전엔 "실제 달력상 5의 배수 연도"(2030/2035/2040/2045년처럼)를 기준으로
+// 잡아서, 오늘이 몇 년이냐에 따라 "4년후"/"9년후"처럼 불규칙한 오프셋이 나왔다(사용자 실측 신고로
+// 확인) - 오늘(CURRENT_YEAR)로부터 정확히 5/10/15/20/25/30년 후로 고정한다(30년 시야까지 확장,
+// 사용자 요청). 표시 연도(하위 캡션)는 CURRENT_YEAR + offset으로 그대로 자동 계산되므로 이 배열만
+// 바꾸면 표/차트 전부 자동으로 반영된다.
 function getMilestoneYearOffsets() {
-  let base = Math.ceil(CURRENT_YEAR / 5) * 5;
-  if (base <= CURRENT_YEAR) base += 5;
-  return [base, base + 5, base + 10, base + 15].map(y => y - CURRENT_YEAR);
+  return [5, 10, 15, 20, 25, 30];
 }
 
 /* -------------------------------------------------------------------------
@@ -519,7 +519,7 @@ function renderScenarioRateManagerList() {
           class="scenario-rate-input w-14 text-[11px] font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
         <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
           class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
-        ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+        ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
       </div>
     </div>`).join('');
   lucide.createIcons();
@@ -843,8 +843,9 @@ function renderTargetAllocationSummary(regionPV2) {
 // 안에서 들쭉날쭉해지지 않는다.
 // [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
 // 2040/2045년)로 표기했으나, 캘린더 연도 대신 오늘 기준 상대 연차인 "15년 후"/"20년 후"로 단순화했다 -
-// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. maxYears가 20이므로 "20년 후"는
-// 시뮬레이션의 마지막 스냅샷과 같다.
+// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. 시뮬레이션은 이제 30년치까지
+// 계산되므로(getMilestoneYearOffsets가 30년후까지 다루게 되면서 함께 늘림) "20년 후"가 더 이상 마지막
+// 스냅샷은 아니지만, 이 카드가 보여주는 시점 자체는 그대로 15/20년후로 고정이다.
 const SCENARIO_CARD_YEAR_OFFSETS = [15, 20];
 
 function renderScenarioSummaryCards(scenarioData) {
@@ -1076,7 +1077,7 @@ function updateProjection() {
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
 
-  const milestoneOffsets = getMilestoneYearOffsets(); // 예: 2026년 기준 [4, 9, 14, 19] (2030/2035/2040/2045년)
+  const milestoneOffsets = getMilestoneYearOffsets(); // [5, 10, 15, 20, 25, 30] - 항상 고정
 
   // ===== 시나리오 ①: 현재 구성 유지 =====
   // [버그 수정] "총자산 합계"를 (전체 원금 × 가중평균 수익률)로 통짜 복리 계산하면, 서로 다른 수익률의
@@ -1085,7 +1086,9 @@ function updateProjection() {
   // 해야 총자산이 정의상 각 자산군의 합이라 어떤 개별 자산군보다도 작을 수 없다(simulateNonRebalancedGroups
   // 참고). 리밸런싱을 하지 않으므로 월 적립금도 "오늘의 고정 비중"이 아니라 "그 달 시작 시점의 실제
   // (그때까지 불어난) 비중"대로 매달 다시 계산해서 배분한다.
-  const currentPoints = simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, 20);
+  // [30년 시야 확장] milestoneOffsets가 이제 30년후까지 포함하므로(위 getMilestoneYearOffsets 참고),
+  // 그 시점의 스냅샷(points[30])이 존재하려면 시뮬레이션 자체도 30년까지 돌려야 한다.
+  const currentPoints = simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, 30);
 
   // ===== 시나리오 ②③④: 리밸런싱 후 - 보수적/일반적/긍정적 =====
   // 시나리오 ①과 정확히 같은 원금(totalValue)을 목표 지역/항목 비중대로 재배분했다고 가정하되,
@@ -1093,7 +1096,7 @@ function updateProjection() {
   // "리밸런싱 후" 시나리오와 완전히 동일한 값(사용자 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
-    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 20, realEstateValue);
+    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 30, realEstateValue);
   });
 
   // "리밸런싱 후(일반적)" 상세 패널용 - 상품별 비중 표는 자산 배분 자체가 프리셋과 무관하게 동일하므로
@@ -1116,8 +1119,9 @@ function updateProjection() {
   renderScenarioSummaryCards(scenarioData);
   renderScenarioCompareChart(scenarioData, milestoneOffsets);
 
-  // 표/카드용: "현재" + 실제 5년 단위 캘린더 연도 마일스톤만 추린다. 각 시나리오의 point.total은 이미
-  // 위에서 "자산군(또는 지역)별 합산" 방식으로 정확히 계산된 값이므로 그대로 재사용한다.
+  // 표/카드용: "현재" + 고정 5년 간격 마일스톤(5/10/15/20/25/30년 후)만 추린다. 각 시나리오의
+  // point.total은 이미 위에서 "자산군(또는 지역)별 합산" 방식으로 정확히 계산된 값이므로 그대로
+  // 재사용한다.
   const compareRows = [0, ...milestoneOffsets].map((y) => {
     const values = {};
     scenarioData.forEach((s) => { values[s.key] = s.points[y].total; });
@@ -1128,6 +1132,9 @@ function updateProjection() {
   // ===== 맨 위 리밸런싱 효과 요약 카드 (금융자산 리밸런싱 탭 상단에 배치) =====
   // "10년 후 / 20년 후"에 해당하는 마일스톤 두 개만 크게 강조한다 - "현재유지" 대비 "일반적"(예전
   // "리밸런싱 후"와 동일 기준) 프리셋의 차액을 그대로 보여줘 기존 카드 의미를 그대로 유지한다.
+  // [고정 5년 간격 도입 이후] compareRows가 이제 [0,5,10,15,20,25,30]으로 항상 고정이라, 인덱스
+  // 2/4가 정확히 10년후/20년후를 가리키는 게 보장된다(예전 캘린더 연도 기준일 때는 실제로는
+  // 14년후/19년후를 가리키면서도 이 주석만 "10년후/20년후"라고 (부정확하게) 적혀 있었다).
   const summaryRows = [2, 4].map((idx) => ({
     year: compareRows[idx].year,
     label: `${CURRENT_YEAR + compareRows[idx].year}년 (${compareRows[idx].year}년 후)`,
