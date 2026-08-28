@@ -126,10 +126,11 @@ function warnIfRestrictedWebView() {
 async function bootApp() {
   cleanupLegacyGoogleSyncKeys(); // 예전 구글 드라이브 연동 기능이 남긴 localStorage 키를 1회 정리
   loadState();
-  // [종목 마스터 데이터] localStorage 캐시가 있으면 이 호출 안에서 즉시(동기적으로) 반영되고, 네트워크
-  // 갱신은 await 없이 백그라운드에서 진행된다(js/09 loadTickerMaster() 참고) - renderAll() 전에
-  // 불러서 첫 렌더링부터 종목 검색이 바로 되게 한다.
-  loadTickerMaster().catch(() => {});
+  // [종목 마스터 데이터 - localStorage 캐시만 여기서 동기 반영] 캐시가 있으면 이 시점에 즉시 반영돼
+  // 렌더링 전부터 검색이 된다. 네트워크로 새로 받아야 하는 경우(최초 실행/캐시 만료 등, 파일이
+  // 16,000여 종목·2.7MB로 꽤 큼)는 뒤로 미룬다(아래 refreshPricesAndRates() 이후) - 그 이유는 그
+  // 호출부 주석 참고.
+  loadTickerMasterFromCache();
   loadSyncState();
   // [동기화 상태 버튼 초기 표시] pullFromCloud()는 아래에서 await 없이 비동기로 실행되므로, 그 결과가
   // 나오기 전까지 버튼이 잠깐 정적 기본값("동기화중지")으로 보이는 걸 막기 위해 loadSyncState() 직후
@@ -183,9 +184,20 @@ async function bootApp() {
   // 뜨는지만 바뀌었을 뿐, 뜬 팝업 안에 어떤 종목이 보이는지는 기존 그대로다. 헤더의 [핵심종목
   // 실시간] 버튼(coreStocksLiveBtn)은 원래도 이 자동 노출 로직과 무관하게 항상 openCoreStocksModal()을
   // 직접 호출하는 별도 경로라 변경 없이 그대로 작동한다.
+  // [버그 수정 - 모바일에서 최초 접속 시 시세조회가 느려지고 실패하던 문제] loadTickerMaster()가
+  // 부팅 초반부터 refreshPricesAndRates()와 동시에 네트워크를 타면, 종목 마스터 파일이 16,000여
+  // 종목·약 2.7MB로 꽤 커서 모바일 회선에서 가격 조회 요청들과 대역폭을 다투게 된다 - 실사용 중
+  // "최초 접속 시 시세조회가 매우 오래 걸리고 결과도 제대로 못 받아온다"는 신고로 확인됐다(재조회를
+  // 눌러도 느린 건, 이 최초 경합으로 프록시 쪽에서 일시적으로 rate-limit이 걸렸을 가능성이 있음).
+  // 캐시가 있으면 위에서 이미 즉시 반영됐으니(loadTickerMasterFromCache), 네트워크로 새로 받아야
+  // 하는 경우만 가격 조회가 끝난 뒤로 미룬다 - backfillAllHoldingsDailyPnlHistory와 똑같은 이유로
+  // 똑같은 자리에 둔다(주석 참고).
   refreshPricesAndRates().catch(() => {}).then(() => {
     openCoreStocksModal();
-  }).finally(() => backfillAllHoldingsDailyPnlHistory());
+  }).finally(() => {
+    backfillAllHoldingsDailyPnlHistory();
+    loadTickerMaster().catch(() => {});
+  });
   // [가족 동기화 - 부팅 시 1회 pull] 위 시세 갱신과 마찬가지로 await하지 않는다 - 로컬 데이터로 먼저
   // 즉시 렌더링한 뒤 클라우드에 더 최신 데이터가 있으면 잠시 후 반영되는 방식으로, "네트워크를 기다리지
   // 않고 즉시 그린다"는 이 앱의 기존 철학을 그대로 따른다. 동기화를 켜지 않은 사용자는 pullFromCloud()
