@@ -406,6 +406,35 @@ async function raceFetchYahooStooq(yahooTicker, name) {
   }
 }
 
+// [국내 전용 최종 안전망 - KIS] 네이버/Yahoo/Stooq가 전부 실패했을 때만 raceFetchPrice()가 호출한다.
+// 종목 상세 모달의 재무 데이터(js/13)용으로 이미 배포된 KIS Worker(/api/kis/price, cloudflare-worker-kis-proxy.js
+// handlePrice)를 그대로 재사용한다 - 새 Worker 배포 불필요.
+// [의도적 제약 - 절대 1·2순위와 병렬로 쏘지 않는다] Worker 코드 자체의 실측 기록(cloudflare-worker-kis-proxy.js
+// callKis 주석)에 "동시 요청 3~5건만으로도 500 에러가 재현됨(KIS 초당 요청 제한이 예상보다 엄격)"이라고
+// 남아있다 - 국내 보유종목 15~20개를 한꺼번에 KIS로도 보내면, 오늘 own-worker/r.jina.ai에서 겪은
+// "동시 요청 폭주로 자기 자신을 rate limit시키는" 문제가 KIS 쪽에서 그대로 재현될 위험이 크다. 다른
+// 소스가 전부 실패했을 때만(정상 상황에서는 거의 호출 안 됨) 쓰면 이 위험 없이 순수하게 신뢰성만
+// 높일 수 있다.
+// [알려진 한계] 이 Worker(handlePrice)는 시간외 시세 판별 필드와 당일 시가/고가/저가를 돌려주지
+// 않는다(js/13 주석 참고, KIS 응답에서 확인 안 됨) - session/todayOpen 등은 비워두고(Stooq의 최소
+// 정보 폴백과 동일한 패턴) 정규장 기준가 하나만 확보하는 최소한의 안전망으로 쓴다.
+async function fetchKisPriceFallback(yahooTicker, name) {
+  const code = extractKisDomesticCode(yahooTicker);
+  if (!code) throw new Error('KIS: 국내 종목코드 아님');
+  const snapshot = await fetchKisPriceSnapshot(code);
+  const price = snapshot && Number(snapshot.price);
+  if (!snapshot || !Number.isFinite(price) || price <= 0) throw new Error('KIS: 가격 필드 없음 또는 유효하지 않은 값');
+  const changePercent = Number.isFinite(Number(snapshot.changePct)) ? Number(snapshot.changePct) : 0;
+  // KIS는 전일종가를 직접 안 주고 등락률(prdy_ctrt)만 주므로, 현재가와 등락률로 역산한다.
+  const previousClose = changePercent !== 0 ? price / (1 + changePercent / 100) : null;
+  return {
+    price, previousClose, changePercent,
+    session: undefined, currency: 'KRW', regularMarketPrice: price,
+    todayOpen: undefined, todayHigh: undefined, todayLow: undefined,
+    name, source: 'KIS(최종안전망)'
+  };
+}
+
 async function raceFetchPrice(yahooTicker, name) {
   const isKr = /\.(KS|KQ)$/i.test(yahooTicker);
   if (!isKr) return raceFetchYahooStooq(yahooTicker, name);
@@ -429,10 +458,52 @@ async function raceFetchPrice(yahooTicker, name) {
     try {
       return await fallbackPromise;
     } catch (restErr) {
-      throw new Error(`Naver: ${naverErr.message} | ${restErr.message}`);
+      // [KIS 최종 안전망] 위 두 소스(네이버, Yahoo/Stooq)가 전부 실패했을 때만 마지막으로 시도한다 -
+      // fetchKisPriceFallback() 주석 참고, 의도적으로 여기서만(순차) 호출하고 앞 두 소스와 병렬로
+      // 쏘지 않는다.
+      try {
+        return await fetchKisPriceFallback(yahooTicker, name);
+      } catch (kisErr) {
+        throw new Error(`Naver: ${naverErr.message} | ${restErr.message} | ${kisErr.message}`);
+      }
     }
   }
 }
+
+// [근본 원인 - 동시 요청 폭주로 인한 자기 자신 rate limit] v151~v154로 구조/타임아웃/중복조회를 다
+// 고쳤는데도 20초+가 남아있어 프록시별 응답을 실측했더니, 티커 하나당 raceFetchPrice()가 내부적으로
+// 네이버(직접+프록시 5개)와 Yahoo/Stooq(프록시 5개+Stooq)를 전부 동시에 쏴서 최대 12건의 HTTP
+// 요청을 만들어낸다 - 보유종목 25~39개가 전부 동시에(Promise.allSettled) 갱신되면, own-worker
+// 하나에만 순간적으로 25~39건이 한꺼번에 몰린다. own-worker는 그 요청들을 그대로 Yahoo Finance에
+// 전달하는 얇은 프록시일 뿐이라, 이 "짧은 시간 동시 다발 요청"이 Yahoo 쪽 비공식 API의 자체
+// rate-limit(429)을 그대로 유발하는 것을 실측으로 확인했다(own-worker가 정상인데도 429를 반환).
+// r.jina.ai 같은 공용 백업도 자체 요청 제한이 있어 마찬가지다. 그 결과 원래는 1초 안에 끝날 요청들이
+// 무더기로 rate limit에 걸려 느리고 신뢰성 낮은 백업(allorigins-get, ~13초)으로 떠밀리고, 그 중
+// 가장 느린 종목 하나가 전체 갱신 시간(Promise.all이 가장 느린 것 하나를 기다리는 구조)을 그대로
+// 끌어올린다 - 순차 대기 구조나 개별 타임아웃 문제가 아니라, "동시에 너무 많이 쏴서 스스로 자신을
+// 병목시키는" 근본적으로 다른 원인이다.
+// [수정] 티커 단위로 동시 진행 개수를 제한하는 세마포어를 두고, 이 앱에서 시세를 조회하는 모든
+// 경로(보유종목 일괄 갱신/지수/매크로/종목 상세 모달/신규 자산 검색 등, fetchPriceWithFallback을
+// 거치는 전부)가 이 세마포어 하나를 공유한다 - 어떤 조합으로 몇 개 모듈이 동시에 조회를 요청하든
+// 실제로 프록시에 동시에 나가는 티커 조회 개수의 총합은 항상 이 한도 아래로 유지된다.
+function createConcurrencyLimiter(limit) {
+  let active = 0;
+  const queue = [];
+  function next() {
+    if (active >= limit || queue.length === 0) return;
+    active++;
+    const { fn, resolve, reject } = queue.shift();
+    fn().then(resolve, reject).finally(() => { active--; next(); });
+  }
+  return function run(fn) {
+    return new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); next(); });
+  };
+}
+// 티커 하나당 내부적으로 최대 약 12건의 HTTP 요청을 만들어내므로(위 설명 참고), 5로 제한해도 순간
+// 최대 약 60건까지는 나갈 수 있다 - 기존(제한 없음, 보유종목 수만큼)보다는 훨씬 적으면서도 여러
+// 종목을 동시에 처리하는 병렬성은 그대로 유지한다(완전 순차로 되돌리면 예전에 실측된 "최대 1분"
+// 문제가 재발한다).
+const priceRequestLimiter = createConcurrencyLimiter(5);
 
 // rawTicker: 사용자가 입력한 원본 티커(예: A005380, 005930, GOOGL). 순수 숫자 6자리만으로는 코스피
 // (.KS)인지 코스닥(.KQ)인지 입력 자체에서 구분할 수 없으므로, sanitizeTicker는 일단 .KS로 간주한다.
@@ -440,6 +511,9 @@ async function raceFetchPrice(yahooTicker, name) {
 // 예를 들어 실제로는 코스닥 종목인데 사용자가 접미사 없이 6자리 코드만 입력한 경우를 구제한다.
 // (.KS/.KQ를 이미 명시했거나 해외 티커인 경우는 애매하지 않으므로 재시도하지 않는다.)
 async function fetchPriceWithFallback(rawTicker, name) {
+  return priceRequestLimiter(() => fetchPriceWithFallbackInner(rawTicker, name));
+}
+async function fetchPriceWithFallbackInner(rawTicker, name) {
   const yahooTicker = sanitizeTicker(rawTicker).yahooTicker;
   const trimmedRaw = String(rawTicker ?? '').trim();
   const isAmbiguousKrxCode = /^\d{6}$/.test(trimmedRaw);
@@ -568,7 +642,14 @@ function riskEligibleAssets() {
  * ---------------------------------------------------------------------- */
 // 최근 N개월 일별 종가+거래량 - fetchMa20()과 동일한 다중 프록시 경쟁 패턴이며, range만 다르다(기본
 // 1년 - 52주 최고가/거래량 이동평균까지 한 번의 조회로 함께 커버하기 위해 6개월에서 1년으로 늘렸다).
+// [동시 요청 제한] 이 함수도 fetchPriceWithFallback과 똑같이 티커 하나당 프록시 6개를 동시에 쏘고,
+// computeAdvancedRiskMetrics()가 보유 종목 전부를 Promise.all로 한꺼번에 호출한다 - 위
+// priceRequestLimiter를 그대로 공유해서(같은 프록시 풀을 쓰므로) 시세 조회와 합쳐 전체 동시 요청
+// 총량을 함께 제어한다.
 async function fetchDailyCloses(yahooTicker, range = '1y') {
+  return priceRequestLimiter(() => fetchDailyClosesInner(yahooTicker, range));
+}
+async function fetchDailyClosesInner(yahooTicker, range) {
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
   // [v152 수정 되돌림] 여기도 7초로 줄였다가 fetchYahooViaProxy와 같은 이유로 되돌린다 - 이 함수 역시
   // Promise.any 경쟁이라 타임아웃 값은 "전부 실패할 때만" 상한으로 작동하고, allorigins-get처럼

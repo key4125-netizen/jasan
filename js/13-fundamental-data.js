@@ -22,16 +22,26 @@ function extractKisDomesticCode(rawTicker) {
 // [공통 Worker 호출] 실패해도(네트워크 오류/401/502 등) 예외를 던지지 않고 null을 반환한다 - 재무
 // 데이터는 어디까지나 참고용 부가 정보라, 조회에 실패해도 화면의 다른 부분(가격/보유정보/리스크
 // 진단)에는 영향이 없어야 한다.
+// [타임아웃 추가] 예전에 채권 기능(현재 되돌려짐)에서 이 함수가 일괄 시세 갱신 경로에 물렸을 때,
+// 타임아웃이 없어 KIS/Worker 응답이 늦어지면 전체 갱신이 무한정 멈추는 사고가 있었다(당시 핫픽스로
+// 타임아웃을 추가했었으나 채권 기능 전체 되돌리기에 같이 딸려가 사라짐). 지금은 이 함수가 종목 상세
+// 모달(재무 데이터, 실패해도 무해)에서만 쓰이지만, 곧 raceFetchPrice()의 국내 최종 안전망으로도
+// 재사용할 예정이라 - 그쪽은 실패 시 안전망 자체가 무한정 멈추면 안 되므로 - 이 기회에 타임아웃을
+// 다시 넣어둔다(다른 프록시 호출과 비슷한 10초).
 async function kisProxyFetch(path, code, extraParams) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const url = new URL(KIS_PROXY_URL + path);
     url.searchParams.set('ticker', code);
     Object.entries(extraParams || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url.toString(), { headers: { 'X-App-Secret': KIS_CLIENT_SHARED_SECRET } });
+    const res = await fetch(url.toString(), { signal: controller.signal, headers: { 'X-App-Secret': KIS_CLIENT_SHARED_SECRET } });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
