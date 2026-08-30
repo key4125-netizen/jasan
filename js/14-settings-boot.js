@@ -75,8 +75,12 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
  * ---------------------------------------------------------------------- */
 document.getElementById('darkModeBtn').addEventListener('click', () => {
   const html = document.documentElement;
+  // [깜박임 방지] 전환 직전에 모든 transition을 꺼서(index.html의 .theme-switching 규칙 참고) 색이
+  // 한 프레임에 즉시 바뀌게 하고, 다음 프레임에 다시 켜서 이후 hover 등 다른 애니메이션은 그대로 둔다.
+  html.classList.add('theme-switching');
   html.classList.toggle('dark');
   localStorage.setItem(LS_DARKMODE, html.classList.contains('dark') ? '1' : '0');
+  requestAnimationFrame(() => requestAnimationFrame(() => html.classList.remove('theme-switching')));
   renderCharts();
   // [버그 수정] 금융자산 미래예측(리밸런싱/자산예측 통합 탭의 "미래 예측" 서브탭)의 3개 차트(통합비교/
   // 시나리오1/시나리오2)는 renderCharts()에 포함돼 있지 않아, 그 서브탭을 보고 있는 상태에서 다크모드를
@@ -177,13 +181,9 @@ async function bootApp() {
   // 완전히 제거했다 - 위험 점수/시간대 조건과 무관하게 이제 앱 부팅 시 이 팝업은 절대 자동으로 뜨지
   // 않는다(이 함수를 호출하던 곳이 여기 한 곳뿐이라 다른 진입 경로도 없다). RISK 관리 카드 자체는
   // 대시보드 탭에 그대로 남아있어 원할 때 확인할 수 있다.
-  // [핵심종목 실시간 팝업 - 시간대 제한 없이 항상 자동 노출] 예전엔 isPopupAllowedTimeWindow()로
-  // 하루 4개 시간대에만 부팅 자동 노출을 허용했으나, 요청에 따라 그 게이팅을 없애고 접속할 때마다
-  // 항상 띄운다. 팝업 내부의 국내/해외 시간대 판정·종목 추출 로직(getCoreStocksRegion/
-  // getCoreStockCandidates)은 이 자동 노출 여부와 별개의 로직이라 그대로 유지된다 - 언제 자동으로
-  // 뜨는지만 바뀌었을 뿐, 뜬 팝업 안에 어떤 종목이 보이는지는 기존 그대로다. 헤더의 [핵심종목
-  // 실시간] 버튼(coreStocksLiveBtn)은 원래도 이 자동 노출 로직과 무관하게 항상 openCoreStocksModal()을
-  // 직접 호출하는 별도 경로라 변경 없이 그대로 작동한다.
+  // [핵심종목 실시간 팝업 - 부팅 자동 노출 완전 제거] 한때는 시간대 제한 없이 접속할 때마다 항상
+  // 자동으로 띄웠으나, 요청에 따라 그 자동 노출 자체를 완전히 없앴다 - 이제 이 팝업은 오직 헤더의
+  // [핵심종목 실시간] 버튼(coreStocksLiveBtn, js/02의 클릭 리스너)을 사용자가 직접 눌렀을 때만 열린다.
   // [버그 수정 - 모바일에서 최초 접속 시 시세조회가 느려지고 실패하던 문제] loadTickerMaster()가
   // 부팅 초반부터 refreshPricesAndRates()와 동시에 네트워크를 타면, 종목 마스터 파일이 16,000여
   // 종목·약 2.7MB로 꽤 커서 모바일 회선에서 가격 조회 요청들과 대역폭을 다투게 된다 - 실사용 중
@@ -192,9 +192,7 @@ async function bootApp() {
   // 캐시가 있으면 위에서 이미 즉시 반영됐으니(loadTickerMasterFromCache), 네트워크로 새로 받아야
   // 하는 경우만 가격 조회가 끝난 뒤로 미룬다 - backfillAllHoldingsDailyPnlHistory와 똑같은 이유로
   // 똑같은 자리에 둔다(주석 참고).
-  refreshPricesAndRates().catch(() => {}).then(() => {
-    openCoreStocksModal();
-  }).finally(() => {
+  refreshPricesAndRates().catch(() => {}).finally(() => {
     backfillAllHoldingsDailyPnlHistory();
     loadTickerMaster().catch(() => {});
   });

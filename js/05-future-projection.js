@@ -759,11 +759,15 @@ function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, ma
   return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey, totalValue, realEstateValue) };
 }
 
-// [4가지 시나리오 리팩토링] 요약 카드 그리드·비교 차트·비교표가 전부 이 배열 하나를 순회(loop)해서
-// 그려진다 - 시나리오를 추가/삭제하려면 이 배열만 바꾸면 된다. kind:'current'는 리밸런싱을 하지 않는
-// 시나리오 1(자산군별 월단위 시뮬레이션), kind:'rebalanced'는 리밸런싱 후 프리셋 3종(지역별 복리 계산)이다.
+// [3가지 시나리오 리팩토링] 요약 카드 그리드·비교 차트·비교표가 전부 이 배열 하나를 순회(loop)해서
+// 그려진다 - 시나리오를 추가/삭제하려면 이 배열만 바꾸면 된다. 전부 kind:'rebalanced'(리밸런싱 후
+// 프리셋 3종, 지역별 복리 계산)이다.
+// [버그 수정 - "현재 구성 유지" 제거] 예전엔 리밸런싱을 하지 않는 kind:'current' 시나리오도 함께
+// 비교했으나, 요청에 따라 이 통합 비교(요약 카드/차트/스케줄 표)에서는 완전히 뺐다 - "현재 구성
+// 유지" 기준값 자체(currentPoints/weightedAvg)는 updateProjection()이 여전히 계산하지만, 이제
+// "리밸런싱 효과 요약" 카드(renderRebalanceEffectSummary, 리밸런싱 전/후 차액 비교용 - 이 배열과는
+// 별개의 화면 영역)에서만 쓰인다.
 const PROJECTION_SCENARIOS = [
-  { key: 'current', label: '현재 구성 유지', color: '#4f46e5', kind: 'current' },
   { key: 'conservative', label: '리밸런싱 후·보수적', color: SCENARIO_RATE_PRESETS.conservative.color, kind: 'rebalanced', preset: 'conservative' },
   { key: 'normal', label: '리밸런싱 후·일반적', color: SCENARIO_RATE_PRESETS.normal.color, kind: 'rebalanced', preset: 'normal' },
   { key: 'optimistic', label: '리밸런싱 후·긍정적', color: SCENARIO_RATE_PRESETS.optimistic.color, kind: 'rebalanced', preset: 'optimistic' }
@@ -828,8 +832,8 @@ function renderTargetAllocationSummary(regionPV2) {
   reapplyDetailCardAccordionHeight('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody');
 }
 
-// [4가지 시나리오 리팩토링] 상단 요약 카드 그리드 - PROJECTION_SCENARIOS(+계산된 points/weightedAvgRate)를
-// 순회하며 카드 4개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
+// [3가지 시나리오 리팩토링] 상단 요약 카드 그리드 - PROJECTION_SCENARIOS(+계산된 points/weightedAvgRate)를
+// 순회하며 카드 3개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
 // [2040년/2045년 고정 표기 + 금융자산/부동산 구분] 예전엔 "20년 후 예상자산" 하나만 보여줬으나, 이제
@@ -838,7 +842,7 @@ function renderTargetAllocationSummary(regionPV2) {
 // 열어도 "앞으로 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
 // 각 시나리오의 해당 연차 스냅샷(s.points[offset])은 이미 그룹키별 잔액을 갖고 있으므로(simulateNonRebalancedGroups/
 // simulateRebalancedPreset 참고) '부동산' 키가 있으면 총액에서 빼 "금융자산" 몫을 계산한다 - 부동산이
-// 없으면(0원이거나 미보유) 그 구분 줄 자체를 만들지 않고 총액만 깔끔하게 보여준다. 4개 시나리오 카드는
+// 없으면(0원이거나 미보유) 그 구분 줄 자체를 만들지 않고 총액만 깔끔하게 보여준다. 3개 시나리오 카드는
 // 항상 다같이 부동산을 보유하거나 다같이 안 보유하므로(포트폴리오 전체 단위 자산) 카드 높이가 그리드
 // 안에서 들쭉날쭉해지지 않는다.
 // [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
@@ -910,8 +914,10 @@ function renderRebalanceEffectSummary(rows) {
 }
 
 // rows: [{ year, label, scenario1, scenario2 }, ...] - 10년 후/20년 후 시점을 열로, [현재 구성 유지]/[일반적]/[차액]을
-// 행으로 배치해 세 수치를 한눈에 대비할 수 있는 표를 그린다(리밸런싱 탭 상단 요약 카드 전용, 4가지
-// 시나리오 중 "현재유지"와 "일반적"만 비교 - renderScenarioCompareChart의 4계열 비교와는 다른 용도).
+// 행으로 배치해 세 수치를 한눈에 대비할 수 있는 표를 그린다(리밸런싱 탭 상단 요약 카드 전용 - "현재유지"는
+// 이제 PROJECTION_SCENARIOS(3가지 리밸런싱 후 시나리오만)에는 없지만, updateProjection()이 별도로 계산해
+// 둔 currentPoints를 여기서만 "일반적"과 비교하는 용도로 계속 쓴다 - renderScenarioCompareChart의 3계열
+// 비교와는 다른, 별개의 화면 영역이다).
 // [금융자산 미래예측] 탭의 통합 비교 차트 전용: 평소에는 세부 현황(툴팁)을
 // 표시하지 않다가 그래프를 클릭/터치했을 때만 3초간 보여주고 자동으로 사라지게 한다.
 // [버그 수정 - 팝업마다 자동 숨김 시간이 제각각이었음] 예전엔 여기만 10초였고 다른 그래프 팝업(일별
@@ -932,11 +938,11 @@ function scheduleTooltipAutoHide(chart, key) {
   }, 3000);
 }
 
-// [4가지 시나리오 리팩토링] scenarioData: [{key,label,color,points}, ...] (PROJECTION_SCENARIOS + 각자의
-// yearlyPoints) - 시나리오 수가 몇 개든 그대로 라인 하나씩 그린다. 라인이 4개로 늘면서 예전처럼 시점마다
-// "더 큰 쪽 위/작은 쪽 아래" 방식으로 값을 라벨로 항상 띄워두면 라인이 겹치는 구간에서 라벨끼리도 겹쳐
-// 알아보기 어려워진다 - 대신 마일스톤 연도에는 점만 크게 찍어두고, 정확한 금액은 아래 스케줄 표와
-// 그래프를 탭했을 때 뜨는 툴팁(4개 시나리오 값이 한 번에 표시됨)으로 확인하도록 단순화했다.
+// [3가지 시나리오 리팩토링] scenarioData: [{key,label,color,points}, ...] (PROJECTION_SCENARIOS + 각자의
+// yearlyPoints) - 시나리오 수가 몇 개든 그대로 라인 하나씩 그린다. 라인이 여러 개로 늘면서 예전처럼
+// 시점마다 "더 큰 쪽 위/작은 쪽 아래" 방식으로 값을 라벨로 항상 띄워두면 라인이 겹치는 구간에서
+// 라벨끼리도 겹쳐 알아보기 어려워진다 - 대신 마일스톤 연도에는 점만 크게 찍어두고, 정확한 금액은 아래
+// 스케줄 표와 그래프를 탭했을 때 뜨는 툴팁(3개 시나리오 값이 한 번에 표시됨)으로 확인하도록 단순화했다.
 function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
   const textColor = chartTextColor();
   if (charts.scenarioCompare) charts.scenarioCompare.destroy();
@@ -950,7 +956,7 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
     backgroundColor: s.color,
     fill: false,
     tension: 0.3,
-    borderWidth: s.key === 'current' ? 3 : 2,
+    borderWidth: 2,
     pointRadius: s.points.map((p) => (MILESTONE_YEARS.includes(p.year) ? 4 : 0)),
     pointBackgroundColor: s.color
   }));
@@ -960,7 +966,7 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
     data: { labels, datasets }, // X축 연도 표기: "2026년"이 아니라 "Y26" 형식(년도 뒤 2자리)으로 축약
     options: {
       responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false }, // 한 시점에 4개 시나리오 값을 모두 툴팁으로 보여준다
+      interaction: { mode: 'index', intersect: false }, // 한 시점에 3개 시나리오 값을 모두 툴팁으로 보여준다
       // 호버(마우스 이동)로는 반응하지 않고 클릭/터치했을 때만 툴팁이 뜨도록 이벤트를 click으로 제한한다.
       events: ['click'],
       onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'scenarioCompare'),
@@ -976,16 +982,16 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
   });
 }
 
-// 통합 비교 차트 하단의 상세 스케줄 표 - 5년 단위 시점마다 4개 시나리오의 예상 자산(명목)을 나란히
-// 표기한다. rows: [{ year, values: { current, conservative, normal, optimistic } }, ...]
+// 통합 비교 차트 하단의 상세 스케줄 표 - 5년 단위 시점마다 3개 시나리오의 예상 자산(명목)을 나란히
+// 표기한다. rows: [{ year, values: { conservative, normal, optimistic } }, ...]
 // [모바일 가로 스크롤 제거] 예전엔 "1,234,567,890원" 전체 자릿수 + 긴 시나리오명("리밸런싱 후·보수적")
 // 헤더 때문에 5개 열이 375px 화면 폭을 넘어 가로 스크롤이 필요했다 - 금액을 "5.2억"처럼 억 단위
 // 한 자리로 축약하고, 헤더도 "리밸런싱 후·" 접두어를 뗀 짧은 이름만 써서 한 화면에 다 들어오게 했다.
 function renderScenarioCompareScheduleTable(rows, scenarioData) {
   const fmtEok = (v) => (v / 1e8).toFixed(1) + '억';
-  // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 떼고, "현재 구성 유지"는 "현재구성"으로
-  // 더 줄인다(요약 카드/차트 범례의 원래 라벨은 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
-  const shortLabel = (label) => label.replace('리밸런싱 후·', '').replace('현재 구성 유지', '현재구성');
+  // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 뗀다(요약 카드/차트 범례의 원래 라벨은
+  // 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
+  const shortLabel = (label) => label.replace('리밸런싱 후·', '');
   document.getElementById('scenarioCompareScheduleHead').innerHTML = `
     <th class="pl-1 pr-1.5 py-2 text-left font-semibold text-slate-500 dark:text-slate-400">시점</th>
     ${scenarioData.map((s) => `<th class="px-1 py-2 text-right font-bold" style="color:${s.color}">${escapeHtml(shortLabel(s.label))}</th>`).join('')}`;
@@ -1107,11 +1113,8 @@ function updateProjection() {
   };
   renderTargetAllocationSummary(regionPV2);
 
-  // ===== 4개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
+  // ===== 3개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
   const scenarioData = PROJECTION_SCENARIOS.map((s) => {
-    if (s.kind === 'current') {
-      return { ...s, points: currentPoints, weightedAvgRate: weightedAvg };
-    }
     const result = presetResults[s.preset];
     return { ...s, points: result.yearlyPoints, weightedAvgRate: result.weightedAvgRate };
   });
@@ -1135,10 +1138,13 @@ function updateProjection() {
   // [고정 5년 간격 도입 이후] compareRows가 이제 [0,5,10,15,20,25,30]으로 항상 고정이라, 인덱스
   // 2/4가 정확히 10년후/20년후를 가리키는 게 보장된다(예전 캘린더 연도 기준일 때는 실제로는
   // 14년후/19년후를 가리키면서도 이 주석만 "10년후/20년후"라고 (부정확하게) 적혀 있었다).
+  // [버그 수정 - "현재 구성 유지" 제거 이후] compareRows/scenarioData는 이제 리밸런싱 후 3개 시나리오만
+  // 담고 있어 .values.current가 더 이상 존재하지 않는다 - 위에서 별도로 계산해 둔 currentPoints에서
+  // 직접 읽는다(이 카드만 여전히 "현재유지 vs 일반적" 차액을 보여줘야 하므로).
   const summaryRows = [2, 4].map((idx) => ({
     year: compareRows[idx].year,
     label: `${CURRENT_YEAR + compareRows[idx].year}년 (${compareRows[idx].year}년 후)`,
-    scenario1: compareRows[idx].values.current,
+    scenario1: currentPoints[compareRows[idx].year].total,
     scenario2: compareRows[idx].values.normal
   }));
   renderRebalanceEffectSummary(summaryRows);

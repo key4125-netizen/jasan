@@ -178,6 +178,14 @@
   html, body { overscroll-behavior-y: contain; }
   #app { overscroll-behavior-y: contain; }
 
+  /* [야간/주간 모드 전환 시 깜박임 방지] 다크모드를 토글하면 수십 개 요소의 dark: 배경/글자/테두리
+     색이 동시에 transition-colors(150ms)로 각자 미묘하게 다른 타이밍에 교차 페이드되는데, 이게
+     한꺼번에 겹쳐 보이면 매끄러운 전환이 아니라 오히려 짧은 깜박임처럼 보인다. 토글 직전에 이
+     클래스를 html에 붙여 순간적으로 모든 transition을 꺼서(!important로 Tailwind의 뒤늦게 주입되는
+     transition-colors까지 확실히 덮어쓴다) 테마가 한 프레임에 즉시 바뀌게 하고, 다음 프레임에 다시
+     제거해 이후의 다른 애니메이션(hover 등)은 평소처럼 정상 작동한다(js/14 darkModeBtn 클릭 핸들러). */
+  .theme-switching, .theme-switching * { transition: none !important; }
+
 </style>
 </head>
 
@@ -220,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v160</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v161</p>
           </div>
         </div>
 
@@ -237,12 +245,16 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 lg:ml-auto">
-        <!-- [모바일 레이아웃] 환율 뱃지(입력칸 폭·내부 간격 압축) + 다크모드 + 서버동기화 버튼 세
-             요소가 360px 이상에서는 한 줄에 다 들어가도록 맞췄고("환율보기" 텍스트도 항상 보인다),
-             justify-end로 항상 이 줄의 오른쪽 끝에 붙는다. 320px 같은 극단적으로 좁은 화면에서만
-             서버동기화 버튼이 다음 줄로 넘어가되, 세 상태(동기화중/중지/오류) 모두 동일하게 넘어가서
-             상태 전환마다 줄바뀜 여부가 오락가락하지는 않는다. -->
+      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:ml-auto">
+        <!-- [모바일 레이아웃 - 절대 줄바꿈 없음] 환율 뱃지/다크모드/서버동기화 버튼 세 요소만 별도
+             flex-nowrap 그룹으로 묶어, 이 셋은 어떤 화면 폭에서도 다음 줄로 넘어가지 않고 항상 한
+             줄에 남는다(justify-between + w-full로 상단 바 가로 폭을 채워 균등하게 분산 배치). 이
+             그룹 자체는 바깥 컨테이너 안에서 하나의 flex-wrap 항목이라, 아래 6버튼 그리드는 예전처럼
+             그대로 다음 줄로 넘어간다 - 세 요소만 묶지 않고 바깥 컨테이너 전체를 nowrap으로 바꾸면
+             6버튼 그리드까지 한 줄에 욱여넣으려다 극단적으로 찌그러지는 회귀가 있었다. 세 요소의
+             자연스러운 폭 합이 화면보다 넓어지는 극단적으로 좁은 기기(320px 미만 등)에서는 줄바꿈
+             대신 이 그룹 안에서만 가로 스크롤되게 해(overflow-x-auto) 레이아웃이 절대 깨지지 않는다. -->
+        <div class="flex flex-nowrap items-center justify-between w-full overflow-x-auto gap-1.5 sm:gap-2 lg:w-auto lg:justify-start lg:overflow-visible">
         <!-- 환율 뱃지: 자동 갱신 결과 표시 + 언제든 클릭해서 직접 수정 가능 (점선 밑줄로 편집 가능함을 항상 표시) -->
         <div class="flex items-center gap-0.5 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 sm:px-3 py-1.5 sm:py-2 shadow-sm" title="클릭하여 환율을 직접 수정할 수 있습니다">
           <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400 shrink-0"></i>
@@ -286,6 +298,7 @@
              버튼이 고정 너비 없이(자기 콘텐츠 크기 그대로) 들어가므로, 세 상태 모두 같은 방식(내용에
              맞는 자연스러운 폭)으로 렌더링되면서도 항상 환율/야간모드 버튼과 한 줄에 남는다. -->
         <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
+        </div>
 
         <!-- [하단 액션 버튼 3열×2행 그리드] 시세갱신/핵심종목 실시간을 위로 올리고 나면 남는 6개
              버튼(최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·JSON 불러오기·데이터 초기화)을 모바일
@@ -1151,12 +1164,15 @@
 
   <!-- ============================= 금융자산 미래예측 (서브탭: 미래 예측) ============================= -->
   <div id="tabPanelProjection" class="hidden">
-    <!-- ===== [4가지 시나리오 동시 비교 - 구조 개편] =====
-         예전엔 "현재 구성 유지"/"리밸런싱 후" 2개 시나리오만 손으로 각각 카드를 작성했었다. 이제
-         PROJECTION_SCENARIOS 배열(현재유지·리밸런싱후-보수적·일반적·긍정적 4개)을 단일 소스로 두고,
-         요약 카드 그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
+    <!-- ===== [3가지 시나리오 동시 비교 - 구조 개편] =====
+         PROJECTION_SCENARIOS 배열(리밸런싱후-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
+         그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
          (renderScenarioSummaryCards/renderScenarioCompareChart/renderScenarioCompareScheduleTable,
          updateProjection() 참고) - 시나리오를 늘리거나 줄여도 이 3곳만 자동으로 따라간다.
+         [버그 수정 - "현재 구성 유지" 제거] 예전엔 리밸런싱을 하지 않는 "현재 구성 유지" 시나리오도
+         함께 비교했으나, 요청에 따라 이 통합 비교에서는 완전히 뺐다(리밸런싱 후 3가지 케이스만 비교) -
+         그 기준값 자체는 여전히 계산되어 별도의 "리밸런싱 효과 요약" 카드(맨 위, rebalanceEffectSummary)
+         에서만 "리밸런싱 전/후 차액"을 보여주는 용도로 쓰인다.
          "일반적" 프리셋은 예전 "리밸런싱 후"와 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
          "보수적"/"긍정적"은 SCENARIO_RATE_PRESETS에 정의된 고정 근사치(±1σ 약세장/강세장 근사)를
          쓴다 - 실제 백테스트 데이터가 아니라 참고용 근사치임을 카드 하단에 안내한다. -->
@@ -1177,12 +1193,20 @@
           class="w-28 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 outline-none text-right">
         원
       </label>
+      <!-- [위치 이동 + 시인성 개선] 예전엔 아래 "시나리오별 적용 수익률 요약" 카드 제목 옆의 눈에 잘
+           안 띄는 회색 테두리 버튼이었는데, "월 적립금" 바로 옆으로 옮기고 브랜드 색(요청에 따라
+           시세&환율 갱신 버튼과 같은 계열의 배경/글자색 - refreshAllBtn 참고)으로 바꿔 클릭 유도성을
+           높였다 - id/클릭 핸들러(openScenarioRateManagerModal)는 그대로라 JS 쪽 수정 없이 위치·
+           스타일만 바뀐다. -->
+      <button type="button" id="openScenarioRateManagerBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+        <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
+      </button>
       <input id="inflationRateInput" type="number" step="0.1" value="2.5" class="hidden">
       <span class="text-[11px] text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
     </div>
-    <!-- [4개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
-         순회하며 채운다. 모바일 2열 × 데스크톱 4열. -->
-    <section id="scenarioSummaryCardsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4"></section>
+    <!-- [3개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
+         순회하며 채운다. 3개 고정이라 화면 폭과 무관하게 항상 3열로 나란히 보여준다. -->
+    <section id="scenarioSummaryCardsGrid" class="grid grid-cols-3 gap-2 sm:gap-3 mb-4"></section>
 
     <!-- ===== 시나리오별 상세 참고표 (카드 그리드 아래) - 순수 읽기 전용 =====
          [편집 UI 제거] 수익률은 이제 SCENARIO_RATE_PRESETS(상품별 세부 매핑)로 전부 자동 계산되므로,
@@ -1193,13 +1217,8 @@
     <section class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 mb-4">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden min-w-0">
         <div class="p-2.5 sm:p-4 pb-2">
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
             <span class="text-xs sm:text-sm font-semibold">시나리오별 적용 수익률 요약</span>
-            <!-- [사용자 정의 수익률 오버라이드] 이 버튼으로 열리는 scenarioRateManagerModal에서 종목별
-                 보수/일반/긍정 수익률을 직접 등록·수정할 수 있다 - openScenarioRateManagerModal 참고. -->
-            <button type="button" id="openScenarioRateManagerBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
-              <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
-            </button>
           </div>
           <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">보수적/일반적/긍정적 시나리오에서 각 상품·종목에 실제로 적용되는 연 기대수익률입니다. <b>일반적</b>이 기본값이고, <span class="inline-block w-1.5 h-1.5 rounded-full bg-brand-500 align-middle"></span> 표시는 지금 실제로 보유 중이거나 리밸런싱 목표에 배분돼 계산에 쓰이고 있는 상품입니다.</p>
         </div>
@@ -1230,17 +1249,17 @@
       </div>
     </section>
 
-    <!-- ===== 4개 시나리오 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
+    <!-- ===== 3개 시나리오 미래 자산 통합 비교 차트 (맨 위 배치) ===== -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
-      <h3 class="text-sm font-semibold mb-1">📊 4가지 시나리오 미래 자산 통합 비교</h3>
-      <p class="text-[11px] text-slate-400 mb-3"><b>"지금 구성 그대로 유지"</b>할 때와, 같은 금융자산 원금을 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>(보수적/일반적/긍정적 수익률 가정) 했을 때의 총자산(명목) 성장 곡선 4개를 한 차트에서 비교합니다. 부동산은 리밸런싱(매각 후 재배분) 대상은 아니지만, 4개 시나리오 모두 부동산 자체의 기대수익률로 별도 복리 성장한 값을 최종 총자산에 항상 더합니다. 그래프를 탭하면 해당 연도의 4개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+      <h3 class="text-sm font-semibold mb-1">📊 3가지 시나리오 미래 자산 통합 비교</h3>
+      <p class="text-[11px] text-slate-400 mb-3">같은 금융자산 원금을 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 부동산은 리밸런싱(매각 후 재배분) 대상은 아니지만, 3개 시나리오 모두 부동산 자체의 기대수익률로 별도 복리 성장한 값을 최종 총자산에 항상 더합니다. 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
       <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
     </section>
 
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-6">
       <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <h3 class="text-sm font-semibold">시나리오별 예상 자산 스케줄 비교</h3>
-        <p class="text-[11px] text-slate-400 mt-0.5">5년 단위 시점마다 4개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">5년 단위 시점마다 3개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-xs">
