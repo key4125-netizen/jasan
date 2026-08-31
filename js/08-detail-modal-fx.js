@@ -402,7 +402,11 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   resetAssetDetailModalScroll();
   pushModalHistoryState();
   lucide.createIcons();
-  renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW' });
+  // [지수류 차트 단위 - '$' 오표기 방지] 매크로 브리핑의 8개 지표 중 환율(usdkrw)과 금시세(gold)만
+  // 실제 통화/가격이고, 나머지(VIX/코스피/코스닥/S&P500/나스닥/다우/미10년물금리)는 포인트값이라
+  // isIndexPoint를 true로 넘겨 차트 Y축/이동평균 범례에 $·₩ 어느 기호도 안 붙게 한다.
+  const isIndexPoint = !!macroKey && macroKey !== 'usdkrw' && macroKey !== 'gold';
+  renderAssetDetailChart({ ticker, name, currency: s.isDomestic === '해외' ? 'USD' : 'KRW', isIndexPoint });
   attachRiskDiagnosisToDetailModal(s.yahooTicker);
   attachFundamentalSection(s.yahooTicker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
   attachStockAnalysisReportToDetailModal(s.yahooTicker);
@@ -458,7 +462,7 @@ let assetDetailFullMA = {};       // 전체 시세 기준으로 미리 계산해
 // byOwnerAvgPrice: 통합(그룹) 상세일 때만 채워지는 { 소유자명: 평단가|null } - null은 그 소유자가 이
 // 종목을 보유하지 않음(수량 0)을 뜻한다. 단일 자산 상세에서는 undefined로 남아 범례가 병기 없이
 // 단일 평단가만 보여준다.
-let assetDetailChartMeta = { name: '', isForeign: false, avgPrice: 0, byOwnerAvgPrice: undefined };
+let assetDetailChartMeta = { name: '', isForeign: false, isIndexPoint: false, avgPrice: 0, byOwnerAvgPrice: undefined };
 let assetDetailActivePeriod = '6m';
 
 // 단순이동평균(SMA) - 종가 배열 기준으로 계산한다. 데이터가 기간(period)보다 짧으면(신규 상장 등)
@@ -481,16 +485,18 @@ function computeMA(points, period) {
 // byOwnerAvgPrice가 있으면(통합/그룹 상세 - 2인 이상 소유) "전체 평단: X (신랑: Y / 와이프: Z)" 형태로
 // 소유자별 평단가를 병기한다 - 보유 수량이 0인 소유자는 평단가가 0/0=NaN이 되므로 '보유없음'으로 표기.
 // 단일 자산 상세(byOwnerAvgPrice 없음)는 기존처럼 "평단가: X" 한 줄만 보여준다.
-function buildMaLegendHtml(maByPeriod, isForeign, avgPrice, byOwnerAvgPrice) {
+// unitless: VIX/코스피/S&P500 등 지수류 - 가격이 아니라 포인트값이라 $/₩ 어느 통화 기호도 붙이지
+// 않는다(macro 팝업 차트 전용, 종목 상세 팝업에서는 항상 false).
+function buildMaLegendHtml(maByPeriod, isForeign, avgPrice, byOwnerAvgPrice, unitless) {
   const maColors = getMaColors();
   const maSpans = MA_PERIODS.map((period) => {
     const arr = maByPeriod[period];
     const latest = arr ? arr[arr.length - 1] : null;
-    const valueText = (typeof latest === 'number') ? `${isForeign ? '$' : ''}${fmtNum(latest, isForeign ? 2 : 0)}` : '-';
+    const valueText = (typeof latest !== 'number') ? '-' : (unitless ? fmtNum(latest, 1) : `${isForeign ? '$' : ''}${fmtNum(latest, isForeign ? 2 : 0)}`);
     return `<span style="color:${maColors[period]}">● MA${period}: ${valueText}</span>`;
   });
-  const unit = isForeign ? '$' : '₩';
-  const fmtPrice = (v) => `${unit}${fmtNum(v, isForeign ? 2 : 0)}`;
+  const unit = unitless ? '' : (isForeign ? '$' : '₩');
+  const fmtPrice = (v) => unitless ? fmtNum(v, 1) : `${unit}${fmtNum(v, isForeign ? 2 : 0)}`;
   let avgSpan = '';
   if (typeof avgPrice === 'number' && avgPrice > 0) {
     const ownerKeys = byOwnerAvgPrice ? Object.keys(byOwnerAvgPrice).sort((a, b) => ownerRank(a) - ownerRank(b)) : [];
@@ -632,7 +638,7 @@ function buildAssetDetailChart(periodKey) {
   if (points.length === 0) return;
 
   const textColor = chartTextColor();
-  const { name, isForeign, avgPrice, byOwnerAvgPrice } = assetDetailChartMeta;
+  const { name, isForeign, isIndexPoint, avgPrice, byOwnerAvgPrice } = assetDetailChartMeta;
 
   const maColors = getMaColors();
   const maByPeriod = {};
@@ -640,7 +646,7 @@ function buildAssetDetailChart(periodKey) {
     const full = assetDetailFullMA[period];
     maByPeriod[period] = full ? full.slice(startIdx) : null;
   });
-  document.getElementById('assetDetailMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign, avgPrice, byOwnerAvgPrice);
+  document.getElementById('assetDetailMaLegend').innerHTML = buildMaLegendHtml(maByPeriod, isForeign, avgPrice, byOwnerAvgPrice, isIndexPoint);
 
   const maDatasets = MA_PERIODS
     .filter((period) => maByPeriod[period])
@@ -726,8 +732,11 @@ function buildAssetDetailChart(periodKey) {
         // 바뀌면 자릿수(예: "23.5만" vs "234,567")도 달라져 Y축 폭이 늘었다 줄었다 하면서 캔들 그리기
         // 영역(plot area) 자체가 실시간으로 좁아지거나 넓어지는 것처럼 보였다. afterFit에서 폭을
         // 고정값으로 강제해 확대/축소·드래그 중에도 그리기 영역 폭이 항상 그대로 유지되게 한다.
+        // [버그 수정 - 지수류에 '$' 오표기] VIX/코스피/S&P500/나스닥/다우/미10년물금리는 가격이 아니라
+        // 포인트(지수)값인데도 "해외" 티커라는 이유만으로 $ 기호가 붙어 있었다 - isIndexPoint(매크로
+        // 브리핑/핵심종목 팝업에서 지수를 열었을 때만 true)면 통화 기호 없이 숫자만 표기한다.
         y: {
-          ticks: { color: textColor, callback: (v) => isForeign ? ('$' + fmtNum(v, 2)) : (v >= 10000 ? fmtNum(v / 10000, 2) + '만' : fmtNum(v, 0)) },
+          ticks: { color: textColor, callback: (v) => isIndexPoint ? fmtNum(v, 1) : (isForeign ? ('$' + fmtNum(v, 2)) : (v >= 10000 ? fmtNum(v / 10000, 2) + '만' : fmtNum(v, 0))) },
           grid: { color: 'rgba(148,163,184,.15)' },
           afterFit: (scale) => { scale.width = 56; }
         }
@@ -794,7 +803,7 @@ async function renderAssetDetailChart(asset, avgPriceOverride, byOwnerAvgPriceOv
   assetDetailFullPoints = points;
   rebuildAssetDetailFullMA();
   const avgPrice = (typeof avgPriceOverride === 'number') ? avgPriceOverride : num(asset.buyPrice);
-  assetDetailChartMeta = { name: asset.name, isForeign: asset.currency === 'USD', avgPrice, byOwnerAvgPrice: byOwnerAvgPriceOverride };
+  assetDetailChartMeta = { name: asset.name, isForeign: asset.currency === 'USD', isIndexPoint: !!asset.isIndexPoint, avgPrice, byOwnerAvgPrice: byOwnerAvgPriceOverride };
 
   msgEl.classList.add('hidden');
   canvas.classList.remove('hidden');
