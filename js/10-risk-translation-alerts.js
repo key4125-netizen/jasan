@@ -582,7 +582,7 @@ function macroTileHtml(key, label, valueText, sub, icon) {
 // 같은 우선순위 규칙 패턴(더 구체적이거나 심각한 조합을 먼저 검사하고, 해당하는 첫 규칙만 채택).
 // 방향 판정 임계값(±0.05%)은 trendArrowIcon과 동일해 지표별 화살표 아이콘과 해설 문구의 방향이
 // 항상 일치한다.
-function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, foreignWeightPct }) {
+function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, goldChangePct, foreignWeightPct }) {
   const isUp = (v) => typeof v === 'number' && v > 0.05;
   const isDown = (v) => typeof v === 'number' && v < -0.05;
   const fw = typeof foreignWeightPct === 'number' ? fmtNum(foreignWeightPct, 0) : null;
@@ -591,6 +591,16 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
     return {
       cause: `시장 전반의 공포심리(VIX ${fmtNum(vix, 1)})가 높아진 고변동성 국면입니다.`,
       impact: '주식 비중이 높을수록 단기 등락폭이 커질 수 있어 계좌 변동성이 확대될 수 있습니다.',
+      guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
+    };
+  }
+  // [금 시세 반영] 금가 급등(+1.5% 이상)이 VIX 상승(20 이상, 평소보다 경계심이 높아진 수준)과 함께
+  // 나타나면 대표적인 "안전자산 선호(flight to safety)" 국면 - 위 VIX 30 이상(고변동성 긴급 국면)
+  // 규칙 바로 다음 우선순위로 검사한다.
+  if (typeof goldChangePct === 'number' && goldChangePct >= 1.5 && typeof vix === 'number' && vix >= 20) {
+    return {
+      cause: `금값이 급등(${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%)하고 공포심리(VIX ${fmtNum(vix, 1)})도 함께 높아지며 안전자산 선호 심리가 뚜렷합니다.`,
+      impact: '위험자산(주식) 비중이 높은 계좌는 단기 변동성이 커질 수 있는 국면입니다.',
       guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
     };
   }
@@ -737,6 +747,15 @@ const MACRO_INDICATOR_INFO = {
       '다른 미국 지수와 방향이 엇갈릴 때는 시장 내 업종별 온도차가 있다는 신호로 볼 수 있어요.',
       '장기적으로 미국 경기 전반의 체감 지표로 함께 참고하면 좋습니다.'
     ]
+  },
+  gold: {
+    label: '금 시세 (Gold)',
+    concept: '국제 금 선물(온스당 달러) 가격이에요. 대표적인 안전자산으로, 시장 불안 심리가 커지거나 인플레이션 우려가 있을 때 수요가 몰리는 경향이 있어요.',
+    watchPoints: [
+      'VIX(공포지수)가 함께 오르면서 금값도 오르면 "안전자산 선호" 심리가 강해졌다는 신호로 볼 수 있어요.',
+      '미국 금리·달러 가치와 대체로 반대로 움직이는 경향이 있어요(금리가 오르면 이자가 없는 금의 보유 매력이 상대적으로 줄어들어요).',
+      '금 관련 자산을 보유하지 않아도, 전반적인 시장 위험회피 심리를 가늠하는 참고 지표로 활용할 수 있어요.'
+    ]
   }
 };
 
@@ -745,7 +764,7 @@ let macroDetailSnapshot = {};
 // [실제 5일/20일 추세] 키 -> 야후 티커. usdkrw/us10y/vix/dow는 macroIndicatorCache 조회에 쓰던 티커와
 // 동일, kospi 등 지수는 이미 있는 INDEX_TICKERS를 그대로 재사용한다(js/09).
 const MACRO_KEY_TICKERS = {
-  vix: '^VIX', usdkrw: 'KRW=X', us10y: '^TNX',
+  vix: '^VIX', usdkrw: 'KRW=X', us10y: '^TNX', gold: 'GC=F',
   kospi: INDEX_TICKERS.KOSPI, kosdaq: INDEX_TICKERS.KOSDAQ,
   sp500: INDEX_TICKERS.SP500, nasdaq: INDEX_TICKERS.NASDAQ, dow: '^DJI'
 };
@@ -756,6 +775,7 @@ const MACRO_TREND_THRESHOLDS = {
   vix: { d5: 15, d20: 25 },
   usdkrw: { d5: 0.8, d20: 1.5 },
   us10y: { d5: 3, d20: 5 },
+  gold: { d5: 2.5, d20: 5 },
   kospi: { d5: 2, d20: 4 }, kosdaq: { d5: 2.5, d20: 5 },
   sp500: { d5: 1.5, d20: 3 }, nasdaq: { d5: 2, d20: 4 }, dow: { d5: 1.5, d20: 3 }
 };
@@ -801,6 +821,9 @@ function macroDetailValueText(key, s) {
   if (key === 'usdkrw') return `${fmtNum(s.value, 0)}원`;
   if (key === 'us10y') return `${fmtNum(s.value, 2)}%`;
   if (key === 'vix') return fmtNum(s.value, 1);
+  // [금 시세 - 실제 달러 가격] 나머지 지수(코스피/S&P500 등)는 포인트값이라 통화 기호를 안 붙이지만,
+  // 금은 실제 온스당 달러 가격이라 유일하게 '$'를 유지한다.
+  if (key === 'gold') return '$' + fmtNum(s.value, 0);
   return fmtNum(s.value, 1);
 }
 
@@ -810,6 +833,7 @@ function macroMeaningTail(key) {
   if (key === 'usdkrw') return '환율이 오르면 보유 중인 달러 자산의 원화 환산 평가액은 늘고, 내리면 줄어듭니다.';
   if (key === 'us10y') return '금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.';
   if (key === 'vix') return null;
+  if (key === 'gold') return '금값이 오르면 안전자산 선호 심리가, 내리면 위험자산 선호 심리가 강해지는 경향이 있습니다.';
   return '지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.';
 }
 
@@ -956,6 +980,10 @@ function renderMacroBriefing() {
   const ust10y = ust10yInfo ? ust10yInfo.price : null;
   const ust10yChangePct = ust10yInfo ? ust10yInfo.changePercent : null;
 
+  const goldInfo = state.macroIndicatorCache['GOLD'];
+  const gold = goldInfo ? goldInfo.price : null;
+  const goldChangePct = goldInfo ? goldInfo.changePercent : null;
+
   const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0)
     ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : 0;
 
@@ -966,16 +994,23 @@ function renderMacroBriefing() {
   const dowInfo = state.macroIndicatorCache['DOW'];
   const indexTile = (key, label, info) => macroTileHtml(key, label, info ? fmtNum(info.price, 1) : '-', info ? `${info.changePercent >= 0 ? '+' : ''}${fmtNum(info.changePercent, 2)}%` : '조회 전', trendArrowIcon(info ? info.changePercent : null));
 
-  gridEl.innerHTML = [
-    macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon),
-    macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct)),
-    macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct)),
-    indexTile('kospi', '코스피', kospiInfo),
-    indexTile('kosdaq', '코스닥', kosdaqInfo),
-    indexTile('sp500', 'S&P 500', sp500Info),
-    indexTile('nasdaq', '나스닥', nasdaqInfo),
-    indexTile('dow', '다우', dowInfo)
-  ].join('');
+  // [1행 4개 · 2행 5개] 금 시세는 실제 달러 가격이라 '$' 단위를 그대로 쓴다(macroTileHtml 자체는
+  // 단위 표기를 몰라도 되게, 값 문자열을 여기서 미리 만들어 넘긴다 - indexTile과 동일 패턴).
+  const goldTile = macroTileHtml('gold', '금 시세', typeof gold === 'number' ? '$' + fmtNum(gold, 0) : '-', typeof goldChangePct === 'number' ? `${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%` : '조회 전', trendArrowIcon(goldChangePct));
+  gridEl.innerHTML = `
+    <div class="grid grid-cols-4 gap-1 sm:gap-2">
+      ${macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
+      ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct))}
+      ${macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
+      ${goldTile}
+    </div>
+    <div class="grid grid-cols-5 gap-1 sm:gap-2">
+      ${indexTile('kospi', '코스피', kospiInfo)}
+      ${indexTile('kosdaq', '코스닥', kosdaqInfo)}
+      ${indexTile('sp500', 'S&P 500', sp500Info)}
+      ${indexTile('nasdaq', '나스닥', nasdaqInfo)}
+      ${indexTile('dow', '다우', dowInfo)}
+    </div>`;
 
   // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(종목 상세 모달의 매크로 분기,
   // attachStockAnalysisReportToDetailModal - js/08) 다시 조회하지 않고 이 갱신 주기에서 이미 받아온
@@ -989,6 +1024,7 @@ function renderMacroBriefing() {
     vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null, change5d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change5d, change20d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change20d },
     usdkrw: { value: state.exchangeRate, changePercent: fxChangePct, change5d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change5d, change20d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change20d },
     us10y: { value: ust10y, changePercent: ust10yChangePct, change5d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change5d, change20d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change20d },
+    gold: { value: gold, changePercent: goldChangePct, change5d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change5d, change20d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change20d },
     kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null, change5d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change5d, change20d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change20d },
     kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null, change5d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change5d, change20d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change20d },
     sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null, change5d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change5d, change20d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change20d },
@@ -1004,6 +1040,7 @@ function renderMacroBriefing() {
     vix, fxChangePct,
     ust10yChangePct,
     kospiChangePct: kospiInfo ? kospiInfo.changePercent : null,
+    goldChangePct,
     foreignWeightPct
   });
   const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });

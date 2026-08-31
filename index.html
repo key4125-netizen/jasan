@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v162</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v163</p>
           </div>
         </div>
 
@@ -386,7 +386,7 @@
   <section class="grid grid-cols-1 gap-4 mb-6">
     <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400">일간금융평가손익</span>
+        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400">일간금융평가손익</span>
         <!-- [오늘 실현손익 배지] 메인 숫자(kpiDailyProfit)는 순수 미실현(평가) 손익 계산을 그대로 유지하고,
              오늘 매도해서 발생한 실현손익은 세부내용 버튼 바로 밑에 별도 배지로만 덧붙인다
              (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다. -->
@@ -424,7 +424,7 @@
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
-        <span class="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총금융자산평가손익</span>
+        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">총금융자산평가손익</span>
         <!-- [세부내용 버튼 신설] 클릭 시 openTotalProfitModal()로 누적 평가손익 추이(꺾은선) 모달을 연다 -
              다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
         <div class="flex flex-col items-end gap-1 shrink-0">
@@ -556,11 +556,12 @@
         <span class="text-base leading-none">🌍</span>
         <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
-      <!-- [항상 4열×2행 고정] 태블릿 세로(768~1023px)에서 2열로 바꿨더니 VIX/원달러/미10년물/코스피가
-           1행에 나란히 있어야 하는 배치가 깨졌다 - 화면 크기와 무관하게 예외 없이 grid-cols-4로
-           고정한다. 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부 패딩/폰트를
-           키우는 쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
-      <div id="macroBriefingGrid" class="grid grid-cols-4 gap-1 sm:gap-2 mb-2"></div>
+      <!-- [1행 4개 · 2행 5개 고정] 화면 크기와 무관하게 예외 없이 이 2행 구성으로 고정한다(1행:
+           VIX/원달러/미10년물/금시세, 2행: 코스피/코스닥/S&P500/나스닥/다우) - renderMacroBriefing()이
+           내부에 grid-cols-4 행과 grid-cols-5 행 두 개를 따로 만들어 채운다(gridEl 자체는 두 행을
+           세로로 쌓는 순수 래퍼). 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부
+           패딩/폰트를 키우는 쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
+      <div id="macroBriefingGrid" class="space-y-1 sm:space-y-2 mb-2"></div>
       <div id="macroBriefingDiagnosis" class="space-y-1"></div>
     </div>
 
@@ -619,7 +620,7 @@
   <section class="grid grid-cols-1 gap-4 mb-4">
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-2 gap-1">
-        <span class="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">총자산평가금액</span>
+        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">총자산평가금액</span>
         <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼 옆 원형 아이콘 배지(landmark)를 없애 버튼이
              카드 우측 상단 여백에 자연스럽게 정렬되도록 했다. -->
         <div class="flex items-center gap-1.5 shrink-0">
@@ -667,7 +668,7 @@
       <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼이 없는 카드라 원형 아이콘 배지(piggy-bank)만 있던
            우측 칸을 통째로 없애고 라벨 하나만 남겼다. -->
       <div class="mb-2">
-        <span id="kpiTotalCostLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400">총자산투자금액</span>
+        <span id="kpiTotalCostLabel" class="text-sm font-semibold text-slate-500 dark:text-slate-400">총자산투자금액</span>
       </div>
       <!-- [알림 카드 위치 이동] 시세 반영 실패 시 이 카드 내용을 안내 문구로 바꿔치기하던 kpiFetchFailurePanel은
            총투자현황 탭의 [총 평가금액]/[총 평가손익] 카드 바로 위 독립 배너로 옮겨갔다 - 그래서 이 카드는

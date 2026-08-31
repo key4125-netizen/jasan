@@ -562,7 +562,9 @@ const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500:
 // (예: 4.7 → 4.7%, 별도 스케일링 불필요 - 실측으로 확인, renderMacroBriefing() 참고).
 // DOW는 MARKET_INDEX_LIST(핵심종목 팝업용, js/02)에는 없어서 이 루프에 얹어 함께 받는다 - 다른
 // 화면에는 영향 없이 매크로 브리핑에서만 쓰인다.
-const MACRO_TICKERS = { VIX: '^VIX', UST10Y: '^TNX', DOW: '^DJI' };
+// [금 시세 추가] GC=F(COMEX 금 선물, 온스당 달러)도 동일한 방식으로 같이 받는다 - 새 API/프록시가
+// 필요 없다.
+const MACRO_TICKERS = { VIX: '^VIX', UST10Y: '^TNX', DOW: '^DJI', GOLD: 'GC=F' };
 const RISK_ELIGIBLE_CATEGORIES = ['주식', 'ETF'];
 
 // [벤치마크 다변화] 예전엔 미국 종목을 전부 S&P500 하나로만 비교했다 - 이제 종목 성격별로 더 맞는
