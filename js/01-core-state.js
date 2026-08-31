@@ -447,7 +447,7 @@ const state = {
   fundamentalCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
   // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
-  // rebalanceSubTab('target'|'guide'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
+  // rebalanceSubTab('target'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
   activeTab: 'dashboard',
   // 리밸런싱 목표 비중.
   //   domestic: 리밸런싱 대상 자산 대비 국내/해외(미국) 배분 목표 { 국내, 해외 }

@@ -94,8 +94,8 @@ function computeExpandedRegionTargetAmounts(region, ownerFilter) {
 
 // 종목별 리밸런싱 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
 // 단위로 풀어낸다. 주의: computeRegionTargetAmounts()가 돌려주는 amounts는 그 항목에 매칭된 자산의
-// "현재" 평가금액 합계이지 목표금액이 아니다 - 실제 목표금액은 renderTargetRebalanceResultGroup()과
-// 똑같은 공식(지역 목표금액 × 항목 비중%)으로 별도 계산해야 위쪽 자산군별 결과 카드와 숫자가 일치한다.
+// "현재" 평가금액 합계이지 목표금액이 아니다 - 실제 목표금액은 아래(지역 목표금액 × 항목 비중%) 공식으로
+// 별도 계산한다.
 //   - 특정 티커로 지정된 목표(KODEX 200TR, QQQM 등)는 그 목표금액을 그대로 쓴다(보통 종목 1개뿐이지만,
 //     여러 소유자가 같은 티커를 나눠 보유하는 경우까지 대비해 아래 "그룹 내 비중대로 분배"를 동일하게 적용).
 //   - 자산군 캐치올(주식/채권/현금)에 묶인 여러 종목은 그 캐치올 목표금액을 "현재 각 종목이 그룹 내에서
@@ -130,7 +130,7 @@ function computeIndividualRebalanceGuide(ownerFilter) {
     // 목표를 따로 갖고, 지정 안 한 나머지 보유 주식은 목표 0%(전량 매도)로 계산되게 한다.
     const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region, ownerFilter);
     const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
-    // renderTargetRebalanceResultGroup()에서 쓰는 것과 동일한 공식: 지역 목표금액 = 전체 리밸런싱
+    // 위 목표금액 공식과 동일하게: 지역 목표금액 = 전체 리밸런싱
     // 대상 총액(이 소유자 기준) × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
 
@@ -209,8 +209,8 @@ function computeIndividualRebalanceGuide(ownerFilter) {
   return { rows, excluded };
 }
 
-// 목표금액-현재금액 차액(diff)의 색상 관례 - renderRebalanceResultGroup에서 처음 정한 것을 공유한다:
-// 매수 필요(부족, 양수)=파랑, 매도 필요(과다, 음수)=빨강. 1원 미만 차이는 오차로 보고 중립색 처리한다.
+// 목표금액-현재금액 차액(diff)의 색상 관례: 매수 필요(부족, 양수)=파랑, 매도 필요(과다, 음수)=빨강.
+// 1원 미만 차이는 오차로 보고 중립색 처리한다.
 function rebalanceDiffColorClass(diff) {
   return diff > 1 ? 'text-blue-500 dark:text-blue-400' : (diff < -1 ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
 }
@@ -960,57 +960,17 @@ function renderUncoveredNote(uncovered) {
   el.classList.remove('hidden');
 }
 
+// [버그 수정 - "리밸런싱 설정" 탭 통합] 예전엔 여기서 "국내/해외 리밸런싱 결과"·"국내/해외 세부
+// 리밸런싱 결과" 아코디언 카드 3개를 채웠으나(renderRebalanceResultGroup/renderTargetRebalanceResultGroup),
+// 요청에 따라 그 카드들을 완전히 삭제하고 그 자리에 더 상세한 "종목별 리밸런싱 실행 가이드"(옛 "실행
+// 가이드" 탭 - renderIndividualRebalanceGuide)를 대신 보여주게 됐다. 목표비중 입력 섹션의 "합계 N%"
+// 배지(updateTargetSum)는 계속 필요하므로 남긴다.
 function updateRebalanceResults() {
-  const { total, byDomestic, uncovered } = getRebalanceTotals();
-  renderRebalanceResultGroup('domesticRebalanceResult', state.rebalance.domestic, byDomestic, total, total, 'domesticResultSummary');
-
-  // 목표금액은 "리밸런싱 대상 총액 × 지역 목표비중 × 지역 내 항목 비중"으로 연동 계산되고,
-  // 현재비중(%)은 그 지역의 리밸런싱 대상 현재 총액을 기준으로 계산해 지역 내 상대 비교가 되게 한다.
-  ['국내', '해외'].forEach((region) => {
-    const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
-    const regionCurrentAmount = byDomestic[region] || 0;
-    const containerId = region === '국내' ? 'categoryRebalanceResultDomestic' : 'categoryRebalanceResultForeign';
-    const summaryElId = region === '국내' ? 'categoryDomesticResultSummary' : 'categoryForeignResultSummary';
-    // 개별 지정 종목이 있으면 "펼쳐진" 목록으로 카드를 그려서, 지정한 종목이 각자 자기 목표금액/증감을
-    // 따로 보여주고 지정 안 한 나머지는 "주식(기타)"로 전량 매도 대상임이 드러나게 한다.
-    const { amounts: expandedAmounts, targets: expandedTargets } = computeExpandedRegionTargetAmounts(region);
-    renderTargetRebalanceResultGroup(containerId, expandedTargets, expandedAmounts, regionTargetAmount, regionCurrentAmount, summaryElId);
-    updateTargetSum(region);
-  });
-
+  const { uncovered } = getRebalanceTotals();
+  ['국내', '해외'].forEach((region) => updateTargetSum(region));
   renderUncoveredNote(uncovered);
   renderIndividualRebalanceGuide();
-  // 이미 펼쳐진 카드가 있다면(드문 경우, 목표 비중 수정 등으로 세부 내용의 줄 수/높이가 바뀔 수 있음)
-  // 새 내용 기준으로 max-height를 다시 맞춘다 - 접힌 카드는 계속 접힌 채로 유지된다.
-  refreshRebalanceResultAccordionHeights();
-
-  // 리밸런싱 효과 요약 카드가 이 탭 상단으로 이동했으므로, 리밸런싱 탭만 방문/수정해도
-  // updateProjection()이 함께 실행되어 요약 카드(및 미래예측 탭의 비교표)가 항상 최신 값으로 갱신되게 한다.
   updateProjection();
-}
-
-// [아코디언 UI] 리밸런싱 결과 카드 3개 - 기본 접힘, 서로 독립적으로(멀티오픈) 여닫는다.
-const rebalanceResultAccordionOpen = { domesticResult: false, categoryDomestic: false, categoryForeign: false };
-const REBALANCE_RESULT_ACCORDION_BODY_IDS = {
-  domesticResult: 'domesticResultAccordionBody',
-  categoryDomestic: 'categoryDomesticAccordionBody',
-  categoryForeign: 'categoryForeignAccordionBody'
-};
-function toggleRebalanceResultAccordion(key) {
-  rebalanceResultAccordionOpen[key] = !rebalanceResultAccordionOpen[key];
-  const bodyEl = document.getElementById(REBALANCE_RESULT_ACCORDION_BODY_IDS[key]);
-  const chevronEl = document.querySelector(`[data-accordion-chevron="${key}"]`);
-  setAccordionOpen(bodyEl, chevronEl, rebalanceResultAccordionOpen[key]);
-}
-document.querySelectorAll('.rebalance-result-accordion-btn').forEach((btn) => {
-  btn.addEventListener('click', () => toggleRebalanceResultAccordion(btn.dataset.accordion));
-});
-function refreshRebalanceResultAccordionHeights() {
-  Object.keys(REBALANCE_RESULT_ACCORDION_BODY_IDS).forEach((key) => {
-    const bodyEl = document.getElementById(REBALANCE_RESULT_ACCORDION_BODY_IDS[key]);
-    const chevronEl = document.querySelector(`[data-accordion-chevron="${key}"]`);
-    if (bodyEl && chevronEl) setAccordionOpen(bodyEl, chevronEl, rebalanceResultAccordionOpen[key]);
-  });
 }
 
 // 매수/매도 필요 금액에 따라 "매수"(파랑) / "매도"(빨강) / "유지"(회색) 배지를 정하고, 실제 종목별
@@ -1246,95 +1206,4 @@ document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () 
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
   XLSX.writeFile(wb, `리밸런싱_실행가이드_${ymd}.xlsx`);
 });
-
-// targetBaseAmount: 목표금액 계산 시 곱할 기준 총액. currentBaseAmount: 현재비중(%) 계산 시 나눌 기준 총액.
-// (지역별 호출에서는 둘 다 리밸런싱 대상 전체 total이고, 항목별 호출에서는 각각 지역 목표금액 / 지역 현재총액이다.)
-// [아코디언 헤더 요약] summaryElId를 넘기면, 카드 내 항목들의 매수/매도 필요 금액을 전부 합산해
-// 헤더에 한 줄 요약("매수 필요 X · 매도 필요 Y")을 써 준다 - 접힌 상태에서도 대략적인 상태를 알 수
-// 있게 하기 위함(요청). 항목별 diff 계산과 같은 루프에서 누적하므로 값이 항상 카드 세부 내용과 일치한다.
-function renderRebalanceResultGroup(containerId, targetMap, currentAmountMap, targetBaseAmount, currentBaseAmount, summaryElId) {
-  const container = document.getElementById(containerId);
-  const summaryEl = summaryElId ? document.getElementById(summaryElId) : null;
-  const keys = Object.keys(targetMap);
-  if (currentBaseAmount === 0 || keys.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">계산할 자산 데이터가 없습니다.</p>';
-    if (summaryEl) summaryEl.textContent = '계산할 자산 데이터가 없습니다.';
-    return;
-  }
-  let totalBuy = 0, totalSell = 0;
-  container.innerHTML = keys.map((key) => {
-    const currentAmount = currentAmountMap[key] || 0;
-    const currentPct = currentBaseAmount !== 0 ? (currentAmount / currentBaseAmount * 100) : 0;
-    const targetPct = num(targetMap[key]);
-    const targetAmount = targetBaseAmount * targetPct / 100;
-    const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
-    const isBuy = diff > 1; // 1원 미만 차이는 오차로 보고 '거의 일치' 처리
-    const isSell = diff < -1;
-    if (isBuy) totalBuy += diff;
-    if (isSell) totalSell += Math.abs(diff);
-    const colorClass = isBuy ? 'text-blue-500 dark:text-blue-400' : (isSell ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
-    const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
-      : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
-      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');
-    const actionText = (isBuy || isSell) ? `${fmtKRW(Math.abs(diff))} ${isBuy ? '추가 매수 필요' : '매도 필요'}` : '목표 비중과 거의 일치';
-    return `
-    <div class="rounded-xl border p-3 ${bgClass}">
-      <div class="flex items-center justify-between mb-1.5">
-        <span class="text-sm font-semibold">${escapeHtml(key)}</span>
-        <span class="text-[11px] text-slate-400">${fmtNum(currentPct, 1)}% → ${fmtNum(targetPct, 1)}%</span>
-      </div>
-      <p class="text-sm font-bold ${colorClass}">${actionText}</p>
-      <p class="text-[11px] text-slate-400 mt-1">현재 ${fmtKRW(currentAmount)} · 목표 ${fmtKRW(targetAmount)}</p>
-    </div>`;
-  }).join('');
-  if (summaryEl) summaryEl.textContent = buildRebalanceResultSummaryText(totalBuy, totalSell);
-}
-
-// 매수/매도 합산액을 헤더용 한 줄 요약 문구로 바꾼다 - 두 render*ResultGroup 함수가 공유한다.
-function buildRebalanceResultSummaryText(totalBuy, totalSell) {
-  if (totalBuy < 1 && totalSell < 1) return '목표 비중과 거의 일치';
-  return [
-    totalBuy >= 1 ? `매수 필요 ${fmtKRWShort(totalBuy)}` : null,
-    totalSell >= 1 ? `매도 필요 ${fmtKRWShort(totalSell)}` : null
-  ].filter(Boolean).join(' · ');
-}
-
-// targets: [{type,ticker/category,label,pct}, ...] (state.rebalance.targets[region]).
-// amounts: computeRegionTargetAmounts()가 반환한, targets와 같은 순서의 현재 평가금액 배열.
-function renderTargetRebalanceResultGroup(containerId, targets, amounts, targetBaseAmount, currentBaseAmount, summaryElId) {
-  const container = document.getElementById(containerId);
-  const summaryEl = summaryElId ? document.getElementById(summaryElId) : null;
-  if (!targets || targets.length === 0 || currentBaseAmount === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 col-span-full">계산할 자산 데이터가 없습니다.</p>';
-    if (summaryEl) summaryEl.textContent = '계산할 자산 데이터가 없습니다.';
-    return;
-  }
-  let totalBuy = 0, totalSell = 0;
-  container.innerHTML = targets.map((t, idx) => {
-    const currentAmount = (amounts && amounts[idx]) || 0;
-    const currentPct = currentBaseAmount !== 0 ? (currentAmount / currentBaseAmount * 100) : 0;
-    const targetPct = num(t.pct);
-    const targetAmount = targetBaseAmount * targetPct / 100;
-    const diff = targetAmount - currentAmount;
-    const isBuy = diff > 1;
-    const isSell = diff < -1;
-    if (isBuy) totalBuy += diff;
-    if (isSell) totalSell += Math.abs(diff);
-    const colorClass = isBuy ? 'text-blue-500 dark:text-blue-400' : (isSell ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
-    const bgClass = isBuy ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
-      : (isSell ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
-      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');
-    const actionText = (isBuy || isSell) ? `${fmtKRW(Math.abs(diff))} ${isBuy ? '추가 매수 필요' : '매도 필요'}` : '목표 비중과 거의 일치';
-    return `
-    <div class="rounded-xl border p-3 ${bgClass}">
-      <div class="flex items-center justify-between mb-1.5">
-        <span class="text-sm font-semibold">${escapeHtml(t.label)}</span>
-        <span class="text-[11px] text-slate-400">${fmtNum(currentPct, 1)}% → ${fmtNum(targetPct, 1)}%</span>
-      </div>
-      <p class="text-sm font-bold ${colorClass}">${actionText}</p>
-      <p class="text-[11px] text-slate-400 mt-1">현재 ${fmtKRW(currentAmount)} · 목표 ${fmtKRW(targetAmount)}</p>
-    </div>`;
-  }).join('');
-  if (summaryEl) summaryEl.textContent = buildRebalanceResultSummaryText(totalBuy, totalSell);
-}
 

@@ -188,10 +188,6 @@ function resetAllAccordionsOnTabSwitch() {
   detailCardAccordionOpen.allocation = false;
   txListAccordionOpen = false;
   Object.keys(assetGroupAccordionOpen).forEach((k) => { assetGroupAccordionOpen[k] = false; });
-  // [버그 수정 - 목표비중설정 탭 리밸런싱 결과 아코디언] 국내/카테고리별 리밸런싱 결과 3개 아코디언도
-  // 펼쳐둔 채로 다른 탭에 갔다가 돌아오면 그대로 펼쳐져 있었다 - 위와 동일한 패턴(상태만 초기화하면
-  // renderRebalance() -> refreshRebalanceResultAccordionHeights()가 곧 다시 그리며 접어준다).
-  Object.keys(rebalanceResultAccordionOpen).forEach((k) => { rebalanceResultAccordionOpen[k] = false; });
 }
 
 // [버그 수정 - 탭 전환 시 스크롤 위치 초기화] 목록/표를 한참 스크롤한 상태에서 다른 탭으로 이동하면
@@ -222,19 +218,21 @@ function switchTab(tab) {
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
 // [리밸런싱/자산예측 통합] 2단계(서브) 탭 전환 - 최상위 탭 상태(state.activeTab)와는 별개로 관리한다.
-// 'target'(목표 비중 설정 + 결과), 'guide'(종목별 실행 가이드), 'projection'(미래 예측) 3개.
+// 'target'(리밸런싱 설정 - 목표 비중 입력 + 종목별 실행 가이드), 'projection'(미래 예측) 2개.
+// [버그 수정 - "목표 비중 설정"/"실행 가이드" 탭 통합] 예전엔 이 둘이 별도 서브탭('target'/'guide')이었으나,
+// 요청에 따라 "리밸런싱 설정" 하나로 합쳤다(HTML의 rebalanceSubTarget 안에 실행 가이드 내용까지 함께
+// 들어있다 - index.html 참고) - 'guide' 키는 이제 존재하지 않는다.
 let rebalanceSubTab = 'target';
 function switchRebalanceSubTab(subTab) {
-  // [버그 수정 - 하위 탭 전환] switchTab()과 별개로 이 하위 탭(목표비중설정/실행가이드/미래예측)끼리만
-  // 오갈 때도(상위 탭은 그대로 'rebalance') 아코디언 초기화·스크롤 초기화가 똑같이 적용돼야 한다.
+  // [버그 수정 - 하위 탭 전환] switchTab()과 별개로 이 하위 탭(리밸런싱 설정/미래예측)끼리만 오갈 때도
+  // (상위 탭은 그대로 'rebalance') 아코디언 초기화·스크롤 초기화가 똑같이 적용돼야 한다.
   resetAllAccordionsOnTabSwitch();
   scrollToTopOnTabSwitch();
   rebalanceSubTab = subTab;
   document.querySelectorAll('.rebalance-subtab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.subtab === subTab));
   document.getElementById('rebalanceSubTarget').classList.toggle('hidden', subTab !== 'target');
-  document.getElementById('rebalanceSubGuide').classList.toggle('hidden', subTab !== 'guide');
   document.getElementById('tabPanelProjection').classList.toggle('hidden', subTab !== 'projection');
-  if (subTab === 'target' || subTab === 'guide') renderRebalance();
+  if (subTab === 'target') renderRebalance();
   if (subTab === 'projection') renderProjection();
   lucide.createIcons();
 }

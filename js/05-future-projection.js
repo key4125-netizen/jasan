@@ -62,29 +62,6 @@ function getProjectionAssetGroupKey(asset) {
   if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
   return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
 }
-// 위 getProjectionAssetGroupKey()가 만든 그룹 키 하나의 "일반적" 기준 예상 연수익률을 정한다 - "현재
-// 구성 유지"는 프리셋 선택 개념이 없는 단일 시나리오라 항상 'normal'을 쓴다(리밸런싱 후 "일반적"과
-// 동일한 숫자를 보게 된다 - 종목 구성이 다르면 가중평균 결과는 서로 다를 수 있다). 사용자 정의
-// 오버라이드가 있으면(getCustomRate) 항상 최우선 적용된다.
-// [버그 수정] "수익률 관리" 모달은 채권 항목을 'BOND' 키로 저장하는데(SCENARIO_RATE_BASE_ROWS 참고),
-// 여기서는 자산 카테고리명 '채권'을 그대로 getCustomRate에 넘겨서 오버라이드를 절대 못 찾고 있었다 -
-// 그 결과 사용자가 채권 수익률을 고쳐도 "현재 구성 유지" 시나리오에는 반영되지 않았다(리밸런싱 후
-// 시나리오는 getTargetProjectionRate가 처음부터 'BOND' 키를 써서 정상 동작했음). '채권'일 때만 조회
-// 키를 'BOND'로 바꿔 두 시나리오가 같은 오버라이드를 보게 한다.
-function getRateForProjectionGroupKey(key) {
-  if (key === '현금') return 0;
-  const customLookupKey = key === '채권' ? 'BOND' : key;
-  const custom = getCustomRate(customLookupKey, 'normal');
-  if (custom !== undefined) return custom;
-  if (key === '채권') return SCENARIO_RATE_PRESETS.normal.categories['채권'];
-  // [부동산 수익률 매핑] "현재 구성 유지" 시나리오에 부동산도 이제 포함되므로(getProjectionGroupStats
-  // 참고) 전용 수익률(일반적 기준 5.5%)을 매핑한다.
-  if (key === '부동산') return SCENARIO_RATE_PRESETS.normal.categories['부동산'];
-  if (key === 'KOSPI') return SCENARIO_RATE_PRESETS.normal.indexRates.domestic;
-  if (SCENARIO_RATE_PRESETS.normal.tickers[key] !== undefined) return getPresetTickerRate('normal', key);
-  return getGroupReturnRate(key); // 그 외 커스텀 카테고리(원자재 등) - 기존 관례 그대로 유지
-}
-
 function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
@@ -763,10 +740,9 @@ function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, ma
 // 그려진다 - 시나리오를 추가/삭제하려면 이 배열만 바꾸면 된다. 전부 kind:'rebalanced'(리밸런싱 후
 // 프리셋 3종, 지역별 복리 계산)이다.
 // [버그 수정 - "현재 구성 유지" 제거] 예전엔 리밸런싱을 하지 않는 kind:'current' 시나리오도 함께
-// 비교했으나, 요청에 따라 이 통합 비교(요약 카드/차트/스케줄 표)에서는 완전히 뺐다 - "현재 구성
-// 유지" 기준값 자체(currentPoints/weightedAvg)는 updateProjection()이 여전히 계산하지만, 이제
-// "리밸런싱 효과 요약" 카드(renderRebalanceEffectSummary, 리밸런싱 전/후 차액 비교용 - 이 배열과는
-// 별개의 화면 영역)에서만 쓰인다.
+// 비교했으나, 요청에 따라 이 통합 비교(요약 카드/차트/스케줄 표)에서는 완전히 뺐다. 이 기준값을 쓰던
+// "리밸런싱 효과 요약" 카드도 리밸런싱 설정 탭 개편으로 함께 제거되어, 이제 currentPoints/weightedAvg
+// 계산 자체가 필요 없다.
 const PROJECTION_SCENARIOS = [
   { key: 'conservative', label: '리밸런싱 후·보수적', color: SCENARIO_RATE_PRESETS.conservative.color, kind: 'rebalanced', preset: 'conservative' },
   { key: 'normal', label: '리밸런싱 후·일반적', color: SCENARIO_RATE_PRESETS.normal.color, kind: 'rebalanced', preset: 'normal' },
@@ -891,33 +867,6 @@ function renderScenarioSummaryCards(scenarioData) {
     </div>`).join('');
 }
 
-// 맨 위 "리밸런싱 효과 요약" 카드 - 시점별로 시나리오2(리밸런싱 후) - 시나리오1(현재 유지)의 명목
-// 총자산 차이를 보여준다. 국내 주식시장 관례에 맞춰 양수(리밸런싱이 유리)는 빨강, 음수는 파랑으로
-// profitColor()를 그대로 재사용한다.
-// rows: [{ year, label, scenario1, scenario2 }, ...] - 10년 후/20년 후 딱 2개를 크게 강조해서 보여준다.
-// 주요 강조: "리밸런싱 실행 시 추가 형성되는 차액"을 큰 글씨로, 서브 표기로 두 시나리오의 각 예측
-// 금액을 작게 함께 표시한다.
-function renderRebalanceEffectSummary(rows) {
-  const container = document.getElementById('rebalanceEffectSummary');
-  container.innerHTML = rows.map((r) => {
-    const diff = r.scenario2 - r.scenario1;
-    const bgClass = diff > 0 ? 'bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50'
-      : (diff < 0 ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50'
-      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800');
-    return `
-    <div class="rounded-xl border p-2.5 sm:p-4 min-w-0 ${bgClass}">
-      <p class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-1 leading-snug">${r.label} 추가 형성 차액</p>
-      <p class="text-base sm:text-2xl font-bold ${profitColor(diff)} truncate">${fmtSignedShort(diff)}</p>
-      <p class="text-[9px] sm:text-[11px] text-slate-400 mt-1 leading-snug">유지: ${fmtKRWShort(r.scenario1)}<br class="sm:hidden">·리밸런싱: ${fmtKRWShort(r.scenario2)}</p>
-    </div>`;
-  }).join('');
-}
-
-// rows: [{ year, label, scenario1, scenario2 }, ...] - 10년 후/20년 후 시점을 열로, [현재 구성 유지]/[일반적]/[차액]을
-// 행으로 배치해 세 수치를 한눈에 대비할 수 있는 표를 그린다(리밸런싱 탭 상단 요약 카드 전용 - "현재유지"는
-// 이제 PROJECTION_SCENARIOS(3가지 리밸런싱 후 시나리오만)에는 없지만, updateProjection()이 별도로 계산해
-// 둔 currentPoints를 여기서만 "일반적"과 비교하는 용도로 계속 쓴다 - renderScenarioCompareChart의 3계열
-// 비교와는 다른, 별개의 화면 영역이다).
 // [금융자산 미래예측] 탭의 통합 비교 차트 전용: 평소에는 세부 현황(툴팁)을
 // 표시하지 않다가 그래프를 클릭/터치했을 때만 3초간 보여주고 자동으로 사라지게 한다.
 // [버그 수정 - 팝업마다 자동 숨김 시간이 제각각이었음] 예전엔 여기만 10초였고 다른 그래프 팝업(일별
@@ -1002,76 +951,19 @@ function renderScenarioCompareScheduleTable(rows, scenarioData) {
     </tr>`).join('');
 }
 
-// [비리밸런싱 시나리오 전용] 월 단위 시뮬레이션으로 그룹별(종목별 세부 매핑 기준) 미래가치를 계산한다.
-// 리밸런싱을 하지 않으므로 그룹별 기대수익률 차이 때문에 시간이 지날수록 실제 비중(w_i)이 오늘과
-// 달라지는데, 매월 시작 시점의 "그때그때 실제 잔액 비중"대로 그 달 적립금을 나눠 넣어(고정된 오늘
-// 비중이 아님) 이 변화를 정확히 반영한다. 적립금은 기초급(그 달 초에 넣어 그 달 성장에도 참여)으로
-// 처리한다. groupKeys는 getProjectionAssetGroupKey() 기준(종목별 세부 매핑 + 채권/현금/커스텀 카테고리)
-// - getRateForProjectionGroupKey()로 각 키의 수익률을 조회한다.
-// 반환값: [{year:0, [그룹키]:금액, ..., total}, {year:1, ...}, ... {year: maxYears, ...}] - 그래프/표가
-// 공유하는 연 단위 스냅샷 배열이다.
-function simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, maxYears) {
-  const monthlyRates = {};
-  groupKeys.forEach((k) => { monthlyRates[k] = getRateForProjectionGroupKey(k) / 100 / 12; });
-
-  const balances = {};
-  groupKeys.forEach((k) => { balances[k] = byGroup[k].value; });
-
-  // [월 적립금 - 부동산 제외 배분] 매달 저축하는 돈은 주식/채권/현금 등 금융자산에 들어가지, 집값에
-  // 저절로 얹히지 않는다 - "리밸런싱 후" 3개 시나리오(simulateRebalancedPreset, 부동산에 항상 0원
-  // 배분)와 같은 원칙으로, 이 시나리오도 부동산은 매달 순수 복리 성장만 하고 월 적립금은 금융자산군
-  // (부동산 제외)에만 그 시점 비중대로 배분한다. 보유 자산이 부동산뿐이라 배분할 금융자산군이 하나도
-  // 없는 극단적 경우에만 예외적으로 부동산에 배분한다(적립금이 사라지지 않도록).
-  const financialKeys = groupKeys.filter((k) => k !== '부동산');
-  const hasFinancialGroups = financialKeys.length > 0;
-
-  const snapshot = (year) => {
-    const point = { year };
-    let total = 0;
-    groupKeys.forEach((k) => { point[k] = balances[k]; total += balances[k]; });
-    point.total = total;
-    return point;
-  };
-
-  const yearlyPoints = [snapshot(0)];
-  const totalMonths = maxYears * 12;
-  for (let m = 1; m <= totalMonths; m++) {
-    const eligibleKeys = hasFinancialGroups ? financialKeys : groupKeys;
-    const eligibleTotalNow = eligibleKeys.reduce((s, k) => s + balances[k], 0);
-    groupKeys.forEach((k) => {
-      // 그 달 "시작" 시점의 실제 비중대로 이번 달 적립금을 배분한다 - 배분 대상 그룹이 하나도 없는
-      // 극단적 경우(eligibleTotalNow === 0, 예: 전액 인출 상태)에는 남은 그룹에 균등 배분해 적립금이
-      // 사라지지 않게 한다.
-      let contributionForGroup = 0;
-      if (eligibleKeys.includes(k)) {
-        const shareNow = eligibleTotalNow !== 0 ? balances[k] / eligibleTotalNow : 1 / eligibleKeys.length;
-        contributionForGroup = monthlyContribution * shareNow;
-      }
-      balances[k] = (balances[k] + contributionForGroup) * (1 + monthlyRates[k]);
-    });
-    if (m % 12 === 0) yearlyPoints.push(snapshot(m / 12));
-  }
-  return yearlyPoints;
-}
-
 function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
   // "시나리오별 적용 수익률 요약" 카드(순수 읽기 전용)는 renderScenarioRateReferenceTable()가 담당한다.
-  // [부동산 포함/제외 분리] "현재 구성 유지"(시나리오①)의 가중평균은 부동산을 포함한 실제 총자산
-  // 기준으로 계산하지만, "리밸런싱 후" 3개 시나리오(②③④)가 재배분하는 원금(totalValueForRebalance)은
+  // [부동산 제외] "리밸런싱 후" 3개 시나리오(보수적/일반적/긍정적)가 재배분하는 원금(totalValueForRebalance)은
   // 부동산을 뺀다 - 집을 팔아 주식/채권으로 재배분한다고 가정하는 게 아니기 때문이다.
-  const totalValue = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
   const totalValueForRebalance = groupKeys.filter((k) => k !== '부동산').reduce((s, k) => s + byGroup[k].value, 0);
   // [부동산 - 리밸런싱 후 시나리오에도 합산] 재배분 대상 원금(totalValueForRebalance)에서는 빠지지만,
-  // 시나리오②③④ 각각의 20년 후 예상자산에는 이 프리셋 전용 수익률(보수3.0/일반5.5/긍정8.0%)로 별도
-  // 복리 성장시켜 더한다(simulateRebalancedPreset 참고) - "긴급 점검" 결과 예전엔 이 값이 아예 어느
-  // 시나리오 계산에도 들어가지 않고 빠져 있었다.
+  // 각 시나리오의 20년 후 예상자산에는 이 프리셋 전용 수익률(보수3.0/일반5.5/긍정8.0%)로 별도 복리
+  // 성장시켜 더한다(simulateRebalancedPreset 참고) - "긴급 점검" 결과 예전엔 이 값이 아예 어느 시나리오
+  // 계산에도 들어가지 않고 빠져 있었다.
   const realEstateValue = byGroup['부동산'] ? byGroup['부동산'].value : 0;
 
-  let weightedSum = 0;
-  groupKeys.forEach((k) => { weightedSum += byGroup[k].value * getRateForProjectionGroupKey(k); });
-  const weightedAvg = totalValue !== 0 ? weightedSum / totalValue : 0;
   renderScenarioRateReferenceTable();
 
   // [버그 수정] 입력창이 비어 있는 동안(사용자가 값을 지우고 새로 입력하는 중)에 num('')=0으로 그대로
@@ -1085,21 +977,10 @@ function updateProjection() {
 
   const milestoneOffsets = getMilestoneYearOffsets(); // [5, 10, 15, 20, 25, 30] - 항상 고정
 
-  // ===== 시나리오 ①: 현재 구성 유지 =====
-  // [버그 수정] "총자산 합계"를 (전체 원금 × 가중평균 수익률)로 통짜 복리 계산하면, 서로 다른 수익률의
-  // 자산군을 먼저 평균낸 뒤 복리를 적용하는 셈이라 복리(지수함수)의 볼록성 때문에 "각 자산군을 각자
-  // 수익률로 복리 계산한 뒤 합산한 실제값"보다 항상 작게 나온다 - 자산군별로 먼저 복리 계산한 후 합산
-  // 해야 총자산이 정의상 각 자산군의 합이라 어떤 개별 자산군보다도 작을 수 없다(simulateNonRebalancedGroups
-  // 참고). 리밸런싱을 하지 않으므로 월 적립금도 "오늘의 고정 비중"이 아니라 "그 달 시작 시점의 실제
-  // (그때까지 불어난) 비중"대로 매달 다시 계산해서 배분한다.
-  // [30년 시야 확장] milestoneOffsets가 이제 30년후까지 포함하므로(위 getMilestoneYearOffsets 참고),
-  // 그 시점의 스냅샷(points[30])이 존재하려면 시뮬레이션 자체도 30년까지 돌려야 한다.
-  const currentPoints = simulateNonRebalancedGroups(byGroup, groupKeys, monthlyContribution, 30);
-
-  // ===== 시나리오 ②③④: 리밸런싱 후 - 보수적/일반적/긍정적 =====
-  // 시나리오 ①과 정확히 같은 원금(totalValue)을 목표 지역/항목 비중대로 재배분했다고 가정하되,
-  // 프리셋별로 자산군/티커 기대수익률만 다르게 적용한다(SCENARIO_RATE_PRESETS 참고). "일반적"은 예전
-  // "리밸런싱 후" 시나리오와 완전히 동일한 값(사용자 수동 입력 포함)을 그대로 쓴다.
+  // ===== 3개 시나리오: 리밸런싱 후 - 보수적/일반적/긍정적 =====
+  // 목표 지역/항목 비중대로 재배분했다고 가정하되, 프리셋별로 자산군/티커 기대수익률만 다르게 적용한다
+  // (SCENARIO_RATE_PRESETS 참고). "일반적"은 예전 "리밸런싱 후" 시나리오와 완전히 동일한 값(사용자
+  // 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
     presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 30, realEstateValue);
@@ -1131,23 +1012,6 @@ function updateProjection() {
     return { year: y, values };
   });
   renderScenarioCompareScheduleTable(compareRows, scenarioData);
-
-  // ===== 맨 위 리밸런싱 효과 요약 카드 (금융자산 리밸런싱 탭 상단에 배치) =====
-  // "10년 후 / 20년 후"에 해당하는 마일스톤 두 개만 크게 강조한다 - "현재유지" 대비 "일반적"(예전
-  // "리밸런싱 후"와 동일 기준) 프리셋의 차액을 그대로 보여줘 기존 카드 의미를 그대로 유지한다.
-  // [고정 5년 간격 도입 이후] compareRows가 이제 [0,5,10,15,20,25,30]으로 항상 고정이라, 인덱스
-  // 2/4가 정확히 10년후/20년후를 가리키는 게 보장된다(예전 캘린더 연도 기준일 때는 실제로는
-  // 14년후/19년후를 가리키면서도 이 주석만 "10년후/20년후"라고 (부정확하게) 적혀 있었다).
-  // [버그 수정 - "현재 구성 유지" 제거 이후] compareRows/scenarioData는 이제 리밸런싱 후 3개 시나리오만
-  // 담고 있어 .values.current가 더 이상 존재하지 않는다 - 위에서 별도로 계산해 둔 currentPoints에서
-  // 직접 읽는다(이 카드만 여전히 "현재유지 vs 일반적" 차액을 보여줘야 하므로).
-  const summaryRows = [2, 4].map((idx) => ({
-    year: compareRows[idx].year,
-    label: `${CURRENT_YEAR + compareRows[idx].year}년 (${compareRows[idx].year}년 후)`,
-    scenario1: currentPoints[compareRows[idx].year].total,
-    scenario2: compareRows[idx].values.normal
-  }));
-  renderRebalanceEffectSummary(summaryRows);
 }
 
 document.getElementById('monthlyContributionInput').addEventListener('input', (e) => {
