@@ -51,6 +51,11 @@ function getNameKeywordRateKey(name) {
   return null;
 }
 function getProjectionAssetGroupKey(asset) {
+  // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
+  // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
+  // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
+  // 처리한다(못 알아보는 키는 지역 대표지수로 조용히 대체) - 여기서는 형식 검증을 하지 않는다.
+  if (asset.rateMatchOverride) return asset.rateMatchOverride;
   const groupKey = getProjectionGroupKey(asset.category);
   if (groupKey !== '주식형자산') return groupKey; // 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
   const customKey = findCustomRateKeyForAsset(asset.ticker, asset.name);
@@ -61,6 +66,28 @@ function getProjectionAssetGroupKey(asset) {
   const nameKey = getNameKeywordRateKey(asset.name);
   if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
   return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
+}
+// [절세계좌 종목별 복리 계산 - 요청 반영] getProjectionAssetGroupKey()가 반환하는 키 하나(티커/'NAME:x'/
+// 'SPYM'/'KOSPI' 같은 "상품형" 키, 또는 채권/현금/커스텀 자산군명 같은 "카테고리형" 키)를 실제 프리셋
+// 수익률로 변환한다 - 절세계좌 개별 보유 종목 복리 계산(getAssetProjectionRate)에서 쓴다. 알아볼 수
+// 없는 키(유효하지 않은 대표매칭 오버라이드, 처음 보는 커스텀 자산군명 등)는 조용히 지역 대표지수로
+// 대체해 절대 undefined/NaN을 반환하지 않는다.
+function resolveProjectionRateForKey(key, presetKey, isForeign) {
+  if (key === '현금') return 0;
+  if (key === '채권') return getReferenceRate(presetKey, 'BOND');
+  if (key === '부동산') return getReferenceRate(presetKey, '부동산');
+  if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');
+  if (key === 'SPYM') return getEffectiveIndexRate(presetKey, 'foreign');
+  const custom = getCustomRate(key, presetKey);
+  if (custom !== undefined) return custom;
+  const presetTicker = SCENARIO_RATE_PRESETS[presetKey].tickers[key];
+  if (presetTicker !== undefined) return presetTicker;
+  return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+}
+// 보유 자산(또는 자산과 같은 모양의 객체) 하나의 대표 매칭 수익률 - 위 두 함수를 묶어서 "이 자산이
+// 지금 어떤 수익률로 계산돼야 하는가"를 한 번에 답한다. 절세계좌 원금/적립 계산(js/05 10-3-3-2)에서 쓴다.
+function getAssetProjectionRate(asset, presetKey) {
+  return resolveProjectionRateForKey(getProjectionAssetGroupKey(asset), presetKey, asset.isDomestic === '해외');
 }
 function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
@@ -107,10 +134,19 @@ function getGroupReturnRate(groupKey) {
 }
 
 function renderProjection() {
-  document.getElementById('monthlyContributionInput').value = state.projection.monthlyContribution || '';
   document.getElementById('inflationRateInput').value =
     (state.projection.inflationRate !== undefined && state.projection.inflationRate !== null) ? state.projection.inflationRate : 2.5;
+  updateMonthlyContributionSummary();
   updateProjection();
+}
+// [입력 일원화 - 요청 반영] 월 적립금 입력칸이 메인 화면에서 사라지고 [월적립금 설정] 팝업 안으로
+// 옮겨가면서, 메인 화면엔 지금 값이 얼마인지 확인만 할 수 있는 읽기 전용 배지를 남겨뒀다 - 값이
+// 바뀔 때마다(팝업 입력, 상태 로드 등) 이 함수로 배지 텍스트를 다시 맞춘다.
+function updateMonthlyContributionSummary() {
+  const el = document.getElementById('monthlyContributionSummary');
+  if (!el) return;
+  const amount = num(state.projection.monthlyContribution);
+  el.textContent = amount > 0 ? `${fmtNum(amount, 0)}원` : '미설정';
 }
 
 // 월복리 미래가치: FV = PV*(1+r)^n + PMT*(1+r)*(((1+r)^n - 1)/r), r=월이율, n=개월수.
@@ -302,16 +338,20 @@ const SCENARIO_RATE_BASE_ROWS = [
   { key: 'META', label: 'Meta' },
   { key: 'NVDA', label: 'Nvidia' }
 ];
-// [수익률 관리 모달 - 신규 종목 지원] 화면에 표시할 전체 행 = 시스템 기본 12행 + 사용자가 등록한
-// 종목 중 기본 목록에 없는 것(SK하이닉스 등 신규 매핑, key로 중복 판별)만 이어붙인 것. 기본 행에
-// 이미 있는 종목(삼성전자 등)을 사용자가 수정한 경우는 새 행을 만들지 않고 기존 행의 수치만 바뀐다
-// (getReferenceRate가 오버라이드를 최우선 적용하므로 자동으로 반영됨).
+// [동적 필터링 - 요청 반영] 화면에 표시할 행 = ① "지금 실제 포트폴리오에서 쓰이는 키"(getActiveScenarioRateKeys,
+// 일반계좌+절세계좌 보유 종목·목표 비중·월적립금/절세계좌 적립 배분을 전부 포함)만 남긴 시스템 기본
+// 행 + ② 사용자가 등록한 모든 오버라이드(customScenarioRates - "수익률 관리" 모달의 [+신규 종목 추가]나
+// 엑셀 "수익률 관리 기준" 두 번째 시트로 등록한 것 전부). 예전엔 SCENARIO_RATE_BASE_ROWS 12개를 항상
+// 전부 보여줬으나, 보유/매칭과 무관한 상품까지 나열해 어떤 게 실제로 계산에 쓰이는지 알기 어려웠다 -
+// 시스템 기본 목록만 실제 매칭 여부로 거르고, 사용자가 명시적으로 등록한 종목(엑셀 두 번째 시트 포함)은
+// 아직 보유/배분 전이라도 계속 보이게 해서 미리 수익률을 설정해 둘 수 있게 한다(요청 반영).
 function getScenarioRateDisplayRows() {
-  const rows = SCENARIO_RATE_BASE_ROWS.slice();
-  const baseKeys = new Set(rows.map((r) => r.key));
+  const activeKeys = getActiveScenarioRateKeys();
+  const rows = SCENARIO_RATE_BASE_ROWS.filter((r) => activeKeys.has(r.key));
+  const shownKeys = new Set(rows.map((r) => r.key));
   const customRates = state.projection.customScenarioRates || {};
   Object.keys(customRates).forEach((key) => {
-    if (baseKeys.has(key)) return;
+    if (shownKeys.has(key)) return;
     rows.push({ key, label: customRates[key].label || key, custom: true });
   });
   return rows;
@@ -332,39 +372,58 @@ function getSystemDefaultRate(presetKey, key) {
   if (key === 'KOSPI') return preset.indexRates.domestic;
   return preset.tickers[key];
 }
-// 지금 리밸런싱 목표(pct>0인 활성 항목)에 실제로 배분돼 있어 계산에 쓰이고 있는 참조행 키 집합 -
-// getTargetProjectionRate와 완전히 동일한 판별 로직(사용자 정의 오버라이드 → 전용 매핑 → 지역별
-// 대표지수/국채)을 그대로 따라간다.
-// "적용 중" 판정은 두 소스를 합친다(union): ① 리밸런싱 목표에 실제 배분(pct>0)된 항목, ② 지금 실제로
-// 보유 중인 일반계좌 자산(getProjectionAssetGroupKey 참고 - 절세계좌/부동산은 getProjectionGroupStats와
-// 동일하게 제외). 둘 중 하나라도 해당하면 그 상품의 수익률이 실제 계산에 쓰이고 있다는 뜻이라 점(●)을 붙인다.
+// [티커 → 대표 수익률 키] getTargetProjectionRate/getProjectionAssetGroupKey의 "티커 판별" 부분과 동일한
+// 규칙(사용자 정의 오버라이드 → 시스템 티커 매핑 → 이름 키워드 매핑 → 지역별 대표지수 폴백)을
+// target/allocation 항목(자산 객체가 아니라 {ticker,label} 모양)에도 그대로 적용한다 - "수익률 관리"
+// 동적 목록(getActiveScenarioRateKeys)에서 여러 출처(목표 비중, 월적립금 배분, 절세계좌 배분)에 반복
+// 필요해 공용 함수로 뽑았다.
+function resolveTickerToRateKey(ticker, label) {
+  const customKey = findCustomRateKeyForAsset(ticker, label);
+  if (customKey) return customKey;
+  const sanitized = sanitizeTicker(ticker);
+  if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) return sanitized.yahooTicker;
+  const nameKey = getNameKeywordRateKey(label);
+  if (nameKey) return nameKey;
+  return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
+}
+// [수익률 관리 팝업 동적 필터링 - 요청 반영] "수익률 관리"에 나열할 상품을 하드코딩된 시스템 기본
+// 목록 그대로가 아니라, 지금 실제 포트폴리오에서 대표 수익률로 매칭·지정된 것만 모아 반환한다
+// (getScenarioRateDisplayRows가 이 결과로 필터링한다). 네 가지 출처를 모두 합친다(union):
+//  ① "포트폴리오 구성" 목표 비중에 실제 배분(pct>0)된 항목 - '주식' 캐치올 내 [보유 주식 종목 선택]
+//     세부 종목까지 놓치지 않도록 expandRebalanceTargetsForComputation으로 펼쳐서 본다(요청 반영 -
+//     예전엔 raw targets만 봐서 캐치올 안의 개별 지정 종목이 빠졌었다).
+//  ② 지금 실제로 보유 중인 모든 자산 - 일반계좌 + 절세계좌(ISA/IRP/연금저축) 둘 다 포함한다(요청 반영 -
+//     예전엔 일반계좌만 봤다). 부동산은 개별 종목 매칭이 아니라 전용 '부동산' 키로 취급한다.
+//  ③ [월적립금 설정](일반계좌) 배분 종목 - 아직 보유 비중이 작거나 신규 적립 예정인 종목도 포함한다.
+//  ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
 function getActiveScenarioRateKeys() {
   const active = new Set();
   ['국내', '해외'].forEach((region) => {
-    (state.rebalance.targets[region] || []).filter((t) => num(t.pct) > 0).forEach((t) => {
-      if (t.type === 'ticker') {
-        const customKey = findCustomRateKeyForAsset(t.ticker, t.label);
-        if (customKey) { active.add(customKey); return; }
-        const sanitized = sanitizeTicker(t.ticker);
-        if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) { active.add(sanitized.yahooTicker); return; }
-        const nameKey = getNameKeywordRateKey(t.label);
-        if (nameKey) { active.add(nameKey); return; }
-        active.add(sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI');
-        return;
-      }
+    expandRebalanceTargetsForComputation(region).filter((t) => num(t.pct) > 0).forEach((t) => {
+      if (t.type === 'ticker') { active.add(resolveTickerToRateKey(t.ticker, t.label)); return; }
       const groupKey = getProjectionGroupKey(t.category);
       if (groupKey === '현금') return;
       active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'SPYM' : 'KOSPI'));
     });
   });
   state.assets.forEach((a) => {
-    // [버그 수정 - 절세계좌/부동산 제외] getProjectionGroupStats()가 이제 절세계좌(ISA/IRP/연금저축)와
-    // 부동산 보유 자산을 미래예측 계산에서 아예 빼므로, 여기서도 같은 필터를 적용해야 한다 - 안 그러면
-    // 계산에 전혀 안 쓰이는데도 "실제 보유 중"이라는 이유만으로 참조표에 활성(●) 표시가 붙는 모순이 생긴다.
-    if (!isRebalanceEligibleAccount(a) || a.category === '부동산') return;
+    // [버그 수정 - 절세계좌 제외 삭제] 예전엔 일반계좌만 봤으나(getProjectionGroupStats와 동일 필터),
+    // 절세계좌 보유 종목도 이제 대표 매칭 수익률로 독립 복리 계산되므로(simulateTaxAdvantagedOwnerGrowth)
+    // 여기서도 함께 봐야 "수익률 관리"가 절세계좌 보유 종목까지 놓치지 않는다.
+    if (a.category === '부동산') { active.add('부동산'); return; }
     const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
     if (key === '현금') return;
     active.add(key === '채권' ? 'BOND' : key);
+  });
+  // ③ [월적립금 설정](일반계좌) 배분 종목.
+  (state.projection.monthlyContributionAllocation || []).filter((it) => num(it.pct) > 0).forEach((it) => {
+    active.add(resolveTickerToRateKey(it.ticker, it.label));
+  });
+  // ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
+  TAX_ADVANTAGED_OWNERS.forEach((owner) => {
+    (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0).forEach((it) => {
+      active.add(resolveTickerToRateKey(it.ticker, it.label));
+    });
   });
   return active;
 }
@@ -379,8 +438,8 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
 /* -------------------------------------------------------------------------
  * 10-3-3. [편집 UI 제거] 예전엔 카드1/카드2 각각 [›] 버튼을 탭하면 수익률/적립금을 수동으로 고칠 수
  *    있는 팝업(scenarioModal1/scenarioModal2)이 열렸다 - 그 팝업과 여는 버튼은 완전히 제거했다. 월
- *    적립금 입력만 상단 고정 영역으로 옮겨 계속 수정할 수 있게 남겨뒀다(monthlyContributionInput
- *    리스너는 그대로 유지). 아래 두 카드 자체는 순수 읽기 전용이며, 세부 표는 detailCardAccordionOpen
+ *    적립금 입력은 이후 [월적립금 설정] 팝업 안으로 옮겨갔다(monthlyContributionTotalInput 리스너
+ *    참고, 10-3-2-1). 아래 두 카드 자체는 순수 읽기 전용이며, 세부 표는 detailCardAccordionOpen
  *    아코디언으로 접고 편다 - [수익률 관리] 버튼(scenarioRateManagerModal)만 별도로 열어야 종목별
  *    보수/일반/긍정 수익률을 직접 등록·수정할 수 있다(카드 자체에 인라인 편집 UI는 없음).
  * ---------------------------------------------------------------------- */
@@ -439,41 +498,87 @@ function getTaxAdvantagedHoldingsByOwner() {
   return result;
 }
 
-// 절세계좌 하나(또는 소유자 합계)의 시작 잔액+매월 적립금을 위험:안전 = 70:30 고정 비율로 나눠 각자
-// 복리 성장시킨 뒤 합산한다 - simulateRebalancedPreset과 동일한 "지역(여기선 위험/안전군)별로 따로
-// 복리 계산 후 합산" 원칙(가중평균으로 통짜 계산하면 총액이 왜곡되는 것을 방지).
-// [개별 적립 기간 지원 - 요청 반영] contributionYears 동안만 매월 적립하고, evalYears가 그보다 길면
-// 그 이후로는 적립 없이(월 0원) 이미 쌓인 금액이 계속 같은 수익률로 복리 성장한다고 가정한다 - 신랑/
-// 와이프가 서로 다른 적립 기간을 쓸 수 있으므로, "이 사람은 몇 년까지 넣고 그 뒤로는 얼마나 더 지켜볼
-// 것이냐"를 분리해서 물을 수 있다. evalYears를 생략하면(기존 3-인자 호출부와 호환) contributionYears와
-// 같은 시점의 값을 묻는 것으로 취급한다(적립 기간 = 평가 시점).
-function simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, contributionYears, evalYears) {
-  if (evalYears === undefined) evalYears = contributionYears;
-  // [버그 수정 - "수익률 관리" 오버라이드 미반영] 전에는 SCENARIO_RATE_PRESETS의 시스템 기본값을 직접
-  // 참조해서, "수익률 관리" 모달에서 KOSPI/채권 수익률을 고쳐도 절세계좌 시뮬레이션에는 전혀 반영되지
-  // 않았다 - getEffectiveIndexRate/getReferenceRate로 바꿔 일반계좌와 동일하게 오버라이드를 최우선
-  // 적용하고, 없으면 그대로 시스템 기본값으로 대체(fallback)한다.
-  const riskRate = getEffectiveIndexRate(presetKey, 'domestic');
-  const safeRate = getReferenceRate(presetKey, 'BOND');
-  const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+// 절세계좌 보유 자산을 소유자별로 "계좌종류 → 종목" 계층으로 묶어 반환한다 - [적립설정] 팝업이 "이
+// 계좌에 실제로 어떤 종목이 있는지" 보여주고 종목별 배분 비중을 입력받는 용도. 같은 티커가 같은 계좌
+// 안에 거래가 나뉘어 있어도(예: 여러 번 매수) 하나의 행으로 합산해서 보여준다.
+function getTaxAdvantagedAssetsByOwnerAccount(owner) {
+  const byAccount = {};
+  state.assets.forEach((a) => {
+    if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
+    const accType = a.accountType || '(미지정)';
+    if (!byAccount[accType]) byAccount[accType] = new Map();
+    const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
+    if (!byAccount[accType].has(key)) byAccount[accType].set(key, { ticker: a.ticker || '', name: a.name, curAmount: 0 });
+    byAccount[accType].get(key).curAmount += calcRow(a).curAmount;
+  });
+  const result = {};
+  Object.keys(byAccount).forEach((accType) => { result[accType] = Array.from(byAccount[accType].values()); });
+  return result;
+}
 
+// [계좌별·종목별 대표 수익률 연동 - 요청 반영] 절세계좌 하나(소유자 owner)의 미래가치를 세 조각으로
+// 나눠 계산한 뒤 합산한다:
+//  1) 원금 - 지금 실제 보유 중인 종목 하나하나를 getProjectionAssetGroupKey(일반계좌와 완전히 동일한
+//     대표 매칭 로직, "수익률 관리" 오버라이드도 그대로 적용)로 매칭해 각자의 대표 수익률로 독립 복리
+//     성장시킨다(예전엔 위험:안전 70:30으로 뭉뚱그렸으나, 이제 실제 보유 종목의 성격이 그대로 반영됨).
+//  2) 배분된 월 적립금 - [적립설정] 팝업에서 이 소유자가 특정 (계좌,종목)에 직접 배분한 몫을 그 종목의
+//     대표 수익률로 독립 복리 성장시킨다(getMonthlyAllocationItemRate를 그대로 재사용 - 일반계좌
+//     [월적립금 설정]과 동일한 함수).
+//  3) 배분되지 않은 나머지 월 적립금 - [버그 수정 방지 - 폴백] 배분표가 비어있거나(신규 계좌 등) 일부만
+//     채워졌을 때, 나머지는 기존처럼 위험:안전(KOSPI:채권) 70:30 고정 비율로 계산해 항상 안전하게
+//     동작한다.
+// [개별 적립 기간 지원] contributionYears 동안만 매월 적립하고, evalYears가 그보다 길면 그 이후로는
+// 적립 없이 이미 쌓인 금액이 계속 같은 수익률로 복리 성장한다고 가정한다(growWithStop).
+function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears) {
+  const plan = state.projection.taxAdvantagedPlan;
+  const contributionYears = num(plan.yearsByOwner[owner]);
+  const monthlyTotal = num(plan.monthlyByOwner[owner]);
+  const allocation = (plan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0);
+
+  const contribYears = Math.min(contributionYears, evalYears);
+  const idleYears = Math.max(0, evalYears - contributionYears);
   const growWithStop = (pv, rate, monthly) => {
-    const contribYears = Math.min(contributionYears, evalYears);
-    const idleYears = Math.max(0, evalYears - contributionYears);
     const atContribEnd = computeFutureValue(pv, rate, contribYears, monthly);
     return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
   };
 
-  const futureRisk = growWithStop(startValue * riskShare, riskRate, monthlyContribution * riskShare);
-  const futureSafe = growWithStop(startValue * (1 - riskShare), safeRate, monthlyContribution * (1 - riskShare));
-  return futureRisk + futureSafe;
+  let total = 0;
+
+  // 1) 원금 - 실제 보유 종목별 대표 매칭 수익률로 독립 복리 성장(신규 적립 없이, PMT=0).
+  const principalGroups = {}; // key -> { value, sample }
+  state.assets.forEach((a) => {
+    if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
+    const key = getProjectionAssetGroupKey(a);
+    if (!principalGroups[key]) principalGroups[key] = { value: 0, sample: a };
+    principalGroups[key].value += calcRow(a).curAmount;
+  });
+  Object.keys(principalGroups).forEach((key) => {
+    const g = principalGroups[key];
+    total += growWithStop(g.value, getAssetProjectionRate(g.sample, presetKey), 0);
+  });
+
+  // 2) 배분된 월 적립금 - 종목별 독립 복리.
+  const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
+  allocation.forEach((item) => {
+    total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey), monthlyTotal * num(item.pct) / 100);
+  });
+
+  // 3) 배분되지 않은 나머지 - 위험:안전(KOSPI:채권) 70:30 고정 폴백.
+  const remainderPct = Math.max(0, 100 - allocatedPct);
+  if (remainderPct > 0) {
+    const remainderMonthly = monthlyTotal * remainderPct / 100;
+    const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+    total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare);
+    total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare));
+  }
+
+  return total;
 }
 // 위 함수의 연도별(0~maxYears) 스냅샷 배열 버전 - "시나리오별 총자산" 통합 그래프/표(milestoneOffsets
-// 기준)가 이 배열을 그대로 재사용한다. contributionYears 이후 구간은 위 growWithStop이 자동으로
-// "적립 중단, 복리만 지속"으로 처리해준다.
-function simulateTaxAdvantagedYearlyPoints(presetKey, startValue, monthlyContribution, contributionYears, maxYears) {
+// 기준)가 이 배열을 그대로 재사용한다.
+function simulateTaxAdvantagedOwnerYearlyPoints(owner, presetKey, maxYears) {
   const points = [];
-  for (let y = 0; y <= maxYears; y++) points.push({ year: y, total: simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, contributionYears, y) });
+  for (let y = 0; y <= maxYears; y++) points.push({ year: y, total: simulateTaxAdvantagedOwnerGrowth(owner, presetKey, y) });
   return points;
 }
 
@@ -549,6 +654,8 @@ function openTaxAdvantagedPlanModal() {
   document.getElementById('taxAdvantagedYearsHusbandInput').value = plan.yearsByOwner['신랑'];
   document.getElementById('taxAdvantagedMonthlyWifeInput').value = plan.monthlyByOwner['와이프'] || '';
   document.getElementById('taxAdvantagedYearsWifeInput').value = plan.yearsByOwner['와이프'];
+  renderTaxAdvantagedAllocationEditor('신랑', 'taxAdvantagedAllocationHusband', 'taxAdvantagedAllocationSumHusband');
+  renderTaxAdvantagedAllocationEditor('와이프', 'taxAdvantagedAllocationWife', 'taxAdvantagedAllocationSumWife');
   renderTaxAdvantagedPlanResults();
   document.getElementById('taxAdvantagedPlanModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -566,9 +673,13 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
 
 // 입력값이 바뀔 때마다 state.projection.taxAdvantagedPlan에 즉시 저장하고(다른 입력창들과 동일 패턴)
 // 결과를 다시 계산해 보여준다. [개별 적립 기간 지원] 신랑/와이프 각자의 적립 기간(년)을 독립적으로 읽는다.
+// [버그 수정 - allocationByOwner 유실] 예전엔 이 객체를 통째로 새로 만들어 덮어써서, 월 적립금/적립
+// 기간을 한 글자만 고쳐도 방금 설정한 계좌별·종목별 배분이 전부 날아갔다 - 이제 기존 allocationByOwner를
+// 그대로 이어받는다(spread).
 function onTaxAdvantagedPlanInputChange() {
   const yearsFor = (id) => Math.max(1, num(document.getElementById(id).value) || 15);
   state.projection.taxAdvantagedPlan = {
+    ...state.projection.taxAdvantagedPlan,
     yearsByOwner: {
       '신랑': yearsFor('taxAdvantagedYearsHusbandInput'),
       '와이프': yearsFor('taxAdvantagedYearsWifeInput')
@@ -586,6 +697,72 @@ function onTaxAdvantagedPlanInputChange() {
   document.getElementById(id).addEventListener('input', onTaxAdvantagedPlanInputChange);
 });
 
+// [계좌별·종목별 배분 편집기 - 요청 반영] 이 소유자가 실제 보유 중인 절세계좌 종목을 계좌종류별로 묶어
+// 보여주고, 각 종목마다 월 적립금 대비 배분 비중(%) 입력칸을 하나씩 그린다. 보유 종목이 하나도 없으면
+// (신규 계좌 등) 배분할 대상이 없다는 안내만 보여준다 - 이 경우 월 적립금 전액이 simulateTaxAdvantaged
+// OwnerGrowth의 위험:안전 70:30 폴백으로 계산된다(요청한 예외 상황 폴백).
+function renderTaxAdvantagedAllocationEditor(owner, containerId, sumHintId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const byAccount = getTaxAdvantagedAssetsByOwnerAccount(owner);
+  const accountTypes = Object.keys(byAccount).sort();
+  if (accountTypes.length === 0) {
+    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좌 종목이 없습니다 - 월 적립금 전액이 위험:안전 70:30 비율로 계산됩니다.</p>';
+  } else {
+    const allocation = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
+    const pctFor = (accType, ticker) => {
+      const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
+      return found ? found.pct : 0;
+    };
+    container.innerHTML = accountTypes.map((accType) => `
+      <div class="mt-2 first:mt-0">
+        <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">${escapeHtml(accType)}</p>
+        <div class="space-y-1">
+          ${byAccount[accType].map((asset) => `
+          <div class="flex items-center gap-1.5">
+            <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
+            <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, asset.ticker)}"
+              data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(asset.ticker)}" data-alloc-label="${escapeHtml(asset.name)}"
+              class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+            <span class="text-[10px] text-slate-400 shrink-0">%</span>
+          </div>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+  updateTaxAdvantagedAllocationSumHint(owner, sumHintId);
+}
+function updateTaxAdvantagedAllocationSumHint(owner, sumHintId) {
+  const el = document.getElementById(sumHintId);
+  if (!el) return;
+  const allocation = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
+  const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
+  el.textContent = `배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
+}
+// [이벤트 위임] 종목 리스트를 매번 다시 그릴 때마다(계좌 추가 등) 리스너를 새로 붙일 필요가 없도록,
+// 절대 다시 그려지지 않는 모달 자체에 하나만 걸어둔다. 입력할 때마다 리스트 전체를 다시 그리면 포커스가
+// 끊겨 타이핑이 불편해지므로, 값만 state에 반영하고 합계 안내문/결과표/시나리오별 총자산만 갱신한다.
+document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) => {
+  const input = e.target.closest('.tax-alloc-input');
+  if (!input) return;
+  const owner = input.dataset.allocOwner;
+  const accountType = input.dataset.allocAccount;
+  const ticker = input.dataset.allocTicker;
+  const label = input.dataset.allocLabel;
+  const pct = num(input.value);
+  const plan = state.projection.taxAdvantagedPlan;
+  const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
+  const idx = list.findIndex((it) => it.accountType === accountType && it.ticker === ticker);
+  if (pct > 0) {
+    if (idx >= 0) list[idx].pct = pct; else list.push({ accountType, ticker, label, pct });
+  } else if (idx >= 0) {
+    list.splice(idx, 1); // 0%로 낮추면 배분 목록에서 완전히 제거해 깔끔하게 유지한다.
+  }
+  persistProjection();
+  updateTaxAdvantagedAllocationSumHint(owner, owner === '신랑' ? 'taxAdvantagedAllocationSumHusband' : 'taxAdvantagedAllocationSumWife');
+  renderTaxAdvantagedPlanResults();
+  updateProjection();
+});
+
 // 팝업 안의 결과 표 - 신랑/와이프/합계 3행 × 보수적/일반적/긍정적 3열. [개별 적립 기간 지원] 각 소유자는
 // 자기 자신의 yearsByOwner만큼의 결과를 보여준다 - "합계" 행은 서로 다른 두 시점의 금액을 단순히 더한
 // 값이라는 점을 아래 안내 문구에서 명시한다(합계 자체는 "각자 자기 목표 시점에 도달했을 때의 총액"으로
@@ -594,15 +771,14 @@ function renderTaxAdvantagedPlanResults() {
   const container = document.getElementById('taxAdvantagedPlanResults');
   if (!container) return;
   const plan = state.projection.taxAdvantagedPlan;
-  const holdings = getTaxAdvantagedHoldingsByOwner();
   const presetKeys = ['conservative', 'normal', 'optimistic'];
   const presetLabels = { conservative: '보수적', normal: '일반적', optimistic: '긍정적' };
   const rows = [...TAX_ADVANTAGED_OWNERS, '합계'].map((owner) => {
     const values = presetKeys.map((presetKey) => {
       if (owner === '합계') {
-        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedGrowth(presetKey, holdings[o].total, num(plan.monthlyByOwner[o]), num(plan.yearsByOwner[o])), 0);
+        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedOwnerGrowth(o, presetKey, num(plan.yearsByOwner[o])), 0);
       }
-      return simulateTaxAdvantagedGrowth(presetKey, holdings[owner].total, num(plan.monthlyByOwner[owner]), num(plan.yearsByOwner[owner]));
+      return simulateTaxAdvantagedOwnerGrowth(owner, presetKey, num(plan.yearsByOwner[owner]));
     });
     return { owner, values };
   });
@@ -627,7 +803,7 @@ function renderTaxAdvantagedPlanResults() {
       </tbody>
     </table>
   </div>
-  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${num(plan.yearsByOwner['신랑'])}년 후, 와이프는 ${num(plan.yearsByOwner['와이프'])}년 후 각자의 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 매월 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 나뉘어 각자의 기대수익률로 복리 성장한다고 가정합니다 - 실제 종목별 수익률과는 차이가 있을 수 있습니다.</p>`;
+  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${num(plan.yearsByOwner['신랑'])}년 후, 와이프는 ${num(plan.yearsByOwner['와이프'])}년 후 각자의 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 실제 보유 중인 종목과 아래에서 배분한 종목은 각자의 대표 수익률로, 배분되지 않은 나머지 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 복리 성장한다고 가정합니다.</p>`;
 }
 
 /* -------------------------------------------------------------------------
@@ -674,6 +850,10 @@ document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('c
 
 function renderScenarioRateManagerList() {
   const container = document.getElementById('scenarioRateManagerList');
+  if (scenarioRateManagerDraft.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 구성" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
+    return;
+  }
   container.innerHTML = scenarioRateManagerDraft.map((row, idx) => `
     <div class="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
       <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
@@ -818,10 +998,12 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
   });
 });
 
-// [기본값으로 초기화] 초안에서 모든 사용자 등록/수정 내용을 지운다 - 시스템 기본 12개 상품만 남기고
-// 각 수치도 SCENARIO_RATE_PRESETS 원본값으로 되돌린다. 아직 초안일 뿐이라 [저장]을 눌러야 확정된다.
+// [기본값으로 초기화] 초안에서 모든 사용자 등록/수정 내용을 지운다 - 지금 실제 포트폴리오에서 쓰이는
+// 시스템 기본 상품(동적 필터링, getActiveScenarioRateKeys)만 남기고 각 수치도 SCENARIO_RATE_PRESETS
+// 원본값으로 되돌린다 - 관련 없는 상품까지 되살리지 않는다. 아직 초안일 뿐이라 [저장]을 눌러야 확정된다.
 document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click', () => {
-  scenarioRateManagerDraft = SCENARIO_RATE_BASE_ROWS.map((row) => ({
+  const activeKeys = getActiveScenarioRateKeys();
+  scenarioRateManagerDraft = SCENARIO_RATE_BASE_ROWS.filter((row) => activeKeys.has(row.key)).map((row) => ({
     key: row.key, label: row.label, isBase: true,
     conservative: num(getSystemDefaultRate('conservative', row.key)),
     normal: num(getSystemDefaultRate('normal', row.key)),
@@ -861,11 +1043,17 @@ document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('cli
 
 // 리밸런싱 후 포트폴리오 전체의 가중평균 연수익률(프리셋별) - 지역 배분(국내/해외 %) × 지역 내
 // 목표 항목 비중(%) × 그 항목의 예상 수익률(해당 프리셋 기준)을 전부 더한다.
+// [버그 수정 - 캐치올 세부 선택 종목 무시] '주식' 캐치올 아래 [보유 주식 종목 선택]으로 개별 종목
+// (예: 삼성전자)을 지정해도, 예전엔 여기서 캐치올을 통째로 하나의 "주식" 카테고리로만 보고 지역
+// 대표지수 수익률을 적용해 개별 종목 수익률이 완전히 무시됐다 - 종목별 실행 가이드가 이미 쓰고 있는
+// expandRebalanceTargetsForComputation(js/04, selectedStocks를 개별 티커 항목으로 "펼침")을 그대로
+// 재사용해 두 계산이 항상 같은 데이터를 보게 했다. selectedStocks가 없으면 펼치기 전과 완전히 동일한
+// 배열을 그대로 돌려주므로(js/04 참고) 기존 동작에 영향이 없다.
 function computeTargetWeightedAvgRate(presetKey) {
   let sum = 0;
   ['국내', '해외'].forEach((region) => {
     const regionFrac = num(state.rebalance.domestic[region]) / 100;
-    const targets = state.rebalance.targets[region] || [];
+    const targets = expandRebalanceTargetsForComputation(region);
     targets.forEach((t) => { sum += regionFrac * (num(t.pct) / 100) * getTargetProjectionRate(t, presetKey, region); });
   });
   return sum;
@@ -873,8 +1061,9 @@ function computeTargetWeightedAvgRate(presetKey) {
 
 // 지역(국내/해외) 하나의 목표 배분 "내에서만"의 가중평균 수익률(프리셋별) - 리밸런싱 후 시나리오의
 // 지역별 미래가치 계산에 쓰인다(전체 가중평균과 달리 지역 비중은 곱하지 않고 그 지역 내 100% 기준).
+// [버그 수정] 위 computeTargetWeightedAvgRate와 동일한 이유로 expandRebalanceTargetsForComputation을 쓴다.
 function computeRegionWeightedRate(region, presetKey) {
-  const targets = state.rebalance.targets[region] || [];
+  const targets = expandRebalanceTargetsForComputation(region);
   const sumPct = targets.reduce((s, t) => s + num(t.pct), 0);
   if (sumPct === 0) return 0;
   let weighted = 0;
@@ -1039,12 +1228,12 @@ function updateProjection() {
   // '부동산' 키 자체가 존재하지 않는다 - 재배분 원금 계산에 별도로 뺄 필요가 없다.
   const totalValueForRebalance = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
 
-  // [버그 수정] 입력창이 비어 있는 동안(사용자가 값을 지우고 새로 입력하는 중)에 num('')=0으로 그대로
-  // 덮어쓰면, updateProjection()이 다른 경로(가격 자동갱신 등)에서 호출될 때 state가 0으로 뭉개졌다.
-  // 비어 있으면 기존 state 값을 그대로 유지한다 - 콤마가 섞여 들어와도(붙여넣기 등) 안전하도록 제거 후 파싱.
-  const rawMonthlyInput = document.getElementById('monthlyContributionInput').value.replace(/,/g, '').trim();
-  const monthlyContribution = rawMonthlyInput === '' ? state.projection.monthlyContribution : num(rawMonthlyInput);
-  state.projection.monthlyContribution = monthlyContribution;
+  // [입력 일원화 - 요청 반영] 월 적립금 입력칸이 [월적립금 설정] 팝업 안으로 옮겨가면서, 이 화면엔
+  // 항상 존재하는 입력 요소가 없어졌다 - 이제 state.projection.monthlyContribution을 그대로 신뢰한다
+  // (팝업의 onMonthlyContributionTotalInputChange가 유일한 편집 경로이고, 그 함수가 이미 "입력칸이
+  // 비어있는 동안은 state를 건드리지 않는" 처리를 담당한다).
+  const monthlyContribution = num(state.projection.monthlyContribution);
+  updateMonthlyContributionSummary();
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
 
@@ -1089,15 +1278,11 @@ function updateProjection() {
   // 시작잔액 + 합산 월적립액"을 하나의 곡선으로 계산하는 이전 방식은 더 이상 정확하지 않다(예: 신랑
   // 10년·와이프 15년이면 11~15년째는 와이프만 적립 중이어야 한다) - 대신 소유자별로 각자의 적립 기간을
   // 반영한 연도별 포인트 배열을 독립적으로 계산한 뒤, 연도(인덱스)별로 두 배열을 합산한다.
-  const taxAdvantagedHoldings = getTaxAdvantagedHoldingsByOwner();
-  const taxAdvantagedPlan = state.projection.taxAdvantagedPlan;
   const realEstateTotalValue = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   const totalScenarioData = PROJECTION_SCENARIOS.map((s) => {
     const generalPoints = presetResults[s.preset].yearlyPoints;
-    const ownerPointsList = TAX_ADVANTAGED_OWNERS.map((o) => simulateTaxAdvantagedYearlyPoints(
-      s.preset, taxAdvantagedHoldings[o].total, num(taxAdvantagedPlan.monthlyByOwner[o]), num(taxAdvantagedPlan.yearsByOwner[o]), 20
-    ));
+    const ownerPointsList = TAX_ADVANTAGED_OWNERS.map((o) => simulateTaxAdvantagedOwnerYearlyPoints(o, s.preset, 20));
     // [버그 수정 - "수익률 관리" 오버라이드 미반영] 시스템 기본값을 직접 참조하던 것을 getReferenceRate로
     // 바꿔, 위 SCENARIO_RATE_BASE_ROWS에 복원한 "부동산" 행을 사용자가 수정하면 여기도 그대로 반영된다.
     const realEstateRate = getReferenceRate(s.preset, '부동산');
@@ -1119,7 +1304,9 @@ function updateProjection() {
   reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
 }
 
-document.getElementById('monthlyContributionInput').addEventListener('input', (e) => {
+// [입력 일원화 - 요청 반영] 이 입력은 이제 [월적립금 설정] 팝업 안에 있다(메인 화면에는 읽기 전용
+// 요약 배지만 남음, updateMonthlyContributionSummary 참고) - 리스너 로직 자체는 그대로다.
+document.getElementById('monthlyContributionTotalInput').addEventListener('input', (e) => {
   // [버그 수정 - 월 적립금이 자꾸 0원으로 초기화됨] 값을 지우고 새로 입력하는 중간에도 매 keystroke마다
   // 이 리스너가 실행되는데, 비어 있는 순간 그대로 num('')=0을 state에 반영해 즉시 persistProjection()으로
   // localStorage에 저장해버리면 그 사이 가격 자동갱신 등으로 updateProjection()이 한 번이라도 더 호출될
@@ -1131,11 +1318,11 @@ document.getElementById('monthlyContributionInput').addEventListener('input', (e
   // 그건 persist 호출 '다음'에 일어나 저장이 한 박자 늦어지는 문제가 있었다 - 여기서 먼저 반영한다.
   state.projection.monthlyContribution = num(raw);
   persistProjection();
-  updateProjection();
+  updateProjection(); // simulateRebalancedPreset까지 즉시 다시 계산되어 반영된다.
 });
 // 입력창을 비운 채로 포커스를 벗어나면(예: 다른 값을 지운 뒤 딴 곳을 탭) 화면에 빈 칸이 그대로 남아
 // 현재 저장된 값과 화면 표시가 어긋나 보인다 - 마지막으로 확정된 state 값으로 되돌려 보여준다.
-document.getElementById('monthlyContributionInput').addEventListener('blur', (e) => {
+document.getElementById('monthlyContributionTotalInput').addEventListener('blur', (e) => {
   if (e.target.value.trim() === '') e.target.value = state.projection.monthlyContribution || '';
 });
 
@@ -1157,6 +1344,7 @@ document.getElementById('inflationRateInput').addEventListener('input', (e) => {
 let monthlyContributionAllocationDraft = [];
 
 function openMonthlyContributionAllocationModal() {
+  document.getElementById('monthlyContributionTotalInput').value = state.projection.monthlyContribution || '';
   monthlyContributionAllocationDraft = state.projection.monthlyContributionAllocation.map((it) => ({ ...it }));
   const form = document.getElementById('monthlyContributionAllocationAddForm');
   form.classList.add('hidden');

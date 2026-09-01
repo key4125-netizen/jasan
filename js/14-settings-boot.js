@@ -82,7 +82,7 @@ document.getElementById('darkModeBtn').addEventListener('click', () => {
   localStorage.setItem(LS_DARKMODE, html.classList.contains('dark') ? '1' : '0');
   requestAnimationFrame(() => requestAnimationFrame(() => html.classList.remove('theme-switching')));
   renderCharts();
-  // [버그 수정] 금융자산 미래예측(리밸런싱/자산예측 통합 탭의 "미래 예측" 서브탭)의 3개 차트(통합비교/
+  // [버그 수정] 금융자산 미래예측(포트폴리오/자산예측 통합 탭의 "미래 예측" 서브탭)의 3개 차트(통합비교/
   // 시나리오1/시나리오2)는 renderCharts()에 포함돼 있지 않아, 그 서브탭을 보고 있는 상태에서 다크모드를
   // 전환하면 축/범례 텍스트가 이전 테마 색 그대로 남아 새 배경과 겹쳐 안 보이는 문제가 있었다(탭을
   // 나갔다 다시 들어오면 switchRebalanceSubTab()이 다시 그려줘서 우연히 정상으로 보였을 뿐). 이

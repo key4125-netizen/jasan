@@ -437,6 +437,7 @@ function openTransactionModal(txId) {
   document.getElementById('tx_id').value = '';
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
+  document.getElementById('tx_rateMatchOverride').value = '';
   document.getElementById('tx_date').value = todayDateStr();
   document.getElementById('tx_fee').value = 0;
   delete document.getElementById('tx_appliedRate').dataset.autofilled; // 이전 모달 세션의 자동채움 표시 잔재 방지
@@ -457,6 +458,11 @@ function openTransactionModal(txId) {
     document.getElementById('tx_currency').value = tx.currency;
     document.getElementById('tx_fee').value = tx.fee;
     document.getElementById('tx_appliedRate').value = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : '';
+    // [대표 추종 수익률 종목 - 수정 모드] 이 거래의 종목에 해당하는 자산을 찾아 현재 설정된
+    // rateMatchOverride를 보여준다(없으면 자동판별 중이라는 뜻이라 빈칸으로 둔다).
+    const matchedForEdit = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
+      (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
+    document.getElementById('tx_rateMatchOverride').value = (matchedForEdit && matchedForEdit.rateMatchOverride) || '';
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
     document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
   } else {
@@ -534,6 +540,13 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
 
   persistTransactions();
   syncAssetsFromTransactions();
+  // [대표 추종 수익률 종목 매칭 - 요청 반영] syncAssetsFromTransactions()가 방금 만들었거나 갱신한
+  // 자산을 소유자+계좌구분+티커(없으면 이름)로 찾아 rateMatchOverride를 반영한다 - 입력칸을 채웠으면
+  // 그 값을, 비웠으면(기존에 설정돼 있었더라도) 지워서 자동판별로 되돌린다.
+  const rateMatchRaw = document.getElementById('tx_rateMatchOverride').value.trim();
+  const matchedAsset = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
+    (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
+  if (matchedAsset) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
   persistAssets();
   closeTransactionModal();
   renderTransactionsTab();

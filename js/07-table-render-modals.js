@@ -618,7 +618,7 @@ function renderAll() {
   // 있을 때만 갱신한다. (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
   if (state.activeTab === 'investmentDetail') renderInvestmentDetailTab();
   if (state.activeTab === 'transactions') renderTransactionsTab();
-  // [리밸런싱/자산예측 통합] tabPanelProjection이 tabPanelRebalance 안에 중첩돼 있으므로, 어느 서브탭을
+  // [포트폴리오/자산예측 통합] tabPanelProjection이 tabPanelRebalance 안에 중첩돼 있으므로, 어느 서브탭을
   // 보고 있는지(rebalanceSubTab)까지 함께 확인해야 숨겨진 캔버스를 건드리지 않는다.
   if (state.activeTab === 'rebalance' && rebalanceSubTab !== 'projection') renderRebalance();
   if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') renderProjection();
