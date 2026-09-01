@@ -384,15 +384,19 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
  *    아코디언으로 접고 편다 - [수익률 관리] 버튼(scenarioRateManagerModal)만 별도로 열어야 종목별
  *    보수/일반/긍정 수익률을 직접 등록·수정할 수 있다(카드 자체에 인라인 편집 UI는 없음).
  * ---------------------------------------------------------------------- */
-let detailCardAccordionOpen = { allocation: false, generalSchedule: false, totalSchedule: false };
+// [절세계좌 카드 아코디언 - 요청 반영] taxHusband/taxWife는 "절세계좌 현황" 카드 하단의 신랑/와이프
+// 세부 현황 아코디언 상태다(renderTaxAdvantagedCard 참고) - 다른 키들과 같은 객체에 두면
+// resetAllAccordionsOnTabSwitch(js/03)의 범용 순회가 자동으로 이 두 개도 초기화해준다(키를 따로
+// 나열할 필요 없음).
+let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
   const body = document.getElementById(bodyId);
   setAccordionOpen(body, btn.querySelector('.detail-card-accordion-chevron'), detailCardAccordionOpen[key]);
-  btn.querySelector('.detail-card-accordion-label').textContent = detailCardAccordionOpen[key] ? '접기' : '세부 항목 보기';
+  const label = btn.querySelector('.detail-card-accordion-label');
+  if (label) label.textContent = detailCardAccordionOpen[key] ? '접기' : '세부 항목 보기';
 }
-document.getElementById('targetAllocationAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody'));
 // [드롭다운 요청 → 아코디언으로 확정] "시나리오별 일반계좌/총자산 금액 비교" 카드는 평소엔 표를 접어
 // 숨겨두고, 버튼을 눌렀을 때만 펼치는 아코디언으로 구현했다(사용자 확인 - 드롭다운 필터가 아니라
 // 접기/펼치기 토글을 원함) - 위 두 카드와 완전히 동일한 setAccordionOpen/detailCardAccordionOpen 패턴.
@@ -473,45 +477,70 @@ function simulateTaxAdvantagedYearlyPoints(presetKey, startValue, monthlyContrib
   return points;
 }
 
-let taxAdvantagedCardScope = 'all'; // 'all' | '신랑' | '와이프' - 카드 상단 드롭다운으로 전환
-document.getElementById('taxAdvantagedScopeSelect').addEventListener('change', (e) => {
-  taxAdvantagedCardScope = e.target.value;
-  renderTaxAdvantagedCard();
-});
+// [UI 개편 - 요청 반영] [전체/신랑/와이프] 필터 select를 없애고 항상 가구 합계로 보여준다. 소유자별
+// 세부 현황은 "현재 실제 구성(참고용)" 아래 아코디언 2개(신랑/와이프)로 접어두고, 펼쳤을 때만 그
+// 사람의 계좌종류별 소계 + 위험/안전자산 구성을 보여준다. 매번 innerHTML을 통째로 새로 그리므로(다른
+// 아코디언 카드들과 동일한 이유) 버튼도 매번 다시 만들어지고, 클릭 리스너도 매번 다시 붙여야 한다.
 function renderTaxAdvantagedCard() {
   const container = document.getElementById('taxAdvantagedSummary');
   if (!container) return;
   const holdings = getTaxAdvantagedHoldingsByOwner();
-  const owners = taxAdvantagedCardScope === 'all' ? TAX_ADVANTAGED_OWNERS : [taxAdvantagedCardScope];
-  const total = owners.reduce((s, o) => s + holdings[o].total, 0);
-  const riskValue = owners.reduce((s, o) => s + holdings[o].riskValue, 0);
-  const safeValue = owners.reduce((s, o) => s + holdings[o].safeValue, 0);
-  const byAccountType = {};
-  owners.forEach((o) => {
-    Object.keys(holdings[o].byAccountType).forEach((t) => { byAccountType[t] = (byAccountType[t] || 0) + holdings[o].byAccountType[t]; });
-  });
-  const accountTypeRows = Object.keys(byAccountType).sort();
+  const total = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].total, 0);
+  const riskValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].riskValue, 0);
+  const safeValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].safeValue, 0);
   if (total === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">해당 범위에 보유 중인 절세계좌 자산이 없습니다.</p>';
+    container.innerHTML = '<p class="text-xs text-slate-400">보유 중인 절세계좌 자산이 없습니다.</p>';
     return;
   }
+
+  const ownerAccordionKey = { '신랑': 'taxHusband', '와이프': 'taxWife' };
+  const ownerAccordionIds = (owner) => ({ key: ownerAccordionKey[owner], btnId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBtn`, bodyId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBody` });
+  const ownerAccordionHtml = (owner) => {
+    const h = holdings[owner];
+    const ids = ownerAccordionIds(owner);
+    const accountTypeRows = Object.keys(h.byAccountType).sort();
+    return `
+    <div class="border-t border-slate-100 dark:border-slate-800">
+      <button type="button" id="${ids.btnId}" class="detail-card-accordion-btn w-full flex items-center justify-between gap-1.5 py-2 text-left text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-300">
+        <span class="text-[11px] font-medium">${escapeHtml(owner)} 계좌 세부</span>
+        <span class="flex items-center gap-1 shrink-0">
+          <span class="text-[11px] text-slate-400">${fmtKRWShort(h.total)}</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
+        </span>
+      </button>
+      <div id="${ids.bodyId}" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="pb-2 space-y-1">
+          ${accountTypeRows.length > 0 ? accountTypeRows.map((t) => `
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t)}</span>
+            <span class="font-medium text-slate-700 dark:text-slate-300">${fmtKRWShort(h.byAccountType[t])}</span>
+          </div>`).join('') : '<p class="text-[11px] text-slate-400">보유 중인 자산이 없습니다.</p>'}
+          <div class="flex items-center justify-between text-[11px] pt-1">
+            <span class="text-slate-400">위험/안전자산 구성</span>
+            <span class="text-slate-500 dark:text-slate-400">위험 ${h.total !== 0 ? fmtNum(h.riskValue / h.total * 100, 0) : 0}% · 안전 ${h.total !== 0 ? fmtNum(h.safeValue / h.total * 100, 0) : 0}%</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  };
+
   container.innerHTML = `
     <div class="flex items-baseline justify-between mb-2">
       <span class="text-[11px] text-slate-400">합계 평가금액</span>
       <span class="text-base font-bold">${fmtKRWShort(total)}</span>
     </div>
-    ${accountTypeRows.length > 0 ? `
-    <div class="space-y-1 mb-2">
-      ${accountTypeRows.map((t) => `
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t)}</span>
-        <span class="font-medium text-slate-700 dark:text-slate-300">${fmtKRWShort(byAccountType[t])}</span>
-      </div>`).join('')}
-    </div>` : ''}
-    <div class="flex items-center justify-between text-[11px] pt-2 border-t border-slate-100 dark:border-slate-800">
+    <div class="flex items-center justify-between text-[11px] pb-1 border-b border-slate-100 dark:border-slate-800">
       <span class="text-slate-400">현재 실제 구성(참고용)</span>
       <span class="text-slate-500 dark:text-slate-400">위험자산 ${total !== 0 ? fmtNum(riskValue / total * 100, 0) : 0}% · 안전자산 ${total !== 0 ? fmtNum(safeValue / total * 100, 0) : 0}%</span>
-    </div>`;
+    </div>
+    ${TAX_ADVANTAGED_OWNERS.map(ownerAccordionHtml).join('')}`;
+
+  TAX_ADVANTAGED_OWNERS.forEach((owner) => {
+    const ids = ownerAccordionIds(owner);
+    document.getElementById(ids.btnId).addEventListener('click', () => toggleDetailCardAccordion(ids.key, ids.btnId, ids.bodyId));
+    reapplyDetailCardAccordionHeight(ids.key, ids.btnId, ids.bodyId);
+  });
+  lucide.createIcons();
 }
 
 function openTaxAdvantagedPlanModal() {
@@ -892,91 +921,16 @@ const PROJECTION_SCENARIOS = [
   { key: 'optimistic', label: '목표배분·긍정적', color: SCENARIO_RATE_PRESETS.optimistic.color, kind: 'rebalanced', preset: 'optimistic' }
 ];
 
-// 시나리오 2 카드의 "재편 후 가중평균" 옆에 표시할, 목표 항목별 배분 금액/수익률 요약 목록.
-// [상품별 비중 표시 상세화] 기존에는 "종목명 / 금액·수익률"만 한 줄에 좁게 표시해 비중(%)이 아예
-// 빠져 있고, 나머지 값도 서로 붙어 있어 모바일에서 구분이 어려웠다 - 종목(국가 배지 포함)/목표금액/
-// 비중/수익률 4개 항목을 표(<table>) 형태의 별도 열로 나눠 겹침 없이 정렬한다. 비중(%)은 "지역
-// 목표비중(국내/해외) × 지역 내 항목비중"으로 계산한 포트폴리오 전체 기준값이라 목표금액(역시
-// 포트폴리오 전체 기준 금액)과 항상 서로 일치한다.
-function renderTargetAllocationSummary(regionPV2) {
-  const container = document.getElementById('targetAllocationSummary');
-  const rows = [];
-  ['국내', '해외'].forEach((region) => {
-    const regionPct = num(state.rebalance.domestic[region]);
-    const targets = state.rebalance.targets[region] || [];
-    // [비중 0% 상품 숨김] 목표 비중(targetRatio)이 0% 이하로 설정된 항목(예: 아직 배분하지 않은 지역의
-    // 캐치올)은 실제로 아무 것도 사지 않는 "죽은 행"이라 목록에 보여줄 실익이 없다 - 실제로 배분된
-    // 상품만 필터링해서 남긴다.
-    targets.filter((t) => num(t.pct) > 0).forEach((t) => {
-      const amount = regionPV2[region] * num(t.pct) / 100;
-      const overallPct = regionPct * num(t.pct) / 100;
-      rows.push({ name: t.label, region, amount, pct: overallPct, rate: getTargetProjectionRate(t, 'normal', region), ticker: t.type === 'ticker' ? t.ticker : '' });
-    });
-  });
-  if (rows.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">"포트폴리오 구성" 탭에서 목표 비중을 먼저 설정하세요.</p>';
-    reapplyDetailCardAccordionHeight('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody');
-    return;
-  }
-  // [가독성 개선] 폰트를 text-sm(14px)으로 키우고, 종목명/금액/수익률처럼 핵심 수치는 진한 색+굵게,
-  // 행 패딩(py-2)과 모든 행에 일관된 구분선(border-slate-100)을 넣어 눈으로 따라 읽기 쉽게 했다.
-  container.innerHTML = `
-  <div class="overflow-x-auto -mx-1 px-1">
-    <table class="w-full text-sm border-collapse">
-      <thead>
-        <tr class="border-b border-slate-100 dark:border-slate-800">
-          <th class="text-left py-2 pr-1 sm:pr-2 font-semibold text-slate-500 dark:text-slate-400">종목</th>
-          <th class="text-right py-2 px-1 font-semibold text-slate-500 dark:text-slate-400">금액</th>
-          <th class="text-right py-2 px-1 font-semibold text-slate-500 dark:text-slate-400">비중</th>
-          <th class="text-right py-2 pl-1 font-semibold text-slate-500 dark:text-slate-400">수익률</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map((r) => `
-        <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
-          <td class="py-2 pr-1 sm:pr-2">
-            <div class="flex items-center gap-1 min-w-0">
-              <span class="truncate max-w-[92px] sm:max-w-[120px] font-semibold text-slate-800 dark:text-slate-100 ${r.ticker ? 'cursor-pointer hover:underline' : ''}"${r.ticker ? ` data-open-stock-detail data-ticker="${escapeHtml(r.ticker)}" data-name="${escapeHtml(r.name)}"` : ''}>${escapeHtml(r.name)}</span>
-              <span class="shrink-0 px-1 py-0.5 rounded text-[10px] font-medium leading-none ${r.region === '해외' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">${r.region === '해외' ? '미국' : '국내'}</span>
-            </div>
-          </td>
-          <td class="text-right py-2 px-1 font-bold text-slate-900 dark:text-white whitespace-nowrap">${fmtKRWShort(r.amount)}</td>
-          <td class="text-right py-2 px-1 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${fmtNum(r.pct, 1)}%</td>
-          <td class="text-right py-2 pl-1 font-bold text-slate-900 dark:text-white whitespace-nowrap">${fmtNum(r.rate, 1)}%</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>
-  <p class="sm:hidden text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">← 좌우로 스크롤 →</p>`;
-  reapplyDetailCardAccordionHeight('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody');
-}
-
 // [3가지 시나리오 리팩토링] 상단 요약 카드 그리드 - PROJECTION_SCENARIOS(+계산된 points/weightedAvgRate)를
 // 순회하며 카드 3개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
-// [2040년/2045년 고정 표기] 예전엔 "20년 후 예상자산" 하나만 보여줬으나, 이제 향후 3번째·4번째 5년
-// 단위 캘린더 연도(milestoneOffsets[2]/[3] - 2026년 기준으로는 14년후=2040년, 19년후=2045년) 두
-// 시점을 각각 독립된 블록으로 보여준다. CURRENT_YEAR 기준으로 계산하므로 다른 해에 열어도 "앞으로
-// 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
-// [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
-// 2040/2045년)로 표기했으나, 캘린더 연도 대신 오늘 기준 상대 연차인 "15년 후"/"20년 후"로 단순화했다 -
-// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. "20년 후"가 시뮬레이션의
-// 마지막 스냅샷과 정확히 일치한다(getMilestoneYearOffsets 참고, 최대 20년).
-const SCENARIO_CARD_YEAR_OFFSETS = [15, 20];
-
+// [카드 내용 간소화 - 요청 반영] 예전엔 카드에 "15년 후/20년 후 예상자산" 금액까지 함께 보여줬으나,
+// 요청에 따라 기대수익률까지만 표시하도록 줄였다 - 구체적인 예상 자산 규모는 아래 "시나리오별 일반계좌
+// 그래프"/"금액 비교" 카드에서 확인할 수 있어 중복이었다.
 function renderScenarioSummaryCards(scenarioData) {
   const grid = document.getElementById('scenarioSummaryCardsGrid');
   if (!grid) return;
-
-  // [버그 수정 - 부동산 구분 줄 제거] 부동산은 이제 이 계산에 아예 들어오지 않으므로(point에 '부동산'
-  // 키 자체가 없다) 예전에 있던 "금융자산/부동산" 구분 표시는 더 이상 의미가 없어 제거했다 - 총액 한
-  // 줄만 보여준다.
-  const renderMilestoneBlock = (point, offset) => `
-    <div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
-      <p class="text-[10px] sm:text-[11px] text-slate-400">${offset}년 후(${CURRENT_YEAR + offset}년) 예상자산</p>
-      <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(point.total)}</p>
-    </div>`;
 
   grid.innerHTML = scenarioData.map((s) => `
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
@@ -986,7 +940,6 @@ function renderScenarioSummaryCards(scenarioData) {
       </div>
       <p class="text-[10px] sm:text-[11px] text-slate-400">기대수익률</p>
       <p class="text-sm sm:text-lg font-bold truncate" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</p>
-      ${SCENARIO_CARD_YEAR_OFFSETS.map((offset) => renderMilestoneBlock(s.points[offset], offset)).join('')}
     </div>`).join('');
 }
 
@@ -1105,14 +1058,6 @@ function updateProjection() {
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
     presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 20);
   });
-
-  // "리밸런싱 후(일반적)" 상세 패널용 - 상품별 비중 표는 자산 배분 자체가 프리셋과 무관하게 동일하므로
-  // "일반적" 프리셋의 수익률 기준으로 보여준다.
-  const regionPV2 = {
-    '국내': totalValueForRebalance * num(state.rebalance.domestic['국내']) / 100,
-    '해외': totalValueForRebalance * num(state.rebalance.domestic['해외']) / 100
-  };
-  renderTargetAllocationSummary(regionPV2);
 
   // ===== 3개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
   const scenarioData = PROJECTION_SCENARIOS.map((s) => {
