@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v170</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v171</p>
           </div>
         </div>
 
@@ -1133,7 +1133,8 @@
          ISA/IRP/연금저축 및 부동산까지 전부 합산해 시뮬레이션했으나(계좌 구분과 무관하게 "총자산이
          얼마나 불어나는가"를 보여주려던 정책), 요청에 따라 다시 순수 일반계좌 보유 자산만 대상으로
          좁혔다 - 두 탭이 정확히 같은 자산 범위를 공유한다(getProjectionGroupStats 참고). -->
-    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-1">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반계좌 보유 자산을 기준으로 시뮬레이션합니다.</p>
+    <!-- [안내 문구 삭제 - 요청 반영] "※ 절세계좌... 시뮬레이션합니다." 문구를 삭제했다(일반계좌 한정
+         범위는 아래 섹션 타이틀/각 카드 설명으로 이미 충분히 전달된다고 판단). -->
     <!-- [타이틀 변경 - 요청 반영] "일반계좌 현황"에서 "포트폴리오 기준"으로 개명 - 아래 "절세계좌 현황"
          카드와 짝을 이루도록, 일반계좌 관련 카드들(월 적립금 입력~시나리오별 일반계좌 금액 비교) 구간
          전체를 대표하는 섹션 헤더. -->
@@ -1142,60 +1143,44 @@
          그 팝업(수익률 수동 편집 UI)을 완전히 제거하면서 월 적립금 입력은 여기 상단 고정 영역으로
          옮겨왔다 - id/리스너는 그대로라 JS 쪽 수정 없이 위치만 바뀐다. inflationRateInput은 화면에
          노출하지 않는 값이라 hidden으로 여기 함께 둔다(updateProjection()이 계속 참조한다). -->
-    <div class="flex items-center gap-2 mb-3 flex-wrap">
-      <label class="text-[11px] text-slate-400 flex items-center gap-1.5">
-        월 적립금
-        <input id="monthlyContributionInput" type="number" step="any" placeholder="0"
-          class="w-28 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 outline-none text-right">
-        원
-      </label>
-      <!-- [월적립금 설정 버튼 신설 - 요청 반영] 월 적립금이 특정 종목에 직접 배분되도록 지정하는
-           monthlyContributionAllocationModal을 연다(js/05 openMonthlyContributionAllocationModal 참고).
-           [수익률 관리] 버튼 바로 앞, 월 적립금 입력 바로 뒤에 배치한다. -->
-      <button type="button" id="openMonthlyContributionAllocationBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
-        <i data-lucide="split" class="w-3 h-3"></i> 월적립금 설정
-      </button>
-      <!-- [위치 이동 + 시인성 개선] 예전엔 아래 "시나리오별 적용 수익률 요약" 카드 제목 옆의 눈에 잘
-           안 띄는 회색 테두리 버튼이었는데, "월 적립금" 바로 옆으로 옮기고 브랜드 색(요청에 따라
-           시세&환율 갱신 버튼과 같은 계열의 배경/글자색 - refreshAllBtn 참고)으로 바꿔 클릭 유도성을
-           높였다 - id/클릭 핸들러(openScenarioRateManagerModal)는 그대로라 JS 쪽 수정 없이 위치·
-           스타일만 바뀐다. -->
-      <button type="button" id="openScenarioRateManagerBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
-        <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
-      </button>
+    <div class="mb-3">
+      <!-- [모바일 한 줄 정렬 - 요청 반영] 월 적립금 입력/[월적립금 설정]/[수익률 관리] 세 컨트롤이 좁은
+           화면에서 세로로 꺾여 내려가던 문제 - 이 셋만 별도의 flex-nowrap 그룹으로 묶어 항상 한 줄에
+           나란히 있게 하고, 폭이 정말 부족하면(초소형 화면) 줄바꿈 대신 가로 스크롤로 대응한다(탭
+           내비게이션 바 tabScrollContainer와 동일한 패턴). 안내 문구는 이 그룹 밖에 둬서 별도 줄로
+           자유롭게 줄바꿈되게 한다. -->
+      <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+        <label class="shrink-0 text-[11px] text-slate-400 flex items-center gap-1.5">
+          월 적립금
+          <input id="monthlyContributionInput" type="number" step="any" placeholder="0"
+            class="w-24 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 outline-none text-right">
+          원
+        </label>
+        <!-- [월적립금 설정 버튼 신설 - 요청 반영] 월 적립금이 특정 종목에 직접 배분되도록 지정하는
+             monthlyContributionAllocationModal을 연다(js/05 openMonthlyContributionAllocationModal 참고).
+             [수익률 관리] 버튼 바로 앞, 월 적립금 입력 바로 뒤에 배치한다. -->
+        <button type="button" id="openMonthlyContributionAllocationBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+          <i data-lucide="split" class="w-3 h-3"></i> 월적립금 설정
+        </button>
+        <!-- [위치 이동 + 시인성 개선] 예전엔 아래 "시나리오별 적용 수익률 요약" 카드 제목 옆의 눈에 잘
+             안 띄는 회색 테두리 버튼이었는데, "월 적립금" 바로 옆으로 옮기고 브랜드 색(요청에 따라
+             시세&환율 갱신 버튼과 같은 계열의 배경/글자색 - refreshAllBtn 참고)으로 바꿔 클릭 유도성을
+             높였다 - id/클릭 핸들러(openScenarioRateManagerModal)는 그대로라 JS 쪽 수정 없이 위치·
+             스타일만 바뀐다. -->
+        <button type="button" id="openScenarioRateManagerBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+          <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
+        </button>
+      </div>
       <input id="inflationRateInput" type="number" step="0.1" value="2.5" class="hidden">
-      <span class="text-[11px] text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
+      <span class="block mt-1.5 text-[11px] text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
     </div>
     <!-- [3개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
          순회하며 채운다. 3개 고정이라 화면 폭과 무관하게 항상 3열로 나란히 보여준다. -->
     <section id="scenarioSummaryCardsGrid" class="grid grid-cols-3 gap-2 sm:gap-3 mb-4"></section>
 
-    <!-- ===== 시나리오별 상세 참고표 (카드 그리드 아래) - 순수 읽기 전용 =====
-         [편집 UI 제거] 수익률은 이제 SCENARIO_RATE_PRESETS(상품별 세부 매핑)로 전부 자동 계산되므로,
-         사용자가 수동으로 고칠 필요가 없다 - scenarioModal1/scenarioModal2(수익률 수동 수정 팝업)와
-         그걸 여는 [›] 버튼을 완전히 제거하고 순수 정보 제공용 카드로 단순화했다. 대신 설명 문구 바로
-         아래 아코디언 토글(detailCardAccordionOpen{key:bool}, 기본 접힘)을 달아 세부 표를 필요할 때만
-         펼쳐 보게 한다 - 자산 관리 카드 아코디언과 동일한 setAccordionOpen 패턴. -->
-    <!-- [카드 제거 - 요청 반영] "시나리오별 적용 수익률 요약" 카드를 완전히 삭제했다(scenarioRateAccordionBtn/
-         Body, scenarioRateReferenceTable 포함) - 수익률 세부값은 상단 [수익률 관리] 팝업에서 그대로 확인·
-         수정할 수 있어 중복 정보였다. 남은 카드 하나만 있어 grid-cols-2를 빼고 단일 카드로 둔다. -->
-    <section class="mb-4">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden min-w-0">
-        <div class="p-2.5 sm:p-4 pb-2">
-          <span class="text-xs sm:text-sm font-semibold">목표 비중 적용(일반적) - 상품별 비중</span>
-          <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">"포트폴리오 구성" 탭에서 설정한 목표 비중대로 오늘 전액 조정했다고 가정합니다(과거 30년 평균 근사 수익률 기준).</p>
-        </div>
-        <button type="button" id="targetAllocationAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-          <span class="detail-card-accordion-label">세부 항목 보기</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
-        </button>
-        <div id="targetAllocationAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          <div class="px-2.5 sm:px-4 pb-2.5 sm:pb-4">
-            <div id="targetAllocationSummary" class="space-y-1.5"></div>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- [카드 제거 - 요청 반영] "목표 비중 적용(일반적) - 상품별 비중" 카드를 완전히 삭제했다
+         (targetAllocationAccordionBtn/Body, targetAllocationSummary, renderTargetAllocationSummary 포함) -
+         "포트폴리오 구성" 탭에서 이미 같은 목표 비중/상품 정보를 확인할 수 있어 중복이었다. -->
 
     <!-- ===== [절세계좌 현황] 카드 (신설 - 요청 반영) =====
          ISA/IRP/연금저축 등 절세계좌 보유 자산은 위 일반계좌 전용 시뮬레이션에서 완전히 빠져 있으므로,
@@ -1203,24 +1188,17 @@
          제공한다. 계산 로직은 js/05 getTaxAdvantagedHoldingsByOwner/simulateTaxAdvantagedGrowth 참고 -
          ISA/IRP/연금저축은 법적으로 개인 명의 전용이라 신랑/와이프 두 명 기준으로만 집계한다. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
+      <!-- [UI 개편 - 요청 반영] [전체/신랑/와이프] 필터 select를 없애고, 카드는 항상 가구 합계 기준으로
+           보여준다. 소유자별 세부 현황은 카드 하단에 아코디언 2개(신랑/와이프)로 접어두고 필요할 때만
+           펼쳐 본다(renderTaxAdvantagedCard, js/05 참고) - taxAdvantagedCardScope/change 리스너도 함께
+           제거됐다. -->
       <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
         <h3 class="text-sm font-semibold">🏦 절세계좌 현황</h3>
-        <!-- [모바일 오탭 방지 - 버그 수정] select와 버튼 둘 다 touch-target(44px 최소 높이)이 없어 실제
-             모바일 폭에서 30px 안팎으로 렌더링됐고, 둘 사이 간격도 8px(gap-2)뿐이라 손가락 터치 시
-             경계에서 다른 요소를 잘못 누르기 쉬웠다(팝업이 "안 열린다"는 신고의 원인) - 앱 전역에서
-             모달을 여는 다른 모든 버튼처럼 touch-target을 적용하고 간격을 늘렸다. -->
-        <div class="flex items-center gap-3">
-          <select id="taxAdvantagedScopeSelect" class="touch-target text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-            <option value="all">전체</option>
-            <option value="신랑">신랑</option>
-            <option value="와이프">와이프</option>
-          </select>
-          <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
-            <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
-          </button>
-        </div>
+        <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+          <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
+        </button>
       </div>
-      <p class="text-[11px] text-slate-400 mb-3">ISA/IRP/연금저축 등 절세계좌 보유 자산의 소유자별 현황입니다. 위 일반계좌 시나리오와는 별도로 계산됩니다.</p>
+      <p class="text-[11px] text-slate-400 mb-3">ISA/IRP/연금저축 등 절세계좌 보유 자산의 가구 합계 현황입니다. 위 일반계좌 시나리오와는 별도로 계산됩니다.</p>
       <div id="taxAdvantagedSummary"></div>
     </section>
 
