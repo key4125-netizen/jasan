@@ -184,8 +184,11 @@ function resetAllAccordionsOnTabSwitch() {
   reapplyTopHoldingsAccordionHeights();
 
   Object.keys(rebalanceGuideAccordionOpen).forEach((k) => { rebalanceGuideAccordionOpen[k] = false; });
-  detailCardAccordionOpen.rate = false;
-  detailCardAccordionOpen.allocation = false;
+  // [버그 수정 - 새로 추가된 아코디언 키 누락] 예전엔 detailCardAccordionOpen의 키(rate/allocation)를
+  // 하나씩 직접 나열했는데, 이후 새 카드(generalSchedule/totalSchedule)가 추가되면서 여기 반영을 빠뜨려
+  // 탭을 오갈 때 그 두 아코디언만 펼쳐진 채로 남는 문제가 있었다 - 키를 일일이 나열하지 않고 객체의
+  // 모든 키를 순회해 초기화하면, 앞으로 새 키가 추가돼도 이 함수를 다시 고칠 필요가 없다.
+  Object.keys(detailCardAccordionOpen).forEach((k) => { detailCardAccordionOpen[k] = false; });
   txListAccordionOpen = false;
   Object.keys(assetGroupAccordionOpen).forEach((k) => { assetGroupAccordionOpen[k] = false; });
 }

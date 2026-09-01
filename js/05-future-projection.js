@@ -127,11 +127,11 @@ function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
 
 // [고정 5년 간격 마일스톤] 예전엔 "실제 달력상 5의 배수 연도"(2030/2035/2040/2045년처럼)를 기준으로
 // 잡아서, 오늘이 몇 년이냐에 따라 "4년후"/"9년후"처럼 불규칙한 오프셋이 나왔다(사용자 실측 신고로
-// 확인) - 오늘(CURRENT_YEAR)로부터 정확히 5/10/15/20/25/30년 후로 고정한다(30년 시야까지 확장,
-// 사용자 요청). 표시 연도(하위 캡션)는 CURRENT_YEAR + offset으로 그대로 자동 계산되므로 이 배열만
-// 바꾸면 표/차트 전부 자동으로 반영된다.
+// 확인) - 오늘(CURRENT_YEAR)로부터 정확히 5/10/15/20년 후로 고정한다(최대 20년 시야, 사용자 요청).
+// 표시 연도(하위 캡션)는 CURRENT_YEAR + offset으로 그대로 자동 계산되므로 이 배열만 바꾸면 표/차트
+// 전부 자동으로 반영된다.
 function getMilestoneYearOffsets() {
-  return [5, 10, 15, 20, 25, 30];
+  return [5, 10, 15, 20];
 }
 
 /* -------------------------------------------------------------------------
@@ -364,53 +364,6 @@ function getActiveScenarioRateKeys() {
   });
   return active;
 }
-// 메인 화면 "시나리오별 적용 수익률 요약" 표 - 상품/종목별로 보수적/일반적/긍정적 3개 수익률을 나란히
-// 비교하고, 지금 실제로 리밸런싱 계산에 쓰이고 있는 상품에는 점(●) 표시를 붙인다.
-// [가독성 개선] 모바일에서 흐릿하고 작게 보이던 문제를 고쳤다 - 폰트를 text-sm(14px) 이상으로 키우고,
-// 종목명/일반적 값은 진한 색(slate-800/900, 다크모드 slate-100/white)으로, 보수적/긍정적 값도 연한
-// 회색 대신 slate-700/dark:slate-300 정도의 뚜렷한 색으로 바꿨다. 행 패딩을 넉넉히 주고(py-2) 행 사이
-// 구분선(border-slate-100, 다크 border-slate-800)을 모든 행에 일관되게 넣어 시선이 따라가기 쉽게 했다.
-// [전체 상품 표시로 원복] 활성 상품만 필터링했다가, "적용 중"의 의미가 리밸런싱 목표뿐 아니라 실제
-// 보유(getActiveScenarioRateKeys 참고)로도 넓어지면서 - 사용자 요청에 따라 다시 전체 상품을 나열하고, 점(●)으로만
-// 실제 적용 여부(목표로 배분됐거나/실제로 보유 중)를 표시한다.
-function renderScenarioRateReferenceTable() {
-  const container = document.getElementById('scenarioRateReferenceTable');
-  if (!container) return;
-  const activeKeys = getActiveScenarioRateKeys();
-  container.innerHTML = `
-  <div class="overflow-x-auto -mx-1 px-1">
-    <table class="w-full text-sm border-collapse">
-      <thead>
-        <tr class="border-b border-slate-100 dark:border-slate-800">
-          <th class="text-left py-2 pr-1 font-semibold text-slate-500 dark:text-slate-400">상품/종목</th>
-          <th class="text-right py-2 px-1 font-bold" style="color:${SCENARIO_RATE_PRESETS.conservative.color}">보수적</th>
-          <th class="text-right py-2 px-1 font-bold text-slate-900 dark:text-white">일반적</th>
-          <th class="text-right py-2 pl-1 font-bold" style="color:${SCENARIO_RATE_PRESETS.optimistic.color}">긍정적</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${getScenarioRateDisplayRows().map((row) => {
-          const isActive = activeKeys.has(row.key);
-          return `
-          <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${isActive ? 'bg-brand-50/60 dark:bg-brand-900/10' : ''}">
-            <td class="py-2 pr-1">
-              <span class="inline-flex items-center gap-1.5 min-w-0">
-                ${isActive ? '<span class="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" title="현재 실제로 보유 중이거나 리밸런싱 목표에 배분되어 적용 중"></span>' : '<span class="w-1.5 h-1.5 shrink-0"></span>'}
-                <span class="truncate font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(row.label)}</span>
-                ${row.custom ? '<span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400">사용자 등록</span>' : ''}
-              </span>
-            </td>
-            <td class="text-right py-2 px-1 font-semibold text-slate-700 dark:text-slate-300">${fmtNum(getReferenceRate('conservative', row.key), 1)}%</td>
-            <td class="text-right py-2 px-1 font-bold text-slate-900 dark:text-white">${fmtNum(getReferenceRate('normal', row.key), 1)}%</td>
-            <td class="text-right py-2 pl-1 font-semibold text-slate-700 dark:text-slate-300">${fmtNum(getReferenceRate('optimistic', row.key), 1)}%</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  </div>`;
-  reapplyDetailCardAccordionHeight('rate', 'scenarioRateAccordionBtn', 'scenarioRateAccordionBody');
-}
-
 // 방금 다시 그린 표 기준으로 펼침 상태를 재적용한다 - 표 내용(활성 상품 등)이 바뀌어도 max-height가
 // 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(다른 아코디언들과 동일한 이유).
 function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
@@ -427,7 +380,7 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
  *    아코디언으로 접고 편다 - [수익률 관리] 버튼(scenarioRateManagerModal)만 별도로 열어야 종목별
  *    보수/일반/긍정 수익률을 직접 등록·수정할 수 있다(카드 자체에 인라인 편집 UI는 없음).
  * ---------------------------------------------------------------------- */
-let detailCardAccordionOpen = { rate: false, allocation: false, generalSchedule: false, totalSchedule: false };
+let detailCardAccordionOpen = { allocation: false, generalSchedule: false, totalSchedule: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
@@ -435,7 +388,6 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
   setAccordionOpen(body, btn.querySelector('.detail-card-accordion-chevron'), detailCardAccordionOpen[key]);
   btn.querySelector('.detail-card-accordion-label').textContent = detailCardAccordionOpen[key] ? '접기' : '세부 항목 보기';
 }
-document.getElementById('scenarioRateAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('rate', 'scenarioRateAccordionBtn', 'scenarioRateAccordionBody'));
 document.getElementById('targetAllocationAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody'));
 // [드롭다운 요청 → 아코디언으로 확정] "시나리오별 일반계좌/총자산 금액 비교" 카드는 평소엔 표를 접어
 // 숨겨두고, 버튼을 눌렀을 때만 펼치는 아코디언으로 구현했다(사용자 확인 - 드롭다운 필터가 아니라
@@ -869,7 +821,7 @@ function computeRegionWeightedRate(region, presetKey) {
   return weighted;
 }
 
-// 프리셋 하나(예: 'normal')로 리밸런싱 후 시나리오의 30년치 연간 스냅샷을 계산한다 - 국내/해외를 각자
+// 프리셋 하나(예: 'normal')로 목표 배분 시나리오의 20년치 연간 스냅샷을 계산한다 - 국내/해외를 각자
 // 복리 계산한 뒤 합산해서(단일 가중평균으로 통짜 복리 계산하지 않아) 총자산이 두 지역의 합보다 작아지는
 // 역전 현상을 방지한다.
 function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, maxYears) {
@@ -900,9 +852,9 @@ function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, ma
 // "리밸런싱 효과 요약" 카드도 리밸런싱 설정 탭 개편으로 함께 제거되어, 이제 currentPoints/weightedAvg
 // 계산 자체가 필요 없다.
 const PROJECTION_SCENARIOS = [
-  { key: 'conservative', label: '리밸런싱 후·보수적', color: SCENARIO_RATE_PRESETS.conservative.color, kind: 'rebalanced', preset: 'conservative' },
-  { key: 'normal', label: '리밸런싱 후·일반적', color: SCENARIO_RATE_PRESETS.normal.color, kind: 'rebalanced', preset: 'normal' },
-  { key: 'optimistic', label: '리밸런싱 후·긍정적', color: SCENARIO_RATE_PRESETS.optimistic.color, kind: 'rebalanced', preset: 'optimistic' }
+  { key: 'conservative', label: '목표배분·보수적', color: SCENARIO_RATE_PRESETS.conservative.color, kind: 'rebalanced', preset: 'conservative' },
+  { key: 'normal', label: '목표배분·일반적', color: SCENARIO_RATE_PRESETS.normal.color, kind: 'rebalanced', preset: 'normal' },
+  { key: 'optimistic', label: '목표배분·긍정적', color: SCENARIO_RATE_PRESETS.optimistic.color, kind: 'rebalanced', preset: 'optimistic' }
 ];
 
 // 시나리오 2 카드의 "재편 후 가중평균" 옆에 표시할, 목표 항목별 배분 금액/수익률 요약 목록.
@@ -927,7 +879,7 @@ function renderTargetAllocationSummary(regionPV2) {
     });
   });
   if (rows.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">"리밸런싱" 탭에서 목표 비중을 먼저 설정하세요.</p>';
+    container.innerHTML = '<p class="text-xs text-slate-400">"포트폴리오 구성" 탭에서 목표 비중을 먼저 설정하세요.</p>';
     reapplyDetailCardAccordionHeight('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody');
     return;
   }
@@ -974,9 +926,8 @@ function renderTargetAllocationSummary(regionPV2) {
 // 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
 // [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
 // 2040/2045년)로 표기했으나, 캘린더 연도 대신 오늘 기준 상대 연차인 "15년 후"/"20년 후"로 단순화했다 -
-// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. 시뮬레이션은 이제 30년치까지
-// 계산되므로(getMilestoneYearOffsets가 30년후까지 다루게 되면서 함께 늘림) "20년 후"가 더 이상 마지막
-// 스냅샷은 아니지만, 이 카드가 보여주는 시점 자체는 그대로 15/20년후로 고정이다.
+// CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. "20년 후"가 시뮬레이션의
+// 마지막 스냅샷과 정확히 일치한다(getMilestoneYearOffsets 참고, 최대 20년).
 const SCENARIO_CARD_YEAR_OFFSETS = [15, 20];
 
 function renderScenarioSummaryCards(scenarioData) {
@@ -1082,7 +1033,7 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
   const fmtEok = (v) => (v / 1e8).toFixed(1) + '억';
   // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 뗀다(요약 카드/차트 범례의 원래 라벨은
   // 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
-  const shortLabel = (label) => label.replace('리밸런싱 후·', '');
+  const shortLabel = (label) => label.replace('목표배분·', '');
   document.getElementById(headId).innerHTML = `
     <th class="pl-1 pr-1.5 py-2 text-left font-semibold text-slate-500 dark:text-slate-400">시점</th>
     ${scenarioData.map((s) => `<th class="px-1 py-2 text-right font-bold" style="color:${s.color}">${escapeHtml(shortLabel(s.label))}</th>`).join('')}`;
@@ -1096,12 +1047,9 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
 function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
-  // "시나리오별 적용 수익률 요약" 카드(순수 읽기 전용)는 renderScenarioRateReferenceTable()가 담당한다.
   // [부동산 완전 제외] getProjectionGroupStats()가 이미 부동산 보유 자산을 걸러내므로 byGroup/groupKeys에
   // '부동산' 키 자체가 존재하지 않는다 - 재배분 원금 계산에 별도로 뺄 필요가 없다.
   const totalValueForRebalance = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
-
-  renderScenarioRateReferenceTable();
 
   // [버그 수정] 입력창이 비어 있는 동안(사용자가 값을 지우고 새로 입력하는 중)에 num('')=0으로 그대로
   // 덮어쓰면, updateProjection()이 다른 경로(가격 자동갱신 등)에서 호출될 때 state가 0으로 뭉개졌다.
@@ -1120,7 +1068,7 @@ function updateProjection() {
   // 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
-    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 30);
+    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 20);
   });
 
   // "리밸런싱 후(일반적)" 상세 패널용 - 상품별 비중 표는 자산 배분 자체가 프리셋과 무관하게 동일하므로
@@ -1140,7 +1088,7 @@ function updateProjection() {
   renderScenarioSummaryCards(scenarioData);
   renderScenarioCompareChart(scenarioData, milestoneOffsets);
 
-  // 표/카드용: "현재" + 고정 5년 간격 마일스톤(5/10/15/20/25/30년 후)만 추린다. 각 시나리오의
+  // 표/카드용: "현재" + 고정 5년 간격 마일스톤(5/10/15/20년 후)만 추린다. 각 시나리오의
   // point.total은 이미 위에서 "자산군(또는 지역)별 합산" 방식으로 정확히 계산된 값이므로 그대로
   // 재사용한다.
   const compareRows = [0, ...milestoneOffsets].map((y) => {
@@ -1157,7 +1105,7 @@ function updateProjection() {
   // ===== [시나리오별 총자산] 일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를
   // preset별 부동산 수익률로 복리 성장, 신규 매수 없음) 통합 - "포트폴리오 구성"/미래예측 본편은 순수
   // 일반계좌 기준으로 유지하되, 이 카드만 가구 전체 총자산 관점을 별도로 보여준다(요청 반영). 절세계좌
-  // 몫은 팝업에서 저장해 둔 월 적립액을 그대로 30년 내내 적용한다(팝업을 아직 한 번도 안 썼으면
+  // 몫은 팝업에서 저장해 둔 월 적립액을 그대로 20년 내내 적용한다(팝업을 아직 한 번도 안 썼으면
   // 월 0원 - 그래도 현재 잔액만큼은 항상 복리 성장에 포함되므로 NaN/누락 없이 정상 동작한다).
   const taxAdvantagedHoldings = getTaxAdvantagedHoldingsByOwner();
   const taxAdvantagedTotalValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + taxAdvantagedHoldings[o].total, 0);
@@ -1166,7 +1114,7 @@ function updateProjection() {
 
   const totalScenarioData = PROJECTION_SCENARIOS.map((s) => {
     const generalPoints = presetResults[s.preset].yearlyPoints;
-    const taxPoints = simulateTaxAdvantagedYearlyPoints(s.preset, taxAdvantagedTotalValue, taxAdvantagedMonthlyTotal, 30);
+    const taxPoints = simulateTaxAdvantagedYearlyPoints(s.preset, taxAdvantagedTotalValue, taxAdvantagedMonthlyTotal, 20);
     const realEstateRate = SCENARIO_RATE_PRESETS[s.preset].categories['부동산'];
     const points = generalPoints.map((p, idx) => ({
       year: p.year,
