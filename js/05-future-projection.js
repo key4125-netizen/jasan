@@ -65,17 +65,13 @@ function getProjectionAssetGroupKey(asset) {
 function getProjectionGroupStats() {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
-    // [부동산 포함 - 요청 반영] 예전엔 부동산을 미래 자산예측 전체에서 제외했으나, 이제 "현재 구성
-    // 유지" 시나리오는 부동산도 자체 그룹('부동산' 키, getRateForProjectionGroupKey 참고)으로 포함해
-    // 실제 총자산 성장 곡선에 반영한다. 단 "리밸런싱 후" 3개 시나리오의 재배분 원금에서는 별도로
-    // 제외한다(updateProjection()의 totalValueForRebalance 참고 - 집을 팔아 주식/채권으로 재배분한다고
-    // 가정하는 게 아니므로).
-    // [절세계좌 포함 - 요청 반영] 예전엔 일반계좌 외 절세 계좌(ISA/IRP/연금저축) 보유 자산을 미래예측
-    // 전체에서 제외했으나(리밸런싱 탭의 "일반계좌만 리밸런싱" 정책을 그대로 가져다 썼던 것), 이제
-    // 미래예측은 계좌 구분과 무관하게 실제 보유한 모든 금융자산(+부동산)을 합산해 시뮬레이션한다 -
-    // "얼마를 리밸런싱할 수 있는가"(리밸런싱 탭)와 "총자산이 앞으로 얼마나 불어나는가"(미래예측 탭)는
-    // 서로 다른 질문이므로 계좌 필터를 분리했다. 리밸런싱 탭 자체의 목표비중/실행가이드 계산(다른 함수,
-    // isRebalanceEligibleAccount 호출부 참고)은 이 필터를 그대로 유지해 일반계좌만 대상으로 한다.
+    // [버그 수정 - 일반계좌 자산만 대상] 절세계좌(ISA/IRP/연금저축)와 부동산은 "포트폴리오 구성"(옛
+    // 리밸런싱 설정) 탭과 마찬가지로 미래예측에서도 완전히 제외한다 - 두 탭이 같은 "일반계좌 보유
+    // 자산" 범위를 공유하도록 통일했다(요청 반영). 한때는 미래예측만 절세계좌/부동산을 포함하도록
+    // 넓혔던 적이 있었으나(부동산은 자체 그룹으로 별도 복리 성장 후 합산, 절세계좌도 전부 합산) 다시
+    // 되돌렸다 - 부동산 전용 복리 성장 로직은 simulateRebalancedPreset/computeTargetWeightedAvgRate에서
+    // 함께 제거했다.
+    if (!isRebalanceEligibleAccount(a) || a.category === '부동산') return;
     const r = calcRow(a);
     const key = getProjectionAssetGroupKey(a);
     if (!byGroup[key]) byGroup[key] = { value: 0, buy: 0 };
@@ -286,9 +282,10 @@ function getTargetProjectionRate(target, presetKey, region) {
 // [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
 // tickers에 있는 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'SPYM'이 대표 ETF이자
 // 동시에 "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
+// [부동산 삭제 - 요청 반영] 부동산은 이제 미래예측/포트폴리오 구성 계산 전체에서 제외되므로(일반계좌
+// 자산만 대상), 더 이상 관리할 기대수익률이 없어 이 목록에서도 뺐다.
 const SCENARIO_RATE_BASE_ROWS = [
   { key: 'BOND', label: '국채/채권형' },
-  { key: '부동산', label: '부동산' },
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
   { key: 'SPYM', label: 'S&P500 (SPYM)' },
@@ -335,9 +332,8 @@ function getSystemDefaultRate(presetKey, key) {
 // getTargetProjectionRate와 완전히 동일한 판별 로직(사용자 정의 오버라이드 → 전용 매핑 → 지역별
 // 대표지수/국채)을 그대로 따라간다.
 // "적용 중" 판정은 두 소스를 합친다(union): ① 리밸런싱 목표에 실제 배분(pct>0)된 항목, ② 지금 실제로
-// 보유 중인 자산(현재 구성 유지 시나리오가 이제 이 기준으로 세부 수익률을 적용하므로 - getProjection
-// AssetGroupKey 참고). 둘 중 하나라도 해당하면 그 상품의 수익률이 최소 한 시나리오의 계산에 실제로
-// 쓰이고 있다는 뜻이라 점(●)을 붙인다.
+// 보유 중인 일반계좌 자산(getProjectionAssetGroupKey 참고 - 절세계좌/부동산은 getProjectionGroupStats와
+// 동일하게 제외). 둘 중 하나라도 해당하면 그 상품의 수익률이 실제 계산에 쓰이고 있다는 뜻이라 점(●)을 붙인다.
 function getActiveScenarioRateKeys() {
   const active = new Set();
   ['국내', '해외'].forEach((region) => {
@@ -358,10 +354,11 @@ function getActiveScenarioRateKeys() {
     });
   });
   state.assets.forEach((a) => {
-    // [부동산/절세계좌 포함] 부동산도, 절세계좌(ISA/IRP/연금저축) 보유 자산도 이제 "현재 구성 유지"
-    // 계산에 포함되므로(getProjectionGroupStats 참고) 실제 보유 중이면 참조표에서도 활성(●) 표시가
-    // 되어야 한다 - 두 제외 필터를 모두 없앴다.
-    const key = getProjectionAssetGroupKey(a); // '채권'|'부동산'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
+    // [버그 수정 - 절세계좌/부동산 제외] getProjectionGroupStats()가 이제 절세계좌(ISA/IRP/연금저축)와
+    // 부동산 보유 자산을 미래예측 계산에서 아예 빼므로, 여기서도 같은 필터를 적용해야 한다 - 안 그러면
+    // 계산에 전혀 안 쓰이는데도 "실제 보유 중"이라는 이유만으로 참조표에 활성(●) 표시가 붙는 모순이 생긴다.
+    if (!isRebalanceEligibleAccount(a) || a.category === '부동산') return;
+    const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
     if (key === '현금') return;
     active.add(key === '채권' ? 'BOND' : key);
   });
@@ -373,9 +370,8 @@ function getActiveScenarioRateKeys() {
 // 종목명/일반적 값은 진한 색(slate-800/900, 다크모드 slate-100/white)으로, 보수적/긍정적 값도 연한
 // 회색 대신 slate-700/dark:slate-300 정도의 뚜렷한 색으로 바꿨다. 행 패딩을 넉넉히 주고(py-2) 행 사이
 // 구분선(border-slate-100, 다크 border-slate-800)을 모든 행에 일관되게 넣어 시선이 따라가기 쉽게 했다.
-// [전체 상품 표시로 원복] 활성 상품만 필터링했다가, "현재 구성 유지" 시나리오도 이제 실제 보유 종목
-// 기준으로 이 표와 같은 매핑을 쓰게 되면서(getActiveScenarioRateKeys 참고) "적용 중"의 의미가 리밸런싱
-// 목표뿐 아니라 실제 보유로도 넓어졌다 - 사용자 요청에 따라 다시 전체 상품을 나열하고, 점(●)으로만
+// [전체 상품 표시로 원복] 활성 상품만 필터링했다가, "적용 중"의 의미가 리밸런싱 목표뿐 아니라 실제
+// 보유(getActiveScenarioRateKeys 참고)로도 넓어지면서 - 사용자 요청에 따라 다시 전체 상품을 나열하고, 점(●)으로만
 // 실제 적용 여부(목표로 배분됐거나/실제로 보유 중)를 표시한다.
 function renderScenarioRateReferenceTable() {
   const container = document.getElementById('scenarioRateReferenceTable');
@@ -431,7 +427,7 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
  *    아코디언으로 접고 편다 - [수익률 관리] 버튼(scenarioRateManagerModal)만 별도로 열어야 종목별
  *    보수/일반/긍정 수익률을 직접 등록·수정할 수 있다(카드 자체에 인라인 편집 UI는 없음).
  * ---------------------------------------------------------------------- */
-let detailCardAccordionOpen = { rate: false, allocation: false };
+let detailCardAccordionOpen = { rate: false, allocation: false, generalSchedule: false, totalSchedule: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
@@ -441,6 +437,185 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
 }
 document.getElementById('scenarioRateAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('rate', 'scenarioRateAccordionBtn', 'scenarioRateAccordionBody'));
 document.getElementById('targetAllocationAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('allocation', 'targetAllocationAccordionBtn', 'targetAllocationAccordionBody'));
+// [드롭다운 요청 → 아코디언으로 확정] "시나리오별 일반계좌/총자산 금액 비교" 카드는 평소엔 표를 접어
+// 숨겨두고, 버튼을 눌렀을 때만 펼치는 아코디언으로 구현했다(사용자 확인 - 드롭다운 필터가 아니라
+// 접기/펼치기 토글을 원함) - 위 두 카드와 완전히 동일한 setAccordionOpen/detailCardAccordionOpen 패턴.
+document.getElementById('scenarioCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody'));
+document.getElementById('totalAssetCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody'));
+
+/* -------------------------------------------------------------------------
+ * 10-3-3-2. [절세계좌 현황 카드] ISA/IRP/연금저축 등 절세계좌 보유 자산은 미래예측 계산(일반계좌
+ *    전용)에서 완전히 빠져 있으므로, 별도의 간단한 카드+팝업으로 "이 계좌들은 얼마나 있고, 매월
+ *    얼마씩 넣으면 몇 년 후 얼마가 되는지"를 확인할 수 있게 한다. ISA/IRP/연금저축은 법적으로 개인
+ *    명의 전용 계좌라 부부 공동명의가 불가능하므로, '공동' 소유 자산은 대상에서 제외하고 신랑/와이프
+ *    두 명 기준으로만 집계한다.
+ * ---------------------------------------------------------------------- */
+const TAX_ADVANTAGED_OWNERS = ['신랑', '와이프'];
+// [적립 비율 고정 - 요청 반영] 매월 적립금을 지금 실제 보유 비중에 맞춰 나누면 종목별 수익률 차이로
+// 시뮬레이션 내내 비중이 계속 흔들려 결과가 불안정해진다 - 대신 위험자산(주식형)/안전자산(채권형)을
+// 항상 정확히 70:30으로 고정 배분한다(시작 잔액도 동일 비율로 재해석). 위험자산 수익률은 리밸런싱
+// 후 시나리오와 동일한 국내 대표지수(KOSPI, SCENARIO_RATE_PRESETS.indexRates.domestic)를, 안전자산은
+// 채권 수익률(categories.채권)을 그대로 재사용해 다른 카드들과 기준이 어긋나지 않게 한다.
+const TAX_ADVANTAGED_RISK_SHARE = 0.7;
+
+// 절세계좌 보유 자산을 소유자별로 집계 - 총액과, 참고용으로 계좌종류별 소계·실제 위험/안전자산
+// 구성비(카테고리 기준: 주식/ETF=위험, 그 외=안전)도 함께 반환한다. 미래 적립 시뮬레이션 자체는
+// 위 TAX_ADVANTAGED_RISK_SHARE 고정 비율을 쓰지만, 카드에는 "지금 실제로 어떻게 구성돼 있는지"를
+// 보여주는 게 유용하므로 따로 계산해 둔다.
+function getTaxAdvantagedHoldingsByOwner() {
+  const result = {};
+  TAX_ADVANTAGED_OWNERS.forEach((o) => { result[o] = { total: 0, byAccountType: {}, riskValue: 0, safeValue: 0 }; });
+  state.assets.forEach((a) => {
+    if (isRebalanceEligibleAccount(a)) return; // 일반계좌는 대상 아님 - 절세계좌만
+    if (!TAX_ADVANTAGED_OWNERS.includes(a.owner)) return;
+    const bucket = result[a.owner];
+    const value = calcRow(a).curAmount;
+    bucket.total += value;
+    const accType = a.accountType || '(미지정)';
+    bucket.byAccountType[accType] = (bucket.byAccountType[accType] || 0) + value;
+    if (a.category === '주식' || a.category === 'ETF') bucket.riskValue += value;
+    else bucket.safeValue += value;
+  });
+  return result;
+}
+
+// 절세계좌 하나(또는 소유자 합계)의 시작 잔액+매월 적립금을 위험:안전 = 70:30 고정 비율로 나눠 각자
+// 복리 성장시킨 뒤 합산한다 - simulateRebalancedPreset과 동일한 "지역(여기선 위험/안전군)별로 따로
+// 복리 계산 후 합산" 원칙(가중평균으로 통짜 계산하면 총액이 왜곡되는 것을 방지).
+function simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, years) {
+  const preset = SCENARIO_RATE_PRESETS[presetKey];
+  const riskRate = preset.indexRates.domestic;
+  const safeRate = preset.categories['채권'];
+  const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+  const futureRisk = computeFutureValue(startValue * riskShare, riskRate, years, monthlyContribution * riskShare);
+  const futureSafe = computeFutureValue(startValue * (1 - riskShare), safeRate, years, monthlyContribution * (1 - riskShare));
+  return futureRisk + futureSafe;
+}
+// 위 함수의 연도별(0~maxYears) 스냅샷 배열 버전 - "시나리오별 총자산" 통합 그래프/표(milestoneOffsets
+// 기준)가 이 배열을 그대로 재사용한다.
+function simulateTaxAdvantagedYearlyPoints(presetKey, startValue, monthlyContribution, maxYears) {
+  const points = [];
+  for (let y = 0; y <= maxYears; y++) points.push({ year: y, total: simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, y) });
+  return points;
+}
+
+let taxAdvantagedCardScope = 'all'; // 'all' | '신랑' | '와이프' - 카드 상단 드롭다운으로 전환
+document.getElementById('taxAdvantagedScopeSelect').addEventListener('change', (e) => {
+  taxAdvantagedCardScope = e.target.value;
+  renderTaxAdvantagedCard();
+});
+function renderTaxAdvantagedCard() {
+  const container = document.getElementById('taxAdvantagedSummary');
+  if (!container) return;
+  const holdings = getTaxAdvantagedHoldingsByOwner();
+  const owners = taxAdvantagedCardScope === 'all' ? TAX_ADVANTAGED_OWNERS : [taxAdvantagedCardScope];
+  const total = owners.reduce((s, o) => s + holdings[o].total, 0);
+  const riskValue = owners.reduce((s, o) => s + holdings[o].riskValue, 0);
+  const safeValue = owners.reduce((s, o) => s + holdings[o].safeValue, 0);
+  const byAccountType = {};
+  owners.forEach((o) => {
+    Object.keys(holdings[o].byAccountType).forEach((t) => { byAccountType[t] = (byAccountType[t] || 0) + holdings[o].byAccountType[t]; });
+  });
+  const accountTypeRows = Object.keys(byAccountType).sort();
+  if (total === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400">해당 범위에 보유 중인 절세계좌 자산이 없습니다.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="flex items-baseline justify-between mb-2">
+      <span class="text-[11px] text-slate-400">합계 평가금액</span>
+      <span class="text-base font-bold">${fmtKRWShort(total)}</span>
+    </div>
+    ${accountTypeRows.length > 0 ? `
+    <div class="space-y-1 mb-2">
+      ${accountTypeRows.map((t) => `
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t)}</span>
+        <span class="font-medium text-slate-700 dark:text-slate-300">${fmtKRWShort(byAccountType[t])}</span>
+      </div>`).join('')}
+    </div>` : ''}
+    <div class="flex items-center justify-between text-[11px] pt-2 border-t border-slate-100 dark:border-slate-800">
+      <span class="text-slate-400">현재 실제 구성(참고용)</span>
+      <span class="text-slate-500 dark:text-slate-400">위험자산 ${total !== 0 ? fmtNum(riskValue / total * 100, 0) : 0}% · 안전자산 ${total !== 0 ? fmtNum(safeValue / total * 100, 0) : 0}%</span>
+    </div>`;
+}
+
+function openTaxAdvantagedPlanModal() {
+  const plan = state.projection.taxAdvantagedPlan;
+  document.getElementById('taxAdvantagedYearsInput').value = plan.years;
+  document.getElementById('taxAdvantagedMonthlyHusbandInput').value = plan.monthlyByOwner['신랑'] || '';
+  document.getElementById('taxAdvantagedMonthlyWifeInput').value = plan.monthlyByOwner['와이프'] || '';
+  renderTaxAdvantagedPlanResults();
+  document.getElementById('taxAdvantagedPlanModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeTaxAdvantagedPlanModal(viaBackButton) {
+  document.getElementById('taxAdvantagedPlanModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('taxAdvantagedPlanBtn').addEventListener('click', () => openTaxAdvantagedPlanModal());
+document.getElementById('closeTaxAdvantagedPlanModalBtn').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
+document.getElementById('closeTaxAdvantagedPlanModalBtnBottom').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
+document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
+  if (e.target.id === 'taxAdvantagedPlanModal') closeTaxAdvantagedPlanModal(false);
+});
+
+// 입력값이 바뀔 때마다 state.projection.taxAdvantagedPlan에 즉시 저장하고(다른 입력창들과 동일 패턴)
+// 결과를 다시 계산해 보여준다.
+function onTaxAdvantagedPlanInputChange() {
+  const years = Math.max(1, num(document.getElementById('taxAdvantagedYearsInput').value) || 15);
+  state.projection.taxAdvantagedPlan = {
+    years,
+    monthlyByOwner: {
+      '신랑': num(document.getElementById('taxAdvantagedMonthlyHusbandInput').value),
+      '와이프': num(document.getElementById('taxAdvantagedMonthlyWifeInput').value)
+    }
+  };
+  persistProjection();
+  renderTaxAdvantagedPlanResults();
+  updateProjection(); // [시나리오별 총자산] 카드도 이 적립 계획을 참조하므로 함께 갱신한다
+}
+['taxAdvantagedYearsInput', 'taxAdvantagedMonthlyHusbandInput', 'taxAdvantagedMonthlyWifeInput'].forEach((id) => {
+  document.getElementById(id).addEventListener('input', onTaxAdvantagedPlanInputChange);
+});
+
+// 팝업 안의 결과 표 - 신랑/와이프/합계 3행 × 보수적/일반적/긍정적 3열.
+function renderTaxAdvantagedPlanResults() {
+  const container = document.getElementById('taxAdvantagedPlanResults');
+  if (!container) return;
+  const plan = state.projection.taxAdvantagedPlan;
+  const holdings = getTaxAdvantagedHoldingsByOwner();
+  const presetKeys = ['conservative', 'normal', 'optimistic'];
+  const presetLabels = { conservative: '보수적', normal: '일반적', optimistic: '긍정적' };
+  const rows = [...TAX_ADVANTAGED_OWNERS, '합계'].map((owner) => {
+    const values = presetKeys.map((presetKey) => {
+      if (owner === '합계') {
+        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedGrowth(presetKey, holdings[o].total, num(plan.monthlyByOwner[o]), plan.years), 0);
+      }
+      return simulateTaxAdvantagedGrowth(presetKey, holdings[owner].total, num(plan.monthlyByOwner[owner]), plan.years);
+    });
+    return { owner, values };
+  });
+  container.innerHTML = `
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+          <th class="py-2 pr-2 font-semibold"></th>
+          ${presetKeys.map((k) => `<th class="py-2 px-1 text-right font-semibold">${presetLabels[k]}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r) => `
+        <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${r.owner === '합계' ? 'font-bold' : ''}">
+          <td class="py-2 pr-2 text-slate-600 dark:text-slate-300">${escapeHtml(r.owner)}</td>
+          ${r.values.map((v) => `<td class="py-2 px-1 text-right ${r.owner === '합계' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}">${fmtKRWShort(v)}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">${plan.years}년 후 예상 적립금액(원금+수익)입니다. 매월 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 나뉘어 각자의 기대수익률로 복리 성장한다고 가정합니다 - 실제 종목별 수익률과는 차이가 있을 수 있습니다.</p>`;
+}
 
 /* -------------------------------------------------------------------------
  * 10-3-3-1. [수익률 관리 모달] 사용자가 종목별 보수/일반/긍정 수익률을 직접 등록·수정한다 - 시스템
@@ -673,24 +848,14 @@ document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('cli
 
 // 리밸런싱 후 포트폴리오 전체의 가중평균 연수익률(프리셋별) - 지역 배분(국내/해외 %) × 지역 내
 // 목표 항목 비중(%) × 그 항목의 예상 수익률(해당 프리셋 기준)을 전부 더한다.
-// [부동산 포함 가중평균] realEstateValue가 있으면(총자산 중 부동산 몫), 재배분 대상 금융자산의
-// 가중평균(지역×항목 비중 기준, 기존 로직 그대로)에 부동산 몫만큼을 부동산 전용 수익률로 섞어 넣는다 -
-// "현재 구성 유지" 시나리오의 weightedAvg가 부동산을 포함해 계산되는 것과 기준을 맞추기 위함이다.
-// totalValueForRebalance/realEstateValue를 생략하면(예: 호출부가 인자를 안 줄 때) 기존과 동일하게
-// 금융자산만의 가중평균을 반환한다(하위호환).
-function computeTargetWeightedAvgRate(presetKey, totalValueForRebalance, realEstateValue) {
+function computeTargetWeightedAvgRate(presetKey) {
   let sum = 0;
   ['국내', '해외'].forEach((region) => {
     const regionFrac = num(state.rebalance.domestic[region]) / 100;
     const targets = state.rebalance.targets[region] || [];
     targets.forEach((t) => { sum += regionFrac * (num(t.pct) / 100) * getTargetProjectionRate(t, presetKey, region); });
   });
-  if (!realEstateValue) return sum;
-  const grandTotal = num(totalValueForRebalance) + num(realEstateValue);
-  if (grandTotal === 0) return sum;
-  const financialShare = num(totalValueForRebalance) / grandTotal;
-  const realEstateShare = num(realEstateValue) / grandTotal;
-  return sum * financialShare + getReferenceRate(presetKey, '부동산') * realEstateShare;
+  return sum;
 }
 
 // 지역(국내/해외) 하나의 목표 배분 "내에서만"의 가중평균 수익률(프리셋별) - 리밸런싱 후 시나리오의
@@ -704,16 +869,10 @@ function computeRegionWeightedRate(region, presetKey) {
   return weighted;
 }
 
-// 프리셋 하나(예: 'normal')로 리밸런싱 후 시나리오의 20년치 연간 스냅샷을 계산한다 - 국내/해외를 각자
+// 프리셋 하나(예: 'normal')로 리밸런싱 후 시나리오의 30년치 연간 스냅샷을 계산한다 - 국내/해외를 각자
 // 복리 계산한 뒤 합산해서(단일 가중평균으로 통짜 복리 계산하지 않아) 총자산이 두 지역의 합보다 작아지는
-// 역전 현상을 방지한다(시나리오 1과 동일한 원칙).
-// [부동산 - 긴급 점검 반영] realEstateValue(기본 0)는 리밸런싱 재배분 대상(totalValue)에서는 빠져 있는
-// 부동산 원금이다 - 지역별 복리 계산과는 완전히 분리해, 이 프리셋의 부동산 전용 수익률(SCENARIO_RATE_
-// PRESETS[presetKey].categories.부동산 - 보수3.0/일반5.5/긍정8.0%)로 단독 복리 성장시킨 뒤 국내/해외
-// 합계에 더한다. 부동산은 매달 추가로 사는 대상이 아니므로 월 적립금은 여기 들어가지 않고 전부 재배분된
-// 금융자산(국내/해외) 쪽에만 배분된다고 가정한다 - 예전엔 이 부동산 원금 자체가 어느 계산에도 들어가지
-// 않고 통째로 빠져 있었다(단순 매개변수 누락 버그).
-function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, maxYears, realEstateValue = 0) {
+// 역전 현상을 방지한다.
+function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, maxYears) {
   const regionPV = {
     '국내': totalValue * num(state.rebalance.domestic['국내']) / 100,
     '해외': totalValue * num(state.rebalance.domestic['해외']) / 100
@@ -724,16 +883,13 @@ function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, ma
     '해외': totalValue !== 0 ? regionPV['해외'] / totalValue : 0
   };
   const regionFutureValue = (region, y) => computeFutureValue(regionPV[region], regionRate[region], y, monthlyContribution * regionContributionShare[region]);
-  const realEstateRate = getReferenceRate(presetKey, '부동산');
-  const realEstateFutureValue = (y) => computeFutureValue(realEstateValue, realEstateRate, y, 0);
   const yearlyPoints = [];
   for (let y = 0; y <= maxYears; y++) {
     const domestic = regionFutureValue('국내', y);
     const foreign = regionFutureValue('해외', y);
-    const realEstate = realEstateFutureValue(y);
-    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, '부동산': realEstate, total: domestic + foreign + realEstate });
+    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign });
   }
-  return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey, totalValue, realEstateValue) };
+  return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey) };
 }
 
 // [3가지 시나리오 리팩토링] 요약 카드 그리드·비교 차트·비교표가 전부 이 배열 하나를 순회(loop)해서
@@ -812,15 +968,10 @@ function renderTargetAllocationSummary(regionPV2) {
 // 순회하며 카드 3개를 동일한 템플릿으로 그린다. 시나리오를 늘리거나 줄여도 이 함수는 그대로 두고
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
-// [2040년/2045년 고정 표기 + 금융자산/부동산 구분] 예전엔 "20년 후 예상자산" 하나만 보여줬으나, 이제
-// 향후 3번째·4번째 5년 단위 캘린더 연도(milestoneOffsets[2]/[3] - 2026년 기준으로는 14년후=2040년,
-// 19년후=2045년) 두 시점을 각각 독립된 블록으로 보여준다. CURRENT_YEAR 기준으로 계산하므로 다른 해에
-// 열어도 "앞으로 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
-// 각 시나리오의 해당 연차 스냅샷(s.points[offset])은 이미 그룹키별 잔액을 갖고 있으므로(simulateNonRebalancedGroups/
-// simulateRebalancedPreset 참고) '부동산' 키가 있으면 총액에서 빼 "금융자산" 몫을 계산한다 - 부동산이
-// 없으면(0원이거나 미보유) 그 구분 줄 자체를 만들지 않고 총액만 깔끔하게 보여준다. 3개 시나리오 카드는
-// 항상 다같이 부동산을 보유하거나 다같이 안 보유하므로(포트폴리오 전체 단위 자산) 카드 높이가 그리드
-// 안에서 들쭉날쭉해지지 않는다.
+// [2040년/2045년 고정 표기] 예전엔 "20년 후 예상자산" 하나만 보여줬으나, 이제 향후 3번째·4번째 5년
+// 단위 캘린더 연도(milestoneOffsets[2]/[3] - 2026년 기준으로는 14년후=2040년, 19년후=2045년) 두
+// 시점을 각각 독립된 블록으로 보여준다. CURRENT_YEAR 기준으로 계산하므로 다른 해에 열어도 "앞으로
+// 다가올 3·4번째 5년 단위 연도" 두 개를 자동으로 가리킨다(2026년엔 2040/2045년과 일치).
 // [15년 후/20년 후 - 상대 연차 고정 표기] 예전엔 "앞으로 다가올 3·4번째 5년 단위 캘린더 연도"(예:
 // 2040/2045년)로 표기했으나, 캘린더 연도 대신 오늘 기준 상대 연차인 "15년 후"/"20년 후"로 단순화했다 -
 // CURRENT_YEAR와 무관하게 항상 고정된 두 시점(offset 15와 20)을 가리킨다. 시뮬레이션은 이제 30년치까지
@@ -832,28 +983,14 @@ function renderScenarioSummaryCards(scenarioData) {
   const grid = document.getElementById('scenarioSummaryCardsGrid');
   if (!grid) return;
 
-  const renderMilestoneBlock = (point, offset) => {
-    const total = point.total;
-    const realEstateValue = point['부동산'] || 0;
-    const hasRealEstate = Math.round(realEstateValue) !== 0;
-    const financialValue = total - realEstateValue;
-    return `
+  // [버그 수정 - 부동산 구분 줄 제거] 부동산은 이제 이 계산에 아예 들어오지 않으므로(point에 '부동산'
+  // 키 자체가 없다) 예전에 있던 "금융자산/부동산" 구분 표시는 더 이상 의미가 없어 제거했다 - 총액 한
+  // 줄만 보여준다.
+  const renderMilestoneBlock = (point, offset) => `
     <div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
       <p class="text-[10px] sm:text-[11px] text-slate-400">${offset}년 후(${CURRENT_YEAR + offset}년) 예상자산</p>
-      <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(total)}</p>
-      ${hasRealEstate ? `
-      <div class="mt-1 space-y-0.5">
-        <div class="flex items-center justify-between gap-1 min-w-0">
-          <span class="text-[9px] sm:text-[11px] text-slate-400 shrink-0">금융자산</span>
-          <span class="text-[9px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">${fmtKRWShort(financialValue)}</span>
-        </div>
-        <div class="flex items-center justify-between gap-1 min-w-0">
-          <span class="text-[9px] sm:text-[11px] text-slate-400 shrink-0">부동산</span>
-          <span class="text-[9px] sm:text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">${fmtKRWShort(realEstateValue)}</span>
-        </div>
-      </div>` : ''}
+      <p class="text-xs sm:text-base font-semibold truncate">${fmtKRWShort(point.total)}</p>
     </div>`;
-  };
 
   grid.innerHTML = scenarioData.map((s) => `
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
@@ -892,9 +1029,12 @@ function scheduleTooltipAutoHide(chart, key) {
 // 시점마다 "더 큰 쪽 위/작은 쪽 아래" 방식으로 값을 라벨로 항상 띄워두면 라인이 겹치는 구간에서
 // 라벨끼리도 겹쳐 알아보기 어려워진다 - 대신 마일스톤 연도에는 점만 크게 찍어두고, 정확한 금액은 아래
 // 스케줄 표와 그래프를 탭했을 때 뜨는 툴팁(3개 시나리오 값이 한 번에 표시됨)으로 확인하도록 단순화했다.
-function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
+// [총자산 카드 재사용 - 파라미터화] chartKey(charts 레지스트리 키)/canvasId를 인자로 받아, "시나리오별
+// 일반계좌 그래프"와 "시나리오별 총 자산 그래프" 두 카드가 이 함수 하나를 그대로 공유한다(기본값은
+// 기존 일반계좌 카드 그대로라 기존 호출부는 수정 없이 동작).
+function renderScenarioCompareChart(scenarioData, milestoneOffsets, chartKey = 'scenarioCompare', canvasId = 'scenarioCompareChart') {
   const textColor = chartTextColor();
-  if (charts.scenarioCompare) charts.scenarioCompare.destroy();
+  if (charts[chartKey]) charts[chartKey].destroy();
 
   const MILESTONE_YEARS = [0, ...milestoneOffsets];
   const labels = scenarioData[0].points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`);
@@ -910,7 +1050,7 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
     pointBackgroundColor: s.color
   }));
 
-  charts.scenarioCompare = new Chart(document.getElementById('scenarioCompareChart'), {
+  charts[chartKey] = new Chart(document.getElementById(canvasId), {
     type: 'line',
     data: { labels, datasets }, // X축 연도 표기: "2026년"이 아니라 "Y26" 형식(년도 뒤 2자리)으로 축약
     options: {
@@ -918,7 +1058,7 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
       interaction: { mode: 'index', intersect: false }, // 한 시점에 3개 시나리오 값을 모두 툴팁으로 보여준다
       // 호버(마우스 이동)로는 반응하지 않고 클릭/터치했을 때만 툴팁이 뜨도록 이벤트를 click으로 제한한다.
       events: ['click'],
-      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'scenarioCompare'),
+      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, chartKey),
       scales: {
         x: { ticks: { color: textColor, maxTicksLimit: 11 }, grid: { display: false } },
         y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
@@ -936,15 +1076,17 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets) {
 // [모바일 가로 스크롤 제거] 예전엔 "1,234,567,890원" 전체 자릿수 + 긴 시나리오명("리밸런싱 후·보수적")
 // 헤더 때문에 5개 열이 375px 화면 폭을 넘어 가로 스크롤이 필요했다 - 금액을 "5.2억"처럼 억 단위
 // 한 자리로 축약하고, 헤더도 "리밸런싱 후·" 접두어를 뗀 짧은 이름만 써서 한 화면에 다 들어오게 했다.
-function renderScenarioCompareScheduleTable(rows, scenarioData) {
+// [총자산 카드 재사용 - 파라미터화] headId/bodyId를 인자로 받아 "시나리오별 일반계좌 금액 비교"와
+// "시나리오별 총자산 금액 비교" 두 카드가 이 함수 하나를 공유한다.
+function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenarioCompareScheduleHead', bodyId = 'scenarioCompareScheduleBody') {
   const fmtEok = (v) => (v / 1e8).toFixed(1) + '억';
   // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 뗀다(요약 카드/차트 범례의 원래 라벨은
   // 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
   const shortLabel = (label) => label.replace('리밸런싱 후·', '');
-  document.getElementById('scenarioCompareScheduleHead').innerHTML = `
+  document.getElementById(headId).innerHTML = `
     <th class="pl-1 pr-1.5 py-2 text-left font-semibold text-slate-500 dark:text-slate-400">시점</th>
     ${scenarioData.map((s) => `<th class="px-1 py-2 text-right font-bold" style="color:${s.color}">${escapeHtml(shortLabel(s.label))}</th>`).join('')}`;
-  document.getElementById('scenarioCompareScheduleBody').innerHTML = rows.map((r) => `
+  document.getElementById(bodyId).innerHTML = rows.map((r) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${r.year === 0 ? '현재' : `${r.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + r.year}</span></td>
       ${scenarioData.map((s) => `<td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${fmtEok(r.values[s.key])}</td>`).join('')}
@@ -955,14 +1097,9 @@ function updateProjection() {
   const byGroup = getProjectionGroupStats();
   const groupKeys = getHeldProjectionGroupKeys(byGroup);
   // "시나리오별 적용 수익률 요약" 카드(순수 읽기 전용)는 renderScenarioRateReferenceTable()가 담당한다.
-  // [부동산 제외] "리밸런싱 후" 3개 시나리오(보수적/일반적/긍정적)가 재배분하는 원금(totalValueForRebalance)은
-  // 부동산을 뺀다 - 집을 팔아 주식/채권으로 재배분한다고 가정하는 게 아니기 때문이다.
-  const totalValueForRebalance = groupKeys.filter((k) => k !== '부동산').reduce((s, k) => s + byGroup[k].value, 0);
-  // [부동산 - 리밸런싱 후 시나리오에도 합산] 재배분 대상 원금(totalValueForRebalance)에서는 빠지지만,
-  // 각 시나리오의 20년 후 예상자산에는 이 프리셋 전용 수익률(보수3.0/일반5.5/긍정8.0%)로 별도 복리
-  // 성장시켜 더한다(simulateRebalancedPreset 참고) - "긴급 점검" 결과 예전엔 이 값이 아예 어느 시나리오
-  // 계산에도 들어가지 않고 빠져 있었다.
-  const realEstateValue = byGroup['부동산'] ? byGroup['부동산'].value : 0;
+  // [부동산 완전 제외] getProjectionGroupStats()가 이미 부동산 보유 자산을 걸러내므로 byGroup/groupKeys에
+  // '부동산' 키 자체가 존재하지 않는다 - 재배분 원금 계산에 별도로 뺄 필요가 없다.
+  const totalValueForRebalance = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
 
   renderScenarioRateReferenceTable();
 
@@ -983,7 +1120,7 @@ function updateProjection() {
   // 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
-    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 30, realEstateValue);
+    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 30);
   });
 
   // "리밸런싱 후(일반적)" 상세 패널용 - 상품별 비중 표는 자산 배분 자체가 프리셋과 무관하게 동일하므로
@@ -1012,6 +1149,39 @@ function updateProjection() {
     return { year: y, values };
   });
   renderScenarioCompareScheduleTable(compareRows, scenarioData);
+  reapplyDetailCardAccordionHeight('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody');
+
+  // ===== [절세계좌 현황] 카드 =====
+  renderTaxAdvantagedCard();
+
+  // ===== [시나리오별 총자산] 일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를
+  // preset별 부동산 수익률로 복리 성장, 신규 매수 없음) 통합 - "포트폴리오 구성"/미래예측 본편은 순수
+  // 일반계좌 기준으로 유지하되, 이 카드만 가구 전체 총자산 관점을 별도로 보여준다(요청 반영). 절세계좌
+  // 몫은 팝업에서 저장해 둔 월 적립액을 그대로 30년 내내 적용한다(팝업을 아직 한 번도 안 썼으면
+  // 월 0원 - 그래도 현재 잔액만큼은 항상 복리 성장에 포함되므로 NaN/누락 없이 정상 동작한다).
+  const taxAdvantagedHoldings = getTaxAdvantagedHoldingsByOwner();
+  const taxAdvantagedTotalValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + taxAdvantagedHoldings[o].total, 0);
+  const taxAdvantagedMonthlyTotal = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + num(state.projection.taxAdvantagedPlan.monthlyByOwner[o]), 0);
+  const realEstateTotalValue = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
+
+  const totalScenarioData = PROJECTION_SCENARIOS.map((s) => {
+    const generalPoints = presetResults[s.preset].yearlyPoints;
+    const taxPoints = simulateTaxAdvantagedYearlyPoints(s.preset, taxAdvantagedTotalValue, taxAdvantagedMonthlyTotal, 30);
+    const realEstateRate = SCENARIO_RATE_PRESETS[s.preset].categories['부동산'];
+    const points = generalPoints.map((p, idx) => ({
+      year: p.year,
+      total: p.total + taxPoints[idx].total + computeFutureValue(realEstateTotalValue, realEstateRate, p.year, 0)
+    }));
+    return { ...s, points };
+  });
+  renderScenarioCompareChart(totalScenarioData, milestoneOffsets, 'totalAssetCompare', 'totalAssetCompareChart');
+  const totalCompareRows = [0, ...milestoneOffsets].map((y) => {
+    const values = {};
+    totalScenarioData.forEach((s) => { values[s.key] = s.points[y].total; });
+    return { year: y, values };
+  });
+  renderScenarioCompareScheduleTable(totalCompareRows, totalScenarioData, 'totalAssetCompareScheduleHead', 'totalAssetCompareScheduleBody');
+  reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
 }
 
 document.getElementById('monthlyContributionInput').addEventListener('input', (e) => {
