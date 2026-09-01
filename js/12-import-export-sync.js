@@ -10,12 +10,33 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       '자산군(자동분류)': a.category, '현재가': a.currentPrice,
       '매입금액(자산통화, 자동계산)': Math.round(r.buyAmountOriginal * 100) / 100,
       '매입금액(KRW환산)': Math.round(r.buyAmount), '평가금액(KRW)': Math.round(r.curAmount),
-      '평가손익(KRW)': Math.round(r.profit), '수익률(%)': Math.round(r.rateOfReturn * 100) / 100
+      '평가손익(KRW)': Math.round(r.profit), '수익률(%)': Math.round(r.rateOfReturn * 100) / 100,
+      // [대표매칭(수익률연동키) - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이
+      // 이 종목에 지금 실제로 적용 중인 대표 상품/지수 키(티커, 'NAME:정규화이름', 'SPYM'/'KOSPI', 또는
+      // 채권/현금/커스텀 자산군명)를 그대로 보여준다 - 절세계좌·일반계좌 구분 없이 모든 종목에 적용된다.
+      // 이 값을 셀에서 직접 고쳐서(예: 국내상장 ETF에 정확한 추종 지수 티커를 지정) 다시 업로드하면
+      // makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로 반영한다(22. 엑셀 업로드 참고).
+      '대표매칭(수익률연동키)': getProjectionAssetGroupKey(a)
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '자산목록');
+
+  // [멀티 시트 - 요청 반영] 두 번째 시트에 "수익률 관리" 팝업이 지금 실제로 보여주는 것과 완전히 같은
+  // 목록(getScenarioRateDisplayRows - 동적 필터링된 대표 종목들, js/05)을 각자의 현재 유효 기대수익률
+  // (오버라이드가 있으면 그 값)과 함께 정리해 내려받는다. 여기서 종목을 추가하거나 수익률을 고쳐서
+  // 다시 업로드하면 state.projection.customScenarioRates에 그대로 반영된다(22. 엑셀 업로드 참고).
+  const rateRows = getScenarioRateDisplayRows().map((row) => ({
+    '키(수익률연동키)': row.key,
+    '종목명': row.label,
+    '보수적(%)': num(getReferenceRate('conservative', row.key)),
+    '일반적(%)': num(getReferenceRate('normal', row.key)),
+    '긍정적(%)': num(getReferenceRate('optimistic', row.key))
+  }));
+  const rateWs = XLSX.utils.json_to_sheet(rateRows);
+  XLSX.utils.book_append_sheet(wb, rateWs, '수익률 관리 기준');
+
   const today = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `자산관리_${today}.xlsx`);
 });
@@ -107,6 +128,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       const wb = XLSX.read(evt.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws);
+      // [멀티 시트 - 요청 반영] 두 번째 시트("수익률 관리 기준")가 있으면 함께 읽어둔다 - 시트 이름이
+      // 정확히 일치하지 않아도(사용자가 실수로 이름을 바꾼 경우 등) 두 번째 시트 자체를 그대로 쓴다.
+      // 적용은 아래에서 [덮어쓰기/추가] 선택 후, [취소]가 아닐 때만 한다(자산과 동일한 취소 시맨틱).
+      const rateSheetName = wb.SheetNames.find((n) => n === '수익률 관리 기준') || wb.SheetNames[1];
+      const rateJson = rateSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[rateSheetName]) : [];
 
       const imported = json.map(row => makeAsset({
         ticker: pick(row, 'ticker', 'Ticker', 'TICKER'),
@@ -118,7 +144,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         quantity: pick(row, '수량'),
         buyPrice: pick(row, '매수단가'),
         // 선택 입력: 값이 있으면 makeAsset이 그대로 현재가로 채택하고, 비어 있으면 매수단가로 초기화한다.
-        currentPrice: pick(row, '현재가')
+        currentPrice: pick(row, '현재가'),
+        // [대표매칭 오버라이드 - 요청 반영] "대표매칭(수익률연동키)" 컬럼을 사용자가 직접 고쳐서 올리면
+        // rateMatchOverride로 저장된다(비어 있으면 makeAsset이 undefined로 남겨 자동판별을 그대로 쓴다) -
+        // getProjectionAssetGroupKey(js/05)가 이 값을 최우선으로 반영해 즉시 시뮬레이션에 연동된다.
+        rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키')
       }));
 
       if (imported.length === 0) { alert('가져올 데이터가 없습니다. (ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 헤더를 확인하세요)'); return; }
@@ -137,6 +167,29 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         resultMsg = `엑셀 데이터 ${imported.length}건을 불러왔습니다.`;
       }
       persistAssets();
+
+      // [멀티 시트 - 요청 반영] 두 번째 시트 내용을 state.projection.customScenarioRates에 업서트한다 -
+      // 자산 가져오기를 [취소]했으면(위 return으로 이미 걸러짐) 여기까지 오지 않으므로 함께 취소된다.
+      // 키가 비어있는 행은 건너뛰고, 세 수익률이 전부 빈칸인 행도 의미가 없어 건너뛴다 - 일부만 채워도
+      // (예: 일반적만) 그 값만 오버라이드로 저장되고 나머지는 기존처럼 시스템 기본값으로 대체된다.
+      let rateUpdatedCount = 0;
+      rateJson.forEach((row) => {
+        const key = String(pick(row, '키(수익률연동키)', '키', 'key') || '').trim();
+        if (!key) return;
+        const label = String(pick(row, '종목명', 'label') || key);
+        const conservative = pick(row, '보수적(%)', '보수적', 'conservative');
+        const normal = pick(row, '일반적(%)', '일반적', 'normal');
+        const optimistic = pick(row, '긍정적(%)', '긍정적', 'optimistic');
+        if (conservative === '' && normal === '' && optimistic === '') return;
+        const entry = { label };
+        if (conservative !== '') entry.conservative = num(conservative);
+        if (normal !== '') entry.normal = num(normal);
+        if (optimistic !== '') entry.optimistic = num(optimistic);
+        state.projection.customScenarioRates[key] = entry;
+        rateUpdatedCount++;
+      });
+      if (rateUpdatedCount > 0) persistProjection();
+
       renderAll();
       // [일괄 업로드 소급 히스토리] 엑셀로 한 번에 들어온 종목들은 개별 등록 경로(assetForm 제출)를
       // 타지 않아 각자 새로 생성될 때 걸리는 backfillDailyPnlHistory 호출이 없다 - 대신 이 마이그레이션
@@ -147,7 +200,8 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       // 새 데이터 기준으로 다시 계산되지 않는다 - 5분 자동 갱신이나 수동 새로고침을 기다리지 않고 바로
       // 새 포트폴리오 기준 위험점수/스트레스 테스트가 보이도록 명시적으로 한 번 더 호출한다.
       refreshPricesAndRates();
-      alert(`${resultMsg} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
+      updateProjection(); // 방금 반영된 customScenarioRates/대표매칭 오버라이드가 미래예측에도 즉시 보이도록.
+      alert(`${resultMsg}${rateUpdatedCount > 0 ? ` / 수익률 관리 ${rateUpdatedCount}건 반영` : ''} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
@@ -182,7 +236,9 @@ function buildSyncBlob() {
       buyRate: a.buyRate,
       // [가족 동기화 - 스마트 머지] mergeCollectionById()가 이 값으로 로컬/원격 중 더 최신 레코드를
       // 고른다 - 빠지면 항상 0으로 취급돼 병합이 무의미해진다.
-      updatedAt: a.updatedAt
+      updatedAt: a.updatedAt,
+      // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
+      rateMatchOverride: a.rateMatchOverride
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
@@ -308,7 +364,9 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         // dailyRefTradeKeyDate는 기기별 스냅샷 방식 자체를 없애면서 더 이상 쓰지 않는다(다음 정상
         // 시세 조회 때 API의 절대 시각만으로 매번 새로 판정됨, getMarketDateKeyForEpoch 참고).
         regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
-        buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined
+        buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
+        // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
+        rateMatchOverride: (typeof a.rateMatchOverride === 'string' && a.rateMatchOverride.trim() !== '') ? a.rateMatchOverride.trim() : undefined
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
@@ -679,7 +737,7 @@ async function pullFromCloud(opts) {
         // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.
         mergeAssetsAndTransactionsWithRemote(parsed);
       }
-      // 나머지 설정값(환율/리밸런싱/자산예측 등)은 두 경로 모두 기존처럼 원격 값을 그대로 채택한다
+      // 나머지 설정값(환율/포트폴리오/자산예측 등)은 두 경로 모두 기존처럼 원격 값을 그대로 채택한다
       // (이미 위에서 remote.version > lastVersion을 확인한 뒤라 원격이 더 최신).
       applyRemoteScalarFields(parsed);
       persistAssets();

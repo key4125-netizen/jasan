@@ -446,7 +446,7 @@ const state = {
   // (buildSyncBlob 등)의 손이 닿는 범위를 넓히지 않는다.
   fundamentalCache: {},
   // 현재 활성화된 최상위 탭 ('dashboard' | 'investmentDetail' | 'transactions' | 'rebalance') - 휘발성,
-  // 새로고침 시 대시보드로 복귀. '리밸런싱/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
+  // 새로고침 시 대시보드로 복귀. '포트폴리오/자산예측' 통합 탭 내부의 2단계 서브탭은 별도의 모듈 변수
   // rebalanceSubTab('target'|'projection')으로 관리한다(switchRebalanceSubTab 참고).
   activeTab: 'dashboard',
   // 리밸런싱 목표 비중.
@@ -462,16 +462,22 @@ const state = {
   // customScenarioRates: [수익률 관리] 모달에서 사용자가 등록/수정한 종목별 보수/일반/긍정 수익률
   // 오버라이드 - { [key]: { label, conservative, normal, optimistic } }, key는 sanitizeTicker().yahooTicker
   // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
-  // taxAdvantagedPlan: [절세계좌 현황] 카드의 [적립 예상] 팝업 입력값 - yearsByOwner(소유자명 → 적립
+  // taxAdvantagedPlan: [절세계좌 현황] 카드의 [적립설정] 팝업 입력값 - yearsByOwner(소유자명 → 적립
   // 기간, 년)와 monthlyByOwner(소유자명 → 월 적립 예상액)를 각각 저장한다. owner 키는 자산의 a.owner
   // 필드와 동일한 문자열('신랑'/'와이프')을 그대로 쓴다. [개별 적립 기간 지원 - 요청 반영] 예전엔 두
   // 사람이 적립 기간(years, 단일 값)을 공유했으나, 각자 다른 시점을 목표로 할 수 있어 소유자별로
   // 분리했다(normalizeTaxAdvantagedPlan 참고 - 옛 단일 years 데이터의 하위호환 마이그레이션도 거기서 처리).
+  // [계좌별·종목별 세분화 - 요청 반영] allocationByOwner(소유자명 → 배분 항목 배열)를 추가했다 - 각 항목은
+  // { accountType(ISA/IRP/연금저축), ticker, label, pct(그 소유자 월 적립금 대비 비중%) }다. 계좌 단위로
+  // 별도 비중을 두지 않고 (계좌,종목) 조합을 평평한 배열로 저장한다 - UI에서는 accountType으로 묶어서
+  // 보여주지만 계산은 항목 하나하나를 독립적으로 다룬다(getTaxAdvantagedOwnerContribution, js/05 참고).
+  // 배분되지 않은 나머지(100%-배분 합계)는 기존처럼 위험:안전 70:30 고정 비율로 폴백한다 - 빈 배열이면
+  // (기본값) 이전 동작과 동일하게 전액이 70:30으로 계산된다.
   // monthlyContributionAllocation: [월적립금 설정] 팝업에서 사용자가 직접 지정한 종목별 배분 -
   // [{ ticker, label, pct }, ...]. "포트폴리오 구성" 탭의 목표 비중(리밸런싱용)과는 완전히 별개다.
   // 빈 배열이면(기본값) 예전처럼 국내/해외 목표 비중 비례로만 계산된다(simulateMonthlyContributionGrowth,
   // js/05 참고).
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 } }, monthlyContributionAllocation: [] },
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [] },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -574,6 +580,10 @@ function makeAsset(raw) {
     // 매입금액은 더 이상 별도 입력을 받지 않고 항상 수량×매수단가로 자동 산출한다(calcRow에서 계산, 통화 기준).
     // 현재가는 업로드/생성 직후 기본적으로 매수단가로 초기화되며, [시세 갱신] 버튼으로 최신화된다.
     currentPrice: (raw.currentPrice !== undefined && raw.currentPrice !== '' && raw.currentPrice !== null) ? num(raw.currentPrice) : buyPrice,
+    // [대표매칭 오버라이드 - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이 자동으로
+    // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
+    // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
+    rateMatchOverride: (raw.rateMatchOverride !== undefined && raw.rateMatchOverride !== null && String(raw.rateMatchOverride).trim() !== '') ? String(raw.rateMatchOverride).trim() : undefined,
     // [가족 동기화 - 스마트 머지] 이 자산 레코드가 마지막으로 실제 변경된 시각 - mergeCollectionById()가
     // 같은 id가 로컬/원격 양쪽에 있을 때 어느 쪽을 채택할지 이 값으로 판단한다(js/12 참고). 시세 자동
     // 갱신(fetchPricesForTargets)처럼 "진짜 편집"이 아닌 배경 갱신은 절대 이 값을 건드리지 않는다.
@@ -699,6 +709,19 @@ function migrateUsdCashAssetsToTransactions() {
 // 버전엔 이 필드 자체가 없었거나(전부 기본값 15년/0원), 신랑/와이프가 적립 기간을 공유하는 구조(단일
 // years 필드)였다 - 새 구조(yearsByOwner)로 옮기되, 옛 공유 years 값이 있으면 두 사람 모두의 초기값으로
 // 그대로 이어받는다(둘 다 없으면 15년 기본값).
+// [계좌별·종목별 배분 - 값 정규화] taxAdvantagedPlan.allocationByOwner 한 소유자 몫을 정규화한다 -
+// normalizeMonthlyContributionAllocation(종목/비중만 있는 일반계좌용)과 거의 같은 검증이지만, 여기는
+// accountType(ISA/IRP/연금저축 등)도 함께 저장해야 [적립설정] 팝업에서 계좌별로 묶어 보여줄 수 있다.
+function normalizeTaxAdvantagedAllocationList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((it) => it && typeof it === 'object' && it.ticker && Number.isFinite(num(it.pct)))
+    .map((it) => ({
+      accountType: it.accountType ? String(it.accountType) : '(미지정)',
+      ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct)
+    }));
+}
+
 function normalizeTaxAdvantagedPlan(raw) {
   const legacyYears = (raw && Number.isFinite(num(raw.years)) && num(raw.years) > 0) ? num(raw.years) : 15;
   const yearsFor = (owner) => {
@@ -710,6 +733,10 @@ function normalizeTaxAdvantagedPlan(raw) {
     monthlyByOwner: {
       '신랑': num(raw && raw.monthlyByOwner && raw.monthlyByOwner['신랑']),
       '와이프': num(raw && raw.monthlyByOwner && raw.monthlyByOwner['와이프'])
+    },
+    allocationByOwner: {
+      '신랑': normalizeTaxAdvantagedAllocationList(raw && raw.allocationByOwner && raw.allocationByOwner['신랑']),
+      '와이프': normalizeTaxAdvantagedAllocationList(raw && raw.allocationByOwner && raw.allocationByOwner['와이프'])
     }
   };
 }
@@ -849,7 +876,9 @@ function persistAssets(skipPush) {
     buyRate: a.buyRate,
     // [가족 동기화 - 스마트 머지] makeAsset() 주석 참고 - 저장 안 하면 새로고침할 때마다 사라져서
     // 병합 시 항상 "값 없음"으로 취급돼(0으로 폴백) 병합이 무의미해진다.
-    updatedAt: a.updatedAt
+    updatedAt: a.updatedAt,
+    // [대표매칭 오버라이드] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
+    rateMatchOverride: a.rateMatchOverride
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();

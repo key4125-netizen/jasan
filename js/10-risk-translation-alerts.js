@@ -1268,7 +1268,7 @@ document.getElementById('closeRiskAlertModalBtn').addEventListener('click', (e) 
   closeRiskAlertModal(false);
 });
 
-// [⚡ 원클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "리밸런싱/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
+// [⚡ 원클릭 리밸런싱 이동] 팝업을 닫고 곧바로 "포트폴리오/자산예측" 탭의 "목표 비중 설정" 서브탭으로 이동한다.
 document.getElementById('riskAlertRebalanceBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   closeRiskAlertModal(false);

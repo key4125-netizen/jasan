@@ -212,7 +212,7 @@ function switchTab(tab) {
   // 숨겨져 있던 탭의 캔버스는 크기가 0이었으므로, 보여줄 때 다시 렌더링해야 차트가 정상적으로 그려진다.
   if (tab === 'investmentDetail') renderInvestmentDetailTab();
   if (tab === 'transactions') renderTransactionsTab();
-  // [리밸런싱/자산예측 통합] 이 탭에 들어올 때마다 마지막으로 보고 있던 서브탭(rebalanceSubTab)을
+  // [포트폴리오/자산예측 통합] 이 탭에 들어올 때마다 마지막으로 보고 있던 서브탭(rebalanceSubTab)을
   // 그대로 다시 그린다 - tabPanelProjection이 물리적으로 tabPanelRebalance 안에 중첩돼 있으므로
   // (HTML 참고), 그 hidden 여부는 여기가 아니라 switchRebalanceSubTab()이 전담한다.
   if (tab === 'rebalance') switchRebalanceSubTab(rebalanceSubTab);
@@ -220,7 +220,7 @@ function switchTab(tab) {
 }
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
-// [리밸런싱/자산예측 통합] 2단계(서브) 탭 전환 - 최상위 탭 상태(state.activeTab)와는 별개로 관리한다.
+// [포트폴리오/자산예측 통합] 2단계(서브) 탭 전환 - 최상위 탭 상태(state.activeTab)와는 별개로 관리한다.
 // 'target'(화면 표시 이름은 "포트폴리오 구성" - 목표 비중 입력 + 종목별 실행 가이드), 'projection'
 // (미래 예측) 2개. 내부 키('target')와 DOM id(rebalanceSubTarget)는 탭 이름이 "리밸런싱 설정"이던
 // 시절 그대로 남아있다 - 코드 영향 최소화를 위해 화면 표시 문구만 바꾸고 내부 식별자는 안 건드렸다.
