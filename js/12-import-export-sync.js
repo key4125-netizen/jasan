@@ -496,7 +496,13 @@ function applyRemoteScalarFields(parsed) {
       monthlyContribution: num(parsed.projection.monthlyContribution),
       categoryReturns: parsed.projection.categoryReturns || {},
       inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
-      customScenarioRates: parsed.projection.customScenarioRates || {}
+      customScenarioRates: parsed.projection.customScenarioRates || {},
+      // [버그 수정 - 복원/동기화 후 절세계좌 계획 소실] 이 필드가 빠져 있으면 state.projection.
+      // taxAdvantagedPlan이 undefined가 되어 updateProjection()이 즉시 TypeError로 죽는다 - loadState와
+      // 동일한 normalizeTaxAdvantagedPlan(js/01)으로 안전하게 채운다.
+      taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.projection.taxAdvantagedPlan),
+      // 월적립금 종목 배분도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
+      monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.projection.monthlyContributionAllocation)
     };
     persistProjection();
   }

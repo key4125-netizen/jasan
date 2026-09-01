@@ -582,9 +582,13 @@ function macroTileHtml(key, label, valueText, sub, icon) {
 // 같은 우선순위 규칙 패턴(더 구체적이거나 심각한 조합을 먼저 검사하고, 해당하는 첫 규칙만 채택).
 // 방향 판정 임계값(±0.05%)은 trendArrowIcon과 동일해 지표별 화살표 아이콘과 해설 문구의 방향이
 // 항상 일치한다.
-function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, goldChangePct, foreignWeightPct }) {
+function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, goldChangePct, usdxChangePct, foreignWeightPct }) {
   const isUp = (v) => typeof v === 'number' && v > 0.05;
   const isDown = (v) => typeof v === 'number' && v < -0.05;
+  // [달러인덱스 - 더 높은 임계값] 평소 변동폭이 환율/지수보다 훨씬 작은 지표라(MACRO_TREND_THRESHOLDS
+  // 참고, 일간 ±0.05% 정도는 흔한 잡음) "강달러/약달러 국면"이라 부를 만한 뚜렷한 하루 변동만 걸러낸다.
+  const isStrongUp = (v) => typeof v === 'number' && v > 0.5;
+  const isStrongDown = (v) => typeof v === 'number' && v < -0.5;
   const fw = typeof foreignWeightPct === 'number' ? fmtNum(foreignWeightPct, 0) : null;
 
   if (typeof vix === 'number' && vix >= 30) {
@@ -602,6 +606,22 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
       cause: `금값이 급등(${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%)하고 공포심리(VIX ${fmtNum(vix, 1)})도 함께 높아지며 안전자산 선호 심리가 뚜렷합니다.`,
       impact: '위험자산(주식) 비중이 높은 계좌는 단기 변동성이 커질 수 있는 국면입니다.',
       guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
+    };
+  }
+  // [달러인덱스 반영] 강달러/약달러 국면은 원/달러 환율·위험자산 심리에 직접 영향을 주는 독립적인
+  // 신호라, 환율+금리 조합 규칙보다 먼저 검사한다(더 직접적인 원인 지표이므로 우선순위를 높게 둔다).
+  if (isStrongUp(usdxChangePct)) {
+    return {
+      cause: `달러인덱스가 급등(${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%)하며 강달러 국면입니다.`,
+      impact: '원/달러 환율 상승 압박과 글로벌 유동성 긴축 신호로, 국내 증시·신흥국 자산에는 부담 요인이 될 수 있습니다.',
+      guide: '달러 자산 비중이 있다면 평가액 방어에는 유리하나, 국내 자산 신규 매수는 서두르지 않는 편이 좋습니다.'
+    };
+  }
+  if (isStrongDown(usdxChangePct)) {
+    return {
+      cause: `달러인덱스가 하락(${fmtNum(usdxChangePct, 2)}%)하며 약달러 국면입니다.`,
+      impact: '위험자산(주식) 선호 심리가 살아나고, 원화 자산에는 우호적인 환경입니다.',
+      guide: '기존에 계획한 투자 전략을 그대로 유지해도 무방한 국면입니다.'
     };
   }
   if (isUp(ust10yChangePct) && isUp(fxChangePct)) {
@@ -669,7 +689,7 @@ function buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct }) {
 }
 
 /* -------------------------------------------------------------------------
- * 18-6. [매크로 브리핑 - 지표 상세 설명 팝업] 8개 타일을 눌렀을 때 "이 지표가 뭔지 + 지금 수치가
+ * 18-6. [매크로 브리핑 - 지표 상세 설명 팝업] 9개 타일을 눌렀을 때 "이 지표가 뭔지 + 지금 수치가
  *    뭘 뜻하는지 + 뭘 지켜봐야 하는지"를 보여준다. 개념/관전포인트는 고정 텍스트(초보자용 정의라
  *    실시간으로 바뀔 이유가 없음), 현재값·등락·동향 해설만 renderMacroBriefing()이 매 갱신마다
  *    채워두는 macroDetailSnapshot을 읽어 동적으로 만든다. buildMacroCommentary/buildAssetCorrelation
@@ -756,6 +776,15 @@ const MACRO_INDICATOR_INFO = {
       '미국 금리·달러 가치와 대체로 반대로 움직이는 경향이 있어요(금리가 오르면 이자가 없는 금의 보유 매력이 상대적으로 줄어들어요).',
       '금 관련 자산을 보유하지 않아도, 전반적인 시장 위험회피 심리를 가늠하는 참고 지표로 활용할 수 있어요.'
     ]
+  },
+  usdx: {
+    label: '달러인덱스(USD Index)',
+    concept: '유로·엔·파운드 등 주요 통화 바스켓 대비 달러 가치를 지수화한 값이에요. 오르면 "강달러"(달러 가치 상승), 내리면 "약달러"(달러 가치 하락)로 해석해요.',
+    watchPoints: [
+      '달러인덱스가 오르면(강달러) 원/달러 환율도 함께 오르는(원화 약세) 경향이 있어요.',
+      '미국 금리가 오르면 더 높은 이자를 좇아 자금이 몰려 달러인덱스도 함께 오르는 경향이 있어요.',
+      '강달러 국면에서는 신흥국·위험자산(주식) 전반에 자금 이탈 압력이 커질 수 있어 함께 참고하면 좋아요.'
+    ]
   }
 };
 
@@ -764,7 +793,7 @@ let macroDetailSnapshot = {};
 // [실제 5일/20일 추세] 키 -> 야후 티커. usdkrw/us10y/vix/dow는 macroIndicatorCache 조회에 쓰던 티커와
 // 동일, kospi 등 지수는 이미 있는 INDEX_TICKERS를 그대로 재사용한다(js/09).
 const MACRO_KEY_TICKERS = {
-  vix: '^VIX', usdkrw: 'KRW=X', us10y: '^TNX', gold: 'GC=F',
+  vix: '^VIX', usdkrw: 'KRW=X', us10y: '^TNX', gold: 'GC=F', usdx: 'DX-Y.NYB',
   kospi: INDEX_TICKERS.KOSPI, kosdaq: INDEX_TICKERS.KOSDAQ,
   sp500: INDEX_TICKERS.SP500, nasdaq: INDEX_TICKERS.NASDAQ, dow: '^DJI'
 };
@@ -776,12 +805,13 @@ const MACRO_TREND_THRESHOLDS = {
   usdkrw: { d5: 0.8, d20: 1.5 },
   us10y: { d5: 3, d20: 5 },
   gold: { d5: 2.5, d20: 5 },
+  usdx: { d5: 1, d20: 2 },
   kospi: { d5: 2, d20: 4 }, kosdaq: { d5: 2.5, d20: 5 },
   sp500: { d5: 1.5, d20: 3 }, nasdaq: { d5: 2, d20: 4 }, dow: { d5: 1.5, d20: 3 }
 };
 
 // [5일/20일 종가 비교] getCachedDailyCloses(js/09)가 이미 RISK 엔진/종목 분석용으로 쓰는 1년치 일별
-// 종가 캐시를 그대로 재사용한다 - 팝업을 열 때만(온디맨드) 호출하므로 5분 자동 갱신 주기에 8개 지표
+// 종가 캐시를 그대로 재사용한다 - 팝업을 열 때만(온디맨드) 호출하므로 5분 자동 갱신 주기에 9개 지표
 // 전부의 1년치 이력을 추가로 불러오는 부담이 없다.
 async function fetchMacroShortTermTrend(key) {
   const ticker = MACRO_KEY_TICKERS[key];
@@ -824,6 +854,9 @@ function macroDetailValueText(key, s) {
   // [금 시세 - 실제 달러 가격] 나머지 지수(코스피/S&P500 등)는 포인트값이라 통화 기호를 안 붙이지만,
   // 금은 실제 온스당 달러 가격이라 유일하게 '$'를 유지한다.
   if (key === 'gold') return '$' + fmtNum(s.value, 0);
+  // [달러인덱스 - 지수값] 통화 바스켓 대비 상대값을 지수화한 숫자라 통화 기호를 붙이지 않는다(VIX와
+  // 동일한 성격). 통상 소수 둘째 자리까지 표시한다(예: 103.45).
+  if (key === 'usdx') return fmtNum(s.value, 2);
   return fmtNum(s.value, 1);
 }
 
@@ -834,6 +867,7 @@ function macroMeaningTail(key) {
   if (key === 'us10y') return '금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.';
   if (key === 'vix') return null;
   if (key === 'gold') return '금값이 오르면 안전자산 선호 심리가, 내리면 위험자산 선호 심리가 강해지는 경향이 있습니다.';
+  if (key === 'usdx') return '달러인덱스가 오르면(강달러) 원/달러 환율 상승 압박과 위험자산 이탈 압력이, 내리면(약달러) 위험자산 선호 심리 회복이 뒤따르는 경향이 있습니다.';
   return '지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.';
 }
 
@@ -984,6 +1018,10 @@ function renderMacroBriefing() {
   const gold = goldInfo ? goldInfo.price : null;
   const goldChangePct = goldInfo ? goldInfo.changePercent : null;
 
+  const usdxInfo = state.macroIndicatorCache['USDX'];
+  const usdx = usdxInfo ? usdxInfo.price : null;
+  const usdxChangePct = usdxInfo ? usdxInfo.changePercent : null;
+
   const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0)
     ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : 0;
 
@@ -994,15 +1032,18 @@ function renderMacroBriefing() {
   const dowInfo = state.macroIndicatorCache['DOW'];
   const indexTile = (key, label, info) => macroTileHtml(key, label, info ? fmtNum(info.price, 1) : '-', info ? `${info.changePercent >= 0 ? '+' : ''}${fmtNum(info.changePercent, 2)}%` : '조회 전', trendArrowIcon(info ? info.changePercent : null));
 
-  // [1행 4개 · 2행 5개] 금 시세는 실제 달러 가격이라 '$' 단위를 그대로 쓴다(macroTileHtml 자체는
-  // 단위 표기를 몰라도 되게, 값 문자열을 여기서 미리 만들어 넘긴다 - indexTile과 동일 패턴).
+  // [1행 5개 · 2행 5개] 금 시세는 실제 달러 가격이라 '$' 단위를 그대로 쓴다(macroTileHtml 자체는
+  // 단위 표기를 몰라도 되게, 값 문자열을 여기서 미리 만들어 넘긴다 - indexTile과 동일 패턴). 달러인덱스는
+  // 통화 바스켓 대비 상대값을 지수화한 숫자라 통화 기호 없이 소수 둘째 자리까지 표시한다.
   const goldTile = macroTileHtml('gold', '금 시세', typeof gold === 'number' ? '$' + fmtNum(gold, 0) : '-', typeof goldChangePct === 'number' ? `${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%` : '조회 전', trendArrowIcon(goldChangePct));
+  const usdxTile = macroTileHtml('usdx', '달러인덱스', typeof usdx === 'number' ? fmtNum(usdx, 2) : '-', typeof usdxChangePct === 'number' ? `${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%` : '조회 전', trendArrowIcon(usdxChangePct));
   gridEl.innerHTML = `
-    <div class="grid grid-cols-4 gap-1 sm:gap-2">
+    <div class="grid grid-cols-5 gap-1 sm:gap-2">
       ${macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
       ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct))}
       ${macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
       ${goldTile}
+      ${usdxTile}
     </div>
     <div class="grid grid-cols-5 gap-1 sm:gap-2">
       ${indexTile('kospi', '코스피', kospiInfo)}
@@ -1014,7 +1055,7 @@ function renderMacroBriefing() {
 
   // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(종목 상세 모달의 매크로 분기,
   // attachStockAnalysisReportToDetailModal - js/08) 다시 조회하지 않고 이 갱신 주기에서 이미 받아온
-  // 값을 그대로 재사용한다 - 8개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가 지표별 원본 소스
+  // 값을 그대로 재사용한다 - 9개 지표를 한 곳에 모아두면 팝업 렌더링 쪽 코드가 지표별 원본 소스
   // (macroIndicatorCache/marketIndexCache/exchangeRate)를 몰라도 된다.
   // [5일/20일 추세 보존] change5d/change20d는 팝업을 열 때만 온디맨드로 채워지는데(위 js/08 참고),
   // 여기서 매번 객체를 통째로 새로 만들면 그 값이 갱신 주기마다 날아가 버린다 - 이전 스냅샷에 남아있던
@@ -1025,6 +1066,7 @@ function renderMacroBriefing() {
     usdkrw: { value: state.exchangeRate, changePercent: fxChangePct, change5d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change5d, change20d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change20d },
     us10y: { value: ust10y, changePercent: ust10yChangePct, change5d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change5d, change20d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change20d },
     gold: { value: gold, changePercent: goldChangePct, change5d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change5d, change20d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change20d },
+    usdx: { value: usdx, changePercent: usdxChangePct, change5d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change5d, change20d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change20d },
     kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null, change5d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change5d, change20d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change20d },
     kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null, change5d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change5d, change20d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change20d },
     sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null, change5d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change5d, change20d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change20d },
@@ -1041,6 +1083,7 @@ function renderMacroBriefing() {
     ust10yChangePct,
     kospiChangePct: kospiInfo ? kospiInfo.changePercent : null,
     goldChangePct,
+    usdxChangePct,
     foreignWeightPct
   });
   const correlation = buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct });

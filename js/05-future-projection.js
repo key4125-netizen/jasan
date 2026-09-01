@@ -282,10 +282,14 @@ function getTargetProjectionRate(target, presetKey, region) {
 // [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
 // tickers에 있는 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'SPYM'이 대표 ETF이자
 // 동시에 "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
-// [부동산 삭제 - 요청 반영] 부동산은 이제 미래예측/포트폴리오 구성 계산 전체에서 제외되므로(일반계좌
-// 자산만 대상), 더 이상 관리할 기대수익률이 없어 이 목록에서도 뺐다.
+// [부동산 복원 - 버그 수정] 한때 부동산을 미래예측/포트폴리오 구성 계산 전체에서 뺐을 때 이 목록에서도
+// 함께 지웠으나, 이후 "시나리오별 총자산" 카드가 부동산을 다시 계산에 포함시키면서(updateProjection
+// 참고) 정작 그 수익률을 사용자가 조정할 UI가 없는 상태로 남아있었다 - 여기 다시 등록해 다른 상품과
+// 동일하게 "수익률 관리"에서 조정 가능하게 한다(getReferenceRate('부동산', ...)가 이미 오버라이드를
+// 지원하므로 이 목록에만 추가하면 저장/초기화/표시 로직은 자동으로 따라온다).
 const SCENARIO_RATE_BASE_ROWS = [
   { key: 'BOND', label: '국채/채권형' },
+  { key: '부동산', label: '부동산' },
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
   { key: 'SPYM', label: 'S&P500 (SPYM)' },
@@ -434,20 +438,38 @@ function getTaxAdvantagedHoldingsByOwner() {
 // 절세계좌 하나(또는 소유자 합계)의 시작 잔액+매월 적립금을 위험:안전 = 70:30 고정 비율로 나눠 각자
 // 복리 성장시킨 뒤 합산한다 - simulateRebalancedPreset과 동일한 "지역(여기선 위험/안전군)별로 따로
 // 복리 계산 후 합산" 원칙(가중평균으로 통짜 계산하면 총액이 왜곡되는 것을 방지).
-function simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, years) {
-  const preset = SCENARIO_RATE_PRESETS[presetKey];
-  const riskRate = preset.indexRates.domestic;
-  const safeRate = preset.categories['채권'];
+// [개별 적립 기간 지원 - 요청 반영] contributionYears 동안만 매월 적립하고, evalYears가 그보다 길면
+// 그 이후로는 적립 없이(월 0원) 이미 쌓인 금액이 계속 같은 수익률로 복리 성장한다고 가정한다 - 신랑/
+// 와이프가 서로 다른 적립 기간을 쓸 수 있으므로, "이 사람은 몇 년까지 넣고 그 뒤로는 얼마나 더 지켜볼
+// 것이냐"를 분리해서 물을 수 있다. evalYears를 생략하면(기존 3-인자 호출부와 호환) contributionYears와
+// 같은 시점의 값을 묻는 것으로 취급한다(적립 기간 = 평가 시점).
+function simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, contributionYears, evalYears) {
+  if (evalYears === undefined) evalYears = contributionYears;
+  // [버그 수정 - "수익률 관리" 오버라이드 미반영] 전에는 SCENARIO_RATE_PRESETS의 시스템 기본값을 직접
+  // 참조해서, "수익률 관리" 모달에서 KOSPI/채권 수익률을 고쳐도 절세계좌 시뮬레이션에는 전혀 반영되지
+  // 않았다 - getEffectiveIndexRate/getReferenceRate로 바꿔 일반계좌와 동일하게 오버라이드를 최우선
+  // 적용하고, 없으면 그대로 시스템 기본값으로 대체(fallback)한다.
+  const riskRate = getEffectiveIndexRate(presetKey, 'domestic');
+  const safeRate = getReferenceRate(presetKey, 'BOND');
   const riskShare = TAX_ADVANTAGED_RISK_SHARE;
-  const futureRisk = computeFutureValue(startValue * riskShare, riskRate, years, monthlyContribution * riskShare);
-  const futureSafe = computeFutureValue(startValue * (1 - riskShare), safeRate, years, monthlyContribution * (1 - riskShare));
+
+  const growWithStop = (pv, rate, monthly) => {
+    const contribYears = Math.min(contributionYears, evalYears);
+    const idleYears = Math.max(0, evalYears - contributionYears);
+    const atContribEnd = computeFutureValue(pv, rate, contribYears, monthly);
+    return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
+  };
+
+  const futureRisk = growWithStop(startValue * riskShare, riskRate, monthlyContribution * riskShare);
+  const futureSafe = growWithStop(startValue * (1 - riskShare), safeRate, monthlyContribution * (1 - riskShare));
   return futureRisk + futureSafe;
 }
 // 위 함수의 연도별(0~maxYears) 스냅샷 배열 버전 - "시나리오별 총자산" 통합 그래프/표(milestoneOffsets
-// 기준)가 이 배열을 그대로 재사용한다.
-function simulateTaxAdvantagedYearlyPoints(presetKey, startValue, monthlyContribution, maxYears) {
+// 기준)가 이 배열을 그대로 재사용한다. contributionYears 이후 구간은 위 growWithStop이 자동으로
+// "적립 중단, 복리만 지속"으로 처리해준다.
+function simulateTaxAdvantagedYearlyPoints(presetKey, startValue, monthlyContribution, contributionYears, maxYears) {
   const points = [];
-  for (let y = 0; y <= maxYears; y++) points.push({ year: y, total: simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, y) });
+  for (let y = 0; y <= maxYears; y++) points.push({ year: y, total: simulateTaxAdvantagedGrowth(presetKey, startValue, monthlyContribution, contributionYears, y) });
   return points;
 }
 
@@ -494,9 +516,10 @@ function renderTaxAdvantagedCard() {
 
 function openTaxAdvantagedPlanModal() {
   const plan = state.projection.taxAdvantagedPlan;
-  document.getElementById('taxAdvantagedYearsInput').value = plan.years;
   document.getElementById('taxAdvantagedMonthlyHusbandInput').value = plan.monthlyByOwner['신랑'] || '';
+  document.getElementById('taxAdvantagedYearsHusbandInput').value = plan.yearsByOwner['신랑'];
   document.getElementById('taxAdvantagedMonthlyWifeInput').value = plan.monthlyByOwner['와이프'] || '';
+  document.getElementById('taxAdvantagedYearsWifeInput').value = plan.yearsByOwner['와이프'];
   renderTaxAdvantagedPlanResults();
   document.getElementById('taxAdvantagedPlanModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -513,11 +536,14 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
 });
 
 // 입력값이 바뀔 때마다 state.projection.taxAdvantagedPlan에 즉시 저장하고(다른 입력창들과 동일 패턴)
-// 결과를 다시 계산해 보여준다.
+// 결과를 다시 계산해 보여준다. [개별 적립 기간 지원] 신랑/와이프 각자의 적립 기간(년)을 독립적으로 읽는다.
 function onTaxAdvantagedPlanInputChange() {
-  const years = Math.max(1, num(document.getElementById('taxAdvantagedYearsInput').value) || 15);
+  const yearsFor = (id) => Math.max(1, num(document.getElementById(id).value) || 15);
   state.projection.taxAdvantagedPlan = {
-    years,
+    yearsByOwner: {
+      '신랑': yearsFor('taxAdvantagedYearsHusbandInput'),
+      '와이프': yearsFor('taxAdvantagedYearsWifeInput')
+    },
     monthlyByOwner: {
       '신랑': num(document.getElementById('taxAdvantagedMonthlyHusbandInput').value),
       '와이프': num(document.getElementById('taxAdvantagedMonthlyWifeInput').value)
@@ -527,11 +553,14 @@ function onTaxAdvantagedPlanInputChange() {
   renderTaxAdvantagedPlanResults();
   updateProjection(); // [시나리오별 총자산] 카드도 이 적립 계획을 참조하므로 함께 갱신한다
 }
-['taxAdvantagedYearsInput', 'taxAdvantagedMonthlyHusbandInput', 'taxAdvantagedMonthlyWifeInput'].forEach((id) => {
+['taxAdvantagedMonthlyHusbandInput', 'taxAdvantagedYearsHusbandInput', 'taxAdvantagedMonthlyWifeInput', 'taxAdvantagedYearsWifeInput'].forEach((id) => {
   document.getElementById(id).addEventListener('input', onTaxAdvantagedPlanInputChange);
 });
 
-// 팝업 안의 결과 표 - 신랑/와이프/합계 3행 × 보수적/일반적/긍정적 3열.
+// 팝업 안의 결과 표 - 신랑/와이프/합계 3행 × 보수적/일반적/긍정적 3열. [개별 적립 기간 지원] 각 소유자는
+// 자기 자신의 yearsByOwner만큼의 결과를 보여준다 - "합계" 행은 서로 다른 두 시점의 금액을 단순히 더한
+// 값이라는 점을 아래 안내 문구에서 명시한다(합계 자체는 "각자 자기 목표 시점에 도달했을 때의 총액"으로
+// 자연스럽게 해석된다).
 function renderTaxAdvantagedPlanResults() {
   const container = document.getElementById('taxAdvantagedPlanResults');
   if (!container) return;
@@ -542,9 +571,9 @@ function renderTaxAdvantagedPlanResults() {
   const rows = [...TAX_ADVANTAGED_OWNERS, '합계'].map((owner) => {
     const values = presetKeys.map((presetKey) => {
       if (owner === '합계') {
-        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedGrowth(presetKey, holdings[o].total, num(plan.monthlyByOwner[o]), plan.years), 0);
+        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedGrowth(presetKey, holdings[o].total, num(plan.monthlyByOwner[o]), num(plan.yearsByOwner[o])), 0);
       }
-      return simulateTaxAdvantagedGrowth(presetKey, holdings[owner].total, num(plan.monthlyByOwner[owner]), plan.years);
+      return simulateTaxAdvantagedGrowth(presetKey, holdings[owner].total, num(plan.monthlyByOwner[owner]), num(plan.yearsByOwner[owner]));
     });
     return { owner, values };
   });
@@ -558,15 +587,18 @@ function renderTaxAdvantagedPlanResults() {
         </tr>
       </thead>
       <tbody>
-        ${rows.map((r) => `
+        ${rows.map((r) => {
+          const rowLabel = r.owner === '합계' ? '합계' : `${r.owner} (${num(plan.yearsByOwner[r.owner])}년 후)`;
+          return `
         <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${r.owner === '합계' ? 'font-bold' : ''}">
-          <td class="py-2 pr-2 text-slate-600 dark:text-slate-300">${escapeHtml(r.owner)}</td>
+          <td class="py-2 pr-2 text-slate-600 dark:text-slate-300 whitespace-nowrap">${escapeHtml(rowLabel)}</td>
           ${r.values.map((v) => `<td class="py-2 px-1 text-right ${r.owner === '합계' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}">${fmtKRWShort(v)}</td>`).join('')}
-        </tr>`).join('')}
+        </tr>`;
+        }).join('')}
       </tbody>
     </table>
   </div>
-  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">${plan.years}년 후 예상 적립금액(원금+수익)입니다. 매월 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 나뉘어 각자의 기대수익률로 복리 성장한다고 가정합니다 - 실제 종목별 수익률과는 차이가 있을 수 있습니다.</p>`;
+  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${num(plan.yearsByOwner['신랑'])}년 후, 와이프는 ${num(plan.yearsByOwner['와이프'])}년 후 각자의 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 매월 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 나뉘어 각자의 기대수익률로 복리 성장한다고 가정합니다 - 실제 종목별 수익률과는 차이가 있을 수 있습니다.</p>`;
 }
 
 /* -------------------------------------------------------------------------
@@ -824,22 +856,25 @@ function computeRegionWeightedRate(region, presetKey) {
 // 프리셋 하나(예: 'normal')로 목표 배분 시나리오의 20년치 연간 스냅샷을 계산한다 - 국내/해외를 각자
 // 복리 계산한 뒤 합산해서(단일 가중평균으로 통짜 복리 계산하지 않아) 총자산이 두 지역의 합보다 작아지는
 // 역전 현상을 방지한다.
+// [월적립금 종목별 배분 지원 - 요청 반영] 원금(기존 보유 평가금액)과 월 적립금(새로 들어오는 돈)을
+// 분리해서 계산한다 - 원금은 예전처럼 국내/해외 지역별 가중평균 수익률로, 월 적립금은
+// simulateMonthlyContributionGrowth()가 [월적립금 설정]에서 사용자가 지정한 종목별 배분(있으면 그
+// 종목 고유 수익률로, 없으면 예전처럼 지역 비례로)을 반영해 계산한다. computeFutureValue가 PV/PMT에
+// 대해 선형이라(원금만 계산 + 적립금만 계산 = 합쳐서 계산한 것과 동일) 배분을 하나도 지정하지 않으면
+// 이전 동작과 수학적으로 완전히 같다(하위 호환).
 function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, maxYears) {
   const regionPV = {
     '국내': totalValue * num(state.rebalance.domestic['국내']) / 100,
     '해외': totalValue * num(state.rebalance.domestic['해외']) / 100
   };
   const regionRate = { '국내': computeRegionWeightedRate('국내', presetKey), '해외': computeRegionWeightedRate('해외', presetKey) };
-  const regionContributionShare = {
-    '국내': totalValue !== 0 ? regionPV['국내'] / totalValue : 0,
-    '해외': totalValue !== 0 ? regionPV['해외'] / totalValue : 0
-  };
-  const regionFutureValue = (region, y) => computeFutureValue(regionPV[region], regionRate[region], y, monthlyContribution * regionContributionShare[region]);
+  const principalFutureValue = (region, y) => computeFutureValue(regionPV[region], regionRate[region], y, 0);
   const yearlyPoints = [];
   for (let y = 0; y <= maxYears; y++) {
-    const domestic = regionFutureValue('국내', y);
-    const foreign = regionFutureValue('해외', y);
-    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign });
+    const domestic = principalFutureValue('국내', y);
+    const foreign = principalFutureValue('해외', y);
+    const contribution = simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y);
+    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
   }
   return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey) };
 }
@@ -1104,21 +1139,28 @@ function updateProjection() {
 
   // ===== [시나리오별 총자산] 일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를
   // preset별 부동산 수익률로 복리 성장, 신규 매수 없음) 통합 - "포트폴리오 구성"/미래예측 본편은 순수
-  // 일반계좌 기준으로 유지하되, 이 카드만 가구 전체 총자산 관점을 별도로 보여준다(요청 반영). 절세계좌
-  // 몫은 팝업에서 저장해 둔 월 적립액을 그대로 20년 내내 적용한다(팝업을 아직 한 번도 안 썼으면
-  // 월 0원 - 그래도 현재 잔액만큼은 항상 복리 성장에 포함되므로 NaN/누락 없이 정상 동작한다).
+  // 일반계좌 기준으로 유지하되, 이 카드만 가구 전체 총자산 관점을 별도로 보여준다(요청 반영).
+  // [개별 적립 기간 지원 - 요청 반영] 신랑/와이프가 서로 다른 적립 기간을 쓸 수 있게 되면서, "합산
+  // 시작잔액 + 합산 월적립액"을 하나의 곡선으로 계산하는 이전 방식은 더 이상 정확하지 않다(예: 신랑
+  // 10년·와이프 15년이면 11~15년째는 와이프만 적립 중이어야 한다) - 대신 소유자별로 각자의 적립 기간을
+  // 반영한 연도별 포인트 배열을 독립적으로 계산한 뒤, 연도(인덱스)별로 두 배열을 합산한다.
   const taxAdvantagedHoldings = getTaxAdvantagedHoldingsByOwner();
-  const taxAdvantagedTotalValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + taxAdvantagedHoldings[o].total, 0);
-  const taxAdvantagedMonthlyTotal = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + num(state.projection.taxAdvantagedPlan.monthlyByOwner[o]), 0);
+  const taxAdvantagedPlan = state.projection.taxAdvantagedPlan;
   const realEstateTotalValue = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   const totalScenarioData = PROJECTION_SCENARIOS.map((s) => {
     const generalPoints = presetResults[s.preset].yearlyPoints;
-    const taxPoints = simulateTaxAdvantagedYearlyPoints(s.preset, taxAdvantagedTotalValue, taxAdvantagedMonthlyTotal, 20);
-    const realEstateRate = SCENARIO_RATE_PRESETS[s.preset].categories['부동산'];
+    const ownerPointsList = TAX_ADVANTAGED_OWNERS.map((o) => simulateTaxAdvantagedYearlyPoints(
+      s.preset, taxAdvantagedHoldings[o].total, num(taxAdvantagedPlan.monthlyByOwner[o]), num(taxAdvantagedPlan.yearsByOwner[o]), 20
+    ));
+    // [버그 수정 - "수익률 관리" 오버라이드 미반영] 시스템 기본값을 직접 참조하던 것을 getReferenceRate로
+    // 바꿔, 위 SCENARIO_RATE_BASE_ROWS에 복원한 "부동산" 행을 사용자가 수정하면 여기도 그대로 반영된다.
+    const realEstateRate = getReferenceRate(s.preset, '부동산');
     const points = generalPoints.map((p, idx) => ({
       year: p.year,
-      total: p.total + taxPoints[idx].total + computeFutureValue(realEstateTotalValue, realEstateRate, p.year, 0)
+      total: p.total
+        + ownerPointsList.reduce((sum, pts) => sum + pts[idx].total, 0)
+        + computeFutureValue(realEstateTotalValue, realEstateRate, p.year, 0)
     }));
     return { ...s, points };
   });
@@ -1157,4 +1199,176 @@ document.getElementById('inflationRateInput').addEventListener('input', (e) => {
   persistProjection();
   updateProjection();
 });
+
+/* -------------------------------------------------------------------------
+ * 10-3-2-1. [월적립금 설정 모달] 월 적립금이 특정 종목에 직접 배분되도록 사용자가 지정한다 - "포트폴리오
+ *    구성" 탭의 목표 비중(리밸런싱용)과는 완전히 별개의 설정이다. scenarioRateManagerModal과 동일한
+ *    draft(초안) 패턴: monthlyContributionAllocationDraft에서만 수정하다가 [저장]을 눌러야
+ *    state.projection.monthlyContributionAllocation에 커밋된다.
+ *    배분되지 않은 나머지 비중(100% - 배분 합계)은 simulateMonthlyContributionGrowth()가 기존처럼
+ *    "포트폴리오 구성" 탭의 국내/해외 목표 비중대로 계산한다 - 아무것도 배분하지 않으면(빈 배열) 이전
+ *    동작과 완전히 동일하다(하위 호환).
+ * ---------------------------------------------------------------------- */
+let monthlyContributionAllocationDraft = [];
+
+function openMonthlyContributionAllocationModal() {
+  monthlyContributionAllocationDraft = state.projection.monthlyContributionAllocation.map((it) => ({ ...it }));
+  const form = document.getElementById('monthlyContributionAllocationAddForm');
+  form.classList.add('hidden');
+  form.innerHTML = '';
+  renderMonthlyContributionAllocationList();
+  document.getElementById('monthlyContributionAllocationModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+function closeMonthlyContributionAllocationModal(viaBackButton) {
+  document.getElementById('monthlyContributionAllocationModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+  monthlyContributionAllocationDraft = [];
+}
+document.getElementById('openMonthlyContributionAllocationBtn').addEventListener('click', openMonthlyContributionAllocationModal);
+document.getElementById('closeMonthlyContributionAllocationModalBtn').addEventListener('click', () => closeMonthlyContributionAllocationModal(false));
+document.getElementById('cancelMonthlyContributionAllocationModalBtn').addEventListener('click', () => closeMonthlyContributionAllocationModal(false));
+document.getElementById('monthlyContributionAllocationModal').addEventListener('click', (e) => {
+  if (e.target.id === 'monthlyContributionAllocationModal') closeMonthlyContributionAllocationModal(false);
+});
+
+function renderMonthlyContributionAllocationList() {
+  const container = document.getElementById('monthlyContributionAllocationList');
+  if (monthlyContributionAllocationDraft.length === 0) {
+    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">아직 배분된 종목이 없습니다 - 월 적립금 전액이 "포트폴리오 구성" 탭의 국내/해외 목표 비중대로 계산됩니다.</p>';
+  } else {
+    container.innerHTML = monthlyContributionAllocationDraft.map((row, idx) => `
+    <div class="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+      <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+      <div class="flex items-center gap-1 shrink-0">
+        <input type="number" step="0.1" min="0" max="100" value="${row.pct}" data-alloc-idx="${idx}"
+          class="monthly-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+        <span class="text-[11px] text-slate-400">%</span>
+        <button type="button" class="monthly-alloc-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-alloc-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>`).join('');
+  }
+  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
+  const remainderPct = Math.max(0, 100 - sumPct);
+  document.getElementById('monthlyContributionAllocationSumHint').textContent = `합계 ${fmtNum(sumPct, 1)}%`;
+  document.getElementById('monthlyContributionAllocationRemainderHint').textContent = `${fmtNum(remainderPct, 1)}%`;
+  lucide.createIcons();
+}
+
+document.getElementById('monthlyContributionAllocationList').addEventListener('input', (e) => {
+  const idx = e.target.dataset.allocIdx;
+  if (idx === undefined) return;
+  monthlyContributionAllocationDraft[Number(idx)].pct = num(e.target.value);
+  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
+  document.getElementById('monthlyContributionAllocationSumHint').textContent = `합계 ${fmtNum(sumPct, 1)}%`;
+  document.getElementById('monthlyContributionAllocationRemainderHint').textContent = `${fmtNum(Math.max(0, 100 - sumPct), 1)}%`;
+});
+document.getElementById('monthlyContributionAllocationList').addEventListener('click', (e) => {
+  const btn = e.target.closest('.monthly-alloc-remove-btn');
+  if (!btn) return;
+  monthlyContributionAllocationDraft.splice(Number(btn.dataset.allocIdx), 1);
+  renderMonthlyContributionAllocationList();
+});
+
+// [종목 검색 자동완성] scenarioRateManagerModal의 신규 종목 추가 폼과 동일한 패턴 - searchStockCandidates
+// (js/04, 보유종목 로컬 검색 + Yahoo Finance 검색 API)를 그대로 재사용한다.
+let monthlyAllocSearchDebounceTimer = null;
+let monthlyAllocSearchRequestSeq = 0;
+
+function triggerMonthlyAllocSearch(query) {
+  const container = document.getElementById('newMonthlyAllocSearchResults');
+  clearTimeout(monthlyAllocSearchDebounceTimer);
+  if (!query) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+  container.classList.remove('hidden');
+  container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 중...</p>';
+  monthlyAllocSearchDebounceTimer = setTimeout(async () => {
+    const seq = ++monthlyAllocSearchRequestSeq;
+    const results = await searchStockCandidates(query);
+    renderMonthlyAllocSearchResults(results, seq);
+  }, 350);
+}
+function renderMonthlyAllocSearchResults(results, seq) {
+  if (seq !== monthlyAllocSearchRequestSeq) return;
+  const container = document.getElementById('newMonthlyAllocSearchResults');
+  if (!container) return;
+  if (results.length === 0) {
+    container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
+    return;
+  }
+  container.innerHTML = results.map((r) => `
+    <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700">
+      <span class="min-w-0 text-xs truncate">${escapeHtml(r.name)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
+    </button>`).join('');
+  container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (monthlyContributionAllocationDraft.some((it) => it.ticker === btn.dataset.pickSymbol)) {
+        alert('이미 배분된 종목입니다.');
+        return;
+      }
+      monthlyContributionAllocationDraft.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0 });
+      renderMonthlyContributionAllocationList();
+      const form = document.getElementById('monthlyContributionAllocationAddForm');
+      form.classList.add('hidden');
+      form.innerHTML = '';
+    });
+  });
+}
+document.getElementById('monthlyContributionAllocationAddBtn').addEventListener('click', () => {
+  const form = document.getElementById('monthlyContributionAllocationAddForm');
+  if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
+  form.classList.remove('hidden');
+  form.innerHTML = `
+    <input id="newMonthlyAllocSearchInput" type="text" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <div id="newMonthlyAllocSearchResults" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>`;
+  form.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  document.getElementById('newMonthlyAllocSearchInput').addEventListener('input', (e) => triggerMonthlyAllocSearch(e.target.value.trim()));
+});
+
+document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventListener('click', () => {
+  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
+  if (sumPct > 100) { alert('배분 비중 합계가 100%를 넘을 수 없습니다.'); return; }
+  state.projection.monthlyContributionAllocation = monthlyContributionAllocationDraft.map((it) => ({ ...it }));
+  persistProjection();
+  closeMonthlyContributionAllocationModal(false);
+  updateProjection();
+  showToast('월적립금 배분 설정을 저장했습니다.', 'success');
+});
+
+// 배분된 종목 하나의 월 적립금 몫을 그 종목 고유 수익률로 독립 복리 성장시킨다(원금 없이 적립만 -
+// 이 함수는 "새로 들어오는 돈"만 다룬다. 기존 원금은 simulateRebalancedPreset의 지역별 계산이 그대로
+// 맡는다). getTargetProjectionRate가 type:'ticker' 대상의 수익률을 그대로 재사용한다(수익률 관리 모달의
+// 오버라이드, 시스템 기본 매핑, 이름 키워드 매핑, 국내/해외 대표지수 폴백까지 전부 동일하게 적용됨).
+function getMonthlyAllocationItemRate(item, presetKey) {
+  return getTargetProjectionRate({ type: 'ticker', ticker: item.ticker, label: item.label }, presetKey, sanitizeTicker(item.ticker).isDomestic);
+}
+
+// 월 적립금 전체의 미래가치(연차 y 기준) - 사용자가 [월적립금 설정]에서 배분한 종목들은 각자의 수익률로
+// 독립 계산하고, 배분되지 않은 나머지(100% - 배분 합계)는 기존처럼 "포트폴리오 구성" 탭의 국내/해외
+// 목표 비중 비율대로 지역 가중평균 수익률(regionRate)로 계산한다. 배분이 비어 있으면(기본값) 나머지가
+// 100%가 되어 이전 동작과 수학적으로 완전히 동일하다(computeFutureValue가 PV/PMT에 대해 선형이라
+// "원금 따로 + 적립금 따로" 계산과 "합쳐서 한 번에" 계산이 같은 결과를 낸다).
+function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y) {
+  const allocation = state.projection.monthlyContributionAllocation.filter((it) => num(it.pct) > 0);
+  const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
+  const remainderPct = Math.max(0, 100 - allocatedPct);
+
+  let total = 0;
+  allocation.forEach((item) => {
+    const rate = getMonthlyAllocationItemRate(item, presetKey);
+    const itemMonthly = monthlyContribution * num(item.pct) / 100;
+    total += computeFutureValue(0, rate, y, itemMonthly);
+  });
+
+  if (remainderPct > 0) {
+    const remainderMonthly = monthlyContribution * remainderPct / 100;
+    ['국내', '해외'].forEach((region) => {
+      const share = totalValue !== 0 ? regionPV[region] / totalValue : 0;
+      total += computeFutureValue(0, regionRate[region], y, remainderMonthly * share);
+    });
+  }
+  return total;
+}
 

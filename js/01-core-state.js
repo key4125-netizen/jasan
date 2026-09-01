@@ -462,10 +462,16 @@ const state = {
   // customScenarioRates: [수익률 관리] 모달에서 사용자가 등록/수정한 종목별 보수/일반/긍정 수익률
   // 오버라이드 - { [key]: { label, conservative, normal, optimistic } }, key는 sanitizeTicker().yahooTicker
   // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
-  // taxAdvantagedPlan: [절세계좌 현황] 카드의 [적립 예상] 팝업 입력값 - years(적립 기간, 년)와
-  // monthlyByOwner(소유자명 → 월 적립 예상액)를 저장한다. owner 키는 자산의 a.owner 필드와 동일한
-  // 문자열('신랑'/'와이프')을 그대로 쓴다.
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { years: 15, monthlyByOwner: { '신랑': 0, '와이프': 0 } } },
+  // taxAdvantagedPlan: [절세계좌 현황] 카드의 [적립 예상] 팝업 입력값 - yearsByOwner(소유자명 → 적립
+  // 기간, 년)와 monthlyByOwner(소유자명 → 월 적립 예상액)를 각각 저장한다. owner 키는 자산의 a.owner
+  // 필드와 동일한 문자열('신랑'/'와이프')을 그대로 쓴다. [개별 적립 기간 지원 - 요청 반영] 예전엔 두
+  // 사람이 적립 기간(years, 단일 값)을 공유했으나, 각자 다른 시점을 목표로 할 수 있어 소유자별로
+  // 분리했다(normalizeTaxAdvantagedPlan 참고 - 옛 단일 years 데이터의 하위호환 마이그레이션도 거기서 처리).
+  // monthlyContributionAllocation: [월적립금 설정] 팝업에서 사용자가 직접 지정한 종목별 배분 -
+  // [{ ticker, label, pct }, ...]. "포트폴리오 구성" 탭의 목표 비중(리밸런싱용)과는 완전히 별개다.
+  // 빈 배열이면(기본값) 예전처럼 국내/해외 목표 비중 비례로만 계산된다(simulateMonthlyContributionGrowth,
+  // js/05 참고).
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 } }, monthlyContributionAllocation: [] },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -688,6 +694,36 @@ function migrateUsdCashAssetsToTransactions() {
   if (changed) { persistTransactions(); persistAssets(); }
 }
 
+// [절세계좌 적립 예상 - 값 정규화] localStorage 로드(loadState)/JSON 백업 복원/가족 동기화 pull
+// (applyRemoteScalarFields, js/12) 세 곳에서 똑같은 하위호환 로직이 필요해 공용 함수로 뽑았다. 예전
+// 버전엔 이 필드 자체가 없었거나(전부 기본값 15년/0원), 신랑/와이프가 적립 기간을 공유하는 구조(단일
+// years 필드)였다 - 새 구조(yearsByOwner)로 옮기되, 옛 공유 years 값이 있으면 두 사람 모두의 초기값으로
+// 그대로 이어받는다(둘 다 없으면 15년 기본값).
+function normalizeTaxAdvantagedPlan(raw) {
+  const legacyYears = (raw && Number.isFinite(num(raw.years)) && num(raw.years) > 0) ? num(raw.years) : 15;
+  const yearsFor = (owner) => {
+    const v = raw && raw.yearsByOwner && num(raw.yearsByOwner[owner]);
+    return (Number.isFinite(v) && v > 0) ? v : legacyYears;
+  };
+  return {
+    yearsByOwner: { '신랑': yearsFor('신랑'), '와이프': yearsFor('와이프') },
+    monthlyByOwner: {
+      '신랑': num(raw && raw.monthlyByOwner && raw.monthlyByOwner['신랑']),
+      '와이프': num(raw && raw.monthlyByOwner && raw.monthlyByOwner['와이프'])
+    }
+  };
+}
+
+// [월적립금 설정 - 값 정규화] loadState/JSON 백업 복원/가족 동기화 pull 세 곳에서 재사용한다(위
+// normalizeTaxAdvantagedPlan과 동일한 이유). 배열이 아니거나 항목에 ticker/pct가 없으면 안전하게
+// 걸러낸다 - 손상된 값이 하나라도 있으면 시뮬레이션 계산(reduce 등)이 NaN으로 오염될 수 있어서다.
+function normalizeMonthlyContributionAllocation(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((it) => it && typeof it === 'object' && it.ticker && Number.isFinite(num(it.pct)))
+    .map((it) => ({ ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct) }));
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -756,15 +792,10 @@ function loadState() {
           });
           return migrated;
         })(),
-        // [절세계좌 적립 예상 - 하위호환] 예전 버전에는 이 필드 자체가 없었으므로, 없으면 기본값(15년,
-        // 신랑/와이프 월 적립 0원)으로 채운다.
-        taxAdvantagedPlan: {
-          years: (parsed.taxAdvantagedPlan && Number.isFinite(num(parsed.taxAdvantagedPlan.years)) && num(parsed.taxAdvantagedPlan.years) > 0) ? num(parsed.taxAdvantagedPlan.years) : 15,
-          monthlyByOwner: {
-            '신랑': num(parsed.taxAdvantagedPlan && parsed.taxAdvantagedPlan.monthlyByOwner && parsed.taxAdvantagedPlan.monthlyByOwner['신랑']),
-            '와이프': num(parsed.taxAdvantagedPlan && parsed.taxAdvantagedPlan.monthlyByOwner && parsed.taxAdvantagedPlan.monthlyByOwner['와이프'])
-          }
-        }
+        // [절세계좌 적립 예상 - 하위호환] normalizeTaxAdvantagedPlan이 필드 부재/구버전 단일 years 구조를
+        // 모두 안전하게 새 yearsByOwner 구조로 채워준다.
+        taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.taxAdvantagedPlan),
+        monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.monthlyContributionAllocation)
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }

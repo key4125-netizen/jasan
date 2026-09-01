@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------------------
- * 10-2. 리밸런싱 검토
+ * 10-2. 포트폴리오 구성 검토
  *    - 필터와 무관하게 항상 전체 포트폴리오 기준으로 계산한다(자산배분은 포트폴리오 전체를 보는 도구).
  *    - 목표비중 입력창은 카테고리 목록이 바뀔 때(자산 추가/삭제 등)만 다시 그리고, 값 변경 시에는
  *      결과 카드만 갱신해 타이핑 중 포커스가 끊기지 않게 한다.
@@ -7,13 +7,13 @@
 // 지역(국내/해외) 안에서 목표 항목(티커 지정 또는 자산군 캐치올)에 매칭되는 현재 평가금액을 계산한다.
 // 티커형 항목을 먼저 매칭해 자산을 "선점"시키고(claimedIds), 자산군 캐치올은 이미 선점된 자산을
 // 제외한 나머지만 합산한다 - 이중 집계를 막는다. 어느 항목에도 매칭되지 않는 자산(예: 부동산 같은
-// 실물자산)은 매수/매도로 조절할 수 없으므로 리밸런싱 계산 대상에서 자동으로 제외된다.
+// 실물자산)은 매수/매도로 조절할 수 없으므로 목표 비중 계산 대상에서 자동으로 제외된다.
 // targetsOverride: 기본은 state.rebalance.targets[region](사용자가 편집하는 원본, '주식' 항목이
 // selectedStocks를 포함해도 한 항목으로 남아있다). 종목별 실행 가이드/세부 결과 카드처럼 선택된
 // 개별 종목을 각자 따로 계산해야 하는 곳은 expandRebalanceTargetsForComputation(region)으로 "펼친"
 // 목록을 넘긴다 - 매칭 로직 자체는 동일하게 재사용한다.
 // ownerFilter: 'all'/undefined면 가구 전체(기존과 동일), 특정 소유자명이면 그 소유자의 자산만 놓고
-// 마치 그 사람 혼자만의 포트폴리오인 것처럼 같은 목표 비중(%)을 적용한다(종목별 리밸런싱 실행 가이드의
+// 마치 그 사람 혼자만의 포트폴리오인 것처럼 같은 목표 비중(%)을 적용한다(종목별 실행 가이드의
 // 소유자별 필터 전용 - isAssetIncludedForOwner 참고).
 function isAssetIncludedForOwner(a, ownerFilter) {
   return !ownerFilter || ownerFilter === 'all' || a.owner === ownerFilter;
@@ -28,7 +28,7 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
   // 매칭돼 "0원 보유 · 매수 필요"인 행으로 실행 가이드/엑셀 다운로드에 계속 나타난다.
   const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter) && Math.round(calcRow(a).curAmount) !== 0);
   const claimedIds = new Set();
-  // assetId -> targetIdx. 종목별 리밸런싱 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
+  // assetId -> targetIdx. 종목별 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
   // 정확히 어느 목표 항목에 묶였는가"를 알아야 그 항목의 목표금액을 개별 종목 단위로 다시 나눠줄 수
   // 있으므로, 매칭 결과를 여기서 함께 기록해 반환한다(매칭 로직을 두 곳에 중복 구현하지 않기 위함).
   const claimedTargetIdx = new Map();
@@ -53,7 +53,7 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
       if (claimedIds.has(a.id)) return;
       // ETF는 별도 자산군이 아니라 실질적으로 주식형 상품이므로, 지정 티커에 안 걸린 ETF도 '주식'
       // 목표 항목에 그대로 매칭되게 한다(예: TIGER 미국S&P500처럼 이름이 지정 티커와 다른 ETF들이
-      // "목표 항목 없음"으로 리밸런싱 계산에서 통째로 빠지는 문제를 막는다).
+      // "목표 항목 없음"으로 목표 비중 계산에서 통째로 빠지는 문제를 막는다).
       const matchesCategory = a.category === t.category || (a.category === 'ETF' && t.category === '주식');
       if (matchesCategory) {
         amounts[idx] += calcRow(a).curAmount;
@@ -68,7 +68,7 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
   return { amounts, coveredTotal, uncoveredTotal, claimedTargetIdx, targets };
 }
 
-// [개별주식 다중 설정] '주식' 캐치올에 selectedStocks(최대 3개)가 지정돼 있으면, 실제 리밸런싱 계산
+// [개별주식 다중 설정] '주식' 캐치올에 selectedStocks(최대 3개)가 지정돼 있으면, 실제 목표 비중 계산
 // (매칭·목표금액·종목별 가이드)에서는 이를 각각 독립된 티커 목표로 "펼쳐서" 다룬다 - 그래야 지정한
 // 종목이 하나의 뭉치로 묶여 "현재 비중 비율대로" 나눠 갖는 게 아니라 자기 비중만큼의 목표금액/증감을
 // 온전히 따로 갖는다. 지정하지 않은 나머지 보유 주식(같은 지역의 주식/ETF 중 3종목에 안 걸린 것들)은
@@ -98,7 +98,7 @@ function computeExpandedRegionTargetAmounts(region, ownerFilter) {
   return computeRegionTargetAmounts(region, expandRebalanceTargetsForComputation(region), ownerFilter);
 }
 
-// 종목별 리밸런싱 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
+// 종목별 실행 가이드: 자산군/티커 단위로 뭉쳐 있던 "목표금액"을 실제 보유 중인 개별 종목
 // 단위로 풀어낸다. 주의: computeRegionTargetAmounts()가 돌려주는 amounts는 그 항목에 매칭된 자산의
 // "현재" 평가금액 합계이지 목표금액이 아니다 - 실제 목표금액은 아래(지역 목표금액 × 항목 비중%) 공식으로
 // 별도 계산한다.
@@ -113,7 +113,7 @@ function computeExpandedRegionTargetAmounts(region, ownerFilter) {
 //     같은 종목을 나눠 보유해도 "종목 하나당 매수/매도 실행 가이드 하나"만 나오게 한다(단, ownerFilter로
 //     특정 소유자를 지정하면 애초에 그 소유자의 자산만 대상이라 이 합산은 자연히 그 사람 것만 남는다).
 // ownerFilter: 'all'/undefined면 가구 전체(기존 동작), 특정 소유자명이면 그 소유자의 자산만으로 "독립된
-// 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 매수/매도 가이드를 만든다(리밸런싱 실행 가이드의
+// 포트폴리오"를 가정해 같은 목표 비중(%)을 적용한 매수/매도 가이드를 만든다(실행 가이드의
 // 소유자별 필터 전용).
 // [버그 수정 - 소유자 필터 시 미보유 목표 종목 누락] 특정 소유자(예: 와이프)가 어떤 목표 항목을
 // 하나도 보유하지 않을 때, 그 종목의 시세/통화를 알아야 목표금액 대비 매수 수량을 계산할 수 있다 -
@@ -138,7 +138,7 @@ function computeIndividualRebalanceGuide(ownerFilter) {
     // [버그 수정 - 평가금액 0원인 유령 자산 제외] computeRegionTargetAmounts와 동일한 이유(수량 0 또는
     // 가격 미입력으로 평가금액이 0인 자산 제외).
     const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter) && Math.round(calcRow(a).curAmount) !== 0);
-    // 위 목표금액 공식과 동일하게: 지역 목표금액 = 전체 리밸런싱
+    // 위 목표금액 공식과 동일하게: 지역 목표금액 = 전체 구성
     // 대상 총액(이 소유자 기준) × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
 
@@ -223,9 +223,9 @@ function rebalanceDiffColorClass(diff) {
   return diff > 1 ? 'text-blue-500 dark:text-blue-400' : (diff < -1 ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
 }
 
-// 리밸런싱 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=리밸런싱 가능한)" 자산만 합산한다.
+// 포트폴리오 구성 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=구성 대상인)" 자산만 합산한다.
 // ownerFilter를 생략하면(대부분의 호출부 - 메인 화면 요약/목표 비중 입력칸 등) 기존과 동일하게 항상
-// 가구 전체 기준이다. 종목별 리밸런싱 실행 가이드의 소유자별 필터에서만 특정 소유자명을 넘긴다.
+// 가구 전체 기준이다. 종목별 실행 가이드의 소유자별 필터에서만 특정 소유자명을 넘긴다.
 function getRebalanceTotals(ownerFilter) {
   const byDomestic = { '국내': 0, '해외': 0 };
   const perRegion = {};
@@ -294,7 +294,7 @@ function buildDomesticTargetInputs(total, byDomestic) {
  * 15-1. [개별주식 검색 모달] - 거래내역 탭의 종목 선택 전용
  *    - 로컬(보유 자산 종목명/티커 부분일치, 한글 검색 지원) + Yahoo Finance 검색 API(v1/finance/search,
  *      인증 불필요, 영문명/티커/코드) 두 소스를 합쳐서 보여준다.
- *    - [리밸런싱 탭 개별주식 추가 기능 제거] 이 모달은 원래 리밸런싱 탭에서도 재사용했으나(모드 분기),
+ *    - [포트폴리오 구성 탭 개별주식 추가 기능 제거] 이 모달은 원래 포트폴리오 구성 탭에서도 재사용했으나(모드 분기),
  *      그 기능이 통째로 제거되어 이제 거래내역 탭 전용으로 단순화했다.
  * ---------------------------------------------------------------------- */
 let stockSearchDebounceTimer = null;
@@ -547,7 +547,7 @@ function updateTargetSum(region) {
 }
 
 /* -------------------------------------------------------------------------
- * 15-0-1. [전체 목표 비중 수정] 모달 - 리밸런싱 탭의 목표 비중은 기본 화면에서 읽기 전용이고, 이
+ * 15-0-1. [전체 목표 비중 수정] 모달 - 포트폴리오 구성 탭의 목표 비중은 기본 화면에서 읽기 전용이고, 이
  *    모달에서만 편집한다. rebalanceModalDraft(초안)에서만 값을 바꾸다가 [확인]을 눌러야 state.rebalance에
  *    커밋된다 - 취소/오버레이 클릭/뒤로가기로 닫으면 초안을 버리고 이전 상태를 그대로 유지한다.
  *    목표금액/증감금액 미리보기는 "지금 보유 중인 실제 금액"(rebalanceModalSnapshot - 모달을 여는 시점에
@@ -690,7 +690,7 @@ function recalcStockCategoryPct() {
   t.pct = t.selectedStocks.reduce((s, x) => s + num(x.pct), 0);
 }
 
-// 지정 후보 - 해당 지역의 보유 '주식' 카테고리 자산(절세 계좌 제외, 리밸런싱 대상과 동일 범위)을
+// 지정 후보 - 해당 지역의 보유 '주식' 카테고리 자산(절세 계좌 제외, 구성 대상과 동일 범위)을
 // 티커 기준으로 중복 없이 모은다(같은 종목을 신랑/와이프가 나눠 보유해도 한 줄로 노출).
 function getHeldStockCandidates(region) {
   const seen = new Map();
@@ -953,9 +953,9 @@ document.getElementById('rebalanceTargetModal').addEventListener('click', (e) =>
 // 국내/해외 전체 비중과 하위 세부 자산별 비중을 한 번에 수정한다.
 document.getElementById('domesticTargetDetailBtn').addEventListener('click', () => openRebalanceTargetModal());
 
-// [버그 수정 - "리밸런싱 설정" 탭 통합] 예전엔 여기서 "국내/해외 리밸런싱 결과"·"국내/해외 세부
-// 리밸런싱 결과" 아코디언 카드 3개를 채웠으나(renderRebalanceResultGroup/renderTargetRebalanceResultGroup),
-// 요청에 따라 그 카드들을 완전히 삭제하고 그 자리에 더 상세한 "종목별 리밸런싱 실행 가이드"(옛 "실행
+// [버그 수정 - 옛 "목표 비중 설정" 탭 통합] 예전엔 여기서 "국내/해외 구성 결과"·"국내/해외 세부
+// 구성 결과" 아코디언 카드 3개를 채웠으나(renderRebalanceResultGroup/renderTargetRebalanceResultGroup),
+// 요청에 따라 그 카드들을 완전히 삭제하고 그 자리에 더 상세한 "종목별 실행 가이드"(옛 "실행
 // 가이드" 탭 - renderIndividualRebalanceGuide)를 대신 보여주게 됐다. 목표비중 입력 섹션의 "합계 N%"
 // 배지(updateTargetSum)는 계속 필요하므로 남긴다.
 function updateRebalanceResults() {
@@ -1028,7 +1028,7 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
         <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium">${fmtKRW(r.targetAmount)}</span></div>
-        <div><span class="text-slate-400 block">리밸런싱 필요금액</span><span class="font-medium ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
+        <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
         <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
       </div>
     </div>`;
@@ -1043,7 +1043,7 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
           <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
           <p class="text-[11px] text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
         </div>
-        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">리밸런싱 제외 자산</span>
+        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">구성 제외 자산</span>
       </div>
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
@@ -1055,9 +1055,9 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
   return cards + excludedCards;
 }
 
-// [금융자산 리밸런싱] 탭 맨 아래 "종목별 리밸런싱 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
+// [포트폴리오 구성] 탭 맨 아래 "종목별 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
 // 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 [전체]/[소유자별] 순차 아코디언
-// 카드 형태로 보여준다. 부동산 등 목표에 매칭되지 않는 자산은 별도로 "[리밸런싱 제외 자산]" 배지를
+// 카드 형태로 보여준다. 부동산 등 목표에 매칭되지 않는 자산은 별도로 "[구성 제외 자산]" 배지를
 // 달아 같은 목록에 구분 표시한다.
 function renderIndividualRebalanceGuide() {
   const container = document.getElementById('rebalanceGuideAccordionsContainer');
@@ -1074,7 +1074,7 @@ function renderIndividualRebalanceGuide() {
       <button type="button" data-guide-accordion-key="${escapeHtml(key)}"
         class="rebalance-guide-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
         <div class="flex items-center gap-2 min-w-0 flex-wrap">
-          <span class="text-xs font-semibold shrink-0">${escapeHtml(label)} 리밸런싱 가이드</span>
+          <span class="text-xs font-semibold shrink-0">${escapeHtml(label)} 실행 가이드</span>
           <div class="flex items-center gap-1.5 flex-wrap">${buildRebalanceGuideSummaryHtml(rows)}</div>
         </div>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 rebalance-guide-chevron" data-guide-chevron-key="${escapeHtml(key)}"></i>
@@ -1114,11 +1114,11 @@ document.getElementById('rebalanceGuideAccordionsContainer').addEventListener('c
   reapplyRebalanceGuideAccordionHeights();
 });
 
-// [종목별 리밸런싱 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
+// [종목별 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
 // 그대로 표로 옮긴다. 이 앱은 이미 SheetJS(xlsx.full.min.js)를 CDN으로 로드해 엑셀 백업/업로드에 쓰고
 // 있으므로(위 "21. 엑셀 내보내기" 참고) 같은 라이브러리/패턴을 그대로 재사용한다 - 별도 CDN을 새로
 // 추가하지 않는다.
-// 특정 소유자 필터(전체/신랑/와이프 등) 기준으로 리밸런싱 실행 가이드 표 데이터를 만든다.
+// 특정 소유자 필터(전체/신랑/와이프 등) 기준으로 실행 가이드 표 데이터를 만든다.
 // 화면에 그리는 카드용 계산(computeIndividualRebalanceGuide)을 그대로 재사용해 화면과 엑셀의
 // 수치가 항상 일치하도록 한다.
 function buildRebalanceGuideSheetRows(ownerFilter) {
@@ -1136,13 +1136,13 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
       '거래통화': r.isForeign ? 'USD' : 'KRW',
       '현재 평가금액(KRW)': Math.round(r.curAmount),
       '목표 평가금액(KRW)': Math.round(r.targetAmount),
-      '리밸런싱 필요금액(KRW)': Math.round(r.diff),
+      '조정 필요금액(KRW)': Math.round(r.diff),
       '실행 구분': badge.label,
       '예상 매수/매도 수량': qtyRounded(r.qtyDelta, r.isForeign)
     };
   });
 
-  // 목표에 매칭되지 않아 화면에서도 "리밸런싱 제외 자산"으로 별도 표시되는 항목들 - 같은 표 아래에
+  // 목표에 매칭되지 않아 화면에서도 "구성 제외 자산"으로 별도 표시되는 항목들 - 같은 표 아래에
   // 이어 붙이되, 목표/실행 관련 컬럼은 해당 없음을 뜻하는 빈 값으로 둔다(화면 카드의 "해당 없음"과 동일).
   const excludedRows = excluded.map((a) => {
     const r = calcRow(a);
@@ -1155,8 +1155,8 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
       '거래통화': a.currency,
       '현재 평가금액(KRW)': Math.round(r.curAmount),
       '목표 평가금액(KRW)': '',
-      '리밸런싱 필요금액(KRW)': '',
-      '실행 구분': '리밸런싱 제외 자산',
+      '조정 필요금액(KRW)': '',
+      '실행 구분': '구성 제외 자산',
       '예상 매수/매도 수량': ''
     };
   });
@@ -1189,12 +1189,12 @@ document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () 
   });
 
   if (!anyData) {
-    showToast('내보낼 리밸런싱 실행 가이드 데이터가 없습니다.', 'warn');
+    showToast('내보낼 실행 가이드 데이터가 없습니다.', 'warn');
     return;
   }
 
   const today = new Date();
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-  XLSX.writeFile(wb, `리밸런싱_실행가이드_${ymd}.xlsx`);
+  XLSX.writeFile(wb, `포트폴리오구성_실행가이드_${ymd}.xlsx`);
 });
 
