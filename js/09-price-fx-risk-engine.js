@@ -564,7 +564,9 @@ const INDEX_TICKERS = { KOSPI: '^KS11', KOSDAQ: '^KQ11', NASDAQ: '^IXIC', SP500:
 // 화면에는 영향 없이 매크로 브리핑에서만 쓰인다.
 // [금 시세 추가] GC=F(COMEX 금 선물, 온스당 달러)도 동일한 방식으로 같이 받는다 - 새 API/프록시가
 // 필요 없다.
-const MACRO_TICKERS = { VIX: '^VIX', UST10Y: '^TNX', DOW: '^DJI', GOLD: 'GC=F' };
+// [달러인덱스 추가] DX-Y.NYB(ICE 달러인덱스 현물)도 동일한 방식으로 같이 받는다 - 주요 통화 바스켓
+// 대비 달러 가치를 나타내는 지수값(포인트)이라 원/달러 환율과는 별개의 신호다.
+const MACRO_TICKERS = { VIX: '^VIX', UST10Y: '^TNX', DOW: '^DJI', GOLD: 'GC=F', USDX: 'DX-Y.NYB' };
 const RISK_ELIGIBLE_CATEGORIES = ['주식', 'ETF'];
 
 // [벤치마크 다변화] 예전엔 미국 종목을 전부 S&P500 하나로만 비교했다 - 이제 종목 성격별로 더 맞는

@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v165</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v170</p>
           </div>
         </div>
 
@@ -334,11 +334,16 @@
        더 볼 내용이 없어지면(JS의 updateTabScrollHint) 자동으로 숨긴다. -->
   <div class="relative mb-6 w-full sm:w-fit sm:max-w-full">
     <div id="tabScrollContainer" class="grid grid-cols-2 sm:flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full sm:w-fit overflow-x-auto sm:max-w-full">
+      <!-- [탭 명칭/아이콘 변경 - 요청 반영] "총금융투자현황"→"금융투자현황", "투자세부"→"총자산현황"으로
+           개명했다. 내부 라우팅은 data-tab 속성(dashboard/investmentDetail)과 state.activeTab만으로
+           동작하고 이 표시 문구와는 무관하므로(switchTab, js/03 참고) 라벨만 바꿔도 안전하다. 아이콘도
+           "총자산현황"이 부동산·현금 등 포괄적 자산을 아우른다는 의미에 맞게 list-tree(목록)에서
+           landmark(자산/건물을 상징)로 교체했다. -->
       <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
-        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 총금융투자현황
+        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 금융투자현황
       </button>
       <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
-        <i data-lucide="list-tree" class="w-3.5 h-3.5"></i> 투자세부
+        <i data-lucide="landmark" class="w-3.5 h-3.5"></i> 총자산현황
       </button>
       <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
@@ -556,11 +561,11 @@
         <span class="text-base leading-none">🌍</span>
         <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
       </div>
-      <!-- [1행 4개 · 2행 5개 고정] 화면 크기와 무관하게 예외 없이 이 2행 구성으로 고정한다(1행:
-           VIX/원달러/미10년물/금시세, 2행: 코스피/코스닥/S&P500/나스닥/다우) - renderMacroBriefing()이
-           내부에 grid-cols-4 행과 grid-cols-5 행 두 개를 따로 만들어 채운다(gridEl 자체는 두 행을
-           세로로 쌓는 순수 래퍼). 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부
-           패딩/폰트를 키우는 쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
+      <!-- [1행 5개 · 2행 5개 고정] 화면 크기와 무관하게 예외 없이 이 2행 구성으로 고정한다(1행:
+           VIX/원달러/미10년물/금시세/달러인덱스, 2행: 코스피/코스닥/S&P500/나스닥/다우) - renderMacroBriefing()이
+           내부에 grid-cols-5 행 두 개를 따로 만들어 채운다(gridEl 자체는 두 행을 세로로 쌓는 순수
+           래퍼). 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부 패딩/폰트를 키우는
+           쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
       <div id="macroBriefingGrid" class="space-y-1 sm:space-y-2 mb-2"></div>
       <div id="macroBriefingDiagnosis" class="space-y-1"></div>
     </div>
@@ -601,8 +606,8 @@
 
   </div> <!-- /tabPanelDashboard -->
 
-  <!-- ============================= 투자세부 탭 =============================
-       [탭 구조 개편] 필터바 · 비중 차트 3종 · 자산 관리 목록을 총투자현황(요약 KPI) 탭에서 분리해 이
+  <!-- ============================= 총자산현황 탭 (구 "투자세부") =============================
+       [탭 구조 개편] 필터바 · 비중 차트 3종 · 자산 관리 목록을 금융투자현황(요약 KPI) 탭에서 분리해 이
        탭으로 옮겼다. 소유자 필터(state.filters.owner)는 이 탭 전용 UI가 아니라 DOM 위치와 무관한 전역
        state 객체에 저장되므로, 탭을 오가도 선택 상태가 그대로 유지된다(추가 배선 불필요). 처음 렌더링은
        switchTab()이 이 탭에 진입할 때 renderInvestmentDetailTab()을 호출해 처리한다(숨겨진 탭의
@@ -1034,10 +1039,10 @@
 
     <div id="rebalanceSubTarget">
     <!-- [일반계좌 한정] 연금저축/IRP/ISA 등 절세 계좌는 세제 혜택 유지를 위해 자유롭게 매도/매수하기
-         어려운 경우가 많아, 실제로 리밸런싱 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
-         대시보드("총투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
+         어려운 경우가 많아, 실제로 매수/매도 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
+         대시보드("금융투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
          이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
-    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 리밸런싱을 계산합니다.</p>
+    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
 
     <!-- [모바일 가로 병렬 배치] 국내/해외 목표비중 카드는 위쪽에 전체 폭으로(col-span-2) 두고, 그
          바로 아래 국내 세부/미국 세부 카드 2개를 화면 폭과 무관하게 항상 나란히(50:50) 배치한다.
@@ -1081,10 +1086,10 @@
       </div>
     </section>
 
-    <!-- ===== 종목별 리밸런싱 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이
+    <!-- ===== 종목별 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이
          탭으로 통합됐다 - 자산군/티커 단위로 뭉쳐 있던 목표를 실제 보유 개별 종목 단위로 풀어서, 위의
          목표 비중 입력에 이어 종목별로 정확히 얼마를 사고 팔아야 하는지 바로 보여준다. 예전에 여기 있던
-         "국내/해외 리밸런싱 결과" 등 자산군 단위 요약 카드 3개는 이 더 상세한 가이드와 내용이 겹쳐
+         "국내/해외 구성 결과" 등 자산군 단위 요약 카드 3개는 이 더 상세한 가이드와 내용이 겹쳐
          제거했다.
          [안내 문구 삭제 - 요청 반영] "목표 항목에 해당하지 않는 자산(부동산 등)은 계산에서 제외됨"을
          알리던 안내 문구(rebalanceUncoveredNote)를 삭제했다 - 부동산은 이미 이 탭 상단의 정책
@@ -1098,7 +1103,7 @@
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <div class="flex items-start justify-between gap-2 mb-1">
-          <h3 class="text-sm font-semibold">📋 종목별 리밸런싱 실행 가이드</h3>
+          <h3 class="text-sm font-semibold">📋 종목별 실행 가이드</h3>
           <button type="button" id="rebalanceGuideExportBtn"
             class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
             <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
@@ -1113,15 +1118,15 @@
   <!-- ============================= 금융자산 미래예측 (서브탭: 미래 예측) ============================= -->
   <div id="tabPanelProjection" class="hidden">
     <!-- ===== [3가지 시나리오 동시 비교 - 구조 개편] =====
-         PROJECTION_SCENARIOS 배열(리밸런싱후-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
+         PROJECTION_SCENARIOS 배열(목표배분-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
          그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
          (renderScenarioSummaryCards/renderScenarioCompareChart/renderScenarioCompareScheduleTable,
          updateProjection() 참고) - 시나리오를 늘리거나 줄여도 이 3곳만 자동으로 따라간다.
-         [버그 수정 - "현재 구성 유지" 제거] 예전엔 리밸런싱을 하지 않는 "현재 구성 유지" 시나리오도
-         함께 비교했으나, 요청에 따라 이 통합 비교에서는 완전히 뺐다(리밸런싱 후 3가지 케이스만 비교) -
-         그 기준값을 쓰던 "리밸런싱 효과 요약" 카드도 "포트폴리오 구성" 탭 개편으로 함께 제거되어, 이제
-         "현재 구성 유지" 계산 자체가 앱 어디에도 남아있지 않다.
-         "일반적" 프리셋은 예전 "리밸런싱 후"와 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
+         [버그 수정 - "현재 구성 유지" 제거] 예전엔 목표 비중대로 조정하지 않는 "현재 구성 유지"
+         시나리오도 함께 비교했으나, 요청에 따라 이 통합 비교에서는 완전히 뺐다(목표 배분 적용 3가지
+         케이스만 비교) - 그 기준값을 쓰던 "적용 효과 요약" 카드도 "포트폴리오 구성" 탭 개편으로 함께
+         제거되어, 이제 "현재 구성 유지" 계산 자체가 앱 어디에도 남아있지 않다.
+         "일반적" 프리셋은 예전 "목표 배분 적용"과 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
          "보수적"/"긍정적"은 SCENARIO_RATE_PRESETS에 정의된 고정 근사치(±1σ 약세장/강세장 근사)를
          쓴다 - 실제 백테스트 데이터가 아니라 참고용 근사치임을 카드 하단에 안내한다. -->
     <!-- [버그 수정 - 자산 대상 범위를 일반계좌로 재통일] 한때는 "포트폴리오 구성" 탭과 달리 미래예측만
@@ -1129,9 +1134,10 @@
          얼마나 불어나는가"를 보여주려던 정책), 요청에 따라 다시 순수 일반계좌 보유 자산만 대상으로
          좁혔다 - 두 탭이 정확히 같은 자산 범위를 공유한다(getProjectionGroupStats 참고). -->
     <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-1">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반계좌 보유 자산을 기준으로 시뮬레이션합니다.</p>
-    <!-- [일반계좌 현황 타이틀 추가 - 요청 반영] 아래 "절세계좌 현황" 카드와 짝을 이루도록, 일반계좌
-         관련 카드들(월 적립금 입력~시나리오별 일반계좌 금액 비교) 구간 전체를 대표하는 섹션 헤더. -->
-    <h3 class="text-sm font-semibold mb-2">💰 일반계좌 현황</h3>
+    <!-- [타이틀 변경 - 요청 반영] "일반계좌 현황"에서 "포트폴리오 기준"으로 개명 - 아래 "절세계좌 현황"
+         카드와 짝을 이루도록, 일반계좌 관련 카드들(월 적립금 입력~시나리오별 일반계좌 금액 비교) 구간
+         전체를 대표하는 섹션 헤더. -->
+    <h3 class="text-sm font-semibold mb-2">💰 포트폴리오 기준</h3>
     <!-- [월 적립금 - 편집 가능한 위치로 이동] 예전엔 scenarioModal1 팝업 안에서만 수정할 수 있었는데,
          그 팝업(수익률 수동 편집 UI)을 완전히 제거하면서 월 적립금 입력은 여기 상단 고정 영역으로
          옮겨왔다 - id/리스너는 그대로라 JS 쪽 수정 없이 위치만 바뀐다. inflationRateInput은 화면에
@@ -1143,6 +1149,12 @@
           class="w-28 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 outline-none text-right">
         원
       </label>
+      <!-- [월적립금 설정 버튼 신설 - 요청 반영] 월 적립금이 특정 종목에 직접 배분되도록 지정하는
+           monthlyContributionAllocationModal을 연다(js/05 openMonthlyContributionAllocationModal 참고).
+           [수익률 관리] 버튼 바로 앞, 월 적립금 입력 바로 뒤에 배치한다. -->
+      <button type="button" id="openMonthlyContributionAllocationBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+        <i data-lucide="split" class="w-3 h-3"></i> 월적립금 설정
+      </button>
       <!-- [위치 이동 + 시인성 개선] 예전엔 아래 "시나리오별 적용 수익률 요약" 카드 제목 옆의 눈에 잘
            안 띄는 회색 테두리 버튼이었는데, "월 적립금" 바로 옆으로 옮기고 브랜드 색(요청에 따라
            시세&환율 갱신 버튼과 같은 계열의 배경/글자색 - refreshAllBtn 참고)으로 바꿔 클릭 유도성을
@@ -1204,7 +1216,7 @@
             <option value="와이프">와이프</option>
           </select>
           <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
-            <i data-lucide="trending-up" class="w-3 h-3"></i> 적립 예상
+            <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
           </button>
         </div>
       </div>
@@ -1731,29 +1743,90 @@
       </button>
     </div>
 
-    <div class="px-5 py-4 overflow-y-auto space-y-4">
-      <div class="grid grid-cols-2 gap-3">
-        <label class="text-xs">
-          <span class="text-slate-500 dark:text-slate-400">신랑 월 적립 예상액</span>
-          <input id="taxAdvantagedMonthlyHusbandInput" type="number" step="any" placeholder="0"
-            class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-        </label>
-        <label class="text-xs">
-          <span class="text-slate-500 dark:text-slate-400">와이프 월 적립 예상액</span>
-          <input id="taxAdvantagedMonthlyWifeInput" type="number" step="any" placeholder="0"
-            class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-        </label>
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
+      <!-- [개별 적립 기간 지원 - 요청 반영] 예전엔 신랑/와이프가 월 적립액만 따로 입력하고 적립 기간(년)은
+           하나를 공유했다 - 실제로는 두 사람의 은퇴/목표 시점이 다를 수 있어, 각자의 입력 영역 안에
+           월 적립액 + 적립 기간을 함께 묶어 완전히 독립적으로 설정할 수 있게 했다(state.projection.
+           taxAdvantagedPlan.yearsByOwner 참고). -->
+      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">신랑 절세계좌 적립 설정</p>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-xs">
+            <span class="text-slate-500 dark:text-slate-400">월 적립 예상액</span>
+            <input id="taxAdvantagedMonthlyHusbandInput" type="number" step="any" placeholder="0"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+          <label class="text-xs">
+            <span class="text-slate-500 dark:text-slate-400">적립 기간(년)</span>
+            <input id="taxAdvantagedYearsHusbandInput" type="number" step="1" min="1" placeholder="15"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+        </div>
       </div>
-      <label class="text-xs block">
-        <span class="text-slate-500 dark:text-slate-400">적립 기간(년)</span>
-        <input id="taxAdvantagedYearsInput" type="number" step="1" min="1" placeholder="15"
-          class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-      </label>
+      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">와이프 절세계좌 적립 설정</p>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-xs">
+            <span class="text-slate-500 dark:text-slate-400">월 적립 예상액</span>
+            <input id="taxAdvantagedMonthlyWifeInput" type="number" step="any" placeholder="0"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+          <label class="text-xs">
+            <span class="text-slate-500 dark:text-slate-400">적립 기간(년)</span>
+            <input id="taxAdvantagedYearsWifeInput" type="number" step="1" min="1" placeholder="15"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+        </div>
+      </div>
       <div id="taxAdvantagedPlanResults"></div>
     </div>
 
     <div class="flex items-center justify-end px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <button type="button" id="closeTaxAdvantagedPlanModalBtnBottom" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 월적립금 설정 모달 (신설 - 요청 반영) =============================
+     월 적립금이 어느 종목에 얼마나 배분되는지 사용자가 직접 지정한다 - 기존 "포트폴리오 구성" 목표
+     비중(리밸런싱용)과는 완전히 별개의 설정이다. scenarioRateManagerModal과 동일한 draft(초안) 패턴:
+     monthlyContributionAllocationDraft 배열에서만 수정하다가 [저장]을 눌러야 state.projection.
+     monthlyContributionAllocation에 커밋된다. 배분되지 않은 나머지 비중은 기존처럼 "포트폴리오 구성"
+     탭의 국내/해외 목표 비중대로 계산된다(js/05 simulateMonthlyContributionGrowth 참고) - 아무것도
+     배분하지 않으면(빈 배열) 이전 동작과 완전히 동일하다. -->
+<div id="monthlyContributionAllocationModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div class="min-w-0">
+        <h3 class="text-sm font-semibold">월적립금 설정</h3>
+        <p class="text-xs text-slate-400 mt-0.5">매월 적립금이 투입될 종목과 배분 비중을 직접 지정합니다</p>
+      </div>
+      <button type="button" id="closeMonthlyContributionAllocationModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="px-5 py-4 overflow-y-auto space-y-4">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h4>
+          <span id="monthlyContributionAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
+        </div>
+        <div id="monthlyContributionAllocationList" class="space-y-2"></div>
+        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHint">100%</span>)은 "포트폴리오 구성" 탭에서 설정한 국내/해외 목표 비중대로 그대로 계산됩니다.</p>
+      </div>
+
+      <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+        <button type="button" id="monthlyContributionAllocationAddBtn" class="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
+        </button>
+        <div id="monthlyContributionAllocationAddForm" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="cancelMonthlyContributionAllocationModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+      <button type="button" id="saveMonthlyContributionAllocationModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
     </div>
   </div>
 </div>
@@ -1785,8 +1858,8 @@
   </div>
 </div>
 
-<!-- ============================= 전체 목표 비중 수정 모달 (리밸런싱 탭 전용) =============================
-     리밸런싱 탭의 목표 비중 입력칸(국내/해외 split + 국내/해외 세부)은 기본 화면에서 읽기 전용이고,
+<!-- ============================= 전체 목표 비중 수정 모달 (포트폴리오 구성 탭 전용) =============================
+     포트폴리오 구성 탭의 목표 비중 입력칸(국내/해외 split + 국내/해외 세부)은 기본 화면에서 읽기 전용이고,
      이 영역을 클릭하면 뜨는 이 모달 안에서만 편집할 수 있다. [확인]을 눌러야 state.rebalance에 반영되고
      (draft 객체에서만 수정하다가 확인 시 커밋), 취소/오버레이 클릭/뒤로가기로 닫으면 편집 내용이
      버려지고 이전 상태가 그대로 유지된다. -->
@@ -1827,7 +1900,7 @@
   </div>
 </div>
 
-<!-- ============================= 보유 주식 종목 선택 모달 (리밸런싱 '주식' 세부 목표 - 개별 종목 다중 설정) =============================
+<!-- ============================= 보유 주식 종목 선택 모달 (포트폴리오 구성 '주식' 세부 목표 - 개별 종목 다중 설정) =============================
      rebalanceTargetModal(z-50) 위에 중첩되어 열리므로 z-index를 한 단계 더 높게 둔다. 최대
      MAX_SELECTED_STOCKS_PER_CATEGORY(3)개까지 보유 주식을 지정하고, 각 종목의 목표 비중(%)을 이 안에서
      직접 입력한다 - [확인]/[취소] 버튼 없이 rebalanceModalDraft를 바로 수정하며(부모 모달의 [확인]을
@@ -1857,7 +1930,7 @@
           class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
         <div id="stockAllocationSearchResults" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
       </div>
-      <p class="text-[10px] text-slate-400 leading-relaxed">* 선택되지 않은 기존 보유 주식은 리밸런싱 시 전량 매도 대상으로 산출됩니다.</p>
+      <p class="text-[10px] text-slate-400 leading-relaxed">* 선택되지 않은 기존 보유 주식은 목표 비중 계산 시 전량 매도 대상으로 산출됩니다.</p>
     </div>
     <div class="flex items-center justify-end px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <button type="button" id="closeStockAllocationModalBtn2" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
@@ -1865,7 +1938,7 @@
   </div>
 </div>
 
-<!-- ============================= 개별주식 검색 모달 (리밸런싱 국내/해외 개별주식 추가 전용) =============================
+<!-- ============================= 개별주식 검색 모달 (거래내역 탭 종목 선택 전용) =============================
      assetModal(z-50)과 동시에 열릴 일은 없지만 혹시 모를 겹침에 대비해 z-index를 한 단계 더 높게 둔다. -->
 <div id="stockSearchModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[80vh] flex flex-col">
