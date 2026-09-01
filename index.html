@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v164</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v165</p>
           </div>
         </div>
 
@@ -1085,8 +1085,10 @@
          탭으로 통합됐다 - 자산군/티커 단위로 뭉쳐 있던 목표를 실제 보유 개별 종목 단위로 풀어서, 위의
          목표 비중 입력에 이어 종목별로 정확히 얼마를 사고 팔아야 하는지 바로 보여준다. 예전에 여기 있던
          "국내/해외 리밸런싱 결과" 등 자산군 단위 요약 카드 3개는 이 더 상세한 가이드와 내용이 겹쳐
-         제거했다. -->
-    <p id="rebalanceUncoveredNote" class="hidden text-[11px] text-amber-600 dark:text-amber-400 mb-4"></p>
+         제거했다.
+         [안내 문구 삭제 - 요청 반영] "목표 항목에 해당하지 않는 자산(부동산 등)은 계산에서 제외됨"을
+         알리던 안내 문구(rebalanceUncoveredNote)를 삭제했다 - 부동산은 이미 이 탭 상단의 정책
+         안내문(※ 절세계좌... 및 부동산을 제외한...)에서 항상 명시되고 있어 중복이었다. -->
     <!-- [소유자별 순차 아코디언] 설명 문구와 엑셀 다운로드는 접힘/펼침과 무관하게 항상 최상단에 고정
          노출된다. 그 아래 [전체]/[신랑]/[와이프] 등 실제 소유자 수만큼(getDailyPnlOwnerList() 기준
          동적 생성) 독립적인 접힘/펼침 섹션이 순서대로 쌓인다 - 서로 배타적이지 않고 동시에 여러 개를
@@ -1127,6 +1129,9 @@
          얼마나 불어나는가"를 보여주려던 정책), 요청에 따라 다시 순수 일반계좌 보유 자산만 대상으로
          좁혔다 - 두 탭이 정확히 같은 자산 범위를 공유한다(getProjectionGroupStats 참고). -->
     <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-1">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반계좌 보유 자산을 기준으로 시뮬레이션합니다.</p>
+    <!-- [일반계좌 현황 타이틀 추가 - 요청 반영] 아래 "절세계좌 현황" 카드와 짝을 이루도록, 일반계좌
+         관련 카드들(월 적립금 입력~시나리오별 일반계좌 금액 비교) 구간 전체를 대표하는 섹션 헤더. -->
+    <h3 class="text-sm font-semibold mb-2">💰 일반계좌 현황</h3>
     <!-- [월 적립금 - 편집 가능한 위치로 이동] 예전엔 scenarioModal1 팝업 안에서만 수정할 수 있었는데,
          그 팝업(수익률 수동 편집 UI)을 완전히 제거하면서 월 적립금 입력은 여기 상단 고정 영역으로
          옮겨왔다 - id/리스너는 그대로라 JS 쪽 수정 없이 위치만 바뀐다. inflationRateInput은 화면에
@@ -1159,13 +1164,14 @@
          그걸 여는 [›] 버튼을 완전히 제거하고 순수 정보 제공용 카드로 단순화했다. 대신 설명 문구 바로
          아래 아코디언 토글(detailCardAccordionOpen{key:bool}, 기본 접힘)을 달아 세부 표를 필요할 때만
          펼쳐 보게 한다 - 자산 관리 카드 아코디언과 동일한 setAccordionOpen 패턴. -->
-    <!-- [카드 순서 변경 - 요청 반영] "리밸런싱 후(일반적) - 상품별 비중"을 "시나리오별 적용 수익률
-         요약"보다 먼저 배치했다(예전엔 반대 순서). -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 mb-4">
+    <!-- [카드 제거 - 요청 반영] "시나리오별 적용 수익률 요약" 카드를 완전히 삭제했다(scenarioRateAccordionBtn/
+         Body, scenarioRateReferenceTable 포함) - 수익률 세부값은 상단 [수익률 관리] 팝업에서 그대로 확인·
+         수정할 수 있어 중복 정보였다. 남은 카드 하나만 있어 grid-cols-2를 빼고 단일 카드로 둔다. -->
+    <section class="mb-4">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden min-w-0">
         <div class="p-2.5 sm:p-4 pb-2">
-          <span class="text-xs sm:text-sm font-semibold">리밸런싱 후(일반적) - 상품별 비중</span>
-          <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">"포트폴리오 구성" 탭에서 설정한 목표 비중대로 오늘 전액 리밸런싱했다고 가정합니다(과거 30년 평균 근사 수익률 기준).</p>
+          <span class="text-xs sm:text-sm font-semibold">목표 비중 적용(일반적) - 상품별 비중</span>
+          <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">"포트폴리오 구성" 탭에서 설정한 목표 비중대로 오늘 전액 조정했다고 가정합니다(과거 30년 평균 근사 수익률 기준).</p>
         </div>
         <button type="button" id="targetAllocationAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
           <span class="detail-card-accordion-label">세부 항목 보기</span>
@@ -1174,23 +1180,6 @@
         <div id="targetAllocationAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
           <div class="px-2.5 sm:px-4 pb-2.5 sm:pb-4">
             <div id="targetAllocationSummary" class="space-y-1.5"></div>
-          </div>
-        </div>
-      </div>
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden min-w-0">
-        <div class="p-2.5 sm:p-4 pb-2">
-          <div class="flex items-center gap-2">
-            <span class="text-xs sm:text-sm font-semibold">시나리오별 적용 수익률 요약</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">보수적/일반적/긍정적 시나리오에서 각 상품·종목에 실제로 적용되는 연 기대수익률입니다. <b>일반적</b>이 기본값이고, <span class="inline-block w-1.5 h-1.5 rounded-full bg-brand-500 align-middle"></span> 표시는 지금 실제로 보유 중이거나 리밸런싱 목표에 배분돼 계산에 쓰이고 있는 상품입니다.</p>
-        </div>
-        <button type="button" id="scenarioRateAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-          <span class="detail-card-accordion-label">세부 항목 보기</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
-        </button>
-        <div id="scenarioRateAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          <div class="px-2.5 sm:px-4 pb-2.5 sm:pb-4">
-            <div id="scenarioRateReferenceTable"></div>
           </div>
         </div>
       </div>
@@ -1204,13 +1193,17 @@
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
         <h3 class="text-sm font-semibold">🏦 절세계좌 현황</h3>
-        <div class="flex items-center gap-2">
-          <select id="taxAdvantagedScopeSelect" class="text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+        <!-- [모바일 오탭 방지 - 버그 수정] select와 버튼 둘 다 touch-target(44px 최소 높이)이 없어 실제
+             모바일 폭에서 30px 안팎으로 렌더링됐고, 둘 사이 간격도 8px(gap-2)뿐이라 손가락 터치 시
+             경계에서 다른 요소를 잘못 누르기 쉬웠다(팝업이 "안 열린다"는 신고의 원인) - 앱 전역에서
+             모달을 여는 다른 모든 버튼처럼 touch-target을 적용하고 간격을 늘렸다. -->
+        <div class="flex items-center gap-3">
+          <select id="taxAdvantagedScopeSelect" class="touch-target text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
             <option value="all">전체</option>
             <option value="신랑">신랑</option>
             <option value="와이프">와이프</option>
           </select>
-          <button type="button" id="taxAdvantagedPlanBtn" class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
+          <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60">
             <i data-lucide="trending-up" class="w-3 h-3"></i> 적립 예상
           </button>
         </div>
@@ -1224,7 +1217,7 @@
          이름에서부터 분명히 하기 위해 바꿨다. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">📊 시나리오별 일반계좌 그래프</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 리밸런싱"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌·부동산은 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+      <p class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌·부동산은 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
       <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
     </section>
 
@@ -1258,7 +1251,7 @@
          복리 성장, 신규 매수 없음)을 모두 더한 가구 전체 총자산 기준 시나리오. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">📊 시나리오별 총 자산 그래프</h3>
-      <p class="text-[11px] text-slate-400 mb-3">일반계좌 리밸런싱 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>와 <b>부동산(보유 중이면 현재가치를 별도 복리 성장)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
+      <p class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>와 <b>부동산(보유 중이면 현재가치를 별도 복리 성장)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
       <div class="h-72 sm:h-80"><canvas id="totalAssetCompareChart"></canvas></div>
     </section>
 

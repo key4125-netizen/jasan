@@ -20,7 +20,13 @@ function isAssetIncludedForOwner(a, ownerFilter) {
 }
 function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
   const targets = targetsOverride || state.rebalance.targets[region] || [];
-  const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
+  // [버그 수정 - 평가금액 0원인 유령 자산 제외] 전량 매도된 포지션은 자산 목록에서 삭제되지 않고
+  // 수량만 0으로 남는다(syncAssetsFromTransactions 참고, 삭제는 사용자가 원할 때 직접 하도록 의도적으로
+  // 남겨둠). [버그 수정 2 - 수량만으론 부족] 채권처럼 수동 등록하는 자산은 수량은 남아있는데 시세(가격)가
+  // 0/미입력이라 평가금액만 0인 경우도 있다 - 수량이 아니라 실제 평가금액(calcRow(a).curAmount)이 0인
+  // 자산을 걸러야 두 경우 다 잡힌다. 이 필터가 없으면 평가금액 0원인 종목이 계속 목표 카테고리에
+  // 매칭돼 "0원 보유 · 매수 필요"인 행으로 실행 가이드/엑셀 다운로드에 계속 나타난다.
+  const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter) && Math.round(calcRow(a).curAmount) !== 0);
   const claimedIds = new Set();
   // assetId -> targetIdx. 종목별 리밸런싱 실행 가이드(computeIndividualRebalanceGuide)가 "이 자산은
   // 정확히 어느 목표 항목에 묶였는가"를 알아야 그 항목의 목표금액을 개별 종목 단위로 다시 나눠줄 수
@@ -129,7 +135,9 @@ function computeIndividualRebalanceGuide(ownerFilter) {
     // 개별 지정 종목(selectedStocks)이 있으면 "펼쳐진" 목록을 써서 그 종목들이 각자 자기 비중만큼의
     // 목표를 따로 갖고, 지정 안 한 나머지 보유 주식은 목표 0%(전량 매도)로 계산되게 한다.
     const { claimedTargetIdx, targets } = computeExpandedRegionTargetAmounts(region, ownerFilter);
-    const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter));
+    // [버그 수정 - 평가금액 0원인 유령 자산 제외] computeRegionTargetAmounts와 동일한 이유(수량 0 또는
+    // 가격 미입력으로 평가금액이 0인 자산 제외).
+    const regionAssets = state.assets.filter((a) => a.isDomestic === region && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, ownerFilter) && Math.round(calcRow(a).curAmount) !== 0);
     // 위 목표금액 공식과 동일하게: 지역 목표금액 = 전체 리밸런싱
     // 대상 총액(이 소유자 기준) × 지역 목표비중(%). 항목별 목표금액 = 지역 목표금액 × 항목 비중(%).
     const regionTargetAmount = total * num(state.rebalance.domestic[region]) / 100;
@@ -221,16 +229,14 @@ function rebalanceDiffColorClass(diff) {
 function getRebalanceTotals(ownerFilter) {
   const byDomestic = { '국내': 0, '해외': 0 };
   const perRegion = {};
-  const uncovered = { '국내': 0, '해외': 0 };
   let total = 0;
   ['국내', '해외'].forEach((region) => {
-    const { amounts, coveredTotal, uncoveredTotal } = computeRegionTargetAmounts(region, undefined, ownerFilter);
+    const { amounts, coveredTotal } = computeRegionTargetAmounts(region, undefined, ownerFilter);
     perRegion[region] = amounts;
     byDomestic[region] = coveredTotal;
-    uncovered[region] = uncoveredTotal;
     total += coveredTotal;
   });
-  return { total, byDomestic, perRegion, uncovered };
+  return { total, byDomestic, perRegion };
 }
 
 function renderRebalance() {
@@ -947,28 +953,13 @@ document.getElementById('rebalanceTargetModal').addEventListener('click', (e) =>
 // 국내/해외 전체 비중과 하위 세부 자산별 비중을 한 번에 수정한다.
 document.getElementById('domesticTargetDetailBtn').addEventListener('click', () => openRebalanceTargetModal());
 
-// 목표에 하나도 매칭되지 않은 자산(예: 부동산 등 실물자산)이 있으면 계산에서 제외되었음을 안내한다.
-function renderUncoveredNote(uncovered) {
-  const el = document.getElementById('rebalanceUncoveredNote');
-  const totalUncovered = (uncovered['국내'] || 0) + (uncovered['해외'] || 0);
-  if (!el) return;
-  if (Math.round(totalUncovered) === 0) { el.classList.add('hidden'); return; }
-  const parts = [];
-  if (uncovered['국내'] > 0) parts.push(`국내 ${fmtKRW(uncovered['국내'])}`);
-  if (uncovered['해외'] > 0) parts.push(`해외 ${fmtKRW(uncovered['해외'])}`);
-  el.textContent = `ℹ️ 목표 항목(티커/자산군)에 해당하지 않는 자산(예: 부동산 등 실물자산) ${parts.join(', ')}은 매수·매도로 조절할 수 없어 리밸런싱 계산에서 제외되었습니다.`;
-  el.classList.remove('hidden');
-}
-
 // [버그 수정 - "리밸런싱 설정" 탭 통합] 예전엔 여기서 "국내/해외 리밸런싱 결과"·"국내/해외 세부
 // 리밸런싱 결과" 아코디언 카드 3개를 채웠으나(renderRebalanceResultGroup/renderTargetRebalanceResultGroup),
 // 요청에 따라 그 카드들을 완전히 삭제하고 그 자리에 더 상세한 "종목별 리밸런싱 실행 가이드"(옛 "실행
 // 가이드" 탭 - renderIndividualRebalanceGuide)를 대신 보여주게 됐다. 목표비중 입력 섹션의 "합계 N%"
 // 배지(updateTargetSum)는 계속 필요하므로 남긴다.
 function updateRebalanceResults() {
-  const { uncovered } = getRebalanceTotals();
   ['국내', '해외'].forEach((region) => updateTargetSum(region));
-  renderUncoveredNote(uncovered);
   renderIndividualRebalanceGuide();
   updateProjection();
 }
