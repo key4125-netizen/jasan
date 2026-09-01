@@ -462,7 +462,10 @@ const state = {
   // customScenarioRates: [수익률 관리] 모달에서 사용자가 등록/수정한 종목별 보수/일반/긍정 수익률
   // 오버라이드 - { [key]: { label, conservative, normal, optimistic } }, key는 sanitizeTicker().yahooTicker
   // 또는 'NAME:정규화이름'(findCustomRateKeyForAsset 참고). 비어있으면 SCENARIO_RATE_PRESETS 기본값을 쓴다.
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {} },
+  // taxAdvantagedPlan: [절세계좌 현황] 카드의 [적립 예상] 팝업 입력값 - years(적립 기간, 년)와
+  // monthlyByOwner(소유자명 → 월 적립 예상액)를 저장한다. owner 키는 자산의 a.owner 필드와 동일한
+  // 문자열('신랑'/'와이프')을 그대로 쓴다.
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { years: 15, monthlyByOwner: { '신랑': 0, '와이프': 0 } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -484,7 +487,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, pnl: null, chartZoom: null, assetDetail: null, stockAnalysis: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
+let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, totalAssetCompare: null, pnl: null, chartZoom: null, assetDetail: null, stockAnalysis: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -752,7 +755,16 @@ function loadState() {
             migrated[yahooTicker] = { label: yahooTicker, normal: num(v) };
           });
           return migrated;
-        })()
+        })(),
+        // [절세계좌 적립 예상 - 하위호환] 예전 버전에는 이 필드 자체가 없었으므로, 없으면 기본값(15년,
+        // 신랑/와이프 월 적립 0원)으로 채운다.
+        taxAdvantagedPlan: {
+          years: (parsed.taxAdvantagedPlan && Number.isFinite(num(parsed.taxAdvantagedPlan.years)) && num(parsed.taxAdvantagedPlan.years) > 0) ? num(parsed.taxAdvantagedPlan.years) : 15,
+          monthlyByOwner: {
+            '신랑': num(parsed.taxAdvantagedPlan && parsed.taxAdvantagedPlan.monthlyByOwner && parsed.taxAdvantagedPlan.monthlyByOwner['신랑']),
+            '와이프': num(parsed.taxAdvantagedPlan && parsed.taxAdvantagedPlan.monthlyByOwner && parsed.taxAdvantagedPlan.monthlyByOwner['와이프'])
+          }
+        }
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }

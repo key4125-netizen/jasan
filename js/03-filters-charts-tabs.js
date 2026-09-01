@@ -218,13 +218,15 @@ function switchTab(tab) {
 document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
 // [리밸런싱/자산예측 통합] 2단계(서브) 탭 전환 - 최상위 탭 상태(state.activeTab)와는 별개로 관리한다.
-// 'target'(리밸런싱 설정 - 목표 비중 입력 + 종목별 실행 가이드), 'projection'(미래 예측) 2개.
+// 'target'(화면 표시 이름은 "포트폴리오 구성" - 목표 비중 입력 + 종목별 실행 가이드), 'projection'
+// (미래 예측) 2개. 내부 키('target')와 DOM id(rebalanceSubTarget)는 탭 이름이 "리밸런싱 설정"이던
+// 시절 그대로 남아있다 - 코드 영향 최소화를 위해 화면 표시 문구만 바꾸고 내부 식별자는 안 건드렸다.
 // [버그 수정 - "목표 비중 설정"/"실행 가이드" 탭 통합] 예전엔 이 둘이 별도 서브탭('target'/'guide')이었으나,
-// 요청에 따라 "리밸런싱 설정" 하나로 합쳤다(HTML의 rebalanceSubTarget 안에 실행 가이드 내용까지 함께
-// 들어있다 - index.html 참고) - 'guide' 키는 이제 존재하지 않는다.
+// 요청에 따라 하나로 합쳤다(HTML의 rebalanceSubTarget 안에 실행 가이드 내용까지 함께 들어있다 -
+// index.html 참고) - 'guide' 키는 이제 존재하지 않는다.
 let rebalanceSubTab = 'target';
 function switchRebalanceSubTab(subTab) {
-  // [버그 수정 - 하위 탭 전환] switchTab()과 별개로 이 하위 탭(리밸런싱 설정/미래예측)끼리만 오갈 때도
+  // [버그 수정 - 하위 탭 전환] switchTab()과 별개로 이 하위 탭(포트폴리오 구성/미래예측)끼리만 오갈 때도
   // (상위 탭은 그대로 'rebalance') 아코디언 초기화·스크롤 초기화가 똑같이 적용돼야 한다.
   resetAllAccordionsOnTabSwitch();
   scrollToTopOnTabSwitch();
@@ -258,7 +260,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -294,6 +296,7 @@ const MODAL_CLOSE_FNS = {
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
   scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack),
+  taxAdvantagedPlanModal: (viaBack) => closeTaxAdvantagedPlanModal(viaBack),
   riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack),
   coreStocksModal: (viaBack) => closeCoreStocksModal(viaBack),
   riskDetailModal: (viaBack) => closeRiskDetailModal(viaBack),
