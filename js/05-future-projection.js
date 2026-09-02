@@ -186,6 +186,16 @@ function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
   const growth = Math.pow(1 + monthlyRate, months);
   return pv * growth + monthlyContribution * (1 + monthlyRate) * ((growth - 1) / monthlyRate);
 }
+// [절세계좌 연납 지원 - 요청 반영] 매년 "초"에 한 번씩 납입하는 연납 버전 - 위 월복리 공식과 완전히
+// 같은 구조(기초급 연금 복리식)를 연 단위 그대로 쓴다(월 환산 없음). 기존 computeFutureValue(월복리
+// 전용)는 다른 호출부(일반계좌 시나리오, 원금 성장 등)에 그대로 쓰이므로 절대 안 건드리고, 절세계좌
+// 계좌별 적립 설정(simulateTaxAdvantagedOwnerGrowth)이 frequency==='yearly'일 때만 이 함수를 쓴다.
+function computeFutureValueAnnual(pv, annualRatePct, years, annualContribution) {
+  const rate = annualRatePct / 100;
+  if (Math.abs(rate) < 1e-9) return pv + annualContribution * years;
+  const growth = Math.pow(1 + rate, years);
+  return pv * growth + annualContribution * (1 + rate) * ((growth - 1) / rate);
+}
 
 // [고정 5년 간격 마일스톤] 예전엔 "실제 달력상 5의 배수 연도"(2030/2035/2040/2045년처럼)를 기준으로
 // 잡아서, 오늘이 몇 년이냐에 따라 "4년후"/"9년후"처럼 불규칙한 오프셋이 나왔다(사용자 실측 신고로
@@ -657,20 +667,15 @@ function getTaxAdvantagedAssetsByOwnerAccount(owner) {
 // 적립 없이 이미 쌓인 금액이 계속 같은 수익률로 복리 성장한다고 가정한다(growWithStop).
 function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears) {
   const plan = state.projection.taxAdvantagedPlan;
-  const contributionYears = num(plan.yearsByOwner[owner]);
-  const monthlyTotal = num(plan.monthlyByOwner[owner]);
-  const allocation = (plan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0);
-
-  const contribYears = Math.min(contributionYears, evalYears);
-  const idleYears = Math.max(0, evalYears - contributionYears);
-  const growWithStop = (pv, rate, monthly) => {
-    const atContribEnd = computeFutureValue(pv, rate, contribYears, monthly);
-    return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
-  };
+  const accountPlans = (plan.contributionByOwnerAccount && plan.contributionByOwnerAccount[owner]) || [];
 
   let total = 0;
 
-  // 1) 원금 - 실제 보유 종목별 대표 매칭 수익률로 독립 복리 성장(신규 적립 없이, PMT=0).
+  // 1) 원금 - 실제 보유 종목별 대표 매칭 수익률로 독립 복리 성장(신규 적립 없이, PMT=0). [계좌별 적립
+  // 설정 - 리팩터링] 예전엔 owner의 단일 적립기간(contribYears/idleYears)으로 두 단계 나눠 계산했는데,
+  // PMT=0일 때 두 단계로 나눠 계산한 값은 한 번에 evalYears만큼 계산한 값과 수학적으로 완전히 같다
+  // (연속 복리 곱셈 법칙: (1+r)^a * (1+r)^b = (1+r)^(a+b)) - 계좌마다 적립기간이 달라질 수 있는 이제는
+  // 원금 성장 자체를 특정 계좌 기간에 묶을 이유가 없으므로 한 번에 계산하도록 단순화한다(결과값 불변).
   const principalGroups = {}; // key -> { value, sample }
   state.assets.forEach((a) => {
     if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
@@ -680,23 +685,62 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears) {
   });
   Object.keys(principalGroups).forEach((key) => {
     const g = principalGroups[key];
-    total += growWithStop(g.value, getAssetProjectionRate(g.sample, presetKey), 0);
+    total += computeFutureValue(g.value, getAssetProjectionRate(g.sample, presetKey), evalYears, 0);
   });
 
-  // 2) 배분된 월 적립금 - 종목별 독립 복리.
-  const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
-  allocation.forEach((item) => {
-    total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey), monthlyTotal * num(item.pct) / 100);
-  });
-
-  // 3) 배분되지 않은 나머지 - 위험:안전(KOSPI:채권) 70:30 고정 폴백.
-  const remainderPct = Math.max(0, 100 - allocatedPct);
-  if (remainderPct > 0) {
-    const remainderMonthly = monthlyTotal * remainderPct / 100;
-    const riskShare = TAX_ADVANTAGED_RISK_SHARE;
-    total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare);
-    total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare));
+  if (accountPlans.length === 0) {
+    // [하위호환 폴백] 이 소유자가 새 계좌별 적립 설정을 하나도 등록하지 않았으면(마이그레이션 직후
+    // 또는 아직 안 써본 사용자), 예전처럼 owner 전체를 하나의 풀로 취급하는 monthlyByOwner/
+    // yearsByOwner 기준으로 계산한다 - 기존 동작과 완전히 동일(회귀 없음).
+    const contributionYears = num(plan.yearsByOwner[owner]);
+    const monthlyTotal = num(plan.monthlyByOwner[owner]);
+    const allocation = (plan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0);
+    const contribYears = Math.min(contributionYears, evalYears);
+    const idleYears = Math.max(0, evalYears - contributionYears);
+    const growWithStop = (pv, rate, monthly) => {
+      const atContribEnd = computeFutureValue(pv, rate, contribYears, monthly);
+      return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
+    };
+    const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
+    allocation.forEach((item) => {
+      total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey), monthlyTotal * num(item.pct) / 100);
+    });
+    const remainderPct = Math.max(0, 100 - allocatedPct);
+    if (remainderPct > 0) {
+      const remainderMonthly = monthlyTotal * remainderPct / 100;
+      const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+      total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare);
+      total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare));
+    }
+    return total;
   }
+
+  // [계좌별 적립 설정 - 요청 반영] 계좌(accountType)마다 독립적인 납입주기(매월/매년)·금액·기간을 쓴다 -
+  // 계좌마다 다른 시점에 납입이 끝나고, 그 이후엔 해당 계좌 몫만 복리로 계속 성장한다.
+  accountPlans.forEach((acc) => {
+    const accYears = num(acc.years);
+    const contribYears = Math.min(accYears, evalYears);
+    const idleYears = Math.max(0, evalYears - accYears);
+    const grow = (rate, amount) => {
+      const computeFn = acc.frequency === 'yearly' ? computeFutureValueAnnual : computeFutureValue;
+      const atContribEnd = computeFn(0, rate, contribYears, amount);
+      return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
+    };
+    // 이 계좌(accountType)에 배분된 종목만 - pct의 의미가 "이 계좌 적립금 중 비중"으로 바뀐다.
+    const allocation = (plan.allocationByOwner[owner] || [])
+      .filter((it) => it.accountType === acc.accountType && num(it.pct) > 0);
+    const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
+    allocation.forEach((item) => {
+      total += grow(getMonthlyAllocationItemRate(item, presetKey), num(acc.amount) * num(item.pct) / 100);
+    });
+    const remainderPct = Math.max(0, 100 - allocatedPct);
+    if (remainderPct > 0) {
+      const remainderAmount = num(acc.amount) * remainderPct / 100;
+      const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+      total += grow(getEffectiveIndexRate(presetKey, 'domestic'), remainderAmount * riskShare);
+      total += grow(getReferenceRate(presetKey, 'BOND'), remainderAmount * (1 - riskShare));
+    }
+  });
 
   return total;
 }
@@ -774,14 +818,14 @@ function renderTaxAdvantagedCard() {
   lucide.createIcons();
 }
 
+function taxAdvantagedContributionContainerId(owner) { return owner === '신랑' ? 'taxAdvantagedContributionHusband' : 'taxAdvantagedContributionWife'; }
+function taxAdvantagedAllocationContainerId(owner) { return owner === '신랑' ? 'taxAdvantagedAllocationHusband' : 'taxAdvantagedAllocationWife'; }
+
 function openTaxAdvantagedPlanModal() {
-  const plan = state.projection.taxAdvantagedPlan;
-  document.getElementById('taxAdvantagedMonthlyHusbandInput').value = plan.monthlyByOwner['신랑'] || '';
-  document.getElementById('taxAdvantagedYearsHusbandInput').value = plan.yearsByOwner['신랑'];
-  document.getElementById('taxAdvantagedMonthlyWifeInput').value = plan.monthlyByOwner['와이프'] || '';
-  document.getElementById('taxAdvantagedYearsWifeInput').value = plan.yearsByOwner['와이프'];
-  renderTaxAdvantagedAllocationEditor('신랑', 'taxAdvantagedAllocationHusband', 'taxAdvantagedAllocationSumHusband');
-  renderTaxAdvantagedAllocationEditor('와이프', 'taxAdvantagedAllocationWife', 'taxAdvantagedAllocationSumWife');
+  TAX_ADVANTAGED_OWNERS.forEach((owner) => {
+    renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
+    renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
+  });
   renderTaxAdvantagedPlanResults();
   document.getElementById('taxAdvantagedPlanModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -793,81 +837,120 @@ function closeTaxAdvantagedPlanModal(viaBackButton) {
 document.getElementById('taxAdvantagedPlanBtn').addEventListener('click', () => openTaxAdvantagedPlanModal());
 document.getElementById('closeTaxAdvantagedPlanModalBtn').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
 document.getElementById('closeTaxAdvantagedPlanModalBtnBottom').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
-document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
-  if (e.target.id === 'taxAdvantagedPlanModal') closeTaxAdvantagedPlanModal(false);
-});
 
-// 입력값이 바뀔 때마다 state.projection.taxAdvantagedPlan에 즉시 저장하고(다른 입력창들과 동일 패턴)
-// 결과를 다시 계산해 보여준다. [개별 적립 기간 지원] 신랑/와이프 각자의 적립 기간(년)을 독립적으로 읽는다.
-// [버그 수정 - allocationByOwner 유실] 예전엔 이 객체를 통째로 새로 만들어 덮어써서, 월 적립금/적립
-// 기간을 한 글자만 고쳐도 방금 설정한 계좌별·종목별 배분이 전부 날아갔다 - 이제 기존 allocationByOwner를
-// 그대로 이어받는다(spread).
-function onTaxAdvantagedPlanInputChange() {
-  const yearsFor = (id) => Math.max(1, num(document.getElementById(id).value) || 15);
-  state.projection.taxAdvantagedPlan = {
-    ...state.projection.taxAdvantagedPlan,
-    yearsByOwner: {
-      '신랑': yearsFor('taxAdvantagedYearsHusbandInput'),
-      '와이프': yearsFor('taxAdvantagedYearsWifeInput')
-    },
-    monthlyByOwner: {
-      '신랑': num(document.getElementById('taxAdvantagedMonthlyHusbandInput').value),
-      '와이프': num(document.getElementById('taxAdvantagedMonthlyWifeInput').value)
-    }
-  };
-  persistProjection();
-  renderTaxAdvantagedPlanResults();
-  updateProjection(); // [시나리오별 총자산] 카드도 이 적립 계획을 참조하므로 함께 갱신한다
+// [계좌별 적립 설정 - 요청 반영] 소유자 하나(owner)가 등록한 계좌(accountType)별 (납입주기, 금액, 기간)
+// 목록을 그린다 - 계좌 이름은 이 앱 전체에서 그렇듯 고정 목록이 아니라 자유 텍스트라(자산 등록 폼과
+// 동일 관례), 이미 보유 중인 계좌종류를 datalist로 제안만 하고 새 이름도 자유롭게 입력할 수 있다.
+// 빈 항목이 하나도 없으면 [+ 계좈 추가]로 시작하라는 안내만 보여준다 - 이 경우
+// simulateTaxAdvantagedOwnerGrowth가 예전처럼 owner 전체 단일 풀(monthlyByOwner/yearsByOwner)로
+// 계산하는 하위호환 폴백을 그대로 쓴다.
+function renderTaxAdvantagedContributionList(owner, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner] || [];
+  const existingAccountTypes = Object.keys(getTaxAdvantagedAssetsByOwnerAccount(owner));
+  const datalistId = `${containerId}AccountTypeList`;
+  const datalistHtml = `<datalist id="${datalistId}">${existingAccountTypes.map((t) => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`;
+  if (list.length === 0) {
+    container.innerHTML = `${datalistHtml}<p class="text-[11px] text-slate-400 py-1">아직 등록된 계좌 적립 설정이 없습니다 - 아래 [+ 계좌 추가]로 시작하세요(등록 전까지는 예전처럼 계좌 구분 없는 적립액으로 계산됩니다).</p>`;
+    return;
+  }
+  container.innerHTML = datalistHtml + list.map((acc, idx) => `
+    <div class="flex items-center gap-1 mb-1.5 last:mb-0">
+      <input type="text" value="${escapeHtml(acc.accountType)}" list="${datalistId}" placeholder="계좌종류"
+        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="accountType"
+        class="tax-contrib-input w-16 shrink-0 text-[11px] font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+      <select data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="frequency"
+        class="tax-contrib-input shrink-0 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+        <option value="monthly" ${acc.frequency === 'yearly' ? '' : 'selected'}>매월</option>
+        <option value="yearly" ${acc.frequency === 'yearly' ? 'selected' : ''}>매년</option>
+      </select>
+      <input type="number" step="any" value="${acc.amount || ''}" placeholder="금액"
+        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="amount"
+        class="tax-contrib-input flex-1 min-w-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+      <input type="number" step="1" min="1" value="${acc.years || ''}" placeholder="년"
+        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="years"
+        class="tax-contrib-input w-11 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+      <button type="button" class="tax-contrib-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400"
+        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" title="삭제">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>`).join('');
+  lucide.createIcons();
 }
-['taxAdvantagedMonthlyHusbandInput', 'taxAdvantagedYearsHusbandInput', 'taxAdvantagedMonthlyWifeInput', 'taxAdvantagedYearsWifeInput'].forEach((id) => {
-  document.getElementById(id).addEventListener('input', onTaxAdvantagedPlanInputChange);
-});
+function addTaxAdvantagedAccount(owner) {
+  const plan = state.projection.taxAdvantagedPlan;
+  const list = plan.contributionByOwnerAccount[owner] || (plan.contributionByOwnerAccount[owner] = []);
+  list.push({ accountType: '', frequency: 'monthly', amount: 0, years: 15 });
+  persistProjection();
+  renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
+  renderTaxAdvantagedPlanResults();
+  updateProjection();
+}
+document.getElementById('taxAdvantagedAddAccountHusbandBtn').addEventListener('click', () => addTaxAdvantagedAccount('신랑'));
+document.getElementById('taxAdvantagedAddAccountWifeBtn').addEventListener('click', () => addTaxAdvantagedAccount('와이프'));
 
-// [계좌별·종목별 배분 편집기 - 요청 반영] 이 소유자가 실제 보유 중인 절세계좌 종목을 계좌종류별로 묶어
-// 보여주고, 각 종목마다 월 적립금 대비 배분 비중(%) 입력칸을 하나씩 그린다. 보유 종목이 하나도 없으면
-// (신규 계좌 등) 배분할 대상이 없다는 안내만 보여준다 - 이 경우 월 적립금 전액이 simulateTaxAdvantaged
-// OwnerGrowth의 위험:안전 70:30 폴백으로 계산된다(요청한 예외 상황 폴백).
-function renderTaxAdvantagedAllocationEditor(owner, containerId, sumHintId) {
+// [계좌별·종목별 배분 편집기] 이 소유자가 실제 보유 중인 절세계좌 종목을 계좌종류별로 묶어 보여주고,
+// 각 종목마다 그 계좌 적립금 대비 배분 비중(%) 입력칸을 하나씩 그린다. [계좌별 적립 설정 - 요청 반영]
+// pct의 의미가 "owner 전체 적립금 중 비중"에서 "그 계좌 적립금 중 비중"으로 바뀌었으므로, 합계 힌트도
+// owner 전체 하나가 아니라 계좌마다 따로 보여준다(updateTaxAdvantagedAllocationSumHint).
+function renderTaxAdvantagedAllocationEditor(owner, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const byAccount = getTaxAdvantagedAssetsByOwnerAccount(owner);
   const accountTypes = Object.keys(byAccount).sort();
   if (accountTypes.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좌 종목이 없습니다 - 월 적립금 전액이 위험:안전 70:30 비율로 계산됩니다.</p>';
-  } else {
-    const allocation = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
-    const pctFor = (accType, ticker) => {
-      const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
-      return found ? found.pct : 0;
-    };
-    container.innerHTML = accountTypes.map((accType) => `
-      <div class="mt-2 first:mt-0">
-        <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">${escapeHtml(accType)}</p>
-        <div class="space-y-1">
-          ${byAccount[accType].map((asset) => `
-          <div class="flex items-center gap-1.5">
-            <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
-            <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, asset.ticker)}"
-              data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(asset.ticker)}" data-alloc-label="${escapeHtml(asset.name)}"
-              class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-            <span class="text-[10px] text-slate-400 shrink-0">%</span>
-          </div>`).join('')}
-        </div>
-      </div>`).join('');
+    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좌 종목이 없습니다 - 적립금 전액이 위험:안전 70:30 비율로 계산됩니다.</p>';
+    return;
   }
-  updateTaxAdvantagedAllocationSumHint(owner, sumHintId);
-}
-function updateTaxAdvantagedAllocationSumHint(owner, sumHintId) {
-  const el = document.getElementById(sumHintId);
-  if (!el) return;
   const allocation = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
-  const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
-  el.textContent = `배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
+  const pctFor = (accType, ticker) => {
+    const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
+    return found ? found.pct : 0;
+  };
+  container.innerHTML = accountTypes.map((accType) => `
+    <div class="mt-2 first:mt-0">
+      <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">${escapeHtml(accType)}</p>
+      <div class="space-y-1">
+        ${byAccount[accType].map((asset) => `
+        <div class="flex items-center gap-1.5">
+          <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
+          <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, asset.ticker)}"
+            data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(asset.ticker)}" data-alloc-label="${escapeHtml(asset.name)}"
+            class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-[10px] text-slate-400 shrink-0">%</span>
+        </div>`).join('')}
+      </div>
+      <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
+    </div>`).join('');
+  accountTypes.forEach((accType) => updateTaxAdvantagedAllocationSumHint(owner, accType));
 }
-// [이벤트 위임] 종목 리스트를 매번 다시 그릴 때마다(계좌 추가 등) 리스너를 새로 붙일 필요가 없도록,
-// 절대 다시 그려지지 않는 모달 자체에 하나만 걸어둔다. 입력할 때마다 리스트 전체를 다시 그리면 포커스가
-// 끊겨 타이핑이 불편해지므로, 값만 state에 반영하고 합계 안내문/결과표/시나리오별 총자산만 갱신한다.
+function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
+  const el = document.querySelector(`.tax-alloc-sum-hint[data-alloc-sum-owner="${CSS.escape(owner)}"][data-alloc-sum-account="${CSS.escape(accountType)}"]`);
+  if (!el) return;
+  const allocation = (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || []).filter((it) => it.accountType === accountType);
+  const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
+  el.textContent = `이 계좌 배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
+}
+// [이벤트 위임] 두 리스트(계좌 적립 설정 / 계좌별·종목별 배분)를 매번 다시 그릴 때마다 리스너를 새로
+// 붙일 필요가 없도록, 절대 다시 그려지지 않는 모달 자체에 하나씩만 걸어둔다. 입력할 때마다 리스트
+// 전체를 다시 그리면 포커스가 끊겨 타이핑이 불편해지므로, 값만 state에 반영하고 합계 안내문/결과표/
+// 시나리오별 총자산만 갱신한다(계좌 이름 자체를 고칠 때만 배분 섹션을 다시 그린다 - 그룹핑 기준이 바뀌므로).
 document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) => {
+  const contribInput = e.target.closest('.tax-contrib-input');
+  if (contribInput) {
+    const owner = contribInput.dataset.contribOwner;
+    const idx = Number(contribInput.dataset.contribIdx);
+    const field = contribInput.dataset.contribField;
+    const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner];
+    if (!list || !list[idx]) return;
+    list[idx][field] = (field === 'accountType' || field === 'frequency') ? contribInput.value : num(contribInput.value);
+    persistProjection();
+    if (field === 'accountType') renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
+    renderTaxAdvantagedPlanResults();
+    updateProjection();
+    return;
+  }
   const input = e.target.closest('.tax-alloc-input');
   if (!input) return;
   const owner = input.dataset.allocOwner;
@@ -884,7 +967,21 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
     list.splice(idx, 1); // 0%로 낮추면 배분 목록에서 완전히 제거해 깔끔하게 유지한다.
   }
   persistProjection();
-  updateTaxAdvantagedAllocationSumHint(owner, owner === '신랑' ? 'taxAdvantagedAllocationSumHusband' : 'taxAdvantagedAllocationSumWife');
+  updateTaxAdvantagedAllocationSumHint(owner, accountType);
+  renderTaxAdvantagedPlanResults();
+  updateProjection();
+});
+document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
+  if (e.target.id === 'taxAdvantagedPlanModal') { closeTaxAdvantagedPlanModal(false); return; }
+  const removeBtn = e.target.closest('.tax-contrib-remove-btn');
+  if (!removeBtn) return;
+  const owner = removeBtn.dataset.contribOwner;
+  const idx = Number(removeBtn.dataset.contribIdx);
+  const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner];
+  if (list) list.splice(idx, 1);
+  persistProjection();
+  renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
+  renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
   renderTaxAdvantagedPlanResults();
   updateProjection();
 });
@@ -893,18 +990,29 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
 // 자기 자신의 yearsByOwner만큼의 결과를 보여준다 - "합계" 행은 서로 다른 두 시점의 금액을 단순히 더한
 // 값이라는 점을 아래 안내 문구에서 명시한다(합계 자체는 "각자 자기 목표 시점에 도달했을 때의 총액"으로
 // 자연스럽게 해석된다).
+// [계좌별 적립 설정 - 요청 반영] 예전엔 owner 전체가 단일 적립기간(yearsByOwner)을 가져 "N년 후"가
+// 하나로 정해졌는데, 이제 계좌마다 기간이 다를 수 있어 하나의 숫자로 대표할 수 없다 - 그 owner가 등록한
+// 계좌들 중 가장 늦게 끝나는 기간(모든 계좌의 납입이 끝난 뒤 = "완전히 쌓인" 시점)을 기준으로 삼는다.
+// 계좌별 설정이 하나도 없으면(하위호환) 예전 yearsByOwner로 폴백한다.
+function getTaxAdvantagedOwnerHorizon(owner) {
+  const plan = state.projection.taxAdvantagedPlan;
+  const accs = plan.contributionByOwnerAccount[owner] || [];
+  if (accs.length > 0) return Math.max(...accs.map((a) => num(a.years)));
+  return num(plan.yearsByOwner[owner]) || 15;
+}
 function renderTaxAdvantagedPlanResults() {
   const container = document.getElementById('taxAdvantagedPlanResults');
   if (!container) return;
-  const plan = state.projection.taxAdvantagedPlan;
   const presetKeys = ['conservative', 'normal', 'optimistic'];
   const presetLabels = { conservative: '보수적', normal: '일반적', optimistic: '긍정적' };
+  const horizonByOwner = {};
+  TAX_ADVANTAGED_OWNERS.forEach((o) => { horizonByOwner[o] = getTaxAdvantagedOwnerHorizon(o); });
   const rows = [...TAX_ADVANTAGED_OWNERS, '합계'].map((owner) => {
     const values = presetKeys.map((presetKey) => {
       if (owner === '합계') {
-        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedOwnerGrowth(o, presetKey, num(plan.yearsByOwner[o])), 0);
+        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedOwnerGrowth(o, presetKey, horizonByOwner[o]), 0);
       }
-      return simulateTaxAdvantagedOwnerGrowth(owner, presetKey, num(plan.yearsByOwner[owner]));
+      return simulateTaxAdvantagedOwnerGrowth(owner, presetKey, horizonByOwner[owner]);
     });
     return { owner, values };
   });
@@ -919,7 +1027,7 @@ function renderTaxAdvantagedPlanResults() {
       </thead>
       <tbody>
         ${rows.map((r) => {
-          const rowLabel = r.owner === '합계' ? '합계' : `${r.owner} (${num(plan.yearsByOwner[r.owner])}년 후)`;
+          const rowLabel = r.owner === '합계' ? '합계' : `${r.owner} (${horizonByOwner[r.owner]}년 후)`;
           return `
         <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${r.owner === '합계' ? 'font-bold' : ''}">
           <td class="py-2 pr-2 text-slate-600 dark:text-slate-300 whitespace-nowrap">${escapeHtml(rowLabel)}</td>
@@ -929,7 +1037,7 @@ function renderTaxAdvantagedPlanResults() {
       </tbody>
     </table>
   </div>
-  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${num(plan.yearsByOwner['신랑'])}년 후, 와이프는 ${num(plan.yearsByOwner['와이프'])}년 후 각자의 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 실제 보유 중인 종목과 아래에서 배분한 종목은 각자의 대표 수익률로, 배분되지 않은 나머지 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 복리 성장한다고 가정합니다.</p>`;
+  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${horizonByOwner['신랑']}년 후, 와이프는 ${horizonByOwner['와이프']}년 후(각자 등록한 계좌 중 가장 늦게 끝나는 계좌 기준) 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 실제 보유 중인 종목과 계좌별로 배분한 종목은 각자의 대표 수익률로, 배분되지 않은 나머지 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 복리 성장한다고 가정합니다.</p>`;
 }
 
 /* -------------------------------------------------------------------------

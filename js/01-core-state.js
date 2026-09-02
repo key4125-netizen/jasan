@@ -477,7 +477,7 @@ const state = {
   // [{ ticker, label, pct }, ...]. "포트폴리오 구성" 탭의 목표 비중(리밸런싱용)과는 완전히 별개다.
   // 빈 배열이면(기본값) 예전처럼 국내/해외 목표 비중 비례로만 계산된다(simulateMonthlyContributionGrowth,
   // js/05 참고).
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [] },
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [] },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -722,6 +722,21 @@ function normalizeTaxAdvantagedAllocationList(raw) {
     }));
 }
 
+// [계좌별(소유자×계좌종류) 적립 설정 - 값 정규화] 배열 아니면 빈 배열로, 각 항목은 accountType(빈
+// 문자열 아님) + amount/years 둘 다 양수여야 유효한 항목으로 인정한다(하나라도 없으면 그 항목만
+// 버림 - 손상된 값 하나가 전체 시뮬레이션을 NaN으로 오염시키지 않도록). frequency는 'yearly'가 아니면
+// 무조건 'monthly'로 강제한다(오타/손상값 방어).
+function normalizeContributionByOwnerAccountList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((it) => it && typeof it === 'object' && String(it.accountType ?? '').trim() && num(it.amount) > 0 && num(it.years) > 0)
+    .map((it) => ({
+      accountType: String(it.accountType).trim(),
+      frequency: it.frequency === 'yearly' ? 'yearly' : 'monthly',
+      amount: num(it.amount),
+      years: num(it.years)
+    }));
+}
 function normalizeTaxAdvantagedPlan(raw) {
   const legacyYears = (raw && Number.isFinite(num(raw.years)) && num(raw.years) > 0) ? num(raw.years) : 15;
   const yearsFor = (owner) => {
@@ -737,6 +752,13 @@ function normalizeTaxAdvantagedPlan(raw) {
     allocationByOwner: {
       '신랑': normalizeTaxAdvantagedAllocationList(raw && raw.allocationByOwner && raw.allocationByOwner['신랑']),
       '와이프': normalizeTaxAdvantagedAllocationList(raw && raw.allocationByOwner && raw.allocationByOwner['와이프'])
+    },
+    // [계좌별 적립 설정 - 요청 반영] 소유자×계좌종류(ISA/IRP/연금저축 등) 조합마다 독립적인 납입주기
+    // (매월/매년)·금액·기간을 설정한다 - 비어있는 소유자는 simulateTaxAdvantagedOwnerGrowth(js/05)가
+    // 위 yearsByOwner/monthlyByOwner(레거시, owner 전체 단일 풀) 폴백으로 계속 계산한다.
+    contributionByOwnerAccount: {
+      '신랑': normalizeContributionByOwnerAccountList(raw && raw.contributionByOwnerAccount && raw.contributionByOwnerAccount['신랑']),
+      '와이프': normalizeContributionByOwnerAccountList(raw && raw.contributionByOwnerAccount && raw.contributionByOwnerAccount['와이프'])
     }
   };
 }
@@ -749,6 +771,25 @@ function normalizeMonthlyContributionAllocation(raw) {
   return raw
     .filter((it) => it && typeof it === 'object' && it.ticker && Number.isFinite(num(it.pct)))
     .map((it) => ({ ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct) }));
+}
+
+// [버그 수정 - 엑셀 재업로드 시 일간손익 이중 누적 정리, 1회성] 소급 채우기 "이미 채움" 판정 기준을
+// asset.id에서 소유자+계좌구분+티커 지문으로 바꾼 것(js/11 getBackfillFingerprint)과 짝을 이루는
+// 데이터 정리 - 그 버그 때문에 이미 최근 1년 구간에 중복 누적된 dailySnapshots 과거값을 걷어낸다.
+// 오늘 날짜 스냅샷은 실시간 기록(recordDailySnapshot)이 만든 진짜 값이라 절대 건드리지 않고, 그 이전
+// 날짜만 지운다 - 전부 backfillDailyPnlHistory가 실제 종가 이력으로 다시 정확하게 채워 넣으므로
+// (bootApp이 매번 부팅 시 backfillAllHoldingsDailyPnlHistory를 호출) 값을 잃는 게 아니라 중복만
+// 제거되고 정상적으로 다시 채워진다. 딱 한 번만 실행되도록 플래그로 막는다(매번 실행하면 매 부팅마다
+// 과거 이력을 통째로 날리고 API를 다시 두들겨야 해서 낭비).
+const LS_DAILY_SNAPSHOT_DEDUP_MIGRATED = 'sam_daily_snapshot_dedup_migrated_v1';
+function remediateDuplicatedDailySnapshotHistory() {
+  if (localStorage.getItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED) === '1') return;
+  const today = todayDateStr();
+  Object.keys(state.dailySnapshots).forEach((dateKey) => {
+    if (dateKey < today) delete state.dailySnapshots[dateKey];
+  });
+  localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
+  localStorage.setItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED, '1');
 }
 
 function loadState() {
@@ -770,6 +811,19 @@ function loadState() {
   // 최초 1회 "지금"으로 채워 넣는다(이후로는 실제 수정 시각이 정확히 기록됨). 되돌릴 필요 없는 단순
   // 채움이라 매번 훑어도 안전하다(이미 값이 있으면 건드리지 않음).
   state.assets.forEach((a) => { if (!a.updatedAt) a.updatedAt = Date.now(); });
+  // [대표매칭 키 개명 마이그레이션 - 버그 수정] 자산에 직접 지정해둔 대표매칭 오버라이드가 옛 키
+  // (SPYM/QQQM)를 가리키고 있으면 새 키(S&P500/NASDAQ)로 함께 옮긴다 - 안 옮기면 이 자산만 옛 키로
+  // "고아 항목" 취급되어 "수익률 관리" 팝업에 정상 항목과 별도로 중복 표시된다(customScenarioRates
+  // 마이그레이션과 동일한 이유, 아래 참고).
+  const RATE_MATCH_OVERRIDE_RENAMES = { SPYM: 'S&P500', QQQM: 'NASDAQ' };
+  let rateMatchOverrideRenamed = false;
+  state.assets.forEach((a) => {
+    if (RATE_MATCH_OVERRIDE_RENAMES[a.rateMatchOverride]) {
+      a.rateMatchOverride = RATE_MATCH_OVERRIDE_RENAMES[a.rateMatchOverride];
+      rateMatchOverrideRenamed = true;
+    }
+  });
+  if (rateMatchOverrideRenamed) persistAssets();
   localStorage.setItem(LS_HAS_LAUNCHED, '1');
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;
@@ -817,6 +871,17 @@ function loadState() {
             if (migrated[yahooTicker] || v === undefined || v === '' || !Number.isFinite(num(v))) return;
             migrated[yahooTicker] = { label: yahooTicker, normal: num(v) };
           });
+          // [대표매칭 키 개명 마이그레이션 - 버그 수정] SPYM->S&P500, QQQM->NASDAQ로 시스템 대표매칭
+          // 키 이름을 바꾸면서, 이미 기기에 저장돼 있던 옛 키(SPYM/QQQM) 항목이 새 키(S&P500/NASDAQ)와
+          // "수익률 관리" 팝업에 나란히 중복으로 남는 문제가 있었다 - 새 키가 아직 없으면 옛 항목을 그대로
+          // 옮기고, 새 키가 이미 있으면(엑셀 재업로드 등으로 새로 등록됨) 옛 항목은 버린다(새 값 우선).
+          const RATE_KEY_RENAMES = { SPYM: 'S&P500', QQQM: 'NASDAQ' };
+          Object.keys(RATE_KEY_RENAMES).forEach((oldKey) => {
+            if (!migrated[oldKey]) return;
+            const newKey = RATE_KEY_RENAMES[oldKey];
+            if (!migrated[newKey]) migrated[newKey] = migrated[oldKey];
+            delete migrated[oldKey];
+          });
           return migrated;
         })(),
         // [절세계좌 적립 예상 - 하위호환] normalizeTaxAdvantagedPlan이 필드 부재/구버전 단일 years 구조를
@@ -843,6 +908,7 @@ function loadState() {
     const parsedSnap = snapRaw ? JSON.parse(snapRaw) : null;
     state.dailySnapshots = (parsedSnap && typeof parsedSnap === 'object' && !Array.isArray(parsedSnap)) ? parsedSnap : {};
   } catch (e) { state.dailySnapshots = {}; }
+  remediateDuplicatedDailySnapshotHistory();
 
   try {
     const learnedRaw = localStorage.getItem(LS_LEARNED_TICKER_NAMES);
