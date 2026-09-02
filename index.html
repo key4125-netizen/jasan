@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v185</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v186</p>
           </div>
         </div>
 
@@ -1044,10 +1044,48 @@
          이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
     <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
 
+    <!-- [소유자별 독립 목표 비중 - Option B] 예전엔 가구 전체가 목표를 하나만 공유했으나, 신랑/와이프가
+         각자 다른 투자 성향을 가질 수 있어 완전히 독립된 카드 세트 2벌(신랑용/와이프용)로 나눴다 -
+         팝업(rebalanceTargetModal)은 하나를 공유하되 openRebalanceTargetModal(owner)로 어느 쪽을
+         편집 중인지 구분한다(js/04 rebalanceModalOwner 참고). -->
     <!-- [모바일 가로 병렬 배치] 국내/해외 목표비중 카드는 위쪽에 전체 폭으로(col-span-2) 두고, 그
          바로 아래 국내 세부/미국 세부 카드 2개를 화면 폭과 무관하게 항상 나란히(50:50) 배치한다.
          lg(1024px) 이상 큰 화면에서는 기존처럼 3개 카드가 한 줄에 나란히 보이도록 lg:grid-cols-3 +
          lg:col-span-1로 되돌린다. -->
+    <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-1.5">👤 신랑 목표 비중</h3>
+    <section class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4">
+      <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-sm font-semibold flex items-center gap-1">
+            국내/해외 목표 비중
+            <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다."></i>
+          </h3>
+          <button type="button" data-rebalance-detail-btn data-owner="신랑" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외</p>
+        <div id="domesticTargetInputsHusband" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
+      </div>
+      <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
+          <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
+          <span id="categoryTargetSumDomesticHusband" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+        </div>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
+        <div id="categoryTargetInputsDomesticHusband" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
+        <p id="categoryTargetWarningDomesticHusband" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+      </div>
+      <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
+          <h3 class="text-xs sm:text-sm font-semibold">해외 세부 목표 비중</h3>
+          <span id="categoryTargetSumForeignHusband" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+        </div>
+        <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
+        <div id="categoryTargetInputsForeignHusband" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
+        <p id="categoryTargetWarningForeignHusband" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+      </div>
+    </section>
+
+    <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-1.5">👤 와이프 목표 비중</h3>
     <section class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
       <div class="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm">
         <div class="flex items-center justify-between mb-1">
@@ -1055,35 +1093,43 @@
             국내/해외 목표 비중
             <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다."></i>
           </h3>
-          <button type="button" id="domesticTargetDetailBtn" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+          <button type="button" data-rebalance-detail-btn data-owner="와이프" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
-        <!-- [상단 안내 문구 축소] 예전엔 3줄짜리 설명을 항상 펼쳐 보여줘 세로 공간을 많이 썼다 - 한 줄
-             요약만 남기고, 나머지 상세 설명은 제목 옆 도움말(?) 아이콘의 title 툴팁으로 옮겼다. -->
         <p class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외</p>
-        <div id="domesticTargetInputs" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
+        <div id="domesticTargetInputsWife" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
-        <!-- [모바일 시인성 개선] 반쪽 폭 카드에서 제목+"합계 N%" 배지를 한 줄에 억지로 넣으면 CJK 기본
-             줄바꿈 규칙 때문에 "비중" 같은 단어 중간이 잘려("국내 세부 목표 비 / 중") 보기 흉했다 - 좁은
-             화면에서는 제목과 배지를 위아래로 나눠 각자 카드 전체 폭을 쓰게 한다. -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">국내 세부 목표 비중</h3>
-          <span id="categoryTargetSumDomestic" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+          <span id="categoryTargetSumDomesticWife" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">국내 배분 내에서의 비중(합계 100%). 특정 티커(KODEX 200TR 등)는 개별 지정하고, 나머지는 자산군(주식/채권/현금)으로 묶어 관리합니다.</p>
-        <div id="categoryTargetInputsDomestic" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
-        <p id="categoryTargetWarningDomestic" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+        <div id="categoryTargetInputsDomesticWife" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
+        <p id="categoryTargetWarningDomesticWife" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
-        <!-- [모바일 시인성 개선] 국내 세부 목표 비중 카드와 동일한 이유. -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
           <h3 class="text-xs sm:text-sm font-semibold">해외 세부 목표 비중</h3>
-          <span id="categoryTargetSumForeign" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
+          <span id="categoryTargetSumForeignWife" class="text-[10px] sm:text-xs font-semibold">합계 0%</span>
         </div>
         <p class="hidden sm:block text-[11px] text-slate-400 mb-3 mt-1">해외 배분 내에서의 비중(합계 100%). QQQM/SPYM/SCHD 각 티커를 개별 지정합니다.</p>
-        <div id="categoryTargetInputsForeign" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
-        <p id="categoryTargetWarningForeign" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
+        <div id="categoryTargetInputsForeignWife" class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-3 mt-1.5 sm:mt-0"></div>
+        <p id="categoryTargetWarningForeignWife" class="hidden text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 mt-2">⚠️ 합계가 100%가 아닙니다. 그래도 입력한 값 기준으로 계산은 진행됩니다.</p>
       </div>
+    </section>
+
+    <!-- [Part 3] 일반계좌 기준 포지션별(공격수/미드필더/수비수/코어자산) 비중 분석 - 기본은 부부 합산,
+         버튼으로 신랑/와이프 개별 비중을 팝업으로 볼 수 있다(computePositionRoleBreakdown, js/04). -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-6">
+      <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <h3 class="text-sm font-semibold flex items-center gap-1">⚽ 포지션별 비중 분석 <span class="text-[11px] font-normal text-slate-400">(부부 합산)</span></h3>
+        <div class="flex items-center gap-1.5">
+          <button type="button" data-position-breakdown-owner-btn data-owner="신랑" class="detail-btn shrink-0">신랑 비중</button>
+          <button type="button" data-position-breakdown-owner-btn data-owner="와이프" class="detail-btn shrink-0">와이프 비중</button>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌·부동산 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.</p>
+      <div id="positionRoleBreakdownBars"></div>
     </section>
 
     <!-- ===== 종목별 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이
@@ -1268,6 +1314,51 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션 (신설) =====
+         가구 전체(일반계좌+절세계좌, 부동산 제외) 금융자산을 대상으로 기하 브라운 운동(GBM) 1,000회
+         반복 시뮬레이션 - σ는 RISK 엔진 실측 연환산 변동성(state.advancedRiskMetrics), μ는 "일반적"
+         프리셋 가중평균 기대수익률을 재사용한다(renderMonteCarloSection, js/05). state.advancedRiskMetrics가
+         아직 계산 전(null)이면 로딩 문구만 보여주고, 시세 갱신이 끝나면 renderAll()이 자동으로 다시
+         채운다. -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-4 mb-6">
+      <h3 class="text-sm font-semibold flex items-center gap-1">🎲 합산 포트폴리오 몬테카를로 시뮬레이션</h3>
+      <p class="text-[11px] text-slate-400 mt-0.5 mb-3">일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.</p>
+      <div id="monteCarloLoadingNote" class="text-xs text-slate-400 py-6 text-center">변동성 데이터 계산 중...</div>
+      <div id="monteCarloContent" class="hidden">
+        <div class="grid grid-cols-3 gap-2 mb-3 text-center">
+          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+            <p class="text-[10px] text-slate-400">적용 변동성(σ)</p>
+            <p id="monteCarloSigmaText" class="text-sm font-bold">-</p>
+          </div>
+          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+            <p class="text-[10px] text-slate-400">적용 기대수익률(μ)</p>
+            <p id="monteCarloMuText" class="text-sm font-bold">-</p>
+          </div>
+          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+            <p class="text-[10px] text-slate-400">현재 원금</p>
+            <p id="monteCarloPvText" class="text-sm font-bold">-</p>
+          </div>
+        </div>
+        <div class="relative h-64">
+          <canvas id="monteCarloChart"></canvas>
+        </div>
+        <div class="overflow-x-auto mt-3">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+                <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
+                <th class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">P10(낙관)</th>
+                <th class="px-1 py-2 text-right font-bold text-slate-700 dark:text-slate-200">P50(중앙값)</th>
+                <th class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">P90(보수)</th>
+              </tr>
+            </thead>
+            <tbody id="monteCarloScheduleBody"></tbody>
+          </table>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">※ σ는 주식/ETF 실측 과거 1년 연환산 변동성으로, 채권/현금은 일별 시세가 없어 변동성 계산 대상이 아닙니다 - 포트폴리오 전체(채권/현금 포함)의 σ로 근사해 쓰므로 실제보다 변동성이 다소 과대평가될 수 있습니다. P10/P90은 각각 "1,000회 중 낙관적인 상위 10%/비관적인 하위 10%" 지점이며, 미래 수익을 보장하지 않는 참고용 확률 분포입니다.</p>
+      </div>
+    </section>
   </div> <!-- /tabPanelProjection -->
   </div> <!-- /tabPanelRebalance (포트폴리오/자산예측 통합 탭) -->
 
@@ -1394,6 +1485,18 @@
         <span class="text-slate-500 dark:text-slate-400">현재가 <span id="f_curPriceUnit" class="text-slate-400">(KRW)</span> <span id="f_currentPriceStatus" class="text-slate-400"></span></span>
         <input id="f_currentPrice" type="number" step="any" readonly placeholder="검색 시 실시간 시세로 자동 채워짐"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+      </label>
+
+      <!-- [자산별 역할(포지션) 분류] 일반계좌 자산 대상 - 미지정도 허용(선택 안 함이 기본값). -->
+      <label class="col-span-2 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">역할(포지션) <span class="text-slate-400">- 일반계좌 자산만 아래 비중 분석에 집계</span></span>
+        <select id="f_role" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="">미지정</option>
+          <option value="attacker">공격수</option>
+          <option value="midfielder">미드필더</option>
+          <option value="defender">수비수</option>
+          <option value="core">코어자산</option>
+        </select>
       </label>
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
@@ -1770,30 +1873,61 @@
       </button>
     </div>
 
-    <div class="px-5 py-4 overflow-y-auto space-y-4">
-      <!-- [입력 일원화 - 요청 반영] 예전엔 메인 화면(포트폴리오 기준 카드)에 이 입력이 따로 있었으나,
-           종목별 배분과 한 곳에서 같이 설정하도록 이 팝업 안으로 옮겼다 - 입력할 때마다 즉시
-           state.projection.monthlyContribution에 반영되고 updateProjection()이 다시 호출돼
-           simulateRebalancedPreset 결과에 바로 반영된다(onMonthlyContributionTotalInputChange, js/05). -->
-      <label class="block text-xs">
-        <span class="text-slate-500 dark:text-slate-400">전체 월 적립금 총액</span>
-        <input id="monthlyContributionTotalInput" type="number" step="any" placeholder="0"
-          class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-      </label>
-      <div>
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h4>
-          <span id="monthlyContributionAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
+    <div class="px-5 py-4 overflow-y-auto space-y-5">
+      <!-- [소유자별 독립 월적립금 설정 - Part 2-B] 신랑/와이프 각자 독립된 총액·적립기간·종목별 배분을
+           갖는다 - 절세계좌 적립 설정 팝업과 동일한 카드 패턴. 두 카드 다 total===0으로 남아있으면
+           기존 단일 monthlyContribution/monthlyContributionAllocation 로직으로 하위호환 폴백된다
+           (getOwnerMonthlyContributionInputs, js/05). -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">👤 신랑</h4>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <label class="block text-xs">
+            <span class="text-slate-500 dark:text-slate-400">월 적립 총액</span>
+            <input id="monthlyContributionTotalInputHusband" type="number" step="any" placeholder="0"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+          <label class="block text-xs">
+            <span class="text-slate-500 dark:text-slate-400">적립 기간(년)</span>
+            <input id="monthlyContributionYearsInputHusband" type="number" step="1" min="1" placeholder="15"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
         </div>
-        <div id="monthlyContributionAllocationList" class="space-y-2"></div>
-        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHint">100%</span>)은 "포트폴리오 구성" 탭에서 설정한 국내/해외 목표 비중대로 그대로 계산됩니다.</p>
-      </div>
-
-      <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
-        <button type="button" id="monthlyContributionAllocationAddBtn" class="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <div class="flex items-center justify-between mb-2">
+          <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
+          <span id="monthlyContributionAllocationSumHintHusband" class="text-[11px] font-semibold">합계 0%</span>
+        </div>
+        <div id="monthlyContributionAllocationListHusband" class="space-y-2"></div>
+        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintHusband">100%</span>)은 신랑의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnHusband" class="w-full mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
-        <div id="monthlyContributionAllocationAddForm" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+        <div id="monthlyContributionAllocationAddFormHusband" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">👤 와이프</h4>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <label class="block text-xs">
+            <span class="text-slate-500 dark:text-slate-400">월 적립 총액</span>
+            <input id="monthlyContributionTotalInputWife" type="number" step="any" placeholder="0"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+          <label class="block text-xs">
+            <span class="text-slate-500 dark:text-slate-400">적립 기간(년)</span>
+            <input id="monthlyContributionYearsInputWife" type="number" step="1" min="1" placeholder="15"
+              class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+          </label>
+        </div>
+        <div class="flex items-center justify-between mb-2">
+          <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
+          <span id="monthlyContributionAllocationSumHintWife" class="text-[11px] font-semibold">합계 0%</span>
+        </div>
+        <div id="monthlyContributionAllocationListWife" class="space-y-2"></div>
+        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintWife">100%</span>)은 와이프의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnWife" class="w-full mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
+        </button>
+        <div id="monthlyContributionAllocationAddFormWife" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
       </div>
     </div>
 
@@ -1839,7 +1973,7 @@
 <div id="rebalanceTargetModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-sm font-semibold">전체 목표 비중 수정</h3>
+      <h3 id="rebalanceTargetModalTitle" class="text-sm font-semibold">목표 비중 수정</h3>
       <button type="button" id="closeRebalanceTargetModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -1869,6 +2003,23 @@
     <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <button type="button" id="cancelRebalanceTargetModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
       <button type="button" id="confirmRebalanceTargetModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= 포지션별 비중 - 소유자 개별 보기 모달 (Part 3) =============================
+     "포지션별 비중 분석" 카드의 [신랑 비중]/[와이프 비중] 버튼으로 열리며, 같은 막대바 렌더 함수
+     (renderPositionRoleBars, js/04)를 그 소유자 필터로 다시 그려 보여준다. -->
+<div id="positionRoleBreakdownModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+      <h3 id="positionRoleBreakdownModalTitle" class="text-sm font-semibold">포지션별 비중</h3>
+      <button type="button" id="closePositionRoleBreakdownModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-5 py-4">
+      <div id="positionRoleBreakdownModalBars"></div>
     </div>
   </div>
 </div>
@@ -2008,6 +2159,19 @@
         <select id="tx_rateMatchOverride"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>
+        </select>
+      </label>
+
+      <!-- [자산별 역할(포지션) 분류] rateMatchOverride와 동일하게 매칭되는 자산에 반영된다(js/06 submit 핸들러). -->
+      <label class="col-span-2 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">역할(포지션) (선택)</span>
+        <select id="tx_role"
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="">미지정</option>
+          <option value="attacker">공격수</option>
+          <option value="midfielder">미드필더</option>
+          <option value="defender">수비수</option>
+          <option value="core">코어자산</option>
         </select>
       </label>
 

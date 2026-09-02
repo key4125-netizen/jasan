@@ -717,6 +717,7 @@ function openModal(mode, id) {
     document.getElementById('f_quantity').value = a.quantity;
     document.getElementById('f_buyPrice').value = a.buyPrice;
     document.getElementById('f_currentPrice').value = a.currentPrice;
+    document.getElementById('f_role').value = a.role || '';
   } else {
     document.getElementById('f_manualEntryToggleWrap').classList.remove('hidden');
     setAssetFormSearchMode(false); // 신규 추가는 항상 "검색" 모드로 시작한다.
@@ -724,6 +725,7 @@ function openModal(mode, id) {
     document.getElementById('f_isDomestic').value = '국내';
     document.getElementById('f_currency').value = 'KRW';
     document.getElementById('f_category').value = '주식';
+    document.getElementById('f_role').value = '';
   }
   updatePriceUnitLabels();
   updateAssetAmountModeUI();
@@ -822,7 +824,9 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     quantity: quantityVal,
     buyPrice: buyPriceVal,
     // 매입금액은 입력받지 않고 항상 수량×매수단가로 자동 산출된다 (calcRow 참고).
-    currentPrice: currentPriceVal
+    currentPrice: currentPriceVal,
+    // [자산별 역할(포지션) 분류] makeAsset()과 동일하게 parseAssetRoleInput으로 검증 - 미지정이면 undefined.
+    role: parseAssetRoleInput(document.getElementById('f_role').value)
   };
 
   if (id) {

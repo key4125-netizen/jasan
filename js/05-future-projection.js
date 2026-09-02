@@ -115,7 +115,9 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
 function getAssetProjectionRate(asset, presetKey) {
   return resolveProjectionRateForKey(getProjectionAssetGroupKey(asset), presetKey, asset.isDomestic === '해외');
 }
-function getProjectionGroupStats() {
+// ownerFilter: [소유자별 독립 리밸런싱 - Option B] 생략(또는 'all')하면 가구 전체(기존 동작), 실제
+// 소유자명을 넘기면 그 소유자 소유 자산만 집계한다 - simulateRebalancedPreset이 owner별 원금 계산에 쓴다.
+function getProjectionGroupStats(ownerFilter) {
   const byGroup = {}; // { 그룹키: { value, buy, returnRate } }
   state.assets.forEach((a) => {
     // [버그 수정 - 일반계좌 자산만 대상] 절세계좌(ISA/IRP/연금저축)와 부동산은 "포트폴리오 구성"(옛
@@ -125,6 +127,7 @@ function getProjectionGroupStats() {
     // 되돌렸다 - 부동산 전용 복리 성장 로직은 simulateRebalancedPreset/computeTargetWeightedAvgRate에서
     // 함께 제거했다.
     if (!isRebalanceEligibleAccount(a) || a.category === '부동산') return;
+    if (!isAssetIncludedForOwner(a, ownerFilter)) return;
     const r = calcRow(a);
     const key = getProjectionAssetGroupKey(a);
     if (!byGroup[key]) byGroup[key] = { value: 0, buy: 0 };
@@ -138,11 +141,9 @@ function getProjectionGroupStats() {
   return byGroup;
 }
 
-// 실제 보유 중인(평가금액이 0이 아닌) 그룹만 남긴다 - 입력창/그래프 라인 모두 이 목록을 기준으로 한다.
-function getHeldProjectionGroupKeys(byGroup) {
-  return Object.keys(byGroup)
-    .filter((k) => Math.round(byGroup[k].value) !== 0)
-    .sort((a, b) => byGroup[b].value - byGroup[a].value); // 보유금액 큰 순
+// getProjectionGroupStats(ownerFilter) 결과의 총 평가금액 합계 - owner별 원금 계산에 반복적으로 쓰인다.
+function getProjectionGroupTotal(byGroup) {
+  return Object.keys(byGroup).reduce((s, k) => s + byGroup[k].value, 0);
 }
 
 // 주의: '현재 수익률'은 매수 시점 이후 누적 손익률일 뿐 연환산(CAGR) 수치가 아니다(이 앱은 매수일을
@@ -168,10 +169,14 @@ function renderProjection() {
 // [입력 일원화 - 요청 반영] 월 적립금 입력칸이 메인 화면에서 사라지고 [월적립금 설정] 팝업 안으로
 // 옮겨가면서, 메인 화면엔 지금 값이 얼마인지 확인만 할 수 있는 읽기 전용 배지를 남겨뒀다 - 값이
 // 바뀔 때마다(팝업 입력, 상태 로드 등) 이 함수로 배지 텍스트를 다시 맞춘다.
+// [소유자별 독립 월적립금 - Part 2-B] 신랑+와이프 합산 총액을 보여준다 - 둘 다 미설정이면(총액 0)
+// 기존 단일 monthlyContribution으로 하위호환 폴백한다(getOwnerMonthlyContributionInputs와 동일 판정).
 function updateMonthlyContributionSummary() {
   const el = document.getElementById('monthlyContributionSummary');
   if (!el) return;
-  const amount = num(state.projection.monthlyContribution);
+  const byOwner = state.projection.monthlyContributionByOwner;
+  const ownerSum = REBALANCE_OWNERS.reduce((s, o) => s + num(byOwner[o] && byOwner[o].total), 0);
+  const amount = ownerSum > 0 ? ownerSum : num(state.projection.monthlyContribution);
   el.textContent = amount > 0 ? `${fmtNum(amount, 0)}원` : '미설정';
 }
 
@@ -446,14 +451,21 @@ const SCENARIO_RATE_BASE_ROWS = [
 function findLabelForRateKey(key) {
   const asset = state.assets.find((a) => a.category !== '부동산' && getProjectionAssetGroupKey(a) === key);
   if (asset) return asset.name;
-  for (const region of ['국내', '해외']) {
-    const target = expandRebalanceTargetsForComputation(region)
-      .find((t) => t.type === 'ticker' && resolveTickerToRateKey(t.ticker, t.label) === key);
-    if (target) return target.label;
+  for (const owner of REBALANCE_OWNERS) {
+    for (const region of ['국내', '해외']) {
+      const target = expandRebalanceTargetsForComputation(owner, region)
+        .find((t) => t.type === 'ticker' && resolveTickerToRateKey(t.ticker, t.label) === key);
+      if (target) return target.label;
+    }
   }
   const contrib = (state.projection.monthlyContributionAllocation || [])
     .find((it) => resolveTickerToRateKey(it.ticker, it.label) === key);
   if (contrib) return contrib.label;
+  for (const owner of REBALANCE_OWNERS) {
+    const byOwnerAlloc = ((state.projection.monthlyContributionByOwner[owner] || {}).allocation || [])
+      .find((it) => resolveTickerToRateKey(it.ticker, it.label) === key);
+    if (byOwnerAlloc) return byOwnerAlloc.label;
+  }
   for (const owner of TAX_ADVANTAGED_OWNERS) {
     const alloc = (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [])
       .find((it) => resolveTickerToRateKey(it.ticker, it.label) === key);
@@ -534,12 +546,14 @@ function resolveTickerToRateKey(ticker, label) {
 //  ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
 function getActiveScenarioRateKeys() {
   const active = new Set();
-  ['국내', '해외'].forEach((region) => {
-    expandRebalanceTargetsForComputation(region).filter((t) => num(t.pct) > 0).forEach((t) => {
-      if (t.type === 'ticker') { active.add(resolveTickerToRateKey(t.ticker, t.label)); return; }
-      const groupKey = getProjectionGroupKey(t.category);
-      if (groupKey === '현금') return;
-      active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'S&P500' : 'KOSPI'));
+  REBALANCE_OWNERS.forEach((owner) => {
+    ['국내', '해외'].forEach((region) => {
+      expandRebalanceTargetsForComputation(owner, region).filter((t) => num(t.pct) > 0).forEach((t) => {
+        if (t.type === 'ticker') { active.add(resolveTickerToRateKey(t.ticker, t.label)); return; }
+        const groupKey = getProjectionGroupKey(t.category);
+        if (groupKey === '현금') return;
+        active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'S&P500' : 'KOSPI'));
+      });
     });
   });
   state.assets.forEach((a) => {
@@ -551,9 +565,14 @@ function getActiveScenarioRateKeys() {
     if (key === '현금') return;
     active.add(key === '채권' ? 'BOND' : key);
   });
-  // ③ [월적립금 설정](일반계좌) 배분 종목.
+  // ③ [월적립금 설정](일반계좌) 배분 종목 - 소유자별 독립 배분(신규) + 하위호환 단일 배분 둘 다 본다.
   (state.projection.monthlyContributionAllocation || []).filter((it) => num(it.pct) > 0).forEach((it) => {
     active.add(resolveTickerToRateKey(it.ticker, it.label));
+  });
+  REBALANCE_OWNERS.forEach((owner) => {
+    ((state.projection.monthlyContributionByOwner[owner] || {}).allocation || []).filter((it) => num(it.pct) > 0).forEach((it) => {
+      active.add(resolveTickerToRateKey(it.ticker, it.label));
+    });
   });
   // ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
   TAX_ADVANTAGED_OWNERS.forEach((owner) => {
@@ -1273,21 +1292,40 @@ document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('cli
 // expandRebalanceTargetsForComputation(js/04, selectedStocks를 개별 티커 항목으로 "펼침")을 그대로
 // 재사용해 두 계산이 항상 같은 데이터를 보게 했다. selectedStocks가 없으면 펼치기 전과 완전히 동일한
 // 배열을 그대로 돌려주므로(js/04 참고) 기존 동작에 영향이 없다.
-function computeTargetWeightedAvgRate(presetKey) {
+// [소유자별 독립 목표 - Option B] owner 한 명의 목표 비중만 기준으로 한 가중평균(지역 비중 포함, 전체
+// 100% 기준) - computeTargetWeightedAvgRate가 owner별로 이 값을 구해 원금 비중으로 다시 가중평균한다.
+function computeOwnerWeightedAvgRate(owner, presetKey) {
   let sum = 0;
   ['국내', '해외'].forEach((region) => {
-    const regionFrac = num(state.rebalance.domestic[region]) / 100;
-    const targets = expandRebalanceTargetsForComputation(region);
+    const regionFrac = num(state.rebalance[owner].domestic[region]) / 100;
+    const targets = expandRebalanceTargetsForComputation(owner, region);
     targets.forEach((t) => { sum += regionFrac * (num(t.pct) / 100) * getTargetProjectionRate(t, presetKey, region); });
   });
   return sum;
 }
+// 리밸런싱 후 가구 전체의 가중평균 연수익률(프리셋별, 요약 카드용 단일 숫자) - 이제 목표 자체가
+// owner별로 독립이라, 각 owner의 가중평균 수익률(computeOwnerWeightedAvgRate)을 그 owner의 현재
+// 원금(일반계좌) 비중으로 다시 가중평균한다. 마이그레이션 직후(두 owner 목표가 동일)에는 어느 쪽으로
+// 가중해도 결과가 같아 기존 값과 정확히 일치한다.
+function computeTargetWeightedAvgRate(presetKey) {
+  const ownerTotals = {};
+  let grandTotal = 0;
+  REBALANCE_OWNERS.forEach((owner) => {
+    const total = getProjectionGroupTotal(getProjectionGroupStats(owner));
+    ownerTotals[owner] = total;
+    grandTotal += total;
+  });
+  if (grandTotal <= 0) {
+    return REBALANCE_OWNERS.reduce((sum, owner) => sum + computeOwnerWeightedAvgRate(owner, presetKey), 0) / REBALANCE_OWNERS.length;
+  }
+  return REBALANCE_OWNERS.reduce((sum, owner) => sum + computeOwnerWeightedAvgRate(owner, presetKey) * (ownerTotals[owner] / grandTotal), 0);
+}
 
 // 지역(국내/해외) 하나의 목표 배분 "내에서만"의 가중평균 수익률(프리셋별) - 리밸런싱 후 시나리오의
 // 지역별 미래가치 계산에 쓰인다(전체 가중평균과 달리 지역 비중은 곱하지 않고 그 지역 내 100% 기준).
-// [버그 수정] 위 computeTargetWeightedAvgRate와 동일한 이유로 expandRebalanceTargetsForComputation을 쓴다.
-function computeRegionWeightedRate(region, presetKey) {
-  const targets = expandRebalanceTargetsForComputation(region);
+// owner: [소유자별 독립 목표 - Option B] 이제 항상 실제 소유자명이 필요하다(expandRebalanceTargetsForComputation과 동일).
+function computeRegionWeightedRate(owner, region, presetKey) {
+  const targets = expandRebalanceTargetsForComputation(owner, region);
   const sumPct = targets.reduce((s, t) => s + num(t.pct), 0);
   if (sumPct === 0) return 0;
   let weighted = 0;
@@ -1304,18 +1342,54 @@ function computeRegionWeightedRate(region, presetKey) {
 // 종목 고유 수익률로, 없으면 예전처럼 지역 비례로)을 반영해 계산한다. computeFutureValue가 PV/PMT에
 // 대해 선형이라(원금만 계산 + 적립금만 계산 = 합쳐서 계산한 것과 동일) 배분을 하나도 지정하지 않으면
 // 이전 동작과 수학적으로 완전히 같다(하위 호환).
-function simulateRebalancedPreset(presetKey, totalValue, monthlyContribution, maxYears) {
-  const regionPV = {
-    '국내': totalValue * num(state.rebalance.domestic['국내']) / 100,
-    '해외': totalValue * num(state.rebalance.domestic['해외']) / 100
-  };
-  const regionRate = { '국내': computeRegionWeightedRate('국내', presetKey), '해외': computeRegionWeightedRate('해외', presetKey) };
-  const principalFutureValue = (region, y) => computeFutureValue(regionPV[region], regionRate[region], y, 0);
+// [소유자별 독립 월적립금 - Part 2-B] owner의 월 적립 총액/배분을 반환한다 - 두 owner 모두
+// monthlyContributionByOwner.total===0(한 번도 설정 안 함)이면 기존 단일 monthlyContribution/
+// monthlyContributionAllocation을 owner의 현재 원금 비중대로 나눠 하위호환 폴백한다(원금 비중이 전혀
+// 없으면 신랑에게 전액 배정 - 마이그레이션 직후에는 owner 목표가 동일해 어느 쪽에 배정해도 합산 결과가
+// 예전과 정확히 같다).
+function getOwnerMonthlyContributionInputs(owner) {
+  const byOwner = state.projection.monthlyContributionByOwner;
+  const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
+  if (!bothUnset) {
+    const entry = byOwner[owner] || { total: 0, allocation: [] };
+    return { monthlyContribution: num(entry.total), allocation: entry.allocation || [] };
+  }
+  const ownerTotals = {};
+  let grandTotal = 0;
+  REBALANCE_OWNERS.forEach((o) => {
+    const t = getProjectionGroupTotal(getProjectionGroupStats(o));
+    ownerTotals[o] = t;
+    grandTotal += t;
+  });
+  const share = grandTotal > 0 ? (ownerTotals[owner] / grandTotal) : (owner === REBALANCE_OWNERS[0] ? 1 : 0);
+  return { monthlyContribution: num(state.projection.monthlyContribution) * share, allocation: state.projection.monthlyContributionAllocation || [] };
+}
+
+// [소유자별 독립 계산 - Option B] owner별로 자기 자신의 현재 원금(일반계좌, getProjectionGroupStats(owner))
+// × 자기 목표 국내/해외 split × 자기 목표 종목별 가중수익률로 각자 복리 성장시킨 뒤 합산한다. 월
+// 적립금도 owner별 monthlyContributionByOwner를 그대로 쓴다(getOwnerMonthlyContributionInputs가 하위
+// 호환 폴백을 담당) - totalValue/monthlyContribution을 인자로 받던 예전 시그니처와 달리 이제 두 owner의
+// 원금/적립금을 함수 내부에서 직접 계산한다.
+function simulateRebalancedPreset(presetKey, maxYears) {
+  const ownerCalcs = REBALANCE_OWNERS.map((owner) => {
+    const totalValue = getProjectionGroupTotal(getProjectionGroupStats(owner));
+    const regionPV = {
+      '국내': totalValue * num(state.rebalance[owner].domestic['국내']) / 100,
+      '해외': totalValue * num(state.rebalance[owner].domestic['해외']) / 100
+    };
+    const regionRate = { '국내': computeRegionWeightedRate(owner, '국내', presetKey), '해외': computeRegionWeightedRate(owner, '해외', presetKey) };
+    const { monthlyContribution, allocation } = getOwnerMonthlyContributionInputs(owner);
+    return { totalValue, regionPV, regionRate, monthlyContribution, allocation };
+  });
+  const principalFutureValue = (calc, region, y) => computeFutureValue(calc.regionPV[region], calc.regionRate[region], y, 0);
   const yearlyPoints = [];
   for (let y = 0; y <= maxYears; y++) {
-    const domestic = principalFutureValue('국내', y);
-    const foreign = principalFutureValue('해외', y);
-    const contribution = simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y);
+    let domestic = 0, foreign = 0, contribution = 0;
+    ownerCalcs.forEach((calc) => {
+      domestic += principalFutureValue(calc, '국내', y);
+      foreign += principalFutureValue(calc, '해외', y);
+      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation);
+    });
     yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
   }
   return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey) };
@@ -1446,17 +1520,10 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
 }
 
 function updateProjection() {
-  const byGroup = getProjectionGroupStats();
-  const groupKeys = getHeldProjectionGroupKeys(byGroup);
-  // [부동산 완전 제외] getProjectionGroupStats()가 이미 부동산 보유 자산을 걸러내므로 byGroup/groupKeys에
-  // '부동산' 키 자체가 존재하지 않는다 - 재배분 원금 계산에 별도로 뺄 필요가 없다.
-  const totalValueForRebalance = groupKeys.reduce((s, k) => s + byGroup[k].value, 0);
-
-  // [입력 일원화 - 요청 반영] 월 적립금 입력칸이 [월적립금 설정] 팝업 안으로 옮겨가면서, 이 화면엔
-  // 항상 존재하는 입력 요소가 없어졌다 - 이제 state.projection.monthlyContribution을 그대로 신뢰한다
-  // (팝업의 onMonthlyContributionTotalInputChange가 유일한 편집 경로이고, 그 함수가 이미 "입력칸이
-  // 비어있는 동안은 state를 건드리지 않는" 처리를 담당한다).
-  const monthlyContribution = num(state.projection.monthlyContribution);
+  // [소유자별 독립 원금/적립금 - Option B] 예전엔 여기서 가구 합산 원금(totalValueForRebalance)과 단일
+  // monthlyContribution을 미리 구해 simulateRebalancedPreset에 넘겼으나, 이제 그 함수가 owner별로
+  // 자기 자신의 원금·적립금을 내부에서 직접 계산하므로(getProjectionGroupStats(owner),
+  // getOwnerMonthlyContributionInputs) 여기서 미리 구할 필요가 없다.
   updateMonthlyContributionSummary();
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
@@ -1469,7 +1536,7 @@ function updateProjection() {
   // 수동 입력 포함)을 그대로 쓴다.
   const presetResults = {};
   ['conservative', 'normal', 'optimistic'].forEach((presetKey) => {
-    presetResults[presetKey] = simulateRebalancedPreset(presetKey, totalValueForRebalance, monthlyContribution, 20);
+    presetResults[presetKey] = simulateRebalancedPreset(presetKey, 20);
   });
 
   // ===== 3개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
@@ -1526,29 +1593,142 @@ function updateProjection() {
   });
   renderScenarioCompareScheduleTable(totalCompareRows, totalScenarioData, 'totalAssetCompareScheduleHead', 'totalAssetCompareScheduleBody');
   reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
+
+  // ===== [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션 =====
+  renderMonteCarloSection();
 }
 
-// [입력 일원화 - 요청 반영] 이 입력은 이제 [월적립금 설정] 팝업 안에 있다(메인 화면에는 읽기 전용
-// 요약 배지만 남음, updateMonthlyContributionSummary 참고) - 리스너 로직 자체는 그대로다.
-document.getElementById('monthlyContributionTotalInput').addEventListener('input', (e) => {
-  // [버그 수정 - 월 적립금이 자꾸 0원으로 초기화됨] 값을 지우고 새로 입력하는 중간에도 매 keystroke마다
-  // 이 리스너가 실행되는데, 비어 있는 순간 그대로 num('')=0을 state에 반영해 즉시 persistProjection()으로
-  // localStorage에 저장해버리면 그 사이 가격 자동갱신 등으로 updateProjection()이 한 번이라도 더 호출될
-  // 때 0원이 영구히 굳어졌다. 입력이 비어 있는 동안은 아직 확정된 값이 아니므로 state/저장을 건드리지
-  // 않고 다음 입력을 기다린다 - 콤마가 섞여 들어와도(붙여넣기 등) 안전하도록 제거 후 파싱한다.
-  const raw = e.target.value.replace(/,/g, '').trim();
-  if (raw === '') return;
-  // state.projection.monthlyContribution은 updateProjection()이 내부적으로도 갱신하지만,
-  // 그건 persist 호출 '다음'에 일어나 저장이 한 박자 늦어지는 문제가 있었다 - 여기서 먼저 반영한다.
-  state.projection.monthlyContribution = num(raw);
-  persistProjection();
-  updateProjection(); // simulateRebalancedPreset까지 즉시 다시 계산되어 반영된다.
-});
-// 입력창을 비운 채로 포커스를 벗어나면(예: 다른 값을 지운 뒤 딴 곳을 탭) 화면에 빈 칸이 그대로 남아
-// 현재 저장된 값과 화면 표시가 어긋나 보인다 - 마지막으로 확정된 state 값으로 되돌려 보여준다.
-document.getElementById('monthlyContributionTotalInput').addEventListener('blur', (e) => {
-  if (e.target.value.trim() === '') e.target.value = state.projection.monthlyContribution || '';
-});
+/* -------------------------------------------------------------------------
+ * [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션
+ *    - 대상: 일반계좌+절세계좌 금융자산 전체(부동산 제외, 사용자 확인 완료 사항 #4). μ는 "일반적" 프리셋
+ *      기준으로 "지금 실제로 들고 있는 종목"을 평가금액 가중평균한 기대수익률(computeHouseholdWeightedAvgRate,
+ *      리밸런싱 목표가 아니라 현재 구성 그대로), σ는 RISK 엔진이 실측한 연환산 변동성
+ *      (state.advancedRiskMetrics.portfolioVolatilityPct, js/09)을 그대로 재사용한다.
+ *    - state.advancedRiskMetrics는 refreshPricesAndRates() 완료 전엔 null이다 - 그동안은 로딩 문구만
+ *      보여주고, renderAll()이 다시 호출되는 시점(5분 자동 갱신 등)에 이 섹션도 자동으로 채워진다
+ *      (다른 리스크 카드들과 동일한 검증된 패턴, js/10 참고).
+ * ---------------------------------------------------------------------- */
+// 가구 전체(일반계좌+절세계좌, 부동산 제외) 총 평가금액 - 몬테카를로 원금(PV).
+function computeHouseholdMonteCarloPV() {
+  return state.assets.filter((a) => a.category !== '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
+}
+// 가구 전체(부동산 제외) 보유 자산을 평가금액으로 가중평균한 기대수익률(%, presetKey 기준) -
+// computeTargetWeightedAvgRate(리밸런싱 "목표" 비중 기준)와 달리 "지금 실제로 들고 있는 종목 그대로"를
+// 대상으로 한다(getAssetProjectionRate가 종목별 대표 매칭 수익률을 그대로 재사용).
+function computeHouseholdWeightedAvgRate(presetKey) {
+  let weightedSum = 0, total = 0;
+  state.assets.forEach((a) => {
+    if (a.category === '부동산') return;
+    const amount = calcRow(a).curAmount;
+    if (amount === 0) return;
+    weightedSum += amount * getAssetProjectionRate(a, presetKey);
+    total += amount;
+  });
+  return total !== 0 ? weightedSum / total : 0;
+}
+
+// Box-Muller 변환으로 표준정규분포(평균0, 표준편차1) 난수를 만든다 - 순수 JS, 외부 라이브러리 불필요.
+function sampleStandardNormal() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+const MONTE_CARLO_ITERATIONS = 1000;
+// 기하 브라운 운동(GBM) - 마일스톤 연도(t)마다 S_t = S0 * exp((μ-σ²/2)t + σ√t·Z)를 1,000회 독립
+// 샘플링해 그 분포에서 P10/P50/P90을 뽑는다.
+// [P10/P90 표기 관례 - 자원평가식] "P10=10% 확률로 이 값을 초과함=낙관적 상위값", "P90=90% 확률로 이
+// 값을 초과함=보수적 하위값"이라는 자원평가(reserve estimation) 관례를 따른다 - 통계적 백분위수와
+// 표기 순서가 정반대이므로 주의: 코드상 P10은 표본 분포의 상위 10%(90th percentile), P90은 하위
+// 10%(10th percentile)다.
+function runMonteCarloSimulation(pv, muPct, sigmaPct, yearOffsets) {
+  const mu = muPct / 100, sigma = Math.max(0, sigmaPct / 100);
+  const percentileOfSorted = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))))];
+  return yearOffsets.map((y) => {
+    const samples = new Array(MONTE_CARLO_ITERATIONS);
+    for (let i = 0; i < MONTE_CARLO_ITERATIONS; i++) {
+      const z = sampleStandardNormal();
+      samples[i] = pv * Math.exp((mu - (sigma * sigma) / 2) * y + sigma * Math.sqrt(y) * z);
+    }
+    samples.sort((a, b) => a - b);
+    return {
+      year: y,
+      p10: percentileOfSorted(samples, 90), // 낙관(상위 10%)
+      p50: percentileOfSorted(samples, 50), // 중앙값
+      p90: percentileOfSorted(samples, 10)  // 보수(하위 10%)
+    };
+  });
+}
+
+function renderMonteCarloSection() {
+  const loadingEl = document.getElementById('monteCarloLoadingNote');
+  const contentEl = document.getElementById('monteCarloContent');
+  if (!loadingEl || !contentEl) return;
+  const metrics = state.advancedRiskMetrics;
+  if (!metrics || !Number.isFinite(metrics.portfolioVolatilityPct)) {
+    loadingEl.classList.remove('hidden');
+    contentEl.classList.add('hidden');
+    return;
+  }
+  loadingEl.classList.add('hidden');
+  contentEl.classList.remove('hidden');
+
+  const pv = computeHouseholdMonteCarloPV();
+  const mu = computeHouseholdWeightedAvgRate('normal');
+  const sigma = metrics.portfolioVolatilityPct;
+  document.getElementById('monteCarloSigmaText').textContent = `${fmtNum(sigma, 1)}%`;
+  document.getElementById('monteCarloMuText').textContent = `${fmtNum(mu, 1)}%`;
+  document.getElementById('monteCarloPvText').textContent = fmtKRWShort(pv);
+
+  const milestoneOffsets = getMilestoneYearOffsets();
+  const points = runMonteCarloSimulation(pv, mu, sigma, [0, ...milestoneOffsets]);
+
+  renderMonteCarloChart(points);
+  document.getElementById('monteCarloScheduleBody').innerHTML = points.map((p) => `
+    <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${p.year === 0 ? '현재' : `${p.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + p.year}</span></td>
+      <td class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p10)}</td>
+      <td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white">${fmtKRWShort(p.p50)}</td>
+      <td class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p90)}</td>
+    </tr>`).join('');
+}
+
+// [이 프로젝트 최초의 밴드/영역채우기 차트] renderScenarioCompareChart의 옵션 구조(색상/툴팁/legend)를
+// 그대로 재사용하되, P10~P90 사이를 fill:'-1'로 채워 밴드(fan chart)를 만든다 - Chart.js는 데이터셋
+// 배열에서 "바로 앞 데이터셋과의 사이"만 채우므로 [P10(채우기 없음), P90(P10과의 사이를 채움),
+// P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다.
+function renderMonteCarloChart(points) {
+  const textColor = chartTextColor();
+  if (charts.monteCarlo) charts.monteCarlo.destroy();
+  const labels = points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`);
+  const bandColor = 'rgba(99,102,241,0.15)';
+  charts.monteCarlo = new Chart(document.getElementById('monteCarloChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'P10(낙관)', data: points.map((p) => p.p10), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
+        { label: 'P90(보수)', data: points.map((p) => p.p90), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
+        { label: 'P50(중앙값)', data: points.map((p) => p.p50), borderColor: '#6366f1', backgroundColor: '#6366f1', fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      events: ['click'],
+      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'monteCarlo'),
+      scales: {
+        x: { ticks: { color: textColor }, grid: { display: false } },
+        y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
+      },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.raw)}` } }
+      }
+    }
+  });
+}
 
 document.getElementById('inflationRateInput').addEventListener('input', (e) => {
   state.projection.inflationRate = num(e.target.value);
@@ -1565,15 +1745,32 @@ document.getElementById('inflationRateInput').addEventListener('input', (e) => {
  *    "포트폴리오 구성" 탭의 국내/해외 목표 비중대로 계산한다 - 아무것도 배분하지 않으면(빈 배열) 이전
  *    동작과 완전히 동일하다(하위 호환).
  * ---------------------------------------------------------------------- */
-let monthlyContributionAllocationDraft = [];
+// [소유자별 독립 - Option B] owner('신랑'/'와이프')별로 독립된 draft를 갖는다. 두 owner 모두
+// total===0 상태로 처음 열면(한 번도 owner별로 설정한 적 없음) 기존 단일 값을 "신랑" 초안에만 시작점으로
+// 옮겨 보여준다 - [저장]을 누르기 전까지는 state에 전혀 반영되지 않으므로 어느 쪽에 몰아 보여주든 계산
+// 결과에는 영향이 없다(하위호환 폴백은 getOwnerMonthlyContributionInputs가 total===0 여부로만 판단).
+let monthlyContributionByOwnerDraft = { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } };
 
 function openMonthlyContributionAllocationModal() {
-  document.getElementById('monthlyContributionTotalInput').value = state.projection.monthlyContribution || '';
-  monthlyContributionAllocationDraft = state.projection.monthlyContributionAllocation.map((it) => ({ ...it }));
-  const form = document.getElementById('monthlyContributionAllocationAddForm');
-  form.classList.add('hidden');
-  form.innerHTML = '';
-  renderMonthlyContributionAllocationList();
+  const byOwner = state.projection.monthlyContributionByOwner || {};
+  const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
+  REBALANCE_OWNERS.forEach((owner) => {
+    const saved = byOwner[owner];
+    if (bothUnset) {
+      monthlyContributionByOwnerDraft[owner] = owner === '신랑'
+        ? { total: num(state.projection.monthlyContribution), years: 15, allocation: state.projection.monthlyContributionAllocation.map((it) => ({ ...it })) }
+        : { total: 0, years: 15, allocation: [] };
+    } else {
+      monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: (saved && num(saved.years)) || 15, allocation: ((saved && saved.allocation) || []).map((it) => ({ ...it })) };
+    }
+    const suffix = rebalanceOwnerSuffix(owner);
+    document.getElementById('monthlyContributionTotalInput' + suffix).value = monthlyContributionByOwnerDraft[owner].total || '';
+    document.getElementById('monthlyContributionYearsInput' + suffix).value = monthlyContributionByOwnerDraft[owner].years;
+    const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
+    form.classList.add('hidden');
+    form.innerHTML = '';
+    renderMonthlyContributionAllocationList(owner);
+  });
   document.getElementById('monthlyContributionAllocationModal').classList.remove('hidden');
   pushModalHistoryState();
   lucide.createIcons();
@@ -1581,7 +1778,6 @@ function openMonthlyContributionAllocationModal() {
 function closeMonthlyContributionAllocationModal(viaBackButton) {
   document.getElementById('monthlyContributionAllocationModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
-  monthlyContributionAllocationDraft = [];
 }
 document.getElementById('openMonthlyContributionAllocationBtn').addEventListener('click', openMonthlyContributionAllocationModal);
 document.getElementById('closeMonthlyContributionAllocationModalBtn').addEventListener('click', () => closeMonthlyContributionAllocationModal(false));
@@ -1590,64 +1786,92 @@ document.getElementById('monthlyContributionAllocationModal').addEventListener('
   if (e.target.id === 'monthlyContributionAllocationModal') closeMonthlyContributionAllocationModal(false);
 });
 
-function renderMonthlyContributionAllocationList() {
-  const container = document.getElementById('monthlyContributionAllocationList');
-  if (monthlyContributionAllocationDraft.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">아직 배분된 종목이 없습니다 - 월 적립금 전액이 "포트폴리오 구성" 탭의 국내/해외 목표 비중대로 계산됩니다.</p>';
+function renderMonthlyContributionAllocationList(owner) {
+  const suffix = rebalanceOwnerSuffix(owner);
+  const draft = monthlyContributionByOwnerDraft[owner];
+  const container = document.getElementById('monthlyContributionAllocationList' + suffix);
+  if (draft.allocation.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">아직 배분된 종목이 없습니다 - 월 적립금 전액이 ${escapeHtml(owner)}의 국내/해외 목표 비중대로 계산됩니다.</p>`;
   } else {
-    container.innerHTML = monthlyContributionAllocationDraft.map((row, idx) => `
-    <div class="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
-      <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
-      <div class="flex items-center gap-1 shrink-0">
-        <input type="number" step="0.1" min="0" max="100" value="${row.pct}" data-alloc-idx="${idx}"
-          class="monthly-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-        <span class="text-[11px] text-slate-400">%</span>
-        <button type="button" class="monthly-alloc-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-alloc-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+    // [미보유 종목 포지션 태깅 - 요청 반영] 배분 항목 자체(state.projection, state.assets와 무관)에
+    // 역할을 저장한다 - 실제 보유 여부와 상관없이 "이 적립 계획은 어떤 성격이다"를 기록해 둘 수 있다.
+    container.innerHTML = draft.allocation.map((row, idx) => {
+      const roleOptionsHtml = ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${row.role === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
+      return `
+    <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+      <div class="flex items-center gap-1.5">
+        <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+        <div class="flex items-center gap-1 shrink-0">
+          <input type="number" step="0.1" min="0" max="100" value="${row.pct}" data-alloc-idx="${idx}"
+            class="monthly-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-[11px] text-slate-400">%</span>
+          <button type="button" class="monthly-alloc-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-alloc-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </div>
       </div>
-    </div>`).join('');
+      <select data-alloc-role-idx="${idx}" class="monthly-alloc-role-select mt-1.5 w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">${roleOptionsHtml}</select>
+    </div>`;
+    }).join('');
   }
-  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
+  const sumPct = draft.allocation.reduce((s, r) => s + num(r.pct), 0);
   const remainderPct = Math.max(0, 100 - sumPct);
-  document.getElementById('monthlyContributionAllocationSumHint').textContent = `합계 ${fmtNum(sumPct, 1)}%`;
-  document.getElementById('monthlyContributionAllocationRemainderHint').textContent = `${fmtNum(remainderPct, 1)}%`;
+  document.getElementById('monthlyContributionAllocationSumHint' + suffix).textContent = `합계 ${fmtNum(sumPct, 1)}%`;
+  document.getElementById('monthlyContributionAllocationRemainderHint' + suffix).textContent = `${fmtNum(remainderPct, 1)}%`;
   lucide.createIcons();
 }
 
-document.getElementById('monthlyContributionAllocationList').addEventListener('input', (e) => {
-  const idx = e.target.dataset.allocIdx;
-  if (idx === undefined) return;
-  monthlyContributionAllocationDraft[Number(idx)].pct = num(e.target.value);
-  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
-  document.getElementById('monthlyContributionAllocationSumHint').textContent = `합계 ${fmtNum(sumPct, 1)}%`;
-  document.getElementById('monthlyContributionAllocationRemainderHint').textContent = `${fmtNum(Math.max(0, 100 - sumPct), 1)}%`;
-});
-document.getElementById('monthlyContributionAllocationList').addEventListener('click', (e) => {
-  const btn = e.target.closest('.monthly-alloc-remove-btn');
-  if (!btn) return;
-  monthlyContributionAllocationDraft.splice(Number(btn.dataset.allocIdx), 1);
-  renderMonthlyContributionAllocationList();
+REBALANCE_OWNERS.forEach((owner) => {
+  const suffix = rebalanceOwnerSuffix(owner);
+  document.getElementById('monthlyContributionTotalInput' + suffix).addEventListener('input', (e) => {
+    monthlyContributionByOwnerDraft[owner].total = num(e.target.value);
+  });
+  document.getElementById('monthlyContributionYearsInput' + suffix).addEventListener('input', (e) => {
+    monthlyContributionByOwnerDraft[owner].years = num(e.target.value);
+  });
+  document.getElementById('monthlyContributionAllocationList' + suffix).addEventListener('input', (e) => {
+    const idx = e.target.dataset.allocIdx;
+    if (idx === undefined) return;
+    monthlyContributionByOwnerDraft[owner].allocation[Number(idx)].pct = num(e.target.value);
+    const draft = monthlyContributionByOwnerDraft[owner];
+    const sumPct = draft.allocation.reduce((s, r) => s + num(r.pct), 0);
+    document.getElementById('monthlyContributionAllocationSumHint' + suffix).textContent = `합계 ${fmtNum(sumPct, 1)}%`;
+    document.getElementById('monthlyContributionAllocationRemainderHint' + suffix).textContent = `${fmtNum(Math.max(0, 100 - sumPct), 1)}%`;
+  });
+  document.getElementById('monthlyContributionAllocationList' + suffix).addEventListener('click', (e) => {
+    const btn = e.target.closest('.monthly-alloc-remove-btn');
+    if (!btn) return;
+    monthlyContributionByOwnerDraft[owner].allocation.splice(Number(btn.dataset.allocIdx), 1);
+    renderMonthlyContributionAllocationList(owner);
+  });
+  document.getElementById('monthlyContributionAllocationList' + suffix).addEventListener('change', (e) => {
+    const select = e.target.closest('.monthly-alloc-role-select');
+    if (!select) return;
+    monthlyContributionByOwnerDraft[owner].allocation[Number(select.dataset.allocRoleIdx)].role = parseAssetRoleInput(select.value);
+  });
 });
 
 // [종목 검색 자동완성] scenarioRateManagerModal의 신규 종목 추가 폼과 동일한 패턴 - searchStockCandidates
-// (js/04, 보유종목 로컬 검색 + Yahoo Finance 검색 API)를 그대로 재사용한다.
-let monthlyAllocSearchDebounceTimer = null;
-let monthlyAllocSearchRequestSeq = 0;
+// (js/04, 보유종목 로컬 검색 + Yahoo Finance 검색 API)를 그대로 재사용한다. owner별로 독립된
+// 디바운스/요청순번 상태를 갖는다(두 카드가 동시에 열려 있으므로 전역 단일 변수는 서로 경합한다).
+const monthlyAllocSearchState = { '신랑': { timer: null, seq: 0 }, '와이프': { timer: null, seq: 0 } };
 
-function triggerMonthlyAllocSearch(query) {
-  const container = document.getElementById('newMonthlyAllocSearchResults');
-  clearTimeout(monthlyAllocSearchDebounceTimer);
+function triggerMonthlyAllocSearch(owner, query) {
+  const suffix = rebalanceOwnerSuffix(owner);
+  const st = monthlyAllocSearchState[owner];
+  const container = document.getElementById('newMonthlyAllocSearchResults' + suffix);
+  clearTimeout(st.timer);
   if (!query) { container.classList.add('hidden'); container.innerHTML = ''; return; }
   container.classList.remove('hidden');
   container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 중...</p>';
-  monthlyAllocSearchDebounceTimer = setTimeout(async () => {
-    const seq = ++monthlyAllocSearchRequestSeq;
+  st.timer = setTimeout(async () => {
+    const seq = ++st.seq;
     const results = await searchStockCandidates(query);
-    renderMonthlyAllocSearchResults(results, seq);
+    renderMonthlyAllocSearchResults(owner, results, seq);
   }, 350);
 }
-function renderMonthlyAllocSearchResults(results, seq) {
-  if (seq !== monthlyAllocSearchRequestSeq) return;
-  const container = document.getElementById('newMonthlyAllocSearchResults');
+function renderMonthlyAllocSearchResults(owner, results, seq) {
+  const suffix = rebalanceOwnerSuffix(owner);
+  if (seq !== monthlyAllocSearchState[owner].seq) return;
+  const container = document.getElementById('newMonthlyAllocSearchResults' + suffix);
   if (!container) return;
   if (results.length === 0) {
     container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
@@ -1661,33 +1885,44 @@ function renderMonthlyAllocSearchResults(results, seq) {
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (monthlyContributionAllocationDraft.some((it) => it.ticker === btn.dataset.pickSymbol)) {
+      const draft = monthlyContributionByOwnerDraft[owner];
+      if (draft.allocation.some((it) => it.ticker === btn.dataset.pickSymbol)) {
         alert('이미 배분된 종목입니다.');
         return;
       }
-      monthlyContributionAllocationDraft.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0 });
-      renderMonthlyContributionAllocationList();
-      const form = document.getElementById('monthlyContributionAllocationAddForm');
+      draft.allocation.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0 });
+      renderMonthlyContributionAllocationList(owner);
+      const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
       form.classList.add('hidden');
       form.innerHTML = '';
     });
   });
 }
-document.getElementById('monthlyContributionAllocationAddBtn').addEventListener('click', () => {
-  const form = document.getElementById('monthlyContributionAllocationAddForm');
-  if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
-  form.classList.remove('hidden');
-  form.innerHTML = `
-    <input id="newMonthlyAllocSearchInput" type="text" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-    <div id="newMonthlyAllocSearchResults" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>`;
-  form.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  document.getElementById('newMonthlyAllocSearchInput').addEventListener('input', (e) => triggerMonthlyAllocSearch(e.target.value.trim()));
+REBALANCE_OWNERS.forEach((owner) => {
+  const suffix = rebalanceOwnerSuffix(owner);
+  document.getElementById('monthlyContributionAllocationAddBtn' + suffix).addEventListener('click', () => {
+    const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
+    if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
+    form.classList.remove('hidden');
+    form.innerHTML = `
+      <input id="newMonthlyAllocSearchInput${suffix}" type="text" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+      <div id="newMonthlyAllocSearchResults${suffix}" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>`;
+    form.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    document.getElementById('newMonthlyAllocSearchInput' + suffix).addEventListener('input', (e) => triggerMonthlyAllocSearch(owner, e.target.value.trim()));
+  });
 });
 
 document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventListener('click', () => {
-  const sumPct = monthlyContributionAllocationDraft.reduce((s, r) => s + num(r.pct), 0);
-  if (sumPct > 100) { alert('배분 비중 합계가 100%를 넘을 수 없습니다.'); return; }
-  state.projection.monthlyContributionAllocation = monthlyContributionAllocationDraft.map((it) => ({ ...it }));
+  for (const owner of REBALANCE_OWNERS) {
+    const sumPct = monthlyContributionByOwnerDraft[owner].allocation.reduce((s, r) => s + num(r.pct), 0);
+    if (sumPct > 100) { alert(`${owner}의 배분 비중 합계가 100%를 넘을 수 없습니다.`); return; }
+  }
+  const next = {};
+  REBALANCE_OWNERS.forEach((owner) => {
+    const draft = monthlyContributionByOwnerDraft[owner];
+    next[owner] = { total: num(draft.total), years: num(draft.years) || 15, allocation: draft.allocation.map((it) => ({ ...it })) };
+  });
+  state.projection.monthlyContributionByOwner = next;
   persistProjection();
   closeMonthlyContributionAllocationModal(false);
   updateProjection();
@@ -1707,8 +1942,8 @@ function getMonthlyAllocationItemRate(item, presetKey) {
 // 목표 비중 비율대로 지역 가중평균 수익률(regionRate)로 계산한다. 배분이 비어 있으면(기본값) 나머지가
 // 100%가 되어 이전 동작과 수학적으로 완전히 동일하다(computeFutureValue가 PV/PMT에 대해 선형이라
 // "원금 따로 + 적립금 따로" 계산과 "합쳐서 한 번에" 계산이 같은 결과를 낸다).
-function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y) {
-  const allocation = state.projection.monthlyContributionAllocation.filter((it) => num(it.pct) > 0);
+function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList) {
+  const allocation = (allocationList || state.projection.monthlyContributionAllocation).filter((it) => num(it.pct) > 0);
   const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
   const remainderPct = Math.max(0, 100 - allocatedPct);
 

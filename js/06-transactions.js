@@ -482,11 +482,14 @@ function openTransactionModal(txId) {
     const matchedForEdit = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
       (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
     populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
+    // [자산별 역할(포지션) 분류 - 수정 모드] rateMatchOverride와 동일하게 매칭되는 자산의 현재 role을 보여준다.
+    document.getElementById('tx_role').value = (matchedForEdit && matchedForEdit.role) || '';
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
     document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
   } else {
     document.getElementById('txModalTitle').textContent = '거래 추가';
     document.getElementById('tx_manualEntryToggle').checked = false;
+    document.getElementById('tx_role').value = '';
   }
   applyTxManualEntryModeUI();
   updateTxAppliedRateVisibility();
@@ -566,6 +569,9 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   const matchedAsset = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
     (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
   if (matchedAsset) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
+  // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 비웠으면(기존값이 있었더라도) 미지정으로 되돌린다.
+  const roleRaw = document.getElementById('tx_role').value.trim();
+  if (matchedAsset) matchedAsset.role = parseAssetRoleInput(roleRaw);
   persistAssets();
   closeTransactionModal();
   renderTransactionsTab();
