@@ -818,12 +818,10 @@ function renderTaxAdvantagedCard() {
   lucide.createIcons();
 }
 
-function taxAdvantagedContributionContainerId(owner) { return owner === '신랑' ? 'taxAdvantagedContributionHusband' : 'taxAdvantagedContributionWife'; }
 function taxAdvantagedAllocationContainerId(owner) { return owner === '신랑' ? 'taxAdvantagedAllocationHusband' : 'taxAdvantagedAllocationWife'; }
 
 function openTaxAdvantagedPlanModal() {
   TAX_ADVANTAGED_OWNERS.forEach((owner) => {
-    renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
     renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
   });
   renderTaxAdvantagedPlanResults();
@@ -838,80 +836,65 @@ document.getElementById('taxAdvantagedPlanBtn').addEventListener('click', () => 
 document.getElementById('closeTaxAdvantagedPlanModalBtn').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
 document.getElementById('closeTaxAdvantagedPlanModalBtnBottom').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
 
-// [계좌별 적립 설정 - 요청 반영] 소유자 하나(owner)가 등록한 계좌(accountType)별 (납입주기, 금액, 기간)
-// 목록을 그린다 - 계좌 이름은 이 앱 전체에서 그렇듯 고정 목록이 아니라 자유 텍스트라(자산 등록 폼과
-// 동일 관례), 이미 보유 중인 계좌종류를 datalist로 제안만 하고 새 이름도 자유롭게 입력할 수 있다.
-// 빈 항목이 하나도 없으면 [+ 계좈 추가]로 시작하라는 안내만 보여준다 - 이 경우
-// simulateTaxAdvantagedOwnerGrowth가 예전처럼 owner 전체 단일 풀(monthlyByOwner/yearsByOwner)로
-// 계산하는 하위호환 폴백을 그대로 쓴다.
-function renderTaxAdvantagedContributionList(owner, containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner] || [];
-  const existingAccountTypes = Object.keys(getTaxAdvantagedAssetsByOwnerAccount(owner));
-  const datalistId = `${containerId}AccountTypeList`;
-  const datalistHtml = `<datalist id="${datalistId}">${existingAccountTypes.map((t) => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`;
-  if (list.length === 0) {
-    container.innerHTML = `${datalistHtml}<p class="text-[11px] text-slate-400 py-1">아직 등록된 계좌 적립 설정이 없습니다 - 아래 [+ 계좌 추가]로 시작하세요(등록 전까지는 예전처럼 계좌 구분 없는 적립액으로 계산됩니다).</p>`;
-    return;
-  }
-  container.innerHTML = datalistHtml + list.map((acc, idx) => `
-    <div class="flex items-center gap-1 mb-1.5 last:mb-0">
-      <input type="text" value="${escapeHtml(acc.accountType)}" list="${datalistId}" placeholder="계좌종류"
-        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="accountType"
-        class="tax-contrib-input w-16 shrink-0 text-[11px] font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
-      <select data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="frequency"
-        class="tax-contrib-input shrink-0 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-        <option value="monthly" ${acc.frequency === 'yearly' ? '' : 'selected'}>매월</option>
-        <option value="yearly" ${acc.frequency === 'yearly' ? 'selected' : ''}>매년</option>
-      </select>
-      <input type="number" step="any" value="${acc.amount || ''}" placeholder="금액"
-        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="amount"
-        class="tax-contrib-input flex-1 min-w-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
-      <input type="number" step="1" min="1" value="${acc.years || ''}" placeholder="년"
-        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" data-contrib-field="years"
-        class="tax-contrib-input w-11 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-      <button type="button" class="tax-contrib-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400"
-        data-contrib-owner="${escapeHtml(owner)}" data-contrib-idx="${idx}" title="삭제">
-        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-      </button>
-    </div>`).join('');
-  lucide.createIcons();
-}
-function addTaxAdvantagedAccount(owner) {
-  const plan = state.projection.taxAdvantagedPlan;
-  const list = plan.contributionByOwnerAccount[owner] || (plan.contributionByOwnerAccount[owner] = []);
-  list.push({ accountType: '', frequency: 'monthly', amount: 0, years: 15 });
-  persistProjection();
-  renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
-  renderTaxAdvantagedPlanResults();
-  updateProjection();
-}
-document.getElementById('taxAdvantagedAddAccountHusbandBtn').addEventListener('click', () => addTaxAdvantagedAccount('신랑'));
-document.getElementById('taxAdvantagedAddAccountWifeBtn').addEventListener('click', () => addTaxAdvantagedAccount('와이프'));
-
-// [계좌별·종목별 배분 편집기] 이 소유자가 실제 보유 중인 절세계좌 종목을 계좌종류별로 묶어 보여주고,
-// 각 종목마다 그 계좌 적립금 대비 배분 비중(%) 입력칸을 하나씩 그린다. [계좌별 적립 설정 - 요청 반영]
-// pct의 의미가 "owner 전체 적립금 중 비중"에서 "그 계좌 적립금 중 비중"으로 바뀌었으므로, 합계 힌트도
-// owner 전체 하나가 아니라 계좌마다 따로 보여준다(updateTaxAdvantagedAllocationSumHint).
+// [계좌 통합 카드 - 요청 반영] 예전엔 "적립 설정"(주기·금액·기간)과 "계좈별·종목별 배분"이 서로 다른
+// 목록이라, 이미 아래쪽에 자동으로 뜨는 IRP/ISA 같은 실제 보유 계좈종류를 위쪽에 사용자가 오타 없이
+// 직접 다시 타이핑해야만 서로 연결됐다(사용자 신고 - "IRP/ISA 각각 어떻게 넣으라는거냐" +
+// "계좈종류/금액/배분을 계좈마다 한 덩어리로 보이게 해달라"). 이제 실제 보유 중인 계좈종류
+// (getTaxAdvantagedAssetsByOwnerAccount)마다 카드 하나에 [계좈명 + 납입주기 + 금액 + 기간] 헤더와
+// 그 계좈이 보유한 종목별 배분 비중을 함께 묶어서 소유자(신랑/와이프)별로 보여준다 - 계좈종류는 더
+// 이상 직접 입력하지 않고 보유 종목에서 자동으로 정해지므로(수동 "계좈 추가/삭제" 버튼 자체가 필요
+// 없어짐), 새 절세계좌에 종목을 사면(신규 accountType 발생) 다음에 이 팝업을 열 때 카드가 자동으로
+// 하나 더 나타난다. contributionByOwnerAccount[owner]에 아직 없는 계좈종류는 렌더링 시점에
+// 기본값(매월/0원/15년)으로 자동 생성해 저장한다 - 그래야 처음 여는 순간부터 바로 금액·기간 입력칸이
+// 보인다.
 function renderTaxAdvantagedAllocationEditor(owner, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const byAccount = getTaxAdvantagedAssetsByOwnerAccount(owner);
   const accountTypes = Object.keys(byAccount).sort();
   if (accountTypes.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좌 종목이 없습니다 - 적립금 전액이 위험:안전 70:30 비율로 계산됩니다.</p>';
+    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좈 종목이 없습니다 - 종목을 매수하면 계좈별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좈 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
     return;
   }
-  const allocation = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
+  const plan = state.projection.taxAdvantagedPlan;
+  const contribList = plan.contributionByOwnerAccount[owner] || (plan.contributionByOwnerAccount[owner] = []);
+  let seeded = false;
+  accountTypes.forEach((accType) => {
+    if (!contribList.some((c) => c.accountType === accType)) {
+      contribList.push({ accountType: accType, frequency: 'monthly', amount: 0, years: 15 });
+      seeded = true;
+    }
+  });
+  if (seeded) persistProjection();
+  const contribFor = (accType) => contribList.find((c) => c.accountType === accType);
+  const allocation = plan.allocationByOwner[owner] || [];
   const pctFor = (accType, ticker) => {
     const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
     return found ? found.pct : 0;
   };
-  container.innerHTML = accountTypes.map((accType) => `
-    <div class="mt-2 first:mt-0">
-      <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">${escapeHtml(accType)}</p>
-      <div class="space-y-1">
+  container.innerHTML = accountTypes.map((accType) => { const c = contribFor(accType); return `
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5 mt-2 first:mt-0">
+      <div class="mb-2">
+        <div class="flex items-center gap-1.5 mb-1">
+          <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(accType)}">${escapeHtml(accType)}</span>
+          <select data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="frequency"
+            class="tax-contrib-input shrink-0 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+            <option value="monthly" ${c.frequency === 'yearly' ? '' : 'selected'}>매월</option>
+            <option value="yearly" ${c.frequency === 'yearly' ? 'selected' : ''}>매년</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-end gap-1">
+          <input type="number" step="any" value="${c.amount || ''}" placeholder="금액"
+            data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="amount"
+            class="tax-contrib-input w-24 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+          <span class="text-[10px] text-slate-400 shrink-0">원</span>
+          <input type="number" step="1" min="1" value="${c.years || ''}" placeholder="기간"
+            data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="years"
+            class="tax-contrib-input w-12 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-[10px] text-slate-400 shrink-0">년</span>
+        </div>
+      </div>
+      <div class="space-y-1 pl-1">
         ${byAccount[accType].map((asset) => `
         <div class="flex items-center gap-1.5">
           <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
@@ -921,8 +904,8 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
           <span class="text-[10px] text-slate-400 shrink-0">%</span>
         </div>`).join('')}
       </div>
-      <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
-    </div>`).join('');
+      <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1.5" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
+    </div>`; }).join('');
   accountTypes.forEach((accType) => updateTaxAdvantagedAllocationSumHint(owner, accType));
 }
 function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
@@ -932,21 +915,20 @@ function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
   const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
   el.textContent = `이 계좌 배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
 }
-// [이벤트 위임] 두 리스트(계좌 적립 설정 / 계좌별·종목별 배분)를 매번 다시 그릴 때마다 리스너를 새로
-// 붙일 필요가 없도록, 절대 다시 그려지지 않는 모달 자체에 하나씩만 걸어둔다. 입력할 때마다 리스트
-// 전체를 다시 그리면 포커스가 끊겨 타이핑이 불편해지므로, 값만 state에 반영하고 합계 안내문/결과표/
-// 시나리오별 총자산만 갱신한다(계좌 이름 자체를 고칠 때만 배분 섹션을 다시 그린다 - 그룹핑 기준이 바뀌므로).
+// [이벤트 위임] 카드를 매번 다시 그릴 때마다 리스너를 새로 붙일 필요가 없도록, 절대 다시 그려지지 않는
+// 모달 자체에 하나만 걸어둔다. 입력할 때마다 카드 전체를 다시 그리면 포커스가 끊겨 타이핑이 불편해지므로,
+// 값만 state에 반영하고 합계 안내문/결과표/시나리오별 총자산만 갱신한다.
 document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) => {
   const contribInput = e.target.closest('.tax-contrib-input');
   if (contribInput) {
     const owner = contribInput.dataset.contribOwner;
-    const idx = Number(contribInput.dataset.contribIdx);
+    const accType = contribInput.dataset.contribAccount;
     const field = contribInput.dataset.contribField;
     const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner];
-    if (!list || !list[idx]) return;
-    list[idx][field] = (field === 'accountType' || field === 'frequency') ? contribInput.value : num(contribInput.value);
+    const entry = list && list.find((c) => c.accountType === accType);
+    if (!entry) return;
+    entry[field] = (field === 'frequency') ? contribInput.value : num(contribInput.value);
     persistProjection();
-    if (field === 'accountType') renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
     renderTaxAdvantagedPlanResults();
     updateProjection();
     return;
@@ -972,18 +954,7 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   updateProjection();
 });
 document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
-  if (e.target.id === 'taxAdvantagedPlanModal') { closeTaxAdvantagedPlanModal(false); return; }
-  const removeBtn = e.target.closest('.tax-contrib-remove-btn');
-  if (!removeBtn) return;
-  const owner = removeBtn.dataset.contribOwner;
-  const idx = Number(removeBtn.dataset.contribIdx);
-  const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner];
-  if (list) list.splice(idx, 1);
-  persistProjection();
-  renderTaxAdvantagedContributionList(owner, taxAdvantagedContributionContainerId(owner));
-  renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
-  renderTaxAdvantagedPlanResults();
-  updateProjection();
+  if (e.target.id === 'taxAdvantagedPlanModal') closeTaxAdvantagedPlanModal(false);
 });
 
 // 팝업 안의 결과 표 - 신랑/와이프/합계 3행 × 보수적/일반적/긍정적 3열. [개별 적립 기간 지원] 각 소유자는
