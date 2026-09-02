@@ -419,13 +419,23 @@ async function backfillDailyPnlHistory(asset) {
 // 데이터 6건에 대해 이 마이그레이션이 먼저 실행되어 전역 플래그가 소모되고, 그 직후 사용자가 진짜
 // 보유 자산 28건을 엑셀로 업로드해도(엑셀/JSON 일괄 업로드는 신규 자산 개별 등록 경로를 타지 않아
 // backfillDailyPnlHistory가 걸리지 않는다) 전역 플래그가 이미 소모된 뒤라 새로 들어온 22개 종목은
-// 영원히 소급 이력 없이 남는다. 이제 "언제 한 번 실행했는가"가 아니라 "이 자산(id)이 이미 채워졌는가"
-// 를 기준으로 판단해, 샘플 데이터를 실제 자산으로 교체하거나 엑셀/JSON을 일괄 업로드해도 아직 한
-// 번도 채워지지 않은 자산은 다음 로드 때 자동으로 채워진다.
-const LS_DAILY_BACKFILL_DONE_IDS = 'sam_daily_backfill_done_ids_v1';
-function getBackfillDoneIds() {
+// 영원히 소급 이력 없이 남는다. 이제 "언제 한 번 실행했는가"가 아니라 "이 자산이 이미 채워졌는가"를
+// 기준으로 판단해, 샘플 데이터를 실제 자산으로 교체하거나 엑셀/JSON을 일괄 업로드해도 아직 한 번도
+// 채워지지 않은 자산은 다음 로드 때 자동으로 채워진다.
+// [버그 수정 - 엑셀 "덮어쓰기" 재업로드 시 일간손익 이중 누적] "이 자산이 이미 채워졌는가"를 처음엔
+// asset.id로 판단했는데, 엑셀 업로드는 매번 makeAsset()이 새 id를 발급한다(엑셀 시트에 id 컬럼 자체가
+// 없음) - 그래서 같은 포트폴리오를 엑셀로 재업로드할 때마다 모든 종목이 "새 자산"으로 오인되어 소급
+// 채우기가 매번 다시 실행됐고, backfillDailyPnlHistory는 dailySnapshots에 값을 "합산(+=)"하므로 재업로드
+// 할 때마다 최근 1년 구간의 일간손익이 그대로 한 번씩 더 쌓여 2배·3배로 부풀려졌다(사용자 실측 신고로
+// 확인 - 엑셀을 2번 재업로드해 정확히 2배가 됨). 휘발성 id 대신 "소유자+계좌구분+티커"라는 안정적인
+// 지문으로 바꿔, 재업로드로 id가 바뀌어도 같은 보유 종목은 "이미 채운 것"으로 정확히 인식한다.
+function getBackfillFingerprint(asset) {
+  return `${asset.owner}|${asset.accountType}|${sanitizeTicker(asset.ticker).yahooTicker}`;
+}
+const LS_DAILY_BACKFILL_DONE_FINGERPRINTS = 'sam_daily_backfill_done_fingerprints_v2';
+function getBackfillDoneFingerprints() {
   try {
-    const raw = JSON.parse(localStorage.getItem(LS_DAILY_BACKFILL_DONE_IDS) || '[]');
+    const raw = JSON.parse(localStorage.getItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS) || '[]');
     return new Set(Array.isArray(raw) ? raw : []);
   } catch (e) { return new Set(); }
 }
@@ -435,15 +445,15 @@ function getBackfillDoneIds() {
 // 지나치게 오래 걸리거나 일부만 반영된 채 남는 문제가 있었다. (1) 실시간 시세 갱신이 끝난 뒤에
 // 시작하고, (2) 자산을 한 번에 하나씩 순차 처리해서 동시 요청 폭주를 줄인다.
 async function backfillAllHoldingsDailyPnlHistory() {
-  const doneIds = getBackfillDoneIds();
-  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneIds.has(a.id));
+  const doneFingerprints = getBackfillDoneFingerprints();
+  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneFingerprints.has(getBackfillFingerprint(a)));
   if (targets.length > 0) {
     console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
     for (const a of targets) {
       try {
         await backfillDailyPnlHistory(a);
-        doneIds.add(a.id);
-        localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
+        doneFingerprints.add(getBackfillFingerprint(a));
+        localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
       } catch (e) {
         console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
       }

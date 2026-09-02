@@ -2,7 +2,28 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v179'; // [대표매칭 키 개명 - SPYM/QQQM을 S&P500/NASDAQ로]
+const CACHE_NAME = 'smart-asset-manager-v182'; // [버그 수정 - 엑셀 재업로드 시 일간손익 그래프 이중 누적]
+// 엑셀 "덮어쓰기" 업로드가 매번 모든 자산에 새 id를 발급하는데(엑셀엔 id 컬럼이 없음), 소급 이력 채우기
+// (backfillAllHoldingsDailyPnlHistory)가 "이미 채웠는지"를 그 휘발성 id로 판단해서, 같은 포트폴리오를
+// 재업로드할 때마다 최근 1년치 일간손익(dailySnapshots)이 매번 다시 합산되어 2배·3배로 부풀려지는
+// 버그가 있었다(사용자 실측 신고 - 재업로드 2번으로 정확히 2배 확인). 판정 기준을 asset.id 대신
+// "소유자+계좌구분+티커" 안정적인 지문으로 바꿔 재발을 막고(js/11 getBackfillFingerprint, js/12
+// applyRemoteScalarFields도 동일 기준으로 통일), 이미 중복 누적된 기존 데이터는 1회성 마이그레이션으로
+// 최근 과거 스냅샷을 지우고 실제 종가 이력으로 깨끗하게 다시 채운다(js/01
+// remediateDuplicatedDailySnapshotHistory - 오늘 날짜 실시간 기록은 건드리지 않음).
+// [적립설정] 팝업이 소유자 단위로 딱 하나의 월 적립액·적립기간만 설정하던 방식에서 벗어나, 소유자 안에서
+// [계좌 추가]로 IRP/ISA/연금저축 등을 원하는 만큼 등록하고 계좌마다 독립적인 납입주기(매월/매년)·금액·
+// 기간을 설정할 수 있다(state.projection.taxAdvantagedPlan.contributionByOwnerAccount, js/05). 계산
+// 엔진(simulateTaxAdvantagedOwnerGrowth)이 계좌마다 다른 시점에 납입을 멈추고 그 이후엔 그 계좌 몫만
+// 복리로 계속 성장하도록 정확히 반영한다 - 연납(매년 1회)은 새 computeFutureValueAnnual로, 월납은
+// 기존 computeFutureValue로 계산하고 납입 종료 후 유휴 성장 구간은 이 앱의 기존 관행대로 항상 월복리로
+// 계산한다. 계좌별 설정을 하나도 등록하지 않은 소유자는 예전 monthlyByOwner/yearsByOwner(owner 전체
+// 단일 풀) 기준으로 그대로 계산돼 기존 데이터·동작이 100% 보존된다(하위호환 폴백).
+// 바로 전 버전(v179)에서 SPYM/QQQM 키를 S&P500/NASDAQ로 바꿨는데, 이미 기기에 저장돼 있던 옛 키
+// (SPYM/QQQM) 항목이 자동으로 사라지지 않아 "수익률 관리" 팝업에 새 키와 나란히 중복으로 남는
+// 문제가 있었다(customScenarioRates와 자산의 rateMatchOverride 둘 다 해당) - loadState()에 1회성
+// 마이그레이션을 추가해 새 키가 없으면 옛 항목을 그대로 옮기고, 새 키가 이미 있으면(재업로드 등으로
+// 이미 새로 등록됨) 옛 항목을 버리도록(새 값 우선) 고쳤다.
 // 사용자가 엑셀 1시트 대표매칭 칸을 이미 "S&P500"/"NSADAQ"로 직접 편집해 쓰고 있는 것을 확인하고,
 // 시스템 공식 키 이름 자체를 SPYM->S&P500, QQQM->NASDAQ로 바꿨다(요청 반영). 실제로 SPYM/QQQM
 // 티커를 보유한 자산은 TICKER_RATE_KEY_ALIAS(js/05)로 여전히 정확히 매칭된다 - 이름이 바뀐 건

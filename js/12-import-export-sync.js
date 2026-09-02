@@ -588,11 +588,14 @@ function applyRemoteScalarFields(parsed) {
     persistDailySnapshots();
     // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
     // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
-    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산 id를 전부 "이미 채워짐"으로
-    // 미리 표시해 이중 합산을 막는다.
-    const doneIds = getBackfillDoneIds();
-    state.assets.forEach((a) => doneIds.add(a.id));
-    localStorage.setItem(LS_DAILY_BACKFILL_DONE_IDS, JSON.stringify(Array.from(doneIds)));
+    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산을 전부 "이미 채워짐"으로
+    // 미리 표시해 이중 합산을 막는다. [지문 방식 통일] 추적 기준을 asset.id에서 소유자+계좌구분+티커
+    // 지문으로 바꿨다(js/11 getBackfillFingerprint 참고, 엑셀 재업로드 시 id가 매번 바뀌어 이중 누적되던
+    // 버그 수정과 짝) - 두 호출부가 서로 다른 기준을 쓰면 이 "미리 표시" 자체가 무력화되므로 반드시 같은
+    // 함수를 재사용해야 한다.
+    const doneFingerprints = getBackfillDoneFingerprints();
+    state.assets.forEach((a) => doneFingerprints.add(getBackfillFingerprint(a)));
+    localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
   }
 }
 
