@@ -231,7 +231,7 @@ const FX_SOURCES_SNAPSHOT_FALLBACK = [
 const BOND_KEYWORDS = ['채권', '국고채', '회사채', '국채', '통안채', 'BOND'];
 const CASH_KEYWORDS = ['현금', '예수금', 'CASH', '달러', '외화', 'USD', 'USDT'];
 const ETF_KEYWORDS = ['ETF', 'TIGER', 'KODEX', 'ACE', 'RISE', 'QQQ', 'SCHD', 'SPYM'];
-const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가', '토지', '건물'];
+const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가', '토지', '건물', '빌라'];
 
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();

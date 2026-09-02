@@ -19,7 +19,7 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       '매입금액(KRW환산)': Math.round(r.buyAmount), '평가금액(KRW)': Math.round(r.curAmount),
       '평가손익(KRW)': Math.round(r.profit), '수익률(%)': Math.round(r.rateOfReturn * 100) / 100,
       // [대표매칭(수익률연동키) - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이
-      // 이 종목에 지금 실제로 적용 중인 대표 상품/지수 키(티커, 'NAME:정규화이름', 'SPYM'/'KOSPI', 또는
+      // 이 종목에 지금 실제로 적용 중인 대표 상품/지수 키(티커, 'NAME:정규화이름', 'S&P500'/'KOSPI', 또는
       // 채권/현금/커스텀 자산군명)를 그대로 보여준다 - 절세계좌·일반계좌 구분 없이 모든 종목에 적용된다.
       // 이 값을 셀에서 직접 고쳐서(예: 국내상장 ETF에 정확한 추종 지수 티커를 지정) 다시 업로드하면
       // makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로 반영한다(22. 엑셀 업로드 참고).
@@ -34,13 +34,21 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
   // 목록(getScenarioRateDisplayRows - 동적 필터링된 대표 종목들, js/05)을 각자의 현재 유효 기대수익률
   // (오버라이드가 있으면 그 값)과 함께 정리해 내려받는다. 여기서 종목을 추가하거나 수익률을 고쳐서
   // 다시 업로드하면 state.projection.customScenarioRates에 그대로 반영된다(22. 엑셀 업로드 참고).
-  const rateRows = getScenarioRateDisplayRows().map((row) => ({
-    '키(수익률연동키)': row.key,
-    '종목명': row.label,
-    '보수적(%)': num(getReferenceRate('conservative', row.key)),
-    '일반적(%)': num(getReferenceRate('normal', row.key)),
-    '긍정적(%)': num(getReferenceRate('optimistic', row.key))
-  }));
+  const rateRows = getScenarioRateDisplayRows().map((row) => {
+    const customEntry = (state.projection.customScenarioRates || {})[row.key];
+    const keywords = (customEntry && Array.isArray(customEntry.keywords)) ? customEntry.keywords : [];
+    return {
+      '키(수익률연동키)': row.key,
+      '종목명': row.label,
+      // [키워드 자동매칭 - 요청 반영] 이 칸에 쉼표로 구분해 키워드를 적으면(예: "현금, 달러") 종목명에
+      // 그 키워드가 포함된 자산이 카테고리/지역 폴백보다 우선해서 이 키로 자동 매칭된다
+      // (getCustomKeywordRateKey, js/05). 다시 업로드하면 그대로 반영된다.
+      '키워드(쉼표로 구분)': keywords.join(', '),
+      '보수적(%)': num(getReferenceRate('conservative', row.key)),
+      '일반적(%)': num(getReferenceRate('normal', row.key)),
+      '긍정적(%)': num(getReferenceRate('optimistic', row.key))
+    };
+  });
   const rateWs = XLSX.utils.json_to_sheet(rateRows);
   XLSX.utils.book_append_sheet(wb, rateWs, '수익률 관리 기준');
 
@@ -187,11 +195,15 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         const conservative = pick(row, '보수적(%)', '보수적', 'conservative');
         const normal = pick(row, '일반적(%)', '일반적', 'normal');
         const optimistic = pick(row, '긍정적(%)', '긍정적', 'optimistic');
-        if (conservative === '' && normal === '' && optimistic === '') return;
+        // [키워드 자동매칭 - 요청 반영] 이 칸에 쉼표로 구분해 적은 키워드가 종목명에 포함되면 카테고리/
+        // 지역 폴백보다 우선해서 이 키로 자동 매칭된다(getCustomKeywordRateKey, js/05).
+        const keywordsRaw = String(pick(row, '키워드(쉼표로 구분)', '키워드', 'keywords') || '').trim();
+        if (conservative === '' && normal === '' && optimistic === '' && keywordsRaw === '') return;
         const entry = { label };
         if (conservative !== '') entry.conservative = num(conservative);
         if (normal !== '') entry.normal = num(normal);
         if (optimistic !== '') entry.optimistic = num(optimistic);
+        if (keywordsRaw !== '') entry.keywords = keywordsRaw.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
         state.projection.customScenarioRates[key] = entry;
         rateUpdatedCount++;
       });
