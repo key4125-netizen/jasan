@@ -50,6 +50,14 @@ function getNameKeywordRateKey(name) {
   }
   return null;
 }
+// [코스닥/코스피 구분 - 버그 수정] 국내 상장 종목의 자동판별 최종 폴백 - 예전엔 국내 종목이면 무조건
+// 'KOSPI' 하나로만 묶어서, 코스닥 상장 종목(예: 파크시스템즈 140860.KQ)도 코스피 지수 수익률을 그대로
+// 썼다(사용자가 "수익률 관리"에 'KOSDAQ' 키를 따로 등록해도 실제 계산에 전혀 반영되지 않던 원인).
+// 티커 접미사(.KQ)로 실제 상장 시장을 구분해 코스닥 종목은 전용 'KOSDAQ' 키로 대표 매칭한다.
+function getRegionFallbackRateKey(yahooTicker, isDomestic) {
+  if (isDomestic === '해외') return 'SPYM';
+  return /\.KQ$/i.test(String(yahooTicker ?? '')) ? 'KOSDAQ' : 'KOSPI';
+}
 function getProjectionAssetGroupKey(asset) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
@@ -65,7 +73,7 @@ function getProjectionAssetGroupKey(asset) {
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return yahoo;
   const nameKey = getNameKeywordRateKey(asset.name);
   if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
-  return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
+  return getRegionFallbackRateKey(yahoo, sanitized.isDomestic);
 }
 // [절세계좌 종목별 복리 계산 - 요청 반영] getProjectionAssetGroupKey()가 반환하는 키 하나(티커/'NAME:x'/
 // 'SPYM'/'KOSPI' 같은 "상품형" 키, 또는 채권/현금/커스텀 자산군명 같은 "카테고리형" 키)를 실제 프리셋
@@ -77,11 +85,15 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   if (key === '채권') return getReferenceRate(presetKey, 'BOND');
   if (key === '부동산') return getReferenceRate(presetKey, '부동산');
   if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');
+  if (key === 'KOSDAQ') return getEffectiveIndexRate(presetKey, 'kosdaq');
   if (key === 'SPYM') return getEffectiveIndexRate(presetKey, 'foreign');
   const custom = getCustomRate(key, presetKey);
   if (custom !== undefined) return custom;
   const presetTicker = SCENARIO_RATE_PRESETS[presetKey].tickers[key];
   if (presetTicker !== undefined) return presetTicker;
+  // [코스닥 대표매칭 오버라이드 - 버그 수정] key 자체가 코스닥 티커(예: rateMatchOverride를 직접
+  // "140860.KQ"로 지정한 경우)면 isForeign 플래그보다 우선해서 코스닥 지수로 대체한다.
+  if (/\.KQ$/i.test(key)) return getEffectiveIndexRate(presetKey, 'kosdaq');
   return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
 }
 // 보유 자산(또는 자산과 같은 모양의 객체) 하나의 대표 매칭 수익률 - 위 두 함수를 묶어서 "이 자산이
@@ -274,12 +286,17 @@ function getPresetTickerRate(presetKey, yahooTicker) {
   return SCENARIO_RATE_PRESETS[presetKey].tickers[yahooTicker];
 }
 
-// 지역별 대표지수(국내=KOSPI, 해외=SPYM/S&P500) 수익률 하나 - 이 값도 'KOSPI'/'SPYM' 키로 사용자 정의
-// 오버라이드가 가능하다(참조표의 해당 행과 동일한 키를 공유하므로 자연스럽게 맞물린다).
+// 지역별 대표지수(국내=KOSPI, 코스닥=KOSDAQ, 해외=SPYM/S&P500) 수익률 하나 - 이 값도 'KOSPI'/'KOSDAQ'/
+// 'SPYM' 키로 사용자 정의 오버라이드가 가능하다(참조표의 해당 행과 동일한 키를 공유하므로 자연스럽게
+// 맞물린다). [코스닥 지수 - 버그 수정] SCENARIO_RATE_PRESETS.indexRates엔 domestic/foreign 두 값만
+// 있어 코스닥 전용 시스템 기본값은 아직 없다 - 사용자 정의 오버라이드가 없으면 코스피와 같은 domestic
+// 값을 시작점으로 쓴다(코스닥이 대체로 변동성/기대수익률이 더 높지만 별도 근거 수치를 새로 만들기보다
+// 사용자가 "수익률 관리"에서 직접 조정하도록 한다).
 function getEffectiveIndexRate(presetKey, region) {
-  const key = region === 'foreign' ? 'SPYM' : 'KOSPI';
+  const key = region === 'foreign' ? 'SPYM' : (region === 'kosdaq' ? 'KOSDAQ' : 'KOSPI');
   const custom = getCustomRate(key, presetKey);
   if (custom !== undefined) return custom;
+  if (region === 'kosdaq') return SCENARIO_RATE_PRESETS[presetKey].indexRates.domestic;
   return SCENARIO_RATE_PRESETS[presetKey].indexRates[region];
 }
 
@@ -303,8 +320,11 @@ function getTargetProjectionRate(target, presetKey, region) {
     // 이름 키워드로 실제 추종 지수의 대표 수익률에 매핑한다(getProjectionAssetGroupKey와 동일 규칙).
     const nameKey = getNameKeywordRateKey(target.label);
     if (nameKey) return getPresetTickerRate(presetKey, nameKey);
-    const isForeign = sanitizeTicker(target.ticker).isDomestic === '해외';
-    return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+    const sanitizedTarget = sanitizeTicker(target.ticker);
+    if (sanitizedTarget.isDomestic === '해외') return getEffectiveIndexRate(presetKey, 'foreign');
+    // [코스닥 대표지수 - 버그 수정] getProjectionAssetGroupKey/resolveTickerToRateKey와 동일하게
+    // 코스닥 상장 종목(.KQ)은 코스피가 아니라 코스닥 대표지수로 대체한다.
+    return getEffectiveIndexRate(presetKey, /\.KQ$/i.test(sanitizedTarget.yahooTicker) ? 'kosdaq' : 'domestic');
   }
   const groupKey = getProjectionGroupKey(target.category);
   if (groupKey === '현금') return 0;
@@ -327,6 +347,7 @@ const SCENARIO_RATE_BASE_ROWS = [
   { key: 'BOND', label: '국채/채권형' },
   { key: '부동산', label: '부동산' },
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
+  { key: 'KOSDAQ', label: 'KOSDAQ (코스닥 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
   { key: 'SPYM', label: 'S&P500 (SPYM)' },
   { key: 'SCHD', label: 'SCHD' },
@@ -345,6 +366,29 @@ const SCENARIO_RATE_BASE_ROWS = [
 // 전부 보여줬으나, 보유/매칭과 무관한 상품까지 나열해 어떤 게 실제로 계산에 쓰이는지 알기 어려웠다 -
 // 시스템 기본 목록만 실제 매칭 여부로 거르고, 사용자가 명시적으로 등록한 종목(엑셀 두 번째 시트 포함)은
 // 아직 보유/배분 전이라도 계속 보이게 해서 미리 수익률을 설정해 둘 수 있게 한다(요청 반영).
+// [수익률 관리 팝업 - 버그 수정] getActiveScenarioRateKeys()가 활성 키로 잡았는데도 SCENARIO_RATE_BASE_
+// ROWS에도 customScenarioRates에도 없는 "고아 키"(예: 엑셀 대표매칭 칸에 오타/잘못된 값을 입력했거나,
+// 아직 수익률을 등록하지 않은 신규 커스텀 키)에 표시할 이름을 찾는다 - 보유 자산 → 리밸런싱 목표 →
+// 월적립금/절세계좌 배분 순으로 실제 그 키를 쓰고 있는 항목을 찾아 이름을 쓰고, 못 찾으면 키 자체를
+// 이름으로 쓴다(그래도 최소한 화면에 나타나 사용자가 알아채고 고칠 수 있다).
+function findLabelForRateKey(key) {
+  const asset = state.assets.find((a) => a.category !== '부동산' && getProjectionAssetGroupKey(a) === key);
+  if (asset) return asset.name;
+  for (const region of ['국내', '해외']) {
+    const target = expandRebalanceTargetsForComputation(region)
+      .find((t) => t.type === 'ticker' && resolveTickerToRateKey(t.ticker, t.label) === key);
+    if (target) return target.label;
+  }
+  const contrib = (state.projection.monthlyContributionAllocation || [])
+    .find((it) => resolveTickerToRateKey(it.ticker, it.label) === key);
+  if (contrib) return contrib.label;
+  for (const owner of TAX_ADVANTAGED_OWNERS) {
+    const alloc = (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [])
+      .find((it) => resolveTickerToRateKey(it.ticker, it.label) === key);
+    if (alloc) return alloc.label;
+  }
+  return key;
+}
 function getScenarioRateDisplayRows() {
   const activeKeys = getActiveScenarioRateKeys();
   const rows = SCENARIO_RATE_BASE_ROWS.filter((r) => activeKeys.has(r.key));
@@ -353,6 +397,15 @@ function getScenarioRateDisplayRows() {
   Object.keys(customRates).forEach((key) => {
     if (shownKeys.has(key)) return;
     rows.push({ key, label: customRates[key].label || key, custom: true });
+    shownKeys.add(key);
+  });
+  // [고아 키 노출 - 버그 수정] 실제 계산에는 이미 쓰이고 있는데(resolveProjectionRateForKey가 조용히
+  // 지역 대표지수로 대체) 화면엔 전혀 안 보여 사용자가 존재조차 모른 채 방치되던 항목들을 마지막으로
+  // 채워 넣는다 - "일부 종목만 필터링되어 숨겨진다"는 신고의 직접적인 원인이었다.
+  activeKeys.forEach((key) => {
+    if (shownKeys.has(key)) return;
+    rows.push({ key, label: findLabelForRateKey(key), custom: true, orphan: true });
+    shownKeys.add(key);
   });
   return rows;
 }
@@ -370,7 +423,15 @@ function getSystemDefaultRate(presetKey, key) {
   if (key === 'BOND') return preset.categories['채권'];
   if (key === '부동산') return preset.categories['부동산'];
   if (key === 'KOSPI') return preset.indexRates.domestic;
-  return preset.tickers[key];
+  if (key === 'KOSDAQ') return preset.indexRates.domestic; // 코스닥 전용 시스템 기본값이 아직 없어 코스피와 동일하게 시작(getEffectiveIndexRate와 동일 규칙)
+  if (preset.tickers[key] !== undefined) return preset.tickers[key];
+  // [SSOT 정합성 - 버그 수정] 여기까지 안 걸리는 키(엑셀 대표매칭 칸에 시스템이 모르는 값을 넣었거나,
+  // 아직 customScenarioRates에도 등록되지 않은 커스텀 키를 조회하면 여기 온다) - 예전엔 undefined를
+  // 그대로 반환해 num(undefined)→0으로 "0%로 리셋"된 것처럼 보일 수 있었다. 실제 계산 경로
+  // (resolveProjectionRateForKey)와 동일하게 지역별 대표지수로 대체해 최소한 그럴듯한 값을 보여준다 -
+  // 두 경로가 "알 수 없는 키"를 똑같은 방식으로 처리하도록 맞춘 것(요구사항 4 SSOT).
+  if (/\.KQ$/i.test(key)) return preset.indexRates.domestic;
+  return sanitizeTicker(key).isDomestic === '해외' ? preset.indexRates.foreign : preset.indexRates.domestic;
 }
 // [티커 → 대표 수익률 키] getTargetProjectionRate/getProjectionAssetGroupKey의 "티커 판별" 부분과 동일한
 // 규칙(사용자 정의 오버라이드 → 시스템 티커 매핑 → 이름 키워드 매핑 → 지역별 대표지수 폴백)을
@@ -384,7 +445,7 @@ function resolveTickerToRateKey(ticker, label) {
   if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) return sanitized.yahooTicker;
   const nameKey = getNameKeywordRateKey(label);
   if (nameKey) return nameKey;
-  return sanitized.isDomestic === '해외' ? 'SPYM' : 'KOSPI';
+  return getRegionFallbackRateKey(sanitized.yahooTicker, sanitized.isDomestic);
 }
 // [수익률 관리 팝업 동적 필터링 - 요청 반영] "수익률 관리"에 나열할 상품을 하드코딩된 시스템 기본
 // 목록 그대로가 아니라, 지금 실제 포트폴리오에서 대표 수익률로 매칭·지정된 것만 모아 반환한다

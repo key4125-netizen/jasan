@@ -431,13 +431,32 @@ document.getElementById('tx_name').addEventListener('click', () => {
   if (!document.getElementById('tx_manualEntryToggle').checked) openStockSearchModal();
 });
 
+// [대표 추종 수익률 종목 셀렉트 - 요청 반영] 예전엔 자유 입력 텍스트칸이라 오타 위험이 컸다(엑셀 실
+// 사용 데이터에서 "0052D0.KS" 대신 "84" 같은 값이 들어가 수익률이 조용히 0%로 리셋된 사례 확인) -
+// 지금 시스템에 등록된 대표 매칭 종목 리스트(getScenarioRateDisplayRows, "수익률 관리" 팝업과 완전히
+// 같은 목록)에서 고르는 드롭다운으로 바꾼다. 모달을 열 때마다(등록 목록이 바뀔 수 있으므로) 새로 채운다.
+// 현재 값이 목록에 없는 경우(위 "84" 같은 예전 오타, 또는 아직 목록에 안 뜨는 값)는 지워버리지 않고
+// "(현재값)" 옵션으로 얹어 그대로 유지되게 한다 - 다른 필드를 고치려다 실수로 값을 날리는 일이 없게.
+function populateRateMatchOverrideOptions(currentValue) {
+  const select = document.getElementById('tx_rateMatchOverride');
+  const rows = getScenarioRateDisplayRows().slice().sort((a, b) => a.label.localeCompare(b.label, 'ko'));
+  const options = ['<option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>'];
+  if (currentValue && !rows.some((r) => r.key === currentValue)) {
+    options.push(`<option value="${escapeHtml(currentValue)}">⚠ 현재값: ${escapeHtml(currentValue)} (등록되지 않은 키)</option>`);
+  }
+  rows.forEach((r) => {
+    options.push(`<option value="${escapeHtml(r.key)}">${escapeHtml(r.label)} (${escapeHtml(r.key)})</option>`);
+  });
+  select.innerHTML = options.join('');
+  select.value = currentValue || '';
+}
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
   document.getElementById('tx_id').value = '';
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
-  document.getElementById('tx_rateMatchOverride').value = '';
+  populateRateMatchOverrideOptions('');
   document.getElementById('tx_date').value = todayDateStr();
   document.getElementById('tx_fee').value = 0;
   delete document.getElementById('tx_appliedRate').dataset.autofilled; // 이전 모달 세션의 자동채움 표시 잔재 방지
@@ -462,7 +481,7 @@ function openTransactionModal(txId) {
     // rateMatchOverride를 보여준다(없으면 자동판별 중이라는 뜻이라 빈칸으로 둔다).
     const matchedForEdit = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
       (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
-    document.getElementById('tx_rateMatchOverride').value = (matchedForEdit && matchedForEdit.rateMatchOverride) || '';
+    populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
     document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
   } else {

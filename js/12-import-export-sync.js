@@ -2,7 +2,14 @@
  * 21. 엑셀 내보내기 (전체 백업 - 파생 필드 포함)
  * ---------------------------------------------------------------------- */
 document.getElementById('exportExcelBtn').addEventListener('click', () => {
-  const rows = state.assets.map(a => {
+  // [버그 수정 - 전량 매도 종목 제외] 전량 매도된 포지션은 자산 목록에서 삭제되지 않고 수량만 0으로
+  // 남는다(syncAssetsFromTransactions 참고, 삭제는 사용자가 원할 때 직접 하도록 의도적으로 남겨둠).
+  // 채권처럼 수동 등록하는 자산은 수량은 남아있는데 시세(가격)가 0/미입력이라 평가금액만 0인 경우도
+  // 있다 - 수량이 아니라 실제 평가금액(calcRow(a).curAmount)이 0인 자산을 걸러야 두 경우 다 잡힌다
+  // (포트폴리오 구성 탭의 리밸런싱 가이드에 적용한 것과 동일한 필터, js/04 참고). "포트폴리오 구성"의
+  // 신규 매수 목표는 state.rebalance.targets에 별도로 저장되어 이 배열(state.assets)에 애초에 없으므로
+  // 이 필터로 영향받지 않는다.
+  const rows = state.assets.filter((a) => Math.round(calcRow(a).curAmount) !== 0).map(a => {
     const r = calcRow(a);
     return {
       'ticker': a.ticker || '', '소유자': a.owner, '계좌구분': a.accountType, '종목명': a.name,

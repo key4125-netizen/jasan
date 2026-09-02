@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v174</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v177</p>
           </div>
         </div>
 
@@ -2034,8 +2034,10 @@
            js/06 참고). -->
       <label class="col-span-2 text-xs">
         <span class="text-slate-500 dark:text-slate-400">대표 추종 수익률 종목 (선택)</span>
-        <input id="tx_rateMatchOverride" type="text" placeholder="예: SPYM, KOSPI, 005930.KS - 비워두면 자동판별"
+        <select id="tx_rateMatchOverride"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>
+        </select>
       </label>
 
       <label class="col-span-1 text-xs">

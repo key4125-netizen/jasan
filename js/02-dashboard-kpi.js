@@ -447,8 +447,12 @@ function getTopHoldings() {
   state.assets.forEach((a) => {
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return;
-    if (num(a.quantity) <= 0) return; // 전량 매도 포지션은 순위 후보에서 제외(값이 0이라도 실보유가 적으면 순위에 낄 수 있어 명시적으로 뺀다)
     const r = calcRow(a);
+    // [버그 수정 - 평가금액 0원인 유령 자산 제외] 예전엔 수량만 확인했으나, 채권처럼 수동 등록하는
+    // 자산은 수량은 남아있어도 시세 미입력으로 평가금액만 0인 경우가 있다 - 실제 평가금액이 0인
+    // 자산을 걸러야 전량 매도/미입력 두 경우 다 순위 후보에서 빠진다(포트폴리오 구성 탭 리밸런싱
+    // 가이드·엑셀 다운로드와 동일한 기준).
+    if (Math.round(r.curAmount) === 0) return;
     if (!groups[ticker]) {
       groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0, currentPrice: a.currentPrice };
     }
