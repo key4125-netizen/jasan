@@ -1600,83 +1600,183 @@ function updateProjection() {
 
 /* -------------------------------------------------------------------------
  * [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션
- *    - 대상: 일반계좌+절세계좌 금융자산 전체(부동산 제외, 사용자 확인 완료 사항 #4). μ는 "일반적" 프리셋
- *      기준으로 "지금 실제로 들고 있는 종목"을 평가금액 가중평균한 기대수익률(computeHouseholdWeightedAvgRate,
- *      리밸런싱 목표가 아니라 현재 구성 그대로), σ는 RISK 엔진이 실측한 연환산 변동성
- *      (state.advancedRiskMetrics.portfolioVolatilityPct, js/09)을 그대로 재사용한다.
- *    - state.advancedRiskMetrics는 refreshPricesAndRates() 완료 전엔 null이다 - 그동안은 로딩 문구만
- *      보여주고, renderAll()이 다시 호출되는 시점(5분 자동 갱신 등)에 이 섹션도 자동으로 채워진다
- *      (다른 리스크 카드들과 동일한 검증된 패턴, js/10 참고).
+ *    - [목표 비중 기준으로 전환 - 요청 반영] 원금(PV)만 "지금 실제로 들고 있는 총 평가금액"을 그대로
+ *      쓰고, 미래 성장 동력인 기대수익률(μ)과 변동성(σ)은 둘 다 "포트폴리오 구성" 탭에서 설정한
+ *      목표 비중(Targets)을 기준으로 계산한다 - 오늘 특정 종목에 편중돼 있어도(예: 한 종목이 89%),
+ *      "앞으로 목표대로 분산 투자·리밸런싱해 나간다"는 가정 하에 장기 프로젝션(P10/P50/P90)을 만드는
+ *      것이 이 시뮬레이션의 목적에 맞기 때문이다.
+ *    - μ는 이미 "리밸런싱 후" 시나리오가 쓰는 computeTargetWeightedAvgRate(js/05 위쪽, owner별 목표
+ *      비중을 그 owner의 현재 원금 비중으로 가중평균)를 그대로 재사용한다 - 별도 계산을 새로 만들지
+ *      않아 "포트폴리오 구성 탭에서 본 기대수익률"과 항상 같은 숫자를 본다.
+ *    - σ는 이 섹션에서 새로 만든다(computeTargetPortfolioVolatilityPct) - 목표 항목(티커)마다 실측
+ *      과거 1년 일별 수익률(getCachedDailyCloses, js/09와 캐시 공유)을 목표 비중으로 가중합해 "포트폴리오
+ *      일별 수익률 시계열"을 만들고, 거기에 연환산 변동성 공식(computeAnnualizedVolatilityPct, js/09)을
+ *      적용한다 - 종목 하나가 아니라 목표에 들어있는 여러 종목/지수의 실제 상관관계가 그대로 반영되므로,
+ *      오늘 한 종목에 쏠려 있어도 목표가 분산돼 있으면 분산 효과(공분산 구조)가 살아난다. 채권/현금
+ *      목표는 변동성을 0으로 근사한다(이 앱 전반에서 채권/현금을 NON_TRADABLE_CATEGORIES로 시세 조회
+ *      대상에서 빼는 것과 같은 단순화).
  * ---------------------------------------------------------------------- */
-// 가구 전체(일반계좌+절세계좌, 부동산 제외) 총 평가금액 - 몬테카를로 원금(PV).
+// 가구 전체(일반계좌+절세계좌, 부동산 제외) 총 평가금액 - 몬테카를로 원금(PV)은 목표 비중과 무관하게
+// 항상 "지금 실제로 들고 있는 금액"을 그대로 쓴다(요청 사양).
 function computeHouseholdMonteCarloPV() {
   return state.assets.filter((a) => a.category !== '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
 }
-// 가구 전체(부동산 제외) 보유 자산을 평가금액으로 가중평균한 기대수익률(%, presetKey 기준) -
-// computeTargetWeightedAvgRate(리밸런싱 "목표" 비중 기준)와 달리 "지금 실제로 들고 있는 종목 그대로"를
-// 대상으로 한다(getAssetProjectionRate가 종목별 대표 매칭 수익률을 그대로 재사용).
-function computeHouseholdWeightedAvgRate(presetKey) {
-  let weightedSum = 0, total = 0;
-  state.assets.forEach((a) => {
-    if (a.category === '부동산') return;
-    const amount = calcRow(a).curAmount;
-    if (amount === 0) return;
-    weightedSum += amount * getAssetProjectionRate(a, presetKey);
-    total += amount;
+
+// 소유자 한 명의 목표 비중(전체 포트폴리오 대비 0~1, 국내/해외 split × 지역 내 항목 비중)을
+// "종목(티커)/자산군 캐치올" 단위로 펼쳐서 Map으로 반환한다 - computePositionRoleBreakdown의
+// computeOwnerTargetRoleWeights(js/04)와 같은 원리이지만, 여기서는 role이 아니라 실제 수익률/변동성
+// 계산에 쓸 수 있도록 티커·카테고리 정보 자체를 담아 반환한다. selectedStocks까지 놓치지 않도록 펼쳐진
+// 목록(expandRebalanceTargetsForComputation, js/04)을 쓴다.
+function computeOwnerTargetInstrumentWeights(owner) {
+  const weights = new Map();
+  const domestic = state.rebalance[owner].domestic;
+  ['국내', '해외'].forEach((region) => {
+    const regionWeight = num(domestic[region]) / 100;
+    expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
+      const rowWeight = regionWeight * (num(t.pct) / 100);
+      if (rowWeight <= 0) return;
+      const key = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}` : `C:${region}:${t.category}`;
+      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, region };
+      prev.weight += rowWeight;
+      weights.set(key, prev);
+    });
   });
-  return total !== 0 ? weightedSum / total : 0;
+  return weights;
+}
+// 가구 전체 목표 비중 - computeTargetWeightedAvgRate(위쪽)와 동일한 가중 방식(각 owner의 목표 비중을
+// 그 owner의 현재 원금 비중으로 가중평균)으로 두 owner의 목표를 하나로 합친다. μ 계산과 같은 가중
+// 기준을 쓰므로, "목표 비중 기준"이라는 말이 μ와 σ 양쪽에서 일관되게 같은 의미를 갖는다.
+function computeHouseholdTargetInstrumentWeights() {
+  const merged = new Map();
+  let grandTotal = 0;
+  REBALANCE_OWNERS.forEach((owner) => {
+    const ownerTotal = getProjectionGroupTotal(getProjectionGroupStats(owner));
+    if (ownerTotal <= 0) return;
+    grandTotal += ownerTotal;
+    computeOwnerTargetInstrumentWeights(owner).forEach((v, key) => {
+      const prev = merged.get(key) || { ...v, weight: 0 };
+      prev.weight += v.weight * ownerTotal;
+      merged.set(key, prev);
+    });
+  });
+  if (grandTotal > 0) merged.forEach((v) => { v.weight = v.weight / grandTotal; });
+  return merged;
+}
+// 목표 비중 Map을 실제 일별 수익률 시계열과 짝지어 "포트폴리오 목표 비중 기준" 연환산 변동성(%)을
+// 계산한다. 티커는 그 종목의 캐시된 종가(getCachedDailyCloses, js/09 - RISK 카드와 캐시를 공유해
+// 중복 조회하지 않음)를 쓰고, '주식' 캐치올처럼 특정 종목이 없는 항목은 지역 대표지수(KOSPI/S&P500)로
+// 대체한다(μ 계산의 getTargetProjectionRate 지역 폴백 규칙과 동일). 채권/현금은 수익률 시계열 자체를
+// 만들지 않는다 - 그 비중만큼 가중합에서 빠지므로 자연히 "변동성 0인 자산이 섞여 전체를 희석"하는
+// 효과가 그대로 반영된다(별도 희석 계수를 곱할 필요가 없다). 가격 이력이 부족한 항목도 같은 방식으로
+// 안전하게 제외된다(예외 없이 계속 진행).
+async function computeTargetPortfolioVolatilityPct() {
+  const weightsMap = computeHouseholdTargetInstrumentWeights();
+  const withReturns = [];
+  const tasks = [];
+  weightsMap.forEach((v) => {
+    if (v.kind === 'ticker') {
+      tasks.push((async () => {
+        const yahoo = sanitizeTicker(v.ticker).yahooTicker;
+        const data = await getCachedDailyCloses(yahoo);
+        if (data && data.closes.length >= 10) withReturns.push({ weight: v.weight, returns: dailyReturnsFromCloses(data.closes) });
+      })());
+      return;
+    }
+    if (v.category === '채권' || v.category === '현금') return; // 변동성 0으로 근사 - 시계열을 만들지 않음
+    const indexTicker = v.region === '해외' ? INDEX_TICKERS.SP500 : INDEX_TICKERS.KOSPI;
+    tasks.push((async () => {
+      const data = await getCachedDailyCloses(indexTicker);
+      if (data && data.closes.length >= 10) withReturns.push({ weight: v.weight, returns: dailyReturnsFromCloses(data.closes) });
+    })());
+  });
+  await Promise.all(tasks);
+  if (withReturns.length === 0) return 0;
+  const minLen = Math.min(...withReturns.map((h) => h.returns.length));
+  if (minLen < 10) return 0;
+  const portfolioReturns = [];
+  for (let i = 1; i <= minLen; i++) {
+    let sum = 0;
+    withReturns.forEach((h) => { sum += h.returns[h.returns.length - i] * h.weight; });
+    portfolioReturns.unshift(sum);
+  }
+  return computeAnnualizedVolatilityPct(portfolioReturns) || 0;
 }
 
-// Box-Muller 변환으로 표준정규분포(평균0, 표준편차1) 난수를 만든다 - 순수 JS, 외부 라이브러리 불필요.
-function sampleStandardNormal() {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+// [결과 안정화 - 시드 고정 PRNG, 요청 반영] Math.random()을 직접 쓰면 조회할 때마다(자동 5분 갱신,
+// 탭 재진입 등) 완전히 새 난수 시퀀스로 1,000개 표본을 다시 뽑아 P10/P50/P90이 눈에 띄게 출렁였다 -
+// mulberry32(공개 도메인 소형 시드 PRNG)로 항상 같은 시드에서 시작해, pv/mu/sigma가 같으면 언제 다시
+// 계산해도 완전히 동일한 결과가 나오게 한다. 표본 수(MONTE_CARLO_ITERATIONS)도 1,000 -> 10,000으로
+// 늘려 백분위수 추정 자체의 표본오차도 함께 줄였다(시드 고정은 "매번 같은 답"을, 표본 수 증가는
+// "그 답이 실제 분포에 더 가깝게 수렴"을 각각 담당 - 서로 다른 문제라 둘 다 필요하다).
+function createSeededRandom(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s |= 0; s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-
-const MONTE_CARLO_ITERATIONS = 1000;
-// 기하 브라운 운동(GBM) - 마일스톤 연도(t)마다 S_t = S0 * exp((μ-σ²/2)t + σ√t·Z)를 1,000회 독립
-// 샘플링해 그 분포에서 P10/P50/P90을 뽑는다.
-// [P10/P90 표기 관례 - 자원평가식] "P10=10% 확률로 이 값을 초과함=낙관적 상위값", "P90=90% 확률로 이
-// 값을 초과함=보수적 하위값"이라는 자원평가(reserve estimation) 관례를 따른다 - 통계적 백분위수와
-// 표기 순서가 정반대이므로 주의: 코드상 P10은 표본 분포의 상위 10%(90th percentile), P90은 하위
-// 10%(10th percentile)다.
+const MONTE_CARLO_SEED = 20260101;
+const MONTE_CARLO_ITERATIONS = 10000;
+// 기하 브라운 운동(GBM) - 마일스톤 연도(t)마다 S_t = S0 * exp((μ-σ²/2)t + σ√t·Z)를 MONTE_CARLO_ITERATIONS회
+// 독립 샘플링해 그 분포에서 P10/P50/P90을 뽑는다.
+// [P10/P90 라벨링 - 통계 표준 확정, 요청 반영] 예전엔 자원평가(reserve estimation) 업계 관례("P10=10%
+// 확률로 초과=낙관")를 따라 코드상 p10에 상위 90th percentile 값을, p90에 하위 10th percentile 값을
+// 넣었다 - 하지만 이건 이 앱(개인 자산 시뮬레이션)의 일반적인 통계/금융 percentile 관례("P10=분포의
+// 하위 10%=비관", "P90=분포의 상위 10%=낙관")와 정반대라 라벨과 실제 값이 뒤바뀐 것처럼 보이는 오류였다.
+// 이제 p10은 문자 그대로 10th percentile(보수/하위 10%), p90은 90th percentile(낙관/상위 10%)이다.
 function runMonteCarloSimulation(pv, muPct, sigmaPct, yearOffsets) {
   const mu = muPct / 100, sigma = Math.max(0, sigmaPct / 100);
+  const rng = createSeededRandom(MONTE_CARLO_SEED);
+  const nextStandardNormal = () => {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  };
   const percentileOfSorted = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))))];
   return yearOffsets.map((y) => {
     const samples = new Array(MONTE_CARLO_ITERATIONS);
     for (let i = 0; i < MONTE_CARLO_ITERATIONS; i++) {
-      const z = sampleStandardNormal();
+      const z = nextStandardNormal();
       samples[i] = pv * Math.exp((mu - (sigma * sigma) / 2) * y + sigma * Math.sqrt(y) * z);
     }
     samples.sort((a, b) => a - b);
     return {
       year: y,
-      p10: percentileOfSorted(samples, 90), // 낙관(상위 10%)
+      p10: percentileOfSorted(samples, 10), // 보수(하위 10%, 10th percentile)
       p50: percentileOfSorted(samples, 50), // 중앙값
-      p90: percentileOfSorted(samples, 10)  // 보수(하위 10%)
+      p90: percentileOfSorted(samples, 90)  // 낙관(상위 10%, 90th percentile)
     };
   });
 }
 
-function renderMonteCarloSection() {
+// [경쟁 상태 방지] σ 계산이 이제 비동기(가격 이력 조회)라, 이 함수가 끝나기 전에 다시 호출되면(빠른
+// 탭 전환, 자동 갱신 등) 먼저 시작된 느린 호출이 나중에 끝나 최신 결과를 덮어쓸 수 있다 - 다른 비동기
+// 렌더들(coreStocksRequestToken 등)과 동일한 토큰 가드 패턴으로 막는다.
+let monteCarloRequestToken = 0;
+async function renderMonteCarloSection() {
   const loadingEl = document.getElementById('monteCarloLoadingNote');
   const contentEl = document.getElementById('monteCarloContent');
   if (!loadingEl || !contentEl) return;
-  const metrics = state.advancedRiskMetrics;
-  if (!metrics || !Number.isFinite(metrics.portfolioVolatilityPct)) {
-    loadingEl.classList.remove('hidden');
-    contentEl.classList.add('hidden');
+  const myToken = ++monteCarloRequestToken;
+  loadingEl.textContent = '목표 비중 기준으로 계산 중...';
+  loadingEl.classList.remove('hidden');
+  contentEl.classList.add('hidden');
+
+  const pv = computeHouseholdMonteCarloPV();
+  const mu = computeTargetWeightedAvgRate('normal');
+  const sigma = await computeTargetPortfolioVolatilityPct();
+  if (myToken !== monteCarloRequestToken) return; // 그 사이 더 최신 호출이 시작됐으면 이 결과는 버린다
+  if (pv <= 0) {
+    loadingEl.textContent = '집계할 금융자산이 없습니다.';
     return;
   }
+
   loadingEl.classList.add('hidden');
   contentEl.classList.remove('hidden');
 
-  const pv = computeHouseholdMonteCarloPV();
-  const mu = computeHouseholdWeightedAvgRate('normal');
-  const sigma = metrics.portfolioVolatilityPct;
   document.getElementById('monteCarloSigmaText').textContent = `${fmtNum(sigma, 1)}%`;
   document.getElementById('monteCarloMuText').textContent = `${fmtNum(mu, 1)}%`;
   document.getElementById('monteCarloPvText').textContent = fmtKRWShort(pv);
@@ -1688,16 +1788,17 @@ function renderMonteCarloSection() {
   document.getElementById('monteCarloScheduleBody').innerHTML = points.map((p) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${p.year === 0 ? '현재' : `${p.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + p.year}</span></td>
-      <td class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p10)}</td>
+      <td class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p10)}</td>
       <td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white">${fmtKRWShort(p.p50)}</td>
-      <td class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p90)}</td>
+      <td class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p90)}</td>
     </tr>`).join('');
 }
 
 // [이 프로젝트 최초의 밴드/영역채우기 차트] renderScenarioCompareChart의 옵션 구조(색상/툴팁/legend)를
 // 그대로 재사용하되, P10~P90 사이를 fill:'-1'로 채워 밴드(fan chart)를 만든다 - Chart.js는 데이터셋
-// 배열에서 "바로 앞 데이터셋과의 사이"만 채우므로 [P10(채우기 없음), P90(P10과의 사이를 채움),
-// P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다.
+// 배열에서 "바로 앞 데이터셋과의 사이"만 채우므로 [P90(낙관, 채우기 없음), P10(보수, 바로 앞
+// 데이터셋인 P90과의 사이를 채워 밴드를 만듦), P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다
+// - 이 등록 순서는 시각적 밴드를 만들기 위한 것일 뿐 P10/P90 각각의 의미(보수/낙관)와는 무관하다.
 function renderMonteCarloChart(points) {
   const textColor = chartTextColor();
   if (charts.monteCarlo) charts.monteCarlo.destroy();
@@ -1708,8 +1809,8 @@ function renderMonteCarloChart(points) {
     data: {
       labels,
       datasets: [
-        { label: 'P10(낙관)', data: points.map((p) => p.p10), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
-        { label: 'P90(보수)', data: points.map((p) => p.p90), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
+        { label: 'P90(낙관)', data: points.map((p) => p.p90), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
+        { label: 'P10(보수)', data: points.map((p) => p.p10), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
         { label: 'P50(중앙값)', data: points.map((p) => p.p50), borderColor: '#6366f1', backgroundColor: '#6366f1', fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: 3 }
       ]
     },
