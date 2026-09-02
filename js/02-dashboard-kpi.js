@@ -366,6 +366,16 @@ function renderKPIs() {
   document.getElementById('kpiRealEstateValue').textContent = fmtKRW(realEstateCur);
   document.getElementById('kpiFinancialCost').textContent = fmtKRW(financialBuy);
   document.getElementById('kpiRealEstateCost').textContent = fmtKRW(realEstateBuy);
+  // [보유 부동산 없으면 숨김 - 요청 반영] renderKpiBreakdown의 "Math.round(val) !== 0이면 표시" 규칙과
+  // 동일한 기준을 재사용한다 - 부동산을 아예 보유하지 않는 사용자에게는 "부동산 0원" 줄이 두 KPI
+  // 카드에 영구히 남아있지 않게 한다. hidden/items-flex 토글도 renderKpiBreakdown과 동일한 패턴
+  // (hidden과 flex 계열 클래스를 동시에 두지 않음 - Tailwind 캐스케이드 순서에 따라 hidden이 무시될 수 있음).
+  const realEstateValueRow = document.getElementById('kpiRealEstateValueRow');
+  realEstateValueRow.classList.toggle('hidden', Math.round(realEstateCur) === 0);
+  realEstateValueRow.classList.toggle('flex', Math.round(realEstateCur) !== 0);
+  const realEstateCostRow = document.getElementById('kpiRealEstateCostRow');
+  realEstateCostRow.classList.toggle('hidden', Math.round(realEstateBuy) === 0);
+  realEstateCostRow.classList.toggle('flex', Math.round(realEstateBuy) !== 0);
   renderKpiBreakdown('kpiTotalValueOwnerBreakdown', byOwner, o => o.cur, fmtKRWShort, false, 'text-xs text-slate-500 dark:text-slate-400', true);
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
