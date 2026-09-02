@@ -39,9 +39,9 @@ function getProjectionGroupLabel(groupKey) { return PROJECTION_GROUP_LABELS[grou
 // 키워드가 들어있으면 실제 추종 지수의 대표 수익률로 매핑한다. 나스닥을 SCHD/SPYM보다 먼저 확인해야
 // "TIGER 미국나스닥100"처럼 여러 키워드가 겹칠 수 있는 이름에서 올바른 지수가 선택된다.
 const NAME_KEYWORD_RATE_MAP = [
-  { key: 'QQQM', keywords: ['나스닥100', '나스닥 100', 'NASDAQ100', 'NASDAQ 100', '나스닥', 'NASDAQ'] },
+  { key: 'NASDAQ', keywords: ['나스닥100', '나스닥 100', 'NASDAQ100', 'NASDAQ 100', '나스닥', 'NASDAQ'] },
   { key: 'SCHD', keywords: ['배당다우존스', '배당 다우존스', 'SCHD'] },
-  { key: 'SPYM', keywords: ['S&P500', 'S&P 500', 'SP500', 'S&P지수'] }
+  { key: 'S&P500', keywords: ['S&P500', 'S&P 500', 'SP500', 'S&P지수'] }
 ];
 function getNameKeywordRateKey(name) {
   const hay = String(name ?? '').toUpperCase();
@@ -50,12 +50,18 @@ function getNameKeywordRateKey(name) {
   }
   return null;
 }
+// [대표매칭 키 이름 - 요청 반영] 사용자가 실제로 SPYM/QQQM 티커를 보유한 자산은 대표매칭 키 이름이
+// 'S&P500'/'NASDAQ'로 바뀐 뒤에도(아래) 여전히 정확히 매칭돼야 한다 - 티커 문자열 자체를 키 이름으로
+// 쓰던 예전 방식(preset.tickers['QQQM'] 등)이 더 이상 통하지 않으므로, "이 티커를 보유하면 이 대표
+// 키로 간다"는 별도 별칭표를 둔다(getProjectionAssetGroupKey/resolveTickerToRateKey/getTargetProjectionRate
+// 공용).
+const TICKER_RATE_KEY_ALIAS = { QQQM: 'NASDAQ', SPYM: 'S&P500' };
 // [코스닥/코스피 구분 - 버그 수정] 국내 상장 종목의 자동판별 최종 폴백 - 예전엔 국내 종목이면 무조건
 // 'KOSPI' 하나로만 묶어서, 코스닥 상장 종목(예: 파크시스템즈 140860.KQ)도 코스피 지수 수익률을 그대로
 // 썼다(사용자가 "수익률 관리"에 'KOSDAQ' 키를 따로 등록해도 실제 계산에 전혀 반영되지 않던 원인).
 // 티커 접미사(.KQ)로 실제 상장 시장을 구분해 코스닥 종목은 전용 'KOSDAQ' 키로 대표 매칭한다.
 function getRegionFallbackRateKey(yahooTicker, isDomestic) {
-  if (isDomestic === '해외') return 'SPYM';
+  if (isDomestic === '해외') return 'S&P500';
   return /\.KQ$/i.test(String(yahooTicker ?? '')) ? 'KOSDAQ' : 'KOSPI';
 }
 function getProjectionAssetGroupKey(asset) {
@@ -64,19 +70,27 @@ function getProjectionAssetGroupKey(asset) {
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
   // 처리한다(못 알아보는 키는 지역 대표지수로 조용히 대체) - 여기서는 형식 검증을 하지 않는다.
   if (asset.rateMatchOverride) return asset.rateMatchOverride;
-  const groupKey = getProjectionGroupKey(asset.category);
-  if (groupKey !== '주식형자산') return groupKey; // 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
+  // [정확매칭·키워드매칭 - 카테고리 캐치올보다 우선, 요청 반영] 예전엔 findCustomRateKeyForAsset가
+  // '주식형자산' 카테고리 안에서만 동작해, 채권/현금/부동산 카테고리 자산은 아무리 정확히 등록해도(혹은
+  // 키워드가 걸려도) 항상 카테고리 캐치올(예: 현금=하드코딩 0%)로만 갔다 - 두 매칭을 카테고리 분기보다
+  // 앞으로 옮겨 모든 카테고리에 동일하게 적용한다. 예: "달러 예수금"이 CASH 키워드("현금","달러")에
+  // 걸리면 하드코딩된 0% 대신 CASH의 등록 수익률을 쓴다.
   const customKey = findCustomRateKeyForAsset(asset.ticker, asset.name);
   if (customKey) return customKey; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
+  const keywordKey = getCustomKeywordRateKey(asset.name);
+  if (keywordKey) return keywordKey;
+  const groupKey = getProjectionGroupKey(asset.category);
+  if (groupKey !== '주식형자산') return groupKey; // 위 두 매칭에 안 걸린 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
   const sanitized = sanitizeTicker(asset.ticker);
   const yahoo = sanitized.yahooTicker;
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return yahoo;
+  if (TICKER_RATE_KEY_ALIAS[yahoo]) return TICKER_RATE_KEY_ALIAS[yahoo]; // 실제 QQQM/SPYM 티커 보유 - 이름 무관하게 항상 매칭
   const nameKey = getNameKeywordRateKey(asset.name);
   if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
   return getRegionFallbackRateKey(yahoo, sanitized.isDomestic);
 }
 // [절세계좌 종목별 복리 계산 - 요청 반영] getProjectionAssetGroupKey()가 반환하는 키 하나(티커/'NAME:x'/
-// 'SPYM'/'KOSPI' 같은 "상품형" 키, 또는 채권/현금/커스텀 자산군명 같은 "카테고리형" 키)를 실제 프리셋
+// 'S&P500'/'KOSPI' 같은 "상품형" 키, 또는 채권/현금/커스텀 자산군명 같은 "카테고리형" 키)를 실제 프리셋
 // 수익률로 변환한다 - 절세계좌 개별 보유 종목 복리 계산(getAssetProjectionRate)에서 쓴다. 알아볼 수
 // 없는 키(유효하지 않은 대표매칭 오버라이드, 처음 보는 커스텀 자산군명 등)는 조용히 지역 대표지수로
 // 대체해 절대 undefined/NaN을 반환하지 않는다.
@@ -86,7 +100,7 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   if (key === '부동산') return getReferenceRate(presetKey, '부동산');
   if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');
   if (key === 'KOSDAQ') return getEffectiveIndexRate(presetKey, 'kosdaq');
-  if (key === 'SPYM') return getEffectiveIndexRate(presetKey, 'foreign');
+  if (key === 'S&P500') return getEffectiveIndexRate(presetKey, 'foreign');
   const custom = getCustomRate(key, presetKey);
   if (custom !== undefined) return custom;
   const presetTicker = SCENARIO_RATE_PRESETS[presetKey].tickers[key];
@@ -222,6 +236,46 @@ function findCustomRateKeyForAsset(ticker, name) {
   return null;
 }
 
+// [범용 키워드 자동매칭 - 요청 반영] "수익률 관리"에서 어떤 대표매칭 키에든(BOND/BOND.STOCK/부동산/
+// CASH/GOLD 등 카테고리성 키 포함) 사용자가 직접 등록한 키워드 목록(customScenarioRates[key].keywords)과
+// 종목명을 대조한다. 예전 NAME_KEYWORD_RATE_MAP(QQQM/SCHD/SPYM 3종 고정)은 하드코딩이라 사용자가
+// 확장할 수 없었는데, 이 함수는 등록된 어떤 키든(카테고리성 키 포함) 키워드로 자동 매칭되게 한다 -
+// 예: "달러 예수금"이 CASH 키워드("현금","달러")에 걸리면 하드코딩된 현금=0% 대신 CASH의 등록
+// 수익률을 쓰고, "TIGER 미국테크TOP10채권혼합"이 BOND.STOCK 키워드("채권혼합")에 걸리면 단순 지역
+// 폴백이 아니라 채권혼합 전용 수익률을 쓴다.
+function keywordMatchesName(hay, keyword) {
+  const kw = String(keyword ?? '').trim().toUpperCase();
+  if (!kw) return false;
+  // [오매칭 방지] 한 글자짜리 키워드(예: '금')는 단순 부분포함으로 매칭하면 '현금'(현+금)/'예금'/'입금'
+  // 처럼 전혀 무관한 단어까지 전부 걸린다 - 종목명을 공백/괄호/하이픈/쉼표로 토큰화해 정확히 일치하는
+  // 토큰이 있을 때만 인정한다(부분포함 매칭 안 함).
+  if (kw.length <= 1) {
+    const tokens = hay.split(/[\s()[\]\-·,/]+/).filter(Boolean);
+    return tokens.includes(kw);
+  }
+  return hay.includes(kw);
+}
+function getCustomKeywordRateKey(name) {
+  const hay = String(name ?? '').toUpperCase();
+  if (!hay) return null;
+  const customRates = state.projection.customScenarioRates || {};
+  // [겹침 방지 - 버그 수정] "채권혼합"(BOND.STOCK 키워드)은 "채권"(BOND 키워드)을 부분문자열로 포함한다 -
+  // 그냥 먼저 등록된 키가 이기게 두면(Object.keys 순서 의존) 등록 순서에 따라 채권혼합 상품이 엉뚱하게
+  // BOND로 잡힐 수 있다. 매칭되는 키워드 중 "가장 긴(더 구체적인)" 것을 우선한다 - 등록 순서와 무관하게
+  // 항상 안정적으로 더 구체적인 키가 이긴다.
+  let bestKey = null;
+  let bestLen = 0;
+  for (const key of Object.keys(customRates)) {
+    const keywords = customRates[key].keywords;
+    if (!Array.isArray(keywords)) continue;
+    keywords.forEach((kw) => {
+      const trimmedLen = String(kw ?? '').trim().length;
+      if (trimmedLen > bestLen && keywordMatchesName(hay, kw)) { bestKey = key; bestLen = trimmedLen; }
+    });
+  }
+  return bestKey;
+}
+
 // 오버라이드 키 하나의 특정 프리셋(보수/일반/긍정) 값을 읽는다 - 등록은 돼 있어도 그 프리셋 칸만
 // 비워뒀다면(예: 보수/긍정만 입력) undefined를 반환해 호출부가 시스템 기본값으로 자연스럽게 대체하게 한다.
 function getCustomRate(key, presetKey) {
@@ -236,7 +290,8 @@ function getCustomRate(key, presetKey) {
 //   - tickers: 특정 티커로 지정된 목표(리밸런싱 탭에서 직접 추가한 종목)의 전용 수익률. 키는
 //     sanitizeTicker().yahooTicker 형식('005930.KS'=삼성전자, 'MSFT' 등)이다.
 //   - indexRates: 위 tickers 표에 없는 "기타 개별 종목"이 대신 쓰는 지역별 대표 지수 수익률 -
-//     국내는 KOSPI, 해외는 S&P500(=SPYM과 동일 값, 대표지수 그 자체이므로 의도적으로 같다)을 쓴다.
+//     국내는 KOSPI, 해외는 S&P500(=tickers표의 'S&P500' 행과 동일 값, 대표지수 그 자체이므로 의도적으로
+//     같다 - 실제로 SPYM 티커를 보유해도 이 'S&P500' 대표매칭 키로 잡힌다, TICKER_RATE_KEY_ALIAS 참고)을 쓴다.
 //   - categories: 채권(국채) 캐치올 전용 수익률. 현금은 항상 0%(getTargetProjectionRate에서 처리),
 //     주식 캐치올은 categories가 아니라 indexRates(지역별 대표지수)를 쓴다.
 // 전부 과거 장기 시장 평균·변동성을 참고한 근사치이며 실제 백테스트 데이터가 아니다 - 숫자만 바꾸면
@@ -250,7 +305,7 @@ const SCENARIO_RATE_PRESETS = {
     indexRates: { domestic: 5.0, foreign: 7.0 }, // KOSPI / S&P500(SPYM) 대표지수
     tickers: {
       '005930.KS': 8.0, // 삼성전자
-      'QQQM': 7.0, 'SPYM': 7.0, 'SCHD': 7.0,
+      'NASDAQ': 7.0, 'S&P500': 7.0, 'SCHD': 7.0,
       'MSFT': 7.0, 'GOOGL': 8.0, 'AAPL': 6.0, 'AMZN': 7.0, 'META': 7.0, 'NVDA': 6.5
     }
   },
@@ -262,7 +317,7 @@ const SCENARIO_RATE_PRESETS = {
     indexRates: { domestic: 7.0, foreign: 9.0 },
     tickers: {
       '005930.KS': 9.0,
-      'QQQM': 11.0, 'SPYM': 9.0, 'SCHD': 10.0,
+      'NASDAQ': 11.0, 'S&P500': 9.0, 'SCHD': 10.0,
       'MSFT': 10.5, 'GOOGL': 11.5, 'AAPL': 10.0, 'AMZN': 11.5, 'META': 12.0, 'NVDA': 12.5
     }
   },
@@ -272,7 +327,7 @@ const SCENARIO_RATE_PRESETS = {
     indexRates: { domestic: 11.0, foreign: 13.0 },
     tickers: {
       '005930.KS': 15.0,
-      'QQQM': 15.0, 'SPYM': 13.0, 'SCHD': 13.0,
+      'NASDAQ': 15.0, 'S&P500': 13.0, 'SCHD': 13.0,
       'MSFT': 14.5, 'GOOGL': 15.5, 'AAPL': 12.0, 'AMZN': 15.5, 'META': 16.5, 'NVDA': 18.0
     }
   }
@@ -286,14 +341,14 @@ function getPresetTickerRate(presetKey, yahooTicker) {
   return SCENARIO_RATE_PRESETS[presetKey].tickers[yahooTicker];
 }
 
-// 지역별 대표지수(국내=KOSPI, 코스닥=KOSDAQ, 해외=SPYM/S&P500) 수익률 하나 - 이 값도 'KOSPI'/'KOSDAQ'/
-// 'SPYM' 키로 사용자 정의 오버라이드가 가능하다(참조표의 해당 행과 동일한 키를 공유하므로 자연스럽게
+// 지역별 대표지수(국내=KOSPI, 코스닥=KOSDAQ, 해외=S&P500) 수익률 하나 - 이 값도 'KOSPI'/'KOSDAQ'/
+// 'S&P500' 키로 사용자 정의 오버라이드가 가능하다(참조표의 해당 행과 동일한 키를 공유하므로 자연스럽게
 // 맞물린다). [코스닥 지수 - 버그 수정] SCENARIO_RATE_PRESETS.indexRates엔 domestic/foreign 두 값만
 // 있어 코스닥 전용 시스템 기본값은 아직 없다 - 사용자 정의 오버라이드가 없으면 코스피와 같은 domestic
 // 값을 시작점으로 쓴다(코스닥이 대체로 변동성/기대수익률이 더 높지만 별도 근거 수치를 새로 만들기보다
 // 사용자가 "수익률 관리"에서 직접 조정하도록 한다).
 function getEffectiveIndexRate(presetKey, region) {
-  const key = region === 'foreign' ? 'SPYM' : (region === 'kosdaq' ? 'KOSDAQ' : 'KOSPI');
+  const key = region === 'foreign' ? 'S&P500' : (region === 'kosdaq' ? 'KOSDAQ' : 'KOSPI');
   const custom = getCustomRate(key, presetKey);
   if (custom !== undefined) return custom;
   if (region === 'kosdaq') return SCENARIO_RATE_PRESETS[presetKey].indexRates.domestic;
@@ -314,8 +369,14 @@ function getTargetProjectionRate(target, presetKey, region) {
       const custom = getCustomRate(customKey, presetKey);
       if (custom !== undefined) return custom;
     }
+    const keywordKey = getCustomKeywordRateKey(target.label);
+    if (keywordKey) {
+      const custom = getCustomRate(keywordKey, presetKey);
+      if (custom !== undefined) return custom;
+    }
     const yahoo = sanitizeTicker(target.ticker).yahooTicker;
     if (preset.tickers[yahoo] !== undefined) return getPresetTickerRate(presetKey, yahoo);
+    if (TICKER_RATE_KEY_ALIAS[yahoo]) return getPresetTickerRate(presetKey, TICKER_RATE_KEY_ALIAS[yahoo]); // 실제 QQQM/SPYM 티커 보유
     // [절세계좌 국내상장 해외지수 ETF] KODEX 미국S&P500/TIGER 미국나스닥100/SOL 미국배당다우존스 등
     // 이름 키워드로 실제 추종 지수의 대표 수익률에 매핑한다(getProjectionAssetGroupKey와 동일 규칙).
     const nameKey = getNameKeywordRateKey(target.label);
@@ -336,8 +397,9 @@ function getTargetProjectionRate(target, presetKey, region) {
 }
 
 // [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
-// tickers에 있는 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'SPYM'이 대표 ETF이자
-// 동시에 "S&P500 대표지수"(indexRates.foreign)도 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
+// tickers에 있는 종목 전부 + 지역별 대표지수(KOSPI)/국채(BOND) 2개를 합친 것이다. 'S&P500'이 대표 ETF(SPYM
+// 실제 보유 시에도 TICKER_RATE_KEY_ALIAS로 매칭됨)이자 동시에 "S&P500 대표지수"(indexRates.foreign)도
+// 겸하므로 행을 따로 두지 않고 하나로 합쳐 보여준다.
 // [부동산 복원 - 버그 수정] 한때 부동산을 미래예측/포트폴리오 구성 계산 전체에서 뺐을 때 이 목록에서도
 // 함께 지웠으나, 이후 "시나리오별 총자산" 카드가 부동산을 다시 계산에 포함시키면서(updateProjection
 // 참고) 정작 그 수익률을 사용자가 조정할 UI가 없는 상태로 남아있었다 - 여기 다시 등록해 다른 상품과
@@ -349,9 +411,9 @@ const SCENARIO_RATE_BASE_ROWS = [
   { key: 'KOSPI', label: 'KOSPI (국내 대표지수)' },
   { key: 'KOSDAQ', label: 'KOSDAQ (코스닥 대표지수)' },
   { key: '005930.KS', label: '삼성전자' },
-  { key: 'SPYM', label: 'S&P500 (SPYM)' },
+  { key: 'S&P500', label: 'S&P500 (SPYM)' },
   { key: 'SCHD', label: 'SCHD' },
-  { key: 'QQQM', label: 'QQQM' },
+  { key: 'NASDAQ', label: 'NASDAQ 100 (QQQM)' },
   { key: 'MSFT', label: 'Microsoft' },
   { key: 'GOOGL', label: 'Alphabet' },
   { key: 'AAPL', label: 'Apple' },
@@ -441,8 +503,11 @@ function getSystemDefaultRate(presetKey, key) {
 function resolveTickerToRateKey(ticker, label) {
   const customKey = findCustomRateKeyForAsset(ticker, label);
   if (customKey) return customKey;
+  const keywordKey = getCustomKeywordRateKey(label);
+  if (keywordKey) return keywordKey;
   const sanitized = sanitizeTicker(ticker);
   if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) return sanitized.yahooTicker;
+  if (TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker]) return TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker];
   const nameKey = getNameKeywordRateKey(label);
   if (nameKey) return nameKey;
   return getRegionFallbackRateKey(sanitized.yahooTicker, sanitized.isDomestic);
@@ -464,7 +529,7 @@ function getActiveScenarioRateKeys() {
       if (t.type === 'ticker') { active.add(resolveTickerToRateKey(t.ticker, t.label)); return; }
       const groupKey = getProjectionGroupKey(t.category);
       if (groupKey === '현금') return;
-      active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'SPYM' : 'KOSPI'));
+      active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'S&P500' : 'KOSPI'));
     });
   });
   state.assets.forEach((a) => {
@@ -878,13 +943,17 @@ let scenarioRateManagerDraft = [];
 
 // 모달을 열 때 현재 유효 수익률(오버라이드가 있으면 그 값, 없으면 시스템 기본값)로 초안을 채운다.
 function buildScenarioRateManagerDraft() {
+  const customRates = state.projection.customScenarioRates || {};
   return getScenarioRateDisplayRows().map((row) => ({
     key: row.key,
     label: row.label,
     isBase: !row.custom,
     conservative: num(getReferenceRate('conservative', row.key)),
     normal: num(getReferenceRate('normal', row.key)),
-    optimistic: num(getReferenceRate('optimistic', row.key))
+    optimistic: num(getReferenceRate('optimistic', row.key)),
+    // [키워드 자동매칭 - 요청 반영] 종목명에 이 키워드가 있으면 카테고리/지역 폴백보다 우선해서 이
+    // 키로 자동 매칭된다(getCustomKeywordRateKey 참고) - 등록 안 해도 그만이라 안 써도 기존과 동일.
+    keywords: (customRates[row.key] && Array.isArray(customRates[row.key].keywords)) ? customRates[row.key].keywords.slice() : []
   }));
 }
 
@@ -916,17 +985,22 @@ function renderScenarioRateManagerList() {
     return;
   }
   container.innerHTML = scenarioRateManagerDraft.map((row, idx) => `
-    <div class="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
-      <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
-      <div class="flex items-center gap-1 shrink-0">
-        <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative"
-          class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
-        <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal"
-          class="scenario-rate-input w-14 text-[11px] font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-        <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
-          class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
-        ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+    <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-1.5">
+      <div class="flex items-center gap-1.5">
+        <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+        <div class="flex items-center gap-1 shrink-0">
+          <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative"
+            class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
+          <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal"
+            class="scenario-rate-input w-14 text-[11px] font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
+            class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
+          ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+        </div>
       </div>
+      <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
+        placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
+        class="scenario-rate-keyword-input w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
     </div>`).join('');
   lucide.createIcons();
 }
@@ -937,6 +1011,10 @@ document.getElementById('scenarioRateManagerList').addEventListener('input', (e)
   const idx = e.target.dataset.rateIdx;
   const field = e.target.dataset.rateField;
   if (idx === undefined || !field) return;
+  if (field === 'keywords') {
+    scenarioRateManagerDraft[Number(idx)][field] = e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    return;
+  }
   scenarioRateManagerDraft[Number(idx)][field] = num(e.target.value);
 });
 
@@ -981,10 +1059,11 @@ function renderScenarioRateSearchResults(results, seq) {
       // 미국 대형주 등)을 골랐다면, 시스템 기본값(일반적 프리셋 기준)을 3개 입력창에 미리 채워 넣고
       // 안내한다 - 사용자는 필요하면 그 값을 그대로 두거나 수정만 하면 된다.
       const yahoo = sanitizeTicker(symbol).yahooTicker;
-      if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) {
-        const c = getSystemDefaultRate('conservative', yahoo);
-        const n = getSystemDefaultRate('normal', yahoo);
-        const o = getSystemDefaultRate('optimistic', yahoo);
+      const presetTickerKey = SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined ? yahoo : TICKER_RATE_KEY_ALIAS[yahoo];
+      if (presetTickerKey) {
+        const c = getSystemDefaultRate('conservative', presetTickerKey);
+        const n = getSystemDefaultRate('normal', presetTickerKey);
+        const o = getSystemDefaultRate('optimistic', presetTickerKey);
         document.getElementById('newScenarioRateConservative').value = c;
         document.getElementById('newScenarioRateNormal').value = n;
         document.getElementById('newScenarioRateOptimistic').value = o;
@@ -1032,6 +1111,7 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
         <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
       </div>
     </div>
+    <input id="newScenarioRateKeywords" type="text" placeholder="종목명 키워드(쉼표로 구분, 선택) - 예: 채권혼합" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
   `;
   // [모바일 스크롤 개선] 폼을 펼친 직후 화면(특히 모바일)에서 입력창이 하단에 가려 안 보일 수 있으므로,
@@ -1049,9 +1129,10 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
     if (rawConservative === '' || rawNormal === '' || rawOptimistic === '') { alert('보수/일반/긍정 수익률을 모두 입력하세요.'); return; }
     const key = buildCustomRateKey(code, name);
     if (scenarioRateManagerDraft.some((r) => r.key === key)) { alert('이미 등록된 종목입니다.'); return; }
+    const keywords = document.getElementById('newScenarioRateKeywords').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     scenarioRateManagerDraft.push({
       key, label: name || code, isBase: false,
-      conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic)
+      conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic), keywords
     });
     renderScenarioRateManagerList();
     form.classList.add('hidden');
@@ -1068,7 +1149,8 @@ document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click'
     key: row.key, label: row.label, isBase: true,
     conservative: num(getSystemDefaultRate('conservative', row.key)),
     normal: num(getSystemDefaultRate('normal', row.key)),
-    optimistic: num(getSystemDefaultRate('optimistic', row.key))
+    optimistic: num(getSystemDefaultRate('optimistic', row.key)),
+    keywords: [] // 시스템 기본값엔 등록된 키워드가 없다(전부 사용자가 직접 등록한 것) - 초기화 시 함께 비운다.
   }));
   // 신규 종목 추가 폼이 열려 있었다면 함께 접는다 - 방금 지워진 초안 목록과 어긋난 채로 남아있으면
   // 안 되므로(예: 방금 추가하려던 종목이 사라졌는데 입력 폼만 남아있는 상태 방지).
@@ -1090,9 +1172,11 @@ document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('cli
       if (num(row.conservative) !== num(getSystemDefaultRate('conservative', row.key))) entry.conservative = num(row.conservative);
       if (num(row.normal) !== num(getSystemDefaultRate('normal', row.key))) entry.normal = num(row.normal);
       if (num(row.optimistic) !== num(getSystemDefaultRate('optimistic', row.key))) entry.optimistic = num(row.optimistic);
+      if (Array.isArray(row.keywords) && row.keywords.length > 0) entry.keywords = row.keywords;
       if (Object.keys(entry).length > 0) { entry.label = row.label; next[row.key] = entry; }
     } else {
       next[row.key] = { label: row.label, conservative: num(row.conservative), normal: num(row.normal), optimistic: num(row.optimistic) };
+      if (Array.isArray(row.keywords) && row.keywords.length > 0) next[row.key].keywords = row.keywords;
     }
   });
   state.projection.customScenarioRates = next;
