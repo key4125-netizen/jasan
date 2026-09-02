@@ -2,7 +2,30 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v174'; // [대표 수익률 종목 매칭 체계 확장 + 엑셀 멀티 시트]
+const CACHE_NAME = 'smart-asset-manager-v177'; // [대표매칭 수익률 SSOT 정합성 + 코스닥 자동판별 버그 수정]
+// 1) getSystemDefaultRate(js/05) - BOND/부동산/KOSPI/프리셋 티커 외의 "알 수 없는 키"를 조회하면
+//    undefined를 그대로 반환해 화면엔 "0%로 리셋"된 것처럼 보일 수 있었다 - 실제 계산 경로
+//    (resolveProjectionRateForKey)와 동일하게 지역별 대표지수로 대체하도록 통일했다(요구사항 4, SSOT).
+// 2) getScenarioRateDisplayRows(js/05) - 실제 계산에 쓰이는 "활성 키"(getActiveScenarioRateKeys)인데도
+//    시스템 기본 목록에도 사용자 등록 목록(customScenarioRates)에도 없는 "고아 키"는 화면에서 완전히
+//    빠졌다 - findLabelForRateKey로 보유자산/리밸런싱목표/적립배분에서 이름을 찾아 마지막 3번째 그룹으로
+//    채워 넣어, 이제 어떤 활성 키도 누락 없이 전부 보이고 그 자리에서 바로 고칠 수 있다.
+// 3) 거래내역 등록/수정 팝업의 "대표 추종 수익률 종목" 입력칸을 자유 입력 텍스트에서 셀렉트 드롭다운으로
+//    바꿨다 - [수익률 관리] 팝업과 동일한 목록에서 고르게 하고, 이미 등록된 값이 목록에 없는 예외
+//    상황(과거 오타 등)은 지우지 않고 "현재값" 옵션으로 보존해 다른 필드를 고치다 실수로 값이 날아가는
+//    일이 없게 했다.
+// 4) [코스닥/코스피 자동판별 - 버그 수정] 국내 상장 종목은 전용 매핑이 없으면 무조건 'KOSPI' 하나로만
+//    폴백했다 - 코스닥 상장 종목(예: 파크시스템즈)도 코스피 지수 수익률을 그대로 썼고, "수익률 관리"에
+//    'KOSDAQ' 키를 직접 등록해도 실제 계산엔 전혀 반영되지 않았다. 티커 접미사(.KQ)로 코스닥 상장 여부를
+//    구분해 전용 'KOSDAQ' 대표 키로 매칭되도록 getProjectionAssetGroupKey/resolveTickerToRateKey/
+//    getTargetProjectionRate/resolveProjectionRateForKey/getEffectiveIndexRate를 모두 고쳤다.
+// index.html·js/05·06이 바뀌었으므로 v175->v177로 올려 PWA가 캐시된 예전 버전을 버리고 새로 받아오게 한다.
+// 1) "자산관리" 엑셀 다운로드가 state.assets를 필터링 없이 그대로 내보내, 전량 매도(수량 0)되거나
+//    가격 미입력(수량은 있지만 평가금액 0)인 유령 자산이 계속 목록에 남아있었다 - 실제 평가금액
+//    (calcRow(a).curAmount)이 0이 아닌 자산만 내보내도록 필터를 추가했다(포트폴리오 구성 탭의
+//    리밸런싱 가이드에 이미 적용된 것과 동일한 기준).
+// 2) 대시보드 Top5 보유종목도 같은 이유로 동일한 기준(평가금액 0원 제외)으로 업그레이드했다 - 예전엔
+//    수량만 확인해 가격 미입력 자산이 순위 후보에 낄 여지가 있었다.
 // 1) [비중조절] 팝업의 '주식' 캐치올 하위 [보유 주식 종목 선택](selectedStocks)이 미래예측 계산에서
 //    무시되던 버그를 고쳤다 - computeRegionWeightedRate/computeTargetWeightedAvgRate가 이제 종목별
 //    실행 가이드와 동일한 expandRebalanceTargetsForComputation을 함께 써서, 캐치올 안에 지정한 개별
