@@ -83,7 +83,10 @@ function expandRebalanceTargetsForComputation(owner, region) {
   raw.forEach((t) => {
     if (t.type === 'category' && t.category === '주식' && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0) {
       t.selectedStocks.forEach((s) => {
-        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct) });
+        // [포지션별 비중 분석 - 목표 비중 기준 집계, 요청 반영] s.role을 그대로 넘겨줘야 아래
+        // computeOwnerTargetRoleWeights()가 selectedStocks 안에 개별 지정된 종목의 포지션까지
+        // 놓치지 않고 집계한다 - 예전엔 이 role이 펼쳐지는 과정에서 버려져 있었다.
+        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role });
       });
       expanded.push({ type: 'category', category: '주식', label: '주식(기타)', pct: 0 });
     } else {
@@ -252,7 +255,30 @@ function renderRebalance() {
     buildTargetInputs(owner, '해외', total, perRegion['해외']);
   });
   updateRebalanceResults();
+  reapplyOwnerTargetAccordionHeights();
 }
+
+// [소유자별 목표 비중 카드 - 아코디언] 기본 접힘, 두 소유자 카드는 서로 독립적으로 열고 닫을 수 있다
+// (절세계좌 현황/종목별 실행 가이드의 신랑·와이프 아코디언과 동일한 패턴). 카드 내부 값(비중/목표금액
+// 미리보기 등)이 바뀌어 본문 높이가 달라질 때마다(renderRebalance 등) 다시 호출해 펼쳐진 상태의
+// max-height를 새 높이에 맞게 갱신한다.
+let ownerTargetAccordionOpen = { '신랑': false, '와이프': false };
+function reapplyOwnerTargetAccordionHeights() {
+  REBALANCE_OWNERS.forEach((owner) => {
+    const suffix = rebalanceOwnerSuffix(owner);
+    const body = document.getElementById(`ownerTargetAccordionBody${suffix}`);
+    const chevron = document.getElementById(`ownerTargetAccordionChevron${suffix}`);
+    if (body && chevron) setAccordionOpen(body, chevron, ownerTargetAccordionOpen[owner]);
+  });
+}
+REBALANCE_OWNERS.forEach((owner) => {
+  const btn = document.getElementById(`ownerTargetAccordionBtn${rebalanceOwnerSuffix(owner)}`);
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    ownerTargetAccordionOpen[owner] = !ownerTargetAccordionOpen[owner];
+    reapplyOwnerTargetAccordionHeights();
+  });
+});
 
 // [컴팩트 레이아웃] 비중 아래 목표금액/조정금액 미리보기 - 예전엔 "목표금액 X" / "+diff" 두 줄로
 // 나눠 보여줬는데, 세로 길이를 줄이기 위해 "X (+diff)" 한 줄로 합쳤다(요청: 모바일 세로 길이 50%+
@@ -629,6 +655,16 @@ function renderRtmDomesticSplit() {
 }
 
 // 국내/해외 세부 목표 % 입력창 - 위와 같은 이유로 모달을 열 때 한 번만 호출한다.
+// [종목 삭제 - 요청 반영] 더 이상 가져가지 않을 목표 항목(티커 지정이든 자산군 캐치올이든)을 목록에서
+// 완전히 제거한다 - draft(rebalanceModalDraft)에서만 지우고, [확인]을 눌러야 실제 state.rebalance에
+// 반영된다(다른 편집과 동일한 draft-then-commit 패턴). 지운 뒤 합계 100%가 깨져도(경고 배지만 뜸)
+// 저장 자체는 막지 않는다 - 남은 항목 비중을 사용자가 직접 다시 맞추거나 새 종목을 추가하면 된다.
+function removeRtmTarget(region, idx) {
+  rebalanceModalDraft.targets[region].splice(idx, 1);
+  renderRtmTargetGroup(region);
+  updateRtmPreviews();
+}
+
 function renderRtmTargetGroup(region) {
   const wrapId = region === '국내' ? 'rtmTargetsDomestic' : 'rtmTargetsForeign';
   const wrap = document.getElementById(wrapId);
@@ -650,18 +686,37 @@ function renderRtmTargetGroup(region) {
     const subText = hasSelectedStocks
       ? `<p class="mt-1 text-[10px] text-slate-400 truncate">└ ${t.selectedStocks.map((s) => `${escapeHtml(s.name)} ${fmtNum(num(s.pct), 1)}%`).join(', ')}</p>`
       : '';
+    // [종목 삭제 버튼 - 요청 반영] 티커 지정/자산군 캐치올 어느 쪽이든 이 목표 항목 자체를 목록에서
+    // 제거할 수 있다 - 개별 지정 종목(selectedStocks)을 하나씩 빼는 건 별도 팝업(stockAllocationModal)
+    // 몫이므로 여기서는 항목 전체 단위로만 지운다.
+    const deleteBtn = `<button type="button" data-rtm-delete data-region="${region}" data-idx="${idx}" title="이 항목 삭제"
+        class="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-700 shrink-0">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+      </button>`;
+    // [미보유 종목 추가 - 포지션 지정] 개별 티커 목표 항목에만 포지션(공격수/미드필더/수비수/코어자산)을
+    // 지정할 수 있다 - 자산군 캐치올(주식/채권/현금)은 여러 종목이 섞인 묶음이라 포지션 하나로 대표할
+    // 수 없다. [확인]으로 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이
+    // 이 role을 목표 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다.
+    const roleSelect = t.type === 'ticker'
+      ? `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+          <option value="">포지션 미지정</option>
+          ${ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${t.role === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>`
+      : '';
     return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2.5">
       <div class="flex items-center justify-between gap-2">
-        <span class="text-xs text-slate-600 dark:text-slate-300">${escapeHtml(t.label)}</span>
-        <div class="flex items-center gap-1">
+        <span class="text-xs text-slate-600 dark:text-slate-300 min-w-0 truncate">${escapeHtml(t.label)}</span>
+        <div class="flex items-center gap-1 shrink-0">
           ${searchBtn}
           <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}" ${hasSelectedStocks ? 'disabled title="선택된 종목 비중의 합으로 자동 계산됩니다"' : ''}
-            class="w-20 text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+            class="w-16 text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
           <span class="text-xs text-slate-400">%</span>
+          ${deleteBtn}
         </div>
       </div>
       ${subText}
+      ${roleSelect}
       <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex flex-col gap-0.5"></div>
     </div>`;
   }).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
@@ -679,8 +734,69 @@ function renderRtmTargetGroup(region) {
       openStockAllocationModal(btn.dataset.region, Number(btn.dataset.idx));
     });
   });
+  wrap.querySelectorAll('button[data-rtm-delete]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      removeRtmTarget(btn.dataset.region, Number(btn.dataset.idx));
+    });
+  });
+  wrap.querySelectorAll('select[data-rtm-role]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const r = e.target.dataset.region;
+      const idx = Number(e.target.dataset.idx);
+      rebalanceModalDraft.targets[r][idx].role = parseAssetRoleInput(e.target.value);
+    });
+  });
   lucide.createIcons();
 }
+
+/* -------------------------------------------------------------------------
+ * [미보유 종목 검색 추가] 종목 마스터 DB(searchTickerMaster, js/09 - 국내 코스피/코스닥 전종목 + 미국
+ *    주요종목, 로컬 캐시라 네트워크 없이 즉시 검색)에서 지역(국내/해외)에 맞는 상품을 찾아 새 티커
+ *    목표 항목으로 draft에 추가한다. 이미 그 지역 목표 목록에 있는 티커는 후보에서 제외한다(중복 방지).
+ * ---------------------------------------------------------------------- */
+function searchRtmAddCandidates(region, query) {
+  const q = query.trim();
+  if (!q) return [];
+  const existingTickers = new Set(
+    rebalanceModalDraft.targets[region]
+      .filter((t) => t.type === 'ticker')
+      .map((t) => sanitizeTicker(t.ticker).yahooTicker)
+  );
+  return searchTickerMaster(q)
+    .filter((r) => r.type === region && r.symbol && !existingTickers.has(sanitizeTicker(r.symbol).yahooTicker))
+    .slice(0, 10);
+}
+
+function renderRtmAddSearchResults(region, query) {
+  const containerId = region === '국내' ? 'rtmAddSearchResultsDomestic' : 'rtmAddSearchResultsForeign';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const candidates = searchRtmAddCandidates(region, query);
+  if (!query.trim()) { container.innerHTML = ''; return; }
+  if (candidates.length === 0) {
+    container.innerHTML = '<p class="text-[11px] text-slate-400 py-1">검색 결과가 없습니다.</p>';
+    return;
+  }
+  container.innerHTML = candidates.map((c) => `
+    <button type="button" data-rtm-add-candidate data-region="${region}" data-ticker="${escapeHtml(c.symbol)}" data-name="${escapeHtml(c.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+      <span class="text-xs truncate">${escapeHtml(c.name)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
+    </button>`).join('');
+  container.querySelectorAll('button[data-rtm-add-candidate]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const r = btn.dataset.region;
+      rebalanceModalDraft.targets[r].push({ type: 'ticker', ticker: btn.dataset.ticker, label: btn.dataset.name, pct: 0 });
+      const input = document.getElementById(r === '국내' ? 'rtmAddSearchInputDomestic' : 'rtmAddSearchInputForeign');
+      if (input) input.value = '';
+      container.innerHTML = '';
+      renderRtmTargetGroup(r);
+      updateRtmPreviews();
+    });
+  });
+}
+document.getElementById('rtmAddSearchInputDomestic').addEventListener('input', (e) => renderRtmAddSearchResults('국내', e.target.value));
+document.getElementById('rtmAddSearchInputForeign').addEventListener('input', (e) => renderRtmAddSearchResults('해외', e.target.value));
 
 /* -------------------------------------------------------------------------
  * 15-0-2. [보유 주식 종목 선택 모달] - rebalanceTargetModal의 '주식' 세부 목표 항목 전용 2차 팝업.
@@ -1010,21 +1126,52 @@ function updateRebalanceResults() {
 
 /* -------------------------------------------------------------------------
  * [Part 3] 포지션별(공격수/미드필더/수비수/코어자산) 비중 분석
- *    - 일반계좌(절세계좌·부동산 제외) 보유 자산만 집계 대상이다(isRebalanceEligibleAccount와 동일한
- *      기존 필터 재사용). 기본은 부부 합산('all')이며, 카드 상단 버튼으로 신랑/와이프 개별 비중을
- *      별도 팝업(positionRoleBreakdownModal)으로 볼 수 있다.
+ *    - [목표 비중 기준으로 전환 - 요청 반영] 예전엔 실제 보유 자산(state.assets)의 role 태그로
+ *      집계했다 - 그러면 "포트폴리오 구성" 탭에서 종목에 포지션을 지정해도 그 종목을 실제로 보유한
+ *      자산에도 똑같이 role을 달아주지 않으면 이 카드에 전혀 반영되지 않는 불일치가 있었다. 이제
+ *      신랑/와이프 각자의 목표 비중(state.rebalance[owner].targets) × 그 목표 항목(티커 지정 자산)에
+ *      지정된 role을 기준으로 집계한다 - "지금 무엇을 들고 있는가"가 아니라 "무엇을 목표로 하고
+ *      있는가"를 보여주는 카드로 바뀐 것이다. 자산군 캐치올(주식/채권/현금)과 포지션 미지정 티커는
+ *      'unassigned'로 잡힌다.
  * ---------------------------------------------------------------------- */
+// 소유자 한 명의 목표 비중 100%를 role별로 나눈 순수 비율(0~1, 합계 1) - 실제 금액과 무관하게 국내/해외
+// split(%) × 지역 내 항목 비중(%)만으로 계산한다. selectedStocks까지 놓치지 않도록 펼쳐진 목록
+// (expandRebalanceTargetsForComputation)을 쓴다.
+function computeOwnerTargetRoleWeights(owner) {
+  const weights = { attacker: 0, midfielder: 0, defender: 0, core: 0, unassigned: 0 };
+  const domestic = state.rebalance[owner].domestic;
+  ['국내', '해외'].forEach((region) => {
+    const regionWeight = num(domestic[region]) / 100;
+    expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
+      const rowWeight = regionWeight * (num(t.pct) / 100);
+      const key = (t.type === 'ticker' && t.role && weights[t.role] !== undefined) ? t.role : 'unassigned';
+      weights[key] += rowWeight;
+    });
+  });
+  return weights;
+}
+// ownerFilter가 실제 소유자명이면 그 사람의 목표 비중 100%를 그대로 role별로 나눈 비율이고, 'all'
+// (또는 생략, 부부 합산)이면 두 사람의 실제 리밸런싱 대상 총액(getRebalanceTotals)을 가중치로 삼아
+// 금액 가중 평균한다 - 신랑이 실제로 더 큰 총액을 갖고 있으면 신랑의 목표 배분이 합산 결과에 더 크게
+// 반영된다(단순 50:50 평균이 아니다). grandTotal은 실제 금액(그 소유자/가구의 리밸런싱 대상 총액)이며,
+// "역할이 집계될 자산 자체가 없음"을 판정하는 용도로만 쓰인다(positionRoleBarsHtml 참고) - 목표 비중
+// 계산 자체(pct)에는 관여하지 않는다.
 function computePositionRoleBreakdown(ownerFilter) {
+  if (ownerFilter && ownerFilter !== 'all') {
+    const ownerTotal = getRebalanceTotals(ownerFilter).total;
+    const weights = computeOwnerTargetRoleWeights(ownerFilter);
+    const totals = {}, pct = {};
+    Object.keys(weights).forEach((k) => { totals[k] = weights[k] * ownerTotal; pct[k] = weights[k] * 100; });
+    return { totals, pct, grandTotal: ownerTotal };
+  }
   const totals = { attacker: 0, midfielder: 0, defender: 0, core: 0, unassigned: 0 };
   let grandTotal = 0;
-  state.assets.forEach((a) => {
-    if (!isRebalanceEligibleAccount(a) || a.category === '부동산') return;
-    if (!isAssetIncludedForOwner(a, ownerFilter)) return;
-    const amount = calcRow(a).curAmount;
-    if (Math.round(amount) === 0) return;
-    const key = (a.role && totals[a.role] !== undefined) ? a.role : 'unassigned';
-    totals[key] += amount;
-    grandTotal += amount;
+  REBALANCE_OWNERS.forEach((owner) => {
+    const ownerTotal = getRebalanceTotals(owner).total;
+    if (ownerTotal <= 0) return;
+    const weights = computeOwnerTargetRoleWeights(owner);
+    Object.keys(weights).forEach((k) => { totals[k] += weights[k] * ownerTotal; });
+    grandTotal += ownerTotal;
   });
   const pct = {};
   Object.keys(totals).forEach((k) => { pct[k] = grandTotal !== 0 ? (totals[k] / grandTotal) * 100 : 0; });
