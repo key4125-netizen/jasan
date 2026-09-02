@@ -23,7 +23,9 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 채권/현금/커스텀 자산군명)를 그대로 보여준다 - 절세계좌·일반계좌 구분 없이 모든 종목에 적용된다.
       // 이 값을 셀에서 직접 고쳐서(예: 국내상장 ETF에 정확한 추종 지수 티커를 지정) 다시 업로드하면
       // makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로 반영한다(22. 엑셀 업로드 참고).
-      '대표매칭(수익률연동키)': getProjectionAssetGroupKey(a)
+      '대표매칭(수익률연동키)': getProjectionAssetGroupKey(a),
+      // [자산별 역할(포지션) 분류] 값을 고쳐서 다시 업로드하면 makeAsset()이 role로 저장한다.
+      '역할(포지션)': ASSET_ROLE_LABELS[a.role] || ''
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -163,7 +165,9 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         // [대표매칭 오버라이드 - 요청 반영] "대표매칭(수익률연동키)" 컬럼을 사용자가 직접 고쳐서 올리면
         // rateMatchOverride로 저장된다(비어 있으면 makeAsset이 undefined로 남겨 자동판별을 그대로 쓴다) -
         // getProjectionAssetGroupKey(js/05)가 이 값을 최우선으로 반영해 즉시 시뮬레이션에 연동된다.
-        rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키')
+        rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키'),
+        // [자산별 역할(포지션) 분류] 한글 라벨('공격수' 등) 또는 내부 키 둘 다 인식한다(parseAssetRoleInput).
+        role: pick(row, '역할(포지션)', '역할', 'role')
       }));
 
       if (imported.length === 0) { alert('가져올 데이터가 없습니다. (ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 헤더를 확인하세요)'); return; }
@@ -257,7 +261,9 @@ function buildSyncBlob() {
       // 고른다 - 빠지면 항상 0으로 취급돼 병합이 무의미해진다.
       updatedAt: a.updatedAt,
       // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
-      rateMatchOverride: a.rateMatchOverride
+      rateMatchOverride: a.rateMatchOverride,
+      // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
+      role: a.role
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
@@ -385,7 +391,9 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
         buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
         // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
-        rateMatchOverride: (typeof a.rateMatchOverride === 'string' && a.rateMatchOverride.trim() !== '') ? a.rateMatchOverride.trim() : undefined
+        rateMatchOverride: (typeof a.rateMatchOverride === 'string' && a.rateMatchOverride.trim() !== '') ? a.rateMatchOverride.trim() : undefined,
+        // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
+        role: parseAssetRoleInput(a.role)
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
@@ -512,6 +520,8 @@ function normalizeImportedAsset(a) {
     currentPrice: num(a.currentPrice),
     regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
     buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
+    // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 가족 동기화/백업 복원 시 사라진다.
+    role: parseAssetRoleInput(a.role),
     // [가족 동기화 - 스마트 머지] mergeCollectionById() 참고 - 없으면 지금 시각으로 폴백(오래된 백업 등).
     updatedAt: a.updatedAt || Date.now()
   };
@@ -558,14 +568,9 @@ function applyRemoteScalarFields(parsed) {
     persistDaily();
   }
   if (parsed.rebalance && typeof parsed.rebalance === 'object') {
-    const tg = parsed.rebalance.targets;
-    const defaults = cloneDefaultRebalanceTargets();
-    state.rebalance = {
-      domestic: parsed.rebalance.domestic || { '국내': 40, '해외': 60 },
-      targets: (tg && typeof tg === 'object')
-        ? { '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(tg['국내']) ? tg['국내'] : defaults['국내'])), '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(tg['해외']) ? tg['해외'] : defaults['해외']))) }
-        : defaults
-    };
+    // [소유자별 독립 리밸런싱 목표 - Option B] loadState와 동일한 normalizeRebalanceState(js/01)로
+    // 옛 단일 구조/새 owner-keyed 구조를 모두 안전하게 처리한다.
+    state.rebalance = normalizeRebalanceState(parsed.rebalance);
     persistRebalance();
   }
   if (parsed.projection && typeof parsed.projection === 'object') {
@@ -579,7 +584,9 @@ function applyRemoteScalarFields(parsed) {
       // 동일한 normalizeTaxAdvantagedPlan(js/01)으로 안전하게 채운다.
       taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.projection.taxAdvantagedPlan),
       // 월적립금 종목 배분도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
-      monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.projection.monthlyContributionAllocation)
+      monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.projection.monthlyContributionAllocation),
+      // 소유자별 독립 월적립금 설정도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
+      monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.projection.monthlyContributionByOwner)
     };
     persistProjection();
   }

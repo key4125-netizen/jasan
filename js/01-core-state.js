@@ -67,6 +67,27 @@ const CATEGORY_COLORS = {
   '현금': '#64748b', '부동산': '#ef4444', '원자재': '#a855f7', '암호화폐': '#ec4899'
 };
 
+// [자산별 역할(포지션) 분류] 일반계좈 자산에 축구 포지션 비유로 역할을 부여해, 포트폴리오 내 공격/수비
+// 성향 비중을 한눈에 볼 수 있게 한다(§Part 3 포지션별 비중 분석 카드). 미지정이 기본값(undefined)이며,
+// 절세계좈/부동산 자산에도 저장 자체는 허용하되 집계 시점(computePositionRoleBreakdown)에서만 일반계좈
+// 한정으로 걸러낸다.
+const ASSET_ROLE_OPTIONS = [
+  { value: 'attacker', label: '공격수' },
+  { value: 'midfielder', label: '미드필더' },
+  { value: 'defender', label: '수비수' },
+  { value: 'core', label: '코어자산' }
+];
+const ASSET_ROLE_LABELS = ASSET_ROLE_OPTIONS.reduce((acc, o) => { acc[o.value] = o.label; return acc; }, {});
+// 엑셀 "역할(포지션)" 컬럼처럼 내부 키('attacker' 등)가 아니라 한글 라벨('공격수' 등)로 입력/저장된
+// 값을 받아 내부 키로 되돌린다 - 두 표기 다 허용(내부 키를 직접 쓴 경우도 그대로 통과).
+function parseAssetRoleInput(raw) {
+  const v = String(raw ?? '').trim();
+  if (!v) return undefined;
+  if (ASSET_ROLE_LABELS[v]) return v;
+  const found = ASSET_ROLE_OPTIONS.find((o) => o.label === v);
+  return found ? found.value : undefined;
+}
+
 // 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
 // 실시간 시세 조회 대상 및 일간 손익 계산에서 제외한다(사용자가 실수로 티커를 입력해 넣어도 예외).
 const NON_TRADABLE_CATEGORIES = ['채권', '현금', '부동산'];
@@ -338,6 +359,13 @@ function cloneDefaultRebalanceTargets() {
   };
 }
 
+// [소유자별 독립 리밸런싱 목표 - Option B] 신랑/와이프가 각자 다른 목표 비중을 가질 수 있도록
+// state.rebalance를 owner 키(REBALANCE_OWNERS)로 나눈 구조로 쓴다 - 자세한 배경은 구현 계획 문서 참고.
+const REBALANCE_OWNERS = ['신랑', '와이프'];
+function makeDefaultRebalanceOwnerState() {
+  return { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
+}
+
 // 이미 localStorage/JSON 백업에 저장돼 있던 해외 세부 목표에는 '주식'/'현금' 캐치올이 없을 수 있다
 // (이 캐치올을 나중에 추가했으므로). 기존에 저장된 티커별 비중은 그대로 두고, 없는 캐치올만 0%로
 // 추가해 넣어 자산군 매칭 커버리지를 보강한다(합계는 0을 더하는 것이므로 100%가 깨지지 않는다).
@@ -454,7 +482,7 @@ const state = {
   //   targets: 각 지역 배분 "내에서"의 티커/자산군 혼합 세부 목표(지역별 합계 100%) - DEFAULT_REBALANCE_TARGETS 참고
   //   최종 목표금액 = 리밸런싱 대상 총액 × (domestic[지역]/100) × (targets[지역][i].pct/100)
   // - localStorage/JSON 백업에 저장됨.
-  rebalance: { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() },
+  rebalance: { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() },
   // 미래 자산예측 설정. monthlyContribution(월 적립금, 기본값 300만원 - 사용자가 자유롭게 수정 가능)
   // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용 - 주식형자산
   // 기본 8%/PROJECTION_GROUP_DEFAULT_RATES 참고)
@@ -477,7 +505,13 @@ const state = {
   // [{ ticker, label, pct }, ...]. "포트폴리오 구성" 탭의 목표 비중(리밸런싱용)과는 완전히 별개다.
   // 빈 배열이면(기본값) 예전처럼 국내/해외 목표 비중 비례로만 계산된다(simulateMonthlyContributionGrowth,
   // js/05 참고).
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [] },
+  // monthlyContributionByOwner: [소유자별 독립 월적립금 설정 - 신규] 신랑/와이프가 각자 다른 월 적립금·
+  // 적립기간·종목별 배분을 가질 수 있다 - { total(월 적립 총액), years(적립 기간), allocation([{ticker,
+  // label,pct}...]) }. 두 owner 모두 total===0(한 번도 설정 안 함)이면 위 단일 monthlyContribution/
+  // monthlyContributionAllocation을 그대로 쓰는 하위호환 폴백으로 동작한다(simulateRebalancedPreset,
+  // js/05 참고) - 마이그레이션으로 값을 자동 복사하지 않고, [월적립금 설정] 팝업을 처음 열 때만 기존
+  // 단일 값을 편집 초안의 시작점으로 미리 채워 보여준다(저장 전까지는 기존 계산 결과에 영향 없음).
+  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -499,7 +533,7 @@ const state = {
   dailySnapshots: {}
 };
 
-let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, totalAssetCompare: null, pnl: null, chartZoom: null, assetDetail: null, stockAnalysis: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null };
+let charts = { category: null, owner: null, domestic: null, scenarioCompare: null, totalAssetCompare: null, pnl: null, chartZoom: null, assetDetail: null, stockAnalysis: null, dailyPnl: null, totalValue: null, totalProfit: null, exchangeRate: null, monteCarlo: null };
 
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
@@ -584,6 +618,9 @@ function makeAsset(raw) {
     // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
     rateMatchOverride: (raw.rateMatchOverride !== undefined && raw.rateMatchOverride !== null && String(raw.rateMatchOverride).trim() !== '') ? String(raw.rateMatchOverride).trim() : undefined,
+    // [자산별 역할(포지션) 분류] 위 ASSET_ROLE_OPTIONS 참고 - rateMatchOverride와 동일한 선택적 문자열
+    // 필드 패턴(미지정이면 undefined).
+    role: parseAssetRoleInput(raw.role),
     // [가족 동기화 - 스마트 머지] 이 자산 레코드가 마지막으로 실제 변경된 시각 - mergeCollectionById()가
     // 같은 id가 로컬/원격 양쪽에 있을 때 어느 쪽을 채택할지 이 값으로 판단한다(js/12 참고). 시세 자동
     // 갱신(fetchPricesForTargets)처럼 "진짜 편집"이 아닌 배경 갱신은 절대 이 값을 건드리지 않는다.
@@ -770,7 +807,10 @@ function normalizeMonthlyContributionAllocation(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((it) => it && typeof it === 'object' && it.ticker && Number.isFinite(num(it.pct)))
-    .map((it) => ({ ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct) }));
+    // [미보유 종목 배분 - 포지션 태깅] 실제 보유 여부와 무관하게 이 배분 항목 자체에 역할(포지션)을
+    // 지정해 둘 수 있다(자산이 아니라 "적립 계획" 메타데이터 - state.assets와는 완전히 별개 저장소라
+    // 실물 보유자산 집계/포지션 비중 분석 카드에는 전혀 영향을 주지 않는다).
+    .map((it) => ({ ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct), role: parseAssetRoleInput(it.role) }));
 }
 
 // [버그 수정 - 엑셀 재업로드 시 일간손익 이중 누적 정리, 1회성] 소급 채우기 "이미 채움" 판정 기준을
@@ -790,6 +830,58 @@ function remediateDuplicatedDailySnapshotHistory() {
   });
   localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
   localStorage.setItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED, '1');
+}
+
+// [소유자별 독립 리밸런싱 목표 - 값 정규화] 한 owner 몫의 targets를 예전부터 써온 정제 로직
+// (커스텀 종목 제거/해외 캐치올 보강/selectedStocks 필드 보강)에 그대로 통과시킨다 - loadState()가
+// owner 구분 없이 단일 구조일 때 하던 처리와 완전히 동일하며, 이제 owner마다 한 번씩 호출된다.
+function normalizeRebalanceOwnerTargets(rawTargets) {
+  const defaults = cloneDefaultRebalanceTargets();
+  return {
+    '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(rawTargets && rawTargets['국내']) ? rawTargets['국내'] : defaults['국내'])),
+    '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(rawTargets && rawTargets['해외']) ? rawTargets['해외'] : defaults['해외'])))
+  };
+}
+function normalizeRebalanceOwnerState(rawOwnerState) {
+  return {
+    domestic: (rawOwnerState && rawOwnerState.domestic && typeof rawOwnerState.domestic === 'object') ? rawOwnerState.domestic : { '국내': 40, '해외': 60 },
+    targets: normalizeRebalanceOwnerTargets(rawOwnerState && rawOwnerState.targets)
+  };
+}
+// [Option B 마이그레이션] 예전 버전은 state.rebalance가 owner 구분 없는 단일 구조({domestic,targets})
+// 였다 - 그 값이 저장돼 있으면 신랑/와이프 양쪽에 그대로 복사해 새 구조로 승격한다(사용자 확인 완료
+// 사항 #1). 이미 새 owner-keyed 구조({신랑:{...},와이프:{...}})면 각 owner 몫만 정규화한다.
+function normalizeRebalanceState(raw) {
+  if (raw && typeof raw === 'object' && raw.targets && typeof raw.targets === 'object') {
+    const single = normalizeRebalanceOwnerState(raw);
+    return {
+      '신랑': single,
+      '와이프': { domestic: { ...single.domestic }, targets: { '국내': single.targets['국내'].map((t) => ({ ...t })), '해외': single.targets['해외'].map((t) => ({ ...t })) } }
+    };
+  }
+  if (raw && typeof raw === 'object' && (raw['신랑'] || raw['와이프'])) {
+    return {
+      '신랑': normalizeRebalanceOwnerState(raw['신랑']),
+      '와이프': normalizeRebalanceOwnerState(raw['와이프'])
+    };
+  }
+  return { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() };
+}
+
+// [소유자별 독립 월적립금 설정 - 값 정규화] loadState/JSON 백업 복원/가족 동기화 pull 공용. 배열이
+// 아니거나 항목이 손상되었으면 안전하게 걸러낸다(normalizeMonthlyContributionAllocation과 동일 이유).
+function normalizeMonthlyContributionByOwnerEntry(raw) {
+  return {
+    total: (raw && Number.isFinite(num(raw.total)) && num(raw.total) > 0) ? num(raw.total) : 0,
+    years: (raw && Number.isFinite(num(raw.years)) && num(raw.years) > 0) ? num(raw.years) : 15,
+    allocation: normalizeMonthlyContributionAllocation(raw && raw.allocation)
+  };
+}
+function normalizeMonthlyContributionByOwner(raw) {
+  return {
+    '신랑': normalizeMonthlyContributionByOwnerEntry(raw && raw['신랑']),
+    '와이프': normalizeMonthlyContributionByOwnerEntry(raw && raw['와이프'])
+  };
 }
 
 function loadState() {
@@ -835,21 +927,8 @@ function loadState() {
 
   try {
     const rebalRaw = localStorage.getItem(LS_REBALANCE);
-    if (rebalRaw) {
-      const parsed = JSON.parse(rebalRaw);
-      // 이전 버전(자산군 자동분류 기반 categoryByRegion)이 저장되어 있으면 새 구조(티커+자산군 혼합
-      // 목표)로 마이그레이션하지 않고 깨끗한 기본값으로 초기화한다 - 기존에도 써온 정책과 동일하다.
-      if (parsed && typeof parsed === 'object' && parsed.targets && typeof parsed.targets === 'object') {
-        const defaults = cloneDefaultRebalanceTargets();
-        state.rebalance = {
-          domestic: parsed.domestic || state.rebalance.domestic,
-          targets: {
-            '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(parsed.targets['국내']) ? parsed.targets['국내'] : defaults['국내'])),
-            '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(parsed.targets['해외']) ? parsed.targets['해외'] : defaults['해외'])))
-          }
-        };
-      }
-    }
+    const parsed = rebalRaw ? JSON.parse(rebalRaw) : null;
+    state.rebalance = normalizeRebalanceState(parsed);
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
 
   try {
@@ -887,7 +966,8 @@ function loadState() {
         // [절세계좌 적립 예상 - 하위호환] normalizeTaxAdvantagedPlan이 필드 부재/구버전 단일 years 구조를
         // 모두 안전하게 새 yearsByOwner 구조로 채워준다.
         taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.taxAdvantagedPlan),
-        monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.monthlyContributionAllocation)
+        monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.monthlyContributionAllocation),
+        monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.monthlyContributionByOwner)
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
@@ -944,7 +1024,9 @@ function persistAssets(skipPush) {
     // 병합 시 항상 "값 없음"으로 취급돼(0으로 폴백) 병합이 무의미해진다.
     updatedAt: a.updatedAt,
     // [대표매칭 오버라이드] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
-    rateMatchOverride: a.rateMatchOverride
+    rateMatchOverride: a.rateMatchOverride,
+    // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
+    role: a.role
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();
