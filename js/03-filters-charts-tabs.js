@@ -11,6 +11,62 @@ function populateFilterOptions() {
   fillSelect('filterAccount', accounts, '전체 계좌', state.filters.account);
 }
 
+/* -------------------------------------------------------------------------
+ * 9-1. [보유 부동산 없으면 안내문구에서 제외 - 요청 반영] 앱 전반의 부동산 관련 안내/설명 문구를
+ *    hasRealEstateHoldings()(js/01) 하나의 기준으로 일괄 갱신한다. 문구마다 "부동산" 언급이 문장
+ *    한가운데 조사와 얽혀 있어(예: "절세계좌 및 부동산을 제외한") 단순히 단어만 지우면 조사가 어색해질
+ *    수 있으므로, 부동산 유무별 완성된 문장 두 벌을 통째로 textContent/innerHTML로 교체하는 방식을
+ *    쓴다(부분 문자열 치환이 아님) - 항상 자연스러운 한국어 문장이 보장된다.
+ *    renderAll()에서 매번 호출되어 자산이 추가/삭제될 때마다 즉시 반영된다.
+ * ---------------------------------------------------------------------- */
+function updateRealEstateGuidanceText() {
+  const hasRE = hasRealEstateHoldings();
+
+  const setText = (id, withRE, withoutRE) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = hasRE ? withRE : withoutRE;
+  };
+  const setHtml = (id, withRE, withoutRE) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = hasRE ? withRE : withoutRE;
+  };
+  const setTitle = (id, withRE, withoutRE) => {
+    const el = document.getElementById(id);
+    if (el) el.title = hasRE ? withRE : withoutRE;
+  };
+
+  setText('riskScopeNote',
+    '진단 대상: 주식·ETF만 해당(현금/채권/부동산 등은 가격 변동성 진단 대상이 아니라 제외)',
+    '진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)');
+  setText('rebalanceScopeNote',
+    '※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.',
+    '※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.');
+  const domesticHelpWithRE = "국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.";
+  const domesticHelpWithoutRE = "국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다.";
+  setTitle('domesticTargetHelpIconHusband', domesticHelpWithRE, domesticHelpWithoutRE);
+  setTitle('domesticTargetHelpIconWife', domesticHelpWithRE, domesticHelpWithoutRE);
+  setText('domesticCaptionHusband', '국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외', '국내 입력 시 해외 자동 계산');
+  setText('domesticCaptionWife', '국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외', '국내 입력 시 해외 자동 계산');
+  setText('positionScopeNote',
+    '일반계좌(절세계좌·부동산 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.',
+    '일반계좌(절세계좌 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.');
+  setText('guideScopeNote',
+    '절세계좌 및 부동산을 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.',
+    '절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.');
+  setHtml('scenarioCompareGeneralDesc',
+    '같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌·부동산은 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.',
+    '같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.');
+  setHtml('totalAssetGeneralDesc',
+    '일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>와 <b>부동산(보유 중이면 현재가치를 별도 복리 성장)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.',
+    '일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.');
+  setText('totalAssetCompareDesc',
+    '일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.',
+    '일반계좌+절세계좌를 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.');
+  setText('monteCarloDesc',
+    '일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.',
+    '일반계좌+절세계좌 금융자산 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.');
+}
+
 function fillSelect(id, values, allLabel, current) {
   const el = document.getElementById(id);
   const opts = ['<option value="ALL">' + allLabel + '</option>']

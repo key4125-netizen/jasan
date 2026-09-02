@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v186</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v187</p>
           </div>
         </div>
 
@@ -581,7 +581,9 @@
       </div>
     </div>
     <p class="text-sm text-slate-400 leading-relaxed break-keep mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
-    <p class="text-[11px] text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권/부동산 등은 가격 변동성 진단 대상이 아니라 제외)</p>
+    <!-- [보유 부동산 없으면 문구에서 제외 - 요청 반영] updateRealEstateGuidanceText()(js/03)가 보유 부동산
+         유무에 따라 텍스트 전체를 교체한다. -->
+    <p id="riskScopeNote" class="text-[11px] text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)</p>
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
@@ -642,7 +644,9 @@
           <span class="text-slate-400 shrink-0">금융자산 총평가금액</span>
           <span id="kpiFinancialValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
         </div>
-        <div class="flex items-center justify-between gap-2">
+        <!-- [보유 부동산 없으면 숨김] renderKPIs()가 realEstateCur===0이면 이 줄 자체를 hidden 처리한다 -
+             부동산을 아예 보유하지 않는 사용자에게 "부동산 0원" 줄이 영구히 남아있지 않도록. -->
+        <div id="kpiRealEstateValueRow" class="hidden items-center justify-between gap-2">
           <span class="text-slate-400 shrink-0">부동산 자산 총평가금액</span>
           <span id="kpiRealEstateValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
         </div>
@@ -688,7 +692,8 @@
             <span class="text-slate-400 shrink-0">금융자산 투자금액</span>
             <span id="kpiFinancialCost" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
           </div>
-          <div class="flex items-center justify-between gap-2">
+          <!-- [보유 부동산 없으면 숨김] kpiRealEstateValueRow와 동일한 이유. -->
+          <div id="kpiRealEstateCostRow" class="hidden items-center justify-between gap-2">
             <span class="text-slate-400 shrink-0">부동산 자산 투자금액</span>
             <span id="kpiRealEstateCost" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
           </div>
@@ -1042,7 +1047,7 @@
          어려운 경우가 많아, 실제로 매수/매도 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
          대시보드("금융투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
          이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
-    <p class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
+    <p id="rebalanceScopeNote" class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
 
     <!-- [소유자별 독립 목표 비중 - Option B] 예전엔 가구 전체가 목표를 하나만 공유했으나, 신랑/와이프가
          각자 다른 투자 성향을 가질 수 있어 완전히 독립된 카드 세트 2벌(신랑용/와이프용)로 나눴다 -
@@ -1058,11 +1063,11 @@
         <div class="flex items-center justify-between mb-1">
           <h3 class="text-sm font-semibold flex items-center gap-1">
             국내/해외 목표 비중
-            <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다."></i>
+            <i id="domesticTargetHelpIconHusband" data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다."></i>
           </h3>
           <button type="button" data-rebalance-detail-btn data-owner="신랑" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
-        <p class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외</p>
+        <p id="domesticCaptionHusband" class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산</p>
         <div id="domesticTargetInputsHusband" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
@@ -1091,11 +1096,11 @@
         <div class="flex items-center justify-between mb-1">
           <h3 class="text-sm font-semibold flex items-center gap-1">
             국내/해외 목표 비중
-            <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다."></i>
+            <i id="domesticTargetHelpIconWife" data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" title="국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다."></i>
           </h3>
           <button type="button" data-rebalance-detail-btn data-owner="와이프" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
-        <p class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외</p>
+        <p id="domesticCaptionWife" class="text-[11px] text-slate-400 mb-2">국내 입력 시 해외 자동 계산</p>
         <div id="domesticTargetInputsWife" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
       </div>
       <div class="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 sm:p-4 shadow-sm">
@@ -1128,7 +1133,7 @@
           <button type="button" data-position-breakdown-owner-btn data-owner="와이프" class="detail-btn shrink-0">와이프 비중</button>
         </div>
       </div>
-      <p class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌·부동산 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.</p>
+      <p id="positionScopeNote" class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.</p>
       <div id="positionRoleBreakdownBars"></div>
     </section>
 
@@ -1155,7 +1160,7 @@
             <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
           </button>
         </div>
-        <p class="text-[11px] text-slate-400">절세계좌 및 부동산을 제외한 일반 금융자산 종목을 대상으로  자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
+        <p id="guideScopeNote" class="text-[11px] text-slate-400">절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
       </div>
       <div id="rebalanceGuideAccordionsContainer"></div>
     </section>
@@ -1255,7 +1260,7 @@
          이름에서부터 분명히 하기 위해 바꿨다. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">📊 시나리오별 일반계좌 그래프</h3>
-      <p class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌·부동산은 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+      <p id="scenarioCompareGeneralDesc" class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
       <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
     </section>
 
@@ -1289,7 +1294,7 @@
          복리 성장, 신규 매수 없음)을 모두 더한 가구 전체 총자산 기준 시나리오. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm mb-6">
       <h3 class="text-sm font-semibold mb-1">📊 시나리오별 총 자산 그래프</h3>
-      <p class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>와 <b>부동산(보유 중이면 현재가치를 별도 복리 성장)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
+      <p id="totalAssetGeneralDesc" class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
       <div class="h-72 sm:h-80"><canvas id="totalAssetCompareChart"></canvas></div>
     </section>
 
@@ -1297,7 +1302,7 @@
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-6">
       <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <h3 class="text-sm font-semibold">시나리오별 총자산 금액 비교</h3>
-        <p class="text-[11px] text-slate-400 mt-0.5">일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
+        <p id="totalAssetCompareDesc" class="text-[11px] text-slate-400 mt-0.5">일반계좌+절세계좌를 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
       </div>
       <button type="button" id="totalAssetCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
         <span class="detail-card-accordion-label">세부 항목 보기</span>
@@ -1323,7 +1328,7 @@
          채운다. -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-4 mb-6">
       <h3 class="text-sm font-semibold flex items-center gap-1">🎲 합산 포트폴리오 몬테카를로 시뮬레이션</h3>
-      <p class="text-[11px] text-slate-400 mt-0.5 mb-3">일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.</p>
+      <p id="monteCarloDesc" class="text-[11px] text-slate-400 mt-0.5 mb-3">일반계좌+절세계좌 금융자산 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.</p>
       <div id="monteCarloLoadingNote" class="text-xs text-slate-400 py-6 text-center">변동성 데이터 계산 중...</div>
       <div id="monteCarloContent" class="hidden">
         <div class="grid grid-cols-3 gap-2 mb-3 text-center">

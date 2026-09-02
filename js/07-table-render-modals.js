@@ -609,6 +609,7 @@ function renderInvestmentDetailTab() {
 
 function renderAll() {
   populateFilterOptions();
+  updateRealEstateGuidanceText();
   renderKPIs();
   renderRiskSection();
   // [탭 재배치] Top5는 금융투자현황 탭으로 옮겨왔다 - 캔버스가 아니라 일반 테이블이라 숨겨진 탭에서

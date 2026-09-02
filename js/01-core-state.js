@@ -1104,6 +1104,13 @@ function tableAssets() {
   return state.assets.filter(a => num(a.quantity) > 0);
 }
 
+// [보유 부동산 없으면 안내문구에서 제외 - 요청 반영] 대시보드 KPI 카드(realEstateCur 토글)와 동일한
+// 기준(평가금액이 반올림해서 0이 아닌 부동산 보유분이 하나라도 있는지)을 재사용한다 - 앱 전반의
+// 부동산 관련 안내/설명 문구(updateRealEstateGuidanceText, js/03)가 이 값 하나로 일관되게 판단한다.
+function hasRealEstateHoldings() {
+  return state.assets.some((a) => a.category === '부동산' && Math.round(calcRow(a).curAmount) !== 0);
+}
+
 // 검색어(종목명/티커/계좌구분/소유자)에 매칭되는 보유 자산을 찾는다 - 자산 관리 목록의 검색창(Enter
 // 또는 [검색] 버튼)과 검색 결과 팝업 내부 재검색이 공유한다. 상단 필터/목록 필터와 무관한 별도 경로.
 function searchAssetsByQuery(query) {
