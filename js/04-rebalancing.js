@@ -85,12 +85,14 @@ function expandRebalanceTargetsForComputation(owner, region) {
       t.selectedStocks.forEach((s) => {
         // [포지션별 비중 분석 - 목표 비중 기준 집계, 요청 반영] s.role을 그대로 넘겨줘야 아래
         // computeOwnerTargetRoleWeights()가 selectedStocks 안에 개별 지정된 종목의 포지션까지
-        // 놓치지 않고 집계한다 - 예전엔 이 role이 펼쳐지는 과정에서 버려져 있었다.
-        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role });
+        // 놓치지 않고 집계한다 - 예전엔 이 role이 펼쳐지는 과정에서 버려져 있었다. [티커별 역할
+        // 단일 소스 - 자동 연동] 이 항목 자체에 role이 없어도 레지스트리에 등록된 값으로 폴백한다 -
+        // 이 카드는 모달을 연 적 없는 티커도 집계하므로 cloneRebalanceTargetList의 폴백만으론 부족하다.
+        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role || getTickerRole(s.ticker) });
       });
       expanded.push({ type: 'category', category: '주식', label: '주식(기타)', pct: 0 });
     } else {
-      expanded.push(t);
+      expanded.push(t.type === 'ticker' ? { ...t, role: t.role || getTickerRole(t.ticker) } : t);
     }
   });
   return expanded;
@@ -481,8 +483,17 @@ let rebalanceModalOwner = null;
 // targets 배열을 깊은 복사한다 - selectedStocks가 배열(참조 타입)이라 얕은 복사({...t})만 하면 draft와
 // state.rebalance가 같은 배열을 공유하게 되어, draft에서 종목 추가/삭제(push/splice)가 취소 전에도
 // state.rebalance를 그대로 오염시키는 문제가 있었다.
+// [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 목표 항목을 이 팝업에서 직접 건드린 적이 없어
+// role이 비어있더라도, 자산관리/거래내역 등 다른 화면에서 이미 등록해 둔 역할이 있으면 그 값을
+// 이어받는다 - 모달을 열 때(state→draft)와 커밋할 때(draft→state) 양쪽에서 이 함수를 재사용하므로,
+// 한 번 열고 닫기만 해도 로컬 role이 채워져 syncTickerRolesFromRebalanceTargets가 레지스트리를
+// 지우는 부작용도 함께 사라진다.
 function cloneRebalanceTargetList(list) {
-  return (list || []).map((t) => ({ ...t, ...(Array.isArray(t.selectedStocks) ? { selectedStocks: t.selectedStocks.map((s) => ({ ...s })) } : {}) }));
+  return (list || []).map((t) => ({
+    ...t,
+    ...(t.type === 'ticker' ? { role: t.role || getTickerRole(t.ticker) } : {}),
+    ...(Array.isArray(t.selectedStocks) ? { selectedStocks: t.selectedStocks.map((s) => ({ ...s, role: s.role || getTickerRole(s.ticker) })) } : {})
+  }));
 }
 
 function openRebalanceTargetModal(owner) {
@@ -595,7 +606,7 @@ function renderRtmTargetGroup(region) {
         </select>`
       : '';
     return `
-    <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2.5">
+    <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2">
       <div class="flex items-center justify-between gap-2">
         <span class="text-xs text-slate-600 dark:text-slate-300 min-w-0 truncate">${escapeHtml(t.label)}</span>
         <div class="flex items-center gap-1 shrink-0">
@@ -830,7 +841,7 @@ function renderStockAllocationSelectedList() {
     const isHeld = getHeldStockCandidates(stockAllocationCurrentRegion).some((a) => a.ticker === s.ticker);
     const roleOptionsHtml = ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${s.role === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
     return `
-    <div class="border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
+    <div class="border border-slate-100 dark:border-slate-800 rounded-lg px-2.5 py-1.5">
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <p class="text-sm font-medium truncate">${escapeHtml(s.name)}</p>
@@ -969,8 +980,10 @@ function updateRtmPreviews() {
     const diff = targetAmount - currentAmount;
     // [모바일 줄바꿈 버그 수정] 예전엔 두 span을 한 flex row(justify-between)에 나란히 두어, 금액이
     // 길어지면 좁은 화면에서 중간에 부자연스럽게 줄바꿈됐다. 이제 각 줄을 별도 block(div)으로 나눠
-    // 화면 폭과 무관하게 항상 목표금액/조정금액 두 줄로 고정 표시한다.
-    el.innerHTML = `<div class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
+    // 화면 폭과 무관하게 항상 목표금액/조정금액 두 줄로 고정 표시한다. [목표금액 줄바꿈 방지 - 요청
+    // 반영] 이 div는 2열 그리드(rtmDomesticSplit) 안이라 폭이 좁아 "목표금액" 라벨과 금액이 그
+    // 자체로도 줄바꿈될 수 있어 whitespace-nowrap을 추가한다.
+    el.innerHTML = `<div class="text-slate-400 whitespace-nowrap">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
   });
 
   ['국내', '해외'].forEach((region) => {
@@ -987,7 +1000,8 @@ function updateRtmPreviews() {
       const previewEl = document.querySelector(`[data-rtm-preview][data-region="${region}"][data-idx="${idx}"]`);
       if (!previewEl) return;
       // [모바일 줄바꿈 버그 수정] 위 국내/해외 split 미리보기와 동일하게 두 줄(block)로 고정한다.
-      previewEl.innerHTML = `<div class="text-slate-400">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
+      // [목표금액 줄바꿈 방지 - 요청 반영] whitespace-nowrap 추가.
+      previewEl.innerHTML = `<div class="text-slate-400 whitespace-nowrap">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
     });
     const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
     const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
