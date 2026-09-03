@@ -551,6 +551,19 @@ async function applyRemoteState(parsed) {
   // [티커별 역할(포지션) 단일 소스] 동일한 이유로 통째 교체한다.
   state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
   persistTickerRoles();
+  // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
+  // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
+  if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
+    state.dailySnapshots = parsed.dailySnapshots;
+    persistDailySnapshots();
+    // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
+    // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
+    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산을 전부 "이미 채워짐"으로
+    // 미리 표시해 이중 합산을 막는다.
+    const doneFingerprints = getBackfillDoneFingerprints();
+    state.assets.forEach((a) => doneFingerprints.add(getBackfillFingerprint(a)));
+    localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
+  }
   persistAssets();
   renderAll();
   backfillAllHoldingsDailyPnlHistory();
@@ -596,20 +609,17 @@ function applyRemoteScalarFields(parsed) {
     };
     persistProjection();
   }
-  if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
-    state.dailySnapshots = parsed.dailySnapshots;
-    persistDailySnapshots();
-    // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
-    // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
-    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산을 전부 "이미 채워짐"으로
-    // 미리 표시해 이중 합산을 막는다. [지문 방식 통일] 추적 기준을 asset.id에서 소유자+계좌구분+티커
-    // 지문으로 바꿨다(js/11 getBackfillFingerprint 참고, 엑셀 재업로드 시 id가 매번 바뀌어 이중 누적되던
-    // 버그 수정과 짝) - 두 호출부가 서로 다른 기준을 쓰면 이 "미리 표시" 자체가 무력화되므로 반드시 같은
-    // 함수를 재사용해야 한다.
-    const doneFingerprints = getBackfillDoneFingerprints();
-    state.assets.forEach((a) => doneFingerprints.add(getBackfillFingerprint(a)));
-    localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
-  }
+  // [버그 수정 - 동기화가 과거 일별 손익 이력을 지움] dailySnapshots는 예전엔 이 함수 안에서 다른
+  // 설정값들과 똑같이 "원격이 최신이면 통째 교체"했다 - 그런데 이 함수는 JSON 복원과 클라우드 동기화
+  // 양쪽에서 공용으로 쓰인다. JSON 복원은 "이 시점으로 되돌리기"라 통째 교체가 맞지만, 클라우드
+  // 동기화는 그렇지 않다: 배우자 기기가 사소한 거래 하나만 추가해도 전체 버전 번호가 올라가고, 그
+  // 시점에 배우자 기기의 dailySnapshots가 이 기기보다 며칠치 이력이 적으면(예: 최근에야 켠 기기,
+  // 아직 소급 채움 전) pull 한 번으로 이 기기가 몇 주간 쌓아온 과거 일별 손익 이력이 통째로 사라졌다
+  // (사용자 실측 신고 - 동기화 직후 일별 손익 추이 그래프에 오늘 하루치만 남음). 자산/거래내역이 이미
+  // "통째 교체(복원) vs id 단위 병합(동기화)"으로 갈라져 있는 것과 동일하게, dailySnapshots도 이제
+  // 이 공용 함수에서 빼서 각 호출부(applyRemoteState=복원은 통째 교체, pullFromCloud=동기화는 날짜
+  // 단위 병합)가 자기 상황에 맞는 정책을 직접 적용한다 - learnedTickerNames/tickerRoles가 이미
+  // 이 함수 밖에서 호출부별로 다르게 처리되고 있는 것과 같은 구조다.
 }
 
 // [가족 동기화 - 스마트 머지] "id가 한쪽에만 있음"은 "새로 생김"과 "상대가 지움" 둘 다일 수 있어
@@ -666,6 +676,18 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
   if (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) {
     state.tickerRoles = { ...parsed.tickerRoles, ...state.tickerRoles };
     persistTickerRoles();
+  }
+  // [버그 수정 - 동기화가 과거 일별 손익 이력을 지움] 예전엔 applyRemoteScalarFields가 dailySnapshots를
+  // exchangeRate/rebalance 같은 "현재 설정값"과 똑같이 "원격이 최신이면 통째 교체"했다 - 배우자 기기가
+  // 사소한 거래 하나만 추가해도 전체 버전이 올라가는데, 그 시점 배우자 기기의 dailySnapshots가 이
+  // 기기보다 며칠치 이력이 적으면(최근에야 켠 기기, 아직 소급 채움 전 등) pull 한 번으로 이 기기가
+  // 쌓아온 과거 이력이 통째로 사라졌다(사용자 실측 신고 - 동기화 직후 일별 손익 추이에 오늘 하루치만
+  // 남음). learnedTickerNames/tickerRoles와 동일한 이유(순수 추가형 - 하루의 기록은 한 번 쌓이면
+  // 바뀔 일이 없다) 날짜 키 단위로 병합한다 - 같은 날짜가 양쪽에 있으면(대개 "오늘") 로컬 값을
+  // 우선한다. 어느 한쪽에만 있는 과거 날짜는 병합으로 그대로 보존된다.
+  if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
+    state.dailySnapshots = { ...parsed.dailySnapshots, ...state.dailySnapshots };
+    persistDailySnapshots();
   }
 }
 
@@ -778,6 +800,12 @@ async function pullFromCloud(opts) {
         if (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) {
           state.tickerRoles = { ...parsed.tickerRoles, ...state.tickerRoles };
           persistTickerRoles();
+        }
+        // [일별 손익 이력 - 버그 수정] 동일한 이유(순수 추가형 기록) - 최초 페어링이어도 통째 교체
+        // 대신 날짜 단위로 병합한다(mergeAssetsAndTransactionsWithRemote와 동일한 정책).
+        if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
+          state.dailySnapshots = { ...parsed.dailySnapshots, ...state.dailySnapshots };
+          persistDailySnapshots();
         }
       } else {
         // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.
