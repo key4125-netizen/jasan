@@ -535,65 +535,98 @@ function normalizeImportedAsset(a) {
 // (pullFromCloud/pushToCloud)는 이 함수를 쓰지 않고 mergeAssetsAndTransactionsWithRemote()로 병합한다
 // - 부부가 비슷한 시간에 각자 입력한 데이터가 한쪽 push/pull로 통째 덮어써져 사라지는 걸 막기 위함.
 async function applyRemoteState(parsed) {
-  state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
-  state.dayChangeMap = {};
-  state.prevCloseMap = {};
-  state.sessionMap = {};
-  state.priceFetchFailedIds = new Set();
-  applyRemoteScalarFields(parsed);
-  if (Array.isArray(parsed.transactions)) {
-    state.transactions = parsed.transactions.map(normalizeImportedTransaction);
-    persistTransactions();
+  // [버그 수정 - 복원 직후 자동 push로 목표비중/자산예측 설정이 조용히 덮어써짐] 복원은 자산/거래내역
+  // 등 여러 값을 한 번에 바꾸는데, 그중 rebalance/projection persist 함수는 하나라도 저장될 때마다
+  // schedulePush()를 걸어 3초 뒤 자동으로 클라우드에 업로드한다. 문제는 이 값들이 "병합"이 아니라
+  // "원격이 최신이면 통째 채택" 방식이라(위 applyRemoteScalarFields 참고 - 목표비중을 항목 단위로
+  // 병합하면 서로 다른 두 설정이 뒤섞여 합계가 안 맞는 등 더 혼란스러운 값이 나올 수 있어 의도적으로
+  // 이렇게 두었다), "3일 전으로 되돌리기"와 "배우자가 그 사이 수정한 목표비중 유지하기"가 동시에
+  // 성립할 수 없는 순간에 자동으로 push가 나가버리면 배우자의 최근 변경사항이 사용자 모르게 지워질
+  // 수 있다 - 이건 앱이 대신 판단할 문제가 아니라 사용자에게 물어봐야 하는 문제다. pull 진행 중에
+  // 재push를 막는 것과 동일한 안전장치(applyingRemoteUpdate)를 복원 중에도 재사용해 자동 push
+  // 자체를 막고, 복원이 끝난 뒤 동기화가 켜져 있으면 그 사실과 위험을 명확히 알린다(자동으로 아무
+  // 쪽도 선택하지 않음 - 사용자가 [서버 동기화중지]로 끄고 확인하거나, 그대로 두면 곧 반영된다).
+  applyingRemoteUpdate = true;
+  try {
+    state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
+    state.dayChangeMap = {};
+    state.prevCloseMap = {};
+    state.sessionMap = {};
+    state.priceFetchFailedIds = new Set();
+    applyRemoteScalarFields(parsed);
+    if (Array.isArray(parsed.transactions)) {
+      state.transactions = parsed.transactions.map(normalizeImportedTransaction);
+      persistTransactions();
+    }
+    // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
+    state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
+    persistLearnedTickerNames();
+    // [티커별 역할(포지션) 단일 소스] 동일한 이유로 통째 교체한다.
+    state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
+    persistTickerRoles();
+    // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
+    // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
+    if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
+      state.dailySnapshots = parsed.dailySnapshots;
+      persistDailySnapshots();
+      // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
+      // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
+      // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산을 전부 "이미 채워짐"으로
+      // 미리 표시해 이중 합산을 막는다.
+      const doneFingerprints = getBackfillDoneFingerprints();
+      state.assets.forEach((a) => doneFingerprints.add(getBackfillFingerprint(a)));
+      localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
+    }
+    // [버그 수정 - 복원 후 동기화가 최근 데이터를 "삭제됨"으로 오인] 클라우드 동기화의 병합
+    // (mergeCollectionById)은 "로컬에 없는데 예전엔 있었다고 기억하는 id"를 전부 "그 사이 사용자가
+    // 일부러 지운 것"으로 판단해 되살리지 않는다 - 그 "예전엔 있었다고 기억"하는 기준이 바로
+    // LS_SYNC_MERGED_ASSET_IDS/TX_IDS인데, 이 값은 복원으로 지워지지 않고 그대로 남아있다. 그래서
+    // 백업 시점 이후 새로 생긴 자산/거래(이 기기든 배우자 기기든)가 복원으로 로컬에서 사라지면,
+    // 복원 직후 자동으로 걸리는 동기화가 이걸 "삭제 의도"로 오인해 클라우드에서도 영구히 지워버릴 수
+    // 있었다(사용자 문의로 발견). 복원은 이 기기가 "동기화 이력을 처음부터 다시 시작하는 것"과 같으므로,
+    // 병합 기준을 완전히 비워 다음 동기화가 로컬/원격 어느 쪽에만 있는 항목이든 "삭제"가 아니라
+    // "새로 생김"으로 보고 전부 살리게 한다(같은 id가 양쪽에 있으면 기존처럼 updatedAt이 더 최신인
+    // 쪽이 이긴다 - 이 규칙은 그대로 유지). syncState.lastVersion도 0으로 되돌려, 다음 pull이
+    // "이미 최신"이라고 건너뛰지 않고 반드시 한 번 더 클라우드와 실제로 비교·병합하게 한다.
+    if (syncState.enabled) {
+      localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify([]));
+      localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify([]));
+      syncState.lastVersion = 0;
+      localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
+    }
+    persistAssets();
+    renderAll();
+    backfillAllHoldingsDailyPnlHistory();
+    refreshPricesAndRates();
+  } finally {
+    applyingRemoteUpdate = false;
   }
-  // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
-  state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
-  persistLearnedTickerNames();
-  // [티커별 역할(포지션) 단일 소스] 동일한 이유로 통째 교체한다.
-  state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
-  persistTickerRoles();
-  // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
-  // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
-  if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
-    state.dailySnapshots = parsed.dailySnapshots;
-    persistDailySnapshots();
-    // [버그 수정 - 복원 후 일별 손익 이중 합산] backfillAllHoldingsDailyPnlHistory()는 "아직 소급 채움을
-    // 안 해본 자산"만 골라 dailySnapshots에 += 로 더한다 - 방금 완성된 과거 이력을 통째로 반영했으므로
-    // 이 자산들을 "안 채움"으로 두면 같은 값이 중복 합산된다. 반영된 자산을 전부 "이미 채워짐"으로
-    // 미리 표시해 이중 합산을 막는다.
-    const doneFingerprints = getBackfillDoneFingerprints();
-    state.assets.forEach((a) => doneFingerprints.add(getBackfillFingerprint(a)));
-    localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
+  if (syncState.enabled) {
+    showToast('백업을 복원했습니다. 동기화가 켜져 있어 곧 이 내용이 클라우드에도 반영됩니다 - 배우자 기기가 그 사이 수정한 목표비중/자산예측 설정이 있다면 되돌아갈 수 있습니다. 먼저 확인하려면 지금 [서버 동기화중지]를 눌러주세요.', 'warn', 10000);
   }
-  persistAssets();
-  renderAll();
-  backfillAllHoldingsDailyPnlHistory();
-  refreshPricesAndRates();
 }
 
-// [가족 동기화 + JSON 백업 복원 공용] 환율/일간변동률/리밸런싱 목표/자산예측 설정/일별 스냅샷처럼
-// "배열이 아닌" 설정값들을 원격 데이터에서 반영한다 - 자산/거래내역(배열)은 호출부가 각자 다르게
-// 처리한다(applyRemoteState는 통째 교체, mergeAssetsAndTransactionsWithRemote는 병합). 요청 범위가
-// 자산/거래내역 병합으로 명시돼 있어 이 스칼라 설정값들은 지금처럼 "원격이 더 최신이면 그대로 채택"
-// 방식을 유지한다(호출부에서 이미 remote.version > lastVersion을 확인한 뒤에만 호출됨).
-function applyRemoteScalarFields(parsed) {
-  if (Number.isFinite(num(parsed.exchangeRate)) && num(parsed.exchangeRate) > 0) {
-    state.exchangeRate = num(parsed.exchangeRate);
-    document.getElementById('exchangeRateInput').value = state.exchangeRate;
-    persistRate();
-  }
-  if (parsed.dailyChangeRate !== undefined) {
-    state.dailyChangeRate = num(parsed.dailyChangeRate);
-    document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
-    persistDaily();
-  }
-  if (parsed.rebalance && typeof parsed.rebalance === 'object') {
+// [가족 동기화 - 필드별 최신성 비교] rebalance/projection은 자산처럼 "항목 목록"이 아니라 통째 값
+// 하나라 id 단위 병합이 불가능하다 - 그렇다고 "원격의 전체 버전이 더 높으면 통째 채택"도 클라우드
+// 동기화(push/pull)에서는 안전하지 않다(전체 버전은 이 필드와 무관한 다른 변경만으로도 올라가므로,
+// 그 사이 이 기기가 먼저 만들어둔 더 최신 rebalance/projection 수정이 조용히 덮어써질 수 있다 -
+// pushToCloud는 예전에 이 필드를 아예 검사조차 하지 않고 로컬을 그대로 밀어 올려 배우자의 최근
+// 수정을 지웠다). 반대로 JSON 백업 복원(applyRemoteState)은 "이 시점으로 통째로 되돌리기"가 목적이라
+// 타임스탬프를 비교하면 안 된다(복원 대상이 항상 더 오래된 값일 수 있으므로, 비교하면 복원 자체가
+// 조용히 무시된다) - opts.force로 이 차이를 구분한다: force(기본값, 복원용)는 무조건 채택, force:false
+// (클라우드 동기화 전용, pull/push 양쪽에서 재사용)는 필드 자체의 updatedAt이 더 최신일 때만 채택한다.
+function adoptRemoteRebalanceAndProjection(parsed, opts) {
+  const force = !opts || opts.force !== false;
+  const ts = (v) => Number(v) || 0;
+  if (parsed.rebalance && typeof parsed.rebalance === 'object' && (force || ts(parsed.rebalance.updatedAt) > ts(state.rebalance.updatedAt))) {
     // [소유자별 독립 리밸런싱 목표 - Option B] loadState와 동일한 normalizeRebalanceState(js/01)로
     // 옛 단일 구조/새 owner-keyed 구조를 모두 안전하게 처리한다.
     state.rebalance = normalizeRebalanceState(parsed.rebalance);
-    persistRebalance();
+    persistRebalance(true); // skipStamp - 원격의 updatedAt을 그대로 이어받는다("지금"으로 새로 찍지 않음)
   }
-  if (parsed.projection && typeof parsed.projection === 'object') {
+  if (parsed.projection && typeof parsed.projection === 'object' && (force || ts(parsed.projection.updatedAt) > ts(state.projection.updatedAt))) {
     state.projection = {
+      updatedAt: ts(parsed.projection.updatedAt),
       monthlyContribution: num(parsed.projection.monthlyContribution),
       categoryReturns: parsed.projection.categoryReturns || {},
       inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
@@ -607,8 +640,31 @@ function applyRemoteScalarFields(parsed) {
       // 소유자별 독립 월적립금 설정도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
       monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.projection.monthlyContributionByOwner)
     };
-    persistProjection();
+    persistProjection(true); // skipStamp - 위와 동일한 이유
   }
+}
+
+// [가족 동기화 + JSON 백업 복원 공용] 환율/일간변동률/일별 스냅샷처럼 "배열이 아닌" 나머지 설정값들을
+// 원격 데이터에서 반영한다 - 자산/거래내역(배열)은 호출부가 각자 다르게 처리한다(applyRemoteState는
+// 통째 교체, mergeAssetsAndTransactionsWithRemote는 병합). 환율/일간변동률은 지금처럼 "원격이 더
+// 최신이면 그대로 채택" 방식을 유지한다(호출부에서 이미 remote.version > lastVersion을 확인한 뒤에만
+// 호출됨 - 배경 시세갱신과 달리 사용자가 수동으로 입력한 값이라 부부가 동시에 두 값을 따로 편집할
+// 일이 거의 없어 필드별 타임스탬프까지는 필요하지 않다고 판단). rebalance/projection은 opts.gated로
+// 구분한다: 기본값(false, JSON 복원용)은 통째 채택, true(클라우드 동기화 전용)는 필드 자체의
+// updatedAt을 비교한다(adoptRemoteRebalanceAndProjection 주석 참고).
+function applyRemoteScalarFields(parsed, opts) {
+  const gated = opts && opts.gated;
+  if (Number.isFinite(num(parsed.exchangeRate)) && num(parsed.exchangeRate) > 0) {
+    state.exchangeRate = num(parsed.exchangeRate);
+    document.getElementById('exchangeRateInput').value = state.exchangeRate;
+    persistRate();
+  }
+  if (parsed.dailyChangeRate !== undefined) {
+    state.dailyChangeRate = num(parsed.dailyChangeRate);
+    document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
+    persistDaily();
+  }
+  adoptRemoteRebalanceAndProjection(parsed, { force: !gated });
   // [버그 수정 - 동기화가 과거 일별 손익 이력을 지움] dailySnapshots는 예전엔 이 함수 안에서 다른
   // 설정값들과 똑같이 "원격이 최신이면 통째 교체"했다 - 그런데 이 함수는 JSON 복원과 클라우드 동기화
   // 양쪽에서 공용으로 쓰인다. JSON 복원은 "이 시점으로 되돌리기"라 통째 교체가 맞지만, 클라우드
@@ -719,6 +775,13 @@ async function pushToCloud() {
           mergeAssetsAndTransactionsWithRemote(parsed);
           persistAssets();
           persistTransactions();
+          // [버그 수정 - push가 배우자의 최근 설정 수정을 조용히 덮어씀] 예전엔 이 push 전 병합이
+          // 자산/거래내역만 확인하고, rebalance/projection은 검사 없이 곧장 로컬 값을 그대로 밀어
+          // 올렸다 - 그 사이 배우자 기기가 이 필드를 더 최근에 고쳐뒀어도 이 기기가 (그 필드와 무관한)
+          // 사소한 편집 하나만 해도 통째로 덮어써 사라졌다. pull과 동일한 함수로 push 직전에도 필드
+          // 단위 최신성을 비교해(force:false), 정말 원격이 더 최신인 경우에만 그 값을 먼저 반영한 뒤
+          // 업로드한다 - 여기는 복원이 아니라 동기화이므로 force:true(통째 채택)를 쓰면 안 된다.
+          adoptRemoteRebalanceAndProjection(parsed, { force: false });
         } finally {
           applyingRemoteUpdate = false;
         }
@@ -811,9 +874,12 @@ async function pullFromCloud(opts) {
         // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.
         mergeAssetsAndTransactionsWithRemote(parsed);
       }
-      // 나머지 설정값(환율/포트폴리오/자산예측 등)은 두 경로 모두 기존처럼 원격 값을 그대로 채택한다
-      // (이미 위에서 remote.version > lastVersion을 확인한 뒤라 원격이 더 최신).
-      applyRemoteScalarFields(parsed);
+      // 환율/일간변동률은 두 경로 모두 기존처럼 원격 값을 그대로 채택한다(이미 위에서
+      // remote.version > lastVersion을 확인한 뒤라 원격이 더 최신). rebalance/projection은
+      // { gated: true }로 넘겨 필드 자체의 updatedAt을 따로 비교하게 한다(아래 adoptRemoteRebalanceAndProjection
+      // 주석 참고 - fullAdopt 최초 페어링이어도 예외 없이 적용: 이 필드는 "샘플/데모 데이터 섞임" 문제와
+      // 무관해 최초 페어링을 다르게 취급할 이유가 없다).
+      applyRemoteScalarFields(parsed, { gated: true });
       persistAssets();
       persistTransactions();
       renderAll();

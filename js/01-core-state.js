@@ -517,7 +517,10 @@ const state = {
   //   targets: 각 지역 배분 "내에서"의 티커/자산군 혼합 세부 목표(지역별 합계 100%) - DEFAULT_REBALANCE_TARGETS 참고
   //   최종 목표금액 = 리밸런싱 대상 총액 × (domestic[지역]/100) × (targets[지역][i].pct/100)
   // - localStorage/JSON 백업에 저장됨.
-  rebalance: { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() },
+  // updatedAt: [가족 동기화 - 필드별 최신성 비교] 자산/거래내역과 달리 이 필드는 "항목 목록"이 아니라
+  // 통째 값 하나라 id 단위 병합이 불가능하다 - 이 값 하나로 pull/push 양쪽에서 "정말 원격이 이 필드
+  // 기준으로 더 최신일 때만" 채택한다(persistRebalance/adoptRemoteRebalanceAndProjection 참고).
+  rebalance: { updatedAt: 0, '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() },
   // 미래 자산예측 설정. monthlyContribution(월 적립금, 기본값 300만원 - 사용자가 자유롭게 수정 가능)
   // + categoryReturns(카테고리별 수동 지정 예상 연수익률, 비어있으면 그룹별 기본값을 사용 - 주식형자산
   // 기본 8%/PROJECTION_GROUP_DEFAULT_RATES 참고)
@@ -546,7 +549,8 @@ const state = {
   // monthlyContributionAllocation을 그대로 쓰는 하위호환 폴백으로 동작한다(simulateRebalancedPreset,
   // js/05 참고) - 마이그레이션으로 값을 자동 복사하지 않고, [월적립금 설정] 팝업을 처음 열 때만 기존
   // 단일 값을 편집 초안의 시작점으로 미리 채워 보여준다(저장 전까지는 기존 계산 결과에 영향 없음).
-  projection: { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
+  // updatedAt: rebalance와 동일한 이유(위 주석 참고) - 필드 단위 최신성 비교용.
+  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -949,20 +953,26 @@ function normalizeRebalanceOwnerState(rawOwnerState) {
 // 였다 - 그 값이 저장돼 있으면 신랑/와이프 양쪽에 그대로 복사해 새 구조로 승격한다(사용자 확인 완료
 // 사항 #1). 이미 새 owner-keyed 구조({신랑:{...},와이프:{...}})면 각 owner 몫만 정규화한다.
 function normalizeRebalanceState(raw) {
+  // [가족 동기화 - 필드별 최신성 비교] 입력에 updatedAt이 있으면(localStorage 재로드, 원격 병합 등)
+  // 그대로 이어받는다 - 없으면(예: 이 필드가 생기기 전 저장된 값) 0으로 취급해 "언제 만들어졌는지
+  // 모르는 가장 오래된 값"으로 처리한다(adoptRemoteRebalanceAndProjection 참고).
+  const updatedAt = Number(raw && raw.updatedAt) || 0;
   if (raw && typeof raw === 'object' && raw.targets && typeof raw.targets === 'object') {
     const single = normalizeRebalanceOwnerState(raw);
     return {
+      updatedAt,
       '신랑': single,
       '와이프': { domestic: { ...single.domestic }, targets: { '국내': single.targets['국내'].map((t) => ({ ...t })), '해외': single.targets['해외'].map((t) => ({ ...t })) } }
     };
   }
   if (raw && typeof raw === 'object' && (raw['신랑'] || raw['와이프'])) {
     return {
+      updatedAt,
       '신랑': normalizeRebalanceOwnerState(raw['신랑']),
       '와이프': normalizeRebalanceOwnerState(raw['와이프'])
     };
   }
-  return { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() };
+  return { updatedAt: 0, '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() };
 }
 
 // [소유자별 독립 월적립금 설정 - 값 정규화] loadState/JSON 백업 복원/가족 동기화 pull 공용. 배열이
@@ -1092,12 +1102,17 @@ function loadState() {
     const parsed = rebalRaw ? JSON.parse(rebalRaw) : null;
     state.rebalance = normalizeRebalanceState(parsed);
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
+  // [가족 동기화 - 스마트 머지 마이그레이션] 자산/거래내역(위 참고)과 동일한 이유 - 이 필드가 생기기
+  // 전부터 있던 값은 updatedAt이 없다(0). 최초 1회만 "지금"으로 채워 넣는다(이후 실제 편집 시각이
+  // 정확히 기록됨) - 이미 값이 있으면 건드리지 않아 매번 재부팅해도 안전하다.
+  if (!state.rebalance.updatedAt) { state.rebalance.updatedAt = Date.now(); persistRebalance(true); }
 
   try {
     const projRaw = localStorage.getItem(LS_PROJECTION);
     if (projRaw) {
       const parsed = JSON.parse(projRaw);
       if (parsed && typeof parsed === 'object') state.projection = {
+        updatedAt: Number(parsed.updatedAt) || 0,
         monthlyContribution: num(parsed.monthlyContribution),
         categoryReturns: parsed.categoryReturns || {},
         inflationRate: (parsed.inflationRate !== undefined && parsed.inflationRate !== null && parsed.inflationRate !== '') ? num(parsed.inflationRate) : 2.5,
@@ -1133,6 +1148,8 @@ function loadState() {
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
+  // [가족 동기화 - 스마트 머지 마이그레이션] rebalance와 동일한 이유(위 참고).
+  if (!state.projection.updatedAt) { state.projection.updatedAt = Date.now(); persistProjection(true); }
 
   try {
     const txRaw = localStorage.getItem(LS_TRANSACTIONS);
@@ -1215,9 +1232,15 @@ function persistAssets(skipPush) {
 // 굳이 동기화할 필요가 없다는 점에 착안해 이 경로만 push 트리거에서 제외했다.
 function persistRate(skipPush) { localStorage.setItem(LS_RATE, String(state.exchangeRate)); if (!skipPush) schedulePush(); }
 function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); schedulePush(); }
-function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); schedulePush(); }
+// skipStamp: [가족 동기화 - 필드별 최신성 비교] true는 "원격/저장된 값을 그대로 이어받아 반영"하는
+// 호출 전용(adoptRemoteRebalanceAndProjection, loadState의 최초 마이그레이션 백필) - 이 경우
+// updatedAt을 "지금"으로 새로 찍으면 원래 시각(누가 언제 실제로 편집했는지)이 사라져 다음 비교가
+// 항상 "이 기기가 가장 최신"으로 잘못 판정된다. 사용자가 실제로 화면에서 값을 바꾼 나머지 모든
+// 호출부는 인자 없이 그대로 호출하면 된다(기존 동작과 동일).
+function persistRebalance(skipStamp) { if (!skipStamp) state.rebalance.updatedAt = Date.now(); localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); schedulePush(); }
 function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.stringify(state.tickerRoles)); schedulePush(); }
-function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
+// skipStamp: persistRebalance와 동일한 이유(위 주석 참고).
+function persistProjection(skipStamp) { if (!skipStamp) state.projection.updatedAt = Date.now(); localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
 function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
 function persistLearnedTickerNames() { localStorage.setItem(LS_LEARNED_TICKER_NAMES, JSON.stringify(state.learnedTickerNames)); schedulePush(); }
