@@ -891,9 +891,12 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
     const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
     return found ? found.pct : 0;
   };
+  // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 계좈에서 아직 배분 항목을 만든 적 없는(=보유는
+  // 하지만 적립 배분을 한 번도 설정 안 한) 종목도, 자산관리/거래내역 등 다른 화면에 이미 등록된
+  // 역할이 있으면 그 값을 보여준다.
   const roleFor = (accType, ticker) => {
     const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
-    return found ? found.role : undefined;
+    return (found && found.role) || getTickerRole(ticker);
   };
   const roleOptionsHtml = (selected) => ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
   container.innerHTML = accountTypes.map((accType) => {
@@ -935,6 +938,11 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
             data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(row.ticker)}" data-alloc-label="${escapeHtml(row.name)}"
             class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
           <span class="text-[10px] text-slate-400 shrink-0">%</span>
+          <!-- [종목 삭제 버튼 - 요청 반영] 보유 종목은 배분 항목만 지워져 pct 0으로 돌아가고(행 자체는
+               실제 보유 자산이라 계속 남음), 미보유(planned) 종목은 배분 항목이 곧 행의 존재 근거라
+               삭제 시 행 자체가 사라진다. -->
+          <button type="button" data-tax-alloc-remove data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(row.ticker)}" title="삭제"
+            class="touch-target w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           <select data-alloc-role-owner="${escapeHtml(owner)}" data-alloc-role-account="${escapeHtml(accType)}" data-alloc-role-ticker="${escapeHtml(row.ticker)}" data-alloc-role-label="${escapeHtml(row.name)}"
             class="tax-alloc-role-select basis-full text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker))}</select>
         </div>`).join('')}
@@ -1043,6 +1051,20 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e)
   persistProjection();
 });
 document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
+  const removeBtn = e.target.closest('[data-tax-alloc-remove]');
+  if (removeBtn) {
+    const owner = removeBtn.dataset.owner, accType = removeBtn.dataset.account, ticker = removeBtn.dataset.ticker;
+    const list = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
+    const idx = list.findIndex((it) => it.accountType === accType && it.ticker === ticker);
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      persistProjection();
+      renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
+      renderTaxAdvantagedPlanResults();
+      updateProjection();
+    }
+    return;
+  }
   const addToggleBtn = e.target.closest('[data-tax-add-toggle]');
   if (addToggleBtn) {
     const owner = addToggleBtn.dataset.owner, accType = addToggleBtn.dataset.account;
@@ -1957,12 +1979,15 @@ function openMonthlyContributionAllocationModal() {
   const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
   REBALANCE_OWNERS.forEach((owner) => {
     const saved = byOwner[owner];
+    // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 배분 항목에 role이 없어도, 자산관리/거래내역 등
+    // 다른 화면에 이미 등록된 역할이 있으면 그 값을 이어받는다.
+    const withRoleFallback = (it) => ({ ...it, role: it.role || getTickerRole(it.ticker) });
     if (bothUnset) {
       monthlyContributionByOwnerDraft[owner] = owner === '신랑'
-        ? { total: num(state.projection.monthlyContribution), years: 15, allocation: state.projection.monthlyContributionAllocation.map((it) => ({ ...it })) }
+        ? { total: num(state.projection.monthlyContribution), years: 15, allocation: state.projection.monthlyContributionAllocation.map(withRoleFallback) }
         : { total: 0, years: 15, allocation: [] };
     } else {
-      monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: (saved && num(saved.years)) || 15, allocation: ((saved && saved.allocation) || []).map((it) => ({ ...it })) };
+      monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: (saved && num(saved.years)) || 15, allocation: ((saved && saved.allocation) || []).map(withRoleFallback) };
     }
     const suffix = rebalanceOwnerSuffix(owner);
     document.getElementById('monthlyContributionTotalInput' + suffix).value = monthlyContributionByOwnerDraft[owner].total || '';
@@ -2091,7 +2116,9 @@ function renderMonthlyAllocSearchResults(owner, results, seq) {
         alert('이미 배분된 종목입니다.');
         return;
       }
-      draft.allocation.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0 });
+      // [티커별 역할(포지션) 단일 소스 - 자동 연동] 다른 3개 추가 플로우와 동일하게 이 티커에 이미
+      // 등록된 role이 있으면 이어받는다.
+      draft.allocation.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0, role: getTickerRole(btn.dataset.pickSymbol) });
       renderMonthlyContributionAllocationList(owner);
       const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
       form.classList.add('hidden');
@@ -2122,6 +2149,11 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
   REBALANCE_OWNERS.forEach((owner) => {
     const draft = monthlyContributionByOwnerDraft[owner];
     next[owner] = { total: num(draft.total), years: num(draft.years) || 15, allocation: draft.allocation.map((it) => ({ ...it })) };
+  });
+  // [티커별 역할(포지션) 단일 소스] 이 팝업에서 저장한 role을 레지스트리에도 반영해 다른 화면에서도
+  // 이어받게 한다 - 위 draft 시딩 단계에서 이미 role이 항상 채워져 있어 여기서 지워질 위험은 없다.
+  REBALANCE_OWNERS.forEach((owner) => {
+    next[owner].allocation.forEach((it) => { if (it.ticker) setTickerRole(it.ticker, it.role); });
   });
   state.projection.monthlyContributionByOwner = next;
   persistProjection();

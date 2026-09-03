@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v189</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v190</p>
           </div>
         </div>
 
@@ -1518,13 +1518,13 @@
            소제목("📊 주가 및 리스크 정밀 진단")을 포함하고 있어 별도 헤더를 추가할 필요가 없다. 티커가
            없거나 리스크 계산 대상이 아닌 자산(부동산/현금 등)이면 attachRiskDiagnosisToDetailModal()이
            이 영역 자체를 숨긴다. -->
-      <div id="assetDetailRiskSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-6 pt-6">
+      <div id="assetDetailRiskSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-4 pt-4">
         <div id="assetDetailRiskBody"></div>
       </div>
 
       <!-- [한국투자증권(KIS) 재무/수급 데이터] 국내주식만 해당(attachFundamentalSection이 해외 티커/
            티커 없는 자산이면 이 영역 자체를 숨긴다). js/13 참고. -->
-      <div id="assetDetailFundamentalSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-6 pt-6">
+      <div id="assetDetailFundamentalSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-4 pt-4">
         <div id="assetDetailFundamentalBody"></div>
       </div>
 
@@ -1538,7 +1538,7 @@
            맞지 않으므로, 같은 자리에 매크로 브리핑 상세 팝업과 동일한 지표 설명 콘텐츠를 대신 보여준다
            - attachStockAnalysisReportToDetailModal()이 getMacroKeyForTicker()로 감지해 분기하며, 이
            제목도 그때 "📊 지수/지표 정보"로 바꿔치기한다(assetDetailAnalysisTitle). -->
-      <div id="assetDetailAnalysisSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-6 pt-6">
+      <div id="assetDetailAnalysisSection" class="hidden border-t border-slate-200 dark:border-slate-800 my-4 pt-4">
         <h4 id="assetDetailAnalysisTitle" class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">🔍 종목 분석 &amp; 위험 관리</h4>
         <div id="assetDetailAnalysisBody">
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
@@ -1793,12 +1793,12 @@
            contributionByOwnerAccount + allocationByOwner). 계좌종류는 직접 입력하지 않고 보유
            종목에서 자동으로 정해지므로, 새 절세계좈에 종목을 사면 다음에 열 때 카드가 자동으로
            하나 더 나타난다. 종목이 없는 소유자는 "폴백" 안내만 보여준다. -->
-      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">신랑 절세계좌 적립 설정</p>
+      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">신랑 절세계좌 적립 설정</p>
         <div id="taxAdvantagedAllocationHusband"></div>
       </div>
-      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">와이프 절세계좌 적립 설정</p>
+      <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">와이프 절세계좌 적립 설정</p>
         <div id="taxAdvantagedAllocationWife"></div>
       </div>
       <div id="taxAdvantagedPlanResults"></div>
@@ -1829,14 +1829,14 @@
       </button>
     </div>
 
-    <div class="px-5 py-4 overflow-y-auto space-y-5">
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
       <!-- [소유자별 독립 월적립금 설정 - Part 2-B] 신랑/와이프 각자 독립된 총액·적립기간·종목별 배분을
            갖는다 - 절세계좌 적립 설정 팝업과 동일한 카드 패턴. 두 카드 다 total===0으로 남아있으면
            기존 단일 monthlyContribution/monthlyContributionAllocation 로직으로 하위호환 폴백된다
            (getOwnerMonthlyContributionInputs, js/05). -->
-      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">👤 신랑</h4>
-        <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
+        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 신랑</h4>
+        <div class="grid grid-cols-2 gap-2 mb-2">
           <label class="block text-xs">
             <span class="text-slate-500 dark:text-slate-400">월 적립 총액</span>
             <input id="monthlyContributionTotalInputHusband" type="number" step="any" placeholder="0"
@@ -1848,21 +1848,21 @@
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
         </div>
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-1.5">
           <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
           <span id="monthlyContributionAllocationSumHintHusband" class="text-[11px] font-semibold">합계 0%</span>
         </div>
-        <div id="monthlyContributionAllocationListHusband" class="space-y-2"></div>
-        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintHusband">100%</span>)은 신랑의 국내/해외 목표 비중대로 계산됩니다.</p>
-        <button type="button" id="monthlyContributionAllocationAddBtnHusband" class="w-full mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <div id="monthlyContributionAllocationListHusband" class="space-y-1.5"></div>
+        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintHusband">100%</span>)은 신랑의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnHusband" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
-        <div id="monthlyContributionAllocationAddFormHusband" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+        <div id="monthlyContributionAllocationAddFormHusband" class="hidden mt-2 space-y-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
       </div>
 
-      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">👤 와이프</h4>
-        <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
+        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 와이프</h4>
+        <div class="grid grid-cols-2 gap-2 mb-2">
           <label class="block text-xs">
             <span class="text-slate-500 dark:text-slate-400">월 적립 총액</span>
             <input id="monthlyContributionTotalInputWife" type="number" step="any" placeholder="0"
@@ -1874,16 +1874,16 @@
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
         </div>
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-1.5">
           <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
           <span id="monthlyContributionAllocationSumHintWife" class="text-[11px] font-semibold">합계 0%</span>
         </div>
-        <div id="monthlyContributionAllocationListWife" class="space-y-2"></div>
-        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintWife">100%</span>)은 와이프의 국내/해외 목표 비중대로 계산됩니다.</p>
-        <button type="button" id="monthlyContributionAllocationAddBtnWife" class="w-full mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <div id="monthlyContributionAllocationListWife" class="space-y-1.5"></div>
+        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintWife">100%</span>)은 와이프의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnWife" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
-        <div id="monthlyContributionAllocationAddFormWife" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
+        <div id="monthlyContributionAllocationAddFormWife" class="hidden mt-2 space-y-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
       </div>
     </div>
 
@@ -1935,17 +1935,17 @@
       </button>
     </div>
 
-    <div class="px-5 py-4 overflow-y-auto space-y-5">
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
       <div>
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">국내/해외 목표 비중</h4>
+        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">국내/해외 목표 비중</h4>
         <div id="rtmDomesticSplit" class="grid grid-cols-2 gap-3"></div>
       </div>
       <div>
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-1.5">
           <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">국내 세부 목표 비중</h4>
           <span id="rtmSumDomestic" class="text-xs font-semibold">합계 0%</span>
         </div>
-        <div id="rtmTargetsDomestic" class="space-y-2"></div>
+        <div id="rtmTargetsDomestic" class="space-y-1.5"></div>
         <!-- [미보유 종목 검색 추가 - "수익률 관리" 팝업의 +신규 종목 추가 버튼 형식 차용] 평소엔 버튼만
              보이고, 누르면 검색창+결과리스트가 담긴 폼이 펼쳐진다(scenarioRateAddNewBtn과 동일한 패턴,
              js/04 rtmAddToggleBtnDomestic 참고). 종목 마스터 DB(searchTickerMaster, js/09)에서 국내
@@ -1961,11 +1961,11 @@
         </div>
       </div>
       <div>
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-1.5">
           <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">해외 세부 목표 비중</h4>
           <span id="rtmSumForeign" class="text-xs font-semibold">합계 0%</span>
         </div>
-        <div id="rtmTargetsForeign" class="space-y-2"></div>
+        <div id="rtmTargetsForeign" class="space-y-1.5"></div>
         <button type="button" id="rtmAddToggleBtnForeign" class="w-full mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
@@ -2014,19 +2014,19 @@
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
-    <div class="px-5 py-4 overflow-y-auto space-y-4">
+    <div class="px-5 py-4 overflow-y-auto space-y-3">
       <div>
-        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div class="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
           <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
           <span id="stockAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
         </div>
         <!-- [AI 최적 추천 비중 - 전체 적용] 종목이 2개 이상일 때만 의미가 있어 renderStockAllocationSelectedList()에서
              그 조건일 때만 보여준다(hidden 토글) - 베타(시장 민감도)가 낮은 종목에 더 크게 배분하는
              역베타 가중 추천을 선택된 종목 전체에 한 번에 적용한다. -->
-        <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-2 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ AI 최적 추천 비중 전체 적용</button>
-        <div id="stockAllocationSelectedList" class="space-y-2"></div>
+        <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ AI 최적 추천 비중 전체 적용</button>
+        <div id="stockAllocationSelectedList" class="space-y-1.5"></div>
       </div>
-      <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+      <div class="border-t border-slate-100 dark:border-slate-800 pt-2.5">
         <input id="stockAllocationSearchInput" type="text" autocomplete="off" placeholder="보유 종목명/티커 검색"
           class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
         <div id="stockAllocationSearchResults" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
