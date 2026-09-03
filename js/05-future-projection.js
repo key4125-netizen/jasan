@@ -891,7 +891,21 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
     const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
     return found ? found.pct : 0;
   };
-  container.innerHTML = accountTypes.map((accType) => { const c = contribFor(accType); return `
+  const roleFor = (accType, ticker) => {
+    const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
+    return found ? found.role : undefined;
+  };
+  const roleOptionsHtml = (selected) => ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
+  container.innerHTML = accountTypes.map((accType) => {
+    const c = contribFor(accType);
+    // [계좈별 종목 추가 - 요청 반영] 보유 종목(byAccount) 외에, 아직 안 산 미보유 종목이라도 이 계좈의
+    // 배분 목록(allocationByOwner)에 이미 지정돼 있으면(+ 종목 추가로 넣은 경우) 함께 행으로 보여준다.
+    const heldTickers = new Set(byAccount[accType].map((a) => a.ticker));
+    const plannedRows = allocation
+      .filter((it) => it.accountType === accType && it.ticker && !heldTickers.has(it.ticker))
+      .map((it) => ({ ticker: it.ticker, name: it.label, planned: true }));
+    const displayRows = [...byAccount[accType].map((a) => ({ ticker: a.ticker, name: a.name, planned: false })), ...plannedRows];
+    return `
     <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5 mt-2 first:mt-0">
       <div class="mb-2">
         <div class="flex items-center gap-1.5 mb-1">
@@ -913,19 +927,49 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
           <span class="text-[10px] text-slate-400 shrink-0">년</span>
         </div>
       </div>
-      <div class="space-y-1 pl-1">
-        ${byAccount[accType].map((asset) => `
-        <div class="flex items-center gap-1.5">
-          <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
-          <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, asset.ticker)}"
-            data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(asset.ticker)}" data-alloc-label="${escapeHtml(asset.name)}"
+      <div class="space-y-1.5 pl-1">
+        ${displayRows.map((row) => `
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${row.planned ? ' <span class="text-amber-500">(미보유)</span>' : ''}</span>
+          <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, row.ticker)}"
+            data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(row.ticker)}" data-alloc-label="${escapeHtml(row.name)}"
             class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
           <span class="text-[10px] text-slate-400 shrink-0">%</span>
+          <select data-alloc-role-owner="${escapeHtml(owner)}" data-alloc-role-account="${escapeHtml(accType)}" data-alloc-role-ticker="${escapeHtml(row.ticker)}" data-alloc-role-label="${escapeHtml(row.name)}"
+            class="tax-alloc-role-select basis-full text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker))}</select>
         </div>`).join('')}
       </div>
       <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1.5" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
+      <!-- [계좈별 종목 추가 - "수익률 관리" 팝업의 +신규 종목 추가 버튼 형식 차용] -->
+      <button type="button" data-tax-add-toggle data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}"
+        class="w-full mt-1.5 flex items-center justify-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <i data-lucide="plus" class="w-3 h-3"></i> 종목 추가
+      </button>
+      <div data-tax-add-form data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" class="hidden mt-1.5 p-1.5 rounded bg-slate-50 dark:bg-slate-800/60"></div>
     </div>`; }).join('');
   accountTypes.forEach((accType) => updateTaxAdvantagedAllocationSumHint(owner, accType));
+  lucide.createIcons();
+}
+// [계좈별 종목 추가 - 검색 결과] searchStockCandidates(js/04, 보유종목+종목 마스터+Yahoo)를 그대로
+// 재사용한다 - 다른 "+ 종목 추가" 플로우들과 동일한 검색 범위(미보유 종목도 대상).
+async function renderTaxAddSearchResults(resultsEl, owner, accType, query) {
+  const q = query.trim();
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 중...</p>';
+  const results = await searchStockCandidates(q);
+  const existing = new Set((state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [])
+    .filter((it) => it.accountType === accType).map((it) => it.ticker));
+  const candidates = results.filter((r) => r.symbol && !existing.has(r.symbol)).slice(0, 10);
+  if (candidates.length === 0) {
+    resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 결과가 없습니다.</p>';
+    return;
+  }
+  resultsEl.innerHTML = candidates.map((r) => `
+    <button type="button" data-tax-add-candidate data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(r.symbol)}" data-name="${escapeHtml(r.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-1.5 py-1 rounded hover:bg-white dark:hover:bg-slate-700">
+      <span class="text-[11px] truncate">${escapeHtml(r.name)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)}</span>
+    </button>`).join('');
 }
 function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
   const el = document.querySelector(`.tax-alloc-sum-hint[data-alloc-sum-owner="${CSS.escape(owner)}"][data-alloc-sum-account="${CSS.escape(accountType)}"]`);
@@ -938,6 +982,13 @@ function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
 // 모달 자체에 하나만 걸어둔다. 입력할 때마다 카드 전체를 다시 그리면 포커스가 끊겨 타이핑이 불편해지므로,
 // 값만 state에 반영하고 합계 안내문/결과표/시나리오별 총자산만 갱신한다.
 document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) => {
+  const addSearchInput = e.target.closest('[data-tax-add-search]');
+  if (addSearchInput) {
+    const form = addSearchInput.closest('[data-tax-add-form]');
+    const resultsEl = form.querySelector('[data-tax-add-results]');
+    renderTaxAddSearchResults(resultsEl, form.dataset.owner, form.dataset.account, addSearchInput.value);
+    return;
+  }
   const contribInput = e.target.closest('.tax-contrib-input');
   if (contribInput) {
     const owner = contribInput.dataset.contribOwner;
@@ -963,7 +1014,9 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
   const idx = list.findIndex((it) => it.accountType === accountType && it.ticker === ticker);
   if (pct > 0) {
-    if (idx >= 0) list[idx].pct = pct; else list.push({ accountType, ticker, label, pct });
+    // [티커별 역할(포지션) 단일 소스 - 자동 연동] 직접 % 입력으로 새 배분 항목이 처음 생기는 경우에도
+    // 이미 다른 곳에 지정된 role이 있으면 이어받는다(+ 종목 추가 플로우와 동일한 원칙).
+    if (idx >= 0) list[idx].pct = pct; else list.push({ accountType, ticker, label, pct, role: getTickerRole(ticker) });
   } else if (idx >= 0) {
     list.splice(idx, 1); // 0%로 낮추면 배분 목록에서 완전히 제거해 깔끔하게 유지한다.
   }
@@ -972,7 +1025,54 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   renderTaxAdvantagedPlanResults();
   updateProjection();
 });
+document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e) => {
+  const roleSelect = e.target.closest('.tax-alloc-role-select');
+  if (!roleSelect) return;
+  const owner = roleSelect.dataset.allocRoleOwner;
+  const accountType = roleSelect.dataset.allocRoleAccount;
+  const ticker = roleSelect.dataset.allocRoleTicker;
+  const role = parseAssetRoleInput(roleSelect.value);
+  const plan = state.projection.taxAdvantagedPlan;
+  const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
+  const idx = list.findIndex((it) => it.accountType === accountType && it.ticker === ticker);
+  // pct가 아직 0(=배분 목록에 항목 자체가 없음)인 상태에서 role만 먼저 지정할 수도 있으므로, 없으면
+  // pct:0으로 새로 만든다 - 나중에 pct를 올리면 위 input 핸들러가 이 항목을 그대로 이어받는다.
+  if (idx >= 0) list[idx].role = role; else list.push({ accountType, ticker, label: roleSelect.dataset.allocRoleLabel, pct: 0, role });
+  // [티커별 역할(포지션) 단일 소스] 이 화면에서 지정한 role을 다른 화면에서도 이어받도록 레지스트리에도 반영.
+  setTickerRole(ticker, role);
+  persistProjection();
+});
 document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
+  const addToggleBtn = e.target.closest('[data-tax-add-toggle]');
+  if (addToggleBtn) {
+    const owner = addToggleBtn.dataset.owner, accType = addToggleBtn.dataset.account;
+    const form = document.querySelector(`[data-tax-add-form][data-owner="${CSS.escape(owner)}"][data-account="${CSS.escape(accType)}"]`);
+    if (!form) return;
+    if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
+    form.classList.remove('hidden');
+    form.innerHTML = `
+      <input type="text" data-tax-add-search autocomplete="off" placeholder="종목명/티커 검색"
+        class="w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">
+      <div data-tax-add-results class="mt-1 space-y-0.5 max-h-32 overflow-y-auto"></div>`;
+    const input = form.querySelector('[data-tax-add-search]');
+    setTimeout(() => input.focus(), 50);
+    return;
+  }
+  const addCandidateBtn = e.target.closest('[data-tax-add-candidate]');
+  if (addCandidateBtn) {
+    const owner = addCandidateBtn.dataset.owner, accType = addCandidateBtn.dataset.account;
+    const ticker = addCandidateBtn.dataset.ticker, label = addCandidateBtn.dataset.name;
+    const plan = state.projection.taxAdvantagedPlan;
+    const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
+    // [미보유 종목 추가 - 요청 반영] pct:0으로 우선 추가하고, 이 티커에 이미 지정된 role이 있으면
+    // 자동으로 이어받는다(티커별 역할 단일 소스, getTickerRole).
+    if (!list.some((it) => it.accountType === accType && it.ticker === ticker)) {
+      list.push({ accountType: accType, ticker, label, pct: 0, role: getTickerRole(ticker) });
+      persistProjection();
+    }
+    renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
+    return;
+  }
   if (e.target.id === 'taxAdvantagedPlanModal') closeTaxAdvantagedPlanModal(false);
 });
 
@@ -1192,9 +1292,9 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
   form.classList.remove('hidden'); // [버그 수정] innerHTML만 채우고 hidden을 안 벗겨서 폼이 채워져도
   // 화면엔 계속 안 보이던 문제 - 실기기 터치로 버튼을 눌러도 "아무 변화가 없는 것처럼" 보였다.
   form.innerHTML = `
-    <input id="newScenarioRateName" type="text" placeholder="종목명 검색 (예: SK하이닉스, 하이닉스, TSLA)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateName" type="text" autocomplete="off" placeholder="종목명 검색 (예: SK하이닉스, 하이닉스, TSLA)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <div id="newScenarioRateSearchResults" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>
-    <input id="newScenarioRateCode" type="text" placeholder="종목코드/티커 (예: 000660, 검색결과 선택 시 자동입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateCode" type="text" autocomplete="off" placeholder="종목코드/티커 (예: 000660, 검색결과 선택 시 자동입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <div class="flex items-start gap-1.5">
       <div class="flex-1 min-w-0">
         <label for="newScenarioRateConservative" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">보수</label>
@@ -1209,7 +1309,7 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
         <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
       </div>
     </div>
-    <input id="newScenarioRateKeywords" type="text" placeholder="종목명 키워드(쉼표로 구분, 선택) - 예: 채권혼합" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateKeywords" type="text" autocomplete="off" placeholder="종목명 키워드(쉼표로 구분, 선택) - 예: 채권혼합" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
   `;
   // [모바일 스크롤 개선] 폼을 펼친 직후 화면(특히 모바일)에서 입력창이 하단에 가려 안 보일 수 있으므로,
@@ -2006,7 +2106,7 @@ REBALANCE_OWNERS.forEach((owner) => {
     if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
     form.classList.remove('hidden');
     form.innerHTML = `
-      <input id="newMonthlyAllocSearchInput${suffix}" type="text" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+      <input id="newMonthlyAllocSearchInput${suffix}" type="text" autocomplete="off" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
       <div id="newMonthlyAllocSearchResults${suffix}" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>`;
     form.scrollIntoView({ behavior: 'smooth', block: 'end' });
     document.getElementById('newMonthlyAllocSearchInput' + suffix).addEventListener('input', (e) => triggerMonthlyAllocSearch(owner, e.target.value.trim()));
