@@ -595,16 +595,15 @@ function renderRtmTargetGroup(region) {
         class="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-700 shrink-0">
         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
       </button>`;
-    // [미보유 종목 추가 - 포지션 지정] 개별 티커 목표 항목에만 포지션(공격수/미드필더/수비수/코어자산)을
-    // 지정할 수 있다 - 자산군 캐치올(주식/채권/현금)은 여러 종목이 섞인 묶음이라 포지션 하나로 대표할
-    // 수 없다. [확인]으로 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이
-    // 이 role을 목표 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다.
-    const roleSelect = t.type === 'ticker'
-      ? `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+    // [미보유 종목 추가 - 포지션 지정] 개별 티커 목표 항목뿐 아니라 자산군 캐치올(채권/현금)에도
+    // 포지션(공격수/코어미드필드/수비수)을 지정할 수 있다 - 캐치올은 티커별 세부 보유가 없어도
+    // "이 뭉치 전체가 어떤 성격인가"로 하나의 역할을 대표시킬 수 있다는 요청에 따라 확장했다([확인]으로
+    // 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이 이 role을 목표
+    // 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다).
+    const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
           <option value="">포지션 미지정</option>
           ${ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${t.role === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
-        </select>`
-      : '';
+        </select>`;
     return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2">
       <div class="flex items-center justify-between gap-2">
@@ -1059,33 +1058,37 @@ function updateRebalanceResults() {
   renderPositionAnalysisCard('positionAnalysisCardAll', 'all');
   renderPositionAnalysisCard('positionAnalysisCardHusband', '신랑');
   renderPositionAnalysisCard('positionAnalysisCardWife', '와이프');
+  reapplyPositionAnalysisAccordionHeights();
   renderIndividualRebalanceGuide();
   updateProjection();
 }
 
 /* -------------------------------------------------------------------------
- * [Part 3] 포지션별 목표비중 분석 - 국내/해외 + 공격수/미드필더/수비수/코어자산/미지정, 총 7개 클릭 탭
+ * [Part 3] 포지션별 목표비중 분석 - 국내/해외 + 공격수/코어미드필드/수비수/미지정, 총 6개 클릭 탭
  *    - [목표 비중 기준] 실제 보유 자산(state.assets)이 아니라 신랑/와이프 각자의 목표 비중
  *      (state.rebalance[owner])을 기준으로 집계한다 - "지금 무엇을 들고 있는가"가 아니라 "무엇을
  *      목표로 하고 있는가"를 보여주는 카드다.
  *    - [3개 인스턴스 - 요청 반영] 부부 합산 카드 하나(index.html "전체 포지션별 목표비중 분석") +
  *      신랑/와이프 각자의 목표비중 타이틀 바로 아래 상시 노출 카드 2개, 총 3곳에서
  *      renderPositionAnalysisCard()를 각기 다른 컨테이너/ownerFilter로 호출한다.
- *    - [7개 클릭 탭 - 요청 반영] 국내/해외 2개 + 공격수/미드필더/수비수/코어자산/미지정 5개, 전부
- *      클릭하면 positionRoleBreakdownModal이 그 항목을 구성하는 실제 목표 종목(티커/비중)을
- *      팝업으로 보여준다(buildPositionDrilldownRows/openPositionDrilldownModal).
+ *    - [6개 클릭 탭 - '코어미드필드' 통합 반영] 국내/해외 2개 + 공격수/코어미드필드/수비수/미지정 4개
+ *      (예전엔 미드필더/코어자산이 따로였음), 전부 클릭하면 positionRoleBreakdownModal이 그 항목을
+ *      구성하는 실제 목표 종목(티커/비중)을 팝업으로 보여준다(buildPositionDrilldownRows/
+ *      openPositionDrilldownModal).
  * ---------------------------------------------------------------------- */
 // 소유자 한 명의 목표 비중 100%를 role별로 나눈 순수 비율(0~1, 합계 1) - 실제 금액과 무관하게 국내/해외
 // split(%) × 지역 내 항목 비중(%)만으로 계산한다. selectedStocks까지 놓치지 않도록 펼쳐진 목록
 // (expandRebalanceTargetsForComputation)을 쓴다.
 function computeOwnerTargetRoleWeights(owner) {
-  const weights = { attacker: 0, midfielder: 0, defender: 0, core: 0, unassigned: 0 };
+  const weights = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
   const domestic = state.rebalance[owner].domestic;
   ['국내', '해외'].forEach((region) => {
     const regionWeight = num(domestic[region]) / 100;
     expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
       const rowWeight = regionWeight * (num(t.pct) / 100);
-      const key = (t.type === 'ticker' && t.role && weights[t.role] !== undefined) ? t.role : 'unassigned';
+      // [자산군 캐치올도 포지션 집계 대상 - 요청 반영] 티커 지정 항목뿐 아니라 채권/현금 같은 캐치올도
+      // role이 있으면 그대로 집계한다(더 이상 티커 유무로 제한하지 않음).
+      const key = (t.role && weights[t.role] !== undefined) ? t.role : 'unassigned';
       weights[key] += rowWeight;
     });
   });
@@ -1104,7 +1107,7 @@ function computePositionRoleBreakdown(ownerFilter) {
     Object.keys(weights).forEach((k) => { totals[k] = weights[k] * ownerTotal; pct[k] = weights[k] * 100; });
     return { totals, pct, grandTotal: ownerTotal };
   }
-  const totals = { attacker: 0, midfielder: 0, defender: 0, core: 0, unassigned: 0 };
+  const totals = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
   let grandTotal = 0;
   REBALANCE_OWNERS.forEach((owner) => {
     const ownerTotal = getRebalanceTotals(owner).total;
@@ -1149,15 +1152,23 @@ function computeTargetRegionBreakdown(ownerFilter) {
 
 const POSITION_ROLE_BAR_ROWS = [
   { key: 'attacker', label: '⚔️ 공격수', color: '#ef4444' },
-  { key: 'midfielder', label: '🎯 미드필더', color: '#f59e0b' },
+  { key: 'core_mid', label: '🎯 코어미드필드', color: '#f59e0b' },
   { key: 'defender', label: '🛡️ 수비수', color: '#3b82f6' },
-  { key: 'core', label: '🏛️ 코어자산', color: '#10b981' },
   { key: 'unassigned', label: '미지정', color: '#94a3b8' }
 ];
 const POSITION_REGION_BAR_ROWS = [
   { key: '국내', label: '🇰🇷 국내', color: '#0ea5e9' },
   { key: '해외', label: '🌎 해외', color: '#8b5cf6' }
 ];
+// [절세계좈 현황 카드 - 포지션 비중 표기 재사용] "공격수 10% · 코어미드필드 20% · 수비수 30%" 같은
+// 한 줄 요약 문자열을 만든다 - POSITION_ROLE_BAR_ROWS와 같은 라벨/순서를 써서 "포지션별 목표비중
+// 분석" 카드와 표기가 항상 일치하게 한다(0%에 가까운 항목은 생략해 간결하게 유지).
+function formatRolePctSummary(pct) {
+  const parts = POSITION_ROLE_BAR_ROWS
+    .filter((r) => num(pct[r.key]) > 0.5)
+    .map((r) => `${r.label} ${fmtNum(pct[r.key], 0)}%`);
+  return parts.length > 0 ? parts.join(' · ') : '집계할 포지션 데이터가 없습니다';
+}
 // 클릭 가능한 막대 행 하나 - kind('region'|'role')/key/ownerFilter를 data attribute로 실어두면, 클릭 시
 // openPositionDrilldownModal이 그 항목을 구성하는 실제 목표 종목을 팝업으로 보여준다.
 function positionTabRowHtml(kind, key, label, pct, color, ownerFilter) {
@@ -1190,8 +1201,36 @@ function renderPositionAnalysisCard(containerId, ownerFilter) {
   });
 }
 
+// [포지션 카드 아코디언 부활 - 요청 반영] 가구 합산/신랑/와이프 3개 포지션 분석 카드 모두 기본은
+// 닫힘(topHoldingsAccordionOpen과 동일한 setAccordionOpen 패턴, js/10) - 헤더를 눌러야 펼쳐지고,
+// 탭 전환 시 resetAllAccordionsOnTabSwitch()(js/03)가 전부 다시 닫는다.
+let positionAnalysisAccordionOpen = { all: false, '신랑': false, '와이프': false };
+const POSITION_ANALYSIS_ACCORDION_SUFFIX = { all: 'All', '신랑': 'Husband', '와이프': 'Wife' };
+// renderPositionAnalysisCard()로 내부 콘텐츠가 다시 그려질 때마다(합계/탭 값이 바뀌어 높이도 바뀔 수
+// 있음) 호출해, 열려 있는 카드의 max-height를 새 scrollHeight로 재계산한다(topHoldings와 동일한 이유).
+function reapplyPositionAnalysisAccordionHeights() {
+  Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
+    const suffix = POSITION_ANALYSIS_ACCORDION_SUFFIX[key];
+    const body = document.getElementById(`positionAnalysisAccordion${suffix}Body`);
+    const chevron = document.getElementById(`positionAnalysisAccordion${suffix}Chevron`);
+    if (body && chevron) setAccordionOpen(body, chevron, positionAnalysisAccordionOpen[key]);
+  });
+}
+Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
+  const suffix = POSITION_ANALYSIS_ACCORDION_SUFFIX[key];
+  const btn = document.getElementById(`positionAnalysisAccordion${suffix}Btn`);
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    // [비중조절 버튼과 겹침 방지] 신랑/와이프 헤더는 [비중조절] 버튼과 같은 행을 공유한다 - 그 버튼
+    // 클릭이 이 행으로 버블링돼도 아코디언까지 함께 토글되지 않게 걸러낸다.
+    if (e.target.closest('[data-rebalance-detail-btn]')) return;
+    positionAnalysisAccordionOpen[key] = !positionAnalysisAccordionOpen[key];
+    reapplyPositionAnalysisAccordionHeights();
+  });
+});
+
 /* -------------------------------------------------------------------------
- * [Part 3 드릴다운 팝업] 7개 탭(국내/해외/공격수/미드필더/수비수/코어자산/미지정) 중 아무거나 클릭하면
+ * [Part 3 드릴다운 팝업] 6개 탭(국내/해외/공격수/코어미드필드/수비수/미지정) 중 아무거나 클릭하면
  * 그 항목을 구성하는 실제 목표 종목(티커/비중)을 보여준다 - positionRoleBreakdownModal을 그대로
  * 재사용한다(제목/본문만 그때그때 새로 채움).
  * ---------------------------------------------------------------------- */
@@ -1217,7 +1256,8 @@ function buildPositionDrilldownRows(kind, key, ownerFilter) {
     regionsToScan.forEach((region) => {
       const regionWeight = num(domestic[region]) / 100;
       expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
-        if (t.type !== 'ticker') return;
+        // [자산군 캐치올도 드릴다운 대상 - 요청 반영] 티커 지정 항목뿐 아니라 채권/현금 같은 캐치올도
+        // 목록에 함께 보여준다(computeOwnerTargetRoleWeights와 동일한 집계 기준으로 맞춤).
         if (kind === 'role') {
           const tRole = (t.role && POSITION_ROLE_BAR_ROWS.some((r) => r.key === t.role)) ? t.role : 'unassigned';
           if (tRole !== key) return;
@@ -1247,7 +1287,7 @@ function openPositionDrilldownModal(kind, key, ownerFilter) {
     <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0">
       <div class="min-w-0">
         <p class="text-xs font-medium truncate">${escapeHtml(r.label)}${isAll ? ` <span class="text-[10px] text-slate-400">(${escapeHtml(r.owner)})</span>` : ''}</p>
-        <p class="text-[10px] text-slate-400 truncate">${escapeHtml(r.ticker)} · ${escapeHtml(r.region)}</p>
+        <p class="text-[10px] text-slate-400 truncate">${r.ticker ? escapeHtml(r.ticker) + ' · ' : ''}${escapeHtml(r.region)}</p>
       </div>
       <span class="text-xs font-semibold shrink-0">${fmtNum(r.pct, 1)}%</span>
     </div>`).join('');

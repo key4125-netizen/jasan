@@ -632,13 +632,10 @@ const TAX_ADVANTAGED_OWNERS = ['신랑', '와이프'];
 // 채권 수익률(categories.채권)을 그대로 재사용해 다른 카드들과 기준이 어긋나지 않게 한다.
 const TAX_ADVANTAGED_RISK_SHARE = 0.7;
 
-// 절세계좌 보유 자산을 소유자별로 집계 - 총액과, 참고용으로 계좌종류별 소계·실제 위험/안전자산
-// 구성비(카테고리 기준: 주식/ETF=위험, 그 외=안전)도 함께 반환한다. 미래 적립 시뮬레이션 자체는
-// 위 TAX_ADVANTAGED_RISK_SHARE 고정 비율을 쓰지만, 카드에는 "지금 실제로 어떻게 구성돼 있는지"를
-// 보여주는 게 유용하므로 따로 계산해 둔다.
+// 절세계좌 보유 자산을 소유자별로 집계 - 총액과, 참고용으로 계좌종류별 소계도 함께 반환한다.
 function getTaxAdvantagedHoldingsByOwner() {
   const result = {};
-  TAX_ADVANTAGED_OWNERS.forEach((o) => { result[o] = { total: 0, byAccountType: {}, riskValue: 0, safeValue: 0 }; });
+  TAX_ADVANTAGED_OWNERS.forEach((o) => { result[o] = { total: 0, byAccountType: {} }; });
   state.assets.forEach((a) => {
     if (isRebalanceEligibleAccount(a)) return; // 일반계좌는 대상 아님 - 절세계좌만
     if (!TAX_ADVANTAGED_OWNERS.includes(a.owner)) return;
@@ -647,10 +644,28 @@ function getTaxAdvantagedHoldingsByOwner() {
     bucket.total += value;
     const accType = a.accountType || '(미지정)';
     bucket.byAccountType[accType] = (bucket.byAccountType[accType] || 0) + value;
-    if (a.category === '주식' || a.category === 'ETF') bucket.riskValue += value;
-    else bucket.safeValue += value;
   });
   return result;
+}
+
+// [계좈 세부 - 포지션(역할) 비중 표기 - 요청 반영] "위험/안전자산 구성" 대신, 그 소유자가 절세계좈에
+// 실제로 보유 중인 종목들을 포지션(역할)별로 나눠 보여준다 - 개별 자산에 직접 지정된 role이 없으면
+// 티커별 역할 단일 소스(getTickerRole)로 폴백한다(다른 화면과 동일한 원칙). 목표 비중이 아니라 "지금
+// 실제로 뭘 들고 있는가" 기준이라는 점에서, 위 카드 상단의 부부합산 목표 기준 요약과는 성격이 다르다.
+function getTaxAdvantagedRoleBreakdown(owner) {
+  const weights = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
+  let total = 0;
+  state.assets.forEach((a) => {
+    if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
+    const value = calcRow(a).curAmount;
+    total += value;
+    const role = a.role || getTickerRole(a.ticker);
+    const key = (role && weights[role] !== undefined) ? role : 'unassigned';
+    weights[key] += value;
+  });
+  const pct = {};
+  Object.keys(weights).forEach((k) => { pct[k] = total !== 0 ? weights[k] / total * 100 : 0; });
+  return pct;
 }
 
 // 절세계좌 보유 자산을 소유자별로 "계좌종류 → 종목" 계층으로 묶어 반환한다 - [적립설정] 팝업이 "이
@@ -772,20 +787,25 @@ function simulateTaxAdvantagedOwnerYearlyPoints(owner, presetKey, maxYears) {
 }
 
 // [UI 개편 - 요청 반영] [전체/신랑/와이프] 필터 select를 없애고 항상 가구 합계로 보여준다. 소유자별
-// 세부 현황은 "현재 실제 구성(참고용)" 아래 아코디언 2개(신랑/와이프)로 접어두고, 펼쳤을 때만 그
-// 사람의 계좌종류별 소계 + 위험/안전자산 구성을 보여준다. 매번 innerHTML을 통째로 새로 그리므로(다른
-// 아코디언 카드들과 동일한 이유) 버튼도 매번 다시 만들어지고, 클릭 리스너도 매번 다시 붙여야 한다.
+// 세부 현황은 상단 요약 아래 아코디언 2개(신랑/와이프)로 접어두고, 펼쳤을 때만 그 사람의 계좌종류별
+// 소계 + 포지션별 비중을 보여준다. 매번 innerHTML을 통째로 새로 그리므로(다른 아코디언 카드들과 동일한
+// 이유) 버튼도 매번 다시 만들어지고, 클릭 리스너도 매번 다시 붙여야 한다.
+// [대표 표시 - "위험/안전자산" → "포지션별 비중" 전환, 요청 반영] 예전엔 카테고리(주식/ETF=위험, 그 외=
+// 안전) 기준 단순 이분법이었으나, 이제 "포트폴리오 구성" 탭과 같은 포지션(공격수/코어미드필드/수비수)
+// 축으로 통일한다. 상단 대표 줄은 "포지션별 목표비중 분석" 카드와 동일한 데이터(computePositionRoleBreakdown,
+// js/04 - 부부합산·일반계좈 목표비중 기준)를 그대로 참조해 두 곳의 숫자가 항상 일치하고, 계좈 세부
+// 드롭다운(소유자별)은 그 사람이 절세계좈에 실제로 보유 중인 종목들의 포지션 구성(getTaxAdvantagedRoleBreakdown)
+// 을 보여준다 - "목표"가 아니라 "지금 실제로 뭘 들고 있는가" 기준이라는 점에서 성격이 다르다.
 function renderTaxAdvantagedCard() {
   const container = document.getElementById('taxAdvantagedSummary');
   if (!container) return;
   const holdings = getTaxAdvantagedHoldingsByOwner();
   const total = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].total, 0);
-  const riskValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].riskValue, 0);
-  const safeValue = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].safeValue, 0);
   if (total === 0) {
     container.innerHTML = '<p class="text-xs text-slate-400">보유 중인 절세계좌 자산이 없습니다.</p>';
     return;
   }
+  const householdRoleSummary = formatRolePctSummary(computePositionRoleBreakdown('all').pct);
 
   const ownerAccordionKey = { '신랑': 'taxHusband', '와이프': 'taxWife' };
   const ownerAccordionIds = (owner) => ({ key: ownerAccordionKey[owner], btnId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBtn`, bodyId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBody` });
@@ -793,6 +813,7 @@ function renderTaxAdvantagedCard() {
     const h = holdings[owner];
     const ids = ownerAccordionIds(owner);
     const accountTypeRows = Object.keys(h.byAccountType).sort();
+    const roleSummary = formatRolePctSummary(getTaxAdvantagedRoleBreakdown(owner));
     return `
     <div class="border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="${ids.btnId}" class="detail-card-accordion-btn w-full flex items-center justify-between gap-1.5 py-2 text-left text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-300">
@@ -809,9 +830,9 @@ function renderTaxAdvantagedCard() {
             <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t)}</span>
             <span class="font-medium text-slate-700 dark:text-slate-300">${fmtKRWShort(h.byAccountType[t])}</span>
           </div>`).join('') : '<p class="text-[11px] text-slate-400">보유 중인 자산이 없습니다.</p>'}
-          <div class="flex items-center justify-between text-[11px] pt-1">
-            <span class="text-slate-400">위험/안전자산 구성</span>
-            <span class="text-slate-500 dark:text-slate-400">위험 ${h.total !== 0 ? fmtNum(h.riskValue / h.total * 100, 0) : 0}% · 안전 ${h.total !== 0 ? fmtNum(h.safeValue / h.total * 100, 0) : 0}%</span>
+          <div class="pt-1">
+            <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(실제 보유 기준)</p>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">${roleSummary}</p>
           </div>
         </div>
       </div>
@@ -823,9 +844,9 @@ function renderTaxAdvantagedCard() {
       <span class="text-[11px] text-slate-400">합계 평가금액</span>
       <span class="text-base font-bold">${fmtKRWShort(total)}</span>
     </div>
-    <div class="flex items-center justify-between text-[11px] pb-1 border-b border-slate-100 dark:border-slate-800">
-      <span class="text-slate-400">현재 실제 구성(참고용)</span>
-      <span class="text-slate-500 dark:text-slate-400">위험자산 ${total !== 0 ? fmtNum(riskValue / total * 100, 0) : 0}% · 안전자산 ${total !== 0 ? fmtNum(safeValue / total * 100, 0) : 0}%</span>
+    <div class="pb-2 border-b border-slate-100 dark:border-slate-800">
+      <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(부부합산 목표 · 일반계좈 기준)</p>
+      <p class="text-[11px] text-slate-500 dark:text-slate-400">${householdRoleSummary}</p>
     </div>
     ${TAX_ADVANTAGED_OWNERS.map(ownerAccordionHtml).join('')}`;
 
@@ -1906,7 +1927,16 @@ async function renderMonteCarloSection() {
   const milestoneOffsets = getMilestoneYearOffsets();
   const points = runMonteCarloSimulation(pv, mu, sigma, [0, ...milestoneOffsets]);
 
-  renderMonteCarloChart(points);
+  // [X축 연도 표기 통일 - 요청 반영] 스케줄 표(points, 위 5개 마일스톤만)는 그대로 두고, 차트에는
+  // "시나리오별 일반계좌/총자산" 그래프(renderScenarioCompareChart)와 동일한 방식 - 매년 촘촘한 값을
+  // 밑에 깔고 마일스톤 연도에만 점(marker)을 찍는 방식 - 을 쓴다. 두 그래프의 x축이 같은 데이터 밀도로
+  // 그려져야 Chart.js의 autoSkip 눈금 배치가 동일한 규칙(예: Y26, Y28, Y30...)으로 맞춰진다 - 마일스톤
+  // 연도만 5개 점으로 계산하면 그 사이를 채울 데이터 자체가 없어 5년 간격으로만 표기될 수밖에 없었다.
+  const maxOffset = Math.max(...milestoneOffsets);
+  const denseYears = Array.from({ length: maxOffset + 1 }, (_, i) => i);
+  const chartPoints = runMonteCarloSimulation(pv, mu, sigma, denseYears);
+
+  renderMonteCarloChart(chartPoints, milestoneOffsets);
   document.getElementById('monteCarloScheduleBody').innerHTML = points.map((p) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${p.year === 0 ? '현재' : `${p.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + p.year}</span></td>
@@ -1921,19 +1951,28 @@ async function renderMonteCarloSection() {
 // 배열에서 "바로 앞 데이터셋과의 사이"만 채우므로 [P90(낙관, 채우기 없음), P10(보수, 바로 앞
 // 데이터셋인 P90과의 사이를 채워 밴드를 만듦), P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다
 // - 이 등록 순서는 시각적 밴드를 만들기 위한 것일 뿐 P10/P90 각각의 의미(보수/낙관)와는 무관하다.
-function renderMonteCarloChart(points) {
+// [범례/툴팁 표시 순서 - 요청 반영] 위 데이터셋 배열 순서(P90→P10→P50)는 밴드 채우기 때문에 그대로
+// 둬야 하지만, 범례/툴팁에 "보이는" 순서는 이거와 무관하게 낙관→중앙값→보수(P90→P50→P10)로 강제한다
+// - legend는 generateLabels를, tooltip은 itemSort를 각각 커스터마이징해 데이터셋 배열 순서와 표시
+// 순서를 분리한다(datasetIndex를 그대로 넘겨야 범례 클릭 시 해당 라인 토글이 정상 동작한다).
+const MONTE_CARLO_DISPLAY_ORDER = { 'P90(낙관)': 0, 'P50(중앙값)': 1, 'P10(보수)': 2 };
+function renderMonteCarloChart(points, milestoneOffsets) {
   const textColor = chartTextColor();
   if (charts.monteCarlo) charts.monteCarlo.destroy();
   const labels = points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`);
   const bandColor = 'rgba(99,102,241,0.15)';
+  // [X축 연도 표기 통일 - 요청 반영] renderScenarioCompareChart와 동일하게, 마일스톤 연도에만 점을
+  // 찍고 나머지는 반지름 0으로 숨긴다(연결선 자체는 매년 값으로 촘촘하게 그려짐).
+  const MILESTONE_YEARS = [0, ...milestoneOffsets];
+  const pointRadiusFor = (r) => points.map((p) => (MILESTONE_YEARS.includes(p.year) ? r : 0));
   charts.monteCarlo = new Chart(document.getElementById('monteCarloChart'), {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'P90(낙관)', data: points.map((p) => p.p90), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
-        { label: 'P10(보수)', data: points.map((p) => p.p10), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: 2 },
-        { label: 'P50(중앙값)', data: points.map((p) => p.p50), borderColor: '#6366f1', backgroundColor: '#6366f1', fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: 3 }
+        { label: 'P90(낙관)', data: points.map((p) => p.p90), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: pointRadiusFor(2) },
+        { label: 'P10(보수)', data: points.map((p) => p.p10), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: pointRadiusFor(2) },
+        { label: 'P50(중앙값)', data: points.map((p) => p.p50), borderColor: '#6366f1', backgroundColor: '#6366f1', fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: pointRadiusFor(3) }
       ]
     },
     options: {
@@ -1946,8 +1985,19 @@ function renderMonteCarloChart(points) {
         y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
-        legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.raw)}` } }
+        legend: {
+          display: true, position: 'bottom',
+          labels: {
+            color: textColor, boxWidth: 10, font: { size: 11 },
+            generateLabels: (chart) => chart.data.datasets
+              .map((ds, i) => ({ text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor, lineWidth: 2, hidden: !chart.isDatasetVisible(i), datasetIndex: i }))
+              .sort((a, b) => MONTE_CARLO_DISPLAY_ORDER[a.text] - MONTE_CARLO_DISPLAY_ORDER[b.text])
+          }
+        },
+        tooltip: {
+          itemSort: (a, b) => MONTE_CARLO_DISPLAY_ORDER[a.dataset.label] - MONTE_CARLO_DISPLAY_ORDER[b.dataset.label],
+          callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.raw)}` }
+        }
       }
     }
   });
