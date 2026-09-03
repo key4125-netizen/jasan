@@ -1358,7 +1358,7 @@ function stockAnalysisStatTile(label, valueText, guideText) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-2.5 py-2">
     <div class="text-[10px] text-slate-400">${escapeHtml(label)}</div>
-    <div class="text-xs font-semibold mt-0.5">${valueText}</div>
+    <div class="text-xs font-semibold mt-0.5 truncate" title="${escapeHtml(String(valueText).replace(/<[^>]*>/g, ''))}">${valueText}</div>
     ${guideText ? `<div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">${escapeHtml(guideText)}</div>` : ''}
   </div>`;
 }

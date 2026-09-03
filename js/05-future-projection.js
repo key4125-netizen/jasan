@@ -692,7 +692,7 @@ function getTaxAdvantagedRoleBreakdown(ownerFilter) {
     if (isRebalanceEligibleAccount(a) || !owners.includes(a.owner)) return;
     const value = calcRow(a).curAmount;
     total += value;
-    const role = a.role || getTickerRole(a.ticker);
+    const role = a.role || getTickerRole(a.ticker, a.name);
     const key = (role && weights[role] !== undefined) ? role : 'unassigned';
     weights[key] += value;
   });
@@ -711,8 +711,11 @@ function getTaxAdvantagedAssetsByOwnerAccount(owner) {
     const accType = a.accountType || '(미지정)';
     if (!byAccount[accType]) byAccount[accType] = new Map();
     const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
-    if (!byAccount[accType].has(key)) byAccount[accType].set(key, { ticker: a.ticker || '', name: a.name, curAmount: 0 });
+    // [포지션 자동 연동 - 요청 반영] role도 함께 실어 보낸다 - 이 자산에 자산관리 화면에서 직접
+    // 태깅해 둔 역할이 있으면(레지스트리를 거치지 않고도) roleFor가 바로 이어받을 수 있게.
+    if (!byAccount[accType].has(key)) byAccount[accType].set(key, { ticker: a.ticker || '', name: a.name, curAmount: 0, role: a.role });
     byAccount[accType].get(key).curAmount += calcRow(a).curAmount;
+    if (!byAccount[accType].get(key).role && a.role) byAccount[accType].get(key).role = a.role;
   });
   const result = {};
   Object.keys(byAccount).forEach((accType) => { result[accType] = Array.from(byAccount[accType].values()); });
@@ -824,7 +827,7 @@ function simulateTaxAdvantagedOwnerYearlyPoints(owner, presetKey, maxYears) {
 // 소계 + 포지션별 비중을 보여준다. 매번 innerHTML을 통째로 새로 그리므로(다른 아코디언 카드들과 동일한
 // 이유) 버튼도 매번 다시 만들어지고, 클릭 리스너도 매번 다시 붙여야 한다.
 // [대표 표시 - "위험/안전자산" → "포지션별 비중" 전환, 요청 반영] 예전엔 카테고리(주식/ETF=위험, 그 외=
-// 안전) 기준 단순 이분법이었으나, 이제 "포트폴리오 구성" 탭과 같은 포지션(공격수/코어미드필드/수비수)
+// 안전) 기준 단순 이분법이었으나, 이제 "포트폴리오 구성" 탭과 같은 포지션(공격수/코어미드필더/수비수)
 // 축으로 통일한다. [버그 수정 - 요청 반영] 상단 대표 줄이 한때 일반계좈 목표비중(computePositionRoleBreakdown)
 // 을 잘못 참조해 절세계좈 카드에 "일반계좈 기준" 문구가 섞여 나오는 오류가 있었다 - 상단/계좈 세부
 // 드롭다운(소유자별) 모두 getTaxAdvantagedRoleBreakdown(ownerFilter) 하나만 쓴다(상단은 ownerFilter
@@ -876,7 +879,7 @@ function renderTaxAdvantagedCard() {
   container.innerHTML = `
     <div class="flex items-baseline justify-between mb-2">
       <span class="text-[11px] text-slate-400">합계 평가금액</span>
-      <span class="text-base font-bold">${fmtKRWShort(total)}</span>
+      <span class="text-base font-bold whitespace-nowrap">${fmtKRWShort(total)}</span>
     </div>
     <div class="pb-2 border-b border-slate-100 dark:border-slate-800">
       <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좈 실제 보유 기준)</p>
@@ -942,27 +945,35 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
   if (seeded) persistProjection();
   const contribFor = (accType) => contribList.find((c) => c.accountType === accType);
   const allocation = plan.allocationByOwner[owner] || [];
-  const pctFor = (accType, ticker) => {
-    const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
+  // [티커 없는 자산까지 확장 - 요청 반영] 티커만으론 국채/현금처럼 티커 없는 종목끼리 구분이 안 되므로
+  // (전부 빈 문자열) name까지 포함한 identity로 이 계좈에 이미 만들어진 배분 항목을 찾는다.
+  const pctFor = (accType, ticker, name) => {
+    const found = allocation.find((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker || '', name));
     return found ? found.pct : 0;
   };
   // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 계좈에서 아직 배분 항목을 만든 적 없는(=보유는
   // 하지만 적립 배분을 한 번도 설정 안 한) 종목도, 자산관리/거래내역 등 다른 화면에 이미 등록된
-  // 역할이 있으면 그 값을 보여준다.
-  const roleFor = (accType, ticker) => {
-    const found = allocation.find((it) => it.accountType === accType && it.ticker === (ticker || ''));
-    return (found && found.role) || getTickerRole(ticker);
+  // 역할이 있으면 그 값을 보여준다 - 우선순위: 이 화면에서 직접 지정한 배분 항목의 role → 실제 보유
+  // 자산 자체에 태깅된 role(assetRole, 티커 없는 자산은 레지스트리를 안 거치고도 바로 이어받는다) →
+  // 레지스트리(다른 팝업에서 먼저 지정해 뒀을 수 있음, 티커 없으면 이름으로 조회).
+  const roleFor = (accType, ticker, name, assetRole) => {
+    const found = allocation.find((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker || '', name));
+    return (found && found.role) || assetRole || getTickerRole(ticker, name);
   };
   const roleOptionsHtml = (selected) => ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
   container.innerHTML = accountTypes.map((accType) => {
     const c = contribFor(accType);
-    // [계좈별 종목 추가 - 요청 반영] 보유 종목(byAccount) 외에, 아직 안 산 미보유 종목이라도 이 계좈의
-    // 배분 목록(allocationByOwner)에 이미 지정돼 있으면(+ 종목 추가로 넣은 경우) 함께 행으로 보여준다.
-    const heldTickers = new Set(byAccount[accType].map((a) => a.ticker));
+    // [계좈별 종목 추가 - 티커 없는 자산까지 확장, 요청 반영] 보유 종목(byAccount) 외에, 아직 안 산
+    // 미보유 종목이라도 이 계좈의 배분 목록(allocationByOwner)에 이미 지정돼 있으면(+ 종목 추가로
+    // 넣은 경우) 함께 행으로 보여준다 - 예전엔 it.ticker가 있어야만(진짜 티커형만) 보여줘서, 국채/
+    // 현금처럼 미보유 상태로 이름검색만으로 추가한 티커 없는 목표는 배분 목록엔 저장되는데 화면
+    // 카드에는 영원히 안 보이는 사각지대가 있었다 - allocEntryIdentity로 이미 보유 중인 항목과
+    // 겹치는지 판정해, 겹치지 않는 티커 없는 계획 항목도 "미보유" 행으로 노출한다.
+    const heldIdentities = new Set(byAccount[accType].map((a) => allocEntryIdentity(a.ticker, a.name)));
     const plannedRows = allocation
-      .filter((it) => it.accountType === accType && it.ticker && !heldTickers.has(it.ticker))
+      .filter((it) => it.accountType === accType && !heldIdentities.has(allocEntryIdentity(it.ticker, it.label)))
       .map((it) => ({ ticker: it.ticker, name: it.label, planned: true }));
-    const displayRows = [...byAccount[accType].map((a) => ({ ticker: a.ticker, name: a.name, planned: false })), ...plannedRows];
+    const displayRows = [...byAccount[accType].map((a) => ({ ticker: a.ticker, name: a.name, role: a.role, planned: false })), ...plannedRows];
     return `
     <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5 mt-2 first:mt-0">
       <div class="mb-2">
@@ -989,17 +1000,17 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
         ${displayRows.map((row) => `
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${row.planned ? ' <span class="text-amber-500">(미보유)</span>' : ''}</span>
-          <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, row.ticker)}"
+          <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, row.ticker, row.name)}"
             data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(row.ticker)}" data-alloc-label="${escapeHtml(row.name)}"
             class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
           <span class="text-[10px] text-slate-400 shrink-0">%</span>
           <!-- [종목 삭제 버튼 - 요청 반영] 보유 종목은 배분 항목만 지워져 pct 0으로 돌아가고(행 자체는
                실제 보유 자산이라 계속 남음), 미보유(planned) 종목은 배분 항목이 곧 행의 존재 근거라
                삭제 시 행 자체가 사라진다. -->
-          <button type="button" data-tax-alloc-remove data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(row.ticker)}" title="삭제"
+          <button type="button" data-tax-alloc-remove data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(row.ticker)}" data-name="${escapeHtml(row.name)}" title="삭제"
             class="touch-target w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           <select data-alloc-role-owner="${escapeHtml(owner)}" data-alloc-role-account="${escapeHtml(accType)}" data-alloc-role-ticker="${escapeHtml(row.ticker)}" data-alloc-role-label="${escapeHtml(row.name)}"
-            class="tax-alloc-role-select basis-full text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker))}</select>
+            class="tax-alloc-role-select basis-full text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker, row.name, row.role))}</select>
         </div>`).join('')}
       </div>
       <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1.5" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
@@ -1017,23 +1028,30 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
 }
 // [계좈별 종목 추가 - 검색 결과] searchStockCandidates(js/04, 보유종목+종목 마스터+Yahoo)를 그대로
 // 재사용한다 - 다른 "+ 종목 추가" 플로우들과 동일한 검색 범위(미보유 종목도 대상).
+// [티커 없는 후보도 노출 - 요청 반영] 예전엔 r.symbol이 있는(티커형) 결과만 남기고 국채/현금처럼
+// 티커 없는 보유 자산은 검색 결과에서 통째로 걸러냈다 - 이제 함께 보여주고, 이미 배분 목록에 있는지
+// 판정하는 기준도 티커 하나만으론 부족해(티커 없는 항목은 전부 빈 문자열로 뭉개짐) 티커 없으면
+// 이름 기반 키로 대신 식별한다(buildCustomRateKey와 동일 규칙 - allocEntryIdentity).
+function allocEntryIdentity(ticker, label) {
+  return ticker || `NAME:${normalizeNameKey(label)}`;
+}
 async function renderTaxAddSearchResults(resultsEl, owner, accType, query) {
   const q = query.trim();
   if (!q) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 중...</p>';
   const results = await searchStockCandidates(q);
   const existing = new Set((state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [])
-    .filter((it) => it.accountType === accType).map((it) => it.ticker));
-  const candidates = results.filter((r) => r.symbol && !existing.has(r.symbol)).slice(0, 10);
+    .filter((it) => it.accountType === accType).map((it) => allocEntryIdentity(it.ticker, it.label)));
+  const candidates = results.filter((r) => !existing.has(allocEntryIdentity(r.symbol, r.name))).slice(0, 10);
   if (candidates.length === 0) {
     resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 결과가 없습니다.</p>';
     return;
   }
   resultsEl.innerHTML = candidates.map((r) => `
-    <button type="button" data-tax-add-candidate data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(r.symbol)}" data-name="${escapeHtml(r.name)}"
+    <button type="button" data-tax-add-candidate data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(r.symbol)}" data-name="${escapeHtml(r.name)}" data-role="${escapeHtml(r.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-1.5 py-1 rounded hover:bg-white dark:hover:bg-slate-700">
       <span class="text-[11px] truncate">${escapeHtml(r.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')}</span>
     </button>`).join('');
 }
 function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
@@ -1077,11 +1095,13 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   const pct = num(input.value);
   const plan = state.projection.taxAdvantagedPlan;
   const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
-  const idx = list.findIndex((it) => it.accountType === accountType && it.ticker === ticker);
+  // [티커 없는 자산까지 확장 - 요청 반영] 티커 하나만으론 국채/현금처럼 티커 없는 항목끼리 서로 구분이
+  // 안 된다(전부 빈 문자열) - 이름까지 포함한 identity로 이 계좈의 몇 번째 배분 항목인지 찾는다.
+  const idx = list.findIndex((it) => it.accountType === accountType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker, label));
   if (pct > 0) {
     // [티커별 역할(포지션) 단일 소스 - 자동 연동] 직접 % 입력으로 새 배분 항목이 처음 생기는 경우에도
     // 이미 다른 곳에 지정된 role이 있으면 이어받는다(+ 종목 추가 플로우와 동일한 원칙).
-    if (idx >= 0) list[idx].pct = pct; else list.push({ accountType, ticker, label, pct, role: getTickerRole(ticker) });
+    if (idx >= 0) list[idx].pct = pct; else list.push({ accountType, ticker, label, pct, role: getTickerRole(ticker, label) });
   } else if (idx >= 0) {
     list.splice(idx, 1); // 0%로 낮추면 배분 목록에서 완전히 제거해 깔끔하게 유지한다.
   }
@@ -1096,23 +1116,25 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e)
   const owner = roleSelect.dataset.allocRoleOwner;
   const accountType = roleSelect.dataset.allocRoleAccount;
   const ticker = roleSelect.dataset.allocRoleTicker;
+  const label = roleSelect.dataset.allocRoleLabel;
   const role = parseAssetRoleInput(roleSelect.value);
   const plan = state.projection.taxAdvantagedPlan;
   const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
-  const idx = list.findIndex((it) => it.accountType === accountType && it.ticker === ticker);
+  const idx = list.findIndex((it) => it.accountType === accountType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker, label));
   // pct가 아직 0(=배분 목록에 항목 자체가 없음)인 상태에서 role만 먼저 지정할 수도 있으므로, 없으면
   // pct:0으로 새로 만든다 - 나중에 pct를 올리면 위 input 핸들러가 이 항목을 그대로 이어받는다.
-  if (idx >= 0) list[idx].role = role; else list.push({ accountType, ticker, label: roleSelect.dataset.allocRoleLabel, pct: 0, role });
-  // [티커별 역할(포지션) 단일 소스] 이 화면에서 지정한 role을 다른 화면에서도 이어받도록 레지스트리에도 반영.
-  setTickerRole(ticker, role);
+  if (idx >= 0) list[idx].role = role; else list.push({ accountType, ticker, label, pct: 0, role });
+  // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] 이 화면에서 지정한 role을 다른 화면에서도
+  // 이어받도록 레지스트리에도 반영한다(티커 없으면 이름으로 대신 키를 만든다).
+  setTickerRole(ticker, role, label);
   persistProjection();
 });
 document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
   const removeBtn = e.target.closest('[data-tax-alloc-remove]');
   if (removeBtn) {
-    const owner = removeBtn.dataset.owner, accType = removeBtn.dataset.account, ticker = removeBtn.dataset.ticker;
+    const owner = removeBtn.dataset.owner, accType = removeBtn.dataset.account, ticker = removeBtn.dataset.ticker, label = removeBtn.dataset.name;
     const list = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
-    const idx = list.findIndex((it) => it.accountType === accType && it.ticker === ticker);
+    const idx = list.findIndex((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker, label));
     if (idx >= 0) {
       list.splice(idx, 1);
       persistProjection();
@@ -1143,10 +1165,14 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
     const ticker = addCandidateBtn.dataset.ticker, label = addCandidateBtn.dataset.name;
     const plan = state.projection.taxAdvantagedPlan;
     const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
-    // [미보유 종목 추가 - 요청 반영] pct:0으로 우선 추가하고, 이 티커에 이미 지정된 role이 있으면
-    // 자동으로 이어받는다(티커별 역할 단일 소스, getTickerRole).
-    if (!list.some((it) => it.accountType === accType && it.ticker === ticker)) {
-      list.push({ accountType: accType, ticker, label, pct: 0, role: getTickerRole(ticker) });
+    // [미보유 종목 추가 - 티커 없는 자산까지 확장, 요청 반영] pct:0으로 우선 추가하고, 이미 지정된
+    // role이 있으면 자동으로 이어받는다 - 검색 후보가 실어 보낸 실제 보유 자산의 role을 우선 쓰고,
+    // 없으면 레지스트리로 한 번 더 폴백한다(getTickerRole이 티커/이름 둘 다 지원). 중복 판정도 티커
+    // 하나만으론 부족해(티커 없는 항목은 전부 빈 문자열로 뭉개짐) allocEntryIdentity로 통일한다.
+    const identity = allocEntryIdentity(ticker, label);
+    if (!list.some((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === identity)) {
+      const role = addCandidateBtn.dataset.role || getTickerRole(ticker, label);
+      list.push({ accountType: accType, ticker, label, pct: 0, role });
       persistProjection();
     }
     renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
@@ -2084,7 +2110,7 @@ function openMonthlyContributionAllocationModal() {
     const saved = byOwner[owner];
     // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 배분 항목에 role이 없어도, 자산관리/거래내역 등
     // 다른 화면에 이미 등록된 역할이 있으면 그 값을 이어받는다.
-    const withRoleFallback = (it) => ({ ...it, role: it.role || getTickerRole(it.ticker) });
+    const withRoleFallback = (it) => ({ ...it, role: it.role || getTickerRole(it.ticker, it.label) });
     if (bothUnset) {
       monthlyContributionByOwnerDraft[owner] = owner === '신랑'
         ? { total: num(state.projection.monthlyContribution), years: 15, allocation: state.projection.monthlyContributionAllocation.map(withRoleFallback) }
@@ -2209,21 +2235,25 @@ function renderMonthlyAllocSearchResults(owner, results, seq) {
     return;
   }
   container.innerHTML = results.map((r) => `
-    <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
+    <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}" data-pick-role="${escapeHtml(r.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700">
       <span class="min-w-0 text-xs truncate">${escapeHtml(r.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')} ${r.exch ? '· ' + escapeHtml(r.exch) : ''}</span>
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draft = monthlyContributionByOwnerDraft[owner];
-      if (draft.allocation.some((it) => it.ticker === btn.dataset.pickSymbol)) {
+      // [티커 없는 자산까지 확장 - 요청 반영] 티커 하나만으론 국채/현금처럼 티커 없는 종목끼리 중복
+      // 판정이 안 된다(전부 빈 문자열로 뭉개짐) - 이름까지 포함한 identity로 비교한다.
+      const identity = allocEntryIdentity(btn.dataset.pickSymbol, btn.dataset.pickName);
+      if (draft.allocation.some((it) => allocEntryIdentity(it.ticker, it.label) === identity)) {
         alert('이미 배분된 종목입니다.');
         return;
       }
-      // [티커별 역할(포지션) 단일 소스 - 자동 연동] 다른 3개 추가 플로우와 동일하게 이 티커에 이미
-      // 등록된 role이 있으면 이어받는다.
-      draft.allocation.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0, role: getTickerRole(btn.dataset.pickSymbol) });
+      // [티커별 역할(포지션) 단일 소스 - 자동 연동] 다른 추가 플로우들과 동일한 원칙 - 검색 후보가 실어
+      // 보낸 실제 보유 자산의 role을 우선 쓰고, 없으면 레지스트리(티커/이름)로 한 번 더 폴백한다.
+      const role = btn.dataset.pickRole || getTickerRole(btn.dataset.pickSymbol, btn.dataset.pickName);
+      draft.allocation.push({ ticker: btn.dataset.pickSymbol, label: btn.dataset.pickName, pct: 0, role });
       renderMonthlyContributionAllocationList(owner);
       const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
       form.classList.add('hidden');
@@ -2258,7 +2288,7 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
   // [티커별 역할(포지션) 단일 소스] 이 팝업에서 저장한 role을 레지스트리에도 반영해 다른 화면에서도
   // 이어받게 한다 - 위 draft 시딩 단계에서 이미 role이 항상 채워져 있어 여기서 지워질 위험은 없다.
   REBALANCE_OWNERS.forEach((owner) => {
-    next[owner].allocation.forEach((it) => { if (it.ticker) setTickerRole(it.ticker, it.role); });
+    next[owner].allocation.forEach((it) => { if (it.ticker || it.label) setTickerRole(it.ticker, it.role, it.label); });
   });
   state.projection.monthlyContributionByOwner = next;
   persistProjection();

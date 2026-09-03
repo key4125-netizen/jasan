@@ -116,8 +116,14 @@ function expandRebalanceTargetsForComputation(owner, region) {
         expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role || getTickerRole(s.ticker) });
       });
       expanded.push({ type: 'category', category: '주식', label: '주식(기타)', pct: 0 });
+    } else if (t.type === 'ticker') {
+      expanded.push({ ...t, role: t.role || getTickerRole(t.ticker) });
+    } else if (t.type === 'namedHolding') {
+      // [티커 없는 목표까지 확장 - 요청 반영] 위 티커 항목과 동일한 읽기 시점 폴백 - 저장된 role이
+      // 없어도(다른 팝업에서 이 이름으로 먼저 지정해 뒀다면) 레지스트리(NAME: 키)에서 이어받는다.
+      expanded.push({ ...t, role: t.role || getTickerRole('', t.name) });
     } else {
-      expanded.push(t.type === 'ticker' ? { ...t, role: t.role || getTickerRole(t.ticker) } : t);
+      expanded.push(t);
     }
   });
   return expanded;
@@ -304,16 +310,21 @@ let stockSearchRequestSeq = 0; // 느린 응답이 늦게 도착해 최신 검�
 // symbol을 빈 문자열로 둬(실제 시장 티커가 아님을 표시) 선택 시 tx_ticker도 비워 넣는다 - 대신
 // owner/accountType/currency를 함께 실어 보내 매도 입력 시 소유자·계좌구분까지 정확히 자동완성되게
 // 한다(applyStockPickToTransactionForm 참고).
-function searchLocalHoldings(query) {
+// excludeTransactionKrwCash: [원화 현금만 거래내역 차단 - 전역 상태 의존 제거, 요청 반영] 예전엔 이
+// 배제 규칙이 모듈 전역 stockSearchTargetMode를 직접 읽었다 - 거래 추가 모달(mode='transaction')이
+// 마지막으로 남겨둔 값을 이 함수를 재사용하는 다른 전혀 무관한 팝업(적립금 설정/절세계좈 적립설정의
+// "+ 종목 추가")이 그대로 물려받아, 그 팝업들에서 원화 현금성 자산이 검색됐다 안 됐다 하는 일관성
+// 없는 버그가 있었다(사용자 신고). 이제 호출부가 명시적으로 true를 넘길 때만(실제 거래 추가 모달)
+// 이 규칙을 적용하고, 기본값(false)에서는 아무것도 배제하지 않는다.
+function searchLocalHoldings(query, excludeTransactionKrwCash) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const seen = new Set();
   const results = [];
   state.assets.forEach((a) => {
-    // [원화 현금만 거래내역 차단] 거래 추가 모달(mode='transaction')에서는 원화 현금만 검색 결과에서
-    // 빼서 선택 자체를 못 하게 한다(자산관리 탭에서만 잔고를 직접 수정) - 달러(USD) 현금은 이제
-    // 거래내역 기반 가중평균 환율 관리 대상이므로 검색에서 정상적으로 나와야 한다.
-    if (stockSearchTargetMode === 'transaction' && !a.ticker && a.category === '현금' && a.currency !== 'USD') return;
+    // 거래 추가 모달에서는 원화 현금만 검색 결과에서 빼서 선택 자체를 못 하게 한다(자산관리 탭에서만
+    // 잔고를 직접 수정) - 달러(USD) 현금은 거래내역 기반 가중평균 환율 관리 대상이므로 정상 노출된다.
+    if (excludeTransactionKrwCash && !a.ticker && a.category === '현금' && a.currency !== 'USD') return;
     const hay = `${a.name} ${a.ticker}`.toLowerCase();
     if (!hay.includes(q)) return;
     const key = a.ticker ? a.ticker.toUpperCase() : `NOTICKER:${a.owner}__${a.accountType}__${a.name}`;
@@ -321,6 +332,9 @@ function searchLocalHoldings(query) {
     seen.add(key);
     results.push({
       symbol: a.ticker || '', name: a.name, exch: a.isDomestic === '국내' ? '국내' : '해외', type: a.category,
+      // [포지션 자동 연동 - 요청 반영] 티커 없는 결과에는 그 실제 자산의 role도 함께 실어 보낸다 -
+      // 이름검색으로 추가하는 팝업들이 자산관리 화면에 이미 등록된 포지션을 그대로 이어받을 수 있게.
+      role: a.ticker ? undefined : a.role,
       owner: a.ticker ? undefined : a.owner,
       accountType: a.ticker ? undefined : a.accountType,
       currency: a.ticker ? undefined : a.currency
@@ -485,7 +499,7 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
     // 검색(느릴 때 8~12초까지 걸림)을 기다리지 않고 먼저 보여준 뒤, Yahoo 응답이 도착하면 새로 찾은
     // 종목만 추가로 이어붙인다. 결과가 하나도 없으면(로컬/마스터 둘 다 무매칭) "검색 중..." 문구를
     // 그대로 둔다 - 비워서 렌더링하면 Yahoo 결과가 아직 안 왔는데도 "결과 없음"이 잠깐 깜빡여 보인다.
-    const instant = mergeStockSearchResults(searchLocalHoldings(query), searchTickerMaster(query));
+    const instant = mergeStockSearchResults(searchLocalHoldings(query, stockSearchTargetMode === 'transaction'), searchTickerMaster(query));
     if (instant.length > 0) renderStockSearchResults(instant, seq);
     const remote = await searchYahooStocks(query);
     const merged = mergeStockSearchResults(instant, remote);
@@ -519,6 +533,9 @@ function cloneRebalanceTargetList(list) {
   return (list || []).map((t) => ({
     ...t,
     ...(t.type === 'ticker' ? { role: t.role || getTickerRole(t.ticker) } : {}),
+    // [티커 없는 목표까지 확장 - 요청 반영] namedHolding(국채/현금 등 이름검색으로 추가한 목표)도
+    // 티커 종목과 동일한 원칙으로 이어받는다 - 티커가 없으니 이름으로 조회한다.
+    ...(t.type === 'namedHolding' ? { role: t.role || getTickerRole('', t.name) } : {}),
     ...(Array.isArray(t.selectedStocks) ? { selectedStocks: t.selectedStocks.map((s) => ({ ...s, role: s.role || getTickerRole(s.ticker) })) } : {})
   }));
 }
@@ -623,7 +640,7 @@ function renderRtmTargetGroup(region) {
         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
       </button>`;
     // [미보유 종목 추가 - 포지션 지정] 개별 티커 목표 항목뿐 아니라 자산군 캐치올(채권/현금)에도
-    // 포지션(공격수/코어미드필드/수비수)을 지정할 수 있다 - 캐치올은 티커별 세부 보유가 없어도
+    // 포지션(공격수/코어미드필더/수비수)을 지정할 수 있다 - 캐치올은 티커별 세부 보유가 없어도
     // "이 뭉치 전체가 어떤 성격인가"로 하나의 역할을 대표시킬 수 있다는 요청에 따라 확장했다([확인]으로
     // 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이 이 role을 목표
     // 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다).
@@ -716,7 +733,10 @@ function searchRtmAddCandidates(region, query) {
     if (!a.name || !a.name.toLowerCase().includes(qLower)) return;
     if (existingNames.has(a.name) || seenNames.has(a.name)) return;
     seenNames.add(a.name);
-    namedResults.push({ kind: 'named', name: a.name });
+    // [포지션 자동 연동 - 요청 반영] 이 보유 자산에 이미 지정된 role을 후보에 실어 보낸다 - 자산관리
+    // 화면에서 직접 지정한 값이 최우선이고, 그것도 없으면 클릭 시점에 레지스트리(NAME: 키)로 한 번 더
+    // 폴백한다(다른 팝업에서 같은 이름으로 먼저 지정해 뒀을 수 있으므로).
+    namedResults.push({ kind: 'named', name: a.name, role: a.role });
   });
 
   return [...tickerResults, ...namedResults];
@@ -738,7 +758,7 @@ function renderRtmAddSearchResults(region, query) {
       <span class="text-xs truncate">${escapeHtml(c.name)}</span>
       <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
     </button>` : `
-    <button type="button" data-rtm-add-named-candidate data-region="${region}" data-name="${escapeHtml(c.name)}"
+    <button type="button" data-rtm-add-named-candidate data-region="${region}" data-name="${escapeHtml(c.name)}" data-role="${escapeHtml(c.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="text-xs truncate">${escapeHtml(c.name)}</span>
       <span class="text-[10px] text-slate-400 shrink-0">보유 중(티커 없음)</span>
@@ -756,12 +776,14 @@ function renderRtmAddSearchResults(region, query) {
       updateRtmPreviews();
     });
   });
-  // [티커 없는 보유 자산 개별 목표 추가 - 요청 반영] 티커가 없어 getTickerRole로 역할을 이어받을 수
-  // 없다(레지스트리는 티커 기준 조회) - 미지정으로 시작해 이 모달 안에서 직접 지정한다.
+  // [티커 없는 보유 자산 개별 목표 추가 - 포지션 자동 연동, 요청 반영] 검색 후보가 실어 보낸 실제
+  // 보유 자산의 role을 우선 쓰고, 없으면 레지스트리(NAME: 키 - 다른 팝업에서 같은 이름으로 먼저
+  // 지정해 뒀을 수 있음)로 한 번 더 폴백한다 - 티커 종목의 getTickerRole(ticker)와 동일한 원칙이다.
   container.querySelectorAll('button[data-rtm-add-named-candidate]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const r = btn.dataset.region;
-      rebalanceModalDraft.targets[r].push({ type: 'namedHolding', name: btn.dataset.name, label: btn.dataset.name, pct: 0 });
+      const role = btn.dataset.role || getTickerRole('', btn.dataset.name);
+      rebalanceModalDraft.targets[r].push({ type: 'namedHolding', name: btn.dataset.name, label: btn.dataset.name, pct: 0, role });
       const input = document.getElementById(r === '국내' ? 'rtmAddSearchInputDomestic' : 'rtmAddSearchInputForeign');
       if (input) input.value = '';
       container.innerHTML = '';
@@ -1093,6 +1115,9 @@ function syncTickerRolesFromRebalanceTargets(owner) {
   ['국내', '해외'].forEach((region) => {
     (state.rebalance[owner].targets[region] || []).forEach((t) => {
       if (t.type === 'ticker' && t.ticker) setTickerRole(t.ticker, t.role);
+      // [티커 없는 목표까지 확장 - 요청 반영] namedHolding(이름검색으로 추가한 국채/현금 등)도 티커
+      // 종목과 동일하게 레지스트리에 반영해, 다른 팝업에서 같은 이름을 다시 추가할 때 이어받게 한다.
+      if (t.type === 'namedHolding' && t.name) setTickerRole('', t.role, t.name);
       if (Array.isArray(t.selectedStocks)) {
         t.selectedStocks.forEach((s) => { if (s.ticker) setTickerRole(s.ticker, s.role); });
       }
@@ -1141,14 +1166,14 @@ function updateRebalanceResults() {
 }
 
 /* -------------------------------------------------------------------------
- * [Part 3] 포지션별 목표비중 분석 - 국내/해외 + 공격수/코어미드필드/수비수/미지정, 총 6개 클릭 탭
+ * [Part 3] 포지션별 목표비중 분석 - 국내/해외 + 공격수/코어미드필더/수비수/미지정, 총 6개 클릭 탭
  *    - [목표 비중 기준] 실제 보유 자산(state.assets)이 아니라 신랑/와이프 각자의 목표 비중
  *      (state.rebalance[owner])을 기준으로 집계한다 - "지금 무엇을 들고 있는가"가 아니라 "무엇을
  *      목표로 하고 있는가"를 보여주는 카드다.
  *    - [3개 인스턴스 - 요청 반영] 부부 합산 카드 하나(index.html "전체 포지션별 목표비중 분석") +
  *      신랑/와이프 각자의 목표비중 타이틀 바로 아래 상시 노출 카드 2개, 총 3곳에서
  *      renderPositionAnalysisCard()를 각기 다른 컨테이너/ownerFilter로 호출한다.
- *    - [6개 클릭 탭 - '코어미드필드' 통합 반영] 국내/해외 2개 + 공격수/코어미드필드/수비수/미지정 4개
+ *    - [6개 클릭 탭 - '코어미드필더' 통합 반영] 국내/해외 2개 + 공격수/코어미드필더/수비수/미지정 4개
  *      (예전엔 미드필더/코어자산이 따로였음), 전부 클릭하면 positionRoleBreakdownModal이 그 항목을
  *      구성하는 실제 목표 종목(티커/비중)을 팝업으로 보여준다(buildPositionDrilldownRows/
  *      openPositionDrilldownModal).
@@ -1229,7 +1254,7 @@ function computeTargetRegionBreakdown(ownerFilter) {
 
 const POSITION_ROLE_BAR_ROWS = [
   { key: 'attacker', label: '⚔️ 공격수', color: '#ef4444' },
-  { key: 'core_mid', label: '🎯 코어미드필드', color: '#f59e0b' },
+  { key: 'core_mid', label: '🎯 코어미드필더', color: '#f59e0b' },
   { key: 'defender', label: '🛡️ 수비수', color: '#3b82f6' },
   { key: 'unassigned', label: '미지정', color: '#94a3b8' }
 ];
@@ -1237,7 +1262,7 @@ const POSITION_REGION_BAR_ROWS = [
   { key: '국내', label: '🇰🇷 국내', color: '#0ea5e9' },
   { key: '해외', label: '🌎 해외', color: '#8b5cf6' }
 ];
-// [절세계좈 현황 카드 - 포지션 비중 표기 재사용] "공격수 10% · 코어미드필드 20% · 수비수 30%" 같은
+// [절세계좈 현황 카드 - 포지션 비중 표기 재사용] "공격수 10% · 코어미드필더 20% · 수비수 30%" 같은
 // 한 줄 요약 문자열을 만든다 - POSITION_ROLE_BAR_ROWS와 같은 라벨/순서를 써서 "포지션별 목표비중
 // 분석" 카드와 표기가 항상 일치하게 한다(0%에 가까운 항목은 생략해 간결하게 유지).
 function formatRolePctSummary(pct) {
@@ -1310,7 +1335,7 @@ Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
 });
 
 /* -------------------------------------------------------------------------
- * [Part 3 드릴다운 팝업] 6개 탭(국내/해외/공격수/코어미드필드/수비수/미지정) 중 아무거나 클릭하면
+ * [Part 3 드릴다운 팝업] 6개 탭(국내/해외/공격수/코어미드필더/수비수/미지정) 중 아무거나 클릭하면
  * 그 항목을 구성하는 실제 목표 종목(티커/비중)을 보여준다 - positionRoleBreakdownModal을 그대로
  * 재사용한다(제목/본문만 그때그때 새로 채움).
  * ---------------------------------------------------------------------- */
@@ -1474,10 +1499,10 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
         <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
       </div>
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
-        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
-        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium">${fmtKRW(r.targetAmount)}</span></div>
-        <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
-        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
+        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.targetAmount)}</span></div>
+        <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium whitespace-nowrap ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
+        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium whitespace-nowrap">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -1502,8 +1527,8 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
         <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
       </div>
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
-        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
-        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium text-slate-300 dark:text-slate-600">${targetCellText}</span></div>
+        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap text-slate-300 dark:text-slate-600">${targetCellText}</span></div>
       </div>
     </div>`;
   }).join('');

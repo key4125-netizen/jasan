@@ -220,8 +220,8 @@ function assetDetailOwnerRowHtml(m, totalCurAmount) {
         : `수량 ${fmtNum(m.quantity, 4)} · 매수단가 ${priceUnit}${fmtNum(m.buyPrice, 2)}`}</p>
     </div>
     <div class="text-right shrink-0">
-      <p class="font-semibold">${fmtKRW(m.curAmount)}</p>
-      <p class="text-slate-400">${fmtNum(pct, 1)}%</p>
+      <p class="font-semibold whitespace-nowrap">${fmtKRW(m.curAmount)}</p>
+      <p class="text-slate-400 whitespace-nowrap">${fmtNum(pct, 1)}%</p>
     </div>
     ${deleteBtnHtml}
   </div>`;
