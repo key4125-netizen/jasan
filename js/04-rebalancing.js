@@ -707,10 +707,34 @@ function searchRtmAddCandidates(region, query) {
       .filter((t) => t.type === 'ticker')
       .map((t) => sanitizeTicker(t.ticker).yahooTicker)
   );
-  const tickerResults = searchTickerMaster(q)
-    .filter((r) => r.type === region && r.symbol && !existingTickers.has(sanitizeTicker(r.symbol).yahooTicker))
-    .slice(0, 10)
-    .map((r) => ({ kind: 'ticker', symbol: r.symbol, name: r.name }));
+  const masterResults = searchTickerMaster(q)
+    .filter((r) => r.type === region && r.symbol && !existingTickers.has(sanitizeTicker(r.symbol).yahooTicker));
+  const seenTickers = new Set(masterResults.map((r) => sanitizeTicker(r.symbol).yahooTicker));
+
+  // [보유 중이지만 종목 마스터 DB에 없는 티커 종목도 검색 - 요청 반영] 예전엔 티커형 후보를 종목
+  // 마스터 DB(searchTickerMaster - 코스피/코스닥 전종목+미국 주요종목, 매달 갱신되는 참고용 목록)
+  // 에서만 찾았다 - 실제로 보유 중인 종목인데도 이 참고 목록에 아직 없으면(신규 상장 직후, 목록
+  // 갱신 주기 사이, 원본 데이터의 표기 차이 등) 목표비중 모달에서는 영원히 검색이 안 되는 사각지대가
+  // 있었다(사용자 실측 신고 - 보유 중인 "TIGER 코리아배당다우존스"가 검색이 안 됨). 이 지역/소유자
+  // 기준으로 실제 보유 중인 티커 종목도 이름/티커로 함께 찾아 병합한다 - 마스터 DB 결과와 동일하게
+  // 최대 10개로 제한하고, 이미 마스터 DB 결과에 있거나 목표에 이미 있는 티커는 중복 제외한다.
+  const qLower = q.toLowerCase();
+  const heldTickerResults = [];
+  state.assets.forEach((a) => {
+    if (masterResults.length + heldTickerResults.length >= 10) return;
+    const ticker = String(a.ticker ?? '').trim();
+    if (!ticker) return; // 티커 없는 자산은 아래 이름 검색(namedHolding)이 담당
+    if (a.owner !== rebalanceModalOwner || a.isDomestic !== region) return;
+    if (!isRebalanceEligibleAccount(a)) return;
+    const yahoo = sanitizeTicker(ticker).yahooTicker;
+    if (existingTickers.has(yahoo) || seenTickers.has(yahoo)) return;
+    if (!`${a.name} ${ticker}`.toLowerCase().includes(qLower)) return;
+    seenTickers.add(yahoo);
+    // [포지션 자동 연동] 이 보유 자산에 이미 지정된 role을 후보에 실어 보낸다 - namedHolding 검색
+    // 결과와 동일한 원칙(자산 자체의 role 우선, 없으면 클릭 시점에 레지스트리로 폴백).
+    heldTickerResults.push({ kind: 'ticker', symbol: a.ticker, name: a.name, role: a.role });
+  });
+  const tickerResults = [...masterResults.map((r) => ({ kind: 'ticker', symbol: r.symbol, name: r.name })), ...heldTickerResults].slice(0, 10);
 
   // [티커 없는 보유 자산도 이름 검색으로 추가 - 요청 반영] 채권/현금/부동산처럼 티커가 없는 자산은
   // searchTickerMaster(종목 마스터 DB) 대상이 아니라 검색 결과에 전혀 안 나왔다 - 지금 이 모달을 연
@@ -722,7 +746,6 @@ function searchRtmAddCandidates(region, query) {
       .filter((t) => t.type === 'namedHolding')
       .map((t) => t.name)
   );
-  const qLower = q.toLowerCase();
   const seenNames = new Set();
   const namedResults = [];
   state.assets.forEach((a) => {
@@ -753,7 +776,7 @@ function renderRtmAddSearchResults(region, query) {
     return;
   }
   container.innerHTML = candidates.map((c) => c.kind === 'ticker' ? `
-    <button type="button" data-rtm-add-candidate data-region="${region}" data-ticker="${escapeHtml(c.symbol)}" data-name="${escapeHtml(c.name)}"
+    <button type="button" data-rtm-add-candidate data-region="${region}" data-ticker="${escapeHtml(c.symbol)}" data-name="${escapeHtml(c.name)}" data-role="${escapeHtml(c.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="text-xs truncate">${escapeHtml(c.name)}</span>
       <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
@@ -766,9 +789,11 @@ function renderRtmAddSearchResults(region, query) {
   container.querySelectorAll('button[data-rtm-add-candidate]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const r = btn.dataset.region;
-      // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 티커에 이미 다른 곳에서 지정해 둔 역할이 있으면
-      // 미지정 상태로 시작하지 않고 그 값을 그대로 이어받는다.
-      rebalanceModalDraft.targets[r].push({ type: 'ticker', ticker: btn.dataset.ticker, label: btn.dataset.name, pct: 0, role: getTickerRole(btn.dataset.ticker) });
+      // [티커별 역할(포지션) 단일 소스 - 자동 연동] 검색 후보가 실어 보낸 실제 보유 자산의 role을
+      // 우선 쓰고(마스터 DB 후보는 role이 없음), 없으면 이 티커에 다른 곳에서 이미 지정해 둔
+      // 레지스트리 값으로 폴백한다 - 미지정 상태로 시작하지 않고 그 값을 그대로 이어받는다.
+      const role = btn.dataset.role || getTickerRole(btn.dataset.ticker, btn.dataset.name);
+      rebalanceModalDraft.targets[r].push({ type: 'ticker', ticker: btn.dataset.ticker, label: btn.dataset.name, pct: 0, role });
       const input = document.getElementById(r === '국내' ? 'rtmAddSearchInputDomestic' : 'rtmAddSearchInputForeign');
       if (input) input.value = '';
       container.innerHTML = '';
