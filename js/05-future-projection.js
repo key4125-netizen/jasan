@@ -402,6 +402,34 @@ function getTargetProjectionRate(target, presetKey, region) {
     // 코스닥 상장 종목(.KQ)은 코스피가 아니라 코스닥 대표지수로 대체한다.
     return getEffectiveIndexRate(presetKey, /\.KQ$/i.test(sanitizedTarget.yahooTicker) ? 'kosdaq' : 'domestic');
   }
+  // [namedHolding 기대수익률 버그 수정 - 요청 반영] 티커 없는 보유 자산을 이름으로 지정한 목표
+  // (searchRtmAddCandidates의 이름 검색 결과, js/04)는 target.category가 아예 없어서, 예전엔 바로
+  // 아래 "category형 목표" 분기로 떨어져 target.name을 전혀 보지 않고 지역 대표지수(KOSPI/S&P500)를
+  // 적용했다 - "국채"/"현금"/"달러"처럼 이름만 봐도 명백한 자산도 마치 개별 주식인 것처럼 6~9%로
+  // 부풀려진 원인이다. type==='ticker'와 동일하게 사용자 정의 오버라이드(종목명 매칭)·키워드 매칭을
+  // 먼저 시도하고("수익률 관리"에 국채/현금/달러 키워드로 BOND/CASH/CASH.USD를 등록해뒀다면 그 값을
+  // 그대로 따른다), 등록된 게 하나도 없으면 자산 등록 시 자동판별과 동일한 규칙(BOND_KEYWORDS/
+  // CASH_KEYWORDS, js/01 classifyCategory)으로 이름만 보고 채권/현금 여부를 추론해 최소한 지역
+  // 지수보다는 훨씬 현실적인 값(채권 프리셋 수익률 / 현금 0%)으로 대체한다.
+  if (target.type === 'namedHolding') {
+    const customKey = findCustomRateKeyForAsset('', target.name);
+    if (customKey) {
+      const custom = getCustomRate(customKey, presetKey);
+      if (custom !== undefined) return custom;
+    }
+    const keywordKey = getCustomKeywordRateKey(target.name);
+    if (keywordKey) {
+      const custom = getCustomRate(keywordKey, presetKey);
+      if (custom !== undefined) return custom;
+    }
+    const inferredCategory = classifyCategory('', target.name);
+    if (inferredCategory === '현금') return 0;
+    if (inferredCategory === '채권') {
+      const custom = getCustomRate('BOND', presetKey);
+      return custom !== undefined ? custom : preset.categories['채권'];
+    }
+    return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+  }
   const groupKey = getProjectionGroupKey(target.category);
   if (groupKey === '현금') return 0;
   if (groupKey === '채권') {
@@ -1789,8 +1817,14 @@ function computeOwnerTargetInstrumentWeights(owner) {
     expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
       const rowWeight = regionWeight * (num(t.pct) / 100);
       if (rowWeight <= 0) return;
-      const key = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}` : `C:${region}:${t.category}`;
-      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, region };
+      // [namedHolding 키 충돌 버그 수정] namedHolding은 t.category가 없으므로, 예전엔 이 항목들이
+      // 전부 같은 키(C:지역:undefined)로 뭉개져 같은 지역의 "현금"과 "국채"처럼 서로 다른 namedHolding
+      // 목표 둘 이상이 하나로 합산돼버렸다(비중은 합쳐지고 이름은 먼저 들어온 쪽만 남음) - 티커처럼
+      // name까지 키에 포함해 서로 다른 항목으로 구분한다.
+      const key = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}`
+        : t.type === 'namedHolding' ? `N:${region}:${t.name}`
+        : `C:${region}:${t.category}`;
+      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, region };
       prev.weight += rowWeight;
       weights.set(key, prev);
     });
@@ -1836,7 +1870,13 @@ async function computeTargetPortfolioVolatilityPct() {
       })());
       return;
     }
-    if (v.category === '채권' || v.category === '현금') return; // 변동성 0으로 근사 - 시계열을 만들지 않음
+    // [namedHolding 변동성 버그 수정 - 요청 반영] namedHolding은 category 필드가 없어서, 예전엔 이
+    // 아래 채권/현금 판정에 걸리지 못하고 전부 "종목명 매핑 없는 일반 종목"처럼 지역 지수 변동성을
+    // 그대로 적용받았다(자산 등록 화면과 동일한 BOND_KEYWORDS/CASH_KEYWORDS 이름 판정, js/01
+    // classifyCategory 재사용) - "현금"/"국채"라는 이름의 목표가 실제로는 KOSPI/S&P500 수준
+    // 변동성으로 잡혀 σ가 부풀려지던 원인이다.
+    const effectiveCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
+    if (effectiveCategory === '채권' || effectiveCategory === '현금') return; // 변동성 0으로 근사 - 시계열을 만들지 않음
     const indexTicker = v.region === '해외' ? INDEX_TICKERS.SP500 : INDEX_TICKERS.KOSPI;
     tasks.push((async () => {
       const data = await getCachedDailyCloses(indexTicker);
@@ -1963,10 +2003,12 @@ async function renderMonteCarloSection() {
 // 데이터셋인 P90과의 사이를 채워 밴드를 만듦), P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다
 // - 이 등록 순서는 시각적 밴드를 만들기 위한 것일 뿐 P10/P90 각각의 의미(보수/낙관)와는 무관하다.
 // [범례/툴팁 표시 순서 - 요청 반영] 위 데이터셋 배열 순서(P90→P10→P50)는 밴드 채우기 때문에 그대로
-// 둬야 하지만, 범례/툴팁에 "보이는" 순서는 이거와 무관하게 낙관→중앙값→보수(P90→P50→P10)로 강제한다
-// - legend는 generateLabels를, tooltip은 itemSort를 각각 커스터마이징해 데이터셋 배열 순서와 표시
-// 순서를 분리한다(datasetIndex를 그대로 넘겨야 범례 클릭 시 해당 라인 토글이 정상 동작한다).
-const MONTE_CARLO_DISPLAY_ORDER = { 'P90(낙관)': 0, 'P50(중앙값)': 1, 'P10(보수)': 2 };
+// 둬야 하지만, 범례/툴팁(그래프 클릭 시 뜨는 툴팁 포함)에 "보이는" 순서는 이거와 무관하게
+// 보수→중앙값→낙관(P10→P50→P90)으로 강제한다 - legend는 generateLabels를, tooltip은 itemSort를
+// 각각 커스터마이징해 데이터셋 배열 순서와 표시 순서를 분리한다(datasetIndex를 그대로 넘겨야 범례
+// 클릭 시 해당 라인 토글이 정상 동작한다). [이전엔 낙관→중앙값→보수(P90→P50→P10)였으나 요청에 따라
+// 순서를 뒤집었다 - 아래 스케줄 표(monteCarloScheduleBody)는 이미 보수/중앙값/낙관 순서라 손대지 않음.]
+const MONTE_CARLO_DISPLAY_ORDER = { 'P10(보수)': 0, 'P50(중앙값)': 1, 'P90(낙관)': 2 };
 function renderMonteCarloChart(points, milestoneOffsets) {
   const textColor = chartTextColor();
   if (charts.monteCarlo) charts.monteCarlo.destroy();

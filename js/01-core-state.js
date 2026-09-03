@@ -365,25 +365,13 @@ function normalizeIsDomestic(raw, fallback) {
 // 수정 가능). 티커/카테고리 어느 항목에도 매칭되지 않는 자산(예: 부동산)은 실물자산이라 매수/매도로
 // 조절할 수 없으므로 리밸런싱 계산 대상에서 자동으로 제외된다.
 // [자산군 캐치올 '주식' 제거 - 요청 반영] 예전엔 "여러 종목을 개별 지정 없이 뭉뚱그려 담는" 용도로
-// '주식' 캐치올(돋보기 버튼으로 최대 3종목까지 세부 지정 가능)이 있었지만, 이제 "+ 종목 추가" 검색으로
-// 개별 티커를 목표에 직접 추가할 수 있어 완전히 대체됐다 - 더 이상 기본값에 포함하지 않는다.
-const DEFAULT_REBALANCE_TARGETS = {
-  '국내': [
-    { type: 'ticker', ticker: '278530', label: 'KODEX 200TR', pct: 15 },
-    { type: 'ticker', ticker: '0052D0.KS', label: 'TIGER 코리아배당다우존스', pct: 15 },
-    { type: 'category', category: '채권', label: '채권', pct: 50 },
-    { type: 'category', category: '현금', label: '현금', pct: 20 }
-  ],
-  // '현금' 캐치올을 0%로 추가해 둔다 - QQQM/SPYM/SCHD 외의 해외 보유(현금성 자산, 그 외 ETF 등)가
-  // "목표 항목 없음"으로 리밸런싱 계산에서 통째로 제외되지 않고, 최소한 이 캐치올에 잡혀 "0% 목표 →
-  // 전액 매도 필요"로라도 눈에 보이게 한다(값은 사용자가 직접 조정 가능).
-  '해외': [
-    { type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 50 },
-    { type: 'ticker', ticker: 'SPYM', label: 'SPYM', pct: 20 },
-    { type: 'ticker', ticker: 'SCHD', label: 'SCHD', pct: 30 },
-    { type: 'category', category: '현금', label: '현금', pct: 0 }
-  ]
-};
+// [빈 상태(Zero-base) 시작 - 요청 반영] 예전엔 이 자리에 KODEX 200TR/TIGER 코리아배당다우존스/채권/
+// 현금(국내), QQQM/SPYM/SCHD/현금(해외) 같은 예시 포트폴리오가 하드코딩돼 있어, 신규 owner(첫 실행,
+// 아직 저장된 목표가 전혀 없는 상태)를 만들면 사용자가 고른 적 없는 종목들이 이미 목표비중에 채워진
+// 채로 시작됐다. 이제 완전히 빈 배열로 시작해, 사용자가 "+ 종목 추가"로 직접 골라 넣지 않은 종목은
+// 절대 목표비중에 나타나지 않는다(이미 저장돼 있는 기존 사용자의 목표비중은 이 기본값과 무관 -
+// normalizeRebalanceOwnerTargets가 저장된 값이 있으면 그대로 쓰고, 없을 때만 이 빈 값으로 시작한다).
+const DEFAULT_REBALANCE_TARGETS = { '국내': [], '해외': [] };
 function cloneDefaultRebalanceTargets() {
   return {
     '국내': DEFAULT_REBALANCE_TARGETS['국내'].map((t) => ({ ...t })),
@@ -396,16 +384,6 @@ function cloneDefaultRebalanceTargets() {
 const REBALANCE_OWNERS = ['신랑', '와이프'];
 function makeDefaultRebalanceOwnerState() {
   return { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
-}
-
-// 이미 localStorage/JSON 백업에 저장돼 있던 해외 세부 목표에는 '주식'/'현금' 캐치올이 없을 수 있다
-// (이 캐치올을 나중에 추가했으므로). 기존에 저장된 티커별 비중은 그대로 두고, 없는 캐치올만 0%로
-// 추가해 넣어 자산군 매칭 커버리지를 보강한다(합계는 0을 더하는 것이므로 100%가 깨지지 않는다).
-function ensureForeignCategoryCatchalls(list) {
-  const arr = Array.isArray(list) ? list.slice() : [];
-  const hasCash = arr.some((t) => t && t.type === 'category' && t.category === '현금');
-  if (!hasCash) arr.push({ type: 'category', category: '현금', label: '현금', pct: 0 });
-  return arr;
 }
 
 // [자산군 캐치올 '주식' 제거 - 요청 반영] "+ 종목 추가" 검색으로 개별 티커를 직접 목표에 추가할 수
@@ -939,7 +917,7 @@ function normalizeRebalanceOwnerTargets(rawTargets) {
   const defaults = cloneDefaultRebalanceTargets();
   return {
     '국내': ensureSelectedStocksField(stripStockCategoryRebalanceTargets(stripCustomRebalanceTargets(Array.isArray(rawTargets && rawTargets['국내']) ? rawTargets['국내'] : defaults['국내']))),
-    '해외': ensureSelectedStocksField(stripStockCategoryRebalanceTargets(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(rawTargets && rawTargets['해외']) ? rawTargets['해외'] : defaults['해외']))))
+    '해외': ensureSelectedStocksField(stripStockCategoryRebalanceTargets(stripCustomRebalanceTargets(Array.isArray(rawTargets && rawTargets['해외']) ? rawTargets['해외'] : defaults['해외'])))
   };
 }
 function normalizeRebalanceOwnerState(rawOwnerState) {
