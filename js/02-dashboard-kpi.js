@@ -749,10 +749,10 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
     return `
     <tr class="border-b border-slate-50 dark:border-slate-800/70 last:border-b-0">
       <td class="py-1.5 pr-1 font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
-      <td class="py-1.5 px-1 text-right">${valueHtml}</td>
-      <td class="py-1.5 px-1 text-right ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</td>
-      <td class="py-1.5 px-1 text-right ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</td>
-      <td class="py-1.5 pl-1 text-right ${profitColor(profit)}">${fmtSignedShort(profit)}</td>
+      <td class="py-1.5 px-1 text-right whitespace-nowrap">${valueHtml}</td>
+      <td class="py-1.5 px-1 text-right whitespace-nowrap ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</td>
+      <td class="py-1.5 px-1 text-right whitespace-nowrap ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</td>
+      <td class="py-1.5 pl-1 text-right whitespace-nowrap ${profitColor(profit)}">${fmtSignedShort(profit)}</td>
     </tr>`;
   }).join('');
 }

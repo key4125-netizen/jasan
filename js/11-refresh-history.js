@@ -877,8 +877,8 @@ function renderDailyPnlSummary(series) {
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
-          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
-          <span class="${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
+          <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
+          <span class="shrink-0 whitespace-nowrap ${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
         </div>`).join('')}
     </div>`;
 }
@@ -960,8 +960,8 @@ function renderTotalValueSummary(series) {
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
-          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
-          <span class="text-right">
+          <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
+          <span class="text-right shrink-0 whitespace-nowrap">
             <span class="font-medium">${fmtKRW(r.current)}</span>
             <span class="ml-1.5 text-xs ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span>
           </span>
@@ -1032,8 +1032,8 @@ function renderTotalProfitSummary(series) {
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
-          <span class="text-slate-500 dark:text-slate-400">${escapeHtml(r.label)}</span>
-          <span class="${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
+          <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
+          <span class="shrink-0 whitespace-nowrap ${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
         </div>`).join('')}
     </div>`;
 }

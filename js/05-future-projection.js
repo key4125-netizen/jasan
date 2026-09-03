@@ -648,15 +648,20 @@ function getTaxAdvantagedHoldingsByOwner() {
   return result;
 }
 
-// [계좈 세부 - 포지션(역할) 비중 표기 - 요청 반영] "위험/안전자산 구성" 대신, 그 소유자가 절세계좈에
+// [계좈 세부/카드 상단 - 포지션(역할) 비중 표기 - 요청 반영] "위험/안전자산 구성" 대신, 절세계좈에
 // 실제로 보유 중인 종목들을 포지션(역할)별로 나눠 보여준다 - 개별 자산에 직접 지정된 role이 없으면
-// 티커별 역할 단일 소스(getTickerRole)로 폴백한다(다른 화면과 동일한 원칙). 목표 비중이 아니라 "지금
-// 실제로 뭘 들고 있는가" 기준이라는 점에서, 위 카드 상단의 부부합산 목표 기준 요약과는 성격이 다르다.
-function getTaxAdvantagedRoleBreakdown(owner) {
+// 티커별 역할 단일 소스(getTickerRole)로 폴백한다(다른 화면과 동일한 원칙). ownerFilter를 생략하거나
+// 'all'을 넘기면 신랑+와이프 절세계좈 보유분을 합쳐 부부합산으로 계산한다(카드 상단 대표 표시용) -
+// 특정 소유자명을 넘기면 그 사람만(계좈 세부 드롭다운용). [버그 수정 - 요청 반영] 예전엔 카드 상단이
+// 이 함수가 아니라 일반계좈 목표비중(computePositionRoleBreakdown)을 잘못 참조해 "일반계좈 기준"
+// 문구가 절세계좈 카드에 섞여 들어갔었다 - 이제 상단/드롭다운 모두 이 함수 하나(절세계좈 실제 보유
+// 기준)만 쓴다. 목표 비중이 아니라 "지금 실제로 뭘 들고 있는가" 기준이다(적립 예상 계획과도 무관).
+function getTaxAdvantagedRoleBreakdown(ownerFilter) {
+  const owners = (ownerFilter && ownerFilter !== 'all') ? [ownerFilter] : TAX_ADVANTAGED_OWNERS;
   const weights = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
   let total = 0;
   state.assets.forEach((a) => {
-    if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
+    if (isRebalanceEligibleAccount(a) || !owners.includes(a.owner)) return;
     const value = calcRow(a).curAmount;
     total += value;
     const role = a.role || getTickerRole(a.ticker);
@@ -792,10 +797,11 @@ function simulateTaxAdvantagedOwnerYearlyPoints(owner, presetKey, maxYears) {
 // 이유) 버튼도 매번 다시 만들어지고, 클릭 리스너도 매번 다시 붙여야 한다.
 // [대표 표시 - "위험/안전자산" → "포지션별 비중" 전환, 요청 반영] 예전엔 카테고리(주식/ETF=위험, 그 외=
 // 안전) 기준 단순 이분법이었으나, 이제 "포트폴리오 구성" 탭과 같은 포지션(공격수/코어미드필드/수비수)
-// 축으로 통일한다. 상단 대표 줄은 "포지션별 목표비중 분석" 카드와 동일한 데이터(computePositionRoleBreakdown,
-// js/04 - 부부합산·일반계좈 목표비중 기준)를 그대로 참조해 두 곳의 숫자가 항상 일치하고, 계좈 세부
-// 드롭다운(소유자별)은 그 사람이 절세계좈에 실제로 보유 중인 종목들의 포지션 구성(getTaxAdvantagedRoleBreakdown)
-// 을 보여준다 - "목표"가 아니라 "지금 실제로 뭘 들고 있는가" 기준이라는 점에서 성격이 다르다.
+// 축으로 통일한다. [버그 수정 - 요청 반영] 상단 대표 줄이 한때 일반계좈 목표비중(computePositionRoleBreakdown)
+// 을 잘못 참조해 절세계좈 카드에 "일반계좈 기준" 문구가 섞여 나오는 오류가 있었다 - 상단/계좈 세부
+// 드롭다운(소유자별) 모두 getTaxAdvantagedRoleBreakdown(ownerFilter) 하나만 쓴다(상단은 ownerFilter
+// 생략='all'=부부합산, 드롭다운은 그 owner만) - "목표"가 아니라 절세계좈에 "지금 실제로 뭘 들고
+// 있는가"만을 기준으로 한다(적립 예상 계획과도 무관).
 function renderTaxAdvantagedCard() {
   const container = document.getElementById('taxAdvantagedSummary');
   if (!container) return;
@@ -805,7 +811,7 @@ function renderTaxAdvantagedCard() {
     container.innerHTML = '<p class="text-xs text-slate-400">보유 중인 절세계좌 자산이 없습니다.</p>';
     return;
   }
-  const householdRoleSummary = formatRolePctSummary(computePositionRoleBreakdown('all').pct);
+  const householdRoleSummary = formatRolePctSummary(getTaxAdvantagedRoleBreakdown('all'));
 
   const ownerAccordionKey = { '신랑': 'taxHusband', '와이프': 'taxWife' };
   const ownerAccordionIds = (owner) => ({ key: ownerAccordionKey[owner], btnId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBtn`, bodyId: `taxAdvantaged${owner === '신랑' ? 'Husband' : 'Wife'}AccordionBody` });
@@ -845,7 +851,7 @@ function renderTaxAdvantagedCard() {
       <span class="text-base font-bold">${fmtKRWShort(total)}</span>
     </div>
     <div class="pb-2 border-b border-slate-100 dark:border-slate-800">
-      <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(부부합산 목표 · 일반계좈 기준)</p>
+      <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좈 실제 보유 기준)</p>
       <p class="text-[11px] text-slate-500 dark:text-slate-400">${householdRoleSummary}</p>
     </div>
     ${TAX_ADVANTAGED_OWNERS.map(ownerAccordionHtml).join('')}`;
@@ -941,7 +947,7 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
           </select>
         </div>
         <div class="flex items-center justify-end gap-1">
-          <input type="number" step="any" value="${c.amount || ''}" placeholder="금액"
+          <input type="text" inputmode="numeric" value="${formatInputNumber(c.amount || '')}" placeholder="금액"
             data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="amount"
             class="tax-contrib-input w-24 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
           <span class="text-[10px] text-slate-400 shrink-0">원</span>
@@ -977,6 +983,8 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
       <div data-tax-add-form data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" class="hidden mt-1.5 p-1.5 rounded bg-slate-50 dark:bg-slate-800/60"></div>
     </div>`; }).join('');
   accountTypes.forEach((accType) => updateTaxAdvantagedAllocationSumHint(owner, accType));
+  // [천단위 콤마 자동 포맷팅 - 요청 반영] 매번 innerHTML을 새로 그리므로 그때마다 다시 붙여야 한다.
+  container.querySelectorAll('.tax-contrib-input[data-contrib-field="amount"]').forEach((el) => attachThousandsInputFormatting(el));
   lucide.createIcons();
 }
 // [계좈별 종목 추가 - 검색 결과] searchStockCandidates(js/04, 보유종목+종목 마스터+Yahoo)를 그대로
@@ -1155,7 +1163,7 @@ function renderTaxAdvantagedPlanResults() {
       <thead>
         <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
           <th class="py-2 pr-2 font-semibold"></th>
-          ${presetKeys.map((k) => `<th class="py-2 px-1 text-right font-semibold">${presetLabels[k]}</th>`).join('')}
+          ${presetKeys.map((k) => `<th class="py-2 px-1 text-right font-semibold whitespace-nowrap">${presetLabels[k]}</th>`).join('')}
         </tr>
       </thead>
       <tbody>
@@ -1164,7 +1172,7 @@ function renderTaxAdvantagedPlanResults() {
           return `
         <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 ${r.owner === '합계' ? 'font-bold' : ''}">
           <td class="py-2 pr-2 text-slate-600 dark:text-slate-300 whitespace-nowrap">${escapeHtml(rowLabel)}</td>
-          ${r.values.map((v) => `<td class="py-2 px-1 text-right ${r.owner === '합계' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}">${fmtKRWShort(v)}</td>`).join('')}
+          ${r.values.map((v) => `<td class="py-2 px-1 text-right whitespace-nowrap ${r.owner === '합계' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}">${fmtKRWShort(v)}</td>`).join('')}
         </tr>`;
         }).join('')}
       </tbody>
@@ -1940,9 +1948,9 @@ async function renderMonteCarloSection() {
   document.getElementById('monteCarloScheduleBody').innerHTML = points.map((p) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${p.year === 0 ? '현재' : `${p.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + p.year}</span></td>
-      <td class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p10)}</td>
-      <td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white">${fmtKRWShort(p.p50)}</td>
-      <td class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p90)}</td>
+      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p10)}</td>
+      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-slate-900 dark:text-white">${fmtKRWShort(p.p50)}</td>
+      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p90)}</td>
     </tr>`).join('');
 }
 
@@ -2040,7 +2048,7 @@ function openMonthlyContributionAllocationModal() {
       monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: (saved && num(saved.years)) || 15, allocation: ((saved && saved.allocation) || []).map(withRoleFallback) };
     }
     const suffix = rebalanceOwnerSuffix(owner);
-    document.getElementById('monthlyContributionTotalInput' + suffix).value = monthlyContributionByOwnerDraft[owner].total || '';
+    document.getElementById('monthlyContributionTotalInput' + suffix).value = formatInputNumber(monthlyContributionByOwnerDraft[owner].total || '');
     document.getElementById('monthlyContributionYearsInput' + suffix).value = monthlyContributionByOwnerDraft[owner].years;
     const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
     form.classList.add('hidden');
@@ -2097,6 +2105,8 @@ function renderMonthlyContributionAllocationList(owner) {
 
 REBALANCE_OWNERS.forEach((owner) => {
   const suffix = rebalanceOwnerSuffix(owner);
+  // [천단위 콤마 자동 포맷팅 - 요청 반영] "적립금 설정" 월 적립 총액 입력창.
+  attachThousandsInputFormatting(document.getElementById('monthlyContributionTotalInput' + suffix));
   document.getElementById('monthlyContributionTotalInput' + suffix).addEventListener('input', (e) => {
     monthlyContributionByOwnerDraft[owner].total = num(e.target.value);
   });

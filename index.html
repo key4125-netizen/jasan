@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v193</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v196</p>
           </div>
         </div>
 
@@ -1095,18 +1095,12 @@
          미지정 총 6개 항목이 전부 클릭 가능한 탭이며, 클릭하면 그 항목을 구성하는 실제 목표 종목을
          팝업으로 보여준다(computeTargetRegionBreakdown/computePositionRoleBreakdown, js/04).
          [신랑/와이프 비중 버튼 삭제 - 요청 반영] 이제 각자의 카드가 위에 상시 노출되므로 중복이라
-         제거했다. [포지션 카드 아코디언 부활 - 요청 반영] 헤더를 누르면 펼쳐지는 아코디언, 기본 닫힘. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-6 overflow-hidden">
-      <button type="button" id="positionAnalysisAccordionAllBtn" class="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-3 text-left">
-        <span class="text-sm font-semibold flex items-center gap-1">⚽ 전체 포지션별 목표비중 분석</span>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200" id="positionAnalysisAccordionAllChevron"></i>
-      </button>
-      <div id="positionAnalysisAccordionAllBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="px-3 sm:px-4 pb-3 sm:pb-4">
-          <p id="positionScopeNote" class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.</p>
-          <div id="positionAnalysisCardAll"></div>
-        </div>
-      </div>
+         제거했다. [아코디언 제거 - 요청 반영] 신랑/와이프 개별 카드와 달리 이 가구합산 카드는 접힘
+         없이 항상 펼쳐진 채로 상시 노출한다(positionAnalysisAccordionOpen.all은 더 이상 안 씀). -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-6 p-3 sm:p-4">
+      <h3 class="text-sm font-semibold flex items-center gap-1 mb-1">⚽ 전체 포지션별 목표비중 분석</h3>
+      <p id="positionScopeNote" class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.</p>
+      <div id="positionAnalysisCardAll"></div>
     </section>
 
     <!-- ===== 종목별 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이

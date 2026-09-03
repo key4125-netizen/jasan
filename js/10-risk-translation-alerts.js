@@ -305,7 +305,7 @@ function buildMetricItem(label, valueHtml, tooltip) {
       ${escapeHtml(label)}
       <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
     </span>
-    <span class="text-base font-semibold text-slate-700 dark:text-slate-200 text-right shrink-0 pl-2">${valueHtml}</span>
+    <span class="text-base font-semibold text-slate-700 dark:text-slate-200 text-right shrink-0 whitespace-nowrap pl-2">${valueHtml}</span>
   </div>`;
 }
 
@@ -1635,6 +1635,8 @@ document.getElementById('stockAnalysisBtn').addEventListener('click', () => open
 document.getElementById('stockAnalysisSearchBtn').addEventListener('click', () => runStockAnalysis());
 document.getElementById('stockAnalysisTickerInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
 document.getElementById('stockAnalysisAmountInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStockAnalysis(); });
+// [천단위 콤마 자동 포맷팅 - 요청 반영] 매수 검토 금액 입력창.
+attachThousandsInputFormatting(document.getElementById('stockAnalysisAmountInput'));
 // [모바일 키보드 대응] 포커스 직후 바로 repositionStockAnalysisModalForViewport()를 부르면 아직
 // 키보드가 올라오는 애니메이션 중이라 visualViewport 값이 최종 크기가 아닐 수 있다 - 키보드 표시
 // 애니메이션이 끝날 시간(약 300ms)을 준 뒤 재배치하고, 입력창 자체도 부드럽게 보이는 영역으로

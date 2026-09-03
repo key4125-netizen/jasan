@@ -19,10 +19,10 @@ function isUsdCashAsset(a) {
 function usdCashInfoGridHtml(quantity, buyRate, curAmount, profit, rateOfReturn, quantityLabel, curAmountLabel, pnlLabel) {
   const effectiveBuyRate = Number.isFinite(buyRate) && buyRate > 0 ? buyRate : state.exchangeRate;
   return `
-    <div><span class="text-slate-400 block mb-0.5">${quantityLabel}</span><span class="font-medium">$${fmtNum(quantity, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">평균 매수환율</span><span class="font-medium">${fmtNum(effectiveBuyRate, 2)}원</span></div>
-    <div><span class="text-slate-400 block mb-0.5">현재 환율</span><span class="font-medium">${fmtNum(state.exchangeRate, 2)}원</span></div>
-    <div><span class="text-slate-400 block mb-0.5">${curAmountLabel}</span><span class="font-medium">${fmtKRW(curAmount)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">${quantityLabel}</span><span class="font-medium whitespace-nowrap">$${fmtNum(quantity, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평균 매수환율</span><span class="font-medium whitespace-nowrap">${fmtNum(effectiveBuyRate, 2)}원</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재 환율</span><span class="font-medium whitespace-nowrap">${fmtNum(state.exchangeRate, 2)}원</span></div>
+    <div><span class="text-slate-400 block mb-0.5">${curAmountLabel}</span><span class="font-medium whitespace-nowrap">${fmtKRW(curAmount)}</span></div>
     <div class="col-span-2 sm:col-span-4">
       <span class="text-slate-400 block mb-0.5">${pnlLabel}</span>
       <span class="font-medium ${profitColor(profit)}">${fmtSigned(profit)}</span>
@@ -171,10 +171,10 @@ function openAssetDetailModal(id) {
   document.getElementById('assetDetailInfoGrid').innerHTML = isUsdCashAsset(a)
     ? usdCashInfoGridHtml(a.quantity, a.buyRate, r.curAmount, r.profit, r.rateOfReturn, '보유 달러', '평가금액', '환차손익 (환차수익률)')
     : `
-    <div><span class="text-slate-400 block mb-0.5">보유 수량</span><span class="font-medium">${fmtNum(a.quantity, 4)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium">${priceUnit}${fmtNum(a.buyPrice, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium">${priceUnit}${fmtNum(a.currentPrice, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">보유 수량</span><span class="font-medium whitespace-nowrap">${fmtNum(a.quantity, 4)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(a.buyPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(a.currentPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
     <div class="col-span-2 sm:col-span-4">
       <span class="text-slate-400 block mb-0.5">평가손익 (수익률)</span>
       <span class="font-medium ${profitColor(r.profit)}">${fmtSigned(r.profit)}</span>
@@ -269,10 +269,10 @@ function openAssetDetailModalGroup(members) {
   document.getElementById('assetDetailInfoGrid').innerHTML = isUsdCashAsset(first)
     ? usdCashInfoGridHtml(totalQuantity, avgBuyRate, totalCurAmount, profit, rateOfReturn, '총 보유 달러', '총 평가금액', '통합 환차손익 (환차수익률)')
     : `
-    <div><span class="text-slate-400 block mb-0.5">총 보유 수량</span><span class="font-medium">${fmtNum(totalQuantity, 4)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium">${priceUnit}${fmtNum(avgBuyPriceNative, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium">${priceUnit}${fmtNum(priced.currentPrice, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">총 평가금액</span><span class="font-medium">${fmtKRW(totalCurAmount)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">총 보유 수량</span><span class="font-medium whitespace-nowrap">${fmtNum(totalQuantity, 4)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(avgBuyPriceNative, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(priced.currentPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">총 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(totalCurAmount)}</span></div>
     <div class="col-span-2 sm:col-span-4">
       <span class="text-slate-400 block mb-0.5">통합 평가손익 (수익률)</span>
       <span class="font-medium ${profitColor(profit)}">${fmtSigned(profit)}</span>
