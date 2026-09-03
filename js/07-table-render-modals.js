@@ -849,9 +849,10 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     backfillDailyPnlHistory(newAsset);
   }
 
-  // [티커별 역할(포지션) 단일 소스] 이 화면에서 지정/변경/해제한 role을 다른 화면(목표 비중 등)에서도
-  // 같은 티커를 추가할 때 그대로 이어받도록 레지스트리에도 반영한다.
-  if (payload.ticker) setTickerRole(payload.ticker, payload.role);
+  // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장, 요청 반영] 이 화면에서 지정/변경/해제한
+  // role을 다른 화면(목표 비중 등)에서도 같은 종목을 추가할 때 그대로 이어받도록 레지스트리에도
+  // 반영한다. 채권/현금처럼 티커가 없는 자산은 이름으로 대신 키를 만든다(setTickerRole 세 번째 인자).
+  if (payload.ticker || payload.name) setTickerRole(payload.ticker, payload.role, payload.name);
   persistAssets();
   closeModal();
   renderAll();

@@ -80,11 +80,11 @@ const CATEGORY_COLORS = {
 // 성향 비중을 한눈에 볼 수 있게 한다(§Part 3 포지션별 비중 분석 카드). 미지정이 기본값(undefined)이며,
 // 절세계좈/부동산 자산에도 저장 자체는 허용하되 집계 시점(computePositionRoleBreakdown)에서만 일반계좈
 // 한정으로 걸러낸다.
-// ['코어미드필드' 통합 - 요청 반영] 예전엔 '미드필더'와 '코어자산'이 별개 포지션이었으나, 하나의
+// ['코어미드필더' 통합 - 요청 반영] 예전엔 '미드필더'와 '코어자산'이 별개 포지션이었으나, 하나의
 // 'core_mid' 포지션으로 통합했다 - 두 옛 포지션의 집계 데이터도 이제 이 하나로 합쳐서 산출된다.
 const ASSET_ROLE_OPTIONS = [
   { value: 'attacker', label: '공격수' },
-  { value: 'core_mid', label: '코어미드필드' },
+  { value: 'core_mid', label: '코어미드필더' },
   { value: 'defender', label: '수비수' }
 ];
 const ASSET_ROLE_LABELS = ASSET_ROLE_OPTIONS.reduce((acc, o) => { acc[o.value] = o.label; return acc; }, {});
@@ -104,14 +104,24 @@ function parseAssetRoleInput(raw) {
 }
 
 // [티커별 역할(포지션) 단일 소스] LS_TICKER_ROLES 선언부 주석 참고 - sanitizeTicker().yahooTicker로
-// 정규화한 키를 쓴다("005930"/"005930.KS"/"A005930"이 전부 같은 항목을 가리키게). 티커가 없는 자산
-// (채권/현금/부동산 등)은 애초에 role을 종목 단위로 동기화할 대상이 아니므로 조용히 무시한다.
-function getTickerRole(ticker) {
-  const key = sanitizeTicker(ticker).yahooTicker;
+// 정규화한 키를 쓴다("005930"/"005930.KS"/"A005930"이 전부 같은 항목을 가리키게).
+// [티커 없는 자산까지 확장 - 요청 반영] 예전엔 "채권/현금/부동산처럼 티커가 없는 자산은 종목 단위로
+// 동기화할 대상이 아니다"라고 보고 조용히 무시했다 - 하지만 목표비중/적립금/절세계좈 팝업 모두 "국채"/
+// "현금"처럼 이름으로 지정한 티커 없는 보유 자산에 포지션을 지정하는 기능이 이미 있어서, 그 값이 다른
+// 화면과 전혀 동기화되지 않는 사각지대였다. 키 규칙은 수익률 오버라이드가 이미 쓰던
+// buildCustomRateKey(js/05 - 티커 우선, 없으면 'NAME:정규화이름')를 그대로 재사용한다 - 이 파일이
+// js/05보다 먼저 로드되지만 실제 호출 시점엔 이미 정의돼 있으므로 안전하다(searchTickerMaster 등과
+// 동일한 이 프로젝트의 기존 패턴). 같은 자산이 role 레지스트리와 수익률 오버라이드 양쪽에서 항상 같은
+// 키로 취급되는 부수 효과도 있다.
+function buildTickerRoleKey(ticker, name) {
+  return buildCustomRateKey(ticker, name);
+}
+function getTickerRole(ticker, name) {
+  const key = buildTickerRoleKey(ticker, name);
   return key ? state.tickerRoles[key] : undefined;
 }
-function setTickerRole(ticker, role) {
-  const key = sanitizeTicker(ticker).yahooTicker;
+function setTickerRole(ticker, role, name) {
+  const key = buildTickerRoleKey(ticker, name);
   if (!key) return;
   const normalized = parseAssetRoleInput(role);
   if (normalized) state.tickerRoles[key] = normalized;
@@ -345,12 +355,21 @@ function sanitizeTicker(rawTicker) {
   return { original, yahooTicker: upper, isDomestic: '해외' };
 }
 
-function classifyIsDomestic(ticker) {
+// [버그 수정 - 티커 없는 외화 자산 지역 오판별] sanitizeTicker('')는 "티커 없는 채권/현금 등은 원화
+// 자산으로 간주"하고 항상 '국내'를 반환한다 - 원화 채권/현금에는 맞지만, "달러"(USD 현금)처럼 티커
+// 없이 외화로 보유하는 자산까지 똑같이 '국내'로 잘못 분류돼 버렸다. 실측으로 확인된 실제 영향: 거래
+// 내역에서 "달러"를 처음 매수하면(syncAssetsFromTransactions가 자산을 새로 만드는 경로, 통화만 넘기고
+// isDomestic은 안 넘김) 그 자산이 국내로 잡혀, 목표비중 모달의 "+ 종목 추가" 이름검색에서 해외 탭에는
+// 전혀 안 뜨고 국내 탭에서만 보이는 등 국내/해외 총액 분리가 필요한 모든 계산이 틀어졌다. 티커가
+// 있으면 기존처럼 티커로 판별하고(정확한 신호), 티커가 없을 때만 통화를 대신 참고한다(USD면 해외,
+// 그 외/미상이면 기존처럼 국내로 근사) - 티커가 있는 자산의 판별 결과는 전혀 안 바뀐다.
+function classifyIsDomestic(ticker, currency) {
+  if (!String(ticker ?? '').trim()) return currency === 'USD' ? '해외' : '국내';
   return sanitizeTicker(ticker).isDomestic;
 }
 
-function deriveDefaults(ticker, name) {
-  return { category: classifyCategory(ticker, name), isDomestic: classifyIsDomestic(ticker) };
+function deriveDefaults(ticker, name, currency) {
+  return { category: classifyCategory(ticker, name), isDomestic: classifyIsDomestic(ticker, currency) };
 }
 
 // 엑셀 업로드 시 사용자가 '국내/해외' 컬럼을 직접 기재하면 자동판별보다 우선 적용한다.
@@ -654,7 +673,7 @@ function makeAsset(raw) {
   }
   const ticker = tickerStr;
   const name = String(raw.name ?? '').trim() || '이름없음';
-  const { category, isDomestic: autoIsDomestic } = deriveDefaults(ticker, name);
+  const { category, isDomestic: autoIsDomestic } = deriveDefaults(ticker, name, raw.currency);
   const isDomestic = normalizeIsDomestic(raw.isDomestic, autoIsDomestic);
   // 통화 기본값은 국내/해외 판별 결과를 따르되(국내→KRW, 해외→USD), '통화' 컬럼이 명시되어 있으면 그 값이 최종 우선한다.
   const defaultCurrency = isDomestic === '해외' ? 'USD' : 'KRW';
@@ -679,10 +698,10 @@ function makeAsset(raw) {
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
     rateMatchOverride: (raw.rateMatchOverride !== undefined && raw.rateMatchOverride !== null && String(raw.rateMatchOverride).trim() !== '') ? String(raw.rateMatchOverride).trim() : undefined,
     // [자산별 역할(포지션) 분류 - 티커별 단일 소스와 자동 연동] raw.role이 명시돼 있으면 그 값을 그대로
-    // 쓰고, 없으면 이 티커에 대해 다른 곳(리밸런싱 목표 등)에서 이미 지정해 둔 역할이 있는지
+    // 쓰고, 없으면 이 종목에 대해 다른 곳(리밸런싱 목표 등)에서 이미 지정해 둔 역할이 있는지
     // getTickerRole()로 조회해 자동으로 채운다 - "목표 비중에 미리 태깅해 둔 종목을 나중에 실제로
-    // 사면 역할이 자동으로 딸려온다"는 요구사항을 만족한다.
-    role: parseAssetRoleInput(raw.role) || getTickerRole(ticker),
+    // 사면 역할이 자동으로 딸려온다"는 요구사항을 만족한다. 티커가 없는 채권/현금 등은 이름으로 조회한다.
+    role: parseAssetRoleInput(raw.role) || getTickerRole(ticker, name),
     // [가족 동기화 - 스마트 머지] 이 자산 레코드가 마지막으로 실제 변경된 시각 - mergeCollectionById()가
     // 같은 id가 로컬/원격 양쪽에 있을 때 어느 쪽을 채택할지 이 값으로 판단한다(js/12 참고). 시세 자동
     // 갱신(fetchPricesForTargets)처럼 "진짜 편집"이 아닌 배경 갱신은 절대 이 값을 건드리지 않는다.
@@ -970,28 +989,32 @@ const LS_TICKER_ROLES_SEEDED = 'sam_ticker_roles_seeded_v1';
 // 예전에 남아있던 값으로 되살아나지 않게 하기 위함이다.
 function seedTickerRolesFromLegacyStorageOnce() {
   if (localStorage.getItem(LS_TICKER_ROLES_SEEDED) === '1') return;
-  const seed = (ticker, role) => {
-    const key = sanitizeTicker(ticker).yahooTicker;
+  // [티커 없는 자산까지 확장 - 요청 반영] name을 함께 넘기면 티커가 없을 때 'NAME:이름' 키로 대신
+  // 시드한다(buildTickerRoleKey와 동일 규칙) - 국채/현금처럼 티커 없는 자산도 이 1회성 마이그레이션이
+  // 놓치지 않게 한다.
+  const seed = (ticker, role, name) => {
+    const key = buildTickerRoleKey(ticker, name);
     if (!key || state.tickerRoles[key] || !role) return;
     state.tickerRoles[key] = role;
   };
-  state.assets.forEach((a) => seed(a.ticker, a.role));
+  state.assets.forEach((a) => seed(a.ticker, a.role, a.name));
   REBALANCE_OWNERS.forEach((owner) => {
     ['국내', '해외'].forEach((region) => {
       (state.rebalance[owner].targets[region] || []).forEach((t) => {
         if (t.type === 'ticker') seed(t.ticker, t.role);
+        if (t.type === 'namedHolding') seed('', t.role, t.name);
         if (Array.isArray(t.selectedStocks)) t.selectedStocks.forEach((s) => seed(s.ticker, s.role));
       });
     });
-    (state.projection.monthlyContributionByOwner[owner].allocation || []).forEach((it) => seed(it.ticker, it.role));
+    (state.projection.monthlyContributionByOwner[owner].allocation || []).forEach((it) => seed(it.ticker, it.role, it.label));
   });
-  (state.projection.monthlyContributionAllocation || []).forEach((it) => seed(it.ticker, it.role));
+  (state.projection.monthlyContributionAllocation || []).forEach((it) => seed(it.ticker, it.role, it.label));
   persistTickerRoles();
   localStorage.setItem(LS_TICKER_ROLES_SEEDED, '1');
 }
 
 const LS_ROLE_CORE_MID_MERGED = 'sam_role_core_mid_merged_v1';
-// [1회성 마이그레이션 - '코어미드필드' 통합] 예전에 분리돼 있던 '미드필더'/'코어자산' role 값을 이미
+// [1회성 마이그레이션 - '코어미드필더' 통합] 예전에 분리돼 있던 '미드필더'/'코어자산' role 값을 이미
 // 저장해 둔 모든 곳(자산/레지스트리/리밸런싱 목표/절세계좈 배분/월적립금 배분)에서 한 번만 훑어
 // 'core_mid'로 고쳐 쓴다. parseAssetRoleInput의 LEGACY_ASSET_ROLE_ALIASES는 "앞으로 들어오는 입력"만
 // 정규화할 뿐 이미 저장된 원시 문자열 자체는 안 바꾸므로, 화면에 표시/집계될 때(단순 === 비교) 옛
