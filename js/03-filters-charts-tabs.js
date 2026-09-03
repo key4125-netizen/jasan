@@ -30,10 +30,6 @@ function updateRealEstateGuidanceText() {
     const el = document.getElementById(id);
     if (el) el.innerHTML = hasRE ? withRE : withoutRE;
   };
-  const setTitle = (id, withRE, withoutRE) => {
-    const el = document.getElementById(id);
-    if (el) el.title = hasRE ? withRE : withoutRE;
-  };
 
   setText('riskScopeNote',
     '진단 대상: 주식·ETF만 해당(현금/채권/부동산 등은 가격 변동성 진단 대상이 아니라 제외)',
@@ -41,15 +37,9 @@ function updateRealEstateGuidanceText() {
   setText('rebalanceScopeNote',
     '※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.',
     '※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.');
-  const domesticHelpWithRE = "국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다. 부동산 등 실물자산은 이 계산에서 제외됩니다.";
-  const domesticHelpWithoutRE = "국내를 입력하면 해외는 자동으로 100%에서 나머지로 채워집니다. 이 비중이 아래 세부 목표의 '전체 목표 금액' 기준이 됩니다.";
-  setTitle('domesticTargetHelpIconHusband', domesticHelpWithRE, domesticHelpWithoutRE);
-  setTitle('domesticTargetHelpIconWife', domesticHelpWithRE, domesticHelpWithoutRE);
-  setText('domesticCaptionHusband', '국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외', '국내 입력 시 해외 자동 계산');
-  setText('domesticCaptionWife', '국내 입력 시 해외 자동 계산 · 부동산 등 실물자산 제외', '국내 입력 시 해외 자동 계산');
   setText('positionScopeNote',
-    '일반계좌(절세계좌·부동산 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.',
-    '일반계좌(절세계좌 제외) 보유 자산 중 역할(포지션)이 지정된 종목만 집계합니다.');
+    '일반계좌(절세계좌·부동산 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.',
+    '일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.');
   setText('guideScopeNote',
     '절세계좌 및 부동산을 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.',
     '절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.');
@@ -63,8 +53,8 @@ function updateRealEstateGuidanceText() {
     '일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.',
     '일반계좌+절세계좌를 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.');
   setText('monteCarloDesc',
-    '일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.',
-    '일반계좌+절세계좌 금융자산 전체를 대상으로, 실측 변동성 기반 확률 시뮬레이션(1,000회)으로 P10(낙관)~P90(보수) 자산가치 범위를 보여줍니다.');
+    '일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 목표 비중 기준 실측 변동성 기반 확률 시뮬레이션(10,000회)으로 P10(보수)~P90(낙관) 자산가치 범위를 보여줍니다.',
+    '일반계좌+절세계좌 금융자산 전체를 대상으로, 목표 비중 기준 실측 변동성 기반 확률 시뮬레이션(10,000회)으로 P10(보수)~P90(낙관) 자산가치 범위를 보여줍니다.');
 }
 
 function fillSelect(id, values, allLabel, current) {

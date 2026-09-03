@@ -572,6 +572,8 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 비웠으면(기존값이 있었더라도) 미지정으로 되돌린다.
   const roleRaw = document.getElementById('tx_role').value.trim();
   if (matchedAsset) matchedAsset.role = parseAssetRoleInput(roleRaw);
+  // [티커별 역할(포지션) 단일 소스] matchedAsset의 role 변경을 다른 화면에서도 이어받게 레지스트리에도 반영.
+  if (matchedAsset && matchedAsset.ticker) setTickerRole(matchedAsset.ticker, matchedAsset.role);
   persistAssets();
   closeTransactionModal();
   renderTransactionsTab();

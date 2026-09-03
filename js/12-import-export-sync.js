@@ -272,7 +272,10 @@ function buildSyncBlob() {
     dailySnapshots: state.dailySnapshots,
     // [종목 분석 모달 - 학습된 종목명 캐시] 다른 기기에서 검색해서 익힌 티커→이름도 JSON 백업/복원과
     // 클라우드 동기화로 함께 넘어가야 그 기기에서 처음 검색하는 종목도 바로 이름이 뜬다.
-    learnedTickerNames: state.learnedTickerNames
+    learnedTickerNames: state.learnedTickerNames,
+    // [티커별 역할(포지션) 단일 소스] getTickerRole() 주석 참고 - 이것도 기기 간 동기화되어야 한쪽에서
+    // 지정한 포지션이 다른 기기에도 그대로 반영된다.
+    tickerRoles: state.tickerRoles
   };
 }
 
@@ -545,6 +548,9 @@ async function applyRemoteState(parsed) {
   // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
   state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
   persistLearnedTickerNames();
+  // [티커별 역할(포지션) 단일 소스] 동일한 이유로 통째 교체한다.
+  state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
+  persistTickerRoles();
   persistAssets();
   renderAll();
   backfillAllHoldingsDailyPnlHistory();
@@ -655,6 +661,12 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
     state.learnedTickerNames = { ...parsed.learnedTickerNames, ...state.learnedTickerNames };
     persistLearnedTickerNames();
   }
+  // [티커별 역할(포지션) 단일 소스] learnedTickerNames와 동일한 이유(순수 추가형, 로컬 값 우선 병합) -
+  // 배우자 기기에서 지정한 포지션도 이 기기에 함께 반영되어야 두 기기의 role이 실제로 동기화된다.
+  if (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) {
+    state.tickerRoles = { ...parsed.tickerRoles, ...state.tickerRoles };
+    persistTickerRoles();
+  }
 }
 
 let pushDebounceTimer = null;
@@ -761,6 +773,11 @@ async function pullFromCloud(opts) {
         if (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) {
           state.learnedTickerNames = { ...parsed.learnedTickerNames, ...state.learnedTickerNames };
           persistLearnedTickerNames();
+        }
+        // [티커별 역할(포지션) 단일 소스] 동일한 이유(순수 도움용 캐시) - 최초 페어링이어도 병합한다.
+        if (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) {
+          state.tickerRoles = { ...parsed.tickerRoles, ...state.tickerRoles };
+          persistTickerRoles();
         }
       } else {
         // [스마트 머지] 통째 덮어쓰기 대신 자산/거래내역은 id+updatedAt 기준으로 병합한다.

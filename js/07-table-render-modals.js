@@ -849,6 +849,9 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     backfillDailyPnlHistory(newAsset);
   }
 
+  // [티커별 역할(포지션) 단일 소스] 이 화면에서 지정/변경/해제한 role을 다른 화면(목표 비중 등)에서도
+  // 같은 티커를 추가할 때 그대로 이어받도록 레지스트리에도 반영한다.
+  if (payload.ticker) setTickerRole(payload.ticker, payload.role);
   persistAssets();
   closeModal();
   renderAll();

@@ -19,6 +19,15 @@ const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
 const LS_LEARNED_TICKER_NAMES = 'sam_learned_ticker_names_v1';
+// [티커별 역할(포지션) 단일 소스 - 요청 반영] 예전엔 role이 state.assets[].role, 리밸런싱 목표
+// (targets[].role/selectedStocks[].role), 월적립금 배분(allocation[].role)에 각자 독립적으로
+// 저장되어 같은 티커라도 어디서 지정했는지에 따라 서로 다른 값을 가질 수 있었다(동기화 안 됨, 조사로
+// 확인). 이제 이 레지스트리 하나가 "이 티커는 어떤 포지션인가"의 단일 소스이며, 위 네 곳 전부 role을
+// 쓸 때마다 이 레지스트리도 함께 갱신하고(setTickerRole), 새 티커를 추가할 때 이 레지스트리에서
+// 값을 미리 채워 넣는다(getTickerRole) - getTickerRole/setTickerRole/normalizeTickerKey 참고.
+// 각 개별 저장소(예: 리밸런싱 목표의 role)는 그대로 유지된다 - "무엇을 집계 기준으로 쓰는가"(예:
+// computeOwnerTargetRoleWeights가 목표 비중 기준으로 집계)는 이번 변경과 무관하다.
+const LS_TICKER_ROLES = 'sam_ticker_roles_v1';
 // 일간 손익 계산에 쓰이는 "오늘 하루의 기준 환율"(전일 종가 개념) 저장 키.
 // FX는 24시간 거래되어 명확한 "전일 종가"가 없으므로, 달력 날짜가 바뀔 때 그 시점의 환율을
 // 스냅샷해서 그날 하루 동안 고정 기준값으로 사용한다(당일 중 환율이 갱신되어도 기준값은 안 바뀜).
@@ -86,6 +95,22 @@ function parseAssetRoleInput(raw) {
   if (ASSET_ROLE_LABELS[v]) return v;
   const found = ASSET_ROLE_OPTIONS.find((o) => o.label === v);
   return found ? found.value : undefined;
+}
+
+// [티커별 역할(포지션) 단일 소스] LS_TICKER_ROLES 선언부 주석 참고 - sanitizeTicker().yahooTicker로
+// 정규화한 키를 쓴다("005930"/"005930.KS"/"A005930"이 전부 같은 항목을 가리키게). 티커가 없는 자산
+// (채권/현금/부동산 등)은 애초에 role을 종목 단위로 동기화할 대상이 아니므로 조용히 무시한다.
+function getTickerRole(ticker) {
+  const key = sanitizeTicker(ticker).yahooTicker;
+  return key ? state.tickerRoles[key] : undefined;
+}
+function setTickerRole(ticker, role) {
+  const key = sanitizeTicker(ticker).yahooTicker;
+  if (!key) return;
+  const normalized = parseAssetRoleInput(role);
+  if (normalized) state.tickerRoles[key] = normalized;
+  else delete state.tickerRoles[key];
+  persistTickerRoles();
 }
 
 // 이 자산군은 시세가 존재하지 않는 고정형 자산으로 간주해, 티커 입력 여부와 무관하게 항상
@@ -519,6 +544,9 @@ const state = {
   // 종목(신규상장 등 아직 마스터가 안 받아온 종목)도 두 번째 검색부터는 이름으로 찾고 드롭다운에도
   // 나온다. localStorage/JSON 백업/클라우드 동기화에 모두 저장됨(buildSyncBlob 참고).
   learnedTickerNames: {},
+  // [티커별 역할(포지션) 단일 소스] { yahooTicker: role }. LS_TICKER_ROLES 위 주석 참고 -
+  // localStorage/가족 동기화에 저장됨(buildSyncBlob 참고).
+  tickerRoles: {},
   // 매매 거래 내역 - localStorage/JSON 백업에 저장됨. 각 항목: {id, date, owner, accountType, ticker,
   // name, type('buy'|'sell'), quantity, price, currency, fee, realizedPnL(매도 건만, 이동평균법 계산값)}.
   transactions: [],
@@ -618,9 +646,11 @@ function makeAsset(raw) {
     // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
     rateMatchOverride: (raw.rateMatchOverride !== undefined && raw.rateMatchOverride !== null && String(raw.rateMatchOverride).trim() !== '') ? String(raw.rateMatchOverride).trim() : undefined,
-    // [자산별 역할(포지션) 분류] 위 ASSET_ROLE_OPTIONS 참고 - rateMatchOverride와 동일한 선택적 문자열
-    // 필드 패턴(미지정이면 undefined).
-    role: parseAssetRoleInput(raw.role),
+    // [자산별 역할(포지션) 분류 - 티커별 단일 소스와 자동 연동] raw.role이 명시돼 있으면 그 값을 그대로
+    // 쓰고, 없으면 이 티커에 대해 다른 곳(리밸런싱 목표 등)에서 이미 지정해 둔 역할이 있는지
+    // getTickerRole()로 조회해 자동으로 채운다 - "목표 비중에 미리 태깅해 둔 종목을 나중에 실제로
+    // 사면 역할이 자동으로 딸려온다"는 요구사항을 만족한다.
+    role: parseAssetRoleInput(raw.role) || getTickerRole(ticker),
     // [가족 동기화 - 스마트 머지] 이 자산 레코드가 마지막으로 실제 변경된 시각 - mergeCollectionById()가
     // 같은 id가 로컬/원격 양쪽에 있을 때 어느 쪽을 채택할지 이 값으로 판단한다(js/12 참고). 시세 자동
     // 갱신(fetchPricesForTargets)처럼 "진짜 편집"이 아닌 배경 갱신은 절대 이 값을 건드리지 않는다.
@@ -755,7 +785,10 @@ function normalizeTaxAdvantagedAllocationList(raw) {
     .filter((it) => it && typeof it === 'object' && it.ticker && Number.isFinite(num(it.pct)))
     .map((it) => ({
       accountType: it.accountType ? String(it.accountType) : '(미지정)',
-      ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct)
+      ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct),
+      // [미보유 종목 포지션 태깅] monthlyContributionAllocation과 동일한 패턴 - 실물 보유와 무관하게
+      // 이 배분 항목 자체에 역할을 저장할 수 있다.
+      role: parseAssetRoleInput(it.role)
     }));
 }
 
@@ -884,6 +917,34 @@ function normalizeMonthlyContributionByOwner(raw) {
   };
 }
 
+const LS_TICKER_ROLES_SEEDED = 'sam_ticker_roles_seeded_v1';
+// [1회성 마이그레이션] 레지스트리 도입 이전에 이미 저장돼 있던 개별 role 값들로 최초 1회만 시드한다 -
+// 자산(state.assets) role을 최우선으로 채택하고, 그 티커가 아직 레지스트리에 없으면 리밸런싱 목표
+// (targets[].role/selectedStocks[].role) → 월적립금 배분(allocation[].role) 순으로 채운다. 이후로는
+// 이 함수가 다시 실행되지 않는다 - 사용자가 나중에 레지스트리에서 role을 지워도(예: '미지정'으로 변경)
+// 예전에 남아있던 값으로 되살아나지 않게 하기 위함이다.
+function seedTickerRolesFromLegacyStorageOnce() {
+  if (localStorage.getItem(LS_TICKER_ROLES_SEEDED) === '1') return;
+  const seed = (ticker, role) => {
+    const key = sanitizeTicker(ticker).yahooTicker;
+    if (!key || state.tickerRoles[key] || !role) return;
+    state.tickerRoles[key] = role;
+  };
+  state.assets.forEach((a) => seed(a.ticker, a.role));
+  REBALANCE_OWNERS.forEach((owner) => {
+    ['국내', '해외'].forEach((region) => {
+      (state.rebalance[owner].targets[region] || []).forEach((t) => {
+        if (t.type === 'ticker') seed(t.ticker, t.role);
+        if (Array.isArray(t.selectedStocks)) t.selectedStocks.forEach((s) => seed(s.ticker, s.role));
+      });
+    });
+    (state.projection.monthlyContributionByOwner[owner].allocation || []).forEach((it) => seed(it.ticker, it.role));
+  });
+  (state.projection.monthlyContributionAllocation || []).forEach((it) => seed(it.ticker, it.role));
+  persistTickerRoles();
+  localStorage.setItem(LS_TICKER_ROLES_SEEDED, '1');
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -996,6 +1057,16 @@ function loadState() {
     state.learnedTickerNames = (parsedLearned && typeof parsedLearned === 'object' && !Array.isArray(parsedLearned)) ? parsedLearned : {};
   } catch (e) { state.learnedTickerNames = {}; }
 
+  try {
+    const rolesRaw = localStorage.getItem(LS_TICKER_ROLES);
+    const parsedRoles = rolesRaw ? JSON.parse(rolesRaw) : null;
+    state.tickerRoles = (parsedRoles && typeof parsedRoles === 'object' && !Array.isArray(parsedRoles)) ? parsedRoles : {};
+  } catch (e) { state.tickerRoles = {}; }
+  // [소유자별 독립 리밸런싱/월적립금(state.rebalance, state.projection)이 이미 로드된 뒤에만 안전하게
+  // 시드할 수 있다 - 그 값들에서 role을 읽어오기 때문] loadState()의 이 시점(모든 마이그레이션 이후)에
+  // 호출한다.
+  seedTickerRolesFromLegacyStorageOnce();
+
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
   }
@@ -1043,6 +1114,7 @@ function persistAssets(skipPush) {
 function persistRate(skipPush) { localStorage.setItem(LS_RATE, String(state.exchangeRate)); if (!skipPush) schedulePush(); }
 function persistDaily() { localStorage.setItem(LS_DAILY_RATE, String(state.dailyChangeRate)); schedulePush(); }
 function persistRebalance() { localStorage.setItem(LS_REBALANCE, JSON.stringify(state.rebalance)); schedulePush(); }
+function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.stringify(state.tickerRoles)); schedulePush(); }
 function persistProjection() { localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
 function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }

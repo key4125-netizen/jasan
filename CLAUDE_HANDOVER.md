@@ -7,111 +7,114 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-02, 개인 PC) — 커밋 시 버전 v188
+## 최근 세션 요약 (2026-09-03, 개인 PC) — 커밋 시 버전 v189
 
 **버전 관례**: 커밋마다 `index.html`의 `#appVersionLabel`과 `sw.js`의 `CACHE_NAME`을 함께 1씩 올린다
 (서비스워커 캐시 무효화 트리거 겸용). `sw.js`의 `CACHE_NAME` 옆 주석에 그 버전에서 뭐가 바뀌었는지
-한 줄 요약을 남기는 게 관례(과거 커밋들 참고). 이번 세션 변경분은 v187 → **v188**로 이미 반영해 둠 —
-다음 세션에서 추가 작업 후 커밋하려면 v189부터 시작할 것.
+한 줄 요약을 남기는 게 관례. 이번 세션 변경분은 v188 → **v189**로 이미 반영해 둠(회사 PC 세션이
+남긴 v188을 이어받아 작업).
+
+**⚠️ 버전 예산 알림**: 사용자가 v190에서 앱 개발을 마무리할 계획이라고 밝혔다(2026-09-02). 이번
+커밋(v189)이 반영되면 **v190 한 번의 여유만 남는다** — 다음 세션에서 작업량을 신중히 가늠할 것.
 
 ### 배경
-- 이 저장소(`key4125-netizen/jasan`, 배포: `25-netizen.github.io`)가 실제 운영 중인 프로젝트임을
-  확인하고, 이전에 별도로 진행되던 `asset-manager`(단일 HTML 파일) 작업을 중단, 이 저장소를 메인
-  작업 디렉토리로 전환했다.
-- 구조: `index.html` + `js/01-core-state.js` ~ `js/14-settings-boot.js` (14개 모듈, `<script>` 태그
-  순서대로 로드, 번들러 없음). 서비스워커(sw.js) 사용 — **코드 수정 후 로컬 테스트 전에는 항상
-  `navigator.serviceWorker.getRegistrations()`로 unregister + `caches.keys()`로 전체 삭제 후
-  강제 새로고침해야 한다.** 안 그러면 캐시된 옛 JS가 조용히 서빙된다.
-- 로컬 프리뷰: 루트의 `G:\dragon_클로드\.claude\launch.json`(이 PC 전용, 회사 PC에서는 새로 만들어야
-  함)에 `jasan-static`이라는 이름으로 PowerShell 정적 서버(포트 8643)가 등록되어 있다. 저장소 안의
-  `.claude/launch.json`은 참고용일 뿐 실제로는 사용되지 않는다(도구가 루트 launch.json만 읽음).
+- 이 세션을 시작할 때 로컬이 origin보다 1커밋 뒤처져 있었다(회사 PC가 먼저 v188을 커밋·푸시함) -
+  `git pull --ff-only`로 먼저 받은 뒤 작업을 시작했다. **다음 세션도 반드시 `git pull` 먼저 할 것.**
+- 사용자가 "포트폴리오 구성 탭 개편 + 미래예측 탭 개선 + 공통 UX 정비"라는 큰 요청을 줬고, Plan Mode로
+  먼저 계획을 세워 승인받은 뒤 구현했다(계획 파일: 세션 로컬 `.claude/plans/ancient-greeting-kitten.md`,
+  다른 PC에서는 안 보임 - 이 문서가 유일한 인계 수단).
 
 ### 이번 세션에서 완료 + 실측 검증된 작업
 
-1. **몬테카를로 시뮬레이션 엔진 — 목표 비중(Targets) 기준으로 근본 재설계** (`js/05-future-projection.js`)
-   - 기존에는 μ(기대수익률)·σ(변동성) 모두 "현재 실제 보유 자산" 기준이었다. 이제:
-     - **PV(초기 원금)** — 변경 없음. 현재 총 평가금액 그대로 사용 (`computeHouseholdMonteCarloPV`).
-     - **μ** — 기존에 있던 `computeTargetWeightedAvgRate('normal')`을 재사용(신규 코드 없음). 이미
-       "리밸런싱 후" 시나리오가 쓰던 함수라 '포트폴리오 구성' 탭에서 보는 기대수익률과 항상 일치.
-     - **σ** — 신규 함수 `computeTargetPortfolioVolatilityPct()`(비동기). 신랑/와이프 각자의 목표
-       비중을 종목(티커)/카테고리 단위로 펼쳐(`computeHouseholdTargetInstrumentWeights` →
-       `computeOwnerTargetInstrumentWeights`) 실측 과거 일별 수익률(`getCachedDailyCloses`, js/09와
-       캐시 공유)을 목표 비중으로 가중합성한 뒤 연환산 변동성 공식 적용. 카테고리 캐치올(예: "주식"
-       미지정분)은 국내/해외 대표지수로 대체, 채권/현금 목표는 변동성 0으로 근사.
-   - `renderMonteCarloSection()`을 `async`로 전환 + `monteCarloRequestToken` 경쟁상태 가드 추가.
-     `state.advancedRiskMetrics` 준비 여부 게이트는 제거(더 이상 그 값에 의존하지 않음), `pv <= 0`
-     예외 처리 추가.
-   - 반복 횟수 `MONTE_CARLO_ITERATIONS`를 1,000 → 10,000으로 늘리고, `createSeededRandom(seed)`
-     (mulberry32 PRNG) + 고정 시드 `MONTE_CARLO_SEED = 20260101`로 매 호출마다 새 RNG 인스턴스를
-     만들어 같은 입력이면 항상 같은 결과가 나오게 함(예전엔 매번 값이 크게 흔들리는 문제가 있었음).
-   - **실측 검증 결과**: 테스트 데이터 기준 σ가 기존 63%+ (SK하이닉스 한 종목 89% 쏠림 때문에 왜곡된
-     수치)에서 **9.9%**로 정상화, μ는 **8%**. 동일 입력으로 두 번 연속 호출 시 완전히 동일한 결과
-     (시드 고정 확인). P10=보수(빨강)/P90=낙관(에메랄드) 라벨·컬러·정렬 모두 정상.
-   - `index.html`의 `#monteCarloDesc` 및 표 아래 각주 문구를 새 방식을 설명하도록 갱신.
+1. **"포트폴리오 구성" 탭 — 읽기전용 3카드 그리드 완전 삭제** (`index.html`, `js/04-rebalancing.js`)
+   - 신랑/와이프 각각의 "국내/해외 목표 비중"+"국내 세부"+"해외 세부" 3카드 그리드(아코디언으로 접혀
+     있던 것)를 통째로 삭제했다 - 실제 편집은 어차피 모달 안에서만 가능해 읽기 전용 요약이었을 뿐이다.
+   - 대신 `<h3>👤 신랑 목표 비중</h3>` 타이틀 바로 옆에 기존 [비중조절] 버튼을 재배치했다(로직 무변경,
+     `openRebalanceTargetModal(owner)` 그대로).
+   - `buildDomesticTargetInputs`/`buildTargetInputs`/`updateTargetSum`/`rebalanceAmountPreviewHtml`/
+     아코디언 메커니즘(`ownerTargetAccordionOpen` 등)을 전부 제거했다 - 죽은 코드 없음, 전부 이 삭제로
+     인해 실제로 불필요해진 것들.
 
-2. **목표 비중 수정 모달(`rebalanceTargetModal`) — 종목 삭제/검색추가/포지션 지정 기능 신규 구현**
-   (`js/04-rebalancing.js`, `index.html`)
-   - 기존에는 이 모달에서 종목을 뺄 방법도, 안 갖고 있는(미보유) 종목을 새로 추가할 방법도 없었다.
-     이번에 추가:
-     - **삭제**: 각 목표 행마다 X 버튼(`data-rtm-delete`) → `removeRtmTarget(region, idx)`가
-       draft에서 해당 행 제거. 국내 5개+해외 5개(신랑 기준) 전부 정상 렌더링 확인, 클릭 시 draft만
-       바뀌고 [확인] 눌러야 실제 반영, [취소]/배경 클릭 시 원상복구되는 기존 draft-then-commit 패턴
-       그대로 따름.
-     - **검색+추가**: `rtmAddSearchInputDomestic`/`Foreign` 입력창 → `searchRtmAddCandidates(region,
-       query)`(마스터 데이터에서 그 지역 종목 중 이미 목표에 있는 건 제외하고 검색) →
-       `renderRtmAddSearchResults`가 후보 버튼 렌더링 → 클릭하면 `{type:'ticker', ticker, label,
-       pct:0}`로 draft에 추가(비중은 0%부터 시작, 사용자가 직접 조정). 각 티커 행에는 role
-       `<select>`(`data-rtm-role`, attacker/midfielder/defender/core)도 함께 붙어 추가 시점에 바로
-       포지션 지정 가능.
-   - 새로 추가한 종목(예: 삼성전자)이 비중을 0%→10%로 바꾸는 즉시 `computeIndividualRebalanceGuide`
-     결과(종목별 실행 가이드)에 정확한 목표금액으로 반영됨을 확인(별도 반영 지연 없음, "즉시 반영"
-     요건 충족).
-
-3. **메인화면 신랑/와이프 목표 비중 카드 — 독립 아코디언 전환** (`js/04-rebalancing.js`, `index.html`)
-   - 예전엔 두 카드 세트가 항상 펼쳐진 상태로 화면을 많이 차지했다. `ownerTargetAccordionBtn/Body/
-     Chevron` + `Husband`/`Wife` 접미사 id로 각각 독립적으로 접고 펼 수 있게 전환
-     (`reapplyOwnerTargetAccordionHeights`, 앱 전반의 `setAccordionOpen` 패턴 재사용). 기본 접힘,
-     한쪽을 펴도 다른 쪽 상태에 영향 없음.
-
-4. **포지션별 비중 분석 카드 — 계산 기준을 "실제 보유"에서 "목표 비중"으로 전환**
+2. **"포지션별 목표비중 분석" 카드 — 국내/해외 축 추가 + 7개 클릭 탭 + 3개 인스턴스**
    (`js/04-rebalancing.js`)
-   - 예전엔 `state.assets`의 실제 보유 자산 role 태그로 집계했다 — '포트폴리오 구성' 탭에서 종목에
-     포지션을 지정해도 그 종목을 실제 보유한 자산에 똑같이 role을 안 달아주면 반영이 안 되는
-     불일치가 있었다. 이제 `computeOwnerTargetRoleWeights(owner)`가 신랑/와이프 각자의 목표 비중 ×
-     목표 항목에 지정된 role을 기준으로 집계(`computePositionRoleBreakdown`이 이 함수를 사용하도록
-     재작성). 메인 카드는 부부합산(`'all'`), [신랑 비중]/[와이프 비중] 버튼은 모달로 각자 독립 결과를
-     보여준다.
-   - **소유자 독립성 재검증**: 사용자가 "소유자별로 합산되거나 꼬여 있다"고 보고했으나, 브라우저에서
-     직접 `computePositionRoleBreakdown('신랑'|'와이프'|'all')`을 호출하고 실제 모달까지 열어 대조한
-     결과 **로컬 코드에서는 문제를 재현하지 못함** — 두 소유자 결과가 완전히 분리되어 나옴.
-     `computeIndividualRebalanceGuide('신랑'|'와이프')`도 각자 9종목/8종목으로 명확히 분리 확인.
-     **추정: 배포된 사이트(25-netizen.github.io)가 이 세션 이전의 구버전이라 관찰된 문제였을 가능성이
-     높음** — 로컬에서는 이미 정상. 다음에 배포 후 실사이트에서 한 번 더 확인 권장.
+   - 신규 계산 함수 `computeOwnerTargetRegionWeights`/`computeTargetRegionBreakdown` - role과 동일한
+     가중 기준(owner의 실제 리밸런싱 대상 총액 비중)으로 국내/해외 축을 계산한다.
+   - `renderPositionAnalysisCard(containerId, ownerFilter)` - 국내/해외 2개 + 공격수/미드필더/수비수/
+     코어자산/미지정 5개, 총 7개 막대 행이 전부 클릭 가능한 버튼(`data-position-tab`)이다. 클릭하면
+     `openPositionDrilldownModal(kind, key, ownerFilter)`가 기존 `positionRoleBreakdownModal`을
+     재사용해 그 항목의 실제 구성 종목(티커/유효비중%)을 팝업으로 보여준다(`buildPositionDrilldownRows`
+     - household 합산일 때는 owner별 리밸런싱 대상 총액 비중으로 다시 가중해 카드에 표시된 %와 정확히
+     맞춘다, 실측 검증 완료).
+   - 3개 인스턴스: 가구 합산("⚽ 전체 포지션별 목표비중 분석", 옛 [신랑 비중]/[와이프 비중] 팝업 버튼은
+     삭제 - 이제 아래 2개가 상시 노출이라 중복), 신랑 카드(타이틀 바로 아래), 와이프 카드(동일).
 
-5. **인계 프로토콜 도입** — `CLAUDE.md`에 "인계장(CLAUDE_HANDOVER.md) 워크플로우" 섹션 추가, 이 파일
-   신설. 또한 `CLAUDE.md` 맨 아래 저장소 경로 오기(예전 `D:\클로드\asset-manager` 참조 - 다른
-   프로젝트의 흔적)를 `jasan`으로 수정.
+3. **`rebalanceTargetModal` 종목 추가 UI — "수익률 관리" 팝업 패턴으로 통일**
+   (`index.html`, `js/04-rebalancing.js`)
+   - `rtmAddSearchInputDomestic`/`Foreign`(예전: 상시 노출 인풋)을 `scenarioRateAddNewBtn`과 동일한
+     [+ 종목 추가] 토글 버튼 → 검색폼 펼침 방식으로 바꿨다(`rtmAddToggleBtnDomestic`/`Foreign`,
+     `rtmAddFormDomestic`/`Foreign`).
 
-### 커밋 상태 — ✅ 이번 커밋(v188)으로 반영 완료
-위 1~5의 코드 변경은 사용자 승인을 받아 `index.html`, `js/04-rebalancing.js`,
-`js/05-future-projection.js`, `sw.js`, `CLAUDE.md`, `CLAUDE_HANDOVER.md`(신규)를 함께 커밋(및
-origin/master로 push)했다. `git log -1`로 커밋 메시지 첫 줄이 "Redesign Monte Carlo around target
-weights"로 시작하면 이 세션 작업분이 맞다. 다음 세션(어느 PC든)에서 이어받으면:
-- `git pull` 먼저 해서 이 커밋을 받았는지 확인(다른 PC에서 먼저 작업했다면 그쪽 변경도 함께 받아진다).
-- 그 다음은 아래 "알아둘 점"과 "다음 세션에서 할 일"만 참고하면 된다.
+4. **티커별 역할(포지션) 단일 소스 — `state.tickerRoles` 레지스트리 신설**
+   (`js/01-core-state.js` 핵심, 5개 파일에 걸쳐 배선)
+   - 예전엔 role이 `state.assets[].role`, 리밸런싱 목표(`targets[].role`/`selectedStocks[].role`),
+     월적립금 배분(`monthlyContributionByOwner[].allocation[].role`) 세 곳에 완전히 독립적으로
+     저장되어 서로 동기화되지 않았다(조사로 확인, 의도적 설계가 아니라 진짜 사각지대였음).
+   - `getTickerRole(ticker)`/`setTickerRole(ticker, role)`(js/01, `sanitizeTicker().yahooTicker`로
+     정규화한 키 사용) 하나가 이제 단일 소스다. **쓰기**: 자산 폼(js/07)·거래 폼(js/06)·rtm role
+     select·stockAllocation role select(js/04, 모달 [확인] 커밋 시점에만 반영 - draft 취소 시
+     레지스트리 오염 안 되게)·월적립금 role select(js/05)·절세계좈 배분 role select(js/05, 신규).
+     **읽기(자동연동)**: 모든 "종목 추가" 플로우가 새 티커를 만들 때 `getTickerRole()`로 미리 채우고,
+     `makeAsset()`도 `raw.role`이 없으면 레지스트리에서 폴백한다(이미 목표비중에 태깅해 둔 종목을
+     나중에 실제로 사면 role이 자동으로 딸려온다 - 왕복 실측 검증 완료).
+   - 1회성 마이그레이션(`seedTickerRolesFromLegacyStorageOnce`, loadState 안)이 기존 4곳에 흩어져
+     있던 role 값으로 레지스트리를 최초 1회 시드한다(자산 role 우선). 가족 동기화/JSON 백업에도
+     `tickerRoles` 필드를 추가했다(buildSyncBlob/applyRemoteState/mergeAssetsAndTransactionsWithRemote/
+     pullFromCloud fullAdopt 4곳 모두 배선).
+   - **주의**: 포지션별 비중 분석 카드의 계산 기준(목표비중 기반, 실제 보유 무관 - v188에서 이미
+     확정된 설계)은 이번에 안 건드렸다. 이번 변경은 "role 값이 어디서 시작되고 동기화되는가"만
+     다룬다.
+
+5. **절세계좈 [적립설정] 팝업 — 계좈별 미보유 종목 추가 + 역할 선택**
+   (`js/05-future-projection.js`)
+   - `renderTaxAdvantagedAllocationEditor`가 그리는 계좈 카드마다 [+ 종목 추가] 버튼/폼을 추가했다
+     (searchStockCandidates 재사용, 범위 제한 없음). 선택하면 `allocationByOwner[owner]`에
+     `{accountType, ticker, label, pct:0, role: getTickerRole(ticker)}`로 push하고 카드를 다시
+     그린다 - 그 계좈이 실제 보유하지 않은 종목도 "(미보유)" 배지와 함께 행으로 뜬다.
+   - 모든 배분 행(보유+미보유)에 role select를 추가했다. `normalizeTaxAdvantagedAllocationList`(js/01)
+     에 `role` 필드 보존을 추가했다(예전엔 없었음).
+   - **범위 제한(의도적)**: 이미 렌더링된 계좈 카드에만 종목 추가 가능 - 그 owner가 아직 하나도
+     보유하지 않은 새 계좈종류(예: 아직 IRP가 없는데 IRP 카드를 미리 만드는 것)는 이번 범위 밖.
+
+6. **미래예측 탭 명칭 변경 + 소유자별 적립금 분리 재검증** (`index.html`)
+   - "💰 포트폴리오 기준" → "💰 일반계좌 설정", [월적립금 설정] 버튼/모달 타이틀 → "적립금 설정".
+   - 소유자별 월적립금이 시뮬레이션에서 실제로 분리 반영되는지 브라우저에서 직접 검증: 신랑/와이프의
+     국내/해외 목표를 일부러 다르게(100%/0% vs 0%/100%) 만든 뒤 같은 금액을 각자에게 몰아 넣고
+     `simulateRebalancedPreset` 10년차 결과가 서로 다르게 나오는 것까지 확인(코드는 이미 정상이라
+     변경 없음, `getOwnerMonthlyContributionInputs`→owner별 독립 `ownerCalcs`→합산은 결과값에서만).
+
+7. **공통 UX 정비**
+   - `autocomplete="off"`를 종목 검색/이름/키워드 텍스트 인풋 전반(정적+JS 템플릿, 약 13곳)에
+     추가했다 - 브라우저 비밀번호 관리자 팝업 차단. 숫자(비중/금액/기간) 인풋은 낮은 위험으로 판단해
+     범위에서 제외했다(전수 조사는 했으나 의도적으로 스킵).
+   - `kpiDailyProfitCard`(일간금융평가손익) 헤더가 형제 카드(`kpiTotalProfit`)와 달리 모바일 좁은
+     화면에서 줄바꿈되던 문제를 `truncate`/`shrink-0`/`min-w-0` 클래스 보강으로 고쳤다(375px 실측
+     확인).
+   - 설명 문구 재검토: `positionScopeNote`(새 7탭 카드에 맞게 재작성), `monteCarloDesc`(다른 세션이
+     쓴 "1,000회"가 실제 코드의 `MONTE_CARLO_ITERATIONS=10000`/새 P10=보수·P90=낙관 라벨과 어긋나
+     있던 것을 발견해 함께 고침 - `js/03-filters-charts-tabs.js`의 `updateRealEstateGuidanceText()`
+     안, 부동산 유무 조건부 텍스트 두 벌 다 수정). 삭제된 카드에 연결돼 있던
+     `domesticTargetHelpIconHusband/Wife`/`domesticCaptionHusband/Wife` 텍스트 토글 코드도 함께 정리.
 
 ### 알아둘 점 / 알려진 한계
-- σ 계산(`computeTargetPortfolioVolatilityPct`)은 목표에 "종목으로 직접 지정된" 항목만 실측 시세를
-  쓰고, 카테고리 캐치올(예: 국내 "주식" 20%를 특정 종목 없이 남겨둔 경우)은 국내/해외 대표지수로
-  근사한다 — 실제 편입 종목과 정확히 같지는 않지만 의도된 단순화다.
-- 실행 가이드에서 아직 실제로 보유하지 않은 신규 목표 종목은 `qtyDelta`(예상 매수 수량)가 0으로
-  나올 수 있다 — 가구 내 어느 계좌에도 해당 티커의 현재가 참조용 자산이 없을 때 발생(버그 아님,
-  실거래 전 가격 정보 소스가 없어서). 실사용 시 시세 자동조회가 채워지면 해결될 가능성 높음 — 다음
-  세션에서 실제 배포 환경(자동 시세조회 동작)으로 재확인 권장.
-- 이 세션은 `python`이 이 환경에서 깨진 Microsoft Store 스텁이라는 것을 확인했다 — 로컬 프리뷰
-  서버의 `runtimeExecutable`로 쓰면 안 되고, PowerShell `HttpListener` 스크립트를 대신 쓴다(위 참고).
+- `openPositionDrilldownModal`의 household(`'all'`) 합산 모드는 owner별 실제 리밸런싱 대상 총액
+  비중으로 재가중한다 - 원금이 0인 owner(예: 아직 일반계좌 자산이 하나도 없는 경우)는 자동으로
+  제외된다(`computePositionRoleBreakdown`/`computeTargetRegionBreakdown`과 동일한 기존 규칙).
+- 절세계좈 종목 추가는 계좈 카드가 이미 있어야만 가능하다(위 5번 범위 제한 참고) - 사용자가 "아직
+  없는 계좈 종류도 미리 만들고 싶다"고 하면 그건 이번 범위를 벗어나는 별도 작업.
+- `state.tickerRoles` 마이그레이션은 1회성 플래그(`sam_ticker_roles_seeded_v1`)로 막혀 있다 - 이미
+  실행된 기기에서는 다시 안 돈다(의도적 - 나중에 사용자가 role을 지워도 안 되살아나게).
 
 ### 다음 세션에서 할 일
-- 없음(이번 요청 범위는 모두 완료·검증됨) — 단, 위 "커밋 상태" 확인이 최우선.
-- 커밋/push 후에는 실제 배포 사이트(25-netizen.github.io)에서 포지션별 비중 분석·실행 가이드
-  소유자 독립성을 한 번 더 확인해 배포 전 버전 문제였다는 추정을 검증하는 것을 권장.
+- 없음(이번 요청 범위는 모두 완료·검증됨) - 단, **버전 예산(v190 한 번 남음)**을 항상 먼저 확인할 것.
+- `git pull` 먼저 해서 이 커밋(v189)을 받았는지 확인 - `git log -1` 첫 줄이 이번 세션 요약 관련
+  커밋 메시지로 시작하면 맞다.
