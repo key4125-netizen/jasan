@@ -52,7 +52,7 @@ function groupHeaderRowHtml(label, count, subtotal, pct) {
     <td colspan="4" class="px-3 py-2">
       <div class="flex items-center justify-between gap-2">
         <span class="font-semibold text-xs">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
-        <span class="text-xs text-slate-500 dark:text-slate-400">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
+        <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
       </div>
     </td>
   </tr>`;
@@ -62,7 +62,7 @@ function groupHeaderCardHtml(label, count, subtotal, pct) {
   return `
   <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2">
     <span class="font-semibold text-xs">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
-    <span class="text-xs text-slate-500 dark:text-slate-400">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
+    <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
   </div>`;
 }
 
@@ -525,9 +525,9 @@ function renderTableFooter(rows) {
   // 요약 뷰가 종목명/수량/현재가 3열로 줄어든 만큼, 합계 행도 그에 맞춰 4열(종목명+수량 병합/현재가
   // 자리에 평가금액/마지막 열에 손익·수익률)로 압축한다.
   document.getElementById('tableFooterRow').innerHTML = `
-    <td class="px-3 py-2" colspan="2">합계 (${rows.length}건, 현재 필터 기준) · 매입 ${fmtKRWShort(totalBuy)}</td>
-    <td class="px-3 py-2 text-right">${fmtKRW(totalCur)}</td>
-    <td class="px-3 py-2 text-right ${profitColor(totalProfit)}">${fmtSignedShort(totalProfit)}<br><span class="text-[10px]">${fmtPct(totalRate)}</span></td>`;
+    <td class="px-3 py-2 whitespace-nowrap" colspan="2">합계 (${rows.length}건, 현재 필터 기준) · 매입 ${fmtKRWShort(totalBuy)}</td>
+    <td class="px-3 py-2 text-right whitespace-nowrap">${fmtKRW(totalCur)}</td>
+    <td class="px-3 py-2 text-right whitespace-nowrap ${profitColor(totalProfit)}">${fmtSignedShort(totalProfit)}<br><span class="text-[10px]">${fmtPct(totalRate)}</span></td>`;
 }
 
 function escapeHtml(str) {

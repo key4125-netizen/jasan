@@ -66,7 +66,18 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
 
   const coveredTotal = amounts.reduce((s, v) => s + v, 0);
   const uncoveredTotal = regionAssets.reduce((s, a) => s + (claimedIds.has(a.id) ? 0 : calcRow(a).curAmount), 0);
-  return { amounts, coveredTotal, uncoveredTotal, claimedTargetIdx, targets };
+  // [버그 수정 - '주식' 캐치올 제거 후 미지정 보유 종목 누락] '주식' 캐치올이 있던 시절에는 목표 티커로
+  // 안 잡힌 주식/ETF 보유분이 전부 그 캐치올에 매칭돼 총액에 포함됐다 - 캐치올을 없앤 뒤로는 그런
+  // 종목이 매칭되는 목표 항목 자체가 없어 (부동산 같은 실물자산과 똑같이) uncovered로 빠지면서
+  // 국내/해외 총액·목표비중 모달의 "현재 보유금액"이 실제보다 적게 나오는 문제가 있었다("자산을 못
+  // 끌고 온다"는 신고와 일치). 부동산 등 진짜 실물자산은 계속 제외하되, 주식/ETF는 아직 목표를
+  // 지정하지 않았을 뿐 실제로는 리밸런싱 대상 금융자산이므로 총액에는 포함시킨다(단, 특정 목표 항목에
+  // 매칭된 건 아니라 amounts/개별 항목별 금액에는 안 잡힌다 - getRebalanceTotals가 이 값을 더해 쓴다).
+  const uncoveredStockTotal = regionAssets.reduce((s, a) => {
+    if (claimedIds.has(a.id)) return s;
+    return (a.category === '주식' || a.category === 'ETF') ? s + calcRow(a).curAmount : s;
+  }, 0);
+  return { amounts, coveredTotal, uncoveredTotal, uncoveredStockTotal, claimedTargetIdx, targets };
 }
 
 // [개별주식 다중 설정] '주식' 캐치올에 selectedStocks(최대 3개)가 지정돼 있으면, 실제 목표 비중 계산
@@ -229,18 +240,20 @@ function rebalanceDiffColorClass(diff) {
   return diff > 1 ? 'text-blue-500 dark:text-blue-400' : (diff < -1 ? 'text-red-500 dark:text-red-400' : 'text-slate-400');
 }
 
-// 포트폴리오 구성 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=구성 대상인)" 자산만 합산한다.
-// ownerFilter를 생략하면(대부분의 호출부 - 메인 화면 요약/목표 비중 입력칸 등) 기존과 동일하게 항상
-// 가구 전체 기준이다. 종목별 실행 가이드의 소유자별 필터에서만 특정 소유자명을 넘긴다.
+// 포트폴리오 구성 탭 전용 총액 - 두 지역 모두 "목표에 매칭되는(=구성 대상인)" 자산 + 아직 목표
+// 미지정인 보유 주식/ETF(uncoveredStockTotal, 위 computeRegionTargetAmounts 참고)를 합산한다 - 부동산
+// 등 실물자산만 계속 제외된다. ownerFilter를 생략하면(대부분의 호출부 - 메인 화면 요약/목표 비중
+// 입력칸 등) 기존과 동일하게 항상 가구 전체 기준이다. 종목별 실행 가이드의 소유자별 필터에서만 특정
+// 소유자명을 넘긴다.
 function getRebalanceTotals(ownerFilter) {
   const byDomestic = { '국내': 0, '해외': 0 };
   const perRegion = {};
   let total = 0;
   ['국내', '해외'].forEach((region) => {
-    const { amounts, coveredTotal } = computeRegionTargetAmounts(region, undefined, ownerFilter);
+    const { amounts, coveredTotal, uncoveredStockTotal } = computeRegionTargetAmounts(region, undefined, ownerFilter);
     perRegion[region] = amounts;
-    byDomestic[region] = coveredTotal;
-    total += coveredTotal;
+    byDomestic[region] = coveredTotal + uncoveredStockTotal;
+    total += coveredTotal + uncoveredStockTotal;
   });
   return { total, byDomestic, perRegion };
 }
@@ -1203,9 +1216,12 @@ function renderPositionAnalysisCard(containerId, ownerFilter) {
 
 // [포지션 카드 아코디언 부활 - 요청 반영] 가구 합산/신랑/와이프 3개 포지션 분석 카드 모두 기본은
 // 닫힘(topHoldingsAccordionOpen과 동일한 setAccordionOpen 패턴, js/10) - 헤더를 눌러야 펼쳐지고,
-// 탭 전환 시 resetAllAccordionsOnTabSwitch()(js/03)가 전부 다시 닫는다.
-let positionAnalysisAccordionOpen = { all: false, '신랑': false, '와이프': false };
-const POSITION_ANALYSIS_ACCORDION_SUFFIX = { all: 'All', '신랑': 'Husband', '와이프': 'Wife' };
+// 탭 전환 시 resetAllAccordionsOnTabSwitch()(js/03)가 전부 다시 닫는다. [가구합산 카드는 아코디언 제외
+// - 요청 반영] "전체 포지션별 목표비중 분석"(household 합산) 카드는 접힘 없이 항상 펼쳐져 있어야 해서
+// 이 상태 객체·아코디언 클릭 바인딩 대상에서 뺐다(index.html에 그 카드의 accordion 버튼/바디 id 자체가
+// 없으므로, 아래 루프의 getElementById가 null을 반환해도 각 함수 내부 방어 코드가 조용히 건너뛴다).
+let positionAnalysisAccordionOpen = { '신랑': false, '와이프': false };
+const POSITION_ANALYSIS_ACCORDION_SUFFIX = { '신랑': 'Husband', '와이프': 'Wife' };
 // renderPositionAnalysisCard()로 내부 콘텐츠가 다시 그려질 때마다(합계/탭 값이 바뀌어 높이도 바뀔 수
 // 있음) 호출해, 열려 있는 카드의 max-height를 새 scrollHeight로 재계산한다(topHoldings와 동일한 이유).
 function reapplyPositionAnalysisAccordionHeights() {
@@ -1264,10 +1280,34 @@ function buildPositionDrilldownRows(kind, key, ownerFilter) {
         }
         const pct = regionWeight * (num(t.pct) / 100) * ownerShare[owner] * 100;
         if (pct <= 0) return;
-        rows.push({ owner, label: t.label, ticker: t.ticker, region, pct });
+        rows.push({ owners: [owner], label: t.label, ticker: t.ticker, region, pct });
       });
     });
   });
+  // [부부 합산 보기 - 중복 보유종목 병합, 요청 반영] household('all') 드릴다운에서 신랑/와이프가 같은
+  // 티커를 각자 목표로 갖고 있으면(예: 둘 다 SCHD) 예전엔 두 줄로 따로 보였다 - 같은 지역의 같은 티커는
+  // 비중을 합쳐 한 줄로 합치고 owners에 두 사람을 모두 기록한다(화면에는 "(부부합산)"으로 표기). 티커가
+  // 없는 자산군 캐치올(채권/현금 등)은 사람마다 독립된 배분이라 병합 대상이 아니다 - 라벨이 같아도
+  // 그대로 각자 행으로 남긴다.
+  if (isAll) {
+    const merged = [];
+    const indexByKey = new Map();
+    rows.forEach((r) => {
+      const yahoo = r.ticker ? sanitizeTicker(r.ticker).yahooTicker : '';
+      if (!yahoo) { merged.push(r); return; }
+      const mergeKey = `${yahoo}|${r.region}`;
+      if (indexByKey.has(mergeKey)) {
+        const existing = merged[indexByKey.get(mergeKey)];
+        existing.pct += r.pct;
+        existing.owners = existing.owners.concat(r.owners);
+      } else {
+        indexByKey.set(mergeKey, merged.length);
+        merged.push(r);
+      }
+    });
+    rows.length = 0;
+    rows.push(...merged);
+  }
   rows.sort((a, b) => b.pct - a.pct);
   return rows;
 }
@@ -1283,14 +1323,19 @@ function openPositionDrilldownModal(kind, key, ownerFilter) {
   const isAll = !ownerFilter || ownerFilter === 'all';
   document.getElementById('positionRoleBreakdownModalBars').innerHTML = rows.length === 0
     ? '<p class="text-xs text-slate-400">구성 종목이 없습니다.</p>'
-    : rows.map((r) => `
+    : rows.map((r) => {
+      // [부부 합산 중복 병합 표기] owners가 2명이면 병합된 행(같은 티커를 신랑/와이프 둘 다 목표로
+      // 가짐) - "(부부합산)"으로 표기하고, 1명이면 예전처럼 그 사람 이름을 그대로 보여준다.
+      const ownerBadge = isAll ? ` <span class="text-[10px] text-slate-400">(${r.owners.length > 1 ? '부부합산' : escapeHtml(r.owners[0])})</span>` : '';
+      return `
     <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0">
       <div class="min-w-0">
-        <p class="text-xs font-medium truncate">${escapeHtml(r.label)}${isAll ? ` <span class="text-[10px] text-slate-400">(${escapeHtml(r.owner)})</span>` : ''}</p>
+        <p class="text-xs font-medium truncate">${escapeHtml(r.label)}${ownerBadge}</p>
         <p class="text-[10px] text-slate-400 truncate">${r.ticker ? escapeHtml(r.ticker) + ' · ' : ''}${escapeHtml(r.region)}</p>
       </div>
       <span class="text-xs font-semibold shrink-0">${fmtNum(r.pct, 1)}%</span>
-    </div>`).join('');
+    </div>`;
+    }).join('');
   document.getElementById('positionRoleBreakdownModal').classList.remove('hidden');
   pushModalHistoryState();
 }
@@ -1373,8 +1418,16 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
     </div>`;
   }).join('');
 
+  // [라벨 구분 - '주식' 캐치올 제거 후 보완] 부동산 등 진짜 실물자산(매수/매도 자체가 불가능해 "해당
+  // 없음")과, 아직 목표 티커를 지정하지 않았을 뿐인 보유 주식/ETF(목표를 0으로 보고 전량 매도를
+  // 검토할 수 있는 대상)를 같은 "구성 제외 자산" 배지로 뭉뚱그리면 후자가 마치 편입 자체가 불가능한
+  // 자산처럼 보인다 - 카테고리로 구분해 안내 문구를 다르게 보여준다(금액 집계 자체는 이미
+  // getRebalanceTotals에 반영돼 있어 여기는 표시 문구만 다르다).
   const excludedCards = excluded.map((a) => {
     const r = calcRow(a);
+    const isUntargetedStock = a.category === '주식' || a.category === 'ETF';
+    const badgeLabel = isUntargetedStock ? '목표 미지정 종목' : '구성 제외 자산';
+    const targetCellText = isUntargetedStock ? '전량 매도 검토' : '해당 없음';
     return `
     <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40">
       <div class="flex items-start justify-between gap-2 mb-2">
@@ -1382,11 +1435,11 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
           <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
           <p class="text-[11px] text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
         </div>
-        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">구성 제외 자산</span>
+        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
       </div>
       <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium">${fmtKRW(r.curAmount)}</span></div>
-        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium text-slate-300 dark:text-slate-600">해당 없음</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium text-slate-300 dark:text-slate-600">${targetCellText}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -1487,6 +1540,7 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
   // 이어 붙이되, 목표/실행 관련 컬럼은 해당 없음을 뜻하는 빈 값으로 둔다(화면 카드의 "해당 없음"과 동일).
   const excludedRows = excluded.map((a) => {
     const r = calcRow(a);
+    const isUntargetedStock = a.category === '주식' || a.category === 'ETF';
     return {
       '종목명': a.name || a.ticker || '(이름 없음)',
       '티커': a.ticker || '',
@@ -1497,7 +1551,7 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
       '현재 평가금액(KRW)': Math.round(r.curAmount),
       '목표 평가금액(KRW)': '',
       '조정 필요금액(KRW)': '',
-      '실행 구분': '구성 제외 자산',
+      '실행 구분': isUntargetedStock ? '목표 미지정 종목(전량 매도 검토)' : '구성 제외 자산',
       '예상 매수/매도 수량': ''
     };
   });

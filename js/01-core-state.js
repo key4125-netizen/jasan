@@ -579,8 +579,12 @@ let charts = { category: null, owner: null, domestic: null, scenarioCompare: nul
 /* -------------------------------------------------------------------------
  * 3. 숫자/통화 안전 포맷 유틸
  * ---------------------------------------------------------------------- */
+// [천단위 콤마 입력 - 요청 반영] 이 앱의 모든 숫자 읽기가 결국 num()을 거치므로, 여기서 한 번만
+// 쉼표를 제거하면 attachThousandsInputFormatting으로 콤마가 찍힌 입력창의 값(예: "1,000,000")을
+// 읽는 기존 코드 전부가 별도 수정 없이 자동으로 정상 동작한다(쉼표 없는 일반 숫자 문자열에는 영향
+// 없음 - 안전한 전역 변경).
 function num(v) {
-  const n = parseFloat(v);
+  const n = parseFloat(String(v ?? '').replace(/,/g, ''));
   return Number.isFinite(n) ? n : 0;
 }
 const krwFmt = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
@@ -614,6 +618,42 @@ function fmtKRWShort(v) {
   return (n < 0 ? '-' : '') + body;
 }
 function fmtSignedShort(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '') + fmtKRWShort(v); }
+
+// [전사적 입력창 천단위 콤마 자동 포맷팅 - 요청 반영] 절세계좈 적립설정/적립금 설정/매수 검토 금액처럼
+// "원 단위 큰 정수"를 입력하는 칸에 타이핑하는 즉시 천단위 콤마가 찍히게 한다. 수량/단가/비율처럼
+// 소수점이 의미 있는 입력(주식 수량, 매입단가, %, 환율 등)에는 일부러 적용하지 않는다 - 그런 값까지
+// 숫자만 남기고 콤마를 찍으면 소수점이 통째로 사라져 값이 깨진다(전량이 정수인 원화 금액 전용 유틸).
+function formatInputNumber(raw) {
+  const digits = String(raw ?? '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('ko-KR');
+}
+// 콤마 포맷된 문자열에서 콤마를 뗀 순수 숫자 값(Number)만 뽑아낸다 - num()이 이미 쉼표를 허용하도록
+// 고쳐졌으니 사실상 num(el.value)과 동일하지만, "이 값은 입력창에서 뽑아낸 값"이라는 의도를 코드에서
+// 더 명확히 드러내고 싶은 곳에서 이 이름으로 쓴다.
+function parseInputValue(raw) { return num(raw); }
+// input을 콤마 자동 포맷 모드로 전환한다 - type="number"는 브라우저가 콤마 문자를 아예 받아주지 않으므로
+// text로 바꾸고(모바일에서도 inputmode="numeric"이면 숫자 키패드가 그대로 뜬다), 입력할 때마다 숫자만
+// 남겨 다시 콤마를 찍어 넣는다. 커서 위치는 "그 지점 앞에 숫자가 몇 개 있었는가"를 기준으로 복원해야
+// 콤마가 새로 끼어들어도 커서가 엉뚱한 자리로 안 튄다(단순히 문자 인덱스를 그대로 쓰면 콤마 위치가
+// 바뀔 때마다 커서가 밀린다).
+function attachThousandsInputFormatting(input) {
+  if (!input || input.dataset.thousandsFormatted === '1') return;
+  input.dataset.thousandsFormatted = '1';
+  if (input.type === 'number') input.type = 'text';
+  input.setAttribute('inputmode', 'numeric');
+  if (input.value) input.value = formatInputNumber(input.value);
+  input.addEventListener('input', () => {
+    const digitsBeforeCursor = input.value.slice(0, input.selectionStart).replace(/[^0-9]/g, '').length;
+    input.value = formatInputNumber(input.value);
+    let pos = 0, seen = 0;
+    while (pos < input.value.length && seen < digitsBeforeCursor) {
+      if (/[0-9]/.test(input.value[pos])) seen++;
+      pos++;
+    }
+    input.setSelectionRange(pos, pos);
+  });
+}
 
 /* -------------------------------------------------------------------------
  * 4. 자산 객체 생성 헬퍼
