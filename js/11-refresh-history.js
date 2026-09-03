@@ -286,7 +286,11 @@ document.addEventListener('visibilitychange', () => {
  * ---------------------------------------------------------------------- */
 let dailyPnlPopupType = 'unrealized'; // 'unrealized' | 'realized'
 let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
-let dailyPnlPopupDays = 30;           // 30 | 90 | 180 | 365 - [기본 기간 1개월] 팝업 최초 오픈 시 항상 1개월
+// [월 단위 기간 기준 - 요청 반영] dailyPnlPopupDays는 더 이상 고정값(30/90/180/365)이 아니라
+// daysSinceMonthsAgoStart(js/01)로 그때그때 계산되는 "해당 월 1일부터 오늘까지의 일수"다 - 날짜가
+// 바뀌면 같은 개월 수 선택이어도 일수가 달라질 수 있어(예: 당월은 매일 커짐), 팝업을 열 때/기간 버튼을
+// 누를 때마다 다시 계산한다.
+let dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업 최초 오픈 시 항상 당월부터
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -854,8 +858,11 @@ function renderDailyPnlSummary(series) {
   const ownerSums = {};
   owners.forEach((o) => { ownerSums[o] = series.reduce((acc, s) => acc + (s.byOwnerAmounts[o] || 0), 0); });
 
+  // ["당월"은 "최근" 접두어가 어색해 그 경우만 문구를 다르게 조합한다 - 다른 기간(3/6/12개월)은
+  // 기존처럼 "최근 N개월 기준 합계".]
   const periodBtn = document.querySelector('#dailyPnlModal .daily-pnl-period-btn.active');
   const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+  const periodSummaryPrefix = periodLabel === '당월' ? '당월 기준 합계' : `최근 ${periodLabel} 기준 합계`;
 
   const rows = [];
   if (dailyPnlPopupOwner === 'all') {
@@ -866,7 +873,7 @@ function renderDailyPnlSummary(series) {
   }
 
   container.innerHTML = `
-    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 합계</p>
+    <p class="text-[11px] text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
@@ -899,7 +906,7 @@ function renderDailyPnlOwnerTabs() {
 
 document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    dailyPnlPopupDays = Number(btn.dataset.pnlDays);
+    dailyPnlPopupDays = daysSinceMonthsAgoStart(Number(btn.dataset.pnlMonths));
     document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateDailyPnlModal();
   });
@@ -908,8 +915,8 @@ document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) 
 function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
-  dailyPnlPopupDays = 30; // [기본 기간 1개월] 팝업을 열 때마다 항상 1개월부터 보여준다
-  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlDays) === 30));
+  dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업을 열 때마다 항상 당월부터 보여준다
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlMonths) === 1));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();

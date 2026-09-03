@@ -80,18 +80,24 @@ const CATEGORY_COLORS = {
 // 성향 비중을 한눈에 볼 수 있게 한다(§Part 3 포지션별 비중 분석 카드). 미지정이 기본값(undefined)이며,
 // 절세계좈/부동산 자산에도 저장 자체는 허용하되 집계 시점(computePositionRoleBreakdown)에서만 일반계좈
 // 한정으로 걸러낸다.
+// ['코어미드필드' 통합 - 요청 반영] 예전엔 '미드필더'와 '코어자산'이 별개 포지션이었으나, 하나의
+// 'core_mid' 포지션으로 통합했다 - 두 옛 포지션의 집계 데이터도 이제 이 하나로 합쳐서 산출된다.
 const ASSET_ROLE_OPTIONS = [
   { value: 'attacker', label: '공격수' },
-  { value: 'midfielder', label: '미드필더' },
-  { value: 'defender', label: '수비수' },
-  { value: 'core', label: '코어자산' }
+  { value: 'core_mid', label: '코어미드필드' },
+  { value: 'defender', label: '수비수' }
 ];
 const ASSET_ROLE_LABELS = ASSET_ROLE_OPTIONS.reduce((acc, o) => { acc[o.value] = o.label; return acc; }, {});
+// 옛 '미드필더'/'코어자산' 내부 키·한글 라벨을 모두 새 'core_mid'로 정규화한다 - 이미 저장된 데이터는
+// migrateCoreMidfielderRoleMergeOnce()가 1회성으로 직접 고쳐 쓰지만, 이 별칭 매핑은 그와 별개로 앞으로도
+// 계속 남아 있어야 한다(엑셀 업로드 등 외부에서 옛 표기가 들어올 가능성이 있으므로).
+const LEGACY_ASSET_ROLE_ALIASES = { midfielder: 'core_mid', core: 'core_mid', '미드필더': 'core_mid', '코어자산': 'core_mid' };
 // 엑셀 "역할(포지션)" 컬럼처럼 내부 키('attacker' 등)가 아니라 한글 라벨('공격수' 등)로 입력/저장된
 // 값을 받아 내부 키로 되돌린다 - 두 표기 다 허용(내부 키를 직접 쓴 경우도 그대로 통과).
 function parseAssetRoleInput(raw) {
   const v = String(raw ?? '').trim();
   if (!v) return undefined;
+  if (LEGACY_ASSET_ROLE_ALIASES[v]) return LEGACY_ASSET_ROLE_ALIASES[v];
   if (ASSET_ROLE_LABELS[v]) return v;
   const found = ASSET_ROLE_OPTIONS.find((o) => o.label === v);
   return found ? found.value : undefined;
@@ -358,22 +364,23 @@ function normalizeIsDomestic(raw, fallback) {
 // pct는 그 지역 배분 "내에서"의 비중(%)이며, 지역별 합계가 100%가 되어야 한다(사용자가 자유롭게
 // 수정 가능). 티커/카테고리 어느 항목에도 매칭되지 않는 자산(예: 부동산)은 실물자산이라 매수/매도로
 // 조절할 수 없으므로 리밸런싱 계산 대상에서 자동으로 제외된다.
+// [자산군 캐치올 '주식' 제거 - 요청 반영] 예전엔 "여러 종목을 개별 지정 없이 뭉뚱그려 담는" 용도로
+// '주식' 캐치올(돋보기 버튼으로 최대 3종목까지 세부 지정 가능)이 있었지만, 이제 "+ 종목 추가" 검색으로
+// 개별 티커를 목표에 직접 추가할 수 있어 완전히 대체됐다 - 더 이상 기본값에 포함하지 않는다.
 const DEFAULT_REBALANCE_TARGETS = {
   '국내': [
     { type: 'ticker', ticker: '278530', label: 'KODEX 200TR', pct: 15 },
     { type: 'ticker', ticker: '0052D0.KS', label: 'TIGER 코리아배당다우존스', pct: 15 },
-    { type: 'category', category: '주식', label: '주식', pct: 20, selectedStocks: [] },
-    { type: 'category', category: '채권', label: '채권', pct: 30 },
+    { type: 'category', category: '채권', label: '채권', pct: 50 },
     { type: 'category', category: '현금', label: '현금', pct: 20 }
   ],
-  // '주식'/'현금' 캐치올을 0%로 추가해 둔다 - QQQM/SPYM/SCHD 외의 해외 보유(개별 주식, 현금성 자산,
-  // 그 외 ETF 등)가 "목표 항목 없음"으로 리밸런싱 계산에서 통째로 제외되지 않고, 최소한 이 캐치올에
-  // 잡혀 "0% 목표 → 전액 매도 필요"로라도 눈에 보이게 한다(값은 사용자가 직접 조정 가능).
+  // '현금' 캐치올을 0%로 추가해 둔다 - QQQM/SPYM/SCHD 외의 해외 보유(현금성 자산, 그 외 ETF 등)가
+  // "목표 항목 없음"으로 리밸런싱 계산에서 통째로 제외되지 않고, 최소한 이 캐치올에 잡혀 "0% 목표 →
+  // 전액 매도 필요"로라도 눈에 보이게 한다(값은 사용자가 직접 조정 가능).
   '해외': [
     { type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 50 },
     { type: 'ticker', ticker: 'SPYM', label: 'SPYM', pct: 20 },
     { type: 'ticker', ticker: 'SCHD', label: 'SCHD', pct: 30 },
-    { type: 'category', category: '주식', label: '주식', pct: 0, selectedStocks: [] },
     { type: 'category', category: '현금', label: '현금', pct: 0 }
   ]
 };
@@ -396,11 +403,17 @@ function makeDefaultRebalanceOwnerState() {
 // 추가해 넣어 자산군 매칭 커버리지를 보강한다(합계는 0을 더하는 것이므로 100%가 깨지지 않는다).
 function ensureForeignCategoryCatchalls(list) {
   const arr = Array.isArray(list) ? list.slice() : [];
-  ['주식', '현금'].forEach((cat) => {
-    const has = arr.some((t) => t && t.type === 'category' && t.category === cat);
-    if (!has) arr.push({ type: 'category', category: cat, label: cat, pct: 0 });
-  });
+  const hasCash = arr.some((t) => t && t.type === 'category' && t.category === '현금');
+  if (!hasCash) arr.push({ type: 'category', category: '현금', label: '현금', pct: 0 });
   return arr;
+}
+
+// [자산군 캐치올 '주식' 제거 - 요청 반영] "+ 종목 추가" 검색으로 개별 티커를 직접 목표에 추가할 수
+// 있게 되어 완전히 대체된 '주식' 캐치올(돋보기 세부지정 포함)을, 예전에 저장돼 있던 데이터에서도
+// 불러올 때마다 걸러낸다 - stripCustomRebalanceTargets와 동일한 패턴(더 이상 화면에 만들 방법이 없는
+// 항목이 남아있으면 비중(%)만 계속 계산에 반영되는 유령 항목이 된다).
+function stripStockCategoryRebalanceTargets(list) {
+  return (Array.isArray(list) ? list : []).filter((t) => !(t && t.type === 'category' && t.category === '주식'));
 }
 
 // [개별주식 추가 기능 제거] 예전 버전에서 리밸런싱 탭 검색으로 추가했던 개별주식은 custom:true로
@@ -693,6 +706,19 @@ function daysAgoDateStr(n) {
 // 기존 보유 자산을 거래내역 기초 데이터로 일괄 등록할 때 쓰는 날짜(어제) - seedTransactionsFromAssets 참고.
 function yesterdayDateStr() { return daysAgoDateStr(1); }
 
+// [일별 손익 추이 팝업 - 월 단위 기간 집계, 요청 반영] "오늘로부터 N일 전"이 아니라 "이번 달(포함)에서
+// monthsBack개월 거슬러 올라간 달의 1일"을 기준으로 삼는다 - 당월(1)은 이번 달 1일부터, 3/6/12개월은
+// 그 달을 포함해 monthsBack개월치 달의 1일부터 오늘까지를 뜻한다(예: 9월 기준 3개월 → 7월 1일부터).
+// 반환값은 "오늘로부터 며칠 전"과 같은 단위라 기존 buildSnapshotSeries(days, ...)에 그대로 넘길 수
+// 있다 - 그 함수와 이를 공유하는 다른 두 팝업(총 평가금액/총 평가손익 추이)의 기존 "N일" 동작은
+// 이 함수와 무관하게 그대로 유지된다(일별 손익 추이 팝업만 이 함수로 days를 계산해 넘긴다).
+function daysSinceMonthsAgoStart(monthsBack) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth() - (monthsBack - 1), 1);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((startOfToday - start) / 86400000) + 1;
+}
+
 // [버그 수정 - 기기 간 일간 손익 기준선 불일치] 예전엔 이 함수가 "달력 날짜가 바뀐 뒤 이 기기가 처음
 // 실행된 순간의 환율"을 그날의 기준값으로 직접 스냅샷해 저장했다 - 그 결과 데스크탑/모바일처럼 서로
 // 다른 시각에 앱을 켜는 기기마다 기준선이 달라져 "일간금융평가손익"이 크게 어긋났다(실사용자 리포트로
@@ -871,8 +897,8 @@ function remediateDuplicatedDailySnapshotHistory() {
 function normalizeRebalanceOwnerTargets(rawTargets) {
   const defaults = cloneDefaultRebalanceTargets();
   return {
-    '국내': ensureSelectedStocksField(stripCustomRebalanceTargets(Array.isArray(rawTargets && rawTargets['국내']) ? rawTargets['국내'] : defaults['국내'])),
-    '해외': ensureSelectedStocksField(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(rawTargets && rawTargets['해외']) ? rawTargets['해외'] : defaults['해외'])))
+    '국내': ensureSelectedStocksField(stripStockCategoryRebalanceTargets(stripCustomRebalanceTargets(Array.isArray(rawTargets && rawTargets['국내']) ? rawTargets['국내'] : defaults['국내']))),
+    '해외': ensureSelectedStocksField(stripStockCategoryRebalanceTargets(stripCustomRebalanceTargets(ensureForeignCategoryCatchalls(Array.isArray(rawTargets && rawTargets['해외']) ? rawTargets['해외'] : defaults['해외']))))
   };
 }
 function normalizeRebalanceOwnerState(rawOwnerState) {
@@ -943,6 +969,39 @@ function seedTickerRolesFromLegacyStorageOnce() {
   (state.projection.monthlyContributionAllocation || []).forEach((it) => seed(it.ticker, it.role));
   persistTickerRoles();
   localStorage.setItem(LS_TICKER_ROLES_SEEDED, '1');
+}
+
+const LS_ROLE_CORE_MID_MERGED = 'sam_role_core_mid_merged_v1';
+// [1회성 마이그레이션 - '코어미드필드' 통합] 예전에 분리돼 있던 '미드필더'/'코어자산' role 값을 이미
+// 저장해 둔 모든 곳(자산/레지스트리/리밸런싱 목표/절세계좈 배분/월적립금 배분)에서 한 번만 훑어
+// 'core_mid'로 고쳐 쓴다. parseAssetRoleInput의 LEGACY_ASSET_ROLE_ALIASES는 "앞으로 들어오는 입력"만
+// 정규화할 뿐 이미 저장된 원시 문자열 자체는 안 바꾸므로, 화면에 표시/집계될 때(단순 === 비교) 옛
+// 값과 새 값이 섞이지 않도록 여기서 데이터 자체를 직접 재작성한다.
+function migrateCoreMidfielderRoleMergeOnce() {
+  if (localStorage.getItem(LS_ROLE_CORE_MID_MERGED) === '1') return;
+  const isLegacy = (role) => role === 'midfielder' || role === 'core';
+  let touchedAssets = false, touchedRoles = false, touchedRebalance = false, touchedProjection = false;
+  state.assets.forEach((a) => { if (isLegacy(a.role)) { a.role = 'core_mid'; touchedAssets = true; } });
+  Object.keys(state.tickerRoles).forEach((k) => { if (isLegacy(state.tickerRoles[k])) { state.tickerRoles[k] = 'core_mid'; touchedRoles = true; } });
+  REBALANCE_OWNERS.forEach((owner) => {
+    ['국내', '해외'].forEach((region) => {
+      (state.rebalance[owner].targets[region] || []).forEach((t) => {
+        if (isLegacy(t.role)) { t.role = 'core_mid'; touchedRebalance = true; }
+        if (Array.isArray(t.selectedStocks)) t.selectedStocks.forEach((s) => { if (isLegacy(s.role)) { s.role = 'core_mid'; touchedRebalance = true; } });
+      });
+    });
+    (state.projection.monthlyContributionByOwner[owner].allocation || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
+  });
+  (state.projection.monthlyContributionAllocation || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
+  const allocByOwner = state.projection.taxAdvantagedPlan.allocationByOwner || {};
+  Object.keys(allocByOwner).forEach((owner) => {
+    (allocByOwner[owner] || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
+  });
+  if (touchedAssets) persistAssets();
+  if (touchedRoles) persistTickerRoles();
+  if (touchedRebalance) persistRebalance();
+  if (touchedProjection) persistProjection();
+  localStorage.setItem(LS_ROLE_CORE_MID_MERGED, '1');
 }
 
 function loadState() {
@@ -1066,6 +1125,7 @@ function loadState() {
   // 시드할 수 있다 - 그 값들에서 role을 읽어오기 때문] loadState()의 이 시점(모든 마이그레이션 이후)에
   // 호출한다.
   seedTickerRolesFromLegacyStorageOnce();
+  migrateCoreMidfielderRoleMergeOnce();
 
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');
