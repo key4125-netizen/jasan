@@ -601,20 +601,21 @@ function fmtSigned(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '')
 function profitColor(v) { const n = num(v); return n > 0 ? 'text-red-500 dark:text-red-400' : (n < 0 ? 'text-blue-500 dark:text-blue-400' : 'text-slate-400'); }
 // 국내 주식시장 관례상 상승=빨강, 하락=파랑 컬러 사용
 
-// KPI 카드 하단의 자산군별 세부 집계 태그처럼 좁은 공간에 큰 금액을 표기할 때 쓰는 축약 표기
-// (예: 1,250,000,000 -> "12억5,000만원", 500,000,000 -> "5억원"). 1만원 미만은 그냥 원 단위로 표기.
-// [전체 통일] "억"과 "만원" 사이는 띄어쓰기 없이 붙여 쓴다(예: 4억1,488만원) - 이 앱의 모든 원단위
-// 축약 표기(Top5 리스트 포함)가 이 함수/포맷을 공유한다.
+// KPI 카드 하단의 자산군별 세부 집계 태그처럼 좁은 공간에 큰 금액을 표기할 때 쓰는 축약 표기 - 이 앱의
+// 모든 원단위 축약 표기(Top5 리스트/몬테카를로/시나리오 비교 등)가 이 함수/포맷을 공유한다.
+// [10.21억/74.87억 형식 - 요청 반영] 1억 이상은 "X억Y만원" 붙임 표기 대신 소수점 둘째 자리까지의 억
+// 단위 하나로 통일한다(예: 10억2,060만원 -> 10.21억). 1억 미만은 기존처럼 만원/원 단위를 그대로 쓴다 -
+// 소액까지 전부 억 단위로 바꾸면 "0.00억"처럼 정보가 사라져 보이는 값이 나온다(예: 종목 상세의 주당
+// 가격, 핵심종목 카드의 소액 일간손익 등). 요청 범위도 "축약 표기"였고, 예시로 준 10.2억/74.87억도
+// 전부 1억 이상 금액이라 이 기준으로 충분히 커버된다.
+const eokFmt2 = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function fmtKRWShort(v) {
   const n = Math.round(num(v));
   const abs = Math.abs(n);
-  const eok = Math.floor(abs / 1e8);
-  const man = Math.round((abs % 1e8) / 1e4);
-  let body;
-  if (eok === 0 && man === 0) body = krwFmt.format(abs) + '원';
-  else if (eok > 0 && man > 0) body = `${krwFmt.format(eok)}억${krwFmt.format(man)}만원`;
-  else if (eok > 0) body = `${krwFmt.format(eok)}억원`;
-  else body = `${krwFmt.format(man)}만원`;
+  if (abs === 0) return '0원';
+  if (abs >= 1e8) return (n < 0 ? '-' : '') + eokFmt2.format(abs / 1e8) + '억';
+  const man = Math.round(abs / 1e4);
+  const body = man > 0 ? `${krwFmt.format(man)}만원` : `${krwFmt.format(abs)}원`;
   return (n < 0 ? '-' : '') + body;
 }
 function fmtSignedShort(v) { const n = Math.round(num(v)); return (n >= 0 ? '+' : '') + fmtKRWShort(v); }

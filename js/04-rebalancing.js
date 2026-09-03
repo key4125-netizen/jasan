@@ -48,6 +48,20 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
       }
     });
   });
+  // [티커 없는 보유 자산 개별 목표 - 요청 반영] 채권/현금/부동산처럼 티커가 없는 특정 보유분을 이름으로
+  // 지정한 목표 항목(searchRtmAddCandidates의 이름 검색 결과로 추가됨) - 자산군 캐치올(아래)보다 먼저
+  // 매칭해야 "이 특정 보유분만" 개별 목표로 뺄 수 있다(캐치올은 나머지를 뭉뚱그려 담는 역할).
+  targets.forEach((t, idx) => {
+    if (t.type !== 'namedHolding') return;
+    regionAssets.forEach((a) => {
+      if (claimedIds.has(a.id)) return;
+      if (!String(a.ticker ?? '').trim() && a.name === t.name) {
+        amounts[idx] += calcRow(a).curAmount;
+        claimedIds.add(a.id);
+        claimedTargetIdx.set(a.id, idx);
+      }
+    });
+  });
   targets.forEach((t, idx) => {
     if (t.type !== 'category') return;
     regionAssets.forEach((a) => {
@@ -676,9 +690,36 @@ function searchRtmAddCandidates(region, query) {
       .filter((t) => t.type === 'ticker')
       .map((t) => sanitizeTicker(t.ticker).yahooTicker)
   );
-  return searchTickerMaster(q)
+  const tickerResults = searchTickerMaster(q)
     .filter((r) => r.type === region && r.symbol && !existingTickers.has(sanitizeTicker(r.symbol).yahooTicker))
-    .slice(0, 10);
+    .slice(0, 10)
+    .map((r) => ({ kind: 'ticker', symbol: r.symbol, name: r.name }));
+
+  // [티커 없는 보유 자산도 이름 검색으로 추가 - 요청 반영] 채권/현금/부동산처럼 티커가 없는 자산은
+  // searchTickerMaster(종목 마스터 DB) 대상이 아니라 검색 결과에 전혀 안 나왔다 - 지금 이 모달을 연
+  // 소유자(rebalanceModalOwner)가 이 지역에 실제로 보유 중인, 티커 없는 자산을 이름으로 검색해 함께
+  // 보여준다. 자산군 캐치올(채권/현금 전체를 뭉뚱그림)과 달리 "이 특정 보유분"만 따로 목표를 지정하고
+  // 싶을 때 쓴다(type:'namedHolding' - computeRegionTargetAmounts가 이름으로 매칭).
+  const existingNames = new Set(
+    rebalanceModalDraft.targets[region]
+      .filter((t) => t.type === 'namedHolding')
+      .map((t) => t.name)
+  );
+  const qLower = q.toLowerCase();
+  const seenNames = new Set();
+  const namedResults = [];
+  state.assets.forEach((a) => {
+    if (namedResults.length >= 10) return;
+    if (String(a.ticker ?? '').trim()) return; // 티커 있는 자산은 위 종목 마스터 검색이 이미 담당
+    if (a.owner !== rebalanceModalOwner || a.isDomestic !== region) return;
+    if (!isRebalanceEligibleAccount(a)) return;
+    if (!a.name || !a.name.toLowerCase().includes(qLower)) return;
+    if (existingNames.has(a.name) || seenNames.has(a.name)) return;
+    seenNames.add(a.name);
+    namedResults.push({ kind: 'named', name: a.name });
+  });
+
+  return [...tickerResults, ...namedResults];
 }
 
 function renderRtmAddSearchResults(region, query) {
@@ -691,11 +732,16 @@ function renderRtmAddSearchResults(region, query) {
     container.innerHTML = '<p class="text-[11px] text-slate-400 py-1">검색 결과가 없습니다.</p>';
     return;
   }
-  container.innerHTML = candidates.map((c) => `
+  container.innerHTML = candidates.map((c) => c.kind === 'ticker' ? `
     <button type="button" data-rtm-add-candidate data-region="${region}" data-ticker="${escapeHtml(c.symbol)}" data-name="${escapeHtml(c.name)}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="text-xs truncate">${escapeHtml(c.name)}</span>
       <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
+    </button>` : `
+    <button type="button" data-rtm-add-named-candidate data-region="${region}" data-name="${escapeHtml(c.name)}"
+      class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+      <span class="text-xs truncate">${escapeHtml(c.name)}</span>
+      <span class="text-[10px] text-slate-400 shrink-0">보유 중(티커 없음)</span>
     </button>`).join('');
   container.querySelectorAll('button[data-rtm-add-candidate]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -703,6 +749,19 @@ function renderRtmAddSearchResults(region, query) {
       // [티커별 역할(포지션) 단일 소스 - 자동 연동] 이 티커에 이미 다른 곳에서 지정해 둔 역할이 있으면
       // 미지정 상태로 시작하지 않고 그 값을 그대로 이어받는다.
       rebalanceModalDraft.targets[r].push({ type: 'ticker', ticker: btn.dataset.ticker, label: btn.dataset.name, pct: 0, role: getTickerRole(btn.dataset.ticker) });
+      const input = document.getElementById(r === '국내' ? 'rtmAddSearchInputDomestic' : 'rtmAddSearchInputForeign');
+      if (input) input.value = '';
+      container.innerHTML = '';
+      renderRtmTargetGroup(r);
+      updateRtmPreviews();
+    });
+  });
+  // [티커 없는 보유 자산 개별 목표 추가 - 요청 반영] 티커가 없어 getTickerRole로 역할을 이어받을 수
+  // 없다(레지스트리는 티커 기준 조회) - 미지정으로 시작해 이 모달 안에서 직접 지정한다.
+  container.querySelectorAll('button[data-rtm-add-named-candidate]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const r = btn.dataset.region;
+      rebalanceModalDraft.targets[r].push({ type: 'namedHolding', name: btn.dataset.name, label: btn.dataset.name, pct: 0 });
       const input = document.getElementById(r === '국내' ? 'rtmAddSearchInputDomestic' : 'rtmAddSearchInputForeign');
       if (input) input.value = '';
       container.innerHTML = '';
@@ -990,12 +1049,16 @@ function updateRtmPreviews() {
     const targetAmount = total * num(rebalanceModalDraft.domestic[region]) / 100;
     const currentAmount = (byDomestic && byDomestic[region]) || 0;
     const diff = targetAmount - currentAmount;
-    // [모바일 줄바꿈 버그 수정] 예전엔 두 span을 한 flex row(justify-between)에 나란히 두어, 금액이
-    // 길어지면 좁은 화면에서 중간에 부자연스럽게 줄바꿈됐다. 이제 각 줄을 별도 block(div)으로 나눠
-    // 화면 폭과 무관하게 항상 목표금액/조정금액 두 줄로 고정 표시한다. [목표금액 줄바꿈 방지 - 요청
-    // 반영] 이 div는 2열 그리드(rtmDomesticSplit) 안이라 폭이 좁아 "목표금액" 라벨과 금액이 그
-    // 자체로도 줄바꿈될 수 있어 whitespace-nowrap을 추가한다.
-    el.innerHTML = `<div class="text-slate-400 whitespace-nowrap">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
+    // [줄 정렬 - 요청 반영] 이 영역은 2열 그리드(rtmDomesticSplit)라 폭이 좁아 "목표금액 X원 +Y원"이
+    // 한 줄에 다 안 들어간다 - 대신 CSS Grid 2열(라벨열/금액열)로 짜서, 2번째 줄(조정금액)이 "목표금액"
+    // 라벨이 아니라 그 옆 금액이 시작하는 자리에 정확히 맞춰지게 한다(라벨열 너비는 "목표금액" 글자
+    // 폭에 맞춰 자동 결정되고, 금액/조정금액 둘 다 같은 2번째 열에 들어가 서로 자연히 정렬된다).
+    el.innerHTML = `<div class="grid gap-x-1 text-[11px]" style="grid-template-columns:auto auto;">
+      <span class="text-slate-400 whitespace-nowrap">목표금액</span>
+      <span class="font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">${fmtKRW(targetAmount)}</span>
+      <span></span>
+      <span class="font-medium whitespace-nowrap ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</span>
+    </div>`;
   });
 
   ['국내', '해외'].forEach((region) => {
@@ -1011,9 +1074,10 @@ function updateRtmPreviews() {
       const diff = targetAmount - currentAmount; // 양수=매수 필요(부족), 음수=매도 필요(과다)
       const previewEl = document.querySelector(`[data-rtm-preview][data-region="${region}"][data-idx="${idx}"]`);
       if (!previewEl) return;
-      // [모바일 줄바꿈 버그 수정] 위 국내/해외 split 미리보기와 동일하게 두 줄(block)로 고정한다.
-      // [목표금액 줄바꿈 방지 - 요청 반영] whitespace-nowrap 추가.
-      previewEl.innerHTML = `<div class="text-slate-400 whitespace-nowrap">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span></div><div class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</div>`;
+      // [한 줄 표기 - 요청 반영] 개별 목표 항목 카드는 모달 폭 전체를 쓸 수 있어 "목표금액 X원 +Y원"이
+      // 충분히 한 줄에 들어간다 - 위 국내/해외 split(2열 그리드라 좁음)과 달리 여기는 두 줄로 나눌
+      // 필요가 없다. whitespace-nowrap으로 한 줄을 강제한다.
+      previewEl.innerHTML = `<div class="text-slate-400 whitespace-nowrap">목표금액 <span class="font-bold text-slate-700 dark:text-slate-200">${fmtKRW(targetAmount)}</span> <span class="font-medium ${rebalanceDiffColorClass(diff)}">${fmtSigned(diff)}</span></div>`;
     });
     const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
     const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
