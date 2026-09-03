@@ -190,6 +190,15 @@ function calcDailyPnL(a, r) {
   return r.curAmount * (state.dailyChangeRate / 100);
 }
 
+// [자산군별 집계 태그 - 현금/달러 분리 표시, 요청 반영] 자산군(a.category) 자체는 그대로 '현금'으로
+// 두고(일간손익 계산·리밸런싱 캐치올 매칭 등 다른 모든 로직이 이 값을 그대로 참조하므로 절대 안
+// 건드림) - KPI 카드 하단 자산군별 집계 태그를 "그릴 때"만 원화현금/달러현금을 별도 항목으로
+// 갈라서 보여준다. 원화 채권/부동산 등 다른 자산군은 그대로 자산군명을 쓴다.
+function categoryDisplayKey(a) {
+  if (a.category === '현금' && a.currency === 'USD') return '달러';
+  return a.category;
+}
+
 // [일간평가손익/총평가손익 카드 - 실현손익 배지] 세부내용 버튼 밑에 다는 소형 배지 공용 렌더러.
 // amount가 0이면(해당 없음 - 오늘 매도 없음/전체 매도 이력 없음) 배지 자체를 숨긴다.
 function renderRealizedBadge(elId, amount, label) {
@@ -321,10 +330,11 @@ function renderKPIs() {
       financialDailyProfit += dp;
     }
 
-    if (!byCategory[a.category]) byCategory[a.category] = { buy: 0, cur: 0, dailyPnL: 0 };
-    byCategory[a.category].buy += r.buyAmount;
-    byCategory[a.category].cur += r.curAmount;
-    byCategory[a.category].dailyPnL += dp;
+    const catKey = categoryDisplayKey(a);
+    if (!byCategory[catKey]) byCategory[catKey] = { buy: 0, cur: 0, dailyPnL: 0 };
+    byCategory[catKey].buy += r.buyAmount;
+    byCategory[catKey].cur += r.curAmount;
+    byCategory[catKey].dailyPnL += dp;
 
     if (!byOwner[a.owner]) byOwner[a.owner] = { dailyPnL: 0, cur: 0, buy: 0 };
     byOwner[a.owner].dailyPnL += dp;
@@ -332,10 +342,10 @@ function renderKPIs() {
     byOwner[a.owner].buy += r.buyAmount;
 
     if (!byOwnerCategory[a.owner]) byOwnerCategory[a.owner] = {};
-    if (!byOwnerCategory[a.owner][a.category]) byOwnerCategory[a.owner][a.category] = { dailyPnL: 0, cur: 0, buy: 0 };
-    byOwnerCategory[a.owner][a.category].dailyPnL += dp;
-    byOwnerCategory[a.owner][a.category].cur += r.curAmount;
-    byOwnerCategory[a.owner][a.category].buy += r.buyAmount;
+    if (!byOwnerCategory[a.owner][catKey]) byOwnerCategory[a.owner][catKey] = { dailyPnL: 0, cur: 0, buy: 0 };
+    byOwnerCategory[a.owner][catKey].dailyPnL += dp;
+    byOwnerCategory[a.owner][catKey].cur += r.curAmount;
+    byOwnerCategory[a.owner][catKey].buy += r.buyAmount;
 
     if (!isRealEstate) {
       if (!byOwnerFinancial[a.owner]) byOwnerFinancial[a.owner] = { dailyPnL: 0, cur: 0, buy: 0 };
@@ -343,10 +353,10 @@ function renderKPIs() {
       byOwnerFinancial[a.owner].cur += r.curAmount;
       byOwnerFinancial[a.owner].buy += r.buyAmount;
 
-      if (!byCategoryFinancial[a.category]) byCategoryFinancial[a.category] = { buy: 0, cur: 0, dailyPnL: 0 };
-      byCategoryFinancial[a.category].buy += r.buyAmount;
-      byCategoryFinancial[a.category].cur += r.curAmount;
-      byCategoryFinancial[a.category].dailyPnL += dp;
+      if (!byCategoryFinancial[catKey]) byCategoryFinancial[catKey] = { buy: 0, cur: 0, dailyPnL: 0 };
+      byCategoryFinancial[catKey].buy += r.buyAmount;
+      byCategoryFinancial[catKey].cur += r.curAmount;
+      byCategoryFinancial[catKey].dailyPnL += dp;
 
       const currencyLabel = a.currency === 'KRW' ? '원화' : '해외통화';
       if (!byCurrency[currencyLabel]) byCurrency[currencyLabel] = { dailyPnL: 0 };

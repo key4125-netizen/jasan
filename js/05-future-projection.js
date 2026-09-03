@@ -1576,8 +1576,10 @@ function renderScenarioSummaryCards(scenarioData) {
         <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
         <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
       </div>
-      <p class="text-[10px] sm:text-[11px] text-slate-400">기대수익률</p>
-      <p class="text-sm sm:text-lg font-bold truncate" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</p>
+      <p class="text-[10px] sm:text-[11px] whitespace-nowrap">
+        <span class="text-slate-400">기대수익률</span>
+        <span class="text-sm sm:text-lg font-bold" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</span>
+      </p>
     </div>`).join('');
 }
 
@@ -1638,7 +1640,7 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets, chartKey = '
       onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, chartKey),
       scales: {
         x: { ticks: { color: textColor, maxTicksLimit: 11 }, grid: { display: false } },
-        y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
+        y: { ticks: { color: textColor, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
         legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
@@ -1651,12 +1653,13 @@ function renderScenarioCompareChart(scenarioData, milestoneOffsets, chartKey = '
 // 통합 비교 차트 하단의 상세 스케줄 표 - 5년 단위 시점마다 3개 시나리오의 예상 자산(명목)을 나란히
 // 표기한다. rows: [{ year, values: { conservative, normal, optimistic } }, ...]
 // [모바일 가로 스크롤 제거] 예전엔 "1,234,567,890원" 전체 자릿수 + 긴 시나리오명("리밸런싱 후·보수적")
-// 헤더 때문에 5개 열이 375px 화면 폭을 넘어 가로 스크롤이 필요했다 - 금액을 "5.2억"처럼 억 단위
-// 한 자리로 축약하고, 헤더도 "리밸런싱 후·" 접두어를 뗀 짧은 이름만 써서 한 화면에 다 들어오게 했다.
+// 헤더 때문에 5개 열이 375px 화면 폭을 넘어 가로 스크롤이 필요했다 - 금액을 fmtKRWShort로 축약하고
+// (요청 반영: 이제 "10.21억" 형식), 헤더도 "리밸런싱 후·" 접두어를 뗀 짧은 이름만 써서 한 화면에
+// 최대한 들어오게 했다(그래도 안 들어오면 표 자체가 가로 스크롤됨).
 // [총자산 카드 재사용 - 파라미터화] headId/bodyId를 인자로 받아 "시나리오별 일반계좌 금액 비교"와
 // "시나리오별 총자산 금액 비교" 두 카드가 이 함수 하나를 공유한다.
 function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenarioCompareScheduleHead', bodyId = 'scenarioCompareScheduleBody') {
-  const fmtEok = (v) => (v / 1e8).toFixed(1) + '억';
+  const fmtEok = fmtKRWShort;
   // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 뗀다(요약 카드/차트 범례의 원래 라벨은
   // 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
   const shortLabel = (label) => label.replace('목표배분·', '');
@@ -1990,7 +1993,7 @@ function renderMonteCarloChart(points, milestoneOffsets) {
       onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'monteCarlo'),
       scales: {
         x: { ticks: { color: textColor }, grid: { display: false } },
-        y: { ticks: { color: textColor, callback: (v) => (v / 1e8).toFixed(1) + '억' }, grid: { color: 'rgba(148,163,184,.15)' } }
+        y: { ticks: { color: textColor, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
       },
       plugins: {
         legend: {
