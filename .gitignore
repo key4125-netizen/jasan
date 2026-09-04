@@ -1,2 +1,5 @@
 .claude/settings.local.json
 node_modules/
+# Playwright 실행 산출물 - 소스가 아니라 매 실행마다 새로 생기는 결과물이라 커밋 대상이 아니다.
+test-results/
+playwright-report/
