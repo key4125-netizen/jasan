@@ -18,8 +18,11 @@ const { test } = require('node:test');
 const path = require('node:path');
 
 const engine = require(path.join(__dirname, '..', 'js', '15-monte-carlo-engine.js'));
+// [Node 검증 - TEST FAILURE #2 수정] percentile()은 js/15의 내부 구현 함수이고 의도적으로
+// module.exports에 없다(공개 API로 승격하지 않음 - 사용자 지시) - 이 파일은 반드시 공개 API인
+// extractMilestoneStats를 통해서만 percentile 경계값/단조성/nearest-rank 특성을 검증한다.
 const {
-  computeMuGBM, computeDeterministicMonthlyFV, percentile, extractMilestoneStats,
+  computeMuGBM, computeDeterministicMonthlyFV, extractMilestoneStats,
   runMonthlyPrecisionMC
 } = engine;
 
@@ -99,35 +102,39 @@ test('Calibration 3 - Growth monotonicity: growth 0% < 2%p < 4%p 순으로 P50�
  * 4. Percentile 계산 내부 일관성 - 알고리즘(nearest-rank) 자체는 바꾸지 않는다(Phase 4 정책 유지) -
  *    이 테스트는 "지금 방식이 의도대로 계속 동작하는지"만 감시한다.
  * ---------------------------------------------------------------------- */
-test('Calibration 4 - percentile: p=0/50/100 경계값이 정확히 최소/중앙/최대를 가리켜야 한다', () => {
+test('Calibration 4 - percentile(공개 API인 extractMilestoneStats 경유): P10/P50/P90이 nearest-rank 공식(round(p/100*(n-1)))이 가리키는 값과 정확히 일치해야 한다', () => {
   const sorted = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-  assert.strictEqual(percentile(sorted, 0), 1);
-  assert.strictEqual(percentile(sorted, 100), 10);
-  assert.strictEqual(percentile(sorted, 50), sorted[Math.round(0.5 * 9)]);
+  const stats = extractMilestoneStats(sorted, []);
+  // 독립 참조식 - private percentile()을 호출하지 않고, 문서화된 nearest-rank 공식을 그대로 재현해
+  // "공개 API의 결과값"과 대조한다(Phase 3-3/3-4에서 이미 써온 것과 동일한 독립 참조 구현 패턴).
+  const nearestRank = (p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))))];
+  assert.strictEqual(stats.p10, nearestRank(10));
+  assert.strictEqual(stats.p50, nearestRank(50));
+  assert.strictEqual(stats.p90, nearestRank(90));
 });
 
-test('Calibration 4b - percentile: p가 커질수록 반환값이 단조 비감소해야 한다', () => {
-  const sorted = Array.from({ length: 1000 }, (_, i) => i);
-  let prev = -Infinity;
-  for (let p = 0; p <= 100; p += 5) {
-    const v = percentile(sorted, p);
-    assert.ok(v >= prev, `percentile이 p=${p}에서 감소함(단조성 위반): prev=${prev}, cur=${v}`);
-    prev = v;
-  }
+test('Calibration 4b - percentile(공개 API 경유): 여러 표본 크기에서 p10<=p25<=p50<=p75<=p90 단조성이 유지되어야 한다', () => {
+  [10, 100, 1000, 5000].forEach((n) => {
+    const samples = Array.from({ length: n }, (_, i) => i); // 이미 정렬된 배열이든 아니든 extractMilestoneStats가 내부에서 정렬함
+    const stats = extractMilestoneStats(samples, []);
+    assert.ok(stats.p10 <= stats.p25 && stats.p25 <= stats.p50 && stats.p50 <= stats.p75 && stats.p75 <= stats.p90,
+      `n=${n}에서 단조성 위반: ${JSON.stringify(stats)}`);
+  });
 });
 
-test('Calibration 4c - percentile: nearest-rank와 linear interpolation의 차이가 표본오차보다 훨씬 작아야 한다(정책 근거 재확인)', () => {
+test('Calibration 4c - percentile(공개 API 경유): nearest-rank(P10/P50/P90)와 linear interpolation의 차이가 표본오차보다 훨씬 작아야 한다(정책 근거 재확인)', () => {
   // Phase 4 Calibration Research에서 실측된 결론(상대차이 <0.01%, n=5000 기준)을 이 회귀가 계속 지킨다.
   const n = 5000;
   const sorted = Array.from({ length: n }, () => Math.random() * 1e9).sort((a, b) => a - b);
+  const stats = extractMilestoneStats(sorted, []);
   function linearInterp(arr, p) {
     const idx = (p / 100) * (arr.length - 1);
     const lo = Math.floor(idx), hi = Math.ceil(idx);
     if (lo === hi) return arr[lo];
     return arr[lo] + (arr[hi] - arr[lo]) * (idx - lo);
   }
-  [10, 50, 90].forEach((p) => {
-    const nr = percentile(sorted, p);
+  [[10, 'p10'], [50, 'p50'], [90, 'p90']].forEach(([p, key]) => {
+    const nr = stats[key];
     const li = linearInterp(sorted, p);
     const relDiff = Math.abs((nr - li) / li);
     assert.ok(relDiff < 0.001, `p=${p}에서 nearest-rank/linear-interp 차이가 예상보다 큼: relDiff=${relDiff}`);
