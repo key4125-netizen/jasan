@@ -278,6 +278,103 @@ function getRebalanceTotals(ownerFilter) {
   return { total, byDomestic, perRegion };
 }
 
+/* -------------------------------------------------------------------------
+ * [Phase 8 - 초보자용 "현재 vs 목표 한눈에 보기" 요약] 새로운 계산식을 전혀 만들지 않는다 - 이미
+ * 존재하는 getRebalanceTotals()/computeRegionTargetAmounts()(둘 다 무수정)가 반환하는 값을 그대로
+ * 조합해, 사용자가 실제로 설정한 목표 항목(지역×티커/자산군) 단위로 "현재 비중 vs 목표 비중"을
+ * 한 줄씩 보여준다. 강제로 "국내주식/미국주식/채권/현금" 같은 새 분류체계를 만들지 않고, 사용자가
+ * "포트폴리오 구성" 탭에서 직접 설정한 목표 항목(t.label)을 그대로 쓴다 - 그래야 실제 설정과 화면
+ * 요약이 항상 정확히 일치한다.
+ * ---------------------------------------------------------------------- */
+// [UI 전용 표시 기준치 - Safety threshold 아님] 목표 비중과 1%p 이내로 차이나면 "적정"으로 본다.
+// 이 값은 계산 결과를 바꾸지 않고 오직 배지 문구 선택에만 쓰인다 - Safety Layer의 어떤 임계값과도
+// 무관하다(SAFETY_THRESHOLDS를 전혀 참조하지 않음).
+const PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT = 1;
+
+function computePortfolioTargetSummaryRows(owner) {
+  const { total, perRegion } = getRebalanceTotals(owner);
+  const rows = [];
+  const regionSumStatus = {};
+  ['국내', '해외'].forEach((region) => {
+    const regionTargetPct = num(state.rebalance[owner].domestic[region]);
+    const regionTargetAmount = total * regionTargetPct / 100;
+    const targets = state.rebalance[owner].targets[region] || [];
+    const amounts = perRegion[region] || [];
+    let pctSum = 0;
+    targets.forEach((t, idx) => {
+      const pct = num(t.pct);
+      pctSum += pct;
+      const curAmount = amounts[idx] || 0;
+      if (pct <= 0 && curAmount === 0) return; // 목표도 없고 보유도 없으면 보여줄 내용이 없다.
+      const targetAmount = regionTargetAmount * pct / 100;
+      const curWeightPct = total > 0 ? (curAmount / total) * 100 : 0;
+      const targetWeightPct = total > 0 ? (targetAmount / total) * 100 : 0;
+      // diff 부호는 기존 실행 가이드(computeIndividualRebalanceGuide)와 동일하게 맞춘다: 양수=목표보다
+      // 부족(매수 방향), 음수=목표보다 초과(매도 방향) - rebalanceDiffColorClass를 그대로 재사용하기 위함.
+      const diffAmount = targetAmount - curAmount;
+      const diffWeightPct = targetWeightPct - curWeightPct;
+      let status;
+      if (diffWeightPct > PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT) status = 'under';
+      else if (diffWeightPct < -PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT) status = 'over';
+      else status = 'ok';
+      const label = t.label || t.name || t.ticker || '(이름 없음)';
+      rows.push({ region, label, curAmount, targetAmount, curWeightPct, targetWeightPct, diffAmount, diffWeightPct, status });
+    });
+    regionSumStatus[region] = { pctSum, isValid: targets.length === 0 || Math.abs(pctSum - 100) < 0.05 };
+  });
+  rows.sort((a, b) => b.curAmount - a.curAmount);
+  return { rows, regionSumStatus };
+}
+
+const PORTFOLIO_SUMMARY_STATUS_META = {
+  under: { badge: '부족', badgeClass: 'bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300',
+    text: (diffPct) => `목표보다 약 ${fmtNum(Math.abs(diffPct), 1)}%p 부족해요.`,
+    hint: '새로 투자할 때 이 자산을 조금 더 늘리는 방법을 생각해볼 수 있어요.' },
+  over: { badge: '초과', badgeClass: 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-300',
+    text: (diffPct) => `목표보다 약 ${fmtNum(Math.abs(diffPct), 1)}%p 많아요.`,
+    hint: '새로운 투자금을 다른 자산에 배분하면 비중을 자연스럽게 조정할 수 있어요.' },
+  ok: { badge: '적정', badgeClass: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-300',
+    text: () => '목표와 비슷해요.',
+    hint: '현재 비중을 유지해도 괜찮아요.' }
+};
+
+// 화면 표시 전용 렌더링 - 반올림은 여기(문자열 조립 시점)에서만 적용하고, 위 compute 함수의 계산값
+// 자체는 전혀 반올림하지 않는다(상태 판정도 반올림 전 원본 diffWeightPct로 이미 끝난 뒤다).
+function renderPortfolioTargetSummary(owner) {
+  const containerId = `portfolioTargetSummary${rebalanceOwnerSuffix(owner)}`;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const { rows, regionSumStatus } = computePortfolioTargetSummaryRows(owner);
+
+  const sumBadgesHtml = ['국내', '해외'].map((region) => {
+    const s = regionSumStatus[region];
+    const cls = s.isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400';
+    const text = s.isValid ? `${region} 목표 합계 ${fmtNum(s.pctSum, 1)}% ✓` : `${region} 목표 합계 ${fmtNum(s.pctSum, 1)}% - 100%가 되도록 조정해주세요`;
+    return `<span class="${cls}">${escapeHtml(text)}</span>`;
+  }).join('<span class="text-slate-300 dark:text-slate-700">·</span>');
+
+  if (rows.length === 0) {
+    container.innerHTML = `<p class="text-[11px] text-slate-400 mb-2">${sumBadgesHtml}</p>
+      <p class="text-xs text-slate-400 text-center py-3">아직 목표 비중이 설정되지 않았습니다 - [비중조절]에서 먼저 설정해보세요.</p>`;
+    return;
+  }
+
+  const rowsHtml = rows.map((r) => {
+    const meta = PORTFOLIO_SUMMARY_STATUS_META[r.status];
+    return `<div class="py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.region)} · ${escapeHtml(r.label)}</span>
+        <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badgeClass}">${meta.badge}</span>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
+      <p class="text-xs mt-1">${escapeHtml(meta.text(r.diffWeightPct))} <span class="text-slate-400">${meta.hint}</span></p>
+      ${Math.abs(r.diffAmount) >= 1 ? `<p class="text-[11px] mt-0.5 ${rebalanceDiffColorClass(r.diffAmount)}">약 ${fmtKRWShort(Math.abs(r.diffAmount))} ${r.diffAmount > 0 ? '부족' : '초과'}</p>` : ''}
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<p class="text-[11px] text-slate-400 mb-2">${sumBadgesHtml}</p>${rowsHtml}`;
+}
+
 // [소유자별 독립 리밸런싱 - Option B] 신랑/와이프 각각의 목표 비중을 독립적으로 계산해 각자의 카드
 // 세트(...Husband/...Wife 접미사)에 그린다 - buildDomesticTargetInputs/buildTargetInputs가 owner
 // 파라미터로 어느 카드 세트인지 구분한다.
@@ -1182,6 +1279,8 @@ document.querySelectorAll('[data-rebalance-detail-btn]').forEach((btn) => {
 // 반영] 목표비중 입력 섹션의 "합계 N%" 배지(updateTargetSum)를 표시하던 카드 자체가 삭제되어 이
 // 호출도 함께 제거됐다 - 합계는 이제 rebalanceTargetModal 안(rtmSumDomestic/Foreign)에서만 보인다.
 function updateRebalanceResults() {
+  renderPortfolioTargetSummary('신랑');
+  renderPortfolioTargetSummary('와이프');
   renderPositionAnalysisCard('positionAnalysisCardAll', 'all');
   renderPositionAnalysisCard('positionAnalysisCardHusband', '신랑');
   renderPositionAnalysisCard('positionAnalysisCardWife', '와이프');
