@@ -117,12 +117,25 @@ module.exports = [
     },
   },
   {
-    // [Node 스크립트 - test/, scripts/, e2e/, 설정파일 자신] CommonJS + Node 전역.
-    files: ['test/**/*.js', 'scripts/**/*.js', 'e2e/**/*.js', 'eslint.config.js', 'playwright.config.js'],
+    // [Node 스크립트 - test/, scripts/, 설정파일 자신] CommonJS + Node 전역.
+    files: ['test/**/*.js', 'scripts/**/*.js', 'eslint.config.js', 'playwright.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
       globals: { ...globals.node },
+    },
+  },
+  {
+    // [Playwright E2E 파일 - Node + 브라우저 전역 혼재] 이 파일들은 Node에서 실행되는 테스트 러너
+    // 코드와, `page.evaluate(() => {...})` 콜백처럼 실제로는 브라우저 페이지 안에서 실행되는 코드가
+    // 한 파일에 섞여 있다(예: fixtures.js의 seedPortfolio가 state/makeAsset/persistAssets 등 앱의
+    // 공유 전역을 evaluate 콜백 안에서 직접 참조) - 그래서 Node 전역과 프로젝트 공유 전역(js/**/*.js
+    // 스캔 결과)을 모두 허용한다.
+    files: ['e2e/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: { ...globals.node, ...projectGlobals },
     },
   },
   {
