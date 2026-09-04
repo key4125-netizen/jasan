@@ -163,6 +163,9 @@ function getGroupReturnRate(groupKey) {
 function renderProjection() {
   document.getElementById('inflationRateInput').value =
     (state.projection.inflationRate !== undefined && state.projection.inflationRate !== null) ? state.projection.inflationRate : 2.5;
+  // [Phase 3-3] 연간 납입액 증가율 - inflationRateInput과 동일한 동기화 패턴.
+  document.getElementById('contributionGrowthRateInput').value =
+    (state.projection.contributionGrowthRate !== undefined && state.projection.contributionGrowthRate !== null) ? state.projection.contributionGrowthRate : 0;
   updateMonthlyContributionSummary();
   updateProjection();
 }
@@ -190,6 +193,25 @@ function computeFutureValue(pv, annualRatePct, years, monthlyContribution) {
   if (Math.abs(monthlyRate) < 1e-9) return pv + monthlyContribution * months;
   const growth = Math.pow(1 + monthlyRate, months);
   return pv * growth + monthlyContribution * (1 + monthlyRate) * ((growth - 1) / monthlyRate);
+}
+// [Phase 3-3 통합 감사 - 버그 수정] Monte Carlo(js/15)는 연간 납입액 증가율(state.projection.
+// contributionGrowthRate)을 반영하는데, 이 결정론적 시나리오 카드는 그동안 이 값을 전혀 몰랐다 -
+// 같은 입력(월 적립금 300만원, 증가율 3%, 20년)인데 위 "시나리오별 예상자산" 카드는 매달 300만원
+// 고정으로, 그 바로 아래 Monte Carlo 카드는 매년 늘어나는 금액으로 계산해 서로 다른 결과가 나오는
+// 불일치였다(사용자 입장에서는 같은 조건처럼 보여 알아채기 어렵다). growthRate=0이면 computeFutureValue를
+// 그대로 한 번만 호출해(기존과 완전히 동일한 코드 경로) 회귀 위험이 없고, growthRate>0일 때만 연 단위로
+// 나눠 매년 커지는 PMT를 반영한다 - computeFutureValue 자체는 손대지 않는다(다른 호출부 전부 무변경).
+function computeFutureValueWithContributionGrowth(pv, annualRatePct, years, initialMonthlyContribution, contributionGrowthRate) {
+  const g = contributionGrowthRate || 0;
+  if (Math.abs(g) < 1e-9) return computeFutureValue(pv, annualRatePct, years, initialMonthlyContribution);
+  let balance = pv;
+  for (let y = 0; y < years; y++) {
+    // [Phase 3-3 통합감사] js/15의 computeContributionYearMultiplier를 그대로 재사용 - 이 파일이
+    // 독자적인 "연차별 배율" 공식을 따로 갖지 않도록 한다(Monte Carlo와 어긋날 위험 제거).
+    const yearMonthly = initialMonthlyContribution * computeContributionYearMultiplier(g, y);
+    balance = computeFutureValue(balance, annualRatePct, 1, yearMonthly);
+  }
+  return balance;
 }
 // [절세계좌 연납 지원 - 요청 반영] 매년 "초"에 한 번씩 납입하는 연납 버전 - 위 월복리 공식과 완전히
 // 같은 구조(기초급 연금 복리식)를 연 단위 그대로 쓴다(월 환산 없음). 기존 computeFutureValue(월복리
@@ -249,6 +271,69 @@ function findCustomRateKeyForAsset(ticker, name) {
   const nameKey = 'NAME:' + normalizeNameKey(name);
   if (name && customRates[nameKey]) return nameKey;
   return null;
+}
+
+/* -------------------------------------------------------------------------
+ * [Phase 3-4] Instrument별 연간 운용보수(Fee/Expense Ratio) - customScenarioRates와 완전히 별개의
+ * 맵이다(시나리오에 따라 달라지지 않는 값이라 {label,conservative,normal,optimistic} 구조가 필요
+ * 없다 - 단일 숫자 하나만 쓴다). key 체계는 buildCustomRateKey(이미 존재하는 함수)를 그대로 재사용해
+ * "수익률 관리"의 키와 동일한 종목이 동일한 키로 연결되게 한다.
+ *    state.projection.customFeeRates: { [key]: feeRatePct }  (예: 0.20 = 연 0.20%)
+ * [명시적으로 설정 안 하면 0%] - 확인되지 않은 보수율을 임의로 추정해 채우지 않는다(요청 반영) -
+ * ETF든 개별주식이든 이 맵에 없으면 전부 0%다.
+ * ---------------------------------------------------------------------- */
+// target: getTargetProjectionRate가 받는 것과 동일한 모양({type, ticker, label, name, category}).
+// 수익률과 달리 "대표지수로 대체" 같은 폴백이 없다 - 딱 이 종목/카테고리에 사용자가 직접 등록한 값만
+// 쓰고, 없으면 무조건 0이다(폴백 체인이 있으면 "모르는 값"과 "확인된 0%"가 헷갈릴 위험이 있다).
+function getTargetProjectionFeeRate(target) {
+  const feeRates = state.projection.customFeeRates || {};
+  if (target.type === 'ticker') {
+    const key = buildCustomRateKey(target.ticker, target.label);
+    return key && feeRates[key] !== undefined ? num(feeRates[key]) : 0;
+  }
+  if (target.type === 'namedHolding') {
+    const key = buildCustomRateKey('', target.name);
+    return key && feeRates[key] !== undefined ? num(feeRates[key]) : 0;
+  }
+  const groupKey = getProjectionGroupKey(target.category);
+  return feeRates[groupKey] !== undefined ? num(feeRates[groupKey]) : 0;
+}
+// 자산 객체(보유 자산) 하나의 운용보수 - getAssetProjectionRate(수익률)와 동일한 대응 함수.
+function getAssetProjectionFeeRate(asset) {
+  return getTargetProjectionFeeRate({ type: 'ticker', ticker: asset.ticker, label: asset.name });
+}
+// 지역(국내/해외) 하나의 목표 배분 "내에서"의 가중평균 운용보수(%) - computeRegionWeightedRate(수익률)와
+// 완전히 동일한 구조. Fee는 프리셋(보수/일반/긍정)에 따라 달라지지 않으므로 presetKey 인자가 없다.
+// 선형(가중평균) 계산이 상관관계·분산 효과가 있는 σ와 달리 Fee에는 수학적으로 정확하다(비용은 그냥
+// 잔고에 비례해 빠져나가는 값이라 "분산 효과"라는 개념 자체가 없다).
+function computeRegionWeightedFeeRate(owner, region) {
+  const targets = expandRebalanceTargetsForComputation(owner, region);
+  const sumPct = targets.reduce((s, t) => s + num(t.pct), 0);
+  if (sumPct === 0) return 0;
+  let weighted = 0;
+  targets.forEach((t) => { weighted += (num(t.pct) / sumPct) * getTargetProjectionFeeRate(t); });
+  return weighted;
+}
+// [월적립금 설정] 배분 종목 하나의 운용보수 - getMonthlyAllocationItemRate(수익률)와 동일한 대응 함수.
+function getMonthlyAllocationItemFeeRate(item) {
+  return getTargetProjectionFeeRate({ type: 'ticker', ticker: item.ticker, label: item.label });
+}
+
+// [Phase 3-4] computeFutureValueWithContributionGrowth(성장률 반영, 이미 fee=0과 bit-identical하도록
+// 방어됨)에 Fee까지 접어 넣는다 - Gross Return을 직접 수정하지 않는다는 원칙을 지키기 위해, "그로스
+// 월수익률"과 "월별 fee 배율"을 곱한 하나의 "유효 월성장률"을 구한 뒤, 이를 다시 "연율(%)" 표현으로
+// 되돌려 기존 computeFutureValueWithContributionGrowth에 그대로 넘긴다(그 함수/computeFutureValue
+// 자체는 한 글자도 안 바뀐다). feeRateAnnual=0이면 반드시 기존 함수를 그대로(분기) 호출해 부동소수점
+// 오차 없이 bit-identical을 보장한다(회귀테스트 필수 요구사항).
+function computeFutureValueWithContributionGrowthAndFee(pv, annualRatePct, years, initialMonthlyContribution, contributionGrowthRate, feeRateAnnual) {
+  if (Math.abs(feeRateAnnual || 0) < 1e-9) {
+    return computeFutureValueWithContributionGrowth(pv, annualRatePct, years, initialMonthlyContribution, contributionGrowthRate);
+  }
+  const grossMonthlyRate = annualRatePct / 100 / 12;
+  const feeMonthlyFactor = computeMonthlyFeeFactor(feeRateAnnual);
+  const effectiveMonthlyGrowth = (1 + grossMonthlyRate) * feeMonthlyFactor;
+  const effectiveAnnualRatePct = (effectiveMonthlyGrowth - 1) * 1200;
+  return computeFutureValueWithContributionGrowth(pv, effectiveAnnualRatePct, years, initialMonthlyContribution, contributionGrowthRate);
 }
 
 // [범용 키워드 자동매칭 - 요청 반영] "수익률 관리"에서 어떤 대표매칭 키에든(BOND/BOND.STOCK/부동산/
@@ -1583,17 +1668,21 @@ function simulateRebalancedPreset(presetKey, maxYears) {
       '해외': totalValue * num(state.rebalance[owner].domestic['해외']) / 100
     };
     const regionRate = { '국내': computeRegionWeightedRate(owner, '국내', presetKey), '해외': computeRegionWeightedRate(owner, '해외', presetKey) };
+    // [Phase 3-4] 지역별 가중평균 운용보수 - regionRate와 완전히 같은 방식(가중평균)으로 구한다.
+    const regionFeeRate = { '국내': feePercentToDecimal(computeRegionWeightedFeeRate(owner, '국내')), '해외': feePercentToDecimal(computeRegionWeightedFeeRate(owner, '해외')) };
     const { monthlyContribution, allocation } = getOwnerMonthlyContributionInputs(owner);
-    return { totalValue, regionPV, regionRate, monthlyContribution, allocation };
+    return { totalValue, regionPV, regionRate, regionFeeRate, monthlyContribution, allocation };
   });
-  const principalFutureValue = (calc, region, y) => computeFutureValue(calc.regionPV[region], calc.regionRate[region], y, 0);
+  // [Phase 3-4] 원금(신규 납입 없음)도 Fee를 적용한다 - contributionGrowthRate는 PMT=0이라 의미가
+  // 없지만(계산에 영향 없음), 동일한 fee-aware 함수를 재사용해 이 값도 Monte Carlo와 같은 가정을 쓴다.
+  const principalFutureValue = (calc, region, y) => computeFutureValueWithContributionGrowthAndFee(calc.regionPV[region], calc.regionRate[region], y, 0, 0, calc.regionFeeRate[region]);
   const yearlyPoints = [];
   for (let y = 0; y <= maxYears; y++) {
     let domestic = 0, foreign = 0, contribution = 0;
     ownerCalcs.forEach((calc) => {
       domestic += principalFutureValue(calc, '국내', y);
       foreign += principalFutureValue(calc, '해외', y);
-      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation);
+      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate);
     });
     yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
   }
@@ -1735,6 +1824,8 @@ function updateProjection() {
   updateMonthlyContributionSummary();
   const inflationRate = num(document.getElementById('inflationRateInput').value);
   state.projection.inflationRate = inflationRate;
+  // [Phase 3-3] inflationRate와 동일한 재동기화 패턴.
+  state.projection.contributionGrowthRate = num(document.getElementById('contributionGrowthRateInput').value);
 
   const milestoneOffsets = getMilestoneYearOffsets(); // [5, 10, 15, 20, 25, 30] - 항상 고정
 
@@ -1802,8 +1893,12 @@ function updateProjection() {
   renderScenarioCompareScheduleTable(totalCompareRows, totalScenarioData, 'totalAssetCompareScheduleHead', 'totalAssetCompareScheduleBody');
   reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
 
-  // ===== [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션 =====
-  renderMonteCarloSection();
+  // ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3, js/19) =====
+  // [자동 실행 제거] 예전엔 이 렌더가 호출될 때마다(탭 진입/데이터 변경마다) renderMonteCarloSection()이
+  // 자동으로 스칼라 시뮬레이션을 돌렸다 - 새 엔진은 Worker로 수 초~수십 초 걸릴 수 있어 자동 실행하지
+  // 않고 사용자가 [Monte Carlo 실행] 버튼을 눌러야 시작된다(js/19). 여기서는 화면을 READY 상태로
+  // 되돌리기만 한다(직전 실행 중이던 결과가 다른 탭/데이터 상태에 남아 혼동을 주지 않도록).
+  if (typeof resetMonteCarloUiToReady === 'function') resetMonteCarloUiToReady();
 }
 
 /* -------------------------------------------------------------------------
@@ -1850,7 +1945,10 @@ function computeOwnerTargetInstrumentWeights(owner) {
       const key = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}`
         : t.type === 'namedHolding' ? `N:${region}:${t.name}`
         : `C:${region}:${t.category}`;
-      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, region };
+      // label: [Monte Carlo Engine v2 어댑터 지원] getTargetProjectionRate(target, presetKey, region)가
+      // 티커형 목표의 사용자 정의 오버라이드/키워드 매칭에 target.label을 쓴다(js/05:379) - 이 필드가
+      // 없으면 어댑터가 이 Map에서 원본 t 없이 뽑아낸 값만으로는 그 매칭을 재현할 수 없었다.
+      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, label: t.label, region };
       prev.weight += rowWeight;
       weights.set(key, prev);
     });
@@ -1883,16 +1981,24 @@ function computeHouseholdTargetInstrumentWeights() {
 // 만들지 않는다 - 그 비중만큼 가중합에서 빠지므로 자연히 "변동성 0인 자산이 섞여 전체를 희석"하는
 // 효과가 그대로 반영된다(별도 희석 계수를 곱할 필요가 없다). 가격 이력이 부족한 항목도 같은 방식으로
 // 안전하게 제외된다(예외 없이 계속 진행).
-async function computeTargetPortfolioVolatilityPct() {
+// [Monte Carlo Engine v2 어댑터 지원 - 추출] 예전엔 이 정보(자산별 개별 returns/dates)를 모아서
+// 바로 포트폴리오 하나로 뭉개버렸는데(가중합산 후 스칼라 변동성 하나만 반환), js/16 어댑터가 종목별
+// 변동성/날짜정렬 상관관계를 계산하려면 뭉개기 "전" 단계의 개별 시계열이 필요하다. 이 함수가 그 개별
+// 시계열(키 포함, computeHouseholdTargetInstrumentWeights와 동일한 T:/N:/C: 키 체계)을 그대로 반환하고,
+// 아래 computeTargetPortfolioVolatilityPct()는 이 함수를 호출해 가중합산만 하는 얇은 wrapper로 남아
+// 기존 호출부(요약 카드의 σ 텍스트 등)의 동작·반환값은 전혀 바뀌지 않는다.
+async function buildHouseholdInstrumentReturnSeries() {
   const weightsMap = computeHouseholdTargetInstrumentWeights();
   const withReturns = [];
   const tasks = [];
-  weightsMap.forEach((v) => {
+  weightsMap.forEach((v, key) => {
     if (v.kind === 'ticker') {
       tasks.push((async () => {
         const yahoo = sanitizeTicker(v.ticker).yahooTicker;
         const data = await getCachedDailyCloses(yahoo);
-        if (data && data.closes.length >= 10) withReturns.push({ weight: v.weight, returns: dailyReturnsFromCloses(data.closes) });
+        if (data && data.closes.length >= 10) {
+          withReturns.push({ key, weight: v.weight, returns: dailyReturnsFromCloses(data.closes), dates: data.dates || null, closes: data.closes });
+        }
       })());
       return;
     }
@@ -1906,10 +2012,24 @@ async function computeTargetPortfolioVolatilityPct() {
     const indexTicker = v.region === '해외' ? INDEX_TICKERS.SP500 : INDEX_TICKERS.KOSPI;
     tasks.push((async () => {
       const data = await getCachedDailyCloses(indexTicker);
-      if (data && data.closes.length >= 10) withReturns.push({ weight: v.weight, returns: dailyReturnsFromCloses(data.closes) });
+      if (data && data.closes.length >= 10) {
+        withReturns.push({ key, weight: v.weight, returns: dailyReturnsFromCloses(data.closes), dates: data.dates || null, closes: data.closes });
+      }
     })());
   });
   await Promise.all(tasks);
+  return withReturns;
+}
+
+// 목표 비중 Map을 실제 일별 수익률 시계열과 짝지어 "포트폴리오 목표 비중 기준" 연환산 변동성(%)을
+// 계산한다. 티커는 그 종목의 캐시된 종가(getCachedDailyCloses, js/09 - RISK 카드와 캐시를 공유해
+// 중복 조회하지 않음)를 쓰고, '주식' 캐치올처럼 특정 종목이 없는 항목은 지역 대표지수(KOSPI/S&P500)로
+// 대체한다(μ 계산의 getTargetProjectionRate 지역 폴백 규칙과 동일). 채권/현금은 수익률 시계열 자체를
+// 만들지 않는다 - 그 비중만큼 가중합에서 빠지므로 자연히 "변동성 0인 자산이 섞여 전체를 희석"하는
+// 효과가 그대로 반영된다(별도 희석 계수를 곱할 필요가 없다). 가격 이력이 부족한 항목도 같은 방식으로
+// 안전하게 제외된다(예외 없이 계속 진행).
+async function computeTargetPortfolioVolatilityPct() {
+  const withReturns = await buildHouseholdInstrumentReturnSeries();
   if (withReturns.length === 0) return 0;
   const minLen = Math.min(...withReturns.map((h) => h.returns.length));
   if (minLen < 10) return 0;
@@ -2084,6 +2204,15 @@ function renderMonteCarloChart(points, milestoneOffsets) {
 
 document.getElementById('inflationRateInput').addEventListener('input', (e) => {
   state.projection.inflationRate = num(e.target.value);
+  persistProjection();
+  updateProjection();
+});
+
+// [Phase 3-3] inflationRateInput과 동일한 배선 패턴 - 음수는 이 화면의 일반 사용자 입력 정책상 막는다
+// (min="0"은 HTML 레벨 방어일 뿐이라, 스핀버튼 없이 직접 "-3" 입력 후 blur하는 경우까지 막으려면
+// 여기서도 한 번 더 clamp해야 한다).
+document.getElementById('contributionGrowthRateInput').addEventListener('input', (e) => {
+  state.projection.contributionGrowthRate = Math.max(0, num(e.target.value));
   persistProjection();
   updateProjection();
 });
@@ -2310,7 +2439,11 @@ function getMonthlyAllocationItemRate(item, presetKey) {
 // 목표 비중 비율대로 지역 가중평균 수익률(regionRate)로 계산한다. 배분이 비어 있으면(기본값) 나머지가
 // 100%가 되어 이전 동작과 수학적으로 완전히 동일하다(computeFutureValue가 PV/PMT에 대해 선형이라
 // "원금 따로 + 적립금 따로" 계산과 "합쳐서 한 번에" 계산이 같은 결과를 낸다).
-function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList) {
+function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate) {
+  // [Phase 3-3 통합 감사] Monte Carlo와 동일한 state.projection.contributionGrowthRate를 여기서도
+  // 그대로 읽는다 - state.projection.monthlyContributionAllocation을 이미 이 함수가 직접 읽고 있는
+  // 것과 같은 방식(새 파라미터를 여러 호출부에 추가로 꿰어넣지 않는다).
+  const growthRate = num(state.projection.contributionGrowthRate) / 100;
   const allocation = (allocationList || state.projection.monthlyContributionAllocation).filter((it) => num(it.pct) > 0);
   const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
   const remainderPct = Math.max(0, 100 - allocatedPct);
@@ -2318,15 +2451,20 @@ function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regio
   let total = 0;
   allocation.forEach((item) => {
     const rate = getMonthlyAllocationItemRate(item, presetKey);
+    const feeRate = feePercentToDecimal(getMonthlyAllocationItemFeeRate(item)); // [Phase 3-4]
     const itemMonthly = monthlyContribution * num(item.pct) / 100;
-    total += computeFutureValue(0, rate, y, itemMonthly);
+    total += computeFutureValueWithContributionGrowthAndFee(0, rate, y, itemMonthly, growthRate, feeRate);
   });
 
   if (remainderPct > 0) {
     const remainderMonthly = monthlyContribution * remainderPct / 100;
     ['국내', '해외'].forEach((region) => {
       const share = totalValue !== 0 ? regionPV[region] / totalValue : 0;
-      total += computeFutureValue(0, regionRate[region], y, remainderMonthly * share);
+      // [Phase 3-4] regionFeeRate가 없으면(하위호환 - 이 함수를 다른 곳에서 옛 시그니처로 호출하는
+      // 경우) 0%로 취급한다 - fee=0은 기존 함수(computeFutureValueWithContributionGrowth)로 정확히
+      // bit-identical 폴백되므로 안전하다.
+      const feeRate = (regionFeeRate && regionFeeRate[region]) || 0;
+      total += computeFutureValueWithContributionGrowthAndFee(0, regionRate[region], y, remainderMonthly * share, growthRate, feeRate);
     });
   }
   return total;

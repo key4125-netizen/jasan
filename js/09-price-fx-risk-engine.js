@@ -633,14 +633,20 @@ async function fetchDailyCloses(yahooTicker, range = '1y') {
     const quote = (result && result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
     const rawCloses = quote.close || [];
     const rawVolumes = quote.volume || [];
-    const closes = [], volumes = [];
+    const rawTimestamps = result && result.timestamp || [];
+    const closes = [], volumes = [], dates = [];
+    // [Monte Carlo Engine v2 어댑터 지원 - 날짜 추가] 예전엔 종가/거래량만 남기고 날짜(timestamp)는
+    // 버렸다 - 그 결과 한국/미국처럼 거래일이 다른 시장을 섞으면 상관계수 계산이 "실제 같은 날짜끼리"가
+    // 아니라 "최근 N개를 그냥 나란히"로 계산돼(js/15 date-aligned correlation 도입 배경) 부정확했다.
+    // dates를 함께 반환해도 기존 호출부(closes/volumes만 쓰는 곳)는 전혀 영향받지 않는다(필드 추가만).
     rawCloses.forEach((c, i) => {
-      if (typeof c !== 'number') return; // 종가 없는 날(휴장 등)은 거래량도 함께 건너뛰어 인덱스를 맞춘다
+      if (typeof c !== 'number') return; // 종가 없는 날(휴장 등)은 거래량/날짜도 함께 건너뛰어 인덱스를 맞춘다
       closes.push(c);
       volumes.push(typeof rawVolumes[i] === 'number' ? rawVolumes[i] : 0);
+      dates.push(typeof rawTimestamps[i] === 'number' ? new Date(rawTimestamps[i] * 1000).toISOString().slice(0, 10) : null);
     });
     if (closes.length < 10) throw new Error('종가 데이터 부족');
-    return { closes, volumes };
+    return { closes, volumes, dates };
   });
   try {
     return await Promise.any(attempts.map((fn) => fn()));

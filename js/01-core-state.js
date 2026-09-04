@@ -550,7 +550,12 @@ const state = {
   // js/05 참고) - 마이그레이션으로 값을 자동 복사하지 않고, [월적립금 설정] 팝업을 처음 열 때만 기존
   // 단일 값을 편집 초안의 시작점으로 미리 채워 보여준다(저장 전까지는 기존 계산 결과에 영향 없음).
   // updatedAt: rebalance와 동일한 이유(위 주석 참고) - 필드 단위 최신성 비교용.
-  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
+  // contributionGrowthRate: [Phase 3-3] 연간 납입액 증가율(%) - 기본 0%면 기존과 완전히 동일(매월
+  // 동일 금액 납입). Monte Carlo 현금흐름 전용이며 수익률(μ/σ/상관관계)에는 전혀 섞이지 않는다.
+  // customFeeRates: [Phase 3-4] 사용자가 "운용보수 관리"에서 직접 등록한 종목/카테고리별 연간 운용보수(%,
+  // customScenarioRates와 같은 key 체계 - buildCustomRateKey 재사용). 등록 안 된 종목은 0%로 계산된다 -
+  // 확인 안 된 보수율을 임의로 추정해 채워 넣지 않는다(요청 반영).
+  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -1116,6 +1121,7 @@ function loadState() {
         monthlyContribution: num(parsed.monthlyContribution),
         categoryReturns: parsed.categoryReturns || {},
         inflationRate: (parsed.inflationRate !== undefined && parsed.inflationRate !== null && parsed.inflationRate !== '') ? num(parsed.inflationRate) : 2.5,
+        contributionGrowthRate: (parsed.contributionGrowthRate !== undefined && parsed.contributionGrowthRate !== null && parsed.contributionGrowthRate !== '') ? num(parsed.contributionGrowthRate) : 0,
         // [하위호환 마이그레이션] 예전 scenario2TickerRates(QQQM/SPYM/SCHD 3종목 한정 수동 오버라이드)에
         // 값이 남아있는 기기라면, 새 customScenarioRates 체계로 1회 자동 이전한다(이미 새 키가 있으면
         // 덮어쓰지 않음 - 사용자가 새 모달에서 이미 수정했을 수 있으므로).
@@ -1140,6 +1146,7 @@ function loadState() {
           });
           return migrated;
         })(),
+        customFeeRates: parsed.customFeeRates || {}, // [Phase 3-4] 미등록 종목은 0%(기본값)로 계산됨
         // [절세계좌 적립 예상 - 하위호환] normalizeTaxAdvantagedPlan이 필드 부재/구버전 단일 years 구조를
         // 모두 안전하게 새 yearsByOwner 구조로 채워준다.
         taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.taxAdvantagedPlan),

@@ -630,7 +630,9 @@ function adoptRemoteRebalanceAndProjection(parsed, opts) {
       monthlyContribution: num(parsed.projection.monthlyContribution),
       categoryReturns: parsed.projection.categoryReturns || {},
       inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
+      contributionGrowthRate: (parsed.projection.contributionGrowthRate !== undefined && parsed.projection.contributionGrowthRate !== null && parsed.projection.contributionGrowthRate !== '') ? num(parsed.projection.contributionGrowthRate) : 0,
       customScenarioRates: parsed.projection.customScenarioRates || {},
+      customFeeRates: parsed.projection.customFeeRates || {}, // [Phase 3-4]
       // [버그 수정 - 복원/동기화 후 절세계좌 계획 소실] 이 필드가 빠져 있으면 state.projection.
       // taxAdvantagedPlan이 undefined가 되어 updateProjection()이 즉시 TypeError로 죽는다 - loadState와
       // 동일한 normalizeTaxAdvantagedPlan(js/01)으로 안전하게 채운다.
