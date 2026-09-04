@@ -25,13 +25,29 @@ function mcNextRequestId() {
 
 // input(엔진 표준 입력) 자체는 이미 만들어져 있다고 가정한다(어댑터 호출은 startMonteCarloRun에서
 // 먼저 처리) - 이 함수는 그 input을 실제로 Worker에 태워 실행하는 부분만 담당한다.
-function launchMonteCarloWorker(requestId, mode, input, callbacks) {
+// safetyContext: { preflightSafety, correlationDiagnostics } - COMPLETED 시점에 post-hoc(PSD 보정/
+// 시뮬레이션 신뢰도) safety를 계산해 preflight safety와 합쳐 최종 safety를 만드는 데 쓴다.
+function launchMonteCarloWorker(requestId, mode, input, callbacks, safetyContext) {
   const worker = new Worker('js/17-monte-carlo-worker.js');
   mcActiveWorker = worker;
   mcActiveCallbacks = callbacks;
+  safetyContext = safetyContext || {};
+
+  // [조건부승인 항목 11 - Worker Hang Timeout] 실측(10-instrument/50,000회/20년, 메인스레드 기준
+  // 약 10.3초) 대비 6배 여유를 둔 SAFETY_THRESHOLDS.WORKER_TIMEOUT_MS(60초)까지 어떤 메시지도 오지
+  // 않으면 무한 대기 대신 명확한 WORKER_TIMEOUT으로 종료한다.
+  const timeoutMs = (typeof SAFETY_THRESHOLDS !== 'undefined' && SAFETY_THRESHOLDS.WORKER_TIMEOUT_MS) || 60000;
+  const timeoutTimer = setTimeout(() => {
+    if (requestId !== mcActiveRequestId) return;
+    mcState = MC_WORKER_STATE.FAILED;
+    callbacks.onFailed && callbacks.onFailed({ code: 'WORKER_TIMEOUT', message: `계산이 ${Math.round(timeoutMs / 1000)}초 안에 끝나지 않아 중단되었습니다.` });
+    worker.terminate();
+  }, timeoutMs);
+  function clearWorkerTimeout() { clearTimeout(timeoutTimer); }
 
   worker.onerror = (event) => {
     if (requestId !== mcActiveRequestId) return; // stale
+    clearWorkerTimeout();
     mcState = MC_WORKER_STATE.FAILED;
     callbacks.onFailed && callbacks.onFailed({ code: 'WORKER_ERROR', message: event.message || 'Worker 내부 오류' });
     worker.terminate();
@@ -46,14 +62,40 @@ function launchMonteCarloWorker(requestId, mode, input, callbacks) {
       if (mcState !== MC_WORKER_STATE.RUNNING) return; // COMPLETED 등 이후 도착한 진행률은 무시(요청 F/G)
       callbacks.onProgress && callbacks.onProgress(msg.completed, msg.total, msg.progress);
     } else if (msg.type === 'COMPLETED') {
+      clearWorkerTimeout();
       mcState = MC_WORKER_STATE.COMPLETED;
+      // [Phase 3-5 - Result Safety(post-hoc modelRisk)] PSD correction/시뮬레이션 신뢰도는 엔진이 실제로
+      // 돌기 전까지는 알 수 없다 - 여기서 계산해 preflight safety(fee/return/weight-sum 등)와 합친다.
+      // [값은 절대 바꾸지 않는다] msg.result 자체는 그대로 두고 safety 필드만 추가한다.
+      const diagnostics = msg.result && msg.result.diagnostics;
+      const modelRiskIssues = [];
+      const psdIssue = (typeof assessPSDCorrection === 'function') ? assessPSDCorrection(diagnostics) : null;
+      if (psdIssue) modelRiskIssues.push(psdIssue);
+      const lastMilestone = msg.result && msg.result.milestones && msg.result.milestones[msg.result.milestones.length - 1];
+      if (lastMilestone && lastMilestone.goalProbability && typeof assessSimulationConfidence === 'function') {
+        const confIssue = assessSimulationConfidence(msg.result.simulations, lastMilestone.goalProbability);
+        if (confIssue) modelRiskIssues.push(confIssue);
+      }
+      if (lastMilestone && typeof assessResultSpread === 'function') {
+        const spreadIssue = assessResultSpread(lastMilestone.p10, lastMilestone.p50, lastMilestone.p90);
+        if (spreadIssue) modelRiskIssues.push(spreadIssue);
+      }
+      if (typeof explainResultAlwaysOn === 'function') modelRiskIssues.push(explainResultAlwaysOn());
+
+      const preflight = safetyContext.preflightSafety || { issues: [], dataQuality: { issues: [] }, modelRisk: { issues: [] } };
+      const finalSafety = (typeof buildSafetyResult === 'function')
+        ? buildSafetyResult(preflight.issues, preflight.dataQuality.issues, modelRiskIssues)
+        : null;
+      msg.result.safety = finalSafety;
       callbacks.onCompleted && callbacks.onCompleted(msg.result);
       worker.terminate();
     } else if (msg.type === 'CANCELLED') {
+      clearWorkerTimeout();
       mcState = MC_WORKER_STATE.CANCELLED;
       callbacks.onCancelled && callbacks.onCancelled();
       worker.terminate();
     } else if (msg.type === 'FAILED') {
+      clearWorkerTimeout();
       mcState = MC_WORKER_STATE.FAILED;
       callbacks.onFailed && callbacks.onFailed(msg.error);
       worker.terminate();
@@ -84,6 +126,22 @@ async function startMonteCarloRun(params, callbacks) {
     return;
   }
 
+  // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] 목표 비중 오류/Fee 범위 오류/변동성 음수 등 BLOCK
+  // 등급 issue가 하나라도 있으면 Worker를 아예 띄우지 않는다("계산 시작 전" - Step 5). errors(위)와
+  // 달리 safety.issues는 코드별로 세분화된 code를 그대로 넘겨 UI가 "무엇이 문제인지" 구체적으로 보여줄
+  // 수 있게 한다(예전엔 전부 DATA_ERROR 하나로 뭉개졌음 - 조건부승인 항목 12).
+  if (adapterResult.safety && adapterResult.safety.status === 'BLOCK') {
+    mcState = MC_WORKER_STATE.FAILED;
+    const blockIssues = adapterResult.safety.issues.filter((i) => i.severity === 'BLOCK')
+      .concat(adapterResult.safety.dataQuality.issues.filter((i) => i.severity === 'BLOCK'));
+    callbacks.onFailed && callbacks.onFailed({
+      code: blockIssues[0] ? blockIssues[0].code : 'SAFETY_BLOCK',
+      message: blockIssues.map((i) => i.message).join('; '),
+      safetyIssues: blockIssues
+    });
+    return;
+  }
+
   const input = {
     instruments: adapterResult.instruments,
     correlationMatrix: adapterResult.correlationMatrix,
@@ -103,7 +161,7 @@ async function startMonteCarloRun(params, callbacks) {
     return;
   }
 
-  launchMonteCarloWorker(requestId, params.mode || 'official', input, callbacks);
+  launchMonteCarloWorker(requestId, params.mode || 'official', input, callbacks, { preflightSafety: adapterResult.safety });
   return requestId;
 }
 

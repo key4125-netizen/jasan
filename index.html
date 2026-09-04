@@ -1134,6 +1134,9 @@
 
   <!-- ============================= 금융자산 미래예측 (서브탭: 미래 예측) ============================= -->
   <div id="tabPanelProjection" class="hidden">
+    <!-- [Phase 3-5 Safety Layer - B3] 목표 비중 합계가 깨진 경우(assessHouseholdWeightSums, js/21/js/05
+         updateProjection) 계산 자체를 막고 이 배너만 보여준다 - 자동으로 비중을 재정규화하지 않는다. -->
+    <div id="projectionSafetyBlockBanner" class="hidden mb-3 p-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs space-y-1"></div>
     <!-- ===== [3가지 시나리오 동시 비교 - 구조 개편] =====
          PROJECTION_SCENARIOS 배열(목표배분-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
          그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
@@ -1363,6 +1366,10 @@
 
       <button type="button" id="mcRunBtn" class="w-full py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
       <button type="button" id="mcCancelBtn" class="hidden w-full py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
+
+      <!-- [Phase 3-5 Safety Layer] BLOCK 실패 시(비중 합계 오류 등)와 WARNING/INFO(Fee 미확인, 극단
+           가정, 데이터 품질, PSD 보정 등)를 여기 하나에 모아 3단 구조 카드로 보여준다 - js/22 renderSafetyIssueList. -->
+      <div id="mcSafetyIssues" class="hidden mt-3"></div>
 
       <div id="mcProgressArea" class="hidden mt-3">
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
@@ -2564,5 +2571,7 @@
 <script src="js/18-monte-carlo-controller.js"></script>
 <script src="js/19-monte-carlo-ui.js"></script>
 <script src="js/20-inflation-transform.js"></script>
+<script src="js/21-safety-layer.js"></script>
+<script src="js/22-safety-ui.js"></script>
 </body>
 </html>

@@ -298,6 +298,23 @@ function getTargetProjectionFeeRate(target) {
   const groupKey = getProjectionGroupKey(target.category);
   return feeRates[groupKey] !== undefined ? num(feeRates[groupKey]) : 0;
 }
+// [Phase 3-5 Safety Layer - F. Fee UNKNOWN 처리] "명시적으로 0% 설정"과 "아예 미설정"을 구분하는
+// 병행 조회 함수 - 스키마는 그대로 둔다(customFeeRates[key]가 존재하면 명시적 설정, 없으면 UNKNOWN).
+// getTargetProjectionFeeRate의 반환값(항상 숫자, 0 포함)은 이 함수와 무관하게 그대로 유지된다 - 이
+// 함수는 오직 Safety Layer가 "Fee 미확인" 경고를 붙일지 판단하는 데만 쓰인다.
+function isFeeExplicitlySet(target) {
+  const feeRates = state.projection.customFeeRates || {};
+  if (target.type === 'ticker') {
+    const key = buildCustomRateKey(target.ticker, target.label);
+    return !!key && feeRates[key] !== undefined;
+  }
+  if (target.type === 'namedHolding') {
+    const key = buildCustomRateKey('', target.name);
+    return !!key && feeRates[key] !== undefined;
+  }
+  const groupKey = getProjectionGroupKey(target.category);
+  return feeRates[groupKey] !== undefined;
+}
 // 자산 객체(보유 자산) 하나의 운용보수 - getAssetProjectionRate(수익률)와 동일한 대응 함수.
 function getAssetProjectionFeeRate(asset) {
   return getTargetProjectionFeeRate({ type: 'ticker', ticker: asset.ticker, label: asset.name });
@@ -1817,6 +1834,17 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
 }
 
 function updateProjection() {
+  // [Phase 3-5 Safety Layer - B3] 목표 비중 합계가 깨져 있으면(±1%p 초과) 계산 자체를 시작하지 않고
+  // 배너만 보여준다 - 자동으로 비중을 재정규화하지 않는다(사용자 지시). Monte Carlo(js/16 어댑터)도
+  // 정확히 같은 assessHouseholdWeightSums()를 쓰므로 두 계산 경로가 항상 같은 기준으로 막힌다.
+  const weightSumIssues = assessHouseholdWeightSums();
+  const blockBanner = document.getElementById('projectionSafetyBlockBanner');
+  if (weightSumIssues.length > 0) {
+    if (typeof renderSafetyBlockBanner === 'function') renderSafetyBlockBanner(blockBanner, weightSumIssues);
+    return; // [계산 시작 전 BLOCK] 이 아래 렌더 함수들을 전혀 호출하지 않는다 - 새 숫자를 만들지 않음
+  }
+  if (blockBanner) blockBanner.classList.add('hidden');
+
   // [소유자별 독립 원금/적립금 - Option B] 예전엔 여기서 가구 합산 원금(totalValueForRebalance)과 단일
   // monthlyContribution을 미리 구해 simulateRebalancedPreset에 넘겼으나, 이제 그 함수가 owner별로
   // 자기 자신의 원금·적립금을 내부에서 직접 계산하므로(getProjectionGroupStats(owner),
@@ -1954,6 +1982,33 @@ function computeOwnerTargetInstrumentWeights(owner) {
     });
   });
   return weights;
+}
+// [Phase 3-5 Safety Layer - B3] 목표 비중 합계 판정 - state.rebalance[owner].targets[region] 원본을
+// 직접 검사한다. computeOwnerTargetInstrumentWeights/computeHouseholdTargetInstrumentWeights(Monte
+// Carlo가 쓰는 파생 맵)와 expandRebalanceTargetsForComputation(Future Projection의
+// simulateRebalancedPreset이 쓰는 함수, js/04)이 전부 이 원본 배열을 읽으므로, 여기서 검사하면 두
+// 계산 경로 모두에 동일한 기준이 적용된다(조건부승인 항목 14 - Deterministic ↔ Monte Carlo 일관성).
+// 목표가 하나도 없는 owner/region은 건너뛴다(미설정은 "비중 합계 오류"와 다른 별개 상태).
+// [B3 후속수정 - 개별 음수 비중] 합계만 검사하면 [-20,120](합=100)처럼 개별 항목의 음수가 tolerance를
+// 통과해 숨을 수 있다(sanity check로 실측 확인됨: MC 경로는 이런 음수 항목을 조용히 제외하고 Deterministic
+// 경로는 그대로 음수 가중치로 포함시켜 서로 다른 결과를 냈다) - 그래서 합계 검사와 별개로 각 항목의
+// pct 부호도 반드시 함께 검사한다. 이 함수 하나가 js/05(updateProjection)/js/16(어댑터) 두 호출부의
+// 유일한 진입점이므로, 여기 한 곳만 고치면 두 계산 경로 모두에 즉시 적용된다.
+function assessHouseholdWeightSums() {
+  const regionSums = [];
+  const individualItems = [];
+  REBALANCE_OWNERS.forEach((owner) => {
+    ['국내', '해외'].forEach((region) => {
+      const targets = (state.rebalance[owner].targets && state.rebalance[owner].targets[region]) || [];
+      if (targets.length === 0) return;
+      const sumPct = targets.reduce((s, t) => s + num(t.pct), 0);
+      regionSums.push({ owner, region, sumPct });
+      targets.forEach((t) => {
+        individualItems.push({ owner, region, label: t.label || t.name || t.ticker || t.category || '', pct: num(t.pct) });
+      });
+    });
+  });
+  return assessWeightSums(regionSums).concat(assessIndividualWeightSigns(individualItems));
 }
 // 가구 전체 목표 비중 - computeTargetWeightedAvgRate(위쪽)와 동일한 가중 방식(각 owner의 목표 비중을
 // 그 owner의 현재 원금 비중으로 가중평균)으로 두 owner의 목표를 하나로 합친다. μ 계산과 같은 가중
