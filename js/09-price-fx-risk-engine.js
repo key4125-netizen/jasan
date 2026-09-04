@@ -620,6 +620,12 @@ function riskEligibleAssets() {
  * ---------------------------------------------------------------------- */
 // 최근 N개월 일별 종가+거래량 - fetchMa20()과 동일한 다중 프록시 경쟁 패턴이며, range만 다르다(기본
 // 1년 - 52주 최고가/거래량 이동평균까지 한 번의 조회로 함께 커버하기 위해 6개월에서 1년으로 늘렸다).
+// [Phase 6-B/6-C 감사 - 데이터 기준 문서화] quote.close는 Yahoo Finance의 비수정(non-adjusted)
+// 종가다 - 배당 재투자를 반영한 Adjusted Close가 아니라 순수 Price Return 기준이며, 이 값이 Monte
+// Carlo 엔진(js/15/16)의 변동성·상관관계 계산의 유일한 원천이다. 기본 range='1y'가 사실상 모든
+// 호출부에서 그대로 쓰이므로(range를 명시적으로 override하는 호출부 없음), 변동성·상관관계는
+// 최근 약 1년치 일별 데이터로만 추정된다 - js/05 SCENARIO_RATE_PRESETS 주석의 Price/Total Return
+// 문서화와 함께 참고할 것.
 async function fetchDailyCloses(yahooTicker, range = '1y') {
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
   // [v152 수정 되돌림] 여기도 7초로 줄였다가 fetchYahooViaProxy와 같은 이유로 되돌린다 - 이 함수 역시
