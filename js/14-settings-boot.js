@@ -33,7 +33,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // 와이프 각각 독립 목표) - 예전엔 이 리셋 핸들러가 taxAdvantagedPlan/monthlyContributionAllocation도
   // 누락한 채 부분적으로만 초기화했는데, 이번에 손대는 김에 js/01의 기본값과 완전히 맞춘다.
   state.rebalance = { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() };
-  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, customScenarioRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } };
+  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라

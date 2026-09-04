@@ -1190,7 +1190,25 @@
           <i data-lucide="settings-2" class="w-3 h-3"></i> 수익률 관리
         </button>
       </div>
-      <input id="inflationRateInput" type="number" step="0.1" value="2.5" class="hidden">
+      <!-- [Phase 3-2 - 입력 노출] 예전엔 hidden이라 state.projection.inflationRate(기존 값, 기본 2.5%)를
+           읽고 저장하기만 할 뿐 사용자가 실제로 바꿀 방법이 없었다 - id/이벤트 리스너(js/05 하단
+           inflationRateInput 'input' 리스너, persistProjection() 포함)는 이미 정상 동작하므로 JS는
+           전혀 건드리지 않고 여기 표시만 켠다. -->
+      <div class="flex items-center gap-1.5 mt-1.5">
+        <label for="inflationRateInput" class="shrink-0 text-[11px] text-slate-400">인플레이션율</label>
+        <input id="inflationRateInput" type="number" step="0.1" min="0" value="2.5" class="w-16 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1">
+        <span class="text-[11px] text-slate-400">% · Monte Carlo 실질가치 환산에 사용됩니다</span>
+      </div>
+      <!-- [Phase 3-3] 연간 납입액 증가율 - 기본 0%(매월 동일 금액, 기존 동작과 동일). inflationRateInput과
+           동일한 패턴(State 양방향 동기화 + persistProjection, js/05)으로 배선한다. -->
+      <div class="flex items-center gap-1.5 mt-1.5">
+        <label for="contributionGrowthRateInput" class="shrink-0 text-[11px] text-slate-400">연간 납입액 증가율</label>
+        <!-- [Phase 3-3 통합감사] 상한(max)을 두지 않는다 - "50%"는 검증된 경제적 근거가 없는 임의의
+             숫자였다(감사 지적사항). 최솟값 0%만 강제하고, 비현실적으로 큰 값에 대한 경고는 향후
+             Safety Layer 설계 시 별도로 다룬다(Known Limitation 참고). -->
+        <input id="contributionGrowthRateInput" type="number" step="0.1" min="0" value="0" class="w-16 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1">
+        <span class="text-[11px] text-slate-400">% · 매년 월 적립금이 전년 대비 증가하는 비율(0%면 매월 같은 금액)</span>
+      </div>
       <span class="block mt-1.5 text-[11px] text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
     </div>
     <!-- [3개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
@@ -1286,50 +1304,113 @@
       </div>
     </section>
 
-    <!-- ===== [Part 5] 합산 포트폴리오 몬테카를로 시뮬레이션 (신설) =====
-         초기 원금(PV)은 가구 전체(일반계좌+절세계좌, 부동산 제외) 현재 평가금액 합계를 그대로 쓰지만,
-         기대수익률(μ)과 변동성(σ)은 "현재 실제 보유"가 아니라 '포트폴리오 구성' 탭에서 설정한 목표
-         비중(Targets)을 기준으로 산출한다 - 즉 "지금 이대로 두면"이 아니라 "앞으로 목표대로 리밸런싱해
-         나간다면"을 시뮬레이션한다. μ는 기존 computeTargetWeightedAvgRate 재사용, σ는 목표 비중별
-         실측 과거 시세를 합성한 computeTargetPortfolioVolatilityPct(js/05, 비동기)로 계산 -
-         부부 각자의 목표 비중을 자산 규모로 가중 합산하므로 특정 한 종목의 단기 쏠림이 20년 전망을
-         왜곡하지 않고, 목표 배분에 실제로 반영된 분산 효과가 그대로 드러난다. -->
+    <!-- ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3) =====
+         종목별 기대수익률(μ)·변동성(σ)·날짜정렬 상관관계를 반영한 Monthly Precision Monte Carlo가
+         공식 모델이다(js/15~18). 계산에 수 초~수십 초 걸릴 수 있어 자동 실행하지 않고 사용자가 직접
+         [Monte Carlo 실행] 버튼을 눌러야 시작된다(예전 버전은 렌더될 때마다 자동으로 돌았다) -
+         Web Worker에서 실행되어 계산 중에도 화면이 멈추지 않는다(js/17-monte-carlo-worker.js). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-3 sm:p-4 mb-4">
-      <h3 class="text-sm font-semibold flex items-center gap-1">🎲 합산 포트폴리오 몬테카를로 시뮬레이션</h3>
-      <p id="monteCarloDesc" class="text-[11px] text-slate-400 mt-0.5 mb-3">현재 평가금액을 원금으로, '포트폴리오 구성'에서 설정한 목표 비중 기준 기대수익률·변동성으로 확률 시뮬레이션(10,000회)한 P10(보수)~P90(낙관) 자산가치 범위를 보여줍니다.</p>
-      <div id="monteCarloLoadingNote" class="text-xs text-slate-400 py-6 text-center">변동성 데이터 계산 중...</div>
-      <div id="monteCarloContent" class="hidden">
-        <div class="grid grid-cols-3 gap-2 mb-3 text-center">
-          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
-            <p class="text-[10px] text-slate-400">적용 변동성(σ)</p>
-            <p id="monteCarloSigmaText" class="text-sm font-bold">-</p>
-          </div>
-          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
-            <p class="text-[10px] text-slate-400">적용 기대수익률(μ)</p>
-            <p id="monteCarloMuText" class="text-sm font-bold">-</p>
-          </div>
-          <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
-            <p class="text-[10px] text-slate-400">현재 원금</p>
-            <p id="monteCarloPvText" class="text-sm font-bold">-</p>
-          </div>
+      <h3 class="text-sm font-semibold flex items-center gap-1">🎲 Monte Carlo 미래자산 예측</h3>
+      <p class="text-[11px] text-slate-400 mt-0.5 mb-3">위 "시나리오별 예상자산"은 가정한 평균 수익률 하나로 계산한 단일 경로입니다. Monte Carlo는 종목별 변동성과 자산 간 상관관계를 반영해, 실제로 가능한 미래 경로들을 1만 번(선택 가능) 시뮬레이션한 확률 분포를 보여줍니다.</p>
+
+      <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 mb-3">
+        <p class="text-[11px] font-semibold text-slate-600 dark:text-slate-300">공식 모델: Monthly Precision Monte Carlo</p>
+        <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">시나리오</label>
+          <select id="mcPresetSelect" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+            <option value="conservative">보수적</option>
+            <option value="normal" selected>일반적</option>
+            <option value="optimistic">긍정적</option>
+          </select>
         </div>
-        <div class="relative h-64">
-          <canvas id="monteCarloChart"></canvas>
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">Simulation 횟수</label>
+          <select id="mcIterationsSelect" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+            <option value="5000">5,000회(Fast)</option>
+            <option value="10000" selected>10,000회(Standard)</option>
+            <option value="50000">50,000회(High Precision)</option>
+          </select>
         </div>
-        <div class="overflow-x-auto mt-3">
+      </div>
+      <div class="mb-3">
+        <label class="text-[10px] text-slate-400 block mb-1">목표금액(선택, 원)</label>
+        <input id="mcGoalAmountInput" type="number" inputmode="numeric" placeholder="예: 1000000000 (10억원)" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
+        <!-- [Phase 3-2] 명목/실질 중 어느 기준의 목표금액인지 - 기본값은 기존 동작과의 호환을 위해
+             명목(변환 없이 그대로 Engine에 전달)으로 둔다(js/19 참고). -->
+        <div class="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="nominal" checked> 미래 명목금액</label>
+          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="real"> 현재 구매력 기준</label>
+        </div>
+      </div>
+
+      <!-- [Phase 3-4] 운용보수(Expense Ratio) - ETF/펀드의 연간 운용비용만 다룬다. 매매수수료·세금·
+           환전비용 등은 포함하지 않는다는 것을 문구로 명확히 한다(초보자 오해 방지, 요청 반영). 종목별
+           입력은 현재 목표비중에 포함된 항목만 동적으로 나열한다(js/19 renderFeeRatesEditor). -->
+      <div class="mb-3">
+        <button type="button" id="mcFeeRatesToggleBtn" class="w-full flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
+          <span>운용보수(연간) 설정</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+        </button>
+        <div id="mcFeeRatesArea" class="hidden mt-1.5 space-y-1.5">
+          <p class="text-[10px] text-slate-400 leading-relaxed">투자상품을 운용하는 데 발생하는 연간 비용입니다. 매매수수료·세금·환전비용 등은 포함하지 않습니다. 비워두면 0%로 계산됩니다(임의로 추정하지 않습니다).</p>
+          <div id="mcFeeRatesList" class="space-y-1"></div>
+        </div>
+      </div>
+
+      <button type="button" id="mcRunBtn" class="w-full py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
+      <button type="button" id="mcCancelBtn" class="hidden w-full py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
+
+      <div id="mcProgressArea" class="hidden mt-3">
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
+        <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div id="mcProgressBar" class="h-full bg-brand-600 transition-[width] duration-150" style="width:0%"></div>
+        </div>
+        <p id="mcProgressText" class="text-[10px] text-slate-400 mt-1 text-right">0 / 0회 (0%)</p>
+      </div>
+
+      <p id="mcStatusText" class="text-xs text-center mt-3 hidden"></p>
+
+      <div id="mcResultArea" class="hidden mt-3">
+        <p id="mcInflationNote" class="text-[10px] text-slate-400 mb-1">인플레이션율: -</p>
+        <p id="mcWeightedFeeNote" class="text-[10px] text-slate-400 mb-1">예상 연간 운용보수(포트폴리오 가중평균): -</p>
+        <div id="mcContributionScheduleArea" class="text-[10px] text-slate-400 mb-2 leading-relaxed"></div>
+        <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">중앙 예상자산(P50)</p>
+          <p class="text-[10px] text-slate-400 mt-1">명목가치</p>
+          <p id="mcP50Text" class="text-xl font-bold text-brand-600 dark:text-brand-300">-</p>
+          <p class="text-[10px] text-slate-400 mt-1">현재 구매력 기준(실질가치)</p>
+          <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
+          <p class="text-[10px] text-slate-400 mt-1.5 leading-relaxed">P50은 시뮬레이션 결과의 중앙값입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
+        </div>
+        <div class="overflow-x-auto">
           <table class="w-full text-xs">
             <thead>
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
                 <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
-                <th class="px-1 py-2 text-right font-bold text-red-500 dark:text-red-400">P10(보수)</th>
-                <th class="px-1 py-2 text-right font-bold text-slate-700 dark:text-slate-200">P50(중앙값)</th>
-                <th class="px-1 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">P90(낙관)</th>
+                <th class="px-1 py-2 text-right">P10</th>
+                <th class="px-1 py-2 text-right">P25</th>
+                <th class="px-1 py-2 text-right font-bold">P50</th>
+                <th class="px-1 py-2 text-right">P75</th>
+                <th class="px-1 py-2 text-right">P90</th>
               </tr>
             </thead>
-            <tbody id="monteCarloScheduleBody"></tbody>
+            <tbody id="mcMilestoneTableBody"></tbody>
           </table>
         </div>
-        <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">※ μ·σ는 현재 실제 보유가 아니라 '포트폴리오 구성'에서 설정한 목표 비중을 기준으로 산출합니다(부부 각자의 목표를 자산 규모로 가중 합산). 종목으로 지정된 목표는 해당 종목의 실측 과거 시세를, 카테고리로 남겨둔 목표는 국내/해외 대표지수를 대신 사용하며, 채권/현금 목표는 변동성 0으로 근사합니다. P10/P90은 각각 "10,000회 중 보수적인 하위 10%/낙관적인 상위 10%" 지점이며, 미래 수익을 보장하지 않는 참고용 확률 분포입니다(고정 시드를 사용해 다시 조회해도 같은 결과가 나옵니다).</p>
+        <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">P10은 시뮬레이션 결과 중 하위 10% 수준, P50은 중앙값, P90은 상위 10% 수준입니다. 각 칸의 아래쪽 회색 숫자는 실질가치(현재 구매력 기준)입니다.</p>
+
+        <p class="text-[10px] text-slate-400 mt-3 mb-1">명목가치 범위(20년 후 기준)</p>
+        <div id="mcRangeBarsArea" class="space-y-1.5"></div>
+        <p class="text-[10px] text-slate-400 mt-3 mb-1">실질가치 범위(현재 구매력 기준, 20년 후 기준)</p>
+        <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
+
+        <div id="mcGoalArea" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center"></div>
+
+        <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
       </div>
     </section>
   </div> <!-- /tabPanelProjection -->
@@ -2478,5 +2559,10 @@
 <script src="js/12-import-export-sync.js"></script>
 <script src="js/13-fundamental-data.js"></script>
 <script src="js/14-settings-boot.js"></script>
+<script src="js/15-monte-carlo-engine.js"></script>
+<script src="js/16-monte-carlo-adapter.js"></script>
+<script src="js/18-monte-carlo-controller.js"></script>
+<script src="js/19-monte-carlo-ui.js"></script>
+<script src="js/20-inflation-transform.js"></script>
 </body>
 </html>
