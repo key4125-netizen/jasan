@@ -7,6 +7,64 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, Node.js 있는 PC, 계속 12) — Phase 5 핵심 Playwright E2E 구축 (v212)
+
+**커밋**: `9f64864` "test: add core Playwright E2E coverage" - **push 완료**(직전 `8f06c7c`(v211) 위에
+이어짐). 실제 사용자 흐름(포트폴리오 입력 → Monte Carlo 실행 → Safety 판정 → 결과 표시)이 브라우저에서
+하나의 일관된 시스템으로 동작하는지 자동 검증하는 핵심 E2E 6개(9 test)를 구축했다.
+
+### 이번에 완료된 작업
+
+1. **`e2e/fixtures.js` - 공용 seeding helper**(`seedPortfolio`, `goToProjectionTab`) 신설. 핵심
+   설계: 목표 비중 입력을 실제 UI(모달+종목검색)로 흉내내지 않고, `page.evaluate()`로 앱의 실제
+   `state`/`makeAsset`/`persistAssets`/`persistRebalance`/`persistProjection`을 직접 호출해 세팅한
+   뒤 `page.reload()` - 이유는 (a) 종목검색이 네트워크/캐시 의존이라 flaky해지고, (b) 개별 pct
+   input은 앱 자신의 change 핸들러가 즉시 0~100으로 clamp해 "-20%" 같은 값은 애초에 타이핑으로
+   만들 수 없기 때문(Negative Weight BLOCK이 방어하는 실제 위험은 JSON 복원 같은 UI-우회 경로임 -
+   Phase 3-5에서 이미 실측 확인된 사실). 전부 채권(namedHolding, σ=0) 종목만 써서 가격 이력 네트워크
+   조회 자체가 필요 없는 완전히 결정론적인 fixture로 만들었다.
+2. **핵심 6개 E2E**(`e2e/01~06-*.spec.js`, 9 test):
+   - 01 정상 기본: 포트폴리오 입력→MC 실행→P10/P50/P90/GoalProb에 NaN/undefined/Infinity/음수 없음
+   - 02 Weight Sum BLOCK(60%+30%=90%): Deterministic 배너 + MC 양쪽 BLOCK, 잘못된 결과로 안 덮임
+   - 03 Negative Weight BLOCK(-20%+120%=100%): Phase 3-5 실제 결함의 회귀 재확인
+   - 04 Fee UNKNOWN: 미확인=WARNING(계산은 허용) vs 명시적 0%=WARNING 해소, 구분 확인
+   - 05 Inflation: 2.5%→3.5% 변경 시 nominal P50 완전 불변 + real P50만 하락, real goal 명목환산 확인
+   - 06 MC 실행/취소: running→cancel→idle→재실행, 완주 시나리오 둘 다 확인
+   - 92개 Node 테스트/ESLint(0 problems)/기존 smoke 5개 전부 무손상, **기능 코드(js/05,15~22,sw.js)
+     완전 무변경**.
+3. **작업 중 겪은 실제 버그(전부 fixture/테스트 쪽, 코드 아님) - 다음에 새 E2E 만들 때 재발 방지용
+   기록**:
+   - `window.state`로 `waitForFunction` 체크하면 영원히 timeout난다 - classic script의 top-level
+     `const`는 `window`에 안 붙는다(함수 선언만 붙음). bare 참조(`state`)로 확인해야 한다.
+   - **빈 localStorage로 처음 페이지를 열면 `sampleAssets()`가 진짜 데모 보유자산(GOOGL/MSFT/QQQM/
+     SK하이닉스/국고채)을 자동 시딩한다**(js/01 "진짜 첫 실행" 온보딩, 정상 기능) - fixture가
+     `state.assets`를 비우지 않고 push만 하면 목표비중 가중치가 크게 희석된다(실측: 100% 세팅했는데
+     41.66%로 계산됨). `seedPortfolio()`는 이제 `state.assets=[]`로 먼저 비운다.
+   - E2E 테스트용 종목 이름에 "채권/국채" 같은 키워드가 없으면 `classifyCategory`가 위험자산으로
+     분류해 실제 가격 이력을 찾으려 시도하고, 여러 개를 동시에 같은 대표지수로 폴백시키면 상관계수가
+     전부 1.0에 가까운 퇴화행렬이 되어 Cholesky가 실패한다(CORRELATION_ERROR) - E2E fixture의 종목
+     이름은 반드시 채권 키워드를 포함해야 네트워크 불필요 + σ=0 결정론적 테스트가 된다.
+   - `eslint.config.js`의 `e2e/**/*.js`는 Node 테스트 러너 코드와 `page.evaluate()` 안의 브라우저
+     코드가 한 파일에 섞여 있어, Node 전역과 프로젝트 공유 전역(js/** 스캔 결과)을 **둘 다** 허용해야
+     한다(전용 override 블록으로 분리).
+
+### 다음 세션이 알아야 할 것
+- **아직 작성 안 된 나머지 E2E**(Phase 5 사용자 요청 12개 중 핵심 6개만 완료) - 나머지: LocalStorage/
+  Refresh, Safety WARNING/BLOCK 동시존재, Refresh/State Integrity, Fee Monotonicity(seed 고정 비교),
+  Contribution Growth 세부. 다음에 이어서 작성할 때는 이번에 만든 `e2e/fixtures.js`의
+  `seedPortfolio()`를 그대로 재사용할 것(채권 키워드 이름 필수, `state.assets` 초기화 로직 이미 포함됨).
+- **Fee 편집 UI 상호작용 패턴**: `#mcFeeRatesToggleBtn` 클릭 → `#mcFeeRatesList` 안에서 라벨 텍스트로
+  행을 찾아 `input[data-fee-key]`를 채우는 방식(`e2e/04-fee-unknown-warning.spec.js` 참고) - 정확한
+  key 문자열(`buildCustomRateKey` 정규화 결과)을 몰라도 라벨 텍스트로 찾으면 안전하다.
+- **MC 취소 타이밍**: 8-instrument(채권, σ=0)/50,000회 조합이 "running" 상태를 안정적으로 캐치할 만큼
+  충분히 느리다(실측 확인) - instrument 수를 더 줄이면 완료가 너무 빨라 cancel 테스트가 racy해질 수
+  있다.
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 임시 경로로 남아있을 수 있다 - 커밋 대상 아님.
+- **다음 우선순위는 사용자가 재검토 예정** - 계산 로직/UI 신기능은 이번 세션에서 전혀 추가하지 않음.
+- `git pull` 먼저 해서 이 커밋(v212, `9f64864`)을 받았는지 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, Node.js 있는 PC — 회사 PC로 추정, 계속 11) — Node.js 검증 + 검증환경 구축 (v211)
 
 **커밋**: `2adf2fb`(percentile 테스트 수정) → `782e14e`(Playwright+ESLint 검증환경) - **push 완료**.
