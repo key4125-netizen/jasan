@@ -7,6 +7,82 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 계속 13) — Phase 6/6-B/6-C: 투자모델 검증 감사 + Semantic Safety Fix (v213)
+
+**커밋**: `2abb0a9` "docs: clarify expected return/goal probability/FX/data-period semantics in UI
+(Phase 6-C)" - **push 완료**(직전 `9f64864`(v212) 위에 이어짐). 이번 세션은 크게 세 단계로 진행됐다:
+Phase 6(읽기 전용 감사) → Phase 6-B(더 깊은 semantic/cross-engine 재감사, 역시 읽기 전용) →
+Phase 6-C(감사에서 확정된 semantic 문제만 UI 텍스트로 고치는 구현 단계, 실제 커밋 발생).
+
+### Phase 6 — Investment Model Validation Audit (읽기 전용, 코드 변경 없음)
+js/05/15~22 전체를 코드 기준으로 재구성해 23개 항목을 감사했다. 핵심 발견(전부 CODE DEFECT 아님,
+MODEL LIMITATION/데이터 품질/문서화 공백):
+- 해외자산 환율(FX) 변동이 프로젝션 경로 전체에 전혀 모델링되지 않음(오늘 스팟 환율만 현재 평가액에
+  반영, 미래 경로는 환율 고정 가정) - grep으로 js/05/15/16/17/18/19 전체에서 `exchangeRate` 참조가
+  없음을 직접 확인.
+- 변동성/상관계수가 `fetchDailyCloses(ticker, range='1y')`의 **기본값 그대로** 쓰여, 20년 프로젝션의
+  σ/상관계수가 **최근 1년 일별 데이터**로만 추정됨(관측치 개수 충분 vs 그 기간이 미래를 대표하는지는
+  별개 문제).
+- Expected Return preset(SCENARIO_RATE_PRESETS)은 지수(KOSPI/S&P500/NASDAQ) 레벨은 외부 벤치마크와
+  근접해 근거 있으나, 개별 빅테크 종목의 "일반적" 시나리오(GOOGL/META/NVDA 11.5~12.5%)는 시장평균
+  초과 지속을 기본 가정하는 셈이라 경제이론적 근거가 약함.
+- Fee는 ETF/펀드 연 보수만 반영, 세금/거래수수료/환전비용/spread는 전부 스코프 밖(기존에 이미 알려진
+  제한).
+- 최종 판정: 🟡 PASS WITH LIMITATIONS.
+
+### Phase 6-B — Semantic & Cross-Engine Audit (읽기 전용, 코드 변경 없음)
+사용자가 Phase 6 결과를 승인하지 않고 지적한 핵심 불일치 두 가지를 심층 재검증:
+- **"기대수익률"의 실제 통계적 정체성**: `computeMuGBM = 12·ln(1+r/12) + σ²/2`(median-match
+  설계)를 r=9%/σ=20% 수치 예시로 직접 계산 - Deterministic 연 성장률(9.376%) = GBM **median**
+  경로(9.376%, 완전 일치, 설계 의도대로) ≠ GBM **arithmetic 기대값**(11.590%, `= median ×
+  exp(σ²/2)`). 즉 화면의 "기대수익률"은 산술평균(E[R])이 아니라 **중앙값(median) 기준값**임을
+  수식으로 증명. `extractMilestoneStats`가 산술평균(`stats.mean`)을 계산은 하지만 UI 어디에도
+  표시되지 않는다는 점도 확인.
+- **Deterministic vs Monte Carlo 리밸런싱 전략 불일치**: `simulateRebalancedPreset`(js/05)은
+  region별 **가중평균 rate 1개를 폐쇄형 복리식 1번**으로 계산 - 이는 암묵적으로 "매 순간 목표비중이
+  완벽히 유지되는 연속 재조정"과 수학적으로 동등. 반면 MC는 "연 1회만 재조정, 그 사이엔 실제 드리프트
+  허용". median-match 때문에 두 결과가 숫자로 비슷해 보이지만, **같은 전략을 검증한 게 아니라 서로
+  다른 가정의 계산**이라는 결론(YES/NO 판정: NO, 동일 전략 아님).
+- 그 외 재확인: Sequence of Returns Risk는 적립(accumulation) 단계에만 해당(은퇴 후 인출 단계는
+  애초에 이 앱의 모델링 범위 밖 - grep 결과 인출/은퇴 관련 로직 전무), Goal Probability 공식
+  재확인(`count(sample>=goal)/n`, 코드와 표현 일치), Price Return(변동성, 비수정 종가) vs Total
+  Return(preset, 추정) 기준 불일치 가능성.
+- 최종 판정: 🟠 MODEL SEMANTIC FIX REQUIRED(코드 결함 아님, 용어/설명 층위 문제로 한정).
+
+### Phase 6-C — Semantic Safety Fix (실제 구현 + 커밋)
+사용자가 🟡 조건부 승인하며 "계산 엔진은 재설계하지 않는다, UI/설명 문구만 고친다"고 범위를 못박은
+단계. **계산식/판정 로직 완전 무변경**(`git diff --stat`으로 js/15/16/17/18/20/22 diff 0줄 확인) -
+아래는 전부 라벨/설명문/주석/새 INFO 카드(값에 영향 없는 순수 설명)만 추가:
+1. 시나리오 카드 라벨 "기대수익률" → **"기준 연간 성장률"**(js/05 `renderScenarioSummaryCards`).
+2. Monte Carlo 섹션 설명문(index.html) 전면 개정 - "평균이 아니라 전형적(중앙값) 경로", "Deterministic은
+   목표비중이 항상 유지된다는 가정의 단순 계산", "같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른
+   가정" 명시.
+3. `js/21-safety-layer.js`에 기존 `explainResultAlwaysOn` 패턴을 그대로 따르는 새 INFO 설명 함수 5개
+   추가: `explainExpectedReturnSemanticAlwaysOn`(기대수익률=median 의미), `explainGoalProbability
+   SemanticAlwaysOn`(목표 설정 시에만, 조건부 확률이지 실제 미래 확률 아님), `explainHistorical
+   DataPeriodAlwaysOn`(변동성/상관관계 데이터는 최근 약 1년), `explainFxRiskIfForeign`(해외자산
+   비중>0일 때만 조건부 - 미래 환율변동 미반영 고지), `explainAccumulationScopeAlwaysOn`(적립 단계만
+   다룸, 인출 단계 아님). js/19가 MC 결과 렌더링 시 이 5개를 `mcSafetyIssues` 카드 영역에 함께 표시.
+4. `js/09`(fetchDailyCloses)와 `js/05`(SCENARIO_RATE_PRESETS)에 Price Return vs Total Return 기준
+   불명확성을 사실 그대로(임의로 확정하지 않고) 문서화하는 개발자 주석 추가.
+5. 신규 `e2e/07-semantic-safety.spec.js`(4 test) - 라벨/설명문/5개 안내 카드의 표시·미표시(FX는
+   해외자산 있을 때만, Goal Probability 설명은 목표 설정했을 때만) 조건을 검증.
+6. 회귀: `npm test` 92/92(무변경), `npx eslint .` 0 problems, Playwright **18/18**(기존 14 +
+   신규 4) 전부 통과.
+
+### 다음 세션이 알아야 할 것
+- Phase 6/6-B에서 나온 **V1.1/V2 후보**(이번엔 구현하지 않음, 사용자가 향후 우선순위 재검토 예정):
+  σ/상관계수 추정 기간을 1년보다 늘리는 방안, 해외자산 σ에 FX 변동성을 합성하는 근사 모델, 개별
+  종목 preset의 "일반적" 시나리오 재검토(시장평균 수렴 가정 강화), `stats.mean`(산술평균)을 P50과
+  나란히 노출하는 방안, Deterministic 엔진에 명시적 연 1회 재조정 로직 추가(상당한 재설계라 신중한
+  별도 논의 필요).
+- Phase 6-C에서 추가한 5개 `explain*AlwaysOn/`If*` 함수는 **판정 로직이 아니라 순수 설명**이다 -
+  이후 세션에서 Safety Layer를 건드릴 때 이 구분(assess*=판정, explain*=설명)을 유지할 것.
+- `.claude/launch.json`은 이번에도 커밋 대상 아님(항상 그대로 유지).
+- `git pull` 먼저 해서 이 커밋(v213, `2abb0a9`)을 받았는지 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, Node.js 있는 PC, 계속 12) — Phase 5 핵심 Playwright E2E 구축 (v212)
 
 **커밋**: `9f64864` "test: add core Playwright E2E coverage" - **push 완료**(직전 `8f06c7c`(v211) 위에
