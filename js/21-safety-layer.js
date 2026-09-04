@@ -306,12 +306,25 @@ function explainResultAlwaysOn() {
     '');
 }
 
+// [Phase 4 - Numerical Stability vs Economic Certainty, 조건부승인 항목 5] 위 explainResultAlwaysOn과는
+// 의도적으로 별개의 카드로 분리한다("두 내용을 하나의 개념으로 섞지 않는다") - 하나는 "가정이 복리로
+// 누적된 결과"라는 경제적 해석, 이것은 "시뮬레이션 횟수"라는 계산 방법 자체에 대한 안내다. Calibration
+// Research(Phase 4)에서 실측한 두 가지 사실을 정확히 반영한다: (1) 시뮬레이션 횟수가 늘수록 seed간
+// 표본 변동(P50 relSD 0.55%→0.18%, 5k→50k)은 줄어든다 (2) 그러나 같은 조건에서 기대수익률 ±1%p가
+// P50을 13~16% 움직이는 것과 비교하면, "표본이 안정적인 것"과 "미래 예측이 정확한 것"은 전혀 다른
+// 차원의 문제다 - 이 두 문장을 반드시 함께, 그러나 위 카드와는 분리해서 전달한다.
+function explainSimulationStabilityAlwaysOn() {
+  return makeIssue('SAFETY_SIMULATION_STABILITY_NOTE', SAFETY_LEVEL.INFO, 'simulation', '시뮬레이션 안정성 안내',
+    '시뮬레이션 횟수가 많을수록 계산 결과의 표본 변동은 줄어듭니다.',
+    '다만 이는 계산이 안정적이라는 뜻일 뿐 실제 미래 투자수익률을 예측할 수 있다는 뜻은 아닙니다 - 입력한 기대수익률·물가상승률 등의 가정이 달라지면 결과 자체가 크게 달라질 수 있습니다.');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SAFETY_LEVEL, SAFETY_LEVEL_RANK, SAFETY_THRESHOLDS,
     makeIssue, combineSeverity, buildSafetyResult,
     assessWeightSums, assessIndividualWeightSigns, assessExpectedReturn, assessVolatility, assessDataSufficiency,
     assessCorrelationPair, assessPSDCorrection, assessContributionGrowth, assessInflation, assessFee,
-    assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn
+    assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn, explainSimulationStabilityAlwaysOn
   };
 }

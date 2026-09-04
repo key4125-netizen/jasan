@@ -219,7 +219,11 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
 
   const goalArea = mcUiEl('mcGoalArea');
   if (goalMeta && last.goalProbability && last.goalProbability[goalMeta.nominalGoalAmount] !== undefined) {
-    const prob = last.goalProbability[goalMeta.nominalGoalAmount] * 100;
+    const probDecimal = last.goalProbability[goalMeta.nominalGoalAmount];
+    // [Phase 4 - Goal Probability 표시 정책] js/22 참고 - 꼬리 확률(<10% 또는 >90%)만 정밀도를
+    // 낮추고("약 N%"), 중심부는 기존 소수점 1자리 표시를 그대로 유지한다.
+    const display = (typeof formatGoalProbabilityDisplay === 'function') ? formatGoalProbabilityDisplay(probDecimal) : { text: `${fmtNum(probDecimal * 100, 1)}%`, isTail: false };
+    const tailCaptionHtml = display.isTail ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
     if (goalMeta.mode === 'real') {
       goalArea.innerHTML = `
         <p class="text-[10px] text-slate-400">목표금액</p>
@@ -227,13 +231,15 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
         <p class="text-[10px] text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표</p>
         <p class="text-xs font-semibold text-slate-600 dark:text-slate-300">${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>
         <p class="text-[10px] text-slate-400 mt-1.5">현재 구매력 기준 목표 달성 확률</p>
-        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${fmtNum(prob, 1)}%</p>`;
+        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
+        ${tailCaptionHtml}`;
     } else {
       goalArea.innerHTML = `
         <p class="text-[10px] text-slate-400">목표금액</p>
         <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>
         <p class="text-[10px] text-slate-400 mt-1.5">목표 달성 확률(${goalMeta.targetYears}년 후)</p>
-        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${fmtNum(prob, 1)}%</p>`;
+        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
+        ${tailCaptionHtml}`;
     }
   } else {
     goalArea.innerHTML = `<p class="text-[11px] text-slate-400">목표금액이 설정되지 않았습니다.</p>`;

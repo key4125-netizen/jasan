@@ -81,6 +81,9 @@ function launchMonteCarloWorker(requestId, mode, input, callbacks, safetyContext
         if (spreadIssue) modelRiskIssues.push(spreadIssue);
       }
       if (typeof explainResultAlwaysOn === 'function') modelRiskIssues.push(explainResultAlwaysOn());
+      // [Phase 4] 위 카드와 의도적으로 분리된 별도 카드 - "표본 안정성"과 "가정의 경제적 불확실성"을
+      // 하나로 섞지 않는다(조건부승인 항목 5).
+      if (typeof explainSimulationStabilityAlwaysOn === 'function') modelRiskIssues.push(explainSimulationStabilityAlwaysOn());
 
       const preflight = safetyContext.preflightSafety || { issues: [], dataQuality: { issues: [] }, modelRisk: { issues: [] } };
       const finalSafety = (typeof buildSafetyResult === 'function')
