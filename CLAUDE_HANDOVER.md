@@ -7,6 +7,60 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 계속 14) — Phase 7~7-F: CMA Research/Design/Validation, US_EQUITY 실제 적용 (V207)
+
+**Current Version**: V207
+**Phase Status**: Phase 7-F Final Validation — **COMPLETE / APPROVED**
+**커밋**: `90c9316` "fix: update US_EQUITY CMA to latest Vanguard VCMM 2026-06-30 figures (Phase 7-F Final Validation)" - **push 완료**(직전 `b99e974`(v213) 위에 이어짐).
+
+### 개요
+
+Phase 6 시리즈(투자모델 감사)에 이어, Phase 7(Research)→7-B(Architecture Design)→7-C(Anchor Spec 검증)→7-D(CMA Source 조사)→7-E(제품 방향 재정렬+실제 적용)→7-F(V207 Baseline 전수조사+CMA 원문 최종검증)까지 순차 진행. 핵심 산출물은 **"Region×Asset-Class Anchor→Security Default(무조정 상속)→User Override" 아키텍처**를 설계하고, 그중 **신뢰할 수 있는 원문을 실제로 확보한 US_EQUITY Anchor 하나만** 코드에 반영한 것.
+
+### US_EQUITY CMA
+
+- **Source**: Vanguard Capital Markets Model(VCMM), "Setting realistic expectations" 공식 페이지(https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html) — WebFetch로 원문 직접 확인(2회 재현).
+- **As-of**: 2026-06-30(모델 실행), 페이지 게시/갱신 2026-07-22
+- **Forecast horizon**: 10년 / **Currency**: USD / **Return type**: Total Return(원문 확인) / **통계적 정의**: Geometric returns, 10,000회 시뮬레이션(원문 확인)
+- **Official range**: 4.2% ~ 6.2%
+- **App 적용값**(Case A 변환식 `12×((1+R)^(1/12)-1)`, Node로 직접 계산 검증): **Conservative 4.1% / Normal 5.1%(range 중간값 5.2%의 변환) / Optimistic 6.0%**
+- 반영 위치: `js/05-future-projection.js`의 `SCENARIO_RATE_PRESETS.*.indexRates.foreign` + 9개 tickers, `CMA_SOURCE_METADATA.US_EQUITY`(version:2)
+
+### US_EQUITY Inheritance
+
+S&P500 / NASDAQ / SCHD / MSFT / GOOGL / AAPL / AMZN / META / NVDA — **9개 전부 동일 Anchor 값을 무조정 상속**(개별 Alpha·NASDAQ premium·SCHD premium 없음, 코드로 확인됨). Volatility는 기존 설계 그대로 종목별 실측값(Yahoo Finance 종가) 사용 — Expected Growth와 Volatility는 계속 분리된 입력.
+
+### Legacy Approximation(변경 안 함)
+
+**KOSPI, 삼성전자(KR_EQUITY) / 채권(KR_BOND) / 부동산(REAL_ESTATE) / 현금(CASH)** — 신뢰할 수 있는 forward-looking CMA를 확보하지 못해(Phase 7-D/7-E/7-F 조사 결과) 기존 하드코딩 근사치를 그대로 유지. `CMA_SOURCE_METADATA`에 `status:'legacy_approximation'`으로 명시적으로 구분 기록됨.
+
+### Important Architecture (V207 Baseline 재확인)
+
+```
+기존 개인 자산관리 대시보드
+    ↓
+자산 / 거래 / 적립 / 포트폴리오 / 리밸런싱
+    ↓
+Deterministic 미래가치
+    ↓
+Monte Carlo / Inflation / Safety
+```
+
+Monte Carlo/CMA는 기존 자산관리 구조 **위에 얹힌 후속 기능**이며, 이 세션에서 처음 작성한 `V207 CURRENT STATE & BASELINE REPORT`(Phase 7-G)를 현재 구조의 **공식 기준선(Baseline)**으로 간주한다. 향후 세션은 이 보고서를 먼저 참고할 것(대화 로그에만 존재, 별도 파일로 저장되지 않았음 — 필요 시 사용자에게 재요청 필요).
+
+### 다른 변경사항(같은 커밋에 포함)
+
+- `[수익률 관리]` 버튼을 일반 사용자 1차 동선에서 제거하고, "수익률 직접 조정(고급)" 저시인성 텍스트 링크로 재배치(index.html) — 내부 메커니즘(`customScenarioRates`, `getTargetProjectionRate`, 키워드 매칭)은 완전히 유지.
+- `test/safety-layer.test.js`에 기대수익률 임계값(20%/50%/100%, 음수 비대칭) 경계값 테스트 5개 추가.
+- `e2e/08-custom-rate-override.spec.js` 신규 — Override가 Deterministic+MC 양쪽에 동일 반영되는지 확인.
+- 회귀: npm test 97/97, ESLint 0, Playwright 20/20 — 전부 유지.
+
+### 다음 세션이 반드시 지킬 것
+
+**다음 개발 방향(KR_EQUITY/KR_BOND/REAL_ESTATE/CASH CMA 조사, Local AI, 추가 금융모델 등)은 이 인계장을 읽었다고 임의로 시작하지 않는다** — 사용자의 명시적 지시를 받은 뒤에만 진행. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`90c9316`)을 받았는지 먼저 확인 — 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 계속 13) — Phase 6/6-B/6-C: 투자모델 검증 감사 + Semantic Safety Fix (v213)
 
 **커밋**: `2abb0a9` "docs: clarify expected return/goal probability/FX/data-period semantics in UI
