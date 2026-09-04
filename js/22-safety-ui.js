@@ -57,6 +57,24 @@ function confirmExtremeAssumptionsIfNeeded(issues) {
   return window.confirm(`다음 가정이 이례적으로 극단적입니다. 그래도 계산을 진행할까요?\n\n${lines}`);
 }
 
+// [Phase 4 - Goal Probability 표시 정책] Calibration Research 실측 근거: 목표금액이 P25~P75(분포
+// 중심부)에 있으면 10,000회 이상에서 relSD(seed간 상대표준편차) 1% 미만으로 소수점 1자리 표시가
+// 실제 안정성과 부합한다. 반면 목표금액이 분포의 꼬리(P10 미만/P90 초과 근처)에 있으면 5,000회에서
+// relSD가 4%까지 치솟고 50,000회에서도 0.7%대로 남아, "10.2%"처럼 소수점까지 보여주는 것 자체가
+// 실제보다 정밀한 것처럼 오해를 준다 - 그래서 꼬리 구간만 "약 N%"/구간 표기로 낮추고, 중심부는
+// 기존 표시(소수점 1자리)를 그대로 유지한다(무조건 정수로 바꾸지 않음).
+function formatGoalProbabilityDisplay(probabilityDecimal) {
+  const pct = probabilityDecimal * 100;
+  if (pct < 5) return { text: '5% 미만', isTail: true };
+  if (pct > 95) return { text: '95% 초과', isTail: true };
+  if (pct < 10 || pct > 90) return { text: `약 ${Math.round(pct)}%`, isTail: true };
+  return { text: `${pct.toFixed(1)}%`, isTail: false };
+}
+const GOAL_PROBABILITY_TAIL_CAPTION = '이 확률은 분포의 극단에 가까워 시뮬레이션 표본에 따라 다소 달라질 수 있습니다.';
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderSafetyIssueCard, renderSafetyIssueList, renderSafetyBlockBanner, confirmExtremeAssumptionsIfNeeded };
+  module.exports = {
+    renderSafetyIssueCard, renderSafetyIssueList, renderSafetyBlockBanner, confirmExtremeAssumptionsIfNeeded,
+    formatGoalProbabilityDisplay, GOAL_PROBABILITY_TAIL_CAPTION
+  };
 }
