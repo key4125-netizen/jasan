@@ -7,6 +7,31 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 계속 15) — Phase 7-G: 자산·거래 입력 UX 개선 (V207)
+
+**커밋**: `def9c82` "feat: improve asset and transaction input validation UX (Phase 7-G)" - **push 완료**(직전 `c8adb21` 위에 이어짐).
+
+### 완료된 작업
+
+1. **자산 등록 입력 검증**(js/07) - 수량/매수단가가 0 이하일 때 조용히 저장되던 것을 `showToast`로 즉시 안내하고 저장을 막도록 함. HTML `min="0"`은 보조 힌트일 뿐이고, 실제 차단은 JS `quantityVal > 0` / `buyPriceVal > 0` 비교로 이뤄짐(직접 재확인 완료).
+2. **초과매도 사전 차단**(js/06) - 신규 함수 `computeCurrentHoldingQuantity(owner, accountType, ticker, name, excludeTxId)`를 추가해, 매도 저장 직전 "지금 보유수량"을 계산하고 초과하면 차단. `computePositionsAndRealizedPnL()`은 전혀 수정하지 않음(완전히 별개의 경량 함수). 의미적 정합성을 Node로 직접 검증: 매수10→매도3→매수5(뒤섞인 배열 순서로 넣어도) = 12, 같은 날짜 tie-break(createdAt 순), excludeTxId로 "수정 중인 거래 자신 제외" 전부 정상 확인.
+3. **금융 용어 초보자 설명 추가**(index.html) - "수량/좌수"→"지금 가지고 있는 개수", "매매단가"→"1개(주)당 가격", "총 실현손익"에 hover 툴팁("팔아서 확정된 손익").
+4. **신규 E2E**(`e2e/09-asset-transaction-input-validation.spec.js`, 3개) - 실제 자산 등록/거래 입력 모달 UI를 직접 조작해 위 검증들을 확인. (참고: 기존 E2E는 전부 `seedPortfolio` 픽스처로 `state`를 직접 세팅해 이 두 모달 자체를 한 번도 실제로 거치지 않았음 - 이번이 이 두 폼에 대한 최초의 실제 E2E 커버리지.)
+
+### 기존 계산 엔진 변경 없음
+
+`computePositionsAndRealizedPnL()`/`syncAssetsFromTransactions()`/`makeAsset()`/`calcRow()`/transaction schema/state schema/projection/Monte Carlo - 전부 무변경. 이번 변경은 전부 "저장하기 전에 막는" UI 단계 검증 추가일 뿐.
+
+### 테스트 결과
+
+npm test 97/97 PASS · ESLint 0 problems · Playwright **23/23 PASS**(기존 20 + 신규 3).
+
+### 다음 세션이 알아야 할 것
+
+새로운 개발 과제(추가 UX 개선, 새 자산 분류 체계, AI 기능 등)는 이 인계장을 읽었다고 임의로 시작하지 않는다 - 사용자의 명시적 지시를 받은 뒤에만 진행. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`def9c82`)을 받았는지 먼저 확인.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 계속 14) — Phase 7~7-F: CMA Research/Design/Validation, US_EQUITY 실제 적용 (V207)
 
 **Current Version**: V207
