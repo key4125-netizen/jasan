@@ -20,7 +20,9 @@ const MC_UI_ERROR_MESSAGE = {
   DATA_ERROR: '시장 데이터 조회에 실패했습니다. 특정 자산의 가격 이력을 가져오지 못했습니다.',
   CORRELATION_ERROR: '자산 간 상관관계 행렬을 계산하지 못했습니다.',
   SIMULATION_ERROR: 'Monte Carlo 계산 중 오류가 발생했습니다.',
-  WORKER_ERROR: '백그라운드 계산 프로세스 실행 중 오류가 발생했습니다.'
+  WORKER_ERROR: '백그라운드 계산 프로세스 실행 중 오류가 발생했습니다.',
+  // [조건부승인 항목 11] 무한 대기 대신 명확한 사유로 종료됨을 알린다.
+  WORKER_TIMEOUT: '계산이 예상보다 오래 걸려 중단되었습니다. 시뮬레이션 횟수를 줄이거나 다시 시도해주세요.'
 };
 
 function mcUiEl(id) { return document.getElementById(id); }
@@ -97,6 +99,7 @@ function resetMonteCarloUiToReady() {
   mcUiEl('mcStatusText').classList.add('hidden');
   mcUiEl('mcPresetSelect').disabled = false;
   mcUiEl('mcIterationsSelect').disabled = false;
+  if (mcUiEl('mcSafetyIssues')) mcUiEl('mcSafetyIssues').classList.add('hidden');
 }
 
 function setMonteCarloUiRunning() {
@@ -110,6 +113,7 @@ function setMonteCarloUiRunning() {
   mcUiEl('mcProgressText').textContent = '0 / 0회 (0%)';
   mcUiEl('mcPresetSelect').disabled = true;
   mcUiEl('mcIterationsSelect').disabled = true;
+  if (mcUiEl('mcSafetyIssues')) mcUiEl('mcSafetyIssues').classList.add('hidden');
 }
 
 function updateMonteCarloProgress(completed, total, progress) {
@@ -160,9 +164,24 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   mcUiEl('mcResultArea').classList.remove('hidden');
   showMonteCarloStatus(MC_UI_STATUS_LABEL.COMPLETED);
 
+  // [Phase 3-5 Result Safety] result.safety는 js/18이 COMPLETED 시점에 preflight(fee/return/weight-sum
+  // 등) + post-hoc(PSD correction/시뮬레이션 신뢰도/결과 스프레드) issue를 합쳐 붙여준 것이다 - 값은
+  // 전혀 건드리지 않고 issue만 카드로 보여준다(BLOCK은 여기 도달하지 않음 - 이미 실행 전에 막혔음).
+  if (result.safety && typeof renderSafetyIssueList === 'function') {
+    const nonBlockIssues = [].concat(result.safety.issues, result.safety.dataQuality.issues, result.safety.modelRisk.issues)
+      .filter((i) => i.severity !== 'BLOCK');
+    renderSafetyIssueList(mcUiEl('mcSafetyIssues'), nonBlockIssues);
+  }
+
   // [js/20 재사용 - 계산 반복 구현 금지] 명목 결과(result)는 그대로 두고, 실질가치는 이 변환 레이어의
   // 결과(withReal)에서만 읽는다 - result 자체를 mutate하지 않으므로 엔진 회귀에 영향 없음.
-  const inflationRate = Math.max(0, num(inflationRatePct)) / 100;
+  // [Phase 3-5 B2 수정] 예전엔 여기서만 Math.max(0, ...)로 음수를 0으로 바닥 처리했다 - 그 결과
+  // "-1% 입력 -> 화면 라벨은 -1% 그대로 표시(바로 아래 mcInflationNote)하면서 실제 계산은 0%로
+  // 수행"되는 표시값≠계산값 불일치가 있었다. 저장(state.projection.inflationRate)도 애초에 음수를
+  // 그대로 허용하므로(js/05 inflationRateInput 리스너), 소비 지점에서만 몰래 바닥 처리하지 않고 저장된
+  // 값을 그대로 쓴다 - 디플레이션(-1% 등) 자체는 수학적으로 유효한 시나리오라 막을 이유가 없다(BLOCK은
+  // assessInflation이 -100% 이하일 때만 별도로 건다).
+  const inflationRate = num(inflationRatePct) / 100;
   const withReal = applyInflationToResult(result, inflationRate);
   mcUiEl('mcInflationNote').textContent = `인플레이션율: ${fmtNum(inflationRatePct, 1)}%`;
   mcUiEl('mcWeightedFeeNote').textContent = `예상 연간 운용보수(포트폴리오 가중평균): ${fmtNum(weightedFeePct || 0, 2)}%`;
@@ -231,6 +250,15 @@ function handleMonteCarloError(error) {
   // [개발자용 상세 메시지는 console에] 사용자 화면에는 error.code에 매핑된 이해 가능한 문구만 보여준다 -
   // "Unknown error"로 뭉개지 않는다.
   console.error('[Monte Carlo]', error && error.code, error && error.message);
+  // [조건부승인 항목 12 - Error Code 세분화] Safety Layer가 만든 BLOCK(SAFETY_* code, safetyIssues
+  // 동반)은 기존 5개짜리 고정 문구 맵으로 뭉개지 않고, 각 issue를 3단 구조 카드로 그대로 보여준다 -
+  // "비중 합계 오류"와 "가격 데이터 조회 실패"가 이제 서로 다른 문구로 사용자에게 전달된다.
+  if (error && Array.isArray(error.safetyIssues) && error.safetyIssues.length > 0 && typeof renderSafetyIssueList === 'function') {
+    mcUiEl('mcResultArea').classList.add('hidden');
+    renderSafetyIssueList(mcUiEl('mcSafetyIssues'), error.safetyIssues);
+    showMonteCarloStatus('입력값을 다시 확인해주세요.');
+    return;
+  }
   const friendly = MC_UI_ERROR_MESSAGE[error && error.code] || 'Monte Carlo 계산 중 알 수 없는 오류가 발생했습니다.';
   showToast(friendly, 'error');
   showMonteCarloStatus(friendly);
@@ -259,8 +287,11 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   // targetYears는 이 실행에 실제로 쓰이는 investmentYears(years)와 반드시 같아야 한다(하드코딩 금지).
   let goalMeta = null;
   if (goalAmount > 0) {
+    // [Phase 3-5 B2 수정] 위쪽 renderMonteCarloResult와 동일한 이유로 여기서도 바닥 처리를 없앤다 -
+    // 실질→명목 환산에 쓰이는 inflationRate는 저장된 값을 그대로 써야 mcInflationNote 라벨/결과
+    // 계산이 항상 같은 숫자를 본다.
     const nominalGoalAmount = goalMode === 'real'
-      ? convertRealToNominal(goalAmount, Math.max(0, inflationRatePct) / 100, years)
+      ? convertRealToNominal(goalAmount, inflationRatePct / 100, years)
       : goalAmount;
     goalMeta = { rawAmount: goalAmount, mode: goalMode, nominalGoalAmount, targetYears: years };
   }
@@ -273,6 +304,24 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   // 다시 만들어진다(계산 경로 자체는 그대로 유지).
   const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey });
   const weightedFeePct = (feeDisplayResult.instruments || []).reduce((s, i) => s + i.weight * i.feeRateAnnual, 0) * 100;
+
+  // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] startMonteCarloRun 내부(js/18)에서도 동일하게 다시
+  // 검사하지만(어댑터를 이 화면에서 한 번 더 부르므로 결과가 항상 같음), 여기서 먼저 걸러야 진행바가
+  // 잠깐이라도 뜨는 것을 막고 즉시 issue 카드를 보여줄 수 있다.
+  const preflightSafety = feeDisplayResult.safety;
+  if (preflightSafety && preflightSafety.status === 'BLOCK') {
+    const blockIssues = preflightSafety.issues.filter((i) => i.severity === 'BLOCK')
+      .concat(preflightSafety.dataQuality.issues.filter((i) => i.severity === 'BLOCK'));
+    handleMonteCarloError({ code: blockIssues[0] ? blockIssues[0].code : 'SAFETY_BLOCK', message: blockIssues.map((i) => i.message).join('; '), safetyIssues: blockIssues });
+    return;
+  }
+  // [조건부승인 항목 4-1/4-4 - requiresConfirmation] BLOCK은 아니지만 이례적으로 극단적인 가정(예: 기대
+  // 수익률 100%+, Fee 20%+)은 값은 그대로 두되 한 번 더 확인을 요구한다 - Safety Layer는 값을 고치지
+  // 않으므로 사용자가 "그래도 진행"을 직접 선택해야 한다.
+  if (typeof confirmExtremeAssumptionsIfNeeded === 'function' && preflightSafety) {
+    const proceed = confirmExtremeAssumptionsIfNeeded(preflightSafety.issues);
+    if (!proceed) { showMonteCarloStatus('실행이 취소되었습니다.'); return; }
+  }
 
   setMonteCarloUiRunning();
   startMonteCarloRun({

@@ -21,6 +21,12 @@ async function buildMonteCarloInputFromState(config) {
   const presetKey = config.presetKey || 'normal';
   const errors = [];
   const warnings = [];
+  // [Phase 3-5 Safety Layer] BLOCK 대상은 errors와 별개로도 safetyIssues에 함께 쌓는다(예: Fee<0/>=100%,
+  // σ<0) - errors는 "계산 자체를 못 만드는" 치명적 상황 전용(즉시 return)이고, safetyIssues는 계산은
+  // 만들어지되 "이 계산을 믿고 시작해도 되는가"를 판단하는 별도 채널이다. dataQualityIssues는 관측치
+  // 부족/상관계수 데이터부족처럼 "데이터 자체의 한계"를 담는다.
+  const safetyIssues = [];
+  const dataQualityIssues = [];
 
   const weightsMap = computeHouseholdTargetInstrumentWeights();
   const returnsList = await buildHouseholdInstrumentReturnSeries();
@@ -32,14 +38,21 @@ async function buildMonteCarloInputFromState(config) {
 
   weightsMap.forEach((v, key) => {
     const pseudoTarget = { type: v.kind, ticker: v.ticker, category: v.category, name: v.name, label: v.label };
+    const label = v.label || v.name || key;
     const muAnnualPct = getTargetProjectionRate(pseudoTarget, presetKey, v.region);
     const muAnnual = num(muAnnualPct) / 100;
     // [Phase 3-4] getTargetProjectionFeeRate(js/05)는 presetKey와 무관 - "수익률 관리"처럼 시나리오별로
     // 달라지지 않는다(운용보수는 시장 시나리오와 무관한 상품 고유 값). 미등록 종목은 0%.
-    const feeRateAnnual = feePercentToDecimal(getTargetProjectionFeeRate(pseudoTarget));
+    const feeRatePctRaw = getTargetProjectionFeeRate(pseudoTarget);
+    const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
+    const feeExplicit = isFeeExplicitlySet(pseudoTarget);
 
     const effectiveCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
     const isRiskFree = effectiveCategory === '채권' || effectiveCategory === '현금';
+
+    safetyIssues.push(...assessFee(feeRatePctRaw, label, feeExplicit));
+    const returnIssue = assessExpectedReturn(muAnnualPct, label);
+    if (returnIssue) safetyIssues.push(returnIssue);
 
     if (isRiskFree) {
       assetOrder.push(key);
@@ -53,10 +66,25 @@ async function buildMonteCarloInputFromState(config) {
       errors.push(`instrument "${key}"(weight ${(v.weight * 100).toFixed(1)}%)의 가격 이력을 가져오지 못해 변동성을 계산할 수 없습니다.`);
       return;
     }
-    const sigmaAnnual = (computeAnnualizedVolatilityPct(series.returns) || 0) / 100;
+    // [Phase 3-5 B1 수정] 예전엔 여기서 computeAnnualizedVolatilityPct가 데이터 부족(null)을 반환해도
+    // `|| 0`으로 조용히 "변동성 0%"(=무위험 자산)로 둔갑시켰다 - 이 파일 자신의 정책(위 11-13행 주석,
+    // "가격 이력이 없으면 명확한 오류로 반환한다")과 정면으로 모순됐다. "데이터가 없어 모른다"와 "실제로
+    // 변동성이 0이다"는 절대 같은 값(0)으로 합쳐지면 안 된다 - 전자는 계산을 막고(errors.push), 후자만
+    // (채권/현금처럼 위 위쪽 분기에서 처리되는 경우) 진짜 0으로 취급한다.
+    const observationCount = (series.returns || []).length;
+    const dataIssue = assessDataSufficiency(observationCount, label);
+    if (dataIssue) dataQualityIssues.push(dataIssue);
+    const sigmaAnnualPct = computeAnnualizedVolatilityPct(series.returns);
+    if (sigmaAnnualPct === null || sigmaAnnualPct === undefined) {
+      errors.push(`instrument "${key}"(weight ${(v.weight * 100).toFixed(1)}%)의 가격 데이터가 부족해(${observationCount}개) 변동성을 계산할 수 없습니다.`);
+      return;
+    }
+    const volIssue = assessVolatility(sigmaAnnualPct, label, false);
+    if (volIssue) safetyIssues.push(volIssue);
+    const sigmaAnnual = sigmaAnnualPct / 100;
     assetOrder.push(key);
     instruments.push({ key, weight: v.weight, muAnnual, sigmaAnnual, feeRateAnnual });
-    datedClosesForCorrelation.push({ key, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
+    datedClosesForCorrelation.push({ key, label, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
   });
 
   if (errors.length > 0) return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };
@@ -69,11 +97,19 @@ async function buildMonteCarloInputFromState(config) {
   if (datedClosesForCorrelation.length > 1) {
     const { matrix: riskyMatrix, pairDiagnostics } = computeDateAlignedCorrelationMatrix(datedClosesForCorrelation);
     const riskyKeys = datedClosesForCorrelation.map((d) => d.key);
+    const labelByKey = new Map(datedClosesForCorrelation.map((d) => [d.key, d.label]));
     riskyKeys.forEach((keyA, ai) => {
       riskyKeys.forEach((keyB, bi) => {
         const outerA = assetOrder.indexOf(keyA), outerB = assetOrder.indexOf(keyB);
         correlationMatrix[outerA][outerB] = riskyMatrix[ai][bi];
       });
+    });
+    // [H. Correlation Quality] 공통거래일 부족으로 0 대체된 페어를 데이터 품질 이슈로 등록 - "실제
+    // 상관관계 0"과 "데이터 부족으로 0 대체"를 UI에서 구분할 수 있게 한다.
+    Object.keys(pairDiagnostics).forEach((pairKey) => {
+      const [keyA, keyB] = pairKey.split('|');
+      const issue = assessCorrelationPair(pairDiagnostics[pairKey].observationCount, labelByKey.get(keyA) || keyA, labelByKey.get(keyB) || keyB);
+      if (issue) dataQualityIssues.push(issue);
     });
     config.__lastPairDiagnostics = pairDiagnostics; // 디버그 확인용(선택 - 호출부가 필요하면 참조)
   }
@@ -81,7 +117,17 @@ async function buildMonteCarloInputFromState(config) {
   const totalWeight = instruments.reduce((s, i) => s + i.weight, 0);
   if (Math.abs(totalWeight - 1) > 0.01) warnings.push(`instrument weight 합계가 1이 아닙니다(${totalWeight.toFixed(4)}) - 목표비중 미설정 구간이 있을 수 있습니다.`);
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, correlationDiagnostics: config.__lastPairDiagnostics || {} };
+  // [B3 + Safety Layer] 목표 비중 합계(household 전체 소스인 state.rebalance 자체를 검사 - Future
+  // Projection과 완전히 같은 기준, 조건부승인 항목 14) + Contribution Growth/Inflation 경제적 가정 경고.
+  safetyIssues.push(...assessHouseholdWeightSums());
+  const growthIssue = assessContributionGrowth(num(state.projection.contributionGrowthRate));
+  if (growthIssue) safetyIssues.push(growthIssue);
+  const inflationIssue = assessInflation(num(state.projection.inflationRate));
+  if (inflationIssue) safetyIssues.push(inflationIssue);
+
+  const safety = buildSafetyResult(safetyIssues, dataQualityIssues, []);
+
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, correlationDiagnostics: config.__lastPairDiagnostics || {} };
 }
 
 /* -------------------------------------------------------------------------
@@ -136,7 +182,10 @@ function validateMonteCarloInput(input) {
     }
   }
 
-  if (!Number.isFinite(years) || years <= 0 || years > 60) errors.push(`years 값이 유효하지 않습니다: ${years}`);
+  // [조건부승인 항목 5] "60년 초과는 경제적으로 무의미하다"처럼 단정하지 않는다 - 이 앱이 현재
+  // 지원하는 계산 범위의 한계일 뿐, 수학적으로 불가능한 값은 아니다.
+  if (!Number.isFinite(years) || years <= 0) errors.push(`years 값이 유효하지 않습니다: ${years}`);
+  else if (years > 60) errors.push(`현재 모델은 최대 60년까지의 투자기간을 지원합니다(입력값: ${years}년).`);
   if (!Number.isFinite(monthlyContribution) || monthlyContribution < 0) errors.push(`monthlyContribution이 유효하지 않습니다: ${monthlyContribution}`);
   if (!Number.isFinite(initialPrincipal) || initialPrincipal < 0) errors.push(`initialPrincipal이 유효하지 않습니다: ${initialPrincipal}`);
   // [Phase 3-3] 생략 가능(undefined -> 엔진이 0으로 처리) - 값이 있다면 0 이상의 유한값이어야 한다.
