@@ -7,6 +7,74 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 개인 PC 계속 9) — Phase 3-5 Safety Layer 구현 + 커밋 (v209)
+
+**커밋**: `6f4cb62` "feat: add Safety Layer with input validation and model risk diagnostics" - **push 완료**
+(직전 baseline `27d1977`(v208) 위에 이어짐). GPT/사용자가 설계한 "BLOCK/WARNING/INFO 3단계 Safety
+Layer"를 Full Audit → 설계 승인 → 구현 → 사용자가 직접 지정한 sanity check(4항목) → sanity check에서
+실제 결함(음수 개별 비중 미검증) 발견 → 그 결함만 최소 수정 → 재검증 → 커밋의 순서로 진행한 회차.
+
+### 이번에 완료된 작업
+
+1. **Safety Layer 신설** (`js/21-safety-layer.js`, `js/22-safety-ui.js`) - state/DOM에 의존하지 않는
+   순수 판정 함수 12개(assessWeightSums/assessExpectedReturn/assessVolatility/assessDataSufficiency/
+   assessCorrelationPair/assessPSDCorrection/assessContributionGrowth/assessInflation/assessFee/
+   assessSimulationConfidence/assessResultSpread/explainResultAlwaysOn) + BLOCK/WARNING/INFO 3단계
+   스키마(`buildSafetyResult`) + "무엇이 문제→왜 중요→무엇을 해야" 3단 카드 UI. **Safety Layer는
+   절대 값을 수정하지 않는다** - issue(경고/설명)만 반환.
+2. **B1 수정**: js/16 어댑터의 `computeAnnualizedVolatilityPct(...) || 0`을 제거하고, 데이터 부족(null)
+   시 명확히 `errors.push`로 계산을 막음(σ=0과 데이터부족을 구조적으로 분리). **잔여**: `js/05:2088`
+   `computeTargetPortfolioVolatilityPct`(레거시 `renderMonteCarloSection` 전용, 어디서도 호출되지
+   않는 dead code)에 동일한 `|| 0` 패턴이 남아있음 - 실행 경로 없어 삭제하지 않고 기록만 함(다음
+   세션 정리 후보).
+3. **B2 수정**: js/19의 Monte Carlo 소비 지점 2곳(`Math.max(0, inflationRatePct)`)의 바닥 처리 제거 -
+   저장값(state.projection.inflationRate, % 단위)=표시 라벨=계산값이 모두 일치하도록 통일. 음수(디플레
+   이션) 자체는 여전히 허용(BLOCK 대상 아님, -100% 이하만 BLOCK).
+4. **B3 수정(2단계)**:
+   - 1차: `assessHouseholdWeightSums()`(js/05) 신설 - `state.rebalance[owner].targets[region]` 원본
+     비중 합계가 ±1%p를 벗어나면 계산 시작 전 BLOCK. Future Projection(`updateProjection` 최상단,
+     BLOCK 시 배너만 표시하고 렌더 자체를 skip)과 Monte Carlo(`buildMonteCarloInputFromState`) 둘 다
+     이 함수 하나만 호출 - 단일 소스.
+   - **2차(사용자 지정 sanity check로 발견)**: 1차 구현이 "지역 합계"만 검사해 `[-20, 120]`(합=100)
+     같은 개별 음수 비중이 tolerance를 통과해버리는 구멍을 발견 - 게다가 이 경우 MC(음수 항목을
+     조용히 제외)와 Deterministic(음수 가중치를 그대로 가중평균에 포함)이 **서로 다르게 계산**하는
+     것까지 실측으로 확인됨(Phase 3-3과 같은 패턴의 교차 불일치). `assessIndividualWeightSigns()`를
+     추가해 개별 pct<0을 별도로 BLOCK(`SAFETY_NEGATIVE_WEIGHT`) - `assessHouseholdWeightSums()`
+     내부에서만 조합해 두 계산 경로에 자동으로 동시 적용됨(호출부 변경 불필요).
+5. **Fee UNKNOWN 구분**: `isFeeExplicitlySet(target)`(js/05) - 스키마 변경 없이 "key 존재=명시적,
+   key 부재=UNKNOWN"만 조회하는 병행 헬퍼.
+6. **Worker Timeout**: 실측(브라우저, 10-instrument/50,000회/20년 ≈10.3초) 기반 60초
+   (`SAFETY_THRESHOLDS.WORKER_TIMEOUT_MS`) - 무한 대기 없이 `WORKER_TIMEOUT` 코드로 명확히 종료.
+7. **Error code 세분화**: `SAFETY_WEIGHT_SUM`/`SAFETY_NEGATIVE_WEIGHT`/`SAFETY_INVALID_FEE`/
+   `SAFETY_EXTREME_*`/`SAFETY_DATA_INSUFFICIENT`/`SAFETY_CORRELATION_INSUFFICIENT`/
+   `SAFETY_PSD_CORRECTION`/`WORKER_TIMEOUT` 등 - 이전엔 전부 `DATA_ERROR` 하나로 뭉개졌음.
+8. **실측 검증**: `test/safety-layer.test.js`(35개 테스트, 음수비중 후속수정 포함) 브라우저에서 실제
+   프로덕션 함수로 전항목 PASS 확인 + 기존 회귀(Fee=0/Growth=0/Inflation=0/σ=0/Direct=Worker/Seed
+   재현/Cancellation) 전부 무손상 + Deterministic↔MC 양쪽에서 malformed 입력(음수 비중) 동일하게
+   BLOCK 확인 + 브라우저 스크린샷으로 BLOCK 배너/WARNING·INFO 카드 렌더링 확인.
+
+### 다음 세션이 알아야 할 것
+- **B1 잔여 dead code**: `js/05:2088`(`computeTargetPortfolioVolatilityPct`)과 그 유일한 호출부
+  `renderMonteCarloSection`(js/05:2145 부근)은 Engine v2 이전의 레거시 단일-스칼라 Monte Carlo
+  구현으로, index.html 어디에서도 호출되지 않는 완전한 dead code - 실행 경로가 없어 이번엔 삭제하지
+  않았다. 다음에 코드 정리할 때 삭제 후보(단, 삭제도 "리팩터링"이니 별도 확인 후 진행할 것).
+  MONTE_CARLO_SEED/MONTE_CARLO_ITERATIONS 상수, `runMonteCarloSimulation` 함수도 이 dead code 블록의
+  일부.
+- **Node.js 테스트 미실행**: 이 PC엔 Node.js가 없어 `test/safety-layer.test.js`/
+  `test/monte-carlo-engine.test.js`가 실제 `node --test`로 한 번도 실행되지 않았다 - 브라우저 콘솔
+  실행으로만 확인됨. 회사 PC 등 Node 있는 환경에서 반드시 한 번 실행해 확인할 것.
+- **requiresConfirmation은 네이티브 confirm()**: 기대수익률 100%+/Fee 20%+ 같은 극단 가정은 커스텀
+  모달이 아니라 브라우저 네이티브 `confirm()`으로 재확인을 받는다(최소 구현, 이번 Phase 범위).
+- **PSD_WARNING_THRESHOLD(-0.05)/Monte Carlo seed-variance calibration**: 둘 다 잠정치/범위 밖으로
+  유지 - 사용자가 명시적으로 "이번 Phase에서 확정하지 말 것"/"제외"라고 지시함.
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 임시 경로로 수정된 채 남아있을 수 있다 - 커밋
+  대상 아님(v207/v208 섹션과 동일 사유), 무시해도 된다.
+- **다음 우선순위는 사용자가 재검토 예정** - Phase 3-5(Safety Layer)까지 완료되었으므로, 세금/거래
+  비용 등 다음 기능은 사용자가 전체 모델 관점에서 다시 우선순위를 정한 뒤 지시할 것.
+- `git pull` 먼저 해서 이 커밋(v209, `6f4cb62`)을 받았는지 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 개인 PC 계속 8) — Monte Carlo Engine v2 최초 baseline 커밋 (v208)
 
 **커밋**: `8c42998` "feat: add Monte Carlo Engine v2 with date-aligned correlation, contribution
