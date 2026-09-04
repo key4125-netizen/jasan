@@ -7,6 +7,64 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 개인 PC 계속 8) — Monte Carlo Engine v2 최초 baseline 커밋 (v208)
+
+**커밋**: `8c42998` "feat: add Monte Carlo Engine v2 with date-aligned correlation, contribution
+growth, and instrument-level fee model" — **push 완료**. 이 세션 자체의 새 작업이 아니라, 이전
+여러 세션(Phase 0 ~ 3-4)에 걸쳐 만들어졌지만 **한 번도 커밋된 적 없던** Monte Carlo Engine v2 전체를
+사용자 최종 승인 하에 하나의 baseline commit으로 처음 기록한 회차. 이 세션은 그 전 단계인 Phase 3-4
+(instrument-level 운용보수 모델)의 조건부 승인 3개 항목(Node 테스트 기록/Fee %↔decimal 변환 회귀
+테스트/미설정 Fee Known Limitation 명문화)을 마무리하고, GPT/사용자의 최종 승인을 받은 뒤 커밋했다.
+
+### 이번에 완료된 작업
+
+1. **Phase 3-4 조건부승인 #2 대응 - Fee %→decimal 변환 경계를 함수 하나로 통일**
+   (`js/15-monte-carlo-engine.js`, `js/16-monte-carlo-adapter.js`, `js/05-future-projection.js`) -
+   기존엔 "UI %(예: 0.20) → 엔진 decimal(예: 0.002)" 변환("/100")이 소비 지점 3곳(js/16:39,
+   js/05의 computeRegionWeightedFeeRate 소비부, getMonthlyAllocationItemFeeRate 소비부)에 각각
+   따로 인라인으로 있어 이중변환/누락에 무방비였다. `feePercentToDecimal(feeRatePercent)`
+   (js/15, `computeMonthlyFeeFactor` 바로 아래)를 신설해 세 곳 모두 이 함수만 호출하도록 통일 -
+   값은 100% 동일(회귀 없음), 브라우저 콘솔에서 실제 프로덕션 경로(QQQM 키)로 재확인 완료.
+   `test/monte-carlo-engine.test.js`에 이 변환의 대표값(0%/0.20%/1%/20%) + undefined/NaN 방어 +
+   왕복(이중변환 없음) 회귀 테스트 3개 추가.
+2. **Monte Carlo Engine v2 전체를 최초로 커밋** - 아래 "Commit 상세" 참고. Phase 0(μ_GBM/날짜정렬
+   상관관계/Cholesky+PSD보정/연1회 리밸런싱) ~ Phase 3-4(instrument별 운용보수)까지 전부 포함.
+
+### Commit 상세
+- **Commit Hash**: `8c42998`
+- **Push 결과**: 성공 (`a62e027..8c42998  main -> main`), push 후 `git status`로 working tree 확인 완료
+- **포함된 파일**(14개, 2003 insertions / 52 deletions): `index.html`, `js/01-core-state.js`,
+  `js/05-future-projection.js`, `js/09-price-fx-risk-engine.js`(date-aligned correlation용 `dates`
+  필드 추가), `js/12-import-export-sync.js`, `js/14-settings-boot.js`, 신규
+  `js/15-monte-carlo-engine.js`(519줄) ~ `js/20-inflation-transform.js`(60줄), 신규
+  `test/monte-carlo-engine.test.js`(411줄), `test/inflation-transform.test.js`(60줄)
+- **제외한 파일**: `.claude/launch.json` - 이번 세션 scratchpad의 임시 경로
+  (`C:\Users\DRAGON~1\AppData\Local\Temp\claude\...\serve_asset_manager.ps1`)를 가리키도록 로컬에서
+  바뀐 상태라 다른 PC/세션에서 재현 안 됨(v207 섹션에서도 이미 같은 주의사항 언급됨) - **의도적으로
+  staging에서 제외**, 삭제 여부는 임의 결정하지 않음(사용자 지시).
+- **Working Tree 상태**: push 후 `git status` 기준 `.claude/launch.json`만 unstaged 상태로 남고
+  나머지는 전부 깨끗함(clean).
+
+### 다음 세션이 알아야 할 것
+- **Node.js 테스트 미실행**: 이 PC(개인 PC)에는 Node.js가 없다(`node` 명령 자체 없음, 설치하지
+  않음). `test/monte-carlo-engine.test.js`(Phase 0/2-2/3-3/3-4 전체 + 조건부승인#2 변환 테스트)와
+  `test/inflation-transform.test.js`는 **이번 세션에서 실제 `node --test`로 한 번도 실행되지
+  않았다** - 브라우저 콘솔에서 동일 로직을 프로덕션 함수로 직접 실행해 전항목 PASS만 확인한 상태.
+  Node이 있는 환경(회사 PC 등)에서 `node --test test/`를 반드시 한 번 실행해 실제 통과를 확인할 것.
+- **Known Limitation(Phase 3-5 Safety Layer 핵심 검토 대상으로 이미 지정됨)**: ETF/펀드의 운용보수가
+  미입력된 종목/카테고리는 현재 0%로 계산된다("Fee 정보 없음"과 "실제 Fee=0%"를 구분하지 않음) -
+  실제 운용보수가 있는 상품에서는 미래자산가치가 과대평가될 수 있다.
+- **다음 우선순위는 Phase 3-5 Safety Layer** (사용자가 명시적으로 지정, 세금/거래비용보다 먼저) -
+  단순 input validation이 아니라 "입력 유효성 검사 → 경제적으로 비정상적인 가정 탐지 → 데이터 품질
+  검사 → 계산 가능 여부 판단 → 결과 신뢰도/주의사항 표시 → 초보자에게 이해 가능한 설명"까지 포함하는
+  투자 의사결정 보호 계층으로 설계 예정. **이 세션에서는 Safety Layer를 구현하지 않았다** - push까지만
+  진행하고 사용자가 다음 세션에서 전체 모델 관점의 우선순위를 다시 정하기로 함.
+- `.claude/launch.json`은 이번에도 로컬에서 수정된 채 남아있을 수 있다(위 "제외한 파일" 참고) -
+  커밋 대상 아님, 무시해도 된다.
+- `git pull` 먼저 해서 이 커밋(v208, `8c42998`)을 받았는지 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-03, 개인 PC 계속 7) — 커밋 시 버전 v207
 
 **커밋**: 사용자 승인 대기 중. 바로 아래 "v206" 섹션과 같은 날 같은 세션의 연속 - 사용자가 v206의
