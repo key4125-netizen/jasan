@@ -813,6 +813,12 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
   // 현재가를 비워두면 매수단가로 자동 초기화 (요구사항 2-3)
   const currentPriceVal = isAmountMode ? 1 : (currentPriceRaw.trim() === '' ? buyPriceVal : num(currentPriceRaw));
   const quantityVal = num(document.getElementById('f_quantity').value);
+  // [Phase 7-G - 입력 오류 방지] 예전엔 수량/매수단가가 0이거나 음수여도 아무 안내 없이 그대로
+  // 저장됐다(계산은 조용히 이상한 값을 만들어냄) - 초보자가 실수로 빈칸/오타를 그대로 제출하는 것을
+  // 막기 위해 저장 직전에 확인한다. 금액모드(amountMode)는 buyPrice가 항상 1로 고정되므로 그 값은
+  // 검사 대상에서 제외한다.
+  if (!(quantityVal > 0)) { showToast(isAmountMode ? '보유금액은 0보다 커야 합니다.' : '수량은 0보다 커야 합니다.', 'warn'); return; }
+  if (!isAmountMode && !(buyPriceVal > 0)) { showToast('매수단가는 0보다 커야 합니다.', 'warn'); return; }
 
   const payload = {
     ticker: document.getElementById('f_ticker').value.trim(),
