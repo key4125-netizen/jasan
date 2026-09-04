@@ -7,6 +7,66 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, Node.js 있는 PC — 회사 PC로 추정, 계속 11) — Node.js 검증 + 검증환경 구축 (v211)
+
+**커밋**: `2adf2fb`(percentile 테스트 수정) → `782e14e`(Playwright+ESLint 검증환경) - **push 완료**.
+이번 세션은 처음으로 이 저장소에서 Node.js가 있는 PC(v24.20.0/npm 11.19.0)로 진행됐다 - 이전
+세션들(v205~v210)은 전부 Node.js 없는 개인 PC에서 브라우저 콘솔로만 검증했었다.
+
+### 이번에 완료된 작업
+
+1. **Node.js 실제 검증** - 그동안 브라우저로만 확인했던 Monte Carlo Engine/Safety Layer/Inflation/
+   Calibration 전체를 처음으로 `node --test`로 실행. `npm ci`로 기존 package-lock.json 그대로
+   의존성(adm-zip/iconv-lite) 설치. 발견된 실제 문제 1건: `test/monte-carlo-calibration.test.js`가
+   js/15의 **비공개** 내부함수 `percentile`을 직접 import하고 있었다(브라우저는 `<script>` 전역
+   노출 때문에 이 실수가 가려져 있었음) - `percentile`을 공개 API로 승격하지 않고, 대신 공개 API인
+   `extractMilestoneStats`만 사용하도록 테스트 3개를 재작성해서 고쳤다(엔진 코드는 무변경).
+   최종 `npm test`: **92/92 PASS**(merge 9, ticker-master-parse 6, inflation-transform 6,
+   monte-carlo-engine 27, safety-layer 35, monte-carlo-calibration 9).
+2. **Playwright + ESLint 검증환경 신설**(`eslint.config.js`, `playwright.config.js`,
+   `scripts/dev-static-server.js`, `e2e/smoke.spec.js`) - 둘 다 이 저장소에 처음 도입됨.
+   - **ESLint 핵심 설계**: 이 앱은 22개 js/*.js가 `<script>` 태그로 순차 로드되며 서로의 top-level
+     선언을 전역으로 공유하는 구조라, 순진하게 설정하면 첫 실행에서 **926개 오탐**(no-undef/
+     no-redeclare)이 났다. `eslint.config.js`가 js/ 전체를 스캔해 공유 전역 목록을 자동 생성하도록
+     만들어(파일이 바뀌면 자동 갱신, 별도 생성파일 없음) 해결 - 최종 `npx eslint .` **0 problems**.
+     `no-redeclare`는 `{builtinGlobals:false}` 옵션으로 "자기 자신의 전역 선언"만 무시하고 진짜
+     파일 내부 중복선언은 계속 잡는다. sw.js/cloudflare-worker-*.js는 각각 Service Worker/
+     Cloudflare Workers 전용 globals 세트 적용(js/**/*.js와 다른 override).
+   - **sw.js:477 `no-useless-assignment` false positive**: `isNetworkFirst`가 `try{...}
+     catch{return}` 다음의 `if`문에서 실제로 읽히는데도 ESLint v10 신규 규칙이 이 제어흐름을
+     못 따라가 오탐 - sw.js 로직은 그대로 두고, `eslint.config.js`에서 **sw.js 파일에 한정해서만**
+     이 규칙을 껐다(다른 규칙/다른 파일 영향 없음, 사용자 확인 후 처리).
+   - **Playwright smoke test**(5개, `e2e/smoke.spec.js`): 페이지 로드/대시보드 렌더링/JS runtime
+     error 없음/핵심 탐색 UI 존재/Monte Carlo UI 로드 - 이 저장소 최초의 실제 브라우저 자동화 테스트.
+     `.claude/launch.json`(세션 임시 scratchpad 경로, 커밋 안 됨)에 의존하지 않도록 새 의존성 없이
+     Node 내장 모듈만 쓰는 `scripts/dev-static-server.js`(포트 8644)를 만들어 Playwright의
+     webServer가 이걸 띄우게 했다 - 다른 PC/CI에서도 그대로 재현 가능.
+   - `package.json`에 `lint`/`e2e` npm script 2개 추가(devDependencies: eslint, @eslint/js,
+     globals, @playwright/test). 기존 `test`/`update-ticker-master` 스크립트와 dependencies는 무변경.
+3. **정상 시나리오/Safety/Projection/상태관리/MC 세부 시나리오는 이번에 작성하지 않음** -
+   요청대로 "최소 smoke test 환경"까지만 구축, 나머지 E2E 테스트는 다음 단계 후보로 남김.
+
+### 다음 세션이 알아야 할 것
+- **이 PC엔 Node.js가 있다** - 다음에 이 PC에서 세션을 열면(또는 Node 있는 PC라면) `npm test`/
+  `npx eslint .`/`npm run e2e`가 전부 즉시 동작해야 한다. 만약 Node.js 없는 PC(v205~v210이 진행된
+  개인 PC)로 돌아가면 이 3개 검증은 여전히 브라우저 콘솔로 대체해야 한다.
+- **node_modules/ms-playwright 브라우저 바이너리는 이 PC 로컬 전용**(각각 `node_modules/`,
+  `C:\Users\<user>\AppData\Local\ms-playwright\`) - git에 커밋되지 않으므로 다른 PC에서는
+  `npm ci` + `npx playwright install chromium`을 다시 실행해야 함.
+- **npm audit 미해결**: `npm install` 시 "1 high severity vulnerability" 경고가 떴으나, 이 세션
+  내내 `npm audit`이 npm registry security-advisory 엔드포인트 네트워크 타임아웃으로 응답하지
+  않았다 - 어떤 패키지/취약점인지 **끝내 확인하지 못함**(`SECURITY AUDIT: UNVERIFIED`). `npm audit
+  fix`는 실행하지 않았고 package version도 임의로 바꾸지 않았다 - 다음 세션(특히 네트워크가 원활한
+  환경)에서 `npm audit` 한 번 더 시도해 실제 내역을 확인할 것.
+- `sw.js`의 `no-useless-assignment` off는 **파일 단위**로만 적용됨 - 향후 sw.js에 새 코드를 추가할
+  때 진짜 dead-store 버그가 생겨도 이 규칙이 잡아주지 않는다는 점 유의(그 경우 수동 리뷰 필요).
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 임시 경로로 남아있을 수 있다 - 커밋 대상 아님.
+- **다음 우선순위는 사용자가 재검토 예정** - 계산 로직/UI 신기능은 이번 세션에서 전혀 추가하지 않음.
+- `git pull` 먼저 해서 이 커밋들(v211, `2adf2fb`→`782e14e`)을 받았는지 확인 - 이 파일 맨 위 섹션이
+  가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 개인 PC 계속 10) — Phase 4 Monte Carlo Calibration & Investment Model Validation (v210)
 
 **커밋**: `00e1afd` "feat: add Monte Carlo calibration regression suite and stability/sensitivity UI
