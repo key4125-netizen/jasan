@@ -151,6 +151,41 @@ test('WARNING(BLOCK 아님) - 기대수익률 100%는 강한 WARNING + 재확인
   assert.strictEqual(issue.requiresConfirmation, true);
 });
 
+/* ---------------- Phase 7-F Test B/C/D - 기대수익률 임계값 경계값 회귀(수익률 관리 Override에도
+ * 동일하게 적용됨을 확인 - assessExpectedReturn은 preset이든 사용자 오버라이드든 최종 값만 받는다) --- */
+test('Phase 7-F Test B - 20%p 경계: 정확히 20%는 PASS, 21%는 경미 WARNING("공격적")', () => {
+  assert.strictEqual(assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_WARNING_ABS, 'TEST'), null);
+  const issue = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_WARNING_ABS + 1, 'TEST');
+  assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
+  assert.strictEqual(issue.title, '공격적인 기대수익률');
+});
+
+test('Phase 7-F Test C - 50%p 경계: 정확히 50%는 경미 WARNING, 51%는 강한 WARNING("비현실적")', () => {
+  const mild = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_STRONG_WARNING_HIGH, 'TEST');
+  assert.strictEqual(mild.title, '공격적인 기대수익률');
+  const strong = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_STRONG_WARNING_HIGH + 1, 'TEST');
+  assert.strictEqual(strong.title, '비현실적인 기대수익률');
+});
+
+test('Phase 7-F Test D - 100% 이상 재확인 로직 재확인(기존 테스트와 별개로 경계값 자체를 재검증)', () => {
+  const issue = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_CONFIRM_HIGH, 'TEST');
+  assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
+  assert.strictEqual(issue.requiresConfirmation, true);
+});
+
+test('Phase 7-F - 음수 기대수익률: -20%는 PASS, -21%는 곧바로 강한 WARNING(양수와 비대칭 - 기존 설계, 이번에 변경하지 않음)', () => {
+  assert.strictEqual(assessExpectedReturn(-SAFETY_THRESHOLDS.RETURN_WARNING_ABS, 'TEST'), null);
+  const issue = assessExpectedReturn(-SAFETY_THRESHOLDS.RETURN_WARNING_ABS - 1, 'TEST');
+  assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
+  assert.strictEqual(issue.title, '비현실적인 기대수익률');
+});
+
+test('Phase 7-F FINAL VALIDATION - US_EQUITY Anchor 반영값(4.1/5.1/6.0%, Vanguard VCMM 2026-06-30 실행분 4.2~6.2% 기준)은 전부 PASS - Safety Layer가 새 값에 불필요한 경고를 내지 않는다', () => {
+  assert.strictEqual(assessExpectedReturn(4.1, 'S&P500'), null);
+  assert.strictEqual(assessExpectedReturn(5.1, 'S&P500'), null);
+  assert.strictEqual(assessExpectedReturn(6.0, 'S&P500'), null);
+});
+
 test('WARNING(BLOCK 아님) - Contribution Growth 50%는 계산 자체는 허용(조건부승인 4-2 - BLOCK 후보 취소됨)', () => {
   const issue = assessContributionGrowth(50);
   assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);

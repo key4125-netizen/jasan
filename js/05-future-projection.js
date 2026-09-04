@@ -411,50 +411,142 @@ function getCustomRate(key, presetKey) {
 //     같다 - 실제로 SPYM 티커를 보유해도 이 'S&P500' 대표매칭 키로 잡힌다, TICKER_RATE_KEY_ALIAS 참고)을 쓴다.
 //   - categories: 채권(국채) 캐치올 전용 수익률. 현금은 항상 0%(getTargetProjectionRate에서 처리),
 //     주식 캐치올은 categories가 아니라 indexRates(지역별 대표지수)를 쓴다.
-// 전부 과거 장기 시장 평균·변동성을 참고한 근사치이며 실제 백테스트 데이터가 아니다 - 숫자만 바꾸면
-// 전체 시나리오 계산에 바로 반영된다.
 // [Phase 6-B/6-C 감사 - Price Return vs Total Return 문서화] 이 preset 수치가 배당 재투자를 포함한
 // Total Return 기준인지, 가격 변동만 반영한 Price Return 기준인지는 원 출처가 명시되어 있지 않아
-// 코드로 확정할 수 없다 - 현재 preset은 장기 명목 성장률 가정이며 특정 지수의 실제 Total Return을
-// 그대로 백테스트한 값이 아니다. 참고로 실측 변동성(js/09 computeAnnualizedVolatilityPct)은 배당
+// 코드로 확정할 수 없다. 참고로 실측 변동성(js/09 computeAnnualizedVolatilityPct)은 배당
 // 재투자를 반영하지 않은 순수 종가(Yahoo Finance close, 비수정 Adjusted Close) 기준이다 - 두 값의
 // 기준이 서로 다를 수 있다는 점을 임의로 통일해서 서술하지 않는다.
+// [Phase 7-F - CMA 실제 적용] 이 표의 값은 이제 두 종류가 섞여 있다 - 아래 CMA_SOURCE_METADATA의
+// US_EQUITY 항목(status: 'cma_verified')에 해당하는 것(indexRates.foreign, 그리고 NASDAQ/S&P500/
+// SCHD/MSFT/GOOGL/AAPL/AMZN/META/NVDA 9개 tickers 행)은 Vanguard Capital Markets Model(VCMM)
+// 기준 검증된 값이고, 그 외(indexRates.domestic=KOSPI, tickers['005930.KS']=삼성전자, categories.
+// 채권/부동산)는 여전히 출처 불명의 legacy_approximation이다(Phase 7-D/7-E 감사에서 신뢰할 수 있는
+// forward-looking CMA를 확보하지 못해 이번 라운드에서 의도적으로 변경하지 않음 - 임의 숫자 생성 금지
+// 원칙). 이 metadata는 순수 내부 추적용이며 계산 로직(getTargetProjectionRate 등)은 이 값들을
+// 전혀 참조하지 않는다 - 사용자에게 노출되는 기능이 아니다.
 const SCENARIO_RATE_PRESETS = {
   conservative: {
     label: '보수적', color: '#ef4444',
     // [부동산 수익률 매핑 추가] 채권과 동일한 "카테고리 캐치올" 방식 - 부동산은 종목 단위 매핑이 없는
     // 단일 자산군이라 tickers가 아니라 categories에 둔다(getRateForProjectionGroupKey/getReferenceRate 참고).
+    // [legacy_approximation - Phase 7-F에서 변경 안 함] 채권/부동산 - 신뢰할 수 있는 forward CMA 미확보.
     categories: { '채권': 3.5, '부동산': 3.0 },
-    indexRates: { domestic: 5.0, foreign: 7.0 }, // KOSPI / S&P500(SPYM) 대표지수
+    // [legacy_approximation] domestic=KOSPI(KR_EQUITY) - Phase 7-D 감사 결과 신뢰할 수 있는 한국주식
+    // forward CMA를 확보하지 못해 변경하지 않음. [cma_verified - Phase 7-F FINAL VALIDATION 갱신] foreign
+    // =US_EQUITY Anchor(Vanguard VCMM 2026-06-30 실행분 range 4.2%~6.2% 하단값, Case A 변환식
+    // 12×((1+0.042)^(1/12)-1)=4.1213% 적용 결과 - 이전 3.4%는 구버전(2025년말 실행분, 3.5~5.5%) 기준값이라
+    // 최신 원문 재검증 결과 교체함, 아래 CMA_SOURCE_METADATA 참고).
+    indexRates: { domestic: 5.0, foreign: 4.1 },
     tickers: {
-      '005930.KS': 8.0, // 삼성전자
-      'NASDAQ': 7.0, 'S&P500': 7.0, 'SCHD': 7.0,
-      'MSFT': 7.0, 'GOOGL': 8.0, 'AAPL': 6.0, 'AMZN': 7.0, 'META': 7.0, 'NVDA': 6.5
+      '005930.KS': 8.0, // [legacy_approximation] 삼성전자(KR_EQUITY) - 변경 안 함
+      // [cma_verified - US_EQUITY Anchor 무조정 상속] NASDAQ/S&P500/SCHD/개별 미국주식 6종 전부
+      // 동일한 US_EQUITY Anchor 값을 상속한다 - 개별 종목/스타일 프리미엄을 임의로 추가하지 않는다
+      // (Phase 7-C~7-F 원칙: Expected Growth=Anchor, Volatility만 종목별 실측값 사용).
+      'NASDAQ': 4.1, 'S&P500': 4.1, 'SCHD': 4.1,
+      'MSFT': 4.1, 'GOOGL': 4.1, 'AAPL': 4.1, 'AMZN': 4.1, 'META': 4.1, 'NVDA': 4.1
     }
   },
   normal: {
     label: '일반적', color: '#f59e0b',
-    // [기본 수익률 프리셋 조정] 채권 4.5→4.0 / KOSPI 8.0→7.0 / 삼성전자 11.0→9.0 / SCHD 9.0→10.0 /
-    // AAPL 9.0→10.0 (사용자 요청값 - "일반적" 프리셋만 변경, 보수적/긍정적은 그대로 유지).
+    // [legacy_approximation - Phase 7-F에서 변경 안 함]
     categories: { '채권': 4.0, '부동산': 5.5 },
-    indexRates: { domestic: 7.0, foreign: 9.0 },
+    // [cma_verified - Phase 7-F FINAL VALIDATION 갱신] foreign=US_EQUITY Anchor 중앙값(Vanguard 자신의
+    // 최신 range 4.2~6.2%의 중간값 5.2%를 Case A 변환식 12×((1+0.052)^(1/12)-1)=5.0800%한 결과 - 다른
+    // 기관과의 평균이 아니라 Vanguard 단일 출처의 자체 range 중앙값임을 반드시 구분할 것(Phase 7-F 지시사항).
+    indexRates: { domestic: 7.0, foreign: 5.1 },
     tickers: {
-      '005930.KS': 9.0,
-      'NASDAQ': 11.0, 'S&P500': 9.0, 'SCHD': 10.0,
-      'MSFT': 10.5, 'GOOGL': 11.5, 'AAPL': 10.0, 'AMZN': 11.5, 'META': 12.0, 'NVDA': 12.5
+      '005930.KS': 9.0, // [legacy_approximation]
+      'NASDAQ': 5.1, 'S&P500': 5.1, 'SCHD': 5.1,
+      'MSFT': 5.1, 'GOOGL': 5.1, 'AAPL': 5.1, 'AMZN': 5.1, 'META': 5.1, 'NVDA': 5.1
     }
   },
   optimistic: {
     label: '긍정적', color: '#10b981',
+    // [legacy_approximation - Phase 7-F에서 변경 안 함]
     categories: { '채권': 5.5, '부동산': 8.0 },
-    indexRates: { domestic: 11.0, foreign: 13.0 },
+    // [cma_verified - Phase 7-F FINAL VALIDATION 갱신] foreign=US_EQUITY Anchor 상단값(Vanguard 최신
+    // range 상단 6.2%를 Case A 변환식 12×((1+0.062)^(1/12)-1)=6.0305% 적용)
+    indexRates: { domestic: 11.0, foreign: 6.0 },
     tickers: {
-      '005930.KS': 15.0,
-      'NASDAQ': 15.0, 'S&P500': 13.0, 'SCHD': 13.0,
-      'MSFT': 14.5, 'GOOGL': 15.5, 'AAPL': 12.0, 'AMZN': 15.5, 'META': 16.5, 'NVDA': 18.0
+      '005930.KS': 15.0, // [legacy_approximation]
+      'NASDAQ': 6.0, 'S&P500': 6.0, 'SCHD': 6.0,
+      'MSFT': 6.0, 'GOOGL': 6.0, 'AAPL': 6.0, 'AMZN': 6.0, 'META': 6.0, 'NVDA': 6.0
     }
   }
 };
+
+// [Phase 7-F - CMA Source Metadata, 순수 내부 추적용] 사용자에게 노출되는 기능/UI가 아니며,
+// getTargetProjectionRate() 등 계산 로직은 이 객체를 전혀 참조하지 않는다(추가해도 계산 결과에
+// 영향 없음 - 회귀테스트 관점에서 이 객체는 "죽은 데이터"다). 향후 내부 감사/개발자 도구에서만
+// 참고할 목적으로 Phase 7-C에서 설계한 metadata 스키마를 그대로 반영한다.
+const CMA_SOURCE_METADATA = Object.freeze({
+  US_EQUITY: {
+    status: 'cma_verified',
+    appliesTo: ['indexRates.foreign', 'NASDAQ', 'S&P500', 'SCHD', 'MSFT', 'GOOGL', 'AAPL', 'AMZN', 'META', 'NVDA'],
+    source: 'Vanguard Capital Markets Model (VCMM) - "Setting realistic expectations" 공식 페이지',
+    sourceUrl: 'https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html',
+    // [Phase 7-F FINAL VALIDATION - 원문 재확인 완료] 2026-06-30 VCMM 실행분 기준(페이지 자체에 언급된
+    // 날짜는 2026-03-31/2026-06-30/2026-07-22 세 개) 원문 인용: "our 10-year expected annualized return
+    // for U.S. equities declined from a range of 4.9%-6.9% to a range of 4.2%-6.2%". 이전(Phase 7-F 1차)
+    // 에 쓰인 3.5~5.5%는 그보다 앞선 2025년말 실행분 기준 구버전 수치였음 - 이번 재검증으로 최신 원문
+    // (4.2~6.2%)으로 교체함(단순 재인용이 아니라 원문 페이지를 직접 확인).
+    asOfDate: '2026-06-30(VCMM 모델 실행 기준일), 페이지 게시/갱신일 2026-07-22 표기 확인',
+    forecastHorizonYears: 10,
+    currency: 'USD',
+    nominalReal: 'nominal',
+    // [원문 확인 완료] "The asset-return distributions shown here are in nominal terms...and represent
+    // Vanguard's views of likely total returns, in U.S. dollar terms" - nominal/total return/USD 전부
+    // 원문에 명시적으로 확인됨(이전엔 "추정"이었으나 이번 재검증으로 확정).
+    returnType: 'total(원문 확인: "likely total returns")',
+    // [원문 확인 완료] "Forecasts represent the distribution of geometric returns" - geometric으로 명시.
+    // median이라는 단어 자체는 원문에 없으나, 이 앱의 GBM 모델에서 median 연성장률과 geometric 연성장률은
+    // 수학적으로 동일한 값이므로(Phase 7-C 증명) Case A 변환식을 그대로 적용해도 무방하다.
+    meanType: 'geometric(원문 확인: "distribution of geometric returns")',
+    methodologyNote: 'VCMM 10,000회 시뮬레이션(원문 확인: "10,000 simulations for each modeled asset class") ' +
+      'geometric return 분포. Conservative=Vanguard 자체 range 하단(4.2%), Optimistic=상단(6.2%), Normal=' +
+      '그 range의 중간값(5.2%) - 다른 기관과의 평균이 아니라 Vanguard 단일 출처의 자체 range 중앙값. ' +
+      '원문은 이 range가 어떤 백분위수(percentile)를 의미하는지 명시하지 않음(Phase 7-C 경고사항대로, ' +
+      '25th/75th 등으로 임의 해석하지 않았음). BlackRock(~5%, geometric 명시)·J.P.Morgan(6.7%, 10-15y, ' +
+      'return definition 미확인)은 교차검증 참고자료로만 사용했고 수치 산정에 기계적으로 반영하지 않았다.',
+    uncertaintyNote: '10년 기관 전망을 20년 앱 horizon에 그대로 적용하는 horizon mismatch를 내포함. ' +
+      '개별종목(MSFT/GOOGL/AAPL/AMZN/META/NVDA)과 NASDAQ/SCHD는 이 Anchor를 무조정 상속하며, ' +
+      '이 값은 미래 수익률을 보장하지 않는다. VCMM은 분기마다 갱신되므로 이 값도 정적 스냅샷일 뿐이다.',
+    version: 2
+  },
+  KR_EQUITY: {
+    status: 'legacy_approximation',
+    appliesTo: ['indexRates.domestic(KOSPI)', "tickers['005930.KS'](삼성전자)"],
+    source: null, sourceUrl: null, asOfDate: null,
+    methodologyNote: '신뢰할 수 있는 forward-looking CMA를 확보하지 못함(Phase 7-D/7-E 감사) - ' +
+      '기존 하드코딩 근사치를 그대로 유지, 임의 숫자를 생성하지 않음.',
+    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않으며, 특정 근거에 기반한 값이 아니다.',
+    version: 0
+  },
+  KR_BOND: {
+    status: 'legacy_approximation', appliesTo: ['categories.채권'],
+    source: null, sourceUrl: null, asOfDate: null,
+    methodologyNote: '한국 국고채 10년물 시장금리(약 4%대)를 방법론적으로 검토했으나 이는 기관 CMA가 ' +
+      '아니라 시장 관측치라 US_EQUITY와 같은 기준으로 채택하지 않음(Phase 7-D/7-E) - 기존 값 유지.',
+    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
+    version: 0
+  },
+  REAL_ESTATE: {
+    status: 'legacy_approximation', appliesTo: ['categories.부동산'],
+    source: null, sourceUrl: null, asOfDate: null,
+    methodologyNote: '과거 실현수익률만 확인되고 forward-looking CMA는 확보하지 못함(Phase 7-D) - ' +
+      '과거 수익률을 미래 기대수익률로 사용하지 않는다는 원칙에 따라 기존 값 유지.',
+    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
+    version: 0
+  },
+  CASH: {
+    status: 'legacy_approximation', appliesTo: ['현금(항상 0% 고정, getTargetProjectionRate)'],
+    source: null, sourceUrl: null, asOfDate: null,
+    methodologyNote: '정책금리(한국은행 기준금리)만 확인되고 실제 단기시장금리는 확보하지 못함(Phase ' +
+      '7-D/7-E) - 정의가 불명확한 상태에서 임의 숫자를 넣지 않고 기존 값(0%) 유지.',
+    uncertaintyNote: '명목/실질 여부 불명확. 실제 수익률을 보장하지 않는다.',
+    version: 0
+  }
+});
 
 // 프리셋 표에 있는 티커(위 tickers 참고) 하나의 수익률을 정한다 - 사용자 정의 오버라이드(key=yahooTicker)가
 // 있으면 그 값이 최우선이고, 없으면 프리셋 표 기본값을 그대로 쓴다.
