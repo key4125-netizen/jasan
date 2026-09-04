@@ -319,12 +319,50 @@ function explainSimulationStabilityAlwaysOn() {
     '다만 이는 계산이 안정적이라는 뜻일 뿐 실제 미래 투자수익률을 예측할 수 있다는 뜻은 아닙니다 - 입력한 기대수익률·물가상승률 등의 가정이 달라지면 결과 자체가 크게 달라질 수 있습니다.');
 }
 
+/* ---- 12. Semantic Safety (Phase 6-C) - 계산식/판정 로직은 전혀 바꾸지 않고, "결과를 어떻게
+ * 해석해야 하는가"만 명시적으로 설명하는 카드 5종. Phase 6-B 감사에서 지적된 다음 사실을 반영한다:
+ * (1) 화면의 "기대수익률"은 median-match 설계상 통계적으로 중앙값(median) 기준이지 산술평균(E[R])이
+ * 아니다, (2) Goal Probability는 "입력한 가정을 전제로 한" 조건부 비율이지 실제 미래 확률이 아니다,
+ * (3) 변동성/상관관계는 최근 약 1년 데이터로만 추정된다, (4) 해외자산의 미래 환율 변동은 전혀
+ * 모델링되지 않는다, (5) 이 앱은 적립(accumulation) 단계만 다루고 은퇴 후 인출 단계는 다루지 않는다.
+ * 전부 SAFETY_LEVEL.INFO(계산에 영향 없음, 참고 정보)로만 반환한다. ---------------------------- */
+function explainExpectedReturnSemanticAlwaysOn() {
+  return makeIssue('SAFETY_EXPECTED_RETURN_SEMANTIC', SAFETY_LEVEL.INFO, 'result', '기대수익률의 의미',
+    '입력한 기대수익률은 미래 수익률을 보장하거나 실제 평균 수익률을 의미하지 않습니다. Monte Carlo에서는 "가장 전형적인 경로(중앙값)"에 대응하도록 사용됩니다.',
+    '실제 평균 수익률은 이보다 높거나 낮을 수 있으며, 변동성이 클수록 평균과 중앙값의 차이가 커질 수 있습니다.');
+}
+function explainGoalProbabilitySemanticAlwaysOn() {
+  return makeIssue('SAFETY_GOAL_PROBABILITY_SEMANTIC', SAFETY_LEVEL.INFO, 'result', '목표 달성 확률의 의미',
+    '이 확률은 지금 입력한 수익률·변동성·상관관계·수수료·리밸런싱 등의 가정을 전제로 했을 때, 시뮬레이션 경로 중 목표금액 이상에 도달한 경로의 비율입니다.',
+    '실제 미래에 그 확률로 목표를 달성한다는 의미는 아닙니다 - 가정이 달라지면 이 확률도 함께 달라집니다.');
+}
+function explainHistoricalDataPeriodAlwaysOn() {
+  return makeIssue('SAFETY_HISTORICAL_DATA_PERIOD', SAFETY_LEVEL.INFO, 'result', '변동성·상관관계 데이터 기간 안내',
+    '변동성과 상관관계는 최근 약 1년간의 시장 데이터를 바탕으로 계산됩니다.',
+    '데이터가 충분한 것과 그 데이터가 앞으로도 시장환경을 대표하는 것은 다른 문제입니다 - 실제 미래의 변동성·상관관계는 이와 다를 수 있습니다.');
+}
+// hasForeignAllocation: 호출부(js/19)가 state.rebalance를 보고 판단해 넘긴다 - 이 파일은 state/DOM에
+// 의존하지 않는 순수 함수 원칙(파일 상단 주석)을 유지한다.
+function explainFxRiskIfForeign(hasForeignAllocation) {
+  if (!hasForeignAllocation) return null;
+  return makeIssue('SAFETY_FX_RISK_NOT_MODELED', SAFETY_LEVEL.INFO, 'result', '해외자산 환율 변동 미반영 안내',
+    '해외자산의 현재 평가액에는 오늘의 환율이 반영되어 있지만, 앞으로의 환율 변동은 이 시뮬레이션에 반영되지 않습니다.',
+    '해외자산 비중이 클수록 실제 원화 기준 수익률은 환율 변동에 따라 이 결과와 달라질 수 있습니다.');
+}
+function explainAccumulationScopeAlwaysOn() {
+  return makeIssue('SAFETY_ACCUMULATION_SCOPE', SAFETY_LEVEL.INFO, 'result', '이 시뮬레이션의 범위 안내',
+    '이 시뮬레이션은 자산을 모아가는 적립 단계만 다룹니다. 적립 기간 중 수익률이 오고 가는 순서에 따른 결과 차이는 반영되지만, 은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다.',
+    '');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SAFETY_LEVEL, SAFETY_LEVEL_RANK, SAFETY_THRESHOLDS,
     makeIssue, combineSeverity, buildSafetyResult,
     assessWeightSums, assessIndividualWeightSigns, assessExpectedReturn, assessVolatility, assessDataSufficiency,
     assessCorrelationPair, assessPSDCorrection, assessContributionGrowth, assessInflation, assessFee,
-    assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn, explainSimulationStabilityAlwaysOn
+    assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn, explainSimulationStabilityAlwaysOn,
+    explainExpectedReturnSemanticAlwaysOn, explainGoalProbabilitySemanticAlwaysOn, explainHistoricalDataPeriodAlwaysOn,
+    explainFxRiskIfForeign, explainAccumulationScopeAlwaysOn
   };
 }

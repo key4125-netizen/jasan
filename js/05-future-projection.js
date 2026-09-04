@@ -413,6 +413,12 @@ function getCustomRate(key, presetKey) {
 //     주식 캐치올은 categories가 아니라 indexRates(지역별 대표지수)를 쓴다.
 // 전부 과거 장기 시장 평균·변동성을 참고한 근사치이며 실제 백테스트 데이터가 아니다 - 숫자만 바꾸면
 // 전체 시나리오 계산에 바로 반영된다.
+// [Phase 6-B/6-C 감사 - Price Return vs Total Return 문서화] 이 preset 수치가 배당 재투자를 포함한
+// Total Return 기준인지, 가격 변동만 반영한 Price Return 기준인지는 원 출처가 명시되어 있지 않아
+// 코드로 확정할 수 없다 - 현재 preset은 장기 명목 성장률 가정이며 특정 지수의 실제 Total Return을
+// 그대로 백테스트한 값이 아니다. 참고로 실측 변동성(js/09 computeAnnualizedVolatilityPct)은 배당
+// 재투자를 반영하지 않은 순수 종가(Yahoo Finance close, 비수정 Adjusted Close) 기준이다 - 두 값의
+// 기준이 서로 다를 수 있다는 점을 임의로 통일해서 서술하지 않는다.
 const SCENARIO_RATE_PRESETS = {
   conservative: {
     label: '보수적', color: '#ef4444',
@@ -1737,7 +1743,7 @@ function renderScenarioSummaryCards(scenarioData) {
         <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
       </div>
       <p class="text-[10px] sm:text-[11px] whitespace-nowrap">
-        <span class="text-slate-400">기대수익률</span>
+        <span class="text-slate-400">기준 연간 성장률</span>
         <span class="text-sm sm:text-lg font-bold" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</span>
       </p>
     </div>`).join('');

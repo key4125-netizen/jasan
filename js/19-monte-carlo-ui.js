@@ -27,6 +27,12 @@ const MC_UI_ERROR_MESSAGE = {
 
 function mcUiEl(id) { return document.getElementById(id); }
 
+// [Phase 6-C - Semantic Safety, 표시 전용] 해외자산 비중이 하나라도 있는지 - FX 안내 카드 표시 여부만
+// 결정하는 순수 조회 함수다. 계산(js/15/16)에는 전혀 관여하지 않고, 계산에도 쓰이지 않는 값이다.
+function hasHouseholdForeignAllocation() {
+  return REBALANCE_OWNERS.some((owner) => num(state.rebalance[owner].domestic['해외']) > 0);
+}
+
 // [기존 State 재사용] '월적립금 설정' 요약(updateMonthlyContributionSummary, js/05)과 동일한 하위호환
 // 판정 - 소유자별 값이 하나도 설정 안 됐으면 기존 단일 monthlyContribution으로 폴백한다.
 function getHouseholdMonthlyContributionTotal() {
@@ -170,7 +176,17 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   if (result.safety && typeof renderSafetyIssueList === 'function') {
     const nonBlockIssues = [].concat(result.safety.issues, result.safety.dataQuality.issues, result.safety.modelRisk.issues)
       .filter((i) => i.severity !== 'BLOCK');
-    renderSafetyIssueList(mcUiEl('mcSafetyIssues'), nonBlockIssues);
+    // [Phase 6-C - Semantic Safety] 계산 판정과 무관한 순수 해석 안내 카드 - Phase 6-B 감사에서 지적된
+    // "기대수익률/Goal Probability의 실제 의미, 데이터 기간, 해외자산 환율, 모델링 범위"를 사용자에게
+    // 명시적으로 전달한다. js/21의 explain*() 함수는 값을 전혀 바꾸지 않고 issue만 반환한다.
+    const semanticIssues = [
+      (typeof explainExpectedReturnSemanticAlwaysOn === 'function') ? explainExpectedReturnSemanticAlwaysOn() : null,
+      (goalMeta && typeof explainGoalProbabilitySemanticAlwaysOn === 'function') ? explainGoalProbabilitySemanticAlwaysOn() : null,
+      (typeof explainHistoricalDataPeriodAlwaysOn === 'function') ? explainHistoricalDataPeriodAlwaysOn() : null,
+      (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation()) : null,
+      (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn() : null,
+    ].filter(Boolean);
+    renderSafetyIssueList(mcUiEl('mcSafetyIssues'), nonBlockIssues.concat(semanticIssues));
   }
 
   // [js/20 재사용 - 계산 반복 구현 금지] 명목 결과(result)는 그대로 두고, 실질가치는 이 변환 레이어의
