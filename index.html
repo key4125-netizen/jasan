@@ -1007,7 +1007,7 @@
 
       <div class="grid grid-cols-2 gap-2 mb-4">
         <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
-          <p class="text-[10px] text-slate-400 mb-1">총 실현손익</p>
+          <p class="text-[10px] text-slate-400 mb-1" title="실제로 팔아서 확정된 손익입니다(아직 보유 중인 자산의 평가손익은 포함하지 않음).">총 실현손익</p>
           <p id="pnlSummaryTotal" class="text-sm font-bold">0원</p>
         </div>
         <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
@@ -1504,14 +1504,14 @@
       </label>
 
       <label class="col-span-1 text-xs" id="f_quantityFieldWrap">
-        <span class="text-slate-500 dark:text-slate-400" id="f_quantityLabel">③ 수량/좌수</span>
-        <input id="f_quantity" type="number" step="any" placeholder="0"
+        <span class="text-slate-500 dark:text-slate-400" id="f_quantityLabel">③ 수량/좌수 <span class="text-slate-400">- 지금 가지고 있는 개수</span></span>
+        <input id="f_quantity" type="number" step="any" min="0" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <label class="col-span-1 text-xs" id="f_buyPriceFieldWrap">
         <span class="text-slate-500 dark:text-slate-400">④ 매수단가 <span id="f_buyPriceUnit" class="text-slate-400">(KRW)</span></span>
-        <input id="f_buyPrice" type="number" step="any" placeholder="0"
+        <input id="f_buyPrice" type="number" step="any" min="0" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
@@ -2271,7 +2271,7 @@
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
       <label class="col-span-1 text-xs">
-        <span class="text-slate-500 dark:text-slate-400">매매단가</span>
+        <span class="text-slate-500 dark:text-slate-400">매매단가 <span class="text-slate-400">- 1개(주)당 가격</span></span>
         <input id="tx_price" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>

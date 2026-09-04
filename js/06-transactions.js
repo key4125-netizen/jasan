@@ -49,6 +49,20 @@ function computePositionsAndRealizedPnL() {
   return { positions, annotated };
 }
 
+// [Phase 7-G - 매도 수량 검증 전용 헬퍼] computePositionsAndRealizedPnL()과는 별개의 경량 함수다 -
+// 그 함수(평단가/실현손익까지 전부 계산)를 건드리지 않고, "지금 이 조합의 보유수량이 몇 개인가"만
+// 빠르게 계산해 거래 저장 직전 UI 검증에 쓴다. excludeTxId: 수정 중인 거래 자기 자신은 계산에서
+// 제외해야, "이 거래를 이렇게 고치면 보유수량을 넘는가"를 정확히 비교할 수 있다.
+function computeCurrentHoldingQuantity(owner, accountType, ticker, name, excludeTxId) {
+  const key = ticker || name;
+  let qty = 0;
+  [...state.transactions]
+    .filter((t) => t.id !== excludeTxId && t.owner === owner && t.accountType === accountType && (t.ticker || t.name) === key)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))
+    .forEach((t) => { qty += t.type === 'buy' ? t.quantity : -Math.min(t.quantity, qty); });
+  return qty;
+}
+
 // [현금/외화현금 - 무티커 자산 유형별 이원화] 부동산/채권/상장 주식·ETF는 계속 거래내역(매수/매도)으로
 // 추적한다. 원화 현금은 여기에 더해 거래내역 자체를 만들 수 없게 막고 자산관리 탭에서 직접 잔고를
 // 수정하는 방식을 유지한다(환율 개념이 없어 거래내역화할 실익이 없음). ticker가 있으면 애초에 상장
@@ -347,7 +361,7 @@ function updateTxCashPriceLock() {
   priceInput.classList.toggle('dark:bg-slate-800/80', isCash);
   priceInput.classList.toggle('cursor-not-allowed', isCash);
   if (isCash) priceInput.value = 1;
-  if (qtyLabel) qtyLabel.textContent = isCash ? '금액($)' : '수량';
+  if (qtyLabel) qtyLabel.textContent = isCash ? '금액($) - 넣거나 뺀 달러 금액' : '수량';
 }
 
 // [적용 환율 기본값 - 스마트 디폴트] 평소엔 조회 시점의 실시간 환율을 기본값으로 쓰지만, "달러 현금
@@ -530,6 +544,18 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 등) 대비 제출 시점에도 한 번 더 강제한다 - 현금성 거래는 수량 자체가 달러 금액이라 단가는 항상 1.
   const price = isUsdCashTxForm() ? 1 : num(document.getElementById('tx_price').value);
   if (price <= 0) { showToast('매매단가는 0보다 커야 합니다.', 'warn'); return; }
+  // [Phase 7-G - 매도 수량 검증] 이전에는 보유수량보다 많이 팔아도 그대로 저장되고, 실제 계산
+  // (computePositionsAndRealizedPnL)이 조용히 min(매도수량, 보유수량)으로 잘라내기만 했다 - 초보자는
+  // "왜 화면에 보이는 수량이 내가 입력한 매도수량과 다르지?"를 이해하기 어렵다. 저장 전에 먼저
+  // 친절하게 알려준다(계산 로직 자체는 그대로 유지 - 이 검증은 UI 단계에서만 막는다).
+  if (document.getElementById('tx_type').value === 'sell') {
+    const excludeTxId = document.getElementById('tx_id').value;
+    const available = computeCurrentHoldingQuantity(txOwnerVal, txAccountTypeVal, txTickerVal, name, excludeTxId);
+    if (quantity > available) {
+      showToast(`현재 보유수량(${fmtNum(available, 4)})보다 많은 수량을 매도할 수 없습니다.`, 'warn', 6000);
+      return;
+    }
+  }
 
   const existing = state.transactions.find((t) => t.id === id);
   const tx = {
