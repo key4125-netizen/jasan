@@ -7,6 +7,47 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 계속 16) — Phase 8: 포트폴리오·리밸런싱 UX 개선 (V207)
+
+**커밋**: `b4294ed` "feat: improve portfolio target allocation UX (Phase 8)" - **push 완료**(직전 `711c4ea` 위에 이어짐).
+
+### 완료된 작업
+
+"포트폴리오 구성" 탭의 "신랑/와이프 목표 비중" 섹션 맨 위에 **클릭 없이 바로 보이는** "현재 vs 목표 한눈에 보기" 요약 카드를 신규 추가(`renderPortfolioTargetSummary`, js/04). 사용자가 실제로 설정한 목표 항목마다:
+
+1. **현재 비중 / 목표 비중 표시** - "현재 10% · 목표 30%"
+2. **부족/적정/초과 상태 표시** - 색상 배지(부족=파랑, 적정=초록, 초과=빨강), 판정 기준은 ±1%p(UI 표시 전용 상수 `PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT`, Safety threshold와 무관)
+3. **금액 차이 표시** - "약 2,000만원 부족/초과"
+4. **목표 비중 합계 안내** - 지역별 "목표 합계 100% ✓" 또는 "90% - 100%가 되도록 조정해주세요"(기존 합계 검증 로직 재사용, 새 validation 체계 아님)
+5. **초보자용 행동 안내** - "새로 투자할 때 이 자산을 조금 더 늘리는 방법을 생각해볼 수 있어요" 등 매매를 직접 지시하지 않는 부드러운 문구
+
+### 기존 계산 재사용 / 변경 없음
+
+`computeRegionTargetAmounts()`/`getRebalanceTotals()`/`computeIndividualRebalanceGuide()` 등 기존 리밸런싱 계산 함수는 전혀 수정하지 않고 그대로 호출만 함(새 계산식 없음). state/transaction schema 변경 없음. projection/Monte Carlo 영향 없음. 상태 판정은 반올림 전 원본값 기준, 반올림은 표시 문자열 조립 시점에서만 적용(`fmtNum(...,1)`).
+
+### 모바일 UX 확인
+
+375px 모바일 뷰포트에서 실제 스크린샷으로 확인 - 가로 스크롤 없이 카드가 정상 표시됨.
+
+### 신규 E2E
+
+`e2e/10-portfolio-target-summary.spec.js`(2개) - 부족/초과/적정 3상태 동시 검증(하나의 시나리오에서), 목표합계≠100% 안내 검증. state를 직접 세팅해 실제 보유자산 이름과 목표 항목 이름을 정확히 일치시키는 방식 사용(seedPortfolio 픽스처는 이름이 달라 이 카드 검증에 부적합해 별도 세팅 함수 작성).
+
+### 테스트 결과
+
+npm test 97/97 PASS · ESLint 0 problems · Playwright **25/25 PASS**(기존 23 + 신규 2).
+
+### 향후 후보(이번 Phase에서 구현하지 않음, 별도 지시 필요)
+
+- 역할(포지션)/가구 합산 기준의 유사 "현재 vs 목표" 요약(기존 "전체 포지션별 목표비중 분석" 카드와 중복 우려로 보류)
+- KR_EQUITY/KR_BOND/REAL_ESTATE/CASH CMA 조사(Phase 7 계열에서 이미 보류 확정된 사항, 계속 유효)
+
+### 다음 세션이 알아야 할 것
+
+새로운 개발 과제는 이 인계장을 읽었다고 임의로 시작하지 않는다 - 사용자의 명시적 지시를 받은 뒤에만 진행. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`b4294ed`)을 받았는지 먼저 확인.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 계속 15) — Phase 7-G: 자산·거래 입력 UX 개선 (V207)
 
 **커밋**: `def9c82` "feat: improve asset and transaction input validation UX (Phase 7-G)" - **push 완료**(직전 `c8adb21` 위에 이어짐).
