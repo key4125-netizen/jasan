@@ -7,6 +7,79 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-04, 개인 PC 계속 10) — Phase 4 Monte Carlo Calibration & Investment Model Validation (v210)
+
+**커밋**: `00e1afd` "feat: add Monte Carlo calibration regression suite and stability/sensitivity UI
+guidance" - **push 완료**(직전 `21e20da`(v209) 위에 이어짐). "Monte Carlo가 seed/횟수에 안정적인가"
+(Numerical Stability)와 "그 결과가 실제로 신뢰할 만한가"(Economic/Parameter Sensitivity)는 완전히
+다른 질문이라는 원칙 하에, 두 차례의 설계 감사(Calibration Design Audit → Investment Model
+Validation Audit, 실측 데이터로 뒷받침) 후 최소한의 구현만 승인받아 진행한 회차.
+
+### 이번에 완료된 작업
+
+1. **실측 Calibration/Sensitivity 연구(코드화 안 함, 세션 기록으로만 남음)** - 동일 baseline
+   포트폴리오(KOSPI 7%/S&P500 9% 유사 2자산)에서: (a) seed 5개 × iteration 5k/10k/50k 그리드로
+   P10/P50/P90/GoalProbability의 seed간 상대표준편차 측정(P50: 0.55%→0.18%, **GoalProb(P90 부근
+   목표)는 4.06%→0.74%로 다른 지표보다 4~10배 불안정**), (b) σ=0이 9개 seed×count 조합 전체에서
+   spread=0(완전 동일)임을 실측 + 구조적 증명(σ=0이면 엔진이 랜덤 shock 자체를 곱하지 않음), (c)
+   scalar GBM 이론값과 대조 - median은 `computeDeterministicMonthlyFV`와 상대오차 0(median-match가
+   근사가 아니라 정확한 항등식), mean은 median의 1.868배(Jensen 부등식/변동성 항력, 실측도 이론과
+   0.5%대로 근접), (d) **정규화된(변화폭 1%p/1%당) Parameter Sensitivity**: Expected Return
+   ±1%p→P50 -13.8%/+16.4%, **Fee +1%p→P50 -14.5%~-14.8%(Return과 같은 자릿수 - 정규화 전엔 Fee가
+   훨씬 작아 보였는데 이건 변화폭이 달라서 생긴 착시였다는 게 이번 보정의 핵심)**, Volatility
+   ±1%p→P50은 거의 불변(-0.9%~+1.2%)이나 P90은 크게 움직임(-4.2%~+5.8%), Contribution Growth
+   ±1%p→±4.3%/+4.7%, Monthly Contribution 탄력성 ≈0.6(입력 +1%→P50 +0.6%), **Inflation
+   ±1%p(실질가치 기준)→+21.7%/-17.6%(nominal에는 구조적으로 영향 0)** - Return/Fee/Inflation이
+   전부 비슷한 자릿수(14~22%)라 "어느 것이 절대적으로 가장 중요하다"고 단정하지 않는 것으로 결론,
+   (e) Horizon 5/10/15/20년에서 P90/P10 spread(1.90→3.27배)와 Return sensitivity(4.3%→16.4%)가
+   전부 거의 선형 증가, (f) percentile nearest-rank vs linear interpolation 차이는 5,000회에서도
+   상대차이 0.01% 미만(seed noise의 100분의 1 이하) - 변경 불필요 결론 재확인.
+2. **[SCOPE 발견, 결함 아님]** `MILESTONE_YEARS=[5,10,15,20]`이 하드코딩되어 있어 `years:30`을 넘겨도
+   30년 milestone 자체가 생성되지 않음 - [js/05:229](jasan/js/05-future-projection.js:229) 주석에
+   "최대 20년 시야, 사용자 요청"으로 이미 의도된 기존 설계임을 확인, 이번엔 변경하지 않음(30년 지원은
+   별도 제품 스코프 결정 사항으로 남김).
+3. **Calibration 회귀 테스트 신설** (`test/monte-carlo-calibration.test.js`, 9개) - σ=0 invariant(여러
+   seed×count, 단일자산 + 다자산·fee·growth 조합), Fee/Growth monotonicity(3 seed), percentile
+   경계값/단조성/nearest-rank vs interpolation 무의미성, Goal Probability 기본계산/단조성. **Parameter
+   Sensitivity 실측치 자체(수익률/변동성 등 절대 수치)는 회귀로 코드화하지 않음** - baseline이 바뀌면
+   매번 달라지는 "연구" 결과라 자동 테스트 대상이 아니라는 원칙을 지킴(사용자 조건부승인 항목 9).
+4. **Goal Probability 표시 정책 개선** (`js/22-safety-ui.js` `formatGoalProbabilityDisplay`) -
+   10~90% 구간은 기존 소수점 1자리 유지, **<10%/>90%는 "약 N%"**, <5%는 "5% 미만", >95%는 "95%
+   초과"로 정밀도를 낮추고 꼬리 구간에는 "이 확률은 분포의 극단에 가까워 시뮬레이션 표본에 따라
+   다소 달라질 수 있습니다" 캡션을 함께 표시([js/19](jasan/js/19-monte-carlo-ui.js) 양쪽 목표금액
+   모드(명목/실질) 모두 적용) - 실측 근거: 꼬리 확률은 50,000회에서도 seed간 relSD 0.7%대로 남아
+   소수점 표시가 실제보다 정밀해 보이는 착시를 줌.
+5. **"계산 안정성 ≠ 미래 예측 정확성" 안내 카드 신설** (`explainSimulationStabilityAlwaysOn`,
+   js/21) - 기존 Phase 3-5의 `explainResultAlwaysOn`("복리로 누적된 결과"라는 경제적 해석)과
+   **의도적으로 분리된 별도 카드**로 매 결과에 동반("시뮬레이션 횟수가 많을수록 표본 변동은
+   줄어들지만, 이는 계산이 안정적이라는 뜻일 뿐 미래 수익률을 예측할 수 있다는 뜻은 아니다") -
+   두 개념을 하나로 섞지 말라는 사용자 지시를 그대로 반영.
+6. **실측 검증**: 브라우저에서 실제 프로덕션 코드로 Calibration 회귀 9개 전부 PASS, 기존 Phase
+   3-4/3-5 회귀(Fee=0/Seed재현/weight-sum BLOCK/negative-weight BLOCK/fee WARNING) 무손상 확인,
+   실제 UI에서 WARNING(Fee 미확인)+INFO(결과해석)+INFO(시뮬레이션 안정성) 3개 카드가 함께 렌더링됨을
+   확인, Goal Probability "95% 초과"/"5% 미만" + 꼬리 캡션이 실제 화면에 정확히 표시됨을 확인(둘 다
+   스크린샷/get_page_text로 실측), 로컬스토리지 오염 없음 확인.
+
+### 다음 세션이 알아야 할 것
+- **Parameter Sensitivity 정규화 원칙을 반드시 유지할 것**: 서로 다른 parameter를 비교할 때는
+  반드시 같은 변화폭(주로 ±1%p 또는 입력값 대비 %)으로 환산한 뒤에만 비교한다 - 원래(정규화 전)
+  실측에서는 Fee의 영향이 Return보다 훨씬 작아 보였으나, 이는 Fee 변화폭(±0.25~0.50%p)이 Return
+  변화폭(±1%p)보다 작았기 때문일 뿐이었다(사용자가 직접 잡아낸 방법론적 오류 - 다음에도 이런 종류의
+  비교를 할 때 항상 변화폭부터 맞출 것).
+- **"Expected Return/Inflation이 가장 중요한 변수"라고 절대 단정하지 말 것** - 정규화 후에도
+  Return(~14~16%/%p)·Fee(~14.5%/%p)·Inflation(~18~22%/%p, 실질가치 한정)이 비슷한 자릿수라 "이
+  baseline과 변화범위에서 상대적으로 크게 나타난 변수들"이라고만 표현해야 한다(사용자 명시 지시).
+- **MILESTONE_YEARS=[5,10,15,20] 30년 미지원**은 기존 의도된 설계 - 이번에도 건드리지 않음. 30년
+  지원 논의가 다시 나오면 이건 Calibration이 아니라 제품 스코프 결정임을 상기시킬 것.
+- **PSD_WARNING_THRESHOLD(-0.05), Safety threshold 전체, percentile 알고리즘, annual rebalancing,
+  GBM 모델**은 이번 Phase에서도 전혀 변경하지 않았다 - 계속 유지.
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 임시 경로로 남아있을 수 있다 - 커밋 대상 아님.
+- **다음 우선순위는 사용자가 재검토 예정** - Phase 4까지 완료되었으므로 다음 기능/개선은 사용자
+  지시를 기다릴 것.
+- `git pull` 먼저 해서 이 커밋(v210, `00e1afd`)을 받았는지 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 개인 PC 계속 9) — Phase 3-5 Safety Layer 구현 + 커밋 (v209)
 
 **커밋**: `6f4cb62` "feat: add Safety Layer with input validation and model risk diagnostics" - **push 완료**
