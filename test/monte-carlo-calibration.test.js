@@ -22,7 +22,7 @@ const engine = require(path.join(__dirname, '..', 'js', '15-monte-carlo-engine.j
 // module.exports에 없다(공개 API로 승격하지 않음 - 사용자 지시) - 이 파일은 반드시 공개 API인
 // extractMilestoneStats를 통해서만 percentile 경계값/단조성/nearest-rank 특성을 검증한다.
 const {
-  computeMuGBM, computeDeterministicMonthlyFV, extractMilestoneStats,
+  computeDeterministicMonthlyFV, extractMilestoneStats,
   runMonthlyPrecisionMC
 } = engine;
 
