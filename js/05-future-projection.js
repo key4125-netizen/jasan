@@ -887,6 +887,12 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
   if (planYearsEl) planYearsEl.textContent = `${years}년`;
   const planGrowthEl = document.getElementById('projectionPlanGrowthText');
   if (planGrowthEl) planGrowthEl.textContent = growthRate > 0 ? `매년 ${fmtNum(growthRate, 1)}%씩` : '증가 없음(매월 동일)';
+  // [Phase 17 P1-3] 한 줄 요약 확장분 - 아래 아코디언 목록이 이미 읽는 것과 동일한 값(presetResults.normal.weightedAvgRate,
+  // state.projection.inflationRate)을 여기서도 그대로 표시만 한다(새 계산 없음).
+  const planRateEl = document.getElementById('projectionPlanRateText');
+  if (planRateEl) planRateEl.textContent = `${fmtNum(presetResults.normal.weightedAvgRate, 2)}%`;
+  const planInflationEl = document.getElementById('projectionPlanInflationText');
+  if (planInflationEl) planInflationEl.textContent = `${fmtNum(num(state.projection.inflationRate), 1)}%`;
 
   const list = document.getElementById('projectionAssumptionsList');
   if (list) {
@@ -2013,7 +2019,11 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
     </tr>`).join('');
 }
 
-function updateProjection() {
+// [Phase 19-P1] preserveMcResult=true면 마지막에 MC UI를 READY로 되돌리는 단계만 건너뛴다 - 나머지
+// 계산/렌더링(deterministic 시나리오, 차트 등)은 평소와 완전히 동일하게 전부 수행된다. 다크모드
+// 토글(js/14 darkModeBtn)처럼 "데이터는 그대로인데 차트 테마 색만 다시 그려야 하는" 호출 전용 옵션 -
+// 값 계산이나 State에는 전혀 영향을 주지 않는 순수 렌더링 분기다.
+function updateProjection(preserveMcResult) {
   // [Phase 3-5 Safety Layer - B3] 목표 비중 합계가 깨져 있으면(±1%p 초과) 계산 자체를 시작하지 않고
   // 배너만 보여준다 - 자동으로 비중을 재정규화하지 않는다(사용자 지시). Monte Carlo(js/16 어댑터)도
   // 정확히 같은 assessHouseholdWeightSums()를 쓰므로 두 계산 경로가 항상 같은 기준으로 막힌다.
@@ -2108,7 +2118,10 @@ function updateProjection() {
   // 자동으로 스칼라 시뮬레이션을 돌렸다 - 새 엔진은 Worker로 수 초~수십 초 걸릴 수 있어 자동 실행하지
   // 않고 사용자가 [Monte Carlo 실행] 버튼을 눌러야 시작된다(js/19). 여기서는 화면을 READY 상태로
   // 되돌리기만 한다(직전 실행 중이던 결과가 다른 탭/데이터 상태에 남아 혼동을 주지 않도록).
-  if (typeof resetMonteCarloUiToReady === 'function') resetMonteCarloUiToReady();
+  // [Phase 19-P1] 단, preserveMcResult=true(다크모드 토글 전용 호출)면 이 리셋을 건너뛴다 - MC 결과
+  // 표시는 전부 Tailwind dark: 클래스 기반이라(캔버스/JS 색상 계산 없음) html에 이미 토글된 dark 클래스만
+  // 으로 자동으로 재도색되므로, 기존 결과 DOM을 그대로 두는 것만으로 아무 재계산 없이 보존된다.
+  if (!preserveMcResult && typeof resetMonteCarloUiToReady === 'function') resetMonteCarloUiToReady();
 }
 
 /* -------------------------------------------------------------------------

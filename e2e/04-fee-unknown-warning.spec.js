@@ -12,7 +12,10 @@ test('Fee 미설정 -> 계산 허용 + WARNING 표시, Fee=0% 명시 입력 -> W
   // 1) Fee 미설정 상태로 실행 - 계산은 성공하고 WARNING이 함께 떠야 한다.
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
-  const safetyIssuesText = await page.locator('#mcSafetyIssues').innerText();
+  // [Phase 17 P1-4] "운용보수 미확인"은 결과 해석에 직접 영향을 주는 critical tier로 분류되어 이제
+  // mcSafetyCritical(결과 바로 아래, 항상 펼침)에 표시된다 - mcSafetyIssues는 더 이상 정상 완료
+  // 경로에서 쓰이지 않는다(BLOCK 전용). 판정 자체(assessFee)는 무변경.
+  const safetyIssuesText = await page.locator('#mcSafetyCritical').innerText();
   expect(safetyIssuesText).toContain('운용보수 미확인');
   // 결과 자체는 정상 계산되어야 한다(BLOCK이 아니라 WARNING이므로).
   const p50Before = await page.locator('#mcP50Text').innerText();
@@ -27,6 +30,6 @@ test('Fee 미설정 -> 계산 허용 + WARNING 표시, Fee=0% 명시 입력 -> W
 
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
-  const safetyIssuesTextAfter = await page.locator('#mcSafetyIssues').innerText().catch(() => '');
+  const safetyIssuesTextAfter = await page.locator('#mcSafetyCritical').innerText().catch(() => '');
   expect(safetyIssuesTextAfter).not.toContain('운용보수 미확인');
 });

@@ -1117,7 +1117,23 @@ function renderMacroBriefing() {
   const guideBody = document.getElementById('correlationGuideBody');
   const guideChevron = document.getElementById('correlationGuideChevron');
   if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
+
+  // [Phase 17 P1-1 - 매크로 브리핑 기본 접힘] 이 섹션 전체도 macroBriefingGrid/Diagnosis와 마찬가지로
+  // 매 갱신마다 다시 그려지므로, 펼침 상태(macroBriefingOpen)를 모듈 전역으로 기억해 뒀다가 재적용한다
+  // (Top5 아코디언과 동일한 패턴). 계산/데이터에는 영향 없음 - 화면 표시 여부만 바뀐다.
+  reapplyMacroBriefingAccordionHeight();
 }
+
+let macroBriefingOpen = false; // 기본값: 접힘(개인 자산 진단이 이보다 먼저 보이도록)
+function reapplyMacroBriefingAccordionHeight() {
+  const body = document.getElementById('macroBriefingBody');
+  const chevron = document.getElementById('macroBriefingChevron');
+  if (body && chevron) setAccordionOpen(body, chevron, macroBriefingOpen);
+}
+document.getElementById('macroBriefingToggleBtn').addEventListener('click', () => {
+  macroBriefingOpen = !macroBriefingOpen;
+  reapplyMacroBriefingAccordionHeight();
+});
 
 // 매번 새로 그려지는 버튼이라 위임(delegated) 리스너 하나로 처리한다(data-info-tip과 동일한 이유).
 let correlationGuideOpen = false;

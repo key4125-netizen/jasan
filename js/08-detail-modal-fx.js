@@ -1031,14 +1031,13 @@ document.getElementById('filterResetBtn').addEventListener('click', () => {
   renderCharts();
 });
 
-// [자산 관리 카드 - 계층별 독립 아코디언] 4개 섹션(전체/소유자별/국내해외별/자산군별) 각각의 헤더를
-// 탭하면 그 섹션만 접히거나 펼쳐진다 - 서로 배타적이지 않고 동시에 여러 개를 펼쳐 둘 수 있다.
-Object.keys(ASSET_GROUP_MODE_SUFFIX).forEach((mode) => {
-  const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
-  document.getElementById(`assetGroupAccordionBtn${suffix}`).addEventListener('click', () => {
-    assetGroupAccordionOpen[mode] = !assetGroupAccordionOpen[mode];
-    setAccordionOpen(document.getElementById(`assetGroupAccordionBody${suffix}`), document.getElementById(`assetGroupAccordionChevron${suffix}`), assetGroupAccordionOpen[mode]);
-  });
+// [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 세그먼트 버튼 중 하나를 탭하면 그 관점으로 전환해
+// 단일 목록을 다시 그린다(setAssetListView, js/07). 4개 버튼에 각각 리스너를 붙이는 대신 컨테이너
+// 하나(assetViewSegmented)에 위임 처리한다.
+document.getElementById('assetViewSegmented').addEventListener('click', (e) => {
+  const btn = e.target.closest('.asset-view-btn');
+  if (!btn) return;
+  setAssetListView(btn.dataset.view);
 });
 
 // [PART B - 검색 팝업화] 자산 관리 목록 상단의 검색창은 더 이상 입력할 때마다 목록을 실시간으로

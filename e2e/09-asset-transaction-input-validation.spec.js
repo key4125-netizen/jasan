@@ -8,6 +8,9 @@ test('자산 등록 - 수량 0 이하는 저장되지 않고 안내 후 정상�
   await seedPortfolio(page, { targets: [] });
   expect(await page.evaluate(() => state.assets.length)).toBe(0);
 
+  // [Phase 17 P1-1] 최초등록 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그 진입점을
+  // 열어야 실제 버튼이 보인다(기능/id/폼 로직은 전혀 바뀌지 않았다).
+  await page.locator('#systemManagementBtn').click();
   await page.locator('#addAssetBtn').click();
   await page.locator('#f_manualEntryToggle').check();
   await page.locator('#f_name').fill('E2E테스트채권');
@@ -30,6 +33,9 @@ test('자산 등록 - 수량 0 이하는 저장되지 않고 안내 후 정상�
 
 test('자산 등록 - 매수단가 0 이하는 저장되지 않는다', async ({ page }) => {
   await seedPortfolio(page, { targets: [] });
+  // [Phase 17 P1-1] 최초등록 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그 진입점을
+  // 열어야 실제 버튼이 보인다(기능/id/폼 로직은 전혀 바뀌지 않았다).
+  await page.locator('#systemManagementBtn').click();
   await page.locator('#addAssetBtn').click();
   await page.locator('#f_manualEntryToggle').check();
   await page.locator('#f_name').fill('E2E테스트채권2');

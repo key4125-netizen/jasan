@@ -300,26 +300,14 @@
         <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
         </div>
 
-        <!-- [하단 액션 버튼 3열×2행 그리드] 시세갱신/핵심종목 실시간을 위로 올리고 나면 남는 6개
-             버튼(최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·JSON 불러오기·데이터 초기화)을 모바일
-             에서는 grid-cols-3로 가지런히 3개씩 2줄로, 데스크탑에서는 기존처럼 한 줄 flex로 배치한다.
-             DOM 순서가 그대로 첫 줄/둘째 줄 배치와 일치하므로(그리드 auto-flow) 별도 재배치가 필요
-             없다 - 사이사이의 숨김 file input은 display:none이라 그리드 흐름에서 자동으로 빠진다. -->
-        <!-- [아이콘 제거 + 슬림 알약형 버튼] 아이콘을 없애고 텍스트만 중앙 정렬로 표시하면서, 그만큼
-             줄어든 내용물 높이에 맞춰 padding/카드 여백도 함께 슬림하게 줄였다(rounded-full 알약 모양). -->
-        <div class="grid grid-cols-3 lg:flex lg:items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm w-full lg:w-auto">
-          <button id="addAssetBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">최초등록</button>
-          <button id="exportExcelBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 내보내기</button>
-          <button id="importExcelBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">엑셀 업로드</button>
-          <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
-          <!-- [JSON 자동 백업 토글] 예전엔 눌러야만 백업되는 버튼이었으나, 매일 부팅 시 자동으로
-               백업 파일을 받도록 켜고 끄는 토글로 바꿨다 - 상태 텍스트/색상은
-               updateAutoBackupToggleUI()(js/12)가 관리한다. -->
-          <button id="autoBackupToggleBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full whitespace-nowrap" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
-          <button id="importJsonBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">JSON 불러오기</button>
-          <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
-          <button id="resetDataBtn" class="flex items-center justify-center text-[10.5px] lg:text-xs font-medium px-2 lg:px-3 py-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-950 text-red-500 dark:text-red-400 whitespace-nowrap">데이터 초기화</button>
-        </div>
+        <!-- [Phase 17 P1-1 - 시스템관리 진입점 이동] 최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·
+             JSON 불러오기·데이터 초기화 6개 버튼(과 숨김 file input)은 삭제/기능변경 없이 그대로
+             #systemManagementModal 안으로 옮겼다(id/클릭 핸들러 전부 무변경 - DOM 부모만 바뀌어도
+             getElementById 기반 addEventListener는 그대로 동작한다). 여기 헤더에는 진입 버튼 하나만
+             남겨, 투자정보(KPI/Risk)보다 관리기능이 먼저 시선을 차지하지 않게 한다. -->
+        <button id="systemManagementBtn" title="데이터 관리(최초등록·엑셀·JSON·초기화)" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
       </div>
     </div>
     <p id="refreshStatusMsg" class="text-xs text-slate-400 mt-2 hidden"></p>
@@ -447,6 +435,15 @@
       </div>
       <p id="kpiTotalProfit" class="text-base sm:text-lg font-bold truncate">0원</p>
       <p id="kpiTotalProfitRate" class="text-[10px] sm:text-xs font-semibold mt-0.5">0.00%</p>
+      <!-- [Phase 17 P1-1 - 금융자산 평가금액 보조정보] 새 카드를 만들지 않고 기존 손익 카드 안에 보조
+           줄만 추가한다 - renderKPIs()(js/02)가 이미 계산해 둔 financialCur(부동산 제외, 이 카드의
+           다른 숫자들과 동일한 범위)를 그대로 재사용한다(새 계산 없음). "총자산"이라는 표현은 부동산
+           포함 전체로 오해될 수 있어 쓰지 않고, 범위를 명시하는 "금융자산 평가금액"만 사용한다. 부동산
+           포함 전체 금액은 총자산현황 탭에 있다는 점만 짧게 안내한다. -->
+      <p class="text-[11px] text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+        금융자산 평가금액 <span id="kpiFinancialValueInline" class="font-semibold text-slate-600 dark:text-slate-300">0원</span>
+        <span class="block text-[10px] mt-0.5">부동산을 포함한 전체 자산은 옆 탭에서 확인할 수 있어요.</span>
+      </p>
       <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
            (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
            "+850만원 (+18.2%)"처럼 금액과 수익률을 한 줄에 함께 표기한다). -->
@@ -559,10 +556,17 @@
          문구를 함께 보여준다. renderMacroBriefing()이 채운다 - refreshPricesAndRates() 갱신 주기에
          함께 계산되며 별도 폴링은 하지 않는다. -->
     <div id="macroBriefingSection" class="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-      <div class="flex items-center gap-1.5 mb-1">
-        <span class="text-base leading-none">🌍</span>
-        <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
-      </div>
+      <!-- [Phase 17 P1-1 - 기본 접힘] 개인 자산 진단(RISK 관리, 바로 아래)보다 시장 전반 참고정보가
+           먼저 화면을 차지하지 않도록 기본값을 접힘으로 바꾼다 - Top5 아코디언(reapplyTopHoldingsAccordionHeights)과
+           동일한 max-height 트랜지션 패턴, 접어도 데이터/계산에는 전혀 영향 없음(렌더링만 감춤). -->
+      <button type="button" id="macroBriefingToggleBtn" class="w-full flex items-center justify-between gap-1.5 mb-1 text-left">
+        <span class="flex items-center gap-1.5">
+          <span class="text-base leading-none">🌍</span>
+          <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
+        </span>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="macroBriefingChevron"></i>
+      </button>
+      <div id="macroBriefingBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
       <!-- [1행 5개 · 2행 5개 고정] 화면 크기와 무관하게 예외 없이 이 2행 구성으로 고정한다(1행:
            VIX/원달러/미10년물/금시세/달러인덱스, 2행: 코스피/코스닥/S&P500/나스닥/다우) - renderMacroBriefing()이
            내부에 grid-cols-5 행 두 개를 따로 만들어 채운다(gridEl 자체는 두 행을 세로로 쌓는 순수
@@ -570,6 +574,7 @@
            쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
       <div id="macroBriefingGrid" class="space-y-1 sm:space-y-2 mb-2"></div>
       <div id="macroBriefingDiagnosis" class="space-y-1"></div>
+      </div>
     </div>
 
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
@@ -742,25 +747,30 @@
   </section>
 
   <!-- ============================= TABLE ============================= -->
-  <!-- [자산 관리 카드 - 계층별 독립 아코디언 구조] 요약 정보(tableCountLabel)와 검색창은
-       접힘/펼침과 무관하게 항상 최상단에 고정 노출된다. 그 아래 [전체]/[소유자별]/[국내·해외별]/
-       [자산군별] 4개 보기 방식이 더 이상 토글 버튼으로 하나만 골라 보는 방식이 아니라, 각자 독립적으로
-       접고 펼 수 있는 별도 아코디언 섹션으로 나란히 쌓여 있다 - assetGroupAccordionOpen{mode: bool}로
-       각 섹션의 열림 상태를 개별 관리한다(assetManagementAccordionOpen 단일 변수 방식에서 전환).
-       모든 섹션이 같은 목록(tableAssets(), 상단 FILTER BAR와 무관)을 공유하며 그룹핑 방식만 다르게
-       보여줄 뿐이라 헤더 요약(총 건수·총 평가액)도 4곳 모두 동일하다. 거래 목록 아코디언
-       (txListAccordionBtn)과 동일한 setAccordionOpen(max-height 트랜지션 + chevron 회전) 패턴을
-       섹션마다 재사용한다. -->
+  <!-- [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 예전엔 [전체]/[소유자별]/[국내·해외별]/[자산군별]
+       4개 보기 방식이 각자 독립적으로 접고 펼 수 있는 별도 아코디언으로 동시에 DOM에 존재했다(4곳 모두
+       같은 데이터를 그룹핑만 다르게 반복 렌더링) - "지금 어떤 기준으로 보고 있는지" 한눈에 파악하기
+       어렵다는 지적에 따라, 이제는 한 번에 하나의 관점만 보여주는 단일 목록 + 상단 관점 전환(세그먼트)
+       버튼 구조로 정리했다. 4개 관점 자체(및 그 안의 정보)는 전혀 삭제하지 않았고, assetListViewMode
+       (js/07)가 현재 관점을 기억해 renderTable()이 그 관점 하나만 계산·렌더링한다(나머지 3개를 매번
+       숨겨진 채로 함께 그리지 않아 불필요한 연산도 줄었다). 총 건수/총 평가액 요약(tableCountLabel/
+       assetListTotalValue)은 관점과 무관하게 항상 동일해 관점 전환 상단에 한 번만 노출한다. -->
   <section id="assetManagementSection" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
     <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-      <div class="flex items-center gap-2 mb-2">
-        <h3 class="text-sm font-semibold shrink-0">자산 관리</h3>
-        <span id="tableCountLabel" class="text-xs text-slate-400"></span>
+      <div class="flex items-baseline gap-4 mb-3">
+        <div>
+          <p class="text-[11px] text-slate-400">총자산</p>
+          <p id="assetListTotalValue" class="text-lg font-bold"></p>
+        </div>
+        <div>
+          <p class="text-[11px] text-slate-400">보유 자산 수</p>
+          <p id="tableCountLabel" class="text-sm font-semibold"></p>
+        </div>
       </div>
       <!-- [PART B] 자산 목록 전용 검색 - 더 이상 상단 FILTER BAR와 동기화되지 않으며(완전 독립),
            입력만으로는 목록을 실시간으로 필터링하지 않는다. Enter 또는 [검색] 버튼을 눌러야 검색이
            실행되고, 결과는 별도 팝업(assetSearchResultModal)으로 열린다. -->
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
         <div class="relative">
           <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
           <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색 후 Enter"
@@ -768,127 +778,50 @@
         </div>
         <button type="button" id="assetSearchBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
       </div>
-    </div>
-
-    <!-- ① 전체 -->
-    <div class="border-b border-slate-100 dark:border-slate-800">
-      <button type="button" id="assetGroupAccordionBtnNone"
-        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-xs font-semibold shrink-0">전체</span>
-          <span id="assetGroupSummaryNone" class="text-[11px] text-slate-400 truncate"></span>
-        </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronNone"></i>
-      </button>
-      <div id="assetGroupAccordionBodyNone" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <!-- 태블릿/PC: 기존 테이블 뷰 (가로 스크롤 지원). 640px 미만 화면에서는 아래 카드 뷰로 자동 전환된다.
-             요약 뷰는 종목명/수량/현재가 3항목만 노출하고, 나머지 상세 항목(매수단가·매입금액·평가금액·
-             평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면 펼쳐지는 상세 행에
-             담는다(rowHtml 참고) - 아코디언 방식. -->
-        <div class="hidden sm:block overflow-x-auto">
-          <table class="w-full text-xs whitespace-nowrap">
-            <thead>
-              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-                <th class="sortable px-3 py-2" data-key="name">종목명</th>
-                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-                <th class="px-3 py-2 w-8"></th>
-              </tr>
-            </thead>
-            <tbody id="assetTableBodyNone"></tbody>
-            <tfoot>
-              <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
-            </tfoot>
-          </table>
-        </div>
-        <!-- 모바일(640px 미만): 종목별 카드 뷰. 동일한 데이터를 rowHtml()과 병행해 cardHtml()로 렌더링한다. -->
-        <div id="assetCardListNone" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
+      <!-- 관점 전환(세그먼트 컨트롤) - 375px에서는 2x2, sm 이상에서는 한 줄. 선택 상태는 색상뿐 아니라
+           굵은 테두리+체크 아이콘으로도 구분해(색맹/저시력 사용자 대비) 노안 사용자도 쉽게 식별할 수
+           있도록 글자 크기를 본문과 동일한 text-sm으로 유지했다(setAssetListView, js/07 참고). -->
+      <div id="assetViewSegmented" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5" role="group" aria-label="자산 보기 방식">
+        <button type="button" data-view="none" aria-pressed="true"
+          class="asset-view-btn flex items-center justify-center gap-1 min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">
+          <i data-lucide="check" class="w-3.5 h-3.5 shrink-0 asset-view-check"></i><span>전체</span>
+        </button>
+        <button type="button" data-view="owner" aria-pressed="false"
+          class="asset-view-btn flex items-center justify-center gap-1 min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <i data-lucide="check" class="w-3.5 h-3.5 shrink-0 asset-view-check hidden"></i><span>소유자</span>
+        </button>
+        <button type="button" data-view="domestic" aria-pressed="false"
+          class="asset-view-btn flex items-center justify-center gap-1 min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <i data-lucide="check" class="w-3.5 h-3.5 shrink-0 asset-view-check hidden"></i><span>국내외</span>
+        </button>
+        <button type="button" data-view="category" aria-pressed="false"
+          class="asset-view-btn flex items-center justify-center gap-1 min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <i data-lucide="check" class="w-3.5 h-3.5 shrink-0 asset-view-check hidden"></i><span>자산군</span>
+        </button>
       </div>
     </div>
 
-    <!-- ② 소유자별 -->
-    <div class="border-b border-slate-100 dark:border-slate-800">
-      <button type="button" id="assetGroupAccordionBtnOwner"
-        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-xs font-semibold shrink-0">소유자별</span>
-          <span id="assetGroupSummaryOwner" class="text-[11px] text-slate-400 truncate"></span>
-        </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronOwner"></i>
-      </button>
-      <div id="assetGroupAccordionBodyOwner" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="hidden sm:block overflow-x-auto">
-          <table class="w-full text-xs whitespace-nowrap">
-            <thead>
-              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-                <th class="sortable px-3 py-2" data-key="name">종목명</th>
-                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-                <th class="px-3 py-2 w-8"></th>
-              </tr>
-            </thead>
-            <tbody id="assetTableBodyOwner"></tbody>
-          </table>
-        </div>
-        <div id="assetCardListOwner" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
-      </div>
+    <!-- 선택된 관점의 자산 목록(단일 영역) - 태블릿/PC: 기존 테이블 뷰(가로 스크롤 지원), 640px 미만:
+         카드 뷰로 자동 전환. 요약 뷰는 종목명/수량/현재가 3항목만 노출하고 나머지 상세 항목(매수단가·
+         매입금액·평가금액·평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면
+         열리는 상세 모달에 담는다(rowHtml/cardHtml 참고) - 이전과 동일. -->
+    <div class="hidden sm:block overflow-x-auto">
+      <table class="w-full text-xs whitespace-nowrap">
+        <thead>
+          <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
+            <th class="sortable px-3 py-2" data-key="name">종목명</th>
+            <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
+            <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
+            <th class="px-3 py-2 w-8"></th>
+          </tr>
+        </thead>
+        <tbody id="assetTableBody"></tbody>
+        <tfoot>
+          <tr id="tableFooterRow" class="font-semibold border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"></tr>
+        </tfoot>
+      </table>
     </div>
-
-    <!-- ③ 국내/해외별 -->
-    <div class="border-b border-slate-100 dark:border-slate-800">
-      <button type="button" id="assetGroupAccordionBtnDomestic"
-        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-xs font-semibold shrink-0">국내/해외별</span>
-          <span id="assetGroupSummaryDomestic" class="text-[11px] text-slate-400 truncate"></span>
-        </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronDomestic"></i>
-      </button>
-      <div id="assetGroupAccordionBodyDomestic" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="hidden sm:block overflow-x-auto">
-          <table class="w-full text-xs whitespace-nowrap">
-            <thead>
-              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-                <th class="sortable px-3 py-2" data-key="name">종목명</th>
-                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-                <th class="px-3 py-2 w-8"></th>
-              </tr>
-            </thead>
-            <tbody id="assetTableBodyDomestic"></tbody>
-          </table>
-        </div>
-        <div id="assetCardListDomestic" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
-      </div>
-    </div>
-
-    <!-- ④ 자산군별 -->
-    <div>
-      <button type="button" id="assetGroupAccordionBtnCategory"
-        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-xs font-semibold shrink-0">자산군별</span>
-          <span id="assetGroupSummaryCategory" class="text-[11px] text-slate-400 truncate"></span>
-        </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="assetGroupAccordionChevronCategory"></i>
-      </button>
-      <div id="assetGroupAccordionBodyCategory" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="hidden sm:block overflow-x-auto">
-          <table class="w-full text-xs whitespace-nowrap">
-            <thead>
-              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-                <th class="sortable px-3 py-2" data-key="name">종목명</th>
-                <th class="sortable px-3 py-2 text-right" data-key="quantity">수량</th>
-                <th class="sortable px-3 py-2 text-right" data-key="currentPrice">현재가</th>
-                <th class="px-3 py-2 w-8"></th>
-              </tr>
-            </thead>
-            <tbody id="assetTableBodyCategory"></tbody>
-          </table>
-        </div>
-        <div id="assetCardListCategory" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
-      </div>
-    </div>
+    <div id="assetCardList" class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800"></div>
 
     <p id="emptyTableMsg" class="hidden text-center text-slate-400 text-sm py-10">등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.</p>
   </section>
@@ -902,23 +835,10 @@
   <div id="tabPanelTransactions" class="hidden">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <h2 class="text-sm font-semibold">매매 거래 내역</h2>
-      <!-- [3버튼 한 줄 정돈 - 가로 스크롤 없이] 라벨을 짧게 줄이고(양식다운로드) 버튼 좌우 패딩/간격을
-           모바일에서 압축(px-2/gap-1)해 375px 폭에서도 스크롤 없이 세 버튼이 한 줄에 다 들어가게 했다
-           (sm 이상에서는 기존 여유 있는 패딩/간격으로 되돌아간다). -->
+      <!-- [Phase 18 P2-3] Excel 관련 3버튼(양식다운로드/거래백업/거래등록)은 핵심 거래 흐름(거래 추가)을
+           방해하지 않도록 하단 "Excel로 거래 관리" 아코디언으로 이동했다(기능/id/핸들러 전부 무변경) -
+           이 헤더에는 이제 가장 자주 쓰는 "거래 추가"만 남는다. -->
       <div class="flex items-center gap-1 sm:gap-2 flex-nowrap">
-        <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 거래등록으로 함께 올리세요."
-          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
-          <i data-lucide="history" class="w-3.5 h-3.5"></i> 양식다운로드
-        </button>
-        <button id="backupTransactionsBtn" type="button" title="지금까지 등록된 전체 거래내역을 엑셀 파일로 내려받습니다(거래등록 업로드로 그대로 재사용 가능한 형식)"
-          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i> 거래백업
-        </button>
-        <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다(구분 컬럼: 최초/기간)"
-          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
-          <i data-lucide="upload" class="w-3.5 h-3.5"></i> 거래등록
-        </button>
-        <input id="txExcelFileInput" type="file" accept=".xlsx,.xls" class="hidden">
         <button id="addTransactionBtn" type="button"
           class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 whitespace-nowrap">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 거래 추가
@@ -1024,6 +944,37 @@
            펼침 상태는 기간(granularity)·페이지 이동과 무관하게 pnlPeriodDetailOpen에 key(날짜/월/연도)
            단위로 보존된다. -->
       <div id="pnlReportListContainer" class="space-y-1.5"></div>
+    </section>
+
+    <!-- [Phase 18 P2-3] Excel 거래 관리 [아코디언 - 기본 접힘] 핵심 거래 흐름(거래 추가/조회/실현손익)을
+         화면 진입 즉시 방해하지 않도록 Excel 관련 기능을 하단에 접어 두었다(거래 목록 아코디언과 동일한
+         setAccordionOpen 패턴, js/06 참고) - 버튼 3개의 id/title/기능은 전부 그대로이고 위치만 옮겼다. -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-4 overflow-hidden">
+      <button type="button" id="txExcelAccordionBtn"
+        class="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
+        <h3 class="text-sm font-semibold">Excel로 거래 관리</h3>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="txExcelAccordionChevron"></i>
+      </button>
+      <div id="txExcelAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
+          <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 거래등록으로 함께 올리세요."
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              <i data-lucide="history" class="w-3.5 h-3.5"></i> 양식다운로드
+            </button>
+            <button id="backupTransactionsBtn" type="button" title="지금까지 등록된 전체 거래내역을 엑셀 파일로 내려받습니다(거래등록 업로드로 그대로 재사용 가능한 형식)"
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> 거래백업
+            </button>
+            <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다(구분 컬럼: 최초/기간)"
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i> 거래등록
+            </button>
+            <input id="txExcelFileInput" type="file" accept=".xlsx,.xls" class="hidden">
+          </div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">엑셀 업로드 시 보유수량을 초과하는 매도 거래가 있으면 전체 파일이 저장되지 않고 어떤 거래가 문제인지 안내합니다.</p>
+        </div>
+      </div>
     </section>
   </div> <!-- /tabPanelTransactions -->
 
@@ -1151,6 +1102,12 @@
          한눈에 연결되도록 탭 최상단에 둔다. renderProjectionHeroSummary(js/05)가 채우며, 새로운 계산을
          하지 않고 updateProjection()이 이미 계산해둔 값(일반적 시나리오)만 읽는다. -->
     <section id="projectionHeroSummary" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-3 sm:p-4 mb-4">
+      <!-- [Phase 17 P1-3 - Hero 표제] 예전엔 이 숫자가 "확정된 미래"처럼 보일 위험이 아래 작은 면책
+           문구 하나에만 의존했다 - 이제 숫자 바로 위에 "지금 계획대로면"이라는 표제를 항상 붙인다.
+           "기준 시나리오"라는 표현은 쓰지 않는다 - 이 화면에 이미 "보수/일반/긍정 시나리오 비교" 기능이
+           따로 있어 "시나리오"라는 단어를 여기서도 쓰면 그 기능과 혼동될 수 있다(Phase 16-B 재검증
+           결과). 새 계산 없음 - 순수 표시 문구 추가. -->
+      <p class="text-[11px] font-semibold text-brand-600 dark:text-brand-300 text-center mb-1">지금 계획대로면</p>
       <div class="grid grid-cols-3 gap-2 text-center">
         <div>
           <p class="text-[10px] text-slate-400">현재 자산</p>
@@ -1162,17 +1119,24 @@
         </div>
         <div>
           <p id="projectionHeroFutureLabel" class="text-[10px] text-slate-400">20년 후 예상 자산</p>
-          <p id="projectionHeroFuture" class="text-sm sm:text-base font-bold text-brand-600 dark:text-brand-300 mt-0.5">-</p>
+          <!-- [Phase 17 P1-3 - 미래자산을 가장 크게] 이 화면을 연 목적에 해당하는 숫자라 다른 두 칸보다
+               한 단계 큰 글자로 강조한다(text-lg/xl) - 계산값(fmtKRWShort(futureTotal))은 무변경, 폰트
+               크기만 키움. -->
+          <p id="projectionHeroFuture" class="text-lg sm:text-xl font-bold text-brand-600 dark:text-brand-300 mt-0.5">-</p>
         </div>
       </div>
-      <!-- [신규 - 장기 투자계획 UX 개선] "현재 자산 → 앞으로 투자 → 미래자산" 흐름에서 빠져있던 "투자
-           기간"·"투자금 증가"를 아코디언을 펼치지 않아도 바로 보이게 한줄 요약으로 추가한다. 값은 아래
-           renderProjectionHeroSummary(js/05)가 이미 계산되어 있는 years/growthRate를 그대로 표시만
-           한다(새 계산 없음) - 위 3칸(현재자산/매달투자/미래자산) 요약과 합쳐 사용자가 입력한 4가지
-           조건(현재자산·매달투자·투자기간·투자금증가)이 한 화면에서 모두 확인된다. -->
-      <p id="projectionPlanFactsLine" class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center">
+      <!-- [신규 - 장기 투자계획 UX 개선, Phase17에서 성장률/인플레이션까지 확장] "현재 자산 → 앞으로
+           투자 → 미래자산" 흐름에서 빠져있던 조건들을 아코디언을 펼치지 않아도 바로 보이게 한줄 요약으로
+           보여준다. 값은 전부 renderProjectionHeroSummary(js/05)가 이미 계산해 둔 것을 표시만 한다(새
+           계산 없음) - 별도 "가정 카드"를 새로 만들지 않고 기존 이 한 줄을 확장하는 방식을 선택했다
+           (Phase 16-B에서 "가정 요약 카드" 신설안은 카드 증가 금지 원칙과 충돌해 철회됨). 운용보수는
+           가구 단위 가중평균값이 이 화면 계산 흐름에 아직 없어(Monte Carlo 실행 후에만 산출됨) 새
+           계산을 만들지 않기 위해 이 한 줄에는 포함하지 않았다. -->
+      <p id="projectionPlanFactsLine" class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center leading-relaxed">
         투자 기간 <b id="projectionPlanYearsText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
         · 투자금 증가 <b id="projectionPlanGrowthText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
+        · 성장률 <b id="projectionPlanRateText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
+        · 인플레이션 <b id="projectionPlanInflationText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
       </p>
       <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">현재 설정한 가정대로 계산하면 위와 같은 금액이며, 실제 투자 결과는 매년 달라질 수 있습니다.</p>
 
@@ -1357,6 +1321,16 @@
       </div>
     </section>
 
+    <!-- [Phase 17 P1-3 - Scenario ↔ Monte Carlo 시각적 단계 구분] 위 시나리오 비교(보수/일반/긍정,
+         전부 확정된 단일 경로 계산)와 아래 Monte Carlo(변동성을 반영한 확률분포)가 "같은 종류의 분석을
+         두 번 보여주는 것"으로 오해되지 않도록, 색이 다른 구분 배지로 단계 전환을 명시한다(Phase 16-B
+         재검증 결과 - 새 계산/새 카드 없음, 순수 시각적 구분자). -->
+    <div class="flex items-center gap-2 my-4">
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+      <span class="text-[11px] font-semibold px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 whitespace-nowrap">여기부터는 계획의 불확실성을 살펴봅니다</span>
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+    </div>
+
     <!-- ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3) =====
          종목별 기대수익률(μ)·변동성(σ)·날짜정렬 상관관계를 반영한 Monthly Precision Monte Carlo가
          공식 모델이다(js/15~18). 계산에 수 초~수십 초 걸릴 수 있어 자동 실행하지 않고 사용자가 직접
@@ -1417,8 +1391,11 @@
       <button type="button" id="mcRunBtn" class="w-full py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
       <button type="button" id="mcCancelBtn" class="hidden w-full py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
 
-      <!-- [Phase 3-5 Safety Layer] BLOCK 실패 시(비중 합계 오류 등)와 WARNING/INFO(Fee 미확인, 극단
-           가정, 데이터 품질, PSD 보정 등)를 여기 하나에 모아 3단 구조 카드로 보여준다 - js/22 renderSafetyIssueList. -->
+      <!-- [Phase 3-5 Safety Layer] BLOCK 실패 시(비중 합계 오류 등)를 보여준다 - 이 경로는 계산 자체가
+           시작되지 못한 경우라 mcResultArea가 항상 hidden 상태이므로(handleMonteCarloError, js/19)
+           위치가 결과보다 먼저/나중이든 실제로는 서로 겹치지 않는다. [Phase 17 P1-4] 정상 완료 시의
+           Safety 표시는 더 이상 이 컨테이너를 쓰지 않는다 - 아래 mcResultArea 안의
+           mcSafetyCritical/mcSafetyDetail(결과 우선 배치, 3단계 표시)로 대체됐다(js/22 renderMonteCarloSafetyTiers). -->
       <div id="mcSafetyIssues" class="hidden mt-3"></div>
 
       <div id="mcProgressArea" class="hidden mt-3">
@@ -1443,6 +1420,14 @@
           <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
           <p class="text-[10px] text-slate-400 mt-1.5 leading-relaxed">이 값은 시뮬레이션 결과 중 "가장 전형적인(중앙값, P50)" 경우입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
         </div>
+
+        <!-- [Phase 17 P1-4 - 핵심 결과 다음, 핵심 WARNING] 결과 해석에 직접 영향을 주는 주의사항(운용
+             보수 미확인/극단적 기대수익률 등)만 여기 결과 바로 아래 항상 펼쳐서 보여준다 - 판정
+             로직(js/21 assess*)은 전혀 바꾸지 않고, 이미 계산된 issue를 어디에 배치할지만 바꿨다
+             (js/22 renderMonteCarloSafetyTiers). 동일 원인이 여러 자산에서 반복되면 "자산 N개"로
+             묶어 보여주되, 원본 issue 데이터(개별 자산명/메시지)는 펼치면 전부 그대로 확인할 수 있다. -->
+        <div id="mcSafetyCritical" class="hidden mb-3 space-y-1.5"></div>
+
         <div class="overflow-x-auto">
           <table class="w-full text-xs">
             <thead>
@@ -1468,6 +1453,18 @@
         <div id="mcGoalArea" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center"></div>
 
         <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
+
+        <!-- [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항(변동성/데이터
+             충분성/상관계수 등)과 매번 동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘
+             영역으로 모은다 - 숨기는 것이 아니라 원하면 언제든 펼쳐 전부 확인할 수 있다(위험을 숨기지
+             않는다는 원칙 유지, 판정 로직 무변경). -->
+        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
+          <span id="mcSafetyDetailToggleLabel">주의사항 및 계산 방법 자세히 보기</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcSafetyDetailChevron"></i>
+        </button>
+        <div id="mcSafetyDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <div id="mcSafetyDetail" class="pt-2 space-y-1.5"></div>
+        </div>
       </div>
     </section>
   </div> <!-- /tabPanelProjection -->
@@ -1476,6 +1473,36 @@
   <footer class="text-center text-[11px] text-slate-400 py-6">
     모든 데이터는 브라우저 localStorage에만 저장되며 외부로 전송되지 않습니다. 시세/환율 자동조회는 외부 무료 API(Yahoo Finance, open.er-api.com)를 이용합니다.
   </footer>
+</div>
+
+<!-- ============================= SYSTEM MANAGEMENT MODAL (Phase 17 P1-1) =============================
+     [시스템관리 진입점] 헤더에 있던 6개 관리 버튼(최초등록/엑셀 내보내기/엑셀 업로드/JSON 자동백업/
+     JSON 불러오기/데이터 초기화)을 그대로 옮겨왔다 - id/기능/문구 전부 무변경, 담고 있던 부모 컨테이너만
+     바뀌었다. 각 버튼의 클릭 핸들러(js/06,12,14)는 document.getElementById(id)로 등록되므로 DOM
+     위치 이동과 무관하게 그대로 동작한다. -->
+<div id="systemManagementModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+      <h3 class="text-sm font-semibold">데이터 관리</h3>
+      <button id="closeSystemManagementModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <!-- [Phase 18 P2-2] 기능/id/핸들러는 전부 무변경 - "데이터 관리"(안전)와 "주의"(초기화, 되돌릴 수
+         없음)로 시각적으로만 구분해 데이터 초기화를 실수로 누르기 어렵게 정리했다. -->
+    <div class="p-4 space-y-1.5">
+      <p class="px-1 pb-0.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">데이터 관리</p>
+      <button id="addAssetBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">최초등록</button>
+      <button id="exportExcelBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">엑셀 내보내기</button>
+      <button id="importExcelBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">엑셀 업로드</button>
+      <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
+      <button id="autoBackupToggleBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
+      <button id="importJsonBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">JSON 불러오기</button>
+      <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
+      <p class="px-1 pt-3 pb-0.5 text-[11px] font-semibold text-red-400 uppercase tracking-wide border-t border-slate-100 dark:border-slate-800 mt-2">주의 - 되돌릴 수 없음</p>
+      <button id="resetDataBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 dark:text-red-400 text-left">데이터 초기화</button>
+    </div>
+  </div>
 </div>
 
 <!-- ============================= ASSET MODAL ============================= -->

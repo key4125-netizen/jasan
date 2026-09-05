@@ -7,6 +7,41 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-05, 계속 17) — Phase 13~19-Final: Excel oversell, V1.0 IA P1/P2, 통합 UX 검증, Dark Mode MC 보존 수정 (v208 유지, post-release stabilization)
+
+**커밋**: 이 섹션 작성 직후 `release: V1.0 v208 post-release stabilization`으로 커밋·push 예정(아래 "다음 세션이 알아야 할 것"의 실제 커밋 해시로 갱신될 것). **버전은 v208 그대로 유지** - 이번 커밋은 신규 기능이 아니라 v208 위에 쌓인 버그 수정/IA 정리이므로 CACHE_NAME/appVersionLabel을 올리지 않았다. **주의**: 실사용자 브라우저에 이미 v208 Service Worker가 캐시돼 있다면 이번 변경(특히 Phase 13 Excel oversell 검증, Phase 19-P1 Dark Mode 수정)이 즉시 반영되지 않을 수 있다 - 필요 시 PM이 별도로 버전 bump 여부를 결정할 것.
+
+### 이번 세션에서 완료된 작업(Phase 13~19-Final 누적, 하나의 커밋으로 정리)
+
+1. **Phase 13 - Excel 대량 거래입력 초과매도 검증**(V1.1-M01 구현): `findExcelOversellViolations()`/`buildExcelOversellAlertMessage()`(js/06-transactions.js) 추가 - 엑셀 업로드 시 보유수량을 초과하는 매도가 하나라도 있으면 파일 전체를 원자적으로 거부(부분 반영 없음). 기존 `computePositionsAndRealizedPnL()`의 `Math.min()` clamp는 무변경. 신규 e2e `e2e/20-phase13-excel-oversell.spec.js`(4개).
+2. **Phase 14/14-A/14-B - Legacy 감사 + N-1 수정**: "데이터 초기화" 핸들러(js/14-settings-boot.js)가 `monthlyContributionByOwner`를 `years:15`로 하드코딩하던 것을 신규 설치 기본값(`years:null`)과 일치하도록 `normalizeMonthlyContributionByOwner()` 재사용으로 수정. 신규 e2e `e2e/21-n1-reset-default.spec.js`(3개).
+3. **Phase 15/16/16-B/16-C - V1.0 IA 설계**(코드 변경 없음): Dashboard/Assets/Portfolio/Future Projection/Monte Carlo 전면 재검토 후 P1(우선 구현)/P2(후속) 항목 확정.
+4. **Phase 17 - IA P1 구현**: Dashboard(관리버튼 6개 → ⚙ 모달 통합, KPI 카드에 금융자산평가금액 보조줄+캡션 추가, 매크로 브리핑 아코디언화), Portfolio(목표비중 진단 카드에 실행 상세 드릴다운 추가 - 기존 계산 함수만 재사용), Future Projection(Hero "지금 계획대로면" 재구성, 미래예상자산 폰트 확대, Scenario/MC 구분 문구·구분선 추가), Monte Carlo(Safety를 critical/일반/INFO 3단으로 분리 - critical은 결과 바로 아래 상시 노출, 나머지는 상세보기 아코디언). 계산/State/Safety 판정 로직 전부 무변경(호출 위치와 표시 위치만 변경). 회귀 확인을 위해 기존 e2e 3개 파일(04/07/09)의 selector 진입 경로만 수정(assertion 의미는 무변경 - Phase 17 최종 검증에서 1:1 대조 완료).
+5. **Phase 18 - IA P2 구현**: Assets(4개 독립 아코디언[전체/소유자별/국내해외별/자산군별]을 단일 목록 + 관점 전환 세그먼트 컨트롤로 통합 - `assetListViewMode`가 현재 관점만 기억하고 `renderTable()`이 그 하나만 계산·렌더링, 그룹핑 규칙 자체는 무변경), Dashboard(⚙ 모달 내부를 "데이터 관리"/"주의 - 되돌릴 수 없음"으로 시각 구분), Transactions(Excel 관련 3버튼을 헤더에서 하단 "Excel로 거래 관리" 아코디언[기본 접힘]으로 이동, 헤더에는 "거래 추가"만 남김). Excel oversell 검증(Phase 13) 로직은 완전히 보존, e2e 20의 진입 경로만 아코디언 오픈 클릭 추가.
+6. **Phase 19 - 통합 UX 검증**(읽기 전용, 코드 변경 없음): Dashboard→Assets→Portfolio→Transactions→Future Projection→Monte Carlo 전체 흐름을 실제 브라우저(375/1440px, Light/Dark)로 검증. 데이터 연결(거래→자산→포트폴리오→예측→MC) 전부 정상. **P1 1건 발견**: 미래예측 화면에서 Monte Carlo 결과 확인 중 다크모드를 토글하면 결과가 리셋됨. 그 외 P2 5건/P3 3건은 아래 Backlog 참고.
+7. **Phase 19-P1 - P1 수정**: 원인은 `darkModeBtn` 핸들러(js/14)가 차트 재도색을 위해 호출하는 `updateProjection()`(js/05)이 마지막에 항상 `resetMonteCarloUiToReady()`를 실행해 MC 결과를 리셋시키는 것. `updateProjection(preserveMcResult)` 매개변수를 추가(무인자 호출은 전부 기존과 100% 동일)하고 `darkModeBtn` 핸들러만 `updateProjection(true)`로 호출해 리셋을 건너뛰도록 수정. MC 결과 표시는 전부 Tailwind `dark:` 클래스 기반(캔버스/JS 색상 계산 없음)이라 DOM을 그대로 둬도 테마만 자동 재도색됨 - Light→Dark→Light 반복 시 `mcResultArea.innerHTML`이 바이트 단위로 완전히 동일함을 실측 확인. 신규 e2e `e2e/22-phase19-p1-dark-mode-mc-preservation.spec.js`(1개) 추가.
+8. **최종 테스트**: npm test 108/108, ESLint 0 problems, Playwright 106/106(신규 e2e 3개 파일: 20/21/22).
+
+### Backlog로 신규 기록된 항목(Phase 19 통합 검증에서 발견, 이번 세션에서 구현하지 않음)
+
+**P2**:
+- "기대수익률"(js/21 Safety 메시지) ↔ "기준 연간 성장률"(js/05 시나리오 카드) 용어 혼재 - Phase 6-C에서 시나리오 카드 라벨만 좁게 수정하고 Safety 메시지는 범위 밖으로 남은 결과.
+- Monte Carlo 결과 화면에서 "목표 도달 가능성"이 P50 직후가 아니라 범위표(milestone table) 이후에 위치.
+- Assets 상단 필터바("전체 소유자" 등, 차트 필터)와 자산 관리 카드 세그먼트 컨트롤("소유자" 등, 목록 그룹 전환)의 유사 명칭 중복 - 서로 다른 메커니즘인데 혼동 가능.
+- Safety WARNING/INFO 카드 본문이 11px(배지 10px)로 앱의 핵심 숫자보다 작음.
+- "미래 예측" 서브탭을 벗어났다가 되돌아오면(다크모드와 무관하게) MC 결과가 리셋됨 - `renderProjection()`이 `updateProjection()`을 무인자로 호출하는 기존 설계(의도된 동작으로 코드에 이미 주석돼 있음, Phase 19-P1에서는 다크모드 토글 경로만 수정하고 이 경로는 그대로 둠).
+
+**P3**:
+- Portfolio 진단 카드("비중 축소 검토")와 실행 가이드("-40,000,000원 매도")의 어조 혼재.
+- 무티커(채권/현금) 자산의 "예상 매수/매도 수량"이 항상 "0주"로 표시되어 금액 조정과 모순돼 보일 수 있음.
+- Safety "운용보수 미확인" 그룹 카드 내부에 동일 안내문이 자산 수만큼 반복 표시.
+
+### 다음 세션이 알아야 할 것
+
+**V1.0은 여전히 v208**(버전 bump 없음, 위 참고). 위 P2/P3 Backlog는 **PM이 우선순위를 결정하기 전까지 임의로 구현하지 않는다** - 이 인계장을 읽었다고 시작하지 않을 것. `.claude/launch.json`은 이번에도 로컬 전용 경로(scratchpad)라 커밋 대상 아님. `git pull`로 이 커밋을 받았는지 먼저 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-05) — Phase 9~12: 적립기간 기능, F-1 MC 자산0 수정, V1.0 Release(v208)
 
 **커밋**: `1bf48a7` "release: V1.0 v208" - **push 완료**(직전 `5f292b6` 위에 이어짐).
@@ -27,12 +62,17 @@
 
 ### Backlog로 신규 기록된 항목(V1.1 이후 검토, 이번 세션에서 구현하지 않음)
 
-- **UX-001 — 금액 입력 천 단위 콤마 표시/입력**: 현재 `tx_price`/`tx_quantity`/`monthlyContributionTotalInputHusband·Wife`/`mcGoalAmountInput` 등 금액 입력 필드가 전부 네이티브 `type="number"`라 콤마 입력/표시가 불가능(구조적 한계 - 브라우저가 콤마 포함 값을 아예 안 받음). 결과 표시 영역의 `toLocaleString()`은 계산 결과를 "보여줄 때"만 쓰이고 입력 UX와는 무관. 목적은 초보자의 큰 금액 자릿수 착오/입력 부담 감소. **V1.1 검토 시 필수 확인사항(사용자 명시)**: 단순히 `type="number"`→`text` 치환으로 바로 구현하지 말 것 - 금액/수량/비율/기간/소수점허용/음수허용/모바일입력/붙여넣기/커서이동삭제/validation/state저장값/계산엔진전달값/Import-Export영향을 각각 구분해서 먼저 설계 검토할 것. 화면 표시값과 내부 계산값을 분리하되 기존 계산 로직의 숫자 semantics는 변경하지 않는 것이 기본 원칙.
+- **UX-001 — 금액 입력 천 단위 콤마 적용 범위 통일**(2026-09-05 Phase 12 Legacy Audit에서 문구 정정됨 - 예전엔 "미구현"이라고 잘못 기록돼 있었음): `attachThousandsInputFormatting()`(js/01-core-state.js:647)가 실제로 이미 3곳에 적용돼 있다 - 절세계좌 적립설정 금액(js/05:1299), 월 적립금 총액(신랑/와이프, js/05:2581), 매수 검토 금액(js/10:1639). **누락된 곳은 `mcGoalAmountInput`(Monte Carlo 목표 금액) 1곳뿐**이다. 결과 표시 영역의 `toLocaleString()`은 계산 결과를 "보여줄 때"만 쓰이고 입력 UX와는 별개 함수. **V1.1 검토 시 필수 확인사항(사용자 명시, 여전히 유효)**: 단순히 `type="number"`→`text` 치환으로 바로 구현하지 말 것 - 금액/수량/비율/기간/소수점허용/음수허용/모바일입력/붙여넣기/커서이동삭제/validation/state저장값/계산엔진전달값/Import-Export영향을 각각 구분해서 먼저 설계 검토할 것. 화면 표시값과 내부 계산값을 분리하되 기존 계산 로직의 숫자 semantics는 변경하지 않는 것이 기본 원칙. 이번에도 구현하지 않음.
+- **V1.1-M01 — F-3: Excel 대량 거래 업로드 초과매도 검증 누락**(우선순위 High, 2026-09-05 Phase 12 Legacy Audit에서 신규 발견, PM 승인 완료, 상태: Backlog/구현 전): 단일 거래 입력 모달(js/06-transactions.js:553, `computeCurrentHoldingQuantity` 호출)은 저장 직전 초과매도를 차단하지만, 엑셀 대량 업로드(js/06-transactions.js:245-339, `txExcelFileInput` 핸들러)는 이 검증을 거치지 않는다. `computePositionsAndRealizedPnL()`(js/06:18)이 `Math.min(tx.quantity, pos.quantity)`로 조용히 clamp하기 때문에, 거래내역 목록에 표시되는 금액(입력한 수량 그대로)과 실제 계산되는 실현손익(clamp된 수량 기준)이 어긋날 수 있다 - Node 스크립트로 재현 확인됨(보유100주에 1000주 매도 업로드 시 화면엔 ₩75,000,000 매도로 보이지만 실현손익은 100주 기준 ₩500,000만 반영, 경고 없음). **PM이 확정한 V1.1 기본 정책**: 초과매도 발견 시 (a) 자동으로 수량을 줄이거나 (b) 조용히 값을 바꾸거나 (c) clamp로 숨기는 방식이 아니라, **해당 거래 입력 자체를 거부하고 사용자에게 명확한 오류/경고를 제공**하는 방향으로 구현할 것. 계산 함수의 `Math.min()`은 이번에도 건드리지 않았음(V1.1 구현 시점에 다룰 것). 실제 구현 시 엑셀 행 순서에 따른 running balance(매수→매도→매수처럼 뒤섞인 순서)까지 반드시 고려해서 설계할 것.
 - (기존 Known Limitation 유지, 재나열 안 함) F-2/F-5/I-5/I-6/R-2(SW APP_SHELL이 js/15~22 미포함)/`updateRebalanceResults()`가 `updateProjection()`을 직접 호출하는 테스트환경 전용 stale-DOM 타이밍 이슈.
+
+### Phase 12 — Legacy Logic & Calculation Health Check (2026-09-05, CLOSED)
+
+Release Preparation 단계였던 위 "Phase 12"(R-1 버전불일치)와는 별개로, V1.0 v208 Freeze 이후 V1.1 착수 전 별도로 진행된 **읽기 전용 감사**(코드 수정 없음, Commit/Push 없음). 자산관리/거래/리밸런싱/Price·FX/State·Persistence/Deterministic Projection legacy 전반을 추적해 F-3(위 참고)을 발견, PM이 🟢 Audit 완료 승인 + F-3을 P2/V1.1-M01(High)로 확정. **V1.0 v208 코드는 이 Audit 때문에 전혀 수정되지 않았고 Hotfix도 만들지 않음 - 그대로 유지.** 이 Audit 자체는 여기서 CLOSED.
 
 ### 다음 세션이 알아야 할 것
 
-**V1.0 v208은 PM이 최종 Freeze한 Release Candidate다** - 새로운 개발 과제(UX-001 포함)는 이 인계장을 읽었다고 임의로 시작하지 않는다. 사용자의 명시적 지시를 받은 뒤에만 진행. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`1bf48a7`)을 받았는지 먼저 확인.
+**V1.0 v208은 PM이 최종 Freeze한 Release Candidate다** - 새로운 개발 과제(V1.1-M01/UX-001 포함)는 이 인계장을 읽었다고 임의로 시작하지 않는다. **V1.1의 범위와 우선순위는 PM이 별도로 결정할 예정** - 그 결정이 있기 전까지 위 backlog 항목을 임의로 구현하지 않는다. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`1bf48a7`)을 받았는지 먼저 확인. **참고**: 이 섹션(Phase 12 Legacy Audit 관련 내용)은 커밋되지 않은 로컬 수정일 수 있다 - `git status`로 CLAUDE_HANDOVER.md가 modified로 남아있다면, 사용자 승인 없이 임의로 커밋하지 말 것.
 
 ---
 
