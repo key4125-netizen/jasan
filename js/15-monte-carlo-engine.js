@@ -92,6 +92,17 @@ function computeTotalContributionPrincipal(monthlyContribution, contributionGrow
   }
   return total;
 }
+// [Step 2 - 적립기간 연결, 신규·추가 전용] 위 computeTotalContributionPrincipal은 그대로 두고(기존
+// 호출부 무변경), owner별 적립기간이 다른 경우의 "총 납입원금"을 정확히 구하기 위한 합성 함수 -
+// 각 스트림을 자신의 적립기간(min(stream.years, years); null/undefined면 years 그대로)만큼만 계산해
+// 위 함수를 그대로(수정 없이) 재사용한 뒤 합산한다. 새 계산식이 아니라 기존 함수의 단순 합성이다.
+function computeTotalContributionPrincipalMultiStream(streams, contributionGrowthRate, years) {
+  return (streams || []).reduce((sum, stream) => {
+    const streamYears = stream.years;
+    const capYears = (streamYears === null || streamYears === undefined || !Number.isFinite(streamYears)) ? years : Math.min(streamYears, years);
+    return sum + computeTotalContributionPrincipal(stream.monthly || 0, contributionGrowthRate, capYears);
+  }, 0);
+}
 
 /* -------------------------------------------------------------------------
  * 25-2. 시드 고정 PRNG (js/05 createSeededRandom과 동일 알고리즘의 독립 사본)
@@ -357,6 +368,32 @@ function runMonthlyPrecisionMC(config, hooks) {
   const yearlyContribMultiplier = new Float64Array(numYears);
   for (let y = 0; y < numYears; y++) yearlyContribMultiplier[y] = computeContributionYearMultiplier(contributionGrowthRate, y);
 
+  // [Step 2 - 적립기간(년) 연결, 신규·추가 전용] config.contributionStreams(예: owner별 [{monthly,years},...])가
+  // 있으면, 각 스트림이 "자신의 적립기간(years - null/undefined/미제공이면 무제한)까지만" 기여하는
+  // "가구 전체 월별 신규납입 총액"을 iteration 루프 밖에서 미리 한 번만 계산해둔다(이 현금흐름은
+  // iteration의 랜덤성과 무관 - 위 yearlyContribMultiplier와 같은 이유로 미리 계산해도 안전하다).
+  // 자산별 배분은 여전히 weight 그대로 곱한다(household pooled target-weight 구조를 그대로 유지 -
+  // owner-aware 자산 배분으로 확장하지 않음, 요청 범위 제한). streams가 없으면(기존 모든 호출부) 아래
+  // hasContributionStreams 분기가 항상 false라 이 블록 자체가 실행되지 않고, iteration 루프도 기존
+  // contribShare 경로를 그대로 타 완전히 bit-identical하다.
+  const contributionStreams = config.contributionStreams;
+  const hasContributionStreams = Array.isArray(contributionStreams) && contributionStreams.length > 0;
+  let monthlyContribTotal = null;
+  if (hasContributionStreams) {
+    monthlyContribTotal = new Float64Array(months);
+    for (let m = 1; m <= months; m++) {
+      const multiplier = yearlyContribMultiplier[Math.floor((m - 1) / 12)];
+      let monthTotal = 0;
+      for (let s = 0; s < contributionStreams.length; s++) {
+        const stream = contributionStreams[s];
+        const streamYears = stream.years;
+        const capMonths = (streamYears === null || streamYears === undefined || !Number.isFinite(streamYears)) ? Infinity : streamYears * 12;
+        if (m <= capMonths) monthTotal += (stream.monthly || 0) * multiplier;
+      }
+      monthlyContribTotal[m - 1] = monthTotal;
+    }
+  }
+
   // milestone(5/10/15/20년)에서만 iteration별 "포트폴리오 총액"을 저장한다 - 240개월 전체 경로는
   // 메모리에 남기지 않는다(요청사항). milestoneMonthSet으로 해당 월인지만 빠르게 확인한다.
   const milestoneMonths = MILESTONE_YEARS.filter((y) => y <= years).map((y) => y * 12);
@@ -368,10 +405,17 @@ function runMonthlyPrecisionMC(config, hooks) {
     for (let i = 0; i < n; i++) balances[i] = pv0 * weight[i];
     let nextMilestoneIdx = 0;
     for (let m = 1; m <= months; m++) {
-      // Step 1: 신규 월 납입금 반영(연차별 증가율 적용) + Step 2: 목표비중 배분(contribShare가 이미
-      // weight로 배분됨) - 수익률 계산(Step 3/4)과는 완전히 분리된 현금흐름 전용 배율이다.
-      const contribMultiplier = yearlyContribMultiplier[Math.floor((m - 1) / 12)];
-      for (let i = 0; i < n; i++) balances[i] += contribShare[i] * contribMultiplier;
+      // Step 1: 신규 월 납입금 반영(연차별 증가율 적용) + Step 2: 목표비중 배분(contribShare/weight가
+      // 이미 배분됨) - 수익률 계산(Step 3/4)과는 완전히 분리된 현금흐름 전용 배율이다. streams가 있으면
+      // (Step 2 - 적립기간 연결) 미리 계산해둔 월별 가구 전체 총액을 weight로 배분하고, 없으면(기존
+      // 모든 호출부) 기존 contribShare 경로를 그대로 쓴다.
+      if (hasContributionStreams) {
+        const monthTotal = monthlyContribTotal[m - 1];
+        for (let i = 0; i < n; i++) balances[i] += weight[i] * monthTotal;
+      } else {
+        const contribMultiplier = yearlyContribMultiplier[Math.floor((m - 1) / 12)];
+        for (let i = 0; i < n; i++) balances[i] += contribShare[i] * contribMultiplier;
+      }
       // Step 3: correlated shock 생성 (Z -> L*Z)
       for (let i = 0; i < n; i++) Z[i] = nextZ();
       for (let i = 0; i < n; i++) {
@@ -509,7 +553,7 @@ function runAnnualPreviewMC(config, hooks) {
 // js/12-import-export-sync.js의 기존 export 패턴과 동일.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    MC_MODEL_VERSION, computeMuGBM, computeDeterministicMonthlyFV, computeTotalContributionPrincipal, computeContributionYearMultiplier, computeMonthlyFeeFactor, feePercentToDecimal,
+    MC_MODEL_VERSION, computeMuGBM, computeDeterministicMonthlyFV, computeTotalContributionPrincipal, computeTotalContributionPrincipalMultiStream, computeContributionYearMultiplier, computeMonthlyFeeFactor, feePercentToDecimal,
     createSeededRandom, makeBoxMuller,
     dateAlignedReturns, pearsonCorrelation, computeDateAlignedCorrelationMatrix,
     validateCorrelationMatrixShape, jacobiEigenDecomposition, ensurePSD, choleskyDecompose, prepareCholeskyFromCorrelation,

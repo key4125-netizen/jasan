@@ -193,6 +193,25 @@ function validateMonteCarloInput(input) {
   if (growth !== undefined && growth !== null && (!Number.isFinite(growth) || growth < 0)) {
     errors.push(`contributionGrowthRate가 유효하지 않습니다: ${growth}`);
   }
+  // [Step 2 - 적립기간 연결] contributionStreams는 생략 가능(undefined/빈 배열 -> 엔진이 기존
+  // monthlyContribution 단일 흐름으로 폴백) - 있다면 각 스트림의 monthly는 0 이상의 유한값, years는
+  // null/undefined(제한없음) 또는 0 이상의 유한값이어야 한다(js/01 normalizeMonthlyContributionByOwnerEntry
+  // 규약과 동일).
+  if (input.contributionStreams !== undefined && input.contributionStreams !== null) {
+    if (!Array.isArray(input.contributionStreams)) {
+      errors.push('contributionStreams가 배열이 아닙니다.');
+    } else {
+      input.contributionStreams.forEach((stream, idx) => {
+        if (!stream || !Number.isFinite(stream.monthly) || stream.monthly < 0) {
+          errors.push(`contributionStreams[${idx}].monthly가 유효하지 않습니다: ${stream && stream.monthly}`);
+        }
+        const sy = stream && stream.years;
+        if (sy !== null && sy !== undefined && (!Number.isFinite(sy) || sy < 0)) {
+          errors.push(`contributionStreams[${idx}].years가 유효하지 않습니다(null 또는 0 이상이어야 함): ${sy}`);
+        }
+      });
+    }
+  }
 
   return { valid: errors.length === 0, errors };
 }

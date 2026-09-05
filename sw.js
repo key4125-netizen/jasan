@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v207'; // [버그 수정 - 클라우드 동기화가 배우자의 최근 목표
+const CACHE_NAME = 'smart-asset-manager-v208'; // [버그 수정 - 클라우드 동기화가 배우자의 최근 목표
 // 비중/자산예측 설정을 조용히 덮어씀] pushToCloud()는 업로드 직전 자산/거래내역만 원격과 병합하고
 // rebalance/projection(목표비중/자산예측)은 검사 없이 로컬 값을 그대로 밀어 올렸다 - 그 사이 배우자
 // 기기가 이 설정을 더 최근에 고쳐뒀어도, 이 기기가 그 설정과 무관한 사소한 편집 하나만 해도(거래 하나

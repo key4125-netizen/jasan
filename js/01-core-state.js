@@ -555,7 +555,7 @@ const state = {
   // customFeeRates: [Phase 3-4] 사용자가 "운용보수 관리"에서 직접 등록한 종목/카테고리별 연간 운용보수(%,
   // customScenarioRates와 같은 key 체계 - buildCustomRateKey 재사용). 등록 안 된 종목은 0%로 계산된다 -
   // 확인 안 된 보수율을 임의로 추정해 채워 넣지 않는다(요청 반영).
-  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } },
+  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -982,10 +982,24 @@ function normalizeRebalanceState(raw) {
 
 // [소유자별 독립 월적립금 설정 - 값 정규화] loadState/JSON 백업 복원/가족 동기화 pull 공용. 배열이
 // 아니거나 항목이 손상되었으면 안전하게 걸러낸다(normalizeMonthlyContributionAllocation과 동일 이유).
+// [적립기간 null=제한없음 규약 - 요청 반영, 버그 수정] 예전엔 값이 없거나 유효하지 않으면 15로 채워
+// 넣었는데, 이 필드는 최근까지 계산에서 전혀 읽히지 않는 "죽은 값"이었다(어떤 계산 함수도 참조하지
+// 않음) - 즉 지금까지 저장돼 있는 15는 "사용자가 실제로 15년을 의도했다"는 근거가 전혀 아니다(모달을
+// 한 번도 열지 않은 사용자도, 열고 이 칸을 안 건드리고 저장만 한 사용자도 전부 똑같이 15가 찍혀
+// 있다 - 서로 구분할 방법이 코드 어디에도 없다). 이제 이 값을 실제로 계산에 연결하면서
+// (simulateMonthlyContributionGrowth 참고), "기존 사용자가 아무것도 바꾸지 않았는데 결과가 달라지는
+// 것"을 절대 허용하지 않아야 한다. [중요] "제한 없음(기존 동작)"의 sentinel로 0을 쓸 수는 없다 -
+// 사용자가 실제로 "적립기간 0년(신규 납입 즉시 중단)"을 의도적으로 입력하는 것도 유효한 값이기
+// 때문이다(0과 "미설정"이 같은 값이면 이 둘을 구분할 수 없다). 그래서 "미설정/제한없음"은 숫자가
+// 아닌 null로 표현하고, 0을 포함한 모든 유효한 음이 아닌 숫자는 "실제로 사용자가 설정한 값"으로
+// 그대로 신뢰한다 - 새 필드를 추가하지 않고 기존 years 필드 하나의 값 종류(null vs 숫자)만으로
+// 구분하는 최소 변경이다.
 function normalizeMonthlyContributionByOwnerEntry(raw) {
+  const rawYears = raw ? raw.years : undefined;
+  const hasExplicitYears = rawYears !== null && rawYears !== undefined && Number.isFinite(num(rawYears)) && num(rawYears) >= 0;
   return {
     total: (raw && Number.isFinite(num(raw.total)) && num(raw.total) > 0) ? num(raw.total) : 0,
-    years: (raw && Number.isFinite(num(raw.years)) && num(raw.years) > 0) ? num(raw.years) : 15,
+    years: hasExplicitYears ? num(rawYears) : null,
     allocation: normalizeMonthlyContributionAllocation(raw && raw.allocation)
   };
 }
@@ -994,6 +1008,30 @@ function normalizeMonthlyContributionByOwner(raw) {
     '신랑': normalizeMonthlyContributionByOwnerEntry(raw && raw['신랑']),
     '와이프': normalizeMonthlyContributionByOwnerEntry(raw && raw['와이프'])
   };
+}
+
+// [적립기간 최초 1회 리셋 - 기존 사용자 결과 보존] monthlyContributionByOwner[owner].years를 실제
+// 계산(simulateMonthlyContributionGrowth)에 연결하기 직전까지, 이 필드는 어떤 계산도 참조하지 않는
+// 죽은 값이었다 - 그래서 지금 저장돼 있는 모든 years 값(대부분 15, 예전 기본값)은 "사용자의 의도"가
+// 전혀 아니라 예전 코드의 자동 채움 결과일 뿐이다. 계산 연결 이후 이 값을 그대로 신뢰하면 "아무것도
+// 바꾸지 않은 기존 사용자"가 갑자기 "15년만 적립하고 이후 5년은 추가 납입 없음"으로 결과가 바뀌는
+// 심각한 회귀가 된다 - seedTickerRolesFromLegacyStorageOnce와 동일한 패턴(localStorage 플래그로 최초
+// 1회만 실행)으로, 이 앱이 이 기능을 실제로 계산에 쓰기 시작하는 시점에 기존에 저장된 값을 전부
+// null(제한없음 - 위 규약 참고)로 강제 초기화한다 - 이후 사용자가 [적립금 설정] 모달에서 실제로
+// 입력해 저장해야만 그때부터 진짜 값이 반영된다. state.projection 자체의 필드 구성(schema)은 전혀
+// 바뀌지 않고(기존 years 필드를 그대로 재사용), 이 마이그레이션 완료 여부만 별도의 localStorage
+// 키에 남긴다.
+const LS_MONTHLY_CONTRIB_YEARS_RESET = 'sam_monthly_contrib_years_reset_v1';
+function resetMonthlyContributionYearsOnce() {
+  if (localStorage.getItem(LS_MONTHLY_CONTRIB_YEARS_RESET) === '1') { return; }
+  REBALANCE_OWNERS.forEach((owner) => {
+    if (state.projection.monthlyContributionByOwner[owner]) state.projection.monthlyContributionByOwner[owner].years = null;
+  });
+  localStorage.setItem(LS_MONTHLY_CONTRIB_YEARS_RESET, '1');
+  // skipStamp=true - 위 skipStamp 관련 주석(persistRebalance(true) 등)과 동일한 이유. 이 리셋은
+  // "지금 사용자가 편집한 것"이 아니라 과거 데이터를 백필하는 것이므로 updatedAt을 새로 찍지 않는다
+  // (안 그러면 가족 동기화에서 이 기기가 항상 "가장 최신"으로 잘못 판정될 수 있다).
+  persistProjection(true);
 }
 
 const LS_TICKER_ROLES_SEEDED = 'sam_ticker_roles_seeded_v1';
@@ -1157,6 +1195,9 @@ function loadState() {
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }
   // [가족 동기화 - 스마트 머지 마이그레이션] rebalance와 동일한 이유(위 참고).
   if (!state.projection.updatedAt) { state.projection.updatedAt = Date.now(); persistProjection(true); }
+  // [적립기간 최초 1회 리셋] state.projection이 완전히 채워진 직후에만 안전하게 실행할 수 있다 - 위
+  // resetMonthlyContributionYearsOnce() 주석 참고.
+  resetMonthlyContributionYearsOnce();
 
   try {
     const txRaw = localStorage.getItem(LS_TRANSACTIONS);

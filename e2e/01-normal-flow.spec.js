@@ -59,5 +59,5 @@ test('목표금액을 설정하면 Goal Probability가 NaN/undefined 없이 표�
 
   const goalAreaText = await page.locator('#mcGoalArea').innerText();
   expect(goalAreaText).not.toMatch(/NaN|undefined|Infinity/);
-  expect(goalAreaText).toMatch(/목표 달성 확률/);
+  expect(goalAreaText).toMatch(/목표에 도달할 가능성/);
 });

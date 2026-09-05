@@ -830,7 +830,7 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
 // 세부 현황 아코디언 상태다(renderTaxAdvantagedCard 참고) - 다른 키들과 같은 객체에 두면
 // resetAllAccordionsOnTabSwitch(js/03)의 범용 순회가 자동으로 이 두 개도 초기화해준다(키를 따로
 // 나열할 필요 없음).
-let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false };
+let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false, assumptions: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
@@ -844,6 +844,79 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
 // 접기/펼치기 토글을 원함) - 위 두 카드와 완전히 동일한 setAccordionOpen/detailCardAccordionOpen 패턴.
 document.getElementById('scenarioCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody'));
 document.getElementById('totalAssetCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody'));
+document.getElementById('projectionAssumptionsAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('assumptions', 'projectionAssumptionsAccordionBtn', 'projectionAssumptionsAccordionBody'));
+
+// [P2 - Phase 9 감사 후속] years(null=제한없음/0=신규납입없음/숫자=사용자가 설정한 적립기간)를
+// 초보자가 이해할 수 있는 문장으로 바꾼다 - js/01 normalizeMonthlyContributionByOwnerEntry의 규약을
+// 그대로 반영한 표시 전용 함수(계산 없음).
+function formatContributionYearsForDisplay(years) {
+  if (years === null || years === undefined) return '제한 없음';
+  if (years === 0) return '0년(신규 납입 없음)';
+  return `${years}년`;
+}
+
+// [초보자용 핵심 요약 카드] "① 현재 자산 ② 앞으로 넣을 돈 ③ 예상 미래자산 ④ 어떤 가정을 썼는지"를
+// 새 계산 없이 이미 계산된 값만 읽어 조합한다 - presetResults.normal은 updateProjection()이 이미
+// simulateRebalancedPreset('normal', 20)으로 계산해둔 것을 그대로 받는다(이 함수 자신은 계산을 하지
+// 않고 표시만 담당 - "숫자와 설명을 분리"하되, 기존 코드 구조상 과도한 리팩터링은 하지 않는다).
+function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
+  const container = document.getElementById('projectionHeroSummary');
+  if (!container) return;
+  const points = presetResults.normal.yearlyPoints;
+  const years = milestoneOffsets[milestoneOffsets.length - 1]; // 20(고정, getMilestoneYearOffsets 참고)
+  const currentTotal = points[0].total;
+  const futureTotal = points[years].total;
+  // [기존 값 재사용] "월적립금 설정" 배지(updateMonthlyContributionSummary)와 정확히 같은 계산(js/19
+  // getHouseholdMonthlyContributionTotal)을 그대로 호출한다 - 이 카드만의 별도 계산을 새로 만들지 않는다.
+  const monthly = (typeof getHouseholdMonthlyContributionTotal === 'function') ? getHouseholdMonthlyContributionTotal() : num(state.projection.monthlyContribution);
+
+  const currentEl = document.getElementById('projectionHeroCurrent');
+  const monthlyEl = document.getElementById('projectionHeroMonthly');
+  const futureLabelEl = document.getElementById('projectionHeroFutureLabel');
+  const futureEl = document.getElementById('projectionHeroFuture');
+  if (currentEl) currentEl.textContent = fmtKRWShort(currentTotal);
+  if (monthlyEl) monthlyEl.textContent = monthly > 0 ? `${fmtKRWShort(monthly)}/월` : '미설정';
+  if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 예상 자산`;
+  if (futureEl) futureEl.textContent = fmtKRWShort(futureTotal);
+
+  // [장기 투자계획 UX 개선 - 신규] "현재자산 → 앞으로 투자 → 미래자산"으로 이어지는 계획의 핵심 조건 중
+  // "투자 기간"과 "투자금 증가"는 아코디언을 펼치지 않아도 바로 보이는 한 줄로도 함께 보여준다 - 아래
+  // items 배열과 동일하게 이미 구한 years/growthRate를 그대로 표시만 한다(새 계산 없음).
+  const growthRate = num(state.projection.contributionGrowthRate);
+  const planYearsEl = document.getElementById('projectionPlanYearsText');
+  if (planYearsEl) planYearsEl.textContent = `${years}년`;
+  const planGrowthEl = document.getElementById('projectionPlanGrowthText');
+  if (planGrowthEl) planGrowthEl.textContent = growthRate > 0 ? `매년 ${fmtNum(growthRate, 1)}%씩` : '증가 없음(매월 동일)';
+
+  const list = document.getElementById('projectionAssumptionsList');
+  if (list) {
+    const inflationRate = num(state.projection.inflationRate);
+    const normalRatePct = presetResults.normal.weightedAvgRate;
+    // [P2 - Phase 9 감사 후속] owner별 적립기간이 실제로 계산에 반영되는데도(Step 1-4) 결과 화면
+    // 어디에도 텍스트로 드러나지 않아, 초보자가 "왜 이 금액이 나왔는지" 알기 어렵다는 문제가 있었다
+    // (Phase 9 감사 P2). Deterministic/Monte Carlo가 이미 공유하는 getOwnerMonthlyContributionInputs를
+    // 그대로 재사용해 표시만 한다(새 계산 없음) - "투자 기간"(미래예측이 몇 년 후를 계산하는가, 위
+    // 고정값)과 이 "적립 기간"(신규 월 적립을 몇 년 동안 하는가)은 서로 다른 개념임을 라벨로 구분한다.
+    const husbandYears = getOwnerMonthlyContributionInputs('신랑').years;
+    const wifeYears = getOwnerMonthlyContributionInputs('와이프').years;
+    const contributionPeriodText = husbandYears === wifeYears
+      ? formatContributionYearsForDisplay(husbandYears)
+      : `신랑 ${formatContributionYearsForDisplay(husbandYears)} · 와이프 ${formatContributionYearsForDisplay(wifeYears)}`;
+    const items = [
+      `투자 기간(미래예측 기간): ${years}년`,
+      `현재 자산: ${fmtKRWShort(currentTotal)}`,
+      monthly > 0
+        ? `월 적립금: ${fmtKRWShort(monthly)}${growthRate > 0 ? ` (매년 ${fmtNum(growthRate, 1)}%씩 증가)` : '(매월 동일)'}`
+        : '월 적립금: 미설정',
+      `적립 기간(신규 납입 기간): ${contributionPeriodText}`,
+      `기준 연간 성장률(일반적 시나리오): ${fmtNum(normalRatePct, 2)}%`,
+      `물가상승률: ${fmtNum(inflationRate, 1)}%(Monte Carlo 실질가치 환산에 사용)`,
+      'Monte Carlo를 실행하면 변동성과 여러 번의 시뮬레이션을 반영한 결과 범위도 함께 볼 수 있어요.'
+    ];
+    list.innerHTML = items.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+  }
+  reapplyDetailCardAccordionHeight('assumptions', 'projectionAssumptionsAccordionBtn', 'projectionAssumptionsAccordionBody');
+}
 
 /* -------------------------------------------------------------------------
  * 10-3-3-2. [절세계좌 현황 카드] ISA/IRP/연금저축 등 절세계좌 보유 자산은 미래예측 계산(일반계좌
@@ -1752,12 +1825,19 @@ function computeRegionWeightedRate(owner, region, presetKey) {
 // monthlyContributionAllocation을 owner의 현재 원금 비중대로 나눠 하위호환 폴백한다(원금 비중이 전혀
 // 없으면 신랑에게 전액 배정 - 마이그레이션 직후에는 owner 목표가 동일해 어느 쪽에 배정해도 합산 결과가
 // 예전과 정확히 같다).
+// [적립기간 연결 - 요청 반영] years: null(또는 미설정)은 "제한 없음"(평가기간 내내 계속 적립 - 지금까지의
+// 유일한 동작)을 뜻한다. 0을 포함한 그 외 모든 유효한 숫자는 사용자가 실제로 설정한 값으로 그대로
+// 신뢰한다(js/01 normalizeMonthlyContributionByOwnerEntry 규약 참고 - num()에 그냥 통과시키면 null이
+// 0으로 바뀌어 "제한없음"과 "0년"을 구분할 수 없게 되므로, 여기서는 num()을 쓰지 않고 null 여부를
+// 직접 확인한다). 예전 단일 monthlyContribution 하위호환 폴백 경로(bothUnset)에는 애초에 owner별
+// 적립기간이라는 개념 자체가 없었으므로 항상 null(제한 없음)을 반환해 기존 동작을 그대로 유지한다.
 function getOwnerMonthlyContributionInputs(owner) {
   const byOwner = state.projection.monthlyContributionByOwner;
   const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
   if (!bothUnset) {
-    const entry = byOwner[owner] || { total: 0, allocation: [] };
-    return { monthlyContribution: num(entry.total), allocation: entry.allocation || [] };
+    const entry = byOwner[owner] || { total: 0, years: null, allocation: [] };
+    const years = (entry.years === null || entry.years === undefined) ? null : num(entry.years);
+    return { monthlyContribution: num(entry.total), years, allocation: entry.allocation || [] };
   }
   const ownerTotals = {};
   let grandTotal = 0;
@@ -1767,7 +1847,7 @@ function getOwnerMonthlyContributionInputs(owner) {
     grandTotal += t;
   });
   const share = grandTotal > 0 ? (ownerTotals[owner] / grandTotal) : (owner === REBALANCE_OWNERS[0] ? 1 : 0);
-  return { monthlyContribution: num(state.projection.monthlyContribution) * share, allocation: state.projection.monthlyContributionAllocation || [] };
+  return { monthlyContribution: num(state.projection.monthlyContribution) * share, years: null, allocation: state.projection.monthlyContributionAllocation || [] };
 }
 
 // [소유자별 독립 계산 - Option B] owner별로 자기 자신의 현재 원금(일반계좌, getProjectionGroupStats(owner))
@@ -1785,8 +1865,10 @@ function simulateRebalancedPreset(presetKey, maxYears) {
     const regionRate = { '국내': computeRegionWeightedRate(owner, '국내', presetKey), '해외': computeRegionWeightedRate(owner, '해외', presetKey) };
     // [Phase 3-4] 지역별 가중평균 운용보수 - regionRate와 완전히 같은 방식(가중평균)으로 구한다.
     const regionFeeRate = { '국내': feePercentToDecimal(computeRegionWeightedFeeRate(owner, '국내')), '해외': feePercentToDecimal(computeRegionWeightedFeeRate(owner, '해외')) };
-    const { monthlyContribution, allocation } = getOwnerMonthlyContributionInputs(owner);
-    return { totalValue, regionPV, regionRate, regionFeeRate, monthlyContribution, allocation };
+    const { monthlyContribution, years, allocation } = getOwnerMonthlyContributionInputs(owner);
+    // [P1 수정 - Phase 9 감사 후속] totalValue===0일 때 아래 simulateMonthlyContributionGrowth가 안전한
+    // fallback으로 쓸 수 있도록, 이 owner의 목표 국내/해외 비중(이미 존재하는 구조)을 함께 넘긴다.
+    return { totalValue, regionPV, regionRate, regionFeeRate, monthlyContribution, contributionYears: years, allocation, regionWeightPct: state.rebalance[owner].domestic };
   });
   // [Phase 3-4] 원금(신규 납입 없음)도 Fee를 적용한다 - contributionGrowthRate는 PMT=0이라 의미가
   // 없지만(계산에 영향 없음), 동일한 fee-aware 함수를 재사용해 이 값도 Monte Carlo와 같은 가정을 쓴다.
@@ -1797,7 +1879,7 @@ function simulateRebalancedPreset(presetKey, maxYears) {
     ownerCalcs.forEach((calc) => {
       domestic += principalFutureValue(calc, '국내', y);
       foreign += principalFutureValue(calc, '해외', y);
-      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate);
+      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate, calc.contributionYears, calc.regionWeightPct);
     });
     yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
   }
@@ -1964,6 +2046,8 @@ function updateProjection() {
     presetResults[presetKey] = simulateRebalancedPreset(presetKey, 20);
   });
 
+  renderProjectionHeroSummary(presetResults, milestoneOffsets);
+
   // ===== 3개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
   const scenarioData = PROJECTION_SCENARIOS.map((s) => {
     const result = presetResults[s.preset];
@@ -2111,20 +2195,49 @@ function assessHouseholdWeightSums() {
 // 가구 전체 목표 비중 - computeTargetWeightedAvgRate(위쪽)와 동일한 가중 방식(각 owner의 목표 비중을
 // 그 owner의 현재 원금 비중으로 가중평균)으로 두 owner의 목표를 하나로 합친다. μ 계산과 같은 가중
 // 기준을 쓰므로, "목표 비중 기준"이라는 말이 μ와 σ 양쪽에서 일관되게 같은 의미를 갖는다.
+// [F-1 수정 - Phase 10 후속] 가구 전체(두 owner 모두) 현재 원금이 0원이면(신규 사용자), "현재 원금
+// 비중"이라는 가중 기준 자체가 존재하지 않는다(0/0) - 이 경우에만 owner별 "현재 원금" 대신 owner별
+// "월 적립금 총액"(getOwnerMonthlyContributionInputs - Deterministic이 이미 쓰는 것과 동일한 함수,
+// 새 데이터 없음)으로 가중치를 대체한다. 앞으로 실제로 투입될 돈의 크기가 그 owner의 목표 비중이
+// 결합 결과에 얼마나 반영돼야 하는지의 가장 자연스러운 대체 기준이기 때문이다(임의의 50:50이나
+// 새 asset 생성이 아니다). 두 owner 모두 월 적립금까지 0이면(진짜로 투입될 돈이 전혀 없는 경우)
+// merged가 비어있는 채로 남고, 이는 기존 검증 흐름(validateMonteCarloInput의 "instruments가
+// 비어있습니다")이 그대로 처리한다 - 새 규칙을 만들지 않는다.
+// [회귀 방지] grandTotal(현재 원금 합계) > 0인 기존 정상 케이스는 이 함수의 계산 순서/공식이 전혀
+// 바뀌지 않아 완전히 bit-identical하다 - 아래 두 owner의 ownerTotal을 먼저 구하는 것은 계산 방식이
+// 아니라 "0/0 여부를 먼저 판정하기 위해 조회 순서만 앞당긴 것"뿐이다(호출 결과 자체는 그대로).
 function computeHouseholdTargetInstrumentWeights() {
-  const merged = new Map();
+  const ownerTotals = {};
   let grandTotal = 0;
   REBALANCE_OWNERS.forEach((owner) => {
-    const ownerTotal = getProjectionGroupTotal(getProjectionGroupStats(owner));
-    if (ownerTotal <= 0) return;
-    grandTotal += ownerTotal;
+    ownerTotals[owner] = getProjectionGroupTotal(getProjectionGroupStats(owner));
+    grandTotal += ownerTotals[owner];
+  });
+
+  const useContributionFallback = grandTotal <= 0;
+  const weightBasisByOwner = {};
+  let normalizeTotal = grandTotal;
+  if (useContributionFallback) {
+    normalizeTotal = 0;
+    REBALANCE_OWNERS.forEach((owner) => {
+      weightBasisByOwner[owner] = num(getOwnerMonthlyContributionInputs(owner).monthlyContribution);
+      normalizeTotal += weightBasisByOwner[owner];
+    });
+  } else {
+    REBALANCE_OWNERS.forEach((owner) => { weightBasisByOwner[owner] = ownerTotals[owner]; });
+  }
+
+  const merged = new Map();
+  REBALANCE_OWNERS.forEach((owner) => {
+    const weightBasis = weightBasisByOwner[owner];
+    if (weightBasis <= 0) return;
     computeOwnerTargetInstrumentWeights(owner).forEach((v, key) => {
       const prev = merged.get(key) || { ...v, weight: 0 };
-      prev.weight += v.weight * ownerTotal;
+      prev.weight += v.weight * weightBasis;
       merged.set(key, prev);
     });
   });
-  if (grandTotal > 0) merged.forEach((v) => { v.weight = v.weight / grandTotal; });
+  if (normalizeTotal > 0) merged.forEach((v) => { v.weight = v.weight / normalizeTotal; });
   return merged;
 }
 // 목표 비중 Map을 실제 일별 수익률 시계열과 짝지어 "포트폴리오 목표 비중 기준" 연환산 변동성(%)을
@@ -2383,7 +2496,11 @@ document.getElementById('contributionGrowthRateInput').addEventListener('input',
 // total===0 상태로 처음 열면(한 번도 owner별로 설정한 적 없음) 기존 단일 값을 "신랑" 초안에만 시작점으로
 // 옮겨 보여준다 - [저장]을 누르기 전까지는 state에 전혀 반영되지 않으므로 어느 쪽에 몰아 보여주든 계산
 // 결과에는 영향이 없다(하위호환 폴백은 getOwnerMonthlyContributionInputs가 total===0 여부로만 판단).
-let monthlyContributionByOwnerDraft = { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } };
+// [적립기간 null=제한없음 - 요청 반영] js/01 normalizeMonthlyContributionByOwnerEntry와 동일한 규약
+// (null=제한없음, 0을 포함한 숫자=사용자가 실제로 설정한 기간)을 이 draft 객체에도 그대로 유지한다 -
+// 예전엔 여기서도 "값이 없으면 15"로 채웠는데, 그러면 사용자가 기간 칸을 전혀 건드리지 않고 저장만
+// 눌러도 15가 "실제로 설정한 값"인 것처럼 저장되어 버린다(기존 사용자 결과 보존 원칙 위반).
+let monthlyContributionByOwnerDraft = { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } };
 
 function openMonthlyContributionAllocationModal() {
   const byOwner = state.projection.monthlyContributionByOwner || {};
@@ -2395,14 +2512,16 @@ function openMonthlyContributionAllocationModal() {
     const withRoleFallback = (it) => ({ ...it, role: it.role || getTickerRole(it.ticker, it.label) });
     if (bothUnset) {
       monthlyContributionByOwnerDraft[owner] = owner === '신랑'
-        ? { total: num(state.projection.monthlyContribution), years: 15, allocation: state.projection.monthlyContributionAllocation.map(withRoleFallback) }
-        : { total: 0, years: 15, allocation: [] };
+        ? { total: num(state.projection.monthlyContribution), years: null, allocation: state.projection.monthlyContributionAllocation.map(withRoleFallback) }
+        : { total: 0, years: null, allocation: [] };
     } else {
-      monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: (saved && num(saved.years)) || 15, allocation: ((saved && saved.allocation) || []).map(withRoleFallback) };
+      const savedYears = (saved && saved.years !== null && saved.years !== undefined) ? num(saved.years) : null;
+      monthlyContributionByOwnerDraft[owner] = { total: num(saved && saved.total), years: savedYears, allocation: ((saved && saved.allocation) || []).map(withRoleFallback) };
     }
     const suffix = rebalanceOwnerSuffix(owner);
     document.getElementById('monthlyContributionTotalInput' + suffix).value = formatInputNumber(monthlyContributionByOwnerDraft[owner].total || '');
-    document.getElementById('monthlyContributionYearsInput' + suffix).value = monthlyContributionByOwnerDraft[owner].years;
+    // years===null(제한없음)이면 입력칸을 빈 값으로 보여준다(placeholder="15"가 안내 문구 역할).
+    document.getElementById('monthlyContributionYearsInput' + suffix).value = monthlyContributionByOwnerDraft[owner].years === null ? '' : monthlyContributionByOwnerDraft[owner].years;
     const form = document.getElementById('monthlyContributionAllocationAddForm' + suffix);
     form.classList.add('hidden');
     form.innerHTML = '';
@@ -2464,7 +2583,9 @@ REBALANCE_OWNERS.forEach((owner) => {
     monthlyContributionByOwnerDraft[owner].total = num(e.target.value);
   });
   document.getElementById('monthlyContributionYearsInput' + suffix).addEventListener('input', (e) => {
-    monthlyContributionByOwnerDraft[owner].years = num(e.target.value);
+    // 빈 값으로 지우면 "제한 없음"(null)으로 되돌아간다 - num('')===0이라 그냥 넘기면 "0년"(신규 납입
+    // 즉시 중단)이 되어버려 사용자 의도(그냥 비워서 무제한으로 두려는 것)와 달라진다.
+    monthlyContributionByOwnerDraft[owner].years = e.target.value === '' ? null : num(e.target.value);
   });
   document.getElementById('monthlyContributionAllocationList' + suffix).addEventListener('input', (e) => {
     const idx = e.target.dataset.allocIdx;
@@ -2562,10 +2683,23 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
     const sumPct = monthlyContributionByOwnerDraft[owner].allocation.reduce((s, r) => s + num(r.pct), 0);
     if (sumPct > 100) { alert(`${owner}의 배분 비중 합계가 100%를 넘을 수 없습니다.`); return; }
   }
+  // [적립기간 명확한 validation - 요청 반영] 음수는 "0년(신규 납입 없음)"과 전혀 다른 의미인데, num()에
+  // 그냥 통과시키면 조용히 "제한 없음"으로 취급되어(simulateMonthlyContributionGrowth의 hasContributionCap
+  // 판정이 음수를 걸러내므로) 사용자가 실수를 눈치채지 못한다 - 자동으로 되돌리지 않고 저장 자체를 막는다.
+  for (const owner of REBALANCE_OWNERS) {
+    const draftYears = monthlyContributionByOwnerDraft[owner].years;
+    if (draftYears !== null && draftYears !== undefined && num(draftYears) < 0) {
+      alert(`${owner}의 적립 기간은 0 이상이어야 합니다.`);
+      return;
+    }
+  }
   const next = {};
   REBALANCE_OWNERS.forEach((owner) => {
     const draft = monthlyContributionByOwnerDraft[owner];
-    next[owner] = { total: num(draft.total), years: num(draft.years) || 15, allocation: draft.allocation.map((it) => ({ ...it })) };
+    // [적립기간 null=제한없음 - 요청 반영] draft.years가 null(사용자가 건드리지 않음)이면 그대로 null로
+    // 저장한다 - "|| 15"로 채우면 손대지 않은 사용자도 "15년으로 설정"된 것처럼 저장되어 버린다.
+    const years = (draft.years === null || draft.years === undefined) ? null : num(draft.years);
+    next[owner] = { total: num(draft.total), years, allocation: draft.allocation.map((it) => ({ ...it })) };
   });
   // [티커별 역할(포지션) 단일 소스] 이 팝업에서 저장한 role을 레지스트리에도 반영해 다른 화면에서도
   // 이어받게 한다 - 위 draft 시딩 단계에서 이미 role이 항상 채워져 있어 여기서 지워질 위험은 없다.
@@ -2592,7 +2726,13 @@ function getMonthlyAllocationItemRate(item, presetKey) {
 // 목표 비중 비율대로 지역 가중평균 수익률(regionRate)로 계산한다. 배분이 비어 있으면(기본값) 나머지가
 // 100%가 되어 이전 동작과 수학적으로 완전히 동일하다(computeFutureValue가 PV/PMT에 대해 선형이라
 // "원금 따로 + 적립금 따로" 계산과 "합쳐서 한 번에" 계산이 같은 결과를 낸다).
-function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate) {
+// [적립기간 연결 - 요청 반영] contributionYears: null/undefined(또는 y 이상)이면 "제한 없음"(y년
+// 내내 적립 - 기존 동작과 완전히 동일, computeFutureValueWithContributionGrowthAndFee를 그대로 한
+// 번만 호출)이다. 0 이상 y 미만인 값이 실제로 주어졌을 때만, 절세계좌 simulateTaxAdvantagedOwnerGrowth
+// 의 growWithStop과 정확히 같은 두 단계(적립 구간을 먼저 계산 -> 그 잔고를 유휴 구간 동안 신규납입
+// 없이 이어서 복리성장)로 나눠 계산한다 - computeFutureValueWithContributionGrowthAndFee 자체는
+// 한 글자도 수정하지 않는다(새 계산 공식을 만들지 않고 기존 검증된 패턴만 재사용).
+function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate, contributionYears, regionWeightPct) {
   // [Phase 3-3 통합 감사] Monte Carlo와 동일한 state.projection.contributionGrowthRate를 여기서도
   // 그대로 읽는다 - state.projection.monthlyContributionAllocation을 이미 이 함수가 직접 읽고 있는
   // 것과 같은 방식(새 파라미터를 여러 호출부에 추가로 꿰어넣지 않는다).
@@ -2601,23 +2741,40 @@ function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regio
   const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
   const remainderPct = Math.max(0, 100 - allocatedPct);
 
+  const hasContributionCap = Number.isFinite(contributionYears) && contributionYears >= 0 && contributionYears < y;
+  const growWithOptionalStop = (rate, monthly, feeRate) => {
+    if (!hasContributionCap) return computeFutureValueWithContributionGrowthAndFee(0, rate, y, monthly, growthRate, feeRate);
+    const atStop = computeFutureValueWithContributionGrowthAndFee(0, rate, contributionYears, monthly, growthRate, feeRate);
+    return computeFutureValueWithContributionGrowthAndFee(atStop, rate, y - contributionYears, 0, 0, feeRate);
+  };
+
   let total = 0;
   allocation.forEach((item) => {
     const rate = getMonthlyAllocationItemRate(item, presetKey);
     const feeRate = feePercentToDecimal(getMonthlyAllocationItemFeeRate(item)); // [Phase 3-4]
     const itemMonthly = monthlyContribution * num(item.pct) / 100;
-    total += computeFutureValueWithContributionGrowthAndFee(0, rate, y, itemMonthly, growthRate, feeRate);
+    total += growWithOptionalStop(rate, itemMonthly, feeRate);
   });
 
   if (remainderPct > 0) {
     const remainderMonthly = monthlyContribution * remainderPct / 100;
     ['국내', '해외'].forEach((region) => {
-      const share = totalValue !== 0 ? regionPV[region] / totalValue : 0;
+      // [P1 수정 - Phase 9 감사 후속] regionPV[region]/totalValue는 애초에 "이 owner의 목표 국내/해외
+      // 비중"(state.rebalance[owner].domestic, 호출부 simulateRebalancedPreset이 regionPV = totalValue
+      // * domestic/100으로 만든 것)을 다시 역산해 재구성하는 것뿐이다 - totalValue===0(기존 자산이
+      // 없는 신규 사용자)이면 이 역산이 0/0이 되어, 종목 배분을 지정하지 않은 신규 적립금 전액이
+      // 조용히 사라지는 문제가 있었다(Phase 9 감사에서 발견). totalValue!==0인 기존 정상 케이스는
+      // 이전과 완전히 동일한 계산식을 그대로 타 bit-identical하고, totalValue===0일 때만 이미 존재하는
+      // 목표비중 구조(regionWeightPct = state.rebalance[owner].domestic)를 직접 사용한다 - 임의의
+      // 50:50 등 새로운 가정을 만들지 않는다.
+      const share = totalValue !== 0
+        ? regionPV[region] / totalValue
+        : ((regionWeightPct && num(regionWeightPct[region])) || 0) / 100;
       // [Phase 3-4] regionFeeRate가 없으면(하위호환 - 이 함수를 다른 곳에서 옛 시그니처로 호출하는
       // 경우) 0%로 취급한다 - fee=0은 기존 함수(computeFutureValueWithContributionGrowth)로 정확히
       // bit-identical 폴백되므로 안전하다.
       const feeRate = (regionFeeRate && regionFeeRate[region]) || 0;
-      total += computeFutureValueWithContributionGrowthAndFee(0, regionRate[region], y, remainderMonthly * share, growthRate, feeRate);
+      total += growWithOptionalStop(regionRate[region], remainderMonthly * share, feeRate);
     });
   }
   return total;
