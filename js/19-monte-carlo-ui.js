@@ -135,18 +135,20 @@ function showMonteCarloStatus(text) {
   el.classList.remove('hidden');
 }
 
+// [초보자용 표현] 막대 라벨도 표(mcMilestoneTableBody)와 동일한 원칙 - P10/P50/P90을 그대로 크게
+// 보여주지 않고, 값을 왜곡하지 않는 쉬운 말로 바꾼다. 기술 용어(P10 등)는 title 툴팁에만 남긴다.
 function renderBarsInto(elId, last, colorSet) {
   const maxV = last.p90 || 1;
   const bars = [
-    { label: 'P10', value: last.p10, color: colorSet.p10 },
-    { label: 'P25', value: last.p25, color: colorSet.p25 },
-    { label: 'P50', value: last.p50, color: colorSet.p50 },
-    { label: 'P75', value: last.p75, color: colorSet.p75 },
-    { label: 'P90', value: last.p90, color: colorSet.p90 }
+    { label: '낮음', title: 'P10', value: last.p10, color: colorSet.p10 },
+    { label: '약간낮음', title: 'P25', value: last.p25, color: colorSet.p25 },
+    { label: '중간', title: 'P50', value: last.p50, color: colorSet.p50 },
+    { label: '약간높음', title: 'P75', value: last.p75, color: colorSet.p75 },
+    { label: '높음', title: 'P90', value: last.p90, color: colorSet.p90 }
   ];
   mcUiEl(elId).innerHTML = bars.map((b) => `
     <div class="flex items-center gap-2 text-[10px]">
-      <span class="w-7 shrink-0 text-slate-400">${b.label}</span>
+      <span class="w-11 shrink-0 text-slate-400" title="${b.title}">${b.label}</span>
       <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div class="h-full rounded-full ${b.color}" style="width:${Math.max(2, (b.value / maxV) * 100)}%"></div>
       </div>
@@ -205,13 +207,27 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   // [Phase 3-3] 총 납입원금은 Monte Carlo path와 무관한 순수 현금흐름 합계라 js/15의 계산 반복 없이
   // computeTotalContributionPrincipal(js/15, 회귀테스트 D로 검증된 동일 공식)을 그대로 재사용한다.
   if (contributionMeta) {
-    const { initialMonthly, growthRatePct, years } = contributionMeta;
+    const { initialMonthly, growthRatePct, years, streams } = contributionMeta;
     const growthRate = growthRatePct / 100;
     const finalYearMonthly = initialMonthly * Math.pow(1 + growthRate, years - 1);
-    const totalPrincipal = computeTotalContributionPrincipal(initialMonthly, growthRate, years);
-    mcUiEl('mcContributionScheduleArea').innerHTML = growthRatePct > 0
+    // [Step 2 - 적립기간 연결] owner 중 누구라도 실제로 적립기간을 설정했으면(streams에 null이 아닌
+    // years가 하나라도 있으면), "총 납입원금" 표시도 그 owner의 적립기간만큼만 계산해야 정확하다 -
+    // 그렇지 않으면 실제로는 조기 종료된 적립인데 화면은 20년 내내 적립한 것처럼 과대 표시된다.
+    // computeTotalContributionPrincipal(단일 스트림, 기존 무변경) 자체는 그대로 재사용하고,
+    // computeTotalContributionPrincipalMultiStream(신규·추가)이 각 스트림을 그 함수로 위임만 한다.
+    const hasExplicitYears = (streams || []).some((s) => s.years !== null && s.years !== undefined);
+    const totalPrincipal = hasExplicitYears
+      ? computeTotalContributionPrincipalMultiStream(streams, growthRate, years)
+      : computeTotalContributionPrincipal(initialMonthly, growthRate, years);
+    // [P5 - Phase 9 감사 후속] Monte Carlo는 owner별 종목 배분(Deterministic처럼)이 아니라 가구 전체
+    // 목표비중을 기준으로 신규 적립금을 배분한다(household pooled target-weight, js/16
+    // buildMonteCarloInputFromState - 이번 작업에서 구조 자체는 바꾸지 않음). 두 결과를 비교하는
+    // 초보자가 "왜 다르지?"라고 오해하지 않도록 짧게 고지만 한다(복잡한 기술 설명 없이).
+    const allocationNote = '참고: Monte Carlo는 가구 전체 목표비중을 기준으로 계산합니다.';
+    mcUiEl('mcContributionScheduleArea').innerHTML = (growthRatePct > 0
       ? `초기 월 적립금 ${fmtKRWShort(initialMonthly)} · 연간 증가율 ${fmtNum(growthRatePct, 1)}% · ${years}년차 월 적립금 약 ${fmtKRWShort(finalYearMonthly)}<br>총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`
-      : `월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`;
+      : `월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`)
+      + `<br>${escapeHtml(allocationNote)}`;
   }
 
   const last = withReal.milestones[withReal.milestones.length - 1];
@@ -240,21 +256,27 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
     // 낮추고("약 N%"), 중심부는 기존 소수점 1자리 표시를 그대로 유지한다.
     const display = (typeof formatGoalProbabilityDisplay === 'function') ? formatGoalProbabilityDisplay(probDecimal) : { text: `${fmtNum(probDecimal * 100, 1)}%`, isTail: false };
     const tailCaptionHtml = display.isTail ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
+    // [초보자용 짧은 안내] 별도의 Safety INFO 카드(explainGoalProbabilitySemanticAlwaysOn, js/21)가
+    // 더 자세히 설명하지만, 그 카드는 아래쪽 mcSafetyIssues 영역에 따로 있어 놓치기 쉽다 - 확률 숫자
+    // 바로 밑에 한 줄로도 "실제 미래 확률이 아니라 지금 가정 기준 시뮬레이션 결과"임을 짧게 덧붙인다.
+    const goalShortCaption = '<p class="text-[10px] text-slate-400 mt-1">현재 설정을 기준으로 한 시뮬레이션 결과예요.</p>';
     if (goalMeta.mode === 'real') {
       goalArea.innerHTML = `
         <p class="text-[10px] text-slate-400">목표금액</p>
         <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (현재 구매력 기준)</p>
         <p class="text-[10px] text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표</p>
         <p class="text-xs font-semibold text-slate-600 dark:text-slate-300">${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>
-        <p class="text-[10px] text-slate-400 mt-1.5">현재 구매력 기준 목표 달성 확률</p>
+        <p class="text-[10px] text-slate-400 mt-1.5">현재 구매력 기준으로 목표에 도달할 가능성</p>
         <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
+        ${goalShortCaption}
         ${tailCaptionHtml}`;
     } else {
       goalArea.innerHTML = `
         <p class="text-[10px] text-slate-400">목표금액</p>
         <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>
-        <p class="text-[10px] text-slate-400 mt-1.5">목표 달성 확률(${goalMeta.targetYears}년 후)</p>
+        <p class="text-[10px] text-slate-400 mt-1.5">${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
         <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
+        ${goalShortCaption}
         ${tailCaptionHtml}`;
     }
   } else {
@@ -318,7 +340,24 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
     goalMeta = { rawAmount: goalAmount, mode: goalMode, nominalGoalAmount, targetYears: years };
   }
 
-  const contributionMeta = { initialMonthly: monthlyContribution, growthRatePct: contributionGrowthRatePct, years };
+  // [Step 2 - 적립기간 연결] Deterministic(js/05 simulateRebalancedPreset)과 정확히 같은 함수
+  // (getOwnerMonthlyContributionInputs)를 그대로 재사용해 owner별 {monthly, years}를 뽑는다 - 이렇게
+  // 하면 "적립기간"의 의미(null=제한없음, 0을 포함한 숫자=사용자가 실제로 설정한 값, bothUnset 하위호환
+  // 폴백)가 Deterministic/Monte Carlo 양쪽에서 완전히 동일해진다(따로 만들지 않음). household pooled
+  // target-weight 구조(js/16 buildMonteCarloInputFromState)는 그대로 유지 - owner-aware 자산배분으로
+  // 확장하지 않는다(요청 범위 제한). 엔진은 이 스트림들의 monthly 총합만큼만 매월 자산에 배분한다.
+  const ownerContributionStreams = REBALANCE_OWNERS.map((owner) => {
+    const inputs = getOwnerMonthlyContributionInputs(owner);
+    return { monthly: inputs.monthlyContribution, years: inputs.years };
+  });
+  // [기존 사용자 보호] 어떤 owner도 적립기간을 명시적으로 설정하지 않았으면(전부 null=제한없음) 아예
+  // contributionStreams 필드를 넘기지 않는다 - 그래야 엔진이 예전과 완전히 같은 monthlyContribution
+  // 단일 스칼라 경로(bit-identical 보장 경로)를 그대로 탄다. 실제로 어떤 owner라도 유효한 적립기간을
+  // 설정했을 때만(따라서 결과가 어차피 달라져야 할 때만) 새 경로를 쓴다.
+  const hasAnyExplicitContributionYears = ownerContributionStreams.some((s) => s.years !== null && s.years !== undefined);
+  const contributionStreams = hasAnyExplicitContributionYears ? ownerContributionStreams : undefined;
+
+  const contributionMeta = { initialMonthly: monthlyContribution, growthRatePct: contributionGrowthRatePct, years, streams: ownerContributionStreams };
 
   // [Phase 3-4 - 표시 전용] 포트폴리오 가중평균 운용보수를 보여주기 위해, js/18(Worker orchestration -
   // 이번 Phase에서 변경 금지)을 건드리지 않고 어댑터를 한 번 더(캐시된 데이터라 저렴함) 직접 호출한다.
@@ -349,6 +388,7 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   startMonteCarloRun({
     presetKey, mode: 'official',
     initialPrincipal, monthlyContribution, contributionGrowthRate: contributionGrowthRatePct / 100, years,
+    contributionStreams, // [Step 2] 모든 owner가 years:null(제한없음)이면 엔진이 기존 monthlyContribution 경로로 폴백 - bit-identical
     simulations: iterations, seed: 20260101,
     goalAmounts: goalMeta ? [goalMeta.nominalGoalAmount] : undefined
   }, {

@@ -152,6 +152,8 @@ async function startMonteCarloRun(params, callbacks) {
     initialPrincipal: params.initialPrincipal,
     monthlyContribution: params.monthlyContribution,
     contributionGrowthRate: params.contributionGrowthRate, // [Phase 3-3] 생략 시 엔진에서 0으로 처리(하위호환)
+    // [Step 2 - 적립기간 연결] 생략 시(하위호환) js/15가 기존 monthlyContribution 단일 흐름으로 처리한다.
+    contributionStreams: params.contributionStreams,
     years: params.years,
     simulations: params.simulations,
     seed: params.seed,

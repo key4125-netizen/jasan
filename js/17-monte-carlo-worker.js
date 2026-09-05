@@ -63,6 +63,9 @@ self.onmessage = function (e) {
     const engineConfig = {
       pv0: input.initialPrincipal, instruments: input.instruments, correlationMatrix: input.correlationMatrix,
       monthlyContribution: input.monthlyContribution, contributionGrowthRate: input.contributionGrowthRate,
+      // [Step 2 - 적립기간 연결] 생략되면(기존 모든 호출부) engineConfig.contributionStreams가 undefined라
+      // js/15의 hasContributionStreams가 항상 false - 기존 monthlyContribution 경로 그대로 bit-identical.
+      contributionStreams: input.contributionStreams,
       years: input.years, iterations: input.simulations || input.iterations,
       seed: input.seed, goalAmounts: input.goalAmounts
     };

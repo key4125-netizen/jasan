@@ -409,3 +409,150 @@ test('Phase 3-4 Test I - Fee가 커질수록 목표금액 달성확률(goalProba
 // (Phase 0/2-2/3-3/3-4 테스트 전부) + merge.test.js가 `node --test test/`로 함께 전부 PASS하는 것
 // 자체가 Test J다 - Fee 추가가 기존 Test A~Phase 3-3 어떤 테스트도 깨뜨리지 않았음을 이 파일의 나머지
 // 테스트들이 이미 실행 순서상 증명한다.
+
+/* -------------------------------------------------------------------------
+ * Step 2 - 일반계좌 적립기간(contributionYears) Monte Carlo 연결
+ *    [설계] config.contributionStreams(예: [{monthly, years}, ...] - owner별 1개씩)가 있으면, 각
+ *    스트림이 자신의 적립기간(years - null/undefined면 무제한)까지만 매월 기여하는 "가구 전체 월별
+ *    총액"을 계산해 기존과 동일한 weight 배분(household pooled target-weight, owner-aware 자산배분
+ *    으로 확장하지 않음)으로 넣는다. streams가 없으면(기존 모든 호출부, Test A~Phase 3-4 전부) 기존
+ *    contribShare 경로 그대로라 완전히 bit-identical함은 위 27개 테스트가 이미 증명한다(streams 관련
+ *    코드는 hasContributionStreams===false일 때 단 한 줄도 실행되지 않는다).
+ *    [검증 방식] sigma=0으로 GBM을 결정론적으로 만들고(Test A와 동일 전략), 이 테스트 파일 안에서
+ *    엔진의 실제 월별 처리 순서(Step1 납입 -> Step4 GBM(σ=0이면 정확히 (1+r/12)배) -> Step4.5 fee)를
+ *    독립적으로 재현한 참조 함수와 대조한다.
+ * ---------------------------------------------------------------------- */
+// 단일 자산(weight=1, sigma=0)에서 엔진의 월별 순서(Step1 납입 -> Step4 GBM 정확히 (1+r/12)배 -> Step4.5
+// fee -> Step5 리밸런싱은 단일자산·weight 불변이라 no-op)를 그대로 재현한다 - 새 계산식이 아니라 이미
+// Test A가 검증해둔 "sigma=0이면 (1+r/12)배와 정확히 같다"는 사실을 여러 현금흐름 스트림으로 확장한 것.
+function refFVWithStreams(pv0, rAnnualPct, months, streams, growthRate, feeRateAnnual) {
+  const monthlyRate = rAnnualPct / 100 / 12;
+  const feeMonthlyFactor = Math.pow(1 - (feeRateAnnual || 0), 1 / 12);
+  let balance = pv0;
+  for (let m = 1; m <= months; m++) {
+    const yearIndex = Math.floor((m - 1) / 12);
+    const multiplier = Math.pow(1 + (growthRate || 0), yearIndex);
+    let contrib = 0;
+    streams.forEach((s) => {
+      const capMonths = (s.years === null || s.years === undefined) ? Infinity : s.years * 12;
+      if (m <= capMonths) contrib += (s.monthly || 0) * multiplier;
+    });
+    balance += contrib;
+    balance *= (1 + monthlyRate);
+    balance *= feeMonthlyFactor;
+  }
+  return balance;
+}
+function runSingleStream(streams, years, extra) {
+  const instruments = [{ key: 'X', weight: 1, muAnnual: 0.06, sigmaAnnual: 0 }];
+  return runMonthlyPrecisionMC(Object.assign({
+    pv0: 100000000, instruments, correlationMatrix: [[1]], monthlyContribution: streams[0].monthly,
+    contributionStreams: streams, years, iterations: 10, seed: 777
+  }, extra || {}));
+}
+
+test('Step 2 Test A - contributionStreams 미제공 시 기존 호출부와 bit-identical(회귀)', () => {
+  const instruments = [{ key: 'X', weight: 1, muAnnual: 0.06, sigmaAnnual: 0.15 }];
+  const base = { pv0: 1e8, instruments, correlationMatrix: [[1]], monthlyContribution: 1e6, years: 20, iterations: 500, seed: 42 };
+  const withoutField = runMonthlyPrecisionMC(base);
+  const withStreamsUndefined = runMonthlyPrecisionMC(Object.assign({}, base, { contributionStreams: undefined }));
+  const withEmptyStreams = runMonthlyPrecisionMC(Object.assign({}, base, { contributionStreams: [] }));
+  assert.strictEqual(withoutField.milestones.at(-1).p50, withStreamsUndefined.milestones.at(-1).p50, 'contributionStreams 필드 자체가 없을 때와 undefined일 때가 다르다');
+  assert.strictEqual(withoutField.milestones.at(-1).p50, withEmptyStreams.milestones.at(-1).p50, 'contributionStreams=[]이면 기존과 bit-identical해야 한다');
+});
+
+test('Step 2 Test B - years:null(단일 스트림) - 기존(무제한) 결과와 정확히 일치(sigma=0)', () => {
+  const years = 20;
+  const result = runSingleStream([{ monthly: 1000000, years: null }], years);
+  const expected = refFVWithStreams(100000000, 6, years * 12, [{ monthly: 1000000, years: null }], 0, 0);
+  const p50 = result.milestones.at(-1).p50;
+  assert.ok(Math.abs((p50 - expected) / expected) < 0.0001, `years:null 결과 불일치: actual=${p50}, expected=${expected}`);
+});
+
+test('Step 2 Test C - 적립기간 explicit 20(평가기간과 동일) - 무제한과 정확히 같아야 한다', () => {
+  const years = 20;
+  const unlimited = runSingleStream([{ monthly: 1000000, years: null }], years).milestones.at(-1).p50;
+  const explicit20 = runSingleStream([{ monthly: 1000000, years: 20 }], years).milestones.at(-1).p50;
+  assert.ok(Math.abs((explicit20 - unlimited) / unlimited) < 1e-9, `explicit 20 !== unlimited: ${explicit20} vs ${unlimited}`);
+});
+
+test('Step 2 Test D - 적립기간 0/5/10/15/20/25 - 각각 참조식과 일치, 0은 원금만 성장', () => {
+  const years = 20;
+  for (const capYears of [0, 5, 10, 15, 20, 25]) {
+    const streams = [{ monthly: 1000000, years: capYears }];
+    const p50 = runSingleStream(streams, years).milestones.at(-1).p50;
+    const expected = refFVWithStreams(100000000, 6, years * 12, streams, 0, 0);
+    assert.ok(Math.abs((p50 - expected) / expected) < 0.0001, `capYears=${capYears}: actual=${p50}, expected=${expected}`);
+  }
+  const zeroResult = runSingleStream([{ monthly: 1000000, years: 0 }], years).milestones.at(-1).p50;
+  const principalOnly = refFVWithStreams(100000000, 6, years * 12, [{ monthly: 0, years: null }], 0, 0);
+  assert.ok(Math.abs((zeroResult - principalOnly) / principalOnly) < 0.0001, '적립기간 0년인데 신규 납입이 반영됨');
+});
+
+test('Step 2 Test E - 남편 10년/아내 15년(두 스트림) - 각자 독립적으로 종료되고 참조식과 일치', () => {
+  const years = 20;
+  const streams = [{ monthly: 1000000, years: 10 }, { monthly: 2000000, years: 15 }];
+  const instruments = [{ key: 'X', weight: 1, muAnnual: 0.06, sigmaAnnual: 0 }];
+  const result = runMonthlyPrecisionMC({ pv0: 100000000, instruments, correlationMatrix: [[1]], monthlyContribution: 3000000, contributionStreams: streams, years, iterations: 10, seed: 777 });
+  const expected = refFVWithStreams(100000000, 6, years * 12, streams, 0, 0);
+  const p50 = result.milestones.at(-1).p50;
+  assert.ok(Math.abs((p50 - expected) / expected) < 0.0001, `남편10/아내15: actual=${p50}, expected=${expected}`);
+  // 두 스트림 합산 결과가 "둘 다 무제한"보다 항상 작아야 한다(둘 다 조기 종료했으므로).
+  const unlimited = refFVWithStreams(100000000, 6, years * 12, [{ monthly: 1000000, years: null }, { monthly: 2000000, years: null }], 0, 0);
+  assert.ok(p50 < unlimited, '조기 종료된 두 스트림 결과가 무제한보다 작지 않다');
+});
+
+test('Step 2 Test F - 투자금 증가율(3%) 병행 시 적립구간에만 증가율이 반영된다', () => {
+  const years = 20;
+  const streams = [{ monthly: 1000000, years: 10 }];
+  const p50 = runSingleStream(streams, years, { contributionGrowthRate: 0.03 }).milestones.at(-1).p50;
+  const expected = refFVWithStreams(100000000, 6, years * 12, streams, 0.03, 0);
+  assert.ok(Math.abs((p50 - expected) / expected) < 0.0001, `growth=3%: actual=${p50}, expected=${expected}`);
+});
+
+test('Step 2 Test G - 운용보수(fee 0.5%) 병행 시에도 적립기간 컷오프가 정확히 반영된다', () => {
+  const years = 20;
+  const instruments = [{ key: 'X', weight: 1, muAnnual: 0.06, sigmaAnnual: 0, feeRateAnnual: 0.005 }];
+  const streams = [{ monthly: 1000000, years: 10 }];
+  const result = runMonthlyPrecisionMC({ pv0: 100000000, instruments, correlationMatrix: [[1]], monthlyContribution: 1000000, contributionStreams: streams, years, iterations: 10, seed: 777 });
+  const p50 = result.milestones.at(-1).p50;
+  const expected = refFVWithStreams(100000000, 6, years * 12, streams, 0, 0.005);
+  assert.ok(Math.abs((p50 - expected) / expected) < 0.0001, `fee=0.5%: actual=${p50}, expected=${expected}`);
+});
+
+test('Step 2 Test H - 적립 종료 후에는 기존 잔액만 성장한다(추가 납입 없음을 직접 확인)', () => {
+  // 10년까지의 잔고를 그대로 10년 더(신규납입 없이) 복리성장시킨 값과, "10년 컷오프"의 20년차 결과가
+  // 정확히 같아야 한다 - 다르다면 10년 이후에도 뭔가 더 들어왔다는 뜻이다.
+  const streams = [{ monthly: 1000000, years: 10 }];
+  const at10 = refFVWithStreams(100000000, 6, 120, streams, 0, 0);
+  const continuedIdle = refFVWithStreams(at10, 6, 120, [{ monthly: 0, years: null }], 0, 0);
+  const engineAt20 = runSingleStream(streams, 20).milestones.at(-1).p50;
+  assert.ok(Math.abs((engineAt20 - continuedIdle) / continuedIdle) < 0.0001, `10년 이후 유휴성장과 불일치: engine=${engineAt20}, idle-continued=${continuedIdle}`);
+});
+
+test('Step 2 Test I - 동일 입력 + 동일 seed - contributionStreams가 있어도 결과가 완전히 재현된다', () => {
+  const instruments = [{ key: 'A', weight: 0.6, muAnnual: 0.10, sigmaAnnual: 0.20 }, { key: 'B', weight: 0.4, muAnnual: 0.08, sigmaAnnual: 0.15 }];
+  const streams = [{ monthly: 1000000, years: 10 }, { monthly: 2000000, years: 15 }];
+  const config = { pv0: 3e8, instruments, correlationMatrix: [[1, 0.3], [0.3, 1]], monthlyContribution: 3e6, contributionStreams: streams, years: 20, iterations: 500, seed: 2026 };
+  const r1 = runMonthlyPrecisionMC(config);
+  const r2 = runMonthlyPrecisionMC(config);
+  assert.strictEqual(r1.milestones.at(-1).p50, r2.milestones.at(-1).p50, '동일 seed인데 결과가 재현되지 않는다(streams 경로가 RNG 소비 순서를 바꿨을 가능성)');
+  assert.strictEqual(r1.milestones.at(-1).p10, r2.milestones.at(-1).p10);
+  assert.strictEqual(r1.milestones.at(-1).p90, r2.milestones.at(-1).p90);
+});
+
+test('Step 2 Test J - computeTotalContributionPrincipalMultiStream - 단일 스트림(무제한)은 기존 함수와 동일', () => {
+  const { computeTotalContributionPrincipalMultiStream } = engine;
+  const single = computeTotalContributionPrincipalMultiStream([{ monthly: 1000000, years: null }], 0, 20);
+  const legacy = computeTotalContributionPrincipal(1000000, 0, 20);
+  assert.strictEqual(single, legacy);
+});
+
+test('Step 2 Test K - computeTotalContributionPrincipalMultiStream - 남편10/아내15 각자의 적립기간만큼만 합산된다', () => {
+  const { computeTotalContributionPrincipalMultiStream } = engine;
+  const multi = computeTotalContributionPrincipalMultiStream([{ monthly: 1000000, years: 10 }, { monthly: 2000000, years: 15 }], 0, 20);
+  const expected = computeTotalContributionPrincipal(1000000, 0, 10) + computeTotalContributionPrincipal(2000000, 0, 15);
+  assert.strictEqual(multi, expected);
+  const unlimited = computeTotalContributionPrincipalMultiStream([{ monthly: 1000000, years: null }, { monthly: 2000000, years: null }], 0, 20);
+  assert.ok(multi < unlimited, '조기 종료된 스트림 합산이 무제한 합산보다 작지 않다');
+});
