@@ -675,17 +675,6 @@ function getSeriesColors() {
   return document.documentElement.classList.contains('dark') ? SERIES_COLORS_DARK : SERIES_COLORS_LIGHT;
 }
 
-// 자산군 영역 위에서 가장 돋보여야 하는 "총 합계" 라인 색 - 요청하신 대로 흰색/크림색 계열을 쓰되,
-// 라이트 모드에서는 카드 배경 자체가 흰색이라 크림색 단독으로는 거의 안 보인다. 그래서 진한 테두리
-// 색을 먼저 굵게 깔아 "헤일로"를 만들고 그 위에 밝은 선을 얹는 2겹 방식으로
-// 어떤 배경에서도(밝은 카드/어두운 카드) 고대비를 유지한다.
-function getTotalLineColor() {
-  return document.documentElement.classList.contains('dark') ? '#FFFBEB' : '#FFFDF5';
-}
-function getTotalLineHaloColor() {
-  return document.documentElement.classList.contains('dark') ? 'rgba(0,0,0,0.55)' : 'rgba(15,23,42,0.45)';
-}
-
 // [일별 손익 추이 Y축 전용 축약 포맷] 기존 fmtKRWShort("1억 2,000만원" 형태)는 다른 화면(KPI 카드 등)
 // 여러 곳에서 이미 쓰이고 있어 그대로 두고, 이 차트 Y축에만 더 짧은 "1.2억"/"3천만원"/"5백만원"/"80만원"
 // 표기를 쓴다 - 세로로 좁은 축 라벨 공간에 두 자리 단위(억+만)까지 다 넣으면 겹쳐 보인다.

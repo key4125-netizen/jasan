@@ -157,14 +157,14 @@ test('Phase 7-F Test B - 20%p 경계: 정확히 20%는 PASS, 21%는 경미 WARNI
   assert.strictEqual(assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_WARNING_ABS, 'TEST'), null);
   const issue = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_WARNING_ABS + 1, 'TEST');
   assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
-  assert.strictEqual(issue.title, '공격적인 기대수익률');
+  assert.strictEqual(issue.title, '공격적인 기준 연간 성장률');
 });
 
 test('Phase 7-F Test C - 50%p 경계: 정확히 50%는 경미 WARNING, 51%는 강한 WARNING("비현실적")', () => {
   const mild = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_STRONG_WARNING_HIGH, 'TEST');
-  assert.strictEqual(mild.title, '공격적인 기대수익률');
+  assert.strictEqual(mild.title, '공격적인 기준 연간 성장률');
   const strong = assessExpectedReturn(SAFETY_THRESHOLDS.RETURN_STRONG_WARNING_HIGH + 1, 'TEST');
-  assert.strictEqual(strong.title, '비현실적인 기대수익률');
+  assert.strictEqual(strong.title, '비현실적인 기준 연간 성장률');
 });
 
 test('Phase 7-F Test D - 100% 이상 재확인 로직 재확인(기존 테스트와 별개로 경계값 자체를 재검증)', () => {
@@ -177,7 +177,7 @@ test('Phase 7-F - 음수 기대수익률: -20%는 PASS, -21%는 곧바로 강한
   assert.strictEqual(assessExpectedReturn(-SAFETY_THRESHOLDS.RETURN_WARNING_ABS, 'TEST'), null);
   const issue = assessExpectedReturn(-SAFETY_THRESHOLDS.RETURN_WARNING_ABS - 1, 'TEST');
   assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
-  assert.strictEqual(issue.title, '비현실적인 기대수익률');
+  assert.strictEqual(issue.title, '비현실적인 기준 연간 성장률');
 });
 
 test('Phase 7-F FINAL VALIDATION - US_EQUITY Anchor 반영값(4.1/5.1/6.0%, Vanguard VCMM 2026-06-30 실행분 4.2~6.2% 기준)은 전부 PASS - Safety Layer가 새 값에 불필요한 경고를 내지 않는다', () => {

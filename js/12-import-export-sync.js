@@ -404,20 +404,35 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       if (choice === 'cancel') return; // 복원 자체를 취소 - 아무 것도 바뀌지 않는다.
       let resultMsg;
       if (choice === 'append') {
-        // [추가하기 - 자산] 중복 종목(소유자+계좌구분+티커 동일)은 새 행을 만들지 않고, 불러온 파일의
-        // 최신 값으로 덮어써 갱신한다(mergeAssetsForAppend 참고 - 수량을 더하지 않는다).
-        const { assets, newCount, updatedCount } = mergeAssetsForAppend(state.assets, restored);
-        state.assets = assets;
-        resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
         // [추가하기 - 거래내역] 예전엔 append 모드에서 거래내역이 통째로 무시돼, 방금 합쳐진 자산
         // 수량의 근거가 되는 매수 기록이 [거래내역] 탭/기간별 실현손익에 전혀 안 남는 문제가 있었다.
         // 이제 기존 거래내역 뒤에 이어 붙이되, 같은 id(예: 같은 백업을 실수로 두 번 불러온 경우)를
         // 가진 거래는 다시 추가하지 않아 이중 계상을 막는다 - 설정(rebalance/projection/환율/일별
         // 스냅샷)은 "추가"라는 의도에 맞게 건드리지 않는다(덮어쓰기에서만 갱신).
-        if (Array.isArray(parsed.transactions)) {
-          const incomingTx = parsed.transactions.map(normalizeImportedTransaction);
-          const existingIds = new Set(state.transactions.map((t) => t.id));
-          state.transactions = state.transactions.concat(incomingTx.filter((t) => !existingIds.has(t.id)));
+        const incomingTx = Array.isArray(parsed.transactions) ? parsed.transactions.map(normalizeImportedTransaction) : [];
+        const existingIds = new Set(state.transactions.map((t) => t.id));
+        const newTx = incomingTx.filter((t) => !existingIds.has(t.id));
+
+        // [Phase 22 STEP 4 - JSON append 오버셀 검증] Phase 13에서 Excel 대량 업로드에 적용한 것과
+        // 동일한 원자적 거부 원칙을 JSON 백업 "추가하기"에도 적용한다. 자산 병합(mergeAssetsForAppend)을
+        // 실행하기 전에 먼저 거래내역만으로 검증한다 - 하나라도 위반이면 자산/거래내역 어느 쪽도
+        // 반영하지 않고 함수를 즉시 종료한다(부분 반영 금지). 검증 로직 자체는 Phase 13의
+        // findExcelOversellViolations()를 그대로 재사용한다(newRows/existingTransactions 인자 구조가
+        // 이미 이 용도에 맞게 범용적이라 새 계산을 만들 필요가 없었다) - excelRowNumById는 JSON
+        // 컨텍스트에 해당 개념이 없으므로 undefined로 넘긴다(위반 메시지에서 "[엑셀 N행]" 부분만 빠짐).
+        const violations = findExcelOversellViolations(newTx, state.transactions, undefined);
+        if (violations.length > 0) {
+          alert(buildJsonImportOversellAlertMessage(violations));
+          return; // 전체 거부 - 기존 state(assets/transactions) 완전히 그대로 유지
+        }
+
+        // [추가하기 - 자산] 중복 종목(소유자+계좌구분+티커 동일)은 새 행을 만들지 않고, 불러온 파일의
+        // 최신 값으로 덮어써 갱신한다(mergeAssetsForAppend 참고 - 수량을 더하지 않는다).
+        const { assets, newCount, updatedCount } = mergeAssetsForAppend(state.assets, restored);
+        state.assets = assets;
+        resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
+        if (newTx.length > 0) {
+          state.transactions = state.transactions.concat(newTx);
           persistTransactions();
         }
         persistAssets();

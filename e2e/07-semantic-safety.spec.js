@@ -34,7 +34,9 @@ test('Monte Carlo 실행 결과에 기대수익률/Goal Probability/데이터 �
   // "상세보기" 영역(mcSafetyDetail)에 표시된다 - mcSafetyIssues는 더 이상 정상 완료 경로에서 쓰이지
   // 않는다(BLOCK 전용). 접힌 아코디언 안이라도 DOM에는 그대로 남아있어 innerText로 확인 가능하다.
   const safetyText = await page.locator('#mcSafetyDetail').innerText();
-  expect(safetyText).toContain('기대수익률의 의미');
+  // [Phase 22 STEP 9 - 용어 통일] "기대수익률의 의미" -> "기준 연간 성장률의 의미"로 문구만 변경
+  // (Phase 21 T-08) - 판정/카드 노출 조건은 무변경.
+  expect(safetyText).toContain('기준 연간 성장률의 의미');
   expect(safetyText).toContain('목표 달성 확률의 의미');
   expect(safetyText).toContain('변동성·상관관계 데이터 기간 안내');
   expect(safetyText).toContain('이 시뮬레이션의 범위 안내');

@@ -112,19 +112,21 @@ function assessIndividualWeightSigns(items) {
 function assessExpectedReturn(returnPct, fieldLabel) {
   if (returnPct === undefined || returnPct === null || !Number.isFinite(returnPct)) return null;
   const abs = Math.abs(returnPct);
+  // [Phase 22 STEP 9 - 용어 통일] 사용자 노출 문구를 미래예측 시나리오 카드와 동일한 "기준 연간
+  // 성장률"로 통일했다(Phase 21 T-08) - 코드(SAFETY_EXTREME_RETURN 등)/threshold/판정 로직은 무변경.
   if (returnPct >= SAFETY_THRESHOLDS.RETURN_CONFIRM_HIGH) {
-    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '매우 높은 기대수익률',
-      `${fieldLabel}의 기대수익률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
+    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '매우 높은 기준 연간 성장률',
+      `${fieldLabel}의 기준 연간 성장률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
       '이례적으로 높은 값입니다 - 입력 실수가 아닌지 다시 확인해주세요.', { requiresConfirmation: true });
   }
   if (abs > SAFETY_THRESHOLDS.RETURN_STRONG_WARNING_HIGH || returnPct < -SAFETY_THRESHOLDS.RETURN_WARNING_ABS) {
-    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '비현실적인 기대수익률',
-      `${fieldLabel}의 기대수익률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
+    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '비현실적인 기준 연간 성장률',
+      `${fieldLabel}의 기준 연간 성장률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
       '장기 시장 평균 대비 매우 공격적이거나 비관적인 가정입니다.');
   }
   if (abs > SAFETY_THRESHOLDS.RETURN_WARNING_ABS) {
-    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '공격적인 기대수익률',
-      `${fieldLabel}의 기대수익률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
+    return makeIssue('SAFETY_EXTREME_RETURN', SAFETY_LEVEL.WARNING, fieldLabel, '공격적인 기준 연간 성장률',
+      `${fieldLabel}의 기준 연간 성장률이 연 ${returnPct.toFixed(1)}%로 설정되어 있습니다.`,
       '공격적인 가정입니다 - 참고해주세요.');
   }
   return null;
@@ -302,7 +304,7 @@ function assessResultSpread(p10, p50, p90) {
 // 매 결과에 고정으로 동반하는 해석 안내(조건 없이 항상 반환) - "결과가 크다=오류"로 오해하지 않도록.
 function explainResultAlwaysOn() {
   return makeIssue('SAFETY_RESULT_EXPLANATION', SAFETY_LEVEL.INFO, 'result', '결과 해석 안내',
-    '이 결과는 입력한 기대수익률과 납입금이 장기간 복리로 누적된 시뮬레이션 결과입니다. 실제 결과는 이보다 크게 다를 수 있습니다.',
+    '이 결과는 입력한 기준 연간 성장률과 납입금이 장기간 복리로 누적된 시뮬레이션 결과입니다. 실제 결과는 이보다 크게 다를 수 있습니다.',
     '');
 }
 
@@ -316,7 +318,7 @@ function explainResultAlwaysOn() {
 function explainSimulationStabilityAlwaysOn() {
   return makeIssue('SAFETY_SIMULATION_STABILITY_NOTE', SAFETY_LEVEL.INFO, 'simulation', '시뮬레이션 안정성 안내',
     '시뮬레이션 횟수가 많을수록 계산 결과의 표본 변동은 줄어듭니다.',
-    '다만 이는 계산이 안정적이라는 뜻일 뿐 실제 미래 투자수익률을 예측할 수 있다는 뜻은 아닙니다 - 입력한 기대수익률·물가상승률 등의 가정이 달라지면 결과 자체가 크게 달라질 수 있습니다.');
+    '다만 이는 계산이 안정적이라는 뜻일 뿐 실제 미래 투자수익률을 예측할 수 있다는 뜻은 아닙니다 - 입력한 기준 연간 성장률·물가상승률 등의 가정이 달라지면 결과 자체가 크게 달라질 수 있습니다.');
 }
 
 /* ---- 12. Semantic Safety (Phase 6-C) - 계산식/판정 로직은 전혀 바꾸지 않고, "결과를 어떻게
@@ -327,8 +329,8 @@ function explainSimulationStabilityAlwaysOn() {
  * 모델링되지 않는다, (5) 이 앱은 적립(accumulation) 단계만 다루고 은퇴 후 인출 단계는 다루지 않는다.
  * 전부 SAFETY_LEVEL.INFO(계산에 영향 없음, 참고 정보)로만 반환한다. ---------------------------- */
 function explainExpectedReturnSemanticAlwaysOn() {
-  return makeIssue('SAFETY_EXPECTED_RETURN_SEMANTIC', SAFETY_LEVEL.INFO, 'result', '기대수익률의 의미',
-    '입력한 기대수익률은 미래 수익률을 보장하거나 실제 평균 수익률을 의미하지 않습니다. Monte Carlo에서는 "가장 전형적인 경로(중앙값)"에 대응하도록 사용됩니다.',
+  return makeIssue('SAFETY_EXPECTED_RETURN_SEMANTIC', SAFETY_LEVEL.INFO, 'result', '기준 연간 성장률의 의미',
+    '입력한 기준 연간 성장률은 미래 수익률을 보장하거나 실제 평균 수익률을 의미하지 않습니다. Monte Carlo에서는 "가장 전형적인 경로(중앙값)"에 대응하도록 사용됩니다.',
     '실제 평균 수익률은 이보다 높거나 낮을 수 있으며, 변동성이 클수록 평균과 중앙값의 차이가 커질 수 있습니다.');
 }
 function explainGoalProbabilitySemanticAlwaysOn() {

@@ -635,10 +635,6 @@ function formatInputNumber(raw) {
   if (!digits) return '';
   return Number(digits).toLocaleString('ko-KR');
 }
-// 콤마 포맷된 문자열에서 콤마를 뗀 순수 숫자 값(Number)만 뽑아낸다 - num()이 이미 쉼표를 허용하도록
-// 고쳐졌으니 사실상 num(el.value)과 동일하지만, "이 값은 입력창에서 뽑아낸 값"이라는 의도를 코드에서
-// 더 명확히 드러내고 싶은 곳에서 이 이름으로 쓴다.
-function parseInputValue(raw) { return num(raw); }
 // input을 콤마 자동 포맷 모드로 전환한다 - type="number"는 브라우저가 콤마 문자를 아예 받아주지 않으므로
 // text로 바꾸고(모바일에서도 inputmode="numeric"이면 숫자 키패드가 그대로 뜬다), 입력할 때마다 숫자만
 // 남겨 다시 콤마를 찍어 넣는다. 커서 위치는 "그 지점 앞에 숫자가 몇 개 있었는가"를 기준으로 복원해야

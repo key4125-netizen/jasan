@@ -7,6 +7,66 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-06) — Phase 21(Full-System Deep Audit, 읽기전용) + Phase 22(V1.1 Hardening & Quality Sprint)
+
+**커밋**: `release: V1.1 phase22 hardening` - PM 최종 승인 후 이 파일을 포함해 커밋·push됨(실제 해시는 `git log -1`로 확인). Phase 21은 읽기 전용 audit이라 별도 커밋 없이 Phase 22에 통합.
+
+### Phase 21 - V1.0 v209 Full-System Deep Audit(읽기 전용, 코드 변경 없음)
+Parts A~W 전체 audit 수행(UI 인벤토리/중복/용어/데드코드/State 정합성/Import-Export/Safety/모바일·다크모드/성능/테스트커버리지/보안 등). 코드 변경 0건, 임시 분석 스크립트(dead-code/DOM-orphan cross-reference)는 사용 후 삭제. Master Backlog(T-01~T-18)로 정리되어 Phase 22 작업 지시의 근거가 됨.
+
+### Phase 22 - V1.1 Hardening & Quality Sprint(실제 구현, STEP 0~18)
+Phase 21에서 찾은 항목 중 PM이 선별한 것만 구현. **계산모델/State 의미/Safety 임계값 변경 없음**(전부 bit-identical 재확인됨), 신규 기능 없음, 오직 dead-code 제거·표시 정합성·검증 강화·용어 통일만 수행.
+
+1. **STEP 1 - Legacy Monte Carlo 완전 제거**: `js/05-future-projection.js`에서 미사용 레거시 MC 블록(~156줄: `createSeededRandom`/`runMonteCarloSimulation`/`renderMonteCarloSection`/`renderMonteCarloChart` 등, 현재 MC 엔진은 js/15~19가 전담)을 삭제. `computeTargetPortfolioVolatilityPct()`가 부수적으로 orphan화됐지만 PM 지시 범위 밖이라 보존.
+2. **STEP 2 - 개별 dead code 6건 제거**: `getProjectionGroupLabel`+`PROJECTION_GROUP_LABELS`(js/05), `getAssetProjectionFeeRate`(js/05), `parseInputValue`(js/01), `getTotalLineColor`/`getTotalLineHaloColor`(js/11). `getGroupReturnRate`/`categoryReturns`/마이그레이션 함수는 PM 지시대로 보존.
+3. **STEP 3 - targetLabel fallback 정합성 수정**: `js/04-rebalancing.js`의 `computeIndividualRebalanceGuide()`가 `t.label`만 쓰던 것을 `t.label || t.name || t.ticker || '(이름 없음)'`로 수정(`computePortfolioTargetSummaryRows()`의 기존 공식과 동일하게 통일) - name만 있고 label이 없는 타겟의 드릴다운 연결이 끊기던 버그 수정. 신규 e2e `e2e/23-phase22-step3-label-fallback.spec.js`(3개).
+4. **STEP 4 - JSON append 오버셀 검증 추가**: `js/12-import-export-sync.js`의 JSON "추가하기" 모드에 Phase 13 Excel 업로드와 동일한 `findExcelOversellViolations()` 기반 원자적 거부를 적용(신규 `buildJsonImportOversellAlertMessage()`, js/06). 기존 append 정책(assets 병합/거래id 중복 스킵)은 무변경. 신규 e2e `e2e/24-phase22-step4-json-oversell.spec.js`(6개).
+5. **STEP 5 - JSON 백업 라운드트립 회귀 테스트 추가**(코드 변경 없음, 테스트만): `e2e/25-phase22-step5-json-roundtrip.spec.js`(2개).
+6. **STEP 6 - Assets 관점전환 세그먼트 컨트롤(Phase 18) 전용 회귀 테스트 추가**(코드 변경 없음): `e2e/26-phase22-step6-assets-segmented-control.spec.js`(3개).
+7. **STEP 7 - Portfolio 드릴다운(Phase 17) 전용 회귀 테스트 추가**(코드 변경 없음, STEP 3 수정 검증 포함): `e2e/27-phase22-step7-portfolio-drilldown.spec.js`(3개).
+8. **STEP 8 - MC 목표금액 입력에 `min="0"` 추가**(index.html `#mcGoalAmountInput`) - 음수 입력은 기존에도 `if (goalAmount > 0)` 게이트로 안전하게 무시되고 있었음을 먼저 실측 확인 후 진행한 순수 UI 어포던스 추가.
+9. **STEP 9 - 용어 통일("기대수익률" → "기준 연간 성장률")**: `js/21-safety-layer.js`의 사용자 노출 문구(제목/메시지) 전부 통일, `js/05-future-projection.js`의 가정 리스트에 "현재 자산(일반계좌)" 라벨 명확화(범위 표기). **내부 함수명/변수명(`SAFETY_EXTREME_RETURN` 등)은 PM 지시대로 무변경**. `test/safety-layer.test.js`, `e2e/07-semantic-safety.spec.js` 어서션 동기화.
+10. **STEP 10 - `#mcGoalArea` 위치 조정**: P50/실질가치 박스 직후·`#mcSafetyCritical` 이전으로 이동(기존 위치는 disclaimer 문단 뒤라 목표달성확률을 보기 전에 다른 텍스트를 먼저 지나야 했음).
+11. **STEP 11 - Safety 그룹 카드 recommendation 중복 제거**: `js/22-safety-ui.js`의 `renderSafetyIssueGroupCard()`가 그룹 내 자산 수만큼 반복 출력하던 recommendation 문구를 카드당 1회만 표시하도록 수정(그룹 멤버 전체가 동일한 정적 문자열임을 확인 후 진행).
+12. **STEP 12 - 고인플레이션 Safety 정책**: 근거 있는 임계값 기준이 없어 **구현하지 않음** - PM 정책 결정 필요 항목으로 backlog에 남김.
+13. **STEP 13 - 모바일/다크모드 회귀 확장 검증**(코드 변경 없음, 검증만): 375/390/768/1024/1440px × Light/Dark 전수 확인. **신규 발견(미수정, backlog)**: 헤더의 환율뱃지/다크모드/서버동기화 버튼 그룹이 **약 1024px~1099px 구간**(Tailwind `lg:` 브레이크포인트 활성 직후, 1023/1100/1200/1440px는 전부 정상 - 직접 측정으로 경계 확인)에서 body 기준 최대 약 76px 가로 오버플로 발생. 원인: 이 구간 미만에서는 `w-full overflow-x-auto`가 컨테인하지만 `lg:`부터 `lg:w-auto lg:overflow-visible`로 전환되며 컨테인먼트가 풀리고, 이 flex item에 `min-width` 제약이 없어(전형적 flexbox `min-width:auto` 이슈) intrinsic content width(약 527px)를 그대로 요구해 부모 폭을 초과함. Phase 22 변경과 무관(해당 index.html 편집은 미래예측/MC 섹션에만 있었음). 헤더 전체에 영향을 주는 수정이라 STEP 13 범위를 벗어난다고 판단해 수정하지 않고 finding으로만 기록 - **P2, 예상 최소 수정 범위: 해당 div에 `lg:min-w-0` 한 줄(단, 헤더 전체 회귀 재확인 필요)**.
+14. **STEP 14 - 신규 테스트 실효성 검증**: STEP 3/4의 신규 e2e는 `git stash`로 수정 전 코드를 복원해 실패함을 직접 확인 후 재적용(load-bearing 확인 완료).
+15. **STEP 15 - Release/SW Guard 스크립트 추가**: `scripts/verify-sw-release.js`(신규, package.json 미연결) - CACHE_NAME/appVersionLabel 버전 일치 + APP_SHELL 파일 존재 여부를 기계적으로 검사. **주의**: 이 스크립트 검증 중 `git checkout -- index.html`을 실수로 실행해 STEP 8/10의 uncommitted 변경을 잠깐 날렸으나 즉시 감지하고 동일 내용으로 재작업 + 전체 회귀 재실행으로 복구 완료(사용자 개입 없이 자체 복구).
+16. **STEP 16~18**: 이 섹션(문서화) + 최종 회귀(npm test 108/108, ESLint 0, Playwright는 아래 "E2E 인프라 이슈" 참고) + Before/After 비교(P50="12.95억"/실질 P50="7.90억"류 단일자산 결정론적·MC 시나리오 값이 STEP 1/2/10 전후 bit-identical, 실제 브라우저로 Dashboard→Assets→Transactions→Portfolio→Projection→MC 전체 여정 및 Safety 경고 렌더링 확인 완료).
+
+### E2E 인프라 이슈(Phase 22 최종검증에서 근본원인 확인, backlog)
+전체 Playwright 스위트(6 workers 병렬)를 연속 7회 재실행한 결과 6회는 123/123 PASS, 1회는 122/123(그 1회 실패한 파일은 `e2e/19-f1-mc-zero-asset.spec.js` - 애초 보고했던 `e2e/07`과는 **다른 파일**). 실패 지점은 항상 테스트 코드 실행 이전(`browser.newContext: Target page, context or browser has been closed`). 원인: `js/14-settings-boot.js:226`의 `refreshPricesAndRates()`가 모든 페이지 로드마다 Yahoo Finance/allorigins.win 등 실제 외부 API로 네트워크 요청을 보내는데(테스트 환경에서 CORS로 막히지만 요청 자체는 실제로 나감), 6개 워커가 동시에 이를 반복하면서 드물게 Chromium 프로세스가 죽는 인프라 레벨 이슈 - 특정 테스트의 assertion/로직 결함이 아니며 Phase 22 변경과 무관함(무작위로 다른 파일에서 발생하는 것이 그 증거). **완전한 결정론적 해결은 e2e 전역에 걸쳐 외부 API를 `page.route()`로 차단하는 테스트 인프라 변경이 필요하나, 이는 123개 테스트 전체의 실행 경로에 영향을 주는 광범위한 변경이라 Phase 22 범위(unrelated refactoring 금지) 밖으로 판단해 시도하지 않음.** retry 증가/skip/assertion 완화도 하지 않았음(PM 지시).
+
+### Git 상태 - Phase 22 커밋 완료
+수정: `index.html`, `js/01-core-state.js`, `js/04-rebalancing.js`, `js/05-future-projection.js`, `js/06-transactions.js`, `js/11-refresh-history.js`, `js/12-import-export-sync.js`, `js/21-safety-layer.js`, `js/22-safety-ui.js`, `test/safety-layer.test.js`, `e2e/07-semantic-safety.spec.js`, `CLAUDE_HANDOVER.md`(이 파일).
+신규: `e2e/23~27-phase22-*.spec.js`(5개), `scripts/verify-sw-release.js`.
+**`​.claude/launch.json`은 이번에도 로컬 전용(브라우저 프리뷰 툴이 자동 관리하는 dev-server 경로/포트 설정) - Phase 22 작업과 무관하게 세션 내내 변경돼 있었고 커밋에서 제외했다.**
+
+### 다음 세션이 알아야 할 것
+**V1.0 v209는 그대로 유지**(이번 Phase는 버전 bump 없음 - SW CACHE_NAME/appVersionLabel 무변경, `scripts/verify-sw-release.js` PASS 확인됨). STEP 12(고인플레이션 Safety 정책), STEP 13의 1024~1099px 헤더 오버플로(P2), 위 "E2E 인프라 이슈"는 **PM 승인 전까지 임의로 구현/수정하지 않는다** - 이 인계장을 읽었다고 시작하지 말 것.
+
+---
+
+## 최근 세션 요약 (2026-09-05, 계속 18) — Phase 20: Release Cache/Version Finalization (v208 → v209)
+
+**커밋**: `0b60566` "release: V1.0 v209 cache version bump" - **push 완료**(직전 `d756f64` 위에 이어짐).
+**V1.0은 이제 v209다.**
+
+### 이번 세션에서 완료된 작업
+
+Phase 19-Final(`d756f64`)까지의 변경(Excel oversell/IA P1·P2/다크모드 MC 보존 수정 등)이 **실제 기존 사용자에게 전달되는지**를 Service Worker/cache 관점에서 검증했다.
+
+1. **핵심 발견(실제 브라우저 재현)**: `sw.js`의 fetch 핸들러는 동일 출처 앱 셸 파일에 대해 완전한 cache-first 전략을 쓴다(`caches.match(req)`가 있으면 네트워크를 아예 확인하지 않음). `CACHE_NAME`이 `v208`에서 전혀 바뀌지 않았으므로 브라우저의 기본 SW 업데이트 감지(스크립트 바이트 비교)가 새 install/activate 주기를 트리거하지 않는다 - 캐시에 `js/05-future-projection.js`의 옛(스텁) 내용을 직접 주입한 뒤 **일반 새로고침**(수동 unregister/캐시삭제 없이)만으로 재현: 최신 코드가 아니라 주입해둔 옛 콘텐츠가 계속 실행됨을 확인했다. 즉 **기존 v208 사용자는 Phase 13~19-Final의 모든 수정(Dark Mode MC 보존 수정 포함)을 영원히 받지 못하는 상태였다.**
+2. **최소 수정**: `sw.js`의 `CACHE_NAME`을 `smart-asset-manager-v208` → `smart-asset-manager-v209`로 변경(+사유 주석), `index.html`의 `appVersionLabel`을 `v208`→`v209`로 갱신. **그 외 아무것도 건드리지 않음** - `APP_SHELL`(여전히 js/01~14만 포함, js/15~22는 미포함 - 기존 R-2 한계 그대로 유지), install/activate/fetch 로직, skipWaiting/clients.claim 전부 무변경(이미 올바르게 구성돼 있었음 - activate가 CACHE_NAME과 다른 이름의 캐시를 자동으로 지우는 로직을 직접 재현해 정상 동작 확인).
+3. **검증**: 신규 사용자(빈 캐시) 정상 동작, localStorage(assets/rebalance/projection 등)는 SW 캐시와 완전히 별개 저장소라 이번 변경과 무관하게 보존됨을 확인. Phase 19-P1 P1 기능(다크모드 토글 시 MC 결과 보존) v209 환경에서 재확인 PASS.
+4. **테스트**: npm test 108/108, ESLint 0 problems, Playwright 106/106(무변경 - 새 테스트 추가 없음, 코드 로직 변경이 없으므로).
+
+### 다음 세션이 알아야 할 것
+
+**V1.0은 이제 v209다** - `sw.js`/`index.html`을 다시 볼 때 이 버전 기준으로 판단할 것. `APP_SHELL`이 `js/15-monte-carlo-engine.js`~`js/22-safety-ui.js`를 포함하지 않는 것은 **의도적으로 그대로 둔 기존 한계**(이번 Phase는 cache/version 문제만 해결, APP_SHELL 재설계 아님) - 이 파일들은 fetch 핸들러의 런타임 캐싱(첫 요청 시 네트워크 후 캐시 저장)으로 결국 캐시되지만 install 시점에 미리 채워지지는 않는다. **앞으로 코드가 바뀔 때마다 CACHE_NAME을 함께 올리는 이 프로젝트의 기존 관행을 반드시 지킬 것** - 이번 Phase 20이 그 관행이 누락됐을 때 실사용자에게 실제로 어떤 영향이 생기는지 실측으로 확인한 사례다. `.claude/launch.json`은 이번에도 로컬 전용(scratchpad) - 커밋 대상 아님. `git pull`로 이 커밋을 받았는지 먼저 확인 - 이 파일 맨 위 섹션이 가장 최근이다.
+
+---
+
 ## 최근 세션 요약 (2026-09-05, 계속 17) — Phase 13~19-Final: Excel oversell, V1.0 IA P1/P2, 통합 UX 검증, Dark Mode MC 보존 수정 (v208 유지, post-release stabilization)
 
 **커밋**: 이 섹션 작성 직후 `release: V1.0 v208 post-release stabilization`으로 커밋·push 예정(아래 "다음 세션이 알아야 할 것"의 실제 커밋 해시로 갱신될 것). **버전은 v208 그대로 유지** - 이번 커밋은 신규 기능이 아니라 v208 위에 쌓인 버그 수정/IA 정리이므로 CACHE_NAME/appVersionLabel을 올리지 않았다. **주의**: 실사용자 브라우저에 이미 v208 Service Worker가 캐시돼 있다면 이번 변경(특히 Phase 13 Excel oversell 검증, Phase 19-P1 Dark Mode 수정)이 즉시 반영되지 않을 수 있다 - 필요 시 PM이 별도로 버전 bump 여부를 결정할 것.

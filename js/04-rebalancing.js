@@ -211,7 +211,13 @@ function computeIndividualRebalanceGuide(ownerFilter) {
           name: isTicker ? (refAsset ? refAsset.name : t.label) : t.label,
           ticker: isTicker ? (refAsset ? refAsset.ticker : t.ticker) : '',
           owners: [],
-          region, targetLabel: t.label,
+          // [Phase 22 STEP 3 - label fallback 보강] 아래 computePortfolioTargetSummaryRows()의 label
+          // 계산(t.label || t.name || t.ticker || '(이름 없음)')과 반드시 같은 규칙을 써야 한다 - 이
+          // targetLabel이 그 summary row의 r.label을 키로 guideRowsByLabel에서 조회되기 때문에(위
+          // renderPortfolioTargetSummary), 규칙이 다르면 label이 없는 target에서 드릴다운이 엉뚱하게
+          // "보유 종목 없음"으로 보일 수 있었다(Phase 21 T-04). label이 있는 기존 데이터는 t.label이
+          // 그대로 참(truthy)이라 기존 동작과 완전히 동일하다.
+          region, targetLabel: t.label || t.name || t.ticker || '(이름 없음)',
           curAmount: 0, targetAmount, diff: targetAmount, qtyDelta, isForeign
         });
         return;
@@ -243,7 +249,13 @@ function computeIndividualRebalanceGuide(ownerFilter) {
         const qtyDelta = priceKRW !== 0 ? diff / priceKRW : 0;
         rows.push({
           name: bucket.name, ticker: bucket.ticker, owners: [...bucket.owners].sort((a, b) => ownerRank(a) - ownerRank(b)),
-          region, targetLabel: t.label,
+          // [Phase 22 STEP 3 - label fallback 보강] 아래 computePortfolioTargetSummaryRows()의 label
+          // 계산(t.label || t.name || t.ticker || '(이름 없음)')과 반드시 같은 규칙을 써야 한다 - 이
+          // targetLabel이 그 summary row의 r.label을 키로 guideRowsByLabel에서 조회되기 때문에(위
+          // renderPortfolioTargetSummary), 규칙이 다르면 label이 없는 target에서 드릴다운이 엉뚱하게
+          // "보유 종목 없음"으로 보일 수 있었다(Phase 21 T-04). label이 있는 기존 데이터는 t.label이
+          // 그대로 참(truthy)이라 기존 동작과 완전히 동일하다.
+          region, targetLabel: t.label || t.name || t.ticker || '(이름 없음)',
           curAmount: bucket.curAmount, targetAmount: assetTargetAmount, diff, qtyDelta, isForeign: bucket.isForeign
         });
       });

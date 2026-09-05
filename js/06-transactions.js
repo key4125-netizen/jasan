@@ -118,6 +118,18 @@ function buildExcelOversellAlertMessage(violations) {
     + `아래 거래의 수량을 보유수량 이하로 고친 뒤 다시 올려주세요.\n\n${lines.join('\n')}`;
 }
 
+// [Phase 22 STEP 4] 위 buildExcelOversellAlertMessage()와 동일한 위반 목록 구조를 그대로 받아 JSON
+// 백업 "추가하기" 컨텍스트에 맞는 문구로만 바꾼 wrapper - "업로드"/"엑셀 N행"이라는 표현이 JSON 복원
+// 상황과 맞지 않아 문구만 분리했다(위반 판정 로직/데이터 구조는 완전히 동일, 재사용).
+function buildJsonImportOversellAlertMessage(violations) {
+  const lines = violations.map((v, i) => {
+    const over = v.quantity - v.available;
+    return `${i + 1}. ${v.date} · ${v.owner} · ${v.accountType} · ${v.name}${v.ticker ? `(${v.ticker})` : ''} 매도 ${fmtNum(v.quantity, 4)} - 그 시점 보유수량 ${fmtNum(v.available, 4)} (${fmtNum(over, 4)} 초과)`;
+  });
+  return `초과 매도가 발견되어 이번 추가하기를 적용하지 않았습니다(기존 데이터가 그대로 유지됩니다).\n`
+    + `아래 거래 때문에 보유수량을 초과하는 매도가 발생합니다 - 백업 파일을 확인해주세요.\n\n${lines.join('\n')}`;
+}
+
 // [현금/외화현금 - 무티커 자산 유형별 이원화] 부동산/채권/상장 주식·ETF는 계속 거래내역(매수/매도)으로
 // 추적한다. 원화 현금은 여기에 더해 거래내역 자체를 만들 수 없게 막고 자산관리 탭에서 직접 잔고를
 // 수정하는 방식을 유지한다(환율 개념이 없어 거래내역화할 실익이 없음). ticker가 있으면 애초에 상장

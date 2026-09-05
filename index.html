@@ -1365,7 +1365,11 @@
       </div>
       <div class="mb-3">
         <label class="text-[10px] text-slate-400 block mb-1">목표금액(선택, 원)</label>
-        <input id="mcGoalAmountInput" type="number" inputmode="numeric" placeholder="예: 1000000000 (10억원)" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
+        <!-- [Phase 22 STEP 8] min="0" 추가 - 계산(js/19 goalAmount>0 게이트)은 이미 음수 입력을
+             "미설정"과 동일하게 안전 처리하고 있었다(실측 확인, 잘못된 확률/NaN 없음) - 이 속성은
+             그 안전한 기존 동작을 바꾸지 않고, 목표금액이 0 이상이어야 한다는 의도를 입력 단계에서도
+             드러내는 최소한의 UI 힌트다(브라우저 네이티브 스피너/유효성 표시, JS 로직 무변경). -->
+        <input id="mcGoalAmountInput" type="number" inputmode="numeric" min="0" placeholder="예: 1000000000 (10억원)" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
         <!-- [Phase 3-2] 명목/실질 중 어느 기준의 목표금액인지 - 기본값은 기존 동작과의 호환을 위해
              명목(변환 없이 그대로 Engine에 전달)으로 둔다(js/19 참고). -->
         <div class="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
@@ -1421,6 +1425,13 @@
           <p class="text-[10px] text-slate-400 mt-1.5 leading-relaxed">이 값은 시뮬레이션 결과 중 "가장 전형적인(중앙값, P50)" 경우입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
         </div>
 
+        <!-- [Phase 22 STEP 10 - P50 바로 다음에 목표 도달 가능성] Phase 21 T-11: 목표금액을 설정한
+             사용자가 가장 궁금해할 "그래서 목표에 도달할까?"에 대한 답이 화면 하단(범위표 이후)에
+             있어 발견성이 낮았다 - 새 카드를 만들지 않고 기존 #mcGoalArea 엘리먼트를 P50 카드 바로
+             아래로 옮기기만 했다(js/19의 innerHTML 대입 로직은 id 기준이라 위치 변경과 무관하게
+             그대로 동작). 목표금액이 설정되지 않았으면 기존과 동일하게 안내 문구만 표시된다. -->
+        <div id="mcGoalArea" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center"></div>
+
         <!-- [Phase 17 P1-4 - 핵심 결과 다음, 핵심 WARNING] 결과 해석에 직접 영향을 주는 주의사항(운용
              보수 미확인/극단적 기대수익률 등)만 여기 결과 바로 아래 항상 펼쳐서 보여준다 - 판정
              로직(js/21 assess*)은 전혀 바꾸지 않고, 이미 계산된 issue를 어디에 배치할지만 바꿨다
@@ -1449,8 +1460,6 @@
         <div id="mcRangeBarsArea" class="space-y-1.5"></div>
         <p class="text-[10px] text-slate-400 mt-3 mb-1">실질가치 범위(현재 구매력 기준, 20년 후 기준)</p>
         <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
-
-        <div id="mcGoalArea" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center"></div>
 
         <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
 

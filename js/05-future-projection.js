@@ -15,14 +15,12 @@ const CURRENT_YEAR = new Date().getFullYear();
 // "현재 구성 유지" 시나리오와, 리밸런싱 후 "일반적" 프리셋이 공유하는 기준값이다(SCENARIO_RATE_PRESETS
 // 참고 - "일반적"은 이 값을 그대로 재사용해 예전 "리밸런싱 후" 시나리오와 동일하게 동작한다).
 const PROJECTION_GROUP_DEFAULT_RATES = { '주식형자산': 8.0, '채권': 4.0, '현금': 0.0 };
-const PROJECTION_GROUP_LABELS = { '주식형자산': '주식형 자산 (주식+ETF)' };
 
 // 자산의 카테고리를 예측 그룹 키로 변환한다 - 주식/ETF만 '주식형자산'으로 통합하고 나머지는 그대로.
 function getProjectionGroupKey(category) {
   if (category === '주식' || category === 'ETF') return '주식형자산';
   return category;
 }
-function getProjectionGroupLabel(groupKey) { return PROJECTION_GROUP_LABELS[groupKey] || groupKey; }
 
 // [현재 구성 유지 - 종목별 세부 수익률 반영] 예전엔 "현재 구성 유지" 시나리오가 보유 자산을 주식형자산/
 // 채권/현금 3개 카테고리로만 뭉뚱그려(주식형자산=8% 고정) 계산했다 - 삼성전자든 QQQM이든 메타든 다
@@ -314,10 +312,6 @@ function isFeeExplicitlySet(target) {
   }
   const groupKey = getProjectionGroupKey(target.category);
   return feeRates[groupKey] !== undefined;
-}
-// 자산 객체(보유 자산) 하나의 운용보수 - getAssetProjectionRate(수익률)와 동일한 대응 함수.
-function getAssetProjectionFeeRate(asset) {
-  return getTargetProjectionFeeRate({ type: 'ticker', ticker: asset.ticker, label: asset.name });
 }
 // 지역(국내/해외) 하나의 목표 배분 "내에서"의 가중평균 운용보수(%) - computeRegionWeightedRate(수익률)와
 // 완전히 동일한 구조. Fee는 프리셋(보수/일반/긍정)에 따라 달라지지 않으므로 presetKey 인자가 없다.
@@ -910,7 +904,10 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
       : `신랑 ${formatContributionYearsForDisplay(husbandYears)} · 와이프 ${formatContributionYearsForDisplay(wifeYears)}`;
     const items = [
       `투자 기간(미래예측 기간): ${years}년`,
-      `현재 자산: ${fmtKRWShort(currentTotal)}`,
+      // [Phase 22 STEP 9 - 용어 스코프 명확화] Dashboard의 "금융자산 평가금액"(절세계좌 포함), Assets의
+      // "총자산"(부동산까지 포함)과 범위가 다르다는 것을 이 한 줄에서 바로 알 수 있도록 "(일반계좌)"만
+      // 덧붙였다(Phase 21 T-09) - currentTotal 계산 자체는 무변경, 문구만 추가.
+      `현재 자산(일반계좌): ${fmtKRWShort(currentTotal)}`,
       monthly > 0
         ? `월 적립금: ${fmtKRWShort(monthly)}${growthRate > 0 ? ` (매년 ${fmtNum(growthRate, 1)}%씩 증가)` : '(매월 동일)'}`
         : '월 적립금: 미설정',
@@ -2321,166 +2318,15 @@ async function computeTargetPortfolioVolatilityPct() {
   return computeAnnualizedVolatilityPct(portfolioReturns) || 0;
 }
 
-// [결과 안정화 - 시드 고정 PRNG, 요청 반영] Math.random()을 직접 쓰면 조회할 때마다(자동 5분 갱신,
-// 탭 재진입 등) 완전히 새 난수 시퀀스로 1,000개 표본을 다시 뽑아 P10/P50/P90이 눈에 띄게 출렁였다 -
-// mulberry32(공개 도메인 소형 시드 PRNG)로 항상 같은 시드에서 시작해, pv/mu/sigma가 같으면 언제 다시
-// 계산해도 완전히 동일한 결과가 나오게 한다. 표본 수(MONTE_CARLO_ITERATIONS)도 1,000 -> 10,000으로
-// 늘려 백분위수 추정 자체의 표본오차도 함께 줄였다(시드 고정은 "매번 같은 답"을, 표본 수 증가는
-// "그 답이 실제 분포에 더 가깝게 수렴"을 각각 담당 - 서로 다른 문제라 둘 다 필요하다).
-function createSeededRandom(seed) {
-  let s = seed >>> 0;
-  return function () {
-    s |= 0; s = (s + 0x6D2B79F5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const MONTE_CARLO_SEED = 20260101;
-const MONTE_CARLO_ITERATIONS = 10000;
-// 기하 브라운 운동(GBM) - 마일스톤 연도(t)마다 S_t = S0 * exp((μ-σ²/2)t + σ√t·Z)를 MONTE_CARLO_ITERATIONS회
-// 독립 샘플링해 그 분포에서 P10/P50/P90을 뽑는다.
-// [P10/P90 라벨링 - 통계 표준 확정, 요청 반영] 예전엔 자원평가(reserve estimation) 업계 관례("P10=10%
-// 확률로 초과=낙관")를 따라 코드상 p10에 상위 90th percentile 값을, p90에 하위 10th percentile 값을
-// 넣었다 - 하지만 이건 이 앱(개인 자산 시뮬레이션)의 일반적인 통계/금융 percentile 관례("P10=분포의
-// 하위 10%=비관", "P90=분포의 상위 10%=낙관")와 정반대라 라벨과 실제 값이 뒤바뀐 것처럼 보이는 오류였다.
-// 이제 p10은 문자 그대로 10th percentile(보수/하위 10%), p90은 90th percentile(낙관/상위 10%)이다.
-function runMonteCarloSimulation(pv, muPct, sigmaPct, yearOffsets) {
-  const mu = muPct / 100, sigma = Math.max(0, sigmaPct / 100);
-  const rng = createSeededRandom(MONTE_CARLO_SEED);
-  const nextStandardNormal = () => {
-    let u = 0, v = 0;
-    while (u === 0) u = rng();
-    while (v === 0) v = rng();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-  };
-  const percentileOfSorted = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))))];
-  return yearOffsets.map((y) => {
-    const samples = new Array(MONTE_CARLO_ITERATIONS);
-    for (let i = 0; i < MONTE_CARLO_ITERATIONS; i++) {
-      const z = nextStandardNormal();
-      samples[i] = pv * Math.exp((mu - (sigma * sigma) / 2) * y + sigma * Math.sqrt(y) * z);
-    }
-    samples.sort((a, b) => a - b);
-    return {
-      year: y,
-      p10: percentileOfSorted(samples, 10), // 보수(하위 10%, 10th percentile)
-      p50: percentileOfSorted(samples, 50), // 중앙값
-      p90: percentileOfSorted(samples, 90)  // 낙관(상위 10%, 90th percentile)
-    };
-  });
-}
-
-// [경쟁 상태 방지] σ 계산이 이제 비동기(가격 이력 조회)라, 이 함수가 끝나기 전에 다시 호출되면(빠른
-// 탭 전환, 자동 갱신 등) 먼저 시작된 느린 호출이 나중에 끝나 최신 결과를 덮어쓸 수 있다 - 다른 비동기
-// 렌더들(coreStocksRequestToken 등)과 동일한 토큰 가드 패턴으로 막는다.
-let monteCarloRequestToken = 0;
-async function renderMonteCarloSection() {
-  const loadingEl = document.getElementById('monteCarloLoadingNote');
-  const contentEl = document.getElementById('monteCarloContent');
-  if (!loadingEl || !contentEl) return;
-  const myToken = ++monteCarloRequestToken;
-  loadingEl.textContent = '목표 비중 기준으로 계산 중...';
-  loadingEl.classList.remove('hidden');
-  contentEl.classList.add('hidden');
-
-  const pv = computeHouseholdMonteCarloPV();
-  const mu = computeTargetWeightedAvgRate('normal');
-  const sigma = await computeTargetPortfolioVolatilityPct();
-  if (myToken !== monteCarloRequestToken) return; // 그 사이 더 최신 호출이 시작됐으면 이 결과는 버린다
-  if (pv <= 0) {
-    loadingEl.textContent = '집계할 금융자산이 없습니다.';
-    return;
-  }
-
-  loadingEl.classList.add('hidden');
-  contentEl.classList.remove('hidden');
-
-  document.getElementById('monteCarloSigmaText').textContent = `${fmtNum(sigma, 1)}%`;
-  document.getElementById('monteCarloMuText').textContent = `${fmtNum(mu, 1)}%`;
-  document.getElementById('monteCarloPvText').textContent = fmtKRWShort(pv);
-
-  const milestoneOffsets = getMilestoneYearOffsets();
-  const points = runMonteCarloSimulation(pv, mu, sigma, [0, ...milestoneOffsets]);
-
-  // [X축 연도 표기 통일 - 요청 반영] 스케줄 표(points, 위 5개 마일스톤만)는 그대로 두고, 차트에는
-  // "시나리오별 일반계좌/총자산" 그래프(renderScenarioCompareChart)와 동일한 방식 - 매년 촘촘한 값을
-  // 밑에 깔고 마일스톤 연도에만 점(marker)을 찍는 방식 - 을 쓴다. 두 그래프의 x축이 같은 데이터 밀도로
-  // 그려져야 Chart.js의 autoSkip 눈금 배치가 동일한 규칙(예: Y26, Y28, Y30...)으로 맞춰진다 - 마일스톤
-  // 연도만 5개 점으로 계산하면 그 사이를 채울 데이터 자체가 없어 5년 간격으로만 표기될 수밖에 없었다.
-  const maxOffset = Math.max(...milestoneOffsets);
-  const denseYears = Array.from({ length: maxOffset + 1 }, (_, i) => i);
-  const chartPoints = runMonteCarloSimulation(pv, mu, sigma, denseYears);
-
-  renderMonteCarloChart(chartPoints, milestoneOffsets);
-  document.getElementById('monteCarloScheduleBody').innerHTML = points.map((p) => `
-    <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${p.year === 0 ? '현재' : `${p.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + p.year}</span></td>
-      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-red-500 dark:text-red-400">${fmtKRWShort(p.p10)}</td>
-      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-slate-900 dark:text-white">${fmtKRWShort(p.p50)}</td>
-      <td class="px-1 py-2 text-right whitespace-nowrap font-bold text-emerald-600 dark:text-emerald-400">${fmtKRWShort(p.p90)}</td>
-    </tr>`).join('');
-}
-
-// [이 프로젝트 최초의 밴드/영역채우기 차트] renderScenarioCompareChart의 옵션 구조(색상/툴팁/legend)를
-// 그대로 재사용하되, P10~P90 사이를 fill:'-1'로 채워 밴드(fan chart)를 만든다 - Chart.js는 데이터셋
-// 배열에서 "바로 앞 데이터셋과의 사이"만 채우므로 [P90(낙관, 채우기 없음), P10(보수, 바로 앞
-// 데이터셋인 P90과의 사이를 채워 밴드를 만듦), P50(강조선, 맨 위에 그려지도록 마지막)] 순서로 등록한다
-// - 이 등록 순서는 시각적 밴드를 만들기 위한 것일 뿐 P10/P90 각각의 의미(보수/낙관)와는 무관하다.
-// [범례/툴팁 표시 순서 - 요청 반영] 위 데이터셋 배열 순서(P90→P10→P50)는 밴드 채우기 때문에 그대로
-// 둬야 하지만, 범례/툴팁(그래프 클릭 시 뜨는 툴팁 포함)에 "보이는" 순서는 이거와 무관하게
-// 보수→중앙값→낙관(P10→P50→P90)으로 강제한다 - legend는 generateLabels를, tooltip은 itemSort를
-// 각각 커스터마이징해 데이터셋 배열 순서와 표시 순서를 분리한다(datasetIndex를 그대로 넘겨야 범례
-// 클릭 시 해당 라인 토글이 정상 동작한다). [이전엔 낙관→중앙값→보수(P90→P50→P10)였으나 요청에 따라
-// 순서를 뒤집었다 - 아래 스케줄 표(monteCarloScheduleBody)는 이미 보수/중앙값/낙관 순서라 손대지 않음.]
-const MONTE_CARLO_DISPLAY_ORDER = { 'P10(보수)': 0, 'P50(중앙값)': 1, 'P90(낙관)': 2 };
-function renderMonteCarloChart(points, milestoneOffsets) {
-  const textColor = chartTextColor();
-  if (charts.monteCarlo) charts.monteCarlo.destroy();
-  const labels = points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`);
-  const bandColor = 'rgba(99,102,241,0.15)';
-  // [X축 연도 표기 통일 - 요청 반영] renderScenarioCompareChart와 동일하게, 마일스톤 연도에만 점을
-  // 찍고 나머지는 반지름 0으로 숨긴다(연결선 자체는 매년 값으로 촘촘하게 그려짐).
-  const MILESTONE_YEARS = [0, ...milestoneOffsets];
-  const pointRadiusFor = (r) => points.map((p) => (MILESTONE_YEARS.includes(p.year) ? r : 0));
-  charts.monteCarlo = new Chart(document.getElementById('monteCarloChart'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'P90(낙관)', data: points.map((p) => p.p90), borderColor: '#10b981', backgroundColor: bandColor, fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: pointRadiusFor(2) },
-        { label: 'P10(보수)', data: points.map((p) => p.p10), borderColor: '#ef4444', backgroundColor: bandColor, fill: '-1', tension: 0.3, borderWidth: 1.5, pointRadius: pointRadiusFor(2) },
-        { label: 'P50(중앙값)', data: points.map((p) => p.p50), borderColor: '#6366f1', backgroundColor: '#6366f1', fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: pointRadiusFor(3) }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      events: ['click'],
-      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, 'monteCarlo'),
-      scales: {
-        x: { ticks: { color: textColor }, grid: { display: false } },
-        y: { ticks: { color: textColor, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
-      },
-      plugins: {
-        legend: {
-          display: true, position: 'bottom',
-          labels: {
-            color: textColor, boxWidth: 10, font: { size: 11 },
-            generateLabels: (chart) => chart.data.datasets
-              .map((ds, i) => ({ text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor, lineWidth: 2, hidden: !chart.isDatasetVisible(i), datasetIndex: i }))
-              .sort((a, b) => MONTE_CARLO_DISPLAY_ORDER[a.text] - MONTE_CARLO_DISPLAY_ORDER[b.text])
-          }
-        },
-        tooltip: {
-          itemSort: (a, b) => MONTE_CARLO_DISPLAY_ORDER[a.dataset.label] - MONTE_CARLO_DISPLAY_ORDER[b.dataset.label],
-          callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.raw)}` }
-        }
-      }
-    }
-  });
-}
-
+// [Phase 22 STEP 1 - legacy MC 코드 제거] 이 자리에 있던 구(舊) 스칼라 단일자산 GBM Monte Carlo
+// 파이프라인(createSeededRandom/runMonteCarloSimulation/renderMonteCarloSection/
+// renderMonteCarloChart/MONTE_CARLO_DISPLAY_ORDER, 약 160줄)은 js/15~19의 Worker 기반 다자산 상관
+// Monte Carlo 엔진으로 완전히 대체된 뒤에도 삭제되지 않고 남아있었다. Phase 21 감사에서 이 블록이
+// 참조하는 DOM id 7개(monteCarloLoadingNote/monteCarloContent/monteCarloSigmaText/monteCarloMuText/
+// monteCarloPvText/monteCarloScheduleBody/monteCarloChart)가 index.html 어디에도 존재하지 않고,
+// 유일한 진입점 renderMonteCarloSection()도 실제로 호출하는 곳이 전혀 없음(주석 1곳에서만 언급)을
+// 확인해 완전히 도달 불가능한 코드임을 검증한 뒤 삭제했다 - 계산/State/Safety/현재 MC 엔진에는
+// 전혀 영향 없음(js/15의 독립적인 createSeededRandom 사본만 계속 쓰인다).
 document.getElementById('inflationRateInput').addEventListener('input', (e) => {
   state.projection.inflationRate = num(e.target.value);
   persistProjection();

@@ -87,10 +87,15 @@ function renderSafetyIssueGroupCard(group) {
       <p class="mt-1 opacity-80 truncate">${escapeHtml(fieldNames)}</p>
     </button>
     <div class="safety-group-body overflow-hidden transition-[max-height] duration-300 ease-in-out mt-1.5 space-y-1.5" data-safety-group-body="${escapeHtml(groupKey)}" style="max-height:${isOpen ? '2000px' : '0px'};">
+      <!-- [Phase 22 STEP 11 - 반복 정보 압축] 같은 code로 묶인 issue는 항상 같은 makeIssue() 호출부에서
+           나오므로 recommendation(권고문)은 자산마다 다르지 않고 완전히 동일한 문장이다(message만
+           자산명/수치가 달라 자산별로 의미가 있다) - 예전엔 이 동일한 recommendation 문장을 자산
+           개수만큼 그대로 반복해서 보여줬다. 판정 로직/문구 자체는 전혀 바꾸지 않고, 그 반복되는
+           한 문장만 맨 위에서 한 번만 보여주도록 위치를 옮겼다(정보량 축소이지 글자 축소가 아님). -->
+      ${first.recommendation ? `<p class="opacity-80">${escapeHtml(first.recommendation)}</p>` : ''}
       ${group.map((i) => `<div class="pl-2 border-l-2 border-current/30">
         <p class="font-medium">${escapeHtml(i.field || '')}</p>
         <p>${escapeHtml(i.message)}</p>
-        ${i.recommendation ? `<p class="opacity-80">${escapeHtml(i.recommendation)}</p>` : ''}
       </div>`).join('')}
     </div>
   </div>`;
