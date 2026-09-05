@@ -7,6 +7,35 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-05) — Phase 9~12: 적립기간 기능, F-1 MC 자산0 수정, V1.0 Release(v208)
+
+**커밋**: `1bf48a7` "release: V1.0 v208" - **push 완료**(직전 `5f292b6` 위에 이어짐).
+**V1.0 Release Candidate = v208로 PM 최종 승인 및 Freeze 완료.**
+
+### 이번 세션에서 완료된 작업(Phase 9~12 누적, 하나의 커밋으로 정리됨)
+
+1. **적립기간(신규 납입 기간) 기능** - `monthlyContributionByOwner[owner].years`(null=제한없음/0=신규납입없음/N=N년)를 Deterministic(js/05)과 Monte Carlo(js/15~19, `contributionStreams`) 양쪽에 동일 의미로 반영. 옛 버전이 저장해 둔 기본값(`years:15`)은 최초 1회 null로 마이그레이션(기존 사용자 결과 보존).
+2. **F-1 수정** - `computeHouseholdTargetInstrumentWeights()`(js/05)가 가구 전체 현재원금(grandTotal)이 0일 때 owner별 현재원금 대신 owner별 월적립금 총액을 가중치 기준으로 fallback(임의 instrument/50:50/현금 추가 없음, 기존 목표비중 구조만 재사용). Owner 조합(Case A/B/C/D) 전부 검증, `totalValue>0` 기존 경로는 완전히 동일(bit-identical) 유지.
+3. **P1 수정** - `totalValue===0` 신규 사용자도 신규 적립금이 정상적으로 미래예측에 반영(회귀 없음).
+4. **초보자 UX 개선** - 미래예측 탭 상단 히어로 요약 카드(현재자산/매달투자/N년후 예상자산), 가정 아코디언, "투자 기간"과 "적립 기간" 라벨 구분, Monte Carlo percentile을 "낮은 편/중간 수준/높은 편"으로 재표현, "월 적립금"→"매달 투자할 금액" 등 문구 순화.
+5. **Service Worker cache/version bump(v207→v208)** - `sw.js`의 `CACHE_NAME`과 `index.html`의 `appVersionLabel`을 함께 올림(이 프로젝트 확립된 컨벤션). Release Preparation 단계(Phase 12)에서 이 프로젝트의 "코드 바뀌면 버전도 함께 올린다" 관행이 v207에서 누락된 것을 발견해 PM 승인 후 최소 수정으로 해결 - 실브라우저로 activate 시 구 캐시(v207) 삭제 + 신규 캐시(v208) 생성 + 최신 index.html/js 제공을 직접 재현·확인함.
+6. **테스트**: npm test 108/108, ESLint 0 problems, Playwright 98/98(신규 e2e 8개 spec 파일: 11,13,14,15,16,17,18,19).
+
+### Phase 프로세스(다음 세션이 알아둘 만한 특이 패턴)
+
+이번 세션은 Phase 9(구현) → Phase 10(코드 수정 금지 최종 통합테스트) → Phase 10 Follow-up(F-1만 좁게 수정) → Phase 11(V1.0 Release Candidate 최종 검증, 코드 변경 없는 읽기 전용 감사) → Phase 12(Release Preparation, R-1 버전불일치 발견) → Phase 12 Follow-up(R-1만 최소 수정) → 최종 Commit/Push 순서로 진행됐다 - "발견한 문제를 그 자리에서 임의로 고치지 않고, PM 승인을 받은 뒤 범위를 좁혀 별도 단계로 처리"하는 패턴이 여러 번 반복됨.
+
+### Backlog로 신규 기록된 항목(V1.1 이후 검토, 이번 세션에서 구현하지 않음)
+
+- **UX-001 — 금액 입력 천 단위 콤마 표시/입력**: 현재 `tx_price`/`tx_quantity`/`monthlyContributionTotalInputHusband·Wife`/`mcGoalAmountInput` 등 금액 입력 필드가 전부 네이티브 `type="number"`라 콤마 입력/표시가 불가능(구조적 한계 - 브라우저가 콤마 포함 값을 아예 안 받음). 결과 표시 영역의 `toLocaleString()`은 계산 결과를 "보여줄 때"만 쓰이고 입력 UX와는 무관. 목적은 초보자의 큰 금액 자릿수 착오/입력 부담 감소. **V1.1 검토 시 필수 확인사항(사용자 명시)**: 단순히 `type="number"`→`text` 치환으로 바로 구현하지 말 것 - 금액/수량/비율/기간/소수점허용/음수허용/모바일입력/붙여넣기/커서이동삭제/validation/state저장값/계산엔진전달값/Import-Export영향을 각각 구분해서 먼저 설계 검토할 것. 화면 표시값과 내부 계산값을 분리하되 기존 계산 로직의 숫자 semantics는 변경하지 않는 것이 기본 원칙.
+- (기존 Known Limitation 유지, 재나열 안 함) F-2/F-5/I-5/I-6/R-2(SW APP_SHELL이 js/15~22 미포함)/`updateRebalanceResults()`가 `updateProjection()`을 직접 호출하는 테스트환경 전용 stale-DOM 타이밍 이슈.
+
+### 다음 세션이 알아야 할 것
+
+**V1.0 v208은 PM이 최종 Freeze한 Release Candidate다** - 새로운 개발 과제(UX-001 포함)는 이 인계장을 읽었다고 임의로 시작하지 않는다. 사용자의 명시적 지시를 받은 뒤에만 진행. `.claude/launch.json`은 이번에도 커밋 대상 아님. `git pull`로 이 커밋(`1bf48a7`)을 받았는지 먼저 확인.
+
+---
+
 ## 최근 세션 요약 (2026-09-04, 계속 16) — Phase 8: 포트폴리오·리밸런싱 UX 개선 (V207)
 
 **커밋**: `b4294ed` "feat: improve portfolio target allocation UX (Phase 8)" - **push 완료**(직전 `711c4ea` 위에 이어짐).
