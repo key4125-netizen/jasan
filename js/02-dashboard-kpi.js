@@ -405,6 +405,10 @@ function renderKPIs() {
     document.getElementById('retryFailedPricesBtnText').textContent = '실패 종목 일괄 재조회';
   }
 
+  // [Phase 17 P1-1] 금융자산 평가금액 보조정보 - 이미 위에서 집계된 financialCur(부동산 제외)를
+  // 그대로 재사용한다(새 계산 없음, 총자산현황 탭의 kpiFinancialValue와 동일한 값·동일한 범위).
+  document.getElementById('kpiFinancialValueInline').textContent = fmtKRW(financialCur);
+
   const profitEl = document.getElementById('kpiTotalProfit');
   profitEl.textContent = fmtSigned(totalProfit);
   profitEl.className = 'text-lg font-bold ' + profitColor(totalProfit);
@@ -814,7 +818,7 @@ function renderTopHoldings() {
   renderTopHoldingsMobileCards('topHoldingsDomesticMobile', domestic);
   renderTopHoldingsMobileCards('topHoldingsForeignMobile', foreign);
   // 시세 갱신 등으로 표 내용(행 수)이 바뀌면 펼쳐진 상태의 max-height도 새 내용 높이에 맞게 갱신해야
-  // 한다 - 자산 관리 카드의 reapplyAssetGroupAccordionHeights와 동일한 이유.
+  // 한다 - 거래 목록 아코디언의 setAccordionOpen 재적용과 동일한 이유.
   reapplyTopHoldingsAccordionHeights();
 }
 

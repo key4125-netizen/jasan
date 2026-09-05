@@ -1,4 +1,24 @@
 /* -------------------------------------------------------------------------
+ * [Phase 17 P1-1] 시스템관리 진입점(⚙) - 최초등록/엑셀/JSON/초기화 버튼을 모아둔 모달을 열고 닫는다.
+ * 그 안의 각 버튼 자체의 클릭 핸들러는 이 파일 및 js/06,12에 그대로 남아있다(기능 무변경, 진입 경로만
+ * 이 모달을 거치도록 바뀜) - 다른 모달과 동일하게 pushModalHistoryState/popModalHistoryIfNeeded로
+ * 뒤로가기를 지원한다(js/03 참고).
+ * ---------------------------------------------------------------------- */
+function openSystemManagementModal() {
+  document.getElementById('systemManagementModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeSystemManagementModal(viaBackButton) {
+  document.getElementById('systemManagementModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('systemManagementBtn').addEventListener('click', openSystemManagementModal);
+document.getElementById('closeSystemManagementModalBtn').addEventListener('click', () => closeSystemManagementModal());
+document.getElementById('systemManagementModal').addEventListener('click', (e) => {
+  if (e.target.id === 'systemManagementModal') closeSystemManagementModal();
+});
+
+/* -------------------------------------------------------------------------
  * 23. 데이터 초기화
  * ---------------------------------------------------------------------- */
 document.getElementById('resetDataBtn').addEventListener('click', () => {
@@ -33,7 +53,12 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // 와이프 각각 독립 목표) - 예전엔 이 리셋 핸들러가 taxAdvantagedPlan/monthlyContributionAllocation도
   // 누락한 채 부분적으로만 초기화했는데, 이번에 손대는 김에 js/01의 기본값과 완전히 맞춘다.
   state.rebalance = { '신랑': makeDefaultRebalanceOwnerState(), '와이프': makeDefaultRebalanceOwnerState() };
-  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: 15, allocation: [] }, '와이프': { total: 0, years: 15, allocation: [] } } };
+  // [Phase 14-B / N-1 수정] monthlyContributionByOwner는 더 이상 이 핸들러가 직접 리터럴로 만들지
+  // 않는다 - js/01의 실제 기본값 정의(normalizeMonthlyContributionByOwner, raw 없이 호출하면 각
+  // owner가 {total:0, years:null, allocation:[]}가 됨 - null은 "제한없음")를 그대로 재사용해, 신규
+  // 설치 기본값과 데이터 초기화 기본값이 항상 같은 소스에서 나오도록 한다(예전엔 이 자리에 years:15가
+  // 하드코딩돼 있어 신규 설치(null)와 어긋났었다).
+  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: normalizeMonthlyContributionByOwner() };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라
@@ -90,7 +115,10 @@ document.getElementById('darkModeBtn').addEventListener('click', () => {
   // 전환하면 축/범례 텍스트가 이전 테마 색 그대로 남아 새 배경과 겹쳐 안 보이는 문제가 있었다(탭을
   // 나갔다 다시 들어오면 switchRebalanceSubTab()이 다시 그려줘서 우연히 정상으로 보였을 뿐). 이
   // 서브탭을 보고 있을 때만 다시 그린다 - 숨겨진 캔버스에 그리면 크기가 0이 되므로 호출하지 않는다.
-  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection();
+  // [Phase 19-P1] preserveMcResult=true를 넘겨 이 호출이 Monte Carlo 결과 표시(mcResultArea)를 READY
+  // 상태로 리셋하지 않게 한다 - 테마만 바뀌었을 뿐 데이터는 그대로이므로 이미 계산된 MC 결과를 다시
+  // 실행하지 않고 그대로 보존한다(계산/State 무변경, 순수 렌더링 분기).
+  if (state.activeTab === 'rebalance' && rebalanceSubTab === 'projection') updateProjection(true);
 });
 
 /* -------------------------------------------------------------------------

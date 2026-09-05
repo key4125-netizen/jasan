@@ -38,6 +38,118 @@ function renderSafetyIssueList(containerEl, issues) {
   containerEl.innerHTML = `<div class="space-y-1.5">${list.map(renderSafetyIssueCard).join('')}</div>`;
 }
 
+/* -------------------------------------------------------------------------
+ * [Phase 17 P1-4] Monte Carlo 결과 화면 전용 - Safety issue를 "결과 해석에 직접 영향을 주는 것
+ * (critical)"과 "참고용/항상-on 설명(general·info)"으로 나눠 서로 다른 위치에 표시한다. 어떤 issue가
+ * critical인지는 js/21이 이미 정해둔 code/severity만으로 판단한다(여기서 새로운 금융 판단 기준을
+ * 만들지 않는다) - assessFee(운용보수 미확인/과다)와 assessExpectedReturn(기대수익률 극단)만 "결과
+ * 숫자가 실제보다 크거나 작게 보일 수 있다"는 해석에 직접 영향을 주므로 critical로 분류했다. 판정
+ * 로직(js/21 assess*) 자체는 전혀 건드리지 않는다 - 이미 계산된 issue를 어디에 그릴지만 결정한다.
+ * ---------------------------------------------------------------------- */
+const MC_SAFETY_CRITICAL_CODES = new Set(['SAFETY_FEE_UNKNOWN', 'SAFETY_EXTREME_FEE', 'SAFETY_EXTREME_RETURN']);
+function classifyMcSafetyTier(issue) {
+  if (issue.severity === 'INFO') return 'info';
+  if (MC_SAFETY_CRITICAL_CODES.has(issue.code)) return 'critical';
+  return 'general';
+}
+
+// [반복 원인 집계] 같은 code(원인)가 여러 자산에서 반복되면(예: 운용보수 미확인이 종목마다 하나씩)
+// 하나의 그룹으로 묶는다 - 원본 issue 배열은 그대로 유지하고(삭제 없음), 그룹 안에 전부 보존한다.
+function groupSafetyIssuesByCode(issues) {
+  const order = [];
+  const byCode = new Map();
+  issues.forEach((issue) => {
+    if (!byCode.has(issue.code)) { byCode.set(issue.code, []); order.push(issue.code); }
+    byCode.get(issue.code).push(issue);
+  });
+  return order.map((code) => byCode.get(code));
+}
+
+let mcSafetyGroupOpen = {};
+// 그룹 크기가 1이면 기존 renderSafetyIssueCard와 동일하게 보여준다(불필요한 접힘 UI를 만들지 않음).
+// 2개 이상이면 "제목 - 자산 N개" 요약 + 펼치면 개별 자산명/메시지 전체를 그대로 보여주는 카드로 만든다.
+function renderSafetyIssueGroupCard(group) {
+  if (group.length === 1) return renderSafetyIssueCard(group[0]);
+  const first = group[0];
+  const style = SAFETY_UI_STYLE[first.severity] || SAFETY_UI_STYLE.INFO;
+  const groupKey = `${first.code}_${group.map((i) => i.field || '').join('|')}`;
+  const isOpen = !!mcSafetyGroupOpen[groupKey];
+  const fieldNames = group.map((i) => i.field).filter(Boolean).join(', ');
+  return `<div class="p-2.5 rounded-lg border text-[11px] leading-relaxed ${style.wrapClass}">
+    <button type="button" class="w-full text-left safety-group-toggle" data-safety-group-key="${escapeHtml(groupKey)}">
+      <div class="flex items-center justify-between gap-1.5">
+        <span class="flex items-center gap-1.5 min-w-0">
+          <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${style.badgeClass}">${style.badge}</span>
+          <span class="font-semibold truncate">${escapeHtml(first.title)} - 자산 ${group.length}개</span>
+        </span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 shrink-0 transition-transform duration-200 safety-group-chevron${isOpen ? ' rotate-180' : ''}" data-safety-group-chevron="${escapeHtml(groupKey)}"></i>
+      </div>
+      <p class="mt-1 opacity-80 truncate">${escapeHtml(fieldNames)}</p>
+    </button>
+    <div class="safety-group-body overflow-hidden transition-[max-height] duration-300 ease-in-out mt-1.5 space-y-1.5" data-safety-group-body="${escapeHtml(groupKey)}" style="max-height:${isOpen ? '2000px' : '0px'};">
+      ${group.map((i) => `<div class="pl-2 border-l-2 border-current/30">
+        <p class="font-medium">${escapeHtml(i.field || '')}</p>
+        <p>${escapeHtml(i.message)}</p>
+        ${i.recommendation ? `<p class="opacity-80">${escapeHtml(i.recommendation)}</p>` : ''}
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.safety-group-toggle');
+  if (!btn) return;
+  const key = btn.dataset.safetyGroupKey;
+  mcSafetyGroupOpen[key] = !mcSafetyGroupOpen[key];
+  const body = document.querySelector(`.safety-group-body[data-safety-group-body="${CSS.escape(key)}"]`);
+  const chevron = document.querySelector(`.safety-group-chevron[data-safety-group-chevron="${CSS.escape(key)}"]`);
+  if (body && chevron) setAccordionOpen(body, chevron, mcSafetyGroupOpen[key]);
+});
+
+let mcSafetyDetailOpen = false;
+function reapplyMcSafetyDetailHeight() {
+  const body = document.getElementById('mcSafetyDetailBody');
+  const chevron = document.getElementById('mcSafetyDetailChevron');
+  if (body && chevron) setAccordionOpen(body, chevron, mcSafetyDetailOpen);
+}
+const mcSafetyDetailToggleBtn = document.getElementById('mcSafetyDetailToggleBtn');
+if (mcSafetyDetailToggleBtn) {
+  mcSafetyDetailToggleBtn.addEventListener('click', () => {
+    mcSafetyDetailOpen = !mcSafetyDetailOpen;
+    reapplyMcSafetyDetailHeight();
+  });
+}
+
+// Monte Carlo 결과 화면 전용 진입점 - critical은 항상 펼쳐서 결과 바로 아래, general+info는 기본 접힘
+// "상세보기" 영역으로. 호출부(js/19 renderMonteCarloResult)는 판정된 issue 배열만 그대로 넘긴다.
+function renderMonteCarloSafetyTiers(criticalEl, detailToggleBtn, detailEl, issues) {
+  const list = (issues || []).filter(Boolean);
+  const critical = [], rest = [];
+  list.forEach((issue) => {
+    (classifyMcSafetyTier(issue) === 'critical' ? critical : rest).push(issue);
+  });
+
+  if (criticalEl) {
+    if (critical.length === 0) { criticalEl.classList.add('hidden'); criticalEl.innerHTML = ''; }
+    else {
+      criticalEl.classList.remove('hidden');
+      criticalEl.innerHTML = groupSafetyIssuesByCode(critical).map(renderSafetyIssueGroupCard).join('');
+    }
+  }
+  if (detailEl) {
+    if (rest.length === 0) {
+      detailEl.innerHTML = '';
+      if (detailToggleBtn) detailToggleBtn.classList.add('hidden');
+    } else {
+      detailEl.innerHTML = groupSafetyIssuesByCode(rest).map(renderSafetyIssueGroupCard).join('');
+      if (detailToggleBtn) detailToggleBtn.classList.remove('hidden');
+    }
+  }
+  mcSafetyDetailOpen = false; // 매 실행마다 기본 접힘으로 시작(항상-on 설명이 결과를 가리지 않도록)
+  reapplyMcSafetyDetailHeight();
+  lucide.createIcons();
+}
+
 // Future Projection(js/05 updateProjection)의 목표 비중 BLOCK 배너 전용 - "계산 시작 전 BLOCK"을
 // 명확하게 보여주고, 왜 계산을 시작하지 않았는지 안내한다(자동 재정규화는 하지 않음을 함께 고지).
 function renderSafetyBlockBanner(containerEl, issues) {

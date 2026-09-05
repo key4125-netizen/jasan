@@ -106,6 +106,9 @@ function resetMonteCarloUiToReady() {
   mcUiEl('mcPresetSelect').disabled = false;
   mcUiEl('mcIterationsSelect').disabled = false;
   if (mcUiEl('mcSafetyIssues')) mcUiEl('mcSafetyIssues').classList.add('hidden');
+  // [Phase 17 P1-4] 새 2단 Safety 컨테이너도 함께 리셋한다(재실행 시 이전 결과의 카드가 잠깐 남아있지 않도록).
+  if (mcUiEl('mcSafetyCritical')) { mcUiEl('mcSafetyCritical').classList.add('hidden'); mcUiEl('mcSafetyCritical').innerHTML = ''; }
+  if (mcUiEl('mcSafetyDetailToggleBtn')) mcUiEl('mcSafetyDetailToggleBtn').classList.add('hidden');
 }
 
 function setMonteCarloUiRunning() {
@@ -120,6 +123,8 @@ function setMonteCarloUiRunning() {
   mcUiEl('mcPresetSelect').disabled = true;
   mcUiEl('mcIterationsSelect').disabled = true;
   if (mcUiEl('mcSafetyIssues')) mcUiEl('mcSafetyIssues').classList.add('hidden');
+  if (mcUiEl('mcSafetyCritical')) { mcUiEl('mcSafetyCritical').classList.add('hidden'); mcUiEl('mcSafetyCritical').innerHTML = ''; }
+  if (mcUiEl('mcSafetyDetailToggleBtn')) mcUiEl('mcSafetyDetailToggleBtn').classList.add('hidden');
 }
 
 function updateMonteCarloProgress(completed, total, progress) {
@@ -188,7 +193,16 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation()) : null,
       (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn() : null,
     ].filter(Boolean);
-    renderSafetyIssueList(mcUiEl('mcSafetyIssues'), nonBlockIssues.concat(semanticIssues));
+    // [Phase 17 P1-4] 예전엔 이 issue 전부(WARNING+INFO)를 결과보다 먼저 나오는 mcSafetyIssues
+    // 하나에 몰아서 보여줬다 - 이제 "결과 해석에 직접 영향(critical)"만 결과 바로 아래 펼쳐서 보여주고,
+    // 나머지(참고성 WARNING + 항상-on INFO 6종)는 결과 아래 "상세보기"로 옮긴다(js/22
+    // renderMonteCarloSafetyTiers). 판정 결과(issue 배열) 자체는 한 글자도 바뀌지 않았다 - 어디에
+    // 그릴지만 바뀜.
+    if (typeof renderMonteCarloSafetyTiers === 'function') {
+      renderMonteCarloSafetyTiers(mcUiEl('mcSafetyCritical'), mcUiEl('mcSafetyDetailToggleBtn'), mcUiEl('mcSafetyDetail'), nonBlockIssues.concat(semanticIssues));
+    } else {
+      renderSafetyIssueList(mcUiEl('mcSafetyIssues'), nonBlockIssues.concat(semanticIssues));
+    }
   }
 
   // [js/20 재사용 - 계산 반복 구현 금지] 명목 결과(result)는 그대로 두고, 실질가치는 이 변환 레이어의

@@ -241,7 +241,11 @@ function resetAllAccordionsOnTabSwitch() {
   // 모든 키를 순회해 초기화하면, 앞으로 새 키가 추가돼도 이 함수를 다시 고칠 필요가 없다.
   Object.keys(detailCardAccordionOpen).forEach((k) => { detailCardAccordionOpen[k] = false; });
   txListAccordionOpen = false;
-  Object.keys(assetGroupAccordionOpen).forEach((k) => { assetGroupAccordionOpen[k] = false; });
+  // [Phase 18 P2-1] 관점 전환(세그먼트)도 탭을 벗어나면 항상 기본값('전체')으로 되돌아간다 - 실제
+  // 재렌더링(및 버튼 시각 상태 동기화)은 renderTable()이 담당하므로 여기서는 상태값만 되돌린다.
+  assetListViewMode = 'none';
+  // [Phase 18 P2-3] Excel 관리 아코디언도 탭을 벗어나면 항상 접힘으로 되돌아간다.
+  txExcelAccordionOpen = false;
 }
 
 // [버그 수정 - 탭 전환 시 스크롤 위치 초기화] 목록/표를 한참 스크롤한 상태에서 다른 탭으로 이동하면
@@ -314,7 +318,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'systemManagementModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -358,7 +362,8 @@ const MODAL_CLOSE_FNS = {
   riskDetailModal: (viaBack) => closeRiskDetailModal(viaBack),
   assetSearchResultModal: (viaBack) => closeAssetSearchResultModal(viaBack),
   syncSettingsModal: (viaBack) => closeSyncSettingsModal(viaBack),
-  stockAnalysisModal: (viaBack) => closeStockAnalysisModal(viaBack)
+  stockAnalysisModal: (viaBack) => closeStockAnalysisModal(viaBack),
+  systemManagementModal: (viaBack) => closeSystemManagementModal(viaBack)
 };
 
 function findOpenModalId() {

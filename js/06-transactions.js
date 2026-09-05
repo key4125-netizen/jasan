@@ -63,6 +63,61 @@ function computeCurrentHoldingQuantity(owner, accountType, ticker, name, exclude
   return qty;
 }
 
+// [Phase 13 - Excel 대량 거래입력 초과매도 검증] 단건 입력(위 tx_id 저장 핸들러의 computeCurrentHoldingQuantity
+// 호출)과 동일한 정책을 대량 업로드에도 적용하기 위한 사전 검증 헬퍼. computePositionsAndRealizedPnL()과
+// 완전히 동일한 키 규칙(소유자__계좌구분__티커/이름)과 정렬 기준(날짜→생성시각)으로 "이번에 새로 추가될
+// 거래(newRows)"를 기존 거래(existingTransactions)와 합쳐 순서대로 재생하면서, 매도 거래의 수량이 그
+// 시점의 보유수량을 초과하는지 확인한다. 오직 newRows에 속한 거래만 위반으로 보고한다 - 이미 state에
+// 있던 과거 거래(예: 이 검증이 생기기 전에 등록된 데이터)는 이번 작업 범위(신규 거래만 검증) 밖이라
+// 재검증/재차단하지 않는다. 단, 과거 거래도 러닝밸런스 계산에는 그대로 포함시켜야(같은 clamp 규칙으로)
+// 그 뒤에 오는 신규 거래의 "그 시점 보유수량"이 실제 커밋 후 계산(computePositionsAndRealizedPnL)과
+// 정확히 같아진다. 이 함수는 state를 전혀 변경하지 않는다(순수 사전 검증 - 호출부가 결과에 따라 반영
+// 여부를 결정).
+function findExcelOversellViolations(newRows, existingTransactions, excelRowNumById) {
+  const newIds = new Set(newRows.map((t) => t.id));
+  const combined = existingTransactions.concat(newRows)
+    .map((t, originalIdx) => ({ t, originalIdx }))
+    // [정렬 안정성 명시화] Array.prototype.sort는 ES2019+에서 stable이 보장되므로 날짜+생성시각이
+    // 동률이면 원래 배열 순서(엑셀 행 순서)가 그대로 유지된다 - computePositionsAndRealizedPnL과 동일한
+    // 암묵적 가정이지만, 여기서는 originalIdx를 명시적 3차 tie-break로 넣어 그 가정에 의존하지 않게 한다
+    // (실제 결과는 동일 - 검증 전용 헬퍼이므로 production 정렬 로직 자체는 손대지 않는다).
+    .sort((a, b) => a.t.date.localeCompare(b.t.date) || (a.t.createdAt || 0) - (b.t.createdAt || 0) || a.originalIdx - b.originalIdx)
+    .map(({ t }) => t);
+
+  const qtyByKey = new Map();
+  const violations = [];
+  combined.forEach((t) => {
+    const key = `${t.owner}__${t.accountType}__${t.ticker || t.name}`;
+    const available = qtyByKey.get(key) || 0;
+    if (t.type === 'buy') {
+      qtyByKey.set(key, available + t.quantity);
+      return;
+    }
+    if (newIds.has(t.id) && t.quantity > available) {
+      violations.push({
+        rowNum: excelRowNumById ? excelRowNumById.get(t.id) : undefined,
+        date: t.date, owner: t.owner, accountType: t.accountType,
+        ticker: t.ticker, name: t.name, quantity: t.quantity, available
+      });
+    }
+    qtyByKey.set(key, Math.max(0, available - Math.min(t.quantity, available)));
+  });
+  return violations;
+}
+
+// 초과매도 위반 목록을 사용자에게 보여줄 메시지로 조립한다 - 종목/거래종류/거래수량/그 시점 보유수량/
+// 이유/(가능하면) 엑셀 행 번호를 최소 정보로 포함한다(요청 반영, 복잡한 전용 UI를 새로 만들지 않고
+// 기존 alert() 관례를 그대로 따른다 - 이 파일의 다른 업로드 차단 메시지들과 동일한 패턴).
+function buildExcelOversellAlertMessage(violations) {
+  const lines = violations.map((v, i) => {
+    const rowLabel = v.rowNum ? `[엑셀 ${v.rowNum}행] ` : '';
+    const over = v.quantity - v.available;
+    return `${i + 1}. ${rowLabel}${v.date} · ${v.owner} · ${v.accountType} · ${v.name}${v.ticker ? `(${v.ticker})` : ''} 매도 ${fmtNum(v.quantity, 4)} - 그 시점 보유수량 ${fmtNum(v.available, 4)} (${fmtNum(over, 4)} 초과)`;
+  });
+  return `초과 매도가 발견되어 이번 업로드를 적용하지 않았습니다(파일 전체가 반영되지 않았습니다).\n`
+    + `아래 거래의 수량을 보유수량 이하로 고친 뒤 다시 올려주세요.\n\n${lines.join('\n')}`;
+}
+
 // [현금/외화현금 - 무티커 자산 유형별 이원화] 부동산/채권/상장 주식·ETF는 계속 거래내역(매수/매도)으로
 // 추적한다. 원화 현금은 여기에 더해 거래내역 자체를 만들 수 없게 막고 자산관리 탭에서 직접 잔고를
 // 수정하는 방식을 유지한다(환율 개념이 없어 거래내역화할 실익이 없음). ticker가 있으면 애초에 상장
@@ -252,7 +307,11 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws);
 
-      const parsed = json.map((row) => {
+      // [Phase 13 - 엑셀 행 번호 추적] tx 객체 자체에는 스키마 외 필드를 절대 섞지 않는다(그대로
+      // state.transactions에 들어갈 객체라 오염되면 안 됨) - 대신 id -> 엑셀 행 번호(헤더가 1행이라
+      // 데이터는 2행부터 시작)를 별도 Map으로만 들고 있다가 초과매도 오류 메시지에서만 조회한다.
+      const excelRowNumById = new Map();
+      const parsed = json.map((row, rowIdx) => {
         const typeRaw = String(pick(row, '거래유형', 'type', 'Type') ?? '').trim().toLowerCase();
         const type = (typeRaw === '매도' || typeRaw === 'sell') ? 'sell' : 'buy';
         const currencyRaw = String(pick(row, '통화', 'Currency', 'CURRENCY') ?? '').trim().toUpperCase();
@@ -260,7 +319,7 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
         // 거래 목록에서 "이게 시작점이었지"를 구분해 보여주기 위한 표시 전용 태그다.
         const originRaw = String(pick(row, '구분', 'origin') ?? '').trim();
         const origin = originRaw.includes('최초') ? 'initial' : 'period';
-        return {
+        const tx = {
           id: genId(),
           date: formatDateCell(pick(row, '일자', '날짜', 'date', 'Date')),
           owner: String(pick(row, '소유자', 'owner') ?? '').trim() || '공동',
@@ -281,6 +340,8 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
           createdAt: Date.now(),
           updatedAt: Date.now() // [가족 동기화 - 스마트 머지]
         };
+        excelRowNumById.set(tx.id, rowIdx + 2);
+        return tx;
       }).filter((t) => t.quantity > 0 && t.price > 0 && t.name);
 
       // [현금/외화현금 거래내역 차단] 기존 보유 '현금' 자산과 이름/소유자/계좌구분이 일치하는 행은
@@ -306,6 +367,11 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
       const cashSkipSuffix = cashSkippedCount > 0 ? ` (현금/외화 거래 ${cashSkippedCount}건은 등록 불가로 건너뜀)` : '';
       let resultMsg;
       if (choice === 'overwrite') {
+        // [Phase 13 - 초과매도 사전 검증] 덮어쓰기는 기존 거래를 전부 버리므로, 새로 들어올 importable
+        // 자체만으로 러닝밸런스를 재생해 검증한다(부분 반영 없이 전체 반영/전체 거부의 atomic 방식 -
+        // 오류가 하나라도 있으면 state를 전혀 건드리지 않고 그대로 중단한다).
+        const violations = findExcelOversellViolations(importable, [], excelRowNumById);
+        if (violations.length > 0) { alert(buildExcelOversellAlertMessage(violations)); return; }
         state.transactions = importable;
         resultMsg = `거래내역 ${importable.length}건을 덮어썼습니다.${cashSkipSuffix}`;
       } else {
@@ -320,6 +386,13 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
           seenKeys.add(key);
           newOnes.push(t);
         });
+        // [Phase 13 - 초과매도 사전 검증] 추가하기는 기존 거래내역이 그대로 남으므로, 중복을 제외한
+        // 신규분(newOnes)을 기존 거래와 합쳐(existingTransactions 포함) 러닝밸런스를 재생해야 "그
+        // 시점 보유수량"이 실제 커밋 후 계산과 정확히 같아진다. 여기서도 오류가 하나라도 있으면 state를
+        // 전혀 건드리지 않는다(dupCount 계산까지는 이미 끝났지만, 실제 state.transactions 대입은 아직
+        // 하지 않았으므로 이 시점에 중단해도 부분 반영이 생기지 않는다).
+        const violations = findExcelOversellViolations(newOnes, state.transactions, excelRowNumById);
+        if (violations.length > 0) { alert(buildExcelOversellAlertMessage(violations)); return; }
         state.transactions = state.transactions.concat(newOnes);
         resultMsg = `총 ${importable.length}건 중 신규 ${newOnes.length}건 등록, 중복 ${dupCount}건 건너뜀${cashSkipSuffix}`;
       }
@@ -977,6 +1050,22 @@ function updatePnlSection() {
 function renderTransactionsTab() {
   renderTransactionList();
   updatePnlSection();
+  reapplyTxExcelAccordionHeight();
   lucide.createIcons();
 }
+
+// [Phase 18 P2-3] Excel 거래 관리 아코디언 - 기본값은 접힘. 내용(버튼 3개)이 필터/검색과 무관하게
+// 고정이라 txListAccordion처럼 매번 다시 그릴 필요는 없지만, 탭을 나갔다 돌아오면 다시 접힌 상태로
+// 리셋되므로(js/03 resetAllAccordionsOnTabSwitch) 탭 진입 시(renderTransactionsTab) 한 번 더
+// 반영해 실제 DOM 상태를 맞춘다.
+let txExcelAccordionOpen = false;
+function reapplyTxExcelAccordionHeight() {
+  const body = document.getElementById('txExcelAccordionBody');
+  const chevron = document.getElementById('txExcelAccordionChevron');
+  if (body && chevron) setAccordionOpen(body, chevron, txExcelAccordionOpen);
+}
+document.getElementById('txExcelAccordionBtn').addEventListener('click', () => {
+  txExcelAccordionOpen = !txExcelAccordionOpen;
+  reapplyTxExcelAccordionHeight();
+});
 

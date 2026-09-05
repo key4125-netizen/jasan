@@ -30,7 +30,10 @@ test('Monte Carlo 실행 결과에 기대수익률/Goal Probability/데이터 �
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  const safetyText = await page.locator('#mcSafetyIssues').innerText();
+  // [Phase 17 P1-4] 이 안내 카드들은 전부 severity=INFO(always-on 설명)라 이제 결과보다 아래
+  // "상세보기" 영역(mcSafetyDetail)에 표시된다 - mcSafetyIssues는 더 이상 정상 완료 경로에서 쓰이지
+  // 않는다(BLOCK 전용). 접힌 아코디언 안이라도 DOM에는 그대로 남아있어 innerText로 확인 가능하다.
+  const safetyText = await page.locator('#mcSafetyDetail').innerText();
   expect(safetyText).toContain('기대수익률의 의미');
   expect(safetyText).toContain('목표 달성 확률의 의미');
   expect(safetyText).toContain('변동성·상관관계 데이터 기간 안내');
@@ -49,7 +52,7 @@ test('목표금액 미설정 시 Goal Probability 안내 카드는 나타나지 
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  const safetyText = await page.locator('#mcSafetyIssues').innerText();
+  const safetyText = await page.locator('#mcSafetyDetail').innerText();
   expect(safetyText).not.toContain('목표 달성 확률의 의미');
 });
 
@@ -66,6 +69,6 @@ test('해외자산이 포함되면 FX 환율 변동 미반영 안내 카드가 �
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  const safetyText = await page.locator('#mcSafetyIssues').innerText();
+  const safetyText = await page.locator('#mcSafetyDetail').innerText();
   expect(safetyText).toContain('해외자산 환율 변동 미반영 안내');
 });

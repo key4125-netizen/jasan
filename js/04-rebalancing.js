@@ -327,16 +327,51 @@ function computePortfolioTargetSummaryRows(owner) {
 }
 
 const PORTFOLIO_SUMMARY_STATUS_META = {
+  // [Phase 17 P1-2] actionLabel: "그래서 무엇을 검토하면 되는가"를 headline으로 먼저 보여주기 위한
+  // 문구 - 투자자문처럼 확정적으로 지시하지 않고("매도하세요" 금지) 항상 "검토" 수준으로 표현한다.
+  // 계산값(diffAmount 등)은 전혀 건드리지 않고 기존 값을 그대로 문장에 끼워 넣기만 한다.
   under: { badge: '부족', badgeClass: 'bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300',
+    actionLabel: (amt) => `약 ${fmtKRWShort(Math.abs(amt))} 추가 투자 검토`,
     text: (diffPct) => `목표보다 약 ${fmtNum(Math.abs(diffPct), 1)}%p 부족해요.`,
     hint: '새로 투자할 때 이 자산을 조금 더 늘리는 방법을 생각해볼 수 있어요.' },
   over: { badge: '초과', badgeClass: 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-300',
+    actionLabel: (amt) => `약 ${fmtKRWShort(Math.abs(amt))} 비중 축소 검토`,
     text: (diffPct) => `목표보다 약 ${fmtNum(Math.abs(diffPct), 1)}%p 많아요.`,
     hint: '새로운 투자금을 다른 자산에 배분하면 비중을 자연스럽게 조정할 수 있어요.' },
   ok: { badge: '적정', badgeClass: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-300',
+    actionLabel: () => null,
     text: () => '목표와 비슷해요.',
     hint: '현재 비중을 유지해도 괜찮아요.' }
 };
+
+// [Phase 17 P1-2] 진단 Row를 펼치면 이 종목의 실행 상세(현재금액/목표금액/조정금액/예상수량)를 같은
+// 자리에서 바로 보여준다 - 별도 계산을 새로 만들지 않고 기존 computeIndividualRebalanceGuide()가
+// 반환하는 rows를 targetLabel 기준으로 그대로 재사용한다(값 자체는 무변경, 표시 위치만 병합).
+// 자산군 캐치올처럼 목표 하나에 실제 보유 종목이 여러 개 걸리는 경우 각 종목을 별도 줄로 나열한다.
+function buildPortfolioDiagDrilldownHtml(guideRowsForLabel) {
+  if (!guideRowsForLabel || guideRowsForLabel.length === 0) {
+    return '<p class="text-[11px] text-slate-400 px-3 pb-3">보유 중인 종목이 없어 실행 상세가 없습니다.</p>';
+  }
+  return guideRowsForLabel.map((r) => {
+    const badge = rebalanceActionBadge(r.diff, r.curAmount);
+    return `<div class="px-3 pb-3">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span class="text-xs font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</span>
+        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
+        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.targetAmount)}</span></div>
+        <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium whitespace-nowrap ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
+        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium whitespace-nowrap">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// [Phase 17 P1-2] 진단 Row 펼침 상태 - key: `${owner}__${region}__${label}`. 재렌더링돼도(시세갱신 등)
+// 펼쳐둔 상태가 그대로 유지되도록 모듈 전역에 기억한다(다른 아코디언들과 동일한 패턴).
+let portfolioDiagRowOpen = {};
 
 // 화면 표시 전용 렌더링 - 반올림은 여기(문자열 조립 시점)에서만 적용하고, 위 compute 함수의 계산값
 // 자체는 전혀 반올림하지 않는다(상태 판정도 반올림 전 원본 diffWeightPct로 이미 끝난 뒤다).
@@ -345,6 +380,14 @@ function renderPortfolioTargetSummary(owner) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const { rows, regionSumStatus } = computePortfolioTargetSummaryRows(owner);
+  // [Phase 17 P1-2] 실행 상세는 기존 실행가이드 계산을 그대로 재사용한다(새 계산 없음) - targetLabel
+  // 기준으로 묶어 각 진단 Row가 자기 항목의 실행 상세만 찾아 쓸 수 있게 한다.
+  const { rows: guideRows } = computeIndividualRebalanceGuide(owner);
+  const guideRowsByLabel = {};
+  guideRows.forEach((r) => {
+    if (!guideRowsByLabel[r.targetLabel]) guideRowsByLabel[r.targetLabel] = [];
+    guideRowsByLabel[r.targetLabel].push(r);
+  });
 
   const sumBadgesHtml = ['국내', '해외'].map((region) => {
     const s = regionSumStatus[region];
@@ -361,19 +404,45 @@ function renderPortfolioTargetSummary(owner) {
 
   const rowsHtml = rows.map((r) => {
     const meta = PORTFOLIO_SUMMARY_STATUS_META[r.status];
-    return `<div class="py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <div class="flex items-center justify-between gap-2">
-        <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.region)} · ${escapeHtml(r.label)}</span>
-        <span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badgeClass}">${meta.badge}</span>
+    const rowKey = `${owner}__${r.region}__${r.label}`;
+    const actionLabel = meta.actionLabel(r.diffAmount);
+    const isOpen = !!portfolioDiagRowOpen[rowKey];
+    return `<div class="border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <button type="button" class="portfolio-diag-row-toggle w-full text-left py-2" data-diag-row-key="${escapeHtml(rowKey)}">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.region)} · ${escapeHtml(r.label)}</span>
+          <span class="shrink-0 flex items-center gap-1">
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badgeClass}">${meta.badge}</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 portfolio-diag-row-chevron" data-diag-chevron-key="${escapeHtml(rowKey)}"></i>
+          </span>
+        </div>
+        <!-- [Phase 17 P1-2 - 행동 정보 우선] "그래서 무엇을 검토하면 되는가"를 %수치보다 먼저, 더 눈에
+             띄게 보여준다 - 계산값(diffAmount)은 기존 그대로, 표현 순서만 바꿈. -->
+        ${actionLabel ? `<p class="text-xs font-semibold mt-1 ${rebalanceDiffColorClass(r.diffAmount)}">${escapeHtml(actionLabel)}</p>` : `<p class="text-xs font-semibold mt-1 text-emerald-600 dark:text-emerald-400">${escapeHtml(meta.text())}</p>`}
+        <p class="text-[11px] text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
+      </button>
+      <div class="portfolio-diag-row-body overflow-hidden transition-[max-height] duration-300 ease-in-out" data-diag-body-key="${escapeHtml(rowKey)}" style="max-height:${isOpen ? '9999px' : '0px'};">
+        ${buildPortfolioDiagDrilldownHtml(guideRowsByLabel[r.label])}
       </div>
-      <p class="text-[11px] text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
-      <p class="text-xs mt-1">${escapeHtml(meta.text(r.diffWeightPct))} <span class="text-slate-400">${meta.hint}</span></p>
-      ${Math.abs(r.diffAmount) >= 1 ? `<p class="text-[11px] mt-0.5 ${rebalanceDiffColorClass(r.diffAmount)}">약 ${fmtKRWShort(Math.abs(r.diffAmount))} ${r.diffAmount > 0 ? '부족' : '초과'}</p>` : ''}
     </div>`;
   }).join('');
 
   container.innerHTML = `<p class="text-[11px] text-slate-400 mb-2">${sumBadgesHtml}</p>${rowsHtml}`;
+  lucide.createIcons();
 }
+
+// [Phase 17 P1-2] 위임(delegated) 클릭 리스너 - 진단 Row는 renderPortfolioTargetSummary()가 호출될
+// 때마다 innerHTML로 통째로 다시 그려지므로, 다른 아코디언들(correlationGuideToggleBtn 등)과 동일하게
+// document 레벨 위임 리스너 하나로 처리한다.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.portfolio-diag-row-toggle');
+  if (!btn) return;
+  const key = btn.dataset.diagRowKey;
+  portfolioDiagRowOpen[key] = !portfolioDiagRowOpen[key];
+  const body = document.querySelector(`.portfolio-diag-row-body[data-diag-body-key="${CSS.escape(key)}"]`);
+  const chevron = document.querySelector(`.portfolio-diag-row-chevron[data-diag-chevron-key="${CSS.escape(key)}"]`);
+  if (body && chevron) setAccordionOpen(body, chevron, portfolioDiagRowOpen[key]);
+});
 
 // [소유자별 독립 리밸런싱 - Option B] 신랑/와이프 각각의 목표 비중을 독립적으로 계산해 각자의 카드
 // 세트(...Husband/...Wife 접미사)에 그린다 - buildDomesticTargetInputs/buildTargetInputs가 owner

@@ -148,18 +148,33 @@ function buildMergedRows(rows) {
   });
 }
 
-// [자산 관리 카드 - 계층별 독립 아코디언] 4개 보기 방식(전체/소유자별/국내해외별/자산군별)이 각자
-// 독립적으로 접고 펼 수 있어, 이제 "현재 선택된 보기 방식 하나"라는 개념이 없다 - 4개 모두 기본 접힘.
-const ASSET_GROUP_MODE_SUFFIX = { none: 'None', owner: 'Owner', domestic: 'Domestic', category: 'Category' };
-let assetGroupAccordionOpen = { none: false, owner: false, domestic: false, category: false };
+// [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 4개 보기 방식(전체/소유자별/국내해외별/자산군별) 중
+// 한 번에 하나만 단일 목록 영역(assetTableBody/assetCardList)에 렌더링한다 - 예전(4개 독립 아코디언,
+// 전부 동시에 계산·렌더링)과 달리 이제 현재 선택된 관점 하나만 계산한다. 값 자체(그룹핑 규칙/정렬/
+// 병합)는 전혀 바뀌지 않았고 "몇 개를 동시에 그리는가"만 바뀌었다. 화면 진입 시 기본값은 '전체'(none)
+// - 상태는 다른 화면 전용 아코디언 열림상태(txListAccordionOpen 등)와 동일하게 localStorage에
+// 저장되지 않는 순수 화면 상태다(새 state schema 아님).
+let assetListViewMode = 'none';
+const ASSET_VIEW_BTN_IDLE_CLASSES = ['border-slate-200', 'dark:border-slate-700', 'bg-slate-50', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400'];
+const ASSET_VIEW_BTN_ACTIVE_CLASSES = ['border-brand-600', 'dark:border-brand-400', 'bg-brand-50', 'dark:bg-brand-950', 'text-brand-700', 'dark:text-brand-200'];
 
-function reapplyAssetGroupAccordionHeights() {
-  Object.keys(ASSET_GROUP_MODE_SUFFIX).forEach((mode) => {
-    const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
-    const body = document.getElementById(`assetGroupAccordionBody${suffix}`);
-    const chevron = document.getElementById(`assetGroupAccordionChevron${suffix}`);
-    if (body && chevron) setAccordionOpen(body, chevron, assetGroupAccordionOpen[mode]);
+// 세그먼트 버튼들의 시각적 선택 상태를 assetListViewMode에 맞춰 동기화한다. renderTable()이 호출될
+// 때마다(탭 전환 포함) 항상 함께 호출되므로, 버튼 표시와 실제 목록이 어긋나는 경우가 없다. 선택 상태는
+// 색상(배경/테두리)뿐 아니라 체크 아이콘 노출 여부로도 구분해 색상만으로 판단하지 않게 한다.
+function syncAssetViewButtonsUI() {
+  document.querySelectorAll('#assetViewSegmented .asset-view-btn').forEach((btn) => {
+    const active = btn.dataset.view === assetListViewMode;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.classList.remove(...ASSET_VIEW_BTN_IDLE_CLASSES, ...ASSET_VIEW_BTN_ACTIVE_CLASSES);
+    btn.classList.add(...(active ? ASSET_VIEW_BTN_ACTIVE_CLASSES : ASSET_VIEW_BTN_IDLE_CLASSES));
+    const check = btn.querySelector('.asset-view-check');
+    if (check) check.classList.toggle('hidden', !active);
   });
+}
+
+function setAssetListView(mode) {
+  assetListViewMode = mode;
+  renderTable();
 }
 
 function renderTable() {
@@ -167,38 +182,35 @@ function renderTable() {
   // 자산 전체를 보여주고, 부분집합 확인은 검색 팝업(runAssetSearch)으로만 한다.
   const rawRows = tableAssets().map(a => ({ ...a, ...calcRow(a) }));
   const emptyMsg = document.getElementById('emptyTableMsg');
+  const totalCur = rawRows.reduce((s, r) => s + r.curAmount, 0);
+  document.getElementById('assetListTotalValue').textContent = fmtKRW(totalCur);
 
   if (rawRows.length === 0) {
-    Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
-      document.getElementById(`assetTableBody${suffix}`).innerHTML = '';
-      document.getElementById(`assetCardList${suffix}`).innerHTML = '';
-    });
+    document.getElementById('assetTableBody').innerHTML = '';
+    document.getElementById('assetCardList').innerHTML = '';
     emptyMsg.textContent = '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
     emptyMsg.classList.remove('hidden');
     document.getElementById('tableCountLabel').textContent = '총 0건';
-    Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
-      document.getElementById(`assetGroupSummary${suffix}`).textContent = '0건';
-    });
     renderTableFooter(rawRows);
     lucide.createIcons();
-    reapplyAssetGroupAccordionHeights();
+    syncAssetViewButtonsUI();
     return;
   }
 
   emptyMsg.classList.add('hidden');
 
-  // ① 전체 - 같은 종목을 여러 소유자/계좌가 나눠 보유해도 한 행으로 합친다.
+  // '전체' - 같은 종목을 여러 소유자/계좌가 나눠 보유해도 한 행으로 합친다. 총 건수 라벨은 관점과
+  // 무관하게 항상 이 병합 기준(merged)으로 계산한다(예전에도 4개 아코디언 헤더 전부 동일했다).
   const merged = sortRows(buildMergedRows(rawRows));
-  document.getElementById('assetTableBodyNone').innerHTML = merged.map(r => rowHtml(r)).join('');
-  document.getElementById('assetCardListNone').innerHTML = merged.map(r => cardHtml(r)).join('');
-
-  // ② ③ ④ - 소유자별/국내해외별/자산군별은 그룹 헤더(소계)와 함께 나열한다.
-  const sortedRows = sortRows(rawRows);
-  ['owner', 'domestic', 'category'].forEach((mode) => {
-    const suffix = ASSET_GROUP_MODE_SUFFIX[mode];
-    document.getElementById(`assetTableBody${suffix}`).innerHTML = renderGroupedRows(sortedRows, mode, rowHtml, groupHeaderRowHtml);
-    document.getElementById(`assetCardList${suffix}`).innerHTML = renderGroupedRows(sortedRows, mode, cardHtml, groupHeaderCardHtml);
-  });
+  if (assetListViewMode === 'none') {
+    document.getElementById('assetTableBody').innerHTML = merged.map(r => rowHtml(r)).join('');
+    document.getElementById('assetCardList').innerHTML = merged.map(r => cardHtml(r)).join('');
+  } else {
+    // 소유자별/국내해외별/자산군별 - 그룹 헤더(소계)와 함께 나열한다(병합하지 않음, 기존과 동일).
+    const sortedRows = sortRows(rawRows);
+    document.getElementById('assetTableBody').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, rowHtml, groupHeaderRowHtml);
+    document.getElementById('assetCardList').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, cardHtml, groupHeaderCardHtml);
+  }
 
   // [건수 표기 형식 변경] "총 N건 중 M건 표시" -> "총 N건 (단일 X건, 중복 Y건)". 단일(X)=실제로 화면에
   // 표시되는 행 수(같은 종목을 여러 소유자/계좌가 나눠 보유해 buildMergedRows가 한 줄로 합친 경우도
@@ -207,18 +219,9 @@ function renderTable() {
   const displayedCount = merged.length;
   const duplicateCount = rawRows.length - displayedCount;
   document.getElementById('tableCountLabel').textContent = `총 ${rawRows.length}건 (단일 ${displayedCount}건, 중복 ${duplicateCount}건)`;
-  // [4개 아코디언 헤더 공통 요약] 4개 섹션이 같은 필터 결과를 그룹핑만 다르게 보여줄 뿐이라 총 건수/총
-  // 평가액은 어디서나 동일하다 - 접힌 상태에서도 핵심 정보를 바로 확인할 수 있게 헤더에 노출한다.
-  const totalCur = rawRows.reduce((s, r) => s + r.curAmount, 0);
-  const groupSummaryText = `${rawRows.length}건 · ${fmtKRW(totalCur)}`;
-  Object.values(ASSET_GROUP_MODE_SUFFIX).forEach((suffix) => {
-    document.getElementById(`assetGroupSummary${suffix}`).textContent = groupSummaryText;
-  });
   renderTableFooter(rawRows);
   lucide.createIcons();
-  // 방금 다시 그린 목록 기준으로 펼침 상태를 재적용한다 - 검색/필터로 목록 높이가 바뀌어도 max-height가
-  // 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다(txListAccordion과 동일).
-  reapplyAssetGroupAccordionHeights();
+  syncAssetViewButtonsUI();
 }
 
 // 테이블 행(rowHtml)과 모바일 카드(cardHtml)가 공유하는 파생 표시값 계산.
