@@ -2,7 +2,13 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v208'; // [버그 수정 - 클라우드 동기화가 배우자의 최근 목표
+const CACHE_NAME = 'smart-asset-manager-v209'; // [Phase 20 - Release Cache/Version Finalization] 캐시
+// 우선(cache-first) 전략상 sw.js 자체가 바이트 단위로 바뀌지 않으면 브라우저가 새 install/activate
+// 주기를 아예 트리거하지 않아, 이미 v208을 쓰던 기존 사용자는 Phase 13~19-Final(Excel oversell 검증,
+// IA 정리, 다크모드 MC 결과 보존 수정 등)이 담긴 새 index.html/js를 영원히 받지 못하는 것을 실제
+// 브라우저 재현(캐시에 구버전 파일을 직접 주입 후 일반 새로고침)으로 확인했다 - CACHE_NAME만 올려도
+// 기존 activate 핸들러(아래)가 구 캐시를 자동으로 지우고 새 캐시를 채우므로 그 외 로직은 무변경.
+// [버그 수정 - 클라우드 동기화가 배우자의 최근 목표
 // 비중/자산예측 설정을 조용히 덮어씀] pushToCloud()는 업로드 직전 자산/거래내역만 원격과 병합하고
 // rebalance/projection(목표비중/자산예측)은 검사 없이 로컬 값을 그대로 밀어 올렸다 - 그 사이 배우자
 // 기기가 이 설정을 더 최근에 고쳐뒀어도, 이 기기가 그 설정과 무관한 사소한 편집 하나만 해도(거래 하나
