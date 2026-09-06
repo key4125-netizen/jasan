@@ -32,6 +32,104 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-06) — Phase 31(조사) + Phase 32: 포트폴리오 4개 포지션 복원 **V1.1 v212 유지**
+
+**커밋**: `3bdc0fd` "feat: restore four portfolio positions" — **push 완료**(origin/main과 동일).
+working tree에는 `.claude/launch.json`만 의도적으로 남아 있다(이 파일은 항상 커밋에서 제외한다).
+SW/버전은 v212 그대로다(계산·자산 데이터 구조가 아니라 role 값 도메인만 바뀌어 PM이 bump 없이 종료 승인).
+
+### 무엇이 문제였나
+사용자의 실제 포트폴리오 전략은 **코어자산/미드필더/공격수/수비수 4개**인데, 앱은 '코어자산'과
+'미드필더'를 `core_mid` 하나로 합쳐 저장하고 있었다. 그래서 위험자산 안에서 코어/미드/공격을 나눠
+잡는 사용자의 목표비중 계획(예: 코어 50% / 미드 25% / 공격 25%)을 앱이 표현할 수 없었고, 사용자가
+자기 엑셀을 올릴 때마다 **26건 중 12건의 포지션 구분이 매번 사라졌다**.
+
+### 정식 포지션(복원 완료)
+| 내부값 | 표시 | 비고 |
+|---|---|---|
+| `attacker` | 공격수 | 위험자산 |
+| `core` | 코어자산 | 위험자산 |
+| `midfielder` | 미드필더 | 위험자산 |
+| `defender` | 수비수 | 안전자산 |
+| `core_mid` | 코어미드필더 | **legacy 전용** - 신규 선택지 아님 |
+
+`ASSET_ROLE_OPTIONS`(js/01)는 정식 4개만 담고, legacy는 `LEGACY_ROLE_CORE_MID`로 따로 둔다.
+집계 키는 `emptyRoleWeights()`, 선택 <option> 목록은 `assetRoleSelectOptionsHtml()` **하나만** 쓴다
+(js/04·05·06·07이 전부 이 두 함수를 공유한다 - 키 집합을 각자 하드코딩하지 말 것).
+
+### ⚠ legacy `core_mid` 보존 원칙 (다음 세션이 반드시 지킬 것)
+1. **`core_mid`를 코어자산/미드필더 중 하나로 자동 추정·분할하지 않는다.** 합쳐질 때 원래 정보가
+   사라졌으므로 코드가 복원할 수 없다 - 추측하면 사용자의 투자 전략을 왜곡한다.
+2. 복원 경로는 **① 사용자가 직접 선택 ② Golden Excel 재업로드** 두 가지뿐이다.
+3. legacy 값은 읽기/표시/저장/Excel roundtrip 전 구간에서 **그대로 보존**한다.
+4. 신규 입력의 정상 선택지로 `core_mid`를 다시 노출하지 않는다. 이미 그 값이 저장돼 있을 때만
+   "코어미드필더(구분 필요)" 항목이 덧붙는다 - 목록에 없으면 select가 조용히 빈칸이 되어 저장 시
+   기존 포지션이 날아간다(그래서 정적 <option>을 쓰지 않고 동적 생성으로 바꿨다).
+
+### ⚠ 다시 도입하면 안 되는 파괴적 migration
+`migrateCoreMidfielderRoleMergeOnce()`를 **제거했다**. 이 함수는 `state.assets[].role`,
+`state.tickerRoles`, `rebalance targets`/`selectedStocks`, `monthlyContributionAllocation`,
+`monthlyContributionByOwner[].allocation`, `taxAdvantagedPlan.allocationByOwner` **6곳을 한꺼번에**
+`core_mid`로 덮어쓰는 1회성 마이그레이션이었고, 기기마다 플래그(`sam_role_core_mid_merged_v1`)로 돌았다.
+남겨두면 **새 기기에서 백업을 복원할 때 복원된 4개 포지션을 다시 합쳐 없앤다.**
+이런 형태의 일괄 role 재작성 migration을 어떤 이유로도 다시 만들지 말 것. (기기에 남은 플래그 값은
+참조하는 코드가 없어 그대로 둔다.)
+
+### Golden Reference 실측 검증 (실제 엑셀 재Import)
+| 항목 | 결과 |
+|---|---|
+| 자산 수 | 26 |
+| 공격수 / 미드필더 / 코어자산 / 수비수 | **10 / 6 / 6 / 4** |
+| 대표매칭키 | 13종, 누락 0 |
+| 수익률 관리 기준 | 18건 |
+| 소유자 | 신랑 21 / 와이프 5 |
+| 수량 0 · 매입단가 0 | 0건 · 0건(데이터 손상 없음) |
+
+### 계산 로직은 건드리지 않았다 (Phase 31 조사 결론 유지)
+role은 **표시·집계 전용**이며 계산 입력이 아니다. 코드 전수 확인 결과 `js/15~22`(MC 엔진/어댑터/
+워커/컨트롤러/UI, inflation, Safety)에 `role` 참조 **0건**이고, `rateMatchOverride ↔ role` 결합도 **0건**이다.
+`role`을 읽는 곳은 표시용 집계 2곳(`computeOwnerTargetRoleWeights`, `getTaxAdvantagedRoleBreakdown`)뿐.
+**앞으로도 role을 μ/σ/correlation/target weight/future value 계산에 연결하지 말 것.**
+부동산 legacy도 이번에 손대지 않았다(Phase 31 판정: 금융자산 계산에 영향 없음 → 유지).
+
+MC Golden 완전 일치(허용 오차가 아니라 표시값 동일):
+가구 12.95억 / 7.90억 · 신랑 7.77억 / 4.74억 · 와이프 5.18억 / 3.16억
+
+### ⚠ False-green 교훈 — import/export·confirm 기반 테스트 공통 주의사항
+Excel [덮어쓰기]는 `confirm('기존 데이터가 모두 삭제됩니다...')`로 한 번 더 확인받는데(js/12),
+**Playwright는 dialog를 기본적으로 자동 취소(dismiss)** 한다. confirm이 취소되면 선택 모달의 Promise가
+해결되지 않아 **import가 아예 실행되지 않는다.** 그런데 테스트는 "round-trip 후 값이 그대로"를
+검증했기 때문에 **아무 일도 일어나지 않은 상태가 그대로 통과**했다(Phase 29-B `e2e/36` 9건과
+Phase 32 `e2e/38` G/G-2가 여기 해당). `page.on('dialog', d => d.accept())`를 추가해 고쳤고, 실제
+import가 실행되는 상태에서 25/25 통과를 다시 확인했다(제품 동작 자체는 원래 정상이었다).
+
+**앞으로 지킬 것**:
+- 파일 import/export, 데이터 초기화, 삭제처럼 `confirm/alert/prompt`가 끼는 흐름을 테스트할 때는
+  **반드시 dialog 핸들러를 명시**한다(`on('dialog')` 또는 `once('dialog')` + `accept()`).
+- "버튼을 클릭했다"가 아니라 **실제 state/localStorage가 바뀌었는지**를 단언한다. 클릭만 검증하는
+  테스트는 조용히 거짓 통과한다.
+- 참고로 기존 `e2e/20·21·24·25`는 이미 `accept()` + 실제 state 검증을 하고 있어 문제 없었다
+  (`once('dialog')` 형태도 있으니 점검할 때 `on(` 만 grep하지 말 것).
+
+### 테스트 결과(릴리스 시점)
+- ESLint 0 / Unit **109·109** / 신규 `e2e/38` **16·16** / 실제 Excel roundtrip **25·25**
+- 전체 Playwright(workers=1) **268 passed / 22 failed** - **"전체 통과"가 아니다.**
+- 실패 22건은 전부 기존 환경 의존이며 **Phase 32 신규 regression 0건**:
+  외부 시세(가격 이력) 접근 차단 11건 + 기존 환율 입력칸 클리핑(`e2e/33`) 11건.
+
+### 다음 PM Roadmap (Phase 32 이후 - 기능 추가 먼저 하지 말 것)
+1. **Phase 33+34 통합 객관 감사** ← 다음 순서
+   - 시장현황 & 매크로 브리핑 감사
+   - 보유종목 RISK 관리 감사
+   - 두 기능의 관계 분석
+   - 이후 사용자의 개인 매도 기준/리스크 관리 기준과 비교
+2. 투자 역할(포지션) 자동 추천 - **위 감사 이후 별도 판단**. Phase 31 조사 결론상 근거는
+   "같은 종목을 사용자가 이미 지정한 적 있음"(tickerRoles) 하나뿐이고, 대표매칭키·자산군·수익률·
+   변동성 기반 추론은 Golden 데이터에서 반증됐다(KOSPI가 코어자산·미드필더 둘 다, BOND.STOCK이
+   미드필더·수비수 둘 다에 대응) - 채택 불가.
+3. Monte Carlo UX/정책 변경 논의는 별도 과제로 유지하며 33+34와 섞지 않는다.
+
+---
 ## 최근 세션 요약 (2026-09-06) — Phase 30: 거래 입력 대표매칭키 추천 **V1.1 v212 유지**
 
 **커밋**: `66b7eaa` "feat: add transaction rate match recommendation" — **push 완료**(origin/main).
