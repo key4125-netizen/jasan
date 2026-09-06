@@ -32,18 +32,29 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-06) — Phase 28 + 28-E/F + 29-A/B 릴리스 **V1.1 v211 유지(⚠ 아래 SW 항목 확인)**
+## 최근 세션 요약 (2026-09-06) — Phase 28 + 28-E/F + 29-A/B 릴리스 **V1.1 v211 → v212**
 
 **커밋**: `abce28f` "release: V1.1 phase28-29 cma and data integrity" — **push 완료**(origin/main).
 PM 판단으로 Phase 28 Header + 28-E/F + 29-A + 29-B를 **하나의 릴리스 커밋**으로 묶었다(마지막 커밋이
 Phase 27이었고, index.html/js/05/js/12에 여러 Phase hunk가 섞여 있어 분리가 더 위험하다고 판단).
 
-### ⚠ 다음 세션이 가장 먼저 확인할 것 — sw.js CACHE_NAME
-`sw.js`의 `CACHE_NAME`이 아직 **'smart-asset-manager-v211'** 이다. 이번 릴리스는 index.html과 js 6개를
-바꿨으므로 **CACHE_NAME을 올리지 않으면 기존 사용자는 구버전 화면에 갇힌다**(sw.js 자체 주석의 경고 그대로).
-이번 단계는 PM이 "추가 코드 변경 금지"로 못박아 손대지 않았고, **버전 bump 여부는 PM 판단 대기 중**이다.
-이 세션에서 실제로 재현했다: 브라우저가 서비스워커 캐시 때문에 수정된 js를 계속 무시했고, SW 등록 해제 +
-`caches.delete('smart-asset-manager-v211')` 후에야 새 코드가 로드됐다.
+### ✅ 해결됨 — sw.js CACHE_NAME v211 → v212 (커밋 `26b95b9`)
+Phase 28~29 릴리스가 index.html과 js 6개를 바꿨는데 `CACHE_NAME`이 v211 그대로여서, cache-first 정책상
+**기존 사용자가 서비스워커 캐시의 구버전 화면에 갇히는 것을 이 세션에서 실제로 재현했다**(브라우저가 수정된
+js를 계속 무시했고, SW 등록 해제 + `caches.delete('smart-asset-manager-v211')` 후에야 새 코드가 로드됨).
+PM이 이를 backlog가 아닌 **Release blocker**로 판단해 별도 커밋 `26b95b9` "release: V1.1 v212 service worker
+cache bump"로 처리했다 — **허용된 변경은 정확히 2곳뿐**이다: `sw.js`의 CACHE_NAME(v211→v212)과
+`index.html`의 `appVersionLabel`(v211→v212). 캐시 정책/APP_SHELL/install/activate/fetch 로직과 Phase 28~29
+코드는 일절 건드리지 않았다.
+
+**검증 방법(다음에 버전 올릴 때 그대로 재사용할 것)**: 브라우저에서 SW 전부 해제 + 캐시 전부 삭제 후,
+`caches.open('smart-asset-manager-v211')`에 stale 응답을 인위적으로 심어 "구버전 사용자" 상태를 만든 뒤
+재로드 → ① v212 SW 등록·활성화 ② v212 캐시 생성 ③ **v211 캐시 자동 삭제**(activate 핸들러) ④ 캐시된
+index.html이 stale이 아니고 v212 표기 ⑤ 신규 JS 로드(`getPendingCmaFields`/`findRateMatchOverrideForTarget`
+존재) ⑥ 핵심 화면 렌더 ⑦ Phase 29-A 추천 UI·29-B Excel 진입점 존재를 순서대로 확인했다.
+
+**버전을 올릴 때는 `sw.js` CACHE_NAME과 `index.html` appVersionLabel을 항상 같은 값으로 맞춘다**
+(index.html 해당 줄 주석에도 명시돼 있다).
 
 ### Phase 28 — Header Utility 한 줄
 환율 뱃지/다크모드/동기화/설정 4요소가 320~1440px 전 구간에서 한 줄을 유지한다. 동기화 버튼은 텍스트
