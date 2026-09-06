@@ -7,7 +7,45 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-06) — Phase 21(Full-System Deep Audit, 읽기전용) + Phase 22(V1.1 Hardening & Quality Sprint)
+## 최근 세션 요약 (2026-09-06) — Phase 23(Header 모바일 UX) + Phase 24(Owner별 Monte Carlo) **V1.1 v209 → v210**
+
+**커밋**: `05e701a` "release: V1.1 v210 phase24b owner monte carlo" — **push 완료**(직전 `0bdda76`(v209 phase22) 위에 이어짐). **V1.1은 이제 v210이다.**
+
+### 무엇이 바뀌었나
+
+**Phase 23 (Header 모바일 UX)** — 설정 기어 wrapping + 1024~1099px overflow 해결.
+근본 원인은 flexbox `min-width:auto`(자식이 콘텐츠 크기 아래로 안 줄어듦)와 **환율 뱃지가 데스크탑 폭에서 `sm:` 클래스 때문에 359px까지 커진다**는 점이었다. 1행에 억지로 밀어넣으면 Server Sync가 잘려서, PM이 명시 허용한 **의도적인 2행 구조**로 갔다 — 환율 뱃지가 단독 1행, 다크모드/서버동기화/설정이 2행, `min-[1200px]`부터 1행으로 합쳐진다. 모든 유틸 버튼 `w-11 h-11`(44px). Header의 "환율보기" 버튼은 제거하되 환율 숫자와 `#exchangeRateModal` 자체는 PM 지시대로 유지.
+
+**Phase 24-B (Owner별 Monte Carlo)** — MC를 신랑/와이프/가구 전체 3관점으로 제공. 기본은 "가구 전체".
+- **핵심 설계**: MC 코어 엔진 `js/15`는 **일절 수정하지 않았다**. 입력 생성 레이어에만 optional `ownerFilter`를 스레딩했다(js/19 → js/18 → js/16 → js/05). 인자를 생략하면 기존 동작과 **비트 동일**이 되도록 설계했고, `git stash`로 이전 코드를 복원해 실제로 A/B 실행 대조해 검증했다.
+- **가구 전체 pooled 비중을 owner MC에 재사용하지 않는다** — `computeHouseholdTargetInstrumentWeights(ownerFilter)`가 ownerFilter가 있으면 `computeOwnerTargetInstrumentWeights(owner)`로 분기한다.
+- Scenario 섹션: 기본 접힘 아코디언 + 절세계좌 유무에 따른 일반계좌/전체 자산 토글(`hasDistinctTotalAssetScenario()`)로 중복 표시 제거.
+- 긴 MC 서두 설명은 **내용을 한 글자도 지우지 않고** 재사용 가능한 `#mcInfoModal` 팝업으로 이동.
+
+### 최종 검증에서 발견해 함께 고친 결함 3건(전부 Phase 24-B가 만든 것)
+1. 관점 세그먼트 비활성 버튼에 `aria-pressed` 누락 → 스크린리더가 3지선다로 인식 못 함.
+2. 팝업 열기/닫기 컨트롤 44px 미달(ⓘ 32px, X 20×20px, 닫기 40px).
+3. **`mcInfoModal`이 `SWIPE_MODAL_IDS`(js/03)에 미등록** → Android 물리 뒤로가기가 팝업을 못 닫고 "한 번 더 누르면 종료" 경로로 빠짐. `MODAL_CLOSE_FNS`에만 등록하고 이 배열을 빠뜨린 게 원인. **새 모달을 추가할 때는 두 곳 모두 등록해야 한다.**
+
+셋 다 `e2e/29`의 test 11·12·13으로 고정했고, **test 13은 수정을 되돌리면 실제로 FAIL함을 확인**해 무의미한 통과가 아님을 입증했다.
+
+### 검증 결과 (v210)
+ESLint 0 · Unit 108/108 · **Playwright 152/152** · SW Release Guard PASS(v210) · 8개 뷰포트(375/390/412/768 × Light/Dark) 가로 overflow 0 / 터치 44px · 가구 전체 P50 12.95억·실질 7.90억·목표확률·milestone 4행이 이전 baseline과 동일 · **신랑 7.77억 + 와이프 5.18억 = 가구 전체 12.95억** 가산성 확인 · σ>0(합성 이력 주입, 삼성전자 σ=0.2118/VOO σ=0.1424)에서도 owner 격리 비트 동일 확인.
+
+### 다음 세션이 반드시 알아야 할 함정 2가지
+- **Browser pane이 `document.hidden=true`면 CSS transition이 t=0에 멈춘다.** 아코디언 높이가 0으로, 차트가 평평하게 측정되는데 **제품 버그가 아니다**. `*{transition:none!important}`를 임시 주입하고 측정하거나 Playwright(실제 가시 브라우저)로 확인할 것. `requestAnimationFrame`도 안 돌아서 rAF 루프를 쓰면 타임아웃난다.
+- **Service Worker가 cache-first라 편집이 화면에 안 나타난다.** 브라우저 검증 전 매번 SW unregister + `caches.delete()` 후 reload할 것.
+
+### backlog (PM이 명시적으로 "이번엔 건드리지 말 것"으로 지정 — 임의 착수 금지)
+1. **Range Bar 제거 권장** — `mcRangeBarsArea`/`mcRangeBarsRealArea`(명목 99px + 실질 99px = 198px)가 milestone 표 마지막 행을 **문자 그대로 중복**하며 MC 결과 영역의 16.5%를 차지한다. 표는 같은 228px에 4시점 × 명목/실질을 담아 정보량이 4배다.
+2. **Hero owner별 분해** — 계산 기반은 이미 마련됨(`simulateRebalancedPreset(preset, maxYears, ownerFilter)`).
+3. MC 안내 카드 7개 통합.
+4. **MC 결과 자동 소거 개선** — 시세/환율 자동 갱신 타이머가 `updateProjection()`을 부르고 그게 `resetMonteCarloUiToReady()`를 호출해, 사용자가 10초 기다린 MC 결과가 말없이 사라진다. `js/05:2178`. **Phase 19-P1부터 있던 기존 동작이지 Phase 24-B 회귀가 아니다**(git diff로 확인함).
+5. **`openExchangeRateModal()` 호출자 0개 확정** — Phase 23-C Final의 Header 버튼 제거 결과. PM 지시로 삭제하지 않고 유지 중.
+
+---
+
+## 이전 세션 요약 (2026-09-06) — Phase 21(Full-System Deep Audit, 읽기전용) + Phase 22(V1.1 Hardening & Quality Sprint)
 
 **커밋**: `release: V1.1 phase22 hardening` - PM 최종 승인 후 이 파일을 포함해 커밋·push됨(실제 해시는 `git log -1`로 확인). Phase 21은 읽기 전용 audit이라 별도 커밋 없이 Phase 22에 통합.
 
