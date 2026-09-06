@@ -235,15 +235,13 @@ for (const w of [375, 390, 412, 768]) {
       await page.locator('[data-tab="dashboard"]').click();
       await renderCardWith(page);
 
-      // 새로 추가된 두 문구(가구 기준 / 계획 확인)와 신뢰도 라벨을 모두 포함해 검사한다.
-      // [의도적 제외] .detail-btn(🔍 세부내용)은 font-size:10px인 앱 공용 버튼 클래스로 KPI 카드 등
-      // 여러 화면이 함께 쓴다 - Phase 39가 만든 요소가 아니고 고치면 앱 전역 레이아웃이 바뀌므로
-      // 이번 범위에서 제외하고 보고서에만 기록했다. 그 외에는 전부 14px 기준을 적용한다.
+      // 새로 추가된 두 문구(가구 기준 / 계획 확인)와 신뢰도 라벨, 그리고 [🔍 세부내용] 버튼까지
+      // 예외 없이 검사한다. [Phase 39-C] 예전엔 .detail-btn(공용 10px)을 제외하고 쟀지만, 이제
+      // Risk 영역 한정으로 14px를 보장하므로(#riskDetailBtn, index.html) 제외 규칙을 없앴다.
       for (const sel of ['#riskScopeNote', '#riskDiagnosisSummary']) {
         const info = await page.locator(sel).evaluate((el) => {
           const win = el.ownerDocument.defaultView;
-          const nodes = [el, ...el.querySelectorAll('p, span, button')]
-            .filter((n) => n.textContent.trim() && !n.closest('.detail-btn'));
+          const nodes = [el, ...el.querySelectorAll('p, span, button')].filter((n) => n.textContent.trim());
           return {
             min: Math.min(...nodes.map((n) => parseFloat(win.getComputedStyle(n).fontSize))),
             clipped: el.scrollWidth - el.clientWidth
@@ -254,6 +252,14 @@ for (const w of [375, 390, 412, 768]) {
       }
       const bodyOverflow = await page.locator('body').evaluate((el) => el.scrollWidth - el.clientWidth);
       expect(bodyOverflow).toBeLessThanOrEqual(1);
+
+      // [Phase 39-C] Risk 영역의 공용 .detail-btn(🔍 세부내용)도 14px 기준을 지켜야 한다.
+      const detail = await page.locator('#riskDiagnosisSummary .detail-btn').evaluate((el) => {
+        const win = el.ownerDocument.defaultView;
+        return { fs: parseFloat(win.getComputedStyle(el).fontSize), clipped: el.scrollWidth - el.clientWidth };
+      });
+      expect(detail.fs, 'Risk 세부내용 버튼 글꼴').toBeGreaterThanOrEqual(14);
+      expect(detail.clipped, 'Risk 세부내용 버튼 가로 넘침').toBeLessThanOrEqual(1);
 
       // 계획 확인 버튼은 눌러야 하므로 터치 목표 크기를 확보한다.
       const btn = await page.locator('#riskPlanCheckBtn').boundingBox();

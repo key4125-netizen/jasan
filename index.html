@@ -172,6 +172,13 @@
   .dark .detail-btn { border-color: #334155; color: #94a3b8; }
   .detail-btn:hover { border-color: #818cf8; color: #4f46e5; }
   .dark .detail-btn:hover { border-color: #6366f1; color: #a5b4fc; }
+  /* [Phase 39-C] Risk 진단 카드의 "🔍 세부내용" 버튼만 Global Readability Policy(최소 14px)에 맞춘다.
+     위 공용 .detail-btn(10px)은 KPI 카드 3개와 리밸런싱 [비중조절] 2개가 함께 쓰므로 건드리지 않는다 -
+     전역으로 올리면 그 화면들의 줄바꿈/정렬이 같이 바뀐다. Risk 영역에 있는 .detail-btn은 이
+     버튼 하나뿐이라(#riskDetailBtn, js/10 renderRiskDiagnosisSummary) 컨테이너 하위 선택자보다
+     id 하나가 더 좁고 명확하다. id(0,1,0,0)가 class(0,0,1,0)를 이기므로 !important도 필요 없다.
+     이 카드가 외부 시세 없이는 렌더되지 않아 e2e/32가 그동안 측정하지 못했던 사각지대였다. */
+  #riskDetailBtn { font-size: 14px; }
 
   /* [모바일 당겨서 새로고침(Pull-to-Refresh) 방지] 화면을 아래로 당기면 브라우저가 전체 페이지를
      새로고침해버리는 제스처를 최상위 스크롤 지점에서 차단한다. */
