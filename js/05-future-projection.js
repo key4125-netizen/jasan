@@ -62,30 +62,43 @@ function getRegionFallbackRateKey(yahooTicker, isDomestic) {
   if (isDomestic === '해외') return 'S&P500';
   return /\.KQ$/i.test(String(yahooTicker ?? '')) ? 'KOSDAQ' : 'KOSPI';
 }
-function getProjectionAssetGroupKey(asset) {
+// [Phase 30 - 판단 근거까지 함께 돌려주는 단일 소스] 아래 getProjectionAssetGroupKey()의 판별 체인을
+// 그대로 옮겨온 것이며 순서·조건·반환 키가 전부 동일하다(동작 변경 없음). 달라진 건 "어느 단계에서
+// 결정됐는지"를 source로 함께 돌려준다는 점뿐이다 - 거래 입력의 대표매칭키 추천(js/06)이 "근거 있는
+// 매칭"과 "마지막 지역 폴백"을 구분해야 하는데, 그걸 위해 판별 로직을 복사해 두 번 관리하면 언젠가
+// 반드시 어긋난다. 그래서 판별은 여기 한 곳에만 두고 두 용도가 이 함수를 공유한다.
+//   source: 'override' | 'customKey' | 'customKeyword' | 'category' | 'presetTicker' | 'tickerAlias'
+//           | 'nameKeyword' | 'regionFallback'
+function resolveAssetGroupKeyDetail(asset) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
   // 처리한다(못 알아보는 키는 지역 대표지수로 조용히 대체) - 여기서는 형식 검증을 하지 않는다.
-  if (asset.rateMatchOverride) return asset.rateMatchOverride;
+  if (asset.rateMatchOverride) return { key: asset.rateMatchOverride, source: 'override' };
   // [정확매칭·키워드매칭 - 카테고리 캐치올보다 우선, 요청 반영] 예전엔 findCustomRateKeyForAsset가
   // '주식형자산' 카테고리 안에서만 동작해, 채권/현금/부동산 카테고리 자산은 아무리 정확히 등록해도(혹은
   // 키워드가 걸려도) 항상 카테고리 캐치올(예: 현금=하드코딩 0%)로만 갔다 - 두 매칭을 카테고리 분기보다
   // 앞으로 옮겨 모든 카테고리에 동일하게 적용한다. 예: "달러 예수금"이 CASH 키워드("현금","달러")에
   // 걸리면 하드코딩된 0% 대신 CASH의 등록 수익률을 쓴다.
   const customKey = findCustomRateKeyForAsset(asset.ticker, asset.name);
-  if (customKey) return customKey; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
+  if (customKey) return { key: customKey, source: 'customKey' }; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
   const keywordKey = getCustomKeywordRateKey(asset.name);
-  if (keywordKey) return keywordKey;
+  if (keywordKey) return { key: keywordKey, source: 'customKeyword' };
   const groupKey = getProjectionGroupKey(asset.category);
-  if (groupKey !== '주식형자산') return groupKey; // 위 두 매칭에 안 걸린 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
+  if (groupKey !== '주식형자산') return { key: groupKey, source: 'category' }; // 위 두 매칭에 안 걸린 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
   const sanitized = sanitizeTicker(asset.ticker);
   const yahoo = sanitized.yahooTicker;
-  if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return yahoo;
-  if (TICKER_RATE_KEY_ALIAS[yahoo]) return TICKER_RATE_KEY_ALIAS[yahoo]; // 실제 QQQM/SPYM 티커 보유 - 이름 무관하게 항상 매칭
+  if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return { key: yahoo, source: 'presetTicker' };
+  if (TICKER_RATE_KEY_ALIAS[yahoo]) return { key: TICKER_RATE_KEY_ALIAS[yahoo], source: 'tickerAlias' }; // 실제 QQQM/SPYM 티커 보유 - 이름 무관하게 항상 매칭
   const nameKey = getNameKeywordRateKey(asset.name);
-  if (nameKey) return nameKey; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
-  return getRegionFallbackRateKey(yahoo, sanitized.isDomestic);
+  if (nameKey) return { key: nameKey, source: 'nameKeyword' }; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
+  // [마지막 폴백] 여기까지 왔다는 건 이 종목을 가리키는 근거가 하나도 없었다는 뜻이라, 그냥 지역
+  // 대표지수로 대체한다. 계산에는 문제가 없지만 "이 종목이라서 이 키"라는 근거는 아니므로 Phase 30의
+  // 추천 대상에서는 제외한다(recommendRateMatchKey 참고).
+  return { key: getRegionFallbackRateKey(yahoo, sanitized.isDomestic), source: 'regionFallback' };
+}
+function getProjectionAssetGroupKey(asset) {
+  return resolveAssetGroupKeyDetail(asset).key;
 }
 // [절세계좌 종목별 복리 계산 - 요청 반영] getProjectionAssetGroupKey()가 반환하는 키 하나(티커/'NAME:x'/
 // 'S&P500'/'KOSPI' 같은 "상품형" 키, 또는 채권/현금/커스텀 자산군명 같은 "카테고리형" 키)를 실제 프리셋
@@ -804,6 +817,46 @@ function findLabelForRateKey(key) {
   }
   return key;
 }
+
+/* -------------------------------------------------------------------------
+ * [Phase 30] 거래 입력 화면의 대표매칭키 추천 - 새 판단을 만들지 않는다.
+ *    이 앱은 원래도 대표매칭키를 비워두면 계산 시점에 자동판별(resolveAssetGroupKeyDetail)한다.
+ *    Phase 30이 하는 일은 그 "보이지 않던 자동판별 결과"를 입력 시점에 미리 보여주고, 사용자가
+ *    확인하면 그때서야 명시적 override로 굳히는 것뿐이다. 종목명/브랜드/가격/수익률/역할을 보고
+ *    임의로 분류하거나 추정하는 로직은 일절 넣지 않는다.
+ * ---------------------------------------------------------------------- */
+// "이 종목이라서 이 키"라고 말할 수 있는 근거가 있는 단계만 추천한다.
+//   - customKey/customKeyword: 사용자가 "수익률 관리"에 직접 등록한 종목/키워드에 걸린 경우
+//   - presetTicker/tickerAlias: 시스템 기본 상품표의 티커에 정확히 걸린 경우
+//   - nameKeyword: 국내상장 해외지수 ETF 이름 규칙(NAME_KEYWORD_RATE_MAP)에 걸린 경우
+// 제외하는 단계:
+//   - regionFallback: 근거가 하나도 없어 지역 대표지수로 대체된 것 - 추천하면 "확실한 것처럼" 오해된다
+//   - category: '채권'/'현금' 같은 자산군 캐치올 - 종목 단위 근거가 아니고, 비워둬도 자동판별이 정확히
+//     같은 값을 쓰므로 굳이 확정값으로 고정할 이유가 없다(고정하면 나중에 정책이 바뀌어도 안 따라간다)
+const RATE_MATCH_RECOMMENDABLE_SOURCES = ['customKey', 'customKeyword', 'presetTicker', 'tickerAlias', 'nameKeyword'];
+// input: { ticker, name, currency } - 거래 입력 폼이 지금 들고 있는 값 그대로.
+// 반환: { key, source, label } 또는 null(추천 없음 - 실패가 아니라 안전한 정상 상태다).
+function recommendRateMatchKey(input) {
+  const ticker = String((input && input.ticker) ?? '').trim();
+  const name = String((input && input.name) ?? '').trim();
+  if (!ticker && !name) return null;
+  // 실제로 저장될 자산과 완전히 같은 방식으로 만든다(카테고리/국내해외 자동판별 포함) - makeAsset을
+  // 그대로 재사용하므로 "추천값"과 "저장 후 실제로 쓰이는 값"이 어긋날 수 없다.
+  const probe = makeAsset({ ticker, name, currency: input && input.currency });
+  const detail = resolveAssetGroupKeyDetail(probe);
+  if (!RATE_MATCH_RECOMMENDABLE_SOURCES.includes(detail.source)) return null;
+  return { key: detail.key, source: detail.source, label: getRateMatchKeyDisplayLabel(detail.key) };
+}
+// 추천 문구에 쓸 사람이 읽는 이름 - 시스템 기본 상품표와 사용자 등록(customScenarioRates)에 이미
+// 있는 라벨만 쓴다. 둘 다 없으면 키를 그대로 보여준다(설명을 새로 지어내지 않는다).
+function getRateMatchKeyDisplayLabel(key) {
+  const baseRow = SCENARIO_RATE_BASE_ROWS.find((r) => r.key === key);
+  if (baseRow) return baseRow.label;
+  const custom = (state.projection.customScenarioRates || {})[key];
+  if (custom && custom.label) return custom.label;
+  return key;
+}
+
 function getScenarioRateDisplayRows() {
   const activeKeys = getActiveScenarioRateKeys();
   const rows = SCENARIO_RATE_BASE_ROWS.filter((r) => activeKeys.has(r.key));

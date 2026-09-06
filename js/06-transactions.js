@@ -506,6 +506,7 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
     document.getElementById('tx_tickerHint').textContent = '티커 없는 자산 - 소유자/계좌구분이 자동으로 채워졌습니다(매도 시 기존 보유분과 정확히 연결됩니다).';
   }
   updateTxAppliedRateVisibility();
+  refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 종목이 정해졌으니 안내/추천을 다시 계산한다.
 }
 
 // [수동입력 토글 UI 반영] OFF(검색 모드, 기본값)면 종목명 입력칸을 readonly로 잠그고 클릭/돋보기
@@ -549,6 +550,109 @@ function populateRateMatchOverrideOptions(currentValue) {
   select.innerHTML = options.join('');
   select.value = currentValue || '';
 }
+
+/* -------------------------------------------------------------------------
+ * [Phase 30] 대표매칭키 추천 UX - 새 판단을 만들지 않고, 원래도 계산 시점에 조용히 돌던 자동판별
+ *    (resolveAssetGroupKeyDetail, js/05)의 결과를 입력 시점에 미리 보여줄 뿐이다. 확정은 사용자가
+ *    [이대로 사용]을 누르거나 직접 고를 때만 일어나고, 그 값도 폼 안에만 있다가 [저장] 시점에
+ *    기존 경로로 반영된다(모달 자체가 이미 draft/confirm 구조라 별도 초안 저장소를 만들지 않는다).
+ * ---------------------------------------------------------------------- */
+// 지금 화면에 보여주고 있는 추천(없으면 null). state에 저장되지 않는 화면 전용 값이다.
+let txRateMatchRecommendation = null;
+
+// 지금 폼에 입력된 소유자/계좌구분/티커(없으면 이름)로 기존 자산을 찾는다 - 저장 핸들러가 쓰는
+// 매칭 규칙과 정확히 같은 규칙이어야 "지금 보이는 안내"와 "실제 저장 결과"가 어긋나지 않는다.
+function findAssetForTxForm() {
+  const owner = document.getElementById('tx_owner').value.trim();
+  const accountType = document.getElementById('tx_accountType').value.trim();
+  const ticker = document.getElementById('tx_ticker').value.trim();
+  const name = document.getElementById('tx_name').value.trim();
+  if (!owner || !accountType || (!ticker && !name)) return null;
+  return state.assets.find((a) => a.owner === owner && a.accountType === accountType &&
+    (ticker ? a.ticker === ticker : (!a.ticker && a.name === name))) || null;
+}
+
+// opts.allowPrefill: 기존 자산의 지정값을 빈 선택칸에 자동으로 채워도 되는 시점인지. 종목/소유자/
+// 계좌가 정해지는 순간에만 true다 - 선택칸 자체를 사용자가 조작했을 때(change)는 절대 채우지 않는다.
+// 그렇지 않으면 사용자가 값을 비우는 즉시 다시 채워져 "해제"가 불가능해진다.
+function refreshTxRateMatchRecommendation(opts) {
+  const allowPrefill = !!(opts && opts.allowPrefill);
+  const isEditMode = !!document.getElementById('tx_id').value;
+  const help = document.getElementById('txRateMatchHelp');
+  const text = document.getElementById('txRateMatchHelpText');
+  const applyBtn = document.getElementById('txRateMatchApplyBtn');
+  const select = document.getElementById('tx_rateMatchOverride');
+  const ticker = document.getElementById('tx_ticker').value.trim();
+  const name = document.getElementById('tx_name').value.trim();
+  txRateMatchRecommendation = null;
+  applyBtn.classList.add('hidden');
+
+  if (!ticker && !name) { help.classList.add('hidden'); return; }
+  help.classList.remove('hidden');
+
+  // [기존 자산 보호] 이미 사용자가 정해둔 값이 있으면 추천하지 않는다 - 거래를 하나 더 넣었다고
+  // 해서 그 선택을 다시 흔들지 않는다(Phase 28-F override 보호 계약과 같은 방향).
+  const existing = findAssetForTxForm();
+  if (existing && existing.rateMatchOverride) {
+    // 기존 값을 화면에도 채워 보여준다(빈칸이었을 때만 - 사용자가 이번에 일부러 다른 걸 골랐다면
+    // 그 선택을 존중한다). 이 칸이 빈 채로 저장돼 기존 값이 조용히 지워지는 사고를 막는 장치다.
+    ensureRateMatchOption(existing.rateMatchOverride);
+    if (allowPrefill && !isEditMode && !select.value) select.value = existing.rateMatchOverride;
+    const existingLabel = getRateMatchKeyDisplayLabel(existing.rateMatchOverride);
+    if (select.value === existing.rateMatchOverride) {
+      text.textContent = `이미 지정해 둔 기준이 있어 그대로 유지됩니다: ${existingLabel}`;
+    } else if (!select.value) {
+      // 수정 모드에서 비운 경우만 실제로 해제된다(신규 거래의 빈칸은 기존 값을 건드리지 않는다).
+      text.textContent = isEditMode
+        ? `저장하면 기존 지정(${existingLabel})이 해제되고 자동판별로 돌아갑니다.`
+        : `이미 지정해 둔 기준이 있어 그대로 유지됩니다: ${existingLabel}`;
+    } else {
+      text.textContent = `저장하면 이 종목의 기준이 "${getRateMatchKeyDisplayLabel(select.value)}"(으)로 바뀝니다.`;
+    }
+    return;
+  }
+
+  const rec = recommendRateMatchKey({ ticker, name, currency: document.getElementById('tx_currency').value });
+  if (!rec) {
+    // [추천 없음은 실패가 아니다] 비워두면 계산 시점에 시스템이 알아서 정한다 - 지금까지도 그렇게
+    // 동작해 왔다. 그래서 "직접 골라야만 한다"고 몰아붙이지 않는다.
+    text.textContent = '자동으로 추천할 기준을 찾지 못했어요. 비워두면 계산할 때 시스템이 정하고, 원하면 위에서 직접 고를 수 있어요.';
+    return;
+  }
+  ensureRateMatchOption(rec.key);
+  txRateMatchRecommendation = rec;
+  if (select.value === rec.key) {
+    text.textContent = `이 종목은 "${rec.label}" 기준으로 계산합니다.`;
+    return;
+  }
+  text.textContent = `앱 추천: ${rec.label} 기준으로 계산합니다.`;
+  applyBtn.classList.remove('hidden');
+}
+
+// 추천/기존 값이 아직 "수익률 관리" 목록에 없을 수 있다(그 종목을 지금 처음 사는 경우 - 목록은 이미
+// 보유·목표에 쓰이는 키만 보여준다). 고를 수 없는 값을 권하면 안 되므로 선택지에 얹어 둔다.
+function ensureRateMatchOption(key) {
+  const select = document.getElementById('tx_rateMatchOverride');
+  if (!key || Array.from(select.options).some((o) => o.value === key)) return;
+  const opt = document.createElement('option');
+  opt.value = key;
+  opt.textContent = `${getRateMatchKeyDisplayLabel(key)} (${key})`;
+  select.appendChild(opt);
+}
+
+// [이대로 사용] - 폼의 선택값만 바꾼다. state/localStorage는 [저장]을 눌러야 바뀐다.
+document.getElementById('txRateMatchApplyBtn').addEventListener('click', () => {
+  if (!txRateMatchRecommendation) return;
+  ensureRateMatchOption(txRateMatchRecommendation.key);
+  document.getElementById('tx_rateMatchOverride').value = txRateMatchRecommendation.key;
+  refreshTxRateMatchRecommendation();
+});
+// 사용자가 직접 고르거나 되돌리면 안내 문구도 즉시 그 상태를 반영한다.
+document.getElementById('tx_rateMatchOverride').addEventListener('change', refreshTxRateMatchRecommendation);
+// 종목명 직접 입력(수동입력 모드)/소유자·계좌구분 변경도 판단 근거가 바뀌는 입력이다.
+document.getElementById('tx_name').addEventListener('input', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
+document.getElementById('tx_owner').addEventListener('change', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
+document.getElementById('tx_accountType').addEventListener('blur', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
@@ -592,6 +696,7 @@ function openTransactionModal(txId) {
   }
   applyTxManualEntryModeUI();
   updateTxAppliedRateVisibility();
+  refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 수정 모드면 기존값 안내, 신규면 아직 종목이 없어 숨겨진다.
   document.getElementById('transactionModal').classList.remove('hidden');
   pushModalHistoryState();
 }
@@ -679,10 +784,17 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   const rateMatchRaw = document.getElementById('tx_rateMatchOverride').value.trim();
   const matchedAsset = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
     (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
-  if (matchedAsset) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
-  // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 비웠으면(기존값이 있었더라도) 미지정으로 되돌린다.
+  // [Phase 30 - 데이터 보호] 신규 거래(수정이 아님)에서 이 두 칸은 기본이 빈칸이다. 예전엔 그 빈칸을
+  // 그대로 "지워라"로 해석해서, 이미 대표매칭키/역할을 지정해 둔 자산에 매수 한 건을 추가하기만 해도
+  // 그 설정이 조용히 사라졌다(Phase 30 조사에서 실측 재현). 빈칸은 "이번 입력에서 건드리지 않았다"로
+  // 해석하고 기존 값을 유지한다 - 정말 지우려면 수정 모드에서 기존 값이 보이는 상태로 비우면 된다
+  // (수정 모드는 openTransactionModal이 기존 값을 미리 채워주므로 "보고 비우는" 의도가 분명하다).
+  const isEditingExistingTx = !!document.getElementById('tx_id').value;
+  if (matchedAsset && (rateMatchRaw || isEditingExistingTx)) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
+  // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 위와 같은 이유로 신규 거래의 빈칸은
+  // 기존 역할을 지우지 않는다(수정 모드에서 비우면 기존처럼 미지정으로 되돌아간다).
   const roleRaw = document.getElementById('tx_role').value.trim();
-  if (matchedAsset) matchedAsset.role = parseAssetRoleInput(roleRaw);
+  if (matchedAsset && (roleRaw || isEditingExistingTx)) matchedAsset.role = parseAssetRoleInput(roleRaw);
   // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] matchedAsset의 role 변경을 다른 화면에서도
   // 이어받게 레지스트리에도 반영한다. 티커가 없으면 이름으로 대신 키를 만든다.
   if (matchedAsset && (matchedAsset.ticker || matchedAsset.name)) setTickerRole(matchedAsset.ticker, matchedAsset.role, matchedAsset.name);

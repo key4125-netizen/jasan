@@ -2512,6 +2512,16 @@
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>
         </select>
+        <!-- [Phase 30] 대표매칭키 추천/안내 - 위 선택칸이 항상 실제 선택값이고, 이 블록은 그 값을
+             정하는 걸 도와줄 뿐이다(핵심 선택값을 팝업 안에 숨기지 않는다). 세 상태만 있다:
+             ① 추천 있음 → [이대로 사용] ② 추천 없음(정상) ③ 기존 자산에 이미 지정돼 있음(유지). -->
+        <div id="txRateMatchHelp" class="hidden mt-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2">
+          <p id="txRateMatchHelpText" class="text-sm text-slate-600 dark:text-slate-300"></p>
+          <button type="button" id="txRateMatchApplyBtn"
+            class="hidden min-h-[44px] w-full mt-1.5 text-sm font-semibold rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
+            이대로 사용
+          </button>
+        </div>
       </label>
 
       <!-- [자산별 역할(포지션) 분류] rateMatchOverride와 동일하게 매칭되는 자산에 반영된다(js/06 submit 핸들러). -->
