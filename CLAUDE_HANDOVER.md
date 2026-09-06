@@ -32,6 +32,66 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 40-A/B/C: 수익률 가정 체계 감사 + 자산 성격 기반 Return Key **V1.1 v212 유지**
+
+**커밋** `0a0dfbe` "feat: pick return assumptions by asset character, not by region" — push 완료.
+40-A/B는 조사(코드 변경 0), 40-C가 구현이다. **수익률 숫자는 한 줄도 바꾸지 않았다.**
+
+### ⚠ 무엇이 문제였나 — "모르면 그 지역 주식지수"
+성격을 확인하지 못한 자산의 마지막 폴백이 `getRegionFallbackRateKey()`(해외→S&P500, 국내→KOSPI)라
+자산 성격과 무관한 장기 수익률이 조용히 붙었다. **실측(수정 전)**: TLT/GLD/LQD/VWO/VEA/BTC → S&P500
+5.1%, 국내 국고채 ETF(148070) → KOSPI 7%. 정작 Risk 엔진의 `ETF_HOLDINGS_MAP`은 TLT/IEF를
+`{채권:1}`로 **이미 알고 있었는데** 수익률 경로가 그 정보를 전혀 안 봤다.
+
+### 40-C 구현 — 전부 순수 추가(계산 함수 diff 0건)
+1. **`resolveAssetCharacter(asset)`** — 새 분류 체계를 만들지 않고 기존 정보 재사용:
+   `ETF_HOLDINGS_MAP` → `SECTOR_MAP` → `category` → `BOND_KEYWORDS`/`CASH_KEYWORDS`.
+   **`classifyCategory`는 절대 건드리지 않는다** - 거기를 고치면 category가 바뀌어
+   `RISK_ELIGIBLE_CATEGORIES`가 달라지고 **위험점수가 움직인다**. 성격은 그 위에 얹는 별도 개념이다.
+   원자재/가상자산/신흥국/선진국ex-US 키워드도 `classifyCategory`가 아니라 이 함수에만 넣었다.
+2. **`recommendReturnAssumptionKey()`** — `recommendRateMatchKey()`와 **별도 함수**. 매칭은 "어느 행에
+   붙일 것인가", 가정은 "어떤 성장률을 적용해도 되는가"라는 다른 질문이다. **두 함수를 합치지 말 것.**
+3. **`assessReturnAssumptionStatus(asset)`** — 기존 자산은 계산을 그대로 두고 상태만 판정(유예 정책).
+4. **`getReturnAssumptionSourceInfo(key)`** — 기존 수익률 관리 행에 근거 상태 1줄(새 카드 없음).
+
+### 📌 추천 실측 결과 (e2e/41이 고정)
+| 자산 | 성격 | 추천 Key | 비고 |
+|---|---|---|---|
+| TLT / LQD | 채권 | **NONE** | 'BOND' 기준은 한국 국고채 근거라 해외채권에 자동 적용 안 함. 대안으로만 제시 |
+| GLD | 금·원자재 | **NONE** | 쓸 수 있는 기준 없음 |
+| VWO / VEA | 신흥국 / 선진국ex-US | **NONE** | 기준 없음 |
+| BTC-USD | 가상자산 | **NONE** | 기준 없음 |
+| 148070 국고채ETF | 채권 | **BOND** | KOSPI 아님 |
+| QQQM / SPYM / SCHD / NVDA | 미국 주식 | 각각 전용 키 | 성격 확인 후 기존 매칭 로직으로 정확한 키 선택 |
+| TIGER 미국S&P500 | 미국 주식 | S&P500 | **상장 시장이 아니라 기초지수를 따른다** |
+| POSCO홀딩스 등 개별 국내주식 | 국내 주식 | KOSPI | 개별 지분증권이라는 **구조**를 본 것(지역 폴백 아님). ETF는 해당 안 됨 |
+
+### 🔒 절대 되돌리지 말 것
+- **지역만 보고 주식 Key를 붙이지 않는다.** `resolveAssetCharacter`가 UNRESOLVED면 추천은 NONE이다.
+- **"적합한 Key 없음"은 정상 결과다.** 억지로 기존 Key에 끼워 맞추지 않는다.
+- Portfolio Position(코어/수비수/미드필더/공격수)과 Risk Benchmark는 Return Key 선택에 쓰지 않는다.
+
+### 40-A/B 감사에서 확인된 사실 (숫자 변경은 전부 보류)
+- **MC median ≡ Deterministic 성장률** — 모든 r/σ에서 정확히 일치함을 실측 증명.
+  `returnRate` 의미 = **연 명목 APR(월복리), total return, GBM median 연성장률과 동치**.
+- **US_EQUITY 4.1/5.1/6.0은 유지 권장** — Vanguard 원문(geometric/nominal/total/USD) 확인,
+  Case A 변환식 검산 통과(원자료 대비 ±0.03%p, 반올림 오차뿐).
+- **14개 Return Key 중 9개가 완전 동일값**(US_EQUITY 4.1/5.1/6.0). KOSPI=KOSDAQ도 동일값.
+  실질적으로 서로 다른 가정은 6개뿐이다.
+- **legacy 값은 APR 변환이 안 됨** — KOSPI 7.0 저장값이 실제로는 연 **7.229%** 로 동작한다
+  (삼성전자 긍정 15% → **16.08%**). PM Q3 결정: **현행 APR 의미로 확정, 숫자 변경 없음.**
+- **삼성전자 8/9/15가 KOSPI보다 높다** — 미국은 "개별 종목 프리미엄 금지" 원칙인데 한국만 반대.
+  PM Q2 결정: **변경하지 않고 NEEDS_REVIEW로 유지.**
+
+### 🔴 다음 Phase PM 결정 대기
+1. 채권/원자재/EM/선진국ex-US의 **실제 CMA 출처** — 확보 전까지 임의 숫자 생성 금지(Key만 정의됨)
+2. 삼성전자 프리미엄 정책
+3. legacy rate value 재검토
+4. **Benchmark 정비(Phase 39-B 이월)** — 채권/원자재 가격지수가 앱에 없다(`^TNX`는 금리이지 가격지수 아님)
+5. 신규 자산의 계산 경로 폴백 차단 여부 — 이번엔 추천 계층에서만 막았고 계산은 유예 중
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 39-B: Risk 결측 데이터 안전성 + beta 날짜 정렬 **V1.1 v212 유지**
 
 **커밋** `fa54c27` "fix: treat missing risk data as unknown and align beta by date" — push 완료.
