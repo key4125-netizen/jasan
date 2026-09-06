@@ -51,8 +51,8 @@ function groupHeaderRowHtml(label, count, subtotal, pct) {
   <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
     <td colspan="4" class="px-3 py-2">
       <div class="flex items-center justify-between gap-2">
-        <span class="font-semibold text-xs">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
-        <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
+        <span class="font-semibold text-sm">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
+        <span class="text-sm text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
       </div>
     </td>
   </tr>`;
@@ -61,8 +61,8 @@ function groupHeaderRowHtml(label, count, subtotal, pct) {
 function groupHeaderCardHtml(label, count, subtotal, pct) {
   return `
   <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2">
-    <span class="font-semibold text-xs">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
-    <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
+    <span class="font-semibold text-sm">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
+    <span class="text-sm text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
   </div>`;
 }
 
@@ -276,7 +276,7 @@ function derivePresentation(r) {
   const session = state.sessionMap[r.id];
   const sessionMeta = SESSION_BADGE_META[session];
   const sessionBadge = sessionMeta
-    ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
+    ? `<span class="ml-1 text-sm px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
     : '';
 
   // 화면에는 사용자가 입력한 원본 티커를 표시하고, 시세 조회용 정제 티커는 툴팁으로만 안내한다.
@@ -289,7 +289,7 @@ function derivePresentation(r) {
     ? 'bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50'
     : 'hover:bg-brand-50 dark:hover:bg-brand-900/30';
   const priceFailBadge = priceFetchFailed
-    ? `<div class="text-[9px] font-semibold text-amber-600 dark:text-amber-400 mt-0.5">⚠️ 수동 입력 필요</div>`
+    ? `<div class="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">⚠️ 수동 입력 필요</div>`
     : '';
 
   const isDomesticBadgeClass = r.isDomestic === '해외'
@@ -316,7 +316,7 @@ function extendedHoursSublineHtml(session, regularMarketPrice, previousClose, is
   const unit = isForeign ? '$' : '';
   const pct = (Number.isFinite(previousClose) && previousClose > 0) ? ((regularMarketPrice - previousClose) / previousClose * 100) : null;
   const pctText = pct !== null ? ` (${fmtPct(pct)})` : '';
-  return `<div class="text-[10px] text-slate-400 font-normal">정규장 ${unit}${fmtNum(regularMarketPrice, 2)}${pctText}</div>`;
+  return `<div class="text-sm text-slate-400 font-normal">정규장 ${unit}${fmtNum(regularMarketPrice, 2)}${pctText}</div>`;
 }
 
 // 당일 손익변동 금액을 거래 통화 그대로(원화 환산 없이) +/- 부호와 함께 표기한다 - fmtSigned()는 항상
@@ -335,7 +335,7 @@ function fmtSignedNative(amount, isForeign) {
 function changeInlineHtml(p) {
   if (!p.hasChange) return '';
   const amountText = (typeof p.dailyChangeAmount === 'number') ? ` / ${fmtSignedNative(p.dailyChangeAmount, p.isForeign)}` : '';
-  return ` <span class="text-[11px] font-medium ${p.changeColorClass}">(${p.changeText}${amountText})</span>`;
+  return ` <span class="text-sm font-medium ${p.changeColorClass}">(${p.changeText}${amountText})</span>`;
 }
 
 // [종목 상세 모달 전환] 요약 행/카드를 클릭하면 아코디언으로 펼치는 대신 openAssetDetailModal()이
@@ -354,7 +354,7 @@ function isCashOrBondNoTicker(r) {
 function cashBondValueHtml(r) {
   if (r.isForeign) {
     const usdTotal = num(r.quantity) * num(r.currentPrice);
-    return { headline: `$${fmtNum(usdTotal, 2)}`, sub: `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.curAmount)}</div>` };
+    return { headline: `$${fmtNum(usdTotal, 2)}`, sub: `<div class="text-sm text-slate-400 font-normal">${fmtKRWShort(r.curAmount)}</div>` };
   }
   return { headline: fmtNum(r.curAmount, 0), sub: '' };
 }
@@ -391,7 +391,7 @@ function rowHtml(r) {
   const priceHeadline = isCashBond ? cashBondValue.headline : `${priceUnit}${fmtNum(r.currentPrice, 2)}`;
   const tickerTitle = p.yahooTickerHint ? ` title="시세조회: ${escapeHtml(p.yahooTickerHint)}"` : '';
   // 해외 자산은 "적용 통화(달러)"와 "환산 원화"를 요약에서 함께 보여준다.
-  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
+  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-sm text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
   // [종목 통합 표시] 여러 소유자/계좌를 합친 행은 "통합 N건(소유자1+소유자2)"로 구분해 보여주고,
   // 클릭 시 그룹 상세 모달로 라우팅할 수 있도록 data-member-ids를 함께 심어둔다.
   const subtitle = r._isGroup
@@ -403,7 +403,7 @@ function rowHtml(r) {
   <tr class="border-b border-slate-50 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" data-action="open-detail" data-id="${r.id}"${memberIdsAttr}>
     <td class="px-3 py-2.5">
       <div class="font-medium">${escapeHtml(r.name)}${changeInlineHtml(p)}</div>
-      <div class="font-mono text-[11px] text-slate-400"${tickerTitle}>${subtitle}</div>
+      <div class="font-mono text-sm text-slate-400"${tickerTitle}>${subtitle}</div>
     </td>
     <td class="px-3 py-2.5 text-right">${isCashBond ? '' : fmtNum(r.quantity, 4)}</td>
     <td class="px-3 py-2.5 text-right ${p.priceCellClass}">${priceHeadline}${p.sessionBadge}${priceKrwSub}${p.extendedHoursSub}${p.priceFailBadge}</td>
@@ -425,9 +425,9 @@ function cardHtml(r) {
   const p = derivePresentation(r);
   const isCashBond = isCashOrBondNoTicker(r);
   const cashBondValue = isCashBond ? cashBondValueHtml(r) : null;
-  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-[10px] text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
+  const priceKrwSub = isCashBond ? cashBondValue.sub : (r.isForeign ? `<div class="text-sm text-slate-400 font-normal">${fmtKRWShort(r.currentPrice * state.exchangeRate)}</div>` : '');
   const dailyRateInline = p.hasChange
-    ? `<span class="shrink-0 text-[12px] font-semibold ${p.changeColorClass}">${p.changeText}</span>`
+    ? `<span class="shrink-0 text-sm font-semibold ${p.changeColorClass}">${p.changeText}</span>`
     : '';
   // [배지 폭 절약] "통합 N건" 접미사를 붙이면(예: "신랑+와이프 · 통합 2건") 좁은 모바일 폭에서 배지가
   // 너무 넓어져 옆의 티커가 도리어 심하게 잘린다 - 소유자 이름("신랑+와이프")만으로도 통합 여부는 알 수
@@ -442,17 +442,20 @@ function cardHtml(r) {
         <span class="font-semibold text-[15px] leading-tight truncate min-w-0">${escapeHtml(r.name)}</span>
         ${dailyRateInline}
       </p>
-      <p class="mt-1 text-[13px] leading-tight text-slate-500 dark:text-slate-400 flex items-center gap-1.5 min-w-0">
+      <p class="mt-1 text-sm leading-tight text-slate-500 dark:text-slate-400 flex items-center gap-1.5 min-w-0">
         <span class="font-mono truncate">${escapeHtml(r.ticker || '-')}</span>
-        <span class="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500 dark:text-slate-300">${escapeHtml(ownerLabel)}</span>
+        <span class="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-sm font-medium text-slate-500 dark:text-slate-300">${escapeHtml(ownerLabel)}</span>
       </p>
       <!-- [버그 수정 - 3줄 레이아웃 줄바꿈] 평가손익이 억대(예: +378,765,528원)로 커지면 전체 숫자를
            다 쓰는 fmtSigned가 좁은 모바일 폭에서 한 줄에 안 들어가 2줄로 줄바꿈되며 3줄 설계가 깨졌다
-           - "억/만원" 축약 표기(fmtSignedShort, 예: +3억 7,877만원)로 바꿔 항상 한 줄에 들어가게 한다. -->
-      <p class="mt-1 text-[13.5px] leading-tight font-medium whitespace-nowrap ${profitColor(r.profit)}">(${fmtPct(r.rateOfReturn)} / ${fmtSignedShort(r.profit)})</p>
+           - "억/만원" 축약 표기(fmtSignedShort, 예: +3억 7,877만원)로 바꿔 한 줄에 들어가게 했다.
+           [Phase 27] 글자를 14px 하한으로 올리면서 축약 표기로도 좁은 폭에서는 한 줄에 안 들어가는
+           경우가 생겼다 - whitespace-nowrap을 빼서 줄바꿈을 허용한다. "3줄 고정"보다 "숫자가 잘리지
+           않고 읽히는 것"이 우선이다(작은 글자로 되돌리지 않는다는 전역 가독성 정책). -->
+      <p class="mt-1 text-sm leading-tight font-medium ${profitColor(r.profit)}">(${fmtPct(r.rateOfReturn)} / ${fmtSignedShort(r.profit)})</p>
     </div>
     <div class="text-right shrink-0 pl-2">
-      <p class="text-[10px] text-slate-400">${isCashBond ? '&nbsp;' : `수량 ${fmtNum(r.quantity, 4)}`}</p>
+      <p class="text-sm text-slate-400">${isCashBond ? '&nbsp;' : `수량 ${fmtNum(r.quantity, 4)}`}</p>
       <p class="text-sm font-semibold">${isCashBond ? cashBondValue.headline : `${p.priceUnit}${fmtNum(r.currentPrice, 2)}`}${p.sessionBadge}</p>
       ${priceKrwSub}
       ${p.extendedHoursSub}
@@ -530,7 +533,7 @@ function renderTableFooter(rows) {
   document.getElementById('tableFooterRow').innerHTML = `
     <td class="px-3 py-2 whitespace-nowrap" colspan="2">합계 (${rows.length}건, 현재 필터 기준) · 매입 ${fmtKRWShort(totalBuy)}</td>
     <td class="px-3 py-2 text-right whitespace-nowrap">${fmtKRW(totalCur)}</td>
-    <td class="px-3 py-2 text-right whitespace-nowrap ${profitColor(totalProfit)}">${fmtSignedShort(totalProfit)}<br><span class="text-[10px]">${fmtPct(totalRate)}</span></td>`;
+    <td class="px-3 py-2 text-right whitespace-nowrap ${profitColor(totalProfit)}">${fmtSignedShort(totalProfit)}<br><span class="text-sm">${fmtPct(totalRate)}</span></td>`;
 }
 
 function escapeHtml(str) {
@@ -554,7 +557,7 @@ function showToast(message, type = 'info', duration = 6000) {
   const el = document.createElement('div');
   // [클릭 가능 영역 복구] 컨테이너 자체는 pointer-events-none(빈 공간이 아래 화면 클릭을 막지 않게)
   // 이지만, 실제 토스트 알약 하나하나는 닫기(✕) 버튼을 눌러야 하니 pointer-events-auto로 되살린다.
-  el.className = `modal-anim pointer-events-auto ${colors[type] || colors.info} text-xs font-medium px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-start gap-3`;
+  el.className = `modal-anim pointer-events-auto ${colors[type] || colors.info} text-sm font-medium px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-start gap-3`;
   el.innerHTML = `<span class="flex-1 leading-relaxed">${escapeHtml(message)}</span><button class="opacity-70 hover:opacity-100 shrink-0" aria-label="닫기">✕</button>`;
   el.querySelector('button').addEventListener('click', () => el.remove());
   container.appendChild(el);

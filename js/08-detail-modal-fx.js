@@ -80,7 +80,7 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
   body.innerHTML = `
     <div class="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
       <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-      <span class="text-xs">종목 분석 리포트를 불러오는 중...</span>
+      <span class="text-sm">종목 분석 리포트를 불러오는 중...</span>
     </div>`;
   lucide.createIcons();
 
@@ -90,7 +90,7 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
   if (token !== assetDetailAnalysisToken || document.getElementById('assetDetailModal').classList.contains('hidden')) return;
 
   if (a.error) {
-    body.innerHTML = `<p class="text-xs text-amber-600 dark:text-amber-400 py-2">${escapeHtml(a.error)}</p>`;
+    body.innerHTML = `<p class="text-sm text-amber-600 dark:text-amber-400 py-2">${escapeHtml(a.error)}</p>`;
     return;
   }
   body.innerHTML = renderStockAnalysisReportBody(a, null);
@@ -212,7 +212,7 @@ function assetDetailOwnerRowHtml(m, totalCurAmount) {
       <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
     </button>`;
   return `
-  <div class="flex items-center justify-between gap-2 text-xs border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
+  <div class="flex items-center justify-between gap-2 text-sm border border-slate-100 dark:border-slate-800 rounded-lg px-3 py-2">
     <div class="min-w-0">
       <p class="font-medium">${escapeHtml(m.owner)} <span class="text-slate-400 font-normal">· ${escapeHtml(m.accountType)}</span></p>
       <p class="text-slate-400 mt-0.5">${isUsdCashAsset(m)
@@ -564,7 +564,7 @@ function rebuildAssetDetailFullMA() {
 function renderAssetDetailPeriodButtons() {
   const wrap = document.getElementById('assetDetailPeriodButtons');
   wrap.innerHTML = Object.keys(PERIOD_LABELS).map((key) => `
-    <button type="button" data-period-btn="${key}" class="period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
+    <button type="button" data-period-btn="${key}" class="period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
   `).join('');
   wrap.querySelectorAll('button[data-period-btn]').forEach((btn) => {
     btn.addEventListener('click', () => buildAssetDetailChart(btn.dataset.periodBtn));
@@ -834,7 +834,7 @@ function rebuildStockAnalysisFullMA() {
 function renderStockAnalysisPeriodButtons() {
   const wrap = document.getElementById('stockAnalysisPeriodButtons');
   wrap.innerHTML = Object.keys(PERIOD_LABELS).map((key) => `
-    <button type="button" data-period-btn="${key}" class="period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
+    <button type="button" data-period-btn="${key}" class="period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">${PERIOD_LABELS[key]}</button>
   `).join('');
   wrap.querySelectorAll('button[data-period-btn]').forEach((btn) => {
     btn.addEventListener('click', () => buildStockAnalysisChart(btn.dataset.periodBtn));

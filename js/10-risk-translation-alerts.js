@@ -208,7 +208,7 @@ function buildIndividualActionItem(h, weightPct) {
 function buildIndividualSignalLightsHtml(h) {
   if (!h || !h.hasData) {
     return `<div class="grid grid-cols-3 gap-1.5 text-center">
-      ${['추세', '과열도', '수급(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-xs text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
+      ${['추세', '과열도', '수급(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-sm text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
     </div>`;
   }
   // [버그 수정 - 추세 판정 기준 통일] h.trendLabel(20/60/120일 정배열 기준)을 6섹션 리포트의 핵심요약과
@@ -222,15 +222,15 @@ function buildIndividualSignalLightsHtml(h) {
   return `
   <div class="grid grid-cols-3 gap-1.5 text-center">
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-xs text-slate-400">추세</p>
+      <p class="text-sm text-slate-400">추세</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${trendHtml}</p>
     </div>
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-xs text-slate-400">과열도</p>
+      <p class="text-sm text-slate-400">과열도</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${rsiHtml}</p>
     </div>
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-xs text-slate-400" data-flow-tile-label>수급(추정)</p>
+      <p class="text-sm text-slate-400" data-flow-tile-label>수급(추정)</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200" data-flow-tile-value>${flow.emoji} ${flow.label}</p>
     </div>
   </div>`;
@@ -275,7 +275,7 @@ function setAccordionOpen(bodyEl, chevronEl, isOpen) {
 // [포트폴리오 위험 진단 & 위기 시뮬레이션] state.advancedRiskMetrics(refreshPricesAndRates에서 이미
 // 계산 완료된 값)를 읽어 안전 점수/신호등/1줄 진단/행동 제안/2020년 폭락 재현 손실 추정치를 그린다.
 // 데이터가 없으면(계산 전, 리스크 대상 종목 자체가 없음 등) 섹션 자체를 숨긴다.
-// [6대 위험요인 막대그래프 한 줄] 라벨+(i)툴팁 / 막대 / 점수. 가독성을 위해 최소 폰트를 text-xs(12px)
+// [6대 위험요인 막대그래프 한 줄] 라벨+(i)툴팁 / 막대 / 점수. 가독성을 위해 최소 폰트를 text-sm(12px)
 // 이상으로 유지한다(작은 화면에서도 잘 읽히도록).
 // [가독성] 라벨(이모지 포함)이 길어질 수 있어 라벨/점수를 한 줄에, 막대를 그 아래 별도 줄에 꽉 차게
 // 배치한다 - 좁은 화면에서 라벨이 단어 중간에 어색하게 줄바꿈되는 것을 원천적으로 막는다.
@@ -333,7 +333,7 @@ function renderRiskDiagnosisSummary() {
   <div class="rounded-xl border p-3.5 ${level.bgClass}">
     <div class="flex items-start justify-between gap-2 flex-wrap">
       <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
-      <span class="shrink-0 text-xs font-semibold ${confLevel} flex items-center gap-1 whitespace-nowrap">
+      <span class="shrink-0 text-sm font-semibold ${confLevel} flex items-center gap-1 whitespace-nowrap">
         분석 신뢰도 ${conf.score}%
         <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </span>
@@ -348,7 +348,7 @@ function renderRiskDiagnosisSummary() {
          상세는 원래도 메인 카드에 없고 세부내용 모달 전용이었다(역할 분리가 이미 되어 있던 부분). -->
     <div class="mt-2.5 space-y-1.5">
       ${actionItems.slice(0, 2).map((item, i) => hangingIndentLine(`💡 ${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}
-      ${actionItems.length > 2 ? `<p class="text-xs text-slate-400">그 외 ${actionItems.length - 2}건 더 - 🔍 세부내용에서 전부 확인할 수 있습니다.</p>` : ''}
+      ${actionItems.length > 2 ? `<p class="text-sm text-slate-400">그 외 ${actionItems.length - 2}건 더 - 🔍 세부내용에서 전부 확인할 수 있습니다.</p>` : ''}
     </div>
 
     <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
@@ -356,7 +356,7 @@ function renderRiskDiagnosisSummary() {
     ${m.volatilitySpike ? `
     <div class="mt-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 p-2.5">
       <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">⚡ 최근 단기 변동성 급증 경고</p>
-      <p class="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
+      <p class="text-sm text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
     </div>` : ''}
   </div>`;
 
@@ -418,12 +418,12 @@ function renderRiskDetailModal() {
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020 코로나 폭락 재현 시</p>
         <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
-        <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 코로나 폭락처럼 짧은 기간에 급격히 폭락하는 금융위기급 충격이 재현될 경우 예상 손실액입니다(코스피 -35.7%·S&P500 -33.9% 등 실측 낙폭 대입 추정치).</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 코로나 폭락처럼 짧은 기간에 급격히 폭락하는 금융위기급 충격이 재현될 경우 예상 손실액입니다(코스피 -35.7%·S&P500 -33.9% 등 실측 낙폭 대입 추정치).</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022 고금리 기술주 폭락 재현 시</p>
         <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW2022))} (${fmtNum(m.stressLossPct2022, 1)}%) 손실 예상</p>
-        <p class="text-xs text-slate-400 mt-1 leading-relaxed">* 2022년처럼 금리가 급격히 오르며 특히 기술/성장주가 길게 이어서 빠지는 약세장이 재현될 경우 예상 손실액입니다(코스피 -28.6%·나스닥100 -35.1% 등 실측 낙폭 대입 추정치).</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년처럼 금리가 급격히 오르며 특히 기술/성장주가 길게 이어서 빠지는 약세장이 재현될 경우 예상 손실액입니다(코스피 -28.6%·나스닥100 -35.1% 등 실측 낙폭 대입 추정치).</p>
       </div>
     </div>
 
@@ -439,7 +439,7 @@ function renderRiskDetailModal() {
         ${['aggressive', 'balanced', 'conservative'].map((key) => {
           const label = key === 'aggressive' ? '공격적' : key === 'balanced' ? '균형' : '보수적';
           const targetPct = key === 'aggressive' ? Math.max(5, m.topWeight - 15) : key === 'balanced' ? Math.max(5, m.topWeight * 0.55) : Math.min(15, m.topWeight);
-          return `<button type="button" data-scenario-preset="${key}" data-target-pct="${targetPct.toFixed(1)}" class="flex-1 text-xs sm:text-sm font-semibold py-2 rounded-lg border transition-colors border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700">${label} ${fmtNum(targetPct, 0)}%</button>`;
+          return `<button type="button" data-scenario-preset="${key}" data-target-pct="${targetPct.toFixed(1)}" class="flex-1 text-sm font-semibold py-2 rounded-lg border transition-colors border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700">${label} ${fmtNum(targetPct, 0)}%</button>`;
         }).join('')}
       </div>
       <div id="whatIfResultBox"></div>
@@ -511,7 +511,7 @@ document.addEventListener('click', (e) => {
       <div>변동성: ${fmtNum(m.portfolioVolatilityPct, 1)}% → ${fmtNum(scenario.portfolioVolatilityPct, 1)}%</div>
       <div>최대낙폭: ${fmtNum(m.portfolioMDDPct, 1)}% → ${fmtNum(scenario.portfolioMDDPct, 1)}%</div>
     </div>
-    <p class="text-xs text-slate-400 mt-2 leading-relaxed">* 실제 매매 지시가 아닌 추정 시뮬레이션이며, 과거 변동성·상관관계 구조가 유지된다고 가정합니다.</p>`;
+    <p class="text-sm text-slate-400 mt-2 leading-relaxed">* 실제 매매 지시가 아닌 추정 시뮬레이션이며, 과거 변동성·상관관계 구조가 유지된다고 가정합니다.</p>`;
   setActiveScenarioPresetButton(btn);
 });
 
@@ -570,10 +570,10 @@ function macroTileHtml(key, label, valueText, sub, icon) {
   return `
   <div class="macro-card rounded-lg border border-slate-100 dark:border-slate-800 px-1 sm:px-1.5 md:px-2 py-2 md:py-2.5 text-center cursor-pointer transition-all hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm hover:-translate-y-0.5"
     data-open-stock-detail data-ticker="${escapeHtml(ticker)}" data-name="${escapeHtml(label)}">
-    <div class="text-[10px] md:text-xs text-slate-400 truncate">${escapeHtml(label)}</div>
+    <div class="text-sm md:text-sm text-slate-400 truncate">${escapeHtml(label)}</div>
     <div class="text-base md:text-lg leading-tight my-0.5">${icon}</div>
-    <div class="text-[11px] md:text-sm font-semibold truncate">${escapeHtml(valueText)}</div>
-    <div class="text-[9px] md:text-[11px] text-slate-400 truncate">${escapeHtml(sub)}</div>
+    <div class="text-sm md:text-sm font-semibold truncate">${escapeHtml(valueText)}</div>
+    <div class="text-sm text-slate-400 truncate">${escapeHtml(sub)}</div>
   </div>`;
 }
 // [맞춤형 연계 진단] 원/달러 환율 방향 × 내 포트폴리오의 외화(달러) 자산 비중을 엮어 한 줄로 설명한다.
@@ -954,7 +954,7 @@ function buildMacroDetailBodyHtml(key) {
       <div class="text-xl font-bold">${escapeHtml(macroDetailValueText(key, s))}</div>
       <div class="flex items-center gap-2">
         ${hasChange ? `<span class="text-sm font-medium ${s.changePercent >= 0 ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'}">${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%</span>` : ''}
-        <span class="text-xs font-semibold px-2 py-1 rounded-full ${MACRO_TAG_COLOR_CLASSES[tag.color]}">${escapeHtml(tag.text)}</span>
+        <span class="text-sm font-semibold px-2 py-1 rounded-full ${MACRO_TAG_COLOR_CLASSES[tag.color]}">${escapeHtml(tag.text)}</span>
       </div>
     </div>
     <div class="mb-4">
@@ -993,7 +993,7 @@ function buildIndexPriceLevelsHtml(a) {
 // [지수 모달 - 하단 캡션] "개별 매수/보유 대상이 아닙니다" 안내를 모달 상단이 아니라 콘텐츠 맨 끝에
 // 옅은 텍스트로 배치해, 열자마자 보이는 상단은 차트+지표 설명으로 바로 채워지도록 한다.
 function macroIndexFooterCaptionHtml() {
-  return '<p class="text-xs text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표(지수)입니다.</p>';
+  return '<p class="text-sm text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표(지수)입니다.</p>';
 }
 
 // [전용 팝업 제거됨] renderMacroDetailModal/openMacroDetailModal/closeMacroDetailModal과 #macroDetailModal
@@ -1100,14 +1100,14 @@ function renderMacroBriefing() {
     ${stackedTitleBody('🧭 대응 가이드', escapeHtml(commentary.guide), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
-        <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
+        <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="correlationGuideChevron"></i>
       </button>
       <div id="correlationGuideBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <ul class="space-y-1 list-none mt-1.5">
-          ${correlation.lines.map((l) => `<li class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
+          ${correlation.lines.map((l) => `<li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
         </ul>
-        <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
+        <p class="text-sm text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
       </div>
     </div>`;
 
@@ -1169,23 +1169,23 @@ function renderRiskSection() {
   riskyBadge.textContent = `${risky.length}건`;
 
   riskyContainer.innerHTML = risky.length === 0
-    ? '<p class="text-xs text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
+    ? '<p class="text-sm text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
     : risky.map(({ key, asset: a, row: r, tags, owners, curAmount }) => {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;
       const tagHtml = tags.map((t) =>
-        `<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
+        `<span class="text-sm px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
       ).join(' ');
       // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의"/
       // "변동성 확대 주의" 중 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 우선순위대로 고른다.
       const actionTag = buildAssetActionTag(tags);
-      const actionTagHtml = actionTag ? `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
+      const actionTagHtml = actionTag ? `<span class="text-sm px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
       return `
       <div class="py-2.5 border-b last:border-b-0 border-red-100 dark:border-red-900/40" data-risk-row data-risk-key="${escapeHtml(key)}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <p class="text-base font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-xs font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
-            <div class="flex flex-wrap items-center gap-1.5 mt-1.5">${tagHtml}${actionTagHtml}<span class="text-xs text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
+            <p class="text-base font-semibold truncate"><span class="cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span> <span class="text-sm font-normal text-slate-400">· ${escapeHtml(owners.join('+'))}</span></p>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1.5">${tagHtml}${actionTagHtml}<span class="text-sm text-slate-400">비중 ${fmtNum(weightPct, 1)}%</span></div>
           </div>
           <div class="text-right shrink-0 pl-2">
             <p class="text-base font-bold">${p.priceUnit}${fmtNum(r.currentPrice, 2)}${p.sessionBadge}</p>
@@ -1259,8 +1259,8 @@ function openRiskAlertModal() {
 
   const actionItems = buildRiskActionItems(m);
   document.getElementById('riskAlertActionItems').innerHTML = `
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
-    ${actionItems.map((item, i) => hangingIndentLine(`${i + 1}.`, item, 'text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}`;
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
+    ${actionItems.map((item, i) => hangingIndentLine(`${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}`;
 
   document.getElementById('riskAlertModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -1373,9 +1373,9 @@ const STOCK_ANALYSIS_RISK_TIPS = [
 function stockAnalysisStatTile(label, valueText, guideText) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-2.5 py-2">
-    <div class="text-[10px] text-slate-400">${escapeHtml(label)}</div>
-    <div class="text-xs font-semibold mt-0.5 truncate" title="${escapeHtml(String(valueText).replace(/<[^>]*>/g, ''))}">${valueText}</div>
-    ${guideText ? `<div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">${escapeHtml(guideText)}</div>` : ''}
+    <div class="text-sm text-slate-400">${escapeHtml(label)}</div>
+    <div class="text-sm font-semibold mt-0.5 truncate" title="${escapeHtml(String(valueText).replace(/<[^>]*>/g, ''))}">${valueText}</div>
+    ${guideText ? `<div class="text-sm text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">${escapeHtml(guideText)}</div>` : ''}
   </div>`;
 }
 
@@ -1410,7 +1410,7 @@ function renderStockAnalysisReportMain(a, sim) {
   if (sim) {
     simHtml = `
     <div class="mb-3">
-      <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🧩 포트폴리오 적합도 (편입 시 예상 변화, +${fmtNum(sim.addedWeightPct, 1)}%p)</p>
+      <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">🧩 포트폴리오 적합도 (편입 시 예상 변화, +${fmtNum(sim.addedWeightPct, 1)}%p)</p>
       <div class="grid grid-cols-2 gap-2">
         ${stockAnalysisStatTile('섹터 쏠림 (최대 섹터)', `${escapeHtml(sim.before.topSector || '-')} ${fmtNum(sim.before.topSectorWeight, 0)}% → ${escapeHtml(sim.after.topSector || '-')} ${fmtNum(sim.after.topSectorWeight, 0)}%`)}
         ${stockAnalysisStatTile('최대 종목 비중', `${fmtNum(sim.before.topWeightPct, 0)}% → ${fmtNum(sim.after.topWeightPct, 0)}%`)}
@@ -1420,15 +1420,15 @@ function renderStockAnalysisReportMain(a, sim) {
 
   return `
   <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📌 핵심 요약 &amp; 현재 상태</p>
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📌 핵심 요약 &amp; 현재 상태</p>
     <div class="rounded-lg border border-slate-100 dark:border-slate-800 p-2.5 flex items-start gap-2">
-      <span class="text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${STOCK_ANALYSIS_TAG_COLOR_CLASSES[status.tag.color]}">${status.tag.emoji} ${escapeHtml(status.tag.label)}</span>
-      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(status.summaryText)}</p>
+      <span class="text-sm font-semibold px-2 py-1 rounded-full shrink-0 ${STOCK_ANALYSIS_TAG_COLOR_CLASSES[status.tag.color]}">${status.tag.emoji} ${escapeHtml(status.tag.label)}</span>
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(status.summaryText)}</p>
     </div>
   </div>
 
   <div class="mb-3">
-    <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 기술적 참고</p>
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 기술적 참고</p>
     <div class="grid grid-cols-2 gap-2">
       ${stockAnalysisStatTile('단기 벽 (최근 3개월 최고가)', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 가격이에요 - 이 부근에서 상승 속도가 둔해진 적이 있어요.')}
       ${stockAnalysisStatTile('1차 버팀목 (최근 3개월 최저가)', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 가격이에요 - 이 부근에서 하락이 멈췄던 적이 있어요.')}
@@ -1444,12 +1444,12 @@ function renderStockAnalysisReportMain(a, sim) {
 // 무관하게 리포트의 항상 맨 마지막에 와야 하는 고정 섹션이라 Main과 분리했다(위 주석 참고).
 function renderStockAnalysisReportFooter(a) {
   return `
-  <p class="text-xs text-slate-400 flex items-center gap-1 mb-1">
+  <p class="text-sm text-slate-400 flex items-center gap-1 mb-1">
     🎯 위험 관리 일반 원칙
     <button type="button" data-info-tip="${escapeHtml(STOCK_ANALYSIS_RISK_TIPS.map((t, i) => `${i + 1}. ${t}`).join(' '))}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
   </p>
 
-  <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
+  <p class="text-sm text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
 }
 
 // [보유종목 상세 모달 전용] Main+Footer를 그대로 이어붙인다 - attachStockAnalysisReportToDetailModal()
@@ -1468,10 +1468,10 @@ function renderStockAnalysisHeaderHtml(a) {
   const priceDecimals = a.currentPrice < 100 ? 2 : 0;
   return `
   <div class="flex items-baseline justify-between gap-2">
-    <h4 class="text-sm font-bold truncate">📊 ${escapeHtml(a.name)} <span class="text-xs font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
+    <h4 class="text-sm font-bold truncate">📊 ${escapeHtml(a.name)} <span class="text-sm font-normal text-slate-400">${escapeHtml(a.ticker)}</span></h4>
     <div class="text-right shrink-0">
       <div class="text-sm font-semibold">${fmtNum(a.currentPrice, priceDecimals)}</div>
-      <div class="text-xs font-medium ${changeColor}">${changeText}</div>
+      <div class="text-sm font-medium ${changeColor}">${changeText}</div>
     </div>
   </div>`;
 }
@@ -1494,8 +1494,8 @@ function renderStockAnalysisSuggestions(candidates) {
   if (candidates.length === 0) { hideStockAnalysisSuggestions(); return; }
   el.innerHTML = candidates.map((c) => `
     <button type="button" data-suggest-ticker="${escapeHtml(c.ticker)}" class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">
-      <span class="truncate">${escapeHtml(c.name)} <span class="text-slate-400 text-xs">${escapeHtml(c.ticker)}</span></span>
-      <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${escapeHtml(c.sub)}</span>
+      <span class="truncate">${escapeHtml(c.name)} <span class="text-slate-400 text-sm">${escapeHtml(c.ticker)}</span></span>
+      <span class="shrink-0 text-sm px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${escapeHtml(c.sub)}</span>
     </button>`).join('');
   el.classList.remove('hidden');
   el.querySelectorAll('button[data-suggest-ticker]').forEach((btn) => {

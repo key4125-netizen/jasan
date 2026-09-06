@@ -15,9 +15,9 @@ const SAFETY_UI_STYLE = {
 // 일상어로 풀어썼으므로, 이 함수는 그 문장을 그대로 카드에 배치하기만 한다.
 function renderSafetyIssueCard(issue) {
   const style = SAFETY_UI_STYLE[issue.severity] || SAFETY_UI_STYLE.INFO;
-  return `<div class="p-2.5 rounded-lg border text-[11px] leading-relaxed space-y-1 ${style.wrapClass}">
+  return `<div class="p-2.5 rounded-lg border text-sm leading-relaxed space-y-1 ${style.wrapClass}">
     <div class="flex items-center gap-1.5">
-      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${style.badgeClass}">${style.badge}</span>
+      <span class="px-1.5 py-0.5 rounded text-sm font-bold ${style.badgeClass}">${style.badge}</span>
       <span class="font-semibold">${escapeHtml(issue.title)}</span>
     </div>
     <p>${escapeHtml(issue.message)}</p>
@@ -75,11 +75,11 @@ function renderSafetyIssueGroupCard(group) {
   const groupKey = `${first.code}_${group.map((i) => i.field || '').join('|')}`;
   const isOpen = !!mcSafetyGroupOpen[groupKey];
   const fieldNames = group.map((i) => i.field).filter(Boolean).join(', ');
-  return `<div class="p-2.5 rounded-lg border text-[11px] leading-relaxed ${style.wrapClass}">
+  return `<div class="p-2.5 rounded-lg border text-sm leading-relaxed ${style.wrapClass}">
     <button type="button" class="w-full text-left safety-group-toggle" data-safety-group-key="${escapeHtml(groupKey)}">
       <div class="flex items-center justify-between gap-1.5">
         <span class="flex items-center gap-1.5 min-w-0">
-          <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${style.badgeClass}">${style.badge}</span>
+          <span class="shrink-0 px-1.5 py-0.5 rounded text-sm font-bold ${style.badgeClass}">${style.badge}</span>
           <span class="font-semibold truncate">${escapeHtml(first.title)} - 자산 ${group.length}개</span>
         </span>
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 shrink-0 transition-transform duration-200 safety-group-chevron${isOpen ? ' rotate-180' : ''}" data-safety-group-chevron="${escapeHtml(groupKey)}"></i>

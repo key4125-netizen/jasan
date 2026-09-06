@@ -7,6 +7,31 @@
 
 ---
 
+## 🔒 Global Readability Policy (Phase 27 확정 — 앞으로 모든 UI 개발의 기본 기준)
+
+**이 정책은 특정 Phase의 산물이 아니라 이 프로젝트의 상시 기준이다. 새 UI를 만들 때 먼저 읽는다.**
+
+1. **Mobile First** — 375px를 최우선으로 판단한다.
+2. **Dark Mode First** — 다크 모드에서 먼저 확인한다.
+3. **최소 가독성 기준 = 14px.** 「절세계좌 현황」 타이틀의 실측값(`text-sm` = font-size 14px / weight 600 / line-height 20px)을 기준점으로 삼는다. 이 값은 `e2e/32-phase27-readability.spec.js`가 고정하고 있다.
+4. **일반 사용자 노출 텍스트는 14px보다 작게 만들지 않는다.** `text-xs`(12px), `text-[10px]`, `text-[11px]`, `text-[9px]`, `text-[13.5px]` 등은 쓰지 않는다.
+5. **설명문·보조문구도 14px를 유지한다.** "덜 중요하니까 작게"는 금지다.
+6. **중요도는 크기가 아니라 색상·명도·weight로 구분한다.** 예: 핵심 숫자 `font-bold` + 브랜드/손익 색, 보조 라벨 `text-slate-400`(같은 14px, 낮은 대비).
+7. **핵심 숫자는 기준보다 크게** 표시한다(`text-lg`/`text-xl` 등).
+8. **공간이 부족하면 글자를 줄이지 않는다.** 대신 ① 줄바꿈 허용(`whitespace-nowrap` 제거) ② 컨테이너 폭 확대 ③ 우선순위 낮은 정보 축약/접기 순으로 해결한다. **새 카드·아코디언을 만들어 해결하지 않는다.**
+9. **금액은 항상 천 단위 구분자를 쓴다.** 새로 만들지 말고 기존 유틸을 재사용한다 — `fmtKRW`(콤마+원) / `fmtNum` / `fmtSigned` / `fmtKRWShort`(억·만원 축약) / `fmtSignedShort` / 입력창은 `attachThousandsInputFormatting`. 이들은 전부 `Intl.NumberFormat('ko-KR')` 기반이다. **이미 적용된 곳에 중복 포맷을 덧씌우지 않는다.**
+10. **연도·개월·iteration·퍼센트·비율·티커·날짜·ID에는 금액 포맷을 적용하지 않는다.**
+11. **계산/state 값은 절대 바꾸지 않는다.** 포맷은 표시 계층에서만 한다. 입력창은 화면에 `1,000,000`을 보여주되 `num()`이 콤마를 제거해 state에는 숫자 `1000000`이 들어간다.
+
+**정책 예외(문서화된 것만 허용)**
+- 차트 내부 텍스트(Chart.js `font:{size:...}` 설정, canvas/svg 내부) — DOM 텍스트가 아니고 좁은 플롯 영역에 종속된다.
+- 개발자용 `console.log` — 사용자에게 보이지 않는다.
+- `truncate`가 걸린 컨테이너의 말줄임 자체는 허용하되, **구분에 필요한 단어가 잘리면 안 된다**(예: 시나리오 카드가 "목표배분..."까지만 남아 보수적/일반적/긍정적이 사라진 사례 — 줄바꿈 허용으로 해결했다).
+
+**회귀 장치**: `e2e/32-phase27-readability.spec.js`가 6개 뷰포트(375/390/412/768/1024/1440) × Light/Dark에서 ① 14px 미만 텍스트 0건 ② 콤마 없는 4자리 이상 금액 0건 ③ 가로 overflow 0을 검사한다. 이 테스트를 약화시켜 통과시키지 않는다.
+
+---
+
 ## 최근 세션 요약 (2026-09-06) — Phase 26(Monte Carlo Performance Audit) **V1.1 v211 유지**
 
 **커밋**: `85a1e01` "perf: optimize monte carlo annual rebalance" — **push 완료**. **SW 버전은 v211 그대로다**(엔진 JS만 바뀌었고 APP_SHELL 밖 런타임 캐싱 대상이라 PM이 bump 없이 종료 승인).

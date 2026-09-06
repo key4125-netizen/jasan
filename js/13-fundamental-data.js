@@ -118,12 +118,12 @@ function fmtKisTime(ms) {
 // 오히려 "장 마감이라 그런 겁니다"처럼 실제로는 아닐 수도 있는 원인을 단정하는 꼴이 되기 쉽다.
 const KIS_FALLBACK_MESSAGE = '장외 시간/점검 중이거나 데이터를 불러올 수 없습니다.';
 function kisFallbackHtml() {
-  return `<p class="text-xs text-amber-600 dark:text-amber-400 py-2">${escapeHtml(KIS_FALLBACK_MESSAGE)}</p>`;
+  return `<p class="text-sm text-amber-600 dark:text-amber-400 py-2">${escapeHtml(KIS_FALLBACK_MESSAGE)}</p>`;
 }
 
 function fundamentalMetricTileHtml(label, value) {
   return `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-2">
-    <p class="text-[11px] text-slate-400">${escapeHtml(label)}</p>
+    <p class="text-sm text-slate-400">${escapeHtml(label)}</p>
     <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${value}</p>
   </div>`;
 }
@@ -137,8 +137,8 @@ function buildFundamentalCardHtml(kis) {
   return `
   <div>
     <p class="text-sm font-semibold text-slate-400 mb-1.5">📊 재무 펀더멘털
-      ${f && f.period ? `<span class="text-xs font-normal text-slate-400">(결산 ${escapeHtml(String(f.period))} 기준)</span>` : ''}
-      ${asOfTime ? `<span class="ml-1 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 align-middle">시세 ${escapeHtml(asOfTime)} 기준</span>` : ''}
+      ${f && f.period ? `<span class="text-sm font-normal text-slate-400">(결산 ${escapeHtml(String(f.period))} 기준)</span>` : ''}
+      ${asOfTime ? `<span class="ml-1 text-sm font-normal px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 align-middle">시세 ${escapeHtml(asOfTime)} 기준</span>` : ''}
     </p>
     <div class="grid grid-cols-3 gap-1.5">
       ${fundamentalMetricTileHtml('PER', p ? fmtKisRaw(p.per) : '데이터 없음')}
@@ -150,11 +150,11 @@ function buildFundamentalCardHtml(kis) {
     </div>
     ${f ? `
     <div class="grid grid-cols-3 gap-1.5 mt-1.5">
-      ${fundamentalMetricTileHtml('매출액(전년비)', `${fmtKisRaw(f.revenue)} <span class="text-xs font-normal">(${fmtKisPct(f.revenueGrowthPct)})</span>`)}
-      ${fundamentalMetricTileHtml('영업이익(전년비)', `${fmtKisRaw(f.operatingIncome)} <span class="text-xs font-normal">(${fmtKisPct(f.operatingIncomeGrowthPct)})</span>`)}
-      ${fundamentalMetricTileHtml('순이익(전년비)', `${fmtKisRaw(f.netIncome)} <span class="text-xs font-normal">(${fmtKisPct(f.netIncomeGrowthPct)})</span>`)}
+      ${fundamentalMetricTileHtml('매출액(전년비)', `${fmtKisRaw(f.revenue)} <span class="text-sm font-normal">(${fmtKisPct(f.revenueGrowthPct)})</span>`)}
+      ${fundamentalMetricTileHtml('영업이익(전년비)', `${fmtKisRaw(f.operatingIncome)} <span class="text-sm font-normal">(${fmtKisPct(f.operatingIncomeGrowthPct)})</span>`)}
+      ${fundamentalMetricTileHtml('순이익(전년비)', `${fmtKisRaw(f.netIncome)} <span class="text-sm font-normal">(${fmtKisPct(f.netIncomeGrowthPct)})</span>`)}
     </div>
-    <p class="text-[10px] text-slate-300 dark:text-slate-600 mt-1.5">매출·영업이익·순이익 단위는 KIS가 제공하는 원본 숫자 그대로입니다(별도 환산 없음).</p>` : ''}
+    <p class="text-sm text-slate-300 dark:text-slate-600 mt-1.5">매출·영업이익·순이익 단위는 KIS가 제공하는 원본 숫자 그대로입니다(별도 환산 없음).</p>` : ''}
   </div>`;
 }
 
@@ -169,7 +169,7 @@ function buildInvestorFlowCardHtml(kis) {
     <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
       최근 5일간 외국인 ${qty(iv.foreignNet5d)} 순매수 / 기관 ${qty(iv.institutionNet5d)} 순매수
     </p>
-    <p class="text-xs text-slate-400 mt-1">최근 20일 누적: 외국인 ${qty(iv.foreignNet20d)} · 기관 ${qty(iv.institutionNet20d)}</p>
+    <p class="text-sm text-slate-400 mt-1">최근 20일 누적: 외국인 ${qty(iv.foreignNet20d)} · 기관 ${qty(iv.institutionNet20d)}</p>
   </div>`;
 }
 

@@ -210,7 +210,7 @@ function renderRealizedBadge(elId, amount, label) {
   }
   el.classList.remove('hidden');
   el.textContent = `${label}: ${fmtSigned(amount)}`;
-  el.className = 'text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ' + profitColor(amount);
+  el.className = 'text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap ' + profitColor(amount);
 }
 
 // KPI 카드 하단에 자산군별 세부 집계 태그를 렌더링한다. entries가 비어있으면(보유 자산군이 없거나
@@ -220,7 +220,7 @@ function renderRealizedBadge(elId, amount, label) {
 // ownerOrder -> true면 금액 큰 순 대신 소유자 표시 순서(신랑→와이프→그 외, ownerRank 참고)로 정렬한다.
 function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored, sizeClass, ownerOrder) {
   const container = document.getElementById(containerId);
-  const textSizeClass = sizeClass || 'text-[10px]';
+  const textSizeClass = sizeClass || 'text-sm';
   const entries = Object.keys(byCategory)
     .map(cat => ({ cat, val: valueFn(byCategory[cat]) }))
     .filter(e => Math.round(e.val) !== 0)
@@ -265,7 +265,7 @@ function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
   container.classList.add('flex');
   container.innerHTML = entries.map((e) => {
     const colorClass = profitColor(e.profit);
-    return `<span class="text-[11px] sm:text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.owner)} ${fmtSignedShort(e.profit)} (${fmtPct(e.rate)})</span>`;
+    return `<span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.owner)} ${fmtSignedShort(e.profit)} (${fmtPct(e.rate)})</span>`;
   }).join('');
 }
 
@@ -386,7 +386,7 @@ function renderKPIs() {
   const realEstateCostRow = document.getElementById('kpiRealEstateCostRow');
   realEstateCostRow.classList.toggle('hidden', Math.round(realEstateBuy) === 0);
   realEstateCostRow.classList.toggle('flex', Math.round(realEstateBuy) !== 0);
-  renderKpiBreakdown('kpiTotalValueOwnerBreakdown', byOwner, o => o.cur, fmtKRWShort, false, 'text-xs text-slate-500 dark:text-slate-400', true);
+  renderKpiBreakdown('kpiTotalValueOwnerBreakdown', byOwner, o => o.cur, fmtKRWShort, false, 'text-sm text-slate-500 dark:text-slate-400', true);
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
 
@@ -414,7 +414,7 @@ function renderKPIs() {
   profitEl.className = 'text-lg font-bold ' + profitColor(totalProfit);
   const profitRateEl = document.getElementById('kpiTotalProfitRate');
   profitRateEl.textContent = fmtPct(totalProfitRate);
-  profitRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(totalProfitRate);
+  profitRateEl.className = 'text-sm font-semibold mt-0.5 ' + profitColor(totalProfitRate);
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률(부동산 제외) - 다른 태그보다 눈에
   // 잘 띄도록 크게 표시
   renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwnerFinancial);
@@ -435,7 +435,7 @@ function renderKPIs() {
   dailyEl.className = 'text-lg font-bold ' + profitColor(financialDailyProfit);
   const dailyRateEl = document.getElementById('kpiDailyProfitRate');
   dailyRateEl.textContent = fmtPct(dailyProfitRate);
-  dailyRateEl.className = 'text-xs font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
+  dailyRateEl.className = 'text-sm font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익(부동산 제외) - 다른 태그보다 눈에
   // 잘 띄도록 크게 표시
@@ -584,10 +584,10 @@ function coreStockRowHtml(c, info) {
   // [등락률/금액 위치 변경] 종목명 옆(괄호)이 아니라, 원래 티커가 있던 두 번째 줄 자리에 표시한다 -
   // 티커 자체는 이제 화면에 안 보인다(data-ticker 속성에는 그대로 남아있어 클릭 시 상세 모달 연동은
   // 그대로 동작한다).
-  const changeLine = `<span class="text-[11px] font-medium ${changeColorClass}">${changeText} / ${fmtSignedNative(dailyChangeAmount, isForeign)}</span>`;
+  const changeLine = `<span class="text-sm font-medium ${changeColorClass}">${changeText} / ${fmtSignedNative(dailyChangeAmount, isForeign)}</span>`;
   const sessionMeta = SESSION_BADGE_META[info.session];
   const sessionBadge = sessionMeta
-    ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
+    ? `<span class="ml-1 text-sm px-1.5 py-0.5 rounded ${sessionMeta.cls}" title="${sessionMeta.title}">${sessionMeta.label}</span>`
     : '';
   const extendedHoursSub = extendedHoursSublineHtml(info.session, info.regularMarketPrice, info.previousClose, isForeign);
   const candle = miniCandleSvg(info.todayOpen, info.todayHigh, info.todayLow, info.price);
@@ -612,9 +612,9 @@ function coreStockRowHtmlError(c) {
   <div class="flex items-center justify-between gap-2 py-3 border-b border-slate-50 dark:border-slate-800/70 last:border-0">
     <div class="min-w-0">
       <div class="font-medium text-sm truncate">${escapeHtml(c.name)}</div>
-      <div class="text-[11px] text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
+      <div class="text-sm text-slate-400 font-mono truncate">${escapeHtml(c.ticker)}</div>
     </div>
-    <div class="text-right shrink-0 pl-2 text-[11px] font-medium text-amber-500 dark:text-amber-400">⚠️ 시세 조회 실패</div>
+    <div class="text-right shrink-0 pl-2 text-sm font-medium text-amber-500 dark:text-amber-400">⚠️ 시세 조회 실패</div>
   </div>`;
 }
 
@@ -633,16 +633,16 @@ function coreIndexCardHtml(c, info) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center cursor-pointer hover:border-brand-300 dark:hover:border-brand-700"
     data-open-stock-detail data-ticker="${escapeHtml(c.ticker)}" data-name="${escapeHtml(c.name)}">
-    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
-    <div class="text-[12px] font-semibold truncate">${fmtNum(info.price, 1)}</div>
-    <div class="text-[10px] font-medium ${colorClass}">${isUp ? '+' : ''}${fmtNum(info.changePercent, 2)}%</div>
+    <div class="text-sm text-slate-400 truncate">${escapeHtml(c.name)}</div>
+    <div class="text-sm font-semibold truncate">${fmtNum(info.price, 1)}</div>
+    <div class="text-sm font-medium ${colorClass}">${isUp ? '+' : ''}${fmtNum(info.changePercent, 2)}%</div>
   </div>`;
 }
 function coreIndexCardHtmlError(c) {
   return `
   <div class="rounded-lg border border-slate-100 dark:border-slate-800 px-1.5 py-2 text-center">
-    <div class="text-[10px] text-slate-400 truncate">${escapeHtml(c.name)}</div>
-    <div class="text-[10px] text-amber-500 dark:text-amber-400 mt-1">조회 실패</div>
+    <div class="text-sm text-slate-400 truncate">${escapeHtml(c.name)}</div>
+    <div class="text-sm text-amber-500 dark:text-amber-400 mt-1">조회 실패</div>
   </div>`;
 }
 
@@ -771,7 +771,7 @@ function renderTopHoldingsTable(containerId, list, grandTotal) {
   }).join('');
 }
 
-// [모바일 2단(두 줄) 카드 레이아웃] 640px 미만 전용 - 좁은 화면에서 5열 표(text-[10px])가 너무 작아
+// [모바일 2단(두 줄) 카드 레이아웃] 640px 미만 전용 - 좁은 화면에서 5열 표(text-sm)가 너무 작아
 // 읽기 어렵다는 신고에 따라, 종목당 두 줄짜리 큼직한 카드로 대체한다(위 hidden sm:block 표와 데이터는
 // 완전히 동일, 화면 폭에 따라 둘 중 하나만 보임 - index.html 참고). 1줄: 종목명 + 현재가/등락률,
 // 2줄: 당일손익 + 총손익. 계산 로직(dailyRate/profit/valueHtml)은 renderTopHoldingsTable과 동일하게

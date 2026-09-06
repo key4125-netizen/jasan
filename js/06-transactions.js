@@ -774,9 +774,9 @@ function renderTransactionList() {
     const unit = t.currency === 'USD' ? '$' : '';
     const amount = t.quantity * t.price;
     const originTag = t.origin === 'initial'
-      ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">최초</span>'
+      ? '<span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">최초</span>'
       : t.origin === 'adjust'
-      ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">조정</span>'
+      ? '<span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">조정</span>'
       : '';
     // [금액 기반 입력 표시] price=1로 저장된 무티커 금액거래는 "1000주 × $1"처럼 보이면 혼란스러우니
     // quantity를 그대로 금액으로 보여준다. appliedRate(참고용으로 적어둔 환율)가 있으면 함께 표기한다.
@@ -790,13 +790,13 @@ function renderTransactionList() {
     <div class="py-2.5 flex items-start justify-between gap-2">
       <div class="min-w-0">
         <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
+          <span class="text-sm font-semibold px-1.5 py-0.5 rounded ${typeClass}">${typeLabel}</span>
           ${originTag}
           <span class="text-sm font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(t.ticker || '')}" data-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-          <span class="text-[11px] text-slate-400">${escapeHtml(t.ticker || '-')}</span>
+          <span class="text-sm text-slate-400">${escapeHtml(t.ticker || '-')}</span>
         </div>
-        <p class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}${t.memo ? ` · ${escapeHtml(t.memo)}` : ''}</p>
-        <p class="text-xs mt-0.5">${amountLine}</p>
+        <p class="text-sm text-slate-400 mt-0.5">${escapeHtml(t.date)} · ${escapeHtml(t.owner)} · ${escapeHtml(t.accountType)}${t.memo ? ` · ${escapeHtml(t.memo)}` : ''}</p>
+        <p class="text-sm mt-0.5">${amountLine}</p>
       </div>
       <div class="flex items-center gap-1 shrink-0">
         <button type="button" data-edit-tx="${t.id}" title="수정" class="touch-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
@@ -975,7 +975,7 @@ function togglePnlPeriodDetail(key) {
 function renderPnlDetailRow(tx) {
   const unit = tx.currency === 'USD' ? '$' : '';
   return `
-  <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 text-[11px] sm:text-xs">
+  <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 text-sm">
     <div class="flex items-center justify-between gap-2 mb-1 min-w-0">
       <span class="font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(tx.name)}</span>
       <span class="font-bold shrink-0 ${profitColor(tx.computedRealizedPnL)}">${fmtSigned(tx.computedRealizedPnL)}</span>
@@ -994,7 +994,7 @@ function renderPnlReportList(periods) {
   const container = document.getElementById('pnlReportListContainer');
   const nonEmpty = periods.filter((p) => p.tradeCount > 0);
   if (nonEmpty.length === 0) {
-    container.innerHTML = `<p class="text-center text-slate-400 text-xs py-6">해당 기간에 매도 거래가 없습니다.</p>`;
+    container.innerHTML = `<p class="text-center text-slate-400 text-sm py-6">해당 기간에 매도 거래가 없습니다.</p>`;
     return;
   }
   const rows = nonEmpty.slice().reverse();
@@ -1004,11 +1004,11 @@ function renderPnlReportList(periods) {
     <div class="rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
       <button type="button" data-pnl-detail-toggle="${escapeHtml(p.key)}"
         class="w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40">
-        <span class="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 shrink-0">${escapeHtml(p.label)}</span>
+        <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 shrink-0">${escapeHtml(p.label)}</span>
         <span class="flex-1 flex items-center justify-end gap-2 sm:gap-4 min-w-0">
-          <span class="text-xs sm:text-sm font-bold truncate ${profitColor(p.realizedPnL)}">${fmtSigned(p.realizedPnL)}</span>
-          <span class="hidden sm:inline text-xs text-slate-400 truncate">${fmtKRWShort(p.sellAmount)}</span>
-          <span class="text-[11px] sm:text-xs text-slate-400 shrink-0">${p.tradeCount}건</span>
+          <span class="text-sm font-bold truncate ${profitColor(p.realizedPnL)}">${fmtSigned(p.realizedPnL)}</span>
+          <span class="hidden sm:inline text-sm text-slate-400 truncate">${fmtKRWShort(p.sellAmount)}</span>
+          <span class="text-sm text-slate-400 shrink-0">${p.tradeCount}건</span>
         </span>
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}" data-pnl-chevron="${escapeHtml(p.key)}"></i>
       </button>
@@ -1037,7 +1037,7 @@ function renderPnlReportList(periods) {
 function updatePnlSection() {
   document.querySelectorAll('.pnl-period-btn').forEach((btn) => {
     const active = btn.dataset.pnlPeriod === state.pnlPeriod.granularity;
-    btn.className = 'pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md ' +
+    btn.className = 'pnl-period-btn text-sm font-medium px-3 py-1.5 rounded-md ' +
       (active ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400');
   });
 

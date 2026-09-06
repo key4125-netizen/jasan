@@ -224,22 +224,22 @@
           </div>
           <div class="min-w-0">
             <h1 class="text-base lg:text-xl font-bold tracking-tight truncate">Smart Asset Manager</h1>
-            <p class="text-[11px] lg:text-xs text-slate-500 dark:text-slate-400 truncate">개인 자산관리 총투자현황</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400 truncate">개인 자산관리 총투자현황</p>
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v211</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v211</p>
           </div>
         </div>
 
         <!-- [1번/2번 핵심 버튼] 타이틀 우측에 세로로 붙는다 - id/클릭 핸들러는 그대로라 위치만 옮겨도
              JS 쪽 수정이 필요 없다. -->
         <div class="flex flex-col gap-1.5 shrink-0 lg:flex-row lg:gap-1.5">
-          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-[11px] lg:text-xs font-semibold px-2.5 lg:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-sm font-semibold px-2.5 lg:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
             <i id="refreshBtnIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0"></i>
             <span id="refreshBtnText">시세 &amp; 환율 갱신</span>
           </button>
-          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-[11px] lg:text-xs font-medium px-2.5 lg:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
+          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-sm font-medium px-2.5 lg:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
             <i data-lucide="activity" class="w-3.5 h-3.5 shrink-0"></i> 핵심종목 실시간
           </button>
         </div>
@@ -263,11 +263,11 @@
         <div class="w-full overflow-x-auto min-[1200px]:w-auto min-[1200px]:flex-1 min-[1200px]:min-w-0 min-[1200px]:overflow-visible">
         <div class="flex items-center gap-0.5 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 sm:px-3 py-1.5 sm:py-2 shadow-sm w-fit" title="클릭하여 환율을 직접 수정할 수 있습니다">
           <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400 shrink-0"></i>
-          <span class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden sm:inline">현재 환율 </span>$1 =</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden sm:inline">현재 환율 </span>$1 =</span>
           <input id="exchangeRateInput" type="number" step="0.1"
-            class="w-10 sm:w-24 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5 shrink-0"
+            class="w-16 sm:w-24 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5 shrink-0"
             value="1450">
-          <span class="text-xs text-slate-500 dark:text-slate-400">원</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">원</span>
           <!-- [모바일 공간 확보] 연필 아이콘은 입력칸의 점선 밑줄이 이미 "수정 가능"을 알려주므로 굳이
                필요하지 않아 계속 숨겨둔다(sm 이상은 그대로 유지). -->
           <i data-lucide="pencil" class="hidden sm:block w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0"></i>
@@ -299,7 +299,7 @@
              동기화중/서버 동기화중지/서버 동기화오류)를 보여준다 - updateSyncStatusUI() 참고, 색상
              클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값). 고정 너비 없이
              내용 크기 그대로 렌더링된다(Phase 17부터 이어진 기존 설계 그대로 보존, 재설계하지 않음). -->
-        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
+        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-sm font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
 
         <!-- [Phase 17 P1-1 - 시스템관리 진입점 이동] 최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·
              JSON 불러오기·데이터 초기화 6개 버튼(과 숨김 file input)은 삭제/기능변경 없이 그대로
@@ -313,8 +313,8 @@
         </div>
       </div>
     </div>
-    <p id="refreshStatusMsg" class="text-xs text-slate-400 mt-2 hidden"></p>
-    <p id="autoRefreshStatusMsg" class="text-xs text-slate-400 mt-1 hidden"></p>
+    <p id="refreshStatusMsg" class="text-sm text-slate-400 mt-2 hidden"></p>
+    <p id="autoRefreshStatusMsg" class="text-sm text-slate-400 mt-1 hidden"></p>
   </header>
 
   <!-- ============================= 탭 내비게이션 ============================= -->
@@ -330,16 +330,16 @@
            동작하고 이 표시 문구와는 무관하므로(switchTab, js/03 참고) 라벨만 바꿔도 안전하다. 아이콘도
            "총자산현황"이 부동산·현금 등 포괄적 자산을 아우른다는 의미에 맞게 list-tree(목록)에서
            landmark(자산/건물을 상징)로 교체했다. -->
-      <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
+      <button data-tab="dashboard" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> 금융투자현황
       </button>
-      <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
+      <button data-tab="investmentDetail" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="landmark" class="w-3.5 h-3.5"></i> 총자산현황
       </button>
-      <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
+      <button data-tab="transactions" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="receipt" class="w-3.5 h-3.5"></i> 거래내역
       </button>
-      <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
+      <button data-tab="rebalance" class="tab-btn flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg whitespace-nowrap">
         <i data-lucide="scale" class="w-3.5 h-3.5"></i> 포트폴리오/자산예측
       </button>
     </div>
@@ -369,9 +369,9 @@
        보이도록). [총 평가금액] 카드는 이후 투자세부 탭으로 옮겨가 이 탭에는 더 이상 없다(바로 위
        [카드 재이동] 주석 참고). -->
   <div id="kpiFetchFailurePanel" class="hidden mb-4 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 sm:p-4">
-    <p class="text-xs sm:text-sm text-amber-700 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
+    <p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed">⚠️ 시세 반영 실패: <span id="kpiFetchFailureNames" class="font-medium"></span></p>
     <button id="retryFailedPricesBtn" type="button"
-      class="mt-2 w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+      class="mt-2 w-full sm:w-auto flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
       <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
       <span id="retryFailedPricesBtnText">실패 종목 일괄 재조회</span>
     </button>
@@ -394,11 +394,11 @@
           <div class="flex items-center gap-1.5">
             <button type="button" id="kpiDailyProfitDetailBtn" class="detail-btn"><i data-lucide="bar-chart-3" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
           </div>
-          <span id="kpiTodayRealizedBadge" class="hidden text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
+          <span id="kpiTodayRealizedBadge" class="hidden text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
         </div>
       </div>
       <p id="kpiDailyProfit" class="text-lg font-bold">0원</p>
-      <p id="kpiDailyProfitRate" class="text-xs font-semibold mt-0.5">0.00%</p>
+      <p id="kpiDailyProfitRate" class="text-sm font-semibold mt-0.5">0.00%</p>
       <!-- 총 손익 바로 아래에 보유자별(신랑/와이프/공동 등) 손익을 함께 보여준다 -->
       <div id="kpiDailyOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
       <!-- [통화별 일간손익] 신랑/와이프 손익 바로 아래에 거래 통화(a.currency) 기준 원화/해외통화
@@ -409,10 +409,10 @@
            dailyChangeInput/kpiDailyHint는 loadState 등 여러 곳에서 값을 그대로 읽고 쓰므로
            DOM에서 완전히 제거하지 않고 hidden 처리만 해서 기존 로직이 깨지지 않게 한다. -->
       <div class="hidden items-center gap-1 mt-0.5">
-        <span id="kpiDailyHint" class="text-[11px] text-slate-400">수동 변동률</span>
+        <span id="kpiDailyHint" class="text-sm text-slate-400">수동 변동률</span>
         <input id="dailyChangeInput" type="number" step="0.1" value="0"
-          class="w-14 text-xs bg-slate-100 dark:bg-slate-800 rounded px-1 py-0.5 text-right outline-none">
-        <span class="text-[11px] text-slate-400">%</span>
+          class="w-14 text-sm bg-slate-100 dark:bg-slate-800 rounded px-1 py-0.5 text-right outline-none">
+        <span class="text-sm text-slate-400">%</span>
       </div>
       <div id="kpiDailyProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
@@ -433,24 +433,24 @@
           </div>
           <!-- [총 실현손익 배지] 매도 거래 전체 누적 실현손익(getTotalRealizedPnL) - renderKPIs() 참고,
                매도 내역이 아예 없으면 숨긴다. -->
-          <span id="kpiTotalRealizedBadge" class="hidden text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
+          <span id="kpiTotalRealizedBadge" class="hidden text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
         </div>
       </div>
       <p id="kpiTotalProfit" class="text-base sm:text-lg font-bold truncate">0원</p>
-      <p id="kpiTotalProfitRate" class="text-[10px] sm:text-xs font-semibold mt-0.5">0.00%</p>
+      <p id="kpiTotalProfitRate" class="text-sm font-semibold mt-0.5">0.00%</p>
       <!-- [Phase 17 P1-1 - 금융자산 평가금액 보조정보] 새 카드를 만들지 않고 기존 손익 카드 안에 보조
            줄만 추가한다 - renderKPIs()(js/02)가 이미 계산해 둔 financialCur(부동산 제외, 이 카드의
            다른 숫자들과 동일한 범위)를 그대로 재사용한다(새 계산 없음). "총자산"이라는 표현은 부동산
            포함 전체로 오해될 수 있어 쓰지 않고, 범위를 명시하는 "금융자산 평가금액"만 사용한다. 부동산
            포함 전체 금액은 총자산현황 탭에 있다는 점만 짧게 안내한다. -->
-      <p class="text-[11px] text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+      <p class="text-sm text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
         금융자산 평가금액 <span id="kpiFinancialValueInline" class="font-semibold text-slate-600 dark:text-slate-300">0원</span>
-        <span class="block text-[10px] mt-0.5">부동산을 포함한 전체 자산은 옆 탭에서 확인할 수 있어요.</span>
+        <span class="block text-sm mt-0.5">부동산을 포함한 전체 자산은 옆 탭에서 확인할 수 있어요.</span>
       </p>
       <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
            (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
            "+850만원 (+18.2%)"처럼 금액과 수익률을 한 줄에 함께 표기한다). -->
-      <div id="kpiTotalProfitOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-[10px] sm:text-xs"></div>
+      <div id="kpiTotalProfitOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden text-sm"></div>
       <div id="kpiTotalProfitBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
   </section>
@@ -467,7 +467,7 @@
        다음 자리로 옮겨왔다 - 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings
        참고). [모바일 5열 한 줄 표기 - 최종] 상품명·평가금액·등락률·당일손익·총손익 5열(비중은 제외)을
        모든 화면 폭에서 동일하게 보여준다 - table-fixed + colgroup로 열 너비를 퍼센트 고정해 내용이
-       가로로 삐져나오지 않게 하고, 상품명만 truncate로 말줄임 처리한다. 폰트를 text-[10px]로 줄이고
+       가로로 삐져나오지 않게 하고, 상품명만 truncate로 말줄임 처리한다. 폰트를 text-sm로 줄이고
        각 숫자 열은 손익률을 금액 아래 두 줄로 쌓지 않고 한 열의 한 줄 값으로만 표시해(renderTopHoldingsTable
        참고) 320~375px 폭에서도 가로 스크롤 없이 한 줄에 다 들어간다. -->
   <!-- [드롭다운(아코디언)화] 공간 절약을 위해 기본 접힘 상태로 시작하고, 헤더를 누르면 펼쳐진다 -
@@ -481,12 +481,12 @@
       </button>
       <div id="topHoldingsDomesticBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <!-- [모바일 2단(두 줄) 카드 레이아웃] 640px 미만에서는 5열 표 대신 종목당 두 줄(1줄: 종목명+
-             현재가/등락률, 2줄: 당일손익/총손익) 카드로 보여준다 - 예전 표(text-[10px])는 좁은 화면에서
+             현재가/등락률, 2줄: 당일손익/총손익) 카드로 보여준다 - 예전 표(text-sm)는 좁은 화면에서
              글자가 너무 작아 식별이 어렵다는 신고가 있었다. sm 이상(데스크탑/태블릿)은 폭 여유가 있어
              기존 5열 표를 그대로 유지한다. renderTopHoldingsMobileCards()(js/02)가 채운다. -->
         <div id="topHoldingsDomesticMobile" class="sm:hidden px-4 pb-4 space-y-3"></div>
         <div class="hidden sm:block px-4 pb-4 overflow-x-auto">
-          <table class="w-full table-fixed text-xs whitespace-nowrap">
+          <table class="w-full table-fixed text-sm whitespace-nowrap">
             <colgroup>
               <col style="width:20%"><col style="width:23%"><col style="width:15%">
               <col style="width:19%"><col style="width:23%">
@@ -513,7 +513,7 @@
       <div id="topHoldingsForeignBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <div id="topHoldingsForeignMobile" class="sm:hidden px-4 pb-4 space-y-3"></div>
         <div class="hidden sm:block px-4 pb-4 overflow-x-auto">
-          <table class="w-full table-fixed text-xs whitespace-nowrap">
+          <table class="w-full table-fixed text-sm whitespace-nowrap">
             <colgroup>
               <col style="width:20%"><col style="width:23%"><col style="width:15%">
               <col style="width:19%"><col style="width:23%">
@@ -593,7 +593,7 @@
     <p class="text-sm text-slate-400 leading-relaxed break-keep mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
     <!-- [보유 부동산 없으면 문구에서 제외 - 요청 반영] updateRealEstateGuidanceText()(js/03)가 보유 부동산
          유무에 따라 텍스트 전체를 교체한다. -->
-    <p id="riskScopeNote" class="text-[11px] text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)</p>
+    <p id="riskScopeNote" class="text-sm text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)</p>
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
@@ -604,8 +604,8 @@
     <div class="space-y-2">
       <div class="rounded-xl border border-red-200 dark:border-red-900/50 overflow-hidden">
         <button type="button" id="riskyAccordionBtn" class="w-full flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/40 text-left">
-          <span class="text-xs font-semibold text-red-600 dark:text-red-400 flex items-center gap-1.5">
-            ⚠️ 리스크 감지 <span id="riskyCountBadge" class="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">0건</span>
+          <span class="text-sm font-semibold text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            ⚠️ 리스크 감지 <span id="riskyCountBadge" class="text-sm font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">0건</span>
           </span>
           <i data-lucide="chevron-down" class="w-4 h-4 text-red-400 transition-transform duration-200" id="riskyAccordionChevron"></i>
         </button>
@@ -649,7 +649,7 @@
            나타내고, 그 아래 3줄로 금융자산/부동산/달러자산 평가금액을 구분해 보여준다. 예전엔 달러자산만
            메인 숫자 옆에 괄호로 병기했는데(kpiForeignValueInline), 이제 다른 두 구분값과 같은 줄 형식으로
            통일했다(JS 쪽은 renderKPIs()에서 같은 id로 계속 채운다). -->
-      <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+      <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-sm">
         <div class="flex items-center justify-between gap-2">
           <span class="text-slate-400 shrink-0">금융자산 총평가금액</span>
           <span id="kpiFinancialValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
@@ -672,7 +672,7 @@
         </div>
       </div>
       <!-- 그 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
-      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-2 hidden text-xs"></div>
+      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-2 hidden text-sm"></div>
       <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
       <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
     </div>
@@ -697,7 +697,7 @@
         <p id="kpiTotalCost" class="text-lg font-bold">0원</p>
         <!-- [3가지 구분값 표기 - 요청 반영] 총자산투자금액(전체, 카드 제목+메인 숫자)/금융자산투자금액/
              부동산 자산투자금액을 구분해 보여준다. -->
-        <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+        <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-sm">
           <div class="flex items-center justify-between gap-2">
             <span class="text-slate-400 shrink-0">금융자산 투자금액</span>
             <span id="kpiFinancialCost" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
@@ -719,14 +719,14 @@
        절대 2줄로 줄바꿈되지 않고(필요하면 가로 스크롤), 대신 padding/font-size를 컴팩트하게 줄여
        실제로는 375px에서도 스크롤 없이 한 줄에 다 들어가도록 맞췄다. -->
   <section class="flex flex-nowrap items-center gap-1.5 sm:gap-2 mb-4 overflow-x-auto">
-    <button id="filterResetBtn" class="shrink-0 text-[11px] sm:text-xs font-medium px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap">필터 초기화</button>
-    <select id="filterOwner" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
+    <button id="filterResetBtn" class="shrink-0 text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap">필터 초기화</button>
+    <select id="filterOwner" class="shrink-0 text-sm sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 소유자</option>
     </select>
-    <select id="filterCategory" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
+    <select id="filterCategory" class="shrink-0 text-sm sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 자산군</option>
     </select>
-    <select id="filterAccount" class="shrink-0 text-[11px] sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
+    <select id="filterAccount" class="shrink-0 text-sm sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 계좌</option>
     </select>
   </section>
@@ -736,15 +736,15 @@
        높이를 브레이크포인트별로 축소한다(모바일: p-1.5·10px 제목·h-28 / sm 이상: 기존 p-4·text-sm·h-56). -->
   <section class="grid grid-cols-3 gap-1.5 sm:gap-4 mb-4">
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl p-1.5 sm:p-4 shadow-sm min-w-0">
-      <h3 class="text-[10px] sm:text-sm font-semibold mb-1 sm:mb-3 truncate">자산군별 비중</h3>
+      <h3 class="text-sm font-semibold mb-1 sm:mb-3 truncate">자산군별 비중</h3>
       <div class="h-28 sm:h-56"><canvas id="categoryChart"></canvas></div>
     </div>
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl p-1.5 sm:p-4 shadow-sm min-w-0">
-      <h3 class="text-[10px] sm:text-sm font-semibold mb-1 sm:mb-3 truncate">소유자별 비중</h3>
+      <h3 class="text-sm font-semibold mb-1 sm:mb-3 truncate">소유자별 비중</h3>
       <div class="h-28 sm:h-56"><canvas id="ownerChart"></canvas></div>
     </div>
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl p-1.5 sm:p-4 shadow-sm min-w-0">
-      <h3 class="text-[10px] sm:text-sm font-semibold mb-1 sm:mb-3 truncate">국내/해외 비중</h3>
+      <h3 class="text-sm font-semibold mb-1 sm:mb-3 truncate">국내/해외 비중</h3>
       <div class="h-28 sm:h-56"><canvas id="domesticChart"></canvas></div>
     </div>
   </section>
@@ -762,11 +762,11 @@
     <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
       <div class="flex items-baseline gap-4 mb-3">
         <div>
-          <p class="text-[11px] text-slate-400">총자산</p>
+          <p class="text-sm text-slate-400">총자산</p>
           <p id="assetListTotalValue" class="text-lg font-bold"></p>
         </div>
         <div>
-          <p class="text-[11px] text-slate-400">보유 자산 수</p>
+          <p class="text-sm text-slate-400">보유 자산 수</p>
           <p id="tableCountLabel" class="text-sm font-semibold"></p>
         </div>
       </div>
@@ -777,9 +777,9 @@
         <div class="relative">
           <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
           <input id="assetSearchInput" type="text" placeholder="종목명·티커·계좌·소유자 검색 후 Enter"
-            class="w-44 sm:w-56 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
+            class="w-44 sm:w-56 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
         </div>
-        <button type="button" id="assetSearchBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
+        <button type="button" id="assetSearchBtn" class="text-sm font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
       </div>
       <!-- 관점 전환(세그먼트 컨트롤) - 375px에서는 2x2, sm 이상에서는 한 줄. 선택 상태는 색상뿐 아니라
            굵은 테두리+체크 아이콘으로도 구분해(색맹/저시력 사용자 대비) 노안 사용자도 쉽게 식별할 수
@@ -809,7 +809,7 @@
          매입금액·평가금액·평가손익·수익률·자산군·국내해외·계좌·소유자·수정/삭제)은 행을 클릭하면
          열리는 상세 모달에 담는다(rowHtml/cardHtml 참고) - 이전과 동일. -->
     <div class="hidden sm:block overflow-x-auto">
-      <table class="w-full text-xs whitespace-nowrap">
+      <table class="w-full text-sm whitespace-nowrap">
         <thead>
           <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
             <th class="sortable px-3 py-2" data-key="name">종목명</th>
@@ -843,7 +843,7 @@
            이 헤더에는 이제 가장 자주 쓰는 "거래 추가"만 남는다. -->
       <div class="flex items-center gap-1 sm:gap-2 flex-nowrap">
         <button id="addTransactionBtn" type="button"
-          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 whitespace-nowrap">
+          class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-sm font-medium px-2 sm:px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 whitespace-nowrap">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 거래 추가
         </button>
       </div>
@@ -854,7 +854,7 @@
          늘려 검색어 칸의 span만 4->2로 줄여 네 필드를 전부 한 줄에 배치한다(수직 공간 절약). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
       <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-        <div class="col-span-2 text-xs">
+        <div class="col-span-2 text-sm">
           <span class="text-slate-500 dark:text-slate-400">조회기간</span>
           <div class="flex items-center gap-1.5 mt-1">
             <input id="txFilterFrom" type="date" class="w-full min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -862,13 +862,13 @@
             <input id="txFilterTo" type="date" class="w-full min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           </div>
         </div>
-        <label class="text-xs">
+        <label class="text-sm">
           <span class="text-slate-500 dark:text-slate-400">계좌</span>
           <select id="txFilterAccount" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
             <option value="ALL">전체 계좌</option>
           </select>
         </label>
-        <label class="text-xs">
+        <label class="text-sm">
           <span class="text-slate-500 dark:text-slate-400">거래유형</span>
           <select id="txFilterType" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
             <option value="ALL">전체</option>
@@ -876,7 +876,7 @@
             <option value="sell">매도</option>
           </select>
         </label>
-        <label class="col-span-2 sm:col-span-4 lg:col-span-2 text-xs">
+        <label class="col-span-2 sm:col-span-4 lg:col-span-2 text-sm">
           <span class="text-slate-500 dark:text-slate-400">종목명/티커 검색</span>
           <input id="txFilterSearch" type="text" placeholder="종목명 또는 티커로 검색"
             class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -884,9 +884,9 @@
       </div>
       <div class="flex items-center justify-end gap-2 mt-3">
         <button id="txFilterResetBtn" type="button"
-          class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">초기화</button>
+          class="text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">초기화</button>
         <button id="txFilterApplyBtn" type="button"
-          class="flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
+          class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">
           <i data-lucide="search" class="w-3.5 h-3.5"></i> 조회
         </button>
       </div>
@@ -901,7 +901,7 @@
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-4 overflow-hidden">
       <button type="button" id="txListAccordionBtn"
         class="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <h3 class="text-sm font-semibold">거래 목록 <span id="txListCount" class="text-xs font-normal text-slate-400"></span></h3>
+        <h3 class="text-sm font-semibold">거래 목록 <span id="txListCount" class="text-sm font-normal text-slate-400"></span></h3>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="txListAccordionChevron"></i>
       </button>
       <div id="txListAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
@@ -917,9 +917,9 @@
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 class="text-sm font-semibold">기간별 실현 손익</h3>
         <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
-          <button data-pnl-period="daily" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">일별</button>
-          <button data-pnl-period="monthly" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">월별</button>
-          <button data-pnl-period="yearly" class="pnl-period-btn text-xs font-medium px-3 py-1.5 rounded-md">연별</button>
+          <button data-pnl-period="daily" class="pnl-period-btn text-sm font-medium px-3 py-1.5 rounded-md">일별</button>
+          <button data-pnl-period="monthly" class="pnl-period-btn text-sm font-medium px-3 py-1.5 rounded-md">월별</button>
+          <button data-pnl-period="yearly" class="pnl-period-btn text-sm font-medium px-3 py-1.5 rounded-md">연별</button>
         </div>
       </div>
       <div id="pnlPeriodNav" class="flex items-center justify-center gap-3 mb-3">
@@ -930,11 +930,11 @@
 
       <div class="grid grid-cols-2 gap-2 mb-4">
         <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
-          <p class="text-[10px] text-slate-400 mb-1" title="실제로 팔아서 확정된 손익입니다(아직 보유 중인 자산의 평가손익은 포함하지 않음).">총 실현손익</p>
+          <p class="text-sm text-slate-400 mb-1" title="실제로 팔아서 확정된 손익입니다(아직 보유 중인 자산의 평가손익은 포함하지 않음).">총 실현손익</p>
           <p id="pnlSummaryTotal" class="text-sm font-bold">0원</p>
         </div>
         <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-center">
-          <p class="text-[10px] text-slate-400 mb-1">수익률</p>
+          <p class="text-sm text-slate-400 mb-1">수익률</p>
           <p id="pnlSummaryRate" class="text-sm font-bold">0%</p>
         </div>
       </div>
@@ -962,20 +962,20 @@
         <div class="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
           <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button id="seedTransactionsBtn" type="button" title="거래내역이 없는 보유 종목들을 '최초' 행으로 미리 채운 엑셀 양식을 내려받습니다. 아래 실제 거래(기간)를 추가로 적어 넣은 뒤 거래등록으로 함께 올리세요."
-              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-sm font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
               <i data-lucide="history" class="w-3.5 h-3.5"></i> 양식다운로드
             </button>
             <button id="backupTransactionsBtn" type="button" title="지금까지 등록된 전체 거래내역을 엑셀 파일로 내려받습니다(거래등록 업로드로 그대로 재사용 가능한 형식)"
-              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-sm font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
               <i data-lucide="download" class="w-3.5 h-3.5"></i> 거래백업
             </button>
             <button id="importTxExcelBtn" type="button" title="엑셀로 여러 건의 거래를 한번에 등록합니다(구분 컬럼: 최초/기간)"
-              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
+              class="shrink-0 flex items-center gap-1 sm:gap-1.5 text-sm font-medium px-2 sm:px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600 whitespace-nowrap">
               <i data-lucide="upload" class="w-3.5 h-3.5"></i> 거래등록
             </button>
             <input id="txExcelFileInput" type="file" accept=".xlsx,.xls" class="hidden">
           </div>
-          <p class="text-[11px] text-slate-400 leading-relaxed">엑셀 업로드 시 보유수량을 초과하는 매도 거래가 있으면 전체 파일이 저장되지 않고 어떤 거래가 문제인지 안내합니다.</p>
+          <p class="text-sm text-slate-400 leading-relaxed">엑셀 업로드 시 보유수량을 초과하는 매도 거래가 있으면 전체 파일이 저장되지 않고 어떤 거래가 문제인지 안내합니다.</p>
         </div>
       </div>
     </section>
@@ -994,8 +994,8 @@
          (요청 반영), 좀 더 포괄적인 이름으로 바꿨다 - 내부 subtab 키('target')와 DOM id(rebalanceSubTarget
          등)는 코드 영향 최소화를 위해 그대로 유지한다. -->
     <div class="flex items-center gap-1 mb-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
-      <button type="button" data-subtab="target" class="rebalance-subtab-btn active flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">포트폴리오 구성</button>
-      <button type="button" data-subtab="projection" class="rebalance-subtab-btn flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
+      <button type="button" data-subtab="target" class="rebalance-subtab-btn active flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">포트폴리오 구성</button>
+      <button type="button" data-subtab="projection" class="rebalance-subtab-btn flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
     </div>
 
     <div id="rebalanceSubTarget">
@@ -1003,7 +1003,7 @@
          어려운 경우가 많아, 실제로 매수/매도 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
          대시보드("금융투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
          이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
-    <p id="rebalanceScopeNote" class="text-[11px] font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
+    <p id="rebalanceScopeNote" class="text-sm font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
 
     <!-- [소유자별 독립 목표 비중 - Option B] 신랑/와이프가 완전히 독립된 목표를 갖는다 - 팝업
          (rebalanceTargetModal)은 하나를 공유하되 openRebalanceTargetModal(owner)로 어느 쪽을 편집
@@ -1062,7 +1062,7 @@
          없이 항상 펼쳐진 채로 상시 노출한다(positionAnalysisAccordionOpen.all은 더 이상 안 씀). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-4 p-3 sm:p-4">
       <h3 class="text-sm font-semibold flex items-center gap-1 mb-1">⚽ 전체 포지션별 목표비중 분석</h3>
-      <p id="positionScopeNote" class="text-[11px] text-slate-400 mb-3">일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.</p>
+      <p id="positionScopeNote" class="text-sm text-slate-400 mb-3">일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.</p>
       <div id="positionAnalysisCardAll"></div>
     </section>
 
@@ -1085,11 +1085,11 @@
         <div class="flex items-start justify-between gap-2 mb-1">
           <h3 class="text-sm font-semibold">📋 종목별 실행 가이드</h3>
           <button type="button" id="rebalanceGuideExportBtn"
-            class="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
+            class="shrink-0 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
             <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
           </button>
         </div>
-        <p id="guideScopeNote" class="text-[11px] text-slate-400">절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
+        <p id="guideScopeNote" class="text-sm text-slate-400">절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
       </div>
       <div id="rebalanceGuideAccordionsContainer"></div>
     </section>
@@ -1099,7 +1099,7 @@
   <div id="tabPanelProjection" class="hidden">
     <!-- [Phase 3-5 Safety Layer - B3] 목표 비중 합계가 깨진 경우(assessHouseholdWeightSums, js/21/js/05
          updateProjection) 계산 자체를 막고 이 배너만 보여준다 - 자동으로 비중을 재정규화하지 않는다. -->
-    <div id="projectionSafetyBlockBanner" class="hidden mb-3 p-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs space-y-1"></div>
+    <div id="projectionSafetyBlockBanner" class="hidden mb-3 p-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-sm space-y-1"></div>
 
     <!-- [초보자용 핵심 요약] "① 현재 자산 ② 앞으로 넣을 돈 ③ 예상 미래자산 ④ 어떤 가정을 썼는지"가
          한눈에 연결되도록 탭 최상단에 둔다. renderProjectionHeroSummary(js/05)가 채우며, 새로운 계산을
@@ -1110,18 +1110,18 @@
            "기준 시나리오"라는 표현은 쓰지 않는다 - 이 화면에 이미 "보수/일반/긍정 시나리오 비교" 기능이
            따로 있어 "시나리오"라는 단어를 여기서도 쓰면 그 기능과 혼동될 수 있다(Phase 16-B 재검증
            결과). 새 계산 없음 - 순수 표시 문구 추가. -->
-      <p class="text-[11px] font-semibold text-brand-600 dark:text-brand-300 text-center mb-1">지금 계획대로면</p>
+      <p class="text-sm font-semibold text-brand-600 dark:text-brand-300 text-center mb-1">지금 계획대로면</p>
       <div class="grid grid-cols-3 gap-2 text-center">
         <div>
-          <p class="text-[10px] text-slate-400">현재 자산</p>
+          <p class="text-sm text-slate-400">현재 자산</p>
           <p id="projectionHeroCurrent" class="text-sm sm:text-base font-bold text-slate-700 dark:text-slate-200 mt-0.5">-</p>
         </div>
         <div>
-          <p class="text-[10px] text-slate-400">매달 투자</p>
+          <p class="text-sm text-slate-400">매달 투자</p>
           <p id="projectionHeroMonthly" class="text-sm sm:text-base font-bold text-slate-700 dark:text-slate-200 mt-0.5">-</p>
         </div>
         <div>
-          <p id="projectionHeroFutureLabel" class="text-[10px] text-slate-400">20년 후 예상 자산</p>
+          <p id="projectionHeroFutureLabel" class="text-sm text-slate-400">20년 후 예상 자산</p>
           <!-- [Phase 17 P1-3 - 미래자산을 가장 크게] 이 화면을 연 목적에 해당하는 숫자라 다른 두 칸보다
                한 단계 큰 글자로 강조한다(text-lg/xl) - 계산값(fmtKRWShort(futureTotal))은 무변경, 폰트
                크기만 키움. -->
@@ -1135,25 +1135,25 @@
            (Phase 16-B에서 "가정 요약 카드" 신설안은 카드 증가 금지 원칙과 충돌해 철회됨). 운용보수는
            가구 단위 가중평균값이 이 화면 계산 흐름에 아직 없어(Monte Carlo 실행 후에만 산출됨) 새
            계산을 만들지 않기 위해 이 한 줄에는 포함하지 않았다. -->
-      <p id="projectionPlanFactsLine" class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center leading-relaxed">
+      <p id="projectionPlanFactsLine" class="text-sm text-slate-500 dark:text-slate-400 mt-2 text-center leading-relaxed">
         투자 기간 <b id="projectionPlanYearsText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
         · 투자금 증가 <b id="projectionPlanGrowthText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
         · 성장률 <b id="projectionPlanRateText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
         · 인플레이션 <b id="projectionPlanInflationText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
       </p>
-      <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">현재 설정한 가정대로 계산하면 위와 같은 금액이며, 실제 투자 결과는 매년 달라질 수 있습니다.</p>
+      <p class="text-sm text-slate-400 mt-1 leading-relaxed">현재 설정한 가정대로 계산하면 위와 같은 금액이며, 실제 투자 결과는 매년 달라질 수 있습니다.</p>
 
-      <button type="button" id="projectionAssumptionsAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 mt-2 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
+      <button type="button" id="projectionAssumptionsAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 mt-2 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
         <span class="detail-card-accordion-label">이 계산은 이런 가정을 사용했어요</span>
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
       </button>
       <div id="projectionAssumptionsAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <ul id="projectionAssumptionsList" class="text-[11px] text-slate-500 dark:text-slate-400 space-y-1 pt-2 pl-4 list-disc"></ul>
+        <ul id="projectionAssumptionsList" class="text-sm text-slate-500 dark:text-slate-400 space-y-1 pt-2 pl-4 list-disc"></ul>
         <!-- [Phase 25 P2] 인플레이션율은 계좌와 무관한 전역 가정이므로 "투자계획"이 아니라 여기(가정)에
              속한다. 값 자체는 팝업에서 [취소]/[확인]으로만 바꿀 수 있다(입력 중 즉시 저장하지 않는다). -->
         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <span class="text-xs text-slate-500 dark:text-slate-400">인플레이션율 <b id="projectionInflationSummary" class="text-slate-700 dark:text-slate-200">2.5%</b></span>
-          <button type="button" id="openProjectionAssumptionsBtn" class="touch-target min-h-[44px] shrink-0 flex items-center gap-1 text-xs font-semibold px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+          <span class="text-sm text-slate-500 dark:text-slate-400">인플레이션율 <b id="projectionInflationSummary" class="text-slate-700 dark:text-slate-200">2.5%</b></span>
+          <button type="button" id="openProjectionAssumptionsBtn" class="touch-target min-h-[44px] shrink-0 flex items-center gap-1 text-sm font-semibold px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
             <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> 가정 수정
           </button>
         </div>
@@ -1185,7 +1185,7 @@
     <!-- [Phase 25 P3] 이 화면의 모든 예측은 Portfolio 탭의 목표비중을 전제로 계산된다("목표 비중으로
          오늘 전액 조정했다고 가정") - 목표비중 자체는 현재비중과의 비교/리밸런싱 실행 맥락이 있는
          Portfolio에 그대로 두되(Phase 25 IA 결정), 여기서 그 사실과 이동 경로를 명시한다. -->
-    <button type="button" id="goToRebalanceTargetBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-2 hover:text-brand-600 dark:hover:text-brand-300">
+    <button type="button" id="goToRebalanceTargetBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-2 hover:text-brand-600 dark:hover:text-brand-300">
       <span>이 예측은 <b>포트폴리오 구성 탭</b>의 목표비중을 기준으로 합니다</span>
       <span class="shrink-0 font-semibold whitespace-nowrap">목표비중 보기 ›</span>
     </button>
@@ -1204,14 +1204,14 @@
            같이 설정하도록) 이 화면에는 읽기 전용 요약 배지만 남겼다 - 입력은 오직 팝업에서만 한다
            (openMonthlyContributionAllocationModal/updateMonthlyContributionSummary, js/05 참고). -->
       <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
-        <span class="shrink-0 text-[11px] text-slate-400 flex items-center gap-1.5">
+        <span class="shrink-0 text-sm text-slate-400 flex items-center gap-1.5">
           매달 투자할 금액
-          <span id="monthlyContributionSummary" class="text-xs font-semibold text-slate-700 dark:text-slate-200">미설정</span>
+          <span id="monthlyContributionSummary" class="text-sm font-semibold text-slate-700 dark:text-slate-200">미설정</span>
         </span>
         <!-- [월적립금 설정 버튼 - 요청 반영] 월 적립금 총액 입력 + 특정 종목 배분을 모두 이 팝업 안에서
              처리한다(js/05 openMonthlyContributionAllocationModal 참고). [수익률 관리] 버튼 바로 앞,
              월 적립금 요약 배지 바로 뒤에 배치한다. -->
-        <button type="button" id="openMonthlyContributionAllocationBtn" class="shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
+        <button type="button" id="openMonthlyContributionAllocationBtn" class="shrink-0 flex items-center gap-1 text-sm font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
           <i data-lucide="split" class="w-3 h-3"></i> 적립금 설정
         </button>
       </div>
@@ -1220,7 +1220,7 @@
            "이 계산은 이런 가정을 사용했어요" 영역의 [가정 수정] 버튼으로 옮겼다.
            매년 투자금 증가율도 [적립금 설정] 팝업으로 옮겨, "매달 얼마 / 몇 년 / 매년 얼마나
            늘릴지"가 한 화면에서 하나의 투자계획으로 읽히게 했다. id/리스너는 그대로 재사용한다. -->
-      <span class="block mt-1.5 text-[11px] text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
+      <span class="block mt-1.5 text-sm text-slate-400">기준 · "보수적/일반적/긍정적"은 과거 시장 평균·변동성을 참고한 근사치이며 실제 수익률을 보장하지 않습니다.</span>
       <!-- [Phase 7-F - 일반 사용자 기본 흐름에서 비노출/저시인성 처리] 이 버튼은 "월 적립금" 옆 브랜드
            색 버튼 행에서 여기(시나리오 근사치 안내 문구 바로 아래)로 옮기고, 작은 회색 텍스트 링크로
            되돌렸다(예전 스타일 - 위 안내 주석에 남아있던 "예전엔 눈에 잘 안 띄는 회색 테두리 버튼"
@@ -1228,7 +1228,7 @@
            흐름에서는 거의 마주치지 않는 위치·스타일로 낮췄다. id/클릭 핸들러(openScenarioRateManagerModal,
            js/05)는 그대로이므로 JS는 전혀 건드리지 않았다 - customScenarioRates/getTargetProjectionRate()/
            키워드 기반 종목 분류 기능은 기능 삭제 없이 그대로 유지된다(Phase 7-E/7-F ISSUE A 결정). -->
-      <button type="button" id="openScenarioRateManagerBtn" class="block mt-1 text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600 dark:hover:text-slate-300">
+      <button type="button" id="openScenarioRateManagerBtn" class="block mt-1 text-sm text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600 dark:hover:text-slate-300">
         수익률 직접 조정(고급)
       </button>
     </div>
@@ -1252,11 +1252,11 @@
            제거됐다. -->
       <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
         <h3 class="text-sm font-semibold">🏦 절세계좌 현황</h3>
-        <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
+        <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-sm font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
           <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
         </button>
       </div>
-      <p class="text-[11px] text-slate-400 mb-3">ISA/IRP/연금저축 등 절세계좌 보유 자산의 가구 합계 현황입니다. 위 일반계좌 시나리오와는 별도로 계산됩니다.</p>
+      <p class="text-sm text-slate-400 mb-3">ISA/IRP/연금저축 등 절세계좌 보유 자산의 가구 합계 현황입니다. 위 일반계좌 시나리오와는 별도로 계산됩니다.</p>
       <div id="taxAdvantagedSummary"></div>
     </section>
 
@@ -1270,7 +1270,7 @@
       <button type="button" id="scenarioSectionAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3 text-left">
         <span>
           <span class="text-sm font-semibold block">📈 성장률별 결과 보기</span>
-          <span class="text-[11px] text-slate-400 mt-0.5 block">보수적 · 일반적 · 긍정적 3가지 성장률을 가정했을 때 각각 어떻게 되는지 비교합니다(변동성 없는 단일 경로 계산).</span>
+          <span class="text-sm text-slate-400 mt-0.5 block">보수적 · 일반적 · 긍정적 3가지 성장률을 가정했을 때 각각 어떻게 되는지 비교합니다(변동성 없는 단일 경로 계산).</span>
         </span>
         <i data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform duration-200 detail-card-accordion-chevron"></i>
       </button>
@@ -1295,7 +1295,7 @@
                  이름에서부터 분명히 하기 위해 바꿨다. -->
             <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 sm:p-4 mb-3">
               <h3 class="text-sm font-semibold mb-1">📊 시나리오별 일반계좌 그래프</h3>
-              <p id="scenarioCompareGeneralDesc" class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다. 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+              <p id="scenarioCompareGeneralDesc" class="text-sm text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다. 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
               <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
             </section>
 
@@ -1303,15 +1303,15 @@
             <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
               <div class="px-4 py-3">
                 <h3 class="text-sm font-semibold">시나리오별 일반계좌 금액 비교</h3>
-                <p class="text-[11px] text-slate-400 mt-0.5">5년 단위 시점마다 3개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
+                <p class="text-sm text-slate-400 mt-0.5">5년 단위 시점마다 3개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
               </div>
-              <button type="button" id="scenarioCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
+              <button type="button" id="scenarioCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
                 <span class="detail-card-accordion-label">세부 항목 보기</span>
                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
               </button>
               <div id="scenarioCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
                 <div class="overflow-x-auto px-4 pb-4">
-                  <table class="w-full text-xs">
+                  <table class="w-full text-sm">
                     <thead>
                       <tr id="scenarioCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-left"></tr>
                     </thead>
@@ -1328,7 +1328,7 @@
                  수익률로 복리 성장, 신규 매수 없음)을 모두 더한 가구 전체 총자산 기준 시나리오. -->
             <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 sm:p-4 mb-3">
               <h3 class="text-sm font-semibold mb-1">📊 시나리오별 총 자산 그래프</h3>
-              <p id="totalAssetGeneralDesc" class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>·부동산까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
+              <p id="totalAssetGeneralDesc" class="text-sm text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>·부동산까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
               <div class="h-72 sm:h-80"><canvas id="totalAssetCompareChart"></canvas></div>
             </section>
 
@@ -1336,15 +1336,15 @@
             <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
               <div class="px-4 py-3">
                 <h3 class="text-sm font-semibold">시나리오별 총자산 금액 비교</h3>
-                <p id="totalAssetCompareDesc" class="text-[11px] text-slate-400 mt-0.5">일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
+                <p id="totalAssetCompareDesc" class="text-sm text-slate-400 mt-0.5">일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
               </div>
-              <button type="button" id="totalAssetCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
+              <button type="button" id="totalAssetCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
                 <span class="detail-card-accordion-label">세부 항목 보기</span>
                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
               </button>
               <div id="totalAssetCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
                 <div class="overflow-x-auto px-4 pb-4">
-                  <table class="w-full text-xs">
+                  <table class="w-full text-sm">
                     <thead>
                       <tr id="totalAssetCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-left"></tr>
                     </thead>
@@ -1365,7 +1365,7 @@
          재검증 결과 - 새 계산/새 카드 없음, 순수 시각적 구분자). -->
     <div class="flex items-center gap-2 my-4">
       <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
-      <span class="text-[11px] font-semibold px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 whitespace-nowrap">여기부터는 계획의 불확실성을 살펴봅니다</span>
+      <span class="text-sm font-semibold px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 whitespace-nowrap">여기부터는 계획의 불확실성을 살펴봅니다</span>
       <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
     </div>
 
@@ -1380,7 +1380,7 @@
            방식)이 항상 펼쳐진 긴 텍스트였다(모바일에서 실행 버튼 도달 전 스크롤 부담이 큼, Phase 24-A
            감사 지적) - 내용은 하나도 지우지 않고 짧은 한 줄 + ⓘ로 압축했다. 클릭하면 기존 문단과
            "공식 모델" 박스 내용을 그대로 합쳐서 보여준다(openMcInfoModal, 아래 정의). -->
-      <button type="button" id="mcIntroInfoBtn" class="w-full min-h-[44px] flex items-center justify-between gap-2 text-left text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-3 hover:text-brand-600 dark:hover:text-brand-300">
+      <button type="button" id="mcIntroInfoBtn" class="w-full min-h-[44px] flex items-center justify-between gap-2 text-left text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-3 hover:text-brand-600 dark:hover:text-brand-300">
         <span>실제 미래는 여러 경로로 달라질 수 있습니다</span>
         <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
       </button>
@@ -1397,16 +1397,16 @@
 
       <div class="grid grid-cols-2 gap-2 mb-3">
         <div>
-          <label class="text-[10px] text-slate-400 block mb-1">시나리오</label>
-          <select id="mcPresetSelect" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          <label class="text-sm text-slate-400 block mb-1">시나리오</label>
+          <select id="mcPresetSelect" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
             <option value="conservative">보수적</option>
             <option value="normal" selected>일반적</option>
             <option value="optimistic">긍정적</option>
           </select>
         </div>
         <div>
-          <label class="text-[10px] text-slate-400 block mb-1">Simulation 횟수</label>
-          <select id="mcIterationsSelect" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          <label class="text-sm text-slate-400 block mb-1">Simulation 횟수</label>
+          <select id="mcIterationsSelect" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
             <option value="5000">5,000회(Fast)</option>
             <option value="10000" selected>10,000회(Standard)</option>
             <option value="50000">50,000회(High Precision)</option>
@@ -1414,15 +1414,15 @@
         </div>
       </div>
       <div class="mb-3">
-        <label class="text-[10px] text-slate-400 block mb-1">목표금액(선택, 원)</label>
+        <label class="text-sm text-slate-400 block mb-1">목표금액(선택, 원)</label>
         <!-- [Phase 22 STEP 8] min="0" 추가 - 계산(js/19 goalAmount>0 게이트)은 이미 음수 입력을
              "미설정"과 동일하게 안전 처리하고 있었다(실측 확인, 잘못된 확률/NaN 없음) - 이 속성은
              그 안전한 기존 동작을 바꾸지 않고, 목표금액이 0 이상이어야 한다는 의도를 입력 단계에서도
              드러내는 최소한의 UI 힌트다(브라우저 네이티브 스피너/유효성 표시, JS 로직 무변경). -->
-        <input id="mcGoalAmountInput" type="number" inputmode="numeric" min="0" placeholder="예: 1000000000 (10억원)" class="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
+        <input id="mcGoalAmountInput" type="number" inputmode="numeric" min="0" placeholder="예: 1000000000 (10억원)" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
         <!-- [Phase 3-2] 명목/실질 중 어느 기준의 목표금액인지 - 기본값은 기존 동작과의 호환을 위해
              명목(변환 없이 그대로 Engine에 전달)으로 둔다(js/19 참고). -->
-        <div class="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+        <div class="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
           <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="nominal" checked> 미래 명목금액</label>
           <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="real"> 현재 구매력 기준</label>
         </div>
@@ -1436,7 +1436,7 @@
              버튼을 아래로 밀어내고, 입력이 즉시 저장돼 되돌릴 수 없었으며, 빈칸/placeholder "0"이라
              "미확인"과 "명시적 0%"가 화면에서 구분되지 않았다. 팝업으로 옮기고 상태를 글자로 함께
              표시한다(색상만으로 상태를 전달하지 않는다는 원칙). -->
-        <button type="button" id="mcFeeRatesToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-xs font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2">
+        <button type="button" id="mcFeeRatesToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2">
           <span>운용보수(연간) 설정</span>
           <span id="mcFeeSummary" class="shrink-0 font-semibold whitespace-nowrap">전부 미확인</span>
         </button>
@@ -1453,26 +1453,26 @@
       <div id="mcSafetyIssues" class="hidden mt-3"></div>
 
       <div id="mcProgressArea" class="hidden mt-3">
-        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
         <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
           <div id="mcProgressBar" class="h-full bg-brand-600 transition-[width] duration-150" style="width:0%"></div>
         </div>
-        <p id="mcProgressText" class="text-[10px] text-slate-400 mt-1 text-right">0 / 0회 (0%)</p>
+        <p id="mcProgressText" class="text-sm text-slate-400 mt-1 text-right">0 / 0회 (0%)</p>
       </div>
 
-      <p id="mcStatusText" class="text-xs text-center mt-3 hidden"></p>
+      <p id="mcStatusText" class="text-sm text-center mt-3 hidden"></p>
 
       <div id="mcResultArea" class="hidden mt-3">
-        <p id="mcInflationNote" class="text-[10px] text-slate-400 mb-1">인플레이션율: -</p>
-        <p id="mcWeightedFeeNote" class="text-[10px] text-slate-400 mb-1">예상 연간 운용보수(포트폴리오 가중평균): -</p>
-        <div id="mcContributionScheduleArea" class="text-[10px] text-slate-400 mb-2 leading-relaxed"></div>
+        <p id="mcInflationNote" class="text-sm text-slate-400 mb-1">인플레이션율: -</p>
+        <p id="mcWeightedFeeNote" class="text-sm text-slate-400 mb-1">예상 연간 운용보수(포트폴리오 가중평균): -</p>
+        <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mb-2 leading-relaxed"></div>
         <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
-          <p class="text-[11px] text-slate-500 dark:text-slate-400">중간 수준 예상자산</p>
-          <p class="text-[10px] text-slate-400 mt-1">명목가치(미래 시점 금액)</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">중간 수준 예상자산</p>
+          <p class="text-sm text-slate-400 mt-1">명목가치(미래 시점 금액)</p>
           <p id="mcP50Text" class="text-xl font-bold text-brand-600 dark:text-brand-300">-</p>
-          <p class="text-[10px] text-slate-400 mt-1">현재 구매력 기준(실질가치)</p>
+          <p class="text-sm text-slate-400 mt-1">현재 구매력 기준(실질가치)</p>
           <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
-          <p class="text-[10px] text-slate-400 mt-1.5 leading-relaxed">이 값은 시뮬레이션 결과 중 "가장 전형적인(중앙값, P50)" 경우입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
+          <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">이 값은 시뮬레이션 결과 중 "가장 전형적인(중앙값, P50)" 경우입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
         </div>
 
         <!-- [Phase 22 STEP 10 - P50 바로 다음에 목표 도달 가능성] Phase 21 T-11: 목표금액을 설정한
@@ -1490,7 +1490,7 @@
         <div id="mcSafetyCritical" class="hidden mb-3 space-y-1.5"></div>
 
         <div class="overflow-x-auto">
-          <table class="w-full text-xs">
+          <table class="w-full text-sm">
             <thead>
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
                 <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
@@ -1504,20 +1504,20 @@
             <tbody id="mcMilestoneTableBody"></tbody>
           </table>
         </div>
-        <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">"낮은 편"은 시뮬레이션 결과 중 하위 10% 수준(P10), "중간 수준"은 중앙값(P50), "높은 편"은 상위 10% 수준(P90)입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 실질가치(현재 구매력 기준)입니다.</p>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed">"낮은 편"은 시뮬레이션 결과 중 하위 10% 수준(P10), "중간 수준"은 중앙값(P50), "높은 편"은 상위 10% 수준(P90)입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 실질가치(현재 구매력 기준)입니다.</p>
 
-        <p class="text-[10px] text-slate-400 mt-3 mb-1">명목가치 범위(20년 후 기준)</p>
+        <p class="text-sm text-slate-400 mt-3 mb-1">명목가치 범위(20년 후 기준)</p>
         <div id="mcRangeBarsArea" class="space-y-1.5"></div>
-        <p class="text-[10px] text-slate-400 mt-3 mb-1">실질가치 범위(현재 구매력 기준, 20년 후 기준)</p>
+        <p class="text-sm text-slate-400 mt-3 mb-1">실질가치 범위(현재 구매력 기준, 20년 후 기준)</p>
         <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
 
-        <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
+        <p class="text-sm text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
 
         <!-- [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항(변동성/데이터
              충분성/상관계수 등)과 매번 동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘
              영역으로 모은다 - 숨기는 것이 아니라 원하면 언제든 펼쳐 전부 확인할 수 있다(위험을 숨기지
              않는다는 원칙 유지, 판정 로직 무변경). -->
-        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
+        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
           <span id="mcSafetyDetailToggleLabel">주의사항 및 계산 방법 자세히 보기</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcSafetyDetailChevron"></i>
         </button>
@@ -1529,7 +1529,7 @@
   </div> <!-- /tabPanelProjection -->
   </div> <!-- /tabPanelRebalance (포트폴리오/자산예측 통합 탭) -->
 
-  <footer class="text-center text-[11px] text-slate-400 py-6">
+  <footer class="text-center text-sm text-slate-400 py-6">
     모든 데이터는 브라우저 localStorage에만 저장되며 외부로 전송되지 않습니다. 시세/환율 자동조회는 외부 무료 API(Yahoo Finance, open.er-api.com)를 이용합니다.
   </footer>
 </div>
@@ -1550,7 +1550,7 @@
     <!-- [Phase 18 P2-2] 기능/id/핸들러는 전부 무변경 - "데이터 관리"(안전)와 "주의"(초기화, 되돌릴 수
          없음)로 시각적으로만 구분해 데이터 초기화를 실수로 누르기 어렵게 정리했다. -->
     <div class="p-4 space-y-1.5">
-      <p class="px-1 pb-0.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">데이터 관리</p>
+      <p class="px-1 pb-0.5 text-sm font-semibold text-slate-400 uppercase tracking-wide">데이터 관리</p>
       <button id="addAssetBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">최초등록</button>
       <button id="exportExcelBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">엑셀 내보내기</button>
       <button id="importExcelBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">엑셀 업로드</button>
@@ -1558,7 +1558,7 @@
       <button id="autoBackupToggleBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
       <button id="importJsonBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">JSON 불러오기</button>
       <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
-      <p class="px-1 pt-3 pb-0.5 text-[11px] font-semibold text-red-400 uppercase tracking-wide border-t border-slate-100 dark:border-slate-800 mt-2">주의 - 되돌릴 수 없음</p>
+      <p class="px-1 pt-3 pb-0.5 text-sm font-semibold text-red-400 uppercase tracking-wide border-t border-slate-100 dark:border-slate-800 mt-2">주의 - 되돌릴 수 없음</p>
       <button id="resetDataBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 dark:text-red-400 text-left">데이터 초기화</button>
     </div>
   </div>
@@ -1582,8 +1582,8 @@
            애초에 시세가 없어 검색 결과가 나올 수 없는 자산은 오른쪽 [직접 입력] 토글로 전환해 기존처럼
            수동으로 채운다. 실제로 사용자가 입력하는 값은 소유자/계좌구분/수량/매수단가 4개뿐이다. -->
       <div class="col-span-2 flex items-center justify-between">
-        <span class="text-xs text-slate-500 dark:text-slate-400">종목 검색</span>
-        <label id="f_manualEntryToggleWrap" class="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+        <span class="text-sm text-slate-500 dark:text-slate-400">종목 검색</span>
+        <label id="f_manualEntryToggleWrap" class="flex items-center gap-1.5 text-sm text-slate-400 cursor-pointer">
           <input type="checkbox" id="f_manualEntryToggle" class="rounded">
           직접 입력(채권/현금/부동산 등)
         </label>
@@ -1596,13 +1596,13 @@
         </button>
       </div>
 
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">티커(Ticker)</span>
         <input id="f_ticker" type="text" readonly autocomplete="off" placeholder="검색으로 자동 채워짐 (직접 입력 모드에서는 수동 입력)"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">① 소유자</span>
         <select id="f_owner" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="신랑">신랑</option>
@@ -1611,7 +1611,7 @@
         </select>
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">② 계좌구분</span>
         <input id="f_accountType" list="accountTypeList" autocomplete="off" placeholder="예: 일반계좌"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -1622,7 +1622,7 @@
         </datalist>
       </label>
 
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">종목명</span>
         <input id="f_name" type="text" readonly autocomplete="off" placeholder="검색으로 자동 채워짐"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -1632,27 +1632,27 @@
            체크 시 수량 필드가 "총 보유금액"이 되고, 매수단가/현재가는 자동으로 1로 고정된다 - 원화는
            단가를 그대로 1로 두면 되지만, 외화(달러)는 calcRow()가 매번 오늘의 환율로 재환산하므로
            단가에 환율을 넣으면 이중환산되어 그대로 1로 고정해야 한다. -->
-      <label id="f_amountModeWrap" class="hidden col-span-2 flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer -mt-1">
+      <label id="f_amountModeWrap" class="hidden col-span-2 flex items-center gap-1.5 text-sm text-slate-400 cursor-pointer -mt-1">
         <input type="checkbox" id="f_amountMode" class="rounded">
         금액으로 입력 (수량 대신 총 보유금액을 입력)
       </label>
 
-      <label class="col-span-1 text-xs" id="f_quantityFieldWrap">
+      <label class="col-span-1 text-sm" id="f_quantityFieldWrap">
         <span class="text-slate-500 dark:text-slate-400" id="f_quantityLabel">③ 수량/좌수 <span class="text-slate-400">- 지금 가지고 있는 개수</span></span>
         <input id="f_quantity" type="number" step="any" min="0" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
-      <label class="col-span-1 text-xs" id="f_buyPriceFieldWrap">
+      <label class="col-span-1 text-sm" id="f_buyPriceFieldWrap">
         <span class="text-slate-500 dark:text-slate-400">④ 매수단가 <span id="f_buyPriceUnit" class="text-slate-400">(KRW)</span></span>
         <input id="f_buyPrice" type="number" step="any" min="0" placeholder="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 my-1"></div>
-      <p class="col-span-2 text-[11px] text-slate-400 -mt-1">아래 항목은 검색 결과(실시간 시세 조회) 기준으로 자동 채워지며 직접 수정할 수 없습니다. 매입금액은 수량×매수단가로 자동 계산됩니다.</p>
+      <p class="col-span-2 text-sm text-slate-400 -mt-1">아래 항목은 검색 결과(실시간 시세 조회) 기준으로 자동 채워지며 직접 수정할 수 없습니다. 매입금액은 수량×매수단가로 자동 계산됩니다.</p>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">자산군</span>
         <input id="f_category" list="categoryList" readonly placeholder="검색 시 자동 분류"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -1662,7 +1662,7 @@
         </datalist>
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">국내/해외</span>
         <select id="f_isDomestic" disabled class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="국내">국내</option>
@@ -1670,7 +1670,7 @@
         </select>
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">통화 <span class="text-slate-400">- 원화환산 계산 기준</span></span>
         <select id="f_currency" disabled class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="KRW">KRW (원화)</option>
@@ -1678,14 +1678,14 @@
         </select>
       </label>
 
-      <label class="col-span-2 text-xs" id="f_currentPriceFieldWrap">
+      <label class="col-span-2 text-sm" id="f_currentPriceFieldWrap">
         <span class="text-slate-500 dark:text-slate-400">현재가 <span id="f_curPriceUnit" class="text-slate-400">(KRW)</span> <span id="f_currentPriceStatus" class="text-slate-400"></span></span>
         <input id="f_currentPrice" type="number" step="any" readonly placeholder="검색 시 실시간 시세로 자동 채워짐"
           class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <!-- [자산별 역할(포지션) 분류] 일반계좌 자산 대상 - 미지정도 허용(선택 안 함이 기본값). -->
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">역할(포지션) <span class="text-slate-400">- 일반계좌 자산만 아래 비중 분석에 집계</span></span>
         <select id="f_role" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="">미지정</option>
@@ -1696,8 +1696,8 @@
       </label>
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
-        <button type="button" id="cancelModalBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-        <button type="submit" id="assetFormSubmitBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">추가</button>
+        <button type="button" id="cancelModalBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+        <button type="submit" id="assetFormSubmitBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">추가</button>
       </div>
     </form>
   </div>
@@ -1712,7 +1712,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
         <h3 id="assetDetailName" class="text-base font-bold truncate">-</h3>
-        <p id="assetDetailTicker" class="text-[11px] font-mono text-slate-400 truncate">-</p>
+        <p id="assetDetailTicker" class="text-sm font-mono text-slate-400 truncate">-</p>
       </div>
       <button type="button" id="closeAssetDetailModalBtn" class="shrink-0 ml-3 text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -1737,19 +1737,19 @@
         </div>
         <!-- 이동평균선(MA5/10/20/60/120) 범례 - 색상 점 + 명칭 + 현재 시점 수치. 데이터가 부족한
              기간(신규 상장 등)은 렌더링 시 '-'로 표시된다. -->
-        <div id="assetDetailMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium mb-1 px-1"></div>
+        <div id="assetDetailMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-sm font-medium mb-1 px-1"></div>
         <div class="relative h-56 sm:h-72">
           <canvas id="assetDetailChart"></canvas>
-          <p id="assetDetailChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+          <p id="assetDetailChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
         </div>
-        <p class="text-[9px] text-slate-300 dark:text-slate-600 mt-1 px-1">돋보기 버튼으로 확대/축소, 드래그로 좌우 이동할 수 있습니다.</p>
+        <p class="text-sm text-slate-300 dark:text-slate-600 mt-1 px-1">돋보기 버튼으로 확대/축소, 드래그로 좌우 이동할 수 있습니다.</p>
       </div>
 
-      <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs mb-4"></div>
+      <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-sm mb-4"></div>
 
       <!-- [종목 통합 표시 전용] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우에만 표시된다. -->
       <div id="assetDetailOwnerBreakdown" class="hidden mb-4">
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">소유자별 보유 세부 현황</h4>
+        <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">소유자별 보유 세부 현황</h4>
         <div id="assetDetailOwnerBreakdownList" class="space-y-1.5"></div>
       </div>
 
@@ -1783,7 +1783,7 @@
         <div id="assetDetailAnalysisBody">
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
             <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-            <span class="text-xs">종목 분석 리포트를 불러오는 중...</span>
+            <span class="text-sm">종목 분석 리포트를 불러오는 중...</span>
           </div>
         </div>
       </div>
@@ -1791,16 +1791,16 @@
 
     <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <div class="flex items-center gap-3">
-        <button type="button" id="assetDetailDeleteBtn" class="touch-target text-xs font-medium text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1.5">
+        <button type="button" id="assetDetailDeleteBtn" class="touch-target text-sm font-medium text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1.5">
           <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 삭제
         </button>
         <!-- 티커가 없는 자산(예금/적금/현금성 자산 등)만 노출된다 - 티커가 있는 자산은 시세 자동 조회로만
              갱신되고 이 화면에서 직접 수정할 수 없다. -->
-        <button type="button" id="assetDetailEditBtn" class="hidden touch-target text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1.5">
+        <button type="button" id="assetDetailEditBtn" class="hidden touch-target text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1.5">
           <i data-lucide="pencil" class="w-3.5 h-3.5"></i> 수정
         </button>
       </div>
-      <button type="button" id="assetDetailCloseBtn" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
+      <button type="button" id="assetDetailCloseBtn" class="touch-target text-sm font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
     </div>
   </div>
 </div>
@@ -1847,16 +1847,16 @@
              기준으로 바뀌었다 - data-pnl-months(개월 수)를 daysSinceMonthsAgoStart(js/01)로 실제 일수로
              환산해 기존 buildSnapshotSeries(days, ...)에 넘긴다(js/11 참고). -->
         <div class="flex items-center gap-1 shrink-0 flex-nowrap">
-          <button type="button" data-pnl-months="1" class="daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">당월</button>
-          <button type="button" data-pnl-months="3" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">3개월</button>
-          <button type="button" data-pnl-months="6" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">6개월</button>
-          <button type="button" data-pnl-months="12" class="daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">1년</button>
+          <button type="button" data-pnl-months="1" class="daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">당월</button>
+          <button type="button" data-pnl-months="3" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">3개월</button>
+          <button type="button" data-pnl-months="6" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">6개월</button>
+          <button type="button" data-pnl-months="12" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">1년</button>
         </div>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="dailyPnlChart"></canvas>
-        <p id="dailyPnlChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+        <p id="dailyPnlChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
       </div>
 
       <div id="dailyPnlList" class="pt-1"></div>
@@ -1879,15 +1879,15 @@
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-        <button type="button" data-tv-days="90" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-        <button type="button" data-tv-days="365" class="total-value-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tv-days="90" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tv-days="365" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="totalValueChart"></canvas>
-        <p id="totalValueChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+        <p id="totalValueChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
       </div>
 
       <div id="totalValueList" class="pt-1"></div>
@@ -1909,15 +1909,15 @@
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-        <button type="button" data-tp-days="90" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-        <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-tp-days="90" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="totalProfitChart"></canvas>
-        <p id="totalProfitChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+        <p id="totalProfitChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
       </div>
 
       <div id="totalProfitList" class="pt-1"></div>
@@ -1929,7 +1929,7 @@
      "MC란?"/"공식 모델"/"기준 연간 성장률의 의미"/"목표확률의 의미"/"데이터 한계" 등 여러 개의 설명을
      팝업마다 새로 만들지 않고, 제목/본문만 바꿔 끼우는 범용 모달 하나(openMcInfoModal, js/19)로
      재사용한다 - "팝업을 너무 많이 만들지 않는다"는 지침에 따름. 노안 사용자를 고려해 본문 글자 크기를
-     text-sm(다른 팝업의 text-xs보다 큼) + leading-relaxed로 키웠다. -->
+     text-sm(다른 팝업의 text-sm보다 큼) + leading-relaxed로 키웠다. -->
 <!-- ============================= 미래예측 가정 모달 (Phase 25 P1/P2) =============================
      인플레이션율처럼 "계획"이 아니라 "계산에 쓰는 전역 가정"에 해당하는 값을 모아 편집한다. 기존
      modal infrastructure(pushModalHistoryState/MODAL_CLOSE_FNS/SWIPE_MODAL_IDS)를 그대로 재사용하며,
@@ -1975,7 +1975,7 @@
             <span class="text-sm text-slate-400">%</span>
           </span>
         </label>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">미래 금액을 "지금 돈으로 얼마인지"(실질가치)로 바꿀 때 사용합니다. 명목금액 자체는 바뀌지 않습니다.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">미래 금액을 "지금 돈으로 얼마인지"(실질가치)로 바꿀 때 사용합니다. 명목금액 자체는 바뀌지 않습니다.</p>
       </div>
     </div>
     <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
@@ -2008,7 +2008,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">원/달러 환율 추이 (USD/KRW)</h3>
-        <p id="exchangeRateModalCurrent" class="text-xs text-slate-400 mt-0.5">현재 $1 = -</p>
+        <p id="exchangeRateModalCurrent" class="text-sm text-slate-400 mt-0.5">현재 $1 = -</p>
       </div>
       <button type="button" id="closeExchangeRateModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2017,15 +2017,15 @@
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1">
-        <button type="button" data-fx-period="1m" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-        <button type="button" data-fx-period="3m" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-fx-period="6m" class="fx-rate-period-btn daily-pnl-period-btn active text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-        <button type="button" data-fx-period="1y" class="fx-rate-period-btn daily-pnl-period-btn text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+        <button type="button" data-fx-period="1m" class="fx-rate-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
+        <button type="button" data-fx-period="3m" class="fx-rate-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
+        <button type="button" data-fx-period="6m" class="fx-rate-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
+        <button type="button" data-fx-period="1y" class="fx-rate-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="exchangeRateChart"></canvas>
-        <p id="exchangeRateChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+        <p id="exchangeRateChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
       </div>
 
       <div id="exchangeRateSummary" class="grid grid-cols-3 gap-2"></div>
@@ -2043,7 +2043,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">수익률 관리</h3>
-        <p class="text-xs text-slate-400 mt-0.5">종목별 보수적/일반적/긍정적 시나리오의 기준 연간 성장률을 직접 등록·수정합니다(평균이 아닌 전형적 경로 기준)</p>
+        <p class="text-sm text-slate-400 mt-0.5">종목별 보수적/일반적/긍정적 시나리오의 기준 연간 성장률을 직접 등록·수정합니다(평균이 아닌 전형적 경로 기준)</p>
       </div>
       <button type="button" id="closeScenarioRateManagerModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2053,15 +2053,15 @@
     <div class="px-4 py-3 overflow-y-auto space-y-4">
       <div>
         <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">등록된 종목</h4>
-          <button type="button" id="scenarioRateResetDefaultsBtn" class="text-[11px] font-medium text-slate-400 hover:text-red-500 dark:hover:text-red-400">기본값으로 초기화</button>
+          <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400">등록된 종목</h4>
+          <button type="button" id="scenarioRateResetDefaultsBtn" class="text-sm font-medium text-slate-400 hover:text-red-500 dark:hover:text-red-400">기본값으로 초기화</button>
         </div>
         <div class="flex items-center gap-1.5 px-2 mb-1">
-          <span class="flex-1 text-[10px] font-medium text-slate-400">종목/상품</span>
+          <span class="flex-1 text-sm font-medium text-slate-400">종목/상품</span>
           <div class="flex items-center gap-1 shrink-0">
-            <span class="w-14 text-[10px] font-medium text-center" style="color:#ef4444">보수</span>
-            <span class="w-14 text-[10px] font-medium text-center text-slate-500 dark:text-slate-400">일반</span>
-            <span class="w-14 text-[10px] font-medium text-center" style="color:#10b981">긍정</span>
+            <span class="w-14 text-sm font-medium text-center" style="color:#ef4444">보수</span>
+            <span class="w-14 text-sm font-medium text-center text-slate-500 dark:text-slate-400">일반</span>
+            <span class="w-14 text-sm font-medium text-center" style="color:#10b981">긍정</span>
             <span class="w-6 shrink-0"></span>
           </div>
         </div>
@@ -2069,7 +2069,7 @@
       </div>
 
       <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
-        <button type="button" id="scenarioRateAddNewBtn" class="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <button type="button" id="scenarioRateAddNewBtn" class="w-full flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 신규 종목 추가
         </button>
         <div id="scenarioRateAddNewForm" class="hidden mt-3 space-y-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
@@ -2077,8 +2077,8 @@
     </div>
 
     <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="cancelScenarioRateManagerModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-      <button type="button" id="saveScenarioRateManagerModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+      <button type="button" id="cancelScenarioRateManagerModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+      <button type="button" id="saveScenarioRateManagerModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
     </div>
   </div>
 </div>
@@ -2097,7 +2097,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">절세계좌 적립 예상</h3>
-        <p class="text-xs text-slate-400 mt-0.5">계좌별로 납입주기·금액·기간을 설정해 예상 적립금액을 계산합니다</p>
+        <p class="text-sm text-slate-400 mt-0.5">계좌별로 납입주기·금액·기간을 설정해 예상 적립금액을 계산합니다</p>
       </div>
       <button type="button" id="closeTaxAdvantagedPlanModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2114,11 +2114,11 @@
            종목에서 자동으로 정해지므로, 새 절세계좈에 종목을 사면 다음에 열 때 카드가 자동으로
            하나 더 나타난다. 종목이 없는 소유자는 "폴백" 안내만 보여준다. -->
       <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
-        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">신랑 절세계좌 적립 설정</p>
+        <p class="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1.5">신랑 절세계좌 적립 설정</p>
         <div id="taxAdvantagedAllocationHusband"></div>
       </div>
       <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
-        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">와이프 절세계좌 적립 설정</p>
+        <p class="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1.5">와이프 절세계좌 적립 설정</p>
         <div id="taxAdvantagedAllocationWife"></div>
       </div>
       <div id="taxAdvantagedPlanResults"></div>
@@ -2148,13 +2148,13 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">적립금 설정</h3>
-        <p class="text-xs text-slate-400 mt-0.5">매월 꾸준히 투자한다고 가정하고, 그 금액이 투입될 종목과 배분 비중을 직접 지정합니다</p>
+        <p class="text-sm text-slate-400 mt-0.5">매월 꾸준히 투자한다고 가정하고, 그 금액이 투입될 종목과 배분 비중을 직접 지정합니다</p>
         <!-- [Step 3 - 적립기간 UX] "평가기간(미래예측이 몇 년 후를 계산하는가)"과 "적립기간(이 금액을
              몇 년 동안 추가로 넣는가)"은 서로 다른 개념임을 명시적으로 설명한다 - 초보자가 아래 "적립
              기간(년)" 칸을 "예측 기간"과 혼동하지 않도록. 비워두는 경우(제한없음)와 0을 입력하는 경우의
              의미 차이도 함께 안내한다(js/01 normalizeMonthlyContributionByOwnerEntry의 null=제한없음
              규약과 정확히 일치하는 설명 - 계산 로직은 전혀 건드리지 않음). -->
-        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">💡 "적립 기간"은 미래예측 기간(20년)과는 다른 개념으로, <b class="text-slate-500 dark:text-slate-300">이 금액을 몇 년 동안 추가로 투자할지</b>를 뜻해요. <b class="text-slate-500 dark:text-slate-300">비워두면</b> 20년 내내 계속 투자하는 것으로 계산하고, <b class="text-slate-500 dark:text-slate-300">0</b>을 입력하면 지금부터는 추가로 넣지 않고 지금까지 모은 돈만 계속 굴러가는 것으로 계산해요.</p>
+        <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">💡 "적립 기간"은 미래예측 기간(20년)과는 다른 개념으로, <b class="text-slate-500 dark:text-slate-300">이 금액을 몇 년 동안 추가로 투자할지</b>를 뜻해요. <b class="text-slate-500 dark:text-slate-300">비워두면</b> 20년 내내 계속 투자하는 것으로 계산하고, <b class="text-slate-500 dark:text-slate-300">0</b>을 입력하면 지금부터는 추가로 넣지 않고 지금까지 모은 돈만 계속 굴러가는 것으로 계산해요.</p>
       </div>
       <button type="button" id="closeMonthlyContributionAllocationModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2167,52 +2167,52 @@
            기존 단일 monthlyContribution/monthlyContributionAllocation 로직으로 하위호환 폴백된다
            (getOwnerMonthlyContributionInputs, js/05). -->
       <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
-        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 신랑</h4>
+        <h4 class="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 신랑</h4>
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <label class="block text-xs">
+          <label class="block text-sm">
             <span class="text-slate-500 dark:text-slate-400">매달 투자할 금액</span>
             <input id="monthlyContributionTotalInputHusband" type="number" step="any" placeholder="0"
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
-          <label class="block text-xs">
+          <label class="block text-sm">
             <span class="text-slate-500 dark:text-slate-400" title="비워두면 20년(미래예측 전체 기간) 내내 투자, 0이면 지금부터 추가 투자 없음">적립 기간(년, 선택)</span>
             <input id="monthlyContributionYearsInputHusband" type="number" step="1" min="0" placeholder="제한없음"
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
         </div>
         <div class="flex items-center justify-between mb-1.5">
-          <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
-          <span id="monthlyContributionAllocationSumHintHusband" class="text-[11px] font-semibold">합계 0%</span>
+          <h5 class="text-sm font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
+          <span id="monthlyContributionAllocationSumHintHusband" class="text-sm font-semibold">합계 0%</span>
         </div>
         <div id="monthlyContributionAllocationListHusband" class="space-y-1.5"></div>
-        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintHusband">100%</span>)은 신랑의 국내/해외 목표 비중대로 계산됩니다.</p>
-        <button type="button" id="monthlyContributionAllocationAddBtnHusband" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintHusband">100%</span>)은 신랑의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnHusband" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
         <div id="monthlyContributionAllocationAddFormHusband" class="hidden mt-2 space-y-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
       </div>
 
       <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
-        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 와이프</h4>
+        <h4 class="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5">👤 와이프</h4>
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <label class="block text-xs">
+          <label class="block text-sm">
             <span class="text-slate-500 dark:text-slate-400">매달 투자할 금액</span>
             <input id="monthlyContributionTotalInputWife" type="number" step="any" placeholder="0"
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
-          <label class="block text-xs">
+          <label class="block text-sm">
             <span class="text-slate-500 dark:text-slate-400" title="비워두면 20년(미래예측 전체 기간) 내내 투자, 0이면 지금부터 추가 투자 없음">적립 기간(년, 선택)</span>
             <input id="monthlyContributionYearsInputWife" type="number" step="1" min="0" placeholder="제한없음"
               class="w-full mt-1 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
           </label>
         </div>
         <div class="flex items-center justify-between mb-1.5">
-          <h5 class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
-          <span id="monthlyContributionAllocationSumHintWife" class="text-[11px] font-semibold">합계 0%</span>
+          <h5 class="text-sm font-semibold text-slate-500 dark:text-slate-400">배분된 종목</h5>
+          <span id="monthlyContributionAllocationSumHintWife" class="text-sm font-semibold">합계 0%</span>
         </div>
         <div id="monthlyContributionAllocationListWife" class="space-y-1.5"></div>
-        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintWife">100%</span>)은 와이프의 국내/해외 목표 비중대로 계산됩니다.</p>
-        <button type="button" id="monthlyContributionAllocationAddBtnWife" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">배분되지 않은 나머지 비중(<span id="monthlyContributionAllocationRemainderHintWife">100%</span>)은 와이프의 국내/해외 목표 비중대로 계산됩니다.</p>
+        <button type="button" id="monthlyContributionAllocationAddBtnWife" class="w-full mt-1.5 flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
         <div id="monthlyContributionAllocationAddFormWife" class="hidden mt-2 space-y-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"></div>
@@ -2231,13 +2231,13 @@
             <span class="text-sm text-slate-400">%</span>
           </span>
         </label>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">매년 월 적립금이 전년 대비 늘어나는 비율입니다. 0%면 20년 내내 같은 금액을 넣는다고 가정합니다.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">매년 월 적립금이 전년 대비 늘어나는 비율입니다. 0%면 20년 내내 같은 금액을 넣는다고 가정합니다.</p>
       </div>
     </div>
 
     <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="cancelMonthlyContributionAllocationModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-      <button type="button" id="saveMonthlyContributionAllocationModalBtn" class="touch-target text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+      <button type="button" id="cancelMonthlyContributionAllocationModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+      <button type="button" id="saveMonthlyContributionAllocationModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
     </div>
   </div>
 </div>
@@ -2263,8 +2263,8 @@
          숨길 수 있는 버튼 자체를 없앴다(maybeShowRiskAlertPopup() 참고 - localStorage 기반 억제 로직도
          함께 제거했다). -->
     <div class="flex items-center gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 원클릭 리밸런싱 이동</button>
-      <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-xs sm:text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 상세 리스크 관리 이동</button>
+      <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚡ 원클릭 리밸런싱 이동</button>
+      <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 상세 리스크 관리 이동</button>
     </div>
   </div>
 </div>
@@ -2285,13 +2285,13 @@
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div>
-        <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">국내/해외 목표 비중</h4>
+        <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">국내/해외 목표 비중</h4>
         <div id="rtmDomesticSplit" class="grid grid-cols-2 gap-3"></div>
       </div>
       <div>
         <div class="flex items-center justify-between mb-1.5">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">국내 세부 목표 비중</h4>
-          <span id="rtmSumDomestic" class="text-xs font-semibold">합계 0%</span>
+          <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400">국내 세부 목표 비중</h4>
+          <span id="rtmSumDomestic" class="text-sm font-semibold">합계 0%</span>
         </div>
         <div id="rtmTargetsDomestic" class="space-y-1.5"></div>
         <!-- [미보유 종목 검색 추가 - "수익률 관리" 팝업의 +신규 종목 추가 버튼 형식 차용] 평소엔 버튼만
@@ -2302,27 +2302,27 @@
              [모바일 시인성 개선 - 요청 반영] 예전엔 점선 테두리 + 회색 글자(text-slate-500) + 배경
              없음이라 라이트/다크 모드 둘 다 모달 배경에 거의 묻혀 보였다 - 실선 테두리 + 브랜드색
              옅은 배경 채우기 + 브랜드색 굵은 글자로 바꿔 두 테마 모두에서 뚜렷하게 도드라지게 했다. -->
-        <button type="button" id="rtmAddToggleBtnDomestic" class="w-full mt-2 min-h-[44px] flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/70 active:bg-brand-100 dark:active:bg-brand-900">
+        <button type="button" id="rtmAddToggleBtnDomestic" class="w-full mt-2 min-h-[44px] flex items-center justify-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/70 active:bg-brand-100 dark:active:bg-brand-900">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
         <div id="rtmAddFormDomestic" class="hidden mt-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
           <input id="rtmAddSearchInputDomestic" type="text" autocomplete="off" placeholder="종목명/티커 검색"
-            class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+            class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
           <div id="rtmAddSearchResultsDomestic" class="mt-1.5 space-y-1 max-h-40 overflow-y-auto"></div>
         </div>
       </div>
       <div>
         <div class="flex items-center justify-between mb-1.5">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">해외 세부 목표 비중</h4>
-          <span id="rtmSumForeign" class="text-xs font-semibold">합계 0%</span>
+          <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400">해외 세부 목표 비중</h4>
+          <span id="rtmSumForeign" class="text-sm font-semibold">합계 0%</span>
         </div>
         <div id="rtmTargetsForeign" class="space-y-1.5"></div>
-        <button type="button" id="rtmAddToggleBtnForeign" class="w-full mt-2 min-h-[44px] flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/70 active:bg-brand-100 dark:active:bg-brand-900">
+        <button type="button" id="rtmAddToggleBtnForeign" class="w-full mt-2 min-h-[44px] flex items-center justify-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/70 active:bg-brand-100 dark:active:bg-brand-900">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> 종목 추가
         </button>
         <div id="rtmAddFormForeign" class="hidden mt-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
           <input id="rtmAddSearchInputForeign" type="text" autocomplete="off" placeholder="종목명/티커 검색"
-            class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+            class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
           <div id="rtmAddSearchResultsForeign" class="mt-1.5 space-y-1 max-h-40 overflow-y-auto"></div>
         </div>
       </div>
@@ -2368,13 +2368,13 @@
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div>
         <div class="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
-          <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
-          <span id="stockAllocationSumHint" class="text-xs font-semibold">합계 0%</span>
+          <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
+          <span id="stockAllocationSumHint" class="text-sm font-semibold">합계 0%</span>
         </div>
         <!-- [AI 최적 추천 비중 - 전체 적용] 종목이 2개 이상일 때만 의미가 있어 renderStockAllocationSelectedList()에서
              그 조건일 때만 보여준다(hidden 토글) - 베타(시장 민감도)가 낮은 종목에 더 크게 배분하는
              역베타 가중 추천을 선택된 종목 전체에 한 번에 적용한다. -->
-        <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ AI 최적 추천 비중 전체 적용</button>
+        <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ AI 최적 추천 비중 전체 적용</button>
         <div id="stockAllocationSelectedList" class="space-y-1.5"></div>
       </div>
       <div class="border-t border-slate-100 dark:border-slate-800 pt-2.5">
@@ -2382,10 +2382,10 @@
           class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none">
         <div id="stockAllocationSearchResults" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
       </div>
-      <p class="text-[10px] text-slate-400 leading-relaxed">* 선택되지 않은 기존 보유 주식은 목표 비중 계산 시 전량 매도 대상으로 산출됩니다.</p>
+      <p class="text-sm text-slate-400 leading-relaxed">* 선택되지 않은 기존 보유 주식은 목표 비중 계산 시 전량 매도 대상으로 산출됩니다.</p>
     </div>
     <div class="flex items-center justify-end px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-      <button type="button" id="closeStockAllocationModalBtn2" class="touch-target text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
+      <button type="button" id="closeStockAllocationModalBtn2" class="touch-target text-sm font-semibold px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">닫기</button>
     </div>
   </div>
 </div>
@@ -2403,10 +2403,10 @@
     <div class="px-5 py-3 shrink-0">
       <input id="stockSearchInput" type="text" autocomplete="off" placeholder="종목명(영문) 또는 티커/코드 검색 - 예: Samsung, 005930, QQQM"
         class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 outline-none focus:border-brand-400">
-      <p id="stockSearchHint" class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.</p>
+      <p id="stockSearchHint" class="text-sm text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.</p>
     </div>
     <div id="stockSearchResults" class="flex-1 overflow-y-auto px-2 pb-3 min-h-[140px]">
-      <p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>
+      <p class="text-sm text-slate-400 text-center py-6">검색어를 입력하세요</p>
     </div>
   </div>
 </div>
@@ -2425,12 +2425,12 @@
       <input type="hidden" id="tx_id">
       <input type="hidden" id="tx_ticker">
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">일자</span>
         <input id="tx_date" type="date" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
       </label>
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">거래유형</span>
         <select id="tx_type" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="buy">매수</option>
@@ -2438,7 +2438,7 @@
         </select>
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">소유자</span>
         <select id="tx_owner" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="신랑">신랑</option>
@@ -2446,7 +2446,7 @@
           <option value="공동">공동</option>
         </select>
       </label>
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">계좌구분</span>
         <input id="tx_accountType" list="accountTypeList" autocomplete="off" placeholder="예: 일반계좌"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -2458,10 +2458,10 @@
            하나가 이름칸 전체를 감쌌지만, 이제 체크박스라는 별도 컨트롤이 하나 더 생겨 그 구조를 그대로
            쓰면 라벨이 두 컨트롤을 동시에 가리키는 무효한 중첩이 되므로 바깥은 <div>로 바꾸고, 체크박스만
            자신의 <label>로 따로 감쌌다. -->
-      <div class="col-span-2 text-xs">
+      <div class="col-span-2 text-sm">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400">종목명/티커</span>
-          <label class="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+          <label class="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 cursor-pointer select-none">
             <input type="checkbox" id="tx_manualEntryToggle" class="w-3.5 h-3.5 accent-brand-600">
             수동입력
           </label>
@@ -2470,11 +2470,11 @@
           <input id="tx_name" type="text" autocomplete="off" placeholder="검색 버튼으로 선택하거나 직접 입력" required
             class="flex-1 min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <button type="button" id="txSearchStockBtn" title="종목 검색"
-            class="shrink-0 text-xs font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+            class="shrink-0 text-sm font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
             <i data-lucide="search" class="w-3.5 h-3.5"></i>
           </button>
         </div>
-        <p id="tx_tickerHint" class="text-[10px] text-slate-400 mt-1">&nbsp;</p>
+        <p id="tx_tickerHint" class="text-sm text-slate-400 mt-1">&nbsp;</p>
       </div>
 
       <!-- [대표 추종 수익률 종목 매칭 - 요청 반영] 신규 매수 등록 시점에 곧바로 미래예측 대표 매칭
@@ -2482,7 +2482,7 @@
            채우면 자산의 rateMatchOverride로 저장돼 최우선 반영된다(엑셀 "대표매칭(수익률연동키)" 컬럼과
            동일한 값·의미). 기존 종목이면 현재 유효 매칭값을 자동으로 채워 보여준다(onTxTickerFilled 등,
            js/06 참고). -->
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">대표 추종 수익률 종목 (선택)</span>
         <select id="tx_rateMatchOverride"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -2491,7 +2491,7 @@
       </label>
 
       <!-- [자산별 역할(포지션) 분류] rateMatchOverride와 동일하게 매칭되는 자산에 반영된다(js/06 submit 핸들러). -->
-      <label class="col-span-2 text-xs">
+      <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">역할(포지션) (선택)</span>
         <select id="tx_role"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
@@ -2502,38 +2502,38 @@
         </select>
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span id="tx_quantityLabel" class="text-slate-500 dark:text-slate-400">수량</span>
         <input id="tx_quantity" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">매매단가 <span class="text-slate-400">- 1개(주)당 가격</span></span>
         <input id="tx_price" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">통화</span>
         <select id="tx_currency" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
           <option value="KRW">KRW (원화)</option>
           <option value="USD">USD (달러)</option>
         </select>
       </label>
-      <label class="col-span-1 text-xs">
+      <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">수수료/세금</span>
         <input id="tx_fee" type="number" step="any" min="0" value="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
-      <label id="tx_appliedRateWrap" class="col-span-1 text-xs hidden">
+      <label id="tx_appliedRateWrap" class="col-span-1 text-sm hidden">
         <span class="text-slate-500 dark:text-slate-400">적용 환율(원)</span>
         <input id="tx_appliedRate" type="number" step="any" min="0"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
-        <button type="button" id="cancelTxModalBtn" class="text-xs font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-        <button type="submit" class="text-xs font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+        <button type="button" id="cancelTxModalBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
+        <button type="submit" class="text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
       </div>
     </form>
   </div>
@@ -2557,15 +2557,15 @@
     <div class="px-4 py-3 overflow-y-auto">
       <div id="coreStocksLoading" class="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-        <span class="text-xs">실시간 시세 조회 중...</span>
+        <span class="text-sm">실시간 시세 조회 중...</span>
       </div>
       <!-- [주요 지수 요약] 코스피/코스닥/S&P500/나스닥 - 국내/해외 시간대 구분 없이 항상 모두 표시한다
            (getCoreStocksRegion과 무관, MARKET_INDEX_LIST 고정 목록). 종목 리스트와는 다르게 자리를 덜
            차지하는 작은 카드 그리드로 보여준다(coreIndexCardHtml 참고). -->
-      <p class="text-[11px] font-semibold text-slate-400 mb-1">주요 지수</p>
+      <p class="text-sm font-semibold text-slate-400 mb-1">주요 지수</p>
       <div id="coreStocksIndexGrid" class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-3"></div>
       <div class="border-t border-slate-100 dark:border-slate-800 mb-1"></div>
-      <p id="coreStocksEmptyMsg" class="hidden text-xs text-slate-400 text-center py-10"></p>
+      <p id="coreStocksEmptyMsg" class="hidden text-sm text-slate-400 text-center py-10"></p>
       <div id="coreStocksList"></div>
     </div>
   </div>
@@ -2627,14 +2627,14 @@
         <div id="stockAnalysisSuggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-10 max-h-[280px] overflow-y-auto overscroll-contain bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg"></div>
       </div>
       <input type="number" id="stockAnalysisAmountInput" placeholder="매수 검토 금액(원, 선택 - 입력 시 포트폴리오 적합도까지 분석)"
-        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs bg-white dark:bg-slate-800">
+        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800">
     </div>
     <div id="stockAnalysisModalBody" class="px-4 py-3 overflow-y-auto flex-1 min-h-0">
       <div id="stockAnalysisLoading" class="hidden flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
         <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-        <span class="text-xs">분석 중...</span>
+        <span class="text-sm">분석 중...</span>
       </div>
-      <p id="stockAnalysisErrorMsg" class="hidden text-xs text-amber-600 dark:text-amber-400 py-2"></p>
+      <p id="stockAnalysisErrorMsg" class="hidden text-sm text-amber-600 dark:text-amber-400 py-2"></p>
 
       <!-- [섹션 순서 - 보유종목 세부내용 팝업과 동일하게 통일] 1.종목 헤더/기본정보 -> 2.인터랙티브
            주가 차트 -> 3.핵심 요약&현재 상태 -> 4.주가 위치&기술적 참고 -> 5.재무 펀더멘털, 그리고
@@ -2659,10 +2659,10 @@
             </div>
             <div id="stockAnalysisPeriodButtons" class="flex items-center justify-end gap-1"></div>
           </div>
-          <div id="stockAnalysisMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium mb-1 px-1"></div>
+          <div id="stockAnalysisMaLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-sm font-medium mb-1 px-1"></div>
           <div class="relative h-56 sm:h-72">
             <canvas id="stockAnalysisChart"></canvas>
-            <p id="stockAnalysisChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-xs text-slate-400 px-4"></p>
+            <p id="stockAnalysisChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
           </div>
         </div>
 
@@ -2689,7 +2689,7 @@
 <div id="assetSearchResultModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div id="assetSearchResultModalHeader" class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
-      <h3 class="text-sm font-semibold">🔍 검색 결과 <span id="assetSearchResultCountLabel" class="text-xs font-normal text-slate-400"></span></h3>
+      <h3 class="text-sm font-semibold">🔍 검색 결과 <span id="assetSearchResultCountLabel" class="text-sm font-normal text-slate-400"></span></h3>
       <button type="button" id="closeAssetSearchResultModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -2699,14 +2699,14 @@
         <div class="relative flex-1">
           <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
           <input id="assetSearchResultInput" type="text" placeholder="종목명·티커·계좌·소유자 검색 후 Enter"
-            class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
+            class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2 py-1.5 outline-none">
         </div>
-        <button type="button" id="assetSearchResultSearchBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
+        <button type="button" id="assetSearchResultSearchBtn" class="text-sm font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shrink-0">검색</button>
       </div>
     </div>
     <div class="px-4 py-3 overflow-y-auto">
       <div class="hidden sm:block overflow-x-auto">
-        <table class="w-full text-xs whitespace-nowrap">
+        <table class="w-full text-sm whitespace-nowrap">
           <thead>
             <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
               <th class="px-3 py-2">종목명</th>
@@ -2764,9 +2764,9 @@
       <!-- [상태값을 위로] 암호 입력란보다 먼저 눈에 띄게 - updateSyncStatusUI()가 텍스트/색상을
            갱신한다(헤더의 syncSettingsBtn과 동일한 3색 규칙: 켜짐/꺼짐/오류). -->
       <p id="syncStatusText" class="text-sm font-semibold px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">서버 동기화중지</p>
-      <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">가족(부부)이 함께 쓸 암호를 정해 양쪽 기기에 똑같이 입력하세요. 암호는 이 기기에만 저장되며, 데이터는 항상 암호화된 상태로만 클라우드를 거칩니다.</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">가족(부부)이 함께 쓸 암호를 정해 양쪽 기기에 똑같이 입력하세요. 암호는 이 기기에만 저장되며, 데이터는 항상 암호화된 상태로만 클라우드를 거칩니다.</p>
       <div>
-        <label class="text-xs font-medium text-slate-600 dark:text-slate-300">가족 공유 암호</label>
+        <label class="text-sm font-medium text-slate-600 dark:text-slate-300">가족 공유 암호</label>
         <!-- [암호 보기/숨기기] 모바일/PC 간 오타·공백 방지 - toggleSyncPasswordVisibility() 참고. -->
         <div class="relative mt-1">
           <input type="password" id="syncPasswordInput" placeholder="양쪽 기기에 동일하게 입력" class="w-full text-sm pl-3 pr-10 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
@@ -2775,13 +2775,13 @@
           </button>
         </div>
       </div>
-      <div id="syncDecryptErrorBox" class="hidden text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">비밀번호가 올바르지 않아 복호화에 실패했습니다. 위에 올바른 암호를 다시 입력하고 저장해주세요.</div>
+      <div id="syncDecryptErrorBox" class="hidden text-sm text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">비밀번호가 올바르지 않아 복호화에 실패했습니다. 위에 올바른 암호를 다시 입력하고 저장해주세요.</div>
       <!-- [오타 방지] "클라우드에 아직 아무 데이터도 없음"은 (a) 정말 이 기기가 최초 설정이거나
            (b) 배우자 기기와 다른 암호를 잘못 입력했을 때 똑같이 발생한다 - 구분할 방법이 없으므로,
            바로 업로드하지 않고 한 번 더 확인을 받는다(onSyncPasswordSaved 참고). -->
-      <div id="syncUploadConfirmBox" class="hidden text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded-lg px-3 py-2 space-y-2">
+      <div id="syncUploadConfirmBox" class="hidden text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded-lg px-3 py-2 space-y-2">
         <p>클라우드에 저장된 데이터가 없거나 입력한 암호가 일치하지 않습니다. 모바일/상대 기기에서 설정한 암호와 대소문자 및 공백이 완벽히 같은지 확인해 주세요. 이 기기가 맞게 처음 설정하는 것이라면 아래 버튼으로 이 기기 데이터를 업로드하세요.</p>
-        <button type="button" id="syncUploadConfirmBtn" class="w-full text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">이 기기 데이터 업로드</button>
+        <button type="button" id="syncUploadConfirmBtn" class="w-full text-sm font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">이 기기 데이터 업로드</button>
       </div>
     </div>
     <div class="px-5 pb-5 flex flex-col gap-2">

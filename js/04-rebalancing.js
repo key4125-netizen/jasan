@@ -362,16 +362,16 @@ const PORTFOLIO_SUMMARY_STATUS_META = {
 // 자산군 캐치올처럼 목표 하나에 실제 보유 종목이 여러 개 걸리는 경우 각 종목을 별도 줄로 나열한다.
 function buildPortfolioDiagDrilldownHtml(guideRowsForLabel) {
   if (!guideRowsForLabel || guideRowsForLabel.length === 0) {
-    return '<p class="text-[11px] text-slate-400 px-3 pb-3">보유 중인 종목이 없어 실행 상세가 없습니다.</p>';
+    return '<p class="text-sm text-slate-400 px-3 pb-3">보유 중인 종목이 없어 실행 상세가 없습니다.</p>';
   }
   return guideRowsForLabel.map((r) => {
     const badge = rebalanceActionBadge(r.diff, r.curAmount);
     return `<div class="px-3 pb-3">
       <div class="flex items-center justify-between gap-2 mb-1">
-        <span class="text-xs font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</span>
-        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
+        <span class="text-sm font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</span>
+        <span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
       </div>
-      <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
         <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.targetAmount)}</span></div>
         <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium whitespace-nowrap ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
@@ -409,8 +409,8 @@ function renderPortfolioTargetSummary(owner) {
   }).join('<span class="text-slate-300 dark:text-slate-700">·</span>');
 
   if (rows.length === 0) {
-    container.innerHTML = `<p class="text-[11px] text-slate-400 mb-2">${sumBadgesHtml}</p>
-      <p class="text-xs text-slate-400 text-center py-3">아직 목표 비중이 설정되지 않았습니다 - [비중조절]에서 먼저 설정해보세요.</p>`;
+    container.innerHTML = `<p class="text-sm text-slate-400 mb-2">${sumBadgesHtml}</p>
+      <p class="text-sm text-slate-400 text-center py-3">아직 목표 비중이 설정되지 않았습니다 - [비중조절]에서 먼저 설정해보세요.</p>`;
     return;
   }
 
@@ -422,16 +422,16 @@ function renderPortfolioTargetSummary(owner) {
     return `<div class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <button type="button" class="portfolio-diag-row-toggle w-full text-left py-2" data-diag-row-key="${escapeHtml(rowKey)}">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.region)} · ${escapeHtml(r.label)}</span>
+          <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.region)} · ${escapeHtml(r.label)}</span>
           <span class="shrink-0 flex items-center gap-1">
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badgeClass}">${meta.badge}</span>
+            <span class="text-sm font-bold px-2 py-0.5 rounded-full ${meta.badgeClass}">${meta.badge}</span>
             <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 portfolio-diag-row-chevron" data-diag-chevron-key="${escapeHtml(rowKey)}"></i>
           </span>
         </div>
         <!-- [Phase 17 P1-2 - 행동 정보 우선] "그래서 무엇을 검토하면 되는가"를 %수치보다 먼저, 더 눈에
              띄게 보여준다 - 계산값(diffAmount)은 기존 그대로, 표현 순서만 바꿈. -->
-        ${actionLabel ? `<p class="text-xs font-semibold mt-1 ${rebalanceDiffColorClass(r.diffAmount)}">${escapeHtml(actionLabel)}</p>` : `<p class="text-xs font-semibold mt-1 text-emerald-600 dark:text-emerald-400">${escapeHtml(meta.text())}</p>`}
-        <p class="text-[11px] text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
+        ${actionLabel ? `<p class="text-sm font-semibold mt-1 ${rebalanceDiffColorClass(r.diffAmount)}">${escapeHtml(actionLabel)}</p>` : `<p class="text-sm font-semibold mt-1 text-emerald-600 dark:text-emerald-400">${escapeHtml(meta.text())}</p>`}
+        <p class="text-sm text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
       </button>
       <div class="portfolio-diag-row-body overflow-hidden transition-[max-height] duration-300 ease-in-out" data-diag-body-key="${escapeHtml(rowKey)}" style="max-height:${isOpen ? '9999px' : '0px'};">
         ${buildPortfolioDiagDrilldownHtml(guideRowsByLabel[r.label])}
@@ -439,7 +439,7 @@ function renderPortfolioTargetSummary(owner) {
     </div>`;
   }).join('');
 
-  container.innerHTML = `<p class="text-[11px] text-slate-400 mb-2">${sumBadgesHtml}</p>${rowsHtml}`;
+  container.innerHTML = `<p class="text-sm text-slate-400 mb-2">${sumBadgesHtml}</p>${rowsHtml}`;
   lucide.createIcons();
 }
 
@@ -612,7 +612,7 @@ function openStockSearchModal(mode) {
   pushModalHistoryState();
   const input = document.getElementById('stockSearchInput');
   input.value = '';
-  document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
+  document.getElementById('stockSearchResults').innerHTML = '<p class="text-sm text-slate-400 text-center py-6">검색어를 입력하세요</p>';
   setTimeout(() => input.focus(), 50);
 }
 
@@ -630,7 +630,7 @@ function renderStockSearchResults(results, seq) {
   if (seq !== stockSearchRequestSeq) return; // 더 최신 검색이 이미 진행 중이면 이 응답은 버린다
   const container = document.getElementById('stockSearchResults');
   if (results.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 결과가 없습니다</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">검색 결과가 없습니다</p>';
     return;
   }
   // [티커 없는 자산 표시] symbol이 비어있으면(부동산/채권 등) 둘째 줄에 티커·거래소 대신 소유자·
@@ -646,9 +646,9 @@ function renderStockSearchResults(results, seq) {
       class="w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="min-w-0">
         <span class="block text-sm font-medium truncate">${escapeHtml(r.name)}</span>
-        <span class="block text-[11px] text-slate-400">${subtext}</span>
+        <span class="block text-sm text-slate-400">${subtext}</span>
       </span>
-      <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">${escapeHtml(r.type || '')}</span>
+      <span class="shrink-0 text-sm px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">${escapeHtml(r.type || '')}</span>
     </button>`;
   }).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
@@ -667,10 +667,10 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
   const query = e.target.value.trim();
   clearTimeout(stockSearchDebounceTimer);
   if (!query) {
-    document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색어를 입력하세요</p>';
+    document.getElementById('stockSearchResults').innerHTML = '<p class="text-sm text-slate-400 text-center py-6">검색어를 입력하세요</p>';
     return;
   }
-  document.getElementById('stockSearchResults').innerHTML = '<p class="text-xs text-slate-400 text-center py-6">검색 중...</p>';
+  document.getElementById('stockSearchResults').innerHTML = '<p class="text-sm text-slate-400 text-center py-6">검색 중...</p>';
   stockSearchDebounceTimer = setTimeout(async () => {
     const seq = ++stockSearchRequestSeq;
     // [즉시 표시] 보유 자산 + 종목 마스터는 로컬 데이터라 네트워크 없이 즉시 결과가 나온다 - Yahoo
@@ -759,17 +759,17 @@ function renderRtmDomesticSplit() {
   const wrap = document.getElementById('rtmDomesticSplit');
   const domesticPct = num(rebalanceModalDraft.domestic['국내']);
   wrap.innerHTML = `
-    <label class="text-xs">
+    <label class="text-sm">
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
       <input id="rtm_domesticKR" type="number" min="0" max="100" step="1" value="${domesticPct}"
         class="w-full mt-1 min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
-      <div data-rtm-domestic-preview="국내" class="mt-1 text-xs flex flex-col gap-0.5"></div>
+      <div data-rtm-domestic-preview="국내" class="mt-1 text-sm flex flex-col gap-0.5"></div>
     </label>
-    <label class="text-xs">
+    <label class="text-sm">
       <span class="text-slate-500 dark:text-slate-400">해외 (%) · 자동계산</span>
       <input id="rtm_domesticFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
         class="w-full mt-1 min-h-[44px] text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right text-slate-400">
-      <div data-rtm-domestic-preview="해외" class="mt-1 text-xs flex flex-col gap-0.5"></div>
+      <div data-rtm-domestic-preview="해외" class="mt-1 text-sm flex flex-col gap-0.5"></div>
     </label>`;
   document.getElementById('rtm_domesticKR').addEventListener('input', (e) => {
     const v = Math.max(0, Math.min(100, num(e.target.value)));
@@ -808,7 +808,7 @@ function renderRtmTargetGroup(region) {
         </button>`
       : '';
     const subText = hasSelectedStocks
-      ? `<p class="mt-1 text-[10px] text-slate-400 truncate">└ ${t.selectedStocks.map((s) => `${escapeHtml(s.name)} ${fmtNum(num(s.pct), 1)}%`).join(', ')}</p>`
+      ? `<p class="mt-1 text-sm text-slate-400 truncate">└ ${t.selectedStocks.map((s) => `${escapeHtml(s.name)} ${fmtNum(num(s.pct), 1)}%`).join(', ')}</p>`
       : '';
     // [종목 삭제 버튼 - 요청 반영] 티커 지정/자산군 캐치올 어느 쪽이든 이 목표 항목 자체를 목록에서
     // 제거할 수 있다 - 개별 지정 종목(selectedStocks)을 하나씩 빼는 건 별도 팝업(stockAllocationModal)
@@ -822,29 +822,29 @@ function renderRtmTargetGroup(region) {
     // "이 뭉치 전체가 어떤 성격인가"로 하나의 역할을 대표시킬 수 있다는 요청에 따라 확장했다([확인]으로
     // 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이 이 role을 목표
     // 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다).
-    // [Phase 25 M-1] 예전엔 text-[10px] / 실측 25px로, 프로젝트의 "중요한 텍스트 12px 미만 금지"와
+    // [Phase 25 M-1] 예전엔 text-sm / 실측 25px로, 프로젝트의 "중요한 텍스트 12px 미만 금지"와
     // 44px 터치 타겟 기준을 둘 다 어겼다 - 표시 크기만 키운다(선택지/저장 값/계산은 전혀 안 바뀜).
-    const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full min-h-[44px] text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
+    const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
           <option value="">포지션 미지정</option>
           ${ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${t.role === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
         </select>`;
     return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2">
       <div class="flex items-center justify-between gap-2">
-        <span class="text-xs text-slate-600 dark:text-slate-300 min-w-0 truncate">${escapeHtml(t.label)}</span>
+        <span class="text-sm text-slate-600 dark:text-slate-300 min-w-0 truncate">${escapeHtml(t.label)}</span>
         <div class="flex items-center gap-1 shrink-0">
           ${searchBtn}
           <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}" ${hasSelectedStocks ? 'disabled title="선택된 종목 비중의 합으로 자동 계산됩니다"' : ''}
             class="w-16 min-h-[44px] text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
-          <span class="text-xs text-slate-400">%</span>
+          <span class="text-sm text-slate-400">%</span>
           ${deleteBtn}
         </div>
       </div>
       ${subText}
       ${roleSelect}
-      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-xs flex flex-col gap-0.5"></div>
+      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-sm flex flex-col gap-0.5"></div>
     </div>`;
-  }).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
+  }).join('') || `<p class="text-sm text-slate-400">설정된 목표 항목이 없습니다.</p>`;
 
   wrap.querySelectorAll('input[data-rtm-pct]').forEach((input) => {
     input.addEventListener('input', (e) => {
@@ -952,19 +952,19 @@ function renderRtmAddSearchResults(region, query) {
   const candidates = searchRtmAddCandidates(region, query);
   if (!query.trim()) { container.innerHTML = ''; return; }
   if (candidates.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400 py-1">검색 결과가 없습니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 py-1">검색 결과가 없습니다.</p>';
     return;
   }
   container.innerHTML = candidates.map((c) => c.kind === 'ticker' ? `
     <button type="button" data-rtm-add-candidate data-region="${region}" data-ticker="${escapeHtml(c.symbol)}" data-name="${escapeHtml(c.name)}" data-role="${escapeHtml(c.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
-      <span class="text-xs truncate">${escapeHtml(c.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
+      <span class="text-sm truncate">${escapeHtml(c.name)}</span>
+      <span class="text-sm text-slate-400 shrink-0">${escapeHtml(c.symbol)}</span>
     </button>` : `
     <button type="button" data-rtm-add-named-candidate data-region="${region}" data-name="${escapeHtml(c.name)}" data-role="${escapeHtml(c.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
-      <span class="text-xs truncate">${escapeHtml(c.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">보유 중(티커 없음)</span>
+      <span class="text-sm truncate">${escapeHtml(c.name)}</span>
+      <span class="text-sm text-slate-400 shrink-0">보유 중(티커 없음)</span>
     </button>`).join('');
   container.querySelectorAll('button[data-rtm-add-candidate]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1121,7 +1121,7 @@ function renderStockAllocationSelectedList() {
   if (applyAllBtn) applyAllBtn.classList.toggle('hidden', t.selectedStocks.length < 2);
 
   if (t.selectedStocks.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">아직 선택된 종목이 없습니다. 아래에서 검색해 추가하세요.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400">아직 선택된 종목이 없습니다. 아래에서 검색해 추가하세요.</p>';
     return;
   }
   // [AI 최적 추천 비중] 현재 카테고리 총 비중(t.pct)을 그대로 유지한 채, 선택된 종목들 사이에서만
@@ -1133,8 +1133,8 @@ function renderStockAllocationSelectedList() {
     const diff = aiPct !== null ? aiPct - num(s.pct) : null;
     const badgeHtml = aiPct !== null ? `
       <div class="flex items-center gap-1 mt-1.5 flex-wrap">
-        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 AI 최적 추천: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
-        <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
+        <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 AI 최적 추천: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
+        <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-sm font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
       </div>` : '';
     const isHeld = getHeldStockCandidates(stockAllocationCurrentRegion).some((a) => a.ticker === s.ticker);
     const roleOptionsHtml = ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${s.role === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
@@ -1143,12 +1143,12 @@ function renderStockAllocationSelectedList() {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <p class="text-sm font-medium truncate">${escapeHtml(s.name)}</p>
-          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(s.ticker)}${isHeld ? '' : ' · <span class="text-amber-500">미보유(목표만 지정)</span>'}</p>
+          <p class="text-sm text-slate-400 truncate">${escapeHtml(s.ticker)}${isHeld ? '' : ' · <span class="text-amber-500">미보유(목표만 지정)</span>'}</p>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <input data-stock-alloc-pct data-i="${i}" type="number" min="0" max="100" step="1" value="${num(s.pct)}"
             class="w-16 min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
-          <span class="text-xs text-slate-400">%</span>
+          <span class="text-sm text-slate-400">%</span>
           <button type="button" data-stock-alloc-remove data-i="${i}" title="삭제" class="touch-target w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
           </button>
@@ -1156,7 +1156,7 @@ function renderStockAllocationSelectedList() {
       </div>
       <!-- [미보유 종목 포지션 태깅 - 요청 반영] 실제 자산(state.assets)이 아니라 이 목표 항목 자체에
            역할을 저장한다 - 포지션별 비중 분석 카드(실물 보유 기준)와는 무관한 별도 메타데이터다. -->
-      <select data-stock-alloc-role data-i="${i}" class="mt-1.5 w-full min-h-[44px] text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">${roleOptionsHtml}</select>
+      <select data-stock-alloc-role data-i="${i}" class="mt-1.5 w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">${roleOptionsHtml}</select>
       ${badgeHtml}
     </div>`;
   }).join('');
@@ -1218,7 +1218,7 @@ function renderStockAllocationSearchResults(query) {
   if (!t) return;
 
   if (t.selectedStocks.length >= MAX_SELECTED_STOCKS_PER_CATEGORY) {
-    container.innerHTML = `<p class="text-[11px] text-amber-600 dark:text-amber-400 py-2">최대 ${MAX_SELECTED_STOCKS_PER_CATEGORY}개까지 선택할 수 있습니다.</p>`;
+    container.innerHTML = `<p class="text-sm text-amber-600 dark:text-amber-400 py-2">최대 ${MAX_SELECTED_STOCKS_PER_CATEGORY}개까지 선택할 수 있습니다.</p>`;
     return;
   }
 
@@ -1228,14 +1228,14 @@ function renderStockAllocationSearchResults(query) {
     .slice(0, 20);
 
   if (candidates.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 py-2">검색 결과가 없습니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 py-2">검색 결과가 없습니다.</p>';
     return;
   }
   container.innerHTML = candidates.map((a) => `
     <button type="button" data-stock-alloc-add data-ticker="${escapeHtml(a.ticker)}" data-name="${escapeHtml(a.name)}"
       class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="text-sm truncate">${escapeHtml(a.name)}</span>
-      <span class="text-[11px] text-slate-400 shrink-0">${escapeHtml(a.ticker)}</span>
+      <span class="text-sm text-slate-400 shrink-0">${escapeHtml(a.ticker)}</span>
     </button>`).join('');
   container.querySelectorAll('button[data-stock-alloc-add]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1280,7 +1280,7 @@ function updateRtmPreviews() {
     // 한 줄에 다 안 들어간다 - 대신 CSS Grid 2열(라벨열/금액열)로 짜서, 2번째 줄(조정금액)이 "목표금액"
     // 라벨이 아니라 그 옆 금액이 시작하는 자리에 정확히 맞춰지게 한다(라벨열 너비는 "목표금액" 글자
     // 폭에 맞춰 자동 결정되고, 금액/조정금액 둘 다 같은 2번째 열에 들어가 서로 자연히 정렬된다).
-    el.innerHTML = `<div class="grid gap-x-1 text-xs" style="grid-template-columns:auto auto;">
+    el.innerHTML = `<div class="grid gap-x-1 text-sm" style="grid-template-columns:auto auto;">
       <span class="text-slate-400 whitespace-nowrap">목표금액</span>
       <span class="font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">${fmtKRW(targetAmount)}</span>
       <span></span>
@@ -1309,7 +1309,7 @@ function updateRtmPreviews() {
     const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
     const isValid = targets.length === 0 || Math.abs(sum - 100) < 0.05;
     sumEl.textContent = `합계 ${fmtNum(sum, 1)}%`;
-    sumEl.className = isValid ? 'text-xs font-semibold text-emerald-600 dark:text-emerald-400' : 'text-xs font-semibold text-amber-600 dark:text-amber-400';
+    sumEl.className = isValid ? 'text-sm font-semibold text-emerald-600 dark:text-emerald-400' : 'text-sm font-semibold text-amber-600 dark:text-amber-400';
   });
 }
 
@@ -1484,7 +1484,7 @@ function positionTabRowHtml(kind, key, label, pct, color, ownerFilter) {
   return `
   <button type="button" data-position-tab data-kind="${kind}" data-key="${escapeHtml(key)}" data-owner="${escapeHtml(ownerFilter)}"
     class="w-full text-left mb-2 last:mb-0 group">
-    <div class="flex items-center justify-between text-[11px] mb-1">
+    <div class="flex items-center justify-between text-sm mb-1">
       <span class="text-slate-600 dark:text-slate-300 font-medium group-hover:text-brand-600 dark:group-hover:text-brand-400 group-hover:underline">${label}</span>
       <span class="font-semibold" style="color:${color}">${fmtNum(pct, 1)}%</span>
     </div>
@@ -1496,7 +1496,7 @@ function positionTabRowHtml(kind, key, label, pct, color, ownerFilter) {
 function positionAnalysisCardBodyHtml(ownerFilter) {
   const region = computeTargetRegionBreakdown(ownerFilter);
   const role = computePositionRoleBreakdown(ownerFilter);
-  if (role.grandTotal === 0) return '<p class="text-xs text-slate-400">집계할 목표 비중이 없습니다.</p>';
+  if (role.grandTotal === 0) return '<p class="text-sm text-slate-400">집계할 목표 비중이 없습니다.</p>';
   const regionHtml = POSITION_REGION_BAR_ROWS.map((row) => positionTabRowHtml('region', row.key, row.label, region.pct[row.key], row.color, ownerFilter || 'all')).join('');
   const roleHtml = POSITION_ROLE_BAR_ROWS.map((row) => positionTabRowHtml('role', row.key, row.label, role.pct[row.key], row.color, ownerFilter || 'all')).join('');
   return regionHtml + '<div class="my-2.5 border-t border-slate-100 dark:border-slate-800"></div>' + roleHtml;
@@ -1618,18 +1618,18 @@ function openPositionDrilldownModal(kind, key, ownerFilter) {
   const rows = buildPositionDrilldownRows(kind, key, ownerFilter);
   const isAll = !ownerFilter || ownerFilter === 'all';
   document.getElementById('positionRoleBreakdownModalBars').innerHTML = rows.length === 0
-    ? '<p class="text-xs text-slate-400">구성 종목이 없습니다.</p>'
+    ? '<p class="text-sm text-slate-400">구성 종목이 없습니다.</p>'
     : rows.map((r) => {
       // [부부 합산 중복 병합 표기] owners가 2명이면 병합된 행(같은 티커를 신랑/와이프 둘 다 목표로
       // 가짐) - "(부부합산)"으로 표기하고, 1명이면 예전처럼 그 사람 이름을 그대로 보여준다.
-      const ownerBadge = isAll ? ` <span class="text-[10px] text-slate-400">(${r.owners.length > 1 ? '부부합산' : escapeHtml(r.owners[0])})</span>` : '';
+      const ownerBadge = isAll ? ` <span class="text-sm text-slate-400">(${r.owners.length > 1 ? '부부합산' : escapeHtml(r.owners[0])})</span>` : '';
       return `
     <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0">
       <div class="min-w-0">
-        <p class="text-xs font-medium truncate">${escapeHtml(r.label)}${ownerBadge}</p>
-        <p class="text-[10px] text-slate-400 truncate">${r.ticker ? escapeHtml(r.ticker) + ' · ' : ''}${escapeHtml(r.region)}</p>
+        <p class="text-sm font-medium truncate">${escapeHtml(r.label)}${ownerBadge}</p>
+        <p class="text-sm text-slate-400 truncate">${r.ticker ? escapeHtml(r.ticker) + ' · ' : ''}${escapeHtml(r.region)}</p>
       </div>
-      <span class="text-xs font-semibold shrink-0">${fmtNum(r.pct, 1)}%</span>
+      <span class="text-sm font-semibold shrink-0">${fmtNum(r.pct, 1)}%</span>
     </div>`;
     }).join('');
   document.getElementById('positionRoleBreakdownModal').classList.remove('hidden');
@@ -1676,9 +1676,9 @@ function buildRebalanceGuideSummaryHtml(rows) {
     if (r.diff > 0) buyTotal += r.diff; else sellTotal += r.diff;
   });
   return `
-    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">매수 ${fmtSigned(buyTotal)}</span>
-    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">매도 ${fmtSigned(sellTotal)}</span>
-    <span class="text-[10px] text-slate-400">조정 필요 ${adjustCount}종목</span>
+    <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">매수 ${fmtSigned(buyTotal)}</span>
+    <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">매도 ${fmtSigned(sellTotal)}</span>
+    <span class="text-sm text-slate-400">조정 필요 ${adjustCount}종목</span>
   `;
 }
 
@@ -1692,7 +1692,7 @@ const qtyRebalanceGuideText = (qtyDelta, isForeign) => {
 // 섹션마다 이 함수를 재사용한다.
 function buildRebalanceGuideCardsHtml(rows, excluded) {
   if (rows.length === 0 && excluded.length === 0) {
-    return '<p class="text-xs text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
+    return '<p class="text-sm text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
   }
   const cards = rows.map((r) => {
     const badge = rebalanceActionBadge(r.diff, r.curAmount);
@@ -1701,11 +1701,11 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
           <p class="text-sm font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
-          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
+          <p class="text-sm text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
         </div>
-        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
+        <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
       </div>
-      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-sm">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
         <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.targetAmount)}</span></div>
         <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium whitespace-nowrap ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
@@ -1729,11 +1729,11 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
           <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
-          <p class="text-[11px] text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
+          <p class="text-sm text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
         </div>
-        <span class="shrink-0 text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
+        <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
       </div>
-      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-sm">
         <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
         <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap text-slate-300 dark:text-slate-600">${targetCellText}</span></div>
       </div>
@@ -1764,7 +1764,7 @@ function renderIndividualRebalanceGuide() {
       <button type="button" data-guide-accordion-key="${escapeHtml(key)}"
         class="rebalance-guide-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
         <div class="flex items-center gap-2 min-w-0 flex-wrap">
-          <span class="text-xs font-semibold shrink-0">${escapeHtml(label)} 실행 가이드</span>
+          <span class="text-sm font-semibold shrink-0">${escapeHtml(label)} 실행 가이드</span>
           <div class="flex items-center gap-1.5 flex-wrap">${buildRebalanceGuideSummaryHtml(rows)}</div>
         </div>
         <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 rebalance-guide-chevron" data-guide-chevron-key="${escapeHtml(key)}"></i>

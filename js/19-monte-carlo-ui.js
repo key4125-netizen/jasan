@@ -172,10 +172,10 @@ function renderFeeRatesEditor() {
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-2.5" data-fee-row="${escapeHtml(r.key)}">
       <div class="flex items-center justify-between gap-2">
         <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.label)}</span>
-        <span data-fee-status class="shrink-0 text-xs font-semibold ${isUnknown ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}">${isUnknown ? '미확인' : escapeHtml(fmtNum(v, 2)) + '%'}</span>
+        <span data-fee-status class="shrink-0 text-sm font-semibold ${isUnknown ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}">${isUnknown ? '미확인' : escapeHtml(fmtNum(v, 2)) + '%'}</span>
       </div>
       <div class="flex items-center gap-1.5 mt-2">
-        <button type="button" data-fee-unknown="${escapeHtml(r.key)}" class="touch-target min-h-[44px] px-3 rounded-lg border text-xs font-semibold ${isUnknown ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}">미확인</button>
+        <button type="button" data-fee-unknown="${escapeHtml(r.key)}" class="touch-target min-h-[44px] px-3 rounded-lg border text-sm font-semibold ${isUnknown ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}">미확인</button>
         <input type="number" step="0.01" min="0" data-fee-key="${escapeHtml(r.key)}" value="${isUnknown ? '' : v}" placeholder="직접 입력"
           class="flex-1 min-w-0 min-h-[44px] text-sm text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none focus:border-brand-500">
         <span class="text-sm text-slate-400">%</span>
@@ -197,6 +197,12 @@ function closeMcFeeRatesModal(viaBackButton) {
   mcUiEl('mcFeeRatesModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
+
+// [Phase 27] 목표금액은 자릿수가 커서(예: 1000000000) 콤마 없이는 10억인지 100억인지 읽기 어렵다 -
+// 이미 [적립금 설정]/[매수 검토 금액]에서 쓰고 있는 기존 유틸을 그대로 재사용한다(새 input 구조를
+// 만들지 않는다). 소비 지점(num(mcGoalAmountInput.value))이 이미 콤마를 제거하므로 계산 semantics는
+// 전혀 바뀌지 않는다.
+attachThousandsInputFormatting(mcUiEl('mcGoalAmountInput'));
 
 mcUiEl('mcFeeRatesToggleBtn').addEventListener('click', openMcFeeRatesModal);
 mcUiEl('closeMcFeeRatesModalBtn').addEventListener('click', () => closeMcFeeRatesModal(false));
@@ -309,7 +315,7 @@ function renderBarsInto(elId, last, colorSet) {
     { label: '높음', title: 'P90', value: last.p90, color: colorSet.p90 }
   ];
   mcUiEl(elId).innerHTML = bars.map((b) => `
-    <div class="flex items-center gap-2 text-[10px]">
+    <div class="flex items-center gap-2 text-sm">
       <span class="w-11 shrink-0 text-slate-400" title="${b.title}">${b.label}</span>
       <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div class="h-full rounded-full ${b.color}" style="width:${Math.max(2, (b.value / maxV) * 100)}%"></div>
@@ -430,32 +436,32 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
     // [Phase 4 - Goal Probability 표시 정책] js/22 참고 - 꼬리 확률(<10% 또는 >90%)만 정밀도를
     // 낮추고("약 N%"), 중심부는 기존 소수점 1자리 표시를 그대로 유지한다.
     const display = (typeof formatGoalProbabilityDisplay === 'function') ? formatGoalProbabilityDisplay(probDecimal) : { text: `${fmtNum(probDecimal * 100, 1)}%`, isTail: false };
-    const tailCaptionHtml = display.isTail ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
+    const tailCaptionHtml = display.isTail ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
     // [초보자용 짧은 안내] 별도의 Safety INFO 카드(explainGoalProbabilitySemanticAlwaysOn, js/21)가
     // 더 자세히 설명하지만, 그 카드는 아래쪽 mcSafetyIssues 영역에 따로 있어 놓치기 쉽다 - 확률 숫자
     // 바로 밑에 한 줄로도 "실제 미래 확률이 아니라 지금 가정 기준 시뮬레이션 결과"임을 짧게 덧붙인다.
-    const goalShortCaption = '<p class="text-[10px] text-slate-400 mt-1">현재 설정을 기준으로 한 시뮬레이션 결과예요.</p>';
+    const goalShortCaption = '<p class="text-sm text-slate-400 mt-1">현재 설정을 기준으로 한 시뮬레이션 결과예요.</p>';
     if (goalMeta.mode === 'real') {
       goalArea.innerHTML = `
-        <p class="text-[10px] text-slate-400">목표금액</p>
+        <p class="text-sm text-slate-400">목표금액</p>
         <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (현재 구매력 기준)</p>
-        <p class="text-[10px] text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표</p>
-        <p class="text-xs font-semibold text-slate-600 dark:text-slate-300">${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>
-        <p class="text-[10px] text-slate-400 mt-1.5">현재 구매력 기준으로 목표에 도달할 가능성</p>
+        <p class="text-sm text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표</p>
+        <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>
+        <p class="text-sm text-slate-400 mt-1.5">현재 구매력 기준으로 목표에 도달할 가능성</p>
         <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
         ${goalShortCaption}
         ${tailCaptionHtml}`;
     } else {
       goalArea.innerHTML = `
-        <p class="text-[10px] text-slate-400">목표금액</p>
+        <p class="text-sm text-slate-400">목표금액</p>
         <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>
-        <p class="text-[10px] text-slate-400 mt-1.5">${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
+        <p class="text-sm text-slate-400 mt-1.5">${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
         <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
         ${goalShortCaption}
         ${tailCaptionHtml}`;
     }
   } else {
-    goalArea.innerHTML = `<p class="text-[11px] text-slate-400">목표금액이 설정되지 않았습니다.</p>`;
+    goalArea.innerHTML = `<p class="text-sm text-slate-400">목표금액이 설정되지 않았습니다.</p>`;
   }
 }
 

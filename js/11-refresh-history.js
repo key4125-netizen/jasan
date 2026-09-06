@@ -862,7 +862,7 @@ function renderDailyPnlSummary(series) {
   }
 
   container.innerHTML = `
-    <p class="text-[11px] text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
+    <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
@@ -882,7 +882,7 @@ function renderDailyPnlOwnerTabs() {
   const wrap = document.getElementById('dailyPnlOwnerTabs');
   const tabs = [{ key: 'all', label: '전체(합계)' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
   wrap.innerHTML = tabs.map((t) => `
-    <button type="button" data-pnl-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === dailyPnlPopupOwner ? 'active' : ''} text-[11px] font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
+    <button type="button" data-pnl-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === dailyPnlPopupOwner ? 'active' : ''} text-sm font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
   `).join('');
   wrap.querySelectorAll('button[data-pnl-owner]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -945,14 +945,14 @@ function renderTotalValueSummary(series) {
   rows.push({ label: '합계', current: last.total, diff: last.total - first.total, emphasize: true });
 
   container.innerHTML = `
-    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (기간 시작 대비 증감)</p>
+    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (기간 시작 대비 증감)</p>
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
           <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
           <span class="text-right shrink-0 whitespace-nowrap">
             <span class="font-medium">${fmtKRW(r.current)}</span>
-            <span class="ml-1.5 text-xs ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span>
+            <span class="ml-1.5 text-sm ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span>
           </span>
         </div>`).join('')}
     </div>`;
@@ -1017,7 +1017,7 @@ function renderTotalProfitSummary(series) {
   rows.push({ label: '총 누적 평가손익', amount: last.total, emphasize: true });
 
   container.innerHTML = `
-    <p class="text-[11px] text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 누적 합계</p>
+    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 누적 합계</p>
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
@@ -1130,7 +1130,7 @@ function renderExchangeRateSummary(points) {
   const avg = closes.reduce((s, v) => s + v, 0) / closes.length;
   const tile = (label, value, colorClass) => `
     <div class="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-2.5 text-center">
-      <p class="text-[10px] text-slate-400">${label}</p>
+      <p class="text-sm text-slate-400">${label}</p>
       <p class="text-sm font-bold ${colorClass}">${fmtNum(value, 1)}원</p>
     </div>`;
   container.innerHTML = tile('최고', max, 'text-red-500') + tile('최저', min, 'text-blue-500') + tile('평균', avg, 'text-slate-700 dark:text-slate-200');

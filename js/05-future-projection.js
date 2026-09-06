@@ -1169,7 +1169,7 @@ function renderTaxAdvantagedCard() {
   const holdings = getTaxAdvantagedHoldingsByOwner();
   const total = TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + holdings[o].total, 0);
   if (total === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400">보유 중인 절세계좌 자산이 없습니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400">보유 중인 절세계좌 자산이 없습니다.</p>';
     return;
   }
   const householdRoleSummary = formatRolePctSummary(getTaxAdvantagedRoleBreakdown('all'));
@@ -1184,22 +1184,22 @@ function renderTaxAdvantagedCard() {
     return `
     <div class="border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="${ids.btnId}" class="detail-card-accordion-btn w-full flex items-center justify-between gap-1.5 py-2 text-left text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-300">
-        <span class="text-[11px] font-medium">${escapeHtml(owner)} 계좌 세부</span>
+        <span class="text-sm font-medium">${escapeHtml(owner)} 계좌 세부</span>
         <span class="flex items-center gap-1 shrink-0">
-          <span class="text-[11px] text-slate-400">${fmtKRWShort(h.total)}</span>
+          <span class="text-sm text-slate-400">${fmtKRWShort(h.total)}</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
         </span>
       </button>
       <div id="${ids.bodyId}" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <div class="pb-2 space-y-1">
           ${accountTypeRows.length > 0 ? accountTypeRows.map((t) => `
-          <div class="flex items-center justify-between text-[11px]">
+          <div class="flex items-center justify-between text-sm">
             <span class="text-slate-500 dark:text-slate-400">${escapeHtml(t)}</span>
             <span class="font-medium text-slate-700 dark:text-slate-300">${fmtKRWShort(h.byAccountType[t])}</span>
-          </div>`).join('') : '<p class="text-[11px] text-slate-400">보유 중인 자산이 없습니다.</p>'}
+          </div>`).join('') : '<p class="text-sm text-slate-400">보유 중인 자산이 없습니다.</p>'}
           <div class="pt-1">
-            <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(실제 보유 기준)</p>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400">${roleSummary}</p>
+            <p class="text-sm text-slate-400 mb-0.5">포지션별 비중(실제 보유 기준)</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400">${roleSummary}</p>
           </div>
         </div>
       </div>
@@ -1208,12 +1208,12 @@ function renderTaxAdvantagedCard() {
 
   container.innerHTML = `
     <div class="flex items-baseline justify-between mb-2">
-      <span class="text-[11px] text-slate-400">합계 평가금액</span>
+      <span class="text-sm text-slate-400">합계 평가금액</span>
       <span class="text-base font-bold whitespace-nowrap">${fmtKRWShort(total)}</span>
     </div>
     <div class="pb-2 border-b border-slate-100 dark:border-slate-800">
-      <p class="text-[11px] text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좈 실제 보유 기준)</p>
-      <p class="text-[11px] text-slate-500 dark:text-slate-400">${householdRoleSummary}</p>
+      <p class="text-sm text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좈 실제 보유 기준)</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">${householdRoleSummary}</p>
     </div>
     ${TAX_ADVANTAGED_OWNERS.map(ownerAccordionHtml).join('')}`;
 
@@ -1335,7 +1335,7 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
   const byAccount = getTaxAdvantagedAssetsByOwnerAccount(owner);
   const accountTypes = Object.keys(byAccount).sort();
   if (accountTypes.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좈 종목이 없습니다 - 종목을 매수하면 계좈별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좈 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400">보유 중인 절세계좈 종목이 없습니다 - 종목을 매수하면 계좈별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좈 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
     return;
   }
   const plan = taxPlanSource();
@@ -1382,9 +1382,9 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
     <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2.5 mt-2 first:mt-0">
       <div class="mb-2">
         <div class="flex items-center gap-1.5 mb-1">
-          <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(accType)}">${escapeHtml(accType)}</span>
+          <span class="flex-1 min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(accType)}">${escapeHtml(accType)}</span>
           <select data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="frequency"
-            class="tax-contrib-input shrink-0 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+            class="tax-contrib-input shrink-0 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
             <option value="monthly" ${c.frequency === 'yearly' ? '' : 'selected'}>매월</option>
             <option value="yearly" ${c.frequency === 'yearly' ? 'selected' : ''}>매년</option>
           </select>
@@ -1392,35 +1392,35 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
         <div class="flex items-center justify-end gap-1">
           <input type="text" inputmode="numeric" value="${formatInputNumber(c.amount || '')}" placeholder="금액"
             data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="amount"
-            class="tax-contrib-input w-24 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
-          <span class="text-[10px] text-slate-400 shrink-0">원</span>
+            class="tax-contrib-input w-24 shrink-0 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+          <span class="text-sm text-slate-400 shrink-0">원</span>
           <input type="number" step="1" min="1" value="${c.years || ''}" placeholder="기간"
             data-contrib-owner="${escapeHtml(owner)}" data-contrib-account="${escapeHtml(accType)}" data-contrib-field="years"
-            class="tax-contrib-input w-12 shrink-0 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-          <span class="text-[10px] text-slate-400 shrink-0">년</span>
+            class="tax-contrib-input w-12 shrink-0 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-sm text-slate-400 shrink-0">년</span>
         </div>
       </div>
       <div class="space-y-1.5 pl-1">
         ${displayRows.map((row) => `
         <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="flex-1 min-w-0 text-[11px] text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${row.planned ? ' <span class="text-amber-500">(미보유)</span>' : ''}</span>
+          <span class="flex-1 min-w-0 text-sm text-slate-600 dark:text-slate-300 truncate" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${row.planned ? ' <span class="text-amber-500">(미보유)</span>' : ''}</span>
           <input type="number" step="0.1" min="0" max="100" value="${pctFor(accType, row.ticker, row.name)}"
             data-alloc-owner="${escapeHtml(owner)}" data-alloc-account="${escapeHtml(accType)}" data-alloc-ticker="${escapeHtml(row.ticker)}" data-alloc-label="${escapeHtml(row.name)}"
-            class="tax-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-          <span class="text-[10px] text-slate-400 shrink-0">%</span>
+            class="tax-alloc-input w-16 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-sm text-slate-400 shrink-0">%</span>
           <!-- [종목 삭제 버튼 - 요청 반영] 보유 종목은 배분 항목만 지워져 pct 0으로 돌아가고(행 자체는
                실제 보유 자산이라 계속 남음), 미보유(planned) 종목은 배분 항목이 곧 행의 존재 근거라
                삭제 시 행 자체가 사라진다. -->
           <button type="button" data-tax-alloc-remove data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(row.ticker)}" data-name="${escapeHtml(row.name)}" title="삭제"
             class="touch-target w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           <select data-alloc-role-owner="${escapeHtml(owner)}" data-alloc-role-account="${escapeHtml(accType)}" data-alloc-role-ticker="${escapeHtml(row.ticker)}" data-alloc-role-label="${escapeHtml(row.name)}"
-            class="tax-alloc-role-select basis-full text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker, row.name, row.role))}</select>
+            class="tax-alloc-role-select basis-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none">${roleOptionsHtml(roleFor(accType, row.ticker, row.name, row.role))}</select>
         </div>`).join('')}
       </div>
-      <p class="tax-alloc-sum-hint text-[10px] text-slate-400 mt-1.5" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
+      <p class="tax-alloc-sum-hint text-sm text-slate-400 mt-1.5" data-alloc-sum-owner="${escapeHtml(owner)}" data-alloc-sum-account="${escapeHtml(accType)}"></p>
       <!-- [계좈별 종목 추가 - "수익률 관리" 팝업의 +신규 종목 추가 버튼 형식 차용] -->
       <button type="button" data-tax-add-toggle data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}"
-        class="w-full mt-1.5 flex items-center justify-center gap-1 text-[10px] font-semibold px-2 py-1 rounded border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
+        class="w-full mt-1.5 flex items-center justify-center gap-1 text-sm font-semibold px-2 py-1 rounded border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300">
         <i data-lucide="plus" class="w-3 h-3"></i> 종목 추가
       </button>
       <div data-tax-add-form data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" class="hidden mt-1.5 p-1.5 rounded bg-slate-50 dark:bg-slate-800/60"></div>
@@ -1442,20 +1442,20 @@ function allocEntryIdentity(ticker, label) {
 async function renderTaxAddSearchResults(resultsEl, owner, accType, query) {
   const q = query.trim();
   if (!q) { resultsEl.innerHTML = ''; return; }
-  resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 중...</p>';
+  resultsEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-1">검색 중...</p>';
   const results = await searchStockCandidates(q);
   const existing = new Set((taxPlanSource().allocationByOwner[owner] || [])
     .filter((it) => it.accountType === accType).map((it) => allocEntryIdentity(it.ticker, it.label)));
   const candidates = results.filter((r) => !existing.has(allocEntryIdentity(r.symbol, r.name))).slice(0, 10);
   if (candidates.length === 0) {
-    resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 결과가 없습니다.</p>';
+    resultsEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-1">검색 결과가 없습니다.</p>';
     return;
   }
   resultsEl.innerHTML = candidates.map((r) => `
     <button type="button" data-tax-add-candidate data-owner="${escapeHtml(owner)}" data-account="${escapeHtml(accType)}" data-ticker="${escapeHtml(r.symbol)}" data-name="${escapeHtml(r.name)}" data-role="${escapeHtml(r.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-1.5 py-1 rounded hover:bg-white dark:hover:bg-slate-700">
-      <span class="text-[11px] truncate">${escapeHtml(r.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')}</span>
+      <span class="text-sm truncate">${escapeHtml(r.name)}</span>
+      <span class="text-sm text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')}</span>
     </button>`).join('');
 }
 function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
@@ -1553,7 +1553,7 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
     form.classList.remove('hidden');
     form.innerHTML = `
       <input type="text" data-tax-add-search autocomplete="off" placeholder="종목명/티커 검색"
-        class="w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">
+        class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">
       <div data-tax-add-results class="mt-1 space-y-0.5 max-h-32 overflow-y-auto"></div>`;
     const input = form.querySelector('[data-tax-add-search]');
     setTimeout(() => input.focus(), 50);
@@ -1613,7 +1613,7 @@ function renderTaxAdvantagedPlanResults() {
   });
   container.innerHTML = `
   <div class="overflow-x-auto">
-    <table class="w-full text-xs">
+    <table class="w-full text-sm">
       <thead>
         <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
           <th class="py-2 pr-2 font-semibold"></th>
@@ -1632,7 +1632,7 @@ function renderTaxAdvantagedPlanResults() {
       </tbody>
     </table>
   </div>
-  <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">신랑은 ${horizonByOwner['신랑']}년 후, 와이프는 ${horizonByOwner['와이프']}년 후(각자 등록한 계좌 중 가장 늦게 끝나는 계좌 기준) 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 실제 보유 중인 종목과 계좌별로 배분한 종목은 각자의 대표 수익률로, 배분되지 않은 나머지 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 복리 성장한다고 가정합니다.</p>`;
+  <p class="text-sm text-slate-400 mt-2 leading-relaxed">신랑은 ${horizonByOwner['신랑']}년 후, 와이프는 ${horizonByOwner['와이프']}년 후(각자 등록한 계좌 중 가장 늦게 끝나는 계좌 기준) 예상 적립금액(원금+수익)입니다. "합계"는 두 시점 금액을 단순 합산한 값입니다. 실제 보유 중인 종목과 계좌별로 배분한 종목은 각자의 대표 수익률로, 배분되지 않은 나머지 적립금은 위험자산(주식형) 70% · 안전자산(채권형) 30% 고정 비율로 복리 성장한다고 가정합니다.</p>`;
 }
 
 /* -------------------------------------------------------------------------
@@ -1684,26 +1684,26 @@ document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('c
 function renderScenarioRateManagerList() {
   const container = document.getElementById('scenarioRateManagerList');
   if (scenarioRateManagerDraft.length === 0) {
-    container.innerHTML = '<p class="text-xs text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 구성" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 구성" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
     return;
   }
   container.innerHTML = scenarioRateManagerDraft.map((row, idx) => `
     <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-1.5">
       <div class="flex items-center gap-1.5">
-        <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+        <span class="flex-1 min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
         <div class="flex items-center gap-1 shrink-0">
           <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative"
-            class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
+            class="scenario-rate-input w-14 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
           <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal"
-            class="scenario-rate-input w-14 text-[11px] font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+            class="scenario-rate-input w-14 text-sm font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
           <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
-            class="scenario-rate-input w-14 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
+            class="scenario-rate-input w-14 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
           ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
         </div>
       </div>
       <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
         placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
-        class="scenario-rate-keyword-input w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+        class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
     </div>`).join('');
   lucide.createIcons();
 }
@@ -1741,14 +1741,14 @@ function renderScenarioRateSearchResults(results, seq) {
   const container = document.getElementById('newScenarioRateSearchResults');
   if (!container) return;
   if (results.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
     return;
   }
   container.innerHTML = results.map((r) => `
     <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700">
-      <span class="min-w-0 text-xs truncate">${escapeHtml(r.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
+      <span class="min-w-0 text-sm truncate">${escapeHtml(r.name)}</span>
+      <span class="text-sm text-slate-400 shrink-0">${escapeHtml(r.symbol)} · ${escapeHtml(r.exch || '')}</span>
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1781,7 +1781,7 @@ function triggerScenarioRateSearch(query) {
   clearTimeout(scenarioRateSearchDebounceTimer);
   if (!query) { container.classList.add('hidden'); container.innerHTML = ''; return; }
   container.classList.remove('hidden');
-  container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 중...</p>';
+  container.innerHTML = '<p class="text-sm text-slate-400 text-center py-2">검색 중...</p>';
   scenarioRateSearchDebounceTimer = setTimeout(async () => {
     const seq = ++scenarioRateSearchRequestSeq;
     const results = await searchStockCandidates(query);
@@ -1797,25 +1797,25 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
   form.classList.remove('hidden'); // [버그 수정] innerHTML만 채우고 hidden을 안 벗겨서 폼이 채워져도
   // 화면엔 계속 안 보이던 문제 - 실기기 터치로 버튼을 눌러도 "아무 변화가 없는 것처럼" 보였다.
   form.innerHTML = `
-    <input id="newScenarioRateName" type="text" autocomplete="off" placeholder="종목명 검색 (예: SK하이닉스, 하이닉스, TSLA)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateName" type="text" autocomplete="off" placeholder="종목명 검색 (예: SK하이닉스, 하이닉스, TSLA)" class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <div id="newScenarioRateSearchResults" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>
-    <input id="newScenarioRateCode" type="text" autocomplete="off" placeholder="종목코드/티커 (예: 000660, 검색결과 선택 시 자동입력)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <input id="newScenarioRateCode" type="text" autocomplete="off" placeholder="종목코드/티커 (예: 000660, 검색결과 선택 시 자동입력)" class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
     <div class="flex items-start gap-1.5">
       <div class="flex-1 min-w-0">
-        <label for="newScenarioRateConservative" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">보수</label>
-        <input id="newScenarioRateConservative" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#ef4444">
+        <label for="newScenarioRateConservative" class="block text-sm text-slate-400 whitespace-nowrap mb-0.5">보수</label>
+        <input id="newScenarioRateConservative" type="number" step="0.1" placeholder="%" class="w-full text-sm text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#ef4444">
       </div>
       <div class="flex-1 min-w-0">
-        <label for="newScenarioRateNormal" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">일반</label>
-        <input id="newScenarioRateNormal" type="number" step="0.1" placeholder="%" class="w-full text-xs font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+        <label for="newScenarioRateNormal" class="block text-sm text-slate-400 whitespace-nowrap mb-0.5">일반</label>
+        <input id="newScenarioRateNormal" type="number" step="0.1" placeholder="%" class="w-full text-sm font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
       </div>
       <div class="flex-1 min-w-0">
-        <label for="newScenarioRateOptimistic" class="block text-[10px] text-slate-400 whitespace-nowrap mb-0.5">긍정</label>
-        <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-xs text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
+        <label for="newScenarioRateOptimistic" class="block text-sm text-slate-400 whitespace-nowrap mb-0.5">긍정</label>
+        <input id="newScenarioRateOptimistic" type="number" step="0.1" placeholder="%" class="w-full text-sm text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none" style="color:#10b981">
       </div>
     </div>
-    <input id="newScenarioRateKeywords" type="text" autocomplete="off" placeholder="종목명 키워드(쉼표로 구분, 선택) - 예: 채권혼합" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
-    <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
+    <input id="newScenarioRateKeywords" type="text" autocomplete="off" placeholder="종목명 키워드(쉼표로 구분, 선택) - 예: 채권혼합" class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+    <button type="button" id="confirmAddScenarioRateBtn" class="w-full text-sm font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white">추가</button>
   `;
   // [모바일 스크롤 개선] 폼을 펼친 직후 화면(특히 모바일)에서 입력창이 하단에 가려 안 보일 수 있으므로,
   // 부드럽게 스크롤해 방금 펼친 입력 폼이 바로 눈에 들어오게 한다.
@@ -2046,9 +2046,12 @@ function renderScenarioSummaryCards(scenarioData) {
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
       <div class="flex items-center gap-1.5 mb-2 min-w-0">
         <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
-        <span class="text-[10px] sm:text-sm font-semibold truncate">${escapeHtml(s.label)}</span>
+        <!-- [Phase 27] 14px 상향 후 truncate가 걸리면 "목표배분..."까지만 남아 구분어(보수적/일반적/
+             긍정적)가 사라진다 - 색 점만으로 구분하게 되므로 "색상만으로 상태를 전달하지 않는다"는
+             원칙에 어긋난다. 글자를 줄이지 않고 줄바꿈을 허용한다. -->
+        <span class="text-sm font-semibold leading-tight min-w-0">${escapeHtml(s.label)}</span>
       </div>
-      <p class="text-[10px] sm:text-[11px] whitespace-nowrap">
+      <p class="text-sm">
         <span class="text-slate-400">기준 연간 성장률</span>
         <span class="text-sm sm:text-lg font-bold" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</span>
       </p>
@@ -2140,7 +2143,7 @@ function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenar
     ${scenarioData.map((s) => `<th class="px-1 py-2 text-right font-bold" style="color:${s.color}">${escapeHtml(shortLabel(s.label))}</th>`).join('')}`;
   document.getElementById(bodyId).innerHTML = rows.map((r) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${r.year === 0 ? '현재' : `${r.year}년후`}<span class="block text-[10px] font-normal text-slate-400">${CURRENT_YEAR + r.year}</span></td>
+      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${r.year === 0 ? '현재' : `${r.year}년후`}<span class="block text-sm font-normal text-slate-400">${CURRENT_YEAR + r.year}</span></td>
       ${scenarioData.map((s) => `<td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${fmtEok(r.values[s.key])}</td>`).join('')}
     </tr>`).join('');
 }
@@ -2599,7 +2602,7 @@ function renderMonthlyContributionAllocationList(owner) {
   const draft = monthlyContributionByOwnerDraft[owner];
   const container = document.getElementById('monthlyContributionAllocationList' + suffix);
   if (draft.allocation.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">아직 배분된 종목이 없습니다 - 월 적립금 전액이 ${escapeHtml(owner)}의 국내/해외 목표 비중대로 계산됩니다.</p>`;
+    container.innerHTML = `<p class="text-sm text-slate-400 text-center py-2">아직 배분된 종목이 없습니다 - 월 적립금 전액이 ${escapeHtml(owner)}의 국내/해외 목표 비중대로 계산됩니다.</p>`;
   } else {
     // [미보유 종목 포지션 태깅 - 요청 반영] 배분 항목 자체(state.projection, state.assets와 무관)에
     // 역할을 저장한다 - 실제 보유 여부와 상관없이 "이 적립 계획은 어떤 성격이다"를 기록해 둘 수 있다.
@@ -2608,15 +2611,15 @@ function renderMonthlyContributionAllocationList(owner) {
       return `
     <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
       <div class="flex items-center gap-1.5">
-        <span class="flex-1 min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
+        <span class="flex-1 min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
         <div class="flex items-center gap-1 shrink-0">
           <input type="number" step="0.1" min="0" max="100" value="${row.pct}" data-alloc-idx="${idx}"
-            class="monthly-alloc-input w-16 text-[11px] font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-          <span class="text-[11px] text-slate-400">%</span>
+            class="monthly-alloc-input w-16 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
+          <span class="text-sm text-slate-400">%</span>
           <button type="button" class="monthly-alloc-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-alloc-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
         </div>
       </div>
-      <select data-alloc-role-idx="${idx}" class="monthly-alloc-role-select mt-1.5 w-full text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">${roleOptionsHtml}</select>
+      <select data-alloc-role-idx="${idx}" class="monthly-alloc-role-select mt-1.5 w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none">${roleOptionsHtml}</select>
     </div>`;
     }).join('');
   }
@@ -2673,7 +2676,7 @@ function triggerMonthlyAllocSearch(owner, query) {
   clearTimeout(st.timer);
   if (!query) { container.classList.add('hidden'); container.innerHTML = ''; return; }
   container.classList.remove('hidden');
-  container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 중...</p>';
+  container.innerHTML = '<p class="text-sm text-slate-400 text-center py-2">검색 중...</p>';
   st.timer = setTimeout(async () => {
     const seq = ++st.seq;
     const results = await searchStockCandidates(query);
@@ -2686,14 +2689,14 @@ function renderMonthlyAllocSearchResults(owner, results, seq) {
   const container = document.getElementById('newMonthlyAllocSearchResults' + suffix);
   if (!container) return;
   if (results.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-2">검색 결과가 없습니다</p>';
     return;
   }
   container.innerHTML = results.map((r) => `
     <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}" data-pick-role="${escapeHtml(r.role || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700">
-      <span class="min-w-0 text-xs truncate">${escapeHtml(r.name)}</span>
-      <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')} ${r.exch ? '· ' + escapeHtml(r.exch) : ''}</span>
+      <span class="min-w-0 text-sm truncate">${escapeHtml(r.name)}</span>
+      <span class="text-sm text-slate-400 shrink-0">${escapeHtml(r.symbol || '보유 중(티커 없음)')} ${r.exch ? '· ' + escapeHtml(r.exch) : ''}</span>
     </button>`).join('');
   container.querySelectorAll('button[data-pick-symbol]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2723,7 +2726,7 @@ REBALANCE_OWNERS.forEach((owner) => {
     if (!form.classList.contains('hidden')) { form.classList.add('hidden'); form.innerHTML = ''; return; }
     form.classList.remove('hidden');
     form.innerHTML = `
-      <input id="newMonthlyAllocSearchInput${suffix}" type="text" autocomplete="off" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
+      <input id="newMonthlyAllocSearchInput${suffix}" type="text" autocomplete="off" placeholder="종목명/티커 검색 (예: 삼성전자, QQQM)" class="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none">
       <div id="newMonthlyAllocSearchResults${suffix}" class="hidden space-y-0.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-100 dark:bg-slate-900"></div>`;
     form.scrollIntoView({ behavior: 'smooth', block: 'end' });
     document.getElementById('newMonthlyAllocSearchInput' + suffix).addEventListener('input', (e) => triggerMonthlyAllocSearch(owner, e.target.value.trim()));
