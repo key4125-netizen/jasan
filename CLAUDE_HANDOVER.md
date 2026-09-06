@@ -7,7 +7,60 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-06) — Phase 23(Header 모바일 UX) + Phase 24(Owner별 Monte Carlo) **V1.1 v209 → v210**
+## 최근 세션 요약 (2026-09-06) — Phase 25(전체 입력 UI UX 표준화 + 미래예측 IA 정리) **V1.1 v210 → v211**
+
+**커밋**: `5d11eef` "release: V1.1 v211 phase25 input ux investment plan" — **push 완료**(직전 `c71ed2d` 위에 이어짐). **V1.1은 이제 v211이다.**
+
+### 이번 Phase의 한 줄 요약
+사용자의 자산·투자계획·미래예측에 영향을 주는 **모든 입력을 draft 계약으로 통일**하고, 미래예측 화면의 "투자계획 / 가정 / 결과" 경계를 정리했다. 계산 모델·Safety 정책·state schema는 일절 건드리지 않았다.
+
+### 확정된 입력 UI 표준 (앞으로 새 입력을 만들 때 반드시 따를 것)
+```
+기존값 → draft → 입력 → [취소] 폐기 / [확인] validation → state → persist → render
+```
+- **취소는 state와 localStorage를 절대 건드리지 않는다.** 화면 결과도 그대로다.
+- **확인만이** validation을 통과한 뒤 state를 바꾼다. 값을 조용히 보정하지 않고 저장 자체를 막는다.
+- 참조 구현: `monthlyContributionByOwnerDraft`, `rebalanceModalDraft`, `taxAdvantagedPlanDraft`(신규), `projectionAssumptionsDraft`(신규), `mcFeeRatesDraft`(신규).
+- **즉시 적용 예외**(그대로 유지): 검색·필터·탐색용 select, MC 관점 세그먼트, 자동 갱신되는 환율/일간증감률, form submit + cancel 구조인 자산/거래 입력, 부모 draft가 전체를 지배하는 중첩 모달.
+
+### 무엇이 바뀌었나
+**P0 절세계좌 적립** — 예전엔 타이핑마다 state 변경 + `persistProjection()`이라 [닫기]로 되돌릴 수 없었다(같은 화면의 [적립금 설정] 팝업은 정확히 반대로 동작해 일관성도 깨져 있었다). `taxAdvantagedPlanDraft` + [취소]/[확인] + validation(배분합계 100% 초과 / 음수 금액·기간 / 납입주기)으로 전환했다. **팝업을 열기만 해도 계좌 기본값이 저장되던 것**도 함께 없앴다. 팝업 안 결과표는 draft로 계산해 **실시간 미리보기는 그대로 유지**된다(`simulateTaxAdvantagedOwnerGrowth(owner, preset, years, planOverride)` — Phase 24-B `ownerFilter`와 같은 "optional 인자, 생략 시 기존 동작" 패턴).
+
+**P1 MC 운용보수** — dropdown → 팝업. **"미확인"과 "명시적 0%"를 글자로 구분**한다(색만으로 전달하지 않는다). `customFeeRates[key] === undefined` = 미확인이라는 데이터 모델과 Safety의 미확인 경고 semantics는 무변경.
+
+**P1 인플레이션율** — 계좌와 무관한 전역 가정이라 "나의 투자계획"에서 분리해 미래예측 가정 팝업으로 이동.
+
+**P2 IA** — `💰 일반계좌 설정` → **`💰 나의 투자계획`**. 매년 투자금 증가율을 [적립금 설정] 팝업으로 옮겨 "매달 얼마 / 몇 년 / 매년 얼마나 늘릴지"가 하나의 투자계획으로 읽히게 했다. **목표비중은 Portfolio에 그대로 둔다**(현재비중 비교·리밸런싱 실행 맥락이 거기 있다) — 미래예측에는 이동 링크만 뒀다.
+
+**M-1 접근성** — 목표비중 모달의 role select(10px/25px), 비중 % 입력(34px), [종목 추가](34px), 국내/해외 split 입력, 취소/확인, 목표금액 미리보기(11px)를 44px / 12px 기준으로 맞췄다.
+
+### 다음 세션이 반드시 알아야 할 함정 (Phase 24-B 항목에 추가)
+- **`updateProjection()`은 이제 DOM이 아니라 state를 읽는다.** 예전엔 `inflationRateInput`/`contributionGrowthRateInput`의 DOM 값을 읽어 state에 되썼는데, 두 입력이 draft 팝업 안으로 들어가면서 **"취소해도 draft 값이 state로 새어 들어가는"** 경로가 됐다. 입력을 팝업으로 옮길 때는 이런 역방향 동기화가 남아있지 않은지 반드시 확인할 것.
+- **새 모달은 `SWIPE_MODAL_IDS`와 `MODAL_CLOSE_FNS`(js/03) 양쪽에 등록해야 한다.** 한쪽만 등록하면 Android 물리 뒤로가기가 팝업을 못 닫고 "앱 종료" 경로로 빠진다(Phase 24-B에서 실제로 겪은 결함).
+- **`.touch-target`은 `@media (max-width: 639px)` 한정이다.** 태블릿(768px)에서는 적용되지 않아 32px로 떨어진다 — 44px가 필요하면 `min-h-[44px]`를 명시할 것.
+- **텍스트 크기는 컨테이너가 아니라 실제 innerHTML을 만드는 쪽에 있을 수 있다.** 목표비중 미리보기가 그랬다(컨테이너 클래스를 고쳐도 11px 그대로였음).
+- Browser pane `document.hidden` 이슈와 cache-first SW 이슈는 아래 Phase 24-B 항목 참고(그대로 유효).
+
+### 검증 결과 (v211)
+ESLint 0 · Unit 108/108 · **Playwright 184/184** · SW Release Guard PASS(v211) · 375/390/412/768 × Light/Dark 16/16 · 가로 overflow 0 · 목표비중 모달 12px 미만 텍스트 0건(수정 전 6건).
+**MC baseline 유지**: 가구 전체 P50 12.95억 / 실질 7.90억 / 목표확률 95% 초과 / milestone 6.44·8.19·10.34·12.95억, owner MC 신랑 7.77억 + 와이프 5.18억 = 12.95억 가산성 유지.
+
+### backlog (PM이 "착수 금지"로 지정 — 임의 착수 금지)
+1. Range Bar 제거 권장(milestone 표 마지막 행을 문자 그대로 중복, MC 결과 영역의 16.5% 점유)
+2. Hero owner별 분해(계산 기반은 `simulateRebalancedPreset(preset, maxYears, ownerFilter)`로 이미 마련됨)
+3. MC 안내 카드 7개 통합
+4. MC 결과 자동 소거 개선(`js/05` `updateProjection`의 `resetMonteCarloUiToReady()` — 시세 자동 갱신이 10초 기다린 MC 결과를 지운다. **Phase 19-P1부터 있던 기존 동작이지 회귀가 아니다**)
+5. `openExchangeRateModal()` 호출자 0개 확정 — PM 지시로 삭제하지 않고 유지 중
+6. MC 목표금액 영속화(새로고침하면 사라짐)
+7. 인플레이션 팝업 + MC fee 팝업 통합(PM이 이번엔 하지 말라고 명시)
+8. **전역 `.touch-target`이 640px 이상에서 미적용** — 이번엔 목표비중 모달만 명시 보강했고, 앱 전체의 다른 touch-target 버튼은 태블릿/데스크탑에서 32px로 남아 있다
+
+### 알려진 환경 이슈
+`e2e/17`이 간헐적으로 `browser.newContext: Target page, context or browser has been closed`로 실패한다. `git stash` A/B 각 10회 측정 결과 **baseline 1/10 · Phase 25 2/10**으로 동일 오류 유형이고 표본 오차 범위다 — assertion 실패가 아니며 제품 회귀가 아니다. 단독 실행하면 11/11 통과한다.
+
+---
+
+## 이전 세션 요약 (2026-09-06) — Phase 23(Header 모바일 UX) + Phase 24(Owner별 Monte Carlo) **V1.1 v209 → v210**
 
 **커밋**: `05e701a` "release: V1.1 v210 phase24b owner monte carlo" — **push 완료**(직전 `0bdda76`(v209 phase22) 위에 이어짐). **V1.1은 이제 v210이다.**
 
