@@ -58,8 +58,12 @@ test('4. VWO(신흥국)는 신흥국 주식으로 판정되고 S&P500 가정을 
   await boot(page);
   const r = await rec(page, 'VWO', 'Vanguard FTSE Emerging Markets ETF', 'USD');
   expect(r.character).toBe('EM_EQUITY');
+  // 지역 폴백 금지는 이 파일의 영구 계약이다.
   expect(r.key).not.toBe('S&P500');
-  expect(r.key).toBeNull();
+  expect(r.key).not.toBe('NASDAQ');
+  // [Phase 41-B에서 갱신] 이 Phase를 쓸 당시엔 신흥국에 쓸 근거가 없어 NONE이 정답이었다.
+  // Vanguard VCMM 신흥국 전망(2~4%)이 확보되면서 정식 Key로 해소됐다 - 상세는 e2e/42.
+  expect(r.key).toBe('EMERGING');
 });
 
 test('5. VEA(선진국 ex-US)는 별도 성격으로 판정되고 S&P500 가정을 받지 않는다', async ({ page }) => {
@@ -67,7 +71,9 @@ test('5. VEA(선진국 ex-US)는 별도 성격으로 판정되고 S&P500 가정�
   const r = await rec(page, 'VEA', 'Vanguard FTSE Developed Markets ETF', 'USD');
   expect(r.character).toBe('DEV_EX_US_EQUITY');
   expect(r.key).not.toBe('S&P500');
-  expect(r.key).toBeNull();
+  expect(r.key).not.toBe('NASDAQ');
+  // [Phase 41-B에서 갱신] Vanguard VCMM 선진국 ex-US 전망(4.5~6.5%) 확보로 NONE에서 해소됨.
+  expect(r.key).toBe('DEV_EX_US');
 });
 
 test('6. 국내 국고채 ETF는 채권으로 판정되고 KOSPI 가정을 받지 않는다', async ({ page }) => {

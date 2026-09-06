@@ -176,14 +176,17 @@ const RETURN_KEY_CHARACTER = Object.freeze({
   'MSFT': ASSET_CHARACTERS.US_EQUITY, 'GOOGL': ASSET_CHARACTERS.US_EQUITY, 'AAPL': ASSET_CHARACTERS.US_EQUITY,
   'AMZN': ASSET_CHARACTERS.US_EQUITY, 'META': ASSET_CHARACTERS.US_EQUITY, 'NVDA': ASSET_CHARACTERS.US_EQUITY,
   'BOND': ASSET_CHARACTERS.BOND, 'CASH': ASSET_CHARACTERS.CASH, 'CASH.USD': ASSET_CHARACTERS.CASH,
-  '부동산': ASSET_CHARACTERS.REAL_ESTATE
+  '부동산': ASSET_CHARACTERS.REAL_ESTATE,
+  // [Phase 41-B] 둘 다 주식이지만 지역이 달라 US_EQUITY와 다른 가정을 쓴다.
+  'DEV_EX_US': ASSET_CHARACTERS.DEV_EX_US_EQUITY, 'EMERGING': ASSET_CHARACTERS.EM_EQUITY
 });
 // 'BOND' Key의 근거(CMA_SOURCE_METADATA.KR_BOND)는 한국 국고채를 검토한 것이라 통화/시장이 다른
 // 해외 채권에 그대로 적용하면 안 된다 - 그래서 해외 채권은 자동 추천하지 않고 대안으로만 제시한다.
 const RETURN_KEY_REGION = Object.freeze({
   'KOSPI': '국내', 'KOSDAQ': '국내', '005930.KS': '국내', 'BOND': '국내',
   'S&P500': '해외', 'NASDAQ': '해외', 'SCHD': '해외', 'MSFT': '해외', 'GOOGL': '해외',
-  'AAPL': '해외', 'AMZN': '해외', 'META': '해외', 'NVDA': '해외'
+  'AAPL': '해외', 'AMZN': '해외', 'META': '해외', 'NVDA': '해외',
+  'DEV_EX_US': '해외', 'EMERGING': '해외'
 });
 
 // 사용자가 이미 등록한 커스텀 Key는 성격을 알 수 없다 - 사용자의 명시적 의도로 존중하되
@@ -574,6 +577,27 @@ function getCustomRate(key, presetKey) {
 // forward-looking CMA를 확보하지 못해 이번 라운드에서 의도적으로 변경하지 않음 - 임의 숫자 생성 금지
 // 원칙). 이 metadata는 순수 내부 추적용이며 계산 로직(getTargetProjectionRate 등)은 이 값들을
 // 전혀 참조하지 않는다 - 사용자에게 노출되는 기능이 아니다.
+// [Phase 41-B] 외부 CMA(연 기하수익률) → 앱 저장값(연 명목 APR, 월복리) 변환.
+// Phase 7-F에서 US_EQUITY 값을 만들 때 손으로 계산했던 바로 그 식을 함수로 옮긴 것이다:
+//   앱 저장값 = 12 × ((1 + 연기하수익률)^(1/12) − 1)
+// 이렇게 저장해야 결정론 경로의 (1 + r/12)^12 − 1 이 원자료의 연 기하수익률과 같아지고,
+// Monte Carlo의 GBM median 연성장률도 같은 값이 된다(Phase 40-A/B에서 동치 증명).
+// 소수 첫째 자리 반올림은 기존 US_EQUITY와 동일한 정책이며, 이 함수에 4.2/5.2/6.2를 넣으면
+// 현재 코드에 하드코딩된 4.1/5.1/6.0이 그대로 재현된다(테스트로 고정).
+function cmaGeometricToAppRate(annualGeometricPct) {
+  return Math.round(12 * (Math.pow(1 + annualGeometricPct / 100, 1 / 12) - 1) * 100 * 10) / 10;
+}
+// [Phase 41-B] Vanguard VCMM(2026-06-30 실행분)의 두 자산군 원자료 range - 하단/중앙/상단을
+// 그대로 Bear/Base/Bull에 대응시킨다(US_EQUITY와 동일한 방식, 임의 조정 없음).
+// 숫자를 직접 적지 않고 위 변환 함수를 태워서 "원자료 → 저장값" 관계가 코드에 남게 한다.
+const CMA_RAW_RANGES = Object.freeze({
+  DEV_EX_US: { conservative: 4.5, normal: 5.5, optimistic: 6.5 },
+  EMERGING: { conservative: 2.0, normal: 3.0, optimistic: 4.0 }
+});
+function cmaPresetRate(rangeKey, presetKey) {
+  return cmaGeometricToAppRate(CMA_RAW_RANGES[rangeKey][presetKey]);
+}
+
 const SCENARIO_RATE_PRESETS = {
   conservative: {
     label: '보수적', color: '#ef4444',
@@ -593,7 +617,11 @@ const SCENARIO_RATE_PRESETS = {
       // 동일한 US_EQUITY Anchor 값을 상속한다 - 개별 종목/스타일 프리미엄을 임의로 추가하지 않는다
       // (Phase 7-C~7-F 원칙: Expected Growth=Anchor, Volatility만 종목별 실측값 사용).
       'NASDAQ': 4.1, 'S&P500': 4.1, 'SCHD': 4.1,
-      'MSFT': 4.1, 'GOOGL': 4.1, 'AAPL': 4.1, 'AMZN': 4.1, 'META': 4.1, 'NVDA': 4.1
+      'MSFT': 4.1, 'GOOGL': 4.1, 'AAPL': 4.1, 'AMZN': 4.1, 'META': 4.1, 'NVDA': 4.1,
+      // [Phase 41-B - cma_verified] 미국 외 선진국 / 신흥국. 기존 값은 하나도 건드리지 않았고
+      // 이 두 줄만 새로 추가됐다(변환식은 US_EQUITY와 동일).
+      'DEV_EX_US': cmaPresetRate('DEV_EX_US', 'conservative'),
+      'EMERGING': cmaPresetRate('EMERGING', 'conservative')
     }
   },
   normal: {
@@ -607,7 +635,9 @@ const SCENARIO_RATE_PRESETS = {
     tickers: {
       '005930.KS': 9.0, // [legacy_approximation]
       'NASDAQ': 5.1, 'S&P500': 5.1, 'SCHD': 5.1,
-      'MSFT': 5.1, 'GOOGL': 5.1, 'AAPL': 5.1, 'AMZN': 5.1, 'META': 5.1, 'NVDA': 5.1
+      'MSFT': 5.1, 'GOOGL': 5.1, 'AAPL': 5.1, 'AMZN': 5.1, 'META': 5.1, 'NVDA': 5.1,
+      'DEV_EX_US': cmaPresetRate('DEV_EX_US', 'normal'),
+      'EMERGING': cmaPresetRate('EMERGING', 'normal')
     }
   },
   optimistic: {
@@ -620,7 +650,9 @@ const SCENARIO_RATE_PRESETS = {
     tickers: {
       '005930.KS': 15.0, // [legacy_approximation]
       'NASDAQ': 6.0, 'S&P500': 6.0, 'SCHD': 6.0,
-      'MSFT': 6.0, 'GOOGL': 6.0, 'AAPL': 6.0, 'AMZN': 6.0, 'META': 6.0, 'NVDA': 6.0
+      'MSFT': 6.0, 'GOOGL': 6.0, 'AAPL': 6.0, 'AMZN': 6.0, 'META': 6.0, 'NVDA': 6.0,
+      'DEV_EX_US': cmaPresetRate('DEV_EX_US', 'optimistic'),
+      'EMERGING': cmaPresetRate('EMERGING', 'optimistic')
     }
   }
 };
@@ -709,6 +741,51 @@ const CMA_SOURCE_METADATA = Object.freeze({
     recommended: null,
     appliesToKeys: ['부동산']
   },
+  // [Phase 41-B] US_EQUITY와 같은 Vanguard VCMM 실행분(2026-06-30)에서 나온 두 자산군.
+  // 앵커 schema는 US_EQUITY와 동일하게 쓰고, 원문에 없는 항목은 비워 둔다(임의로 채우지 않는다).
+  DEV_EX_US_EQUITY: {
+    status: 'cma_verified',
+    appliesTo: ["tickers['DEV_EX_US'](미국 외 선진국 주식)"],
+    source: 'Vanguard Capital Markets Model (VCMM) - "Setting realistic expectations" 공식 페이지',
+    sourceUrl: 'https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html',
+    asOfDate: '2026-06-30(VCMM 모델 실행 기준일), 페이지 게시/갱신일 2026-07-22 표기 확인',
+    forecastHorizonYears: 10,
+    currency: 'USD',
+    nominalReal: 'nominal',
+    returnType: 'total(원문 확인: "likely total returns")',
+    meanType: 'geometric(원문 확인: "geometric returns over different time horizons")',
+    methodologyNote: 'Vanguard 원문 range 4.5%~6.5%(직전 2026-03-31 실행분 5.4%~7.4%에서 하향). ' +
+      'Conservative=하단 4.5%, Normal=range 중간값 5.5%, Optimistic=상단 6.5% - US_EQUITY와 동일한 방식이며 ' +
+      '다른 기관과의 평균이 아니라 Vanguard 단일 출처의 자체 range다. 앱 저장값은 cmaGeometricToAppRate()로 ' +
+      '변환한 결과(연 명목 APR, 월복리)이며 임의 조정하지 않았다. 원문은 이 range가 어떤 백분위수인지 명시하지 않는다.',
+    uncertaintyNote: 'FTSE 기준 분류라 이 바스켓에는 한국도 포함된다 - 특정 단일 국가의 기대수익률이 아니라 ' +
+      '미국 외 선진국 전체의 가정이다. 10년 전망을 20년 앱 horizon에 적용하는 horizon mismatch를 내포하며, ' +
+      'USD 기준이라 원화 투자자의 실현 수익률과는 환율만큼 달라질 수 있다. 미래 수익률을 보장하지 않는다.',
+    version: 1,
+    recommended: null,
+    appliesToKeys: ['DEV_EX_US']
+  },
+  EM_EQUITY: {
+    status: 'cma_verified',
+    appliesTo: ["tickers['EMERGING'](신흥국 주식)"],
+    source: 'Vanguard Capital Markets Model (VCMM) - "Setting realistic expectations" 공식 페이지',
+    sourceUrl: 'https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html',
+    asOfDate: '2026-06-30(VCMM 모델 실행 기준일), 페이지 게시/갱신일 2026-07-22 표기 확인',
+    forecastHorizonYears: 10,
+    currency: 'USD',
+    nominalReal: 'nominal',
+    returnType: 'total(원문 확인: "likely total returns")',
+    meanType: 'geometric(원문 확인: "geometric returns over different time horizons")',
+    methodologyNote: 'Vanguard 원문 range 2%~4%(직전 2026-03-31 실행분 3.6%~5.6%에서 하향). ' +
+      'Conservative=하단 2%, Normal=range 중간값 3%, Optimistic=상단 4% - US_EQUITY와 동일한 방식. ' +
+      '앱 저장값은 cmaGeometricToAppRate() 변환 결과이며 임의 조정하지 않았다.',
+    uncertaintyNote: 'FTSE 기준 분류라 이 바스켓에서 한국은 제외된다(FTSE는 2009년부터 한국을 선진국으로 분류). ' +
+      '따라서 이 가정을 국내 주식에 적용해서는 안 된다. 10년 전망을 20년 horizon에 적용하는 mismatch를 ' +
+      '내포하고 USD 기준이다. 미래 수익률을 보장하지 않는다.',
+    version: 1,
+    recommended: null,
+    appliesToKeys: ['EMERGING']
+  },
   CASH: {
     status: 'legacy_approximation', appliesTo: ['현금(항상 0% 고정, getTargetProjectionRate)'],
     source: null, sourceUrl: null, asOfDate: null,
@@ -754,6 +831,9 @@ function returnKeyCandidatesForCharacter(character, region) {
     return /\.KQ$/i.test(String(region || '')) ? ['KOSDAQ', 'KOSPI'] : ['KOSPI', 'KOSDAQ'];
   }
   if (character === ASSET_CHARACTERS.US_EQUITY) return ['S&P500', 'NASDAQ', 'SCHD'];
+  // [Phase 41-B] Vanguard VCMM 근거가 확보되어 더 이상 "적합한 기준 없음"이 아니다.
+  if (character === ASSET_CHARACTERS.DEV_EX_US_EQUITY) return ['DEV_EX_US'];
+  if (character === ASSET_CHARACTERS.EM_EQUITY) return ['EMERGING'];
   if (character === ASSET_CHARACTERS.CASH) return ['CASH', 'CASH.USD'];
   if (character === ASSET_CHARACTERS.REAL_ESTATE) return ['부동산'];
   if (character === ASSET_CHARACTERS.BOND) return ['BOND'];
@@ -1094,6 +1174,9 @@ const SCENARIO_RATE_BASE_ROWS = [
   { key: 'S&P500', label: 'S&P500 (SPYM)' },
   { key: 'SCHD', label: 'SCHD' },
   { key: 'NASDAQ', label: 'NASDAQ 100 (QQQM)' },
+  // [Phase 41-B] 사용자에게는 내부 키가 아니라 이해 가능한 이름으로 보여준다.
+  { key: 'DEV_EX_US', label: '선진국(미국 제외) 주식' },
+  { key: 'EMERGING', label: '신흥국 주식' },
   { key: 'MSFT', label: 'Microsoft' },
   { key: 'GOOGL', label: 'Alphabet' },
   { key: 'AAPL', label: 'Apple' },
