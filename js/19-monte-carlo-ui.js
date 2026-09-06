@@ -27,10 +27,77 @@ const MC_UI_ERROR_MESSAGE = {
 
 function mcUiEl(id) { return document.getElementById(id); }
 
+/* -------------------------------------------------------------------------
+ * [Phase 24-B STEP 6 - Owner MC 관점 선택] null(기본값)=가구 전체(기존 동작과 100% 동일),
+ * '신랑'|'와이프'=그 owner 단독. 순수 화면 상태(다른 화면 전용 아코디언 열림상태와 동일하게
+ * localStorage에 저장하지 않는다 - 새 state schema 아님, Assets 관점전환(assetListViewMode)과
+ * 동일한 패턴 재사용).
+ * ---------------------------------------------------------------------- */
+let mcOwnerScope = null;
+const MC_SCOPE_BTN_IDLE_CLASSES = ['border-slate-200', 'dark:border-slate-700', 'bg-slate-50', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400'];
+const MC_SCOPE_BTN_ACTIVE_CLASSES = ['border-brand-600', 'dark:border-brand-400', 'bg-brand-50', 'dark:bg-brand-950', 'text-brand-700', 'dark:text-brand-200'];
+function syncMcOwnerScopeButtonsUI() {
+  document.querySelectorAll('#mcOwnerScopeSegmented .mc-owner-scope-btn').forEach((btn) => {
+    const btnScope = btn.dataset.scope === 'household' ? null : btn.dataset.scope;
+    const active = btnScope === mcOwnerScope;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.classList.remove(...MC_SCOPE_BTN_IDLE_CLASSES, ...MC_SCOPE_BTN_ACTIVE_CLASSES);
+    btn.classList.add(...(active ? MC_SCOPE_BTN_ACTIVE_CLASSES : MC_SCOPE_BTN_IDLE_CLASSES));
+  });
+}
+/* -------------------------------------------------------------------------
+ * [Phase 24-B STEP 9 - 범용 MC 정보 모달] 제목/본문만 바꿔 끼우는 방식으로 여러 설명(MC란?/공식모델/
+ * 성장률 의미/목표확률 의미/데이터 한계 등)을 팝업 하나로 재사용한다 - exchangeRateModal 등 기존
+ * 모달과 동일한 open/close 패턴(pushModalHistoryState/popModalHistoryIfNeeded)을 그대로 따른다.
+ * ---------------------------------------------------------------------- */
+function openMcInfoModal(title, bodyHtml) {
+  mcUiEl('mcInfoModalTitle').textContent = title;
+  mcUiEl('mcInfoModalBody').innerHTML = bodyHtml;
+  mcUiEl('mcInfoModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closeMcInfoModal(viaBackButton) {
+  mcUiEl('mcInfoModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('closeMcInfoModalBtn').addEventListener('click', () => closeMcInfoModal());
+document.getElementById('closeMcInfoModalBtnBottom').addEventListener('click', () => closeMcInfoModal());
+document.getElementById('mcInfoModal').addEventListener('click', (e) => { if (e.target.id === 'mcInfoModal') closeMcInfoModal(); });
+
+// [Phase 24-B STEP 9] 기존 "위 시나리오별 예상자산은..." 설명 문단 + "공식 모델: Monthly Precision
+// Monte Carlo" 박스 내용을 한 글자도 지우지 않고 그대로 팝업 본문으로 옮겼다(문구 재배치일 뿐).
+document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
+  openMcInfoModal('Monte Carlo란?', `
+    <p>위 "시나리오별 예상자산"은 선택한 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 종목별 변동성·상관관계를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
+    <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+      <p class="font-semibold text-slate-700 dark:text-slate-200">공식 모델: Monthly Precision Monte Carlo</p>
+      <p class="mt-1">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
+    </div>
+  `);
+});
+
+document.getElementById('mcOwnerScopeSegmented').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mc-owner-scope-btn');
+  if (!btn) return;
+  mcOwnerScope = btn.dataset.scope === 'household' ? null : btn.dataset.scope;
+  syncMcOwnerScopeButtonsUI();
+  // [기존 결과 오해 방지] 이전 관점(예: 가구 전체)으로 실행한 결과가 새 관점 선택 후에도 화면에 남아있으면
+  // "이 결과가 방금 고른 관점 기준"이라고 오해할 수 있다 - 관점을 바꾸면 이전 결과를 숨기고 다시
+  // [Monte Carlo 실행]을 눌러야 하게 한다(계산을 자동 재실행하지 않음 - 기존 "실행 버튼을 직접 눌러야
+  // 시작" 원칙 유지).
+  mcUiEl('mcResultArea').classList.add('hidden');
+  mcUiEl('mcSafetyIssues').classList.add('hidden');
+  showMonteCarloStatus('');
+  mcUiEl('mcStatusText').classList.add('hidden');
+});
+
 // [Phase 6-C - Semantic Safety, 표시 전용] 해외자산 비중이 하나라도 있는지 - FX 안내 카드 표시 여부만
 // 결정하는 순수 조회 함수다. 계산(js/15/16)에는 전혀 관여하지 않고, 계산에도 쓰이지 않는 값이다.
-function hasHouseholdForeignAllocation() {
-  return REBALANCE_OWNERS.some((owner) => num(state.rebalance[owner].domestic['해외']) > 0);
+// [Phase 24-B - Owner MC] ownerFilter를 주면 그 owner만 검사한다 - "신랑만" MC를 볼 때 와이프의 해외
+// 비중 때문에 신랑에게는 해당하지 않는 환율 안내가 뜨지 않도록 한다. 생략 시 기존과 동일(두 owner 중 하나라도).
+function hasHouseholdForeignAllocation(ownerFilter) {
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  return owners.some((owner) => num(state.rebalance[owner].domestic['해외']) > 0);
 }
 
 // [기존 State 재사용] '월적립금 설정' 요약(updateMonthlyContributionSummary, js/05)과 동일한 하위호환
@@ -190,7 +257,7 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       (typeof explainExpectedReturnSemanticAlwaysOn === 'function') ? explainExpectedReturnSemanticAlwaysOn() : null,
       (goalMeta && typeof explainGoalProbabilitySemanticAlwaysOn === 'function') ? explainGoalProbabilitySemanticAlwaysOn() : null,
       (typeof explainHistoricalDataPeriodAlwaysOn === 'function') ? explainHistoricalDataPeriodAlwaysOn() : null,
-      (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation()) : null,
+      (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation(contributionMeta && contributionMeta.ownerScope)) : null,
       (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn() : null,
     ].filter(Boolean);
     // [Phase 17 P1-4] 예전엔 이 issue 전부(WARNING+INFO)를 결과보다 먼저 나오는 mcSafetyIssues
@@ -237,7 +304,11 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
     // 목표비중을 기준으로 신규 적립금을 배분한다(household pooled target-weight, js/16
     // buildMonteCarloInputFromState - 이번 작업에서 구조 자체는 바꾸지 않음). 두 결과를 비교하는
     // 초보자가 "왜 다르지?"라고 오해하지 않도록 짧게 고지만 한다(복잡한 기술 설명 없이).
-    const allocationNote = '참고: Monte Carlo는 가구 전체 목표비중을 기준으로 계산합니다.';
+    // [Phase 24-B STEP 6 - Owner MC] 문구만 선택된 관점에 맞게 바꾼다(계산 자체는 이미 그 owner
+    // 기준으로 끝난 뒤이므로 여기서는 표시만 다르게 함) - ownerScope 미설정(undefined/null)은 기존과
+    // 완전히 동일한 "가구 전체" 문구.
+    const scopeLabel = contributionMeta.ownerScope ? `${contributionMeta.ownerScope}님의` : '가구 전체';
+    const allocationNote = `참고: Monte Carlo는 ${scopeLabel} 목표비중을 기준으로 계산합니다.`;
     mcUiEl('mcContributionScheduleArea').innerHTML = (growthRatePct > 0
       ? `초기 월 적립금 ${fmtKRWShort(initialMonthly)} · 연간 증가율 ${fmtNum(growthRatePct, 1)}% · ${years}년차 월 적립금 약 ${fmtKRWShort(finalYearMonthly)}<br>총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`
       : `월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`)
@@ -331,8 +402,14 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   const presetKey = mcUiEl('mcPresetSelect').value;
   const iterations = parseInt(mcUiEl('mcIterationsSelect').value, 10);
   const years = Math.max(...getMilestoneYearOffsets());
-  const initialPrincipal = computeHouseholdMonteCarloPV();
-  const monthlyContribution = getHouseholdMonthlyContributionTotal();
+  // [Phase 24-B STEP 6 - Owner MC] mcOwnerScope가 설정돼 있으면(신랑/와이프 단독 선택) 그 owner의
+  // 원금/월적립금만 쓴다 - getOwnerMonthlyContributionInputs는 Deterministic이 이미 쓰는 것과 동일한
+  // 함수(하위호환 폴백 포함)를 그대로 재사용한다. mcOwnerScope가 null(가구 전체)이면 기존 함수를
+  // 그대로 호출해 완전히 동일한 값을 낸다(bit-identical).
+  const initialPrincipal = computeHouseholdMonteCarloPV(mcOwnerScope);
+  const monthlyContribution = mcOwnerScope
+    ? num(getOwnerMonthlyContributionInputs(mcOwnerScope).monthlyContribution)
+    : getHouseholdMonthlyContributionTotal();
   const goalAmount = num(mcUiEl('mcGoalAmountInput').value);
   const goalMode = (document.querySelector('input[name="mcGoalMode"]:checked') || {}).value || 'nominal';
   // [기존 State 재사용] state.projection.inflationRate/contributionGrowthRate는 js/05가 이미
@@ -360,7 +437,10 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   // 폴백)가 Deterministic/Monte Carlo 양쪽에서 완전히 동일해진다(따로 만들지 않음). household pooled
   // target-weight 구조(js/16 buildMonteCarloInputFromState)는 그대로 유지 - owner-aware 자산배분으로
   // 확장하지 않는다(요청 범위 제한). 엔진은 이 스트림들의 monthly 총합만큼만 매월 자산에 배분한다.
-  const ownerContributionStreams = REBALANCE_OWNERS.map((owner) => {
+  // [Phase 24-B STEP 6 - Owner MC] mcOwnerScope가 설정돼 있으면 그 owner 스트림 하나만 만든다(다른
+  // owner의 적립기간/월적립금이 이 실행에 전혀 영향을 주지 않도록) - 가구 전체(null)는 기존과 완전히
+  // 동일하게 두 owner 모두의 스트림 배열을 만든다.
+  const ownerContributionStreams = (mcOwnerScope ? [mcOwnerScope] : REBALANCE_OWNERS).map((owner) => {
     const inputs = getOwnerMonthlyContributionInputs(owner);
     return { monthly: inputs.monthlyContribution, years: inputs.years };
   });
@@ -371,13 +451,13 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   const hasAnyExplicitContributionYears = ownerContributionStreams.some((s) => s.years !== null && s.years !== undefined);
   const contributionStreams = hasAnyExplicitContributionYears ? ownerContributionStreams : undefined;
 
-  const contributionMeta = { initialMonthly: monthlyContribution, growthRatePct: contributionGrowthRatePct, years, streams: ownerContributionStreams };
+  const contributionMeta = { initialMonthly: monthlyContribution, growthRatePct: contributionGrowthRatePct, years, streams: ownerContributionStreams, ownerScope: mcOwnerScope };
 
   // [Phase 3-4 - 표시 전용] 포트폴리오 가중평균 운용보수를 보여주기 위해, js/18(Worker orchestration -
   // 이번 Phase에서 변경 금지)을 건드리지 않고 어댑터를 한 번 더(캐시된 데이터라 저렴함) 직접 호출한다.
   // 이 결과는 화면 표시에만 쓰고, 실제 시뮬레이션 입력은 여전히 startMonteCarloRun 내부에서 독립적으로
   // 다시 만들어진다(계산 경로 자체는 그대로 유지).
-  const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey });
+  const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey, ownerFilter: mcOwnerScope });
   const weightedFeePct = (feeDisplayResult.instruments || []).reduce((s, i) => s + i.weight * i.feeRateAnnual, 0) * 100;
 
   // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] startMonteCarloRun 내부(js/18)에서도 동일하게 다시
@@ -400,7 +480,7 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
 
   setMonteCarloUiRunning();
   startMonteCarloRun({
-    presetKey, mode: 'official',
+    presetKey, mode: 'official', ownerFilter: mcOwnerScope, // [Phase 24-B STEP 6] js/18 -> js/16 어댑터로 그대로 전달만 됨
     initialPrincipal, monthlyContribution, contributionGrowthRate: contributionGrowthRatePct / 100, years,
     contributionStreams, // [Step 2] 모든 owner가 years:null(제한없음)이면 엔진이 기존 monthlyContribution 경로로 폴백 - bit-identical
     simulations: iterations, seed: 20260101,

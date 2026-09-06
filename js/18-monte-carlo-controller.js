@@ -121,7 +121,9 @@ async function startMonteCarloRun(params, callbacks) {
   mcActiveRequestId = requestId;
   mcState = MC_WORKER_STATE.WAITING;
 
-  const adapterResult = await buildMonteCarloInputFromState({ presetKey: params.presetKey || 'normal' });
+  // [Phase 24-B - Owner MC] params.ownerFilter를 어댑터에 그대로 전달만 한다(js/15 엔진 자체는 무변경 -
+  // 아래 input 객체에는 ownerFilter가 들어가지 않는다, 엔진은 여전히 owner 개념을 모른다).
+  const adapterResult = await buildMonteCarloInputFromState({ presetKey: params.presetKey || 'normal', ownerFilter: params.ownerFilter });
   if (requestId !== mcActiveRequestId) return; // 어댑터가 비동기로 데이터를 가져오는 동안 취소/재시작됐으면 중단
   if (adapterResult.errors && adapterResult.errors.length > 0) {
     mcState = MC_WORKER_STATE.FAILED;

@@ -228,7 +228,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v209</p>
+            <p id="appVersionLabel" class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">v210</p>
           </div>
         </div>
 
@@ -245,18 +245,23 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:ml-auto">
-        <!-- [모바일 레이아웃 - 절대 줄바꿈 없음] 환율 뱃지/다크모드/서버동기화 버튼 세 요소만 별도
-             flex-nowrap 그룹으로 묶어, 이 셋은 어떤 화면 폭에서도 다음 줄로 넘어가지 않고 항상 한
-             줄에 남는다(justify-between + w-full로 상단 바 가로 폭을 채워 균등하게 분산 배치). 이
-             그룹 자체는 바깥 컨테이너 안에서 하나의 flex-wrap 항목이라, 아래 6버튼 그리드는 예전처럼
-             그대로 다음 줄로 넘어간다 - 세 요소만 묶지 않고 바깥 컨테이너 전체를 nowrap으로 바꾸면
-             6버튼 그리드까지 한 줄에 욱여넣으려다 극단적으로 찌그러지는 회귀가 있었다. 세 요소의
-             자연스러운 폭 합이 화면보다 넓어지는 극단적으로 좁은 기기(320px 미만 등)에서는 줄바꿈
-             대신 이 그룹 안에서만 가로 스크롤되게 해(overflow-x-auto) 레이아웃이 절대 깨지지 않는다. -->
-        <div class="flex flex-nowrap items-center justify-between w-full overflow-x-auto gap-1.5 sm:gap-2 lg:w-auto lg:justify-start lg:overflow-visible">
-        <!-- 환율 뱃지: 자동 갱신 결과 표시 + 언제든 클릭해서 직접 수정 가능 (점선 밑줄로 편집 가능함을 항상 표시) -->
-        <div class="flex items-center gap-0.5 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 sm:px-3 py-1.5 sm:py-2 shadow-sm" title="클릭하여 환율을 직접 수정할 수 있습니다">
+      <!-- [Phase 23-C - 의도적인 2행 utility 레이아웃] Phase 23-B(안 2)는 Settings를 같은 줄에 억지로
+           욱여넣으려다 1024~1150px에서 서버동기화/다크모드가 가려지는 "억지 1행 + 잘린 기능"이 됐다
+           (PM 조건부 승인 후 반려). 원인을 다시 실측해보니 환율 뱃지 자체가 sm(640px) 이상에서
+           "현재 환율" 라벨/넓은 입력칸/연필 아이콘이 드러나며 훨씬 넓어져(예: 1024px에서 359px) 이
+           트리오(환율+다크모드+동기화)가 GROUP-1과 한 줄을 나눠 쓰는 1024~1199px 구간에서는 어떤
+           조합으로도 한 줄에 다 안 들어간다(GROUP-1이 이미 고정폭 540px를 차지하기 때문). 그래서
+           1200px 미만에서는 "환율 단독 줄" + "다크모드·동기화·설정 묶음 줄", 이렇게 처음부터 의도적인
+           2행으로 설계했다 - 두 번째 줄(다크모드+동기화+설정)은 가장 넓어도 약 220px 안팎이라 375px
+           같은 좁은 폭에서도 항상 여유 있게 들어간다(실측 완료). 1200px 이상(실측상 4요소가 자연스럽게
+           한 줄에 다 들어가는 지점)에서만 다시 한 줄로 합친다. 1200px는 Tailwind 표준 브레이크포인트
+           (lg=1024/xl=1280) 사이라 표준값이 없어 임의값(min-[1200px]:)을 썼다. -->
+      <div class="flex flex-col gap-1.5 min-[1200px]:flex-row min-[1200px]:items-center min-[1200px]:gap-2 min-[1200px]:ml-auto min-w-0">
+        <!-- [환율 뱃지 - 단독 줄] 1200px 미만에서는 이 줄 전체(w-full)를 혼자 쓴다(1200px 이상에서만
+             flex-1 min-w-0으로 전환해 아래 묶음과 한 줄을 공유). overflow-x-auto는 Phase 17부터 있던
+             기존 안전장치(극단적으로 좁은 기기 대비) 그대로 유지. -->
+        <div class="w-full overflow-x-auto min-[1200px]:w-auto min-[1200px]:flex-1 min-[1200px]:min-w-0 min-[1200px]:overflow-visible">
+        <div class="flex items-center gap-0.5 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 sm:px-3 py-1.5 sm:py-2 shadow-sm w-fit" title="클릭하여 환율을 직접 수정할 수 있습니다">
           <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400 shrink-0"></i>
           <span class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden sm:inline">현재 환율 </span>$1 =</span>
           <input id="exchangeRateInput" type="number" step="0.1"
@@ -264,50 +269,48 @@
             value="1450">
           <span class="text-xs text-slate-500 dark:text-slate-400">원</span>
           <!-- [모바일 공간 확보] 연필 아이콘은 입력칸의 점선 밑줄이 이미 "수정 가능"을 알려주므로 굳이
-               필요하지 않아 계속 숨겨둔다(sm 이상은 그대로 유지) - 대신 아래 "환율보기" 텍스트는
-               패딩/입력칸 폭을 줄여 확보한 공간으로 다시 항상 보이게 했다(전부 숨기지 않고도 서버동기화
-               버튼이 같은 줄에 남을 수 있는지 재검토한 결과). -->
+               필요하지 않아 계속 숨겨둔다(sm 이상은 그대로 유지). -->
           <i data-lucide="pencil" class="hidden sm:block w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0"></i>
-          <!-- [환율보기 버튼 이동] 원래 [달러자산 총액/적용환율] KPI 카드에 있던 버튼을 여기(상단 헤더의
-               실시간 환율 표시 바로 옆)로 옮겨왔다 - id/클릭 핸들러(openExchangeRateModal)는 그대로라
-               JS 쪽 수정 없이 위치만 바뀐다. -->
-          <button type="button" id="kpiExchangeRateDetailBtn" title="환율 추이 보기"
-            class="flex items-center gap-1 text-[11px] font-semibold pl-1 sm:pl-2 ml-0.5 sm:ml-1 border-l border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 whitespace-nowrap shrink-0">
-            <i data-lucide="line-chart" class="w-3.5 h-3.5 shrink-0"></i> <span>환율보기</span>
-          </button>
+          <!-- [Phase 23-C Final - "환율보기" Header 진입점 제거] Dashboard 본문의 "시장 현황 & 매크로
+               브리핑" 카드가 이미 원/달러를 포함한 시장 정보 상세(그래프 등)를 제공하므로, Header에는
+               "현재 환율 숫자"만 남기고 상세보기 버튼/진입점은 제거했다(정보 소유권 중복 제거 - 기능
+               삭제가 아니라 Header/Dashboard 본문의 역할 분리). #exchangeRateModal 자체와
+               openExchangeRateModal() 함수는 삭제하지 않았다(PM 지침) - 이 버튼이 유일한 호출자였음을
+               전체 검색으로 확인했고(js/11-refresh-history.js 참고), 이제 이 모달은 도달 경로가 없는
+              상태로 코드에 남아 있다. -->
+        </div>
         </div>
 
-        <button id="darkModeBtn" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
+        <!-- [Phase 23-C - 다크모드+서버동기화+설정 묶음 줄] 셋을 합쳐도 가장 넓은 경우(데스크탑 폭에서
+             서버동기화 텍스트가 길어질 때)조차 약 220px 안팎이라, 375px(가용폭 343px)를 포함한 모든
+             폭에서 항상 여유 있게 한 줄에 들어간다(실측 완료) - Phase 17의 "동기화 버튼이 같은 줄에
+             남아야 한다"는 요구사항도 그대로 만족한다(다만 환율 뱃지가 아니라 이 셋끼리 묶임). 1200px
+             이상에서는 위 환율 뱃지와 다시 한 줄로 합쳐진다. -->
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <!-- [Phase 23-C - 터치 영역 44px] 기존 p-2.5(38x38px)는 iOS/Android 권장 최소(44px)에 못
+             미쳤다. 아이콘 크기(w-4=16px)/글자는 그대로 두고 w-11 h-11(44px) 고정 박스로 감싸 터치
+             영역만 키운다 - 이 줄은 항상 여유 공간이 커서(위 설명 참고) 44px로 키워도 클리핑이
+             재현되지 않는다(실측 확인 완료). -->
+        <button id="darkModeBtn" class="w-11 h-11 flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
           <i data-lucide="moon" class="w-4 h-4"></i>
         </button>
 
-        <!-- [가족 동기화 설정 - 텍스트 상태 버튼] 6개 버튼 그리드(grid-cols-3)에 넣으면 7번째 항목이 돼
-             모바일 3열 배치가 깨지므로, darkModeBtn과 같은 독립 버튼으로 둔다. 아이콘 없이 텍스트만으로
-             현재 동기화 상태(서버 동기화중/서버 동기화중지/서버 동기화오류)를 보여준다 - updateSyncStatusUI() 참고,
-             색상 클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값).
-             [버그 수정 - 모바일에서 상태별로 줄바뀜 여부가 달라지던 문제] "서버 동기화중"(7자)보다
-             "서버 동기화중지"/"서버 동기화오류"(8자)가 한 글자 더 넓어서, 좁은 화면에서 환율 뱃지+
-             다크모드 버튼과 한 줄에 들어가는 상태와 다음 줄로 밀려나는 상태가 상태 전환마다 오락가락
-             했다. [1차 수정 실패] 고정 너비(92px)+글자 축소로 세 상태를 통일했더니, 실기기(화면 폭이
-             테스트 환경과 다름)에서는 그 92px조차 남은 공간(환율 뱃지가 이미 대부분 차지)에 못 들어가
-             세 상태 전부 줄바뀜되는 반대 방향의 문제가 재현됐다. [2차 수정 - 새 줄 강제, 반려됨] 이
-             버튼이 자기 혼자 새 줄 전체를 차지하게 만들었더니 문제는 사라졌지만, "환율/야간모드 버튼
-             옆에 항상 있어야 한다"는 요구사항과 어긋나 반려됐다. [3차 수정] 대신 같은 줄의 다른
-             요소(환율 뱃지)에서 공간을 확보한다 - 연필 아이콘과 "환율보기" 텍스트를 모바일에서 숨기고
-             아이콘만 남겨(위 환율 뱃지 주석 참고) 뱃지 폭을 크게 줄였다. 그렇게 벌어준 공간에 이
-             버튼이 고정 너비 없이(자기 콘텐츠 크기 그대로) 들어가므로, 세 상태 모두 같은 방식(내용에
-             맞는 자연스러운 폭)으로 렌더링되면서도 항상 환율/야간모드 버튼과 한 줄에 남는다. -->
+        <!-- [가족 동기화 설정 - 텍스트 상태 버튼] 아이콘 없이 텍스트만으로 현재 동기화 상태(서버
+             동기화중/서버 동기화중지/서버 동기화오류)를 보여준다 - updateSyncStatusUI() 참고, 색상
+             클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값). 고정 너비 없이
+             내용 크기 그대로 렌더링된다(Phase 17부터 이어진 기존 설계 그대로 보존, 재설계하지 않음). -->
         <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
-        </div>
 
         <!-- [Phase 17 P1-1 - 시스템관리 진입점 이동] 최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·
              JSON 불러오기·데이터 초기화 6개 버튼(과 숨김 file input)은 삭제/기능변경 없이 그대로
              #systemManagementModal 안으로 옮겼다(id/클릭 핸들러 전부 무변경 - DOM 부모만 바뀌어도
              getElementById 기반 addEventListener는 그대로 동작한다). 여기 헤더에는 진입 버튼 하나만
-             남겨, 투자정보(KPI/Risk)보다 관리기능이 먼저 시선을 차지하지 않게 한다. -->
-        <button id="systemManagementBtn" title="데이터 관리(최초등록·엑셀·JSON·초기화)" class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
+             남겨, 투자정보(KPI/Risk)보다 관리기능이 먼저 시선을 차지하지 않게 한다.
+             [Phase 23-C] 다크모드/서버동기화와 항상 같은 줄에 위치(터치 영역도 동일하게 44px). -->
+        <button id="systemManagementBtn" title="데이터 관리(최초등록·엑셀·JSON·초기화)" class="w-11 h-11 flex items-center justify-center rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-500 hover:text-brand-600 shrink-0">
           <i data-lucide="settings" class="w-4 h-4"></i>
         </button>
+        </div>
       </div>
     </div>
     <p id="refreshStatusMsg" class="text-xs text-slate-400 mt-2 hidden"></p>
@@ -1256,67 +1259,101 @@
       <div id="taxAdvantagedSummary"></div>
     </section>
 
-    <!-- ===== "시나리오별 일반계좌 그래프" (예전 "3가지 시나리오 미래 자산 통합 비교") =====
-         [명칭 변경 - 요청 반영] 부동산/절세계좌가 완전히 빠진 순수 일반계좌 기준 시나리오라는 점을
-         이름에서부터 분명히 하기 위해 바꿨다. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
-      <h3 class="text-sm font-semibold mb-1">📊 시나리오별 일반계좌 그래프</h3>
-      <p id="scenarioCompareGeneralDesc" class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
-      <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
-    </section>
-
-    <!-- ===== "시나리오별 일반계좌 금액 비교" (예전 "시나리오별 예상 자산 스케줄 비교") =====
-         [드롭다운 → 아코디언으로 확정] 처음엔 "드롭다운"으로 요청했으나, 실제로는 "평소엔 표를 접어
-         숨기고 버튼을 눌렀을 때만 펼치는" 아코디언을 뜻했다(요청 확인) - 위 detail-card-accordion 패턴을
-         그대로 재사용한다. -->
+    <!-- ===== [Phase 24-B STEP 4] Scenario(보수적/일반적/긍정적) 전체를 상세 분석 영역으로 내림 =====
+         Future Projection의 "주인공"은 위 Hero(지금 계획대로면)와 아래 Monte Carlo이고, Scenario는 그
+         둘을 보조하는 상세 분석이다(Phase 24-A 감사 결론 - 계산적 고유성은 있으나 화면의 중심이 될
+         필요는 없음). 계산(updateProjection의 시나리오 계산 전체)은 한 글자도 바뀌지 않았다 - 기본
+         접힘 아코디언으로 옮겨 "원하면 펼쳐보는" 상세 정보로 재배치했을 뿐이다(detail-card-accordion
+         패턴 재사용, 새 컴포넌트 아님). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h3 class="text-sm font-semibold">시나리오별 일반계좌 금액 비교</h3>
-        <p class="text-[11px] text-slate-400 mt-0.5">5년 단위 시점마다 3개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
-      </div>
-      <button type="button" id="scenarioCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-        <span class="detail-card-accordion-label">세부 항목 보기</span>
-        <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
+      <button type="button" id="scenarioSectionAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3 text-left">
+        <span>
+          <span class="text-sm font-semibold block">📈 성장률별 결과 보기</span>
+          <span class="text-[11px] text-slate-400 mt-0.5 block">보수적 · 일반적 · 긍정적 3가지 성장률을 가정했을 때 각각 어떻게 되는지 비교합니다(변동성 없는 단일 경로 계산).</span>
+        </span>
+        <i data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform duration-200 detail-card-accordion-chevron"></i>
       </button>
-      <div id="scenarioCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="overflow-x-auto px-4 pb-4">
-          <table class="w-full text-xs">
-            <thead>
-              <tr id="scenarioCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left"></tr>
-            </thead>
-            <tbody id="scenarioCompareScheduleBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+      <div id="scenarioSectionAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+        <div class="px-3 sm:px-4 pb-3 sm:pb-4 space-y-4">
 
-    <!-- ===== "시나리오별 총 자산 그래프" (신설 - 요청 반영) =====
-         일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를 preset별 부동산 수익률로
-         복리 성장, 신규 매수 없음)을 모두 더한 가구 전체 총자산 기준 시나리오. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
-      <h3 class="text-sm font-semibold mb-1">📊 시나리오별 총 자산 그래프</h3>
-      <p id="totalAssetGeneralDesc" class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
-      <div class="h-72 sm:h-80"><canvas id="totalAssetCompareChart"></canvas></div>
-    </section>
+          <!-- [Phase 24-B STEP 5 - 일반계좌/전체 자산 관점 전환] 절세계좌 보유자산·적립계획·부동산이
+               전부 없으면(hasDistinctTotalAssetScenario, js/05) "전체 자산" 관점은 "일반계좌" 관점과
+               100% 같은 숫자를 반복 표시하므로(Phase 24-A 감사에서 실측 확인된 중복) 이 토글 자체를
+               숨기고 "일반계좌" 그래프+표만 보여준다. 위 조건 중 하나라도 있으면 토글이 나타나 그래프
+               2벌+표 2벌을 항상 같이 보여주는 대신 관점 하나씩만 전환해서 보여준다(updateProjectionUI,
+               js/05). 계산 자체(totalScenarioData 등)는 조건과 무관하게 항상 그대로 실행된다 - 표시
+               여부만 바뀐다. -->
+          <div id="scenarioViewToggle" class="hidden grid grid-cols-2 gap-1.5" role="group" aria-label="Scenario 관점 선택">
+            <button type="button" data-view="general" class="scenario-view-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">일반계좌</button>
+            <button type="button" data-view="total" class="scenario-view-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">전체 자산</button>
+          </div>
 
-    <!-- ===== "시나리오별 총자산 금액 비교" (신설 - 요청 반영, 아코디언) ===== -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h3 class="text-sm font-semibold">시나리오별 총자산 금액 비교</h3>
-        <p id="totalAssetCompareDesc" class="text-[11px] text-slate-400 mt-0.5">일반계좌+절세계좌를 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
-      </div>
-      <button type="button" id="totalAssetCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-        <span class="detail-card-accordion-label">세부 항목 보기</span>
-        <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
-      </button>
-      <div id="totalAssetCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div class="overflow-x-auto px-4 pb-4">
-          <table class="w-full text-xs">
-            <thead>
-              <tr id="totalAssetCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left"></tr>
-            </thead>
-            <tbody id="totalAssetCompareScheduleBody"></tbody>
-          </table>
+          <div id="scenarioGeneralView">
+            <!-- ===== "시나리오별 일반계좌 그래프" (예전 "3가지 시나리오 미래 자산 통합 비교") =====
+                 [명칭 변경 - 요청 반영] 부동산/절세계좌가 완전히 빠진 순수 일반계좌 기준 시나리오라는 점을
+                 이름에서부터 분명히 하기 위해 바꿨다. -->
+            <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 sm:p-4 mb-3">
+              <h3 class="text-sm font-semibold mb-1">📊 시나리오별 일반계좌 그래프</h3>
+              <p id="scenarioCompareGeneralDesc" class="text-[11px] text-slate-400 mb-3">같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다. 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.</p>
+              <div class="h-72 sm:h-80"><canvas id="scenarioCompareChart"></canvas></div>
+            </section>
+
+            <!-- ===== "시나리오별 일반계좌 금액 비교" (예전 "시나리오별 예상 자산 스케줄 비교") ===== -->
+            <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
+              <div class="px-4 py-3">
+                <h3 class="text-sm font-semibold">시나리오별 일반계좌 금액 비교</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">5년 단위 시점마다 3개 시나리오의 예상 자산(명목, 억원 단위)을 나란히 비교합니다.</p>
+              </div>
+              <button type="button" id="scenarioCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
+                <span class="detail-card-accordion-label">세부 항목 보기</span>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
+              </button>
+              <div id="scenarioCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+                <div class="overflow-x-auto px-4 pb-4">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr id="scenarioCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-left"></tr>
+                    </thead>
+                    <tbody id="scenarioCompareScheduleBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div id="scenarioTotalView" class="hidden">
+            <!-- ===== "시나리오별 총 자산 그래프" =====
+                 일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를 preset별 부동산
+                 수익률로 복리 성장, 신규 매수 없음)을 모두 더한 가구 전체 총자산 기준 시나리오. -->
+            <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 sm:p-4 mb-3">
+              <h3 class="text-sm font-semibold mb-1">📊 시나리오별 총 자산 그래프</h3>
+              <p id="totalAssetGeneralDesc" class="text-[11px] text-slate-400 mb-3">일반계좌 시나리오에 <b>절세계좌(적립 예상 계획 반영)</b>·부동산까지 더한 가구 전체 총자산 기준입니다. 절세계좌 월 적립액은 위 "절세계좌 현황" 카드의 [적립 예상] 팝업에서 설정할 수 있습니다.</p>
+              <div class="h-72 sm:h-80"><canvas id="totalAssetCompareChart"></canvas></div>
+            </section>
+
+            <!-- ===== "시나리오별 총자산 금액 비교" ===== -->
+            <section class="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
+              <div class="px-4 py-3">
+                <h3 class="text-sm font-semibold">시나리오별 총자산 금액 비교</h3>
+                <p id="totalAssetCompareDesc" class="text-[11px] text-slate-400 mt-0.5">일반계좌+절세계좌+부동산을 합친 총자산 기준, 5년 단위 시점마다 3개 시나리오를 나란히 비교합니다.</p>
+              </div>
+              <button type="button" id="totalAssetCompareScheduleAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-200 dark:border-slate-700">
+                <span class="detail-card-accordion-label">세부 항목 보기</span>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200 detail-card-accordion-chevron"></i>
+              </button>
+              <div id="totalAssetCompareScheduleAccordionBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+                <div class="overflow-x-auto px-4 pb-4">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr id="totalAssetCompareScheduleHead" class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-left"></tr>
+                    </thead>
+                    <tbody id="totalAssetCompareScheduleBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+
         </div>
       </div>
     </section>
@@ -1338,11 +1375,23 @@
          Web Worker에서 실행되어 계산 중에도 화면이 멈추지 않는다(js/17-monte-carlo-worker.js). -->
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-3 sm:p-4 mb-4">
       <h3 class="text-sm font-semibold flex items-center gap-1">🎲 Monte Carlo 미래자산 예측</h3>
-      <p class="text-[11px] text-slate-400 mt-0.5 mb-3">위 "시나리오별 예상자산"은 선택한 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 종목별 변동성·상관관계를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
+      <!-- [Phase 24-B STEP 9 - 팝업화] 예전엔 이 설명 문단(위 "시나리오별 예상자산"과의 차이, 계산
+           방식)이 항상 펼쳐진 긴 텍스트였다(모바일에서 실행 버튼 도달 전 스크롤 부담이 큼, Phase 24-A
+           감사 지적) - 내용은 하나도 지우지 않고 짧은 한 줄 + ⓘ로 압축했다. 클릭하면 기존 문단과
+           "공식 모델" 박스 내용을 그대로 합쳐서 보여준다(openMcInfoModal, 아래 정의). -->
+      <button type="button" id="mcIntroInfoBtn" class="w-full min-h-[44px] flex items-center justify-between gap-2 text-left text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-3 hover:text-brand-600 dark:hover:text-brand-300">
+        <span>실제 미래는 여러 경로로 달라질 수 있습니다</span>
+        <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
+      </button>
 
-      <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 mb-3">
-        <p class="text-[11px] font-semibold text-slate-600 dark:text-slate-300">공식 모델: Monthly Precision Monte Carlo</p>
-        <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
+      <!-- [Phase 24-B STEP 6 - Owner 관점 선택] 기본값 "가구 전체"(기존 동작과 완전히 동일) - 신랑/
+           와이프를 선택하면 그 owner의 자산·목표비중·월적립금·적립기간만 반영해 계산한다(가구 전체
+           pooled 비중을 재사용하지 않음, js/05·js/16 참고). 44px 터치 타겟(Assets 관점전환 세그먼트
+           컨트롤과 동일한 패턴 재사용, syncAssetViewButtonsUI 참고). -->
+      <div id="mcOwnerScopeSegmented" class="grid grid-cols-3 gap-1.5 mb-3" role="group" aria-label="Monte Carlo 관점 선택">
+        <button type="button" data-scope="신랑" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">신랑</button>
+        <button type="button" data-scope="와이프" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">와이프</button>
+        <button type="button" data-scope="household" aria-pressed="true" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">가구 전체</button>
       </div>
 
       <div class="grid grid-cols-2 gap-2 mb-3">
@@ -1871,6 +1920,26 @@
       </div>
 
       <div id="totalProfitList" class="pt-1"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= Monte Carlo 정보 모달 (Phase 24-B STEP 9) =============================
+     "MC란?"/"공식 모델"/"기준 연간 성장률의 의미"/"목표확률의 의미"/"데이터 한계" 등 여러 개의 설명을
+     팝업마다 새로 만들지 않고, 제목/본문만 바꿔 끼우는 범용 모달 하나(openMcInfoModal, js/19)로
+     재사용한다 - "팝업을 너무 많이 만들지 않는다"는 지침에 따름. 노안 사용자를 고려해 본문 글자 크기를
+     text-sm(다른 팝업의 text-xs보다 큼) + leading-relaxed로 키웠다. -->
+<div id="mcInfoModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 id="mcInfoModalTitle" class="text-base font-semibold">안내</h3>
+      <button type="button" id="closeMcInfoModalBtn" class="w-11 h-11 -mr-2 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0" aria-label="닫기">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div id="mcInfoModalBody" class="px-4 py-4 overflow-y-auto text-sm leading-relaxed text-slate-600 dark:text-slate-300 space-y-3"></div>
+    <div class="px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="closeMcInfoModalBtnBottom" class="w-full min-h-[44px] py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-semibold">닫기</button>
     </div>
   </div>
 </div>

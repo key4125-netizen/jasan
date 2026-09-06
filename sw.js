@@ -2,7 +2,11 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v209'; // [Phase 20 - Release Cache/Version Finalization] 캐시
+const CACHE_NAME = 'smart-asset-manager-v210'; // [Phase 24-B Release Close] Owner별 MC(신랑/와이프/가구
+// 전체)·시나리오 통합으로 index.html과 js/03·05·11·16·18·19가 바뀌었으므로, 아래 cache-first 사유대로
+// CACHE_NAME만 v209 → v210으로 올려 기존 사용자가 구버전 화면에 갇히지 않게 한다(캐시 정책/APP_SHELL/
+// install/activate/fetch 로직은 일절 무변경 - Phase 20에서 확립한 절차 그대로다).
+// [Phase 20 - Release Cache/Version Finalization] 캐시
 // 우선(cache-first) 전략상 sw.js 자체가 바이트 단위로 바뀌지 않으면 브라우저가 새 install/activate
 // 주기를 아예 트리거하지 않아, 이미 v208을 쓰던 기존 사용자는 Phase 13~19-Final(Excel oversell 검증,
 // IA 정리, 다크모드 MC 결과 보존 수정 등)이 담긴 새 index.html/js를 영원히 받지 못하는 것을 실제

@@ -1169,7 +1169,10 @@ function closeExchangeRateModal(viaBackButton) {
   document.getElementById('exchangeRateModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
-document.getElementById('kpiExchangeRateDetailBtn').addEventListener('click', openExchangeRateModal);
+// [Phase 23-C Final] Header의 "환율보기" 버튼(#kpiExchangeRateDetailBtn)을 제거하면서 이 버튼의
+// 클릭 리스너 등록도 함께 지웠다 - 존재하지 않는 요소에 addEventListener를 걸면 매 페이지 로드마다
+// TypeError가 발생한다. openExchangeRateModal()/closeExchangeRateModal() 함수와 #exchangeRateModal
+// 자체는 PM 지침에 따라 삭제하지 않고 그대로 남겨뒀다(현재는 호출 경로가 없는 상태).
 document.getElementById('closeExchangeRateModalBtn').addEventListener('click', () => closeExchangeRateModal());
 document.getElementById('exchangeRateModal').addEventListener('click', (e) => {
   if (e.target.id === 'exchangeRateModal') closeExchangeRateModal();

@@ -14,9 +14,17 @@ test('Deterministic 시나리오 설명 - "기준 연간 성장률"과 Monte Car
   // 시나리오 카드 라벨이 "기대수익률"에서 "기준 연간 성장률"로 바뀌었는지(median 의미 명확화).
   await expect(page.getByText('기준 연간 성장률').first()).toBeVisible();
 
-  // Monte Carlo 섹션 상단 설명에 "평균이 아니라" 문구와 리밸런싱 가정 차이 설명이 포함되어야 한다.
-  await expect(page.locator('text=평균이 아니라')).toBeVisible();
-  await expect(page.locator('text=같은 조건을 두 방식으로 검증한 것이 아니라')).toBeVisible();
+  // [Phase 24-B STEP 9 - 검증 경로 갱신] 이 설명(“평균이 아니라”/“같은 조건을 두 방식으로 검증한 것이
+  // 아니라”)은 문구가 삭제된 것이 아니라 메인 상시 노출에서 ⓘ 팝업으로 이동했다(모바일에서 실행 버튼
+  // 도달 전 스크롤 부담을 줄이기 위한 제품 결정) - assertion을 약화하지 않고, 팝업을 실제로 열어
+  // 동일한 문구가 그대로 있는지 확인하도록 경로만 갱신한다(팝업 열림 검증이 추가되어 검증 강도는 오히려 높아짐).
+  await expect(page.locator('#mcIntroInfoBtn')).toBeVisible();
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeVisible();
+  await expect(page.locator('#mcInfoModalBody')).toContainText('평균이 아니라');
+  await expect(page.locator('#mcInfoModalBody')).toContainText('같은 조건을 두 방식으로 검증한 것이 아니라');
+  await page.locator('#closeMcInfoModalBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeHidden();
 });
 
 test('Monte Carlo 실행 결과에 기대수익률/Goal Probability/데이터 기간/모델 범위 안내 카드가 표시된다', async ({ page }) => {

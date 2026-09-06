@@ -824,7 +824,7 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
 // 세부 현황 아코디언 상태다(renderTaxAdvantagedCard 참고) - 다른 키들과 같은 객체에 두면
 // resetAllAccordionsOnTabSwitch(js/03)의 범용 순회가 자동으로 이 두 개도 초기화해준다(키를 따로
 // 나열할 필요 없음).
-let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false, assumptions: false };
+let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false, assumptions: false, scenarioSection: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
@@ -837,6 +837,41 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
 // 숨겨두고, 버튼을 눌렀을 때만 펼치는 아코디언으로 구현했다(사용자 확인 - 드롭다운 필터가 아니라
 // 접기/펼치기 토글을 원함) - 위 두 카드와 완전히 동일한 setAccordionOpen/detailCardAccordionOpen 패턴.
 document.getElementById('scenarioCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody'));
+// [Phase 24-B STEP 4] Scenario 전체를 감싸는 바깥 아코디언 - 기존 패턴(setAccordionOpen/
+// detailCardAccordionOpen) 그대로 재사용, 새 토글 메커니즘을 만들지 않았다.
+document.getElementById('scenarioSectionAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('scenarioSection', 'scenarioSectionAccordionBtn', 'scenarioSectionAccordionBody'));
+
+// [Phase 24-B STEP 5 - 일반계좌/전체 자산 관점 전환] Assets 관점전환 세그먼트 컨트롤과 동일한 시각
+// 패턴(active/idle 클래스 토글)을 재사용한다 - 계산은 항상 둘 다 실행되고, 여기서는 어느 쪽을 보여줄지만
+// 정한다.
+let scenarioViewMode = 'general';
+const SCENARIO_VIEW_BTN_IDLE_CLASSES = ['border-slate-200', 'dark:border-slate-700', 'bg-slate-50', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400'];
+const SCENARIO_VIEW_BTN_ACTIVE_CLASSES = ['border-brand-600', 'dark:border-brand-400', 'bg-brand-50', 'dark:bg-brand-950', 'text-brand-700', 'dark:text-brand-200'];
+function applyScenarioViewMode() {
+  document.getElementById('scenarioGeneralView').classList.toggle('hidden', scenarioViewMode !== 'general');
+  document.getElementById('scenarioTotalView').classList.toggle('hidden', scenarioViewMode !== 'total');
+  document.querySelectorAll('#scenarioViewToggle .scenario-view-btn').forEach((btn) => {
+    const active = btn.dataset.view === scenarioViewMode;
+    btn.classList.remove(...SCENARIO_VIEW_BTN_IDLE_CLASSES, ...SCENARIO_VIEW_BTN_ACTIVE_CLASSES);
+    btn.classList.add(...(active ? SCENARIO_VIEW_BTN_ACTIVE_CLASSES : SCENARIO_VIEW_BTN_IDLE_CLASSES));
+  });
+  reapplyDetailCardAccordionHeight('scenarioSection', 'scenarioSectionAccordionBtn', 'scenarioSectionAccordionBody');
+}
+document.getElementById('scenarioViewToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('.scenario-view-btn');
+  if (!btn) return;
+  scenarioViewMode = btn.dataset.view;
+  applyScenarioViewMode();
+});
+// updateProjection()이 매 렌더마다 호출해 "총자산 관점이 일반계좌와 다른 숫자를 낼 때만" 토글 자체를
+// 보여준다(hasDistinctTotalAssetScenario, 위 정의) - 조건이 없으면(신규 사용자 다수) 토글을 숨기고
+// 일반계좌 관점만 보여줘 중복 카드를 없앤다(계산은 계속 실행됨, 표시만 다름).
+function updateScenarioViewToggleVisibility() {
+  const distinct = hasDistinctTotalAssetScenario();
+  document.getElementById('scenarioViewToggle').classList.toggle('hidden', !distinct);
+  if (!distinct && scenarioViewMode !== 'general') { scenarioViewMode = 'general'; }
+  applyScenarioViewMode();
+}
 document.getElementById('totalAssetCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody'));
 document.getElementById('projectionAssumptionsAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('assumptions', 'projectionAssumptionsAccordionBtn', 'projectionAssumptionsAccordionBody'));
 
@@ -950,6 +985,22 @@ function getTaxAdvantagedHoldingsByOwner() {
     bucket.byAccountType[accType] = (bucket.byAccountType[accType] || 0) + value;
   });
   return result;
+}
+
+// [Phase 24-B STEP 5 - Scenario 중복 판정] "시나리오별 총자산"(일반계좌+절세계좌+부동산)이 "시나리오별
+// 일반계좌"와 실제로 다른 숫자를 낼 조건이 하나라도 있는지 확인한다 - updateProjection()의 총자산
+// 계산(realEstateTotalValue/ownerPointsList, 아래 참고)이 실제로 참조하는 세 원천(부동산 보유,
+// 절세계좌 보유자산, 절세계좌 월적립 계획)을 그대로 다시 조회할 뿐 새 계산식을 만들지 않는다. 셋 다
+// 없으면(신규 사용자 다수) 총자산 시나리오는 일반계좌 시나리오와 100% 동일한 숫자를 반복 표시하므로
+// (Phase 24-A 감사에서 실측 확인된 중복), 그 경우에만 UI에서 "총자산" 관점을 숨긴다 - 계산 자체
+// (updateProjection의 totalScenarioData)는 계속 그대로 실행된다(삭제 아님, 표시 여부만 판단).
+function hasDistinctTotalAssetScenario() {
+  const realEstateTotal = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
+  if (realEstateTotal > 0) return true;
+  const holdingsByOwner = getTaxAdvantagedHoldingsByOwner();
+  if (TAX_ADVANTAGED_OWNERS.some((o) => holdingsByOwner[o] && holdingsByOwner[o].total > 0)) return true;
+  const monthlyByOwner = (state.projection.taxAdvantagedPlan && state.projection.taxAdvantagedPlan.monthlyByOwner) || {};
+  return TAX_ADVANTAGED_OWNERS.some((o) => num(monthlyByOwner[o]) > 0);
 }
 
 // [계좈 세부/카드 상단 - 포지션(역할) 비중 표기 - 요청 반영] "위험/안전자산 구성" 대신, 절세계좈에
@@ -1858,8 +1909,13 @@ function getOwnerMonthlyContributionInputs(owner) {
 // 적립금도 owner별 monthlyContributionByOwner를 그대로 쓴다(getOwnerMonthlyContributionInputs가 하위
 // 호환 폴백을 담당) - totalValue/monthlyContribution을 인자로 받던 예전 시그니처와 달리 이제 두 owner의
 // 원금/적립금을 함수 내부에서 직접 계산한다.
-function simulateRebalancedPreset(presetKey, maxYears) {
-  const ownerCalcs = REBALANCE_OWNERS.map((owner) => {
+// [Phase 24-B STEP 2 - Hero owner별 분해] ownerFilter를 주면 REBALANCE_OWNERS 중 그 owner 하나만
+// 계산에 포함시킨다 - 아래 계산 공식(regionPV/regionRate/월적립금 성장 등)은 단 한 글자도 바뀌지
+// 않았다(새 계산식이 아니라 "합산 대상 owner 목록만 좁힌 것"). ownerFilter 생략 시 기존과 완전히
+// 동일(bit-identical) - 두 owner를 그대로 순회해 합산한다.
+function simulateRebalancedPreset(presetKey, maxYears, ownerFilter) {
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  const ownerCalcs = owners.map((owner) => {
     const totalValue = getProjectionGroupTotal(getProjectionGroupStats(owner));
     const regionPV = {
       '국내': totalValue * num(state.rebalance[owner].domestic['국내']) / 100,
@@ -2109,6 +2165,7 @@ function updateProjection(preserveMcResult) {
   });
   renderScenarioCompareScheduleTable(totalCompareRows, totalScenarioData, 'totalAssetCompareScheduleHead', 'totalAssetCompareScheduleBody');
   reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
+  updateScenarioViewToggleVisibility(); // [Phase 24-B STEP 5]
 
   // ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3, js/19) =====
   // [자동 실행 제거] 예전엔 이 렌더가 호출될 때마다(탭 진입/데이터 변경마다) renderMonteCarloSection()이
@@ -2141,8 +2198,12 @@ function updateProjection(preserveMcResult) {
  * ---------------------------------------------------------------------- */
 // 가구 전체(일반계좌+절세계좌, 부동산 제외) 총 평가금액 - 몬테카를로 원금(PV)은 목표 비중과 무관하게
 // 항상 "지금 실제로 들고 있는 금액"을 그대로 쓴다(요청 사양).
-function computeHouseholdMonteCarloPV() {
-  return state.assets.filter((a) => a.category !== '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
+// [Phase 24-B - Owner MC] ownerFilter를 주면 그 owner 소유 자산만(isAssetIncludedForOwner, js/04 -
+// 기존 Deterministic owner별 화면이 이미 쓰는 것과 동일한 필터) 합산한다 - '공동' 자산은 어느 단일
+// owner 필터에도 포함되지 않는다(기존 관례 그대로 재사용, 새 규칙 아님). ownerFilter 생략 시 기존과
+// 완전히 동일(bit-identical).
+function computeHouseholdMonteCarloPV(ownerFilter) {
+  return state.assets.filter((a) => a.category !== '부동산' && isAssetIncludedForOwner(a, ownerFilter)).reduce((s, a) => s + calcRow(a).curAmount, 0);
 }
 
 // 소유자 한 명의 목표 비중(전체 포트폴리오 대비 0~1, 국내/해외 split × 지역 내 항목 비중)을
@@ -2186,10 +2247,13 @@ function computeOwnerTargetInstrumentWeights(owner) {
 // 경로는 그대로 음수 가중치로 포함시켜 서로 다른 결과를 냈다) - 그래서 합계 검사와 별개로 각 항목의
 // pct 부호도 반드시 함께 검사한다. 이 함수 하나가 js/05(updateProjection)/js/16(어댑터) 두 호출부의
 // 유일한 진입점이므로, 여기 한 곳만 고치면 두 계산 경로 모두에 즉시 적용된다.
-function assessHouseholdWeightSums() {
+// [Phase 24-B - Owner MC] ownerFilter를 주면 그 owner 하나만 검사한다(신랑만 MC를 돌릴 때 와이프의
+// 목표비중 오류가 신랑 결과를 BLOCK하면 안 되므로) - 생략 시 기존과 완전히 동일(두 owner 모두 검사).
+function assessHouseholdWeightSums(ownerFilter) {
   const regionSums = [];
   const individualItems = [];
-  REBALANCE_OWNERS.forEach((owner) => {
+  const ownersToCheck = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  ownersToCheck.forEach((owner) => {
     ['국내', '해외'].forEach((region) => {
       const targets = (state.rebalance[owner].targets && state.rebalance[owner].targets[region]) || [];
       if (targets.length === 0) return;
@@ -2216,7 +2280,13 @@ function assessHouseholdWeightSums() {
 // [회귀 방지] grandTotal(현재 원금 합계) > 0인 기존 정상 케이스는 이 함수의 계산 순서/공식이 전혀
 // 바뀌지 않아 완전히 bit-identical하다 - 아래 두 owner의 ownerTotal을 먼저 구하는 것은 계산 방식이
 // 아니라 "0/0 여부를 먼저 판정하기 위해 조회 순서만 앞당긴 것"뿐이다(호출 결과 자체는 그대로).
-function computeHouseholdTargetInstrumentWeights() {
+// [Phase 24-B - Owner MC] ownerFilter를 주면 두 owner를 가중 병합하지 않고 그 owner 자신의 목표비중
+// (computeOwnerTargetInstrumentWeights)을 그대로 반환한다 - 한 owner의 목표비중은 이미 그 자체로
+// 정규화돼 있어(국내/해외 split 합 100% × 각 지역 targets pct 합 100%) 별도 가중 병합·재정규화가
+// 필요 없다(새 계산식이 아니라 기존 함수를 그대로 재사용). ownerFilter 생략 시 기존과 완전히 동일
+// (bit-identical) - 아래 두 owner 가중 병합 로직은 전혀 건드리지 않았다.
+function computeHouseholdTargetInstrumentWeights(ownerFilter) {
+  if (ownerFilter) return computeOwnerTargetInstrumentWeights(ownerFilter);
   const ownerTotals = {};
   let grandTotal = 0;
   REBALANCE_OWNERS.forEach((owner) => {
@@ -2263,8 +2333,10 @@ function computeHouseholdTargetInstrumentWeights() {
 // 시계열(키 포함, computeHouseholdTargetInstrumentWeights와 동일한 T:/N:/C: 키 체계)을 그대로 반환하고,
 // 아래 computeTargetPortfolioVolatilityPct()는 이 함수를 호출해 가중합산만 하는 얇은 wrapper로 남아
 // 기존 호출부(요약 카드의 σ 텍스트 등)의 동작·반환값은 전혀 바뀌지 않는다.
-async function buildHouseholdInstrumentReturnSeries() {
-  const weightsMap = computeHouseholdTargetInstrumentWeights();
+// [Phase 24-B - Owner MC] ownerFilter는 그대로 computeHouseholdTargetInstrumentWeights에 전달만
+// 한다 - 생략 시 기존과 완전히 동일.
+async function buildHouseholdInstrumentReturnSeries(ownerFilter) {
+  const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
   const withReturns = [];
   const tasks = [];
   weightsMap.forEach((v, key) => {

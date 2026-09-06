@@ -16,9 +16,14 @@
 // [자산 순서 불일치 방지] instruments 배열과 correlationMatrix가 항상 이 순서(canonical order)로
 // 함께 만들어지고 함께 검증된다 - buildMonteCarloInputFromState()가 반환하는 assetOrder를 그대로
 // 신뢰하면 되고, 이 순서를 벗어나 instruments/matrix를 따로 재조합하면 안 된다.
+// [Phase 24-B - Owner MC] config.ownerFilter('신랑'|'와이프'|undefined)를 그대로 아래 3개 household
+// 함수(js/05)에 전달만 한다 - 이 파일 자신의 로직(μ/σ/상관행렬 조립, Safety 집계)은 전혀 바뀌지 않았고,
+// "어떤 owner의 목표비중/원금/월적립금을 기준으로 계산할지"만 upstream(js/05)에서 좁혀진다.
+// ownerFilter 생략 시 기존과 완전히 동일(bit-identical).
 async function buildMonteCarloInputFromState(config) {
   config = config || {};
   const presetKey = config.presetKey || 'normal';
+  const ownerFilter = config.ownerFilter;
   const errors = [];
   const warnings = [];
   // [Phase 3-5 Safety Layer] BLOCK 대상은 errors와 별개로도 safetyIssues에 함께 쌓는다(예: Fee<0/>=100%,
@@ -28,8 +33,8 @@ async function buildMonteCarloInputFromState(config) {
   const safetyIssues = [];
   const dataQualityIssues = [];
 
-  const weightsMap = computeHouseholdTargetInstrumentWeights();
-  const returnsList = await buildHouseholdInstrumentReturnSeries();
+  const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
+  const returnsList = await buildHouseholdInstrumentReturnSeries(ownerFilter);
   const returnsByKey = new Map(returnsList.map((r) => [r.key, r]));
 
   const assetOrder = [];
@@ -119,7 +124,7 @@ async function buildMonteCarloInputFromState(config) {
 
   // [B3 + Safety Layer] 목표 비중 합계(household 전체 소스인 state.rebalance 자체를 검사 - Future
   // Projection과 완전히 같은 기준, 조건부승인 항목 14) + Contribution Growth/Inflation 경제적 가정 경고.
-  safetyIssues.push(...assessHouseholdWeightSums());
+  safetyIssues.push(...assessHouseholdWeightSums(ownerFilter));
   const growthIssue = assessContributionGrowth(num(state.projection.contributionGrowthRate));
   if (growthIssue) safetyIssues.push(growthIssue);
   const inflationIssue = assessInflation(num(state.projection.inflationRate));
