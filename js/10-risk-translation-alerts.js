@@ -71,7 +71,12 @@ function buildRiskDiagnosisLine(m) {
     return `포트폴리오 연환산 변동성이 ${fmtNum(m.portfolioVolatilityPct, 1)}%로 시장 평균보다 높은 편이라, 등락 폭 자체가 큽니다.`;
   }
   if (maxKey === 'drawdown') {
-    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있고, 과거 데이터 기준 최대낙폭은 ${fmtNum(Math.abs(m.portfolioMDDPct ?? 0), 1)}%였습니다.`;
+    // [Phase 39-B] 손실 지표가 결측이면 Math.abs(null)=0 때문에 "하루 0%까지 하락"이라는 거짓 문장이
+    // 만들어졌다. 이제 결측이면 숫자를 지어내지 않고 계산할 수 없다는 사실을 그대로 말한다.
+    if (typeof m.var95Pct !== 'number' || typeof m.portfolioMDDPct !== 'number') {
+      return '가격 이력이 부족해 하락 위험(최대낙폭·하루 손실 예상)을 계산할 수 없습니다.';
+    }
+    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있고, 과거 데이터 기준 최대낙폭은 ${fmtNum(Math.abs(m.portfolioMDDPct), 1)}%였습니다.`;
   }
   if (maxKey === 'market' && typeof m.portfolioBeta === 'number') {
     return `포트폴리오 전체가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 더 크게 움직이는 구조라, 하락장에서 손실 폭이 시장보다 클 수 있습니다.`;
@@ -452,8 +457,8 @@ function renderRiskDetailModal() {
     <div class="mt-3.5">
       ${buildMetricItem('⚡ 포트폴리오 변동성(베타) - 지수 대비 널뛰기 심함', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '시장이 1% 움직일 때 내 포트폴리오 전체가 대략 몇 % 움직이는지 나타냅니다(종목 상세의 개별 종목 베타와는 다른, 보유종목 전체를 합친 수치입니다). 1보다 크면 시장보다 더 크게 흔들린다는 뜻이에요.')}
       ${buildMetricItem('🎯 한 종목 몰빵 위험 (주식·ETF 중)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
-      ${buildMetricItem('📉 평소 하락장 하루 최대 손실 예상액', fmtKRWShort(Math.abs(m.var95KRW)), '일상적인 하락장에서 95% 확률로 겪을 수 있는 하루 손실액입니다.')}
-      ${buildMetricItem('💥 대폭락장(금융위기급) 손실 예상액', fmtKRWShort(Math.abs(m.cvarKRW)), '2020년 코로나 폭락 같은 극단적인 위기 상황이 실제로 벌어졌을 때 예상되는 평균 손실액입니다.')}
+      ${buildMetricItem('📉 평소 하락장 하루 최대 손실 예상액', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : '데이터 부족', '일상적인 하락장에서 95% 확률로 겪을 수 있는 하루 손실액입니다.')}
+      ${buildMetricItem('💥 대폭락장(금융위기급) 손실 예상액', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : '데이터 부족', '2020년 코로나 폭락 같은 극단적인 위기 상황이 실제로 벌어졌을 때 예상되는 평균 손실액입니다.')}
       ${buildMetricItem('폭락장 방어 성적표', sortinoGrade + '등급', '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
       ${buildMetricItem('🔗 운명 공동체(위험 중복)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : '데이터 부족', '종목이 달라도 주가가 같이 움직이는 정도입니다. 높을수록 "따로 담았지만 사실상 한 종목"과 비슷해 분산 효과가 떨어져요.')}
     </div>

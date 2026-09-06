@@ -76,17 +76,47 @@ test('3. 숫자와 사유는 사라지지 않고 툴팁에 남는다(만점이 9
   expect(tip).toContain('위험점수');
 });
 
-test('4. 신뢰도 계산식은 변경되지 않았다(구조적 최대 92점 유지)', async ({ page }) => {
+test('4. 신뢰도의 기존 감점 구조와 최대 92점이 유지된다', async ({ page }) => {
   await boot(page);
+  // [Phase 39-B] holding에 beta를 넣어 기존 3종 감점(가격이력 35 / 섹터 20 / 수급 8)만 격리해서 본다.
+  // 새로 추가된 benchmark/correlation 감점은 아래 4-B에서 따로 검증한다.
   const r = await page.evaluate(() => {
     const se = (unc) => ({ topSector: '반도체', topSectorWeight: 100, unclassifiedWeightPct: unc, sectorTotals: {} });
+    const ok = (w) => ({ weight: w, hasData: true, beta: 1.0 });
     return {
-      full: computeDataConfidence({ holdings: [{ weight: 1, hasData: true }], sectorExposure: se(0) }).score,
-      halfMissing: computeDataConfidence({ holdings: [{ weight: 0.5, hasData: true }, { weight: 0.5, hasData: false }], sectorExposure: se(0) }).score,
+      full: computeDataConfidence({ holdings: [ok(1)], sectorExposure: se(0) }).score,
+      halfMissing: computeDataConfidence({ holdings: [ok(0.5), { weight: 0.5, hasData: false }], sectorExposure: se(0) }).score,
       worst: computeDataConfidence({ holdings: [{ weight: 1, hasData: false }], sectorExposure: se(100) }).score
     };
   });
   expect(r).toEqual({ full: 92, halfMissing: 75, worst: 37 });
+});
+
+test('4-B. [Phase 39-B] 결측이 더 이상 "데이터 충분"으로 보이지 않는다', async ({ page }) => {
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const se = { topSector: '반도체', topSectorWeight: 100, unclassifiedWeightPct: 0, sectorTotals: {} };
+    const ok = (w) => ({ weight: w, hasData: true, beta: 1.0 });
+    const noBeta = (w) => ({ weight: w, hasData: true, beta: null });
+    const score = (o) => computeDataConfidence(o).score;
+    return {
+      // 벤치마크를 하나도 못 받은 상태 - 예전엔 92(데이터 충분)였다.
+      benchmarkAllMissing: score({ holdings: [noBeta(1)], sectorExposure: se }),
+      benchmarkHalfMissing: score({ holdings: [ok(0.5), noBeta(0.5)], sectorExposure: se }),
+      // 종목 2개 이상인데 상관관계를 못 구한 상태.
+      correlationUnavailable: score({ holdings: [ok(0.5), ok(0.5)], sectorExposure: se, correlationUnavailable: true }),
+      // 자산 1개는 상관관계가 성립하지 않는 개념이라 감점하지 않는다(PM 확정).
+      singleAsset: score({ holdings: [ok(1)], sectorExposure: se }),
+      // 라벨까지 실제로 바뀌는지 확인 - 숫자가 아니라 사용자가 보는 상태가 중요하다.
+      labelAllMissing: dataConfidenceBand(score({ holdings: [noBeta(1)], sectorExposure: se })).label,
+      labelSingle: dataConfidenceBand(score({ holdings: [ok(1)], sectorExposure: se })).label
+    };
+  });
+  expect(r).toEqual({
+    benchmarkAllMissing: 77, benchmarkHalfMissing: 85,
+    correlationUnavailable: 82, singleAsset: 92,
+    labelAllMissing: '일부 데이터 부족', labelSingle: '데이터 충분'
+  });
 });
 
 /* ─────────────────────── 2. 가구 전체 기준 명시 ─────────────────────── */

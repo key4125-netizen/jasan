@@ -672,6 +672,29 @@ async function getCachedDailyCloses(yahooTicker) {
   return data;
 }
 
+// [Phase 39-B - 날짜 정렬] fetchDailyCloses()는 이미 dates를 함께 돌려주는데(위 주석 참고 - js/15의
+// date-aligned correlation을 위해 추가됐다) 정작 이 리스크 엔진은 그 날짜를 버리고 closes만 썼다.
+// 그래서 beta/상관계수가 "같은 날짜끼리"가 아니라 "최근 N개를 그냥 나란히" 비교되고 있었다.
+// 한국/미국처럼 거래일이 다른 시장을 섞거나 한쪽 이력이 짧으면 전혀 다른 날의 수익률이 짝지어진다.
+// 새 데이터 공급이나 새 프레임워크를 만들지 않고, js/16이 이미 쓰는 변환 패턴과 js/15의
+// dateAlignedReturns()를 그대로 재사용한다.
+function datedClosesFromSeries(data) {
+  if (!data || !Array.isArray(data.dates) || !Array.isArray(data.closes)) return null;
+  const out = data.dates
+    .map((d, i) => ({ date: d, close: data.closes[i] }))
+    .filter((x) => x.date && typeof x.close === 'number');
+  return out.length ? out : null;
+}
+// 두 시계열의 "공통 거래일" 수익률 쌍을 만든다. 양쪽 모두 날짜가 있을 때만 정렬하고, 하나라도 날짜가
+// 없으면(구 캐시/테스트 fixture 등) 기존 방식 그대로 최근 구간을 맞춰 쓴다 - 날짜가 없다고 계산을
+// 포기하면 오히려 결측이 늘어나므로, 정확도가 올라갈 수 있을 때만 올린다.
+function alignedReturnPair(aDated, aReturns, bDated, bReturns) {
+  if (aDated && bDated && typeof dateAlignedReturns === 'function') {
+    const al = dateAlignedReturns(aDated, bDated);
+    return { a: al.returnsA, b: al.returnsB, aligned: true, observationCount: al.observationCount };
+  }
+  return { a: aReturns || [], b: bReturns || [], aligned: false, observationCount: null };
+}
 function dailyReturnsFromCloses(closes) {
   const out = [];
   for (let i = 1; i < closes.length; i++) {
@@ -682,9 +705,12 @@ function dailyReturnsFromCloses(closes) {
 function statMean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
 // 베타 = Cov(종목 수익률, 벤치마크 수익률) / Var(벤치마크 수익률) - 두 시계열의 최신 구간을 같은
 // 길이로 맞춰서 계산한다(거래일이 완벽히 일치하진 않지만 참고용 근사치로 충분하다).
+// [Phase 39-B] 아래 네 함수(beta/correlation/Sortino/연환산 변동성)가 각자 하드코딩하고 있던 최소
+// 관측치 10을 한 곳으로 모은다. 값 자체는 바뀌지 않으며(전부 원래 10), hasData 판정도 같은 기준을 쓴다.
+const MIN_RETURNS_FOR_STATS = 10;
 function computeBetaFromReturns(assetReturns, benchmarkReturns) {
   const n = Math.min(assetReturns.length, benchmarkReturns.length);
-  if (n < 10) return null;
+  if (n < MIN_RETURNS_FOR_STATS) return null;
   const a = assetReturns.slice(-n), b = benchmarkReturns.slice(-n);
   const ma = statMean(a), mb = statMean(b);
   let cov = 0, varB = 0;
@@ -694,7 +720,7 @@ function computeBetaFromReturns(assetReturns, benchmarkReturns) {
 }
 function computeCorrelationFromReturns(x0, y0) {
   const n = Math.min(x0.length, y0.length);
-  if (n < 10) return null;
+  if (n < MIN_RETURNS_FOR_STATS) return null;
   const x = x0.slice(-n), y = y0.slice(-n);
   const mx = statMean(x), my = statMean(y);
   let cov = 0, vx = 0, vy = 0;
@@ -705,7 +731,7 @@ function computeCorrelationFromReturns(x0, y0) {
 // Sortino = 연율화 평균수익률 / 연율화 하방편차(음수 수익률만의 표준편차 성격) - 포트폴리오 전체와
 // 개별 종목 양쪽에서 재사용한다(코드 중복 제거).
 function computeSortinoFromReturns(returns) {
-  if (!returns || returns.length < 10) return null;
+  if (!returns || returns.length < MIN_RETURNS_FOR_STATS) return null;
   const downside = returns.filter((r) => r < 0);
   const downsideDevDaily = downside.length ? Math.sqrt(downside.reduce((s, r) => s + r * r, 0) / downside.length) : 0;
   const annualizedReturn = statMean(returns) * 252;
@@ -960,7 +986,7 @@ function computeHHI(holdings) {
 
 // 연환산 변동성(%) - 일간 수익률 표준편차 × √252.
 function computeAnnualizedVolatilityPct(returns) {
-  if (!returns || returns.length < 10) return null;
+  if (!returns || returns.length < MIN_RETURNS_FOR_STATS) return null;
   const mean = statMean(returns);
   const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
   return Math.sqrt(variance) * Math.sqrt(252) * 100;
@@ -1009,11 +1035,16 @@ function flowSignalLabel(signal) {
 }
 
 // 데이터가 있는 종목들 간 전체 상관계수 행렬 - { tickerA: { tickerB: 상관계수 } }.
+// [Phase 39-B] 종목 쌍도 공통 거래일 기준으로 비교한다(날짜가 없으면 기존 방식 폴백).
 function computeFullCorrelationMatrix(withData) {
   const matrix = {};
   withData.forEach((a) => {
     matrix[a.ticker] = {};
-    withData.forEach((b) => { matrix[a.ticker][b.ticker] = a.ticker === b.ticker ? 1 : computeCorrelationFromReturns(a.returns, b.returns); });
+    withData.forEach((b) => {
+      if (a.ticker === b.ticker) { matrix[a.ticker][b.ticker] = 1; return; }
+      const pair = alignedReturnPair(a.datedCloses, a.returns, b.datedCloses, b.returns);
+      matrix[a.ticker][b.ticker] = computeCorrelationFromReturns(pair.a, pair.b);
+    });
   });
   return matrix;
 }
@@ -1051,6 +1082,11 @@ function scoreFromBands(value, bands) {
   for (const b of bands) { if (value <= b.max) return b.score; }
   return bands[bands.length - 1].score;
 }
+// [Phase 39-B] 결측을 산술에 태우면 조용히 0이 되어(`Math.abs(null)`도 `null * 100`도 0) 유한값처럼
+// 보이고, 그 결과 scoreFromBands가 "가장 안전한 구간"을 돌려준다. 아래 두 헬퍼로 결측을 null로
+// 유지시켜 각 subScore의 `?? 50`(모르면 중립) 폴백이 실제로 작동하게 한다.
+const finiteOrNull = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const absOrNull = (v) => (finiteOrNull(v) === null ? null : Math.abs(v));
 
 /* -------------------------------------------------------------------------
  * 18-1c. [6대 위험요인 → 0~100 위험점수] 점수가 높을수록 위험하다(챗GPT 제안 구조 채용) - 집중25% +
@@ -1062,7 +1098,7 @@ function computeConcentrationRiskScore(m) {
     { max: 10, score: 10 }, { max: 20, score: 30 }, { max: 30, score: 50 },
     { max: 40, score: 70 }, { max: 50, score: 85 }, { max: Infinity, score: 100 }
   ]);
-  const hhiScore = scoreFromBands(m.hhi * 100, [
+  const hhiScore = scoreFromBands(finiteOrNull(m.hhi) === null ? null : m.hhi * 100, [
     { max: 15, score: 20 }, { max: 25, score: 40 }, { max: 35, score: 60 },
     { max: 50, score: 80 }, { max: Infinity, score: 100 }
   ]);
@@ -1070,7 +1106,10 @@ function computeConcentrationRiskScore(m) {
     { max: 20, score: 10 }, { max: 35, score: 30 }, { max: 50, score: 55 },
     { max: 65, score: 75 }, { max: 80, score: 90 }, { max: Infinity, score: 100 }
   ]);
-  return Math.round((singleScore ?? 0) * 0.4 + (hhiScore ?? 0) * 0.3 + (sectorScore ?? 0) * 0.3);
+  // [Phase 39-B] 세 구성요소의 결측 폴백이 `?? 0`(= 위험 없음)이었다. 다른 요인의 `?? 50`(중립)과
+  // 어긋나 결측을 "가장 안전"으로 해석하는 구조였다. 현재 엔진 경로에서는 topWeight/hhi/섹터가 항상
+  // 숫자라 실제로는 도달하지 않는 이론적 경로지만, 같은 함정이 다시 생기지 않도록 원칙을 통일한다.
+  return Math.round((singleScore ?? 50) * 0.4 + (hhiScore ?? 50) * 0.3 + (sectorScore ?? 50) * 0.3);
 }
 // ② 변동성위험 - 포트폴리오 연환산 변동성.
 function computeVolatilityRiskScore(m) {
@@ -1080,16 +1119,21 @@ function computeVolatilityRiskScore(m) {
   ]) ?? 50;
 }
 // ③ 손실위험(Drawdown/Tail) - MDD(40%) + VaR95(30%) + CVaR(30%).
+// [Phase 39-B] 예전엔 `Math.abs(m.portfolioMDDPct ?? 0)`이라 결측(null/undefined)이 0으로 바뀌었고,
+// 0은 유한값이라 scoreFromBands가 최저 위험 구간(20점)을 돌려줬다 - 아래 `?? 50` 폴백에 도달조차
+// 하지 못하는 구조였다. 이제 결측을 그대로 넘겨(Math.abs(null) 대신 null 유지) `?? 50`이 작동한다.
+// 같은 이유로 var95Pct/cvarPct도 결측이면 Math.abs를 태우지 않는다 - Math.abs(null)은 0이라
+// 똑같은 함정에 빠진다. "데이터 없음"은 "손실 없음"이 아니다.
 function computeDrawdownTailRiskScore(m) {
-  const mddScore = scoreFromBands(Math.abs(m.portfolioMDDPct ?? 0), [
+  const mddScore = scoreFromBands(absOrNull(m.portfolioMDDPct), [
     { max: 10, score: 20 }, { max: 20, score: 40 }, { max: 30, score: 60 },
     { max: 40, score: 80 }, { max: Infinity, score: 100 }
   ]);
-  const varScore = scoreFromBands(Math.abs(m.var95Pct), [
+  const varScore = scoreFromBands(absOrNull(m.var95Pct), [
     { max: 1.5, score: 20 }, { max: 2.5, score: 40 }, { max: 3.5, score: 60 },
     { max: 5, score: 80 }, { max: Infinity, score: 100 }
   ]);
-  const cvarScore = scoreFromBands(Math.abs(m.cvarPct), [
+  const cvarScore = scoreFromBands(absOrNull(m.cvarPct), [
     { max: 2.5, score: 20 }, { max: 4, score: 40 }, { max: 6, score: 60 },
     { max: 8, score: 80 }, { max: Infinity, score: 100 }
   ]);
@@ -1103,11 +1147,15 @@ function computeMarketRiskScore(m) {
   ]) ?? 50;
 }
 // ⑤ 상관관계위험(운명 공동체) - 비중 가중 평균 상관계수.
+// [Phase 39-B] 결측 폴백이 40이었다. 40은 밴드상 "상관 0.3~0.5 = 어느 정도 분산되고 있다"는 뜻이라,
+// 계산조차 못 한 상태를 긍정적 판정으로 바꾸고 있었다(6개 요인 중 유일하게 50이 아닌 폴백이었고
+// 근거도 코드에 없었다). 다른 요인과 같은 `missing → 50`(모르면 중립)으로 통일한다.
+// 반대 방향의 오해도 만들지 않는다 - "상관계수 없음"이 "상관이 높다"는 뜻은 아니다.
 function computeCorrelationRiskScore(m) {
   return scoreFromBands(m.weightedAvgCorrelation, [
     { max: 0.3, score: 20 }, { max: 0.5, score: 40 }, { max: 0.7, score: 60 },
     { max: 0.85, score: 80 }, { max: Infinity, score: 100 }
-  ]) ?? 40;
+  ]) ?? 50;
 }
 // ⑥ 기술/수급위험 - 종목별 [RSI 과열도 + 추세이탈 + 수급신호]를 비중가중 평균한다.
 function computeTechnicalFlowRiskScore(holdings) {
@@ -1146,15 +1194,41 @@ function riskLevelFromScore(score) {
 // [데이터 신뢰도] 위험점수와 별개로 "이 진단이 얼마나 실데이터에 기반했는가"를 보여준다 - 가격 이력이
 // 없는 종목 비중 / 섹터·ETF 룩스루 미분류 비중 / 수급이 실제 데이터가 아닌 거래량 기반 추정치라는
 // 구조적 한계를 반영한다(최대 92%로 제한 - 100%라고 표시하면 추정치를 실측치처럼 오해할 수 있음).
+// [Phase 39-B] 감점 요소 2가지를 추가한다. 예전엔 벤치마크를 하나도 못 받아왔거나 상관관계를 전혀
+// 계산하지 못한 상태에서도 신뢰도가 92(만점)로 찍혀 "데이터 충분"으로 보였다 - 정작 그 두 값이
+// 위험점수의 시장위험(15%)과 상관관계위험(10%)을 결정하는데도 그랬다.
+//   · benchmark 결측: 베타를 구하지 못한 종목의 비중만큼 감점(최대 15). 시장위험 가중치와 같은 크기다.
+//   · correlation 계산 불가: 종목이 2개 이상인데도 유효한 쌍이 하나도 없을 때만 감점(10, 고정).
+//     자산이 1개면 상관관계는 "계산 실패"가 아니라 애초에 성립하지 않는 개념이라 감점하지 않는다
+//     (PM 확정 - 종목 1개의 문제는 집중도 위험이 이미 100점으로 잡고 있다).
+// 최대 92라는 구조와 기존 세 감점(가격이력 35 / 섹터 20 / 수급 8)은 그대로다.
+const CONFIDENCE_BENCHMARK_PENALTY_MAX = 15;
+const CONFIDENCE_CORRELATION_PENALTY = 10;
 function computeDataConfidence(m) {
   const totalWeight = m.holdings.reduce((s, h) => s + h.weight, 0) || 1;
   const missingWeight = m.holdings.filter((h) => !h.hasData).reduce((s, h) => s + h.weight, 0);
   const missingPenalty = (missingWeight / totalWeight) * 35;
   const unclassifiedPenalty = (m.sectorExposure.unclassifiedWeightPct / 100) * 20;
   const flowProxyPenalty = 8;
-  const score = Math.max(0, Math.min(100, Math.round(100 - missingPenalty - unclassifiedPenalty - flowProxyPenalty)));
+
+  // 가격 이력은 있는데 베타만 못 구한 비중(= 벤치마크 쪽 문제). 가격 이력 자체가 없는 종목은 위
+  // missingPenalty가 이미 반영했으므로 중복 감점하지 않는다.
+  const withData = m.holdings.filter((h) => h.hasData);
+  const noBetaWeight = withData.filter((h) => typeof h.beta !== 'number' || !Number.isFinite(h.beta))
+    .reduce((s, h) => s + h.weight, 0);
+  const benchmarkPenalty = (noBetaWeight / totalWeight) * CONFIDENCE_BENCHMARK_PENALTY_MAX;
+
+  // m.correlationUnavailable은 호출부가 넘겨준다(자산 2개 이상 & 유효 쌍 0). 예전 호출 형태와의
+  // 호환을 위해 값이 없으면 감점하지 않는다.
+  const correlationPenalty = m.correlationUnavailable ? CONFIDENCE_CORRELATION_PENALTY : 0;
+
+  const score = Math.max(0, Math.min(100, Math.round(
+    100 - missingPenalty - unclassifiedPenalty - flowProxyPenalty - benchmarkPenalty - correlationPenalty
+  )));
   const reasons = [];
   if (missingWeight > 0) reasons.push(`${fmtNum(missingWeight / totalWeight * 100, 0)}% 비중 종목은 가격 이력 부족`);
+  if (noBetaWeight > 0) reasons.push(`${fmtNum(noBetaWeight / totalWeight * 100, 0)}% 비중 종목은 시장(벤치마크) 비교 불가`);
+  if (m.correlationUnavailable) reasons.push('종목 간 상관관계를 계산할 수 없어 분산 효과 판단이 제한적');
   if (m.sectorExposure.unclassifiedWeightPct > 0) reasons.push(`${fmtNum(m.sectorExposure.unclassifiedWeightPct, 0)}% 비중 종목은 섹터 미분류`);
   reasons.push('수급 지표는 실제 외국인/기관 매매 데이터가 아닌 거래량 기반 추정치');
   return { score, reasons };
@@ -1184,8 +1258,11 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
   const withData = newHoldings.filter((h) => h.hasData);
   const withDataWeightSum = withData.reduce((s, h) => s + h.weight, 0);
 
-  const portfolioBeta = withDataWeightSum > 0
-    ? withData.reduce((s, h) => s + (typeof h.beta === 'number' ? h.beta : 1) * (h.weight / withDataWeightSum), 0)
+  // [Phase 39-B] 본 엔진(computeAdvancedRiskMetrics)과 동일한 규칙 - 관측된 베타만 평균낸다.
+  const withBeta = withData.filter((h) => typeof h.beta === 'number' && Number.isFinite(h.beta));
+  const betaWeightSum = withBeta.reduce((s, h) => s + h.weight, 0);
+  const portfolioBeta = betaWeightSum > 0
+    ? withBeta.reduce((s, h) => s + h.beta * (h.weight / betaWeightSum), 0)
     : null;
 
   const minLen = withData.length ? Math.min(...withData.map((h) => h.returns.length)) : 0;
@@ -1197,7 +1274,8 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
   }
   const sorted = [...portfolioReturns].sort((a, b) => a - b);
   const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
-  const var95Pct = sorted.length ? sorted[varIdx] * 100 : 0;
+  // [Phase 39-B] 결측을 0(=손실 없음)으로 만들지 않는다 - 본 엔진과 동일.
+  const var95Pct = sorted.length ? sorted[varIdx] * 100 : null;
   const tailReturns = sorted.slice(0, varIdx + 1);
   const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
   const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
@@ -1247,9 +1325,11 @@ async function computeAdvancedRiskMetrics() {
     // 필요한 벤치마크 지수만 모아서 한 번씩만 조회한다.
     const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey))];
     const benchmarkCloses = {};
+    const benchmarkDated = {};   // [Phase 39-B] 지수 쪽 날짜도 보존한다(공통 거래일 정렬용).
     await Promise.all(neededBenchmarks.map(async (key) => {
       const data = await getCachedDailyCloses(INDEX_TICKERS[key]);
       benchmarkCloses[key] = data ? data.closes : null;
+      benchmarkDated[key] = datedClosesFromSeries(data);
     }));
     const benchmarkReturns = {};
     neededBenchmarks.forEach((key) => { benchmarkReturns[key] = benchmarkCloses[key] ? dailyReturnsFromCloses(benchmarkCloses[key]) : null; });
@@ -1263,9 +1343,28 @@ async function computeAdvancedRiskMetrics() {
       h.closes = data ? data.closes : null;
       h.volumes = data ? data.volumes : null;
       h.returns = h.closes ? dailyReturnsFromCloses(h.closes) : null;
+      // [Phase 39-B] 날짜를 버리지 않고 보존한다 - beta/상관계수를 공통 거래일 기준으로 계산하기 위함.
+      h.datedCloses = datedClosesFromSeries(data);
       const bmReturns = benchmarkReturns[h.benchmarkKey];
-      h.beta = (h.returns && bmReturns) ? computeBetaFromReturns(h.returns, bmReturns) : null;
-      h.hasData = !!h.returns;
+      const bmDated = benchmarkDated[h.benchmarkKey];
+      if (h.returns && bmReturns) {
+        const pair = alignedReturnPair(h.datedCloses, h.returns, bmDated, bmReturns);
+        h.beta = computeBetaFromReturns(pair.a, pair.b);
+        // 이 beta가 실제로 며칠의 공통 거래일로 계산됐는지 남긴다(날짜 정렬이 적용된 경우에만).
+        h.betaAligned = pair.aligned;
+        h.betaObservationCount = pair.aligned ? pair.observationCount : null;
+      } else {
+        h.beta = null;
+        h.betaAligned = false;
+        h.betaObservationCount = null;
+      }
+      // [Phase 39-B] 예전엔 `!!h.returns`였는데 dailyReturnsFromCloses()는 항상 배열을 돌려주므로
+      // 종가가 1개뿐이어도(수익률 0건) hasData=true가 됐다 - 그 종목은 결측으로 세지도 않고
+      // dataConfidence도 92 만점을 유지했다. 이제 이 앱이 이미 쓰는 최소 관측치(10)를 기준으로 삼는다:
+      // 변동성/beta/correlation/Sortino가 전부 `returns.length < 10`이면 계산을 포기한다.
+      // 새 임계값을 만든 게 아니라 이미 있는 기준을 hasData에 맞춘 것이며, 이력이 부족한 종목은
+      // 기존 missingCount/dataConfidence 감점 구조로 자연스럽게 드러난다.
+      h.hasData = !!h.returns && h.returns.length >= MIN_RETURNS_FOR_STATS;
       h.sortino = h.returns ? computeSortinoFromReturns(h.returns) : null;
 
       if (h.closes) {
@@ -1305,9 +1404,17 @@ async function computeAdvancedRiskMetrics() {
     const missingCount = holdings.length - withData.length;
     const withDataWeightSum = withData.reduce((s, h) => s + h.weight, 0);
 
-    // 포트폴리오 베타 = 데이터 있는 종목들의 비중(그 안에서 재정규화) 가중평균.
-    const portfolioBeta = withDataWeightSum > 0
-      ? withData.reduce((s, h) => s + (typeof h.beta === 'number' ? h.beta : 1) * (h.weight / withDataWeightSum), 0)
+    // 포트폴리오 베타 = 베타가 "실제로 계산된" 종목들의 비중 가중평균(그 안에서 재정규화).
+    // [Phase 39-B] 예전엔 베타를 못 구한 종목을 1.0으로 채워 넣었다. 그런데 베타 1.0은 밴드상
+    // (0.8, 1.0] → 35점이라, "모름"이 중립(50)보다 오히려 안전한 값으로 해석됐다. 벤치마크를 하나도
+    // 못 받아온 상황에서 시장위험이 35점으로 찍히던 것이 그 결과다. 이제 관측된 베타만 평균내고,
+    // 하나도 없으면 null을 돌려 computeMarketRiskScore의 기존 `?? 50`(모르면 중립)이 작동하게 한다.
+    // 주의: 이건 "관측 베타 결측" 처리이고, 아래 스트레스 시나리오의 beta=1.0은 성격이 완전히 다른
+    // "가정"이다(computeStressScenario 주석 참고) - 두 곳을 같은 것으로 묶지 말 것.
+    const withBeta = withData.filter((h) => typeof h.beta === 'number' && Number.isFinite(h.beta));
+    const betaWeightSum = withBeta.reduce((s, h) => s + h.weight, 0);
+    const portfolioBeta = betaWeightSum > 0
+      ? withBeta.reduce((s, h) => s + h.beta * (h.weight / betaWeightSum), 0)
       : null;
 
     // 포트폴리오 일간 수익률 시계열 = 종목별 수익률의 비중 가중합(공통 길이만큼, 최신 날짜 기준으로
@@ -1321,9 +1428,13 @@ async function computeAdvancedRiskMetrics() {
     }
 
     // VaR95/CVaR: 일간 수익률 분포의 하위 5% 지점(과거 실측 분포 기반 - parametric 가정 없음).
+    // [Phase 39-B] 수익률이 하나도 없으면 예전엔 0을 넣었는데, 0은 "하락 위험이 전혀 없다"는 뜻으로
+    // 읽혀 손실위험 점수가 최저(20점)로 떨어졌다 - 데이터가 없는 것과 손실이 없는 것은 다르다.
+    // 이제 결측을 null로 남겨 computeDrawdownTailRiskScore의 기존 `?? 50`(모르면 중립) 정책이
+    // 실제로 작동하게 한다. 정상 데이터에서는 예전과 완전히 같은 값이 나온다.
     const sorted = [...portfolioReturns].sort((a, b) => a - b);
     const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
-    const var95Pct = sorted.length ? sorted[varIdx] * 100 : 0; // 퍼센트 단위, 음수
+    const var95Pct = sorted.length ? sorted[varIdx] * 100 : null; // 퍼센트 단위, 음수
     const tailReturns = sorted.slice(0, varIdx + 1);
     const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
 
@@ -1351,10 +1462,16 @@ async function computeAdvancedRiskMetrics() {
     // [역사적 하락장 스트레스 테스트 - 공용 함수] 종목별 베타 × 그 종목 벤치마크의 실제 낙폭(데이터
     // 없는 종목은 시장과 동일하게 움직인다고 가정해 베타 1.0으로 근사, 안전한 기본값) - 2020 코로나
     // 폭락(급락형)과 2022 고금리 기술주 폭락(장기 약세장형) 두 시나리오를 같은 방식으로 계산한다.
+    // [Phase 39-B] 여기의 beta=1.0은 "관측 베타 결측 폴백"이 아니라 **스트레스 시나리오 가정**이다:
+    // "그때처럼 시장이 다시 급락하면, 베타를 모르는 자산은 시장과 같은 폭으로 움직인다고 가정한다."
+    // 위 portfolioBeta에서는 이 폴백을 제거했지만(모름을 안전으로 오인하게 만들어서), 이 시나리오는
+    // 애초에 가정 계산이라 1.0을 빼면 그 자산이 손실 0으로 빠져 오히려 손실을 과소평가한다.
+    // 두 곳의 의미가 다르므로 이름도 STRESS_ASSUMED_BETA로 분리해 둔다.
+    const STRESS_ASSUMED_BETA = 1.0;
     function computeStressScenario(dropPctMap, fallbackDrop) {
       let lossKRW = 0;
       holdings.forEach((h) => {
-        const beta = typeof h.beta === 'number' ? h.beta : 1.0;
+        const beta = typeof h.beta === 'number' ? h.beta : STRESS_ASSUMED_BETA;
         const benchmarkDrop = dropPctMap[h.benchmarkKey] ?? fallbackDrop;
         lossKRW += h.curAmount * (beta * benchmarkDrop / 100);
       });
@@ -1392,11 +1509,17 @@ async function computeAdvancedRiskMetrics() {
       technical: computeTechnicalFlowRiskScore(holdings)
     };
     const riskScore = computeCompositeRiskScore(subScores);
-    const dataConfidence = computeDataConfidence({ holdings, sectorExposure });
+    // [Phase 39-B] correlationUnavailable: 종목이 2개 이상인데도 상관관계를 하나도 계산하지 못한 상태.
+    // 종목이 1개뿐이면 상관관계는 계산 실패가 아니라 성립하지 않는 개념이므로 false로 둔다(PM 확정).
+    const correlationUnavailable = withData.length >= 2 && weightedAvgCorrelation === null;
+    const dataConfidence = computeDataConfidence({ holdings, sectorExposure, correlationUnavailable });
 
     return {
       totalCur, holdings: sortedByWeight, missingCount, portfolioBeta, var95Pct, cvarPct, sortino,
-      var95KRW: totalCur * var95Pct / 100, cvarKRW: totalCur * cvarPct / 100,
+      // [Phase 39-B] var95Pct가 null이면 금액도 null이어야 한다 - `totalCur * null / 100`은 0이 되어
+      // 화면에 "예상 손실 0원"으로 찍히는데, 그건 계산 결과가 아니라 데이터가 없다는 뜻이다.
+      var95KRW: var95Pct === null ? null : totalCur * var95Pct / 100,
+      cvarKRW: cvarPct === null ? null : totalCur * cvarPct / 100,
       topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair,
       stressLossKRW: covidStress.lossKRW, stressLossPct: covidStress.lossPct,
       stressLossKRW2022: rateHike2022Stress.lossKRW, stressLossPct2022: rateHike2022Stress.lossPct,

@@ -37,9 +37,13 @@ function stubEl() {
 const JS_DIR = path.join(__dirname, '..', 'js');
 // js/07은 js/10의 computeRiskClassifiedAssets()가 소유자 정렬에 쓰는 ownerRank()를 정의한다.
 // 실제 의존성이므로 스텁으로 흉내내지 않고 원본 파일을 그대로 로드한다(브라우저와 같은 순서).
+// js/15는 js/09가 [Phase 39-B]에서 재사용하는 dateAlignedReturns()를 제공한다.
+// index.html의 실제 로드 순서(09 → 10 → 15)를 그대로 따른다 - 함수 선언이라 호출 시점에는
+// 이미 전역에 있으므로 브라우저와 동일하게 동작한다.
 const LOAD_ORDER = [
   '01-core-state.js', '07-table-render-modals.js',
-  '09-price-fx-risk-engine.js', '10-risk-translation-alerts.js'
+  '09-price-fx-risk-engine.js', '10-risk-translation-alerts.js',
+  '15-monte-carlo-engine.js'
 ];
 
 function loadRiskSandbox() {
@@ -126,6 +130,18 @@ function trendCloses(n, start, dailyPct) {
   return out;
 }
 
+// [Phase 39-B] 날짜 배열 생성기 - 거래일을 하루씩 뒤로 붙인다(주말/휴장 개념 없이 연속 날짜).
+// startDate를 다르게 주면 "서로 다른 거래일을 가진 두 시계열"을 결정적으로 만들 수 있다.
+function datesFrom(n, startDate = '2025-01-01') {
+  const out = [];
+  const d = new Date(startDate + 'T00:00:00Z');
+  for (let i = 0; i < n; i++) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
 // 완전 평탄한 종가(수익률 전부 0) - 변동성/MDD/VaR가 0이 되는 기준선.
 function flatCloses(n, price) { return new Array(n).fill(price); }
 
@@ -172,6 +188,6 @@ function drawdownCloses(n, high, targetPct) {
 }
 
 module.exports = {
-  loadRiskSandbox, stubEl, makeTestAsset,
+  loadRiskSandbox, stubEl, makeTestAsset, datesFrom,
   trendCloses, flatCloses, zigzagCloses, rsiCloses, volumes, drawdownCloses
 };
