@@ -70,33 +70,38 @@ function buildRiskDiagnosisLine(m) {
   return '포트폴리오가 비교적 안정적으로 분산되어 있습니다.';
 }
 
-// [💡 초직관적 행동 제안] 감지된 신호별로 규칙 기반 문장을 쌓는다(여러 개면 전부 보여준다). 아무
-// 신호도 없으면 "유지" 안내 한 줄만 보여준다. 임계치는 6대 위험요인 산정 기준과 동일선상에 있다.
+// [Phase 35 - 점검 항목] 감지된 신호별로 규칙 기반 문장을 쌓는다(여러 개면 전부 보여준다).
+// [행동 지시 금지] 이 앱은 매수/매도/손절/비중조절 같은 투자 행동을 사용자 대신 결정하지 않는다 -
+// "지금 어떤 상태인가"와 "무엇을 함께 확인하면 되는가"까지만 알려주고, 그래서 사고팔지는 사용자가
+// 정한다. 특정 종목/ETF/티커를 대안으로 제시하는 것도 금지다(예전엔 QQQM/SPYM/TLT를 직접 권했다).
+// 임계치는 6대 위험요인 산정 기준과 동일선상에 있으며, 이 함수는 문자열만 만들 뿐 위험점수 계산에
+// 전혀 관여하지 않는다.
 function buildRiskActionItems(m) {
   const items = [];
   if (m.topWeight >= 25 && m.topHolding) {
-    const alt = m.topHolding.benchmarkKey === 'SP500' ? '미국 대표 지수 ETF(QQQM, SPYM 등)' : '코스피 대표지수 ETF';
-    items.push(`${m.topHolding.name} 비중을 줄여 ${alt}로 나눠 담으세요.`);
+    items.push(`${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 계좌에서 가장 큽니다. 이 비중이 본인의 투자 계획과 맞는지 전체 자산배분과 함께 확인해 보세요.`);
   }
   if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.15) {
-    items.push('하락장 충격을 줄이기 위해 현금이나 미국 국채(TLT) 비중을 15% 정도 확보하세요.');
+    items.push(`포트폴리오가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 크게 움직이는 구조입니다. 하락장에서 평가액 변동이 시장보다 클 수 있다는 점을 감안해 자산배분을 확인해 보세요.`);
   }
   if (typeof m.weightedAvgCorrelation === 'number' && m.weightedAvgCorrelation >= 0.7 && m.topCorrelationPair) {
-    items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}은(는) 같이 움직이는 종목이라, 두 종목을 동시에 늘리기보다 성격이 다른 자산과 섞는 게 좋아요.`);
+    items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}은(는) 같이 움직이는 경향이 큽니다. 종목 수는 여러 개여도 분산 효과가 기대만큼 크지 않을 수 있습니다.`);
   }
   if (m.sectorExposure && m.sectorExposure.topSectorWeight >= 50 && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류') {
-    items.push(`ETF 속 구성종목까지 합치면 '${m.sectorExposure.topSector}' 섹터 노출이 ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%에 달합니다 - 다른 섹터 자산으로 분산해 보세요.`);
+    items.push(`ETF 속 구성종목까지 합치면 '${m.sectorExposure.topSector}' 섹터 노출이 ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%입니다. 특정 섹터에 쏠려 있는지 함께 확인해 보세요.`);
   }
-  if (items.length === 0) items.push('현재 특별한 위험 신호가 없습니다. 지금처럼 분산 투자를 유지하세요.');
+  if (items.length === 0) items.push('현재 특별한 위험 신호가 없습니다.');
   return items;
 }
 
 // [개별 종목 행동 지침 태그] RISK 관리 카드의 감지 종목 행에 붙일 짧은 한글 태그 - 어떤 조건에
 // 걸렸는지에 따라 다르게 보여준다(RSI 과열/추세 이탈/52주 고점대비 급락/거래량 급증 각각에 대응,
 // 우선순위 하나만 골라 보여준다 - 자세한 근거는 [🔍 리스크 진단 보기] 상세 카드에서 전부 보여준다).
+// [Phase 35] '비중 축소 검토'/'방어자산 확보 필요'는 행동을 지시하는 이름이라 점검을 뜻하는 이름으로
+// 바꿨다. '단기 추세 주의'/'변동성 확대 주의'는 상태 서술이라 그대로 둔다.
 function buildAssetActionTag(tags) {
-  if (tags.includes('단기 과열')) return '비중 축소 검토';
-  if (tags.includes('52주 고점대비 급락')) return '방어자산 확보 필요';
+  if (tags.includes('단기 과열')) return '비중·가격 점검';
+  if (tags.includes('52주 고점대비 급락')) return '낙폭 점검';
   if (tags.includes('추세 이탈')) return '단기 추세 주의';
   if (tags.includes('거래량 급증')) return '변동성 확대 주의';
   return null;
@@ -175,29 +180,33 @@ function buildIndividualDiagnosisLine(h) {
   return `${trendPhrase} ${rsiPhrase}`;
 }
 
+// [Phase 35 - 행동 지시 금지] 예전엔 "이익을 실현하세요"/"손절 기준을 정해두세요"/"추가 매수는
+// 미루세요"처럼 매매 행동을 직접 지시했고, 사용자의 실제 목표비중과 무관한 "목표 비중 15% 이하"를
+// 하드코딩해 제시했다(사용자가 의도적으로 크게 담은 종목까지 줄이라고 말하는 문제). 이제 "지금 어떤
+// 상태인가 + 무엇을 함께 확인하면 되는가"까지만 말한다 - 사고팔지는 사용자가 정한다.
 function buildIndividualActionItem(h, weightPct) {
-  if (!h || !h.hasData) return '가격 이력 데이터가 부족해 행동 지침을 계산할 수 없습니다. 최근 상장/거래정지 종목일 수 있습니다.';
+  if (!h || !h.hasData) return '가격 이력 데이터가 부족해 상태를 판단할 수 없습니다. 최근 상장/거래정지 종목일 수 있습니다.';
   const overweight = weightPct >= 25;
   if (overweight && h.rsiState === '과열') {
-    return `현재 단기 과열 및 비중 과다(${fmtNum(weightPct, 1)}%) 상태입니다. 추가 매수보다는 일부 이익을 실현하여 목표 비중(15% 이하)으로 줄이고 방어 자산을 확보하세요.`;
+    return `단기 과열 구간이면서 계좌 내 비중도 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 가격 흐름과 전체 자산배분을 함께 점검해 보세요.`;
   }
   if (overweight) {
-    return `계좌 내 비중이 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 목표 비중(15% 이하)까지 서서히 줄여 위험을 분산하세요.`;
+    return `계좌 내 비중이 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 이 비중이 본인의 투자 계획과 맞는지 전체 자산배분과 함께 확인해 보세요.`;
   }
   if (h.rsiState === '과열') {
-    return `단기 과열 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100). 추가 매수는 조정 이후로 미루고, 일부 이익 실현을 고려하세요.`;
+    return `단기 과열 구간입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100). 짧은 기간에 가격이 크게 오른 상태라는 뜻입니다.`;
   }
   if (h.trendLabel === '역배열(하락추세)') {
-    return '이동평균이 역배열로 하락 추세가 이어지고 있습니다. 반등 여부를 확인한 뒤 대응하고, 손실 확대에 대비해 손절 기준을 미리 정해두세요.';
+    return '이동평균이 역배열로 하락 추세가 이어지고 있습니다. 이 종목을 담은 이유가 지금도 유효한지 함께 확인해 보세요.';
   }
   if (h.flowSignal === 'outflow') {
-    return '최근 거래량이 급증하면서 하락한 매물 압박(추정) 흐름입니다. 추가 매수는 안정 여부를 확인한 뒤 판단하세요.';
+    return '최근 거래량이 늘면서 가격이 하락한 흐름입니다(추정). 변동이 커진 배경을 함께 살펴보세요.';
   }
   if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) {
-    return `52주 고점 대비 ${fmtNum(Math.abs(h.week52DrawdownPct), 0)}% 하락한 상태입니다. 추가 하락 여력을 감안해 무리한 추가 매수는 피하세요.`;
+    return `52주 고점 대비 ${fmtNum(Math.abs(h.week52DrawdownPct), 0)}% 하락한 상태입니다. 시장 전체가 내린 것인지 이 종목만의 흐름인지 함께 확인해 보세요.`;
   }
   if (h.volumeSpike) {
-    return '거래량이 평소보다 크게 늘었습니다. 단기 변동성이 커질 수 있으니 주가 움직임을 주의 깊게 지켜보세요.';
+    return '거래량이 평소보다 크게 늘었습니다. 단기 변동이 커질 수 있는 상태입니다.';
   }
   return '현재 특별한 위험 신호가 없습니다.';
 }
@@ -582,7 +591,30 @@ function macroTileHtml(key, label, valueText, sub, icon) {
 // 같은 우선순위 규칙 패턴(더 구체적이거나 심각한 조합을 먼저 검사하고, 해당하는 첫 규칙만 채택).
 // 방향 판정 임계값(±0.05%)은 trendArrowIcon과 동일해 지표별 화살표 아이콘과 해설 문구의 방향이
 // 항상 일치한다.
-function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePct, goldChangePct, usdxChangePct, foreignWeightPct }) {
+// [Phase 35 - 결측을 정상으로 표시하지 않는다] 아래 규칙들은 전부 `typeof === 'number'`를 요구해서,
+// 데이터를 하나도 못 받아온 상태에서도 전부 통과해 마지막 기본값("특별한 쏠림 없이 평이한 흐름")으로
+// 떨어졌다 - 조회 실패를 "시장이 조용하다"로 읽히게 만드는 문제였다. 이제 핵심 지표의 결측 여부를
+// 먼저 판정해 ①전부 결측 ②일부 결측 ③정상을 구분한다. 일부만 없을 때는 확인된 지표로 판정되는
+// 규칙은 그대로 살린다(결측 하나 때문에 아는 정보까지 숨기지 않는다).
+const CORE_MACRO_LABELS = { vix: 'VIX', fxChangePct: '원/달러', ust10yChangePct: '미 10년물', kospiChangePct: '코스피' };
+function missingCoreMacroLabels(input) {
+  return Object.keys(CORE_MACRO_LABELS)
+    .filter((k) => typeof input[k] !== 'number' || !Number.isFinite(input[k]))
+    .map((k) => CORE_MACRO_LABELS[k]);
+}
+// [Phase 35 - 행동 지시 금지] 세 번째 칸은 예전엔 "대응 가이드"로 관망/분할매수/환전 시점 같은 매매
+// 타이밍을 지시했다. 매크로 브리핑의 역할은 "지금 무엇을 해야 하는가"가 아니라 "지금 시장이 어떤
+// 상태인가"이므로, 이제 상태를 한 줄 더 설명하는 note로만 쓴다(사고팔라는 결론은 담지 않는다).
+function buildMacroCommentary(input) {
+  const { vix, fxChangePct, ust10yChangePct, kospiChangePct, goldChangePct, usdxChangePct, foreignWeightPct } = input;
+  const missingLabels = missingCoreMacroLabels(input);
+  if (missingLabels.length === Object.keys(CORE_MACRO_LABELS).length) {
+    return {
+      cause: '현재 시장 데이터를 확인할 수 없어 시장현황을 표시하기 어렵습니다.',
+      impact: '지표를 받아오지 못한 상태라 포트폴리오 영향도 판단할 수 없습니다.',
+      note: '시세·환율이 다시 조회되면 이 자리에 시장 상태가 표시됩니다.'
+    };
+  }
   const isUp = (v) => typeof v === 'number' && v > 0.05;
   const isDown = (v) => typeof v === 'number' && v < -0.05;
   // [달러인덱스 - 더 높은 임계값] 평소 변동폭이 환율/지수보다 훨씬 작은 지표라(MACRO_TREND_THRESHOLDS
@@ -595,7 +627,7 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
     return {
       cause: `시장 전반의 공포심리(VIX ${fmtNum(vix, 1)})가 높아진 고변동성 국면입니다.`,
       impact: '주식 비중이 높을수록 단기 등락폭이 커질 수 있어 계좌 변동성이 확대될 수 있습니다.',
-      guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
+      note: '변동성이 큰 구간에서는 같은 자산이라도 평소보다 평가액 등락이 크게 나타납니다.'
     };
   }
   // [금 시세 반영] 금가 급등(+1.5% 이상)이 VIX 상승(20 이상, 평소보다 경계심이 높아진 수준)과 함께
@@ -605,7 +637,7 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
     return {
       cause: `금값이 급등(${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%)하고 공포심리(VIX ${fmtNum(vix, 1)})도 함께 높아지며 안전자산 선호 심리가 뚜렷합니다.`,
       impact: '위험자산(주식) 비중이 높은 계좌는 단기 변동성이 커질 수 있는 국면입니다.',
-      guide: '무리한 추가 매수보다는 관망하며 상황을 지켜보는 편이 유리합니다.'
+      note: '안전자산 선호가 강해질 때 나타나는 전형적인 흐름입니다.'
     };
   }
   // [달러인덱스 반영] 강달러/약달러 국면은 원/달러 환율·위험자산 심리에 직접 영향을 주는 독립적인
@@ -614,14 +646,14 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
     return {
       cause: `달러인덱스가 급등(${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%)하며 강달러 국면입니다.`,
       impact: '원/달러 환율 상승 압박과 글로벌 유동성 긴축 신호로, 국내 증시·신흥국 자산에는 부담 요인이 될 수 있습니다.',
-      guide: '달러 자산 비중이 있다면 평가액 방어에는 유리하나, 국내 자산 신규 매수는 서두르지 않는 편이 좋습니다.'
+      note: '강달러 국면에서는 달러 자산과 원화 자산의 평가액이 서로 다른 방향으로 움직일 수 있습니다.'
     };
   }
   if (isStrongDown(usdxChangePct)) {
     return {
       cause: `달러인덱스가 하락(${fmtNum(usdxChangePct, 2)}%)하며 약달러 국면입니다.`,
       impact: '위험자산(주식) 선호 심리가 살아나고, 원화 자산에는 우호적인 환경입니다.',
-      guide: '기존에 계획한 투자 전략을 그대로 유지해도 무방한 국면입니다.'
+      note: '위험자산 선호가 회복될 때 나타나는 흐름입니다.'
     };
   }
   if (isUp(ust10yChangePct) && isUp(fxChangePct)) {
@@ -630,34 +662,41 @@ function buildMacroCommentary({ vix, fxChangePct, ust10yChangePct, kospiChangePc
       impact: fw !== null
         ? `달러 자산(전체의 ${fw}%) 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.`
         : '달러 자산 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.',
-      guide: '신규 매수는 서두르지 말고 분할로 접근하는 것이 유리합니다.'
+      note: '금리와 환율이 함께 오르면 달러 자산과 국내 자산의 평가액이 서로 다르게 움직이는 경향이 있습니다.'
     };
   }
   if (isDown(ust10yChangePct) && isUp(kospiChangePct)) {
     return {
       cause: '금리가 진정되며 위험자산 선호 심리가 살아나는 분위기입니다.',
       impact: '국내 주식 비중이 있는 계좌에는 우호적인 환경입니다.',
-      guide: '기존에 계획한 투자 전략을 그대로 유지해도 무방한 국면입니다.'
+      note: '금리 부담이 줄어들 때 국내 위험자산에 나타나는 흐름입니다.'
     };
   }
   if (isDown(fxChangePct) && isUp(kospiChangePct)) {
     return {
       cause: '원화가 강세를 보이며 국내 증시에 우호적인 자금 유입이 기대되는 분위기입니다.',
       impact: '달러 자산 평가액은 다소 줄어들 수 있으나, 국내 자산 비중에는 긍정적입니다.',
-      guide: '달러 환전이나 해외 자산 매수 계획이 있다면 상대적으로 유리한 시점일 수 있습니다.'
+      note: '원화 강세 구간에서는 달러 자산의 원화 평가액이 줄어드는 방향으로 작용합니다.'
     };
   }
   if (isDown(kospiChangePct) && typeof vix === 'number' && vix >= 20) {
     return {
       cause: '국내 증시가 조정을 받고 있고 시장 불안 심리도 다소 높아진 상태입니다.',
       impact: '단기 변동성 확대에 유의할 필요가 있습니다.',
-      guide: '무리한 추가 매수보다는 관망 후 저가 분할매수를 고려해보세요.'
+      note: '지수 조정과 불안 심리가 함께 나타나는 구간입니다.'
+    };
+  }
+  if (missingLabels.length > 0) {
+    return {
+      cause: `일부 시장 데이터(${missingLabels.join('·')})를 확인할 수 없어 종합적인 시장 판단은 제한적입니다.`,
+      impact: '확인된 지표만으로는 포트폴리오 영향까지 판단하기 어렵습니다.',
+      note: '위 지표 카드에서 조회에 성공한 항목의 값은 그대로 확인할 수 있습니다.'
     };
   }
   return {
     cause: 'VIX·환율·금리·지수 모두 특별한 쏠림 없이 대체로 평이한 흐름입니다.',
     impact: '포트폴리오에 미치는 특별한 매크로 압력은 없는 편입니다.',
-    guide: '평소처럼 계획한 투자 전략을 유지하시면 됩니다.'
+    note: '특정 방향으로 뚜렷하게 쏠린 지표는 없습니다.'
   };
 }
 // [자산간 상관관계 가이드] 금리(美 10년물) ↔ 채권가격/성장주/달러가치는 교과서적으로 항상 반대·같은
@@ -678,10 +717,15 @@ function buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct }) {
 
   let note;
   if (rateUp || rateDown) {
-    const fxMatches = rateUp ? fxChangePct > 0.05 : fxChangePct < -0.05;
-    note = fxMatches
-      ? '지금은 환율도 이 교과서적인 방향과 같이 움직이고 있어요.'
-      : '다만 지금 환율은 이 방향과 다르게 움직이고 있어요 - 금리 외에 다른 요인(수급, 지정학 이슈 등)이 더 크게 작용하고 있을 수 있어요.';
+    // [Phase 35] 환율을 모르는 상태에서 "다르게 움직이고 있어요"라고 단정하면 결측이 관측 결과처럼 읽힌다.
+    if (typeof fxChangePct !== 'number' || !Number.isFinite(fxChangePct)) {
+      note = '지금은 환율 데이터를 확인할 수 없어 이 방향과 실제로 같이 움직이는지는 비교하기 어려워요.';
+    } else {
+      const fxMatches = rateUp ? fxChangePct > 0.05 : fxChangePct < -0.05;
+      note = fxMatches
+        ? '지금은 환율도 이 교과서적인 방향과 같이 움직이고 있어요.'
+        : '다만 지금 환율은 이 방향과 다르게 움직이고 있어요 - 금리 외에 다른 요인(수급, 지정학 이슈 등)이 더 크게 작용하고 있을 수 있어요.';
+    }
   } else {
     note = '지금은 금리 변동이 크지 않아 이 관계가 뚜렷하게 나타나지 않는 구간이에요.';
   }
@@ -1022,8 +1066,11 @@ function renderMacroBriefing() {
   const usdx = usdxInfo ? usdxInfo.price : null;
   const usdxChangePct = usdxInfo ? usdxInfo.changePercent : null;
 
-  const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0)
-    ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : 0;
+  // [Phase 35] 기준 환율이나 현재 환율을 모르면 0(보합)이 아니라 null로 둔다 - 예전엔 0으로 떨어져
+  // 타일에 "+0.00% ➡️"가 찍히면서 "데이터 없음"이 "환율이 안 움직였다"로 보였다. state.refExchangeRate
+  // 자체와 환율 조회 로직은 그대로 두고, 이 화면의 표시/해설 입력값만 결측으로 넘긴다.
+  const fxChangePct = (typeof state.refExchangeRate === 'number' && state.refExchangeRate > 0 && typeof state.exchangeRate === 'number')
+    ? ((state.exchangeRate - state.refExchangeRate) / state.refExchangeRate) * 100 : null;
 
   const kospiInfo = getMarketIndexInfoFromState(INDEX_TICKERS.KOSPI);
   const kosdaqInfo = getMarketIndexInfoFromState(INDEX_TICKERS.KOSDAQ);
@@ -1040,7 +1087,7 @@ function renderMacroBriefing() {
   gridEl.innerHTML = `
     <div class="grid grid-cols-5 gap-1 sm:gap-2">
       ${macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
-      ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%`, trendArrowIcon(fxChangePct))}
+      ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', typeof fxChangePct === 'number' ? `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%` : '조회 전', trendArrowIcon(fxChangePct))}
       ${macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
       ${goldTile}
       ${usdxTile}
@@ -1097,7 +1144,7 @@ function renderMacroBriefing() {
   diagnosisEl.innerHTML = `
     ${stackedTitleBody('📌 시장 종합 평가', escapeHtml(commentary.cause), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     ${stackedTitleBody('💰 내 포트폴리오 영향', escapeHtml(commentary.impact), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
-    ${stackedTitleBody('🧭 대응 가이드', escapeHtml(commentary.guide), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
+    ${stackedTitleBody('🔎 참고', escapeHtml(commentary.note), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
       <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
         <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
