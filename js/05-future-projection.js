@@ -62,6 +62,137 @@ function getRegionFallbackRateKey(yahooTicker, isDomestic) {
   if (isDomestic === '해외') return 'S&P500';
   return /\.KQ$/i.test(String(yahooTicker ?? '')) ? 'KOSDAQ' : 'KOSPI';
 }
+/* =========================================================================
+ * [Phase 40-C] 자산 성격(Asset Character) 판정 계층
+ *
+ * 왜 필요한가: 지금까지 "이 자산이 어떤 수익률 가정을 받을 것인가"를 정하는 마지막 폴백이
+ * getRegionFallbackRateKey()였다 - 즉 "미국 자산인데 뭔지 모르겠으면 S&P500, 국내면 KOSPI".
+ * 그래서 미국 장기국채 ETF(TLT)나 금 ETF(GLD)에 미국 주식 기대수익률이, 국내 국고채 ETF에
+ * 한국 주식 기대수익률이 조용히 붙었다. 지역은 자산의 성격이 아니다.
+ *
+ * 이 계층은 "무엇으로 성격을 아는가"만 담당하며 수익률 숫자는 전혀 모른다.
+ * 새 분류 체계를 만들지 않고 앱에 이미 있는 정보를 재사용한다:
+ *   - ETF_HOLDINGS_MAP(js/09)의 sectorWeights - Risk 엔진은 이미 TLT/IEF를 {채권:1}로 알고 있었다
+ *   - SECTOR_MAP(js/09) - 개별 주식 종목
+ *   - asset.category / asset.isDomestic (js/01)
+ *   - BOND_KEYWORDS / CASH_KEYWORDS (js/01) - classifyCategory가 쓰는 바로 그 목록
+ * classifyCategory() 자체는 건드리지 않는다 - 거기를 고치면 category가 바뀌고 Risk 대상 자산
+ * (RISK_ELIGIBLE_CATEGORIES)이 달라져 위험점수가 움직인다. 성격 판정은 그 위에 얹는 별도 개념이다.
+ *
+ * 이 값은 Portfolio Position(코어자산/수비수/미드필더/공격수)이나 Risk Benchmark와 무관하다 -
+ * 세 개념을 하나로 합치지 않는다.
+ * ====================================================================== */
+const ASSET_CHARACTERS = Object.freeze({
+  KR_EQUITY: 'KR_EQUITY', US_EQUITY: 'US_EQUITY',
+  EM_EQUITY: 'EM_EQUITY', DEV_EX_US_EQUITY: 'DEV_EX_US_EQUITY',
+  BOND: 'BOND', CASH: 'CASH', REAL_ESTATE: 'REAL_ESTATE',
+  COMMODITY: 'COMMODITY', CRYPTO: 'CRYPTO',
+  UNRESOLVED: 'UNRESOLVED'
+});
+
+// BOND_KEYWORDS/CASH_KEYWORDS(js/01)와 같은 방식의 이름 키워드 - classifyCategory에는 넣지 않는다
+// (넣으면 category가 바뀌어 Risk 대상 자산이 달라진다). 성격 판정에서만 쓴다.
+const COMMODITY_NAME_KEYWORDS = ['금현물', '금 현물', 'GOLD', '골드', '은현물', 'SILVER', '원자재', 'COMMODITY', '원유', 'CRUDE'];
+const CRYPTO_NAME_KEYWORDS = ['비트코인', 'BITCOIN', 'BTC', '이더리움', 'ETHEREUM', 'ETH-', '가상자산', '암호화폐'];
+const EM_NAME_KEYWORDS = ['신흥국', 'EMERGING', '이머징'];
+const DEV_EX_US_NAME_KEYWORDS = ['선진국', 'DEVELOPED', 'EAFE', '유럽', 'EUROPE', '일본', 'JAPAN'];
+
+// asset.category가 이미 성격을 확정해 주는 경우(사용자가 직접 고르거나 티커 없는 자산이
+// classifyCategory로 확정된 경우) - 가장 강한 근거다.
+const CATEGORY_TO_CHARACTER = Object.freeze({
+  '채권': ASSET_CHARACTERS.BOND, '현금': ASSET_CHARACTERS.CASH,
+  '부동산': ASSET_CHARACTERS.REAL_ESTATE, '원자재': ASSET_CHARACTERS.COMMODITY,
+  '암호화폐': ASSET_CHARACTERS.CRYPTO
+});
+
+function matchesAnyKeyword(name, keywords) {
+  const hay = String(name ?? '').toUpperCase();
+  if (!hay) return false;
+  return keywords.some((k) => hay.includes(k.toUpperCase()));
+}
+
+// 지역만 아는 상태를 성격으로 착각하지 않기 위해 region은 character와 별도로 돌려준다.
+// confidence: 'high'(등록된 구성정보/명시적 카테고리) | 'medium'(이름 키워드/개별종목표) | 'none'
+function resolveAssetCharacter(asset) {
+  const name = String((asset && asset.name) ?? '');
+  const rawTicker = String((asset && asset.ticker) ?? '').trim();
+  const sanitized = sanitizeTicker(rawTicker);
+  const yahoo = sanitized.yahooTicker;
+  const region = (asset && asset.isDomestic) || sanitized.isDomestic || null;
+  const out = (character, source, confidence) => ({ character, source, confidence, region, ticker: yahoo });
+
+  // 1) 명시적 카테고리 - 사용자가 고르거나 티커 없는 자산이 확정된 경우.
+  const byCategory = CATEGORY_TO_CHARACTER[asset && asset.category];
+  if (byCategory) return out(byCategory, 'category', 'high');
+
+  // 2) 이미 등록된 ETF 구성정보 - Risk 엔진이 쓰는 바로 그 표를 재사용한다.
+  //    채권 100%로 등록된 ETF(TLT/IEF)는 이름이나 지역과 무관하게 채권형이다.
+  const etf = (typeof ETF_HOLDINGS_MAP !== 'undefined') ? ETF_HOLDINGS_MAP[yahoo] : null;
+  if (etf && etf.sectorWeights) {
+    if (etf.sectorWeights['채권'] === 1) return out(ASSET_CHARACTERS.BOND, 'etfHoldings', 'high');
+    return out(region === '해외' ? ASSET_CHARACTERS.US_EQUITY : ASSET_CHARACTERS.KR_EQUITY, 'etfHoldings', 'high');
+  }
+
+  // 3) 이름 키워드 - 티커가 있으면 classifyCategory가 'ETF'로 밀어버려 위 1)에 안 걸리는 자산들
+  //    (예: "iShares 20+ Year Treasury Bond ETF", "KOSEF 국고채10년")을 여기서 잡는다.
+  if (matchesAnyKeyword(name, CRYPTO_NAME_KEYWORDS)) return out(ASSET_CHARACTERS.CRYPTO, 'nameKeyword', 'medium');
+  if (matchesAnyKeyword(name, BOND_KEYWORDS)) return out(ASSET_CHARACTERS.BOND, 'nameKeyword', 'medium');
+  if (matchesAnyKeyword(name, COMMODITY_NAME_KEYWORDS)) return out(ASSET_CHARACTERS.COMMODITY, 'nameKeyword', 'medium');
+  if (matchesAnyKeyword(name, EM_NAME_KEYWORDS)) return out(ASSET_CHARACTERS.EM_EQUITY, 'nameKeyword', 'medium');
+  if (matchesAnyKeyword(name, DEV_EX_US_NAME_KEYWORDS)) return out(ASSET_CHARACTERS.DEV_EX_US_EQUITY, 'nameKeyword', 'medium');
+  if (matchesAnyKeyword(name, CASH_KEYWORDS)) return out(ASSET_CHARACTERS.CASH, 'nameKeyword', 'medium');
+
+  // 4) 시스템이 이미 개별 종목으로 알고 있는 주식(SECTOR_MAP) 또는 수익률 표에 직접 등록된 티커.
+  const inSectorMap = (typeof SECTOR_MAP !== 'undefined') && SECTOR_MAP[yahoo] !== undefined;
+  const inPresetTickers = SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined || TICKER_RATE_KEY_ALIAS[yahoo] !== undefined;
+  if (inSectorMap || inPresetTickers) {
+    return out(region === '해외' ? ASSET_CHARACTERS.US_EQUITY : ASSET_CHARACTERS.KR_EQUITY, inSectorMap ? 'sectorMap' : 'presetTicker', 'high');
+  }
+  // 5) 국내상장 해외지수 ETF 등 이름으로 대표 상품이 특정되는 경우(NAME_KEYWORD_RATE_MAP 재사용).
+  //    이 경우 성격은 "상장 시장"이 아니라 "추종하는 기초지수"를 따른다(TIGER 미국S&P500 = 미국 주식).
+  if (getNameKeywordRateKey(name)) return out(ASSET_CHARACTERS.US_EQUITY, 'indexNameKeyword', 'medium');
+
+  // 6) 개별 주식 종목(category '주식')은 상장 시장이 곧 성격이다 - 위 3)에서 채권/현금/원자재/가상자산
+  //    키워드를 이미 걸러냈으므로 여기 남은 '주식'은 실제 개별 주식이다. 이건 "지역만 보고 찍는 것"이
+  //    아니라 상품 구조(개별 지분증권)를 확인한 결과다. ETF는 무엇이든 담을 수 있으므로 제외한다 -
+  //    성격을 모르는 ETF가 지역 대표지수로 흘러가던 문제가 이번 Phase가 막으려는 바로 그 경로다.
+  if (asset && asset.category === '주식' && region) {
+    return out(region === '해외' ? ASSET_CHARACTERS.US_EQUITY : ASSET_CHARACTERS.KR_EQUITY, 'individualStock', 'medium');
+  }
+
+  // 7) 여기까지 왔다면 지역밖에 모른다 - 지역은 성격이 아니므로 주식으로 단정하지 않는다.
+  return out(ASSET_CHARACTERS.UNRESOLVED, 'none', 'none');
+}
+
+/* -------------------------------------------------------------------------
+ * [Phase 40-C] Return Key ↔ 자산 성격 연결표
+ *   수익률 숫자는 전혀 건드리지 않는다 - 어떤 Key가 어떤 성격을 대표하는지만 적는다.
+ *   여기 없는 성격(EM/선진국ex-US/원자재/암호화폐/해외채권)은 "그 성격에 맞는 Key가 아직 없다"는
+ *   뜻이며, 근거 있는 CMA를 확보하기 전까지 임의의 수익률 숫자를 만들지 않는다(PM 지시 12).
+ * ---------------------------------------------------------------------- */
+const RETURN_KEY_CHARACTER = Object.freeze({
+  'KOSPI': ASSET_CHARACTERS.KR_EQUITY, 'KOSDAQ': ASSET_CHARACTERS.KR_EQUITY, '005930.KS': ASSET_CHARACTERS.KR_EQUITY,
+  'S&P500': ASSET_CHARACTERS.US_EQUITY, 'NASDAQ': ASSET_CHARACTERS.US_EQUITY, 'SCHD': ASSET_CHARACTERS.US_EQUITY,
+  'MSFT': ASSET_CHARACTERS.US_EQUITY, 'GOOGL': ASSET_CHARACTERS.US_EQUITY, 'AAPL': ASSET_CHARACTERS.US_EQUITY,
+  'AMZN': ASSET_CHARACTERS.US_EQUITY, 'META': ASSET_CHARACTERS.US_EQUITY, 'NVDA': ASSET_CHARACTERS.US_EQUITY,
+  'BOND': ASSET_CHARACTERS.BOND, 'CASH': ASSET_CHARACTERS.CASH, 'CASH.USD': ASSET_CHARACTERS.CASH,
+  '부동산': ASSET_CHARACTERS.REAL_ESTATE
+});
+// 'BOND' Key의 근거(CMA_SOURCE_METADATA.KR_BOND)는 한국 국고채를 검토한 것이라 통화/시장이 다른
+// 해외 채권에 그대로 적용하면 안 된다 - 그래서 해외 채권은 자동 추천하지 않고 대안으로만 제시한다.
+const RETURN_KEY_REGION = Object.freeze({
+  'KOSPI': '국내', 'KOSDAQ': '국내', '005930.KS': '국내', 'BOND': '국내',
+  'S&P500': '해외', 'NASDAQ': '해외', 'SCHD': '해외', 'MSFT': '해외', 'GOOGL': '해외',
+  'AAPL': '해외', 'AMZN': '해외', 'META': '해외', 'NVDA': '해외'
+});
+
+// 사용자가 이미 등록한 커스텀 Key는 성격을 알 수 없다 - 사용자의 명시적 의도로 존중하되
+// "성격 일치 여부"를 단정하지 않는다(unknown).
+function getReturnKeyCharacter(key) {
+  if (!key) return null;
+  return RETURN_KEY_CHARACTER[key] || null;
+}
+
 // [Phase 30 - 판단 근거까지 함께 돌려주는 단일 소스] 아래 getProjectionAssetGroupKey()의 판별 체인을
 // 그대로 옮겨온 것이며 순서·조건·반환 키가 전부 동일하다(동작 변경 없음). 달라진 건 "어느 단계에서
 // 결정됐는지"를 source로 함께 돌려준다는 점뿐이다 - 거래 입력의 대표매칭키 추천(js/06)이 "근거 있는
@@ -598,6 +729,196 @@ const CMA_SOURCE_METADATA = Object.freeze({
 
 // key(SCENARIO_RATE_BASE_ROWS 소속) 하나가 어느 CMA_SOURCE_METADATA 앵커에 속하는지 찾는다 - 사용자가
 // 늘리는 customScenarioRates 커스텀 키는 시스템 앵커 개념이 없으므로 항상 null.
+/* =========================================================================
+ * [Phase 40-C] Return Assumption Key 추천 - 대표매칭 추천(recommendRateMatchKey)과 별개다
+ *
+ * 두 함수를 합치지 않는 이유: 대표매칭 키는 "이 자산을 수익률 관리 목록의 어느 행에 붙일 것인가"
+ * 라는 매칭 문제이고, 여기는 "이 자산에 어떤 장기 성장률 가정을 적용해도 되는가"라는 정책 문제다.
+ * 매칭은 이름/티커가 같으면 성립하지만, 가정은 자산 성격이 같아야 성립한다.
+ * 예: 미국 장기국채 ETF는 "해외 자산"이라 대표매칭은 S&P500 행으로 갈 수 있지만,
+ *     장기 수익률 가정으로 미국 주식 5.1%를 쓰는 것은 명백히 틀렸다.
+ *
+ * 이 함수는 수익률 숫자를 만들지 않는다. 근거가 없으면 NONE을 돌려주는 것이 정상 결과다.
+ * ====================================================================== */
+const RETURN_RECOMMENDATION_STRENGTH = Object.freeze({ HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW', NONE: 'NONE' });
+const RETURN_ASSUMPTION_STATUS = Object.freeze({
+  OK: 'OK',                       // 성격에 맞는 가정이 연결됨
+  NEEDS_REVIEW: 'NEEDS_REVIEW',   // 연결은 되어 있으나 성격과 맞지 않아 사람이 확인해야 함
+  USER_DEFINED: 'USER_DEFINED',   // 사용자가 직접 등록한 키 - 성격을 시스템이 판단하지 않는다
+  UNRESOLVED: 'UNRESOLVED'        // 성격을 몰라 가정을 자동으로 붙이지 않음
+});
+
+// 성격 하나가 어떤 Return Key 후보를 갖는지 - 여기 없는 성격은 "쓸 수 있는 Key가 아직 없다"는 뜻이다.
+function returnKeyCandidatesForCharacter(character, region) {
+  if (character === ASSET_CHARACTERS.KR_EQUITY) {
+    return /\.KQ$/i.test(String(region || '')) ? ['KOSDAQ', 'KOSPI'] : ['KOSPI', 'KOSDAQ'];
+  }
+  if (character === ASSET_CHARACTERS.US_EQUITY) return ['S&P500', 'NASDAQ', 'SCHD'];
+  if (character === ASSET_CHARACTERS.CASH) return ['CASH', 'CASH.USD'];
+  if (character === ASSET_CHARACTERS.REAL_ESTATE) return ['부동산'];
+  if (character === ASSET_CHARACTERS.BOND) return ['BOND'];
+  return [];
+}
+
+// 사람이 읽는 성격 이름 - 화면에 'US_EQUITY' 같은 내부 값을 그대로 노출하지 않는다.
+const ASSET_CHARACTER_LABELS = Object.freeze({
+  KR_EQUITY: '국내 주식', US_EQUITY: '미국 주식', EM_EQUITY: '신흥국 주식',
+  DEV_EX_US_EQUITY: '미국 외 선진국 주식', BOND: '채권', CASH: '현금성',
+  REAL_ESTATE: '부동산', COMMODITY: '금·원자재', CRYPTO: '가상자산', UNRESOLVED: '확인 필요'
+});
+function getAssetCharacterLabel(character) { return ASSET_CHARACTER_LABELS[character] || character; }
+
+/**
+ * 신규/보유 자산에 어떤 장기 수익률 가정을 붙일지 추천한다.
+ * 반환: { recommendedReturnKey, recommendationStrength, reason, evidence, alternatives,
+ *         requiresUserConfirmation, status, character }
+ * recommendedReturnKey가 null이면 "적합한 가정을 찾지 못했다"는 정상 결과다 - 호출부는 이때
+ * 지역 대표지수로 대신 채우면 안 된다.
+ */
+function recommendReturnAssumptionKey(input) {
+  const ticker = String((input && input.ticker) ?? '').trim();
+  const name = String((input && input.name) ?? '').trim();
+  if (!ticker && !name) return null;
+
+  // 실제로 저장될 자산과 같은 방식으로 만든다(카테고리/국내해외 자동판별 포함).
+  const probe = makeAsset({ ticker, name, currency: input && input.currency, category: input && input.category });
+  const char = resolveAssetCharacter(probe);
+  const base = { character: char.character, characterLabel: getAssetCharacterLabel(char.character), characterSource: char.source, evidence: [] };
+
+  // Step 1 - 사용자가 이미 명시한 값이 있으면 최우선으로 존중한다(덮어쓰지 않는다).
+  const explicitKey = (input && input.explicitReturnKey) || (probe.rateMatchOverride || '');
+  if (explicitKey) {
+    const keyChar = getReturnKeyCharacter(explicitKey);
+    const conflict = keyChar && char.character !== ASSET_CHARACTERS.UNRESOLVED && keyChar !== char.character;
+    return Object.assign(base, {
+      recommendedReturnKey: explicitKey,
+      recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.HIGH,
+      reason: conflict
+        ? `이미 지정된 기준(${getRateMatchKeyDisplayLabel(explicitKey)})이 있으나, 이 자산은 ${getAssetCharacterLabel(char.character)}으로 보입니다. 확인이 필요합니다.`
+        : '사용자가 직접 지정한 기준을 그대로 사용합니다.',
+      evidence: ['사용자 지정'],
+      alternatives: conflict ? returnKeyCandidatesForCharacter(char.character, char.ticker) : [],
+      requiresUserConfirmation: !!conflict,
+      status: conflict ? RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW : RETURN_ASSUMPTION_STATUS.OK
+    });
+  }
+
+  // Step 2 - 같은 티커를 이미 보유 중이고 그 자산에 명시적 지정이 있으면 강한 증거로 쓴다.
+  if (ticker) {
+    const yahoo = sanitizeTicker(ticker).yahooTicker;
+    const twin = (state.assets || []).find((a) => a.rateMatchOverride && sanitizeTicker(a.ticker).yahooTicker === yahoo);
+    if (twin) {
+      return Object.assign(base, {
+        recommendedReturnKey: twin.rateMatchOverride,
+        recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.HIGH,
+        reason: `이미 보유 중인 같은 종목에 적용된 기준(${getRateMatchKeyDisplayLabel(twin.rateMatchOverride)})과 동일하게 맞춥니다.`,
+        evidence: ['동일 종목 기존 설정'],
+        alternatives: [], requiresUserConfirmation: false, status: RETURN_ASSUMPTION_STATUS.OK
+      });
+    }
+  }
+
+  // Step 3 - 성격을 확인하지 못하면 여기서 멈춘다. 지역만 보고 주식 가정을 붙이지 않는다.
+  if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
+    return Object.assign(base, {
+      recommendedReturnKey: null,
+      recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.NONE,
+      reason: '자산 성격을 확인할 수 없어 장기 수익률 가정을 자동으로 적용하지 않았습니다.',
+      evidence: [], alternatives: [], requiresUserConfirmation: true,
+      status: RETURN_ASSUMPTION_STATUS.UNRESOLVED
+    });
+  }
+
+  // Step 4~5 - 성격에 맞는 Key 후보를 찾는다. 없으면 "가정 없음"이 정상 결과다.
+  let candidates = returnKeyCandidatesForCharacter(char.character, char.ticker);
+  // 성격이 확인된 다음에는 "그 성격 안에서 어느 Key가 가장 정확한가"를 기존 매칭 로직에 맡긴다
+  // (QQQM은 NASDAQ, SPYM은 S&P500 - 같은 미국 주식이라도 등록된 전용 행이 있으면 그쪽이 정확하다).
+  // 성격 판정을 통과한 뒤에만 쓰므로, 이 재사용이 지역 폴백을 되살리지는 않는다.
+  const detail = resolveAssetGroupKeyDetail(probe);
+  if (RATE_MATCH_RECOMMENDABLE_SOURCES.includes(detail.source)) {
+    const detailChar = getReturnKeyCharacter(detail.key);
+    const isCustomKey = !!(state.projection.customScenarioRates || {})[detail.key];
+    if (detailChar === char.character || (isCustomKey && !detailChar)) {
+      candidates = [detail.key].concat(candidates.filter((k) => k !== detail.key));
+    }
+  }
+  if (candidates.length === 0) {
+    return Object.assign(base, {
+      recommendedReturnKey: null,
+      recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.NONE,
+      reason: `${getAssetCharacterLabel(char.character)} 자산에 쓸 수 있는 장기 수익률 기준이 아직 없습니다. 직접 등록하면 그 값을 사용합니다.`,
+      evidence: [`자산 성격: ${getAssetCharacterLabel(char.character)}`],
+      alternatives: [], requiresUserConfirmation: true,
+      status: RETURN_ASSUMPTION_STATUS.UNRESOLVED
+    });
+  }
+
+  // 통화/시장이 다른 채권은 자동 확정하지 않는다 - 'BOND' 기준은 한국 국고채를 검토한 값이라
+  // 미국 국채/회사채에 그대로 쓰면 통화와 시장이 어긋난다(CMA_SOURCE_METADATA.KR_BOND 참고).
+  // 주식에는 이 검사를 적용하지 않는다 - 국내 상장 미국지수 ETF처럼 "상장 시장 ≠ 기초지수"인 상품이
+  // 정상적으로 존재하고, 그 경우 위 성격 판정이 이미 기초지수를 보고 결정했기 때문이다.
+  const primary = candidates[0];
+  const regionMismatch = char.character === ASSET_CHARACTERS.BOND
+    && RETURN_KEY_REGION[primary] && char.region && RETURN_KEY_REGION[primary] !== char.region;
+  if (regionMismatch) {
+    return Object.assign(base, {
+      recommendedReturnKey: null,
+      recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.LOW,
+      reason: `${getAssetCharacterLabel(char.character)} 자산이지만, 지금 등록된 기준(${getRateMatchKeyDisplayLabel(primary)})은 국내 기준이라 그대로 적용하기 어렵습니다.`,
+      evidence: [`자산 성격: ${getAssetCharacterLabel(char.character)}`, `지역: ${char.region}`],
+      alternatives: candidates, requiresUserConfirmation: true,
+      status: RETURN_ASSUMPTION_STATUS.UNRESOLVED
+    });
+  }
+
+  const strength = char.confidence === 'high'
+    ? RETURN_RECOMMENDATION_STRENGTH.HIGH : RETURN_RECOMMENDATION_STRENGTH.MEDIUM;
+  return Object.assign(base, {
+    recommendedReturnKey: primary,
+    recommendationStrength: strength,
+    reason: `${getAssetCharacterLabel(char.character)} 자산으로 확인되어 ${getRateMatchKeyDisplayLabel(primary)} 기준을 제안합니다.`,
+    evidence: [`자산 성격: ${getAssetCharacterLabel(char.character)}`],
+    alternatives: candidates.slice(1),
+    requiresUserConfirmation: strength !== RETURN_RECOMMENDATION_STRENGTH.HIGH,
+    status: RETURN_ASSUMPTION_STATUS.OK
+  });
+}
+
+/**
+ * [Phase 40-C] 이미 보유 중인 자산에 지금 적용되고 있는 가정이 자산 성격과 맞는지 판정한다.
+ * 계산을 바꾸지 않는다 - 화면에 상태만 표시하기 위한 읽기 전용 판정이다(기존 사용자 유예 정책).
+ */
+function assessReturnAssumptionStatus(asset) {
+  const appliedKey = getProjectionAssetGroupKey(asset);
+  const char = resolveAssetCharacter(asset);
+  const keyChar = getReturnKeyCharacter(appliedKey);
+  const isUserDefined = !!(state.projection.customScenarioRates || {})[appliedKey];
+
+  if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
+    // 성격을 모르는데 지역 폴백으로 주식 기준이 붙어 있는 상태 - 기존 계산은 유지하되 알린다.
+    const viaRegionFallback = resolveAssetGroupKeyDetail(asset).source === 'regionFallback';
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: viaRegionFallback ? RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW : RETURN_ASSUMPTION_STATUS.OK,
+      message: viaRegionFallback
+        ? '자산 성격을 확인할 수 없어 지역 대표지수 기준이 임시로 적용되어 있습니다. 확인해 주세요.' : ''
+    };
+  }
+  if (isUserDefined && !keyChar) {
+    return { appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: RETURN_ASSUMPTION_STATUS.USER_DEFINED, message: '' };
+  }
+  if (keyChar && keyChar !== char.character) {
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW,
+      message: `이 자산은 ${getAssetCharacterLabel(char.character)}인데 ${getRateMatchKeyDisplayLabel(appliedKey)} 기준이 적용되어 있습니다. 확인해 주세요.`
+    };
+  }
+  return { appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+    status: RETURN_ASSUMPTION_STATUS.OK, message: '' };
+}
+
 function getCmaAnchorForKey(key) {
   for (const anchor of Object.keys(CMA_SOURCE_METADATA)) {
     if ((CMA_SOURCE_METADATA[anchor].appliesToKeys || []).includes(key)) return anchor;
@@ -1843,6 +2164,43 @@ document.getElementById('openScenarioRateManagerBtn').addEventListener('click', 
 document.getElementById('closeScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
 document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
 
+/* [Phase 40-C] 이 기준의 근거가 어디까지 확인됐는지 한 줄로 보여준다.
+ * CMA_SOURCE_METADATA는 지금까지 순수 내부 추적용이라 사용자에게 전혀 노출되지 않았다 - 그래서
+ * 출처가 확인된 값(S&P500)과 출처 불명 값(KOSPI)이 화면에서 똑같아 보였다. 없는 출처를 만들어내지
+ * 않고, 이미 기록돼 있는 내용만 초보자 표현으로 옮긴다. 전문용어(CMA/geometric 등)는 배지에 쓰지
+ * 않고 상세 툴팁에만 남긴다. */
+function getReturnAssumptionSourceInfo(key) {
+  const custom = (state.projection.customScenarioRates || {})[key];
+  if (custom) {
+    return { label: '사용자 확인됨', tone: 'user',
+      detail: '직접 등록한 값입니다. 시스템 기본값 대신 이 값이 계산에 사용됩니다.' };
+  }
+  // getCmaAnchorForKey()는 앵커 "이름"을 돌려준다(객체가 아니다) - 메타는 여기서 꺼낸다.
+  const anchorName = getCmaAnchorForKey(key);
+  const meta = anchorName ? CMA_SOURCE_METADATA[anchorName] : null;
+  if (!meta) {
+    return { label: '추가 확인 필요', tone: 'weak',
+      detail: '이 기준의 장기 수익률 근거가 아직 등록되어 있지 않습니다.' };
+  }
+  if (meta.status === 'cma_verified' && meta.source) {
+    const bits = [meta.source];
+    if (meta.asOfDate) bits.push('기준일 ' + meta.asOfDate);
+    if (meta.forecastHorizonYears) bits.push('전망기간 ' + meta.forecastHorizonYears + '년');
+    if (meta.returnType) bits.push('수익률 정의 ' + meta.returnType);
+    if (meta.nominalReal) bits.push(meta.nominalReal === 'nominal' ? '명목' : '실질');
+    if (meta.currency) bits.push('통화 ' + meta.currency);
+    if (meta.uncertaintyNote) bits.push(meta.uncertaintyNote);
+    return { label: '근거 확인됨', tone: 'ok', detail: bits.join(' · ') };
+  }
+  return { label: '추가 확인 필요', tone: 'weak',
+    detail: (meta.methodologyNote || '') + ' ' + (meta.uncertaintyNote || '') };
+}
+const RETURN_SOURCE_TONE_CLASSES = {
+  ok: 'text-emerald-600 dark:text-emerald-400',
+  user: 'text-brand-600 dark:text-brand-400',
+  weak: 'text-amber-600 dark:text-amber-400'
+};
+
 function renderScenarioRateManagerList() {
   const container = document.getElementById('scenarioRateManagerList');
   if (scenarioRateManagerDraft.length === 0) {
@@ -1853,6 +2211,7 @@ function renderScenarioRateManagerList() {
     // [Phase 29-A] draft가 아니라 지금 커밋된 state 기준으로 판단(getPendingCmaFields 주석 참고) -
     // 커스텀 키(row.isBase===false)는 애초에 앵커가 없어 항상 빈 배열이다.
     const pending = getPendingCmaFields(row.key);
+    const src = getReturnAssumptionSourceInfo(row.key);
     const badge = pending.fields.length > 0
       ? `<button type="button" class="cma-recommend-badge touch-target w-full flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300" data-cma-key="${escapeHtml(row.key)}">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>새로운 장기 전망 확인
@@ -1875,6 +2234,10 @@ function renderScenarioRateManagerList() {
       <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
         placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
         class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+      <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[src.tone]} flex items-center gap-1">
+        <span>장기 수익률 가정: ${escapeHtml(src.label)}</span>
+        <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      </p>
       ${badge}
     </div>`;
   }).join('');
