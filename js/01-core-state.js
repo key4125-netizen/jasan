@@ -555,7 +555,12 @@ const state = {
   // customFeeRates: [Phase 3-4] 사용자가 "운용보수 관리"에서 직접 등록한 종목/카테고리별 연간 운용보수(%,
   // customScenarioRates와 같은 key 체계 - buildCustomRateKey 재사용). 등록 안 된 종목은 0%로 계산된다 -
   // 확인 안 된 보수율을 임의로 추정해 채워 넣지 않는다(요청 반영).
-  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } },
+  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {},
+    // [Phase 29-A] { [anchor]: { seenVersion } } - 사용자가 CMA_SOURCE_METADATA[anchor].recommended의
+    // 몇 번 버전까지 "나중에"/"적용"으로 처리했는지만 기록하는 UI 상태다. customScenarioRates/
+    // SCENARIO_RATE_PRESETS 등 실제 계산에 쓰이는 값과는 완전히 분리되어 있고, 이 필드 자체는 어떤
+    // 계산 결과에도 영향을 주지 않는다(js/05 getPendingCmaFields 참고 - 배지를 다시 보여줄지만 결정).
+    cmaRecommendationStatus: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } },
   // [종목 분석 모달 - 학습된 종목명 캐시] { yahooTicker: 한글/영문 종목명 } - 사용자가 티커/코드로
   // 검색해서 실제 종목명(API 응답 또는 종목 마스터)이 확인될 때마다 rememberTickerName()이 여기 채워
   // 넣는다. 매달 갱신되는 종목 마스터 데이터(js/09 tickerMasterRecords, data/ticker-master.json)와
@@ -1181,6 +1186,9 @@ function loadState() {
           return migrated;
         })(),
         customFeeRates: parsed.customFeeRates || {}, // [Phase 3-4] 미등록 종목은 0%(기본값)로 계산됨
+        // [Phase 29-A - 하위호환] 이 필드가 없던 기존 사용자는 "모든 추천을 아직 안 봤음" 상태로
+        // 시작한다 - 계산에 영향 없음(js/05 getPendingCmaFields의 seenVersion 기본값 0과 동일한 의미).
+        cmaRecommendationStatus: parsed.cmaRecommendationStatus || {},
         // [절세계좌 적립 예상 - 하위호환] normalizeTaxAdvantagedPlan이 필드 부재/구버전 단일 years 구조를
         // 모두 안전하게 새 yearsByOwner 구조로 채워준다.
         taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.taxAdvantagedPlan),

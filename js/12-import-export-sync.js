@@ -33,12 +33,24 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
   XLSX.utils.book_append_sheet(wb, ws, '자산목록');
 
   // [멀티 시트 - 요청 반영] 두 번째 시트에 "수익률 관리" 팝업이 지금 실제로 보여주는 것과 완전히 같은
-  // 목록(getScenarioRateDisplayRows - 동적 필터링된 대표 종목들, js/05)을 각자의 현재 유효 기대수익률
-  // (오버라이드가 있으면 그 값)과 함께 정리해 내려받는다. 여기서 종목을 추가하거나 수익률을 고쳐서
-  // 다시 업로드하면 state.projection.customScenarioRates에 그대로 반영된다(22. 엑셀 업로드 참고).
+  // 목록(getScenarioRateDisplayRows - 동적 필터링된 대표 종목들, js/05)을 정리해 내려받는다. 여기서
+  // 종목을 추가하거나 수익률을 고쳐서 다시 업로드하면 state.projection.customScenarioRates에 그대로
+  // 반영된다(22. 엑셀 업로드 참고).
+  // [Phase 29-B - round-trip 의미 보존 버그 수정] 예전엔 이 칸에 getReferenceRate()(오버라이드가 있으면
+  // 그 값, 없으면 시스템 기본값까지 합성한 "최종 유효값")를 항상 채워 넣었다 - 그러면 사용자가 한 번도
+  // 손대지 않은 필드(customScenarioRates[key][preset]가 아예 없는, 시스템 기본값을 그냥 따르던 필드)도
+  // 엑셀에는 구체적인 숫자로 찍혀 나가고, 그 파일을 그대로 다시 올리기만 해도(22. 엑셀 업로드는 빈 칸이
+  // 아닌 값을 전부 명시적 오버라이드로 저장한다) 시스템 기본값이 영구 오버라이드로 동결됐다 - 이후
+  // Phase 7-x/29-A가 그 필드의 시스템 기본값이나 추천값을 갱신해도 더 이상 반영되지 않는 원인이었다.
+  // 이제 "실제로 저장돼 있는 그 필드의 원본 오버라이드 값"만 적고, 없으면 빈 칸으로 남겨 "이 필드는
+  // 아직 시스템 기본값을 따르는 중"이라는 사실 자체를 보존한다 - 대표매칭(rateMatchOverride)의 override-
+  // first 원칙과 동일하게, 여기서도 "값이 없다"는 것 자체가 의미 있는 상태다. 커스텀 키(row.custom -
+  // 시스템 기본값 개념이 아예 없는, 사용자가 직접 등록한 종목)는 저장 시 항상 3개 필드를 전부 쓰므로
+  // (js/05 saveScenarioRateManagerModalBtn 핸들러) 이 규칙을 그대로 적용해도 동작이 달라지지 않는다.
   const rateRows = getScenarioRateDisplayRows().map((row) => {
     const customEntry = (state.projection.customScenarioRates || {})[row.key];
     const keywords = (customEntry && Array.isArray(customEntry.keywords)) ? customEntry.keywords : [];
+    const overrideOnly = (preset) => (customEntry && customEntry[preset] !== undefined) ? num(customEntry[preset]) : '';
     return {
       '키(수익률연동키)': row.key,
       '종목명': row.label,
@@ -46,9 +58,9 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 그 키워드가 포함된 자산이 카테고리/지역 폴백보다 우선해서 이 키로 자동 매칭된다
       // (getCustomKeywordRateKey, js/05). 다시 업로드하면 그대로 반영된다.
       '키워드(쉼표로 구분)': keywords.join(', '),
-      '보수적(%)': num(getReferenceRate('conservative', row.key)),
-      '일반적(%)': num(getReferenceRate('normal', row.key)),
-      '긍정적(%)': num(getReferenceRate('optimistic', row.key))
+      '보수적(%)': overrideOnly('conservative'),
+      '일반적(%)': overrideOnly('normal'),
+      '긍정적(%)': overrideOnly('optimistic')
     };
   });
   const rateWs = XLSX.utils.json_to_sheet(rateRows);
@@ -648,6 +660,9 @@ function adoptRemoteRebalanceAndProjection(parsed, opts) {
       contributionGrowthRate: (parsed.projection.contributionGrowthRate !== undefined && parsed.projection.contributionGrowthRate !== null && parsed.projection.contributionGrowthRate !== '') ? num(parsed.projection.contributionGrowthRate) : 0,
       customScenarioRates: parsed.projection.customScenarioRates || {},
       customFeeRates: parsed.projection.customFeeRates || {}, // [Phase 3-4]
+      // [Phase 29-A] 빠지면 다른 기기의 배지 확인/적용 이력이 복원·동기화 시 사라진다(js/01 loadState의
+      // 같은 필드 백필 주석 참고 - 계산에는 영향 없는 순수 UI 상태).
+      cmaRecommendationStatus: parsed.projection.cmaRecommendationStatus || {},
       // [버그 수정 - 복원/동기화 후 절세계좌 계획 소실] 이 필드가 빠져 있으면 state.projection.
       // taxAdvantagedPlan이 undefined가 되어 updateProjection()이 즉시 TypeError로 죽는다 - loadState와
       // 동일한 normalizeTaxAdvantagedPlan(js/01)으로 안전하게 채운다.
@@ -937,19 +952,33 @@ function applySyncColorSet(el, state) {
   el.classList.add(...(state === 'inactive' ? SYNC_COLOR_INACTIVE : state === 'error' ? SYNC_COLOR_ERROR : SYNC_COLOR_ACTIVE));
   el.dataset.syncColorState = state;
 }
+// [Phase 28] Header Utility를 모든 폭에서 한 줄로 유지하기 위해 동기화 버튼을 아이콘 전용(44x44)으로
+// 바꿨다 - 예전 텍스트 버튼("서버 동기화중지")은 375px에서 117px을 차지해 한 줄이 성립하지 않았다.
+// [색상만으로 상태를 전달하지 않는다] 상태 구분을 색에 맡기지 않고 아이콘 "모양"이 서로 다르게 한다:
+// 중지=cloud-off(구름에 사선), 동기화중=refresh-cw(회전 화살표), 오류=alert-triangle(경고 삼각형).
+// 화면에서 사라진 한국어 상태 문구는 title/aria-label로 그대로 남아 스크린리더와 툴팁에 전달되고,
+// 동기화 설정 모달 안의 상태 배지(syncStatusText)는 예전 그대로 전체 문장을 보여준다.
+const SYNC_BTN_PRESENTATION = {
+  inactive: { icon: 'cloud-off', label: '서버 동기화중지' },
+  error: { icon: 'alert-triangle', label: '서버 동기화오류' },
+  active: { icon: 'refresh-cw', label: '서버 동기화중' }
+};
+function applySyncButtonPresentation(btn, state) {
+  const p = SYNC_BTN_PRESENTATION[state];
+  btn.setAttribute('title', p.label);
+  btn.setAttribute('aria-label', p.label);
+  // 같은 아이콘이면 다시 그리지 않는다(lucide.createIcons가 매번 DOM을 갈아끼우는 비용을 피한다).
+  if (btn.dataset.syncIcon === p.icon) return;
+  btn.dataset.syncIcon = p.icon;
+  btn.innerHTML = `<i data-lucide="${p.icon}" class="w-4 h-4"></i>`;
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
 function updateSyncStatusUI() {
   const toggleBtn = document.getElementById('syncSettingsBtn');
   if (toggleBtn) {
-    if (!syncState.enabled) {
-      toggleBtn.textContent = '서버 동기화중지';
-      applySyncColorSet(toggleBtn, 'inactive');
-    } else if (syncState.hasError) {
-      toggleBtn.textContent = '서버 동기화오류';
-      applySyncColorSet(toggleBtn, 'error');
-    } else {
-      toggleBtn.textContent = '서버 동기화중';
-      applySyncColorSet(toggleBtn, 'active');
-    }
+    const state = !syncState.enabled ? 'inactive' : (syncState.hasError ? 'error' : 'active');
+    applySyncButtonPresentation(toggleBtn, state);
+    applySyncColorSet(toggleBtn, state);
   }
   // [모달 안 상태 배지] 암호 입력란보다 위에서 크게 보여준다(요청에 따라 위치 이동) - 헤더 버튼과
   // 같은 3색 규칙 + 마지막 동기화 시각까지 함께 표기한다.

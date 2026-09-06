@@ -96,6 +96,18 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   if (key === '현금') return 0;
   if (key === '채권') return getReferenceRate(presetKey, 'BOND');
   if (key === '부동산') return getReferenceRate(presetKey, '부동산');
+  // [Phase 28-E - 표준 카테고리 키 연결 버그 수정] 엑셀 "대표매칭(수익률연동키)"에 앱의 표준 키인
+  // BOND/CASH/CASH.USD를 적었는데 "수익률 관리 기준" 시트가 함께 올라오지 않아 customScenarioRates에
+  // 그 키가 없으면, 예전엔 아래 getCustomRate/preset.tickers 둘 다 비어서 마지막 지역 대표지수 폴백까지
+  // 흘러내려 "현금 7%(KOSPI)·달러 5.1%(S&P500)·국채 7%(KOSPI)"처럼 주식 지수 수익률로 계산됐다.
+  // 같은 자산이 목표비중 경로(getTargetProjectionRate)에서는 classifyCategory 추론으로 채권 프리셋/현금 0%를
+  // 내므로 두 경로가 서로 다른 값을 내는 연결 불일치였다. 여기서도 동일한 기존 정책(getSystemDefaultRate의
+  // BOND→categories.채권, classifyCategory('달러')==='현금'→0)을 그대로 따른다 - 새 수익률을 만들지 않으며,
+  // customScenarioRates에 키가 있으면 여전히 그 값이 우선한다(getReferenceRate가 custom을 먼저 본다).
+  // CASH와 CASH.USD는 서로 다른 키로 유지되어 사용자가 각각 다른 값을 등록할 수 있다 - 시트 미등록 시의
+  // 폴백만 둘 다 현금 0%로 맞춘다. BOND.STOCK은 앱 어디에도 기본 정책이 없어 여기서 다루지 않는다(정책 결정 필요).
+  if (key === 'BOND') return getReferenceRate(presetKey, 'BOND');
+  if (key === 'CASH' || key === 'CASH.USD') { const custom = getCustomRate(key, presetKey); return custom !== undefined ? custom : 0; }
   if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');
   if (key === 'KOSDAQ') return getEffectiveIndexRate(presetKey, 'kosdaq');
   if (key === 'S&P500') return getEffectiveIndexRate(presetKey, 'foreign');
@@ -505,7 +517,20 @@ const CMA_SOURCE_METADATA = Object.freeze({
     uncertaintyNote: '10년 기관 전망을 20년 앱 horizon에 그대로 적용하는 horizon mismatch를 내포함. ' +
       '개별종목(MSFT/GOOGL/AAPL/AMZN/META/NVDA)과 NASDAQ/SCHD는 이 Anchor를 무조정 상속하며, ' +
       '이 값은 미래 수익률을 보장하지 않는다. VCMM은 분기마다 갱신되므로 이 값도 정적 스냅샷일 뿐이다.',
-    version: 2
+    version: 2,
+    // [Phase 29-A - 검증된 추천 후보] "지금 활성 기준(위 SCENARIO_RATE_PRESETS)"과 완전히 분리된
+    // 별도 필드다 - 여기 값은 사용자가 "수익률 관리"에서 [적용]을 누르기 전까지 어떤 계산에도 영향을
+    // 주지 않는다(recommended != active rate, PM 원칙 4). 사람이 원문을 재검증해 Phase 29 승인 기준
+    // (출처신뢰성/투자기간/자산군정의/nominal-real/arithmetic-geometric/price-total/통화/장기타당성/
+    // 앱 성장률정의 호환)을 전부 통과한 값만 여기 채운다 - 지금은 신규로 검증된 후보가 없어 null이다.
+    // 채울 때는 { version(정수, 이전보다 반드시 큼), conservative, normal, optimistic, source,
+    // sourceUrl, asOfDate, forecastHorizonYears } 형태를 쓴다(아래 appliesToKeys에 있는 모든 키에
+    // 공통 적용).
+    recommended: null,
+    // [Phase 29-A - 추천 배지 매칭용 정확한 키 목록] 위 appliesTo는 사람이 읽는 주석(괄호 설명 포함)이라
+    // 코드가 문자열 비교로 안전하게 쓸 수 없다 - getCmaAnchorForKey()가 쓸 정확한 SCENARIO_RATE_BASE_ROWS
+    // 키만 별도로 둔다. appliesTo와 같은 대상을 가리키되 형식만 기계 매칭용으로 정리한 것.
+    appliesToKeys: ['S&P500', 'NASDAQ', 'SCHD', 'MSFT', 'GOOGL', 'AAPL', 'AMZN', 'META', 'NVDA']
   },
   KR_EQUITY: {
     status: 'legacy_approximation',
@@ -514,7 +539,11 @@ const CMA_SOURCE_METADATA = Object.freeze({
     methodologyNote: '신뢰할 수 있는 forward-looking CMA를 확보하지 못함(Phase 7-D/7-E 감사) - ' +
       '기존 하드코딩 근사치를 그대로 유지, 임의 숫자를 생성하지 않음.',
     uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않으며, 특정 근거에 기반한 값이 아니다.',
-    version: 0
+    version: 0,
+    // [Phase 29-A] 출처(source)가 없는 legacy_approximation 앵커에는 recommended를 만들지 않는다
+    // (PM 지시 12) - 신뢰 가능한 forward CMA가 확보되기 전까지 이 값은 계속 null로 남는다.
+    recommended: null,
+    appliesToKeys: ['KOSPI', 'KOSDAQ', '005930.KS']
   },
   KR_BOND: {
     status: 'legacy_approximation', appliesTo: ['categories.채권'],
@@ -522,7 +551,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
     methodologyNote: '한국 국고채 10년물 시장금리(약 4%대)를 방법론적으로 검토했으나 이는 기관 CMA가 ' +
       '아니라 시장 관측치라 US_EQUITY와 같은 기준으로 채택하지 않음(Phase 7-D/7-E) - 기존 값 유지.',
     uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
-    version: 0
+    version: 0,
+    recommended: null,
+    appliesToKeys: ['BOND']
   },
   REAL_ESTATE: {
     status: 'legacy_approximation', appliesTo: ['categories.부동산'],
@@ -530,7 +561,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
     methodologyNote: '과거 실현수익률만 확인되고 forward-looking CMA는 확보하지 못함(Phase 7-D) - ' +
       '과거 수익률을 미래 기대수익률로 사용하지 않는다는 원칙에 따라 기존 값 유지.',
     uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
-    version: 0
+    version: 0,
+    recommended: null,
+    appliesToKeys: ['부동산']
   },
   CASH: {
     status: 'legacy_approximation', appliesTo: ['현금(항상 0% 고정, getTargetProjectionRate)'],
@@ -538,9 +571,49 @@ const CMA_SOURCE_METADATA = Object.freeze({
     methodologyNote: '정책금리(한국은행 기준금리)만 확인되고 실제 단기시장금리는 확보하지 못함(Phase ' +
       '7-D/7-E) - 정의가 불명확한 상태에서 임의 숫자를 넣지 않고 기존 값(0%) 유지.',
     uncertaintyNote: '명목/실질 여부 불명확. 실제 수익률을 보장하지 않는다.',
-    version: 0
+    version: 0,
+    recommended: null,
+    appliesToKeys: ['CASH', 'CASH.USD']
   }
 });
+
+// [Phase 29-A - 새로운 장기 전망 확인 기능] 이 블록 전체는 "검증된 추천값을 사용자에게 제안하고,
+// 사용자가 명시적으로 [적용]을 눌렀을 때만 customScenarioRates에 반영"하는 기능이다. 새 resolver를
+// 만들지 않는다 - getReferenceRate/resolveProjectionRateForKey/getTargetProjectionRate는 이 블록을
+// 전혀 모르고, 이 블록이 하는 일은 오직 "무엇을 배지로 보여줄지 계산"과 "[적용] 시 기존
+// customScenarioRates에 기존 저장 로직과 동일한 방식으로 값을 써넣는 것"뿐이다.
+
+// key(SCENARIO_RATE_BASE_ROWS 소속) 하나가 어느 CMA_SOURCE_METADATA 앵커에 속하는지 찾는다 - 사용자가
+// 늘리는 customScenarioRates 커스텀 키는 시스템 앵커 개념이 없으므로 항상 null.
+function getCmaAnchorForKey(key) {
+  for (const anchor of Object.keys(CMA_SOURCE_METADATA)) {
+    if ((CMA_SOURCE_METADATA[anchor].appliesToKeys || []).includes(key)) return anchor;
+  }
+  return null;
+}
+// 이 key의 conservative/normal/optimistic 중 "지금 추천 배지를 보여줘도 되는" 필드만 골라 돌려준다.
+//   - 앵커 자체가 없거나(커스텀 키) recommended가 없으면(legacy_approximation 포함) 빈 배열.
+//   - 이미 이 버전을 [나중에]/[적용]으로 처리했으면(state.projection.cmaRecommendationStatus[anchor].
+//     seenVersion >= recommended.version) 빈 배열 - 같은 추천을 계속 들이밀지 않는다.
+//   - [필드 단위 override 보호 - PM 지시 10] customScenarioRates[key][preset]가 이미 존재하면(사용자가
+//     그 필드를 직접 확정했다는 뜻 - getReferenceRate/저장 로직과 동일한 판단 기준) 그 필드는 절대
+//     후보에 넣지 않는다. 판단은 항상 지금 커밋된 state를 직접 읽는다 - 아직 저장 전인 draft
+//     (scenarioRateManagerDraft)를 참고하면 화면에서 만지작거리는 중인 임시값 때문에 배지가 잘못
+//     깜빡일 수 있어 의도적으로 배제한다.
+function getPendingCmaFields(key) {
+  const anchor = getCmaAnchorForKey(key);
+  if (!anchor) return { anchor: null, fields: [], recommended: null, meta: null };
+  const meta = CMA_SOURCE_METADATA[anchor];
+  const rec = meta && meta.recommended;
+  if (!rec) return { anchor, fields: [], recommended: null, meta };
+  const status = (state.projection.cmaRecommendationStatus || {})[anchor];
+  const seenVersion = (status && num(status.seenVersion)) || 0;
+  if (num(rec.version) <= seenVersion) return { anchor, fields: [], recommended: rec, meta };
+  const existing = (state.projection.customScenarioRates || {})[key] || {};
+  const fields = ['conservative', 'normal', 'optimistic'].filter((preset) =>
+    rec[preset] !== undefined && existing[preset] === undefined);
+  return { anchor, fields, recommended: rec, meta };
+}
 
 // 프리셋 표에 있는 티커(위 tickers 참고) 하나의 수익률을 정한다 - 사용자 정의 오버라이드(key=yahooTicker)가
 // 있으면 그 값이 최우선이고, 없으면 프리셋 표 기본값을 그대로 쓴다.
@@ -570,8 +643,44 @@ function getEffectiveIndexRate(presetKey, region) {
 //      대표 ETF/미국 대형주), 없으면 지역별 대표지수(국내=KOSPI, 해외=S&P500)로 대체(fallback)한다.
 //   3. 자산군 캐치올: 채권(국채)은 categories.채권(역시 'BOND' 키로 오버라이드 가능), 현금은 항상 0%,
 //      그 외(주식 등)는 지역별 대표지수를 그대로 쓴다 - region 인자로 국내/해외 중 어느 소속인지 판단한다.
+// [Phase 28-F - 대표매칭키 전달 계층 통합] 목표비중 target은 목표비중 모달이 만든 {type,ticker,label,pct,role}
+// 뿐이라 보유 자산의 rateMatchOverride(엑셀 "대표매칭(수익률연동키)")를 갖고 있지 않다. 그래서 결정론
+// 일반계좌 예측과 Monte Carlo(둘 다 이 함수를 쓴다)는 사용자가 자산에 지정한 대표매칭키를 전혀 못 보고
+// 키워드/지역 추론으로만 해석했다(경로 B) - 절세계좌/현재구성(경로 A, getProjectionAssetGroupKey)과 같은
+// 자산이 다른 값을 내는 원인. 이 helper는 target에 대응하는 보유 자산을 "지금 state"에서 동적으로 찾아
+// 그 override를 돌려준다. 특정 키 이름을 코드에 적지 않으므로 사용자가 수익률 관리 기준에 어떤 키를
+// 추가/수정/삭제하든 코드 수정 없이 그대로 따라간다.
+//   - ticker형: 정규화 티커(sanitizeTicker.yahooTicker)가 같은 보유 자산
+//   - namedHolding형: 티커 없는 보유 자산 중 정규화 이름(normalizeNameKey)이 같은 것
+//   - target.owner가 있으면 그 소유자의 자산을 우선한다(두 소유자가 같은 종목에 다른 키를 지정한 경우 대비).
+//   - category형(캐치올)은 특정 자산에 대응하지 않으므로 override 개념이 없다 -> null.
+function findRateMatchOverrideForTarget(target) {
+  if (!target) return null;
+  if (target.rateMatchOverride) return String(target.rateMatchOverride).trim() || null;
+  const assets = state.assets || [];
+  let matcher = null;
+  if (target.type === 'ticker') {
+    const want = sanitizeTicker(target.ticker).yahooTicker;
+    if (!want) return null;
+    matcher = (a) => sanitizeTicker(a.ticker).yahooTicker === want;
+  } else if (target.type === 'namedHolding') {
+    const want = normalizeNameKey(target.name || target.label);
+    if (!want) return null;
+    matcher = (a) => !String(a.ticker ?? '').trim() && normalizeNameKey(a.name) === want;
+  } else {
+    return null;
+  }
+  const candidates = assets.filter((a) => a.rateMatchOverride && matcher(a));
+  if (candidates.length === 0) return null;
+  const preferred = target.owner ? candidates.find((a) => a.owner === target.owner) : null;
+  return String((preferred || candidates[0]).rateMatchOverride).trim() || null;
+}
 function getTargetProjectionRate(target, presetKey, region) {
   const preset = SCENARIO_RATE_PRESETS[presetKey];
+  // [Phase 28-F] 0순위: 사용자가 자산에 명시한 대표매칭키. 경로 A와 완전히 같은 resolver를 태워
+  // (customScenarioRates -> BOND/CASH 기존 정책 -> 시스템 프리셋 -> 지역 폴백) 두 경로의 의미를 통일한다.
+  const overrideKey = findRateMatchOverrideForTarget(target);
+  if (overrideKey) return resolveProjectionRateForKey(overrideKey, presetKey, region === '해외');
   if (target.type === 'ticker') {
     const customKey = findCustomRateKeyForAsset(target.ticker, target.label);
     if (customKey) {
@@ -1687,7 +1796,16 @@ function renderScenarioRateManagerList() {
     container.innerHTML = '<p class="text-sm text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 구성" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
     return;
   }
-  container.innerHTML = scenarioRateManagerDraft.map((row, idx) => `
+  container.innerHTML = scenarioRateManagerDraft.map((row, idx) => {
+    // [Phase 29-A] draft가 아니라 지금 커밋된 state 기준으로 판단(getPendingCmaFields 주석 참고) -
+    // 커스텀 키(row.isBase===false)는 애초에 앵커가 없어 항상 빈 배열이다.
+    const pending = getPendingCmaFields(row.key);
+    const badge = pending.fields.length > 0
+      ? `<button type="button" class="cma-recommend-badge touch-target w-full flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300" data-cma-key="${escapeHtml(row.key)}">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>새로운 장기 전망 확인
+        </button>`
+      : '';
+    return `
     <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-1.5">
       <div class="flex items-center gap-1.5">
         <span class="flex-1 min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
@@ -1704,7 +1822,9 @@ function renderScenarioRateManagerList() {
       <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
         placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
         class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
-    </div>`).join('');
+      ${badge}
+    </div>`;
+  }).join('');
   lucide.createIcons();
 }
 
@@ -1722,10 +1842,104 @@ document.getElementById('scenarioRateManagerList').addEventListener('input', (e)
 });
 
 document.getElementById('scenarioRateManagerList').addEventListener('click', (e) => {
-  const btn = e.target.closest('.scenario-rate-remove-btn');
-  if (!btn) return;
-  scenarioRateManagerDraft.splice(Number(btn.dataset.rateIdx), 1);
+  const removeBtn = e.target.closest('.scenario-rate-remove-btn');
+  if (removeBtn) {
+    scenarioRateManagerDraft.splice(Number(removeBtn.dataset.rateIdx), 1);
+    renderScenarioRateManagerList();
+    return;
+  }
+  // [Phase 29-A] 배지 클릭 - 상세 확인 팝업을 연다(아래 openCmaRecommendationModal).
+  const cmaBtn = e.target.closest('.cma-recommend-badge');
+  if (!cmaBtn) return;
+  openCmaRecommendationModal(cmaBtn.dataset.cmaKey);
+});
+
+/* -------------------------------------------------------------------------
+ * 10-3-3-1-b. [Phase 29-A - 새로운 장기 전망 확인 팝업] 위 getPendingCmaFields가 고른 필드만 보여주고,
+ *    [적용]은 그 필드만 골라 기존 customScenarioRates 저장 로직과 동일한 방식으로 써넣는다 - 사용자가
+ *    이미 확정한 필드는 getPendingCmaFields 단계에서 이미 걸러졌으므로 여기서 다시 검사할 필요가 없다
+ *    (이중 방어이자 단일 출처 - 후보 계산과 적용 대상이 항상 같은 함수 결과를 공유).
+ * ---------------------------------------------------------------------- */
+let cmaRecommendationModalKey = null;
+const CMA_PRESET_LABELS = { conservative: '보수적', normal: '일반적', optimistic: '긍정적' };
+
+function openCmaRecommendationModal(key) {
+  const pending = getPendingCmaFields(key);
+  if (!pending.recommended || pending.fields.length === 0) return; // 배지가 사라진 사이 늦게 도착한 클릭 등 방어
+  cmaRecommendationModalKey = key;
+  const rec = pending.recommended;
+  const meta = pending.meta;
+  const rows = pending.fields.map((preset) => {
+    const current = num(getReferenceRate(preset, key));
+    return `<div class="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+      <span class="text-slate-500 dark:text-slate-400">${CMA_PRESET_LABELS[preset]}</span>
+      <span class="font-semibold tabular-nums">${current}% → <span class="text-brand-600 dark:text-brand-400">${num(rec[preset])}%</span></span>
+    </div>`;
+  }).join('');
+  // [초보자 UX - PM 지시 9] "Geometric mean"/"VCMM" 같은 전문용어는 기본 화면에 노출하지 않는다 -
+  // 여기 보이는 건 출처/기준일/투자기간뿐이고, methodologyNote/meanType 등 전문 설명은 이 팝업에도
+  // 넣지 않는다(필요하면 향후 별도 "자세히 보기"에서 다룰 사안 - 이번 범위 밖).
+  document.getElementById('cmaRecommendationBody').innerHTML = `
+    ${rows}
+    <div class="pt-1 space-y-0.5 text-sm text-slate-400 dark:text-slate-500">
+      <div>출처 ${escapeHtml(rec.source || (meta && meta.source) || '-')}</div>
+      <div>기준일 ${escapeHtml(rec.asOfDate || '-')}</div>
+      <div>투자기간 ${rec.forecastHorizonYears ? escapeHtml(String(rec.forecastHorizonYears)) + '년' : '-'}</div>
+    </div>`;
+  document.getElementById('cmaRecommendationModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+
+function closeCmaRecommendationModal(viaBackButton) {
+  document.getElementById('cmaRecommendationModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+  cmaRecommendationModalKey = null;
+}
+document.getElementById('closeCmaRecommendationModalBtn').addEventListener('click', () => closeCmaRecommendationModal(false));
+
+// [나중에] - 값은 절대 바꾸지 않는다. "이 버전을 봤다"는 사실만 기록해 같은 추천을 반복해서 들이밀지
+// 않는다(다음에 더 새로운 버전이 나오면 그때 다시 뜬다 - getPendingCmaFields의 seenVersion 비교 참고).
+document.getElementById('cmaRecommendationLaterBtn').addEventListener('click', () => {
+  const key = cmaRecommendationModalKey;
+  const anchor = getCmaAnchorForKey(key);
+  const meta = anchor && CMA_SOURCE_METADATA[anchor];
+  if (meta && meta.recommended) {
+    state.projection.cmaRecommendationStatus = state.projection.cmaRecommendationStatus || {};
+    state.projection.cmaRecommendationStatus[anchor] = { seenVersion: meta.recommended.version };
+    persistProjection();
+  }
+  closeCmaRecommendationModal(false);
   renderScenarioRateManagerList();
+});
+
+// [적용] - PM 지시 5: customScenarioRates[key][preset] = recommended[preset] 형태로 기존 저장
+// 로직과 동일하게(diff 방식이 아니라 이미 getPendingCmaFields가 "건드려도 되는 필드"만 골라줬으므로
+// 그 필드만 그대로 씀) 커밋한다. 사용자가 이미 확정한 필드는 pending.fields에 애초에 없으므로 여기서
+// 절대 덮어쓰지 않는다(override 보호, PM 지시 6).
+document.getElementById('cmaRecommendationApplyBtn').addEventListener('click', () => {
+  const key = cmaRecommendationModalKey;
+  const pending = getPendingCmaFields(key);
+  if (!pending.recommended || pending.fields.length === 0) { closeCmaRecommendationModal(false); return; }
+  const customRates = state.projection.customScenarioRates;
+  const entry = { ...(customRates[key] || {}) };
+  pending.fields.forEach((preset) => { entry[preset] = num(pending.recommended[preset]); });
+  if (!entry.label) entry.label = findLabelForRateKey(key) || key;
+  customRates[key] = entry;
+  state.projection.cmaRecommendationStatus = state.projection.cmaRecommendationStatus || {};
+  state.projection.cmaRecommendationStatus[pending.anchor] = { seenVersion: pending.recommended.version };
+  persistProjection();
+  closeCmaRecommendationModal(false);
+  // [모달이 열려 있는 경우 draft 재동기화] "수익률 관리" 모달이 열린 채로 적용했다면, 아직 저장 전인
+  // draft를 그대로 두면 나중에 [저장]을 누를 때 방금 적용한 값이 draft의 옛 값으로 되돌아간다 - 방금
+  // 커밋된 state를 기준으로 draft를 다시 만들어 항상 일치시킨다(이 시점에 다른 행의 미저장 편집이
+  // 있었다면 함께 새로고침됨 - 적용은 그 자체로 즉시 커밋되는 동작이라는 게 이 기능의 전제).
+  if (!document.getElementById('scenarioRateManagerModal').classList.contains('hidden')) {
+    scenarioRateManagerDraft = buildScenarioRateManagerDraft();
+  }
+  renderScenarioRateManagerList();
+  updateProjection();
+  showToast('새로운 장기 전망을 적용했습니다.', 'success');
 });
 
 // [종목 검색 자동완성] 거래내역/자산등록 탭에서 쓰는 searchStockCandidates()(보유종목 로컬 검색 +
@@ -2305,7 +2519,9 @@ function computeOwnerTargetInstrumentWeights(owner) {
       // label: [Monte Carlo Engine v2 어댑터 지원] getTargetProjectionRate(target, presetKey, region)가
       // 티커형 목표의 사용자 정의 오버라이드/키워드 매칭에 target.label을 쓴다(js/05:379) - 이 필드가
       // 없으면 어댑터가 이 Map에서 원본 t 없이 뽑아낸 값만으로는 그 매칭을 재현할 수 없었다.
-      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, label: t.label, region };
+      // [Phase 28-F] owner를 함께 실어 어댑터(js/16)가 만드는 pseudoTarget이 findRateMatchOverrideForTarget에서
+      // 소유자별 보유 자산의 대표매칭키를 우선 조회할 수 있게 한다(state schema 변경 아님 - 파생 Map 필드).
+      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, label: t.label, region, owner };
       prev.weight += rowWeight;
       weights.set(key, prev);
     });

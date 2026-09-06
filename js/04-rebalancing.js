@@ -113,15 +113,16 @@ function expandRebalanceTargetsForComputation(owner, region) {
         // 놓치지 않고 집계한다 - 예전엔 이 role이 펼쳐지는 과정에서 버려져 있었다. [티커별 역할
         // 단일 소스 - 자동 연동] 이 항목 자체에 role이 없어도 레지스트리에 등록된 값으로 폴백한다 -
         // 이 카드는 모달을 연 적 없는 티커도 집계하므로 cloneRebalanceTargetList의 폴백만으론 부족하다.
-        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role || getTickerRole(s.ticker) });
+        expanded.push({ type: 'ticker', ticker: s.ticker, label: s.name, pct: num(s.pct), role: s.role || getTickerRole(s.ticker), owner });
       });
       expanded.push({ type: 'category', category: '주식', label: '주식(기타)', pct: 0 });
     } else if (t.type === 'ticker') {
-      expanded.push({ ...t, role: t.role || getTickerRole(t.ticker) });
+      // [Phase 28-F] owner를 실어 getTargetProjectionRate가 이 소유자의 보유 자산 대표매칭키를 우선 조회하게 한다.
+      expanded.push({ ...t, role: t.role || getTickerRole(t.ticker), owner });
     } else if (t.type === 'namedHolding') {
       // [티커 없는 목표까지 확장 - 요청 반영] 위 티커 항목과 동일한 읽기 시점 폴백 - 저장된 role이
       // 없어도(다른 팝업에서 이 이름으로 먼저 지정해 뒀다면) 레지스트리(NAME: 키)에서 이어받는다.
-      expanded.push({ ...t, role: t.role || getTickerRole('', t.name) });
+      expanded.push({ ...t, role: t.role || getTickerRole('', t.name), owner });
     } else {
       expanded.push(t);
     }

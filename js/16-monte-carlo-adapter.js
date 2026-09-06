@@ -42,7 +42,9 @@ async function buildMonteCarloInputFromState(config) {
   const datedClosesForCorrelation = []; // 위험자산만(채권/현금 제외) - 상관행렬 계산용
 
   weightsMap.forEach((v, key) => {
-    const pseudoTarget = { type: v.kind, ticker: v.ticker, category: v.category, name: v.name, label: v.label };
+    // [Phase 28-F] owner를 넘겨 getTargetProjectionRate가 보유 자산의 rateMatchOverride(사용자 대표매칭키)를
+    // 소유자 우선으로 조회하게 한다 - 결정론 경로(js/05 expandRebalanceTargetsForComputation)와 동일한 정보.
+    const pseudoTarget = { type: v.kind, ticker: v.ticker, category: v.category, name: v.name, label: v.label, owner: v.owner };
     const label = v.label || v.name || key;
     const muAnnualPct = getTargetProjectionRate(pseudoTarget, presetKey, v.region);
     const muAnnual = num(muAnnualPct) / 100;

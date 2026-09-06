@@ -256,21 +256,21 @@
            같은 좁은 폭에서도 항상 여유 있게 들어간다(실측 완료). 1200px 이상(실측상 4요소가 자연스럽게
            한 줄에 다 들어가는 지점)에서만 다시 한 줄로 합친다. 1200px는 Tailwind 표준 브레이크포인트
            (lg=1024/xl=1280) 사이라 표준값이 없어 임의값(min-[1200px]:)을 썼다. -->
-      <div class="flex flex-col gap-1.5 min-[1200px]:flex-row min-[1200px]:items-center min-[1200px]:gap-2 min-[1200px]:ml-auto min-w-0">
+      <div class="flex flex-row items-center gap-1.5 min-[1200px]:gap-2 ml-auto min-w-0">
         <!-- [환율 뱃지 - 단독 줄] 1200px 미만에서는 이 줄 전체(w-full)를 혼자 쓴다(1200px 이상에서만
              flex-1 min-w-0으로 전환해 아래 묶음과 한 줄을 공유). overflow-x-auto는 Phase 17부터 있던
              기존 안전장치(극단적으로 좁은 기기 대비) 그대로 유지. -->
-        <div class="w-full overflow-x-auto min-[1200px]:w-auto min-[1200px]:flex-1 min-[1200px]:min-w-0 min-[1200px]:overflow-visible">
-        <div class="flex items-center gap-0.5 sm:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 sm:px-3 py-1.5 sm:py-2 shadow-sm w-fit" title="클릭하여 환율을 직접 수정할 수 있습니다">
+        <div class="flex-1 min-w-0">
+        <div class="flex items-center min-w-0 max-w-full min-h-[44px] gap-0.5 min-[1200px]:gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1 min-[1200px]:px-3 py-1.5 min-[1200px]:py-2 shadow-sm w-fit" title="클릭하여 환율을 직접 수정할 수 있습니다">
           <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-400 shrink-0"></i>
-          <span class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden sm:inline">현재 환율 </span>$1 =</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"><span class="hidden min-[1200px]:inline">현재 환율 </span>$1 =</span>
           <input id="exchangeRateInput" type="number" step="0.1"
-            class="w-16 sm:w-24 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5 shrink-0"
+            class="w-16 min-[1200px]:w-24 shrink-0 bg-transparent text-sm font-semibold text-right outline-none border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-brand-400 focus:border-brand-500 focus:border-solid rounded-sm px-0.5 shrink-0"
             value="1450">
           <span class="text-sm text-slate-500 dark:text-slate-400">원</span>
           <!-- [모바일 공간 확보] 연필 아이콘은 입력칸의 점선 밑줄이 이미 "수정 가능"을 알려주므로 굳이
                필요하지 않아 계속 숨겨둔다(sm 이상은 그대로 유지). -->
-          <i data-lucide="pencil" class="hidden sm:block w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0"></i>
+          <i data-lucide="pencil" class="hidden min-[1200px]:block w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0"></i>
           <!-- [Phase 23-C Final - "환율보기" Header 진입점 제거] Dashboard 본문의 "시장 현황 & 매크로
                브리핑" 카드가 이미 원/달러를 포함한 시장 정보 상세(그래프 등)를 제공하므로, Header에는
                "현재 환율 숫자"만 남기고 상세보기 버튼/진입점은 제거했다(정보 소유권 중복 제거 - 기능
@@ -299,7 +299,9 @@
              동기화중/서버 동기화중지/서버 동기화오류)를 보여준다 - updateSyncStatusUI() 참고, 색상
              클래스는 그 함수가 동적으로 붙였다 뗐다 한다(아래는 초기 표시용 기본값). 고정 너비 없이
              내용 크기 그대로 렌더링된다(Phase 17부터 이어진 기존 설계 그대로 보존, 재설계하지 않음). -->
-        <button id="syncSettingsBtn" title="가족 동기화 설정" class="rounded-xl border shadow-sm shrink-0 px-1.5 sm:px-3 py-2 sm:py-2.5 text-sm font-semibold whitespace-nowrap transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">서버 동기화중지</button>
+        <button id="syncSettingsBtn" title="서버 동기화중지" aria-label="서버 동기화중지" class="w-11 h-11 flex items-center justify-center rounded-xl border shadow-sm shrink-0 transition-colors bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500">
+          <i data-lucide="cloud-off" class="w-4 h-4"></i>
+        </button>
 
         <!-- [Phase 17 P1-1 - 시스템관리 진입점 이동] 최초등록·엑셀 내보내기·엑셀 업로드·JSON 백업·
              JSON 불러오기·데이터 초기화 6개 버튼(과 숨김 file input)은 삭제/기능변경 없이 그대로
@@ -2079,6 +2081,28 @@
     <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <button type="button" id="cancelScenarioRateManagerModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
       <button type="button" id="saveScenarioRateManagerModalBtn" class="touch-target text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= Phase 29-A: 새로운 장기 전망 확인 팝업 =============================
+     [검증된 추천값만 - 앱이 결정하지 않음] "수익률 관리" 목록의 행 옆 배지를 누르면 열린다. 여기 보이는
+     현재/신규 수치는 사람이 CMA_SOURCE_METADATA[anchor].recommended에 직접 검증해 넣은 값뿐이고,
+     이 팝업 자체는 어떤 계산도 바꾸지 않는다 - [적용]을 눌러야만 js/05 cmaRecommendationApplyBtn
+     핸들러가 customScenarioRates에 반영한다(getPendingCmaFields가 이미 사용자가 명시적으로 정한
+     필드는 애초에 후보에서 제외하므로 override는 절대 덮이지 않는다). -->
+<div id="cmaRecommendationModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-sm font-semibold">새로운 장기 전망 확인</h3>
+      <button type="button" id="closeCmaRecommendationModalBtn" class="touch-target w-11 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0" aria-label="닫기">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div id="cmaRecommendationBody" class="px-4 py-3 overflow-y-auto space-y-2 text-sm"></div>
+    <div class="flex items-center gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <button type="button" id="cmaRecommendationLaterBtn" class="touch-target flex-1 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">나중에</button>
+      <button type="button" id="cmaRecommendationApplyBtn" class="touch-target flex-1 text-sm font-medium rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">적용</button>
     </div>
   </div>
 </div>
