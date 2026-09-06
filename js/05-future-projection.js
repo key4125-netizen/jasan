@@ -95,6 +95,12 @@ const ASSET_CHARACTERS = Object.freeze({
 const COMMODITY_NAME_KEYWORDS = ['금현물', '금 현물', 'GOLD', '골드', '은현물', 'SILVER', '원자재', 'COMMODITY', '원유', 'CRUDE'];
 const CRYPTO_NAME_KEYWORDS = ['비트코인', 'BITCOIN', 'BTC', '이더리움', 'ETHEREUM', 'ETH-', '가상자산', '암호화폐'];
 const EM_NAME_KEYWORDS = ['신흥국', 'EMERGING', '이머징'];
+// [Phase 43] 상품명이 밝히는 "기초지수의 시장" - 상장 시장이 아니라 무엇을 추종하는지를 가리킨다.
+// 국내 상장 ETF에는 둘 다 있다: 'TIGER 미국S&P500'은 국내 상장이지만 미국 지수를, 'TIGER
+// 코리아배당다우존스'는 국내 상장이면서 국내 지수를 추종한다. 이름에 'S&P500'/'다우존스' 같은
+// 미국 지수 브랜드가 들어 있다는 것만으로 미국 주식이라고 단정하면 후자를 틀리게 판정한다.
+const KR_UNDERLYING_NAME_KEYWORDS = ['코리아', '한국', 'KOREA', 'KRX', '국내'];
+const US_UNDERLYING_NAME_KEYWORDS = ['미국', 'US ', 'U.S', 'AMERICA'];
 const DEV_EX_US_NAME_KEYWORDS = ['선진국', 'DEVELOPED', 'EAFE', '유럽', 'EUROPE', '일본', 'JAPAN'];
 
 // asset.category가 이미 성격을 확정해 주는 경우(사용자가 직접 고르거나 티커 없는 자산이
@@ -148,9 +154,26 @@ function resolveAssetCharacter(asset) {
   if (inSectorMap || inPresetTickers) {
     return out(region === '해외' ? ASSET_CHARACTERS.US_EQUITY : ASSET_CHARACTERS.KR_EQUITY, inSectorMap ? 'sectorMap' : 'presetTicker', 'high');
   }
-  // 5) 국내상장 해외지수 ETF 등 이름으로 대표 상품이 특정되는 경우(NAME_KEYWORD_RATE_MAP 재사용).
-  //    이 경우 성격은 "상장 시장"이 아니라 "추종하는 기초지수"를 따른다(TIGER 미국S&P500 = 미국 주식).
-  if (getNameKeywordRateKey(name)) return out(ASSET_CHARACTERS.US_EQUITY, 'indexNameKeyword', 'medium');
+  // 5) 이름으로 대표 상품이 특정되는 경우(NAME_KEYWORD_RATE_MAP 재사용).
+  //    성격은 "상장 시장"이 아니라 "추종하는 기초지수"를 따른다(TIGER 미국S&P500 = 미국 주식).
+  //    [Phase 43 버그 수정] 예전엔 이 분기가 무조건 US_EQUITY를 돌려줬다. 그래서 국내 지수를
+  //    추종하는 'TIGER 코리아배당다우존스'가 이름 속 '배당다우존스'(SCHD 키워드)에 걸려 미국 주식으로
+  //    판정됐다 - 지수 브랜드 이름과 그 지수가 담는 시장은 다른 문제다. 이제 상품명이 밝히는
+  //    기초지수 시장을 먼저 보고, 국내 시장이 명시돼 있으면 국내 주식으로 판정한다.
+  //    (미국 표기가 함께 있으면 미국을 우선한다 - 'TIGER 미국배당다우존스'처럼 국내 상장 + 미국 지수)
+  if (getNameKeywordRateKey(name)) {
+    const saysUS = matchesAnyKeyword(name, US_UNDERLYING_NAME_KEYWORDS);
+    const saysKR = matchesAnyKeyword(name, KR_UNDERLYING_NAME_KEYWORDS);
+    if (saysKR && !saysUS) return out(ASSET_CHARACTERS.KR_EQUITY, 'indexNameKeyword', 'medium');
+    return out(ASSET_CHARACTERS.US_EQUITY, 'indexNameKeyword', 'medium');
+  }
+  // [Phase 43] 지수 브랜드 키워드에는 안 걸리지만 이름이 국내 시장을 명시한 ETF(예: 'KODEX 코리아…')도
+  //    국내 주식으로 본다. 미국 표기가 함께 있으면 위와 같은 이유로 여기 해당하지 않는다.
+  if (matchesAnyKeyword(name, KR_UNDERLYING_NAME_KEYWORDS)
+      && !matchesAnyKeyword(name, US_UNDERLYING_NAME_KEYWORDS)
+      && region === '국내') {
+    return out(ASSET_CHARACTERS.KR_EQUITY, 'domesticIndexName', 'medium');
+  }
 
   // 6) 개별 주식 종목(category '주식')은 상장 시장이 곧 성격이다 - 위 3)에서 채권/현금/원자재/가상자산
   //    키워드를 이미 걸러냈으므로 여기 남은 '주식'은 실제 개별 주식이다. 이건 "지역만 보고 찍는 것"이
@@ -2252,17 +2275,44 @@ document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('c
  * 출처가 확인된 값(S&P500)과 출처 불명 값(KOSPI)이 화면에서 똑같아 보였다. 없는 출처를 만들어내지
  * 않고, 이미 기록돼 있는 내용만 초보자 표현으로 옮긴다. 전문용어(CMA/geometric 등)는 배지에 쓰지
  * 않고 상세 툴팁에만 남긴다. */
+/* [Phase 43] 이 기준에 "시스템이 제공하는 참고 가정"이 존재하는가.
+ * 사용자가 직접 만든 키(BOND.STOCK, 개별 종목 등)에는 애초에 시스템 기본값이 없다 -
+ * getSystemDefaultRate()는 모르는 키를 지역 대표지수로 대체해 그럴듯한 숫자를 돌려주므로,
+ * 그걸 "시스템 참고값"이라고 보여주면 없는 근거를 지어내는 셈이 된다(PM 지시 6).
+ * 그래서 시스템 기본 행(SCENARIO_RATE_BASE_ROWS)에 실제로 있는 키에만 참고값을 붙인다. */
+function getSystemReferenceRates(key) {
+  if (!SCENARIO_RATE_BASE_ROWS.some((r) => r.key === key)) return null;
+  return {
+    conservative: getSystemDefaultRate('conservative', key),
+    normal: getSystemDefaultRate('normal', key),
+    optimistic: getSystemDefaultRate('optimistic', key)
+  };
+}
+// [Phase 43] 이 키의 세 시나리오 중 사용자가 실제로 값을 넣은 것이 하나라도 있는가.
+// customScenarioRates는 "필드가 있으면 오버라이드"라는 의미 체계를 쓴다(Phase 29-B) -
+// 보수만 입력하고 일반/긍정은 비워 둘 수 있으므로 프리셋별로 따로 본다.
+function getUserOverriddenPresets(key) {
+  const custom = (state.projection.customScenarioRates || {})[key];
+  if (!custom) return [];
+  return ['conservative', 'normal', 'optimistic'].filter((p) => getCustomRate(key, p) !== undefined);
+}
+
 function getReturnAssumptionSourceInfo(key) {
   const custom = (state.projection.customScenarioRates || {})[key];
   if (custom) {
-    return { label: '사용자 확인됨', tone: 'user',
-      detail: '직접 등록한 값입니다. 시스템 기본값 대신 이 값이 계산에 사용됩니다.' };
+    // 사용자 값을 "틀렸다"고 판단하지 않는다 - 어떤 값이 실제 계산에 쓰이는지만 밝힌다.
+    const ref = getSystemReferenceRates(key);
+    const refText = ref ? `${fmtNum(ref.conservative, 1)} / ${fmtNum(ref.normal, 1)} / ${fmtNum(ref.optimistic, 1)}%` : null;
+    const detail = refText
+      ? `직접 입력한 값이 계산(미래예측·몬테카를로)에 그대로 사용됩니다. 참고로 시스템이 제공하는 기본 가정은 보수/일반/긍정 ${refText}입니다 - 어느 쪽이 맞다는 뜻은 아니며, 지금 적용되는 값은 위 입력값입니다.`
+      : '직접 입력한 값이 계산(미래예측·몬테카를로)에 그대로 사용됩니다. 이 기준은 직접 만든 항목이라 시스템이 제공하는 참고 가정이 없습니다.';
+    return { label: '사용자 설정값 적용', tone: 'user', detail, systemReference: ref, systemReferenceText: refText };
   }
   // getCmaAnchorForKey()는 앵커 "이름"을 돌려준다(객체가 아니다) - 메타는 여기서 꺼낸다.
   const anchorName = getCmaAnchorForKey(key);
   const meta = anchorName ? CMA_SOURCE_METADATA[anchorName] : null;
   if (!meta) {
-    return { label: '추가 확인 필요', tone: 'weak',
+    return { label: '추가 확인 필요', tone: 'weak', systemReference: getSystemReferenceRates(key), systemReferenceText: null,
       detail: '이 기준의 장기 수익률 근거가 아직 등록되어 있지 않습니다.' };
   }
   if (meta.status === 'cma_verified' && meta.source) {
@@ -2273,9 +2323,10 @@ function getReturnAssumptionSourceInfo(key) {
     if (meta.nominalReal) bits.push(meta.nominalReal === 'nominal' ? '명목' : '실질');
     if (meta.currency) bits.push('통화 ' + meta.currency);
     if (meta.uncertaintyNote) bits.push(meta.uncertaintyNote);
-    return { label: '근거 확인됨', tone: 'ok', detail: bits.join(' · ') };
+    return { label: '근거 확인됨', tone: 'ok', systemReference: getSystemReferenceRates(key), systemReferenceText: null,
+      detail: bits.join(' · ') };
   }
-  return { label: '추가 확인 필요', tone: 'weak',
+  return { label: '추가 확인 필요', tone: 'weak', systemReference: getSystemReferenceRates(key), systemReferenceText: null,
     detail: (meta.methodologyNote || '') + ' ' + (meta.uncertaintyNote || '') };
 }
 const RETURN_SOURCE_TONE_CLASSES = {
@@ -2295,6 +2346,12 @@ function renderScenarioRateManagerList() {
     // 커스텀 키(row.isBase===false)는 애초에 앵커가 없어 항상 빈 배열이다.
     const pending = getPendingCmaFields(row.key);
     const src = getReturnAssumptionSourceInfo(row.key);
+    // [Phase 43] 사용자가 입력한 값과 시스템 참고 가정을 구분해 보여준다. 색만으로 구분하지 않도록
+    // 아이콘과 문구를 함께 쓰고, 참고값이 없으면 줄 자체를 만들지 않는다(없는 근거를 지어내지 않는다).
+    const overriddenPresets = getUserOverriddenPresets(row.key);
+    const referenceLine = (overriddenPresets.length > 0 && src.systemReferenceText)
+      ? `<p class="text-sm text-slate-500 dark:text-slate-400 break-keep">시스템 참고 가정: ${escapeHtml(src.systemReferenceText)}</p>`
+      : '';
     const badge = pending.fields.length > 0
       ? `<button type="button" class="cma-recommend-badge touch-target w-full flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300" data-cma-key="${escapeHtml(row.key)}">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>새로운 장기 전망 확인
@@ -2318,9 +2375,10 @@ function renderScenarioRateManagerList() {
         placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
         class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
       <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[src.tone]} flex items-center gap-1">
-        <span>장기 수익률 가정: ${escapeHtml(src.label)}</span>
+        <span>${src.tone === 'user' ? '📝 ' : ''}장기 수익률 가정: ${escapeHtml(src.label)}</span>
         <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </p>
+      ${referenceLine}
       ${badge}
     </div>`;
   }).join('');
