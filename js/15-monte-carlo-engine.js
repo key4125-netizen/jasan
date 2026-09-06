@@ -433,9 +433,17 @@ function runMonthlyPrecisionMC(config, hooks) {
       // 리밸런싱은 "그 시점의 실제 잔고"(이미 그 달까지의 보수가 빠진 금액)를 재분배하는 것이 맞다.
       for (let i = 0; i < n; i++) balances[i] *= feeMonthlyFactor[i];
       // Step 5: 12개월마다 연 1회 리밸런싱
+      // [Phase 26 - 측정 기반 최적화] 예전엔 rebalanceToWeights(Array.from(balances), Array.from(weight))로
+      // 호출당 배열 3개(Array.from ×2 + 내부 map ×1)를 새로 만들었다 - 50,000회 실행이면 리밸런싱만
+      // 1,000,000번이라 배열이 3,000,000개 생겨 GC 부담이 컸다(실측: 동일 호출량에서 643.7ms 대 9.7ms,
+      // 엔진 전체로는 50K 기준 3,198ms -> 2,552ms).
+      // 계산 자체는 rebalanceToWeights와 완전히 동일하다: 같은 순서로 balances를 더해 total을 구하고,
+      // 같은 순서로 total*weight[i]를 넣는다 - 연산 순서·개수·피연산자가 전부 같아 IEEE754 결과가
+      // bit-identical하다(9개 조건 288개 값 end-to-end 정확 일치 + 골든값 테스트로 고정). 리밸런싱
+      // 정책(연 1회, 목표비중으로 전액 재배분) 자체는 전혀 바뀌지 않는다.
       if (m % 12 === 0) {
-        const rebalanced = rebalanceToWeights(Array.from(balances), Array.from(weight));
-        for (let i = 0; i < n; i++) balances[i] = rebalanced[i];
+        let total = 0; for (let i = 0; i < n; i++) total += balances[i];
+        for (let i = 0; i < n; i++) balances[i] = total * weight[i];
       }
       if (nextMilestoneIdx < milestoneMonths.length && m === milestoneMonths[nextMilestoneIdx]) {
         let total = 0; for (let i = 0; i < n; i++) total += balances[i];

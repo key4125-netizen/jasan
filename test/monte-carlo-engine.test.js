@@ -556,3 +556,39 @@ test('Step 2 Test K - computeTotalContributionPrincipalMultiStream - 남편10/�
   const unlimited = computeTotalContributionPrincipalMultiStream([{ monthly: 1000000, years: null }, { monthly: 2000000, years: null }], 0, 20);
   assert.ok(multi < unlimited, '조기 종료된 스트림 합산이 무제한 합산보다 작지 않다');
 });
+
+/* ---------------------------------------------------------------------------
+ * [Phase 26] Monthly Precision MC 골든값 회귀 - 핫루프를 건드리는 성능 최적화가
+ * 결과를 단 1비트도 바꾸지 않았음을 영구적으로 고정한다.
+ *
+ * Phase 26에서 연 1회 리밸런싱 구간의 배열 할당(Array.from ×2 + map ×1, 50,000회 실행 기준
+ * 배열 3,000,000개)을 in-place 루프로 바꿨다. 두 방식은 같은 순서로 balances를 더해 total을
+ * 구하고 같은 순서로 total*weight[i]를 넣으므로 IEEE754 결과가 완전히 같다 - 실제로 최적화
+ * 전/후 값이 문자열 수준까지 동일함을 확인했고, 아래 기대값은 그 확인된 값 그대로다.
+ *
+ * 이 값들은 "정답"이 아니라 "현재 모델의 고정점"이다. 모델을 의도적으로 바꾸는 Phase에서는
+ * 이 기대값도 함께 갱신해야 하며, 그런 의도 없이 이 테스트가 깨지면 성능/리팩터링 변경이
+ * 계산 결과를 훼손한 것이다.
+ * ------------------------------------------------------------------------ */
+test('Monthly Precision MC - 고정 seed 골든값(최적화가 결과를 바꾸지 않음)', () => {
+  const result = runMonthlyPrecisionMC({
+    initialPrincipal: 100000000, pv0: 100000000,
+    instruments: [
+      { key: 'A', weight: 0.5, muAnnual: 0.07, sigmaAnnual: 0.18, feeRateAnnual: 0.003 },
+      { key: 'B', weight: 0.3, muAnnual: 0.05, sigmaAnnual: 0.12, feeRateAnnual: 0 },
+      { key: 'C', weight: 0.2, muAnnual: 0.03, sigmaAnnual: 0, feeRateAnnual: 0 }
+    ],
+    correlationMatrix: [[1, 0.6, 0], [0.6, 1, 0], [0, 0, 1]],
+    monthlyContribution: 1000000, contributionGrowthRate: 0.02,
+    years: 20, iterations: 2000, seed: 20260906, goalAmounts: [500000000]
+  });
+  // [tolerance 없음] 근사 비교가 아니라 정확 일치를 요구한다 - 부동소수 오차를 허용하면
+  // "조금씩 다른 결과"를 조용히 통과시켜 이 테스트의 목적 자체가 사라진다.
+  const actual = result.milestones.map((m) => [m.year, m.mean, m.p10, m.p25, m.p50, m.p75, m.p90, m.goalProbability[500000000]]);
+  assert.deepStrictEqual(actual, [
+    [5, 211361832.10600576, 157040488.62885693, 178525393.3397454, 204956798.83108237, 238476536.999, 273851006.2445488, 0],
+    [10, 373156740.243346, 245639841.72347605, 293880769.8435543, 355918547.1945217, 434516039.0732699, 520316152.23094577, 0.123],
+    [15, 604352572.9140067, 370563366.886032, 449296551.71739006, 559479607.4192996, 716043475.7320879, 893581950.2308874, 0.635],
+    [20, 942064068.4585806, 521809717.2920793, 649899798.3614571, 858171463.9438639, 1138430365.5935965, 1452524437.931341, 0.9175]
+  ]);
+});
