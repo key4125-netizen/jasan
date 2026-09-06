@@ -2,7 +2,11 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v211'; // [Phase 25] 입력 UI draft 전환(절세계좌/
+const CACHE_NAME = 'smart-asset-manager-v212'; // [Phase 29 Release] Phase 28 Header 한 줄
+// 레이아웃·28-E/F 대표매칭키 A/B 통합·29-A CMA 추천·29-B Excel override-only로 index.html과
+// js/01·03·04·05·12·16이 바뀌었다 - cache-first라 CACHE_NAME을 올리지 않으면 기존 사용자가 구버전
+// 화면에 갇힌다(실제 재현 확인). 캐시 정책/APP_SHELL/install/activate/fetch 로직은 일절 무변경.
+// [Phase 25] 입력 UI draft 전환(절세계좌/
 // 인플레이션율/운용보수)과 미래예측 IA 정리로 index.html과 js/03·05·19가 바뀌었다 - cache-first라
 // CACHE_NAME을 올리지 않으면 기존 사용자가 구버전 화면에 갇힌다(캐시 정책/APP_SHELL/install/
 // activate/fetch 로직은 무변경).
