@@ -762,14 +762,14 @@ function renderRtmDomesticSplit() {
     <label class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">국내 (%)</span>
       <input id="rtm_domesticKR" type="number" min="0" max="100" step="1" value="${domesticPct}"
-        class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
-      <div data-rtm-domestic-preview="국내" class="mt-1 text-[11px] flex flex-col gap-0.5"></div>
+        class="w-full mt-1 min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
+      <div data-rtm-domestic-preview="국내" class="mt-1 text-xs flex flex-col gap-0.5"></div>
     </label>
     <label class="text-xs">
       <span class="text-slate-500 dark:text-slate-400">해외 (%) · 자동계산</span>
       <input id="rtm_domesticFR" type="text" value="${fmtNum(100 - domesticPct, 1)}" disabled
-        class="w-full mt-1 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right text-slate-400">
-      <div data-rtm-domestic-preview="해외" class="mt-1 text-[11px] flex flex-col gap-0.5"></div>
+        class="w-full mt-1 min-h-[44px] text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right text-slate-400">
+      <div data-rtm-domestic-preview="해외" class="mt-1 text-xs flex flex-col gap-0.5"></div>
     </label>`;
   document.getElementById('rtm_domesticKR').addEventListener('input', (e) => {
     const v = Math.max(0, Math.min(100, num(e.target.value)));
@@ -822,7 +822,9 @@ function renderRtmTargetGroup(region) {
     // "이 뭉치 전체가 어떤 성격인가"로 하나의 역할을 대표시킬 수 있다는 요청에 따라 확장했다([확인]으로
     // 커밋되면 computePositionRoleBreakdown(정확히는 computeOwnerTargetRoleWeights)이 이 role을 목표
     // 비중 기준으로 그대로 집계한다 - selectedStocks[i].role과 동일한 성격이다).
-    const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 outline-none">
+    // [Phase 25 M-1] 예전엔 text-[10px] / 실측 25px로, 프로젝트의 "중요한 텍스트 12px 미만 금지"와
+    // 44px 터치 타겟 기준을 둘 다 어겼다 - 표시 크기만 키운다(선택지/저장 값/계산은 전혀 안 바뀜).
+    const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full min-h-[44px] text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
           <option value="">포지션 미지정</option>
           ${ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${t.role === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
         </select>`;
@@ -833,14 +835,14 @@ function renderRtmTargetGroup(region) {
         <div class="flex items-center gap-1 shrink-0">
           ${searchBtn}
           <input data-rtm-pct data-region="${region}" data-idx="${idx}" type="number" min="0" max="100" step="1" value="${num(t.pct)}" ${hasSelectedStocks ? 'disabled title="선택된 종목 비중의 합으로 자동 계산됩니다"' : ''}
-            class="w-16 text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+            class="w-16 min-h-[44px] text-sm ${hasSelectedStocks ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400' : 'bg-slate-50 dark:bg-slate-800'} border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
           <span class="text-xs text-slate-400">%</span>
           ${deleteBtn}
         </div>
       </div>
       ${subText}
       ${roleSelect}
-      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-[11px] flex flex-col gap-0.5"></div>
+      <div data-rtm-preview data-region="${region}" data-idx="${idx}" class="mt-1.5 text-xs flex flex-col gap-0.5"></div>
     </div>`;
   }).join('') || `<p class="text-xs text-slate-400">설정된 목표 항목이 없습니다.</p>`;
 
@@ -1145,7 +1147,7 @@ function renderStockAllocationSelectedList() {
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <input data-stock-alloc-pct data-i="${i}" type="number" min="0" max="100" step="1" value="${num(s.pct)}"
-            class="w-16 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none text-right">
+            class="w-16 min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none text-right">
           <span class="text-xs text-slate-400">%</span>
           <button type="button" data-stock-alloc-remove data-i="${i}" title="삭제" class="touch-target w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -1154,7 +1156,7 @@ function renderStockAllocationSelectedList() {
       </div>
       <!-- [미보유 종목 포지션 태깅 - 요청 반영] 실제 자산(state.assets)이 아니라 이 목표 항목 자체에
            역할을 저장한다 - 포지션별 비중 분석 카드(실물 보유 기준)와는 무관한 별도 메타데이터다. -->
-      <select data-stock-alloc-role data-i="${i}" class="mt-1.5 w-full text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 outline-none">${roleOptionsHtml}</select>
+      <select data-stock-alloc-role data-i="${i}" class="mt-1.5 w-full min-h-[44px] text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">${roleOptionsHtml}</select>
       ${badgeHtml}
     </div>`;
   }).join('');
@@ -1278,7 +1280,7 @@ function updateRtmPreviews() {
     // 한 줄에 다 안 들어간다 - 대신 CSS Grid 2열(라벨열/금액열)로 짜서, 2번째 줄(조정금액)이 "목표금액"
     // 라벨이 아니라 그 옆 금액이 시작하는 자리에 정확히 맞춰지게 한다(라벨열 너비는 "목표금액" 글자
     // 폭에 맞춰 자동 결정되고, 금액/조정금액 둘 다 같은 2번째 열에 들어가 서로 자연히 정렬된다).
-    el.innerHTML = `<div class="grid gap-x-1 text-[11px]" style="grid-template-columns:auto auto;">
+    el.innerHTML = `<div class="grid gap-x-1 text-xs" style="grid-template-columns:auto auto;">
       <span class="text-slate-400 whitespace-nowrap">목표금액</span>
       <span class="font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">${fmtKRW(targetAmount)}</span>
       <span></span>

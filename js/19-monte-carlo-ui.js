@@ -125,41 +125,131 @@ function resolveFeeUILabel(v) {
 
 // 현재 목표비중에 실제로 들어있는 항목만 나열한다(존재하지 않는 종목에 fee를 미리 등록해봐야 쓸 데가
 // 없다) - computeHouseholdTargetInstrumentWeights는 어댑터(js/16)가 쓰는 것과 동일한 함수다.
-function renderFeeRatesEditor() {
-  const listEl = mcUiEl('mcFeeRatesList');
+/* -------------------------------------------------------------------------
+ * [Phase 25 P1 - 운용보수 팝업] "미확인"과 "명시적 0%"를 화면에서 구분한다.
+ *    - 데이터 모델은 그대로다: customFeeRates[key]가 undefined면 미확인, 숫자면 명시적 설정
+ *      (isFeeExplicitlySet, js/05). Safety Layer의 미확인 경고 semantics도 그대로다.
+ *    - 편집은 mcFeeRatesDraft에서만 이뤄지고 [확인]을 눌러야 state에 반영된다.
+ *    - 상태를 색이 아니라 글자("미확인" / "0%" / "0.35%")로도 전달한다.
+ * ---------------------------------------------------------------------- */
+let mcFeeRatesDraft = null;
+
+function buildFeeRateRows() {
   const weightsMap = computeHouseholdTargetInstrumentWeights();
-  const feeRates = state.projection.customFeeRates || {};
   const rows = [];
   weightsMap.forEach((v) => {
     const key = resolveFeeUIKey(v);
     if (!key) return;
     rows.push({ key, label: resolveFeeUILabel(v) });
   });
+  return rows;
+}
+
+// 메인 화면 버튼에 현재 상태를 요약해 둔다 - 팝업을 열지 않아도 미확인 종목이 있는지 알 수 있다.
+function updateMcFeeSummary() {
+  const el = mcUiEl('mcFeeSummary');
+  if (!el) return;
+  const rows = buildFeeRateRows();
+  const feeRates = state.projection.customFeeRates || {};
+  if (rows.length === 0) { el.textContent = '종목 없음'; return; }
+  const unknown = rows.filter((r) => feeRates[r.key] === undefined).length;
+  if (unknown === 0) el.textContent = '전부 확인됨';
+  else if (unknown === rows.length) el.textContent = '전부 미확인';
+  else el.textContent = `미확인 ${unknown}개`;
+}
+
+function renderFeeRatesEditor() {
+  const listEl = mcUiEl('mcFeeRatesList');
+  const rows = buildFeeRateRows();
   if (rows.length === 0) {
-    listEl.innerHTML = `<p class="text-[11px] text-slate-400">목표 비중에 종목이 설정되지 않았습니다.</p>`;
+    listEl.innerHTML = `<p class="text-sm text-slate-400">목표 비중에 종목이 설정되지 않았습니다.</p>`;
     return;
   }
-  listEl.innerHTML = rows.map((r, idx) => `
-    <div class="flex items-center gap-1.5">
-      <span class="flex-1 text-[11px] text-slate-600 dark:text-slate-300 truncate">${escapeHtml(r.label)}</span>
-      <input type="number" step="0.01" min="0" data-fee-key="${escapeHtml(r.key)}" value="${feeRates[r.key] !== undefined ? feeRates[r.key] : ''}" placeholder="0" class="w-16 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1">
-      <span class="text-[10px] text-slate-400">%</span>
-    </div>`).join('');
-  listEl.querySelectorAll('input[data-fee-key]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const key = e.target.dataset.feeKey;
-      const v = e.target.value;
-      if (v === '') delete state.projection.customFeeRates[key];
-      else state.projection.customFeeRates[key] = num(v);
-      persistProjection();
-    });
-  });
+  listEl.innerHTML = rows.map((r) => {
+    const v = mcFeeRatesDraft[r.key];
+    const isUnknown = v === undefined;
+    return `
+    <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-2.5" data-fee-row="${escapeHtml(r.key)}">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.label)}</span>
+        <span data-fee-status class="shrink-0 text-xs font-semibold ${isUnknown ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}">${isUnknown ? '미확인' : escapeHtml(fmtNum(v, 2)) + '%'}</span>
+      </div>
+      <div class="flex items-center gap-1.5 mt-2">
+        <button type="button" data-fee-unknown="${escapeHtml(r.key)}" class="touch-target min-h-[44px] px-3 rounded-lg border text-xs font-semibold ${isUnknown ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}">미확인</button>
+        <input type="number" step="0.01" min="0" data-fee-key="${escapeHtml(r.key)}" value="${isUnknown ? '' : v}" placeholder="직접 입력"
+          class="flex-1 min-w-0 min-h-[44px] text-sm text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none focus:border-brand-500">
+        <span class="text-sm text-slate-400">%</span>
+      </div>
+    </div>`;
+  }).join('');
 }
-mcUiEl('mcFeeRatesToggleBtn').addEventListener('click', () => {
-  const area = mcUiEl('mcFeeRatesArea');
-  const willShow = area.classList.contains('hidden');
-  area.classList.toggle('hidden');
-  if (willShow) renderFeeRatesEditor();
+
+function openMcFeeRatesModal() {
+  // 얕은 복사면 충분하다 - 값이 전부 원시 숫자다(키가 없으면 "미확인").
+  mcFeeRatesDraft = { ...(state.projection.customFeeRates || {}) };
+  renderFeeRatesEditor();
+  mcUiEl('mcFeeRatesModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+function closeMcFeeRatesModal(viaBackButton) {
+  mcFeeRatesDraft = null; // [취소 계약] state/localStorage 모두 그대로다.
+  mcUiEl('mcFeeRatesModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+
+mcUiEl('mcFeeRatesToggleBtn').addEventListener('click', openMcFeeRatesModal);
+mcUiEl('closeMcFeeRatesModalBtn').addEventListener('click', () => closeMcFeeRatesModal(false));
+mcUiEl('cancelMcFeeRatesModalBtn').addEventListener('click', () => closeMcFeeRatesModal(false));
+mcUiEl('mcFeeRatesModal').addEventListener('click', (e) => {
+  if (e.target.id === 'mcFeeRatesModal') closeMcFeeRatesModal(false);
+});
+// 값을 입력하면 "명시적으로 설정한 것", 비우면 다시 "미확인"으로 돌아간다.
+mcUiEl('mcFeeRatesModal').addEventListener('input', (e) => {
+  const input = e.target.closest('input[data-fee-key]');
+  if (!input || !mcFeeRatesDraft) return;
+  const key = input.dataset.feeKey;
+  if (input.value === '') delete mcFeeRatesDraft[key];
+  else mcFeeRatesDraft[key] = num(input.value);
+  syncFeeRowStatus(key);
+});
+mcUiEl('mcFeeRatesModal').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-fee-unknown]');
+  if (!btn || !mcFeeRatesDraft) return;
+  const key = btn.dataset.feeUnknown;
+  delete mcFeeRatesDraft[key];
+  const input = mcUiEl('mcFeeRatesModal').querySelector(`input[data-fee-key="${CSS.escape(key)}"]`);
+  if (input) input.value = '';
+  syncFeeRowStatus(key);
+});
+// 한 행의 상태 글자/버튼 강조만 갱신한다 - 목록 전체를 다시 그리면 타이핑 중 포커스가 끊긴다.
+function syncFeeRowStatus(key) {
+  const row = mcUiEl('mcFeeRatesModal').querySelector(`[data-fee-row="${CSS.escape(key)}"]`);
+  if (!row) return;
+  const v = mcFeeRatesDraft[key];
+  const isUnknown = v === undefined;
+  const status = row.querySelector('[data-fee-status]');
+  status.textContent = isUnknown ? '미확인' : fmtNum(v, 2) + '%';
+  status.classList.toggle('text-amber-600', isUnknown);
+  status.classList.toggle('dark:text-amber-400', isUnknown);
+  status.classList.toggle('text-slate-500', !isUnknown);
+  status.classList.toggle('dark:text-slate-400', !isUnknown);
+  const unknownBtn = row.querySelector('[data-fee-unknown]');
+  ['border-amber-400', 'bg-amber-50', 'dark:bg-amber-950/40', 'text-amber-700', 'dark:text-amber-300'].forEach((c) => unknownBtn.classList.toggle(c, isUnknown));
+  ['border-slate-200', 'dark:border-slate-700', 'text-slate-500', 'dark:text-slate-400'].forEach((c) => unknownBtn.classList.toggle(c, !isUnknown));
+}
+mcUiEl('saveMcFeeRatesModalBtn').addEventListener('click', () => {
+  if (!mcFeeRatesDraft) return;
+  // [validation] 음수/100% 이상은 Safety Layer가 BLOCK으로 잡는 값이다 - 저장 단계에서 먼저 막아
+  // 사용자가 실행 후에야 알게 되는 일이 없도록 한다(계산 정책 자체는 그대로).
+  const bad = Object.keys(mcFeeRatesDraft).filter((k) => !(num(mcFeeRatesDraft[k]) >= 0 && num(mcFeeRatesDraft[k]) < 100));
+  if (bad.length > 0) { alert('운용보수는 0% 이상 100% 미만이어야 합니다.'); return; }
+  state.projection.customFeeRates = mcFeeRatesDraft;
+  mcFeeRatesDraft = null;
+  persistProjection();
+  closeMcFeeRatesModal(false);
+  updateMcFeeSummary();
+  showToast('운용보수 설정을 저장했습니다.', 'success');
 });
 
 function resetMonteCarloUiToReady() {

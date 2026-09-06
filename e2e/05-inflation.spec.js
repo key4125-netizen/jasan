@@ -4,6 +4,16 @@
 const { test, expect } = require('@playwright/test');
 const { seedPortfolio, goToProjectionTab } = require('./fixtures');
 
+// [Phase 25 P1] 인플레이션율 입력은 draft 팝업 안에 있다 - 열기 → 입력 → [확인]이 실제 사용자 경로다.
+async function setInflationViaModal(page, value) {
+  await page.locator('#projectionAssumptionsAccordionBtn').click();
+  await page.locator('#openProjectionAssumptionsBtn').click();
+  await expect(page.locator('#projectionAssumptionsModal')).toBeVisible();
+  await page.locator('#inflationRateInput').fill(value);
+  await page.locator('#saveProjectionAssumptionsModalBtn').click();
+  await expect(page.locator('#projectionAssumptionsModal')).toBeHidden();
+}
+
 test('Inflation 2.5% -> 3.5% 변경: nominal P50은 불변, real P50은 감소해야 한다', async ({ page }) => {
   await seedPortfolio(page, {
     targets: [{ owner: '신랑', region: '국내', name: 'E2EInflation자산', pct: 100 }],
@@ -17,7 +27,9 @@ test('Inflation 2.5% -> 3.5% 변경: nominal P50은 불변, real P50은 감소�
   const realAt25 = await page.locator('#mcP50RealText').innerText();
 
   // 인플레이션만 변경 - 동일 seed(js/19가 고정 seed 사용)이므로 nominal은 완전히 동일해야 한다.
-  await page.locator('#inflationRateInput').fill('3.5');
+  // [Phase 25 P1] 인플레이션율은 이제 "이 계산은 이런 가정을 사용했어요" > [가정 수정] 팝업 안에서
+  // [확인]을 눌러야 반영된다(입력 중 즉시 저장하지 않는다) - 검증 내용은 그대로다.
+  await setInflationViaModal(page, '3.5');
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
   const nominalAt35 = await page.locator('#mcP50Text').innerText();
@@ -45,7 +57,7 @@ test('목표금액을 실질(현재 구매력 기준) 모드로 설정하면 inf
   expect(goalTextAt25).not.toMatch(/NaN|undefined|Infinity/);
   expect(goalTextAt25).toContain('명목 환산 목표');
 
-  await page.locator('#inflationRateInput').fill('5');
+  await setInflationViaModal(page, '5');
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
   const goalTextAt5 = await page.locator('#mcGoalArea').innerText();

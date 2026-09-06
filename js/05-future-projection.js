@@ -159,11 +159,11 @@ function getGroupReturnRate(groupKey) {
 }
 
 function renderProjection() {
-  document.getElementById('inflationRateInput').value =
-    (state.projection.inflationRate !== undefined && state.projection.inflationRate !== null) ? state.projection.inflationRate : 2.5;
-  // [Phase 3-3] 연간 납입액 증가율 - inflationRateInput과 동일한 동기화 패턴.
-  document.getElementById('contributionGrowthRateInput').value =
-    (state.projection.contributionGrowthRate !== undefined && state.projection.contributionGrowthRate !== null) ? state.projection.contributionGrowthRate : 0;
+  // [Phase 25 P1] 두 입력칸은 이제 팝업 안에 있고 팝업을 열 때 draft로 채워진다 - 여기서는 화면에
+  // 항상 보이는 요약 텍스트만 state 기준으로 갱신한다(입력칸을 여기서 건드리면 편집 중인 draft
+  // 값을 덮어써 버린다).
+  updateProjectionAssumptionsSummary();
+  if (typeof updateMcFeeSummary === 'function') updateMcFeeSummary();
   updateMonthlyContributionSummary();
   updateProjection();
 }
@@ -1062,8 +1062,11 @@ function getTaxAdvantagedAssetsByOwnerAccount(owner) {
 //     동작한다.
 // [개별 적립 기간 지원] contributionYears 동안만 매월 적립하고, evalYears가 그보다 길면 그 이후로는
 // 적립 없이 이미 쌓인 금액이 계속 같은 수익률로 복리 성장한다고 가정한다(growWithStop).
-function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears) {
-  const plan = state.projection.taxAdvantagedPlan;
+// [Phase 25 P0] planOverride는 절세계좌 팝업이 draft를 미리보기로 계산할 때만 넘긴다 - 생략하면
+// 예전과 완전히 동일하게 실제 state를 읽는다(Phase 24-B ownerFilter와 같은 "optional 인자, 기본값은
+// 기존 동작" 패턴).
+function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverride) {
+  const plan = planOverride || state.projection.taxAdvantagedPlan;
   const accountPlans = (plan.contributionByOwnerAccount && plan.contributionByOwnerAccount[owner]) || [];
 
   let total = 0;
@@ -1224,7 +1227,28 @@ function renderTaxAdvantagedCard() {
 
 function taxAdvantagedAllocationContainerId(owner) { return owner === '신랑' ? 'taxAdvantagedAllocationHusband' : 'taxAdvantagedAllocationWife'; }
 
+/* -------------------------------------------------------------------------
+ * [Phase 25 P0 - 절세계좌 적립계획 draft] 예전엔 이 팝업의 입력이 키를 누를 때마다 곧바로
+ *    state.projection.taxAdvantagedPlan을 바꾸고 persistProjection()까지 실행해서, [닫기]를 눌러도
+ *    되돌릴 방법이 자체가 없었다(같은 화면의 [적립금 설정] 팝업은 정확히 반대로 동작해 일관성도
+ *    깨져 있었다). 이제 monthlyContributionByOwnerDraft/rebalanceModalDraft와 완전히 동일한
+ *    draft-then-commit 계약을 쓴다 - 팝업이 열려 있는 동안에는 taxAdvantagedPlanDraft만 바뀌고,
+ *    [확인]을 눌러 validation을 통과해야 state에 반영된다.
+ *    [미리보기를 잃지 않는다] 팝업 안의 결과표(renderTaxAdvantagedPlanResults)는 draft를 그대로
+ *    넘겨 계산하므로, 입력 중 예상 적립금액이 실시간으로 갱신되는 기존 장점은 그대로 유지된다.
+ * ---------------------------------------------------------------------- */
+let taxAdvantagedPlanDraft = null;
+// 팝업이 열려 있으면 draft를, 닫혀 있으면 실제 state를 반환한다 - 팝업 바깥(updateProjection 등)에서
+// 호출되는 계산 경로는 draft가 null이라 예전과 완전히 동일하게 동작한다.
+function taxPlanSource() { return taxAdvantagedPlanDraft || state.projection.taxAdvantagedPlan; }
+function buildTaxAdvantagedPlanDraft() {
+  // 구조적 깊은 복사 - allocationByOwner/contributionByOwnerAccount가 배열이라 얕은 복사로는 draft에서
+  // push/splice한 것이 그대로 state에 새어 들어간다(rebalanceModalDraft가 같은 이유로 깊은 복사를 쓴다).
+  return JSON.parse(JSON.stringify(state.projection.taxAdvantagedPlan));
+}
+
 function openTaxAdvantagedPlanModal() {
+  taxAdvantagedPlanDraft = buildTaxAdvantagedPlanDraft();
   TAX_ADVANTAGED_OWNERS.forEach((owner) => {
     renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
   });
@@ -1232,13 +1256,67 @@ function openTaxAdvantagedPlanModal() {
   document.getElementById('taxAdvantagedPlanModal').classList.remove('hidden');
   pushModalHistoryState();
 }
+// [취소 계약] draft를 버리는 것 외에 아무 것도 하지 않는다 - state/localStorage/화면 결과 모두 그대로다.
 function closeTaxAdvantagedPlanModal(viaBackButton) {
+  taxAdvantagedPlanDraft = null;
   document.getElementById('taxAdvantagedPlanModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
+/* -------------------------------------------------------------------------
+ * [Phase 25 P0 - 절세계좌 적립계획 validation & commit] 월적립금 설정 팝업
+ *    (saveMonthlyContributionAllocationModalBtn)과 완전히 같은 계약이다 - validation을 통과하지
+ *    못하면 state를 전혀 건드리지 않고 저장 자체를 막는다(값을 조용히 보정하지 않는다).
+ *    검사 항목은 월적립금 팝업이 이미 쓰는 기준을 그대로 맞춘다: 배분 합계 100% 초과 금지,
+ *    음수 금액/기간 금지. 여기에 절세계좌 고유 항목(납입주기)이 유효한 값인지도 확인한다.
+ * ---------------------------------------------------------------------- */
+const TAX_CONTRIB_FREQUENCIES = ['monthly', 'yearly'];
+function validateTaxAdvantagedPlanDraft(plan) {
+  const errors = [];
+  TAX_ADVANTAGED_OWNERS.forEach((owner) => {
+    (plan.contributionByOwnerAccount[owner] || []).forEach((c) => {
+      const where = `${owner} ${c.accountType}`;
+      if (num(c.amount) < 0) errors.push(`${where}의 적립 금액은 0 이상이어야 합니다.`);
+      // years는 "제한 없음"이 없는 값이라(계좌마다 반드시 납입 기간이 있다) 0 미만만 막는다 -
+      // 월적립금 팝업의 적립기간 검사와 동일한 기준이다.
+      if (num(c.years) < 0) errors.push(`${where}의 적립 기간은 0 이상이어야 합니다.`);
+      if (c.frequency && !TAX_CONTRIB_FREQUENCIES.includes(c.frequency)) {
+        errors.push(`${where}의 납입 주기 값이 올바르지 않습니다.`);
+      }
+    });
+    // 배분 합계는 계좌별로 검사한다 - 화면의 합계 안내문(updateTaxAdvantagedAllocationSumHint)이
+    // 계좌 단위로 표시되므로 사용자가 어느 계좌를 고쳐야 하는지 바로 알 수 있다.
+    const byAccount = {};
+    (plan.allocationByOwner[owner] || []).forEach((it) => {
+      if (num(it.pct) < 0) errors.push(`${owner} ${it.accountType}의 "${it.label || it.ticker}" 배분 비중은 0 이상이어야 합니다.`);
+      byAccount[it.accountType] = (byAccount[it.accountType] || 0) + num(it.pct);
+    });
+    Object.keys(byAccount).forEach((accType) => {
+      if (byAccount[accType] > 100) errors.push(`${owner} ${accType}의 배분 비중 합계가 100%를 넘을 수 없습니다(현재 ${fmtNum(byAccount[accType], 1)}%).`);
+    });
+  });
+  return errors;
+}
+function commitTaxAdvantagedPlanDraft() {
+  if (!taxAdvantagedPlanDraft) return;
+  const errors = validateTaxAdvantagedPlanDraft(taxAdvantagedPlanDraft);
+  if (errors.length > 0) { alert(errors.join('\n')); return; } // state를 건드리지 않고 중단
+  // [티커별 역할(포지션) 단일 소스] 팝업에서 지정한 role을 이 시점에 한 번에 레지스트리로 넘긴다.
+  TAX_ADVANTAGED_OWNERS.forEach((owner) => {
+    (taxAdvantagedPlanDraft.allocationByOwner[owner] || []).forEach((it) => {
+      if (it.ticker || it.label) setTickerRole(it.ticker, it.role, it.label);
+    });
+  });
+  state.projection.taxAdvantagedPlan = taxAdvantagedPlanDraft;
+  taxAdvantagedPlanDraft = null;
+  persistProjection();
+  closeTaxAdvantagedPlanModal(false);
+  updateProjection();
+  showToast('절세계좌 적립계획을 저장했습니다.', 'success');
+}
+document.getElementById('cancelTaxAdvantagedPlanModalBtn').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
+document.getElementById('saveTaxAdvantagedPlanModalBtn').addEventListener('click', commitTaxAdvantagedPlanDraft);
 document.getElementById('taxAdvantagedPlanBtn').addEventListener('click', () => openTaxAdvantagedPlanModal());
 document.getElementById('closeTaxAdvantagedPlanModalBtn').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
-document.getElementById('closeTaxAdvantagedPlanModalBtnBottom').addEventListener('click', () => closeTaxAdvantagedPlanModal(false));
 
 // [계좌 통합 카드 - 요청 반영] 예전엔 "적립 설정"(주기·금액·기간)과 "계좈별·종목별 배분"이 서로 다른
 // 목록이라, 이미 아래쪽에 자동으로 뜨는 IRP/ISA 같은 실제 보유 계좈종류를 위쪽에 사용자가 오타 없이
@@ -1260,16 +1338,15 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
     container.innerHTML = '<p class="text-[11px] text-slate-400">보유 중인 절세계좈 종목이 없습니다 - 종목을 매수하면 계좈별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좈 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
     return;
   }
-  const plan = state.projection.taxAdvantagedPlan;
+  const plan = taxPlanSource();
   const contribList = plan.contributionByOwnerAccount[owner] || (plan.contributionByOwnerAccount[owner] = []);
-  let seeded = false;
+  // [Phase 25 P0] 새 계좌 기본값 시드는 draft에만 넣는다 - 예전엔 팝업을 "열기만 해도"
+  // persistProjection()이 실행돼, 아무 것도 입력하지 않고 닫아도 저장 파일이 바뀌었다.
   accountTypes.forEach((accType) => {
     if (!contribList.some((c) => c.accountType === accType)) {
       contribList.push({ accountType: accType, frequency: 'monthly', amount: 0, years: 15 });
-      seeded = true;
     }
   });
-  if (seeded) persistProjection();
   const contribFor = (accType) => contribList.find((c) => c.accountType === accType);
   const allocation = plan.allocationByOwner[owner] || [];
   // [티커 없는 자산까지 확장 - 요청 반영] 티커만으론 국채/현금처럼 티커 없는 종목끼리 구분이 안 되므로
@@ -1367,7 +1444,7 @@ async function renderTaxAddSearchResults(resultsEl, owner, accType, query) {
   if (!q) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-1">검색 중...</p>';
   const results = await searchStockCandidates(q);
-  const existing = new Set((state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [])
+  const existing = new Set((taxPlanSource().allocationByOwner[owner] || [])
     .filter((it) => it.accountType === accType).map((it) => allocEntryIdentity(it.ticker, it.label)));
   const candidates = results.filter((r) => !existing.has(allocEntryIdentity(r.symbol, r.name))).slice(0, 10);
   if (candidates.length === 0) {
@@ -1384,7 +1461,7 @@ async function renderTaxAddSearchResults(resultsEl, owner, accType, query) {
 function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
   const el = document.querySelector(`.tax-alloc-sum-hint[data-alloc-sum-owner="${CSS.escape(owner)}"][data-alloc-sum-account="${CSS.escape(accountType)}"]`);
   if (!el) return;
-  const allocation = (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || []).filter((it) => it.accountType === accountType);
+  const allocation = (taxPlanSource().allocationByOwner[owner] || []).filter((it) => it.accountType === accountType);
   const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
   el.textContent = `이 계좌 배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
 }
@@ -1404,13 +1481,13 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
     const owner = contribInput.dataset.contribOwner;
     const accType = contribInput.dataset.contribAccount;
     const field = contribInput.dataset.contribField;
-    const list = state.projection.taxAdvantagedPlan.contributionByOwnerAccount[owner];
+    const list = taxPlanSource().contributionByOwnerAccount[owner];
     const entry = list && list.find((c) => c.accountType === accType);
     if (!entry) return;
     entry[field] = (field === 'frequency') ? contribInput.value : num(contribInput.value);
-    persistProjection();
+    // [Phase 25 P0] draft만 바꾸고 저장하지 않는다 - 팝업 안 결과표는 draft로 계산되므로 미리보기는
+    // 예전 그대로 실시간 갱신되고, 바깥 화면은 [확인]을 눌러야 갱신된다.
     renderTaxAdvantagedPlanResults();
-    updateProjection();
     return;
   }
   const input = e.target.closest('.tax-alloc-input');
@@ -1420,7 +1497,7 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   const ticker = input.dataset.allocTicker;
   const label = input.dataset.allocLabel;
   const pct = num(input.value);
-  const plan = state.projection.taxAdvantagedPlan;
+  const plan = taxPlanSource();
   const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
   // [티커 없는 자산까지 확장 - 요청 반영] 티커 하나만으론 국채/현금처럼 티커 없는 항목끼리 서로 구분이
   // 안 된다(전부 빈 문자열) - 이름까지 포함한 identity로 이 계좈의 몇 번째 배분 항목인지 찾는다.
@@ -1432,10 +1509,8 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('input', (e) 
   } else if (idx >= 0) {
     list.splice(idx, 1); // 0%로 낮추면 배분 목록에서 완전히 제거해 깔끔하게 유지한다.
   }
-  persistProjection();
   updateTaxAdvantagedAllocationSumHint(owner, accountType);
   renderTaxAdvantagedPlanResults();
-  updateProjection();
 });
 document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e) => {
   const roleSelect = e.target.closest('.tax-alloc-role-select');
@@ -1445,7 +1520,7 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e)
   const ticker = roleSelect.dataset.allocRoleTicker;
   const label = roleSelect.dataset.allocRoleLabel;
   const role = parseAssetRoleInput(roleSelect.value);
-  const plan = state.projection.taxAdvantagedPlan;
+  const plan = taxPlanSource();
   const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
   const idx = list.findIndex((it) => it.accountType === accountType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker, label));
   // pct가 아직 0(=배분 목록에 항목 자체가 없음)인 상태에서 role만 먼저 지정할 수도 있으므로, 없으면
@@ -1453,21 +1528,19 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('change', (e)
   if (idx >= 0) list[idx].role = role; else list.push({ accountType, ticker, label, pct: 0, role });
   // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] 이 화면에서 지정한 role을 다른 화면에서도
   // 이어받도록 레지스트리에도 반영한다(티커 없으면 이름으로 대신 키를 만든다).
-  setTickerRole(ticker, role, label);
-  persistProjection();
+  // [Phase 25 P0] 역할 레지스트리 반영도 [확인] 시점으로 미룬다 - 취소했는데 역할만 남는 부분 커밋을
+  // 만들지 않기 위해서다(commitTaxAdvantagedPlanDraft에서 일괄 수행).
 });
 document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) => {
   const removeBtn = e.target.closest('[data-tax-alloc-remove]');
   if (removeBtn) {
     const owner = removeBtn.dataset.owner, accType = removeBtn.dataset.account, ticker = removeBtn.dataset.ticker, label = removeBtn.dataset.name;
-    const list = state.projection.taxAdvantagedPlan.allocationByOwner[owner] || [];
+    const list = taxPlanSource().allocationByOwner[owner] || [];
     const idx = list.findIndex((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker, label));
     if (idx >= 0) {
       list.splice(idx, 1);
-      persistProjection();
       renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
       renderTaxAdvantagedPlanResults();
-      updateProjection();
     }
     return;
   }
@@ -1490,7 +1563,7 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
   if (addCandidateBtn) {
     const owner = addCandidateBtn.dataset.owner, accType = addCandidateBtn.dataset.account;
     const ticker = addCandidateBtn.dataset.ticker, label = addCandidateBtn.dataset.name;
-    const plan = state.projection.taxAdvantagedPlan;
+    const plan = taxPlanSource();
     const list = plan.allocationByOwner[owner] || (plan.allocationByOwner[owner] = []);
     // [미보유 종목 추가 - 티커 없는 자산까지 확장, 요청 반영] pct:0으로 우선 추가하고, 이미 지정된
     // role이 있으면 자동으로 이어받는다 - 검색 후보가 실어 보낸 실제 보유 자산의 role을 우선 쓰고,
@@ -1500,7 +1573,6 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
     if (!list.some((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === identity)) {
       const role = addCandidateBtn.dataset.role || getTickerRole(ticker, label);
       list.push({ accountType: accType, ticker, label, pct: 0, role });
-      persistProjection();
     }
     renderTaxAdvantagedAllocationEditor(owner, taxAdvantagedAllocationContainerId(owner));
     return;
@@ -1516,8 +1588,8 @@ document.getElementById('taxAdvantagedPlanModal').addEventListener('click', (e) 
 // 하나로 정해졌는데, 이제 계좌마다 기간이 다를 수 있어 하나의 숫자로 대표할 수 없다 - 그 owner가 등록한
 // 계좌들 중 가장 늦게 끝나는 기간(모든 계좌의 납입이 끝난 뒤 = "완전히 쌓인" 시점)을 기준으로 삼는다.
 // 계좌별 설정이 하나도 없으면(하위호환) 예전 yearsByOwner로 폴백한다.
-function getTaxAdvantagedOwnerHorizon(owner) {
-  const plan = state.projection.taxAdvantagedPlan;
+function getTaxAdvantagedOwnerHorizon(owner, planOverride) {
+  const plan = planOverride || state.projection.taxAdvantagedPlan;
   const accs = plan.contributionByOwnerAccount[owner] || [];
   if (accs.length > 0) return Math.max(...accs.map((a) => num(a.years)));
   return num(plan.yearsByOwner[owner]) || 15;
@@ -1528,13 +1600,14 @@ function renderTaxAdvantagedPlanResults() {
   const presetKeys = ['conservative', 'normal', 'optimistic'];
   const presetLabels = { conservative: '보수적', normal: '일반적', optimistic: '긍정적' };
   const horizonByOwner = {};
-  TAX_ADVANTAGED_OWNERS.forEach((o) => { horizonByOwner[o] = getTaxAdvantagedOwnerHorizon(o); });
+  const plan = taxPlanSource();
+  TAX_ADVANTAGED_OWNERS.forEach((o) => { horizonByOwner[o] = getTaxAdvantagedOwnerHorizon(o, plan); });
   const rows = [...TAX_ADVANTAGED_OWNERS, '합계'].map((owner) => {
     const values = presetKeys.map((presetKey) => {
       if (owner === '합계') {
-        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedOwnerGrowth(o, presetKey, horizonByOwner[o]), 0);
+        return TAX_ADVANTAGED_OWNERS.reduce((s, o) => s + simulateTaxAdvantagedOwnerGrowth(o, presetKey, horizonByOwner[o], plan), 0);
       }
-      return simulateTaxAdvantagedOwnerGrowth(owner, presetKey, horizonByOwner[owner]);
+      return simulateTaxAdvantagedOwnerGrowth(owner, presetKey, horizonByOwner[owner], plan);
     });
     return { owner, values };
   });
@@ -2093,10 +2166,10 @@ function updateProjection(preserveMcResult) {
   // 자기 자신의 원금·적립금을 내부에서 직접 계산하므로(getProjectionGroupStats(owner),
   // getOwnerMonthlyContributionInputs) 여기서 미리 구할 필요가 없다.
   updateMonthlyContributionSummary();
-  const inflationRate = num(document.getElementById('inflationRateInput').value);
-  state.projection.inflationRate = inflationRate;
-  // [Phase 3-3] inflationRate와 동일한 재동기화 패턴.
-  state.projection.contributionGrowthRate = num(document.getElementById('contributionGrowthRateInput').value);
+  // [Phase 25 P1] 예전엔 여기서 DOM 입력값을 읽어 state에 되썼다 - 두 입력이 이제 draft를 가진 팝업
+  // 안에 있으므로 그대로 두면 "취소했는데도 draft 값이 state로 새어 들어가는" 경로가 된다. state가
+  // 단일 소스이고, 팝업의 [확인]만이 state를 바꾼다(계산 semantics는 그대로 - 같은 값을 읽는다).
+  const inflationRate = num(state.projection.inflationRate);
 
   const milestoneOffsets = getMilestoneYearOffsets(); // [5, 10, 15, 20, 25, 30] - 항상 고정
 
@@ -2399,19 +2472,59 @@ async function computeTargetPortfolioVolatilityPct() {
 // 유일한 진입점 renderMonteCarloSection()도 실제로 호출하는 곳이 전혀 없음(주석 1곳에서만 언급)을
 // 확인해 완전히 도달 불가능한 코드임을 검증한 뒤 삭제했다 - 계산/State/Safety/현재 MC 엔진에는
 // 전혀 영향 없음(js/15의 독립적인 createSeededRandom 사본만 계속 쓰인다).
+/* -------------------------------------------------------------------------
+ * [Phase 25 P1 - 미래예측 가정(인플레이션율) draft] 예전엔 두 입력이 타이핑할 때마다 곧바로 state를
+ *    바꾸고 persistProjection()까지 실행해서 되돌릴 수 없었다. 이제 인플레이션율은 이 팝업의
+ *    draft에서만 편집되고, 매년 투자금 증가율은 [적립금 설정] 팝업의 기존 draft 계약을 그대로
+ *    물려받는다(투자계획의 일부이므로 - Phase 25 P2).
+ * ---------------------------------------------------------------------- */
+let projectionAssumptionsDraft = null;
+// 화면에 항상 보이는 요약 텍스트 - 팝업을 열지 않아도 현재 가정값을 알 수 있어야 한다.
+function updateProjectionAssumptionsSummary() {
+  const el = document.getElementById('projectionInflationSummary');
+  if (el) el.textContent = `${fmtNum(num(state.projection.inflationRate), 1)}%`;
+}
+function openProjectionAssumptionsModal() {
+  projectionAssumptionsDraft = { inflationRate: num(state.projection.inflationRate) };
+  document.getElementById('inflationRateInput').value = projectionAssumptionsDraft.inflationRate;
+  document.getElementById('projectionAssumptionsModal').classList.remove('hidden');
+  pushModalHistoryState();
+  lucide.createIcons();
+}
+function closeProjectionAssumptionsModal(viaBackButton) {
+  projectionAssumptionsDraft = null; // [취소 계약] state/localStorage/화면 결과 모두 그대로다.
+  document.getElementById('projectionAssumptionsModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
 document.getElementById('inflationRateInput').addEventListener('input', (e) => {
-  state.projection.inflationRate = num(e.target.value);
-  persistProjection();
-  updateProjection();
+  if (!projectionAssumptionsDraft) return;
+  projectionAssumptionsDraft.inflationRate = num(e.target.value);
 });
-
-// [Phase 3-3] inflationRateInput과 동일한 배선 패턴 - 음수는 이 화면의 일반 사용자 입력 정책상 막는다
-// (min="0"은 HTML 레벨 방어일 뿐이라, 스핀버튼 없이 직접 "-3" 입력 후 blur하는 경우까지 막으려면
-// 여기서도 한 번 더 clamp해야 한다).
-document.getElementById('contributionGrowthRateInput').addEventListener('input', (e) => {
-  state.projection.contributionGrowthRate = Math.max(0, num(e.target.value));
+document.getElementById('openProjectionAssumptionsBtn').addEventListener('click', openProjectionAssumptionsModal);
+// [Phase 25 P3] 목표비중은 Portfolio에 그대로 둔다 - 여기서는 그 화면으로 이동만 시킨다(기존
+// 서브탭 전환 버튼을 그대로 클릭해 재사용하므로 새 라우팅 로직을 만들지 않는다).
+document.getElementById('goToRebalanceTargetBtn').addEventListener('click', () => {
+  const btn = document.querySelector('[data-subtab="target"]');
+  if (btn) { btn.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+});
+document.getElementById('closeProjectionAssumptionsModalBtn').addEventListener('click', () => closeProjectionAssumptionsModal(false));
+document.getElementById('cancelProjectionAssumptionsModalBtn').addEventListener('click', () => closeProjectionAssumptionsModal(false));
+document.getElementById('projectionAssumptionsModal').addEventListener('click', (e) => {
+  if (e.target.id === 'projectionAssumptionsModal') closeProjectionAssumptionsModal(false);
+});
+document.getElementById('saveProjectionAssumptionsModalBtn').addEventListener('click', () => {
+  if (!projectionAssumptionsDraft) return;
+  // [validation] 음수 인플레이션(디플레이션)은 이 화면의 일반 사용자 입력 정책상 막는다 - 예전
+  // min="0" + clamp와 같은 기준이되, 조용히 보정하지 않고 저장 자체를 막는다.
+  const v = num(projectionAssumptionsDraft.inflationRate);
+  if (!(v >= 0)) { alert('인플레이션율은 0 이상이어야 합니다.'); return; }
+  state.projection.inflationRate = v;
+  projectionAssumptionsDraft = null;
   persistProjection();
+  closeProjectionAssumptionsModal(false);
+  updateProjectionAssumptionsSummary(); // updateProjection()은 요약 배지를 갱신하지 않는다(renderProjection 소관)
   updateProjection();
+  showToast('미래예측 가정을 저장했습니다.', 'success');
 });
 
 /* -------------------------------------------------------------------------
@@ -2433,6 +2546,10 @@ document.getElementById('contributionGrowthRateInput').addEventListener('input',
 // 눌러도 15가 "실제로 설정한 값"인 것처럼 저장되어 버린다(기존 사용자 결과 보존 원칙 위반).
 let monthlyContributionByOwnerDraft = { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } };
 
+let monthlyContributionGrowthDraft = 0;
+document.getElementById('contributionGrowthRateInput').addEventListener('input', (e) => {
+  monthlyContributionGrowthDraft = Math.max(0, num(e.target.value));
+});
 function openMonthlyContributionAllocationModal() {
   const byOwner = state.projection.monthlyContributionByOwner || {};
   const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
@@ -2458,6 +2575,10 @@ function openMonthlyContributionAllocationModal() {
     form.innerHTML = '';
     renderMonthlyContributionAllocationList(owner);
   });
+  // [Phase 25 P2] 매년 투자금 증가율도 이 팝업의 draft에 함께 담는다 - "매달 얼마 / 몇 년 /
+  // 매년 얼마나 늘릴지"가 하나의 투자계획이기 때문이다. 취소 계약도 자동으로 함께 적용된다.
+  monthlyContributionGrowthDraft = num(state.projection.contributionGrowthRate);
+  document.getElementById('contributionGrowthRateInput').value = monthlyContributionGrowthDraft;
   document.getElementById('monthlyContributionAllocationModal').classList.remove('hidden');
   pushModalHistoryState();
   lucide.createIcons();
@@ -2637,7 +2758,10 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
   REBALANCE_OWNERS.forEach((owner) => {
     next[owner].allocation.forEach((it) => { if (it.ticker || it.label) setTickerRole(it.ticker, it.role, it.label); });
   });
+  // [Phase 25 P2] 증가율도 같은 [저장]에서 함께 validation 후 커밋한다.
+  if (!(num(monthlyContributionGrowthDraft) >= 0)) { alert('매년 투자금 증가율은 0 이상이어야 합니다.'); return; }
   state.projection.monthlyContributionByOwner = next;
+  state.projection.contributionGrowthRate = num(monthlyContributionGrowthDraft);
   persistProjection();
   closeMonthlyContributionAllocationModal(false);
   updateProjection();

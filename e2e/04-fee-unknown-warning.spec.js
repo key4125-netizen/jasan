@@ -22,11 +22,13 @@ test('Fee 미설정 -> 계산 허용 + WARNING 표시, Fee=0% 명시 입력 -> W
   expect(p50Before).not.toMatch(/NaN|undefined|Infinity|^$/);
 
   // 2) 운용보수를 명시적으로 0%로 입력 - "미확인"과 "명시적 0%"가 구분되어 경고가 사라져야 한다.
+  // [Phase 25 P1] 운용보수는 이제 팝업에서 편집하고 [확인]을 눌러야 state에 반영된다 - "미확인"과
+  // "명시적 0%"의 구분(isFeeExplicitlySet)과 경고 해소라는 검증 내용은 그대로다.
   await page.locator('#mcFeeRatesToggleBtn').click();
-  const feeRow = page.locator('#mcFeeRatesList').locator('div', { hasText: 'E2EFee테스트자산' }).first();
-  await feeRow.locator('input[data-fee-key]').fill('0');
-  // blur를 유도해 input 이벤트가 확실히 커밋되도록 한다.
-  await page.locator('#mcFeeRatesToggleBtn').click();
+  await expect(page.locator('#mcFeeRatesModal')).toBeVisible();
+  await page.locator('#mcFeeRatesList input[data-fee-key]').first().fill('0');
+  await page.locator('#saveMcFeeRatesModalBtn').click();
+  await expect(page.locator('#mcFeeRatesModal')).toBeHidden();
 
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });

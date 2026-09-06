@@ -48,8 +48,13 @@ test('연간 납입액 증가율 입력을 바꾸면 히어로 요약의 20년 �
 
   const futureBefore = await page.locator('#projectionHeroFuture').innerText();
 
+  // [Phase 25 P2] 증가율은 이제 [적립금 설정] 팝업 안에서 [저장]을 눌러야 반영된다("매달 얼마 /
+  // 몇 년 / 매년 얼마나 늘릴지"를 하나의 투자계획으로 묶음) - 검증 내용은 그대로다.
+  await page.locator('#openMonthlyContributionAllocationBtn').click();
+  await expect(page.locator('#monthlyContributionAllocationModal')).toBeVisible();
   await page.locator('#contributionGrowthRateInput').fill('5');
-  await page.locator('#contributionGrowthRateInput').dispatchEvent('input');
+  await page.locator('#saveMonthlyContributionAllocationModalBtn').click();
+  await expect(page.locator('#monthlyContributionAllocationModal')).toBeHidden();
 
   const expectedAfter = await page.evaluate(() => fmtKRWShort(simulateRebalancedPreset('normal', 20).yearlyPoints[20].total));
   await expect(page.locator('#projectionHeroFuture')).toHaveText(expectedAfter);
