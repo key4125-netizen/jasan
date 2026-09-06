@@ -7,7 +7,49 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-06) — Phase 25(전체 입력 UI UX 표준화 + 미래예측 IA 정리) **V1.1 v210 → v211**
+## 최근 세션 요약 (2026-09-06) — Phase 26(Monte Carlo Performance Audit) **V1.1 v211 유지**
+
+**커밋**: `85a1e01` "perf: optimize monte carlo annual rebalance" — **push 완료**. **SW 버전은 v211 그대로다**(엔진 JS만 바뀌었고 APP_SHELL 밖 런타임 캐싱 대상이라 PM이 bump 없이 종료 승인).
+
+### 결론 먼저
+**사용자 체감 성능 문제는 없었다.** 기본 10K 엔진 0.5초, 50K 2.5초, 첫 진행률 표시 31~84ms, 취소 98~148ms. 다만 **측정으로 확인된 낭비 1건**이 있어 그것만 최소 수정했다.
+
+### 무엇을 고쳤나 (2줄)
+`runMonthlyPrecisionMC()`의 연 1회 리밸런싱이 호출마다 배열 3개를 새로 만들었다(`Array.from(balances)`, `Array.from(weight)`, 내부 `map`). 50,000회 실행이면 리밸런싱만 1,000,000번 → 배열 3,000,000개.
+```js
+// before
+const rebalanced = rebalanceToWeights(Array.from(balances), Array.from(weight));
+for (let i = 0; i < n; i++) balances[i] = rebalanced[i];
+// after
+let total = 0; for (let i = 0; i < n; i++) total += balances[i];
+for (let i = 0; i < n; i++) balances[i] = total * weight[i];
+```
+**결과: 5K 358→270ms, 10K 654→513ms, 50K 3,198→2,552ms (-20~25%). 계산 결과는 288개 값 전부 정확 일치(tolerance 0).**
+`rebalanceToWeights` 함수 자체는 preview 경로(`runAnnualPreviewMC`)와 export에서 계속 쓰이므로 **삭제하지 않았다.**
+
+### 골든값 회귀 테스트 (앞으로 반드시 유지할 것)
+`test/monte-carlo-engine.test.js`에 고정 seed(20260906) 골든값 테스트를 추가했다 — milestone 4개 × mean/P10/P25/P50/P75/P90 + goal probability를 `deepStrictEqual`로 고정한다.
+- **tolerance를 넣어 통과시키는 것은 금지다.** 근사 비교를 허용하면 이 테스트의 존재 이유가 사라진다.
+- 모델을 의도적으로 바꾸는 Phase에서만 기대값을 함께 갱신한다. 그런 의도 없이 깨지면 성능/리팩터링 변경이 계산을 훼손한 것이다.
+- 실효성 확인 완료: 원본 엔진에서도 통과(최적화가 결과 중립임을 증명), `×1.0000001` 변조 시 5건 실패(무의미한 통과가 아님을 증명).
+
+### 측정에서 확인된 것 (다음에 또 재지 않아도 되는 값)
+| 항목 | 실측 |
+|---|---|
+| 전처리(adapter+correlation+PSD+Cholesky) | **0.5~2.1ms** — 캐싱 불필요 |
+| Worker 전송 | input 850B / result 1.3KB / postMessage **0ms** — 병목 아님 |
+| Progress | 40회(5K·10K) / 61회(50K), 첫 표시 31~84ms — 조정 불필요 |
+| 결과 렌더링 | 4ms(정상) ~ 41ms(6x throttle) — 병목 아님 |
+| Cancel | **98~148ms**, stale 없음, 재실행 정상 |
+
+### 다음 세션이 알아야 할 측정 함정
+- **CDP `Emulation.setCPUThrottlingRate`는 메인 스레드만 제한하고 Web Worker는 제한하지 않는다.** MC 엔진은 Worker에서 도니 이 방법으로는 저사양 기기를 흉내낼 수 없다(1x/4x/6x에서 엔진 3,198/3,312/3,307ms로 거의 동일, 렌더만 4.2/20.6/41.5ms로 스케일). **저사양 실기기 성능은 측정 불가로 남아 있다 — 추정하지 말 것.**
+- **MC 동일성 하네스는 환율을 고정해야 한다.** USD 자산 평가액이 비동기 환율 갱신으로 흔들리면 목표비중 weight가 바뀌어 결과가 달라진다(첫 비교에서 실제로 겪음 — 제품 문제 아니라 하네스 결함). `state.exchangeRate` 고정 + 워밍업 adapter 호출 후 측정할 것.
+- **Worker의 `shouldCancel` 훅은 mid-run에 발화할 수 없다.** Worker는 단일 스레드이고 시뮬레이션이 동기 루프라 실행 중 `CANCEL` 메시지를 처리하지 못한다. 실제 취소는 `js/18`의 `worker.terminate()`가 즉시 수행한다(실측 98ms). **정상 설계이며 고칠 필요 없다** — 코드만 보면 오해하기 쉬워 기록한다.
+
+---
+
+## 이전 세션 요약 (2026-09-06) — Phase 25(전체 입력 UI UX 표준화 + 미래예측 IA 정리) **V1.1 v210 → v211**
 
 **커밋**: `5d11eef` "release: V1.1 v211 phase25 input ux investment plan" — **push 완료**(직전 `c71ed2d` 위에 이어짐). **V1.1은 이제 v211이다.**
 
@@ -54,6 +96,11 @@ ESLint 0 · Unit 108/108 · **Playwright 184/184** · SW Release Guard PASS(v211
 6. MC 목표금액 영속화(새로고침하면 사라짐)
 7. 인플레이션 팝업 + MC fee 팝업 통합(PM이 이번엔 하지 말라고 명시)
 8. **전역 `.touch-target`이 640px 이상에서 미적용** — 이번엔 목표비중 모달만 명시 보강했고, 앱 전체의 다른 touch-target 버튼은 태블릿/데스크탑에서 32px로 남아 있다
+9. **`runAnnualPreviewMC`에 동일한 배열 할당 패턴** — UI가 쓰지 않는 preview 경로라 Phase 26에서 건드리지 않았다(병목 미확인 코드는 최적화하지 않는다는 원칙)
+10. **저사양 Android 실기기 MC 성능 실측** — 위 "측정 함정" 참고, 현재 환경에서는 측정 불가
+11. **Dashboard 상단 Utility 배치** — 환율 숫자/주야간 전환/서버 동기화/설정이 모바일에서 의도한 한 줄 그룹으로 보이지 않는다(PM 지적, 미착수)
+12. **전역 가독성 정책** — 「절세계좌 현황」 타이틀을 모바일 최소 가독성 기준으로 삼고, 일반 UI 텍스트가 그보다 작아지지 않게 한다. 중요도는 작은 글자가 아니라 색상/명도/weight로 구분하고 핵심 숫자는 더 크게(PM 방향 제시, 미착수)
+13. **금액 천 단위 구분자** — 표시 계층에서만 `1000000원 → 1,000,000원`. 계산/state 값은 변경하지 않는다(PM 지적, 미착수)
 
 ### 알려진 환경 이슈
 `e2e/17`이 간헐적으로 `browser.newContext: Target page, context or browser has been closed`로 실패한다. `git stash` A/B 각 10회 측정 결과 **baseline 1/10 · Phase 25 2/10**으로 동일 오류 유형이고 표본 오차 범위다 — assertion 실패가 아니며 제품 회귀가 아니다. 단독 실행하면 11/11 통과한다.
