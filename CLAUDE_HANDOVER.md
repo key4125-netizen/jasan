@@ -32,6 +32,63 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 42 감사 + 43: 수익률 가정 투명성 + Character 버그 **V1.1 v212 유지**
+
+**커밋** `e03b629` "feat: distinguish user-set and system reference return assumptions" — push 완료.
+Phase 42는 감사(코드 0건), 43이 구현이다. **수익률 숫자·사용자 데이터 변경 0건.**
+
+### 🔴 Phase 42 최대 발견 — 검증한 CMA가 실사용자에게 도달하지 않는다
+Golden 실측: 사용자가 시스템 기본값을 **거의 전부** `customScenarioRates`로 덮어쓰고 있다.
+
+| Key | 시스템(검증됨) | **사용자 실제값** |
+|---|---|---|
+| S&P500 | 4.1/5.1/6.0 | **6/9/11** |
+| NASDAQ | 4.1/5.1/6.0 | **8/11/14** |
+| SCHD | 4.1/5.1/6.0 | **6.5/9.5/11.5** |
+| KOSPI | 5/7/11 | **4/6/9** |
+| KOSDAQ | 5/7/11 | **4/8/12** (사용자는 이미 KOSPI와 분리해 씀) |
+| 005930.KS | 8/9/15 | **6/8/11** (사용자가 더 온건) |
+| CASH | 0/0/0 | **2/3/4** |
+
+Vanguard 원문까지 검증한 US 5.1%는 이 사용자 화면에 **한 번도 나타나지 않았다**. 20년 배수로
+2.767배 vs 6.009배(S&P500), 8.935배(NASDAQ). → Phase 43이 이 차이를 화면에 드러내도록 고쳤다.
+
+### Phase 43 구현 2건
+1. **투명성**: 수익률 관리 행에 `📝 사용자 설정값 적용` + `시스템 참고 가정: 4.1 / 5.1 / 6%`.
+   - **사용자 값을 평가하지 않는다** - 위험/잘못/과도/낮추세요 같은 문구 금지(e2e/43이 고정).
+   - **시스템 참고 가정이 실제로 있는 키에만** 참고값을 붙인다(`getSystemReferenceRates`).
+     사용자 정의 키(BOND.STOCK 등)에 `getSystemDefaultRate`의 지역 폴백 값을 끌어오면
+     **없는 근거를 지어내는 것**이라 줄 자체를 만들지 않는다.
+   - 프리셋별 판정(`getUserOverriddenPresets`) - Phase 29-B "필드가 있으면 오버라이드" 유지.
+2. **Character 버그**: `TIGER 코리아배당다우존스`가 이름 속 '배당다우존스'(SCHD 키워드) 때문에
+   US_EQUITY로 판정되던 문제. **지수 브랜드 이름 ≠ 그 지수가 담는 시장.**
+   `KR_UNDERLYING_NAME_KEYWORDS`(코리아/한국/KOREA/KRX/국내) vs `US_UNDERLYING_NAME_KEYWORDS`로
+   기초지수 시장을 먼저 보고, **미국 표기가 함께 있으면 미국 우선**(TIGER 미국배당다우존스는 US 유지).
+   성격 판정만 고쳤고 rateMatchOverride·적용 Return Key는 무변경.
+
+### Phase 42 감사 결과 — 추가 발견 (전부 Finding, 미수정)
+- **`BOND.STOCK`(채권혼합 3/6/9)이 구조가 전혀 다른 두 상품을 하나로 묶는다**:
+  `KODEX 코리아배당성장채권혼합`(국내 배당주+채권) + `TIGER 미국테크TOP10채권혼합`(미국 테크+채권).
+  주식 슬리브가 완전히 다른데 동일 가정. → DEFINITION_REQUIRED / SEPARATE_LATER
+- **BOND / 부동산 정의 부재** → DEFINITION_REQUIRED (숫자 평가 이전 문제)
+- 사용자 정의 키 실태: `0052D0.KS`(코리아배당다우존스 5/7/11) · `000660.KS`(SK하이닉스 5/10/15) ·
+  `GOLD`(금 0/0/0, **사용 자산 0건**) — 개별종목 alpha가 비공식 관행화되어 있다.
+- **한국 주식 CMA 3회 조사 실패** 확정(Vanguard/BlackRock/JPM/Amundi/Invesco/Schroders/
+  한국투자신탁운용/국민연금). 추가로 **분류 충돌** 확인: FTSE=선진국, MSCI=신흥국.
+- Bear/Base/Bull 폭: CMA 3키는 전부 [+1.0, +0.9]로 일관, legacy는 KOSPI [2,4]·삼성전자 [1,6]·
+  BOND [0.5,1.5]·부동산 [2.5,2.5]로 제각각.
+
+### 🔒 되돌리지 말 것
+- 사용자 override를 "더 합리적인 시스템값"으로 자동 교체하지 않는다.
+- 지역 폴백 금지(Phase 40-C)·신규 Key 2개(41-B)·성격 우선 판정 전부 유지.
+
+### 🔴 다음 PM 결정 대기 (Phase 42 §7 우선순위)
+P1: BOND/부동산/BOND.STOCK 정의 명문화 · 개별종목 alpha 정책 · Bear/Base/Bull 폭 규칙
+P2: legacy APR 재변환 · US_BOND Key 신설 · KOSDAQ 분리
+REJECT: Commodity/Crypto/US_SMALL_CAP/US_VALUE/US_GROWTH Key 신설, FX 모델
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 41 감사 + 41-B: 선진국ex-US/신흥국 Return Key 신설 **V1.1 v212 유지**
 
 **커밋** `5a08615` "feat: add developed ex-US and emerging markets return keys" — push 완료.
