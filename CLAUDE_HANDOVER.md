@@ -32,6 +32,57 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 41 감사 + 41-B: 선진국ex-US/신흥국 Return Key 신설 **V1.1 v212 유지**
+
+**커밋** `5a08615` "feat: add developed ex-US and emerging markets return keys" — push 완료.
+Phase 41(감사)은 코드 변경 0건, 41-B가 구현이다. **기존 Key 숫자는 하나도 바꾸지 않았다.**
+
+### 신규 Return Key 2개 (근거 확보된 것만)
+| Key | 표시명 | Bear/Base/Bull | 원자료(Vanguard VCMM) |
+|---|---|---|---|
+| `DEV_EX_US` | 선진국(미국 제외) 주식 | **4.4 / 5.4 / 6.3** | 4.5~6.5% |
+| `EMERGING` | 신흥국 주식 | **2.0 / 3.0 / 3.9** | 2~4% |
+
+as-of 2026-06-30, 게시 2026-07-22, **nominal / geometric / total return / USD / 10년** (원문 직접 확인).
+US_EQUITY와 동일한 VCMM 실행분이다.
+
+### ⚠ 변환은 반드시 `cmaGeometricToAppRate()`를 쓴다
+Phase 7-F가 US_EQUITY를 만들 때 손으로 계산한 식 `12×((1+g)^(1/12)−1)`을 함수로 옮긴 것이다.
+**4.2/5.2/6.2를 넣으면 현재 코드의 4.1/5.1/6.0이 그대로 재현된다**(e2e/42가 고정).
+새 CMA를 추가할 때 이 함수를 안 거치면 정책이 갈라진다. 원자료는 `CMA_RAW_RANGES`에 남긴다.
+
+### 🔴 FTSE 분류 - 반드시 기억할 것
+FTSE는 **한국을 선진국으로 분류**한다(2009년~). 따라서
+- `EMERGING`(신흥국) 가정을 **국내 주식에 적용하면 안 된다** - 그 바스켓에 한국이 없다.
+- Vanguard의 Developed ex-US(4.5~6.5%)에는 **한국이 포함**된다 → KOSPI의 간접 앵커가 된다.
+
+### Phase 41 감사 결론 (숫자 변경은 전부 PM 대기)
+- **US_EQUITY 4.1/5.1/6.0 → KEEP.** 원문 재확인 완료, 변환 검산 통과(±0.03%p 반올림 오차뿐).
+  단 Morningstar 종합(다수 기관) US equity는 **3.5~5.5%** 로 Vanguard보다 낮다 - 앱 값이
+  peer 대비 보수적이지 않다는 점은 정직하게 기록해 둔다.
+- **KOSPI 5/7/11 → UNRESOLVED.** 직접 CMA를 끝내 확보하지 못했다(한국투자신탁운용 LTCMA는
+  수치 비공개, 국민연금은 방법론만 공개). 다만 한국을 포함하는 유일한 앵커의 **상단이 6.5%** 라
+  **Bull 11%는 그 1.7배**다. Bull부터 재검토 대상.
+- **삼성전자 8/9/15 → HOLD.** 저장 15%가 실효 **16.08%** 로 적용되어 20년 **19.72배**,
+  사용자가 "연 15%"로 이해한 16.37배와 **1억당 3.35억원** 차이. Base→Bull 간격이
+  Bear→Base의 **6배**(US는 0.90배). 미국 "개별 종목 프리미엄 금지" 원칙과 정면 모순.
+- **legacy 값 미변환 문제**: KOSPI 7.0 저장값이 실제로는 **7.229%** 로 동작한다. PM Q3 결정으로
+  현행 APR 의미를 확정했고 숫자는 바꾸지 않았다.
+- BOND/부동산 → WEAK_EVIDENCE / UNRESOLVED (정의 불명확이 숫자보다 먼저 문제).
+
+### 🔒 되돌리지 말 것
+- Golden 26자산에 신규 Key가 **자동 적용되지 않는다**(실측 0건). 기존 override는 그대로 존중하고
+  성격과 어긋나도 NEEDS_REVIEW 표시만 한다.
+- 지역 폴백 금지(Phase 40-C)는 그대로다. e2e/41의 VEA/VWO 단언만 NONE→정식 Key로 갱신했다.
+
+### 🔴 다음 PM 결정 대기
+1. 삼성전자 프리미엄 정책 / 2. KOSPI Bull 재검토 / 3. KOSDAQ 분리·통합
+4. legacy 값 APR 재변환 여부 / 5. BOND 정의 확정(해외 채권 별도 Key 필요)
+6. Commodity·Crypto·US Bond Key — **CMA 미확보라 숫자 생성 금지**
+7. Benchmark 정비(Phase 39-B 이월) — 채권/원자재 가격지수가 앱에 없음
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 40-A/B/C: 수익률 가정 체계 감사 + 자산 성격 기반 Return Key **V1.1 v212 유지**
 
 **커밋** `0a0dfbe` "feat: pick return assumptions by asset character, not by region" — push 완료.
