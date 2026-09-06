@@ -41,6 +41,21 @@ function sortinoToGrade(sortino) {
   return 'F';
 }
 
+// [Phase 39 - 데이터 신뢰도 상태 표현] computeDataConfidence()의 점수는 그대로 두고 "표시"만 바꾼다.
+// 예전엔 "분석 신뢰도 86%"라고 적어서 ①"이 진단이 86% 맞다"는 정확도로 오해되고 ②만점이 92점이라
+// 100%가 나올 수 없다는 사실이 화면에 드러나지 않았다. 이제 상태 한 단어로 보여주고, 숫자와 사유는
+// 옆의 [i] 툴팁에 남긴다(정보가 사라지지 않는다).
+// 구간(80/50)은 새로 만든 값이 아니라 원래 이 화면이 색상을 고르던 기준을 그대로 재사용한 것이다 -
+// 라벨과 색이 항상 같은 기준으로 갈리도록 여기 한 곳에서만 판정한다.
+const DATA_CONFIDENCE_BANDS = [
+  { min: 80, label: '데이터 충분', colorClass: 'text-emerald-500 dark:text-emerald-400' },
+  { min: 50, label: '일부 데이터 부족', colorClass: 'text-amber-500 dark:text-amber-400' },
+  { min: -Infinity, label: '분석 제한', colorClass: 'text-red-500 dark:text-red-400' }
+];
+function dataConfidenceBand(score) {
+  return DATA_CONFIDENCE_BANDS.find((b) => score >= b.min);
+}
+
 // [1줄 쉬운 종합 진단] 6대 위험요인 중 점수가 가장 높은(가장 위험한) 요인 하나를 골라 그 원인을 구체
 // 수치와 함께 문장으로 설명한다 - "72점입니다"가 아니라 "왜 72점인가"를 보여주는 것이 핵심.
 function buildRiskDiagnosisLine(m) {
@@ -95,29 +110,37 @@ function buildRiskActionItems(m) {
 }
 
 // [개별 종목 행동 지침 태그] RISK 관리 카드의 감지 종목 행에 붙일 짧은 한글 태그 - 어떤 조건에
-// 걸렸는지에 따라 다르게 보여준다(RSI 과열/추세 이탈/52주 고점대비 급락/거래량 급증 각각에 대응,
+// 걸렸는지에 따라 다르게 보여준다(RSI 과열/추세 이탈/52주 고점대비 급락 각각에 대응,
 // 우선순위 하나만 골라 보여준다 - 자세한 근거는 [🔍 리스크 진단 보기] 상세 카드에서 전부 보여준다).
 // [Phase 35] '비중 축소 검토'/'방어자산 확보 필요'는 행동을 지시하는 이름이라 점검을 뜻하는 이름으로
-// 바꿨다. '단기 추세 주의'/'변동성 확대 주의'는 상태 서술이라 그대로 둔다.
+// 바꿨다. '단기 추세 주의'는 상태 서술이라 그대로 둔다.
+// [Phase 39] '거래량 급증'이 감지 태그에서 빠지면서 '변동성 확대 주의' 분기도 함께 사라졌다
+// (아래 buildIndividualRiskTags 주석 참고 - 이 분기는 도달할 수 없는 코드가 된다).
 function buildAssetActionTag(tags) {
   if (tags.includes('단기 과열')) return '비중·가격 점검';
   if (tags.includes('52주 고점대비 급락')) return '낙폭 점검';
   if (tags.includes('추세 이탈')) return '단기 추세 주의';
-  if (tags.includes('거래량 급증')) return '변동성 확대 주의';
   return null;
 }
 
 // [개별 종목 정밀 주가 분석 엔진의 판정 결과 → 태그] computeAdvancedRiskMetrics()가 이미 계산해 둔
-// holding(h) 하나를 받아 RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락(-30% 이하)/
-// 거래량 급증(20일 평균 거래량의 2배 이상) 중 해당하는 태그를 전부 모은다(OR 조건). 가격 이력이 없는
+// holding(h) 하나를 받아 RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락(-30% 이하)
+// 중 해당하는 태그를 전부 모은다(OR 조건). 가격 이력이 없는
 // 종목(h가 없거나 hasData=false, 신규상장·API 실패 등)은 안전하게 태그 없음(안정 목록)으로 처리한다.
+// [Phase 39 - 거래량 급증을 위험 신호에서 제외] 거래량 급증은 방향이 없는 신호다(급등이든 급락이든
+// 똑같이 걸리고, 지수 리밸런싱일·배당락일·만기일에도 걸린다). 게다가 이 앱 스스로
+// computeDataConfidence()에서 "실제 수급 데이터가 아닌 거래량 기반 추정치"라며 고정 8점을 깎고 있다 -
+// 앱이 신뢰하지 않는다고 명시한 지표를 "위험 감지"로 올리는 것은 앞뒤가 맞지 않는다.
+// 계산값(h.volumeSpike / h.volMA20 / h.lastVolume / h.flowSignal)은 그대로 남겨 둔다 - 종목 상세의
+// 참고정보로 계속 쓰이고, 나중에 다른 형태로 노출할 여지도 남는다. 여기서는 "위험 태그로 세지 않는다"만
+// 바꾼다. 위험점수는 영향을 받지 않는다: computeTechnicalFlowRiskScore(js/09)는 태그가 아니라
+// rsi14/trendLabel/flowSignal만 읽으며 volumeSpike를 참조하지 않는다.
 function buildIndividualRiskTags(h) {
   if (!h || !h.hasData) return [];
   const tags = [];
   if (h.rsiState === '과열') tags.push('단기 과열');
   if (h.trendLabel === '역배열(하락추세)') tags.push('추세 이탈');
   if (typeof h.week52DrawdownPct === 'number' && h.week52DrawdownPct <= -30) tags.push('52주 고점대비 급락');
-  if (h.volumeSpike) tags.push('거래량 급증');
   return tags;
 }
 
@@ -336,15 +359,18 @@ function renderRiskDiagnosisSummary() {
   const diagnosisLine = buildRiskDiagnosisLine(m);
   const actionItems = buildRiskActionItems(m);
   const conf = m.dataConfidence;
-  const confLevel = conf.score >= 80 ? 'text-emerald-500 dark:text-emerald-400' : conf.score >= 50 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400';
+  const confBand = dataConfidenceBand(conf.score);
+  // 숫자는 툴팁으로 옮긴다 - 구조적 한계(수급 추정치) 때문에 만점이 92점이라는 점까지 함께 알려야
+  // "왜 100이 안 되지?"라는 오해가 생기지 않는다. 계산식(computeDataConfidence)은 건드리지 않았다.
+  const confTip = `분석에 쓸 수 있는 데이터가 얼마나 충분한지 보여주는 상태입니다(위험점수와는 별개이며 점수를 왜곡하지 않습니다). 현재 데이터 충분도 ${conf.score}/100 - 수급이 추정치라는 구조적 한계 때문에 최대 92까지만 올라갑니다. ${conf.reasons.join(' · ')}`;
 
   container.innerHTML = `
   <div class="rounded-xl border p-3.5 ${level.bgClass}">
     <div class="flex items-start justify-between gap-2 flex-wrap">
       <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
-      <span class="shrink-0 text-sm font-semibold ${confLevel} flex items-center gap-1 whitespace-nowrap">
-        분석 신뢰도 ${conf.score}%
-        <button type="button" data-info-tip="${escapeHtml('이 진단이 얼마나 실제 데이터에 기반했는지 보여주는 별도 점수입니다(위험점수를 왜곡하지 않습니다). ' + conf.reasons.join(' · '))}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      <span class="shrink-0 text-sm font-semibold ${confBand.colorClass} flex items-center gap-1 whitespace-nowrap">
+        ${confBand.label}
+        <button type="button" data-info-tip="${escapeHtml(confTip)}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </span>
       <!-- [모바일 시인성 개선] 카드 다른 곳의 "세부내용" 버튼과 같은 .detail-btn(테두리 있는 버튼 모양)
            스타일로 통일하고, ml-auto로 항상 이 줄의 맨 오른쪽 끝에 붙인다 - 분석 신뢰도 텍스트와 줄바꿈
@@ -358,6 +384,19 @@ function renderRiskDiagnosisSummary() {
     <div class="mt-2.5 space-y-1.5">
       ${actionItems.slice(0, 2).map((item, i) => hangingIndentLine(`💡 ${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}
       ${actionItems.length > 2 ? `<p class="text-sm text-slate-400">그 외 ${actionItems.length - 2}건 더 - 🔍 세부내용에서 전부 확인할 수 있습니다.</p>` : ''}
+    </div>
+
+    <!-- [Phase 39 - 가격 위험과 계획 위험의 분리] 이 위험점수는 "가격이 얼마나 흔들릴 수 있는가"만
+         본다. "내가 세운 목표 자산배분에서 얼마나 벗어나 있는가"는 성격이 다른 문제라 점수에 넣지
+         않는다(목표를 하나 빠뜨린 것만으로 위험점수가 오르면 안 되고, 안전한 쪽으로 벗어난 것까지
+         위험으로 계산되기 때문). 그 사실을 사용자에게 한 줄로 알리고, 이미 있는 "포트폴리오 구성"
+         탭으로 보내기만 한다 - 새 계산도, 새 카드도 만들지 않는다.
+         경고가 아니라 안내이므로 위험 신호 목록과 시각적으로 분리한다(구분선 + 낮은 대비). -->
+    <div class="mt-2.5 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/50">
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">
+        📋 이 점수는 <span class="font-semibold">가격 변동 위험</span>만 봅니다. 목표 자산배분과 지금 비중의 차이는 별도로 확인하세요.
+        <button type="button" id="riskPlanCheckBtn" class="underline underline-offset-2 font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400">포트폴리오 구성에서 보기</button>
+      </p>
     </div>
 
     <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
@@ -483,6 +522,13 @@ function closeRiskDetailModal(viaBackButton) {
 }
 document.addEventListener('click', (e) => {
   if (e.target.closest('#riskDetailBtn')) openRiskDetailModal();
+  // [Phase 39] "계획은 따로 확인하세요" 안내의 이동 버튼 - riskAlertRebalanceBtn과 완전히 같은
+  // 이동 경로를 재사용한다(새 화면/새 계산 없음). 이 카드는 매 렌더링마다 innerHTML로 다시 그려지므로
+  // 위 riskDetailBtn과 동일하게 document 위임으로 잡는다.
+  if (e.target.closest('#riskPlanCheckBtn')) {
+    switchTab('rebalance');
+    switchRebalanceSubTab('target');
+  }
 });
 document.getElementById('riskDetailModalHeader').addEventListener('click', () => closeRiskDetailModal());
 document.getElementById('closeRiskDetailModalBtn').addEventListener('click', (e) => {
@@ -1223,8 +1269,9 @@ function renderRiskSection() {
       const tagHtml = tags.map((t) =>
         `<span class="text-sm px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-300 font-semibold">[${escapeHtml(t)}]</span>`
       ).join(' ');
-      // [쉬운 행동 지침 태그] 감지 조건에 따라 "비중 축소 검토"/"방어자산 확보 필요"/"단기 추세 주의"/
-      // "변동성 확대 주의" 중 하나를 골라 옆에 덧붙인다 - buildAssetActionTag()가 우선순위대로 고른다.
+      // [점검 안내 태그] 감지 조건에 따라 "비중·가격 점검"/"낙폭 점검"/"단기 추세 주의" 중 하나를 골라
+      // 옆에 덧붙인다 - buildAssetActionTag()가 우선순위대로 고른다(Phase 35에서 행동 지시형 이름을
+      // 점검형으로 바꿨고, Phase 39에서 거래량 급증 분기가 빠졌다).
       const actionTag = buildAssetActionTag(tags);
       const actionTagHtml = actionTag ? `<span class="text-sm px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold">💡 ${escapeHtml(actionTag)}</span>` : '';
       return `

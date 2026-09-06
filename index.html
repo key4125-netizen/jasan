@@ -538,7 +538,8 @@
 
   <!-- ============================= RISK 관리 =============================
        [개별 종목 정밀 주가 분석 엔진] RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락
-       (-30% 이하)/거래량 급증(20일 평균 거래량의 2배 이상) 중 하나라도 해당하면 [리스크 감지]로 분류한다
+       (-30% 이하) 중 하나라도 해당하면 [리스크 감지]로 분류한다. [Phase 39] 거래량 급증은 방향이 없는
+       신호라 감지 조건에서 빠졌다 - 계산값(volumeSpike)은 참고용으로 그대로 남아 있다
        - computeRiskClassifiedAssets()/buildIndividualRiskTags()/renderRiskSection() 참고. 주식/ETF만
        대상이며, state.advancedRiskMetrics.holdings(포트폴리오 위험 진단과 동일한 단일 데이터)를 그대로
        재사용해 중복 계산이 없다.
@@ -586,7 +587,7 @@
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
         <h3 class="text-base font-bold text-red-600 dark:text-red-400">RISK 관리</h3>
-        <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, 단기 과열·추세 이탈·52주 고점대비 급락·거래량 급증 중 하나라도 해당하면 종목이 감지됩니다."
+        <button type="button" title="집중도(HHI·섹터)/변동성/손실위험(VaR·CVaR·MDD)/시장위험(베타)/상관관계/기술·수급 6대 요인을 종합한 위험점수이며, 단기 과열·추세 이탈·52주 고점대비 급락 중 하나라도 해당하면 종목이 감지됩니다."
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           <i data-lucide="info" class="w-3.5 h-3.5"></i>
         </button>

@@ -150,11 +150,13 @@ test('52주 - 낙폭은 종가 최고점과 현재가로 계산된다(엔진 경
 
 /* ==========================================================================
  * Rule 4. 거래량 급증 - 20일 평균 거래량의 2배 이상
- *   [Phase 36 §9-4 / PM Q3] 향후 감지 태그에서 제거 예정. 지금은 고정만 한다.
+ *   [Phase 39 / PM Q3 승인] 감지 태그에서 제거됐다. 방향이 없는 신호이고(급등·급락·배당락·만기일이
+ *   전부 걸린다), 앱 스스로 computeDataConfidence()에서 "추정치"라며 8점을 깎는 지표이기 때문이다.
+ *   단 계산값(volumeSpike/volMA20/lastVolume)은 그대로 남긴다 - 아래 테스트가 그 보존을 감시한다.
+ *   위험점수 불변은 이 파일 마지막 "Rule → 점수 연결" 테스트와 risk-engine.test.js의 Golden이 지킨다.
  * ======================================================================= */
 
-test('거래량 - 20일 평균 대비 2.0배 경계', async () => {
-  const s0 = freshSandbox();
+test('거래량 - [Phase 39] 계산값(volumeSpike)은 2.0배 경계 그대로 유지된다', async () => {
   // volMA20은 "급증한 당일 거래량 자신"까지 포함한 최근 20개 평균이다(risk-sandbox의 volumes() 주석 참고).
   const spikeAt = async (ratio) => {
     const s = freshSandbox();
@@ -167,9 +169,19 @@ test('거래량 - 20일 평균 대비 2.0배 경계', async () => {
   assert.strictEqual(await spikeAt(1.0), false);
   assert.strictEqual(await spikeAt(1.5), false);
   assert.strictEqual(await spikeAt(1.99), false);
-  assert.strictEqual(await spikeAt(2.0), true, '정확히 2.0배는 감지된다(>= 비교)');
+  assert.strictEqual(await spikeAt(2.0), true, '정확히 2.0배는 계산상 급증으로 판정된다(>= 비교)');
   assert.strictEqual(await spikeAt(3.0), true);
-  assert.deepStrictEqual(plain(s0.buildIndividualRiskTags(holding({ volumeSpike: true }))), ['거래량 급증']);
+});
+
+test('거래량 - [Phase 39] 급증해도 더 이상 위험 태그가 되지 않는다', () => {
+  const s = freshSandbox();
+  // 계산값은 true인데 태그는 비어 있어야 한다 - "계산 데이터는 보존, 위험 표시만 제거"가 이 변경의 핵심이다.
+  assert.deepStrictEqual(plain(s.buildIndividualRiskTags(holding({ volumeSpike: true }))), []);
+  // 다른 신호와 함께 있어도 거래량 항목만 빠진다.
+  assert.deepStrictEqual(
+    plain(s.buildIndividualRiskTags(holding({ volumeSpike: true, rsiState: '과열' }))),
+    ['단기 과열']
+  );
 });
 
 test('거래량 - 거래량 데이터가 없으면 급증으로 보지 않는다', async () => {
@@ -191,10 +203,11 @@ test('거래량 - 거래량 데이터가 없으면 급증으로 보지 않는다
 
 test('Rule 조합 - OR 조건이라 해당하는 태그가 전부 붙는다', () => {
   const s = freshSandbox();
+  // [Phase 39] volumeSpike는 true여도 태그에 포함되지 않는다 - 남은 3개만 붙는다.
   const all = s.buildIndividualRiskTags(holding({
     rsiState: '과열', trendLabel: '역배열(하락추세)', week52DrawdownPct: -35, volumeSpike: true
   }));
-  assert.deepStrictEqual(plain(all), ['단기 과열', '추세 이탈', '52주 고점대비 급락', '거래량 급증']);
+  assert.deepStrictEqual(plain(all), ['단기 과열', '추세 이탈', '52주 고점대비 급락']);
 });
 
 test('Rule - 가격 이력이 없는 종목은 안전하게 태그 없음으로 처리된다', () => {
@@ -208,12 +221,13 @@ test('Rule - 가격 이력이 없는 종목은 안전하게 태그 없음으로 
 
 test('태그 → 안내 라벨 - 우선순위 하나만 고르며 Phase 35 문구를 유지한다', () => {
   const s = freshSandbox();
-  // 우선순위: 단기 과열 > 52주 급락 > 추세 이탈 > 거래량 급증
-  assert.strictEqual(s.buildAssetActionTag(['단기 과열', '52주 고점대비 급락', '추세 이탈', '거래량 급증']), '비중·가격 점검');
-  assert.strictEqual(s.buildAssetActionTag(['52주 고점대비 급락', '추세 이탈', '거래량 급증']), '낙폭 점검');
-  assert.strictEqual(s.buildAssetActionTag(['추세 이탈', '거래량 급증']), '단기 추세 주의');
-  assert.strictEqual(s.buildAssetActionTag(['거래량 급증']), '변동성 확대 주의');
+  // 우선순위: 단기 과열 > 52주 급락 > 추세 이탈
+  assert.strictEqual(s.buildAssetActionTag(['단기 과열', '52주 고점대비 급락', '추세 이탈']), '비중·가격 점검');
+  assert.strictEqual(s.buildAssetActionTag(['52주 고점대비 급락', '추세 이탈']), '낙폭 점검');
+  assert.strictEqual(s.buildAssetActionTag(['추세 이탈']), '단기 추세 주의');
   assert.strictEqual(s.buildAssetActionTag([]), null);
+  // [Phase 39] 거래량 급증은 이제 태그로 만들어지지 않으므로 라벨도 나오지 않는다.
+  assert.strictEqual(s.buildAssetActionTag(['거래량 급증']), null);
 });
 
 /* ==========================================================================
