@@ -686,12 +686,17 @@ function openTransactionModal(txId) {
       (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
     populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
     // [자산별 역할(포지션) 분류 - 수정 모드] rateMatchOverride와 동일하게 매칭되는 자산의 현재 role을 보여준다.
-    document.getElementById('tx_role').value = (matchedForEdit && matchedForEdit.role) || '';
+    // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다 -
+    // 옵션에 없는 값이면 select가 조용히 빈칸이 되어 저장 시 기존 포지션이 날아간다.
+    const editRole = (matchedForEdit && matchedForEdit.role) || '';
+    document.getElementById('tx_role').innerHTML = assetRoleSelectOptionsHtml(editRole, '미지정');
+    document.getElementById('tx_role').value = editRole;
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
     document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
   } else {
     document.getElementById('txModalTitle').textContent = '거래 추가';
     document.getElementById('tx_manualEntryToggle').checked = false;
+    document.getElementById('tx_role').innerHTML = assetRoleSelectOptionsHtml('', '미지정');
     document.getElementById('tx_role').value = '';
   }
   applyTxManualEntryModeUI();

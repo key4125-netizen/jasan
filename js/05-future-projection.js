@@ -1175,7 +1175,7 @@ function hasDistinctTotalAssetScenario() {
 // 기준)만 쓴다. 목표 비중이 아니라 "지금 실제로 뭘 들고 있는가" 기준이다(적립 예상 계획과도 무관).
 function getTaxAdvantagedRoleBreakdown(ownerFilter) {
   const owners = (ownerFilter && ownerFilter !== 'all') ? [ownerFilter] : TAX_ADVANTAGED_OWNERS;
-  const weights = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
+  const weights = emptyRoleWeights(); // [Phase 32] js/01 단일 소스(정식 4개 + legacy + 미지정)
   let total = 0;
   state.assets.forEach((a) => {
     if (isRebalanceEligibleAccount(a) || !owners.includes(a.owner)) return;
@@ -1526,7 +1526,7 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
     const found = allocation.find((it) => it.accountType === accType && allocEntryIdentity(it.ticker, it.label) === allocEntryIdentity(ticker || '', name));
     return (found && found.role) || assetRole || getTickerRole(ticker, name);
   };
-  const roleOptionsHtml = (selected) => ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
+  const roleOptionsHtml = (selected) => assetRoleSelectOptionsHtml(selected, '역할 미지정');
   container.innerHTML = accountTypes.map((accType) => {
     const c = contribFor(accType);
     // [계좈별 종목 추가 - 티커 없는 자산까지 확장, 요청 반영] 보유 종목(byAccount) 외에, 아직 안 산
@@ -2876,7 +2876,7 @@ function renderMonthlyContributionAllocationList(owner) {
     // [미보유 종목 포지션 태깅 - 요청 반영] 배분 항목 자체(state.projection, state.assets와 무관)에
     // 역할을 저장한다 - 실제 보유 여부와 상관없이 "이 적립 계획은 어떤 성격이다"를 기록해 둘 수 있다.
     container.innerHTML = draft.allocation.map((row, idx) => {
-      const roleOptionsHtml = ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${row.role === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
+      const roleOptionsHtml = assetRoleSelectOptionsHtml(row.role, '역할 미지정');
       return `
     <div class="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
       <div class="flex items-center gap-1.5">

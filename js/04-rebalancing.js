@@ -827,7 +827,7 @@ function renderRtmTargetGroup(region) {
     // 44px 터치 타겟 기준을 둘 다 어겼다 - 표시 크기만 키운다(선택지/저장 값/계산은 전혀 안 바뀜).
     const roleSelect = `<select data-rtm-role data-region="${region}" data-idx="${idx}" class="mt-1.5 w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
           <option value="">포지션 미지정</option>
-          ${ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${t.role === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          ${assetRoleSelectOptionsHtml(t.role, '미지정').replace('<option value="">미지정</option>', '')}
         </select>`;
     return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg p-2">
@@ -1138,7 +1138,7 @@ function renderStockAllocationSelectedList() {
         <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-sm font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
       </div>` : '';
     const isHeld = getHeldStockCandidates(stockAllocationCurrentRegion).some((a) => a.ticker === s.ticker);
-    const roleOptionsHtml = ['<option value="">역할 미지정</option>', ...ASSET_ROLE_OPTIONS.map((o) => `<option value="${o.value}" ${s.role === o.value ? 'selected' : ''}>${o.label}</option>`)].join('');
+    const roleOptionsHtml = assetRoleSelectOptionsHtml(s.role, '역할 미지정');
     return `
     <div class="border border-slate-100 dark:border-slate-800 rounded-lg px-2.5 py-1.5">
       <div class="flex items-center justify-between gap-2">
@@ -1390,7 +1390,7 @@ function updateRebalanceResults() {
 // split(%) × 지역 내 항목 비중(%)만으로 계산한다. selectedStocks까지 놓치지 않도록 펼쳐진 목록
 // (expandRebalanceTargetsForComputation)을 쓴다.
 function computeOwnerTargetRoleWeights(owner) {
-  const weights = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
+  const weights = emptyRoleWeights(); // [Phase 32] 정식 4개 + legacy core_mid + 미지정(js/01 단일 소스)
   const domestic = state.rebalance[owner].domestic;
   ['국내', '해외'].forEach((region) => {
     const regionWeight = num(domestic[region]) / 100;
@@ -1417,7 +1417,7 @@ function computePositionRoleBreakdown(ownerFilter) {
     Object.keys(weights).forEach((k) => { totals[k] = weights[k] * ownerTotal; pct[k] = weights[k] * 100; });
     return { totals, pct, grandTotal: ownerTotal };
   }
-  const totals = { attacker: 0, core_mid: 0, defender: 0, unassigned: 0 };
+  const totals = emptyRoleWeights(); // [Phase 32] 위와 동일한 키 집합을 공유한다
   let grandTotal = 0;
   REBALANCE_OWNERS.forEach((owner) => {
     const ownerTotal = getRebalanceTotals(owner).total;
@@ -1460,10 +1460,15 @@ function computeTargetRegionBreakdown(ownerFilter) {
   return { pct, grandTotal };
 }
 
+// [Phase 32 - 4개 포지션] 사용자의 실제 전략 구조(위험자산: 코어자산·미드필더·공격수 / 안전자산: 수비수)
+// 순서로 나열한다 - 새 분류 체계를 만든 것이 아니라 기존 4개를 그 순서로 보여줄 뿐이다.
+// legacy 'core_mid'는 그 값이 실제로 남아 있을 때만 화면에 나온다(positionAnalysisCardBodyHtml에서 0이면 숨김).
 const POSITION_ROLE_BAR_ROWS = [
+  { key: 'core', label: '🎯 코어자산', color: '#f59e0b' },
+  { key: 'midfielder', label: '⚙️ 미드필더', color: '#8b5cf6' },
   { key: 'attacker', label: '⚔️ 공격수', color: '#ef4444' },
-  { key: 'core_mid', label: '🎯 코어미드필더', color: '#f59e0b' },
   { key: 'defender', label: '🛡️ 수비수', color: '#3b82f6' },
+  { key: 'core_mid', label: '🎯 코어미드필더(구분 필요)', color: '#a16207', legacyOnly: true },
   { key: 'unassigned', label: '미지정', color: '#94a3b8' }
 ];
 const POSITION_REGION_BAR_ROWS = [
@@ -1499,7 +1504,11 @@ function positionAnalysisCardBodyHtml(ownerFilter) {
   const role = computePositionRoleBreakdown(ownerFilter);
   if (role.grandTotal === 0) return '<p class="text-sm text-slate-400">집계할 목표 비중이 없습니다.</p>';
   const regionHtml = POSITION_REGION_BAR_ROWS.map((row) => positionTabRowHtml('region', row.key, row.label, region.pct[row.key], row.color, ownerFilter || 'all')).join('');
-  const roleHtml = POSITION_ROLE_BAR_ROWS.map((row) => positionTabRowHtml('role', row.key, row.label, role.pct[row.key], row.color, ownerFilter || 'all')).join('');
+  // [Phase 32] legacy 코어미드필더 행은 실제로 그 값이 남아 있을 때만 보여준다 - 아무도 안 쓰는 옛
+  // 항목이 상시 노출되면 초보자에게 5번째 포지션이 있는 것처럼 오해된다.
+  const roleHtml = POSITION_ROLE_BAR_ROWS
+    .filter((row) => !row.legacyOnly || num(role.pct[row.key]) > 0)
+    .map((row) => positionTabRowHtml('role', row.key, row.label, role.pct[row.key], row.color, ownerFilter || 'all')).join('');
   return regionHtml + '<div class="my-2.5 border-t border-slate-100 dark:border-slate-800"></div>' + roleHtml;
 }
 function renderPositionAnalysisCard(containerId, ownerFilter) {

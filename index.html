@@ -1690,10 +1690,7 @@
       <label class="col-span-2 text-sm">
         <span class="text-slate-500 dark:text-slate-400">역할(포지션) <span class="text-slate-400">- 일반계좌 자산만 아래 비중 분석에 집계</span></span>
         <select id="f_role" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
-          <option value="">미지정</option>
-          <option value="attacker">공격수</option>
-          <option value="core_mid">코어미드필더</option>
-          <option value="defender">수비수</option>
+          <!-- [Phase 32] 옵션은 assetRoleSelectOptionsHtml(js/01)이 채운다 - 정식 4개(공격수/코어자산/미드필더/수비수) + 이미 저장된 값이 legacy 코어미드필더일 때만 그 항목 추가 -->
         </select>
       </label>
 
@@ -2529,10 +2526,7 @@
         <span class="text-slate-500 dark:text-slate-400">역할(포지션) (선택)</span>
         <select id="tx_role"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
-          <option value="">미지정</option>
-          <option value="attacker">공격수</option>
-          <option value="core_mid">코어미드필더</option>
-          <option value="defender">수비수</option>
+          <!-- [Phase 32] 옵션은 assetRoleSelectOptionsHtml(js/01)이 채운다 - 정식 4개(공격수/코어자산/미드필더/수비수) + 이미 저장된 값이 legacy 코어미드필더일 때만 그 항목 추가 -->
         </select>
       </label>
 

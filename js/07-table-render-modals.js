@@ -724,6 +724,8 @@ function openModal(mode, id) {
     document.getElementById('f_quantity').value = a.quantity;
     document.getElementById('f_buyPrice').value = a.buyPrice;
     document.getElementById('f_currentPrice').value = a.currentPrice;
+    // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다.
+    document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml(a.role, '미지정');
     document.getElementById('f_role').value = a.role || '';
   } else {
     document.getElementById('f_manualEntryToggleWrap').classList.remove('hidden');
@@ -732,6 +734,7 @@ function openModal(mode, id) {
     document.getElementById('f_isDomestic').value = '국내';
     document.getElementById('f_currency').value = 'KRW';
     document.getElementById('f_category').value = '주식';
+    document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml('', '미지정');
     document.getElementById('f_role').value = '';
   }
   updatePriceUnitLabels();

@@ -80,27 +80,55 @@ const CATEGORY_COLORS = {
 // 성향 비중을 한눈에 볼 수 있게 한다(§Part 3 포지션별 비중 분석 카드). 미지정이 기본값(undefined)이며,
 // 절세계좈/부동산 자산에도 저장 자체는 허용하되 집계 시점(computePositionRoleBreakdown)에서만 일반계좈
 // 한정으로 걸러낸다.
-// ['코어미드필더' 통합 - 요청 반영] 예전엔 '미드필더'와 '코어자산'이 별개 포지션이었으나, 하나의
-// 'core_mid' 포지션으로 통합했다 - 두 옛 포지션의 집계 데이터도 이제 이 하나로 합쳐서 산출된다.
+// [Phase 32 - 4개 포지션 복원] 사용자의 실제 포트폴리오 전략(자산관리 엑셀 "역할(포지션)" 컬럼)은
+// 코어자산/미드필더/공격수/수비수 4개다. 한때 '코어자산'과 '미드필더'를 'core_mid' 하나로 합쳐
+// 저장했었는데, 그 병합은 사용자의 목표비중 계획(위험자산 안에서 코어 50%/미드 25%/공격 25% 같은
+// 배분)을 표현할 수 없게 만들었다 - 정식 4개로 되돌린다.
 const ASSET_ROLE_OPTIONS = [
   { value: 'attacker', label: '공격수' },
-  { value: 'core_mid', label: '코어미드필더' },
+  { value: 'core', label: '코어자산' },
+  { value: 'midfielder', label: '미드필더' },
   { value: 'defender', label: '수비수' }
 ];
+// [legacy 보존] 이미 'core_mid'로 저장돼 있는 값은 절대 자동으로 코어/미드필더로 쪼개지 않는다
+// (합쳐질 때 원래 정보가 사라졌으므로 코드가 복원할 수 없다 - 추측하면 사용자 전략을 왜곡한다).
+// 사용자가 직접 고르거나 엑셀을 다시 올릴 때만 정식 값으로 바뀐다.
+const LEGACY_ROLE_CORE_MID = 'core_mid';
 const ASSET_ROLE_LABELS = ASSET_ROLE_OPTIONS.reduce((acc, o) => { acc[o.value] = o.label; return acc; }, {});
-// 옛 '미드필더'/'코어자산' 내부 키·한글 라벨을 모두 새 'core_mid'로 정규화한다 - 이미 저장된 데이터는
-// migrateCoreMidfielderRoleMergeOnce()가 1회성으로 직접 고쳐 쓰지만, 이 별칭 매핑은 그와 별개로 앞으로도
-// 계속 남아 있어야 한다(엑셀 업로드 등 외부에서 옛 표기가 들어올 가능성이 있으므로).
-const LEGACY_ASSET_ROLE_ALIASES = { midfielder: 'core_mid', core: 'core_mid', '미드필더': 'core_mid', '코어자산': 'core_mid' };
+ASSET_ROLE_LABELS[LEGACY_ROLE_CORE_MID] = '코어미드필더'; // 엑셀/데이터 표기는 그대로, 화면 선택지에서만 "(구분 필요)"를 덧붙인다
+// 집계/표시가 다뤄야 하는 전체 role 키(정식 4개 + legacy) - 여러 곳이 같은 키 집합을 써야 해서 여기 하나로 둔다.
+const ALL_ASSET_ROLE_KEYS = [...ASSET_ROLE_OPTIONS.map((o) => o.value), LEGACY_ROLE_CORE_MID];
+function emptyRoleWeights() {
+  const w = {};
+  ALL_ASSET_ROLE_KEYS.forEach((k) => { w[k] = 0; });
+  w.unassigned = 0;
+  return w;
+}
+// 내부 키도 라벨도 아닌 외부 표기만 여기서 흡수한다. '코어'는 사용자의 포트폴리오 계획 파일이 쓰는
+// 표기이고, '코어미드필더'는 옛 라벨이다(legacy 값으로 그대로 보존 - 쪼개지 않는다).
+const LEGACY_ASSET_ROLE_ALIASES = { '코어': 'core', '코어미드필더': LEGACY_ROLE_CORE_MID };
 // 엑셀 "역할(포지션)" 컬럼처럼 내부 키('attacker' 등)가 아니라 한글 라벨('공격수' 등)로 입력/저장된
 // 값을 받아 내부 키로 되돌린다 - 두 표기 다 허용(내부 키를 직접 쓴 경우도 그대로 통과).
 function parseAssetRoleInput(raw) {
   const v = String(raw ?? '').trim();
   if (!v) return undefined;
   if (LEGACY_ASSET_ROLE_ALIASES[v]) return LEGACY_ASSET_ROLE_ALIASES[v];
-  if (ASSET_ROLE_LABELS[v]) return v;
-  const found = ASSET_ROLE_OPTIONS.find((o) => o.label === v);
-  return found ? found.value : undefined;
+  if (ASSET_ROLE_LABELS[v]) return v; // 내부 키(정식 4개 + legacy core_mid)
+  // 라벨 → 키. legacy core_mid의 라벨('코어미드필더')도 인식되도록 ASSET_ROLE_LABELS 전체를 본다.
+  return Object.keys(ASSET_ROLE_LABELS).find((k) => ASSET_ROLE_LABELS[k] === v);
+}
+// [Phase 32] 포지션 선택 <option> 목록 - 모든 선택 UI가 이 함수 하나를 공유한다. 정식 4개만 제공하고,
+// 이미 저장된 값이 legacy core_mid일 때만 그 항목을 덧붙인다: 신규 선택을 유도하지 않으면서도, 기존
+// 값이 목록에 없어서 조용히 "미지정"으로 날아가는 사고를 막는다.
+function assetRoleSelectOptionsHtml(selected, emptyLabel) {
+  const opts = [`<option value="">${emptyLabel || '미지정'}</option>`];
+  ASSET_ROLE_OPTIONS.forEach((o) => {
+    opts.push(`<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`);
+  });
+  if (selected === LEGACY_ROLE_CORE_MID) {
+    opts.push(`<option value="${LEGACY_ROLE_CORE_MID}" selected>${ASSET_ROLE_LABELS[LEGACY_ROLE_CORE_MID]}(구분 필요)</option>`);
+  }
+  return opts.join('');
 }
 
 // [티커별 역할(포지션) 단일 소스] LS_TICKER_ROLES 선언부 주석 참고 - sanitizeTicker().yahooTicker로
@@ -1067,38 +1095,13 @@ function seedTickerRolesFromLegacyStorageOnce() {
   localStorage.setItem(LS_TICKER_ROLES_SEEDED, '1');
 }
 
-const LS_ROLE_CORE_MID_MERGED = 'sam_role_core_mid_merged_v1';
-// [1회성 마이그레이션 - '코어미드필더' 통합] 예전에 분리돼 있던 '미드필더'/'코어자산' role 값을 이미
-// 저장해 둔 모든 곳(자산/레지스트리/리밸런싱 목표/절세계좈 배분/월적립금 배분)에서 한 번만 훑어
-// 'core_mid'로 고쳐 쓴다. parseAssetRoleInput의 LEGACY_ASSET_ROLE_ALIASES는 "앞으로 들어오는 입력"만
-// 정규화할 뿐 이미 저장된 원시 문자열 자체는 안 바꾸므로, 화면에 표시/집계될 때(단순 === 비교) 옛
-// 값과 새 값이 섞이지 않도록 여기서 데이터 자체를 직접 재작성한다.
-function migrateCoreMidfielderRoleMergeOnce() {
-  if (localStorage.getItem(LS_ROLE_CORE_MID_MERGED) === '1') return;
-  const isLegacy = (role) => role === 'midfielder' || role === 'core';
-  let touchedAssets = false, touchedRoles = false, touchedRebalance = false, touchedProjection = false;
-  state.assets.forEach((a) => { if (isLegacy(a.role)) { a.role = 'core_mid'; touchedAssets = true; } });
-  Object.keys(state.tickerRoles).forEach((k) => { if (isLegacy(state.tickerRoles[k])) { state.tickerRoles[k] = 'core_mid'; touchedRoles = true; } });
-  REBALANCE_OWNERS.forEach((owner) => {
-    ['국내', '해외'].forEach((region) => {
-      (state.rebalance[owner].targets[region] || []).forEach((t) => {
-        if (isLegacy(t.role)) { t.role = 'core_mid'; touchedRebalance = true; }
-        if (Array.isArray(t.selectedStocks)) t.selectedStocks.forEach((s) => { if (isLegacy(s.role)) { s.role = 'core_mid'; touchedRebalance = true; } });
-      });
-    });
-    (state.projection.monthlyContributionByOwner[owner].allocation || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
-  });
-  (state.projection.monthlyContributionAllocation || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
-  const allocByOwner = state.projection.taxAdvantagedPlan.allocationByOwner || {};
-  Object.keys(allocByOwner).forEach((owner) => {
-    (allocByOwner[owner] || []).forEach((it) => { if (isLegacy(it.role)) { it.role = 'core_mid'; touchedProjection = true; } });
-  });
-  if (touchedAssets) persistAssets();
-  if (touchedRoles) persistTickerRoles();
-  if (touchedRebalance) persistRebalance();
-  if (touchedProjection) persistProjection();
-  localStorage.setItem(LS_ROLE_CORE_MID_MERGED, '1');
-}
+// [Phase 32] 예전에 있던 migrateCoreMidfielderRoleMergeOnce()를 제거했다. 그 함수는 저장된 모든
+// 곳(자산/티커 레지스트리/리밸런싱 목표/절세계좌·월적립 배분)의 '미드필더'/'코어자산' role을
+// 'core_mid'로 덮어쓰는 파괴적 1회성 마이그레이션이었고, 기기마다 플래그(sam_role_core_mid_merged_v1)로
+// 한 번씩 돌았다. 4개 포지션을 복원한 지금 이 함수가 남아 있으면 새 기기에서 백업을 복원할 때
+// 복원된 코어자산/미드필더를 다시 합쳐 없애버린다 - 그래서 함수와 호출을 함께 삭제했다.
+// 이미 기기에 남아 있는 플래그 값은 굳이 지우지 않는다(지울 이유가 없고, 참조하는 코드도 없다).
+// 이미 'core_mid'로 저장된 사용자 데이터도 그대로 둔다 - 코어/미드필더로 자동 분해하지 않는다.
 
 function loadState() {
   try {
@@ -1236,7 +1239,6 @@ function loadState() {
   // 시드할 수 있다 - 그 값들에서 role을 읽어오기 때문] loadState()의 이 시점(모든 마이그레이션 이후)에
   // 호출한다.
   seedTickerRolesFromLegacyStorageOnce();
-  migrateCoreMidfielderRoleMergeOnce();
 
   if (localStorage.getItem(LS_DARKMODE) === '1') {
     document.documentElement.classList.add('dark');

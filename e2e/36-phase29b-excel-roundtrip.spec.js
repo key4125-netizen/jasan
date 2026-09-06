@@ -36,6 +36,10 @@ async function seed(page) {
 // 기준")는 선택 여부와 무관하게 항상 처리되므로(js/12) 덮어쓰기로 고정해도 이 스펙의 검증 대상과
 // 무관하다.
 async function roundTrip(page) {
+  // [중요] "덮어쓰기"는 confirm()으로 한 번 더 확인을 받는다. Playwright는 dialog를 기본적으로
+  // 자동 취소(dismiss)하므로 이 핸들러가 없으면 import 자체가 조용히 취소되고, 테스트는 "아무 일도
+  // 일어나지 않은 상태"를 검증해 거짓 통과한다(Phase 32에서 실측 발견).
+  page.on('dialog', (d) => d.accept());
   await page.evaluate(() => openSystemManagementModal());
   const [download] = await Promise.all([
     page.waitForEvent('download'),
