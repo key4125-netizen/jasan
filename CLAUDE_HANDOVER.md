@@ -32,6 +32,102 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-06) — Phase 28 + 28-E/F + 29-A/B 릴리스 **V1.1 v211 유지(⚠ 아래 SW 항목 확인)**
+
+**커밋**: `abce28f` "release: V1.1 phase28-29 cma and data integrity" — **push 완료**(origin/main).
+PM 판단으로 Phase 28 Header + 28-E/F + 29-A + 29-B를 **하나의 릴리스 커밋**으로 묶었다(마지막 커밋이
+Phase 27이었고, index.html/js/05/js/12에 여러 Phase hunk가 섞여 있어 분리가 더 위험하다고 판단).
+
+### ⚠ 다음 세션이 가장 먼저 확인할 것 — sw.js CACHE_NAME
+`sw.js`의 `CACHE_NAME`이 아직 **'smart-asset-manager-v211'** 이다. 이번 릴리스는 index.html과 js 6개를
+바꿨으므로 **CACHE_NAME을 올리지 않으면 기존 사용자는 구버전 화면에 갇힌다**(sw.js 자체 주석의 경고 그대로).
+이번 단계는 PM이 "추가 코드 변경 금지"로 못박아 손대지 않았고, **버전 bump 여부는 PM 판단 대기 중**이다.
+이 세션에서 실제로 재현했다: 브라우저가 서비스워커 캐시 때문에 수정된 js를 계속 무시했고, SW 등록 해제 +
+`caches.delete('smart-asset-manager-v211')` 후에야 새 코드가 로드됐다.
+
+### Phase 28 — Header Utility 한 줄
+환율 뱃지/다크모드/동기화/설정 4요소가 320~1440px 전 구간에서 한 줄을 유지한다. 동기화 버튼은 텍스트
+대신 상태별 아이콘(`cloud-off`/`alert-triangle`/`refresh-cw`) + `aria-label`로 바꿔 색상 단독 전달을 없앴다
+(`SYNC_BTN_PRESENTATION`, js/12). 회귀: `e2e/33-phase28-header-single-row.spec.js`.
+
+### Phase 28-E — BOND/CASH 표준 키 연결
+엑셀 "대표매칭(수익률연동키)"에 앱 표준 키(BOND/CASH/CASH.USD)를 적었는데 "수익률 관리 기준" 시트가
+함께 올라오지 않으면, 예전엔 지역 대표지수 폴백까지 흘러내려 현금이 7%(KOSPI)로 계산됐다.
+`resolveProjectionRateForKey`에서 기존 정책(BOND→채권 프리셋, CASH/CASH.USD→미등록 시 0%)을 그대로
+따르도록 고쳤다. **새 수익률을 만들지 않았다.**
+
+### Phase 28-F — 대표매칭키 경로 A/B 통합 (핵심)
+수익률 해석에는 두 경로가 있다:
+- **경로 A(자산 기반)**: `getProjectionAssetGroupKey` → `resolveProjectionRateForKey` — `asset.rateMatchOverride`를 본다.
+- **경로 B(목표비중 기반)**: `getTargetProjectionRate` — 입력이 `state.rebalance` target이라 override를 **몰랐다**. 결정론 일반계좌 예측과 Monte Carlo 어댑터(js/16)가 둘 다 이 경로다.
+
+`findRateMatchOverrideForTarget(target)`(js/05)을 신설해, target에 대응하는 **보유 자산을 지금 state에서
+동적으로 찾아** 그 override를 경로 B에도 0순위로 태운다. ticker형은 정규화 티커, namedHolding형은 정규화
+이름으로 매칭하고 `target.owner`가 있으면 그 소유자 자산을 우선한다(js/04 `expandRebalanceTargetsForComputation`와
+js/16 pseudoTarget에 owner를 실어 보낸다).
+**특정 키 이름을 코드에 하드코딩하지 않는다** — 사용자가 "수익률 관리 기준"에 어떤 키를 추가/수정/삭제하든
+코드 수정 없이 따라간다. 회귀: `e2e/34-phase28f-rate-key-override.spec.js`(테스트 전용 키만 사용).
+
+### Phase 29-A — 검증된 장기 전망(CMA) 추천
+**핵심 계약: recommended ≠ active rate.** 사용자가 [적용]을 눌러야만 계산 기준이 바뀐다.
+- `CMA_SOURCE_METADATA[anchor]`에 `recommended`(현재 5개 앵커 전부 **null**)와 `appliesToKeys` 추가.
+  **출하 코드에 임의 수치를 넣지 않았다** — 사람이 원문을 검증해 승인 기준 9항목(출처/투자기간/자산군 정의/
+  nominal-real/arithmetic-geometric/price-total/통화/장기 타당성/앱 성장률 정의 호환)을 통과시킨 값만 채운다.
+- `getPendingCmaFields(key)`가 **필드 단위**로 후보를 고른다: 사용자가 이미 `customScenarioRates[key][preset]`을
+  확정한 필드는 후보에서 제외 → **override는 절대 덮이지 않는다**. 판단은 draft가 아니라 커밋된 state 기준.
+- UI는 기존 "수익률 관리" 모달 행에 배지 + 소형 팝업(`cmaRecommendationModal`)만 추가. 새 탭/화면 없음.
+  [나중에]는 `state.projection.cmaRecommendationStatus[anchor].seenVersion`만 기록(계산 불변), [적용]만 커밋.
+- 신규 state 필드는 `cmaRecommendationStatus` 하나뿐(하위호환 백필, 계산에 영향 없음). 클라우드 sync의
+  `adoptRemoteRebalanceAndProjection`에도 추가했다(빠지면 기기 간 확인 이력이 사라진다).
+- 회귀: `e2e/35-phase29a-cma-recommendation.spec.js`(추천 값은 테스트 중 런타임 주입, 출하 데이터 오염 없음).
+
+### Phase 29-B — Excel round-trip override 의미 보존
+**원인은 Export 한 곳이었다.** Import는 원래부터 정상(빈 칸=override 없음).
+Export가 `getReferenceRate()`(오버라이드+시스템 기본값 합성 최종값)를 3칸에 **항상** 채워 넣어서,
+자기 파일을 그대로 재업로드하기만 해도 시스템 기본값이 영구 override로 동결됐다(이후 기본값/추천 갱신이
+반영되지 않는 원인).
+→ **실제 저장된 원본 override만 기록하고, 없으면 빈 칸**으로 남긴다(`overrideOnly`, js/12). 명시적 `0`은
+`undefined`와 구분되어 그대로 `0`으로 나간다. **Excel 컬럼 추가/변경 없음, Import 무변경.**
+실측 예: NASDAQ에 `normal=5.8`만 override → `보수적(%)=""`, `일반적(%)=5.8`, `긍정적(%)=""`.
+- **구형 파일 호환**: Import를 안 바꿨으므로 예전에 내려받은 파일(3칸 전부 채워진 형식)은 이전과 100%
+  동일하게 동작한다(그 한계도 그대로). 개선은 **이번 수정 이후 새로 내보낸 파일부터** 적용된다.
+- 회귀: `e2e/36-phase29b-excel-roundtrip.spec.js` — 실제 [엑셀 내보내기] 다운로드 → 실제 [엑셀 업로드]
+  재주입으로 default-only / partial / full / 추천적용 / 추천미적용 / 타 커스텀키 / deterministic·MC 불변 /
+  자산·거래 불변 / sync 구조를 검증한다.
+
+### 테스트 상태 (릴리스 시점 실측)
+- Unit **109/109 pass**
+- Phase 29-B `e2e/36` **9/9 pass**, Phase 29-A `e2e/35` **12/13**(#10만 아래 환경 이슈)
+- 전체 Playwright(workers=1) **226 passed / 22 failed** — **"전체 통과"가 아니다.**
+
+### ⚠ 환경 의존 실패 2종 (제품 회귀 아님 — 고치지 말고 원인부터 확인할 것)
+1. **외부 시세(가격 이력) 조회 불가 11건** (`e2e/02·03·04·05×2·06·07×2·19·34#8·35#10`).
+   오류 문구: `instrument "..."(weight 100.0%)의 가격 이력을 가져오지 못해 변동성을 계산할 수 없습니다.`
+   위험자산(주식/ETF, 그리고 **이름으로 채권 판정이 안 되는 namedHolding**)은 σ 계산에 가격 이력이 필요한데
+   이 샌드박스는 외부 API가 막혀 있다(Phase 23-R 기확인). 세션 초반엔 통과했다가 후반에 실패했다 —
+   네트워크 가용성에 따라 달라진다.
+   ※ js/16은 namedHolding의 자산군을 **저장된 category가 아니라 이름**(`classifyCategory('', name)`)으로
+   판정한다. 그래서 이름에 "채권"이 없는 채권 자산(`E2E34_MC자산`)은 위험자산으로 분류돼 가격 이력을 찾는다.
+   → 백로그: MC 검증 테스트 시드를 이름에 "채권"이 들어가는 자산으로 바꾸면 외부 의존이 사라진다
+   (`e2e/36`의 `E2E36_채권`이 그 방식이라 항상 통과한다).
+2. **환율 입력칸 클리핑 11건** (`e2e/33`). 표시되는 환율 값의 길이에 따라 `scrollWidth > clientWidth`가 된다.
+   **작업 트리 전체를 `git stash`로 되돌린 원본 코드에서도 재현**했다(오히려 19/20 실패) — Phase 28/29와 무관.
+
+### MC Golden (Phase 28-F/29-A/29-B 전부 동일 — 변하면 안 되는 값)
+가구 12.95억(실질 7.90억) / 신랑 7.77억(4.74억) / 와이프 5.18억(3.16억) — 채권 시드 기준.
+
+### Phase 29 설계 문서(구현 안 한 것 포함)
+- **외부 데이터 자동화 3단계**: ①자동 탐색/감지(앱 밖 스크립트로 "출처 페이지가 바뀐 것 같다"는 신호만 —
+  숫자 추출·해석은 하지 않는다) ②전문가/PM 검증(사람, 자동화 불가) ③사용자 승인 후 적용(앱 내, 29-A).
+  조사 결과 Vanguard/BlackRock/JPM/RA/국민연금 등 **신뢰 가능한 출처 전부 공식 API가 없고 PDF/웹페이지**다.
+  자동 스크레이핑은 ToS·파싱 취약성·정의 오해석 위험으로 채택하지 않는다.
+- **국내 자산군(KR_EQUITY/KR_BOND/REAL_ESTATE/CASH)** 은 `legacy_approximation`(source=null) 유지.
+  임의 숫자를 넣지 않는다. "출처 미검증" 라벨 노출은 별도 승인 대상(미구현).
+- **미구현 백로그**: 투자 역할 자동 제안(카테고리→역할 분류기 신규 설계 필요), 거래입력 화면의 대표매칭
+  자동판별 미리보기(순수 표시, 기존 로직 재사용), 위 테스트 취약점 2종.
+
+---
+
 ## 최근 세션 요약 (2026-09-06) — Phase 26(Monte Carlo Performance Audit) **V1.1 v211 유지**
 
 **커밋**: `85a1e01` "perf: optimize monte carlo annual rebalance" — **push 완료**. **SW 버전은 v211 그대로다**(엔진 JS만 바뀌었고 APP_SHELL 밖 런타임 캐싱 대상이라 PM이 bump 없이 종료 승인).
