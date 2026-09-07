@@ -175,6 +175,14 @@ function syncAssetsFromTransactions() {
     let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType &&
       (pos.ticker ? a.ticker === pos.ticker : (!a.ticker && a.name === pos.name)));
     if (asset && asset.category === '현금' && asset.currency !== 'USD') return; // 원화 현금만 자산관리 탭 전용 - 절대 덮어쓰지 않는다
+    // [Phase 50 - P0-1] 자산 마스터가 수량을 관리한다고 스스로 적어 둔 자산(positionSource='manual',
+    // Phase 49)은 거래원장이 덮어쓰지 않는다. 바로 위 원화 현금 가드와 같은 성격의 예외이며, 차이는
+    // "카테고리로 추정한 예외"가 아니라 "자산에 저장된 사실에 따른 예외"라는 점이다.
+    // 이 가드가 없으면, 같은 소유자·계좌·티커(또는 이름)를 가진 거래가 하나라도 생기는 순간 사용자가
+    // 자산 화면에서 직접 입력한 수량/취득가가 매 부팅마다 조용히 거래원장 값으로 되돌아간다.
+    // legacy 자산(표식 없음)은 여기에 걸리지 않는다 - 예전과 완전히 같은 경로로 흐른다. 표식이 없는
+    // 자산을 "거래가 있으니 ledger겠지"라고 추정해 저장하지 않는다(PM 확정 정책).
+    if (asset && asset.positionSource === 'manual') return;
     if (pos.quantity <= 0) {
       // [가족 동기화 - 스마트 머지] 값이 실제로 바뀔 때만 updatedAt을 찍는다 - 이 함수는 부팅마다
       // 실행되는 안전망 재계산이라, 매번 무조건 찍으면 아무것도 안 바뀌었는데도 "방금 수정됨"으로
@@ -213,6 +221,71 @@ function syncAssetsFromTransactions() {
 function isTransactionTracked(a) {
   return state.transactions.some((t) => t.owner === a.owner && t.accountType === a.accountType &&
     (a.ticker ? t.ticker === a.ticker : (!t.ticker && t.name === a.name)));
+}
+
+/* =========================================================================
+ * [Phase 50 - P0-2] 거래원장과 자산 마스터가 어긋난 상태를 "탐지"만 한다.
+ *
+ * 이 블록은 아무것도 고치지 않는다. 자산 삭제·수량 0·취득가 0·positionSource 자동 변경·소유자/
+ * 계좌/티커 자동 변경을 전부 하지 않는다. 목적은 자동 정리가 아니라 안전한 탐지와 보존이다.
+ *
+ * [왜 "거래내역이 없다 = 고아"가 아닌가]
+ * 부동산·원화현금·자산 화면에서 직접 등록한 종목은 거래내역이 없는 것이 정상이다. 그 단순 규칙을
+ * 쓰면 멀쩡한 자산 다수를 문제로 표시하게 된다. 그래서 판단 기준은 "거래가 있는가"가 아니라
+ * "이 자산이 스스로 적어 둔 원천과 지금 상태가 어긋나는가"다.
+ *
+ * [legacy 자산은 판정하지 않는다]
+ * positionSource가 없는 자산은 원천을 알 수 없다. 현재 거래 존재 여부로 추정해 경고를 띄우면
+ * 사용자에게 "고치라"고 말하면서 정작 무엇이 맞는지는 앱도 모르는 상태가 된다. 확실하지 않으면
+ * 데이터도 화면도 건드리지 않는다 - 데이터를 고치는 것보다 잘못 고치지 않는 것이 우선이다.
+ * ====================================================================== */
+const POSITION_CONSISTENCY = Object.freeze({
+  OK: 'OK',
+  LEDGER_WITHOUT_TX: 'LEDGER_WITHOUT_TX', // 거래원장 기반이라고 적혀 있는데 매칭되는 거래가 없다
+  MANUAL_WITH_TX: 'MANUAL_WITH_TX'        // 자산 마스터 기반인데 매칭되는 거래가 있고 값이 어긋난다
+});
+
+// 초보자가 읽을 문구다 - 무엇이 잘못됐는지 단정하지 않고(앱도 어느 쪽이 맞는지 모른다) 확인을
+// 요청하기만 한다. 자동 해결 버튼을 두지 않는 것과 같은 이유다.
+const POSITION_CONSISTENCY_MESSAGES = Object.freeze({
+  LEDGER_WITHOUT_TX: '거래내역이 확인되지 않는 거래원장 기반 자산입니다. 거래내역을 지웠거나 파일로 덮어썼다면 내용을 확인해 주세요.',
+  MANUAL_WITH_TX: '거래내역과 자산 정보가 일치하지 않습니다. 내용을 확인해 주세요.'
+});
+
+// 취득가는 나눗셈으로 나온 실수라 왕복 과정에서 끝자리가 흔들릴 수 있다 - 그 정도 차이로 경고를
+// 띄우면 아무 문제 없는 자산이 매번 문제로 보인다.
+function positionValuesDiffer(assetValue, ledgerValue) {
+  const a = num(assetValue), b = num(ledgerValue);
+  return Math.abs(a - b) > Math.max(1e-9, Math.abs(b) * 1e-9);
+}
+
+// syncAssetsFromTransactions()가 자산을 찾을 때 쓰는 것과 같은 매칭 키(소유자+계좌구분+티커,
+// 티커가 없으면 이름)를 그대로 쓴다 - 두 곳이 다르게 판단하면 "동기화는 건드리는데 화면은
+// 문제없다고 말하는" 상태가 된다.
+function findLedgerPositionForAsset(asset, positions) {
+  const map = positions || computePositionsAndRealizedPnL().positions;
+  return Object.values(map).find((p) => p.owner === asset.owner && p.accountType === asset.accountType &&
+    (asset.ticker ? p.ticker === asset.ticker : (!p.ticker && p.name === asset.name))) || null;
+}
+
+function assessPositionConsistency(asset, positions) {
+  const out = (status, extra) => Object.assign({ status, message: POSITION_CONSISTENCY_MESSAGES[status] || '' }, extra || {});
+  if (!asset) return out(POSITION_CONSISTENCY.OK);
+  // 원화 현금은 시스템 정책상 거래원장이 관리하지 않는다(syncAssetsFromTransactions의 첫 가드).
+  // 옛 거래가 남아 있어도 그건 어긋난 상태가 아니라 의도된 예외다.
+  if (asset.category === '현금' && asset.currency !== 'USD') return out(POSITION_CONSISTENCY.OK);
+  if (asset.positionSource === undefined) return out(POSITION_CONSISTENCY.OK); // legacy - 판정하지 않는다
+
+  const pos = findLedgerPositionForAsset(asset, positions);
+  if (asset.positionSource === 'ledger') {
+    return pos ? out(POSITION_CONSISTENCY.OK) : out(POSITION_CONSISTENCY.LEDGER_WITHOUT_TX);
+  }
+  // manual - 거래가 아예 없으면 정상이다(부동산·직접등록 자산이 원래 그렇다).
+  if (!pos) return out(POSITION_CONSISTENCY.OK);
+  const differs = positionValuesDiffer(asset.quantity, pos.quantity) || positionValuesDiffer(asset.buyPrice, pos.avgPrice);
+  return differs
+    ? out(POSITION_CONSISTENCY.MANUAL_WITH_TX, { ledgerQuantity: pos.quantity, ledgerBuyPrice: pos.avgPrice })
+    : out(POSITION_CONSISTENCY.OK);
 }
 
 // [보유자산 양식 다운로드] 버튼 - 아직 거래내역이 하나도 없는 보유 종목들을, 지금의 수량/매수단가로

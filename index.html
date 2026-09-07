@@ -1760,6 +1760,12 @@
 
       <div id="assetDetailInfoGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-sm mb-4"></div>
 
+      <!-- [Phase 50 - P0-2] 거래원장과 자산 정보가 어긋났을 때만 나타나는 한 줄 안내. 새 카드/탭/
+           진단 화면을 만들지 않고 이미 보고 있던 상세 모달 안에, 방금 위에서 본 수량/매수단가 바로
+           아래에 붙인다. 자동 해결 버튼은 두지 않는다 - 어느 쪽 값이 맞는지는 사용자만 안다.
+           판정은 assessPositionConsistency()(js/06)가 하고, 여기서는 문구만 보여준다. -->
+      <div id="assetDetailPositionNotice" class="hidden mb-4"></div>
+
       <!-- [Phase 47-F] 이 자산에 지금 어떤 장기 수익률 가정이 적용되고 있는지. 예전엔 이 정보를
            볼 수 있는 곳이 거래 등록 모달과 엑셀 대표매칭 칸뿐이라, 거래내역을 쓰지 않는 자산
            (부동산·실물채권·원화현금·자산 추가로만 등록한 종목)은 확인할 방법이 아예 없었다.

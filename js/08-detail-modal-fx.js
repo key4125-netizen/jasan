@@ -198,6 +198,22 @@ function renderAssetDetailReturnAssumption(assets) {
   box.classList.remove('hidden');
 }
 
+/* [Phase 50 - P0-2] 거래원장과 자산 정보가 어긋난 경우에만 한 줄 안내를 띄운다.
+ * 판정은 assessPositionConsistency()(js/06)에 전부 위임한다 - 이 함수는 문자열만 조립한다.
+ * 통합 모달은 보유분이 여러 건이라 같은 종류의 안내가 반복될 수 있어 종류별로 한 번만 보여준다. */
+function renderAssetDetailPositionNotice(assets) {
+  const box = document.getElementById('assetDetailPositionNotice');
+  const issues = (assets || []).filter(Boolean).map((a) => assessPositionConsistency(a))
+    .filter((x) => x.status !== POSITION_CONSISTENCY.OK);
+  const shown = [];
+  issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });
+  if (shown.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  // 색만으로 알리지 않는다 - 기호와 문구가 먼저다(Global Readability Policy).
+  box.innerHTML = shown.map((x) =>
+    `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep">⚠ ${escapeHtml(x.message)}</p>`).join('');
+  box.classList.remove('hidden');
+}
+
 function openAssetDetailModal(id) {
   const a = state.assets.find((x) => x.id === id);
   if (!a) return;
@@ -221,6 +237,7 @@ function openAssetDetailModal(id) {
       <span class="font-semibold ${profitColor(r.rateOfReturn)}">(${fmtPct(r.rateOfReturn)})</span>
     </div>`;
 
+  renderAssetDetailPositionNotice([a]); // [Phase 50]
   renderAssetDetailReturnAssumption([a]); // [Phase 47-F]
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   // [거래내역 추적 여부 기준] 예전엔 "티커 유무"로 근사했지만, 이제 달러 현금도 티커 없이 거래내역
@@ -321,6 +338,7 @@ function openAssetDetailModalGroup(members) {
     </div>`;
 
   // [Phase 47-F] 통합 모달은 보유분이 여럿이라 전부 넘긴다 - 서로 다르면 그 사실을 알린다.
+  renderAssetDetailPositionNotice(members); // [Phase 50]
   renderAssetDetailReturnAssumption(members);
   document.getElementById('assetDetailOwnerBreakdownList').innerHTML = [...members]
     .sort((a, b) => b.curAmount - a.curAmount)

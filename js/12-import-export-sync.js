@@ -124,7 +124,16 @@ function mergeAssetsForAppend(existingAssets, incomingAssets) {
       newCount++;
       return;
     }
-    merged[idx] = { ...incoming, id: merged[idx].id }; // 값은 전부 최신 파일 기준, id만 기존 것 유지
+    const kept = merged[idx];
+    merged[idx] = { ...incoming, id: kept.id }; // 값은 전부 최신 파일 기준, id만 기존 것 유지
+    // [Phase 50] 엑셀 시트에는 positionSource 칸이 없다(Phase 49에서 컬럼을 추가하지 않기로 확정).
+    // 그래서 이 왕복만으로 "이 자산의 수량을 거래원장이 관리하는가"라는 사실이 조용히 지워졌다.
+    // 파일에 값이 없다는 것은 "manual이다"가 아니라 "이 파일은 그 사실을 담지 않는다"는 뜻이므로,
+    // 들어온 값이 없으면 기존 값을 그대로 지킨다(파일이 값을 담고 있으면 파일이 이긴다 - 다른
+    // 필드와 동일한 규칙).
+    if (merged[idx].positionSource === undefined && kept.positionSource !== undefined) {
+      merged[idx].positionSource = kept.positionSource;
+    }
     updatedCount++;
   });
   return { assets: merged, newCount, updatedCount };
