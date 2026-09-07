@@ -203,8 +203,16 @@ function renderAssetDetailReturnAssumption(assets) {
  * 통합 모달은 보유분이 여러 건이라 같은 종류의 안내가 반복될 수 있어 종류별로 한 번만 보여준다. */
 function renderAssetDetailPositionNotice(assets) {
   const box = document.getElementById('assetDetailPositionNotice');
-  const issues = (assets || []).filter(Boolean).map((a) => assessPositionConsistency(a))
+  const list = (assets || []).filter(Boolean);
+  const issues = list.map((a) => assessPositionConsistency(a))
     .filter((x) => x.status !== POSITION_CONSISTENCY.OK);
+  // [V1.1 소유자 정책] 신랑/와이프가 아닌 자산은 결정론적 예측에는 들어가는데 Monte Carlo의 자산배분
+  // 가중치 기준에서는 빠진다 - 두 화면이 같은 자산을 다르게 세는 상태다. 앱이 소유자를 대신 정해주지
+  // 않는 대신(누구 것인지는 사용자만 안다), 여기서 눈에 보이게 알리고 [수정]으로 직접 고르게 한다.
+  if (list.some((a) => !isValidOwner(a.owner))) {
+    issues.unshift({ status: 'OWNER_UNASSIGNED',
+      message: '소유자가 지정되지 않았습니다. 신랑 또는 와이프로 지정해 주세요. 지정 전에는 미래 예측과 몬테카를로가 이 자산을 다르게 계산합니다.' });
+  }
   const shown = [];
   issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });
   if (shown.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }

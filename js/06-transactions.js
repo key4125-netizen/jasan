@@ -409,7 +409,9 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
         const tx = {
           id: genId(),
           date: formatDateCell(pick(row, '일자', '날짜', 'date', 'Date')),
-          owner: String(pick(row, '소유자', 'owner') ?? '').trim() || '공동',
+          // [V1.1] 파일에 적힌 소유자를 그대로 읽는다. 유효하지 않아도 신랑/와이프로 바꾸지 않는다 -
+          // 가져오기가 사용자 데이터를 조용히 바꾸는 것이 더 위험하다(자산 상세에서 알린다).
+          owner: String(pick(row, '소유자', 'owner') ?? '').trim(),
           accountType: String(pick(row, '계좌구분', 'accountType') ?? '').trim() || '일반계좌',
           ticker: String(pick(row, 'ticker', 'Ticker', '티커') ?? '').trim(),
           name: String(pick(row, '종목명', 'name') ?? '').trim() || '이름없음',
@@ -798,6 +800,12 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   const id = document.getElementById('tx_id').value || genId();
   const name = document.getElementById('tx_name').value.trim();
   if (!name) { showToast('종목명을 입력하세요.', 'warn'); return; }
+  // [V1.1] 소유자 정책 - 신랑/와이프만 저장한다. 잘못된 값을 조용히 정상값으로 바꾸지 않고
+  // 다시 입력하도록 돌려보낸다(초보자에게는 "조용히 고쳐진 것"이 가장 찾기 어려운 오류다).
+  if (!isValidOwner(document.getElementById('tx_owner').value)) {
+    showToast('소유자를 신랑 또는 와이프 중에서 선택해주세요.', 'warn');
+    return;
+  }
   // [현금/외화현금 거래내역 차단] 기존 보유 '현금' 자산과 이름/소유자/계좌구분이 일치하면(무티커) 거래로
   // 등록할 수 없다 - 자산관리 탭에서 직접 잔고를 수정하도록 안내한다(findMatchingCashAsset 참고).
   const txOwnerVal = document.getElementById('tx_owner').value;

@@ -414,7 +414,8 @@ function normalizeImportedTransaction(t) {
   return {
     id: t.id || genId(),
     date: t.date || todayDateStr(),
-    owner: t.owner || '공동',
+    // [V1.1] 백업에 적힌 소유자를 그대로 되살린다 - 복원이 사용자 데이터를 바꾸지 않는다.
+    owner: String(t.owner ?? '').trim(),
     accountType: t.accountType || '일반계좌',
     ticker: String(t.ticker ?? '').trim(),
     name: t.name || '이름없음',
@@ -448,7 +449,8 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       const restored = parsed.assets.map(a => ({
         id: a.id || genId(),
         ticker: String(a.ticker ?? '').trim(),
-        owner: a.owner || '공동',
+        // [V1.1] 위와 같은 이유로 그대로 보존한다.
+        owner: String(a.owner ?? '').trim(),
         accountType: a.accountType || '일반계좌',
         category: a.category || '주식',
         name: a.name || '이름없음',
@@ -596,7 +598,8 @@ function normalizeImportedAsset(a) {
   return {
     id: a.id || genId(),
     ticker: String(a.ticker ?? '').trim(),
-    owner: a.owner || '공동',
+    // [V1.1] 위와 같은 이유로 그대로 보존한다(기존 '공동' 자산도 '공동'인 채로 복원된다).
+    owner: String(a.owner ?? '').trim(),
     accountType: a.accountType || '일반계좌',
     category: a.category || '주식',
     name: a.name || '이름없음',

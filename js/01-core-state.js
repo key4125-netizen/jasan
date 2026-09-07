@@ -470,6 +470,28 @@ function cloneDefaultRebalanceTargets() {
 // [소유자별 독립 리밸런싱 목표 - Option B] 신랑/와이프가 각자 다른 목표 비중을 가질 수 있도록
 // state.rebalance를 owner 키(REBALANCE_OWNERS)로 나눈 구조로 쓴다 - 자세한 배경은 구현 계획 문서 참고.
 const REBALANCE_OWNERS = ['신랑', '와이프'];
+
+/* =========================================================================
+ * [V1.1] 소유자 정책 - 모든 자산은 신랑 또는 와이프 중 한 명이 소유한다.
+ *
+ * 예전에는 '공동'도 고를 수 있었다. 그런데 계산 경로마다 취급이 달랐다 - 결정론적 미래예측은
+ * 소유자를 가리지 않아 공동 자산을 포함하는데, Monte Carlo의 자산배분 가중치는 REBALANCE_OWNERS
+ * (신랑/와이프)만 돌기 때문에 공동 자산의 금액이 basis에서 빠진다(실측: 공동 5천만을 더하면
+ * 결정론 합계는 2천만 -> 7천만이 되는데 MC basis는 2천만 그대로). 즉 같은 포트폴리오를 두 엔진이
+ * 다르게 본다. 공동을 위한 별도 계산체계를 만드는 대신 입력 단계에서 막는다.
+ *
+ * [자동으로 고치지 않는다] 이미 저장된 '공동' 자산을 신랑/와이프로 바꾸지 않는다. 계좌·거래내역·
+ * 금액·티커·role 어느 것으로도 소유자를 추정하지 않는다 - 누구 것인지는 사용자만 안다. 대신 자산
+ * 상세에서 눈에 보이게 알리고, 사용자가 직접 고르게 한다.
+ *
+ * [막는 곳과 보존하는 곳이 다르다]
+ *   신규 입력(자산 폼 / 거래 폼) -> 유효하지 않은 소유자는 저장을 거부한다.
+ *   가져오기·복원(Excel / JSON / Cloud) -> 있는 그대로 보존한다. 조용히 바꾸는 것이 더 위험하다.
+ * ====================================================================== */
+const VALID_ASSET_OWNERS = REBALANCE_OWNERS; // 정확히 두 값 - 리밸런싱/MC가 도는 소유자와 동일해야 한다
+function isValidOwner(owner) {
+  return VALID_ASSET_OWNERS.includes(String(owner ?? '').trim());
+}
 function makeDefaultRebalanceOwnerState() {
   return { domestic: { '국내': 40, '해외': 60 }, targets: cloneDefaultRebalanceTargets() };
 }
@@ -819,7 +841,10 @@ function makeAsset(raw) {
     // 클라우드 병합이 "다른 자산"으로 보아 최초 페어링 때 중복이 생긴다(Phase 52 실측).
     id: sanitizeAssetId(raw.id) || genId(),
     ticker,
-    owner: String(raw.owner ?? '').trim() || '공동',
+    // [V1.1] 예전에는 비어 있으면 '공동'을 붙였다. 이제 '공동'은 유효한 소유자가 아니므로 앱이
+    // 스스로 그 값을 만들어내지 않는다. 넘어온 값을 그대로 두고(기존 '공동' 데이터도 그대로 보존),
+    // 유효하지 않으면 화면이 "소유자를 지정해 달라"고 말한다 - 빈 값을 신랑/와이프로 몰래 채우지 않는다.
+    owner: String(raw.owner ?? '').trim(),
     accountType: String(raw.accountType ?? '').trim() || '일반계좌',
     category: raw.category || category,
     name,

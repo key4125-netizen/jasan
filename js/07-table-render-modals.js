@@ -815,6 +815,12 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
   const id = document.getElementById('f_id').value;
   const name = document.getElementById('f_name').value.trim();
   if (!name) { alert('종목명을 입력해주세요.'); return; }
+  // [V1.1] 소유자 정책 - 신랑/와이프만 저장한다. 기존 '공동' 자산을 이 화면에서 고칠 때도 같은
+  // 검증을 지나므로, 저장을 누르는 순간 유효한 소유자가 되어야 통과한다(자동 지정은 하지 않는다).
+  if (!isValidOwner(document.getElementById('f_owner').value)) {
+    showToast('소유자를 신랑 또는 와이프 중에서 선택해주세요.', 'warn');
+    return;
+  }
 
   const isAmountMode = document.getElementById('f_manualEntryToggle').checked && document.getElementById('f_amountMode').checked;
   const buyPriceVal = isAmountMode ? 1 : num(document.getElementById('f_buyPrice').value);
