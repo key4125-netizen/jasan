@@ -56,6 +56,93 @@
 3. **자동 데이터 정리/삭제는 금지한다.**
 4. 한 번에 하나의 데이터 정합성 문제만 해결한다.
 
+**5. positionSource와 `isTransactionTracked(a)`는 같은 뜻이 아니다(Phase 49에서 PM 확정).**
+   - `positionSource='ledger'` = **이 자산의 position 관리 원천이 거래원장이라는 "저장된 사실"**
+   - `positionSource='manual'` = 그 원천이 자산 마스터라는 "저장된 사실"
+   - `isTransactionTracked(a)=true` = **지금 이 순간 매칭되는 거래가 존재한다는 "현재 상태"**
+
+   `isTransactionTracked()`를 positionSource의 **영구 대체값으로 취급하지 않는다.**
+   legacy 자산은 ① 저장된 positionSource가 있으면 그것을 우선 ② 없으면 현재 거래 존재 여부를
+   *참고*만 함 ③ 거래 존재 여부만으로 source를 **영구 저장(migration)하지 않음**
+   ④ 불명확하면 기존 데이터를 보존한다.
+
+---
+
+## 최근 세션 요약 (2026-09-07) — Phase 49: positionSource 도입 **v213 유지**
+
+**커밋** `9f90763` "feat: record whether each asset's position comes from the ledger or manual entry" — push 완료.
+
+### 무엇을, 왜
+
+Phase 48 감사가 확정한 Hybrid SoT가 **코드 어디에도 적혀 있지 않다**는 것이 P0-1/P0-2를 못 고치던
+진짜 이유였다. `syncAssetsFromTransactions`는 "지금 매칭되는 거래가 있는가"만 볼 수 있어서
+**거래가 있었다가 사라진 자산(고아)** 과 **애초에 거래가 없던 자산(부동산·현금·최초등록)** 을
+구분하지 못한다. 자산에 표식 한 필드를 더해 그 구분을 명시적으로 남겼다.
+**이번 Phase는 "적어 두는 것"까지이고 실제 sync 동작은 전혀 바꾸지 않았다.**
+
+### positionSource 사양 (PM 승인 완료)
+
+| 항목 | 내용 |
+|---|---|
+| **저장 위치** | 자산 객체 `state.assets[]`의 필드 하나 |
+| **허용값** | **정확히 `'ledger'` \| `'manual'` 둘뿐.** 3번째 값 추가 금지 |
+| **값 없음(`undefined`)** | 세 번째 값이 **아니다** — "아직 표시되지 않았다"는 뜻. `rateMatchOverride`("빈 값=자동판별")·`customScenarioRates`("필드 없음=시스템 기본")가 이미 쓰는 **필드-존재 의미 체계**(Phase 29-B) 그대로. 그래서 스키마가 2-value로 유지된다 |
+| **영속화** | `persistAssets` 화이트리스트 · `buildSyncBlob` · `normalizeImportedAsset` |
+
+**생성은 "사실이 만들어지는 순간" 딱 두 곳뿐이다.**
+
+| 경로 | 값 |
+|---|---|
+| `syncAssetsFromTransactions`가 포지션에서 **자산을 새로 만들 때**([js/06:172](js/06-transactions.js#L172)) | `'ledger'` |
+| 자산 폼("최초등록")의 **생성 분기**([js/07](js/07-table-render-modals.js)) | `'manual'` |
+
+**일부러 찍지 않은 곳** — sync의 *기존 자산* 갱신 분기 · 자산 폼의 *수정* 분기 · Excel import ·
+Cloud merge. 특히 자산 폼 수정 분기는 `payload`에 넣지 않고 `{ ...oldAsset, ...payload }`를 그대로
+뒀다. **넣었다면 거래원장에서 태어난 자산을 이 화면에서 열고 저장만 해도 `'manual'`로 뒤집혀
+P0-1/P0-2의 판단 근거가 그 자리에서 오염된다.** `e2e/51` B-2가 이 지점을 고정한다.
+
+**추론 금지** — ticker·category·owner·accountType·rateMatchOverride·assetCharacter 중 무엇도 이 값을
+결정하는 데 쓰지 않는다. **마이그레이션 0건**(legacy 자산은 값 없이 그대로).
+
+### 데이터 불변성 (실측)
+
+같은 자산을 `ledger`/`manual`/값없음 세 상태로 만들어 **백업·동기화 왕복까지 통과시킨 뒤**
+positionSource만 빼고 **JSON 문자열 단위 완전 일치** 확인 — ticker·owner·accountType·quantity·
+buyPrice·**buyRate**·currency·category·role·rateMatchOverride·id 전부 불변. 계산도 4개 대표 자산
+× 3 시나리오에서 **적용 키·수익률이 세 상태 모두 동일**(숫자를 테스트에 베끼지 않고 프리셋에서
+직접 읽어 비교). KOSPI 앵커 상속 · BOND 카테고리 · UNRESOLVED→0 전부 유지.
+
+### 테스트
+
+`npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v213)** · `e2e/51` **11/11** ·
+전체 e2e **481/481 — 실패 0건, 신규 회귀 0건**. Phase 47-G 격리 유지 — **Production Worker/외부 API 0건.**
+
+> 테스트 중 3건이 처음 실패했으나 **전부 테스트 픽스처 오류였고 제품 버그가 아니었다.** 기대값을
+> 완화하지 않고 사실에 맞게 고쳤다: ⓐ **삼성전자의 적용 키는 `005930.KS`가 아니라 `KOSPI`다**
+> (Phase 47-A에서 전용 프리셋 폐지 → 판별 자체가 지수 키로 떨어짐) ⓑ **`buyRate`는 `makeAsset`이
+> 만드는 값이 아니라 거래원장 동기화가 채우는 값**이라 왕복 경로로 검증하도록 변경 ⓒ 수정 모달
+> 진입 함수는 `openModal('edit', id)`.
+
+### 알려진 한계 (숨기지 않고 기록)
+
+- **Excel import 자산은 값이 없다.** PM §7 "컬럼 추가 금지"를 지킨 결과이며, 값 없음 = 현행 동작
+  그대로라 안전하다.
+- **`mergeAssetsForAppend`가 `{...incoming, id: 기존id}` 형태라 기존 `positionSource`를 잃는다.**
+  Excel 의미 변경 금지에 걸려 Phase 49에서는 손대지 않았다. → **Phase 50 검토 대상.**
+
+### P0-1 / P0-2 착수 조건
+
+- **신규 자산은 이제 스스로 출처를 말한다.** legacy 자산에는 아직 표식이 없다.
+- legacy에 추측을 넣을 필요는 없다 — `isTransactionTracked(a)`([js/06:211](js/06-transactions.js#L211))가
+  "지금 매칭되는 거래가 있는가"라는 **사실**을 답한다. **단, 위 상시 정책 5항대로 그것을
+  positionSource의 영구 대체값으로 삼지 않는다.**
+- 저장된 표식의 고유한 가치는 **"거래가 있었다가 사라진 자산"을 "애초에 거래가 없던 자산"과
+  구분하는 그 한 경우** — 정확히 P0-2가 막혀 있던 지점이다.
+- 진행 순서: **표식 있으면 표식 우선 → 없으면 `isTransactionTracked` 사실 판정 → 그래도 모호하면
+  건드리지 않고 보존.** 자동 삭제/0 만들기는 여전히 금지.
+
+`.claude/launch.json`은 이번에도 커밋하지 않았다(상시 규칙).
+
 ---
 
 ## 최근 세션 요약 (2026-09-07) — Phase 48 SoT 감사(코드 0건) + Phase 48-A: P0-3 수정 **v213 유지**
