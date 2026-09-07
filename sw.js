@@ -2,7 +2,13 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v215'; // [Phase 54 - V1.0 Final Release] Phase 53이
+const CACHE_NAME = 'smart-asset-manager-v216'; // [V1.1 Phase 1 Release] 소유자 정책을 도입하면서
+// index.html과 js/01·06·07·08·12가 바뀌었다. 이제 신규 자산·거래는 신랑 또는 와이프만 소유할 수
+// 있고, 기존 '공동' 자산은 자동으로 바꾸지 않는 대신 자산 상세에서 알린다. 그 경고와 입력 차단이
+// 사용자에게 닿으려면 CACHE_NAME을 올려야 한다 - cache-first라 올리지 않으면 기존 사용자는 계속
+// '공동'을 고를 수 있고, 결정론적 예측과 몬테카를로가 같은 자산을 다르게 세는 상태도 그대로다.
+// 캐시 정책/APP_SHELL/install/activate/fetch 로직은 일절 무변경.
+// [Phase 54 - V1.0 Final Release] Phase 53이
 // 엑셀 복원 경로를 고치면서 js/01-core-state.js와 js/12-import-export-sync.js를 바꿨다. 엑셀
 // 가져오기가 시트에 이미 적혀 있던 자산군을 읽지 않아 티커 없는 자산이 왕복마다 '주식'이 되던 것
 // (그래서 원화 현금 보호막이 풀려 잔고가 줄고, 자산이 복제되던 것), 매수 시점 환율이 시트에 아예
