@@ -15,11 +15,47 @@
 // appliedRate(매도 시점 환율)로, 원화 매입원가는 포지션에 쌓인 avgRate(매수 시점 가중평균 환율)로
 // 각각 환산해 차감하므로, 주가 차익과 환차손익이 하나의 확정 원화 금액에 함께 반영된다. 원화(KRW)
 // 거래는 rate가 항상 1이라 이 로직을 그대로 타도 결과가 기존과 같다(환산이 사실상 없는 것과 동일).
+/* [B-5] 거래/포지션 identity 키.
+ *
+ * 티커가 있으면 티커 하나가 종목도 통화도 시장도 결정하므로 예전 규칙 그대로다. 티커가 없으면
+ * 이름만으로는 부족하다 - 같은 계좌 안에 이름이 같은 원화 자산과 달러 자산이 함께 있을 수 있는데,
+ * 그 둘이 한 포지션으로 합쳐지면 수량·평단가·가중평균환율·실현손익이 통화가 섞인 값이 된다.
+ *
+ * 실측(감사 fixture): 같은 이름의 원화 매수 100주@10,000원 + 달러 매수 100주@$100 + 달러 매도
+ * 50주@$120을 넣으면 포지션이 하나로 합쳐져 평단가 5,050 · 가중평균환율 650.5가 되고, 실현손익이
+ * -155,551,250원으로 계산됐다(이름을 나눠 정상 분리하면 +2,200,000원).
+ *
+ * 거래 레코드에는 currency가 이미 있다(폼·엑셀·JSON 전부 저장한다) - 새 필드를 만들지 않고 그것만
+ * 쓴다. isDomestic은 거래 스키마에 없으므로 여기서 추론하지 않는다(최종 보고서의 dependency 참고). */
+function transactionIdentityKey(t) {
+  const ticker = String(t.ticker ?? '').trim();
+  return ticker
+    ? `${t.owner}__${t.accountType}__${ticker}`
+    : `${t.owner}__${t.accountType}__${t.name}__${t.currency}`;
+}
+
+/* [B-5] 자산 하나와 거래(또는 거래 포지션) 하나가 같은 대상을 가리키는지 판정한다.
+ *
+ * 예전에는 이 판정이 네 곳에 각자 인라인으로 흩어져 있었고 전부 통화를 보지 않았다. 그래서 같은
+ * 이름의 원화 현금과 달러 현금이 함께 있으면 state.assets 배열에서 먼저 나오는 쪽이 매칭됐고,
+ * 그게 원화 현금이면 바로 아래 원화현금 가드가 걸려 return 해버려 **달러 거래가 아예 반영되지
+ * 않았다**(실측: 배열 순서만 바꿔도 총평가가 2,450만 <-> 2,015만으로 갈렸고, 반영되지 않은 쪽은
+ * buyRate가 비어 환차손익 근거까지 사라졌다).
+ *
+ * 판정을 한 곳에 모아 네 호출부가 같은 규칙을 쓰게 한다 - 규칙이 갈라지면 "동기화는 건드리는데
+ * 화면은 문제없다고 말하는" 상태가 다시 생긴다. */
+function assetMatchesLedgerIdentity(asset, ledger) {
+  if (asset.owner !== ledger.owner || asset.accountType !== ledger.accountType) return false;
+  const ledgerTicker = String(ledger.ticker ?? '').trim();
+  if (ledgerTicker) return asset.ticker === ledger.ticker;
+  return !String(asset.ticker ?? '').trim() && asset.name === ledger.name && asset.currency === ledger.currency;
+}
+
 function computePositionsAndRealizedPnL() {
-  const positions = {}; // key(소유자__계좌구분__티커) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, avgRate, totalRateWeighted, realizedPnL }
+  const positions = {}; // key(transactionIdentityKey) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, avgRate, totalRateWeighted, realizedPnL }
   const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
   const annotated = sorted.map((tx) => {
-    const key = `${tx.owner}__${tx.accountType}__${tx.ticker || tx.name}`;
+    const key = transactionIdentityKey(tx);
     if (!positions[key]) positions[key] = { owner: tx.owner, accountType: tx.accountType, ticker: tx.ticker, name: tx.name, currency: tx.currency, quantity: 0, avgPrice: 0, totalCost: 0, avgRate: 1, totalRateWeighted: 0, realizedPnL: 0 };
     const pos = positions[key];
     const txRate = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : 1;
@@ -53,11 +89,13 @@ function computePositionsAndRealizedPnL() {
 // 그 함수(평단가/실현손익까지 전부 계산)를 건드리지 않고, "지금 이 조합의 보유수량이 몇 개인가"만
 // 빠르게 계산해 거래 저장 직전 UI 검증에 쓴다. excludeTxId: 수정 중인 거래 자기 자신은 계산에서
 // 제외해야, "이 거래를 이렇게 고치면 보유수량을 넘는가"를 정확히 비교할 수 있다.
-function computeCurrentHoldingQuantity(owner, accountType, ticker, name, excludeTxId) {
-  const key = ticker || name;
+// [B-5] 매도 검증도 실제 계산(computePositionsAndRealizedPnL)과 반드시 같은 포지션을 봐야 한다 -
+// 규칙이 갈라지면 "저장은 막았는데 계산은 다른 포지션을 보는" 상태가 된다. 같은 키 함수를 쓴다.
+function computeCurrentHoldingQuantity(owner, accountType, ticker, name, currency, excludeTxId) {
+  const key = transactionIdentityKey({ owner, accountType, ticker, name, currency });
   let qty = 0;
   [...state.transactions]
-    .filter((t) => t.id !== excludeTxId && t.owner === owner && t.accountType === accountType && (t.ticker || t.name) === key)
+    .filter((t) => t.id !== excludeTxId && transactionIdentityKey(t) === key)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))
     .forEach((t) => { qty += t.type === 'buy' ? t.quantity : -Math.min(t.quantity, qty); });
   return qty;
@@ -87,7 +125,8 @@ function findExcelOversellViolations(newRows, existingTransactions, excelRowNumB
   const qtyByKey = new Map();
   const violations = [];
   combined.forEach((t) => {
-    const key = `${t.owner}__${t.accountType}__${t.ticker || t.name}`;
+    // [B-5] 위 computeCurrentHoldingQuantity와 같은 이유로 실제 계산과 동일한 키를 쓴다.
+    const key = transactionIdentityKey(t);
     const available = qtyByKey.get(key) || 0;
     if (t.type === 'buy') {
       qtyByKey.set(key, available + t.quantity);
@@ -172,8 +211,12 @@ function findMatchingCashAsset(owner, accountType, ticker, name, currency) {
 function syncAssetsFromTransactions() {
   const { positions } = computePositionsAndRealizedPnL();
   Object.values(positions).forEach((pos) => {
-    let asset = state.assets.find((a) => a.owner === pos.owner && a.accountType === pos.accountType &&
-      (pos.ticker ? a.ticker === pos.ticker : (!a.ticker && a.name === pos.name)));
+    // [B-5] 통화까지 보고 정확한 자산을 먼저 고른다(assetMatchesLedgerIdentity). 예전에는 이름만
+    // 봤기 때문에 같은 이름의 원화 현금이 배열에서 먼저 나오면 그것이 매칭되고, 바로 아래 원화현금
+    // 가드가 걸려 return 해버려 정작 이 포지션의 주인인 달러 자산이 영영 갱신되지 않았다 - 가드가
+    // 잘못된 자산 위에서 실행된 것이지 가드 자체가 문제가 아니었다. 순서는 그대로 두고(매칭 → 가드
+    // → 반영) 매칭만 정확하게 만든다.
+    let asset = state.assets.find((a) => assetMatchesLedgerIdentity(a, pos));
     if (asset && asset.category === '현금' && asset.currency !== 'USD') return; // 원화 현금만 자산관리 탭 전용 - 절대 덮어쓰지 않는다
     // [Phase 50 - P0-1] 자산 마스터가 수량을 관리한다고 스스로 적어 둔 자산(positionSource='manual',
     // Phase 49)은 거래원장이 덮어쓰지 않는다. 바로 위 원화 현금 가드와 같은 성격의 예외이며, 차이는
@@ -216,11 +259,12 @@ function syncAssetsFromTransactions() {
 }
 
 // [삭제/수정 버튼 게이팅 - 거래내역 추적 여부] 이 자산과 매칭되는 거래(소유자+계좌구분+티커, 티커
-// 없으면 이름)가 거래내역에 하나라도 있으면 true - openAssetDetailModal/assetDetailOwnerRowHtml이
+// 없으면 이름+통화)가 거래내역에 하나라도 있으면 true - openAssetDetailModal/assetDetailOwnerRowHtml이
 // 이 값으로 [수정]/[삭제] 버튼을 숨긴다(거래내역이 잔고의 근거이므로 여기서 직접 못 고치게).
+// [B-5] 동기화와 같은 판정 함수를 쓴다 - 예전엔 통화를 보지 않아, 같은 이름의 달러 자산에 거래가
+// 있다는 이유로 원화 자산의 [수정] 버튼까지 사라졌다(그 반대도 마찬가지).
 function isTransactionTracked(a) {
-  return state.transactions.some((t) => t.owner === a.owner && t.accountType === a.accountType &&
-    (a.ticker ? t.ticker === a.ticker : (!t.ticker && t.name === a.name)));
+  return state.transactions.some((t) => assetMatchesLedgerIdentity(a, t));
 }
 
 /* =========================================================================
@@ -259,13 +303,12 @@ function positionValuesDiffer(assetValue, ledgerValue) {
   return Math.abs(a - b) > Math.max(1e-9, Math.abs(b) * 1e-9);
 }
 
-// syncAssetsFromTransactions()가 자산을 찾을 때 쓰는 것과 같은 매칭 키(소유자+계좌구분+티커,
-// 티커가 없으면 이름)를 그대로 쓴다 - 두 곳이 다르게 판단하면 "동기화는 건드리는데 화면은
-// 문제없다고 말하는" 상태가 된다.
+// syncAssetsFromTransactions()가 자산을 찾을 때 쓰는 것과 같은 판정(assetMatchesLedgerIdentity -
+// 소유자+계좌구분+티커, 티커가 없으면 이름+통화)을 그대로 쓴다 - 두 곳이 다르게 판단하면
+// "동기화는 건드리는데 화면은 문제없다고 말하는" 상태가 된다.
 function findLedgerPositionForAsset(asset, positions) {
   const map = positions || computePositionsAndRealizedPnL().positions;
-  return Object.values(map).find((p) => p.owner === asset.owner && p.accountType === asset.accountType &&
-    (asset.ticker ? p.ticker === asset.ticker : (!p.ticker && p.name === asset.name))) || null;
+  return Object.values(map).find((p) => assetMatchesLedgerIdentity(asset, p)) || null;
 }
 
 function assessPositionConsistency(asset, positions) {
@@ -828,7 +871,8 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 친절하게 알려준다(계산 로직 자체는 그대로 유지 - 이 검증은 UI 단계에서만 막는다).
   if (document.getElementById('tx_type').value === 'sell') {
     const excludeTxId = document.getElementById('tx_id').value;
-    const available = computeCurrentHoldingQuantity(txOwnerVal, txAccountTypeVal, txTickerVal, name, excludeTxId);
+    // [B-5] 통화까지 넘겨 실제 계산과 같은 포지션의 보유수량을 본다(폼의 tx_currency 값 그대로).
+    const available = computeCurrentHoldingQuantity(txOwnerVal, txAccountTypeVal, txTickerVal, name, txCurrencyVal, excludeTxId);
     if (quantity > available) {
       showToast(`현재 보유수량(${fmtNum(available, 4)})보다 많은 수량을 매도할 수 없습니다.`, 'warn', 6000);
       return;

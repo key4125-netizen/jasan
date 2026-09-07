@@ -227,18 +227,27 @@ function computeIndividualRebalanceGuide(ownerFilter) {
       const groupCurTotal = groupAssets.reduce((s, a) => s + calcRow(a).curAmount, 0);
 
       // 소유자 무관 동일 종목 합산: 같은 그룹 안에서 티커(없으면 이름)가 같은 자산끼리 먼저 하나로 묶는다.
-      const byTicker = new Map(); // key(티커/이름) -> { assets, curAmount, owners, name, ticker, isForeign, currentPrice }
+      // [C-1] 티커가 없는 자산은 이름만으로 묶으면 원화 현금과 달러 현금이 한 덩어리가 된다 - 이름은
+      // 같지만 통화가 다른 자산은 애초에 다른 자산이다. 실측(감사 fixture A): 국내 원화현금 1,000만 +
+      // 국내 달러현금 $10,000이 하나로 합쳐져 24,500,000원 한 줄이 되고, 아래 isForeign이 마지막
+      // 자산 값으로 덮어써져 그 줄 전체가 달러 자산으로 취급됐다 - 그 결과 예상 매수/매도 수량이
+      // 원화 자산에까지 환율 기준으로 계산됐다.
+      // 티커가 있는 자산은 티커가 곧 통화까지 결정하므로 기존 키를 그대로 둔다(기존 동작 무변경).
+      const byTicker = new Map(); // key(티커 / 통화+이름) -> { assets, curAmount, owners, name, ticker, isForeign, currentPrice }
       groupAssets.forEach((a) => {
-        const key = String(a.ticker ?? '').trim() || `__name__${a.name}`;
+        const ticker = String(a.ticker ?? '').trim();
+        const key = ticker || `__name__${a.currency}__${a.name}`;
+        const ra = calcRow(a);
         if (!byTicker.has(key)) {
-          byTicker.set(key, { assets: [], curAmount: 0, owners: new Set(), name: a.name, ticker: a.ticker, isForeign: false, currentPrice: a.currentPrice });
+          // [C-1] isForeign은 이 버킷이 처음 만들어질 때 한 번만 정한다 - 예전처럼 자산을 훑을 때마다
+          // 덮어쓰면 마지막 자산의 통화가 버킷 전체를 대표해버린다(위 실측 사례). 이제 버킷 하나는
+          // 통화가 하나뿐이므로(티커 또는 통화가 키에 들어있다) 첫 값이 곧 그 버킷의 통화다.
+          byTicker.set(key, { assets: [], curAmount: 0, owners: new Set(), name: a.name, ticker: a.ticker, isForeign: ra.isForeign, currentPrice: a.currentPrice });
         }
         const bucket = byTicker.get(key);
-        const ra = calcRow(a);
         bucket.assets.push(a);
         bucket.curAmount += ra.curAmount;
         bucket.owners.add(a.owner);
-        bucket.isForeign = ra.isForeign; // 같은 티커면 통화도 같으므로 마지막 값 그대로 써도 무방
       });
 
       byTicker.forEach((bucket) => {
@@ -304,6 +313,23 @@ function getRebalanceTotals(ownerFilter) {
 // 무관하다(SAFETY_THRESHOLDS를 전혀 참조하지 않음).
 const PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT = 1;
 
+/* [C-4] 저장된 목표가 있는 지역에는 매칭되는 보유분이 없는데, 반대 지역에 같은 이름의 보유분이 있는
+ * 경우를 찾아낸다 - 자산의 국내/해외 표기가 나중에 바뀌면(엑셀 재업로드 등) 목표는 저장된 지역에
+ * 그대로 남아 "0원 보유 · 전액 신규 매수 필요"로 계속 보인다. 사용자는 그 이유를 알 수 없다.
+ *
+ * [고치지 않는다] 목표를 다른 지역으로 옮기거나 지우거나 자산을 바꾸지 않는다 - 어느 쪽이 맞는지는
+ * 사용자만 안다(자동 데이터 정리 금지 상시 정책). 여기서는 사실만 확인해서 화면이 짧게 알리게 한다.
+ * computeRegionTargetAmounts의 namedHolding 매칭 규칙(티커 없음 + 이름 일치)을 그대로 재사용하고,
+ * 그 함수가 이미 쓰는 필터(리밸런싱 대상 계좌 · 소유자 · 평가금액 0원 제외)도 동일하게 적용한다. */
+function findNamedHoldingRegionMismatch(owner, region, target) {
+  if (!target || target.type !== 'namedHolding') return null;
+  const other = region === '국내' ? '해외' : '국내';
+  const found = state.assets.find((a) => a.isDomestic === other && !String(a.ticker ?? '').trim()
+    && a.name === target.name && isRebalanceEligibleAccount(a) && isAssetIncludedForOwner(a, owner)
+    && Math.round(calcRow(a).curAmount) !== 0);
+  return found ? other : null;
+}
+
 function computePortfolioTargetSummaryRows(owner) {
   const { total, perRegion } = getRebalanceTotals(owner);
   const rows = [];
@@ -331,7 +357,10 @@ function computePortfolioTargetSummaryRows(owner) {
       else if (diffWeightPct < -PORTFOLIO_SUMMARY_PARITY_TOLERANCE_PCT) status = 'over';
       else status = 'ok';
       const label = t.label || t.name || t.ticker || '(이름 없음)';
-      rows.push({ region, label, curAmount, targetAmount, curWeightPct, targetWeightPct, diffAmount, diffWeightPct, status });
+      // [C-4] 이 지역에 보유분이 하나도 안 잡힐 때만 확인한다 - 잡히는 게 있으면 목표가 실제로
+      // 동작하고 있는 것이라 알릴 이유가 없다. 값은 표시 전용이며 어떤 금액에도 영향을 주지 않는다.
+      const mismatchRegion = curAmount === 0 ? findNamedHoldingRegionMismatch(owner, region, t) : null;
+      rows.push({ region, label, curAmount, targetAmount, curWeightPct, targetWeightPct, diffAmount, diffWeightPct, status, mismatchRegion });
     });
     regionSumStatus[region] = { pctSum, isValid: targets.length === 0 || Math.abs(pctSum - 100) < 0.05 };
   });
@@ -369,7 +398,12 @@ function buildPortfolioDiagDrilldownHtml(guideRowsForLabel) {
     const badge = rebalanceActionBadge(r.diff, r.curAmount);
     return `<div class="px-3 pb-3">
       <div class="flex items-center justify-between gap-2 mb-1">
-        <span class="text-sm font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</span>
+        <span class="flex items-center gap-1.5 min-w-0 flex-wrap">
+          <!-- [C-3] 이 드릴다운은 이미 지역 하나로 좁혀져 있지만(C-2), 같은 지역 안에 원화 현금과
+               달러 현금이 나란히 있을 수 있어 통화 표시는 여기서도 필요하다. -->
+          ${r.isForeign ? `<span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">USD</span>` : ''}
+          <span class="text-sm font-semibold min-w-0 break-keep cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</span>
+        </span>
         <span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
       </div>
       <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
@@ -393,13 +427,20 @@ function renderPortfolioTargetSummary(owner) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const { rows, regionSumStatus } = computePortfolioTargetSummaryRows(owner);
-  // [Phase 17 P1-2] 실행 상세는 기존 실행가이드 계산을 그대로 재사용한다(새 계산 없음) - targetLabel
-  // 기준으로 묶어 각 진단 Row가 자기 항목의 실행 상세만 찾아 쓸 수 있게 한다.
+  // [Phase 17 P1-2] 실행 상세는 기존 실행가이드 계산을 그대로 재사용한다(새 계산 없음) - 각 진단
+  // Row가 자기 항목의 실행 상세만 찾아 쓸 수 있게 묶어둔다.
+  // [C-2] 묶는 키에 region을 함께 넣는다. 예전엔 targetLabel 하나만 썼는데, 같은 이름의 목표가
+  // 국내와 해외에 모두 있으면(예: 양쪽에 "달러") 두 지역의 실행 상세가 한 덩어리가 되어, 국내 항목을
+  // 펼쳤는데 해외 보유 금액이 먼저 나왔다(실측: "국내 · 달러"를 펼치면 "해외/달러 14,500,000원").
+  // 진단 Row 자체는 이미 region을 갖고 있으므로(rowKey도 region을 쓴다) 조회 키만 맞춰준다 -
+  // 새 데이터 구조를 만들지 않는다.
   const { rows: guideRows } = computeIndividualRebalanceGuide(owner);
+  const guideDrilldownKey = (region, label) => `${region}__${label}`;
   const guideRowsByLabel = {};
   guideRows.forEach((r) => {
-    if (!guideRowsByLabel[r.targetLabel]) guideRowsByLabel[r.targetLabel] = [];
-    guideRowsByLabel[r.targetLabel].push(r);
+    const k = guideDrilldownKey(r.region, r.targetLabel);
+    if (!guideRowsByLabel[k]) guideRowsByLabel[k] = [];
+    guideRowsByLabel[k].push(r);
   });
 
   const sumBadgesHtml = ['국내', '해외'].map((region) => {
@@ -433,9 +474,12 @@ function renderPortfolioTargetSummary(owner) {
              띄게 보여준다 - 계산값(diffAmount)은 기존 그대로, 표현 순서만 바꿈. -->
         ${actionLabel ? `<p class="text-sm font-semibold mt-1 ${rebalanceDiffColorClass(r.diffAmount)}">${escapeHtml(actionLabel)}</p>` : `<p class="text-sm font-semibold mt-1 text-emerald-600 dark:text-emerald-400">${escapeHtml(meta.text())}</p>`}
         <p class="text-sm text-slate-400 mt-0.5">현재 ${fmtNum(r.curWeightPct, 1)}% · 목표 ${fmtNum(r.targetWeightPct, 1)}%</p>
+        <!-- [C-4] 목표가 저장된 지역과 실제 보유 지역이 다를 때만 나오는 한 줄 - 앱이 대신 고치지
+             않고 사실만 알린다(자동 이동/삭제 금지). 색이 아니라 기호와 문구로 구분한다. -->
+        ${r.mismatchRegion ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-0.5 break-keep">⚠ 같은 이름의 보유분이 ${escapeHtml(r.mismatchRegion)}에 있습니다. 이 목표는 ${escapeHtml(r.region)}에 저장돼 있어 여기서는 보유 0원으로 계산됩니다.</p>` : ''}
       </button>
       <div class="portfolio-diag-row-body overflow-hidden transition-[max-height] duration-300 ease-in-out" data-diag-body-key="${escapeHtml(rowKey)}" style="max-height:${isOpen ? '9999px' : '0px'};">
-        ${buildPortfolioDiagDrilldownHtml(guideRowsByLabel[r.label])}
+        ${buildPortfolioDiagDrilldownHtml(guideRowsByLabel[guideDrilldownKey(r.region, r.label)])}
       </div>
     </div>`;
   }).join('');
@@ -1698,6 +1742,18 @@ const qtyRebalanceGuideText = (qtyDelta, isForeign) => {
   return (rounded > 0 ? '+' : '') + fmtNum(rounded, isForeign ? 2 : 0) + '주';
 };
 
+/* [C-3] 카드 한 장이 어느 지역·어느 통화의 자산인지 표시한다.
+ * 예전에는 이 카드가 region을 전혀 보여주지 않아, 국내 "달러"와 해외 "달러"가 이름도 목표 라벨도
+ * 똑같은 카드 두 장으로 나란히 보였다(실측) - 초보자에게는 같은 항목이 중복된 것처럼 읽힌다.
+ * 새 컴포넌트를 만들지 않고 기존 카드의 부제 줄에 칩 두 개만 얹는다. 색이 아니라 글자로 구분하고,
+ * 글자 크기는 기존 text-sm(14px) 그대로 유지한다(Global Readability Policy 3~5항). USD 칩은 외화일
+ * 때만 붙인다 - 이 앱의 모든 금액은 원화 환산 표시라, 원화 자산에 굳이 칩을 하나 더 붙이지 않는다. */
+function rebalanceRegionChipsHtml(region, isForeign) {
+  const regionChip = `<span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">${escapeHtml(region || '')}</span>`;
+  const usdChip = isForeign ? `<span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">USD</span>` : '';
+  return `<span class="flex items-center gap-1 flex-wrap">${regionChip}${usdChip}</span>`;
+}
+
 // [카드 목록 HTML] 특정 소유자 기준 rows/excluded를 카드 그리드 HTML로 만든다 - 소유자별 아코디언
 // 섹션마다 이 함수를 재사용한다.
 function buildRebalanceGuideCardsHtml(rows, excluded) {
@@ -1710,8 +1766,11 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
     <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
-          <p class="text-sm font-semibold truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
-          <p class="text-sm text-slate-400 truncate">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
+          <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+            ${rebalanceRegionChipsHtml(r.region, r.isForeign)}
+            <p class="text-sm font-semibold min-w-0 break-keep cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
+          </div>
+          <p class="text-sm text-slate-400 break-keep">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
         </div>
         <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
       </div>
@@ -1738,8 +1797,11 @@ function buildRebalanceGuideCardsHtml(rows, excluded) {
     <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
-          <p class="text-sm font-semibold truncate text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
-          <p class="text-sm text-slate-400 truncate">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
+          <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+            ${rebalanceRegionChipsHtml(a.isDomestic, a.currency === 'USD')}
+            <p class="text-sm font-semibold min-w-0 break-keep text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
+          </div>
+          <p class="text-sm text-slate-400 break-keep">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
         </div>
         <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
       </div>
