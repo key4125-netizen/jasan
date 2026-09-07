@@ -68,6 +68,105 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 50: Hybrid SoT를 동기화에 연결 + **🚀 v213 → v214 릴리스**
+
+**커밋** `0d89180` "fix: enforce hybrid position source for asset positions" — push 완료.
+
+> **⚠️ 이 릴리스가 중요한 이유**: v213 이후 커밋된 제품 코드(47-E · 47-F · 48-A · 49 · 50)는
+> **APP_SHELL이 v213 캐시에 갇혀 실제 사용자에게 전달되지 않고 있었다.** Phase 50 브라우저 검증 중
+> 실측으로 확인했다(v213 캐시가 있는 상태에서 새 `index.html`이 서빙되지 않음 → 캐시를 지우자 나타남).
+> 각 Phase 지시가 "SW 재bump 금지"였기 때문에 생긴 누적이며, **v214 bump 한 번으로 다섯 Phase 분이
+> 함께 전달된다.** 앞으로도 APP_SHELL 파일(index.html · js/01~14)을 고쳤으면 릴리스 시점에
+> CACHE_NAME을 올려야 사용자에게 닿는다 — **코드가 정상인 것과 사용자가 그 코드를 받는 것은 별개다.**
+
+### P0-1 — 거래원장이 무엇을 덮어써도 되는가
+
+**원인**: `syncAssetsFromTransactions`([js/06:172](js/06-transactions.js#L172))는 **매 부팅마다**
+실행되면서([js/14:181](js/14-settings-boot.js#L181)) 매칭되는 포지션의 수량/취득가/취득환율을 자산에
+덮어써 왔다. 같은 소유자·계좌·티커(또는 이름)를 가진 거래가 하나라도 생기는 순간부터, 사용자가 자산
+화면에서 직접 입력한 값은 다음 부팅에 조용히 사라졌다.
+
+**수정**: 원화 현금 가드 바로 아래 **한 줄**.
+
+```js
+if (asset && asset.positionSource === 'manual') return;
+```
+
+| 원천 | 수량·취득가·취득환율 | 이번 변경 |
+|---|---|---|
+| `ledger` | 거래원장이 원천 | **무변경**(기존 정상 동작 유지) |
+| `manual` | 자산 마스터가 원천. 전량매도 시 수량 0 처리도 안 함 | **이번 Phase의 유일한 데이터 동작 변경(PM 승인)** |
+| 없음(legacy) | 이 가드에 걸리지 않음 → 예전과 완전히 동일 | **무변경** |
+
+**legacy를 전부 ledger로 강제하는 방식은 쓰지 않았다.** 아무것도 하지 않아 동작이 그대로 유지된다.
+
+### P0-2 — 어긋난 상태는 "탐지"만 한다
+
+`assessPositionConsistency(asset)` — **쓰기가 한 줄도 없는 순수 조회 함수.**
+
+| 상태 | 판정 |
+|---|---|
+| `ledger`인데 매칭 거래 없음 | `LEDGER_WITHOUT_TX` |
+| `manual`인데 매칭 거래가 있고 **값이 어긋남** | `MANUAL_WITH_TX` |
+| `manual` + 거래 없음 / 값 일치 · 원화현금 · **legacy** | `OK`(문제 아님) |
+
+**"거래내역이 없다 = 고아"라는 단순 규칙은 절대 만들지 않는다** — 부동산·원화현금·직접등록 자산은
+거래가 없는 것이 정상이라, 그 규칙은 멀쩡한 자산 다수를 문제로 표시한다. 매칭 키는
+`syncAssetsFromTransactions`와 **똑같은 것**을 쓴다(두 곳이 갈라지면 "동기화는 건드리는데 화면은
+문제없다고 말하는" 상태가 된다). 취득가는 상대오차 1e-9 허용치(나눗셈 끝자리 흔들림 방지).
+
+**금지 유지**: 자산 자동 삭제 · quantity/buyPrice/buyRate 자동 0 · positionSource 자동 변경 ·
+owner/accountType/ticker 자동 변경.
+
+**UI**: 기존 자산 상세 모달 안 **한 줄**(`#assetDetailPositionNotice`, 수량/매수단가 바로 아래).
+새 카드/탭/진단 화면 0개, **자동 해결 버튼 0개** — 어느 쪽 값이 맞는지는 앱이 아니라 사용자만 알기
+때문에 문구도 단정하지 않고 확인만 요청한다. 375px 다크 실측: 14px / amber-400 / 가로스크롤 없음.
+
+### Excel merge 보존
+
+`mergeAssetsForAppend`가 `{...incoming, id: 기존id}` 형태라 기존 `positionSource`를 잃던 문제
+(Phase 49의 알려진 한계)를 막았다. **엑셀 시트에 이 칸이 없으므로 "파일에 값이 없다"는 "manual이다"가
+아니라 "이 파일은 그 사실을 담지 않는다"는 뜻이다.** 값이 없으면 기존 값 보존, 파일이 값을 담고 있으면
+다른 필드와 똑같이 파일이 이긴다. **schema 변경 0건.** Phase 48-A 규칙(자동 판별 Key → 엑셀 빈칸,
+사용자 override → 기록) 그대로.
+
+### 불변성 (실측)
+
+**데이터**: ticker · owner · accountType · name · currency · category · role · rateMatchOverride ·
+customScenarioRates · id, 그리고 **ledger/legacy 자산의 수량·취득가·취득환율 전부 불변.**
+유일한 의도된 변경은 manual 자산이 잘못된 overwrite에서 보호되는 것 — 저장된 데이터를 고치는 게
+아니라 **다음 부팅부터 되돌아가지 않을 뿐**이다(되돌리려면 그 한 줄을 빼면 된다).
+
+**계산**: 적용 Return Key와 3개 시나리오 수익률이 세 원천 상태에서 동일(숫자를 테스트에 베끼지 않고
+`SCENARIO_RATE_PRESETS`에서 읽어 비교). 결정론적 집계(`getProjectionGroupStats`)와 **Monte Carlo 입력**
+(`assetOrder`/`weight`/`muAnnual`/`sigmaAnnual`/`errors`)이 동기화 전후 완전 동일.
+MC는 시뮬레이션이 아니라 **엔진 입력**을 비교했다 — 입력이 같으면 결과는 구성상 같고, 원인 지점을
+정확히 짚는다.
+
+### 테스트
+
+`npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v214)** · `e2e/52` **17/17** ·
+전체 e2e **498/498 — 실패 0건, 신규 회귀 0건** · **Production Worker/외부 API 요청 0건**(Phase 47-G 유지).
+
+> 실행 중 1건이 처음 실패했으나 **테스트 픽스처 오류였고 제품 버그가 아니었다** — 거래의 환율 필드명은
+> `rate`가 아니라 **`appliedRate`**([js/06:24](js/06-transactions.js#L24)).
+
+### 🔴 다음 Phase 후보 (PM 승인 대기 — 임의 착수 금지)
+
+| 항목 | 내용 |
+|---|---|
+| **legacy source 확정 UX** | 앱이 추정하지 않고 **사용자가 상세 모달에서 한 번 선택**(ledger/manual). 선택하지 않으면 기존 상태 유지, 선택 전에는 legacy 동작을 바꾸지 않는다. **PM이 좋은 후보로 인정했으나 이번 릴리스에 포함하지 않음** |
+| P1 | Excel import의 `category` 재계산 · `id`/`updatedAt` 재발급 · `buyRate` 미포함 · ticker/owner/accountType 변경 시 자산 분열 |
+| F-4 | Return Key **수정** UI(현재는 보기만 가능) |
+| 보류 | Bond · Cash 구조 · CORS_PROXIES 6중 호출 · backfill dedupe · Sync 10초 polling · 오프라인 MC Safety BLOCK |
+
+**legacy 자산은 여전히 보호받지 못한다**(표식이 없어 예전처럼 덮어써진다). 의도된 선택이다 — 원천을
+모르는 자산을 추정해 보호하면 실제로는 거래원장이 맞는 자산의 값을 틀린 채로 굳혀 **새 P0을 만든다.**
+
+`.claude/launch.json`은 이번에도 커밋하지 않았다(상시 규칙).
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 49: positionSource 도입 **v213 유지**
 
 **커밋** `9f90763` "feat: record whether each asset's position comes from the ledger or manual entry" — push 완료.
