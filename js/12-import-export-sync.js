@@ -557,6 +557,15 @@ function normalizeImportedAsset(a) {
     currentPrice: num(a.currentPrice),
     regularMarketPrice: typeof a.regularMarketPrice === 'number' ? a.regularMarketPrice : undefined,
     buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
+    // [Phase 47-E - 데이터 손실 버그 수정] 이 한 줄이 빠져 있었다. buildSyncBlob()은 이 필드를
+    // 정상적으로 내보내는데(js/12 §22-1) 되받는 쪽에서 읽지 않아, JSON 백업 복원·클라우드 동기화·
+    // 최초 페어링 세 경로 모두에서 사용자가 지정한 대표매칭 기준이 통째로 사라졌다. 감사에서
+    // 실브라우저로 재현했고(파크시스템스 rateMatchOverride='KOSDAQ' → 복원 후 없음), Phase 47-A로
+    // 지역 폴백이 없어진 뒤로는 그 결과가 "다른 기준이 적용됨"이 아니라 "적용 수익률 7% → 0%"가
+    // 됐다 - 사용자 눈에는 자산이 갑자기 성장을 멈춘 것으로 보인다.
+    // 정규화 규칙은 makeAsset과 완전히 같은 함수를 쓴다(sanitizeRateMatchOverride, js/01) -
+    // 두 경로가 서로 다른 판단을 하면 "엑셀로는 살아남는데 백업으로는 사라지는" 지금 상황이 재발한다.
+    rateMatchOverride: sanitizeRateMatchOverride(a.rateMatchOverride),
     // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 가족 동기화/백업 복원 시 사라진다.
     role: parseAssetRoleInput(a.role),
     // [가족 동기화 - 스마트 머지] mergeCollectionById() 참고 - 없으면 지금 시각으로 폴백(오래된 백업 등).

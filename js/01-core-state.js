@@ -701,6 +701,29 @@ function genId() {
   return (crypto && crypto.randomUUID) ? crypto.randomUUID() : 'id_' + Date.now() + '_' + Math.random().toString(16).slice(2);
 }
 
+/* [Phase 47-E] 대표매칭(수익률연동키) 값 하나를 저장 가능한 형태로 정규화한다.
+ * 이 함수가 생긴 이유: 같은 판단을 makeAsset(엑셀 업로드)과 normalizeImportedAsset(JSON 복원/
+ * 클라우드 동기화, js/12) 두 곳이 각각 하고 있었는데, 후자는 이 필드를 아예 읽지 않아 복원할 때마다
+ * 사용자가 지정한 기준이 통째로 사라졌다(Phase 47-B/C/D 감사 F-1, 실브라우저로 재현 - 적용
+ * 수익률이 7%에서 0%로 떨어졌다). 판단을 한 곳에 모아 두 경로가 갈라질 수 없게 한다.
+ *
+ * 반환 규칙:
+ *   - 값이 없거나 빈 문자열      -> undefined ("아직 지정하지 않았다" = 자동판별을 그대로 쓴다)
+ *   - 'UNRESOLVED'(내부 상태값)  -> undefined
+ *   - 그 외                      -> 앞뒤 공백을 없앤 문자열
+ * 'UNRESOLVED'를 걸러내는 이유: 이건 Key가 아니라 "적용할 기준을 찾지 못했다"는 계산 상태다
+ * (UNRESOLVED_RATE_KEY, js/05). 그 값이 자산에 저장되면 "사용자가 UNRESOLVED라는 기준을 직접
+ * 지정했다"는 뜻이 되어 override-first 규칙상 영원히 그 상태로 굳는다. 엑셀 내보내기는 이미 이
+ * 경우를 빈 칸으로 쓰지만(js/12), 사용자가 셀에 직접 타이핑하거나 옛 백업 파일에 남아 있을 수
+ * 있으므로 들어오는 쪽에서도 막는다. */
+function sanitizeRateMatchOverride(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim();
+  if (trimmed === '') return undefined;
+  if (typeof UNRESOLVED_RATE_KEY !== 'undefined' && trimmed === UNRESOLVED_RATE_KEY) return undefined;
+  return trimmed;
+}
+
 function makeAsset(raw) {
   // 엑셀 셀은 숫자만 있으면 문자열이 아닌 number 타입으로 읽히고 앞자리 0도 사라진다(예: '005930' -> 5930).
   // 원본이 number 타입이었던 경우에만 6자리로 0-패딩해 한국 종목코드 판별 규칙이 깨지지 않도록 복원한다.
@@ -734,7 +757,7 @@ function makeAsset(raw) {
     // [대표매칭 오버라이드 - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이 자동으로
     // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
-    rateMatchOverride: (raw.rateMatchOverride !== undefined && raw.rateMatchOverride !== null && String(raw.rateMatchOverride).trim() !== '') ? String(raw.rateMatchOverride).trim() : undefined,
+    rateMatchOverride: sanitizeRateMatchOverride(raw.rateMatchOverride),
     // [자산별 역할(포지션) 분류 - 티커별 단일 소스와 자동 연동] raw.role이 명시돼 있으면 그 값을 그대로
     // 쓰고, 없으면 이 종목에 대해 다른 곳(리밸런싱 목표 등)에서 이미 지정해 둔 역할이 있는지
     // getTickerRole()로 조회해 자동으로 채운다 - "목표 비중에 미리 태깅해 둔 종목을 나중에 실제로
