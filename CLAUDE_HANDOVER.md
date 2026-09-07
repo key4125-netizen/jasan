@@ -32,6 +32,204 @@
 
 ---
 
+## 최근 세션 요약 — 🚀 **v218 → v219 릴리스 완료** + STEP A/B/C 감사
+
+**릴리스 커밋** `4baf301` "release: bump service worker to v219" — push 완료.
+**인계 갱신** (이 커밋). 이번 세션의 코드 수정은 직전 커밋 `4d84f39`(거래 폼·삭제 경로 identity)뿐이고,
+**STEP A/B/C는 전부 READ-ONLY 감사였다.**
+
+### ✅ v218 → v219 캐시 전환 실측 (릴리스 완료 근거)
+
+**캐시를 삭제하거나 강제로 비우지 않았다.** 진짜 v218 릴리스 파일(`1253ce4`)로 캐시를 만든 뒤,
+**캐시를 그대로 둔 채** v219를 배포하고 `reg.update()` + reload만 했다.
+
+| | v218 사용자 (갱신 전) | 다시 연 뒤 |
+|---|---|---|
+| 캐시 | `…-v218` (17 → 재부팅 후 26) | **`…-v219` 하나만** (v218 제거됨) |
+| 화면 버전 | v218 | **v219** |
+| 캐시 안 `js/06`의 `deleteTransaction`이 헬퍼 사용 | **false** | **true** |
+| 캐시 안 `js/06`의 저장 핸들러가 헬퍼 사용 | **false** | **true** |
+| 캐시 안 `index.html` | 218 | **219** |
+| **자산·거래·목표비중·수익률설정·환율·positionSource** | — | **전 필드 동일(스냅샷 일치)** |
+
+전환 후 실제로 달러 거래를 지워 **원화 자산 수량이 100으로 유지**되는 것도 확인했다.
+**Release Guard PASS** · `npm test` 205/205 · 전체 e2e **560/560** · ESLint 0 · Data Guard PASS ·
+**non-CDN 외부 응답 0건**.
+
+> ⚠ **다음에 APP_SHELL(index.html · js/01~14)을 고치면 릴리스 때 CACHE_NAME과 appVersionLabel을
+> 함께 올려야 한다.** `npm run release-guard`가 잊었을 때 알려준다.
+
+---
+
+### 📌 STEP A — Asset Master / Transaction / Excel / JSON SoT 감사
+
+**identity 규칙이 모든 소비처에서 일관됨을 최종 확인했다.**
+```
+포지션 키    신랑__일반계좌__005930.KS      (티커 → 통화 없음)
+             신랑__일반계좌__실물채권__KRW   (무티커 → 통화 포함)
+assetMergeKey 신랑|일반계좌|005930.KS        (티커)
+              신랑|일반계좌|현금|예수금|USD|국내  (무티커 → 통화·지역 포함)
+```
+**자산↔거래 매칭 인라인 패턴은 저장소에 0건이다.** 앞으로는 반드시
+`assetMatchesLedgerIdentity` / `transactionIdentityKey`를 쓴다.
+
+#### 🔴 S-1 / BL-7 / BL-8은 하나의 문제다 — **전부 STOP(PM 판단 필요)**
+
+**공통 원인: `positionSource`가 "누가 수량을 관리하는가"를 정하는데, 값이 없는 `legacy` 자산이
+대량으로 존재하고 앱이 그것을 `ledger`로 취급한다.**
+
+**S-1 실측 — 사용자가 엑셀로 수량을 100/70,000으로 정정하고, 거래원장에는 70/50,000이 있을 때**
+
+| positionSource | 부팅 후 남는 값 | 정정이 살아남는가 | 진단 | [수정]/[삭제] |
+|---|---|---|---|---|
+| `manual` | **100 / 70,000** | **O** | `MANUAL_WITH_TX` 경고 | **숨김** ⚠ |
+| `ledger` | 70 / 50,000 | X | `OK` | 숨김 |
+| **`legacy`** | **70 / 50,000** | **X** | **`OK` — 경고조차 없음** | 숨김 |
+
+**legacy를 만드는 경로**: ① v217 이전 사용자의 기존 자산 전부 ② 엑셀 import(시트에 칸이 없음 —
+M4 carry-over가 기존 자산과 매칭될 때만 구제) ③ **JSON [추가하기]**(BL-7).
+
+**BL-7 실측** — 파일에는 `positionSource:'manual'`, `updatedAt:111111`이 담겨 있는데:
+
+| 경로 | positionSource | updatedAt |
+|---|---|---|
+| 덮어쓰기 `normalizeImportedAsset` | **manual** | **111111** |
+| **추가하기 `restored`(js/12:488~)** | **읽지 않음** | **읽지 않음** |
+| 추가하기 + 기존 자산 있음 | manual (M4 carry-over가 구제) | **UNDEF** |
+| **추가하기 + 기존 자산 없음**(다른 기기 첫 복원) | **UNDEF** | **UNDEF** |
+
+> **이번에 고치지 않은 이유**: `positionSource`만 보면 M4 규칙("파일이 이긴다")의 누락 적용이지만,
+> **`updatedAt`은 클라우드 병합(`mergeCollectionById`)의 승패를 바꾼다.** 지금은 UNDEF → 부팅 시
+> `Date.now()`로 백필되어 그 기기가 항상 이긴다. 파일의 원래 시각을 읽으면 병합 결과가 달라진다.
+> 또 `positionSource`가 바뀌면 **다음 부팅의 수량이 바뀔 수 있다.** 둘 다 정책 판단이다.
+
+**BL-8 실측** — `MANUAL_WITH_TX` 자산은 경고를 보면서 **[수정]/[삭제] 버튼이 숨겨진다**
+(게이팅이 `isTransactionTracked` = 현재 상태). 다만 **엑셀 재업로드로는 고칠 수 있다** —
+화면에서 직접 고치는 경로만 막혀 있다. 게이팅 기준을 `positionSource`로 바꾸는 것은 기존 기능의
+의미를 바꾸는 변경이라 STOP.
+
+**판단**: BL-7을 고치면 legacy 생산이 줄지만 **이미 있는 legacy는 그대로다. S-1 정책 없이는 셋 다
+완결되지 않는다.**
+
+---
+
+### 📌 STEP B — Target Portfolio 감사
+
+**C-1~C-4가 한 화면에서 동시에 일관된다(실측).** 국내에 같은 이름의 원화/달러 예수금 + 국내·해외
+양쪽에 같은 이름의 목표를 둔 상태에서:
+
+| | 결과 |
+|---|---|
+| **C-1** 통화별 분리 | `USD/14,500,000/-3,520.41주` · `KRW/10,000,000/-3,520,408주` — 수량이 각자 통화 기준 |
+| **C-2** 드릴다운 | "국내·예수금" → 국내 2건만 · "해외·예수금" → 해외 1건만 (**섞이지 않음**) |
+| **C-3** 카드 | 모든 행이 `region` + `isForeign`을 갖는다 |
+| **C-4** 진단 | 양쪽 다 매칭 자산이 있어 `mismatchRegion = null`(정상) |
+
+**목표 스키마는 `{type, name|ticker, label, pct, role?}`** — currency 축도 accountType 축도 없다.
+`targets[].rateMatchOverride`를 쓰는 코드 0건. `syncAssetsFromTransactions`는 `state.rebalance`를
+참조하지 않는다 — **거래가 목표를 바꾸지 않는다.**
+
+**instrument 키**: `N:국내:예수금` / `N:해외:예수금` — **region은 있고 currency·account·owner는 없다.**
+household 병합은 owner별 금액 가중.
+
+**목표가 없으면 수익률 0 · instruments 0** — **현재자산을 미래계획으로 삼는 fallback은 없다.**
+정책 8("Future Projection은 미래 Target Portfolio 기반")과 코드가 일치한다.
+
+#### B-3 판단 — **계산상 안전. 남은 것은 의미론적 선택이다.**
+
+실행 가이드는 통화별로 완전히 분리되지만(C-1), **MC/결정론의 instrument는 `N:국내:예수금` 하나로
+합쳐진다**(키에 통화 축이 없으므로). 즉 **원화 예수금과 달러 예수금이 하나의 μ/σ를 공유한다.**
+현재는 둘 다 현금이라 μ=0·σ=0이어서 결과가 같지만, **채권처럼 μ가 0이 아닌 무티커 자산을 두 통화로
+들면 가중평균 없이 한 쪽 성격으로 계산된다.**
+
+목표에 통화 축을 두려면 **`state.rebalance` 스키마 변경이 필요하다 — 임의로 바꾸지 않았다.**
+
+---
+
+### 📌 STEP C — Future Projection 감사
+
+**⚠ 절세계좌 결정론이 경로 A와 B를 섞어 쓴다(실측 확정)**
+
+| 구성 | 쓰는 경로 | 실측 |
+|---|---|---|
+| **원금**(보유종목) | **경로 A** `getAssetProjectionRate` | ISA삼성 → `KOSPI` 7% · ISA국채 → `채권` 4% |
+| **배분된 적립금** | **경로 B** `getTargetProjectionRate` | 005930.KS → 7% |
+| **미배분 적립금** | 하드코딩 | `TAX_ADVANTAGED_RISK_SHARE=0.7` → KOSPI 7% : BOND 4% = 70:30 |
+
+**결정론 결합**(일반 1천만 + ISA삼성 800만 + IRP국채 2,000만 + 부동산 5,000만):
+
+| 관점 | 0년 | 20년 |
+|---|---|---|
+| 일반계좌 | 10,000,000 | 730,000,000 |
+| 절세계좌 | 28,000,000 | 426,632,482 |
+| 부동산 | 50,000,000 | — |
+| **전체자산 뷰** | **88,000,000** | 세 배열을 연도별로 더함(js/05:3222) |
+| **MC 원금** | **38,000,000** (일반+절세, 부동산 제외) | — |
+| MC 가중치 basis | 10,000,000 (일반계좌만) | — |
+
+**milestone은 결정론·MC 모두 `[5,10,15,20]`으로 동일.**
+**실질 변환은 MC 전용** — 결정론(절세계좌·전체자산 표)에는 없다.
+
+**현재자산 유지 시나리오**: `simulateNonRebalancedGroups` **없음(완전 삭제 확인)**. 잔재는
+`getGroupReturnRate`(호출부 0) · `PROJECTION_GROUP_DEFAULT_RATES` · `state.projection.categoryReturns`
+(읽는 계산 0건인데 저장·복원·동기화됨).
+
+**P20/P30/P40 연결 가능성** — `P(X ≥ Pk) = 1 − k/100` 재확인(실측 0.9 / 0.75 / 0.5 / 0.2502 / 0.1002).
+필요한 **P40/P30/P20은 현재 저장되지 않는다**(`p10,p25,p50,p75,p90`만). 원표본은
+**`extractMilestoneStats`(js/15:297) 내부에만** 있고, `js/20`의 `applyInflationToMilestone`은
+`mean,p10,p25,p50,p75,p90` **6개 필드를 하드코딩**한다 — 새 분위수를 추가하면 그 파일도 함께 고쳐야
+실질 금액이 누락되지 않는다.
+
+---
+
+### 📌 Tax MC (T-1/T-2) — 분석만, 구현하지 않음
+
+**현재 문제**: 절세계좌 금액은 `computeHouseholdMonteCarloPV`(js/05:3282, 부동산만 제외)로 **원금에
+들어가고**, 가중치 basis(`getProjectionGroupStats`, 절세계좌 제외)에는 **들어가지 않는다.** 실측:
+MC 원금 3,800만인데 instruments는 일반계좌 목표뿐 → **절세계좌 2,800만이 일반계좌 목표비중으로
+재배분되고 매년 리밸런싱된다**(정책 9 위반).
+
+**구현을 막는 두 구조적 사실**
+1. **엔진이 per-iteration 샘플을 반환하지 않는다** — 결과 필드는 `mode, modelVersion, simulations,
+   years, assets, milestones, finalValue, executionTime, diagnostics`뿐.
+2. **RNG 스트림이 instrument 수 `n`에 의존한다** — 같은 seed·같은 μ/σ에서 `n=1 p50 = 326,696,299` vs
+   `n=2 p50 = 374,527,636`. → **계좌별 독립 실행 후 simulation index 합산은 의미가 없다.**
+
+**필요한 입력**: 절세계좌 보유종목을 instrument로 추가(경로 A 키 기준 μ) · `taxAdvantagedPlan`의
+계좌별 적립(현재 MC contribution은 `getHouseholdMonthlyContributionTotal`만 읽어 **절세계좌 적립이
+0원**) · 리밸런싱 대상 인덱스 분리(절세계좌는 재배분하지 않음).
+
+**Candidate B 적합성**: 상관행렬이 **이미 계좌·소유자 경계를 넘어 asset 키(`T:`/`N:`/`C:`) 기준**이라
+같은 기초자산은 자동으로 같은 shock을 공유한다. 후보 B(가구 전체 하나의 MC 안에서 allocation rule만
+분리)는 **엔진의 수학적 정의 4가지를 하나도 건드리지 않고** 가능하며, `milestoneSamples`가 이미
+가구 전체 총액이라 **별도 index 합산 코드조차 필요 없다.**
+
+---
+
+### 📌 Backlog — 전부 손대지 않았다
+
+| ID | 상태 | 내용 |
+|---|---|---|
+| **S-1** | **STOP(PM)** | `legacy` 자산의 SoT — 엑셀 정정이 부팅마다 되돌아가고 경고조차 없다 |
+| **BL-7** | **STOP(PM)** | JSON [추가하기]가 `positionSource`·`updatedAt` 미독취. `updatedAt`은 클라우드 병합 승패를 바꾼다 |
+| **BL-8** | **STOP(PM)** | `MANUAL_WITH_TX` 자산의 화면 수정 경로 없음(엑셀로는 가능) |
+| **B-3** | **보류(PM)** | 목표 instrument 키에 통화 축 없음. 현금은 무해, μ≠0 자산에서는 문제. 스키마 변경 필요 |
+| **T-1/T-2** | **다음 단계** | Tax MC. 위 분석 완료 |
+| **BL-1** | 미해결 | 거래 스키마에 `isDomestic` 없음 |
+| **BL-2** | 영향 없음 | `findMatchingCashAsset` — 결과가 "차단"으로 동일 |
+| **BL-3** | 관찰 | `pos.currency` 마지막 덮어쓰기(현재 무해) |
+| **BL-6** | 미해결 | 공동 자산이 리밸런싱 화면에 안 보임 · 현금 수량 단위 "주" |
+| **BL-9** | 관찰 | namedHolding의 `isRiskFree`가 `classifyCategory('', name)`에 의존 — **이름에 따라** 위험/무위험이 갈린다 |
+| **BL-10** | 관찰 | dead code 3종(`getGroupReturnRate`·`PROJECTION_GROUP_DEFAULT_RATES`·`categoryReturns`) |
+| **BL-11** | 관찰 | 절세계좌 결정론이 원금은 경로 A, 적립금은 경로 B를 쓴다. 미배분분은 KOSPI:BOND 70:30 하드코딩(조정 UI 없음) |
+
+### 현재 상태
+
+**SW `v219`** — `CACHE_NAME`/`appVersionLabel` 모두 v219이며 Release Guard **PASS**. 이번 세션의
+모든 코드 수정이 사용자에게 전달되는 상태다.
+
+---
+
 ## 최근 세션 요약 — 야간 SoT/Target/Projection 감사 + 거래 폼·삭제 경로 identity 수정 **v218 유지**
 
 **커밋** `4d84f39` "fix: apply ledger identity to transaction form and delete paths" — push 완료.
