@@ -32,6 +32,110 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 45: 혼합형/현금 분류 하드닝 + 삼성 Alpha 영향분석 **V1.1 v212 유지**
+
+**커밋** `b628554` "fix: stop mixed-asset and cash misclassification in return assumptions" — push 완료.
+**수익률 숫자 변경 0건 / 사용자 데이터 변경 0건 / 계산 공식 변경 0건.**
+바뀐 파일은 `js/05-future-projection.js`(+28줄)과 신규 `e2e/44-phase45-mixed-and-cash.spec.js`(12 테스트) 둘뿐이다.
+
+### 무엇을 고쳤나 (P0 2건)
+
+**P0-1 혼합형 상품이 채권으로 판정되던 문제** — `resolveAssetCharacter`(js/05) 맨 앞에 혼합형 차단 단계(0단계)를
+넣었다. `MIXED_ASSET_NAME_KEYWORDS = ['혼합', '주식+채권', '주식 + 채권', '채권+주식', '채권 + 주식']`에 걸리면
+즉시 `UNRESOLVED`(source `'mixedAssetName'`)를 돌려준다. `'혼합'` 한 단어가 채권혼합·채권혼합형·주식혼합·혼합형을
+전부 덮으므로 중복 키워드는 넣지 않았다.
+
+**왜 1단계(카테고리)보다도 앞인가** — 혼합형을 단일 자산군으로 미는 경로가 셋이었다.
+① 3단계 이름 키워드: `BOND_KEYWORDS`의 `'채권'`이 `'채권혼합'`에 걸린다.
+② 1단계 카테고리: 티커 없는 `'채권혼합형 펀드'`는 `classifyCategory`(js/01)가 같은 `BOND_KEYWORDS`로
+   category를 `'채권'`으로 자동 확정하므로 3단계에 닿기도 전에 BOND가 된다.
+③ 5단계 지수 이름: `'TIGER 미국테크TOP10채권혼합'`의 `'미국'`을 보고 US_EQUITY가 될 수 있다.
+세 경로를 한 번에 막으려면 0단계여야 한다. **`classifyCategory` 자체는 건드리지 않았다** — 거기를 고치면
+category가 바뀌어 `RISK_ELIGIBLE_CATEGORIES` 대상 자산이 달라지고 위험점수가 움직인다(e2e/44 테스트 D가
+"category는 여전히 '채권', character만 UNRESOLVED"를 고정한다).
+
+**P0-2 `getSystemDefaultRate('CASH')`가 미국 주식 값을 돌려주던 문제** — CASH/CASH.USD가 어느 분기에도
+걸리지 않아 마지막 지역 폴백까지 흘러내려 4.1/5.1/6.0(S&P500)이 나왔다. `if (key === 'CASH' || key ===
+'CASH.USD') return 0;`을 KOSDAQ 분기 바로 뒤에 추가했다. 새 수익률을 만든 게 아니라 앱이 이미 확정해 둔
+현금 정의(`resolveProjectionRateForKey` line 280, `getTargetProjectionRate` 모두 0%)를 한 곳 더 적용한 것이다.
+
+### 폭발 반경 — 왜 계산 결과가 하나도 안 바뀌는가 (구조적 보장)
+
+- `resolveAssetCharacter`의 호출자는 **`recommendReturnAssumptionKey`와 `assessReturnAssumptionStatus` 둘뿐**이고,
+  **그 둘은 아직 어떤 UI에도 연결돼 있지 않다**(저장소 전체 grep 결과 정의부 + 테스트 외 호출 0건).
+  즉 P0-1은 정책 계층만 고친 것이고, 지금 화면에 보이는 동작은 하나도 바뀌지 않는다. 이 계층을 UI에 붙이는 것은
+  **별도 Phase의 PM 승인 사항**이다.
+- `getSystemDefaultRate` 호출자 5곳 중 CASH가 도달할 수 있는 곳은 없다: 저장 핸들러(js/05:2646)·draft 빌더·
+  `getSystemReferenceRates`는 전부 `SCENARIO_RATE_BASE_ROWS` 소속 키만 다루는데 **CASH는 base row가 아니다**
+  (16개 base row: BOND, 부동산, KOSPI, KOSDAQ, 005930.KS, S&P500, SCHD, NASDAQ, DEV_EX_US, EMERGING,
+  MSFT, GOOGL, AAPL, AMZN, META, NVDA). CMA 자동입력부는 `preset.tickers` 키만 받는다.
+- 엑셀 export(js/12)는 **저장된 override 원본값만** 쓰고 `getSystemDefaultRate`를 보지 않는다 → round-trip 무영향.
+- Golden 사용자는 `CASH 2/3/4`, `CASH.USD 2/3/4`, `005930.KS 6/8/11`을 **직접 override**해 두었다(엑셀
+  "수익률 관리 기준" 시트 18행 직접 확인). custom이 항상 우선하므로 Golden 계산 결과 변화 0.
+- Golden의 혼합형 2건(`237370.KS KODEX 코리아배당성장채권혼합`, `472170.KS TIGER 미국테크TOP10채권혼합`)은
+  둘 다 `rateMatchOverride = 'BOND.STOCK'`이라 성격 판정과 무관하게 기존 수익률을 그대로 쓴다.
+
+### 🔴 다음 세션이 반드시 알아야 할 것 — Service Worker 캐시가 v212에 묶여 있다
+
+로컬 브라우저로 검증하다 확인했다: `sw.js`의 `CACHE_NAME = 'smart-asset-manager-v212'`이고 `js/05-future-projection.js`는
+APP_SHELL에 들어 있는 **cache-first** 대상이다. 실제로 SW가 등록된 상태에서는 수정 전 js/05가 계속 서빙됐고,
+SW를 unregister + cache 삭제한 뒤에야 새 코드가 로드됐다. **Phase 43과 Phase 45의 js/05 변경분은 CACHE_NAME을
+올리기 전까지 기존 사용자에게 도달하지 않는다.** 이 두 Phase 모두 사용자 화면 동작 변화가 없어서 급하지는 않지만,
+정책 계층을 UI에 연결하는 Phase에서는 **반드시 CACHE_NAME + appVersionLabel을 함께 bump**해야 한다.
+이번 Phase는 PM 지시에 버전 bump가 없어 **v212 그대로 두었다** — bump 여부는 PM 결정 사항이다.
+
+### P1 삼성전자 Individual Alpha 영향 분석 (측정만 — 구현 안 함)
+
+**Samsung 숫자는 하나도 바꾸지 않았다.** 시스템 기본값은 지금도 `005930.KS = 8 / 9 / 15`다.
+
+| 항목 | 값 |
+|---|---|
+| Scenario A (현행) 삼성 시스템 기본 | 보수 8.0 / 일반 9.0 / 긍정 15.0 |
+| Scenario B (KOSPI 연동 가정) | 보수 5.0 / 일반 7.0 / 긍정 11.0 |
+| Alpha (A − B) | **+3.0 / +2.0 / +4.0 %p** |
+
+20년 배수(월복리 `(1+r/12)^240`, 앱 `computeFutureValue`와 동일): 보수 4.93→2.71(−44.9%),
+일반 6.01→4.04(−32.8%), 긍정 19.72→8.94(−54.7%). 10년 기준으로도 −25.8% / −18.0% / −32.7%.
+
+- **Golden 사용자 영향 = 0.** `005930.KS`를 6/8/11로 직접 override해 두었기 때문에 시스템 기본값을 무엇으로
+  바꾸든 계산이 달라지지 않는다(엑셀에서 직접 확인).
+- **영향 받는 대상**: `005930.KS`에 override가 없는 사용자뿐. 신규 사용자가 삼성전자를 등록하고 수익률을
+  손대지 않으면 KOSPI보다 높은 가정을 조용히 받는다.
+- **정합성 문제**: 미국 개별 종목 키 6종(MSFT/GOOGL/AAPL/AMZN/META/NVDA)은 전부 US_EQUITY Anchor를
+  **alpha 0으로** 상속한다(Phase 7-C~7-F 원칙: Expected Growth = Anchor, 종목별 프리미엄 임의 추가 금지).
+  **시스템 alpha를 가진 개별 종목은 삼성전자 하나뿐이고, 그 +3/+2/+4 %p의 근거 문서는 없다**(legacy_approximation).
+- **Implementation requires separate PM approval.** 이번 Phase는 측정만 했다. 어느 시나리오도 구현하지 않았다.
+
+### 테스트 결과
+
+- `npm test` (node --test): **179/179 통과**
+- `npx eslint .`: 경고/오류 0
+- `npx playwright test` 전체: **385 통과 / 15 실패** — 신규 회귀 0건. 실패 내역 전부 사전 존재 확인:
+  - `e2e/33-phase28-header-single-row` 13건 — 이 환경의 알려진 헤더 반응형 실패(계속 기록돼 온 항목).
+  - `e2e/36` 테스트 8 — 시드한 QQQM 자산의 `currentPrice`(55000)를 **실시간 시세 fetch가 295.41로 덮어쓰는
+    레이스**. 이 PC는 외부 시세가 열려 있어 재현된다. 동일 조건 6회 반복: **수정본 4/6 실패, HEAD 기준선도
+    4/6 실패**(동률) → Phase 45와 무관.
+  - `e2e/40` Risk 카드 반응형 1건 — `getComputedStyle`이 `''`를 돌려주는(요소 detach) 레이스. 뷰포트가 실행마다
+    바뀐다. 48회 반복: **수정본 1/48 실패, HEAD 기준선 5/48 실패** → 기준선이 오히려 더 자주 깨진다. Phase 45와 무관.
+- 신규 `e2e/44-phase45-mixed-and-cash.spec.js` 12개 전부 통과. **변이 테스트**로 실효성 확인: 두 수정을
+  동시에 무력화하면 **12개 중 8개가 실패**(A/B/C/D/G/I/J/K), 되돌리면 다시 12/12 통과.
+- 실브라우저 검증(localhost:8643, SW 해제 후): 혼합형 2건 `UNRESOLVED(mixedAssetName)`, 순수 채권 ETF `BOND`,
+  삼성전자 `KR_EQUITY`, TIGER 코리아배당다우존스 `KR_EQUITY`(Phase 43 회귀 없음), CASH/CASH.USD 시스템
+  기본값 `[0,0,0]`이며 계산값과 일치. 삼성 `[8,9,15]` · KOSPI `[5,7,11]` · S&P500 `[4.1,5.1,6.0]` 불변.
+  JS 예외 0건(콘솔 오류는 전부 외부 시세 CORS/404 — 알려진 환경 이슈).
+
+### 다음 세션이 손대면 안 되는 것 / 미결
+
+- **삼성 8/9/15는 PM 승인 없이 절대 건드리지 않는다.** 위 분석은 측정 결과일 뿐 결정이 아니다.
+- `recommendReturnAssumptionKey` / `assessReturnAssumptionStatus`를 UI에 연결하는 작업은 **PM 승인 사항**이다.
+  지금 연결하면 사용자에게 "확인 필요" 문구가 갑자기 쏟아진다.
+- `assessReturnAssumptionStatus`는 UNRESOLVED 분기가 `isUserDefined` 검사보다 앞에 있어, 사용자 지정 키 +
+  UNRESOLVED 성격 조합에서 `USER_DEFINED` 대신 `OK`를 돌려준다. UI 미연결이라 지금은 무해하지만 연결
+  Phase에서 정리 대상이다(이번 Phase 범위 밖이라 손대지 않았다).
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 경로라 **커밋하지 않았다**(상시 규칙).
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 42 감사 + 43: 수익률 가정 투명성 + Character 버그 **V1.1 v212 유지**
 
 **커밋** `e03b629` "feat: distinguish user-set and system reference return assumptions" — push 완료.
