@@ -688,8 +688,10 @@ function findAssetForTxForm() {
   const ticker = document.getElementById('tx_ticker').value.trim();
   const name = document.getElementById('tx_name').value.trim();
   if (!owner || !accountType || (!ticker && !name)) return null;
-  return state.assets.find((a) => a.owner === owner && a.accountType === accountType &&
-    (ticker ? a.ticker === ticker : (!a.ticker && a.name === name))) || null;
+  // [B-5 일관성] 저장 핸들러와 같은 판정을 쓴다 - 통화를 보지 않으면 같은 이름의 다른 통화 자산을
+  // 기준으로 안내가 나가고, 실제 저장 결과와 화면이 어긋난다.
+  const currency = document.getElementById('tx_currency').value;
+  return state.assets.find((a) => assetMatchesLedgerIdentity(a, { owner, accountType, ticker, name, currency })) || null;
 }
 
 // opts.allowPrefill: 기존 자산의 지정값을 빈 선택칸에 자동으로 채워도 되는 시점인지. 종목/소유자/
@@ -802,8 +804,9 @@ function openTransactionModal(txId) {
     document.getElementById('tx_appliedRate').value = tx.currency === 'USD' ? (num(tx.appliedRate) || DEFAULT_LEGACY_FX_RATE) : '';
     // [대표 추종 수익률 종목 - 수정 모드] 이 거래의 종목에 해당하는 자산을 찾아 현재 설정된
     // rateMatchOverride를 보여준다(없으면 자동판별 중이라는 뜻이라 빈칸으로 둔다).
-    const matchedForEdit = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
-      (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
+    // [B-5 일관성] 통화까지 보고 이 거래의 자산을 찾는다 - 예전엔 같은 이름의 다른 통화 자산이
+    // 잡혀서, 달러 거래를 열면 원화 자산의 대표매칭키/역할이 폼에 채워지고 저장 시 그 값이 옮겨 붙었다.
+    const matchedForEdit = state.assets.find((a) => assetMatchesLedgerIdentity(a, tx));
     populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
     // [자산별 역할(포지션) 분류 - 수정 모드] rateMatchOverride와 동일하게 매칭되는 자산의 현재 role을 보여준다.
     // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다 -
@@ -914,8 +917,9 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 자산을 소유자+계좌구분+티커(없으면 이름)로 찾아 rateMatchOverride를 반영한다 - 입력칸을 채웠으면
   // 그 값을, 비웠으면(기존에 설정돼 있었더라도) 지워서 자동판별로 되돌린다.
   const rateMatchRaw = document.getElementById('tx_rateMatchOverride').value.trim();
-  const matchedAsset = state.assets.find((a) => a.owner === tx.owner && a.accountType === tx.accountType &&
-    (tx.ticker ? a.ticker === tx.ticker : (!a.ticker && a.name === tx.name)));
+  // [B-5 일관성] 동기화가 방금 다룬 바로 그 자산을 같은 판정으로 찾는다 - 통화를 보지 않으면 달러
+  // 거래를 저장했는데 같은 이름의 원화 자산에 대표매칭키와 역할이 쓰였다(실측).
+  const matchedAsset = state.assets.find((a) => assetMatchesLedgerIdentity(a, tx));
   // [Phase 30 - 데이터 보호] 신규 거래(수정이 아님)에서 이 두 칸은 기본이 빈칸이다. 예전엔 그 빈칸을
   // 그대로 "지워라"로 해석해서, 이미 대표매칭키/역할을 지정해 둔 자산에 매수 한 건을 추가하기만 해도
   // 그 설정이 조용히 사라졌다(Phase 30 조사에서 실측 재현). 빈칸은 "이번 입력에서 건드리지 않았다"로
@@ -950,12 +954,16 @@ function deleteTransaction(id) {
   // 처리가 안 됨) - 명시적으로 0으로 맞춰준다. 거래 없이 처음부터 수동 등록된 자산(양식다운로드
   // 워크플로 등)은 이 분기를 절대 타지 않는다 - 오직 "방금 거래를 지운" 그 종목/소유자/계좌 조합에만
   // 적용되므로, 애초에 거래내역이 없던 자산의 수동 입력 수량을 건드릴 위험이 없다.
+  // [B-5 일관성] 남은 거래 확인과 고아 자산 찾기 둘 다 통화까지 본다. 예전에는 둘 다 이름만 봐서
+  // 같은 계좌에 이름이 같은 원화/달러 자산이 있으면 양쪽으로 틀렸다 - ① 달러 거래를 지워도 남아 있는
+  // 원화 거래 때문에 stillHasTx가 true가 되어 정작 거래가 사라진 달러 자산이 정리되지 않았고,
+  // ② 원화 자산만 있는 상태에서 달러 거래를 지우면 **아무 관련 없는 원화 자산의 수량이 0으로
+  // 지워졌다**(실측: 수량 100 → 0). 판정만 정확하게 만들고 정리 규칙 자체는 그대로 둔다.
   if (removed) {
-    const stillHasTx = state.transactions.some((t) => t.owner === removed.owner && t.accountType === removed.accountType &&
-      (removed.ticker ? t.ticker === removed.ticker : t.name === removed.name));
+    const removedKey = transactionIdentityKey(removed);
+    const stillHasTx = state.transactions.some((t) => transactionIdentityKey(t) === removedKey);
     if (!stillHasTx) {
-      const orphan = state.assets.find((a) => a.owner === removed.owner && a.accountType === removed.accountType &&
-        (removed.ticker ? a.ticker === removed.ticker : (!a.ticker && a.name === removed.name)));
+      const orphan = state.assets.find((a) => assetMatchesLedgerIdentity(a, removed));
       if (orphan && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
     }
   }
