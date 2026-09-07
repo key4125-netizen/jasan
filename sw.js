@@ -2,7 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v214'; // [Phase 50 Release] v213 이후 다섯 Phase(47-E 백업
+const CACHE_NAME = 'smart-asset-manager-v215'; // [Phase 54 - V1.0 Final Release] Phase 53이
+// 엑셀 복원 경로를 고치면서 js/01-core-state.js와 js/12-import-export-sync.js를 바꿨다. 엑셀
+// 가져오기가 시트에 이미 적혀 있던 자산군을 읽지 않아 티커 없는 자산이 왕복마다 '주식'이 되던 것
+// (그래서 원화 현금 보호막이 풀려 잔고가 줄고, 자산이 복제되던 것), 매수 시점 환율이 시트에 아예
+// 없어 외화 원가가 오늘 환율로 바뀌던 것, 자산 id를 새로 발급해 클라우드 최초 페어링에서 자산이
+// 두 벌로 남던 것 - Phase 52 감사에서 확정한 V1.0 blocker 3건이다. cache-first라 CACHE_NAME을
+// 올리지 않으면 이 수정이 기존 사용자에게 전달되지 않는다. v215로 올려 activate 핸들러가 구 캐시를
+// 지우고 새 캐시를 채우게 한다. 캐시 정책/APP_SHELL/install/activate/fetch 로직은 일절 무변경.
+// [Phase 50 Release] v213 이후 다섯 Phase(47-E 백업
 // 복원 시 대표매칭키 보존 / 47-F 적용 중인 수익률 가정 표시 / 48-A 엑셀 왕복의 Return Key 승격 차단 /
 // 49 positionSource 도입 / 50 Hybrid SoT를 실제 동기화에 연결)가 index.html과 js/01·05·06·07·08·12를
 // 바꿨는데 CACHE_NAME이 v213에 머물러 있었다 - cache-first라 그 사이 모든 수정이 기존 사용자에게
