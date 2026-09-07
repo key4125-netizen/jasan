@@ -964,7 +964,12 @@ function deleteTransaction(id) {
     const stillHasTx = state.transactions.some((t) => transactionIdentityKey(t) === removedKey);
     if (!stillHasTx) {
       const orphan = state.assets.find((a) => assetMatchesLedgerIdentity(a, removed));
-      if (orphan && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
+      // [BL-12] 자산 마스터가 수량을 관리한다고 스스로 적어 둔 자산(positionSource='manual')은 거래 삭제로도
+      // 지우지 않는다 - syncAssetsFromTransactions가 같은 이유로 이미 갖고 있는 가드인데 이 고아 정리
+      // 분기에만 빠져 있었다(실측: manual 자산 100주 + 거래 1건 → 그 거래를 지우면 자산이 0으로
+      // 지워졌다). 가드의 의미도 같다 - "카테고리로 추정한 예외"가 아니라 "자산에 저장된 사실에
+      // 따른 예외"다. legacy 자산(표식 없음)과 ledger 자산은 예전과 완전히 같은 경로로 흐른다.
+      if (orphan && orphan.positionSource !== 'manual' && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
     }
   }
   persistAssets();
