@@ -32,6 +32,118 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 46 감사 + 47-A: 수익률 계산 경로 완성 **V1.1 v212 → v213**
+
+**커밋 2건, 둘 다 push 완료.**
+- `2743c90` "release: bump service worker cache to v213" (Phase 46)
+- `ddf475b` "fix: resolve return assumptions from asset character instead of region" (Phase 47-A)
+
+**버전: v212 → v213** (sw.js CACHE_NAME + index.html appVersionLabel 동시 갱신, Release Guard PASS)
+
+### 🔴 Phase 46이 찾아낸 것 — 정책 계층과 계산 계층이 서로 다른 말을 하고 있었다
+
+`resolveAssetCharacter`(Phase 40-C)는 국고채 ETF를 정확히 `BOND`로 판정하고 있었는데, 실제 수익률을
+정하는 `getProjectionAssetGroupKey`는 그 판정을 **전혀 보지 않고** `getRegionFallbackRateKey`
+("국내면 KOSPI, 해외면 S&P500")를 썼다. 즉 Phase 40-C가 만든 성격 계층이 계산에 연결돼 있지 않았다.
+
+| 자산(override 없음) | 성격 판정 | 실제 적용 | 20년 과대 |
+|---|---|---|---|
+| KODEX 국고채3년 | BOND | KOSPI 7% | **+81.7%** |
+| TLT (미국 국채 ETF) | BOND | S&P500 5.1% | +24.5% |
+| TIGER 리츠부동산인프라 | UNRESOLVED | KOSPI 7% | - |
+
+게다가 `assessReturnAssumptionStatus`는 이미 정확한 진단 문구를 만들고 있었는데 **어떤 UI에도 연결돼
+있지 않았다**(저장소 전체 grep: 정의부 + 테스트 외 호출 0건). 문제를 아는 코드가 사용자에게 도달하지 않았다.
+
+Phase 46은 감사(코드 변경 = SW bump + 테스트뿐)였고, PM이 7개 결정 항목 중 ①②③⑤⑥과 설명문 수정을
+승인해 Phase 47-A에서 구현했다.
+
+### Phase 47-A가 실제로 바꾼 계산 경로
+
+`getRegionFallbackRateKey`를 **삭제**하고 그 자리에 `resolveRateKeyFromAssetCharacter()`(js/05)를 넣었다.
+
+```
+사용자 지정(override) → 동일 ticker 사용자 등록 → 카테고리 → 시스템 티커/별칭 → 이름 키워드
+→ [신규] 자산 성격 → 그 성격의 Return Key → 지역·통화 검증 → 없으면 UNRESOLVED(성장 0%)
+```
+
+- `resolveAssetGroupKeyDetail`의 `source`: `regionFallback` **삭제**, `assetCharacter`/`unresolved` 신설
+- 같은 함수를 **경로 B**(`getTargetProjectionRate` - MC adapter가 호출하는 함수)의 세 군데 지역 폴백과
+  **표시 경로**(`resolveTickerToRateKey`)에도 적용 → 세 경로가 하나의 규칙을 공유한다
+- `resolveProjectionRateForKey` / `getSystemDefaultRate`의 최종 폴백도 지역 대표지수 → **0**
+  (이것이 BOND.STOCK 미결 사항을 닫았다 - 예전엔 같은 키가 국내 표기면 KOSPI, 해외 표기면 S&P500이었다)
+
+**`UNRESOLVED`의 0%는 "수익률이 0일 것으로 예상한다"가 아니라 "적용할 근거 있는 가정이 없어 원금을
+그대로 둔다"는 뜻이다.** 이 구분을 잃으면 안 된다.
+
+**`CHARACTER_SOURCES_FOR_AUTO_RATE_KEY`**(js/05)가 자동 적용 허용 근거 목록이다:
+`category / etfHoldings / nameKeyword / sectorMap / presetTicker / indexNameKeyword / domesticIndexName`.
+**`individualStock`은 의도적으로 빠져 있다** - `classifyCategory`(js/01)의 마지막 줄이 아무 규칙에도
+안 걸린 자산을 `'주식'`으로 되돌리기 때문에, 그 근거는 "개별 주식임을 확인했다"가 아니라 "정체를 모른다"와
+구분되지 않는다(이름이 '블라블라'인 자산까지 KOSPI를 받고 있었다). **`classifyCategory` 자체는 건드리지
+않았다** - 거기를 고치면 category가 바뀌어 Risk 대상 자산군이 달라진다.
+
+### 삼성전자 Individual Alpha 폐지 (PM 승인)
+
+세 프리셋의 `tickers['005930.KS']`(8.0/9.0/15.0)를 **삭제**하고 `resolveProjectionRateForKey` /
+`getSystemDefaultRate`에 "`005930.KS` → KOSPI 앵커" 분기를 명시했다. 숫자를 복사하지 않고 앵커를
+가리키므로 앞으로 두 값이 어긋날 수 없다. 새 Samsung 전용 Key는 만들지 않았고 시스템 Key는 16개 그대로다.
+
+**구현 중 스스로 만든 버그를 발견해 고쳤다**: 처음 작성한 Samsung 분기가 `getCustomRate` 조회보다 앞에
+있어, 삼성전자 수익률을 직접 설정해 둔 기존 사용자의 값(Golden 6/8/11)이 조용히 KOSPI로 덮이는 상태였다.
+브라우저 실측에서 잡았고 e2e/46 테스트 10이 고정한다. **이 분기를 수정할 일이 생기면 custom 우선을 반드시 유지할 것.**
+
+### 실측 영향 (일반적 시나리오, override 없는 신규 사용자)
+
+| 자산 | 이전 → 이후 | 20년 변화 |
+|---|---|---|
+| KODEX 국고채3년 | KOSPI 7% → **BOND 4%** | −45.0% |
+| TLT | S&P500 5.1% → 가정 없음 0% | −63.9% |
+| 리츠/부동산 ETF | 7% / 5.1% → 0% | −75.2% / −63.9% |
+| 혼합형·미등록 ETF | 7% → 0% | −75.2% |
+| 삼성전자 | 9% → **KOSPI 7%** | −32.8% |
+
+**Golden 사용자 영향 = 0.** 26개 자산 전부 `rateMatchOverride`를 갖고 있고, 13개 대표매칭 키 전부가
+`customScenarioRates`에 등록돼 있다(브라우저 실측 불일치 0건).
+
+### 🔴 다음 세션이 반드시 알아야 할 부작용
+
+**`SECTOR_MAP`(js/09)에 없는 실재 개별주식이 이제 0%로 계산된다.** SECTOR_MAP은 국내 16종·해외 21종,
+총 **37개**뿐이다. 파크시스템스(140860.KQ), POSCO홀딩스(005490), 대부분의 국내 중소형주가 여기 해당한다.
+`블라블라` 같은 가짜 이름과 실재 상장주식을 앱이 구분할 수단이 현재 없기 때문이다(6자리 코드 형식은 존재를
+보장하지 않고, `data/ticker-master.json`은 CDN에서 받아오므로 계산 경로에 쓰면 결과가 비결정적이 된다).
+
+기존 사용자는 override가 있어 영향이 없지만, **신규 사용자가 개별주식을 등록하고 아무 설정도 하지 않으면
+예측이 조용히 0% 성장으로 계산되며 이를 알려주는 UI가 없다.** `assessReturnAssumptionStatus`는 정확한
+문구("성장 없이(0%) 계산하고 있습니다. 기준을 지정하면 그 값이 사용됩니다")를 만들지만 여전히 미연결이다.
+**다음 Phase 최우선 후보** - ① 진단 문구 UI 연결 또는 ② SECTOR_MAP/티커 마스터를 성격 근거로 승격.
+둘 다 PM 판단 사항이라 47-A에서 구현하지 않았다.
+
+### 테스트
+
+- `npm test` **179/179** · `eslint` **0** · Release Guard **PASS**
+- 전체 e2e **421 통과 / 15 실패 — 신규 회귀 0건**
+  - e2e/33 헤더 반응형 14건(알려진 환경 실패, 실행마다 6→11→14로 변동)
+  - e2e/19 Case A 1건 — 격리 반복 **72회 중 1회**만 실패(직후 40/40 통과). 외부 시세 의존 플레이크
+  - e2e/32(가독성)·e2e/36·e2e/40은 이번 실행에서 전부 통과
+- 신규 `e2e/46-phase47a-calculation-path.spec.js` **17/17**, `e2e/45-phase46-return-policy.spec.js` **19/19**
+- **Mutation test**: 지역 폴백 부활 → **15건 실패**, 삼성 8/9/15 복원 → **4건 실패**,
+  `individualStock` 자동 적용 허용 → **5건 실패**. 되돌리면 전부 재통과
+- 커밋 1은 그 시점 코드로 82/82 통과하도록 e2e/45를 Phase 46 형태로 커밋했고, 커밋 2가 코드와 함께
+  4개 테스트를 새 정책으로 갱신했다(각 커밋이 독립적으로 green)
+
+### 미결 / 손대면 안 되는 것
+
+- **`e2e/45`·`e2e/46`의 기대값을 PM 승인 없이 고치지 말 것.** 이 파일들이 깨진다면 테스트가 낡은 것이
+  아니라 누군가 정책을 바꾼 것이다.
+- `recommendReturnAssumptionKey` / `assessReturnAssumptionStatus`의 UI 연결은 **PM 승인 사항**이다.
+- Phase 46 감사에서 남긴 backlog: 미등록 국내 대표지수 ETF(KODEX 200TR 등) `ETF_HOLDINGS_MAP` 보강 ·
+  BOND의 국고채/회사채 분리 · KOSDAQ "전용 가정 없음" 표시 · DEV_EX_US 한국 포함 이중계상 ·
+  μ(미래 가정)와 σ(과거 실현변동성)의 성격 차이 UI 설명 · `US_BOND` Key 신설 필요성 · KRW/USD Cash 구조.
+- `.claude/launch.json`은 이번에도 로컬 scratchpad 경로라 **커밋하지 않았다**(상시 규칙).
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 45: 혼합형/현금 분류 하드닝 + 삼성 Alpha 영향분석 **V1.1 v212 유지**
 
 **커밋** `b628554` "fix: stop mixed-asset and cash misclassification in return assumptions" — push 완료.
