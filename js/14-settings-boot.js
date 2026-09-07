@@ -177,8 +177,13 @@ async function bootApp() {
   runAutoBackupIfDue();
   // 거래내역이 있으면 자산 목록을 항상 최신 계산값으로 맞춰둔 뒤 첫 렌더링을 시작한다(구조 변경/수동
   // localStorage 편집 등으로 어긋나 있었을 가능성에 대비한 안전장치).
+  // [V1.1 S-1 D-3] 이 호출만 "자동"이다 - 사용자가 지금 아무 것도 하지 않았는데 도는 안전망 재계산이라,
+  // 수량을 누가 관리하는지 모르는(positionSource 없음) 자산은 건드리지 않는다 - 사용자가
+  // 자산관리 엑셀로 정정해 둔 현재 보유 수량이 매 부팅 조용히 되돌리는 것을 막는다
+  // (syncAssetsFromTransactions 상단 주석 참고). 거래 입력/수정/삭제 경로는 인자 없이 부르므로
+  // 예전과 같다.
   if (state.transactions.length > 0) {
-    syncAssetsFromTransactions();
+    syncAssetsFromTransactions({ auto: true });
     persistAssets();
   }
 
