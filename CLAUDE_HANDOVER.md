@@ -32,12 +32,17 @@
 
 ---
 
-## 최근 세션 요약 — V1.1 **S-1 D-3 단독 구현** (부팅 자동 sync가 legacy를 덮어쓰지 않는다) **v219 유지**
+## 최근 세션 요약 — V1.1 **S-1 D-3 ✅ CLOSED** (부팅 자동 sync가 legacy를 덮어쓰지 않는다) **v219 유지**
+
+> **상태: CLOSED (PM 판정 GO · 완료 처리).**
+> 구현이 당초 승인한 D-3 정책과 정확히 일치함을 PM이 확인했다.
+> **D-3 자체는 더 이상 수정하지 않는다.** 아래 정책표는 이제 변경 불가 기준이므로,
+> 이 동작을 바꾸려면 반드시 새 PM 승인을 받아야 한다.
 
 **코드 커밋** `6ef246f` "fix: stop the boot resync from overwriting unmarked assets".
-**인계 갱신** (이 커밋). **SW bump 없음 — v219 그대로다. v220 릴리스는 별도 단계다.**
+**인계 갱신** `e3a9baa` + 이 커밋(CLOSED 확정 기록). **SW bump 없음 — v219 그대로다. v220 릴리스는 별도 단계다.**
 
-### 확정된 SoT 정책 (PM 승인, 이제 이 프로젝트의 상시 기준)
+### 확정된 SoT 정책 (PM 승인 · CLOSED — 이제 이 프로젝트의 상시 기준)
 
 `positionSource`의 의미 = **"현재 보유 상태(quantity / buyPrice / buyRate)를 누가 관리하는가"를
 자산 마스터가 스스로 적어 둔 사실 표식.** 나머지 필드(category·role·rateMatchOverride·currentPrice·
@@ -56,6 +61,15 @@ owner·accountType·currency·isDomestic)는 **전부 자산 마스터 단독 �
 
 **legacy는 끝까지 UNKNOWN으로 남는다.** manual/ledger로 승격시키지 않는다 — migration 0, schema 0,
 새 positionSource 저장 0.
+
+**PM이 CLOSED 판정에서 명시적으로 확인한 불변 조건** — 앞으로 이 여섯 개를 깨는 변경은 하지 않는다.
+
+1. legacy를 manual/ledger로 자동 승격하지 않는다.
+2. `positionSource`를 새로 쓰거나 migration하지 않는다.
+3. `{ auto: true }`는 `bootApp` 하나에서만 넘긴다.
+4. 거래 저장 / 거래 삭제 / 거래 엑셀 업로드는 기존 동작을 유지한다.
+5. BL-12의 manual 자산 보호를 유지한다.
+6. 원화 현금 가드를 그대로 둔다.
 
 ### 무엇이 문제였나
 
@@ -132,7 +146,9 @@ External API  0              (DNS 격리)
 
 ### backlog 현황 (STEP A-3 감사에서 확정, 우선순위 순)
 
-- **S-1b** legacy 불일치 진단(`LEDGER_UNKNOWN`) — 기존 한 줄 경고 영역 재사용, 새 UI 0
+- **S-1b** legacy 불일치 진단(`LEDGER_UNKNOWN`) — 기존 한 줄 경고 영역 재사용, 새 UI 0.
+  ⚠ **바로 구현하지 않는다** — PM이 진단 정책을 별도로 검토한 뒤에 진행한다.
+  이번 CLOSED 판정에서 `assessPositionConsistency`와 `LEDGER_UNKNOWN`은 명시적 변경 금지 항목이었다.
 - **BL-7a** JSON [추가하기]가 파일의 `manual`을 **로컬 `ledger`로 뒤집음**(`restored`가
   `positionSource`를 안 읽어 M4 carry-over가 잘못 발동). `updatedAt`은 **보존하면 안 된다**
 - **BL-13** 클라우드 병합이 원격 구버전 레코드로 `manual`을 지움 → 최소안: `positionSource`가
