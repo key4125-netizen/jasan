@@ -384,9 +384,10 @@ test('Phase 48-A Return Key 규칙과 positionSource 정책이 그대로다', as
   expect(find('자동판별자산').source).not.toBe('override');
   expect(find('사용자지정자산').override).toBe('KOSDAQ');
   expect(find('사용자지정자산').적용키).toBe('KOSDAQ');
-  // positionSource는 이번 Phase에서 엑셀 컬럼을 만들지 않았다 - 덮어쓰기에서는 예전처럼 값이 없다.
-  // 이 줄은 "고쳤다"가 아니라 "지금 이렇다"를 고정한다(알려진 한계).
-  expect(after.map((a) => a.positionSource)).toEqual(['UNDEFINED', 'UNDEFINED', 'UNDEFINED']);
+  // [V1.1 M4로 해결됨] 이 줄은 원래 "덮어쓰기에서는 positionSource가 사라진다"는 당시의 한계를
+  // 사실 그대로 고정하고 있었다. M4가 그 한계를 없앴다 - 엑셀 컬럼을 만들지 않고, Phase 53이
+  // 보존하게 된 id(없으면 identity)로 기존 자산을 찾아 이어받는다. 자세한 규칙은 e2e/56 참고.
+  expect(after.map((a) => a.positionSource)).toEqual(['ledger', 'manual', 'UNDEFINED']);
 });
 
 test('왕복이 대시보드 합계와 Monte Carlo 입력을 바꾸지 않는다', async ({ page }) => {

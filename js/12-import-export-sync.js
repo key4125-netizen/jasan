@@ -119,6 +119,35 @@ function assetMergeKey(a) {
     ? `${a.owner}|${a.accountType}|${ticker.toUpperCase()}`
     : `${a.owner}|${a.accountType}|${a.category}|${a.name}`;
 }
+/* [V1.1 M4] 가져오기로 들어온 자산이 기존 자산의 positionSource를 이어받게 한다.
+ *
+ * 엑셀 시트에는 positionSource 칸이 없다(내부 데이터 출처 표식이라 일부러 넣지 않는다). 그래서
+ * 파일에서 돌아온 자산은 항상 값이 비어 있고, 덮어쓰기는 state.assets를 통째로 그것으로 갈아치운다 -
+ * 결과적으로 엑셀 한 번에 ledger/manual 구분이 전부 legacy로 되돌아갔다. 그렇게 되면 다음 부팅의
+ * syncAssetsFromTransactions에서 manual 자산이 더 이상 보호받지 못해 수량/취득가가 거래원장 값으로
+ * 조용히 바뀔 수 있다(Phase 50이 막아 둔 바로 그 문제다).
+ *
+ * 컬럼을 새로 만들지 않고 고친다 - Phase 53에서 id를 보존하게 되었으므로 같은 자산을 정확히 찾을 수
+ * 있고, id가 없는 구형 파일은 append가 이미 쓰던 identity 규칙(assetMergeKey)으로 찾는다.
+ *
+ * [추측하지 않는다] 기존 자산을 찾지 못하면 값 없이 그대로 둔다. 거래내역이 있는지 없는지로
+ * ledger/manual을 새로 판단하지 않는다 - 그건 저장된 사실이 아니라 현재 상태일 뿐이다(상시 정책 5항).
+ * [파일이 값을 담고 있으면 파일이 이긴다] JSON/Cloud처럼 incoming에 값이 명시된 경로는 그대로 둔다. */
+function buildPositionSourceIndex(existingAssets) {
+  const byId = new Map(), byKey = new Map();
+  (existingAssets || []).forEach((a) => {
+    if (!a || a.positionSource === undefined) return;
+    if (a.id) byId.set(a.id, a.positionSource);
+    byKey.set(assetMergeKey(a), a.positionSource);
+  });
+  return { byId, byKey };
+}
+function carryOverPositionSource(incoming, index) {
+  if (incoming.positionSource !== undefined) return incoming;
+  const kept = index.byId.get(incoming.id) || index.byKey.get(assetMergeKey(incoming));
+  return kept === undefined ? incoming : { ...incoming, positionSource: kept };
+}
+
 function mergeAssetsForAppend(existingAssets, incomingAssets) {
   const merged = existingAssets.map((a) => ({ ...a })); // 원본 배열/객체를 직접 변형하지 않도록 복사
   const indexByKey = new Map(merged.map((a, i) => [assetMergeKey(a), i]));
@@ -133,15 +162,8 @@ function mergeAssetsForAppend(existingAssets, incomingAssets) {
       return;
     }
     const kept = merged[idx];
-    merged[idx] = { ...incoming, id: kept.id }; // 값은 전부 최신 파일 기준, id만 기존 것 유지
-    // [Phase 50] 엑셀 시트에는 positionSource 칸이 없다(Phase 49에서 컬럼을 추가하지 않기로 확정).
-    // 그래서 이 왕복만으로 "이 자산의 수량을 거래원장이 관리하는가"라는 사실이 조용히 지워졌다.
-    // 파일에 값이 없다는 것은 "manual이다"가 아니라 "이 파일은 그 사실을 담지 않는다"는 뜻이므로,
-    // 들어온 값이 없으면 기존 값을 그대로 지킨다(파일이 값을 담고 있으면 파일이 이긴다 - 다른
-    // 필드와 동일한 규칙).
-    if (merged[idx].positionSource === undefined && kept.positionSource !== undefined) {
-      merged[idx].positionSource = kept.positionSource;
-    }
+    // 값은 전부 최신 파일 기준, id만 기존 것 유지. positionSource는 아래 공용 규칙이 이어받는다.
+    merged[idx] = carryOverPositionSource({ ...incoming, id: kept.id }, buildPositionSourceIndex([kept]));
     updatedCount++;
   });
   return { assets: merged, newCount, updatedCount };
@@ -245,7 +267,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         state.assets = assets;
         resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
       } else {
-        state.assets = imported;
+        // [V1.1 M4] 덮어쓰기는 state.assets를 통째로 갈아치운다 - 갈아치우기 전의 자산에서
+        // positionSource를 이어받는다(엑셀에는 그 칸이 없어서 파일만으로는 알 수 없다).
+        // 찾지 못한 자산은 값 없이 그대로 둔다 - 거래내역 유무로 추측하지 않는다.
+        const keptSources = buildPositionSourceIndex(state.assets);
+        state.assets = imported.map((a) => carryOverPositionSource(a, keptSources));
         state.dayChangeMap = {};
         state.prevCloseMap = {};
         state.sessionMap = {};
