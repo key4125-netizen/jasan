@@ -32,6 +32,119 @@
 
 ---
 
+## 🔒 PM 확정 정책 — Hybrid Source of Truth (Phase 48 기준선)
+
+**이 정책은 특정 Phase의 산물이 아니라 이 프로젝트의 상시 기준이다. 데이터 구조를 건드리기 전에 먼저 읽는다.**
+
+| 데이터 | Source of Truth |
+|---|---|
+| ticker · name · owner · accountType · currency · isDomestic | **assets** |
+| quantity · buyPrice · buyRate | **transactions** — 단 **거래가 없는 수동 자산은 assets** |
+| KRW Cash 수량 | **assets** |
+| USD Cash 수량 | **transactions** |
+| currentPrice | ticker 有 → **외부 시장데이터 캐시** / ticker 無 → **사용자 입력값** |
+| role · rateMatchOverride | **사용자 설정** |
+| Projection / MC / Risk | **파생 계산 결과** |
+| Cloud | SoT 아님 — **동기화/보존 저장소** |
+| Excel | SoT 아님 — **사용자 입력/이동/백업 수단** |
+| JSON | **전체 상태 백업/복원 수단** |
+
+**구현 원칙**
+1. `"transactions가 항상 SoT"`로 바꾸지 않는다. `"assets가 항상 SoT"`로도 바꾸지 않는다.
+   현재 Hybrid를 **먼저 명시적으로 안전하게 만드는** 방향이다.
+2. **부동산·현금·최초등록 자산을 거래내역이 없다는 이유만으로 삭제하거나 수량을 0으로 만들지 않는다.**
+3. **자동 데이터 정리/삭제는 금지한다.**
+4. 한 번에 하나의 데이터 정합성 문제만 해결한다.
+
+---
+
+## 최근 세션 요약 (2026-09-07) — Phase 48 SoT 감사(코드 0건) + Phase 48-A: P0-3 수정 **v213 유지**
+
+**커밋** `23091d7` "fix: stop excel round-trip from promoting auto-resolved return keys to user overrides" — push 완료.
+
+### Phase 48 — F-3 Source of Truth 전면 감사 (제품 코드 변경 0건)
+
+핵심 질문 *"사용자가 입력한 사실 데이터와 설정이 의도하지 않게 변하지 않는가?"* → **NO.**
+18개 충돌 시나리오를 실제 state 조작으로 전수 재현했다.
+
+**P0 (실제 데이터 손실 / 의미 변경)**
+
+| | 문제 | 재현 |
+|---|---|---|
+| **P0-1** | Excel 자산 replace의 quantity/buyPrice가 **다음 부팅에 조용히 되돌아감** (99주 → 10주). `syncAssetsFromTransactions`가 매 부팅 실행([js/14:181](js/14-settings-boot.js#L181)) | S1·S2·S15 |
+| **P0-2** | 거래 overwrite / Excel replace / **Cloud pull**에서 거래에 없어진 자산이 옛 수량 그대로 잔존 → 화면·KPI·Projection·MC·Risk 전부 과대. 고아 방어는 **거래 1건 삭제 경로에만** 있다([js/06:822](js/06-transactions.js#L822)) | S14 |
+| **P0-3** | Excel 왕복이 자동 판별 Return Key를 사용자 override로 승격 | S7 → **48-A에서 해결** |
+
+**P1**: Excel import가 `category` 재계산(주식→ETF, S4) · `id`/`updatedAt` 재발급(S5·S17) ·
+ticker/owner/accountType 한 글자 차이로 자산 분열(S13) · Excel이 `buyRate`를 담지 않음.
+
+**정상 확인된 것**: Cloud Sync 충돌은 **명시적 정책**이다(id + `updatedAt` LWW + `lastSyncedIds` baseline으로
+"삭제 vs 신규" 구분, 5가지 조합 실측 전부 의도대로). 거래 모달의 빈칸 보호(Phase 30)와 JSON 복원의
+override 보존(Phase 47-E)도 정상. 원화 현금 보호도 정상(S11).
+
+**구조 요약**
+- `category`가 **4개 역할을 겸한다**: 화면 분류 / 시세조회 대상(`NON_TRADABLE_CATEGORIES`) /
+  Risk Universe(`RISK_ELIGIBLE_CATEGORIES`) / Projection 그룹. **그래서 Excel의 category 재계산이 위험하다.**
+- **Risk Universe ≠ Rebalance Universe** — 목적이 달라 통합하지 않는다.
+- **완전 복원 수단은 JSON 백업 하나뿐이다.** 거래백업은 원장만, Excel은 자산+수익률만 담는다.
+- **"최초등록"은 UI 용어(자산 추가)이고 `origin:'initial'` 거래와 다른 기능이다.** 이름만 같다.
+- **field-level split**: `currentPrice`/`role`/Return Key는 분리 안전. **`quantity`+`buyPrice`+`buyRate`는
+  반드시 하나로 묶어야 한다**(같은 거래 집합에서 동시에 나오므로 섞이면 손익이 무의미). ticker/owner/
+  accountType/name도 **매칭 키**라 반드시 함께.
+- **이행 권고(B안)**: 자산에 `positionSource`(`'ledger'`|`'manual'`) 표식 1개를 더해 지금의 Hybrid를
+  **명시적으로** 만든 뒤 P0-1/P0-2를 푼다. **표식 없이 고아 자산을 자동 정리하면 부동산·현금·최초등록
+  자산을 잘못 0으로 만들어 새 P0을 만든다.** ← 아직 미승인, 구현 금지.
+
+### Phase 48-A — P0-3 수정 (이번 Phase의 유일한 구현)
+
+**원인**: `js/12` 엑셀 export의 대표매칭 칸이 `resolveAssetGroupKeyDetail(a).key`(지금 적용 중인 키)를
+찍었다. 그 값에는 사용자 지정과 자동 판별이 섞여 있어, 재업로드하면 `makeAsset`이 그것을
+`rateMatchOverride`로 저장해 **자동판별이 사용자 지정으로 굳었다.**
+
+**수정**: `'대표매칭(수익률연동키)': sanitizeRateMatchOverride(a.rateMatchOverride) || ''` — **저장된
+오버라이드 원본값만 적고 없으면 빈 칸.** Phase 29-B가 수익률 시트에서 이미 쓰는 규칙 그대로다.
+
+**내보내기만 바꿨다. 가져오기는 그대로 뒀다** — 예전 파일에 찍힌 자동 판별값이 사용자가 적은 것인지
+예전 export가 찍은 것인지 **현재 schema로는 구분할 수 없어서**, 임의로 추정해 지우지 않고 보존한다
+(**알려진 legacy 모호성**, `e2e/50` 테스트 D가 이 사실 자체를 고정한다).
+
+**부작용 없음 확인**: 자동 판별 자산의 계산 키·수익률은 왕복 전후 동일(KOSPI 7%), 사용자 지정은
+그대로 유지, `customScenarioRates`·owner·계좌·수량·매수단가 전부 불변.
+
+**엑셀 칸이 비어 보이는 것에 대해**: 적용 중인 기준은 이제 **자산 상세 모달의 "장기 수익률 가정"
+블록**(Phase 47-F)에서 자동/사용자 구분과 함께 볼 수 있다. 그 정보를 엑셀 칸에 다시 섞으면 승격
+문제가 되살아나므로 **의도적으로 내보내지 않는다.**
+
+**검증 방식이 중요하다**: `e2e/50`은 규칙을 테스트에 베껴 쓰지 않는다. 실제 `#exportExcelBtn`을 눌러
+만들어진 워크북을 읽고(테스트에서만 `XLSX.writeFile`을 가로챔), 그 파일을 base64→임시파일로 만들어
+**실제 `#excelFileInput`에 올려** 왕복시킨다. 규칙을 복사한 테스트는 규칙이 바뀌어도 안 깨진다.
+
+### 테스트
+
+`npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v213)** · `e2e/49` **4/4** ·
+`e2e/50` **6/6** · 전체 e2e **470/470 — 실패 0건, 신규 회귀 0건**.
+Phase 47-G 네트워크 격리 유지 — **Production Worker/외부 API 요청 0건**.
+
+### 🔴 남은 미결 (PM 결정 대기 — 임의로 손대지 말 것)
+
+| 항목 | 상태 |
+|---|---|
+| **P0-1** quantity/buyPrice가 부팅 때 되돌아감 | 미해결. `positionSource` 표식 승인 필요 |
+| **P0-2** 고아 자산 | 미해결. 고아 정의 후보 O-1~O-4 중 미확정(**O-3=baseline 방식 또는 O-4=UI 표시만** 권고) |
+| P1 Excel category 재계산 / id·updatedAt 재발급 / buyRate 미포함 | 미해결 |
+| P1-3 ticker·owner·accountType 변경 시 자산 분열 | 미해결 |
+| F-4 Return Key **수정** UI | 미해결(보기만 가능). `populateRateMatchOverrideOptions`([js/06:541](js/06-transactions.js#L541)) 재사용 가능 |
+| Cash 입력경로 통일 | **현행 유지 권고**(USD를 assets로 옮기면 환차손익 계산 능력 상실) |
+| Bond | **P0-1 SoT 확정 후 착수**(시간축 이벤트 = 원장 구조) |
+| CORS_PROXIES 6중 동시 호출 / backfill ticker dedupe / Sync 10초 polling / 오프라인 MC Safety BLOCK | 보류 |
+
+**다음 구현 순서 권고**: ① `positionSource` 표식(마이그레이션 불필요) → ② P0-1/P0-2 → ③ 고아 정의 →
+④ Backup/Restore 명칭 명확화 → ⑤ Excel category/id → ⑥ F-4 수정 UI → ⑦ Cash 설명 → ⑧ Bond.
+
+`.claude/launch.json`은 이번에도 커밋하지 않았다(상시 규칙).
+
+---
+
 ## 🔴 상시 개발 정책 — E2E는 Production API/Worker를 호출하지 않는다
 
 **이 정책은 특정 Phase의 산물이 아니라 이 프로젝트의 상시 기준이다. 새 E2E를 쓰기 전에 먼저 읽는다.**
