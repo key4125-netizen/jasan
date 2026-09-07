@@ -32,6 +32,128 @@
 
 ---
 
+## 최근 세션 요약 — V1.1 **S-1 D-3 단독 구현** (부팅 자동 sync가 legacy를 덮어쓰지 않는다) **v219 유지**
+
+**코드 커밋** `6ef246f` "fix: stop the boot resync from overwriting unmarked assets".
+**인계 갱신** (이 커밋). **SW bump 없음 — v219 그대로다. v220 릴리스는 별도 단계다.**
+
+### 확정된 SoT 정책 (PM 승인, 이제 이 프로젝트의 상시 기준)
+
+`positionSource`의 의미 = **"현재 보유 상태(quantity / buyPrice / buyRate)를 누가 관리하는가"를
+자산 마스터가 스스로 적어 둔 사실 표식.** 나머지 필드(category·role·rateMatchOverride·currentPrice·
+owner·accountType·currency·isDomestic)는 **전부 자산 마스터 단독 소유**이며 이 표식과 무관하다.
+
+거래원장이 최종 책임을 갖는 것은 **거래 사실(날짜·건별 수량·건별 단가·수수료)뿐**이다.
+
+**S-1 = D-3**
+
+| 상태 | 부팅 자동 재계산 | 사용자의 명시적 거래 행동 |
+|---|---|---|
+| 원화 현금 | Master 승 (기존) | Master 승 (기존) |
+| `manual` | Master 승 (기존) | Master 승 (기존) |
+| `ledger` | Ledger 승 (기존) | Ledger 승 (기존) |
+| **legacy(표식 없음)** | **Master 승 ← 이번 변경** | **Ledger 승 (기존 유지)** |
+
+**legacy는 끝까지 UNKNOWN으로 남는다.** manual/ledger로 승격시키지 않는다 — migration 0, schema 0,
+새 positionSource 저장 0.
+
+### 무엇이 문제였나
+
+`positionSource`가 없는 legacy 자산은 "누가 수량을 관리하는지 앱이 모르는" 상태인데, 지금까지는
+그것을 ledger로 취급해 **부팅마다 거래원장 값으로 덮어썼다.** 그래서 사용자가 자산관리 엑셀로
+현재 보유 수량을 정정해도(거래 누락을 바로잡는 공식 창구다) 다음 부팅에 조용히 되돌아갔다.
+
+**실측(STEP A-3)**: 자산 150 + 거래 70 → 부팅 → **70/50,000**. 게다가
+`assessPositionConsistency`는 legacy를 판정 대상에서 제외하므로 **진단조차 `OK`**로 떴다.
+
+### 무엇을 고쳤나
+
+호출부가 정확히 넷이고 성격이 깨끗하게 둘로 갈린다는 점을 이용했다.
+
+| 호출부 | 성격 | 인자 |
+|---|---|---|
+| `bootApp` (js/14:186) | **자동 안전망 재계산** | **`{ auto: true }`** ← 이것만 |
+| 거래 폼 저장 (js/06:939) | 사용자의 명시적 행동 | 없음 (기존 그대로) |
+| 거래 삭제 (js/06:973) | 사용자의 명시적 행동 | 없음 (기존 그대로) |
+| 거래 엑셀 업로드 (js/06:556) | 사용자의 명시적 행동 | 없음 (기존 그대로) |
+
+`syncAssetsFromTransactions(opts)` 안, 기존 manual 가드 **바로 아래** 한 줄:
+
+```js
+if (asset && asset.positionSource === 'manual') return;
+if (isAutoSync && asset && asset.positionSource === undefined) return;   // ← 추가
+```
+
+`asset &&` 조건 때문에 **자산이 아예 없는 포지션은 걸러지지 않는다** — 그건 기존 값을 덮어쓰는 게
+아니라 거래에서 태어난 자산을 처음 만드는 안전망이라 예전 그대로 `ledger` 표식과 함께 생성된다.
+
+새 helper 0 · 새 abstraction 0 · 기존 함수 구조 유지.
+
+### 회귀 장치 — `e2e/61-s1-d3-legacy-boot-sot.spec.js` (신규 11건)
+
+"부팅"은 전부 `page.reload()`로 **진짜 `bootApp()`을 태운다.**
+
+| # | 시나리오 | 수정 전 |
+|---|---|---|
+| **A** | legacy 150 + 거래 100 → 부팅 → **150/90,000 유지**, ps=UNDEF, 거래 1건 유지 | **FAIL(100/80,000)** |
+| B | legacy + 거래 UI 매수 추가 → 150 | PASS(대조군) |
+| C | legacy + 거래 수정 → 200/70,000 | PASS(대조군) |
+| D | legacy + 거래 삭제 → 0 (기존) / **manual → 100 유지(BL-12)** | PASS(대조군) |
+| E | manual 150 + 거래 100 → 부팅 → 150 | PASS(대조군) |
+| F | ledger 150 + 거래 100 → 부팅 → 100 | PASS(대조군) |
+| G | ledger + 거래 추가 → 150 | PASS(대조군) |
+| H | 원화현금 legacy → 부팅 → 유지 / 달러현금 ledger → 부팅 → 덮어씀 | PASS(대조군) |
+| **I** | **[핵심] 엑셀 150 정정 → 부팅 → 150/90,000 유지**, ps=UNDEF, 거래 1건 | **FAIL(70/50,000)** |
+| **J** | I 이후 거래 UI로 30주 추가 → **100** (거래원장 기준) | **FAIL** |
+| K | 자산 없는 거래 → 부팅 → ledger 자산 생성 | PASS(대조군) |
+
+**수정 전 코드로 되돌려 A·I·J가 실제로 FAIL하는 것을 확인했다** — 나머지 8건은 양쪽에서 PASS하는
+진짜 대조군이다.
+
+### 검증 결과
+
+```
+Unit          205/205 PASS
+E2E           577/577 PASS   (전체 1회 실행, 신규 11건 포함)
+ESLint        0 errors       (전체)
+Data Guard    PASS
+Release Guard FAIL — 정상. js/06·js/14가 바뀌었는데 CACHE_NAME v219 그대로다.
+Worker/API    0
+External API  0              (DNS 격리)
+사용자 데이터  변경 0
+```
+
+### 이번 단계에서 의도적으로 **하지 않은 것**
+
+- **진단 `LEDGER_UNKNOWN` 추가 안 함** — `assessPositionConsistency`는 손대지 않았다.
+  legacy 불일치는 여전히 `OK`로 뜬다(다만 이제 값이 되돌아가지는 않는다). **다음 작업 후보 1순위.**
+- BL-13(cloud merge) · BL-7(JSON append) · BL-15(JSON overwrite) · BL-8 · BL-14 · BL-16 · BL-17
+- Target Portfolio · Future Projection · Tax MC · P20/P30/P40 · Worker/API · SW
+
+### backlog 현황 (STEP A-3 감사에서 확정, 우선순위 순)
+
+- **S-1b** legacy 불일치 진단(`LEDGER_UNKNOWN`) — 기존 한 줄 경고 영역 재사용, 새 UI 0
+- **BL-7a** JSON [추가하기]가 파일의 `manual`을 **로컬 `ledger`로 뒤집음**(`restored`가
+  `positionSource`를 안 읽어 M4 carry-over가 잘못 발동). `updatedAt`은 **보존하면 안 된다**
+- **BL-13** 클라우드 병합이 원격 구버전 레코드로 `manual`을 지움 → 최소안: `positionSource`가
+  `undefined`일 때만 상대 값 승계(3줄). field-level merge는 하지 않는다
+- **BL-15** JSON [덮어쓰기] 복원이 클라우드 병합에 되돌려짐(복원본 `updatedAt`이 항상 과거).
+  기존 경고 토스트가 목표비중/자산예측만 언급하고 자산은 언급하지 않음
+- **BL-16** 클라우드 병합에서 `role`·`rateMatchOverride`·`buyRate`도 함께 소실
+- **BL-8** manual 자산에 거래를 넣어도 반영 안 됨 + 화면 수정 경로 없음
+- **BL-14** `deleteTransaction`과 sync의 현금 가드 조건 불일치(달러 현금)
+- **BL-17** `normalizeImportedAsset`이 없는 `category`를 `'주식'`으로 지어냄
+- B-3 · T-1/T-2 · BL-1 · BL-9/10/11 — 이전 감사 그대로
+
+### 참고 — 이번 감사에서 밝혀진 중요한 사실
+
+**자산 폼 [수정]은 `positionSource`를 건드리지 않는다**(js/07:865 `{...oldAsset, ...payload}`,
+payload에 그 필드 없음). 그리고 legacy + 거래가 있는 자산은 **[수정] 버튼 자체가 숨겨진다.**
+→ **legacy를 manual로 만들 수 있는 앱 내 경로가 하나도 없다.** `manual`이 생기는 유일한 경로는
+자산 폼으로 **신규** 자산을 만드는 것뿐이다(js/07:869). BL-8을 설계할 때 이 사실이 전제가 된다.
+
+---
+
 ## 최근 세션 요약 — V1.1 **BL-12 단독 수정** (거래 삭제 시 manual 자산 보호) **v219 유지**
 
 **코드 커밋** `6af2ec3` "fix: keep manual assets when deleting their last transaction".
