@@ -68,7 +68,63 @@
 
 ---
 
-## 최근 세션 요약 (2026-09-07) — Phase 51~53: Release Guard + 엑셀 복원 경로 정상화 **v214 유지 / v215 대기**
+## 🎉 최근 세션 요약 (2026-09-07) — Phase 54: **V1.0 FINAL RELEASE — v214 → v215**
+
+**커밋** `ac6ffea` "release: bump service worker cache to v215" — push 완료.
+
+**V1.0은 여기서 종료되었다.** 이후 발견되는 개선사항은 **V1.1 backlog**로 분리한다(아래 목록 참고).
+
+### 무엇이 사용자에게 전달되었나
+
+Phase 52 감사가 확정한 **V1.0 blocker 3건**(엑셀 `category` 미복원 · `buyRate` 미복원 · `id` 재발급)의
+수정이 v215로 전달된다. Phase 53에서 고쳤지만 CACHE_NAME이 v214에 머물러 있어 아직 닿지 않던 상태였고,
+**Phase 51의 Release Guard가 이번에는 그 상태를 스스로 잡아냈다**(bump 전 FAIL, `js/01-core-state.js`와
+`js/12-import-export-sync.js`를 정확히 지목 → bump 후 PASS).
+
+### v214 → v215 캐시 갱신 실측
+
+**"캐시를 지우면 된다"로 끝내지 않았다.** 진짜 v214 릴리스 파일(`6de5a68`)로 캐시를 만든 뒤,
+**캐시를 그대로 둔 채** v215를 배포하고 앱을 다시 여는 것만으로 확인했다.
+
+| 검증 | 결과 |
+|---|---|
+| v214 캐시 사전 존재 | ✅ `smart-asset-manager-v214` · 화면 v214 · Phase 53 함수 전부 `undefined` · **엑셀 17열** |
+| v215 배포 후 재접속 | ✅ SW update → activate |
+| **v214 캐시 제거** | ✅ |
+| **v215 캐시 존재** | ✅ (캐시 안의 `js/01`에 Phase 53 코드 포함 확인) |
+| active SW = v215 | ✅ 화면 v215 |
+| **Phase 53 기능 실제 제공** | ✅ **엑셀 19열**(`취득환율(매수시점)` · `id` 추가) · 왕복 후 category(부동산·원자재)·buyRate(1,200)·id·평가손익 **전부 보존** |
+| 첫 방문자 | ✅ v215 수신 |
+| **Production Worker 요청** | ✅ **0건** — 외부 시도 728건 전부 `ERR_NAME_NOT_RESOLVED`(성공 0) |
+
+### 최종 테스트
+
+`npm test` **193/193** · `eslint` **0** · 전체 e2e **510/510** · `e2e/49` **4/4** ·
+Release Guard **PASS(v215)**.
+
+### 📌 V1.1 backlog (V1.0에 넣지 않기로 PM이 확정한 것들 — 임의 착수 금지)
+
+| 항목 | 상태 |
+|---|---|
+| **legacy positionSource 확정 UX** | 앱이 추정하지 않고 사용자가 상세 모달에서 한 번 선택. 선택 전에는 기존 동작 유지 |
+| **0원 자산 엑셀 export 제외** | 🟡 NON-BLOCKER. 최소 수정안은 필터를 `curAmount === 0 && quantity === 0`으로 좁히는 것 |
+| **Return Key 수정 UI** | 확인은 상세 모달(47-F), 수정은 거래 모달 `tx_rateMatchOverride` + 엑셀 칸 두 경로 존재 |
+| **buyRate JSON validation 통일** | 엑셀은 `sanitizeBuyRate`, JSON은 `typeof === 'number'`. 실제로 갈라지지 않지만 통일이 안전 |
+| **엑셀 덮어쓰기가 positionSource를 지움** | id가 보존되므로 이제 컬럼 없이 이어받는 방법이 생겼으나 새 규칙이라 미승인 |
+| **identity 이동 semantics** | ticker/owner/계좌 변경 시 자산 분열. UI는 이미 막혀 있음(거래내역 있는 자산은 [수정]/[삭제] 숨김) |
+| **Excel P1** | import의 `category` 재계산은 해결됐고 `updatedAt` 재발급은 의도된 동작. 나머지는 미결 |
+| **Release Guard CI 자동 실행** | 현재 `npm run release-guard` 수동 실행뿐. 이 저장소에는 lint/test/e2e CI 워크플로 자체가 없다 |
+| 보류 | Bond 상세 · Cash 구조 · CORS_PROXIES 6중 호출 · backfill dedupe · Sync 10초 polling · 오프라인 MC Safety BLOCK |
+
+**⚠️ 다음에 APP_SHELL(index.html · js/01~14)을 고치면 릴리스 때 CACHE_NAME과 appVersionLabel을 함께
+올려야 한다.** `npm run release-guard`가 잊었을 때 알려준다 — **FAIL을 통과시키려고 버전만 올리지 말고,
+정말 릴리스할 준비가 됐는지 먼저 판단할 것.**
+
+`.claude/launch.json`은 이번에도 커밋하지 않았다(상시 규칙).
+
+---
+
+## 최근 세션 요약 (2026-09-07) — Phase 51~53: Release Guard + 엑셀 복원 경로 정상화 **→ v215로 전달됨**
 
 **커밋** `f222ac0` "ci: add service worker release guard" · `713f460` "fix: restore category,
 acquisition fx rate and asset id from excel" — push 완료.
