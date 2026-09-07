@@ -32,6 +32,112 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 47-F: 적용 중인 Return Key 가시화 **v213 유지**
+
+**커밋** `eea7be2` "feat: show which return assumption each asset is actually using" — push 완료.
+
+### 목적
+
+대표매칭키(`rateMatchOverride`)를 확인·지정할 수 있는 곳이 **거래 등록 모달(`tx_rateMatchOverride`)과
+엑셀 대표매칭 칸뿐**이라, 거래내역을 쓰지 않는 자산(부동산·실물채권·원화현금·"최초등록"으로만 넣은 종목)은
+사용자가 자기 자산에 어떤 수익률 가정이 붙어 있는지 **앱 안에서 확인할 방법이 아예 없었다**(Phase 47-B/C/D
+감사 F-4). Phase 47-A로 지역 폴백이 사라진 뒤로는 그런 자산이 **성장 0%로 계산**될 수 있는데 그 사실조차
+보이지 않았다. 이번 Phase는 "가시화"만 한다 — **수정 UI는 만들지 않았다**(아래 PM 결정 대기).
+
+### 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `js/05-future-projection.js` | **신규** `describeAppliedReturnAssumption(asset)` + `RATE_KEY_SOURCE_LABELS` + `RATE_ASSUMPTION_DEFAULT_MESSAGES` (+61) |
+| `js/08-detail-modal-fx.js` | **신규** `renderAssetDetailReturnAssumption(assets)` + 단일/통합 모달에서 각 1줄 호출 (+43) |
+| `index.html` | `#assetDetailReturnAssumption` div 1개 (+8). **새 카드/탭/페이지 없음** |
+| `e2e/48-phase47f-return-key-visibility.spec.js` | **신규** 14 테스트 |
+
+### 🔑 화면 Key와 계산 Key의 동일성을 어떻게 보장했나
+
+`describeAppliedReturnAssumption`은 **판정을 하나도 새로 하지 않는다.** 실제 계산이 쓰는
+`resolveAssetGroupKeyDetail(asset)`과 `assessReturnAssumptionStatus(asset)`의 결과를 **그대로 옮겨 담기만**
+한다. 사람이 읽는 이름도 `getRateMatchKeyDisplayLabel()`("수익률 관리"가 쓰는 같은 표)에서 가져온다.
+
+**화면 전용 판정 로직을 절대 만들지 말 것** — 만드는 순간 "화면에는 KOSPI라고 나오는데 실제 계산은 다른 키"가
+언젠가 반드시 생긴다. `e2e/48` 테스트 D가 9종 자산에 대해 `표시Key === getProjectionAssetGroupKey()`를 고정한다.
+
+### 표시 규칙
+
+- **적용 방식**은 `resolveAssetGroupKeyDetail`의 `source`로 정한다(`RATE_KEY_SOURCE_LABELS`):
+  `override`/`customKey`/`customKeyword` → **사용자 지정**, 나머지(`category`/`presetTicker`/`tickerAlias`/
+  `nameKeyword`/`assetCharacter`) → **자동 판별**.
+- **상태 문구**는 `assessReturnAssumptionStatus`의 message가 있으면 그것을 우선 쓰고(UNRESOLVED/NEEDS_REVIEW),
+  비어 있을 때만 채운다. **채우는 기준은 `status`가 아니라 `isUserSet`이다** — `status`의 `USER_DEFINED`는
+  `customScenarioRates`에 등록된 키만 가리켜서, 사용자가 `KOSDAQ` 같은 **시스템 키**를 직접 지정한 경우를
+  놓친다(그때 status는 OK). 구현 중 실측으로 잡은 문제이며, `status`로 되돌리면 "적용 방식: 사용자 지정"과
+  "적합한 가정을 사용 중"이 나란히 뜨는 앞뒤가 안 맞는 조합이 다시 나온다.
+- **UNRESOLVED**: "이 자산에 적용할 장기 수익률 가정을 찾지 못해 성장 없이(0%) 계산하고 있습니다.
+  기준을 지정하면 그 값이 사용됩니다." — 자동 KOSPI/S&P500 적용 없음, 임의 추천 없음,
+  **0%를 기대수익률이라고 말하지 않음**, override를 몰래 저장하지 않음(테스트 I가 고정).
+- **적용 수익률(%)은 표시하지 않는다(PM 확정).** Bear/Base/Bull 중 하나만 보이면 초보자가 그것을
+  "이 자산의 예상수익률"로 오해한다.
+- **통합 모달**(같은 종목을 소유자/계좌별로 나눠 든 경우): 대표매칭키가 보유분마다 다를 수 있어
+  **전부 같을 때만 값을 보여주고**, 다르면 "보유분마다 적용 중인 기준이 서로 다릅니다"로 알린다 —
+  아무 하나를 골라 보여주면 나머지 보유분에 대해 거짓이 된다.
+
+### 모바일 / Dark Mode
+
+375 / 768 / 1440 × Dark·Light **6조합 전부 검증**(e2e/48). 각 조합에서 최소 글꼴 14px 이상 · 블록 가로 넘침 ≤1px ·
+페이지 가로 넘침 ≤1px · **라벨 줄바꿈 없음** · 아이콘(✓/📝/⚠) 존재를 측정한다.
+색만으로 상태를 구분하지 않는다 — 아이콘+문구가 먼저이고 색(`RETURN_SOURCE_TONE_CLASSES`, 기존 상수 재사용)은 보조.
+
+첫 구현은 라벨을 고정폭 80px 좌측 열에 뒀는데 375px에서 "적용 중인 기준"이 **2줄로 접히는 것을 실측**해,
+이 모달의 기존 정보 그리드(`assetDetailInfoGrid`)와 같은 "라벨 위 / 값 아래" 2열 격자로 바꿨다.
+테스트가 `maxLabelLines <= 1`로 고정하므로 레이아웃을 바꿀 때 이 제약을 깨지 말 것.
+
+### 테스트
+
+- `npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v213)**
+- `e2e/47` **10/10** · `e2e/48` **14/14**
+- 전체 e2e **445 통과 / 15 실패 — 신규 회귀 0건**
+  - e2e/33 헤더 반응형 13건 = 알려진 환경 실패
+  - e2e/28 헤더 반응형 1건 = 같은 계열. 격리 6회 반복에서 **수정본 6/6 통과, 기준선도 6/6 통과** →
+    이 환경의 헤더 반응형 플레이크로 확인(추가한 요소는 `hidden` 모달 안에 있어 헤더 레이아웃에 영향 불가)
+  - e2e/36 테스트 8 1건 = 실시간 시세 레이스(기준선 동률 입증됨)
+- **주의**: 전체 e2e를 백그라운드/포그라운드에서 **동시에 실행하지 말 것.** 두 프로세스가 같은 dev server를
+  공유하면 e2e/37·40·48 등이 false failure를 낸다(이번 세션에서 실제로 겪음).
+
+### 이번 Phase에서 변경하지 않은 것
+
+Return Key 숫자 · `SCENARIO_RATE_PRESETS` · `customScenarioRates` · Deterministic/MC/GBM μ/volatility/
+correlation/rebalancing/Risk/Safety/Projection 계산식 · Asset Character 판정 · `resolveRateKeyFromAssetCharacter` ·
+`resolveAssetGroupKeyDetail`의 정책 · 지역 fallback 정책 · Samsung/KOSPI 정책 · KOSPI/KOSDAQ/BOND/부동산/
+CASH 수익률 · **사용자 데이터** · **Excel schema** · **Cloud Sync 구조** · **Transaction 구조** ·
+**Source of Truth** · **F-2 고아자산 처리** · **F-3** · **F-8 Excel 대표매칭 semantics** · **Bond 모델** ·
+**Cash 입력경로** — 전부 무변경.
+
+### 남은 미결 (PM 결정 대기 — 임의로 손대지 말 것)
+
+- **F-2** 거래 Excel overwrite / Excel 자산 replace / 클라우드 동기화에서 거래에 없어진 자산이 옛 수량 그대로
+  남는다. 고아 방어는 **거래 1건 삭제 경로에만** 있다([js/06:822](js/06-transactions.js#L822)).
+- **F-3 Source of Truth** — 후보 A(transactions 원천)/B(assets 원천)/C(현행 유형별 분리)/D(최초등록을
+  opening transaction으로)/E(Excel을 조정 입력으로). **어느 것도 임의 선택 금지.**
+- **F-8** 엑셀 대표매칭 칸이 자동판별 결과와 사용자 지정을 구분 없이 같은 칸에 써서, 한 번 왕복하면
+  `source: assetCharacter` → `override`로 굳어 이후 시스템 정책 변경을 따라가지 않는다.
+- **Return Key 수정 UI 연결** — `populateRateMatchOverrideOptions(currentValue)`([js/06:541](js/06-transactions.js#L541))가
+  재사용 가능한 안전한 구조다(목록은 `getScenarioRateDisplayRows`에서, 미등록 현재값은 `⚠ 현재값 …`으로 보존).
+  다만 `<select id="tx_rateMatchOverride">`에 고정 결합돼 있어 ⓐ 자산 모달에 select 추가 ⓑ 함수가 id 대신
+  요소를 받도록 일반화 ⓒ 저장 경로 ⓓ 거래 추적 자산도 수정 허용할지 결정이 필요하다.
+- Cash 입력경로 통일 · Bond 착수 시점 · Excel 기타(category 재분류/id 재발급/buyRate 유실/updatedAt 변질).
+
+### ▶ 다음 Phase의 선행 작업
+
+**"F-3 Source of Truth 및 자산 입력/동기화 생명주기 전면 감사"가 다음 Phase의 선행 작업이다.**
+F-2·Cash 입력경로 통일·Bond 데이터 모델이 전부 이 결정에 걸려 있어, 이것을 확정하기 전에 그 셋을 구현하면
+반드시 재작업이 된다. 특히 후보 D(최초등록을 opening transaction으로)는 과거 `origin:'adjust'` 자동 거래
+생성을 **폐지한 이력**([js/07:848-855](js/07-table-render-modals.js#L848))이 있으므로 그 폐지 사유의 재발
+여부를 먼저 검증해야 한다.
+
+`.claude/launch.json`은 이번에도 커밋하지 않았다(상시 규칙).
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 47-B/C/D 감사 + 47-E: 자산 데이터 정합성 P0 수정 **v213 유지**
 
 **커밋** `4135895` "fix: preserve user-set return key across backup restore and cloud sync" — push 완료.
