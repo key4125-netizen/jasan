@@ -23,7 +23,14 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 채권/현금/커스텀 자산군명)를 그대로 보여준다 - 절세계좌·일반계좌 구분 없이 모든 종목에 적용된다.
       // 이 값을 셀에서 직접 고쳐서(예: 국내상장 ETF에 정확한 추종 지수 티커를 지정) 다시 업로드하면
       // makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로 반영한다(22. 엑셀 업로드 참고).
-      '대표매칭(수익률연동키)': getProjectionAssetGroupKey(a),
+      // [Phase 47-A] 성격을 확인하지 못해 어떤 기준도 적용되지 않은 자산은 이 칸을 비운다.
+      // 내부 상태값('UNRESOLVED')을 그대로 찍으면, 그 파일을 다시 올렸을 때 makeAsset이 그것을
+      // rateMatchOverride로 저장해 "사용자가 UNRESOLVED라는 기준을 직접 지정했다"는 잘못된 상태가
+      // 굳어진다. 빈 칸은 override-first 원칙에서 "아직 지정하지 않았다"는 의미 있는 상태다.
+      '대표매칭(수익률연동키)': (function () {
+        const detail = resolveAssetGroupKeyDetail(a);
+        return detail.source === 'unresolved' ? '' : detail.key;
+      })(),
       // [자산별 역할(포지션) 분류] 값을 고쳐서 다시 업로드하면 makeAsset()이 role로 저장한다.
       '역할(포지션)': ASSET_ROLE_LABELS[a.role] || ''
     };

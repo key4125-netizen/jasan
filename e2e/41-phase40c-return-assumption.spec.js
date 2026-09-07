@@ -107,7 +107,9 @@ test('8. 성격이 확인되는 자산은 가장 정확한 기준을 추천한�
     ['SPYM', 'SPDR Portfolio S&P 500 ETF', 'USD', 'S&P500', 'US_EQUITY'],
     ['SCHD', 'Schwab US Dividend Equity ETF', 'USD', 'SCHD', 'US_EQUITY'],
     ['NVDA', 'NVIDIA', 'USD', 'NVDA', 'US_EQUITY'],
-    ['005930', '삼성전자', 'KRW', '005930.KS', 'KR_EQUITY']
+    // [Phase 47-A §4] 삼성전자 전용 시스템 수익률(8/9/15)이 폐지되어 KOSPI 앵커를 상속한다 -
+    // 그래서 추천 기준도 '005930.KS'가 아니라 'KOSPI'다. 미국 개별종목이 US_EQUITY를 상속하는 것과 같다.
+    ['005930', '삼성전자', 'KRW', 'KOSPI', 'KR_EQUITY']
   ];
   for (const [t, n, c, expectedKey, expectedChar] of cases) {
     const r = await rec(page, t, n, c);
@@ -117,14 +119,22 @@ test('8. 성격이 확인되는 자산은 가장 정확한 기준을 추천한�
   }
 });
 
-test('9. 개별 국내 주식은 상장 시장으로 판정된다(ETF는 해당하지 않는다)', async ({ page }) => {
+test('9. 시스템이 알지 못하는 개별 주식에는 기준을 붙이지 않는다', async ({ page }) => {
   await boot(page);
-  // 시스템 종목표에 없는 국내 개별 주식 - "지역만 보고 찍는 것"이 아니라 개별 지분증권이라는 구조를 본다.
+  // [Phase 47-A §2 - 정책 변경] Phase 40-C에서는 "category '주식'은 개별 지분증권이라는 구조를 확인한
+  // 것"으로 보고 KOSPI를 추천했다. 그러나 classifyCategory(js/01)의 마지막 줄은 아무 규칙에도 걸리지
+  // 않은 자산을 전부 '주식'으로 되돌린다 - 즉 그 근거는 "확인했다"가 아니라 "모른다"와 같다.
+  // 실제로 이름이 '블라블라'인 자산까지 KOSPI를 받고 있었다. 이제 SECTOR_MAP/시스템 상품표처럼
+  // 그 종목을 실제로 아는 근거가 있을 때만 기준을 붙인다.
   const posco = await rec(page, '005490', 'POSCO홀딩스', 'KRW');
-  expect(posco.character).toBe('KR_EQUITY');
-  expect(posco.key).toBe('KOSPI');
-  expect(posco.strength).toBe('MEDIUM');
-  // 반면 성격 미상의 ETF는 같은 지역이어도 추천하지 않는다.
+  expect(posco.character).toBe('KR_EQUITY'); // 성격은 여전히 국내 주식으로 "보인다"
+  expect(posco.key, '근거가 fall-through뿐이면 기준을 붙이지 않는다').toBeNull();
+  expect(posco.strength).toBe('NONE');
+  // 반면 시스템이 실제로 아는 개별 종목은 그대로 추천된다(SECTOR_MAP 등록 종목).
+  const skhynix = await rec(page, '000660', 'SK하이닉스', 'KRW');
+  expect(skhynix.character).toBe('KR_EQUITY');
+  expect(skhynix.key).toBe('KOSPI');
+  // 성격 미상의 ETF도 같은 지역이어도 추천하지 않는다(기존과 동일).
   const etf = await rec(page, '999999', '알 수 없는 ETF', 'KRW');
   expect(etf.character).toBe('UNRESOLVED');
   expect(etf.key).toBeNull();
@@ -173,11 +183,13 @@ test('13. 기존 보유 자산의 적용 상태를 판정하되 계산은 바꾸
     const after = getProjectionAssetGroupKey(gold);
     return { before, after, status: assessed.status, message: assessed.message, applied: assessed.appliedKey };
   });
-  // 기존 계산 경로는 그대로다(유예) - 상태만 알린다.
+  // [Phase 47-A] 금 ETF는 성격(원자재)은 확인되지만 그 성격에 맞는 기준이 앱에 없다 - 예전엔 지역
+  // 폴백으로 S&P500이 붙었고 상태만 "확인 필요"로 알렸다. 이제 가정 자체를 적용하지 않고(0%),
+  // 상태도 그 사실을 그대로 말한다. 판정 함수가 계산을 바꾸지 않는다는 계약은 그대로다.
   expect(r.before).toBe(r.after);
   expect(r.applied).toBe(r.before);
-  expect(r.status).toBe('NEEDS_REVIEW');
-  expect(r.message).toContain('확인');
+  expect(r.status).toBe('UNRESOLVED');
+  expect(r.message).toContain('성장 없이');
 });
 
 test('14. 대표매칭 추천과 수익률 가정 추천은 서로 다른 함수이며 결과가 다를 수 있다', async ({ page }) => {
@@ -221,22 +233,31 @@ test('16. 이 Phase는 수익률 숫자를 바꾸지 않았다', async ({ page }
     부동산: ['conservative', 'normal', 'optimistic'].map((p) => getSystemDefaultRate(p, '부동산')),
     NASDAQ: ['conservative', 'normal', 'optimistic'].map((p) => getSystemDefaultRate(p, 'NASDAQ'))
   }));
+// [Phase 47-A - PM 승인 정책 변경으로 기대값 갱신] 아래 기대값은 테스트가 낡아서 고친 것이 아니라,
+// PM이 명시적으로 승인한 정책 변경(삼성전자 Individual Alpha 폐지 / 지역 폴백 제거)의 결과다.
   expect(r).toEqual({
     US: [4.1, 5.1, 6.0], KOSPI: [5.0, 7.0, 11.0], KOSDAQ: [5.0, 7.0, 11.0],
-    삼성전자: [8.0, 9.0, 15.0], BOND: [3.5, 4.0, 5.5], 부동산: [3.0, 5.5, 8.0], NASDAQ: [4.1, 5.1, 6.0]
+    삼성전자: [5.0, 7.0, 11.0], BOND: [3.5, 4.0, 5.5], 부동산: [3.0, 5.5, 8.0], NASDAQ: [4.1, 5.1, 6.0]
   });
 });
 
-test('17. 기존 계산 경로(대표매칭 키 판정)가 변하지 않았다', async ({ page }) => {
+test('17. [Phase 47-A] 계산 경로가 성격 판정을 따르고 지역 폴백은 사라졌다', async ({ page }) => {
   await boot(page);
-  // Phase 40-C는 추천/판정 계층만 추가했다 - 실제 계산에 쓰이는 키 판정은 그대로여야 한다.
+  // Phase 40-C는 추천/판정 계층만 추가하고 계산은 유예했다. 그 유예를 Phase 47-A가 끝냈다 -
+  // 아래가 그 전후 차이 전부다(주석의 화살표 왼쪽이 Phase 40-C 시절 값).
   const r = await page.evaluate(() => [
     ['005930', '삼성전자', 'KRW'], ['QQQM', 'Invesco NASDAQ 100', 'USD'],
     ['TLT', 'iShares 20+ Year Treasury Bond ETF', 'USD'], ['GLD', 'SPDR Gold Shares', 'USD'],
     ['148070', 'KOSEF 국고채10년', 'KRW'], ['005490', 'POSCO홀딩스', 'KRW']
   ].map(([t, n, c]) => getProjectionAssetGroupKey(makeAsset({ ticker: t, name: n, currency: c }))));
-  // 기존 동작 그대로(유예) - 잘못된 폴백이 남아 있지만 이 Phase에서 계산을 끊지 않는다.
-  expect(r).toEqual(['005930.KS', 'NASDAQ', 'S&P500', 'S&P500', 'KOSPI', 'KOSPI']);
+  expect(r).toEqual([
+    'KOSPI',       // 005930.KS → KOSPI  : 삼성전자 전용 수익률 폐지, KOSPI 앵커 상속(§4)
+    'NASDAQ',      // 변화 없음
+    'UNRESOLVED',  // S&P500 → 없음      : 미국 국채 ETF에 미국 주식 수익률을 붙이지 않는다(§1)
+    'UNRESOLVED',  // S&P500 → 없음      : 금 ETF에 맞는 기준이 앱에 없다
+    'BOND',        // KOSPI → BOND       : 국내 국고채 ETF가 드디어 채권 기준을 받는다(§1 핵심)
+    'UNRESOLVED'   // KOSPI → 없음       : 시스템이 모르는 개별 주식(§2)
+  ]);
 });
 
 /* ───────────────── 6. 출처/상태 표시 ───────────────── */

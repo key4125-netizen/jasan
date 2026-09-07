@@ -54,14 +54,11 @@ function getNameKeywordRateKey(name) {
 // 키로 간다"는 별도 별칭표를 둔다(getProjectionAssetGroupKey/resolveTickerToRateKey/getTargetProjectionRate
 // 공용).
 const TICKER_RATE_KEY_ALIAS = { QQQM: 'NASDAQ', SPYM: 'S&P500' };
-// [코스닥/코스피 구분 - 버그 수정] 국내 상장 종목의 자동판별 최종 폴백 - 예전엔 국내 종목이면 무조건
-// 'KOSPI' 하나로만 묶어서, 코스닥 상장 종목(예: 파크시스템즈 140860.KQ)도 코스피 지수 수익률을 그대로
-// 썼다(사용자가 "수익률 관리"에 'KOSDAQ' 키를 따로 등록해도 실제 계산에 전혀 반영되지 않던 원인).
-// 티커 접미사(.KQ)로 실제 상장 시장을 구분해 코스닥 종목은 전용 'KOSDAQ' 키로 대표 매칭한다.
-function getRegionFallbackRateKey(yahooTicker, isDomestic) {
-  if (isDomestic === '해외') return 'S&P500';
-  return /\.KQ$/i.test(String(yahooTicker ?? '')) ? 'KOSDAQ' : 'KOSPI';
-}
+// [Phase 47-A] getRegionFallbackRateKey()를 여기서 삭제했다. "뭔지 모르겠으면 국내는 KOSPI,
+// 해외는 S&P500"이라는 이 함수가 국고채 ETF에 한국 주식 수익률을, 미국 국채 ETF에 미국 주식
+// 수익률을 붙이던 원인이었다. 이제 마지막 판단은 자산 성격이 맡고(resolveRateKeyFromAssetCharacter),
+// 성격이 확인되지 않으면 어떤 가정도 적용하지 않는다. 코스닥 종목 구분(.KQ → KOSDAQ)은 사라지지
+// 않았다 - returnKeyCandidatesForCharacter가 KR_EQUITY 후보 순서를 티커 접미사로 정하므로 그대로 유지된다.
 /* =========================================================================
  * [Phase 40-C] 자산 성격(Asset Character) 판정 계층
  *
@@ -239,13 +236,52 @@ function getReturnKeyCharacter(key) {
   return RETURN_KEY_CHARACTER[key] || null;
 }
 
+/* =========================================================================
+ * [Phase 47-A] 자산 성격 → Return Key 연결 (정책 계층과 계산 계층의 통합)
+ *
+ * Phase 40-C~46까지 자산 성격 판정(resolveAssetCharacter)은 정확했지만, 실제 수익률을 정하는
+ * 계산 경로는 그 판정을 보지 않고 "국내면 KOSPI, 해외면 S&P500"이라는 지역 폴백을 썼다.
+ * 그래서 국내 국고채 ETF에 한국 주식 수익률(7%), 미국 국채 ETF에 미국 주식 수익률(5.1%)이
+ * 조용히 붙었다 - 성격 판정은 BOND라고 정확히 말하고 있었는데도. 정책과 계산이 서로 다른 말을
+ * 하고 있었던 셈이다. 이 함수가 그 둘을 하나로 잇는다.
+ *
+ * 여기서 새 수익률 숫자를 만들지 않는다 - 이미 있는 Key 중 그 성격에 맞는 것을 고를 뿐이고,
+ * 맞는 것이 없으면 null(= 가정을 적용하지 않는다)을 돌려준다.
+ * ====================================================================== */
+// 성격 판정 근거 중 "이 상품이 실제로 무엇인지 확인한" 것만 자동 적용에 쓴다.
+// [Phase 47-A §2] individualStock은 여기 없다 - classifyCategory(js/01)의 마지막 줄이 아무 규칙에도
+// 걸리지 않은 자산을 '주식'으로 되돌리기 때문에, 그 근거는 "개별 주식임을 확인했다"가 아니라
+// "정체를 모른다"와 구분되지 않는다. 이름이 '블라블라'인 자산까지 KOSPI를 받던 경로가 바로 이것이다.
+// 실제로 등록된 개별 종목(SECTOR_MAP의 sectorMap, 시스템 상품표의 presetTicker)은 여전히 통과한다.
+const CHARACTER_SOURCES_FOR_AUTO_RATE_KEY = Object.freeze([
+  'category', 'etfHoldings', 'nameKeyword', 'sectorMap', 'presetTicker', 'indexNameKeyword', 'domesticIndexName'
+]);
+// 어떤 Return Key도 적용하지 않는 상태를 나타내는 키. 실제 수익률은 0%(= 성장 가정 없음)이며,
+// 이 키는 사용자에게 노출되거나 엑셀에 저장되지 않는다(getActiveScenarioRateKeys / js/12 export 참고).
+const UNRESOLVED_RATE_KEY = 'UNRESOLVED';
+
+// 자산(또는 자산 모양의 객체) 하나에 대해 "성격으로부터 정당화되는 Return Key"를 찾는다.
+// 찾지 못하면 null - 지역만 보고 아무 주식 지수나 붙이지 않는다.
+function resolveRateKeyFromAssetCharacter(assetLike) {
+  const char = resolveAssetCharacter(assetLike);
+  if (!CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(char.source)) return null;
+  const candidates = returnKeyCandidatesForCharacter(char.character, char.ticker);
+  if (candidates.length === 0) return null; // 그 성격에 맞는 Key가 아직 없다(원자재/암호화폐 등)
+  const primary = candidates[0];
+  // 통화·시장이 다른 채권에 국내 'BOND' 기준을 그대로 붙이지 않는다 - recommendReturnAssumptionKey가
+  // 쓰는 것과 정확히 같은 규칙이라, 추천 화면과 실제 계산이 어긋날 수 없다.
+  if (char.character === ASSET_CHARACTERS.BOND
+      && RETURN_KEY_REGION[primary] && char.region && RETURN_KEY_REGION[primary] !== char.region) return null;
+  return primary;
+}
+
 // [Phase 30 - 판단 근거까지 함께 돌려주는 단일 소스] 아래 getProjectionAssetGroupKey()의 판별 체인을
 // 그대로 옮겨온 것이며 순서·조건·반환 키가 전부 동일하다(동작 변경 없음). 달라진 건 "어느 단계에서
 // 결정됐는지"를 source로 함께 돌려준다는 점뿐이다 - 거래 입력의 대표매칭키 추천(js/06)이 "근거 있는
 // 매칭"과 "마지막 지역 폴백"을 구분해야 하는데, 그걸 위해 판별 로직을 복사해 두 번 관리하면 언젠가
 // 반드시 어긋난다. 그래서 판별은 여기 한 곳에만 두고 두 용도가 이 함수를 공유한다.
 //   source: 'override' | 'customKey' | 'customKeyword' | 'category' | 'presetTicker' | 'tickerAlias'
-//           | 'nameKeyword' | 'regionFallback'
+//           | 'nameKeyword' | 'assetCharacter' | 'unresolved'   ([Phase 47-A] regionFallback 제거)
 function resolveAssetGroupKeyDetail(asset) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
@@ -269,10 +305,14 @@ function resolveAssetGroupKeyDetail(asset) {
   if (TICKER_RATE_KEY_ALIAS[yahoo]) return { key: TICKER_RATE_KEY_ALIAS[yahoo], source: 'tickerAlias' }; // 실제 QQQM/SPYM 티커 보유 - 이름 무관하게 항상 매칭
   const nameKey = getNameKeywordRateKey(asset.name);
   if (nameKey) return { key: nameKey, source: 'nameKeyword' }; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
-  // [마지막 폴백] 여기까지 왔다는 건 이 종목을 가리키는 근거가 하나도 없었다는 뜻이라, 그냥 지역
-  // 대표지수로 대체한다. 계산에는 문제가 없지만 "이 종목이라서 이 키"라는 근거는 아니므로 Phase 30의
-  // 추천 대상에서는 제외한다(recommendRateMatchKey 참고).
-  return { key: getRegionFallbackRateKey(yahoo, sanitized.isDomestic), source: 'regionFallback' };
+  // [Phase 47-A] 여기까지 왔다면 "이 종목이라서 이 키"라고 말할 종목 단위 근거는 없다. 예전엔 이 자리에서
+  // 지역 대표지수로 대체했지만(getRegionFallbackRateKey), 지역은 자산의 성격이 아니다 - 그래서 국고채
+  // ETF가 KOSPI를, 미국 국채 ETF가 S&P500을 받았다. 이제 자산 성격을 한 번 더 물어보고, 그 성격에 맞는
+  // 기준이 실제로 있을 때만 적용한다.
+  const characterKey = resolveRateKeyFromAssetCharacter(asset);
+  if (characterKey) return { key: characterKey, source: 'assetCharacter' };
+  // 성격도 확인되지 않았다 - 여기서 멈춘다. 그럴듯한 숫자를 만들어 넣는 것보다 "가정 없음"이 정직하다.
+  return { key: UNRESOLVED_RATE_KEY, source: 'unresolved' };
 }
 function getProjectionAssetGroupKey(asset) {
   return resolveAssetGroupKeyDetail(asset).key;
@@ -283,6 +323,10 @@ function getProjectionAssetGroupKey(asset) {
 // 없는 키(유효하지 않은 대표매칭 오버라이드, 처음 보는 커스텀 자산군명 등)는 조용히 지역 대표지수로
 // 대체해 절대 undefined/NaN을 반환하지 않는다.
 function resolveProjectionRateForKey(key, presetKey, isForeign) {
+  // [Phase 47-A] 성격을 확인하지 못한 자산 - 어떤 장기 수익률 가정도 적용하지 않는다.
+  // 0%는 "수익률이 0일 것으로 예상한다"는 뜻이 아니라 "적용할 근거 있는 가정이 없어 원금을 그대로
+  // 둔다"는 뜻이다. 사용자가 이 자산에 대표매칭키나 수익률을 직접 지정하면 위 경로에서 그 값이 쓰인다.
+  if (key === UNRESOLVED_RATE_KEY || key === null || key === undefined || key === '') return 0;
   if (key === '현금') return 0;
   if (key === '채권') return getReferenceRate(presetKey, 'BOND');
   if (key === '부동산') return getReferenceRate(presetKey, '부동산');
@@ -300,6 +344,17 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   if (key === 'CASH' || key === 'CASH.USD') { const custom = getCustomRate(key, presetKey); return custom !== undefined ? custom : 0; }
   if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');
   if (key === 'KOSDAQ') return getEffectiveIndexRate(presetKey, 'kosdaq');
+  // [Phase 47-A §4] 삼성전자는 더 이상 전용 시스템 수익률(8/9/15)을 갖지 않고 KOSPI 앵커를 상속한다.
+  // 미국 개별종목 6종이 US_EQUITY 앵커를 alpha 0으로 상속하는 기존 정책과 국내 정책을 일치시킨 것이다.
+  // 별도 숫자를 복사해 두지 않고 여기서 KOSPI를 그대로 가리키므로 앞으로도 두 값이 어긋날 수 없다.
+  // 사용자가 customScenarioRates['005930.KS']를 등록해 두었다면 그 값이 언제나 우선한다 - 이 분기는
+  // getCustomRate 조회(아래)보다 앞에 있으므로 여기서 직접 확인해야 한다. 확인하지 않으면 삼성전자
+  // 수익률을 직접 설정해 둔 기존 사용자의 값이 조용히 KOSPI로 덮여 쓰인다(정책 변경이 사용자 데이터를
+  // 바꾸지 않는다는 원칙 위반). KOSPI/KOSDAQ/S&P500 분기는 getEffectiveIndexRate가 같은 확인을 이미 한다.
+  if (key === '005930.KS') {
+    const samsungCustom = getCustomRate(key, presetKey);
+    return samsungCustom !== undefined ? samsungCustom : getEffectiveIndexRate(presetKey, 'domestic');
+  }
   if (key === 'S&P500') return getEffectiveIndexRate(presetKey, 'foreign');
   const custom = getCustomRate(key, presetKey);
   if (custom !== undefined) return custom;
@@ -308,7 +363,12 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   // [코스닥 대표매칭 오버라이드 - 버그 수정] key 자체가 코스닥 티커(예: rateMatchOverride를 직접
   // "140860.KQ"로 지정한 경우)면 isForeign 플래그보다 우선해서 코스닥 지수로 대체한다.
   if (/\.KQ$/i.test(key)) return getEffectiveIndexRate(presetKey, 'kosdaq');
-  return isForeign ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+  // [Phase 47-A §3] 여기까지 온 키는 시스템도 모르고 사용자도 등록하지 않은 키다(대표적으로
+  // 'BOND.STOCK' - 채권혼합 상품용으로 사용자가 만든 키인데 수익률 시트가 함께 올라오지 않은 경우).
+  // 예전엔 지역 대표지수로 대체해서, 채권혼합 상품에 순수 주식 지수 수익률이 붙고 심지어 같은 키인데
+  // 자산의 국내/해외 표기에 따라 값이 갈렸다. 이제 가정을 적용하지 않는다 - 이 키는 "수익률 관리"
+  // 목록에 그대로 나타나므로(getActiveScenarioRateKeys의 고아 키 처리) 사용자가 직접 값을 넣을 수 있다.
+  return 0;
 }
 // 보유 자산(또는 자산과 같은 모양의 객체) 하나의 대표 매칭 수익률 - 위 두 함수를 묶어서 "이 자산이
 // 지금 어떤 수익률로 계산돼야 하는가"를 한 번에 답한다. 절세계좌 원금/적립 계산(js/05 10-3-3-2)에서 쓴다.
@@ -615,8 +675,8 @@ function getCustomRate(key, presetKey) {
 // [Phase 7-F - CMA 실제 적용] 이 표의 값은 이제 두 종류가 섞여 있다 - 아래 CMA_SOURCE_METADATA의
 // US_EQUITY 항목(status: 'cma_verified')에 해당하는 것(indexRates.foreign, 그리고 NASDAQ/S&P500/
 // SCHD/MSFT/GOOGL/AAPL/AMZN/META/NVDA 9개 tickers 행)은 Vanguard Capital Markets Model(VCMM)
-// 기준 검증된 값이고, 그 외(indexRates.domestic=KOSPI, tickers['005930.KS']=삼성전자, categories.
-// 채권/부동산)는 여전히 출처 불명의 legacy_approximation이다(Phase 7-D/7-E 감사에서 신뢰할 수 있는
+// 기준 검증된 값이고, 그 외(indexRates.domestic=KOSPI, categories.채권/부동산)는 여전히 출처 불명의
+// legacy_approximation이다([Phase 47-A] 삼성전자 전용 행은 근거가 없어 폐지되고 KOSPI 앵커를 상속한다)(Phase 7-D/7-E 감사에서 신뢰할 수 있는
 // forward-looking CMA를 확보하지 못해 이번 라운드에서 의도적으로 변경하지 않음 - 임의 숫자 생성 금지
 // 원칙). 이 metadata는 순수 내부 추적용이며 계산 로직(getTargetProjectionRate 등)은 이 값들을
 // 전혀 참조하지 않는다 - 사용자에게 노출되는 기능이 아니다.
@@ -654,8 +714,11 @@ const SCENARIO_RATE_PRESETS = {
     // 12×((1+0.042)^(1/12)-1)=4.1213% 적용 결과 - 이전 3.4%는 구버전(2025년말 실행분, 3.5~5.5%) 기준값이라
     // 최신 원문 재검증 결과 교체함, 아래 CMA_SOURCE_METADATA 참고).
     indexRates: { domestic: 5.0, foreign: 4.1 },
+    // [Phase 47-A §4] '005930.KS'(삼성전자) 전용 수익률 8.0을 여기서 제거했다 - 근거 없는
+    // Individual Alpha(KOSPI 대비 +3.0%p)였고, 미국 개별종목 6종이 US_EQUITY Anchor를 alpha 0으로
+    // 상속하는 정책과도 모순됐다. 이제 KOSPI 앵커를 상속한다(resolveProjectionRateForKey/
+    // getSystemDefaultRate의 '005930.KS' 분기). 사용자가 직접 등록한 값은 그대로 유지된다.
     tickers: {
-      '005930.KS': 8.0, // [legacy_approximation] 삼성전자(KR_EQUITY) - 변경 안 함
       // [cma_verified - US_EQUITY Anchor 무조정 상속] NASDAQ/S&P500/SCHD/개별 미국주식 6종 전부
       // 동일한 US_EQUITY Anchor 값을 상속한다 - 개별 종목/스타일 프리미엄을 임의로 추가하지 않는다
       // (Phase 7-C~7-F 원칙: Expected Growth=Anchor, Volatility만 종목별 실측값 사용).
@@ -676,7 +739,7 @@ const SCENARIO_RATE_PRESETS = {
     // 기관과의 평균이 아니라 Vanguard 단일 출처의 자체 range 중앙값임을 반드시 구분할 것(Phase 7-F 지시사항).
     indexRates: { domestic: 7.0, foreign: 5.1 },
     tickers: {
-      '005930.KS': 9.0, // [legacy_approximation]
+      // [Phase 47-A §4] 삼성전자 전용값 9.0 제거 - KOSPI 앵커 상속.
       'NASDAQ': 5.1, 'S&P500': 5.1, 'SCHD': 5.1,
       'MSFT': 5.1, 'GOOGL': 5.1, 'AAPL': 5.1, 'AMZN': 5.1, 'META': 5.1, 'NVDA': 5.1,
       'DEV_EX_US': cmaPresetRate('DEV_EX_US', 'normal'),
@@ -691,7 +754,7 @@ const SCENARIO_RATE_PRESETS = {
     // range 상단 6.2%를 Case A 변환식 12×((1+0.062)^(1/12)-1)=6.0305% 적용)
     indexRates: { domestic: 11.0, foreign: 6.0 },
     tickers: {
-      '005930.KS': 15.0, // [legacy_approximation]
+      // [Phase 47-A §4] 삼성전자 전용값 15.0 제거 - KOSPI 앵커 상속.
       'NASDAQ': 6.0, 'S&P500': 6.0, 'SCHD': 6.0,
       'MSFT': 6.0, 'GOOGL': 6.0, 'AAPL': 6.0, 'AMZN': 6.0, 'META': 6.0, 'NVDA': 6.0,
       'DEV_EX_US': cmaPresetRate('DEV_EX_US', 'optimistic'),
@@ -753,7 +816,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
   },
   KR_EQUITY: {
     status: 'legacy_approximation',
-    appliesTo: ['indexRates.domestic(KOSPI)', "tickers['005930.KS'](삼성전자)"],
+    // [Phase 47-A §4] 삼성전자 전용 tickers 항목이 제거되어, 이 앵커는 이제 국내 대표지수 하나로
+    // 국내 주식 전체(삼성전자 포함)를 덮는다 - 종목별 프리미엄을 시스템이 임의로 부여하지 않는다.
+    appliesTo: ['indexRates.domestic(KOSPI - 삼성전자를 포함한 국내 주식 전체가 이 앵커를 상속)'],
     source: null, sourceUrl: null, asOfDate: null,
     methodologyNote: '신뢰할 수 있는 forward-looking CMA를 확보하지 못함(Phase 7-D/7-E 감사) - ' +
       '기존 하드코딩 근사치를 그대로 유지, 임의 숫자를 생성하지 않음.',
@@ -942,11 +1007,18 @@ function recommendReturnAssumptionKey(input) {
   }
 
   // Step 3 - 성격을 확인하지 못하면 여기서 멈춘다. 지역만 보고 주식 가정을 붙이지 않는다.
-  if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
+  // [Phase 47-A §2] 실제 계산과 동일한 근거 기준을 쓴다 - 계산은 적용하지 않는데 화면은 추천하거나,
+  // 그 반대가 되지 않도록 CHARACTER_SOURCES_FOR_AUTO_RATE_KEY 하나만 본다.
+  if (char.character === ASSET_CHARACTERS.UNRESOLVED
+      || !CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(char.source)) {
     return Object.assign(base, {
       recommendedReturnKey: null,
       recommendationStrength: RETURN_RECOMMENDATION_STRENGTH.NONE,
-      reason: '자산 성격을 확인할 수 없어 장기 수익률 가정을 자동으로 적용하지 않았습니다.',
+      // 두 경우를 구분해 말한다 - "성격을 전혀 모른다"와 "국내 주식처럼 보이지만 그 판단의 근거가
+      // classifyCategory의 기본값('주식')뿐이라 확인했다고 말할 수 없다"는 서로 다른 상황이다.
+      reason: char.character === ASSET_CHARACTERS.UNRESOLVED
+        ? '자산 성격을 확인할 수 없어 장기 수익률 가정을 자동으로 적용하지 않았습니다.'
+        : '이 상품이 실제로 무엇인지 확인할 수 있는 정보가 없어 장기 수익률 가정을 자동으로 적용하지 않았습니다. 기준을 직접 지정하면 그 값을 사용합니다.',
       evidence: [], alternatives: [], requiresUserConfirmation: true,
       status: RETURN_ASSUMPTION_STATUS.UNRESOLVED
     });
@@ -1012,19 +1084,29 @@ function recommendReturnAssumptionKey(input) {
  * 계산을 바꾸지 않는다 - 화면에 상태만 표시하기 위한 읽기 전용 판정이다(기존 사용자 유예 정책).
  */
 function assessReturnAssumptionStatus(asset) {
-  const appliedKey = getProjectionAssetGroupKey(asset);
+  const detail = resolveAssetGroupKeyDetail(asset);
+  const appliedKey = detail.key;
   const char = resolveAssetCharacter(asset);
   const keyChar = getReturnKeyCharacter(appliedKey);
   const isUserDefined = !!(state.projection.customScenarioRates || {})[appliedKey];
 
-  if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
-    // 성격을 모르는데 지역 폴백으로 주식 기준이 붙어 있는 상태 - 기존 계산은 유지하되 알린다.
-    const viaRegionFallback = resolveAssetGroupKeyDetail(asset).source === 'regionFallback';
+  // [Phase 47-A] 가장 먼저 볼 것은 성격이 아니라 "이 자산에 실제로 적용된 가정이 있는가"다.
+  // 예전엔 이 자리에서 "성격을 모르는데 지역 폴백으로 주식 기준이 붙어 있다"를 알렸는데, 그 폴백은
+  // 이제 존재하지 않는다. 성격을 알아도(예: 금 ETF = 원자재) 그 성격에 맞는 기준이 앱에 없으면
+  // 적용된 가정은 없다 - 성격 먼저 보면 이 경우를 'OK'로 잘못 보고하게 된다.
+  if (detail.source === 'unresolved') {
     return {
       appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
-      status: viaRegionFallback ? RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW : RETURN_ASSUMPTION_STATUS.OK,
-      message: viaRegionFallback
-        ? '자산 성격을 확인할 수 없어 지역 대표지수 기준이 임시로 적용되어 있습니다. 확인해 주세요.' : ''
+      status: RETURN_ASSUMPTION_STATUS.UNRESOLVED,
+      message: '이 자산에 적용할 장기 수익률 가정을 찾지 못해 성장 없이(0%) 계산하고 있습니다. 기준을 지정하면 그 값이 사용됩니다.'
+    };
+  }
+  if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
+    // 성격은 모르지만 사용자가 기준을 직접 지정해 둔 상태 - 그 선택을 존중하고 판단하지 않는다.
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: isUserDefined ? RETURN_ASSUMPTION_STATUS.USER_DEFINED : RETURN_ASSUMPTION_STATUS.OK,
+      message: ''
     };
   }
   if (isUserDefined && !keyChar) {
@@ -1094,6 +1176,14 @@ function getEffectiveIndexRate(presetKey, region) {
   return SCENARIO_RATE_PRESETS[presetKey].indexRates[region];
 }
 
+// [Phase 47-A] 성격 판정에 넘길 "자산 모양" 객체 - 경로 B(목표/배분 항목)가 경로 A(보유 자산)와
+// 완전히 같은 입력으로 resolveAssetCharacter를 부르게 해 두 경로의 판정이 갈라지지 않게 한다.
+function makeRateProbe(ticker, name, category, region) {
+  const t = String(ticker ?? '');
+  const n = String(name ?? '');
+  return { ticker: t, name: n, category: category || classifyCategory(t, n), isDomestic: region || sanitizeTicker(t).isDomestic };
+}
+
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 특정 프리셋·지역에서 쓸 예상 수익률을 정한다.
 //   1. 사용자 정의 오버라이드: 종목코드/티커/이름 중 하나라도 등록돼 있으면 최우선 적용(findCustomRateKeyForAsset).
 //   2. 시스템 기본 매핑: SCENARIO_RATE_PRESETS[presetKey].tickers에 전용 매핑이 있으면 그 값(삼성전자/
@@ -1156,11 +1246,11 @@ function getTargetProjectionRate(target, presetKey, region) {
     // 이름 키워드로 실제 추종 지수의 대표 수익률에 매핑한다(getProjectionAssetGroupKey와 동일 규칙).
     const nameKey = getNameKeywordRateKey(target.label);
     if (nameKey) return getPresetTickerRate(presetKey, nameKey);
-    const sanitizedTarget = sanitizeTicker(target.ticker);
-    if (sanitizedTarget.isDomestic === '해외') return getEffectiveIndexRate(presetKey, 'foreign');
-    // [코스닥 대표지수 - 버그 수정] getProjectionAssetGroupKey/resolveTickerToRateKey와 동일하게
-    // 코스닥 상장 종목(.KQ)은 코스피가 아니라 코스닥 대표지수로 대체한다.
-    return getEffectiveIndexRate(presetKey, /\.KQ$/i.test(sanitizedTarget.yahooTicker) ? 'kosdaq' : 'domestic');
+    // [Phase 47-A] 경로 A(resolveAssetGroupKeyDetail)와 완전히 같은 규칙으로 성격을 물어본다 -
+    // 지역 폴백은 여기서도 제거됐다. 목표 항목에는 category가 없을 수 있어 자산 등록과 동일한
+    // classifyCategory로 채워 넣어, 같은 상품이 두 경로에서 다른 성격으로 읽히지 않게 한다.
+    const tickerCharKey = resolveRateKeyFromAssetCharacter(makeRateProbe(target.ticker, target.label, target.category, region));
+    return resolveProjectionRateForKey(tickerCharKey || UNRESOLVED_RATE_KEY, presetKey, region === '해외');
   }
   // [namedHolding 기대수익률 버그 수정 - 요청 반영] 티커 없는 보유 자산을 이름으로 지정한 목표
   // (searchRtmAddCandidates의 이름 검색 결과, js/04)는 target.category가 아예 없어서, 예전엔 바로
@@ -1188,7 +1278,9 @@ function getTargetProjectionRate(target, presetKey, region) {
       const custom = getCustomRate('BOND', presetKey);
       return custom !== undefined ? custom : preset.categories['채권'];
     }
-    return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+    // [Phase 47-A] 이름만 있는 보유 항목도 지역 폴백 대신 성격 판정을 따른다.
+    const namedCharKey = resolveRateKeyFromAssetCharacter(makeRateProbe('', target.name, inferredCategory, region));
+    return resolveProjectionRateForKey(namedCharKey || UNRESOLVED_RATE_KEY, presetKey, region === '해외');
   }
   const groupKey = getProjectionGroupKey(target.category);
   if (groupKey === '현금') return 0;
@@ -1196,7 +1288,13 @@ function getTargetProjectionRate(target, presetKey, region) {
     const custom = getCustomRate('BOND', presetKey);
     return custom !== undefined ? custom : preset.categories['채권'];
   }
-  return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+  // [Phase 47-A] 자산군 캐치올 목표('주식' 등)는 특정 상품을 가리키지 않는다 - 그 안에 무엇이 들어올지
+  // 모르는 상태에서 지역 대표지수를 붙이면 "국내 주식 캐치올"과 "국내 채권 ETF"가 같은 값을 받는다.
+  // 캐치올이 주식형으로 명시된 경우에만 해당 지역 대표지수를 쓰고, 그 외에는 가정을 적용하지 않는다.
+  if (groupKey === '주식형자산') {
+    return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+  }
+  return 0;
 }
 
 // [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
@@ -1277,7 +1375,10 @@ function findLabelForRateKey(key) {
 //   - presetTicker/tickerAlias: 시스템 기본 상품표의 티커에 정확히 걸린 경우
 //   - nameKeyword: 국내상장 해외지수 ETF 이름 규칙(NAME_KEYWORD_RATE_MAP)에 걸린 경우
 // 제외하는 단계:
-//   - regionFallback: 근거가 하나도 없어 지역 대표지수로 대체된 것 - 추천하면 "확실한 것처럼" 오해된다
+//   - unresolved: 성격조차 확인되지 않아 어떤 가정도 적용하지 않은 것([Phase 47-A]에서 regionFallback을
+//     대체했다) - 추천할 것이 없으므로 당연히 제외한다
+//   - assetCharacter: 성격으로부터 유도된 것은 맞지만 "이 종목이라서 이 키"는 아니다 - 자동 계산에는
+//     쓰되(그래야 국고채 ETF가 채권 기준을 받는다) 사용자에게 확정값으로 고정하라고 권하지는 않는다
 //   - category: '채권'/'현금' 같은 자산군 캐치올 - 종목 단위 근거가 아니고, 비워둬도 자동판별이 정확히
 //     같은 값을 쓰므로 굳이 확정값으로 고정할 이유가 없다(고정하면 나중에 정책이 바뀌어도 안 따라간다)
 const RATE_MATCH_RECOMMENDABLE_SOURCES = ['customKey', 'customKeyword', 'presetTicker', 'tickerAlias', 'nameKeyword'];
@@ -1345,15 +1446,17 @@ function getSystemDefaultRate(presetKey, key) {
   // 같은 정의를 돌려줘 표시값과 계산값이 어긋나지 않게 한다. 새 수익률을 만드는 것이 아니라 이미
   // 확정된 정의를 한 곳 더 적용하는 것이며, 사용자가 CASH에 값을 등록했다면 getReferenceRate가
   // customScenarioRates를 먼저 보므로 그 값이 그대로 우선한다.
-  if (key === 'CASH' || key === 'CASH.USD') return 0; // 코스닥 전용 시스템 기본값이 아직 없어 코스피와 동일하게 시작(getEffectiveIndexRate와 동일 규칙)
+  if (key === 'CASH' || key === 'CASH.USD') return 0;
+  // [Phase 47-A §4] 삼성전자 = KOSPI 앵커 상속(전용 시스템 수익률 8/9/15 폐지). resolveProjectionRateForKey와
+  // 같은 규칙이라 "수익률 관리"에 보이는 시스템 참고값과 실제 계산값이 항상 일치한다.
+  if (key === '005930.KS') return preset.indexRates.domestic;
   if (preset.tickers[key] !== undefined) return preset.tickers[key];
-  // [SSOT 정합성 - 버그 수정] 여기까지 안 걸리는 키(엑셀 대표매칭 칸에 시스템이 모르는 값을 넣었거나,
-  // 아직 customScenarioRates에도 등록되지 않은 커스텀 키를 조회하면 여기 온다) - 예전엔 undefined를
-  // 그대로 반환해 num(undefined)→0으로 "0%로 리셋"된 것처럼 보일 수 있었다. 실제 계산 경로
-  // (resolveProjectionRateForKey)와 동일하게 지역별 대표지수로 대체해 최소한 그럴듯한 값을 보여준다 -
-  // 두 경로가 "알 수 없는 키"를 똑같은 방식으로 처리하도록 맞춘 것(요구사항 4 SSOT).
-  if (/\.KQ$/i.test(key)) return preset.indexRates.domestic;
-  return sanitizeTicker(key).isDomestic === '해외' ? preset.indexRates.foreign : preset.indexRates.domestic;
+  // [Phase 47-A §3 - 지역 대체 폐지] 여기까지 안 걸리는 키(엑셀 대표매칭 칸에 시스템이 모르는 값을 넣었거나,
+  // 아직 customScenarioRates에도 등록되지 않은 커스텀 키 - 대표적으로 'BOND.STOCK')는 시스템 기본 가정이
+  // "없다". 예전엔 지역별 대표지수로 대체해 "최소한 그럴듯한 값"을 보여줬지만, 그 결과 채권혼합 상품용
+  // 키에 미국 주식 값(4.1/5.1/6.0)이 참고값으로 표시됐다 - 그럴듯한 값이 없는 것보다 나쁘다.
+  // 이제 계산 경로(resolveProjectionRateForKey)와 동일하게 0(가정 없음)을 돌려준다.
+  return 0;
 }
 // [티커 → 대표 수익률 키] getTargetProjectionRate/getProjectionAssetGroupKey의 "티커 판별" 부분과 동일한
 // 규칙(사용자 정의 오버라이드 → 시스템 티커 매핑 → 이름 키워드 매핑 → 지역별 대표지수 폴백)을
@@ -1370,7 +1473,9 @@ function resolveTickerToRateKey(ticker, label) {
   if (TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker]) return TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker];
   const nameKey = getNameKeywordRateKey(label);
   if (nameKey) return nameKey;
-  return getRegionFallbackRateKey(sanitized.yahooTicker, sanitized.isDomestic);
+  // [Phase 47-A] 계산 경로와 같은 규칙을 쓴다 - 여기만 지역 폴백을 남겨두면 "수익률 관리" 목록에는
+  // KOSPI 행이 보이는데 실제 계산은 가정 없음(0%)이 되어 화면과 계산이 다른 말을 하게 된다.
+  return resolveRateKeyFromAssetCharacter(makeRateProbe(ticker, label, null, sanitized.isDomestic)) || UNRESOLVED_RATE_KEY;
 }
 // [수익률 관리 팝업 동적 필터링 - 요청 반영] "수익률 관리"에 나열할 상품을 하드코딩된 시스템 기본
 // 목록 그대로가 아니라, 지금 실제 포트폴리오에서 대표 수익률로 매칭·지정된 것만 모아 반환한다
@@ -1401,6 +1506,10 @@ function getActiveScenarioRateKeys() {
     if (a.category === '부동산') { active.add('부동산'); return; }
     const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
     if (key === '현금') return;
+    // [Phase 47-A] 'UNRESOLVED'는 실제 Key가 아니라 "적용할 가정이 없다"는 상태다 - 목록에 넣으면
+    // 사용자가 거기에 값을 등록할 수 있게 되고, 그 값이 성격이 전혀 다른 모든 미확인 자산에
+    // 한꺼번에 적용된다. 상태를 Key처럼 다루지 않는다.
+    if (key === UNRESOLVED_RATE_KEY) return;
     active.add(key === '채권' ? 'BOND' : key);
   });
   // ③ [월적립금 설정](일반계좌) 배분 종목 - 소유자별 독립 배분(신규) + 하위호환 단일 배분 둘 다 본다.

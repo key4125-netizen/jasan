@@ -28,7 +28,8 @@ const SYSTEM_RATES = {
   '부동산': [3.0, 5.5, 8.0],
   'KOSPI': [5.0, 7.0, 11.0],
   'KOSDAQ': [5.0, 7.0, 11.0],
-  '005930.KS': [8.0, 9.0, 15.0],
+  // [Phase 47-A] Individual Alpha 폐지 - KOSPI 앵커를 상속한다(전용 8/9/15 삭제).
+  '005930.KS': [5.0, 7.0, 11.0],
   'S&P500': [4.1, 5.1, 6.0],
   'SCHD': [4.1, 5.1, 6.0],
   'NASDAQ': [4.1, 5.1, 6.0],
@@ -210,22 +211,28 @@ test('10. 근거 없는 ETF에는 지역 대표지수를 붙이지 않는다', a
   }
 });
 
-test('10-B. [미결 고정] 인식되지 않는 자산은 개별주식으로 간주되어 지역 대표지수를 받는다', async ({ page }) => {
+test('10-B. [Phase 47-A] 인식되지 않는 자산에는 지역 대표지수를 붙이지 않는다', async ({ page }) => {
   await boot(page);
-  // ⚠ 이 테스트도 "올바른 동작"이 아니라 **현재 정책의 빈틈**을 고정한다.
-  // classifyCategory(js/01)의 마지막 줄은 아무 규칙에도 걸리지 않은 자산을 '주식'으로 되돌린다.
-  // 그래서 resolveAssetCharacter 6단계("category '주식'은 상장 시장이 곧 성격")가 "확인된 개별 지분증권"이
-  // 아니라 "정체를 모르는 모든 것"에 적용되고, 결과적으로 지역 대표지수가 MEDIUM 강도로 추천된다.
-  // ETF 경로(위 테스트 10)에서는 막아 둔 지역 폴백이 이 경로로는 아직 열려 있다. PM 판단 필요.
+  // Phase 46에서 미결로 기록했던 빈틈을 Phase 47-A(§2)가 닫았다. classifyCategory(js/01)의 마지막 줄이
+  // 아무 규칙에도 안 걸린 자산을 주식으로 되돌리기 때문에, resolveAssetCharacter 6단계의
+  // 'individualStock'은 "개별 주식임을 확인했다"가 아니라 "정체를 모른다"와 같은 뜻이었다.
+  // 이제 그 근거로는 Return Key를 붙이지 않는다 - 이름이 '블라블라'인 자산이 KOSPI를 받던 경로다.
   const got = await page.evaluate(() => [
     ['', '블라블라', 'KRW'],
     ['ZZTOP', 'Zz Unknown Corp', 'USD']
   ].map(([t, n, c]) => {
     const out = recommendReturnAssumptionKey({ ticker: t, name: n, currency: c });
-    return { n, source: out.characterSource, key: out.recommendedReturnKey, strength: out.recommendationStrength };
+    const a = makeAsset({ ticker: t, name: n, currency: c });
+    return { n, source: out.characterSource, key: out.recommendedReturnKey, strength: out.recommendationStrength,
+      appliedKey: getProjectionAssetGroupKey(a), rate: getAssetProjectionRate(a, 'normal') };
   }));
-  expect(got[0]).toEqual({ n: '블라블라', source: 'individualStock', key: 'KOSPI', strength: 'MEDIUM' });
-  expect(got[1]).toEqual({ n: 'Zz Unknown Corp', source: 'individualStock', key: 'S&P500', strength: 'MEDIUM' });
+  for (const r of got) {
+    expect(r.source, r.n).toBe('individualStock'); // 성격 판정 자체는 그대로 두었다(Risk 계층 영향 없음)
+    expect(r.key, r.n).toBeNull();                 // 추천하지 않는다
+    expect(r.strength, r.n).toBe('NONE');
+    expect(r.appliedKey, r.n).toBe('UNRESOLVED');  // 계산도 같은 판단을 한다
+    expect(r.rate, r.n).toBe(0);                   // 가정을 적용하지 않음 = 성장 0%
+  }
 });
 
 test('11. 이름에 "채권"/"미국"이 있다는 이유만으로 Key를 붙이지 않는다', async ({ page }) => {
@@ -261,12 +268,11 @@ test('12. 근거가 있는 자산은 정상적으로 추천된다(과잉 차단 
 
 /* ─────────── 5. 아직 정책이 없는 것 (§8) ─────────── */
 
-test('13. [미결 고정] BOND.STOCK에는 시스템 장기 가정이 없고, 폴백이 주식 지수로 흐른다', async ({ page }) => {
+test('13. [Phase 47-A] BOND.STOCK은 주식 지수로 흐르지 않고 가정 없음으로 처리된다', async ({ page }) => {
   await boot(page);
-  // ⚠ 이 테스트는 "올바른 동작"을 고정하는 것이 아니라 **아직 정책이 없다는 사실**을 고정한다.
-  // BOND.STOCK은 SCENARIO_RATE_BASE_ROWS에 없는 사용자 정의 키인데, 사용자가 customScenarioRates에
-  // 값을 등록하지 않으면 지역 폴백까지 흘러내려 채권혼합 상품에 순수 주식 지수 수익률이 붙는다.
-  // 게다가 같은 키인데 자산의 국내/해외 표기에 따라 값이 갈린다. PM 정책 확정 시 이 테스트를 반드시 갱신한다.
+  // Phase 46에서 미결로 기록했던 항목을 Phase 47-A(§3)가 닫았다. BOND.STOCK은 시스템 Key가 아니므로
+  // 사용자가 값을 등록하지 않으면 적용할 가정이 없다 - 예전엔 지역 폴백까지 흘러내려 채권혼합 상품에
+  // 순수 주식 지수 수익률이 붙었고, 같은 키인데 자산의 국내/해외 표기에 따라 값이 갈리기까지 했다.
   const got = await page.evaluate(() => {
     const before = JSON.parse(JSON.stringify(state.projection.customScenarioRates || {}));
     state.projection.customScenarioRates = {}; // 수익률 시트 없이 자산 시트만 올린 사용자를 모사
@@ -275,18 +281,19 @@ test('13. [미결 고정] BOND.STOCK에는 시스템 장기 가정이 없고, �
       baseRow: SCENARIO_RATE_BASE_ROWS.some((x) => x.key === 'BOND.STOCK'),
       국내자산: P.map((p) => resolveProjectionRateForKey('BOND.STOCK', p, false)),
       해외자산: P.map((p) => resolveProjectionRateForKey('BOND.STOCK', p, true)),
+      시스템참고: P.map((p) => getSystemDefaultRate(p, 'BOND.STOCK')),
       KOSPI: P.map((p) => resolveProjectionRateForKey('KOSPI', p, false)),
-      SP500: P.map((p) => resolveProjectionRateForKey('S&P500', p, true)),
-      BOND: P.map((p) => resolveProjectionRateForKey('BOND', p, false))
+      SP500: P.map((p) => resolveProjectionRateForKey('S&P500', p, true))
     };
     state.projection.customScenarioRates = before;
     return r;
   });
-  expect(got.baseRow).toBe(false);                 // 시스템 Key가 아니다
-  expect(got.국내자산).toEqual(got.KOSPI);          // 국내 표기면 KOSPI가 붙는다(정책 아님 - 폴백)
-  expect(got.해외자산).toEqual(got.SP500);          // 해외 표기면 S&P500이 붙는다
-  expect(got.국내자산).not.toEqual(got.해외자산);    // 같은 키인데 값이 갈린다 - 이것이 미결 사항이다
-  expect(got.국내자산).not.toEqual(got.BOND);       // 채권 기준이 붙지도 않는다
+  expect(got.baseRow).toBe(false);              // 여전히 시스템 Key가 아니다
+  expect(got.국내자산).toEqual([0, 0, 0]);       // 가정 없음
+  expect(got.해외자산).toEqual([0, 0, 0]);       // 지역에 따라 갈리지 않는다
+  expect(got.시스템참고).toEqual([0, 0, 0]);     // 화면 참고값도 계산과 같은 말을 한다
+  expect(got.국내자산).not.toEqual(got.KOSPI);   // 더 이상 주식 지수로 흐르지 않는다
+  expect(got.해외자산).not.toEqual(got.SP500);
 });
 
 test('14. 사용자가 BOND.STOCK에 값을 등록해 두었다면 그 값이 그대로 쓰인다', async ({ page }) => {
@@ -353,13 +360,11 @@ test('16. Golden 자산 유형별로 성격 판정이 안정적이다', async ({
 
 /* ─────────── 7. 성격 계층과 계산 계층의 단절 (§14, §20 ②) ─────────── */
 
-test('17. [미결 고정] 성격 판정 결과가 실제 계산 Key에 반영되지 않는다', async ({ page }) => {
+test('17. [Phase 47-A] 성격 판정 결과가 실제 계산 Key에 반영된다', async ({ page }) => {
   await boot(page);
-  // ⚠ Phase 46 최대 발견. resolveAssetCharacter는 채권형 ETF를 정확히 BOND로 판정하는데,
-  // 실제 수익률을 정하는 getProjectionAssetGroupKey는 그 판정을 전혀 보지 않고 지역 대표지수로 간다.
-  // 즉 Phase 40-C가 만든 성격 계층이 계산에 연결돼 있지 않다. 사용자가 rateMatchOverride를 지정하면
-  // 그 값이 우선하므로 기존 사용자에게는 드러나지 않지만, 아무 설정도 하지 않은 신규 사용자에게는 그대로 적용된다.
-  // 연결 여부는 PM 정책 결정 사항이므로 여기서는 현재 상태를 고정만 한다.
+  // Phase 46 최대 발견의 해소. 성격 계층(Phase 40-C)이 드디어 계산 계층에 연결됐다.
+  // 국내 채권형 ETF는 국내 BOND 기준을 받고, 미국 채권형 ETF는 통화/시장이 달라 국내 기준을 쓸 수
+  // 없으므로(US_BOND Key가 아직 없다) 가정을 적용하지 않는다 - 둘 다 지역 대표지수는 아니다.
   const got = await page.evaluate(() => [
     ['114260.KS', 'KODEX 국고채3년', 'KRW'],
     ['TLT', 'iShares 20+ Year Treasury Bond ETF', 'USD']
@@ -371,23 +376,32 @@ test('17. [미결 고정] 성격 판정 결과가 실제 계산 Key에 반영되
       character: resolveAssetCharacter(a).character,
       appliedKey: detail.key,
       appliedSource: detail.source,
+      rate: getAssetProjectionRate(a, 'normal'),
       status: assessReturnAssumptionStatus(a).status
     };
   }));
-  for (const r of got) {
-    expect(r.character, r.n).toBe('BOND');            // 성격은 정확히 채권으로 판정된다
-    expect(r.appliedSource, r.n).toBe('regionFallback'); // 그런데 계산은 지역 폴백을 쓴다
-    expect(r.appliedKey, r.n).not.toBe('BOND');       // 채권 기준이 적용되지 않는다
-    expect(r.status, r.n).toBe('NEEDS_REVIEW');       // 진단 계층은 이미 문제를 알고 있다
-  }
+  const kr = got[0];
+  expect(kr.character).toBe('BOND');
+  expect(kr.appliedSource).toBe('assetCharacter');
+  expect(kr.appliedKey).toBe('BOND');
+  expect(kr.rate).toBe(4);            // KOSPI 7%가 아니라 채권 4%
+  expect(kr.status).toBe('OK');
+  const us = got[1];
+  expect(us.character).toBe('BOND');
+  expect(us.appliedSource).toBe('unresolved'); // 국내 BOND 기준을 미국 국채에 붙이지 않는다
+  expect(us.appliedKey).toBe('UNRESOLVED');
+  expect(us.rate).toBe(0);            // S&P500 5.1%가 아니다
+  expect(us.status).toBe('UNRESOLVED');
+  for (const r of got) expect(['KOSPI', 'S&P500', 'KOSDAQ']).not.toContain(r.appliedKey);
 });
 
-test('18. 진단 계층은 정확한 문구를 만들지만 아직 어떤 UI에도 연결돼 있지 않다', async ({ page }) => {
+test('18. 가정을 적용하지 못한 자산의 안내 문구는 사용자를 비난하지 않는다', async ({ page }) => {
   await boot(page);
-  // 문구 자체는 사용자를 비난하지 않고 "확인해 주세요"로 끝난다 - 연결 Phase에서 이 톤을 유지해야 한다.
+  // 이 문구는 아직 UI에 연결돼 있지 않다(연결은 별도 Phase의 PM 판단 사항). 연결될 때
+  // "무엇이 일어났는지"만 말하고 사용자의 선택을 틀렸다고 하지 않는 톤을 유지해야 한다.
   const msg = await page.evaluate(() =>
-    assessReturnAssumptionStatus(makeAsset({ ticker: '114260.KS', name: 'KODEX 국고채3년', currency: 'KRW' })).message);
-  expect(msg).toContain('채권');
-  expect(msg).toContain('확인해');
+    assessReturnAssumptionStatus(makeAsset({ ticker: 'ZZTOP', name: 'Zz Unknown Corp', currency: 'USD' })).message);
+  expect(msg).toContain('0%');
+  expect(msg).toContain('지정');
   expect(msg).not.toMatch(/잘못|위험|틀렸|낮추|매도/);
 });
