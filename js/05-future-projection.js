@@ -102,6 +102,10 @@ const EM_NAME_KEYWORDS = ['신흥국', 'EMERGING', '이머징'];
 const KR_UNDERLYING_NAME_KEYWORDS = ['코리아', '한국', 'KOREA', 'KRX', '국내'];
 const US_UNDERLYING_NAME_KEYWORDS = ['미국', 'US ', 'U.S', 'AMERICA'];
 const DEV_EX_US_NAME_KEYWORDS = ['선진국', 'DEVELOPED', 'EAFE', '유럽', 'EUROPE', '일본', 'JAPAN'];
+// [Phase 45] 이름이 스스로 "한 자산군이 아니다"라고 밝히는 상품 - 채권혼합/주식혼합/혼합형 등.
+// '혼합' 한 단어가 '채권혼합' · '채권혼합형' · '주식혼합' · '혼합형'을 모두 덮으므로 따로 적지 않고,
+// '혼합'이라는 단어를 쓰지 않는 표기만 별도로 나열한다.
+const MIXED_ASSET_NAME_KEYWORDS = ['혼합', '주식+채권', '주식 + 채권', '채권+주식', '채권 + 주식'];
 
 // asset.category가 이미 성격을 확정해 주는 경우(사용자가 직접 고르거나 티커 없는 자산이
 // classifyCategory로 확정된 경우) - 가장 강한 근거다.
@@ -126,6 +130,22 @@ function resolveAssetCharacter(asset) {
   const yahoo = sanitized.yahooTicker;
   const region = (asset && asset.isDomestic) || sanitized.isDomestic || null;
   const out = (character, source, confidence) => ({ character, source, confidence, region, ticker: yahoo });
+
+  // 0) [Phase 45] 이름이 이미 "여러 자산군이 섞여 있다"고 말하는 상품은 어떤 단일 성격으로도 판정하지
+  //    않는다. 이 검사가 아래 어떤 규칙보다 먼저 오는 이유는, 혼합형을 단일 자산군으로 잘못 미는 경로가
+  //    하나가 아니기 때문이다:
+  //      - 이름 키워드(3단계): '채권혼합'에 '채권'이 들어 있다는 이유만으로 BOND로 판정됐다
+  //        (실제 Golden 자산 'KODEX 코리아배당성장채권혼합' · 'TIGER 미국테크TOP10채권혼합'이 그랬다).
+  //      - 카테고리(1단계): 티커 없는 '채권혼합형 펀드'는 classifyCategory(js/01)가 같은 BOND_KEYWORDS로
+  //        category를 '채권'으로 자동 확정하므로, 3단계에 닿기도 전에 BOND가 된다.
+  //      - 이름 지수 키워드(5단계): 'TIGER 미국테크TOP10채권혼합'의 '미국'을 보고 미국 주식이 될 수 있다.
+  //    '채권'이라는 단어가 이름에 있다는 것은 그 상품이 채권만 담는다는 뜻이 아니다. 성격을 모르는 상태를
+  //    UNRESOLVED로 정직하게 남기면 수익률 가정이 자동으로 붙지 않고 사용자 확인을 요청하게 된다
+  //    (recommendReturnAssumptionKey Step 3). 기존 자산의 계산값은 rateMatchOverride가 그대로 우선하므로
+  //    이 변경으로 이미 등록된 자산의 수익률이 달라지지 않는다.
+  if (matchesAnyKeyword(name, MIXED_ASSET_NAME_KEYWORDS)) {
+    return out(ASSET_CHARACTERS.UNRESOLVED, 'mixedAssetName', 'none');
+  }
 
   // 1) 명시적 카테고리 - 사용자가 고르거나 티커 없는 자산이 확정된 경우.
   const byCategory = CATEGORY_TO_CHARACTER[asset && asset.category];
@@ -1318,7 +1338,14 @@ function getSystemDefaultRate(presetKey, key) {
   if (key === 'BOND') return preset.categories['채권'];
   if (key === '부동산') return preset.categories['부동산'];
   if (key === 'KOSPI') return preset.indexRates.domestic;
-  if (key === 'KOSDAQ') return preset.indexRates.domestic; // 코스닥 전용 시스템 기본값이 아직 없어 코스피와 동일하게 시작(getEffectiveIndexRate와 동일 규칙)
+  if (key === 'KOSDAQ') return preset.indexRates.domestic;
+  // [Phase 45 버그 수정] CASH/CASH.USD는 아래 어느 분기에도 걸리지 않아 마지막 지역 폴백까지 흘러내렸고,
+  // 그 결과 "현금의 시스템 기본 가정"을 물으면 미국 주식 지수 값(S&P500)이 돌아왔다. 앱이 실제 계산에
+  // 쓰는 현금의 정의는 0%다(resolveProjectionRateForKey / getTargetProjectionRate 모두 동일) - 여기서도
+  // 같은 정의를 돌려줘 표시값과 계산값이 어긋나지 않게 한다. 새 수익률을 만드는 것이 아니라 이미
+  // 확정된 정의를 한 곳 더 적용하는 것이며, 사용자가 CASH에 값을 등록했다면 getReferenceRate가
+  // customScenarioRates를 먼저 보므로 그 값이 그대로 우선한다.
+  if (key === 'CASH' || key === 'CASH.USD') return 0; // 코스닥 전용 시스템 기본값이 아직 없어 코스피와 동일하게 시작(getEffectiveIndexRate와 동일 규칙)
   if (preset.tickers[key] !== undefined) return preset.tickers[key];
   // [SSOT 정합성 - 버그 수정] 여기까지 안 걸리는 키(엑셀 대표매칭 칸에 시스템이 모르는 값을 넣었거나,
   // 아직 customScenarioRates에도 등록되지 않은 커스텀 키를 조회하면 여기 온다) - 예전엔 undefined를
