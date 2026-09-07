@@ -32,6 +32,95 @@
 
 ---
 
+## 최근 세션 요약 — V1.1 **BL-12 단독 수정** (거래 삭제 시 manual 자산 보호) **v219 유지**
+
+**코드 커밋** `6af2ec3` "fix: keep manual assets when deleting their last transaction".
+**인계 갱신** (이 커밋). **SW bump 없음 — v219 그대로다. 릴리스는 별도 단계로 분리했다(PM 지시).**
+
+### 무엇이 문제였나
+
+`syncAssetsFromTransactions`에는 `positionSource === 'manual'` 자산을 거래원장이 덮어쓰지 못하게 하는
+가드가 Phase 50부터 있었다. 그런데 **`deleteTransaction`의 고아(orphan) 자산 정리 분기에만 그 가드가
+빠져 있었다.**
+
+거래를 지우면 `computePositionsAndRealizedPnL()`의 positions 맵에서 그 종목 키가 통째로 사라진다.
+그러면 sync가 그 자산을 아예 만나지 못하므로(= manual 가드가 실행될 기회 자체가 없다) 곧바로 고아
+정리 분기로 넘어가고, 거기서 무조건 `quantity = 0`이 됐다.
+
+**실측 재현**: manual 자산 100주 + 그 자산과 연결된 거래 1건 → 그 거래 삭제 → **자산 수량 100 → 0.**
+(STEP A-2 감사 시나리오 7에서 발견)
+
+### 무엇을 고쳤나 — 한 줄
+
+`js/06-transactions.js` `deleteTransaction()` 고아 정리 분기(현재 ~972행):
+
+```js
+if (orphan && orphan.positionSource !== 'manual' && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
+```
+
+`orphan.positionSource !== 'manual'` 한 조건만 추가했다. **sync에 이미 있는 가드와 같은 의미**이고,
+새 헬퍼·새 추상화·새 정책 계층을 만들지 않았다.
+
+### 무엇을 그대로 뒀나
+
+- **ledger 자산**: 거래를 지우면 예전 그대로 0이 된다.
+- **legacy 자산(표식 없음)**: 예전 그대로 0이 된다. **"거래가 있으니 ledger겠지"라고 추정하지 않는다.**
+- **현금 가드**: `orphan.category !== '현금'` 그대로. ⚠ sync의 현금 가드는
+  `category === '현금' && currency !== 'USD'`(원화 현금만)이라 **두 경로의 현금 가드 조건이 다르다** —
+  이번 단계에서 건드리지 않았다(아래 backlog **BL-14**).
+- 통화까지 보는 매칭(`assetMatchesLedgerIdentity` / `transactionIdentityKey`), 정리 순서, 거래 삭제의
+  다른 모든 동작.
+
+### 회귀 장치
+
+**`e2e/60-bl12-delete-tx-manual-guard.spec.js`** (신규 6건)
+
+| # | 내용 | 수정 전 |
+|---|---|---|
+| A | manual 자산 + 연결 거래 1건 → 거래 삭제 → 수량/취득가/대표매칭키/역할/표식 전부 유지 | **FAIL(0으로 지워짐)** |
+| B | ledger 자산은 예전 그대로 0 | PASS(대조군) |
+| C | legacy 자산은 예전 그대로 0, 표식도 안 생김 | PASS(대조군) |
+| D | manual 달러 자산 + `buyRate` 유지 | **FAIL** |
+| E | manual 달러 현금도 보호(현금 가드와 독립) | PASS(대조군) |
+| F | 거래가 하나 더 남아 있으면 고아 정리 자체가 안 일어남 | PASS(대조군) |
+
+**수정 전 코드로 되돌려 실제로 A·D가 FAIL하는 것을 확인했다** — 테스트가 이 버그를 진짜로 잡는다.
+
+### 검증 결과
+
+```
+Unit         205/205 PASS   (npm test)
+E2E           39/39  PASS   (e2e/60 신규 6 + 59 / 51 / 52 기존 33)
+ESLint        0 errors      (전체)
+Data Guard    PASS
+Release Guard FAIL — 정상. js/06이 바뀌었는데 CACHE_NAME v219 그대로이기 때문이다.
+                     SW bump은 이번 작업 범위 밖(PM 지시). 릴리스 때 v220으로 올린다.
+Worker/API    0             (playwright.config.js DNS 격리)
+사용자 데이터  변경 0        (테스트 fixture 안에서만)
+```
+
+### 이번 단계에서 **의도적으로 건드리지 않은 것**
+
+S-1(legacy SoT) · BL-13(cloud merge positionSource) · BL-7(JSON append) · BL-8(MANUAL_WITH_TX edit gate) ·
+Target Portfolio · Future Projection(70:30 포함) · Tax MC · P20/P30/P40 · MC preset · SW · Worker/API.
+
+### 새 backlog
+
+- **BL-14** `deleteTransaction`의 현금 가드(`category !== '현금'`)와 `syncAssetsFromTransactions`의 현금
+  가드(`category === '현금' && currency !== 'USD'`)가 **서로 다르다.** 달러 현금 자산은 sync에서는
+  거래원장으로 관리되는데 고아 정리에서는 통째로 제외된다 — 거래를 전부 지워도 달러 현금 수량이
+  남는다. 어느 쪽이 맞는지는 정책 판단이라 이번에 건드리지 않았다.
+
+### 다음 단계 (PM 승인 필요)
+
+1. **S-1 SoT 정책 확정** — 감사 결론은 **D안**(legacy를 UNKNOWN으로 두고 자동 변환 없이 진단만).
+   핵심 결정 사항: **legacy 자산을 boot sync가 계속 덮어쓸 것인가.**
+2. BL-13(cloud merge가 원격 legacy로 로컬 manual을 덮어쓸 수 있음) — 실측 확인됨.
+3. BL-7(JSON [추가하기]가 `positionSource`를 안 읽음) — 감사 결론은 **`positionSource`만 보존**.
+4. v220 릴리스(SW bump) — 위 항목들을 묶어서 낼지, BL-12만 먼저 낼지는 PM 판단.
+
+---
+
 ## 최근 세션 요약 — 🚀 **v218 → v219 릴리스 완료** + STEP A/B/C 감사
 
 **릴리스 커밋** `4baf301` "release: bump service worker to v219" — push 완료.
