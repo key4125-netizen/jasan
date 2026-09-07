@@ -32,6 +32,94 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-07) — Phase 47-B/C/D 감사 + 47-E: 자산 데이터 정합성 P0 수정 **v213 유지**
+
+**커밋** `4135895` "fix: preserve user-set return key across backup restore and cloud sync" — push 완료.
+Phase 47-B/C/D는 READ-ONLY 감사(코드 변경 0건), 47-E가 그 결과 중 P0 하나만 수정한 것이다.
+
+### 🔴 F-1 — 백업/동기화가 사용자 지정 Return Key를 통째로 잃고 있었다 (수정 완료)
+
+`buildSyncBlob()`([js/12:273](js/12-import-export-sync.js#L273))은 자산 16개 필드를 정상적으로 내보내는데,
+되받는 `normalizeImportedAsset()`([js/12:545](js/12-import-export-sync.js#L545))에 **`rateMatchOverride`를
+읽는 줄이 없었다.** 15개는 복원하고 이 하나만 빠뜨린 한 줄짜리 누락이다.
+
+영향 경로 3개(전부 이 함수를 거친다): **JSON 백업 복원 / 클라우드 동기화 병합(원격이 updatedAt으로 이길 때) /
+최초 페어링(fullAdopt)**.
+
+**Phase 47-A 이후 심각도가 올라갔다**: 예전엔 override를 잃어도 지역 폴백이 받아줘서 "다른 기준이 적용됨"에
+그쳤지만(KOSDAQ→KOSPI, 7%→7%), 지역 폴백이 사라진 지금은 **적용 수익률 7% → 0%**가 된다. 사용자 눈에는
+자산이 갑자기 성장을 멈춘 것으로 보이고 원인을 알 수 있는 화면이 없다. 실브라우저로 재현했다
+(파크시스템스 `rateMatchOverride='KOSDAQ'` → 복원 후 필드 자체가 사라짐).
+
+**수정 방식**: `sanitizeRateMatchOverride(raw)`(js/01, `makeAsset` 바로 위)를 새로 만들어 **`makeAsset`(엑셀 경로)과
+`normalizeImportedAsset`(백업/동기화 경로)이 공유**하게 했다. 같은 판단을 두 곳이 각각 하던 것이 이 버그의
+원인이었으므로, 한 곳에 모아야 재발하지 않는다. 규칙: 없음/빈문자/공백 → `undefined`(자동판별 유지),
+**`'UNRESOLVED'` → `undefined`**(내부 계산 상태를 사용자 지정으로 굳히지 않는다), 그 외 → trim한 문자열.
+
+**기존 사용자 영향**: 이미 잃은 값은 자동 복구되지 않지만, `buildSyncBlob`은 원래도 정상이었으므로
+**기존 백업 파일에는 값이 들어 있다** → 복원하면 회복된다.
+
+**회귀 테스트** `e2e/47-phase47e-data-integrity.spec.js` 10개(A~L). 전부 실제 state를 바꾸고 원복하며
+"함수 호출 여부"가 아니라 **적용 수익률 값**을 검증한다. Mutation: 수정 줄 제거 → **8/10 실패**,
+UNRESOLVED 가드만 제거 → 1 실패.
+
+### Phase 47-B/C/D 감사에서 확정한 사실 (코드 변경 0건)
+
+**이 앱의 원천은 두 개다.** `state.transactions`가 `quantity`/`buyPrice`/`buyRate`의 원천이고,
+`state.assets`가 그 외 전부(currentPrice/category/currency/role/rateMatchOverride)의 원천이다.
+**원화 현금만 예외**로 `assets`가 수량의 원천이기도 하다([js/06:177](js/06-transactions.js#L177) — 의도적 설계).
+이 3중 구조가 아래 위험 대부분의 뿌리다.
+
+**미해결(전부 PM 결정 대기 — 임의로 손대지 말 것)**
+
+- **F-2** 거래 Excel overwrite / Excel 자산 replace / **클라우드 동기화**에서 거래에 없어진 자산이
+  옛 수량 그대로 남는다. `syncAssetsFromTransactions`는 "현재 포지션"만 순회해서 사라진 것을 방문조차 못 한다.
+  고아 방어 코드는 **거래 1건 삭제 경로에만** 있다([js/06:822](js/06-transactions.js#L822)).
+  `filteredAssets()`가 수량 0만 숨기므로 고아는 화면·KPI·Projection·MC·Risk에 전부 포함된다.
+  클라우드 pull은 `syncAssetsFromTransactions()`를 **호출조차 하지 않는다**.
+- **F-3** Excel 자산 replace로 고친 수량이 **다음 부팅에 조용히 되돌아간다**(실측 99주 → 10주).
+  Source of Truth 정책(A~E 후보)을 PM이 결정하기 전에는 고치지 않는다.
+- **F-4** 최초등록으로만 만든 자산은 Return Key를 **보지도 고치지도 못한다** — `rateMatchOverride` 입력은
+  **거래 모달(`tx_rateMatchOverride`)과 Excel 대표매칭 칸에만** 있다. → Phase 47-F에서 "가시화"만 처리.
+- **F-8(신규)** Excel export의 대표매칭 칸이 **자동판별 결과와 사용자 지정을 구분 없이 같은 칸에 쓴다**.
+  한 번 왕복하면 `source: assetCharacter` → `override`로 굳어 **이후 시스템 정책 변경을 따라가지 않는다**
+  (실측 확인). Phase 29-B가 수익률 시트에서 이미 고친 것과 같은 유형인데 이 칸에는 미적용이다.
+- Excel round-trip 기타: `category` 재계산 · `id` 재발급 · `buyRate` 유실 · `updatedAt` 전부 "지금"으로.
+
+**Bond**: 개별채권 지원은 현재 0%다(만기/표면금리/이표 필드 없음 — 채권은 "만기 없이 연 4%로 영원히 복리
+성장하는 자산"으로 계산된다). 필요한 데이터는 거의 전부 **시간축 이벤트**라 `transactions` 구조와 맞고
+`assets` 스냅샷 구조와 맞지 않는다 → **F-3을 먼저 결정하지 않고 Bond를 만들면 두 번 만들게 된다.**
+
+**KIS API**: PM이 물었던 "호출량 문제"는 추정이 아니라 **실증된 사고**다. `251fc44`에서 채권 기능(ISIN + KIS
+채권 라우트 2개)을 실제로 구현했다가 `93b563b`("missing timeout on KIS proxy calls")를 거쳐 `e8a6fed`로
+**전체 revert**했고, 같은 날 시세 갱신 성능 커밋이 8개 이어졌다. worker 주석에도 "세 라우트를 동시 요청하면
+일부가 **500으로 실패하는 게 재현됐다**"고 기록돼 있다(정확한 제한치는 문서 미확인 = 추정).
+확인된 채권 엔드포인트: `/uapi/domestic-bond/v1/quotations/inquire-price`(FHKBJ773400C0),
+`search-bond-info`(CTPF1114R). 현재 KIS는 **네이버·Yahoo가 둘 다 실패했을 때만 순차 호출되는 최종 안전망**이다.
+
+**KRW/USD Cash**: Asset Class·Character·Return Key·수익률이 **완전히 동일**하고 `currency`/`isDomestic`만
+다르다 — 즉 **Asset Class와 Currency는 이미 독립 축이고 구조 변경이 필요 없다**. 갈라진 것은 입력 경로뿐이며,
+USD가 거래 기반인 실질적 이유는 **가중평균 매입환율(`buyRate`)**이다. `calcRow`([js/01:1349](js/01-core-state.js#L1349))는
+`buyRate`가 없으면 오늘 환율로 폴백해 **환차손익이 항상 0으로 보인다**.
+
+### 테스트
+
+- `npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v213)**
+- 전체 e2e **431 통과 / 15 실패 — 신규 회귀 0건**
+  (e2e/33 헤더 반응형 14건 = 알려진 환경 실패, e2e/36 테스트 8 = 실시간 시세 레이스로 기준선 동률 입증됨)
+- `e2e/47` **10/10**
+
+### 다음 세션이 손대면 안 되는 것
+
+- **F-3(Source of Truth)은 PM 결정 전 구현 금지.** 후보 A(transactions 원천)/B(assets 원천)/C(현행 유형별
+  분리)/D(최초등록을 opening transaction으로)/E(Excel을 조정 입력으로) 중 어느 것도 임의 선택하지 않는다.
+  D는 UX를 유지하며 정합성을 얻지만, 과거 `origin:'adjust'` 자동 거래 생성을 **폐지한 이력**
+  ([js/07:848-855](js/07-table-render-modals.js#L848))이 있어 그 폐지 사유의 재발 여부를 먼저 검증해야 한다.
+- `e2e/45`·`e2e/46`·`e2e/47`의 기대값을 PM 승인 없이 고치지 말 것.
+- `.claude/launch.json`은 커밋하지 않는다(상시 규칙).
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 46 감사 + 47-A: 수익률 계산 경로 완성 **V1.1 v212 → v213**
 
 **커밋 2건, 둘 다 push 완료.**
