@@ -857,7 +857,10 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     // 별도 추적하고, 현금/외화는 거래내역 자체를 만들 수 없으므로 이 화면이 유일한 관리 창구다).
     state.assets[idx] = { ...oldAsset, ...payload, updatedAt: Date.now() }; // [가족 동기화 - 스마트 머지]
   } else {
-    const newAsset = { id: genId(), ...payload, updatedAt: Date.now() }; // [가족 동기화 - 스마트 머지]
+    // [Phase 49] 이 화면으로 만든 자산은 거래원장이 아니라 자산 마스터가 수량을 관리한다 - 사실이므로
+    // 여기서 명시한다. 수정(위 분기)에서는 건드리지 않는다: 기존 값을 그대로 이어받아야 하고,
+    // payload에 이 필드를 넣으면 거래원장에서 태어난 자산을 이 화면에서 열기만 해도 'manual'로 바뀐다.
+    const newAsset = { id: genId(), ...payload, positionSource: 'manual', updatedAt: Date.now() }; // [가족 동기화 - 스마트 머지]
     state.assets.push(newAsset);
     // [최초 등록 소급 히스토리] "자산 추가"로 직접 만든 신규 자산도 대상 - 티커 없는 자산(채권/현금 등)은
     // backfillDailyPnlHistory 안에서 자연히 건너뛴다.

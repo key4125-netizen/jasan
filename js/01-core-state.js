@@ -701,6 +701,38 @@ function genId() {
   return (crypto && crypto.randomUUID) ? crypto.randomUUID() : 'id_' + Date.now() + '_' + Math.random().toString(16).slice(2);
 }
 
+/* =========================================================================
+ * [Phase 49] positionSource - 이 자산의 quantity/buyPrice/buyRate를 누가 관리하는가.
+ *
+ * 이 앱은 필드별로 원본이 갈라진 Hybrid 구조다(Phase 48 감사로 확정된 PM 정책):
+ *   - 거래내역이 있는 자산 -> 수량/취득원가/취득환율의 원천은 state.transactions
+ *   - 거래내역 없이 자산 마스터에 직접 등록한 자산(부동산·원화현금·"최초등록") -> 원천은 state.assets
+ * 그런데 그 구분이 지금까지 어디에도 적혀 있지 않았다. syncAssetsFromTransactions(js/06)는 "지금
+ * 매칭되는 거래가 있는가"만 볼 수 있어서, 거래가 있었다가 사라진 자산(고아)과 애초에 거래가 없던
+ * 자산(부동산/현금)을 구분하지 못한다 - 이것이 P0-2를 안전하게 고칠 수 없었던 이유다.
+ *
+ * 이 필드는 그 구분을 자산 자신에 명시적으로 남긴다. 이번 Phase는 "적어 두는 것"까지만 하고
+ * 실제 sync 동작은 전혀 바꾸지 않는다.
+ *
+ * [허용값은 정확히 둘] 'ledger' | 'manual'. 그 외에는 저장하지 않는다.
+ * [값이 없는 상태(undefined)는 세 번째 값이 아니다] "아직 표시되지 않았다"는 뜻이며, 이 저장소가
+ * 이미 여러 곳에서 쓰는 필드-존재 의미 체계와 같다(rateMatchOverride의 "빈 값 = 자동판별",
+ * customScenarioRates의 "필드 없음 = 시스템 기본값을 따름", Phase 29-B). 그래서 스키마는 2-value로
+ * 유지되고 legacy 자산은 값 없이 그대로 남는다.
+ *
+ * [절대 추론하지 않는다] ticker/category/owner/accountType/rateMatchOverride/assetCharacter 같은
+ * 다른 필드를 보고 이 값을 짐작하지 않는다. "사실이 만들어지는 순간"에만 적는다:
+ *   - syncAssetsFromTransactions가 포지션에서 자산을 새로 만들 때 -> 'ledger'
+ *   - 자산 추가("최초등록") 폼이 자산을 새로 만들 때            -> 'manual'
+ * 기존 자산에 소급해서 대량으로 찍지 않는다(PM 지시) - 그 판단은 별도 승인 사항이다.
+ * ====================================================================== */
+const POSITION_SOURCES = Object.freeze(['ledger', 'manual']);
+function sanitizePositionSource(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const v = String(raw).trim();
+  return POSITION_SOURCES.includes(v) ? v : undefined;
+}
+
 /* [Phase 47-E] 대표매칭(수익률연동키) 값 하나를 저장 가능한 형태로 정규화한다.
  * 이 함수가 생긴 이유: 같은 판단을 makeAsset(엑셀 업로드)과 normalizeImportedAsset(JSON 복원/
  * 클라우드 동기화, js/12) 두 곳이 각각 하고 있었는데, 후자는 이 필드를 아예 읽지 않아 복원할 때마다
@@ -758,6 +790,9 @@ function makeAsset(raw) {
     // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
     rateMatchOverride: sanitizeRateMatchOverride(raw.rateMatchOverride),
+    // [Phase 49] 넘어온 값이 있으면 그대로 보존하고, 없으면 값 없이 둔다 - 여기서 추측해 채우지 않는다.
+    // 호출부가 "사실"을 아는 경우에만 명시적으로 넘긴다(js/06 sync -> 'ledger', js/07 자산 폼 -> 'manual').
+    positionSource: sanitizePositionSource(raw.positionSource),
     // [자산별 역할(포지션) 분류 - 티커별 단일 소스와 자동 연동] raw.role이 명시돼 있으면 그 값을 그대로
     // 쓰고, 없으면 이 종목에 대해 다른 곳(리밸런싱 목표 등)에서 이미 지정해 둔 역할이 있는지
     // getTickerRole()로 조회해 자동으로 채운다 - "목표 비중에 미리 태깅해 둔 종목을 나중에 실제로
@@ -1293,7 +1328,9 @@ function persistAssets(skipPush) {
     // [대표매칭 오버라이드] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
     rateMatchOverride: a.rateMatchOverride,
     // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
-    role: a.role
+    role: a.role,
+    // [Phase 49] 저장하지 않으면 새로고침 한 번에 사라져 표시 자체가 무의미해진다.
+    positionSource: a.positionSource
   }));
   localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();

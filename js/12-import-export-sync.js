@@ -290,7 +290,10 @@ function buildSyncBlob() {
       // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
       rateMatchOverride: a.rateMatchOverride,
       // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
-      role: a.role
+      role: a.role,
+      // [Phase 49] 같은 이유. 옛 버전 앱이 이 필드가 든 페이로드를 받아도 normalizeImportedAsset이
+      // 화이트리스트 방식이라 조용히 무시할 뿐이라, 앞뒤 버전이 섞여도 깨지지 않는다.
+      positionSource: a.positionSource
     })),
     transactions: state.transactions,
     // [버그 수정] dailySnapshots는 위 주석(state 선언부)에 "JSON 백업에 저장됨"이라 적혀 있었지만 실제로는
@@ -574,6 +577,10 @@ function normalizeImportedAsset(a) {
     // 정규화 규칙은 makeAsset과 완전히 같은 함수를 쓴다(sanitizeRateMatchOverride, js/01) -
     // 두 경로가 서로 다른 판단을 하면 "엑셀로는 살아남는데 백업으로는 사라지는" 지금 상황이 재발한다.
     rateMatchOverride: sanitizeRateMatchOverride(a.rateMatchOverride),
+    // [Phase 49] makeAsset과 완전히 같은 규칙(sanitizePositionSource, js/01)을 쓴다 - 두 경로가 다르게
+    // 판단하면 "엑셀로는 살아남는데 백업으로는 사라지는" Phase 47-E의 상황이 그대로 재발한다.
+    // 값이 없는 legacy 자산은 값 없이 그대로 복원된다(임의로 채우지 않는다).
+    positionSource: sanitizePositionSource(a.positionSource),
     // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 가족 동기화/백업 복원 시 사라진다.
     role: parseAssetRoleInput(a.role),
     // [가족 동기화 - 스마트 머지] mergeCollectionById() 참고 - 없으면 지금 시각으로 폴백(오래된 백업 등).

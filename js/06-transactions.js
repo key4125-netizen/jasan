@@ -183,7 +183,9 @@ function syncAssetsFromTransactions() {
       return;
     }
     if (!asset) {
-      asset = makeAsset({ ticker: pos.ticker, owner: pos.owner, accountType: pos.accountType, name: pos.name, quantity: pos.quantity, buyPrice: pos.avgPrice, currency: pos.currency });
+      // [Phase 49] 이 자산은 거래원장에서 태어났다 - 추측이 아니라 사실이므로 여기서 명시한다.
+      // 이미 있던 자산(아래 else 분기)에는 소급해서 찍지 않는다 - 그건 별도 승인이 필요한 판단이다.
+      asset = makeAsset({ ticker: pos.ticker, owner: pos.owner, accountType: pos.accountType, name: pos.name, quantity: pos.quantity, buyPrice: pos.avgPrice, currency: pos.currency, positionSource: 'ledger' });
       state.assets.push(asset);
       // [최초 등록 소급 히스토리] 거래내역(엑셀 업로드/거래 추가)으로 처음 생긴 자산만 해당 - 이미
       // 있던 자산의 수량/매수단가 갱신(else 분기)에는 다시 호출하지 않는다(중복 소급 방지, 자연히
