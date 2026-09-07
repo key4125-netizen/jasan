@@ -11,6 +11,7 @@
 // 전용 값(예: version 9001+, source에 "E2E-TEST" 명시)을 실행 중에만 주입해 메커니즘을 검증한다.
 // 페이지가 매 테스트마다 새로 로드되므로(page.goto) 이 런타임 전용 주입은 다음 테스트로 새지 않는다.
 const { test, expect } = require('@playwright/test');
+const { seedPriceHistory } = require('./fixtures');
 
 const ANCHOR = 'US_EQUITY';
 const KEY = 'NASDAQ'; // 시스템 기본 상품 키(SCENARIO_RATE_BASE_ROWS 소속) - US_EQUITY 앵커에 매핑됨
@@ -141,6 +142,11 @@ test('10. [적용] 후 Monte Carlo 어댑터 muAnnual도 새 값을 반영한다
     };
     persistRebalance();
   });
+  // [Phase 47-G] 이 테스트의 목표는 ticker(QQQM)라 MC 어댑터가 그 종목의 가격 이력을 요구한다.
+  // 테스트 브라우저는 외부 네트워크가 차단돼 있으므로 결정론적 합성 시계열을 당일 캐시에 넣어 준다
+  // (fixtures.seedPriceHistory 주석 참고) - 실제 시세가 아니라 σ를 계산할 최소 재료일 뿐이고,
+  // 이 테스트가 검증하는 muAnnual은 수익률 가정에서만 나오므로 값에 영향이 없다.
+  await seedPriceHistory(page, ['QQQM']);
   await setRecommended(page);
   await page.evaluate((key) => openCmaRecommendationModal(key), KEY);
   await page.locator('#cmaRecommendationApplyBtn').click();

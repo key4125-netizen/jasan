@@ -78,6 +78,56 @@ async function seedPortfolio(page, opts) {
 
   await page.reload();
   await page.waitForFunction(() => typeof state !== 'undefined');
+  // [Phase 47-G] reload 이후에 넣어야 한다 - riskHistoryCache는 localStorage에 저장되지 않는
+  // 메모리 캐시라 reload하면 사라진다.
+  await seedPriceHistory(page);
+}
+
+
+/* [Phase 47-G] Monte Carlo σ 계산에 필요한 일별 종가를 네트워크 없이 공급한다.
+ *
+ * 배경: playwright.config.js가 테스트 브라우저의 외부 DNS를 막았다(실제 Cloudflare Worker/시세 API로
+ * 요청이 나가지 않는다). 그러자 가격 이력이 필요한 테스트가 실패했는데, 이건 테스트가 틀려서가 아니라
+ * 앱이 원래 그렇게 동작하기 때문이다 - buildMonteCarloInputFromState(js/16)는 위험자산의 가격 이력이
+ * 없으면 σ를 0으로 채우지 않고 errors를 반환하며(의도된 설계), 그 경우 safety 객체 자체를 만들지
+ * 않는다. 그래서 "목표비중 합계 BLOCK"처럼 데이터와 무관한 판정도 화면에 뜨지 못한다.
+ *
+ * 그래서 실제 시세 대신 결정론적 합성 시계열을 앱의 당일 캐시(state.riskHistoryCache)에 직접 넣는다.
+ * getCachedDailyCloses(js/09)는 오늘 날짜 캐시가 있으면 네트워크를 아예 타지 않으므로, 이 한 줄로
+ * "요청 0건 + 계산 가능"이 동시에 성립한다.
+ *
+ * 이 데이터는 시세의 정확성을 검증하는 용도가 아니다 - σ를 계산할 수 있는 최소한의 재료일 뿐이며,
+ * 이 시계열을 쓰는 테스트들은 전부 Safety 판정/인플레이션 환산/진행률/muAnnual처럼 "가격 자체와
+ * 무관한 것"을 검증한다. 오히려 실제 시세를 쓰던 예전보다 결정론적이다(매일 값이 달라지지 않는다).
+ *
+ * 가격 이력이 "없는 상태" 자체를 검증하는 테스트(e2e/19 케이스 2 등)에는 이 함수를 부르지 않는다 -
+ * 그래서 전역 자동 주입이 아니라 명시적 opt-in 헬퍼로 둔다.
+ */
+const DEFAULT_HISTORY_TICKERS = ['^KS11', '^GSPC']; // js/05 buildHouseholdInstrumentReturnSeries가 namedHolding에 쓰는 지역 대표지수
+async function seedPriceHistory(page, extraTickers = []) {
+  await page.evaluate((tickers) => {
+    const today = new Date().toISOString().slice(0, 10);
+    // 결정론적 의사난수(선형합동) - seed가 같으면 항상 같은 시계열이 나온다.
+    const series = (seed) => {
+      let s = seed * 2654435761 % 2147483647;
+      const rnd = () => { s = (s * 48271) % 2147483647; return s / 2147483647; };
+      const closes = [], volumes = [], dates = [];
+      let price = 100;
+      const base = new Date();
+      base.setDate(base.getDate() - 252);
+      for (let i = 0; i < 252; i++) {
+        // 일간 표준편차 약 1.1% -> 연 환산 약 18%(실제 주식 지수와 비슷한 수준)
+        price *= 1 + (rnd() - 0.5) * 0.022;
+        closes.push(Math.round(price * 100) / 100);
+        volumes.push(1000000 + Math.round(rnd() * 100000));
+        const d = new Date(base);
+        d.setDate(d.getDate() + i);
+        dates.push(d.toISOString().slice(0, 10));
+      }
+      return { closes, volumes, dates };
+    };
+    tickers.forEach((t, i) => { state.riskHistoryCache[t] = { date: today, data: series(i + 1) }; });
+  }, [...DEFAULT_HISTORY_TICKERS, ...extraTickers]);
 }
 
 // 미래예측 탭까지 이동(포트폴리오/자산예측 -> 미래 예측 서브탭)
@@ -86,4 +136,4 @@ async function goToProjectionTab(page) {
   await page.getByText('미래 예측', { exact: true }).click();
 }
 
-module.exports = { seedPortfolio, goToProjectionTab };
+module.exports = { seedPortfolio, goToProjectionTab, seedPriceHistory };

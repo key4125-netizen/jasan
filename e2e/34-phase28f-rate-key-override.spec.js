@@ -14,6 +14,7 @@
 // [해석 우선순위, PM 지시] 1) asset.rateMatchOverride 2) customScenarioRates[key] 3) 시스템 기본값
 // (SCENARIO_RATE_PRESETS/getSystemDefaultRate) 4) 카테고리/지역 폴백.
 const { test, expect } = require('@playwright/test');
+const { seedPriceHistory } = require('./fixtures');
 
 const TEST_KEY = 'E2E34_TESTKEY_ALPHA';
 const TEST_KEY_2 = 'E2E34_TESTKEY_BETA';
@@ -168,6 +169,10 @@ test.describe('Phase 28-F: 대표매칭키 override가 경로 A/B 모두에 동�
 
   test('8. Monte Carlo 어댑터(buildMonteCarloInputFromState)의 instrument muAnnual도 override를 그대로 반영한다', async ({ page }) => {
     await seed(page);
+    // [Phase 47-G] 이 테스트는 목표가 namedHolding('주식'으로 분류됨)이라 MC 어댑터가 지역
+    // 대표지수의 가격 이력을 요구한다. 테스트 브라우저는 외부 네트워크가 차단돼 있으므로
+    // 결정론적 합성 시계열을 당일 캐시에 넣어 준다(fixtures.seedPriceHistory 주석 참고).
+    await seedPriceHistory(page);
     const result = await page.evaluate(async ({ PRESET }) => {
       const KEY = 'E2E34_MC_ADAPTER_KEY';
       state.projection.customScenarioRates = state.projection.customScenarioRates || {};
