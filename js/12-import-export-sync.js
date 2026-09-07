@@ -14,6 +14,10 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
     return {
       'ticker': a.ticker || '', '소유자': a.owner, '계좌구분': a.accountType, '종목명': a.name,
       '국내/해외': a.isDomestic, '통화': a.currency, '수량': a.quantity, '매수단가': a.buyPrice,
+      // [Phase 53] 매수 시점 가중평균 환율(외화만). 이 칸이 없던 시절에는 엑셀 왕복만으로 외화 자산의
+      // 원가가 오늘 환율로 바뀌어 손익·수익률이 조용히 달라졌다(실측: 수익률 61% -> 33%, 환차익이
+      // 통째로 사라짐). 원화 자산은 환율 개념이 없어 빈 칸으로 둔다 - calcRow도 원화는 1로 고정한다.
+      '취득환율(매수시점)': a.currency === 'USD' && num(a.buyRate) > 0 ? a.buyRate : '',
       '자산군(자동분류)': a.category, '현재가': a.currentPrice,
       '매입금액(자산통화, 자동계산)': Math.round(r.buyAmountOriginal * 100) / 100,
       '매입금액(KRW환산)': Math.round(r.buyAmount), '평가금액(KRW)': Math.round(r.curAmount),
@@ -40,7 +44,11 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 내보내면 위 승격 문제가 되살아나므로 여기서는 의도적으로 내보내지 않는다.
       '대표매칭(수익률연동키)': sanitizeRateMatchOverride(a.rateMatchOverride) || '',
       // [자산별 역할(포지션) 분류] 값을 고쳐서 다시 업로드하면 makeAsset()이 role로 저장한다.
-      '역할(포지션)': ASSET_ROLE_LABELS[a.role] || ''
+      '역할(포지션)': ASSET_ROLE_LABELS[a.role] || '',
+      // [Phase 53] 자산 식별자. 사용자가 볼 일이 없는 값이라 맨 끝에 둔다 - 지우거나 고치지 말 것.
+      // 이 칸이 없던 시절에는 엑셀로 복원한 기기가 클라우드와 처음 페어링할 때 같은 자산이 두 벌로
+      // 남았다(실측: 자산 2개 -> 4개). 칸을 비우거나 지운 채 올려도 예전처럼 새 id가 발급된다.
+      'id': a.id
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -187,7 +195,18 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       const rateSheetName = wb.SheetNames.find((n) => n === '수익률 관리 기준') || wb.SheetNames[1];
       const rateJson = rateSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[rateSheetName]) : [];
 
+      // [Phase 53] 한 파일 안에서 같은 id가 두 번 나오면(사용자가 행을 복사했거나 두 파일을 합친 경우)
+      // 뒤에 오는 행에는 새 id를 준다 - 같은 id를 가진 자산 두 개는 클라우드 병합에서 서로를 덮어쓴다.
+      const seenIds = new Set();
       const imported = json.map(row => makeAsset({
+        // [Phase 53] 자산 식별자를 되살린다. 칸이 없는 구형 파일이나 빈 칸이면 undefined가 넘어가
+        // makeAsset이 예전처럼 새 id를 만든다.
+        id: (() => {
+          const id = sanitizeAssetId(pick(row, 'id', 'ID', 'Id'));
+          if (!id || seenIds.has(id)) return undefined;
+          seenIds.add(id);
+          return id;
+        })(),
         ticker: pick(row, 'ticker', 'Ticker', 'TICKER'),
         owner: pick(row, '소유자'),
         accountType: pick(row, '계좌구분'),
@@ -196,6 +215,17 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         currency: pick(row, '통화', 'Currency', 'CURRENCY'),
         quantity: pick(row, '수량'),
         buyPrice: pick(row, '매수단가'),
+        // [Phase 53] 내보내기가 이미 적고 있던 자산군을 이제 실제로 읽는다. 예전에는 이 칸을 무시하고
+        // 이름 키워드로 다시 분류해서, 이름에 키워드가 없는 티커 없는 자산(전세보증금·생활비 통장 등)이
+        // 왕복마다 '주식'이 됐다. 그 결과가 표시만의 문제가 아니었다 - 원화 현금 보호막이
+        // asset.category === '현금'에 걸려 있어서 재분류된 순간 잔고가 거래원장 값으로 덮어써졌고
+        // (실측: 5,000,000 -> 100), assetMergeKey에도 category가 들어가 있어 [추가하기]가 같은 자산을
+        // 새 행으로 복제했다(실측: 3개 -> 6개). 앱이 지원하지 않는 값이면 undefined가 되어
+        // makeAsset이 예전처럼 자동분류로 되돌아간다(sanitizeAssetCategory, js/01).
+        category: sanitizeAssetCategory(pick(row, '자산군(자동분류)', '자산군', 'category')),
+        // [Phase 53] 매수 시점 환율. 칸이 없는 구형 파일에서는 undefined가 되어 calcRow의 기존
+        // 폴백(오늘 환율)이 그대로 동작한다 - 구형 파일의 동작을 바꾸지 않는다.
+        buyRate: pick(row, '취득환율(매수시점)', '취득환율', 'buyRate'),
         // 선택 입력: 값이 있으면 makeAsset이 그대로 현재가로 채택하고, 비어 있으면 매수단가로 초기화한다.
         currentPrice: pick(row, '현재가'),
         // [대표매칭 오버라이드 - 요청 반영] "대표매칭(수익률연동키)" 컬럼을 사용자가 직접 고쳐서 올리면

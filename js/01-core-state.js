@@ -323,6 +323,47 @@ const CASH_KEYWORDS = ['현금', '예수금', 'CASH', '달러', '외화', 'USD',
 const ETF_KEYWORDS = ['ETF', 'TIGER', 'KODEX', 'ACE', 'RISE', 'QQQ', 'SCHD', 'SPYM'];
 const REAL_ESTATE_KEYWORDS = ['부동산', '아파트', '오피스텔', '상가', '토지', '건물', '빌라'];
 
+/* =========================================================================
+ * [Phase 53] 엑셀에서 되돌아온 값을 "복원"하기 위한 정규화 3종.
+ *
+ * 엑셀 가져오기는 행마다 makeAsset()으로 자산을 새로 만든다. makeAsset은 "복원"이 아니라 "생성"
+ * 함수라서, 시트에 값이 있어도 읽지 않으면 다시 추론해 버린다 - Phase 52 감사에서 이것 때문에
+ * 원화 현금 잔고가 줄고(보호막이 category에 걸려 있다), 티커 없는 자산이 엑셀 추가하기에서
+ * 복제되고(assetMergeKey에 category가 들어간다), 외화 원가가 오늘 환율로 바뀌는 것을 실측했다.
+ *
+ * 세 값 모두 "값이 없으면 예전 그대로"가 원칙이다 - 컬럼이 없는 구형 엑셀 파일도 그대로 열려야 한다.
+ * ====================================================================== */
+
+// 자산 폼의 datalist(index.html #categoryList)와 같은 목록. 앱이 실제로 다루는 분류는 이게 전부이며
+// 여기에 없는 값은 저장하지 않는다(새 분류를 엑셀로 만들어 넣을 수 없게 한다). classifyCategory가
+// 스스로 만들 수 있는 값은 이 중 5개뿐이라(원자재/암호화폐는 못 만든다) 그 둘은 시트에서 읽지 않으면
+// 왕복 때마다 '주식'으로 바뀐다 - Phase 52에서 실측한 손실이다.
+const ASSET_CATEGORIES = Object.freeze(['주식', 'ETF', '채권', '현금', '부동산', '원자재', '암호화폐']);
+function sanitizeAssetCategory(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const v = String(raw).trim();
+  return ASSET_CATEGORIES.includes(v) ? v : undefined;
+}
+
+// 자산 식별자. 엑셀에 적힌 값을 그대로 되살리되, 빈 칸이나 이상한 값이면 undefined를 돌려줘
+// 호출부가 새 id를 만들게 한다(구형 엑셀에는 이 칸이 아예 없다).
+function sanitizeAssetId(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const v = String(raw).trim();
+  // 엄격한 UUID 검사는 하지 않는다 - genId()는 crypto가 없는 환경에서 'id_...' 형태도 만들고,
+  // 예전 버전이 만든 id도 그대로 살아야 한다. 길이 상한만 둬서 셀 오염을 막는다.
+  return (v === '' || v.length > 100) ? undefined : v;
+}
+
+// 매수 시점 가중평균 환율. 외화 자산의 원가 그 자체이며, 값이 없으면 calcRow가 오늘 환율로
+// 폴백한다(js/01 calcRow) - 그래서 이 값이 사라지면 손익과 수익률이 조용히 달라진다.
+// 0 이하와 비수치는 저장하지 않는다(0이면 매입원가가 0이 되어 수익률이 무한대가 된다).
+function sanitizeBuyRate(raw) {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const v = num(raw);
+  return Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
   // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
@@ -773,7 +814,10 @@ function makeAsset(raw) {
   const currency = normalizeCurrency(raw.currency, defaultCurrency);
   const buyPrice = num(raw.buyPrice);
   return {
-    id: genId(),
+    // [Phase 53] 호출부가 기존 자산의 id를 알고 있으면(엑셀 복원) 그대로 이어받고, 아니면 새로 만든다.
+    // 지금까지 id를 넘기는 호출부는 없었으므로 기존 경로의 동작은 그대로다. id가 새로 발급되면
+    // 클라우드 병합이 "다른 자산"으로 보아 최초 페어링 때 중복이 생긴다(Phase 52 실측).
+    id: sanitizeAssetId(raw.id) || genId(),
     ticker,
     owner: String(raw.owner ?? '').trim() || '공동',
     accountType: String(raw.accountType ?? '').trim() || '일반계좌',
@@ -789,6 +833,10 @@ function makeAsset(raw) {
     // [대표매칭 오버라이드 - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이 자동으로
     // 찾아주는 대표 종목/지수 키를 사용자가 직접 지정하고 싶을 때 쓴다 - 엑셀 내보내기의 "대표매칭
     // (수익률연동키)" 컬럼을 직접 고쳐서 업로드하면 여기로 들어온다(비어있으면 자동판별을 그대로 쓴다).
+    // [Phase 53] 매수 시점 환율. 지금까지 makeAsset은 이 값을 아예 다루지 않아 엑셀 왕복에서 통째로
+    // 사라졌다(거래내역이 없는 외화 자산은 복구 경로도 없다). 넘어온 값이 없으면 undefined로 남아
+    // calcRow의 기존 폴백(오늘 환율)이 예전 그대로 동작한다 - 원화 자산은 애초에 1로 고정이다.
+    buyRate: sanitizeBuyRate(raw.buyRate),
     rateMatchOverride: sanitizeRateMatchOverride(raw.rateMatchOverride),
     // [Phase 49] 넘어온 값이 있으면 그대로 보존하고, 없으면 값 없이 둔다 - 여기서 추측해 채우지 않는다.
     // 호출부가 "사실"을 아는 경우에만 명시적으로 넘긴다(js/06 sync -> 'ledger', js/07 자산 폼 -> 'manual').
