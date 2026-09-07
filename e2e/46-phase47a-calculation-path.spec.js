@@ -335,26 +335,27 @@ test('16. CASH / CASH.USD 정책은 그대로다', async ({ page }) => {
 
 test('17. 가정 없는 자산은 엑셀 대표매칭 칸이 비고, 재업로드해도 override가 생기지 않는다', async ({ page }) => {
   await boot(page);
-  // 엑셀 export(js/12)는 detail.source === 'unresolved'일 때 이 칸을 ''로 쓴다. 내부 상태값
-  // 'UNRESOLVED'가 그대로 찍히면 재업로드 시 makeAsset이 그것을 rateMatchOverride로 저장해
-  // "사용자가 UNRESOLVED라는 기준을 직접 지정했다"는 잘못된 상태가 굳어진다.
+  // [Phase 48-A로 규칙이 넓어졌다] 예전엔 "unresolved일 때만" 이 칸을 비웠다. 지금은 "사용자가
+  // 직접 지정한 값(a.rateMatchOverride)만 적고 나머지는 전부 빈 칸"이다 - 자동 판별 결과까지 찍으면
+  // 그 파일을 다시 올렸을 때 자동판별이 사용자 지정으로 승격되기 때문이다(P0-3).
+  // 실제 export 동작 자체는 e2e/50이 [엑셀 내보내기] 버튼을 눌러 검증한다. 여기서는 이 Phase가
+  // 보장하는 것 - "가정 없는 자산에 override가 생기지 않는다" - 만 계속 고정한다.
   const got = await page.evaluate(() => {
     const unknown = makeAsset({ ticker: 'ZZETF', name: 'Unknown Global ETF', currency: 'USD' });
     const known = makeAsset({ ticker: '069500.KS', name: 'KODEX 200', currency: 'KRW' });
-    const cell = (a) => {
-      const d = resolveAssetGroupKeyDetail(a);
-      return d.source === 'unresolved' ? '' : d.key; // js/12 export와 동일한 규칙
-    };
+    const cell = (a) => sanitizeRateMatchOverride(a.rateMatchOverride) || ''; // js/12 export와 동일한 규칙
     // 빈 칸으로 다시 업로드했을 때 override가 생기지 않는지(round-trip 의미 보존)
     const reimported = makeAsset({ ticker: 'ZZETF', name: 'Unknown Global ETF', currency: 'USD', rateMatchOverride: '' });
     return {
       unknownCell: cell(unknown), knownCell: cell(known),
+      knownAppliedKey: resolveAssetGroupKeyDetail(known).key,
       reimportedOverride: reimported.rateMatchOverride || '',
       reimportedKey: resolveAssetGroupKeyDetail(reimported).key
     };
   });
   expect(got.unknownCell).toBe('');
-  expect(got.knownCell).toBe('KOSPI');
+  expect(got.knownCell, '자동 판별값도 엑셀에 찍지 않는다(Phase 48-A)').toBe('');
+  expect(got.knownAppliedKey, '계산에는 여전히 자동 판별 결과가 쓰인다').toBe('KOSPI');
   expect(got.reimportedOverride).toBe('');
   expect(got.reimportedKey).toBe('UNRESOLVED');
 });

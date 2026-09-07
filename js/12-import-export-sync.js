@@ -18,19 +18,27 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       '매입금액(자산통화, 자동계산)': Math.round(r.buyAmountOriginal * 100) / 100,
       '매입금액(KRW환산)': Math.round(r.buyAmount), '평가금액(KRW)': Math.round(r.curAmount),
       '평가손익(KRW)': Math.round(r.profit), '수익률(%)': Math.round(r.rateOfReturn * 100) / 100,
-      // [대표매칭(수익률연동키) - 요청 반영] 미래예측 수익률 매칭(getProjectionAssetGroupKey, js/05)이
-      // 이 종목에 지금 실제로 적용 중인 대표 상품/지수 키(티커, 'NAME:정규화이름', 'S&P500'/'KOSPI', 또는
-      // 채권/현금/커스텀 자산군명)를 그대로 보여준다 - 절세계좌·일반계좌 구분 없이 모든 종목에 적용된다.
-      // 이 값을 셀에서 직접 고쳐서(예: 국내상장 ETF에 정확한 추종 지수 티커를 지정) 다시 업로드하면
-      // makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로 반영한다(22. 엑셀 업로드 참고).
-      // [Phase 47-A] 성격을 확인하지 못해 어떤 기준도 적용되지 않은 자산은 이 칸을 비운다.
-      // 내부 상태값('UNRESOLVED')을 그대로 찍으면, 그 파일을 다시 올렸을 때 makeAsset이 그것을
-      // rateMatchOverride로 저장해 "사용자가 UNRESOLVED라는 기준을 직접 지정했다"는 잘못된 상태가
-      // 굳어진다. 빈 칸은 override-first 원칙에서 "아직 지정하지 않았다"는 의미 있는 상태다.
-      '대표매칭(수익률연동키)': (function () {
-        const detail = resolveAssetGroupKeyDetail(a);
-        return detail.source === 'unresolved' ? '' : detail.key;
-      })(),
+      // [대표매칭(수익률연동키)] 사용자가 이 자산에 "직접 지정한" 기준만 적는다. 지정하지 않았으면
+      // 빈 칸으로 남긴다 - 빈 칸은 "아직 지정하지 않았다(자동판별을 그대로 쓴다)"는 의미 있는 상태다.
+      // 이 칸을 직접 고쳐서 올리면 makeAsset()이 rateMatchOverride로 저장해 이후 계산에서 최우선으로
+      // 반영된다(22. 엑셀 업로드 참고).
+      //
+      // [Phase 48-A - P0-3 수정] 예전엔 지금 실제로 적용 중인 키(resolveAssetGroupKeyDetail의 결과)를
+      // 그대로 찍었다. 그런데 그 결과에는 사용자가 지정한 것과 앱이 스스로 판별한 것이 섞여 있다 -
+      // 예를 들어 'KODEX 200'은 아무 지정이 없어도 자동으로 KOSPI가 되는데, 그 'KOSPI'가 셀에 찍혀
+      // 나가고 그 파일을 다시 올리면 rateMatchOverride='KOSPI'로 저장돼 **자동판별이 사용자 지정으로
+      // 굳었다**(실측 재현: source가 assetCharacter -> override로 바뀜). 그렇게 굳은 자산은 이후
+      // 시스템 정책이 바뀌어도(예: Phase 47-A의 지역 폴백 제거) 영원히 따라가지 못한다.
+      //
+      // 이건 두 번째 시트("수익률 관리 기준")가 Phase 29-B에서 이미 겪고 고친 것과 완전히 같은 문제다 -
+      // 거기서도 "지금의 최종 유효값"을 찍다가 시스템 기본값이 영구 오버라이드로 동결됐고, 이제는
+      // "실제로 저장돼 있는 오버라이드 원본값만 적고 없으면 빈 칸"으로 바꿔 두었다. 여기도 같은 규칙을
+      // 쓴다: a.rateMatchOverride를 그대로, 없으면 빈 칸.
+      //
+      // [자동판별 결과를 보고 싶다면] 자산 상세 모달의 "장기 수익률 가정" 블록이 지금 적용 중인 기준과
+      // 그것이 자동 판별인지 사용자 지정인지를 함께 보여준다(Phase 47-F) - 그 정보를 이 칸에 섞어
+      // 내보내면 위 승격 문제가 되살아나므로 여기서는 의도적으로 내보내지 않는다.
+      '대표매칭(수익률연동키)': sanitizeRateMatchOverride(a.rateMatchOverride) || '',
       // [자산별 역할(포지션) 분류] 값을 고쳐서 다시 업로드하면 makeAsset()이 role로 저장한다.
       '역할(포지션)': ASSET_ROLE_LABELS[a.role] || ''
     };
