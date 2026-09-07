@@ -32,6 +32,117 @@
 
 ---
 
+## 최근 세션 요약 — V1.1 M4: Excel 복원에서 positionSource 보존 **v217 유지 (v218 릴리스 대기)**
+
+**커밋** `86c6239` "fix: preserve position source across excel restore" — push 완료.
+**인계 갱신** (이 커밋). **SW 버전은 v217 그대로다 — 릴리스는 별도 PM 승인 사항.**
+
+### ① 목적
+
+**엑셀 복원이 `positionSource`(수량의 Source of Truth 표식)를 잃지 않게 한다.**
+새 컬럼·새 스키마·새 UI·마이그레이션 없이, 이미 있는 것(`id`, `assetMergeKey`)만으로 해결한다.
+
+### ② 실제로 열려 있던 P0 경로 — 표식 문제가 아니라 데이터 변조 문제였다
+
+```
+엑셀 내보내기(positionSource 칸 없음) → 엑셀 가져오기[덮어쓰기]
+  → state.assets = imported            ← 전 자산 positionSource = undefined
+  → 다음 부팅 syncAssetsFromTransactions
+  → manual 자산이 더 이상 Phase 50 가드에 걸리지 않음
+  → 수량·매수단가가 거래원장 값으로 조용히 바뀔 수 있음
+```
+
+**즉 Phase 50이 막아둔 바로 그 변조 경로가 엑셀 왕복 한 번으로 다시 열렸다.**
+"표식이 사라진다"가 아니라 "보호가 풀린다"가 이 문제의 실체다.
+
+### ③ append는 이미 보호되고 있었다
+
+`mergeAssetsForAppend`에는 **Phase 50에서 넣은 인라인 보존 블록이 이미 있었다.** 그래서 실제로
+열려 있던 구멍은 **덮어쓰기 하나뿐**이었다. 이번에 그 인라인 블록을 공용 함수
+(`buildPositionSourceIndex` / `carryOverPositionSource`)로 대체해 **append와 overwrite가 같은 규칙
+하나를 지나게** 했다 — 두 경로가 앞으로 서로 다르게 진화하는 것을 막기 위해서다.
+
+### ④ id 기반 carry-over는 Phase 53에 의존한다
+
+**Phase 53이 엑셀에 `id` 컬럼을 넣고 복원 때 그것을 보존하게 만들지 않았다면 이번 수정은
+불가능했다.** 정확한 매칭 대신 identity 추정에만 기대야 했을 것이다. 두 Phase가 사후적으로
+맞물렸다. **엑셀의 `id` 컬럼을 없애면 M4의 1순위 매칭이 함께 죽는다 — 지울 때 반드시 같이 볼 것.**
+
+### ⑤ 구형 엑셀은 identity로 fallback
+
+`id` 칸이 없던 시절의 파일은 **append가 원래 쓰던 `assetMergeKey`** (`owner|accountType|TICKER`,
+티커가 없으면 `owner|accountType|category|name`)로 찾는다. **새 매칭 규칙을 만들지 않았다** —
+identity semantics는 그대로다.
+
+### ⑥ 파일이 값을 담고 있으면 파일이 이긴다
+
+`incoming.positionSource !== undefined`이면 손대지 않는다. **JSON 백업·Cloud는 값을 파일에 직접
+담으므로 기존 동작이 그대로 유지된다.** 기존 값이 파일 값을 덮어쓰지 않는다는 것을 `e2e/56`이
+별도 테스트로 고정한다(다른 필드와 동일한 규칙).
+
+### ⑦ legacy(`undefined`)는 자동 migration하지 않는다
+
+찾지 못하면 **값 없이 그대로 둔다. 거래내역 유무로 ledger/manual을 새로 판단하지 않는다** —
+그건 저장된 사실이 아니라 현재 상태일 뿐이다(아래 상시 정책 "positionSource ≠ isTransactionTracked").
+엑셀에만 있는 신규 자산도 마찬가지로 추론하지 않는다.
+
+### ⑧ 소급 복구를 하지 않은 이유
+
+이미 엑셀 덮어쓰기로 값을 잃은 자산이 있다면 **legacy 상태로 남는다.** 복구하려면 결국 거래내역
+유무로 추측해야 하고, **그건 ⑦의 규칙을 정면으로 어긴다.** 사용자가 자산 상세에서 직접 확인하고
+지정하는 기존 경로 그대로 둔다.
+
+### ⑨ 계산 invariant
+
+엑셀 왕복 전후 **대시보드 총 평가금액 · Monte Carlo 입력(basis·비중) · 결정론적 미래예측 ·
+Return Key/override/수익률 설정 · KRW 현금·부동산** 전부 동일. `e2e/56` Case 10이 고정한다.
+
+### ⑩ 사용자 데이터 변경 0
+
+기존 저장 데이터를 바꾸지 않는다. 이번 변경은 **"가져오기 때 값을 잃지 않는다"** 뿐이고 값을 새로
+만들거나 바꾸지 않는다. **삭제·0원화·자동 정리 0건.**
+
+### ⑪ 테스트 결과
+
+`npm test` **205/205** · `eslint` **0** · 전체 e2e **535/535**(단일 실행) · Data Guard **PASS** ·
+**Production Worker/Cloudflare/KV/KIS/외부 API 0건**(Phase 47-G DNS 격리 유지).
+
+**신규** `e2e/56-v11-m4-position-source-carryover.spec.js` **8건** — PM Case 1~10 전부 커버.
+
+> **`e2e/53`의 한 줄은 기대값을 갱신했다(약화가 아니다).** 그 줄은 원래
+> *"덮어쓰기에서는 positionSource가 사라진다"* 는 **당시의 한계를 사실 그대로 고정**하고 있었고,
+> 주석에 *"고쳤다가 아니라 지금 이렇다"* 라고 명시되어 있었다. M4가 그 한계를 없앴으므로
+> `['UNDEFINED','UNDEFINED','UNDEFINED']` → `['ledger','manual','UNDEFINED']`로 바꿨다.
+> **의도한 수정의 결과이지, 테스트를 통과시키려 낮춘 것이 아니다.**
+
+### ⑫ Release Guard FAIL — 정상이다
+
+```
+✗ APP_SHELL 파일이 smart-asset-manager-v217 이후 바뀌었는데 CACHE_NAME이 그대로입니다
+  바뀐 파일: js/12-import-export-sync.js
+```
+
+`js/12`는 APP_SHELL이므로 **v217 캐시로는 기존 사용자에게 전달되지 않는다.** 이번 단계는 릴리스가
+아니므로 bump하지 않았고, **Guard를 수정하거나 우회하지 않았다.** v218 bump로 해소된다.
+
+### ⑬ SW 버전 v217 유지
+
+`CACHE_NAME` / `appVersionLabel` 모두 **v217**. `sw.js`·`index.html`·`package.json` **변경 0건**.
+제품 코드 변경 파일은 **`js/12-import-export-sync.js` 하나뿐**이다.
+
+### ⑭ 다음 단계 — 별도 SW v217 → v218 릴리스
+
+**PM의 별도 승인이 있어야 진행한다.** 릴리스할 때는 **캐시를 지우지 않고** 진짜 v217 릴리스 파일로
+캐시를 만든 뒤 v218을 배포해 실제 전환을 실측한다(v215~v217에서 쓴 방법 그대로).
+
+### 추가 발견사항 — `customScenarioRates.KOSDAQ.label`
+
+엑셀 왕복 후 라벨이 `'KOSDAQ'` → `'KOSDAQ (코스닥 대표지수)'`로 바뀐다.
+**Phase 29-B의 두 번째 시트 동작으로 M4 이전부터 존재하던 기존 동작이고, 수익률 값과 계산에는
+영향이 없다. 이번 범위 밖이므로 수정하지 않았다** — 관찰 기록으로만 남긴다.
+
+---
+
 ## 최근 세션 요약 — V1.1 M3: 원자재/암호화폐 0% 가정 정직화 **🚀 v216 → v217 릴리스 완료**
 
 **커밋** `cf89eb0` "fix: clarify unsupported commodity and crypto return assumptions" — push 완료.
