@@ -2,7 +2,15 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v213'; // [Phase 46] Phase 43/45에서 js/05-future-projection.js가
+const CACHE_NAME = 'smart-asset-manager-v214'; // [Phase 50 Release] v213 이후 다섯 Phase(47-E 백업
+// 복원 시 대표매칭키 보존 / 47-F 적용 중인 수익률 가정 표시 / 48-A 엑셀 왕복의 Return Key 승격 차단 /
+// 49 positionSource 도입 / 50 Hybrid SoT를 실제 동기화에 연결)가 index.html과 js/01·05·06·07·08·12를
+// 바꿨는데 CACHE_NAME이 v213에 머물러 있었다 - cache-first라 그 사이 모든 수정이 기존 사용자에게
+// 전달되지 않고 있었다. Phase 50 검증 중 실제 브라우저로 확인했다: v213 캐시가 있는 상태에서는 새
+// index.html이 서빙되지 않았고(Phase 50이 추가한 요소가 DOM에 아예 없었다) 캐시를 지운 뒤에야
+// 나타났다. v214로 올려 activate 핸들러가 구 캐시를 지우고 새 캐시를 채우게 한다.
+// 캐시 정책/APP_SHELL/install/activate/fetch 로직은 일절 무변경.
+// [Phase 46] Phase 43/45에서 js/05-future-projection.js가
 // 바뀌었는데(수익률 가정 투명성 UI, 혼합형/현금 분류 하드닝) CACHE_NAME을 그대로 두어 cache-first
 // 캐시에 잡힌 기존 사용자에게 구버전 js/05가 계속 서빙되는 것을 Phase 45에서 실제 브라우저로 확인했다
 // (SW unregister + cache 삭제 후에야 새 코드가 로드됨). 여기서 v212 -> v213으로 올려 activate 핸들러가
