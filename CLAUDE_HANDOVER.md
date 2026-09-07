@@ -32,6 +32,130 @@
 
 ---
 
+## 🔴 상시 개발 정책 — E2E는 Production API/Worker를 호출하지 않는다
+
+**이 정책은 특정 Phase의 산물이 아니라 이 프로젝트의 상시 기준이다. 새 E2E를 쓰기 전에 먼저 읽는다.**
+
+1. **일반 E2E 테스트는 Production API/Worker를 호출하지 않는다.** 테스트 브라우저는 `playwright.config.js`의
+   `--host-resolver-rules`로 DNS가 localhost와 앱 셸 CDN 3곳(cdn.tailwindcss.com / unpkg.com /
+   cdn.jsdelivr.net)으로 제한돼 있다. 이 허용 목록에 **시세·환율·Worker 호스트를 추가하지 않는다.**
+2. **외부 연결 자체를 검증해야 한다면** 일반 E2E에 섞지 말고 **별도의 Integration/Connectivity 테스트로 분리**한다.
+   그리고 **그런 테스트는 반복 실행하지 않는다**(1회 수동 실행).
+3. **어떤 경우에도 `--repeat-each` / stress 반복 / 동일 spec 수십 회 반복 / 백그라운드·포그라운드 동시
+   실행을 하지 않는다.** 마지막 항목은 두 프로세스가 같은 dev server를 공유해 false failure를 만든다(실제로 겪음).
+4. 가격 이력이 필요한 테스트는 `fixtures.seedPriceHistory(page, [extraTickers])`로 **결정론적 합성 시계열**을
+   앱의 당일 캐시에 넣는다. 실제 시세를 부르지 않는다.
+5. **`e2e/49-network-isolation.spec.js`의 기대값을 완화하지 않는다.** 이 테스트가 깨지면 테스트가 낡은 것이
+   아니라 **테스트가 다시 실제 인프라를 때리고 있다는 뜻**이다.
+
+---
+
+## 최근 세션 요약 (2026-09-07) — 🔴 Cloudflare 100k/day 소진 사건 + Phase 47-G: E2E 네트워크 격리 **v213 유지**
+
+**커밋** `2b49d05` "test: isolate e2e from production cloudflare workers and price APIs" — push 완료.
+**제품 코드·Worker 코드 변경 0건**(테스트 인프라만).
+
+### 사건
+
+Cloudflare Workers Free 계정의 **일일 요청 한도 100,000건(계정 전체, 세 Worker가 공유)을 실제로 소진**해
+초과 메일이 반복 발생했다. 긴급 조사(READ-ONLY) 결과 원인은 **내가 실행한 E2E 테스트**였다.
+
+### 원인 — 실측
+
+1. **E2E에 네트워크 mock이 전혀 없었다.** `page.route`/`abort`/`fulfill`/`setOffline` 검색 결과 **0건**.
+   `playwright.config.js`의 `baseURL: localhost:8644`는 **정적 파일만** 로컬이고, 앱 코드는 그대로 실행되어
+   **production Worker URL을 직접 호출**했다.
+2. **깨끗한 앱 부팅 1회 = own-worker(asset-manager-proxy) 요청 26건**(브라우저 network 로그 실측, 전부 200).
+   내역: 환율 1 + 보유종목 시세 5 + 리스크 1y 4 + 소급 2y 5 + 지수·매크로 11.
+3. **Playwright는 테스트마다 새 컨텍스트(빈 localStorage)를 준다** → 매 테스트가 샘플 자산 시딩 →
+   `bootApp()` → `refreshPricesAndRates()` 전체 실행. **테스트 1건 = 페이지 1회 로드 = 26건.**
+4. **전체 e2e 1회 ≈ 460 테스트 × 26 ≈ 12,000건.** 이번 세션에 전체 e2e 약 10회 + 부분/변이/스트레스 반복
+   → **추정 160,000~172,000건** (한도의 1.6~1.7배).
+
+**증폭 구조**: `CORS_PROXIES`(js/01)의 **첫 번째가 own-worker**이고 6개를 **동시에 발사**한다
+(`Promise.any`). 다른 프록시가 이겨도 own-worker 요청은 이미 나간 뒤다. 국내 티커는
+`raceFetchNaverKr`와 `raceFetchYahooStooq`를 **동시에** 시작하므로 **티커 1개당 own-worker 2건**이다.
+
+**앱 자체에는 무한 retry / timer 중복 / event listener 중복이 없다**(재진입 가드·1분 가드 정상 확인).
+시세 경로에 재시도 없음. Sync 폴링은 테스트에서 `syncState.enabled=false`라 요청을 만들지 않는다.
+
+### Phase 47-G에서 한 일 — DNS-level isolation
+
+`playwright.config.js`의 `use.launchOptions.args`에 한 줄:
+```
+--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1,
+                      EXCLUDE cdn.tailwindcss.com, EXCLUDE unpkg.com, EXCLUDE cdn.jsdelivr.net
+```
+
+**`page.route`가 아니라 브라우저 실행 인자를 쓴 이유 두 가지** — ① spec 48개의 import를 하나도 건드리지
+않고 config 한 곳으로 끝난다 ② 개별 테스트가 `page.unroute`로 **우회할 수 없다**(구조적 보장).
+EXCLUDE 목록은 `index.html`이 `<script>`로 로드하는 앱 셸 CDN 3곳뿐이다 — 이게 없으면 Chart.js/lucide/
+xlsx/Tailwind가 로드되지 않아 앱 자체가 뜨지 않는다.
+
+**검증(요청 로그 관측, 주석·문자열 검색 아님)** — `e2e/49-network-isolation.spec.js` 4/4:
+`*.workers.dev` / `asset-manager-proxy` / `keymaster` / Sync Worker / Yahoo / Naver / Stooq /
+allorigins / corsproxy.io / codetabs / r.jina.ai / exchangerate **12패턴에 대해 응답을 받은 요청 0건**,
+시도된 요청은 전부 `ERR_NAME_NOT_RESOLVED`. 응답을 받은 외부 호스트는 허용 목록 3곳 외 **0개**.
+
+> 앱 코드를 그대로 뒀으므로 브라우저 **내부 시도**는 남는다. 중요한 건 DNS가 실패해 **패킷이 이 기기를
+> 떠나지 못한다**는 것이다 — Cloudflare에 도달하는 요청은 0건이다. e2e/49 테스트 1이 이 둘을 구분해 검증한다.
+
+### 결정론적 price-history fixture
+
+격리 직후 11건이 실패했는데, 테스트가 틀려서가 아니라 **앱이 원래 그렇게 동작하기 때문**이다:
+`buildMonteCarloInputFromState`(js/16)는 **가격 이력 조회를 Safety 판정보다 먼저** 하고, 위험자산 이력이
+없으면 σ를 0으로 채우지 않고 `errors`를 반환하면서 **`safety` 객체 자체를 만들지 않는다.** 그래서
+"목표비중 합계 90%" 같은 데이터와 무관한 BLOCK 판정조차 화면에 뜨지 못했다.
+
+해결: `fixtures.seedPriceHistory(page, extraTickers)` — 252일 결정론적 합성 시계열(선형합동 의사난수,
+연 σ≈18%)을 `state.riskHistoryCache`에 직접 넣는다. `getCachedDailyCloses`(js/09)는 **당일 캐시가 있으면
+네트워크를 아예 타지 않으므로** "요청 0건 + 계산 가능"이 동시에 성립한다.
+
+- `seedPortfolio`가 **reload 이후에** 호출한다(riskHistoryCache는 localStorage에 저장되지 않는 메모리 캐시라
+  reload하면 사라진다 — 순서를 바꾸면 안 된다)
+- 기본 시딩 티커는 `^KS11`, `^GSPC`(js/05 `buildHouseholdInstrumentReturnSeries`가 namedHolding에 쓰는 지역
+  대표지수). e2e/34·35는 각자 1줄로 추가 호출(35는 `['QQQM']`)
+- **전역 자동 주입이 아니라 opt-in**이다 — "가격 이력이 없는 상태" 자체를 검증하는 테스트
+  (e2e/19 케이스 2: "instruments가 비어 검증 오류 발생")를 망가뜨리면 안 되기 때문
+- **기대값은 하나도 완화·삭제하지 않았다.** e2e/02는 여전히 "합계 90% → BLOCK + '차단' 문구 + 결과영역 숨김"을 그대로 검증한다
+
+### 결과
+
+| | 격리 전 | 격리 후 |
+|---|---:|---:|
+| 전체 e2e 통과 | 445 | **464** |
+| 실패 | **15** | **0** |
+| 테스트 1건당 Worker 요청 | 26 | **0** |
+| 전체 e2e 1회당 Worker 요청 | ~12,000 | **0** |
+
+`npm test` **179/179** · `eslint` **0** · Release Guard **PASS(v213)** · `e2e/49` **4/4** ·
+전체 e2e **464/464** · **신규 regression 0건**.
+
+**오랫동안 "이 환경의 알려진 실패"로 기록해 온 15건이 전부 해소됐다** — e2e/33 헤더 반응형 14건 +
+e2e/36 test 8 시세 레이스 1건. 원인이 설명된다: e2e/33이 재던 4요소 중 하나가 **환율 뱃지**라,
+실시간 환율이 도착하면 뱃지 텍스트 폭이 변해 헤더 측정이 흔들리고 있었다. e2e/36은 시드한 QQQM
+현재가를 실시간 시세가 덮어쓰던 레이스였다. **둘 다 "테스트가 실제 시장 데이터에 의존하던 것"이
+원인이었고 격리가 뿌리를 제거했다.** → 앞으로 이 15건을 "환경 실패"로 보고하지 말 것.
+
+### 🔴 보류 backlog (PM 결정 대기 — 이번에 손대지 않았다)
+
+| 항목 | 내용 |
+|---|---|
+| **CORS_PROXIES 6중 동시 호출** | own-worker가 항상 배열 [0]이라 조회 1건마다 요청 1건 확정. 정상 사용 요청량을 2~6배로 만든다. 단계 경쟁으로 바꾸면 줄지만, **과거 "20초+ 지연" 사고로 지금 구조가 된 이력**이 js/09 주석에 있다 |
+| **backfillDailyPnlHistory ticker dedupe** | fingerprint가 자산 단위라 같은 티커를 2인이 보유하면 2y 조회가 2번 나간다(실측) |
+| **Sync 10초 polling** | 동기화 ON인 기기당 8,640건/day 고정 |
+| **오프라인 MC Safety BLOCK 미표시** | 위 §fixture 문단의 제품 코드 문제. 네트워크가 없으면 MC 실행 시 BLOCK 카드가 뜨지 않고 "데이터 부족" 오류만 난다. **실사용자가 오프라인일 때도 동일** |
+
+**Cloudflare Paid Plan 업그레이드는 고려 대상이 아니다**(PM 확정).
+
+### 참고 — 정상 사용 시 예상 요청량
+
+Golden 포트폴리오(18 티커) 기준 5분 갱신 1회 ≈ 43건 → 탭을 종일 열어두면 기기당 ≈ 12,400/day,
+2기기 ≈ 24,800 + Sync 17,280 = **약 42,000/day(한도의 42%)**. 헤드룸이 얇으므로 위 backlog는
+언젠가 다뤄야 한다.
+
+---
+
 ## 최근 세션 요약 (2026-09-07) — Phase 47-F: 적용 중인 Return Key 가시화 **v213 유지**
 
 **커밋** `eea7be2` "feat: show which return assumption each asset is actually using" — push 완료.
