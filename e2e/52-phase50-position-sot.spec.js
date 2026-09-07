@@ -199,9 +199,12 @@ test('F-2. 정상 상태는 문제로 표시하지 않는다 - "거래가 없다
     judge('부동산(manual)', mkAsset({ ticker: '', name: 'E2E52 아파트', category: '부동산', positionSource: 'manual' }));
     judge('원화현금(manual)', mkAsset({ ticker: '', name: 'E2E52 원화현금', category: '현금', positionSource: 'manual' }));
     judge('직접등록(manual)', mkAsset({ positionSource: 'manual' }));
-    // legacy는 원천을 모르므로 아예 판정하지 않는다 - 거래가 있든 없든
+    // legacy는 원천을 모르므로 "legacy라서" 문제로 표시하지는 않는다 - 거래가 없거나 값이
+    // 맞으면 예전 그대로 조용하다. [V1.1 S-1b] 다만 거래가 있는데 값까지 어긋나면 이제
+    // LEDGER_UNKNOWN으로 알린다(S-1 D-3 이후 그 불일치가 영구히 남기 때문) - 그 판정은
+    // e2e/62가 전담하므로 여기서는 "정상 상태" 쪽만 계속 고정한다.
     judge('legacy(거래없음)', mkAsset({ positionSource: undefined }));
-    judge('legacy(거래있음)', mkAsset({ positionSource: undefined, quantity: 1 }), [mkTx()]);
+    judge('legacy(거래있고 값 일치)', mkAsset({ positionSource: undefined, quantity: 40, buyPrice: 2500 }), [mkTx()]);
     // 원화 현금은 시스템 정책상 거래원장이 관리하지 않는다 - 옛 거래가 남아 있어도 문제가 아니다
     judge('원화현금+옛거래', mkAsset({ ticker: '', name: 'E2E52 원화현금', category: '현금',
       positionSource: 'manual', quantity: 1 }), [mkTx({ ticker: '', name: 'E2E52 원화현금' })]);

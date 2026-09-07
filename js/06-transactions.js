@@ -302,22 +302,27 @@ function isTransactionTracked(a) {
  * 쓰면 멀쩡한 자산 다수를 문제로 표시하게 된다. 그래서 판단 기준은 "거래가 있는가"가 아니라
  * "이 자산이 스스로 적어 둔 원천과 지금 상태가 어긋나는가"다.
  *
- * [legacy 자산은 판정하지 않는다]
- * positionSource가 없는 자산은 원천을 알 수 없다. 현재 거래 존재 여부로 추정해 경고를 띄우면
- * 사용자에게 "고치라"고 말하면서 정작 무엇이 맞는지는 앱도 모르는 상태가 된다. 확실하지 않으면
- * 데이터도 화면도 건드리지 않는다 - 데이터를 고치는 것보다 잘못 고치지 않는 것이 우선이다.
+ * [legacy 자산 - V1.1 S-1b에서 범위를 좁혀 판정한다]
+ * positionSource가 없는 자산은 여전히 원천을 알 수 없다. 그래서 "legacy니까 경고"는 하지 않는다 -
+ * 거래가 없거나 값이 맞으면 예전과 똑같이 조용하다(부동산·현금·직접등록 자산이 전부 여기 해당한다).
+ * 다만 S-1 D-3 이후로 부팅 자동 재계산이 legacy 자산을 더 이상 거래원장 값으로 맞춰주지 않기 때문에,
+ * 값이 실제로 어긋나면 그 차이가 그대로 남는다 - 예전에는 잘못된 방식으로나마 부팅이 메워버렸던
+ * 불일치가 이제는 살아있고, 아무도 알려주지 않는다. 그 사각지대만 메운다.
+ * 여기서도 여전히 고치지 않는다 - 어느 쪽이 맞는지는 사용자만 알기 때문에 알리기만 한다.
  * ====================================================================== */
 const POSITION_CONSISTENCY = Object.freeze({
   OK: 'OK',
   LEDGER_WITHOUT_TX: 'LEDGER_WITHOUT_TX', // 거래원장 기반이라고 적혀 있는데 매칭되는 거래가 없다
-  MANUAL_WITH_TX: 'MANUAL_WITH_TX'        // 자산 마스터 기반인데 매칭되는 거래가 있고 값이 어긋난다
+  MANUAL_WITH_TX: 'MANUAL_WITH_TX',       // 자산 마스터 기반인데 매칭되는 거래가 있고 값이 어긋난다
+  LEDGER_UNKNOWN: 'LEDGER_UNKNOWN'        // [S-1b] 어느 쪽이 관리 주체인지 모르는데(legacy) 값까지 어긋난다
 });
 
 // 초보자가 읽을 문구다 - 무엇이 잘못됐는지 단정하지 않고(앱도 어느 쪽이 맞는지 모른다) 확인을
 // 요청하기만 한다. 자동 해결 버튼을 두지 않는 것과 같은 이유다.
 const POSITION_CONSISTENCY_MESSAGES = Object.freeze({
   LEDGER_WITHOUT_TX: '거래내역이 확인되지 않는 거래원장 기반 자산입니다. 거래내역을 지웠거나 파일로 덮어썼다면 내용을 확인해 주세요.',
-  MANUAL_WITH_TX: '거래내역과 자산 정보가 일치하지 않습니다. 내용을 확인해 주세요.'
+  MANUAL_WITH_TX: '거래내역과 자산 정보가 일치하지 않습니다. 내용을 확인해 주세요.',
+  LEDGER_UNKNOWN: '거래내역과 자산 정보가 다릅니다. 이 자산은 자산관리 화면과 거래내역 중 어느 쪽 값이 맞는지 확인이 필요합니다.'
 });
 
 // 취득가는 나눗셈으로 나온 실수라 왕복 과정에서 끝자리가 흔들릴 수 있다 - 그 정도 차이로 경고를
@@ -341,9 +346,26 @@ function assessPositionConsistency(asset, positions) {
   // 원화 현금은 시스템 정책상 거래원장이 관리하지 않는다(syncAssetsFromTransactions의 첫 가드).
   // 옛 거래가 남아 있어도 그건 어긋난 상태가 아니라 의도된 예외다.
   if (asset.category === '현금' && asset.currency !== 'USD') return out(POSITION_CONSISTENCY.OK);
-  if (asset.positionSource === undefined) return out(POSITION_CONSISTENCY.OK); // legacy - 판정하지 않는다
 
   const pos = findLedgerPositionForAsset(asset, positions);
+  // [V1.1 S-1b] legacy - 예전에는 pos를 보기도 전에 무조건 OK로 빠졌다. 이제는 매칭되는 거래가
+  // 실제로 있고 값까지 어긋난 때만 알린다. 거래가 없거나(부동산·현금·자산 화면에서 직접
+  // 등록한 종목은 거래가 없는 게 정상이다) 값이 맞으면 예전 그대로 OK다.
+  // 비교는 manual과 완전히 같은 두 필드(quantity·buyPrice)만, 같은 허용오차 함수로 한다.
+  // buyRate는 일부러 빼둔다 - 원화 포지션도 pos.avgRate가 1이라 통화 가드 없이 비교하면 모든 원화
+  // 자산이 상시 불일치가 되고, buyRate 자체가 Phase 53에서 생긴 필드라 그 이전에 만들어진 legacy USD
+  // 자산은 수량·취득가가 완벽히 같아도 그 값이 없다는 이유만으로 전부 경고가 뜬다(실측 확인).
+  // [고치지 않는다] 이 분기는 판정만 돌려준다 - 값을 맞춰주지도, positionSource를 적어넣지도
+  // 않는다. 부팅은 여전히 legacy 자산의 자산 마스터 값을 그대로 둔다(S-1 D-3, CLOSED).
+  if (asset.positionSource === undefined) {
+    if (!pos) return out(POSITION_CONSISTENCY.OK);
+    const legacyDiffers = positionValuesDiffer(asset.quantity, pos.quantity)
+      || positionValuesDiffer(asset.buyPrice, pos.avgPrice);
+    return legacyDiffers
+      ? out(POSITION_CONSISTENCY.LEDGER_UNKNOWN, { ledgerQuantity: pos.quantity, ledgerBuyPrice: pos.avgPrice })
+      : out(POSITION_CONSISTENCY.OK);
+  }
+
   if (asset.positionSource === 'ledger') {
     return pos ? out(POSITION_CONSISTENCY.OK) : out(POSITION_CONSISTENCY.LEDGER_WITHOUT_TX);
   }
