@@ -158,6 +158,46 @@ function resetAssetDetailModalScroll() {
   if (closeBtn) closeBtn.focus({ preventScroll: true });
 }
 
+/* [Phase 47-F] "장기 수익률 가정" 블록을 그린다.
+ * assets: 이 모달이 지금 보여주고 있는 자산들(단일 모달은 1건, 통합 모달은 여러 건).
+ * 통합 모달은 같은 종목을 소유자/계좌별로 나눠 든 경우인데, 대표매칭키는 자산마다 따로 지정할 수
+ * 있어 보유분끼리 다를 수 있다 - 그때 아무 하나를 골라 보여주면 나머지 보유분에 대해서는 거짓말이
+ * 된다. 그래서 전부 같을 때만 값을 보여주고, 다르면 다르다는 사실 자체를 알린다.
+ * 판정은 describeAppliedReturnAssumption(js/05)에 전부 위임한다 - 이 함수는 문자열만 조립한다. */
+function renderAssetDetailReturnAssumption(assets) {
+  const box = document.getElementById('assetDetailReturnAssumption');
+  const list = (assets || []).filter(Boolean);
+  if (list.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+  const infos = list.map((a) => describeAppliedReturnAssumption(a));
+  const same = infos.every((x) => x.appliedKey === infos[0].appliedKey && x.sourceLabel === infos[0].sourceLabel);
+  const title = '<h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">장기 수익률 가정</h4>';
+
+  if (!same) {
+    box.innerHTML = `${title}
+      <p class="text-sm text-slate-500 dark:text-slate-400 break-keep">보유분마다 적용 중인 기준이 서로 다릅니다. 아래 소유자별 보유 세부 현황에서 각각 확인해 주세요.</p>`;
+    box.classList.remove('hidden');
+    if (window.lucide && lucide.createIcons) lucide.createIcons();
+    return;
+  }
+
+  const info = infos[0];
+  // 색만으로 상태를 구분하지 않는다 - 아이콘과 문구가 먼저이고 색은 보조다(Global Readability Policy).
+  const mark = !info.resolved || info.status === 'NEEDS_REVIEW' ? '⚠' : (info.isUserSet ? '📝' : '✓');
+  const cell = (label, value) => `
+    <div>
+      <span class="text-sm text-slate-400 block mb-0.5">${escapeHtml(label)}</span>
+      <span class="text-sm font-medium break-keep">${escapeHtml(value)}</span>
+    </div>`;
+  box.innerHTML = `${title}
+    <div class="grid grid-cols-2 gap-x-4 gap-y-2.5 mb-2">
+      ${cell('적용 중인 기준', info.resolved ? info.keyLabel : '적용된 기준 없음')}
+      ${info.sourceLabel ? cell('적용 방식', info.sourceLabel) : ''}
+    </div>
+    <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[info.tone]} break-keep">${mark} ${escapeHtml(info.message)}</p>`;
+  box.classList.remove('hidden');
+}
+
 function openAssetDetailModal(id) {
   const a = state.assets.find((x) => x.id === id);
   if (!a) return;
@@ -181,6 +221,7 @@ function openAssetDetailModal(id) {
       <span class="font-semibold ${profitColor(r.rateOfReturn)}">(${fmtPct(r.rateOfReturn)})</span>
     </div>`;
 
+  renderAssetDetailReturnAssumption([a]); // [Phase 47-F]
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   // [거래내역 추적 여부 기준] 예전엔 "티커 유무"로 근사했지만, 이제 달러 현금도 티커 없이 거래내역
   // 기반으로 관리될 수 있어 정확한 기준(실제로 매칭되는 거래가 있는지)으로 판단한다 - 거래내역이
@@ -279,6 +320,8 @@ function openAssetDetailModalGroup(members) {
       <span class="font-semibold ${profitColor(rateOfReturn)}">(${fmtPct(rateOfReturn)})</span>
     </div>`;
 
+  // [Phase 47-F] 통합 모달은 보유분이 여럿이라 전부 넘긴다 - 서로 다르면 그 사실을 알린다.
+  renderAssetDetailReturnAssumption(members);
   document.getElementById('assetDetailOwnerBreakdownList').innerHTML = [...members]
     .sort((a, b) => b.curAmount - a.curAmount)
     .map((m) => assetDetailOwnerRowHtml(m, totalCurAmount))

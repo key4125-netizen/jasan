@@ -1124,6 +1124,67 @@ function assessReturnAssumptionStatus(asset) {
     status: RETURN_ASSUMPTION_STATUS.OK, message: '' };
 }
 
+/* =========================================================================
+ * [Phase 47-F] "이 자산에 지금 어떤 기준이 적용되고 있는가"를 화면에 그대로 쓸 수 있는 형태로 요약한다.
+ *
+ * 왜 필요한가: 대표매칭키를 지정하고 확인할 수 있는 곳이 거래 등록 모달과 엑셀 대표매칭 칸뿐이라,
+ * 거래내역을 쓰지 않는 자산(부동산·실물채권·원화현금·자산 추가로만 등록한 종목)은 사용자가 자기
+ * 자산에 어떤 수익률 가정이 붙어 있는지 앱 안에서 확인할 방법이 아예 없었다. Phase 47-A로 지역 폴백이
+ * 사라진 뒤에는 그런 자산이 성장 0%로 계산될 수 있는데, 그 사실조차 보이지 않았다.
+ *
+ * 판정은 하나도 새로 하지 않는다 - resolveAssetGroupKeyDetail(실제 계산이 쓰는 바로 그 함수)과
+ * assessReturnAssumptionStatus의 결과를 그대로 옮겨 담기만 한다. 화면 전용 판정 로직을 따로 두면
+ * "화면에는 KOSPI라고 나오는데 실제 계산은 다른 키"라는 불일치가 언젠가 반드시 생긴다.
+ * ====================================================================== */
+// source(판별 단계) -> 사용자에게 보여줄 "적용 방식". 사용자가 직접 만든 근거인지, 앱이 스스로
+// 판단한 것인지만 구분한다 - 내부 단계 이름(presetTicker 등)을 그대로 노출하지 않는다.
+const RATE_KEY_SOURCE_LABELS = Object.freeze({
+  override: '사용자 지정',        // 자산에 직접 지정한 대표매칭키
+  customKey: '사용자 지정',       // "수익률 관리"에 등록한 종목으로 매칭됨
+  customKeyword: '사용자 지정',   // "수익률 관리"에 등록한 키워드로 매칭됨
+  category: '자동 판별',
+  presetTicker: '자동 판별',
+  tickerAlias: '자동 판별',
+  nameKeyword: '자동 판별',
+  assetCharacter: '자동 판별'
+});
+// UNRESOLVED일 때 쓰는 문구는 assessReturnAssumptionStatus가 이미 갖고 있다(0% 계산 중이라는 사실과
+// 해결 방법을 함께 말한다). 나머지 두 상태는 그 함수가 빈 문자열을 돌려주므로 여기서 채운다 -
+// 사용자를 비난하거나 겁주지 않고, 지금 무슨 일이 일어나고 있는지만 사실대로 적는다.
+const RATE_ASSUMPTION_DEFAULT_MESSAGES = Object.freeze({
+  OK: '적합한 장기 수익률 가정을 사용하고 있습니다.',
+  USER_DEFINED: '사용자가 지정한 수익률 기준을 사용하고 있습니다.'
+});
+
+// 반환: { keyLabel, appliedKey, sourceLabel, isUserSet, status, message, tone, resolved }
+//   resolved=false면 적용된 가정이 없다는 뜻이다(성장 0%로 계산 중).
+function describeAppliedReturnAssumption(asset) {
+  const detail = resolveAssetGroupKeyDetail(asset);
+  const assessed = assessReturnAssumptionStatus(asset);
+  const resolved = detail.source !== 'unresolved';
+  const isUserSet = RATE_KEY_SOURCE_LABELS[detail.source] === '사용자 지정';
+  // 문구는 assessed.message가 있으면 그것을 그대로 쓴다(UNRESOLVED/NEEDS_REVIEW - 더 구체적이다).
+  // 비어 있을 때만 여기서 채우는데, 기준은 assessed.status가 아니라 "사용자가 지정한 것인가"다 -
+  // status의 USER_DEFINED는 "customScenarioRates에 등록된 키"만 가리켜서, 사용자가 자산에
+  // KOSDAQ 같은 시스템 키를 직접 지정한 경우를 놓친다(그때 status는 OK다). 그러면 화면에
+  // "적용 방식: 사용자 지정"과 "적합한 가정을 사용 중"이 나란히 뜨는 앞뒤가 안 맞는 조합이 된다.
+  const message = assessed.message
+    || (isUserSet ? RATE_ASSUMPTION_DEFAULT_MESSAGES.USER_DEFINED : RATE_ASSUMPTION_DEFAULT_MESSAGES.OK);
+  return {
+    appliedKey: detail.key,
+    // 사람이 읽는 이름은 "수익률 관리"가 쓰는 것과 같은 표를 그대로 쓴다(라벨을 새로 짓지 않는다).
+    keyLabel: resolved ? getRateMatchKeyDisplayLabel(detail.key) : null,
+    sourceLabel: RATE_KEY_SOURCE_LABELS[detail.source] || null,
+    isUserSet,
+    status: assessed.status,
+    message,
+    // 색은 보조 수단일 뿐이다 - 아래 UI는 아이콘과 문구로 먼저 구분하고 색을 덧붙인다(색만으로
+    // 구분하면 색각 이상이나 흑백 환경에서 상태를 전혀 알 수 없다).
+    tone: !resolved ? 'weak' : (assessed.status === 'NEEDS_REVIEW' ? 'weak' : (isUserSet ? 'user' : 'ok')),
+    resolved
+  };
+}
+
 function getCmaAnchorForKey(key) {
   for (const anchor of Object.keys(CMA_SOURCE_METADATA)) {
     if ((CMA_SOURCE_METADATA[anchor].appliesToKeys || []).includes(key)) return anchor;
