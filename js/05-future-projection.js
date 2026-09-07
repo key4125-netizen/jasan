@@ -930,7 +930,12 @@ const RETURN_ASSUMPTION_STATUS = Object.freeze({
   OK: 'OK',                       // 성격에 맞는 가정이 연결됨
   NEEDS_REVIEW: 'NEEDS_REVIEW',   // 연결은 되어 있으나 성격과 맞지 않아 사람이 확인해야 함
   USER_DEFINED: 'USER_DEFINED',   // 사용자가 직접 등록한 키 - 성격을 시스템이 판단하지 않는다
-  UNRESOLVED: 'UNRESOLVED'        // 성격을 몰라 가정을 자동으로 붙이지 않음
+  UNRESOLVED: 'UNRESOLVED',       // 성격을 몰라 가정을 자동으로 붙이지 않음
+  // [M3] 성격은 알지만 그 성격에 쓸 수 있는 장기 수익률 가정이 시스템에 아직 없음.
+  // UNRESOLVED("무엇인지 모른다")와 다르고, OK("맞는 가정을 쓰고 있다")와는 더 다르다.
+  // 지금은 원자재와 가상자산이 여기 해당한다 - 계산에서 0%로 처리되지만 그 0%는
+  // "이 자산의 장기 기대수익률이 0%"라는 뜻이 아니다.
+  NO_SYSTEM_ASSUMPTION: 'NO_SYSTEM_ASSUMPTION'
 });
 
 // 성격 하나가 어떤 Return Key 후보를 갖는지 - 여기 없는 성격은 "쓸 수 있는 Key가 아직 없다"는 뜻이다.
@@ -1120,6 +1125,22 @@ function assessReturnAssumptionStatus(asset) {
       message: `이 자산은 ${getAssetCharacterLabel(char.character)}인데 ${getRateMatchKeyDisplayLabel(appliedKey)} 기준이 적용되어 있습니다. 확인해 주세요.`
     };
   }
+  /* [M3] 여기까지 왔는데 그 성격에 쓸 수 있는 Return Key가 하나도 없으면, 지금 붙어 있는 키는
+   * "성격에 맞춰 고른 것"이 아니라 카테고리 이름이 그대로 키가 된 것뿐이다(원자재/암호화폐).
+   * resolveProjectionRateForKey는 그런 키를 모르므로 마지막에 0을 돌려주고, 그 0이 화면에서는
+   * 지금까지 "적합한 가정을 사용 중"으로 보였다 - 사용자는 앱이 이 자산의 장기 기대수익률을 0%로
+   * 판단했다고 읽게 된다. 그건 이 앱의 정책이 아니다.
+   *
+   * 판별에 새 목록을 만들지 않는다. returnKeyCandidatesForCharacter가 이미 "이 성격에 쓸 수 있는
+   * Key"를 알고 있고, 비어 있다는 것이 곧 "가정이 아직 없다"는 뜻이다(그 함수 주석 그대로).
+   * 사용자가 값을 넣어둔 경우는 위 isUserDefined 분기에서 이미 USER_DEFINED로 빠져나갔다. */
+  if (returnKeyCandidatesForCharacter(char.character, char.ticker).length === 0) {
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: RETURN_ASSUMPTION_STATUS.NO_SYSTEM_ASSUMPTION,
+      message: `${getAssetCharacterLabel(char.character)}에 쓸 장기 수익률 가정이 아직 없습니다. 지금은 성장 없이(0%) 계산되며, 이 자산의 기대수익률이 0%라는 뜻은 아닙니다. 「수익률 관리」에서 직접 지정할 수 있습니다.`
+    };
+  }
   return { appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
     status: RETURN_ASSUMPTION_STATUS.OK, message: '' };
 }
@@ -1162,7 +1183,11 @@ function describeAppliedReturnAssumption(asset) {
   const detail = resolveAssetGroupKeyDetail(asset);
   const assessed = assessReturnAssumptionStatus(asset);
   const resolved = detail.source !== 'unresolved';
-  const isUserSet = RATE_KEY_SOURCE_LABELS[detail.source] === '사용자 지정';
+  // [M3] 사용자가 「수익률 관리」에서 그 키의 숫자를 직접 넣어둔 경우도 "사용자 지정"이다.
+  // 예전에는 키를 고른 경로(source)만 봤기 때문에, 원자재처럼 키가 카테고리에서 자동으로 붙는
+  // 자산은 사용자가 값을 넣어도 "자동 판별"로 표시됐다 - 자기가 넣은 값인데 앱이 정한 것처럼 보였다.
+  const isUserSet = RATE_KEY_SOURCE_LABELS[detail.source] === '사용자 지정'
+    || assessed.status === RETURN_ASSUMPTION_STATUS.USER_DEFINED;
   // 문구는 assessed.message가 있으면 그것을 그대로 쓴다(UNRESOLVED/NEEDS_REVIEW - 더 구체적이다).
   // 비어 있을 때만 여기서 채우는데, 기준은 assessed.status가 아니라 "사용자가 지정한 것인가"다 -
   // status의 USER_DEFINED는 "customScenarioRates에 등록된 키"만 가리켜서, 사용자가 자산에
@@ -1174,13 +1199,20 @@ function describeAppliedReturnAssumption(asset) {
     appliedKey: detail.key,
     // 사람이 읽는 이름은 "수익률 관리"가 쓰는 것과 같은 표를 그대로 쓴다(라벨을 새로 짓지 않는다).
     keyLabel: resolved ? getRateMatchKeyDisplayLabel(detail.key) : null,
-    sourceLabel: RATE_KEY_SOURCE_LABELS[detail.source] || null,
+    // [M3] isUserSet을 표시의 단일 기준으로 삼는다. 예전에는 라벨만 "키를 고른 경로"(source)에서
+    // 따로 뽑아서, 사용자가 값을 직접 넣은 자산이 "적용 방식: 자동 판별 / 사용자가 지정한 값 사용 중"
+    // 처럼 앞뒤가 안 맞게 보였다(47-F가 반대 방향으로 겪은 것과 같은 종류의 불일치다).
+    sourceLabel: isUserSet ? '사용자 지정' : (RATE_KEY_SOURCE_LABELS[detail.source] || null),
     isUserSet,
     status: assessed.status,
     message,
     // 색은 보조 수단일 뿐이다 - 아래 UI는 아이콘과 문구로 먼저 구분하고 색을 덧붙인다(색만으로
     // 구분하면 색각 이상이나 흑백 환경에서 상태를 전혀 알 수 없다).
-    tone: !resolved ? 'weak' : (assessed.status === 'NEEDS_REVIEW' ? 'weak' : (isUserSet ? 'user' : 'ok')),
+    // [M3] 가정이 없는 상태(NO_SYSTEM_ASSUMPTION)도 확인이 필요한 쪽이다 - 색은 보조일 뿐이고
+    // 위 message와 아래 UI의 기호가 먼저 구분한다.
+    tone: (!resolved || assessed.status === RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW
+      || assessed.status === RETURN_ASSUMPTION_STATUS.NO_SYSTEM_ASSUMPTION)
+      ? 'weak' : (isUserSet ? 'user' : 'ok'),
     resolved
   };
 }

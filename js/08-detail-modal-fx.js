@@ -183,7 +183,10 @@ function renderAssetDetailReturnAssumption(assets) {
 
   const info = infos[0];
   // 색만으로 상태를 구분하지 않는다 - 아이콘과 문구가 먼저이고 색은 보조다(Global Readability Policy).
-  const mark = !info.resolved || info.status === 'NEEDS_REVIEW' ? '⚠' : (info.isUserSet ? '📝' : '✓');
+  // [M3] 가정이 아직 없는 상태도 ⚠로 표시한다 - 색이 아니라 기호와 문구가 먼저 구분한다.
+  const needsAttention = !info.resolved || info.status === 'NEEDS_REVIEW'
+    || info.status === RETURN_ASSUMPTION_STATUS.NO_SYSTEM_ASSUMPTION;
+  const mark = needsAttention ? '⚠' : (info.isUserSet ? '📝' : '✓');
   const cell = (label, value) => `
     <div>
       <span class="text-sm text-slate-400 block mb-0.5">${escapeHtml(label)}</span>
