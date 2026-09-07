@@ -5,6 +5,7 @@
     "update-ticker-master": "node scripts/update-ticker-master.js",
     "test": "node --test test/*.test.js",
     "release-guard": "node scripts/verify-sw-release.js",
+    "data-guard": "node scripts/verify-no-user-data.js",
     "lint": "eslint .",
     "e2e": "playwright test"
   },
