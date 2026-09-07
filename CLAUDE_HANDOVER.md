@@ -32,13 +32,36 @@
 
 ---
 
-## 최근 세션 요약 — V1.1 M3: 원자재/암호화폐 0% 가정 정직화 **v216 유지 / v217 대기**
+## 최근 세션 요약 — V1.1 M3: 원자재/암호화폐 0% 가정 정직화 **🚀 v216 → v217 릴리스 완료**
 
 **커밋** `cf89eb0` "fix: clarify unsupported commodity and crypto return assumptions" — push 완료.
 
-> ⚠️ **지금 `npm run release-guard`는 FAIL이 정상이다.** M3가 APP_SHELL(js/05·js/08)을 바꿨는데
-> PM이 아직 v217 bump를 승인하지 않았다. Guard가 그걸 정확히 감지하고 있는 것이며,
-> **통과시키려고 임의로 버전을 올리지 말 것.**
+**릴리스 커밋** `bff8218` "release: bump service worker cache to v217" · **인계 갱신** (이 커밋).
+
+### ✅ v216 → v217 캐시 갱신 실측 (릴리스 완료 근거)
+
+**캐시를 삭제하거나 강제로 비우지 않았다.** 진짜 v216 릴리스 파일(`ddddb64`)로 캐시를 만든 뒤,
+**캐시를 그대로 둔 채** v217을 배포하고 앱을 다시 여는 것만으로 확인했다.
+
+| | v216 사용자 (갱신 전) | 다시 연 뒤 |
+|---|---|---|
+| 캐시 | `…-v216` | **`…-v217` 하나만** (v216 제거됨) |
+| 화면 버전 | v216 | **v217** |
+| `NO_SYSTEM_ASSUMPTION` | `undefined` | **존재** |
+| 금 현물 status | `OK` | **`NO_SYSTEM_ASSUMPTION`** |
+| 화면 기호 | `✓` | **`⚠`** |
+| 화면 문구 | **"적합한 장기 수익률 가정을 사용"**(금지 문구) | "가정이 아직 없습니다 / 0%로 계산 / **기대수익률이 0%라는 뜻은 아닙니다** / 「수익률 관리」에서 지정" |
+| **수익률** | **0** | **0** ← 계산은 바뀌지 않았다 |
+
+v217 캐시 안의 `js/05`·`js/08`에 M3 코드가 실제로 들어 있는 것도 캐시를 직접 열어 확인했다.
+**첫 방문자도 v217을 받는다.**
+
+**Release Guard**: bump 전 **FAIL**(바뀐 파일 `js/05`·`js/08` 정확히 지목) → bump 후 **PASS(v217)**.
+**Production Worker/외부 API 성공 요청 0건** — 외부 시도 714건 전부 DNS 실패(Phase 47-G 격리).
+
+> ⚠️ **다음에 APP_SHELL(index.html · js/01~14)을 고치면 릴리스 때 CACHE_NAME과 appVersionLabel을
+> 함께 올려야 한다.** `npm run release-guard`가 잊었을 때 알려주지만, **FAIL을 통과시키려고 버전만
+> 올리지 말고 정말 릴리스할 준비가 됐는지 먼저 판단할 것.**
 
 ### ① 목적
 
@@ -114,9 +137,8 @@
 `npm test` **205/205** · `eslint` **0** · 전체 e2e **527/527** · Data Guard **PASS** ·
 **Release Guard FAIL** · **Production Worker/외부 API 0건**.
 
-**Release Guard FAIL이 정상인 이유**: M3가 APP_SHELL(js/05·js/08)을 바꿨는데 SW는 아직 **v216**이다.
-**CACHE_NAME/appVersionLabel 모두 v216 유지**이며, 다음 단계는 **PM 승인 후 별도 SW v216 → v217
-릴리스**다. 그 전까지 이 수정은 기존 사용자에게 전달되지 않는다.
+**릴리스 완료**: `CACHE_NAME`/`appVersionLabel` 모두 **v217**이며 Release Guard **PASS**다.
+M3 수정이 실제 사용자에게 전달되는 상태이고, 위 표가 그 갱신을 실측으로 남긴다.
 
 ---
 
