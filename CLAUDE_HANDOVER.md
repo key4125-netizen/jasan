@@ -32,6 +32,182 @@
 
 ---
 
+## 최근 세션 요약 — 🔒 **S-01 보안사고 종결** + 🚀 **v220 릴리스**
+
+> ## ⚠ History Rewrite Boundary — 이 문서를 읽는 모든 세션이 먼저 알아야 할 것
+>
+> **2026-09-08, S-01 보안 대응으로 이 저장소의 Git history를 재작성했다.**
+>
+> | | |
+> |---|---|
+> | **Old HEAD (rewrite 이전)** | `b7898f7f806b2537e37251dd9236ec574ba7e197` |
+> | **Rewritten HEAD (경계점)** | `ff0ba0143871878dac08e122a994d38bf0d3b314` |
+> | 커밋 수 | 280 → **278** (제거 대상 파일만 담고 있던 빈 커밋 2개 prune) |
+> | 재작성된 커밋 | **280개 전부** (해시 전량 변경) |
+>
+> **이 문서의 `ff0ba01` 이전 시점 기록에 적힌 commit hash는 전부 무효다.**
+> 조회하려 하지 말고 **당시의 역사적 기록(historical reference)으로만 읽는다.**
+> 커밋 메시지·날짜·변경 내용 서술은 그대로 유효하므로 이력 추적에는 문제가 없다.
+> (PM 확정 A+C 방식 — 76개 해시/101회 등장을 새 해시로 일괄 치환하지 않는다.)
+>
+> **rewrite 이후 문서에서는 새 해시를 사용한다.**
+
+**릴리스 커밋** `052b00a` "release: bump service worker to v220"
+**인계 갱신** (이 커밋). **SW v219 → v220.**
+
+---
+
+### 🔒 S-01 보안사고 종결 기록
+
+**사고**: 실제 개인 금융정보가 담긴 엑셀 파일 1개(`자산관리_표준템플릿.xlsx`)가 2026-07-29에
+저장소에 커밋되어 **GitHub Pages로 약 1시간 22분 공개 배포**됐다. 53분 뒤 삭제 커밋이 있었으나
+git 특성상 과거 커밋의 객체는 그대로 남아 있었다.
+
+**대응**: P-1 — `git-filter-repo` history rewrite + force push (2026-09-08)
+
+#### 노출 확정 정보 (카테고리만 기록 — 실제 값은 어떤 문서에도 남기지 않는다)
+
+| 구분 | 판정 |
+|---|---|
+| **개인 실명** | **노출 확정** — 엑셀 `docProps/core.xml`의 `lastModifiedBy` 메타데이터 |
+| **보유 종목 구성** | 노출 확정 |
+| **보유 수량** | 노출 확정 |
+| **매수단가** | 노출 확정 |
+| **계좌 구조(계좌구분)** | 노출 확정 |
+| **국내/해외 · 통화 구분** | 노출 확정 |
+| 평가금액 | 컬럼 자체는 없었으나 **수량 × 매수단가로 자산규모 추정 가능** |
+| 소유자 컬럼 | 역할 라벨 2종 — **실명 아님**(해시 대조로 확인) |
+
+#### 노출되지 않은 것으로 확인된 정보
+
+회사/부서/팀/직급 · 전화번호 · 이메일 · 주민등록번호 · 생년월일 · 주소 ·
+**계좌번호** · 은행/증권사명 · 로그인 ID · 비밀번호 · PIN · OTP · 인증서 정보 ·
+API key/secret · access/refresh token · 거래내역(매수/매도 이력)
+
+> 근거: ZIP 전체 XML 정규식 10종 + 키워드 28종 전수 스캔, 패턴 적중분 **전건 문맥 확인**
+> (전부 Office revision GUID 또는 매수단가 소수부였다). 숨김 시트/행/열 0, 외부링크·주석·
+> custom property 0. `Company`/`Manager` 태그 부재.
+>
+> ⚠ **현재 작업용 엑셀에는 회사/부서/직급이 `lastModifiedBy`에 들어 있다.** 문제 파일에는 그
+> 부분이 구조적으로 없었다 — **"현재 파일에 있다 = 노출됐다"로 연결하지 않았다.**
+
+#### 위험 평가
+
+| 구분 | 판정 |
+|---|---|
+| **직접 자산 이동 가능성** | **확인되지 않음** — 로그인/주문/출금에 쓸 인증정보가 파일에 없었다 |
+| **2차 공격 가능성** | **중간** — 실명 + 구체적 포트폴리오 조합은 표적형 피싱에 유효하다. 다만 연락처가 함께 노출되지 않아 공격자가 피해자에게 도달할 경로는 이 파일만으로 확보되지 않는다 |
+| **개인정보 노출 심각도** | **높음** — 실명 + 재산 상태는 **회전·무효화가 불가능**하다 |
+
+**"해킹 불가능"이라고 단정하지 않는다.** 파일 안에 인증수단이 없음을 확인했을 뿐이며,
+**제3자의 과거 다운로드/복제 여부는 확인할 수 없다.**
+
+#### GitHub Support 결정 (PM 확정)
+
+> **GitHub Support를 통한 서버측 cached view / unreachable object 정리 요청은
+> 사용자 통제 범위 내 대응으로 판단하여 실시하지 않았다.
+> 제3자의 과거 접근/복제 여부는 확인할 수 없다.**
+
+⚠ **"서버측 잔존 객체가 존재하지 않는다"는 뜻이 아니다.** force push 직후 실측에서 old commit
+SHA가 GitHub API로 여전히 조회됐다(GitHub 공식 문서가 예고한 상태). 이 상태가 언제 해소되는지는
+확인할 수 없다.
+
+#### rewrite 결과 (실측)
+
+```
+대상 파일        : 자산관리_표준템플릿.xlsx (1개)
+문제 blob        : 2c5b6ade2a9c85dbd9b2cc35aebfe087fc5595de (10,797 bytes)
+도구             : git-filter-repo 2.47.0 (--sensitive-data-removal)
+force push       : refs/heads/main 1개만 (--mirror 미사용)
+
+대상 파일 history : 0건
+문제 blob        : unreachable
+현재 main        : 대상 파일 0건
+Pages            : 대상 파일 HTTP 404 / 사이트 200
+git fsck         : 오류 0건
+
+★ HEAD tree SHA  : 4fa322b2df11b0bb46dd1413a1ed40f06aefc6b6 — rewrite 전후 완전 동일
+   = 현재 코드·데이터가 한 바이트도 바뀌지 않았다는 증명
+★ 277 커밋의 tree SHA 동일 / tree가 바뀐 커밋 1개(대상 파일 항목만 제거) / 새 tree 0개
+```
+
+**제품 코드·계산 로직·데이터 모델 변경 0.**
+
+#### 복구본 (폐기하지 않는다)
+
+```
+G:\jasan_security_backup\S01R        rewrite 이전 완전 복구본
+                                     bare mirror · main=b7898f7 · 280 commits
+                                     문제 blob 보유 · remote 0 · fsck 정상
+S01R-pre-rewrite-baseline.txt        rewrite 전 기준값
+S01R-post-rewrite-result.txt         rewrite 후 결과
+```
+
+⚠ **이 백업 자체가 민감 데이터다.** GitHub/원격 push 금지 · 클라우드 동기화 폴더 금지 ·
+working tree 내부 보관 금지. 폐기 시점은 PM이 결정한다.
+
+#### 재오염 방지 상태
+
+| 항목 | 상태 |
+|---|---|
+| `jasan_backup_v207_2026-09-04` | **폐기 완료** (동일 origin + 문제 blob 보유 P0 경로였다) |
+| mirror backup | remote 0개 — push 경로 없음 |
+| GitHub origin 보유 clone | **1개** (작업 clone `G:\dragon_클로드\jasan`)뿐 |
+| 회사 PC | 프로젝트 자료 삭제 완료 / 향후 Git 작업환경으로 쓰지 않는다. 회사에서는 **집 PC에 원격 접속**해 작업 |
+| `Update ticker master` | rewrite 중 Disable → **검증 후 재활성화 완료** |
+| **예방 장치** | `.gitignore` 강화 + **Data Guard**(`npm run data-guard`, 12/12 테스트, 한글 경로 우회 차단) — 이 사고 직후 구축돼 작동 중 |
+
+⚠ **이번 사고의 유입 경로는 `"Add files via upload"` — GitHub 웹 UI 직접 업로드였다.**
+웹 UI 업로드는 `.gitignore`·pre-commit hook·Data Guard(커밋 직전 로컬 검사)를 **전부 우회한다.**
+**실제 자산 파일을 GitHub 웹 UI로 올리지 않는다**는 운영 규칙이 가장 실효성 있는 방지책이다.
+
+---
+
+### 🚀 v220 릴리스
+
+**v219 → v220.** 이번 릴리스는 **기능 추가가 아니라** 그동안 쌓인 positionSource 관련 수정
+세 건을 사용자에게 전달하는 것이다.
+
+| 실려 나가는 수정 | 파일 |
+|---|---|
+| **BL-12** 거래 삭제의 고아 정리가 `manual` 자산을 0으로 지움 (실측 100 → 0) | `js/06-transactions.js` |
+| **S-1 D-3** 부팅 자동 재계산이 legacy 자산을 거래원장 값으로 덮어씀 (실측 150 → 70, 경고 없음) | `js/06`, `js/14-settings-boot.js` |
+| **S-1b** legacy 불일치를 `LEDGER_UNKNOWN`으로 알림 (기존 경고 슬롯 재사용, 새 UI 0) | `js/06-transactions.js` |
+
+**릴리스 커밋 변경 파일: `sw.js`(CACHE_NAME) · `index.html`(appVersionLabel) 두 개뿐.**
+앱 코드는 이번 커밋에서 손대지 않았다.
+
+**검증**
+```
+Unit          205/205 PASS
+E2E           594/594 PASS  (전체 1회)
+ESLint          0 errors
+Data Guard      PASS  (추적 116개 - 사용자 데이터 없음)
+Release Guard   PASS
+Worker/API      0     (DNS 격리)
+```
+
+**`Update ticker master` 재활성화 검증 (수동 트리거 1회)**
+```
+run              : 34178610274 · workflow_dispatch · success
+자동 commit      : 410b803 "chore: update ticker master data (2026-09-08)"
+변경 파일        : data/ticker-master.json 1개뿐
+부모 커밋        : ff0ba01 (rewritten HEAD) — rewritten history 위에 정상 적재
+대상 파일 history : 0건 (실행 후에도)
+문제 blob        : 재등장 없음
+→ 자동화가 rewrite된 history를 되돌리지 않음을 실측 확인
+```
+
+---
+
+### 다음 단계
+
+1. **V1.1 Scope Lock** ← 다음
+2. V1.1 개발
+3. backlog(PM 개별 승인 시에만): S-1b 후속 · BL-7/7a · BL-8 · BL-13~BL-19 · B-3 · T-1/T-2 · BL-1 · BL-9/10/11
+
+---
+
 ## 최근 세션 요약 — V1.1 **S-1b 완료** (legacy 불일치 진단 `LEDGER_UNKNOWN`) **v219 유지**
 
 > ## ⚠ 다음 단계는 **Security Remediation Plan**이다
