@@ -32,6 +32,37 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-09) — 🚀 **V1.2-B 종료 + V1.3 BL-19/P1-1 릴리즈** (v222 → **v226**)
+
+PM 주도 거버넌스 세션. 한 세션에서 v223~v226까지 4번 릴리즈했다. **전부 push 완료.**
+
+**릴리즈 순서와 커밋**
+| 버전 | 내용 | 커밋 |
+|---|---|---|
+| v223 | BL-17 category confirmation (`categorySource` 상태 모델 + Cloud merge pair 보호) | `2a95daa` |
+| v224 | **BL-17 persistence hotfix** — `persistAssets()` 저장 목록에 `categorySource`가 빠져 새로고침마다 사용자 확정이 legacy로 되돌아가던 결함 | `da1948e` |
+| v225 | BL-18 — Cloud merge 후 `syncAssetsFromTransactions({auto:true})` 재동기화 | `18c0295` |
+| **v226** | **BL-19 + P1-1** (이번 릴리즈) | `b289b8a` / 체크리스트 `3ae1c42` |
+
+**v226에서 한 일 (둘 다 "안내 강화"이고 계산은 무변경)**
+- **BL-19**(js/08): 자산/거래 불일치 경고가 "다르다"고만 말하던 것을, `assessPositionConsistency()`가 **이미 반환하고 있던** `ledgerQuantity`/`ledgerBuyPrice`를 현재 자산값과 나란히 보여주고 확인할 화면(거래내역 탭)을 문장으로 안내하도록 강화. **판정 함수 무변경**, 내부 상태코드(`LEDGER_UNKNOWN` 등) 비노출, **버튼/링크 추가 안 함**(e2e/52 F-UI의 `button/a = 0` 계약 유지 — PM이 이동 버튼안을 명시적으로 제외).
+- **P1-1**(js/10): 종합 위험점수 범위 고지. ⚠️ **감사 정정** — 메인 RISK 카드에는 `#riskScopeNote`(index.html + `updateRealEstateGuidanceText`, js/03)로 **이미 고지가 있었다**(e2e/40 "5"가 고정 중). 실제 누락 지점은 **`riskAlertModal`(위험 경고 팝업)** 하나뿐이었고 거기에만 한 줄 추가했다. `RISK_ELIGIBLE_CATEGORIES`/산식/Universe 무변경.
+- 신규 테스트: `e2e/71`(BL-19, 6건) · `e2e/72`(P1-1, 6건). 둘 다 **문자열 존재가 아니라 실제 함수 반환값과 화면 숫자가 일치하는지** 검사한다.
+
+**Bond Domain READ-ONLY Audit (코드 변경 0건)** — 결과는 체크리스트 §9-1/§9-2에 기록.
+- 신규 P0/P1 **구현 버그 없음**. 남은 쟁점은 전부 정책/모델 정의 문제라 `BOND-DEF-01~05` backlog로만 남겼다.
+- 알아둘 사실: 개별채권(티커 없음)은 `NON_TRADABLE_CATEGORIES`라 시세조회에서 빠지고 `currentPrice`가 **사용자 입력값 그대로 유지**된다. 채권 ETF는 가격/변동성/Risk는 ETF 경로지만 **Return Assumption에서는 `resolveAssetCharacter`가 채권 성격을 따로 인식**한다(감사 1차 보고의 "일반 ETF와 완전 동일" 서술은 정정됨). 개별채권 σ=0은 `isRiskFree`(js/16)의 **의도된 모델링**이며 "데이터 부족"과는 코드상 분리돼 있다(Phase 3-5 B1).
+
+**⚠️ 다음 세션이 반드시 알아야 할 것**
+1. **Bond 구현을 임의로 시작하지 말 것.** audit이 끝났다는 것이 구현 승인이 아니다 — 다음 V1.3 우선순위는 PM이 별도로 정한다.
+2. `.claude/launch.json`은 이 PC의 로컬 변경이라 **계속 커밋 대상이 아니다**(unstaged로 남겨둔다).
+3. `e2e/06-mc-run-cancel`(MC 워커 시작 타이밍)과 `e2e/31-phase25-mobile`(뷰포트 렌더링)은 **전체 스위트에서 간헐적으로 1건 실패**하는 기존 flaky다. 격리 재실행·전체 재실행에서 모두 통과함을 확인했으니, 이 둘이 뜨면 먼저 재실행해 flaky인지 구분할 것.
+4. 미결로 남은 이론적 이슈: "같은 id가 기기마다 다른 `positionSource`를 가질 수 있는가"(실제 발생 가능성 미확정).
+
+**최종 상태**: Unit 249/249 · E2E 683/683 · ESLint 0 · Data Guard PASS · Release Guard PASS · production v226 smoke PASS.
+
+---
+
 ## 최근 세션 요약 — 🚀 **V1.1 Phase 1~5 Release Candidate** (v220 → v221)
 
 **릴리스 커밋** (인계 갱신과 같은 commit에 포함 — 진행 상황은 아래 상태표 참고)
