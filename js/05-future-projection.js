@@ -3272,14 +3272,32 @@ function updateProjection(preserveMcResult) {
  *      목표는 변동성을 0으로 근사한다(이 앱 전반에서 채권/현금을 NON_TRADABLE_CATEGORIES로 시세 조회
  *      대상에서 빼는 것과 같은 단순화).
  * ---------------------------------------------------------------------- */
-// 가구 전체(일반계좌+절세계좌, 부동산 제외) 총 평가금액 - 몬테카를로 원금(PV)은 목표 비중과 무관하게
-// 항상 "지금 실제로 들고 있는 금액"을 그대로 쓴다(요청 사양).
-// [Phase 24-B - Owner MC] ownerFilter를 주면 그 owner 소유 자산만(isAssetIncludedForOwner, js/04 -
-// 기존 Deterministic owner별 화면이 이미 쓰는 것과 동일한 필터) 합산한다 - '공동' 자산은 어느 단일
-// owner 필터에도 포함되지 않는다(기존 관례 그대로 재사용, 새 규칙 아님). ownerFilter 생략 시 기존과
-// 완전히 동일(bit-identical).
+// 몬테카를로 원금(PV) - 목표 비중과 무관하게 "지금 실제로 들고 있는 금액"을 그대로 쓴다(요청 사양).
+//
+// [V1.1 Phase 2 - T-1/T-2] 예전에는 여기서 부동산만 빼고 나머지를 전부 더했다. 그런데 이 원금이
+// 배분되는 목표 비중(computeHouseholdTargetInstrumentWeights)은 "포트폴리오 구성" 탭이 만든
+// 일반계좌 목표뿐이다 - 절세계좌에는 목표 비중이라는 것이 존재하지 않는다. 그래서 두 모집단이
+// 어긋난 채로,
+//   ① 절세계좌 자산이 일반계좌 목표 비중대로 재배분되고 매년 리밸런싱됐고(T-1),
+//   ② owner 가중 기준(아래 computeHouseholdTargetInstrumentWeights의 grandTotal)은 일반계좌만
+//      세는데 원금은 절세계좌·'공동'까지 세어 분모와 분자가 다른 자산을 봤다(T-2).
+//
+// 목표 비중이 실제로 지배하는 자산 범위와 똑같이 맞춘다 - 새 기준을 만드는 것이 아니라, 이미
+// 존재하는 그 기준(getProjectionGroupStats: 일반계좌 · 비부동산 · 해당 owner)을 그대로 재사용한다.
+// 결정론적 예측(simulateRebalancedPreset)도 owner별로 정확히 같은 함수를 쓰므로, 이제 세 경로
+// (결정론 · MC 원금 · MC 가중 기준)가 하나의 모집단을 본다.
+//
+// [절세계좌를 0% 자산으로 끼워 넣지 않는다] 제외되는 자산은 시뮬레이션에서 그냥 빠진다 - 임의의
+// 수익률 0% instrument로 바꿔 넣으면 그것대로 없는 가정을 만들어내는 것이다. 절세계좌를 MC에
+// 포함시키는 일(Tax MC)은 별도 설계 사안이며 이번 범위가 아니다.
+//
+// [ownerFilter] 신랑/와이프 단독 선택은 예전과 같은 필터(isAssetIncludedForOwner)를 그대로 타고,
+// 여기에 일반계좌·비부동산 조건이 더해질 뿐이다. 생략(가구 전체) 시에는 REBALANCE_OWNERS 두 명을
+// 합산한다 - '공동' 자산은 어느 owner에도 속하지 않아 빠지는데, 이는 결정론적 예측과 목표 가중
+// 기준이 이미 따르고 있던 규칙과 같다(새 규칙이 아니라 어긋나 있던 한 곳을 맞춘 것이다).
 function computeHouseholdMonteCarloPV(ownerFilter) {
-  return state.assets.filter((a) => a.category !== '부동산' && isAssetIncludedForOwner(a, ownerFilter)).reduce((s, a) => s + calcRow(a).curAmount, 0);
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  return owners.reduce((s, owner) => s + getProjectionGroupTotal(getProjectionGroupStats(owner)), 0);
 }
 
 // 소유자 한 명의 목표 비중(전체 포트폴리오 대비 0~1, 국내/해외 split × 지역 내 항목 비중)을

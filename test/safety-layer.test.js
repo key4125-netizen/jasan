@@ -15,7 +15,7 @@ const {
   SAFETY_LEVEL, SAFETY_THRESHOLDS, combineSeverity, buildSafetyResult,
   assessWeightSums, assessIndividualWeightSigns, assessExpectedReturn, assessVolatility, assessDataSufficiency,
   assessCorrelationPair, assessPSDCorrection, assessContributionGrowth, assessInflation, assessFee,
-  assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn
+  assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn, explainAccumulationScopeAlwaysOn
 } = safety;
 
 // [B3 후속수정 검증용 헬퍼] js/05의 assessHouseholdWeightSums()가 실제로 하는 일(합계 검사 +
@@ -251,6 +251,22 @@ test('explainResultAlwaysOn은 입력과 무관하게 항상 INFO 설명을 반�
   const issue = explainResultAlwaysOn();
   assert.strictEqual(issue.severity, SAFETY_LEVEL.INFO);
   assert.ok(issue.message.length > 0);
+});
+
+// [V1.1 Phase 2 - T-1/T-2 후속] MC 원금 모집단을 일반계좌(비절세·비부동산) + owner 기준으로 좁히면서
+// (computeHouseholdMonteCarloPV, js/05), 절세계좌·부동산·'공동' 자산을 가진 사용자에게는 원금이 눈에
+// 보이는 총자산보다 작게 나온다 - 이유를 설명하는 문장이 이 항상-on INFO에 실려 있는지 고정한다.
+// 실제 계산이 배제하는 네 범주(일반계좌=포함 대상, 절세계좌·부동산·공동=제외 대상)를 그대로 인용한다 -
+// 앱 어디에도 없는 새 용어를 만들지 않았다는 것을 이 테스트가 확인한다.
+test('explainAccumulationScopeAlwaysOn - MC 계산 범위(일반계좌 기준, 절세계좌·부동산·공동 제외)를 안내한다', () => {
+  const issue = explainAccumulationScopeAlwaysOn();
+  assert.strictEqual(issue.severity, SAFETY_LEVEL.INFO);
+  assert.ok(issue.message.includes('일반계좌'), '포함 대상(일반계좌)을 명시해야 한다');
+  assert.ok(issue.message.includes('절세계좌'), '제외 대상(절세계좌)을 명시해야 한다');
+  assert.ok(issue.message.includes('부동산'), '제외 대상(부동산)을 명시해야 한다');
+  assert.ok(issue.message.includes('공동'), '제외 대상(공동 자산)을 명시해야 한다');
+  // 기존 적립 단계 안내 문장은 그대로 유지된다 - 이번 수정은 문장을 갈아치운 게 아니라 덧붙인 것이다.
+  assert.ok(issue.message.includes('적립 단계만 다룹니다'), '기존 문구가 보존되어야 한다');
 });
 
 /* ---------------- Schema / combineSeverity ---------------- */
