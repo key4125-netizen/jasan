@@ -2,7 +2,18 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v225'; // [V1.2-B BL-18 Cloud Merge Ledger Sync]
+const CACHE_NAME = 'smart-asset-manager-v226'; // [V1.3 BL-19 Correction Path + P1-1 Risk Scope Notice]
+// 두 가지 "안내 강화"를 한 번에 담는다 - 계산 로직은 어느 쪽도 건드리지 않았다.
+// (1) BL-19(js/08): 거래내역과 자산 정보가 어긋났을 때 경고가 "다르다"고만 말하고 무엇이 어떻게 다른지,
+//     어디서 고쳐야 하는지는 알려주지 않았다. assessPositionConsistency()가 이미 계산해 돌려주던
+//     ledgerQuantity/ledgerBuyPrice를 현재 자산값과 나란히 보여주고, 확인할 화면(거래내역 탭)을 문장으로
+//     안내한다. 판정 로직은 무변경이고, 자동으로 고쳐주는 버튼/링크는 추가하지 않는다(e2e/52 F-UI의
+//     "#assetDetailPositionNotice 안 button/a = 0" 정책 유지).
+// (2) P1-1(js/10): 메인 RISK 카드에는 "진단 대상: 주식·ETF만 해당"이 헤드라인 바로 아래 상시 노출되고
+//     있었는데(#riskScopeNote), 같은 점수를 크게 보여주는 위험 경고 팝업에는 그 고지가 없어 팝업만 본
+//     사용자가 전체 자산 기준으로 오해할 수 있었다. 팝업 점수 바로 아래에 같은 사실을 한 줄 덧붙인다.
+//     RISK_ELIGIBLE_CATEGORIES/위험점수 산식/Risk Universe는 전혀 바꾸지 않았다.
+// cache-first라 CACHE_NAME을 올리지 않으면 이 두 안내가 기존 사용자에게 전달되지 않는다.
 // Cloud sync는 asset/transaction을 독립적으로 병합할 뿐, 병합이 끝난 뒤 자산을 거래내역 기준으로
 // 다시 맞추지 않았다 - 두 기기가 같은 시점에서 갈라져 서로 다른 거래를 추가하면, 병합된 거래
 // 전체(예: 10-3+5=12)와 우연히 timestamp가 더 최신이었던 쪽의 asset.quantity(예: 15)가 서로 달라질

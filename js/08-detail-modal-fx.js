@@ -201,13 +201,38 @@ function renderAssetDetailReturnAssumption(assets) {
   box.classList.remove('hidden');
 }
 
+// [V1.3 BL-19] LEDGER_UNKNOWN/MANUAL_WITH_TX 안내에 붙일 "현재 자산 vs 거래내역 기준" 대조 + 확인
+// 경로 안내를 조립한다 - assessPositionConsistency()가 이미 계산해 돌려주는 ledgerQuantity/
+// ledgerBuyPrice를 그대로 보여줄 뿐, 새 계산은 하지 않는다(PM 승인 범위: 텍스트 강화만, 판정 로직
+// 무변경). 버튼/링크는 추가하지 않는다 - "거래내역 탭" 위치만 말로 안내하고 이동은 사용자가 직접
+// 한다(e2e/52 F-UI의 "자동 해결 버튼을 두지 않는다" 정책 보존).
+function buildPositionNoticeDetailLines(x, asset) {
+  const lines = [];
+  if ((x.status === POSITION_CONSISTENCY.LEDGER_UNKNOWN || x.status === POSITION_CONSISTENCY.MANUAL_WITH_TX)
+    && Number.isFinite(x.ledgerQuantity) && Number.isFinite(x.ledgerBuyPrice) && asset) {
+    const unit = asset.currency === 'USD' ? '$' : '';
+    lines.push(`현재 자산 — 수량: ${fmtNum(asset.quantity, 4)} · 매입단가: ${unit}${fmtNum(asset.buyPrice, 2)}`);
+    lines.push(`거래내역 기준 — 수량: ${fmtNum(x.ledgerQuantity, 4)} · 매입단가: ${unit}${fmtNum(x.ledgerBuyPrice, 2)}`);
+  }
+  if (x.status === POSITION_CONSISTENCY.MANUAL_WITH_TX) {
+    lines.push('이 자산은 자산관리 화면에서 직접 관리하는 자산입니다(거래내역은 참고용). 거래내역 탭에서 관련 거래를 확인하거나, 자산 정보를 다시 확인해 주세요.');
+  } else if (x.status === POSITION_CONSISTENCY.LEDGER_UNKNOWN) {
+    lines.push('거래내역 탭에서 이 종목의 거래내역을 확인해 주세요.');
+  } else if (x.status === POSITION_CONSISTENCY.LEDGER_WITHOUT_TX) {
+    lines.push('거래내역 탭에서 이 종목의 거래내역이 남아 있는지 확인해 주세요.');
+  }
+  return lines;
+}
+
 /* [Phase 50 - P0-2] 거래원장과 자산 정보가 어긋난 경우에만 한 줄 안내를 띄운다.
  * 판정은 assessPositionConsistency()(js/06)에 전부 위임한다 - 이 함수는 문자열만 조립한다.
- * 통합 모달은 보유분이 여러 건이라 같은 종류의 안내가 반복될 수 있어 종류별로 한 번만 보여준다. */
+ * 통합 모달은 보유분이 여러 건이라 같은 종류의 안내가 반복될 수 있어 종류별로 한 번만 보여준다.
+ * [V1.3 BL-19] 이미 계산된 ledgerQuantity/ledgerBuyPrice를 현재 자산값과 나란히 보여주고, 확인할
+ * 화면(거래내역 탭)을 말로 안내한다 - 자동으로 고쳐주는 버튼/링크는 추가하지 않는다. */
 function renderAssetDetailPositionNotice(assets) {
   const box = document.getElementById('assetDetailPositionNotice');
   const list = (assets || []).filter(Boolean);
-  const issues = list.map((a) => assessPositionConsistency(a))
+  const issues = list.map((a) => Object.assign(assessPositionConsistency(a), { asset: a }))
     .filter((x) => x.status !== POSITION_CONSISTENCY.OK);
   // [V1.1 소유자 정책] 신랑/와이프가 아닌 자산은 결정론적 예측에는 들어가는데 Monte Carlo의 자산배분
   // 가중치 기준에서는 빠진다 - 두 화면이 같은 자산을 다르게 세는 상태다. 앱이 소유자를 대신 정해주지
@@ -220,8 +245,12 @@ function renderAssetDetailPositionNotice(assets) {
   issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });
   if (shown.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   // 색만으로 알리지 않는다 - 기호와 문구가 먼저다(Global Readability Policy).
-  box.innerHTML = shown.map((x) =>
-    `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep">⚠ ${escapeHtml(x.message)}</p>`).join('');
+  box.innerHTML = shown.map((x) => {
+    const detailLines = buildPositionNoticeDetailLines(x, x.asset);
+    const detailHtml = detailLines.map((line) =>
+      `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep mt-1">${escapeHtml(line)}</p>`).join('');
+    return `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep">⚠ ${escapeHtml(x.message)}</p>${detailHtml}`;
+  }).join('');
   box.classList.remove('hidden');
 }
 

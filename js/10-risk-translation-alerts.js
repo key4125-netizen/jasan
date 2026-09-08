@@ -1371,9 +1371,15 @@ function openRiskAlertModal() {
   const score = m.riskScore;
   const level = riskLevelFromScore(score);
 
+  // [V1.3 P1-1] 이 팝업도 메인 RISK 카드와 똑같이 "종합 위험점수"를 크게 보여주는데, 카드에는 헤드라인
+  // 바로 아래 상시 노출되는 진단 대상 안내(#riskScopeNote, index.html + updateRealEstateGuidanceText)가
+  // 있는 반면 이 팝업에는 없어서, 팝업만 본 사용자는 이 점수를 전체 자산 기준으로 오해할 수 있었다.
+  // 계산(riskEligibleAssets = 주식·ETF)은 전혀 건드리지 않고, 카드와 같은 사실을 같은 자리(점수 바로
+  // 아래)에 한 줄로만 덧붙인다 - 새 카드/새 점수/새 계산을 만들지 않는다.
   document.getElementById('riskAlertScoreBox').innerHTML = `
     <div class="rounded-xl border p-3 ${level.bgClass}">
       <p class="text-base font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-keep">진단 대상: 주식·ETF 보유분만 해당(현금·채권·부동산 제외)</p>
       <p class="text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
     </div>`;
 
