@@ -254,8 +254,12 @@ function openAssetDetailModal(id) {
   // [거래내역 추적 여부 기준] 예전엔 "티커 유무"로 근사했지만, 이제 달러 현금도 티커 없이 거래내역
   // 기반으로 관리될 수 있어 정확한 기준(실제로 매칭되는 거래가 있는지)으로 판단한다 - 거래내역이
   // 있으면 그게 잔고의 근거이므로 이 화면에서 직접 고치거나 지우지 못하게 숨긴다(지우려면 거래내역
-  // 에서 매도/출금 처리해야 한다). 부동산/원화현금/아직 거래를 안 넣은 수동 자산만 노출된다.
-  const tracked = isTransactionTracked(a);
+  // 에서 매도/출금 처리해야 한다).
+  // [V1.1 Phase 5 - BL-8] 단, positionSource==='manual'인 자산은 예외다 - 이 표식은 "거래내역이 아니라
+  // 자산 정보 자체가 이 자산의 SoT"라는 사실을 스스로 적어 둔 것이다(Phase 1 정책). 거래가 우연히
+  // 매칭되더라도 그 사실이 SoT를 바꾸지 않으므로, 거래 존재만으로 편집/삭제를 막아서는 안 된다.
+  // 부동산/원화현금/아직 거래를 안 넣은 자산과 manual 자산은 노출되고, ledger/legacy 자산만 숨겨진다.
+  const tracked = a.positionSource !== 'manual' && isTransactionTracked(a);
   document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailEditBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailModal').classList.remove('hidden');
@@ -272,9 +276,10 @@ function assetDetailOwnerRowHtml(m, totalCurAmount) {
   const priceUnit = m.isForeign ? '$' : '';
   const pct = totalCurAmount !== 0 ? (m.curAmount / totalCurAmount * 100) : 0;
   // 거래내역으로 추적되는 보유분은 잔고가 거래내역 기반으로 자동 연동되므로 개별 휴지통 아이콘도
-  // 숨긴다(상단 삭제 버튼과 동일한 규칙, isTransactionTracked 참고) - 그룹 모달은 이름이 같은 수동
-  // 관리 자산(원화현금 등)도 묶일 수 있어 그 경우엔 계속 노출한다.
-  const tracked = isTransactionTracked(m);
+  // 숨긴다(상단 삭제 버튼과 동일한 규칙) - 그룹 모달은 이름이 같은 수동 관리 자산(원화현금 등)도
+  // 묶일 수 있어 그 경우엔 계속 노출한다.
+  // [V1.1 Phase 5 - BL-8] 단일 자산 모달과 같은 예외 - manual은 거래 매칭과 무관하게 항상 노출한다.
+  const tracked = m.positionSource !== 'manual' && isTransactionTracked(m);
   const deleteBtnHtml = tracked ? '' : `
     <button type="button" data-delete-member="${m.id}" title="이 보유분 삭제"
       class="touch-target shrink-0 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400">
