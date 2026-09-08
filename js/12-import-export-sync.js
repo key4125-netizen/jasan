@@ -1023,6 +1023,23 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
     state.dailySnapshots = { ...parsed.dailySnapshots, ...state.dailySnapshots };
     persistDailySnapshots();
   }
+  // [V1.2-B BL-18] asset/transaction을 여기까지는 각자 독립적으로 병합했다 - id별로 승자만 통째로
+  // 고르는 mergeCollectionById 특성상, 두 기기가 같은 시점에서 갈라져 서로 다른 거래를 추가하면
+  // "합쳐진 거래 전체 기준 포지션"과 "우연히 timestamp가 더 최신이었던 쪽 asset 레코드"가 서로 다른
+  // 기기 것일 수 있다(실측 재현: A가 3주 매도해 7주, B가 5주 매수해 15주 - 병합된 거래 전체(10-3+5)의
+  // 정답은 12인데 asset은 B의 15가 그대로 남는다). 거래내역이 바뀔 때 자산을 다시 맞추는 로직은 이미
+  // 있다(syncAssetsFromTransactions, js/06) - 로컬에서 거래를 추가/수정/삭제할 때는 매번 이 함수가
+  // 뒤따라 불려 정합성이 유지되는데, 유독 이 Cloud 병합 경로만 그 호출이 빠져 있었다.
+  // [auto:true인 이유] 이 호출 시점에 이 기기 사용자는 방금 이 자산의 거래를 "직접" 건드리지 않았다 -
+  // 부팅(js/14)과 똑같이 "사용자가 지금 아무것도 안 했는데 도는 배경 재계산"이므로, legacy 자산
+  // (positionSource 없음)은 이 함수가 아니라 boot과 같은 조건으로 보호해야 한다(D-3) - 그래야 사용자가
+  // legacy 자산의 수량을 자산관리 화면에서 직접 정정해 둔 값이 배우자 기기의 무관한 거래 동기화 한 번에
+  // 조용히 되돌아가지 않는다. manual 자산은 auto 값과 무관하게 이 함수 자체가 항상 보호한다(BL-8).
+  // category/categorySource는 이 함수가 건드리는 필드가 아니므로(js/06 참고) BL-17 pair 정책과
+  // 무관하다. persistAssets()/persistTransactions()는 이 함수를 부르는 쪽(pullFromCloud/pushToCloud)이
+  // applyingRemoteUpdate=true 구간 안에서 이어서 호출하므로, 여기서 갱신된 값도 같은 저장/1회 push에
+  // 자연히 포함되고 별도의 재-push 루프를 만들지 않는다.
+  syncAssetsFromTransactions({ auto: true });
 }
 
 let pushDebounceTimer = null;

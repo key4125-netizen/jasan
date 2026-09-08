@@ -2,7 +2,17 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v224'; // [V1.2-B BL-17 Persistence Hotfix]
+const CACHE_NAME = 'smart-asset-manager-v225'; // [V1.2-B BL-18 Cloud Merge Ledger Sync]
+// Cloud sync는 asset/transaction을 독립적으로 병합할 뿐, 병합이 끝난 뒤 자산을 거래내역 기준으로
+// 다시 맞추지 않았다 - 두 기기가 같은 시점에서 갈라져 서로 다른 거래를 추가하면, 병합된 거래
+// 전체(예: 10-3+5=12)와 우연히 timestamp가 더 최신이었던 쪽의 asset.quantity(예: 15)가 서로 달라질
+// 수 있었다. `mergeAssetsAndTransactionsWithRemote()`(js/12) 끝에서 기존 함수
+// `syncAssetsFromTransactions({ auto: true })`를 그대로 호출해, 병합 직후 ledger 자산을 병합된 거래
+// 전체 기준으로 재동기화한다 - 새 SoT 모델이나 merge framework를 추가한 것이 아니라, 거래 추가/수정/
+// 삭제/부팅 때 이미 쓰던 것과 같은 함수를 이 경로에도 동일하게 적용한 것뿐이다. `auto:true`이므로
+// legacy(positionSource 없음) 자산은 부팅과 동일하게 보호되고, manual 자산은 이 함수 자체가 항상
+// 보호하며(BL-8), category/categorySource는 이 함수가 건드리지 않아 BL-17 정책과 무관하다. cache-first라
+// CACHE_NAME을 올리지 않으면 이 수정이 기존 사용자에게 전달되지 않는다.
 // v223에서 새로 만든 categorySource가 persistAssets()의 localStorage 저장 whitelist에 빠져 있었다
 // (js/01) - category는 저장 목록에 있는데 categorySource만 없어서, 사용자가 폼에서 방금 확정한
 // category(categorySource='user')도 새로고침/브라우저 재시작 한 번이면 조용히 legacy(표식 없음)로
