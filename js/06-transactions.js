@@ -1014,8 +1014,16 @@ function deleteTransaction(id) {
       // 지우지 않는다 - syncAssetsFromTransactions가 같은 이유로 이미 갖고 있는 가드인데 이 고아 정리
       // 분기에만 빠져 있었다(실측: manual 자산 100주 + 거래 1건 → 그 거래를 지우면 자산이 0으로
       // 지워졌다). 가드의 의미도 같다 - "카테고리로 추정한 예외"가 아니라 "자산에 저장된 사실에
-      // 따른 예외"다. legacy 자산(표식 없음)과 ledger 자산은 예전과 완전히 같은 경로로 흐른다.
-      if (orphan && orphan.positionSource !== 'manual' && orphan.category !== '현금' && orphan.quantity > 0) orphan.quantity = 0;
+      // 따른 예외"다.
+      // [V1.1 Phase 4 - BL-14] 현금 가드는 원화만 걸러야 한다. syncAssetsFromTransactions의 원화
+      // 현금 가드(findMatchingCashAsset 위 주석 참고 - "달러 현금은 이제 거래내역 기반으로 관리")와
+      // 정확히 같은 조건(category==='현금' && currency!=='USD')을 여기서도 그대로 재사용한다 - 새
+      // 정책이 아니라 이미 이 파일에 있는 것과 같은 조건을 이 분기에만 빠뜨리고 있었다. 그 결과
+      // ledger/legacy 달러 현금 자산은, 그 자산의 마지막 남은 거래를 지워도 수량이 그대로 남아있었다
+      // (실측: 10000 -> 10000, 티커 자산이었다면 정상적으로 0이 됐을 상황). 원화 현금은 이 조건에서도
+      // 여전히 통째로 보호된다 - 원화는 어떤 positionSource든 거래원장이 관리하지 않기 때문이다.
+      const isProtectedCash = orphan && orphan.category === '현금' && orphan.currency !== 'USD';
+      if (orphan && orphan.positionSource !== 'manual' && !isProtectedCash && orphan.quantity > 0) orphan.quantity = 0;
     }
   }
   persistAssets();
