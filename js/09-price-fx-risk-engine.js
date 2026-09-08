@@ -60,6 +60,7 @@ async function fetchExchangeRate() {
   try {
     const result = await raceFxSourceTier(FX_SOURCES_REALTIME);
     state.exchangeRate = result.rate;
+    state.exchangeRateFetchedAt = Date.now(); // [V1.2-A C1] 실제 조회 성공 시각만 기록 - 실패 시엔 안 건드림
     document.getElementById('exchangeRateInput').value = state.exchangeRate;
     persistRate(true); // 배경 자동 갱신 - 동기화 push 안 함(위 skipPush 주석 참고)
     applyOfficialFxReference(result.previousClose);
@@ -67,6 +68,7 @@ async function fetchExchangeRate() {
     try {
       const result = await raceFxSourceTier(FX_SOURCES_SNAPSHOT_FALLBACK);
       state.exchangeRate = result.rate;
+      state.exchangeRateFetchedAt = Date.now(); // [V1.2-A C1] 스냅샷 폴백도 실제 조회 성공이다
       document.getElementById('exchangeRateInput').value = state.exchangeRate;
       persistRate(true); // 배경 자동 갱신 - 동기화 push 안 함
       applyOfficialFxReference(result.previousClose);

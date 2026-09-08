@@ -168,7 +168,10 @@ async function refreshPricesAndRates() {
   // 남겨둔다(완전히 값이 없는 것보다 낫다).
   const indexPromise = Promise.allSettled(MARKET_INDEX_LIST.map((c) => fetchPriceWithFallback(c.ticker, c.name))).then((results) => {
     results.forEach((r, i) => {
-      if (r.status === 'fulfilled') state.marketIndexCache[MARKET_INDEX_LIST[i].ticker] = r.value;
+      // [V1.2-A C1] 조회에 실제로 성공한 순간의 시각만 값과 함께 저장한다(fetchedAt) - 실패하면 이
+      // then 콜백 자체가 안 불려서 이전 캐시(이전 성공 시각 포함)가 그대로 남는다. 표시 판단(위험/
+      // 오래됨 등)은 여기서 하지 않고, 언제 마지막으로 실제 조회됐는지만 함께 기록한다.
+      if (r.status === 'fulfilled') state.marketIndexCache[MARKET_INDEX_LIST[i].ticker] = { ...r.value, fetchedAt: Date.now() };
     });
   });
   // [시장 현황 & 매크로 브리핑] VIX/미 10년물 국채금리도 위 지수 조회와 완전히 같은 방식으로 같은
@@ -176,7 +179,9 @@ async function refreshPricesAndRates() {
   const macroKeys = Object.keys(MACRO_TICKERS);
   const macroPromise = Promise.allSettled(macroKeys.map((key) => fetchPriceWithFallback(MACRO_TICKERS[key], key))).then((results) => {
     results.forEach((r, i) => {
-      if (r.status === 'fulfilled') state.macroIndicatorCache[macroKeys[i]] = r.value;
+      // [V1.2-A C1] indexPromise와 동일한 이유로 fetchedAt을 함께 저장한다 - 지표 하나의 실패가 다른
+      // 지표의 fetchedAt에 영향을 주지 않는다(각자 자기 항목만 갱신).
+      if (r.status === 'fulfilled') state.macroIndicatorCache[macroKeys[i]] = { ...r.value, fetchedAt: Date.now() };
     });
   });
 

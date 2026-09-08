@@ -1038,20 +1038,31 @@ function getMacroKeyForTicker(yahooTicker) {
 // [매크로 지표 상세 본문] attachStockAnalysisReportToDetailModal(js/08, 종목 상세 모달에서 지수를
 // 열었을 때의 매크로 분기)이 이 콘텐츠를 그대로 재사용한다 - 지수 클릭 팝업이 하나로 통일되면서
 // 이제 이 함수를 부르는 곳도 그 한 군데뿐이다.
+// [V1.2-A C1] "마지막 정상 조회" 시각 문구 - 판단성 문구(위험/오래됨/신뢰도낮음)는 만들지 않고 시각만
+// 그대로 보여준다. 기존 앱의 시각 표기 로케일(js/11 autoRefreshStatusMsg와 동일한 'ko-KR')을 따르되,
+// 좁은 팝업 폭에 맞춰 시:분까지만 표시한다(초 단위는 이 용도에 불필요). fetchedAt이 없으면(한 번도
+// 정상 조회된 적 없음) 아무것도 표시하지 않는다 - "-"/"조회 전" 기존 정책 그대로.
+function macroLastSuccessLabel(s) {
+  if (!s || typeof s.fetchedAt !== 'number') return null;
+  return `마지막 정상 조회 ${new Date(s.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 function buildMacroDetailBodyHtml(key) {
   const info = MACRO_INDICATOR_INFO[key];
   if (!info) return '';
   const s = macroDetailSnapshot[key];
   const tag = macroStatusTag(key, s);
   const hasChange = s && typeof s.changePercent === 'number';
+  const lastSuccessLabel = macroLastSuccessLabel(s);
   return `
-    <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-1">
       <div class="text-xl font-bold">${escapeHtml(macroDetailValueText(key, s))}</div>
       <div class="flex items-center gap-2">
         ${hasChange ? `<span class="text-sm font-medium ${s.changePercent >= 0 ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'}">${s.changePercent >= 0 ? '+' : ''}${fmtNum(s.changePercent, 2)}%</span>` : ''}
         <span class="text-sm font-semibold px-2 py-1 rounded-full ${MACRO_TAG_COLOR_CLASSES[tag.color]}">${escapeHtml(tag.text)}</span>
       </div>
     </div>
+    ${lastSuccessLabel ? `<p class="text-sm text-slate-400 mb-3">${escapeHtml(lastSuccessLabel)}</p>` : '<div class="mb-4"></div>'}
     <div class="mb-4">
       <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">💡 지표 기본 개념</p>
       <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep break-words">${escapeHtml(info.concept)}</p>
@@ -1063,6 +1074,10 @@ function buildMacroDetailBodyHtml(key) {
     <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-3">
       <p class="text-sm font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 관전 포인트 &amp; 대응 팁</p>
       ${info.watchPoints.map((w, i) => hangingIndentLine(`${i + 1}.`, escapeHtml(w), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed mt-1')).join('')}
+      <!-- [V1.2-A C4] 위 구간(예: VIX 20/30)은 계산식이 아니라 이 화면이 초보자 설명을 위해 쓰는 고정
+           참고값이다(js/10 MACRO_TREND_THRESHOLDS/vixWeatherIcon 주석 참고) - 숫자·판정 로직은 그대로
+           두고, 그 사실만 한 줄 공개한다. -->
+      <p class="text-sm text-slate-400 mt-2 pt-2 border-t border-brand-100 dark:border-brand-900/50">※ 위 구간은 시장에서 널리 참고되는 범위를 바탕으로 한 설명용 기준이며, 절대적인 위험 기준은 아닙니다.</p>
     </div>`;
 }
 
@@ -1159,17 +1174,21 @@ function renderMacroBriefing() {
   // 여기서 매번 객체를 통째로 새로 만들면 그 값이 갱신 주기마다 날아가 버린다 - 이전 스냅샷에 남아있던
   // 값을 그대로 이어받는다(1년치 종가는 자주 안 바뀌므로 5분마다 다시 불러올 필요가 없다).
   const prevMacroSnapshot = macroDetailSnapshot;
+  // [V1.2-A C1] fetchedAt(마지막 정상 조회 시각)을 각 지표의 원본 캐시에서 그대로 옮겨 담는다 - 새로
+  // 계산하지 않고 js/11이 실제 조회 성공 시점에 이미 채워둔 값을 읽기만 한다. 원/달러(usdkrw)만
+  // marketIndexCache/macroIndicatorCache 같은 객체 캐시가 없어 state.exchangeRateFetchedAt(js/09)을
+  // 대신 쓴다.
   macroDetailSnapshot = {
-    vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null, change5d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change5d, change20d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change20d },
-    usdkrw: { value: state.exchangeRate, changePercent: fxChangePct, change5d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change5d, change20d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change20d },
-    us10y: { value: ust10y, changePercent: ust10yChangePct, change5d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change5d, change20d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change20d },
-    gold: { value: gold, changePercent: goldChangePct, change5d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change5d, change20d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change20d },
-    usdx: { value: usdx, changePercent: usdxChangePct, change5d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change5d, change20d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change20d },
-    kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null, change5d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change5d, change20d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change20d },
-    kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null, change5d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change5d, change20d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change20d },
-    sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null, change5d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change5d, change20d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change20d },
-    nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null, change5d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change5d, change20d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change20d },
-    dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null, change5d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change5d, change20d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change20d }
+    vix: { value: vix, changePercent: vixInfo ? vixInfo.changePercent : null, fetchedAt: vixInfo ? vixInfo.fetchedAt : null, change5d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change5d, change20d: prevMacroSnapshot.vix && prevMacroSnapshot.vix.change20d },
+    usdkrw: { value: state.exchangeRate, changePercent: fxChangePct, fetchedAt: state.exchangeRateFetchedAt, change5d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change5d, change20d: prevMacroSnapshot.usdkrw && prevMacroSnapshot.usdkrw.change20d },
+    us10y: { value: ust10y, changePercent: ust10yChangePct, fetchedAt: ust10yInfo ? ust10yInfo.fetchedAt : null, change5d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change5d, change20d: prevMacroSnapshot.us10y && prevMacroSnapshot.us10y.change20d },
+    gold: { value: gold, changePercent: goldChangePct, fetchedAt: goldInfo ? goldInfo.fetchedAt : null, change5d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change5d, change20d: prevMacroSnapshot.gold && prevMacroSnapshot.gold.change20d },
+    usdx: { value: usdx, changePercent: usdxChangePct, fetchedAt: usdxInfo ? usdxInfo.fetchedAt : null, change5d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change5d, change20d: prevMacroSnapshot.usdx && prevMacroSnapshot.usdx.change20d },
+    kospi: { value: kospiInfo ? kospiInfo.price : null, changePercent: kospiInfo ? kospiInfo.changePercent : null, fetchedAt: kospiInfo ? kospiInfo.fetchedAt : null, change5d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change5d, change20d: prevMacroSnapshot.kospi && prevMacroSnapshot.kospi.change20d },
+    kosdaq: { value: kosdaqInfo ? kosdaqInfo.price : null, changePercent: kosdaqInfo ? kosdaqInfo.changePercent : null, fetchedAt: kosdaqInfo ? kosdaqInfo.fetchedAt : null, change5d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change5d, change20d: prevMacroSnapshot.kosdaq && prevMacroSnapshot.kosdaq.change20d },
+    sp500: { value: sp500Info ? sp500Info.price : null, changePercent: sp500Info ? sp500Info.changePercent : null, fetchedAt: sp500Info ? sp500Info.fetchedAt : null, change5d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change5d, change20d: prevMacroSnapshot.sp500 && prevMacroSnapshot.sp500.change20d },
+    nasdaq: { value: nasdaqInfo ? nasdaqInfo.price : null, changePercent: nasdaqInfo ? nasdaqInfo.changePercent : null, fetchedAt: nasdaqInfo ? nasdaqInfo.fetchedAt : null, change5d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change5d, change20d: prevMacroSnapshot.nasdaq && prevMacroSnapshot.nasdaq.change20d },
+    dow: { value: dowInfo ? dowInfo.price : null, changePercent: dowInfo ? dowInfo.changePercent : null, fetchedAt: dowInfo ? dowInfo.fetchedAt : null, change5d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change5d, change20d: prevMacroSnapshot.dow && prevMacroSnapshot.dow.change20d }
   };
 
   const foreignAmount = state.assets.reduce((s, a) => { const r = calcRow(a); return s + (r.isForeign ? r.curAmount : 0); }, 0);
@@ -1207,7 +1226,14 @@ function renderMacroBriefing() {
         </ul>
         <p class="text-sm text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
       </div>
-    </div>`;
+    </div>
+    <!-- [V1.2-A C2] 매크로 브리핑과 바로 아래 RISK 진단 카드가 서로 다른 계산이라는 것을 한 줄로
+         알린다 - 둘을 정량적으로 잇는 새 계산은 만들지 않는다(js/09 컴포지트 위험점수는 이 카드의
+         값을 전혀 입력으로 쓰지 않는다). "매크로가 나쁘면 내 자산도 위험하다"는 식으로 확장하지
+         않도록 문구를 그 두 사실의 병렬 서술로만 남긴다. -->
+    <p class="text-sm text-slate-400 mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800 leading-relaxed break-keep">
+      매크로 동향과 보유자산 위험은 서로 다른 기준으로 계산됩니다. 매크로 동향은 현재 시장환경을, 보유자산 위험은 내 자산의 위험 특성을 보여줍니다.
+    </p>`;
 
   // [F1 - 상관관계 가이드 아코디언화] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이
   // 통째로 새로 그려지므로, 버튼 요소 자체가 매번 새로 생긴다 - 펼침 상태(correlationGuideOpen)를

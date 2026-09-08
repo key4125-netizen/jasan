@@ -543,6 +543,11 @@ function normalizeCurrency(raw, fallback) {
 const state = {
   assets: [],
   exchangeRate: 1450,
+  // [V1.2-A C1] 원/달러 환율이 마지막으로 실제 조회에 성공한 시각(ms epoch) - fetchExchangeRate가
+  // 성공했을 때만 채워진다(js/09). 실패 시에는 건드리지 않아 이전 성공 시각이 그대로 남는다 - 매크로
+  // 브리핑이 "지금 값이 언제 마지막으로 실제 조회됐는지"를 사용자에게 보여주는 용도일 뿐, 계산에는
+  // 쓰이지 않는다. 휘발성 데이터라 localStorage에는 저장하지 않는다.
+  exchangeRateFetchedAt: null,
   // 오늘 하루의 일간 손익 계산에 쓰는 기준 환율(어제 종가 개념). loadState()의 ensureDailyReference()가
   // 달력 날짜 전환 시점에 스냅샷하며, 당일 중에는 exchangeRate가 갱신되어도 이 값은 고정된다.
   refExchangeRate: 1450,

@@ -2,7 +2,16 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v221'; // [V1.1 Scope Lock Release] Phase 1~5로 쌓인 다섯
+const CACHE_NAME = 'smart-asset-manager-v222'; // [V1.2-A Macro/Risk Clarity Release] 매크로 지표
+// (VIX/원달러/미10년물/금/달러인덱스/코스피 등)가 조회에 실패해도 이전 값을 그대로 보여주는 기존
+// 정책은 그대로 두되, "그 값이 마지막으로 언제 실제 조회에 성공했는지"를 지표 상세 팝업에서 확인할
+// 수 있게 했다(js/01·09·10·11) - 판단성 문구(위험/오래됨 등)나 새 stale 기준은 만들지 않았다.
+// 매크로 브리핑과 보유자산 RISK 진단이 서로 다른 계산이라는 안내 한 줄과, VIX 등 표시 구간이
+// 절대적 위험 기준이 아니라 참고용 설명 구간이라는 고지 한 줄도 기존 화면에 추가했다(js/10) - 계산식/
+// threshold 숫자/Risk Score/Macro→Risk 연결은 전혀 건드리지 않았다. cache-first라 CACHE_NAME을
+// 올리지 않으면 이 세 가지 명확화가 기존 사용자에게 전달되지 않는다. 캐시 정책/APP_SHELL/install/
+// activate/fetch 로직은 일절 무변경.
+// [V1.1 Scope Lock Release] Phase 1~5로 쌓인 다섯
 // 건의 수정이 js/05·06·08·12에 걸쳐 있었는데 v220 이후 CACHE_NAME이 그대로라 전달되지 않고 있었다.
 // ① 클라우드 병합·JSON 복원이 사용자가 입력한 positionSource/buyRate를 조용히 지우거나 되돌릴 수
 // 있던 경로 네 곳을 막았다(Phase 1). ② 몬테카를로 원금이 목표 비중 계산 대상과 다른 자산 집합(절세
