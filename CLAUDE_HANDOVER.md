@@ -32,6 +32,148 @@
 
 ---
 
+## 최근 세션 요약 — V1.1 **S-1b 완료** (legacy 불일치 진단 `LEDGER_UNKNOWN`) **v219 유지**
+
+> ## ⚠ 다음 단계는 **Security Remediation Plan**이다
+>
+> **Security S-01 — 실제 사용자 자산 데이터 공개 노출 사고**가 PM에 의해 확정됐다.
+> 이 대응은 **S-1b와 완전히 별도 트랙**이며, 아래 S-1b 내용과 혼동하지 않는다.
+> 새 세션은 이 인계장을 읽은 뒤 **Security Remediation Plan을 먼저 확인**하고,
+> PM 지시 없이 임의로 remediation을 실행하지 않는다.
+
+> **상태 구분 — 반드시 지킬 것**
+>
+> | 항목 | 현재 |
+> |---|---|
+> | S-1b 코드 구현 | **완료** |
+> | S-1b commit / push | **완료** (`19be0c2`) |
+> | **SW v220 release** | **미실시 — v219 그대로** |
+>
+> **"S-1b 구현 완료"와 "SW v220 release 완료"는 다른 것이다.**
+> 현재 S-1 D-3 + S-1b 코드는 저장소에는 있지만 **v219 APP_SHELL에는 들어있지 않다.**
+> 그래서 Release Guard가 FAIL하는 것이 **정상**이며, v220 release는 **PM 승인 대기 중**이다.
+
+**코드 커밋** `19be0c2db110bf58c76d3744a639b048b27a9cb5`
+"fix: flag unmarked assets whose holdings disagree with the ledger"
+**인계 갱신** (이 커밋). **SW bump 없음 — v219 유지.**
+
+### S-1 D-3과의 관계 (이것이 S-1b의 존재 이유다)
+
+S-1 D-3이 부팅 자동 재계산으로부터 legacy 자산을 보호하면서 **부작용으로 사각지대가 생겼다.**
+
+- **예전**: 부팅이 (잘못된 방식으로나마) legacy 자산을 거래원장 값에 맞춰버려 불일치가 남지 않았다.
+- **D-3 이후**: 자산 마스터 값이 그대로 유지된다 — 옳은 동작이지만, **불일치가 영구히 살아있는데
+  아무도 알려주지 않는다.** `assessPositionConsistency`가 legacy를 판정 대상에서 아예 뺐기 때문이다.
+
+**S-1b는 그 사각지대만 메운다.** D-3의 논리적 마무리이며, D-3 없이는 의미가 없고 D-3만으로는 불완전하다.
+
+### 확정 정의
+
+**legacy = `positionSource === undefined`** — 이것 하나뿐이다.
+`sanitizePositionSource`(js/01:793)가 `null`·빈 문자열·`'legacy'`·기타 값을 전부 `undefined`로 접으므로
+**동일 의미의 다른 값은 존재하지 않는다.**
+
+**`LEDGER_UNKNOWN` 발동 조건 — 두 가지가 모두 참일 때만**
+
+1. 매칭되는 거래(ledger position)가 **실제로 존재**하고,
+2. `quantity` **또는** `buyPrice`가 불일치 (`positionValuesDiffer`, 기존 허용오차 그대로)
+
+**"legacy라서" 경고하지 않는다.** 거래가 없거나(부동산·현금·자산 화면에서 직접 등록한 종목은
+거래가 없는 게 정상이다) 값이 맞으면 예전 그대로 조용하다 — 실측으로 legacy 자산 6건 전부
+값 일치 시 **경고 0건**을 확인했다.
+
+### ⚠ `buyRate`는 비교하지 않는다 (되돌리지 말 것)
+
+나중에 "환율도 비교해야 하지 않나" 싶어지면 **이 문단을 먼저 읽는다. 실측 근거가 두 개 있다.**
+
+1. **원화 자산 전량 오탐** — `pos.avgRate`는 KRW 포지션에서도 **`1`을 반환**한다. 자산의 `buyRate`는
+   `undefined`(→`num()`으로 0)라 통화 가드 없이 비교하면 **모든 원화 자산이 상시 불일치**가 된다.
+2. **legacy USD 자산 오탐** — `buyRate`는 Phase 53에서 생긴 필드다. **그 이전에 만들어진 USD 자산은
+   값이 아예 없어**, 수량·취득가가 완벽히 같아도 그 값이 없다는 이유만으로 전부 경고가 뜬다.
+
+`MANUAL_WITH_TX`도 `buyRate`를 비교하지 않으므로, 빼두면 **두 판정이 완전히 대칭**이다.
+비교 대상은 `quantity`·`buyPrice` **두 개뿐**이고, `currentPrice`·`category`·`role`·
+`rateMatchOverride`·`owner`·`accountType`은 자산 마스터 단독 소유라 애초에 비교 대상이 아니다.
+
+### 하지 않는 것
+
+- **자동 수정 0** — 값을 거래원장에 맞춰주지 않는다
+- **자동 승격 0** — legacy는 끝까지 UNKNOWN으로 남는다
+- **`positionSource` 쓰기 0** — 진단은 읽기만 한다(diff에 쓰기 라인이 없다)
+- **자동 해결 버튼 0** — 어느 쪽이 맞는지는 사용자만 안다
+
+### UI — 새로 만든 것이 없다
+
+기존 **`#assetDetailPositionNotice`**(자산 상세 모달)를 그대로 쓴다.
+`renderAssetDetailPositionNotice`(js/08:207)가 이미 `POSITION_CONSISTENCY` 밖의 status
+(`OWNER_UNASSIGNED`)까지 렌더하고 있어 **js/08도 index.html도 손대지 않았다.**
+
+문구: `거래내역과 자산 정보가 다릅니다. 이 자산은 자산관리 화면과 거래내역 중 어느 쪽 값이 맞는지 확인이 필요합니다.`
+
+⚠ **한계(알고 둔 것)**: 이 슬롯은 **자산 상세 모달을 열어야만 보인다.** 목록·대시보드에 집계 표시가
+없으므로 사용자가 그 자산을 직접 열지 않으면 차이를 모른다. `MANUAL_WITH_TX`도 같은 조건이며,
+"새 카드/탭/배지 금지" 지시와 상충하지 않는 유일한 위치라 그대로 두었다.
+
+### 변경 파일 (정확히 3개)
+
+| 파일 | 변경 |
+|---|---|
+| `js/06-transactions.js` | `LEDGER_UNKNOWN` 키 1 · 문구 1줄 · `assessPositionConsistency` legacy 분기 · 블록 주석 |
+| `e2e/62-s1b-ledger-unknown-diagnosis.spec.js` | **신규** 17건 |
+| `e2e/52-phase50-position-sot.spec.js` | F-2의 구정책 단언 1건 갱신 (아래) |
+
+`index.html` · `js/08` · `js/14` · `sw.js` 미변경. `js/06`의 diff 5개 hunk가 전부 진단 블록
+(305~351행) 안에 있고 `syncAssetsFromTransactions`는 한 글자도 바뀌지 않았다.
+
+**`e2e/52` F-2를 고친 이유** — `judge('legacy(거래있음)', quantity:1, [40주 거래])` → `OK` 단언이 있었고
+주석이 *"legacy는 원천을 모르므로 아예 판정하지 않는다 - 거래가 있든 없든"*이었다. **이번 승인이
+정확히 그 정책을 바꾼 것**이므로 기능 회귀가 아니라 낡은 단언이다. 그 케이스를
+`legacy(거래있고 값 일치)`로 바꿔 "정상 상태는 조용하다"는 원래 취지를 유지했고(케이스 수·`OK`
+단언 그대로 — 약화시키지 않았다), 불일치 판정은 `e2e/62`가 전담한다.
+
+### 검증 결과
+
+```
+S-1b E2E (신규)    17/17  PASS
+관련 E2E          122/122 PASS   (48·49·51·52·53·54·55·56·58·59·60·61·smoke)
+Unit              205/205 PASS
+ESLint              0 errors
+Data Guard          PASS
+Production Worker/API  0
+외부 가격 API           0        (DNS 격리, e2e/49 PASS)
+사용자 데이터 변경        0        (전부 fixture)
+Release Guard       FAIL — 정상 (js/06 + js/14가 v219 APP_SHELL 밖)
+SW                  v219 유지
+```
+
+**계산 invariant**: 진단 5회 연속 호출 후 `state.assets`/`state.transactions`가 **byte-level JSON
+불변**임을 e2e/62 시나리오 G가 고정한다. Projection/MC/Risk/Safety 계산 영향 0
+(e2e/52 L-2 "동기화 전후 동일" PASS).
+
+**D-3 불변조건 6개 전부 유지** — legacy 자동 승격 0 · `positionSource` 쓰기 0 ·
+`{auto:true}`는 `bootApp`만 · 거래 저장/삭제/엑셀 3경로 기존 동작 · BL-12 manual 보호 · 원화 현금 가드.
+
+### S-1b에서 새로 기록한 backlog
+
+- **BL-18** — `ledger` 자산은 `assessPositionConsistency`에서 **값 불일치를 비교하지 않는다**
+  (거래 존재 여부만 본다). 부팅 sync가 곧 맞춰주므로 실害는 없으나 `manual`/`legacy`와 판정 기준이
+  비대칭이다. **이번에 의도적으로 확대하지 않았다.**
+- **BL-19** — legacy 자산은 `isTransactionTracked`가 true라 자산 상세의 **[수정]/[삭제] 버튼이
+  숨겨진다.** 즉 `LEDGER_UNKNOWN` 경고를 봐도 **그 화면에서 고칠 수는 없고**, 엑셀 재업로드나
+  거래 입력이 유일한 창구다. **BL-8 영역이라 건드리지 않았다.**
+
+### 기존 backlog (그대로 유지)
+
+BL-7 / BL-7a · BL-8 · BL-13 · BL-14 · BL-15 · BL-16 · BL-17 · B-3 · T-1/T-2 · BL-1 · BL-9/10/11
+
+### 다음 단계
+
+1. **Security Remediation Plan** ← **현재 최우선. S-1b와 별도 트랙.**
+2. SW v220 release (S-1 D-3 + S-1b를 함께 내보낸다) — PM 승인 대기
+3. 위 backlog는 PM이 개별 승인할 때만 진행한다
+
+---
+
 ## 최근 세션 요약 — V1.1 **S-1 D-3 ✅ CLOSED** (부팅 자동 sync가 legacy를 덮어쓰지 않는다) **v219 유지**
 
 > **상태: CLOSED (PM 판정 GO · 완료 처리).**
