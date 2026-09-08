@@ -58,7 +58,8 @@
 - V1.0 FINAL 완료
 - 현재 V1.2-B는 **자산/거래내역 정합성** 중심.
 - 우선순위였던 BL-17 → BL-18은 각각 v224 / v225로 **RESOLVED** — 아래 5장 참고.
-- **V1.2-B closeout**: BL-17(v224)/BL-18(v225) 두 항목 모두 RESOLVED로 확정. BL-19 correction-path UX는 이번 closeout 범위에 포함되지 않으며 여전히 **OPEN**이다 — BL-17/18이 끝났다고 BL-19 착수가 자동 승인된 것은 아니며, 별도 PM 작업지시가 있어야 시작한다.
+- **V1.2-B closeout**: BL-17(v224)/BL-18(v225) 두 항목 모두 RESOLVED로 확정. BL-19 correction-path UX는 그 closeout 범위에 포함되지 않았고, 이후 **V1.3에서 PM 승인 하에 Option 1(TEXT-ONLY)로 구현되어 v226으로 RESOLVED** 되었다(§5 참고).
+- **V1.3 현재 상태**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 완료. Bond Domain은 READ-ONLY audit만 수행했고 구현하지 않았다 — 정의 backlog(BOND-DEF-01~05, §9-2)를 확보한 상태이며, 다음 V1.3 우선순위는 PM이 별도로 결정한다(audit 완료가 Bond 구현 착수 승인을 의미하지 않는다).
 - V1.2-B에서는 대규모 UX/기능 확장을 하지 않는다.
 
 ## 4. Current V1.2-A Resolved
@@ -156,10 +157,31 @@
 - **잔여 미결(이번 범위 밖, 별도 유지)**: "같은 id가 기기마다 다른 positionSource를 가질 수 있는가"(이론적, 실제 발생 가능성 미확정) — 이번 release로 해결하지 않았으며 별도 미결 이슈로 유지한다.
 - **상태**: **PM 최종 승인 완료(RESOLVED).**
 
-### BL-19 correction-path UX — OPEN / P2
+### BL-19 correction-path UX — **RESOLVED** (v226)
+
+현재 이슈(원본, 기록 보존):
 - LEDGER_UNKNOWN 경고는 존재한다.
 - 거래내역 수정으로 교정할 수 있지만 현재 경고에서 그 경로를 충분히 안내하지 않는다.
 - 구현 전 BL-17/18 영향과 함께 최소 UX 개선안을 확정한다.
+
+**PM 결정(Option 1 — TEXT-ONLY 승인)**: 경고 문구를 강화하되 자동 교정도, 이동 버튼/링크도 만들지 않는다. `assessPositionConsistency()`(js/06)의 판정 로직은 변경하지 않고, 그 함수가 **이미 계산해 반환하던** `ledgerQuantity`/`ledgerBuyPrice`를 현재 자산값과 나란히 보여주는 것으로 한정한다.
+- **구현(코드)**: `js/08-detail-modal-fx.js` 1개 파일 — `renderAssetDetailPositionNotice()`에 상태별 상세 줄 조립(`buildPositionNoticeDetailLines()`)을 추가. `assessPositionConsistency()`·판정 기준·positionSource·게이팅 전부 무변경.
+- **상태별 안내**: `LEDGER_UNKNOWN`/`MANUAL_WITH_TX` → "현재 자산 — 수량/매입단가" + "거래내역 기준 — 수량/매입단가" 대조 + 확인할 화면 안내. `MANUAL_WITH_TX`는 manual 자산이 SoT라는 사실(거래내역은 참고용)을 함께 안내한다(BL-8 유지). `LEDGER_WITHOUT_TX` → 대조값이 애초에 계산되지 않는 상태이므로 값 없이 "거래내역이 남아 있는지 확인" 안내만. `OWNER_UNASSIGNED` 등 BL-19 범위 밖 상태는 기존 문구 그대로.
+- **내부 상태 코드 비노출**: `LEDGER_UNKNOWN` 같은 내부 코드명을 사용자 문구에 노출하지 않는다(e2e/71이 고정).
+- **버튼/링크 0 유지**: `#assetDetailPositionNotice` 내부 `button/a = 0`이라는 기존 안전 정책(`e2e/52` F-UI, "자동 해결 버튼을 두지 않는다")을 그대로 유지했고, 그 assertion을 완화하지 않았다. 거래내역 탭으로의 이동은 버튼이 아니라 문장 안내로만 한다(PM이 Option 2를 명시적으로 제외).
+- **신규 회귀 테스트**: `e2e/71-v13-bl19-position-notice-detail.spec.js`(6건) — 실제 값 일치(화면 숫자 = `assessPositionConsistency()` 실제 반환값), 상태별 문구, 내부 코드 비노출, `interactiveCount === 0`, 375px 다크모드 오버플로/폰트.
+- **Release**: v226.
+- **상태**: **PM 최종 승인 완료(RESOLVED).**
+
+### P1-1 종합 위험점수 범위 고지 — **RESOLVED** (v226)
+
+**배경(감사 정정 포함)**: Bond audit 과정에서 "종합 위험점수 헤드라인에 계산 대상 고지가 없다"고 보고했으나, 구현 착수 전 재확인 결과 **메인 RISK 카드에는 이미 존재**했다 — `#riskScopeNote`(index.html, 문구는 `updateRealEstateGuidanceText`(js/03)가 부동산 보유 여부에 따라 교체)가 RISK 헤드라인 바로 아래·점수 렌더 영역 바로 위에 상시 노출되며, `e2e/40` "5"가 이미 그 문구를 고정하고 있었다. **실제로 누락된 지점은 위험 경고 팝업(`riskAlertModal`) 한 곳**이었다.
+- **구현(코드)**: `js/10-risk-translation-alerts.js` 1개 파일 — `openRiskAlertModal()`의 점수 박스에 "진단 대상: 주식·ETF 보유분만 해당(현금·채권·부동산 제외)" 한 줄 추가.
+- **Risk 계산 무변경**: `RISK_ELIGIBLE_CATEGORIES`(`['주식','ETF']`, js/09) · 위험점수 산식 · 6대 요인 · Risk Universe 전부 그대로. 채권/현금/부동산을 Universe에 추가하지 않았고 Macro→Risk 정량 연결도 만들지 않았다.
+- **기존 문구와의 관계**: 범위 고지(어떤 자산이 대상인가)와 기존 성격 고지("이 점수는 가격 변동 위험만 봅니다", Phase 39)는 서로 다른 축이며 충돌하지 않는다 — 둘 다 유지된다.
+- **신규 회귀 테스트**: `e2e/72-v13-p1-1-risk-scope-notice.spec.js`(6건) — 카드·팝업 두 자리 모두 고지 노출, 채권/현금/부동산 비중이 큰 포트폴리오에서도 유지, Risk 계산값 불변, 기존 안내와 의미 충돌 없음, 375px 다크모드.
+- **Release**: v226.
+- **상태**: **PM 최종 승인 완료(RESOLVED).**
 
 ## 6. V1.1 SoT / Data Preservation — RESOLVED
 
@@ -229,6 +251,38 @@
 - 전역 refresh에 개별 채권 상세조회/검색을 넣지 않는다.
 - 금리·가격·YTM·현금흐름·만기상환·중도매도·재투자·신용위험 모델을 먼저 정의한 후 UI를 설계한다.
 - Bond domain은 별도 Phase에서 PM 승인 후 진행한다.
+
+### 9-1. Bond Domain READ-ONLY Audit 결과 (V1.3, 코드 변경 0건)
+
+**결론**: 이번 audit 범위에서 **새로운 P0/P1 구현 버그는 확인되지 않았다**. 현재 Bond 관련 구현은 대부분 의도가 코드 주석에 명시된 단순화이며, 남은 쟁점은 구현 결함이 아니라 **정책/경제적 모델 정의가 선행되어야 하는 사항**이다.
+
+**확인된 현재 구현 사실(감사 시점 v225 기준)**:
+- **개별채권**(티커 없음 → `classifyCategory`가 `'채권'` 확정, js/01): `NON_TRADABLE_CATEGORIES`로 시세조회 대상에서 제외(js/11) → `currentPrice`는 **사용자가 마지막으로 입력한 값이 그대로 유지**된다(시장가 재평가 없음). quantity/buyPrice/거래내역/positionSource는 다른 자산과 동일한 규칙(BL-8/D-3 포함)을 따른다.
+- **채권 ETF**(티커 있음 → `'ETF'`로 분류): 가격/변동성/Risk는 일반 ETF 파이프라인을 그대로 쓰되, **Return Assumption에서는 채권 성격을 별도로 인식할 수 있다** — `resolveAssetCharacter`(js/05)가 ①ETF 구성정보 채권100%(high) ②이름 키워드(medium) 순으로 `BOND` 성격을 판정한다. 즉 μ는 채권 가정, σ는 실측 시장변동성이 될 수 있다.
+- **혼합형 상품 보호**: 이름에 '혼합' 등이 있으면 어떤 단일 성격으로도 판정하지 않고 `UNRESOLVED`로 남긴다(Phase 45) — 가정이 자동으로 붙지 않고 사용자 확인을 요청한다.
+- **`BOND` Return Key**: `preset.categories['채권']`(js/05), 근거는 한국 국고채 CMA, `RETURN_KEY_REGION`상 **국내(KRW) 전용**이며 통화/시장이 다른 해외채권에는 **자동 추천하지 않는다**(근거 없는 숫자를 만들지 않는다는 기존 원칙).
+- **`BOND.STOCK`**: system default 없음 · user-defined · 자동 키워드 매칭 가능 · 값 미등록 시 "가정 없음" · 지역 폴백 없음(기존 정책 그대로, 아래 BOND-DEF-04 참고).
+- **개별채권 σ=0**: `isRiskFree`(js/16)로 채권/현금에 부여되는 **명시적 모델링 결정**이며, "데이터 부족"과는 코드상 분리되어 있다 — 위험자산의 가격 이력이 없으면 σ=0으로 채우지 않고 **계산을 중단하는 오류**를 낸다(Phase 3-5 B1). 다만 duration/credit/만기/발행주체를 구분하지 않는 단순화이며, 상관행렬에서도 채권은 무상관으로 처리된다.
+- **Risk Universe**: `RISK_ELIGIBLE_CATEGORIES = ['주식','ETF']`(js/09) — 개별채권은 제외된다. 이 사실의 사용자 고지는 P1-1(v226)에서 팝업까지 보강 완료.
+- **Rebalance / Excel / Cloud sync / categorySource / positionSource**: Bond 전용 분기가 없으며 다른 카테고리와 동일하게 처리된다(BL-17/BL-18 정책이 그대로 적용됨) — **정상**.
+
+**감사 정정 노트(기존 기록은 삭제하지 않고 아래를 덧붙임)**:
+1. 최초 audit 보고에서 "종합 위험점수 헤드라인에 범위 고지가 없다"고 했으나, **메인 RISK 카드에는 `#riskScopeNote`로 이미 존재**했다. 실제 누락 지점은 `riskAlertModal`이었고 v226에서 보강했다(§5 P1-1 참고).
+2. 최초 audit 보고에서 "채권 ETF는 일반 ETF와 완전히 동일하게 취급된다"고 했으나 부정확하다. **Return Assumption 경로에서는 채권 성격을 별도로 인식**한다(위 확인 사실 참고).
+
+### 9-2. Bond 정의 Backlog (구현하지 않음 — 정책 결정 선행 필요)
+
+아래 항목은 "미완료"가 아니라 **구현 버그가 아닌, 경제적 모델/정책 정의가 선행되어야 하는 backlog**다.
+
+| ID | 항목 | 현재 상태 | 지금 구현하지 않는 이유 | 선행 정책 결정 | 예상 영향 범위 |
+|---|---|---|---|---|---|
+| BOND-DEF-01 | 개별채권의 경제적 의미 정의 | 사용자 입력 평가값을 유지하는 자산으로 동작 | 액면/쿠폰/만기/YTM을 어디까지 표현할지 미정 | 개별채권을 만기보유 전제로 볼지, 시가평가 대상으로 볼지 | js/01·05·16, 자산 입력 UI |
+| BOND-DEF-02 | 개별채권 `currentPrice`의 사용자 고지 여부 | 고지 없음 | 문구가 "고정가치"로 오해되지 않게 정의 필요 | 고지 문구의 정확한 표현 | js/07·08(표시만) |
+| BOND-DEF-03 | 개별채권 σ=0 모델의 장기 타당성 | 의도된 risk-free 모델링 | duration/credit 도입은 MC 입력 체계 변경 필요 | 채권을 위험자산으로 편입할지 | js/16, MC 전반 |
+| BOND-DEF-04 | BOND.STOCK 상품 성격 분리 | 자동 판정은 UNRESOLVED로 이미 차단, 사용자 수동 지정은 허용 | 사용자가 만든 키의 자유도이며 앱이 임의로 갈라놓지 않음 | 혼합형 키를 앱이 분리 제안할지 | js/05, 수익률 관리 UI |
+| BOND-DEF-05 | 해외채권 Return Key 필요성 | Key 없음 → 가정 없음 처리 | 근거 CMA 미확보 상태에서 숫자를 만들지 않음 | 해외채권 CMA 출처 확정 | js/05 |
+
+**금지 유지**: duration·credit rating·yield curve·spread·bond pricing engine·채권 전용 Monte Carlo·Risk Universe 확대는 PM의 별도 승인 없이 구현하지 않는다.
 
 ## 10. Macro / Risk
 
@@ -335,9 +389,11 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - V1.2-A v222 — RESOLVED / FINAL RELEASE PASS
 - V1.2-B BL-17 — **RESOLVED / v224 RELEASE PASS**(최초 기능 릴리즈 v223, `da1948e`) — categorySource localStorage persistence hotfix 및 Cloud merge category/categorySource pair 보호 정책 포함
 - V1.2-B BL-18 — **RESOLVED / v225 RELEASE PASS**(`18c0295`) — Cloud merge 후 `syncAssetsFromTransactions({auto:true})` 재동기화로 ledger asset position을 merged transaction 기준과 일치시킴
-- V1.2-B closeout — BL-17/BL-18 모두 RESOLVED. BL-19는 이번 closeout에 포함되지 않고 OPEN 유지.
-- V1.2-B BL-19 — OPEN
-- Bond domain — BACKLOG / 별도 Phase
+- V1.2-B closeout — BL-17/BL-18 모두 RESOLVED. BL-19는 그 closeout에 포함되지 않았고, 이후 V1.3에서 RESOLVED 처리되었다(아래).
+- V1.3 BL-19 — **RESOLVED / v226 RELEASE PASS** — correction-path 안내 강화(Option 1 TEXT-ONLY): 현재 자산값 vs 거래내역 기준값 대조 표시 + 확인 경로 문장 안내, `assessPositionConsistency()` 무변경, `#assetDetailPositionNotice` 내부 button/link = 0 정책 유지
+- V1.3 P1-1 — **RESOLVED / v226 RELEASE PASS** — 종합 위험점수 범위 고지: 메인 RISK 카드는 기존 `#riskScopeNote`로 이미 충족되어 있었고, 누락 지점이던 `riskAlertModal`에만 동일 고지 추가. Risk 계산/산식/Universe 무변경
+- V1.3 Bond Domain Audit — **READ-ONLY 완료 / 코드 변경 0건** — 신규 P0/P1 구현 버그 없음. 정의 backlog(BOND-DEF-01~05)를 §9-2에 기록하고 구현은 보류(정책 결정 선행 필요)
+- Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
 ## 16. Source Repository Data-Safety Rule
