@@ -507,7 +507,17 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
         rateMatchOverride: (typeof a.rateMatchOverride === 'string' && a.rateMatchOverride.trim() !== '') ? a.rateMatchOverride.trim() : undefined,
         // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
-        role: parseAssetRoleInput(a.role)
+        role: parseAssetRoleInput(a.role),
+        // [V1.1 Phase 1 - BL-7a] 이 한 줄이 빠져 있었다. 백업 파일에는 positionSource가 정상적으로
+        // 들어 있는데(buildSyncBlob) 여기서 읽지 않아 undefined가 되고, 그러면 아래 병합의
+        // carryOverPositionSource가 "파일에 값이 없다"고 보고 로컬 기존 자산의 값으로 채워 넣었다.
+        // 그 결과 파일이 manual인데 로컬이 ledger면 복원 후 ledger가 됐다 - 백업에 없던 표식이
+        // 복원본에 붙는 셈이라, 다음 부팅에 거래원장이 수량을 덮어쓸 수 있었다(실측).
+        // [덮어쓰기와 같은 규칙] normalizeImportedAsset과 똑같은 sanitizePositionSource를 쓴다 -
+        // 두 복원 경로가 다르게 판단하면 "덮어쓰기로는 살아남는데 추가하기로는 뒤집히는" 상태가 된다.
+        // 파일에 값이 없으면 예전 그대로 undefined로 두고, carryOverPositionSource의 legacy 규칙에
+        // 맡긴다 - 여기서 거래 유무나 이름으로 추론해 채우지 않는다.
+        positionSource: sanitizePositionSource(a.positionSource)
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
@@ -688,14 +698,27 @@ async function applyRemoteState(parsed) {
   // 쪽도 선택하지 않음 - 사용자가 [서버 동기화중지]로 끄고 확인하거나, 그대로 두면 곧 반영된다).
   applyingRemoteUpdate = true;
   try {
-    state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map(normalizeImportedAsset);
+    // [V1.1 Phase 1 - BL-15] 복원한 레코드의 updatedAt을 "지금"으로 찍는다.
+    // 백업 파일에 적힌 시각은 정의상 항상 과거다. 그대로 복원하면 복원 직후 동기화에서
+    // 원격이 무조건 더 최신이 되어, 방금 되돌린 값이 그대로 다시 뒤집혔다(실측 100 -> 70).
+    // 게다가 이 함수는 아래에서 병합 기준선을 비우고 lastVersion을 0으로 되돌려 다음 pull이
+    // 반드시 병합하게 만들므로, 그 되돌림이 사실상 확정적이었다.
+    // [의미 왜곡이 아니다] updatedAt은 "이 레코드가 마지막으로 실제 변경된 시각"이고,
+    // 사용자가 덮어쓰기를 실행한 것은 그 자체로 실제 변경이다. 배경 시세 갱신이 이 값을
+    // 건드리지 않는 것과 같은 기준이다(persistAssets의 skipPush 주석 참고).
+    // [추가하기와 같아진다] 추가하기 경로는 updatedAt을 읽지 않아 loadState가 Date.now()로
+    // 백필해 왔고, 그래서 그쪽만 복원이 살아남았다 - 두 복원 경로의 결과를 일치시킨다.
+    const restoredAt = Date.now();
+    state.assets = (Array.isArray(parsed.assets) ? parsed.assets : []).map((a) => ({ ...normalizeImportedAsset(a), updatedAt: restoredAt }));
     state.dayChangeMap = {};
     state.prevCloseMap = {};
     state.sessionMap = {};
     state.priceFetchFailedIds = new Set();
     applyRemoteScalarFields(parsed);
     if (Array.isArray(parsed.transactions)) {
-      state.transactions = parsed.transactions.map(normalizeImportedTransaction);
+      // 거래내역도 같은 병합 규칙(mergeCollectionById)을 타므로 자산과 같은 이유로 함께 찍는다 -
+      // 한쪽만 보호하면 복원이 절반만 살아남는다.
+      state.transactions = parsed.transactions.map((t) => ({ ...normalizeImportedTransaction(t), updatedAt: restoredAt }));
       persistTransactions();
     }
     // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
@@ -831,6 +854,23 @@ function applyRemoteScalarFields(parsed, opts) {
 //   - 원격에만 있음 + lastSyncedIds에 없었음  -> 상대가 새로 만든 항목 -> 살림
 // 양쪽에 다 있으면 updatedAt이 더 최신인 쪽을 통째로 채택한다(필드 단위 병합은 하지 않음 - 부부 2인
 // 저빈도 편집 환경에서는 "레코드 단위 최신 채택"으로 충분하고 필드별 병합보다 훨씬 예측하기 쉽다).
+// [V1.1 Phase 1 - BL-13/BL-16] "상대 레코드에 없는 값"이 "여기 있는 값"을 지우지 않게 한다.
+// 이 병합은 레코드를 통째로 채택하므로, 상대가 이 필드를 아예 몰랐던 구버전 기기여도 그 레코드가
+// 더 최신이기만 하면 이쪽의 값이 통째로 사라졌다 - 사용자가 직접 입력한 positionSource가 그렇게
+// 사라지면 다음 부팅에 거래원장이 수량까지 덮어쓴다(실측).
+//
+// [왜 이 두 필드만인가] 앱에 "이 값을 지운다"는 조작이 없는 필드만 담는다 - 그래야
+// "값이 없다 = 그 버전이 몰랐다"가 참이 된다.
+//   positionSource : 이 값을 undefined로 대입하는 코드가 저장소 전체에 0건이다.
+//   buyRate        : 사용자가 비울 수 있는 입력칸이 없고, 거래원장 동기화가 USD일 때만 채울 뿐
+//                    지우지 않는다. 값이 없으면 calcRow가 오늘 환율로 폴백해 원가가 왜곡된다.
+// role과 rateMatchOverride는 일부러 제외했다 - 거래 수정 모드에서 칸을 비우면 그것이 그대로
+// undefined로 저장되어(js/06) "사용자가 의도적으로 지움"을 뜻한다. 보호하면 지운 값이 되살아난다.
+//
+// [필드 단위 병합이 아니다] 승자를 고르는 규칙(updatedAt 최신승)은 그대로다. 양쪽에 값이
+// 있으면 언제나 승자 값을 쓴다 - 원격이 이겼는데 원격에 그 값이 아예 없을 때만 로컬 값을 남긴다.
+// 거래내역은 이 두 필드를 아예 갖지 않으므로 양쪽 모두 undefined가 되어 아무 일도 일어나지 않는다.
+const MERGE_PRESERVE_IF_ABSENT = ['positionSource', 'buyRate'];
 // [순수 함수 - 의존성 없음] 전역 num() 헬퍼조차 쓰지 않고 자체적으로 숫자 변환한다 - test/merge.test.js가
 // 이 파일 전체를 require()하지 않고도(브라우저 전용 top-level DOM 배선 코드가 많아 Node에서 그대로
 // 실행할 수 없다) 이 함수 하나만 순수 로직으로 독립 검증할 수 있게 하기 위함이다.
@@ -844,7 +884,21 @@ function mergeCollectionById(localArr, remoteArr, lastSyncedIds) {
     const l = localMap.get(id);
     const r = remoteMap.get(id);
     if (l && r) {
-      merged.push(toTs(r.updatedAt) > toTs(l.updatedAt) ? r : l);
+      const remoteWins = toTs(r.updatedAt) > toTs(l.updatedAt);
+      let picked = remoteWins ? r : l;
+      if (remoteWins) {
+        // [한 방향뿐이다] 원격이 이겼을 때 "여기 있던 값"이 사라지는 것만 막는다.
+        // 반대로 로컬이 이겼는데 로컬에 값이 없는 경우는 채우지 않는다 - 표식이 없는 legacy 자산에
+        // 원격의 옛 표식을 심으면 그것이 곧 legacy -> manual 자동 승격이 되어 정책 위반이다
+        // (e2e/52 I/J가 그 동작을 고정하고 있다).
+        MERGE_PRESERVE_IF_ABSENT.forEach((f) => {
+          if (picked[f] === undefined && l[f] !== undefined) {
+            if (picked === r) picked = { ...r }; // 원본 레코드를 변형하지 않는다
+            picked[f] = l[f];
+          }
+        });
+      }
+      merged.push(picked);
     } else if (l && !r) {
       if (!lastSyncedIds.has(id)) merged.push(l);
     } else if (r && !l) {
