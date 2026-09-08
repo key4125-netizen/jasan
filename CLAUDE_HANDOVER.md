@@ -32,6 +32,36 @@
 
 ---
 
+## 최근 세션 요약 — 🚀 **V1.1 Phase 1~5 Release Candidate** (v220 → v221)
+
+**릴리스 커밋** (인계 갱신과 같은 commit에 포함 — 진행 상황은 아래 상태표 참고)
+**SW v220 → v221.**
+
+> **push는 아직 하지 않았다.** 이 세션은 Phase 4·5 코드 커밋 + 이번 release metadata 커밋까지만
+> 만들고 PM의 별도 push 승인을 기다리는 중이다. 다음 세션이 이 상태를 그대로 이어받는다면,
+> `git status`/`git log`로 실제 push 여부를 다시 확인할 것 — 이 문서만 믿지 말 것.
+
+### V1.1 Scope Lock — Phase 1~5 완료 상태
+
+| Phase | 대상 | 상태 | 파일 | commit |
+|---|---|---|---|---|
+| 1 | BL-7a/13/15/16 (sync/restore가 사용자 입력값을 지우는 문제) | 완료 | `js/12` | `bae1658` |
+| 2 | T-1/T-2 (MC 원금 ↔ 목표 비중 모집단 불일치) + Safety 범위 안내 | 완료 | `js/05`, `js/21` | `67d9787` |
+| 3 | BL-11 (70:30 fallback 성격 조사) | **CASE D — 의도된 안전장치, 변경 없이 종결** | - | - |
+| 4 | BL-14 (KRW/USD 현금 고아정리 통화 비대칭) | 완료 | `js/06` | `4a0937d` |
+| 5 | BL-19 (legacy 불일치 경고 correction path 조사) | **CASE A — 기존 정책대로 정상, 변경 없이 종결** | - | - |
+| 5 | BL-8 (manual 자산이 거래 매칭 때문에 수정/삭제 UI가 막히던 문제) | 완료 | `js/08` | `611856f` |
+
+**Release Candidate 판정**: Phase 1~5 코드 전체가 정책·SoT·계산·보안·Scope Lock 대조에서 blocker 없이 통과. 이번 세션에서 `js/05·06·08·12`가 v220 릴리스 이후 각기 다른 시점에 바뀐 채 CACHE_NAME이 그대로였던 것(Release Guard가 지적한 상태 — Phase 1·2는 이미 origin/main에 push되어 있었으나 SW 미갱신으로 기존 사용자에게 전달 안 됨)을 이번 v221 릴리스 하나로 묶어 해소한다.
+
+### 다음 단계
+1. 이번 release metadata commit에 대한 PM 최종 승인.
+2. `git push` — Phase 4/5 코드 commit과 이번 release metadata commit을 한 번에 push (별도 push 승인 필요).
+3. push 후 GitHub Pages 배포 확인, Release Guard 재확인.
+4. V1.2 이하 backlog는 이 릴리스와 무관하게 별도 Phase로 진행.
+
+---
+
 ## 최근 세션 요약 — 🔒 **S-01 보안사고 종결** + 🚀 **v220 릴리스**
 
 > ## ⚠ History Rewrite Boundary — 이 문서를 읽는 모든 세션이 먼저 알아야 할 것

@@ -2,7 +2,19 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v220'; // [V1.1 Position Source Release] 자산의 수량을
+const CACHE_NAME = 'smart-asset-manager-v221'; // [V1.1 Scope Lock Release] Phase 1~5로 쌓인 다섯
+// 건의 수정이 js/05·06·08·12에 걸쳐 있었는데 v220 이후 CACHE_NAME이 그대로라 전달되지 않고 있었다.
+// ① 클라우드 병합·JSON 복원이 사용자가 입력한 positionSource/buyRate를 조용히 지우거나 되돌릴 수
+// 있던 경로 네 곳을 막았다(Phase 1). ② 몬테카를로 원금이 목표 비중 계산 대상과 다른 자산 집합(절세
+// 계좌·부동산까지 포함)을 더해 두 계산이 서로 다른 자산을 보고 있었다(Phase 2). ③ 거래를 지울 때
+// 고아 정리가 원화만 보호하고 달러 현금은 놓쳐, ledger/legacy 달러 현금 자산이 마지막 거래 삭제
+// 후에도 수량이 그대로 남았다(Phase 4, BL-14). ④ positionSource='manual'인 자산이 우연히 거래와
+// 매칭되면 자산 상세의 [수정]/[삭제] 버튼이 숨겨져, manual 자산의 SoT가 자산 화면 자신임에도 사용자가
+// 직접 고치거나 지울 수 없었다(Phase 5, BL-8). BL-19(legacy 불일치 경고)와 BL-11(70:30 fallback)은
+// 조사 결과 기존 정책대로 정상 동작해 변경하지 않았다. cache-first라 CACHE_NAME을 올리지 않으면 위
+// 네 건 모두 기존 사용자에게 전달되지 않는다. 캐시 정책/APP_SHELL/install/activate/fetch 로직은
+// 일절 무변경.
+// [V1.1 Position Source Release] 자산의 수량을
 // 자산관리 화면과 거래내역 중 무엇이 관리하는지(positionSource)에 관한 수정 세 건이 js/06과
 // js/14에 쌓인 채 아직 전달되지 않았다. ① 거래를 지울 때 고아 자산 정리가 사용자가 직접 등록한
 // 자산까지 0으로 지웠다(실측 100 -> 0). ② 부팅 때 도는 자동 재계산이 원천을 알 수 없는 옛 자산을
