@@ -59,7 +59,7 @@
 - 현재 V1.2-B는 **자산/거래내역 정합성** 중심.
 - 우선순위였던 BL-17 → BL-18은 각각 v224 / v225로 **RESOLVED** — 아래 5장 참고.
 - **V1.2-B closeout**: BL-17(v224)/BL-18(v225) 두 항목 모두 RESOLVED로 확정. BL-19 correction-path UX는 그 closeout 범위에 포함되지 않았고, 이후 **V1.3에서 PM 승인 하에 Option 1(TEXT-ONLY)로 구현되어 v226으로 RESOLVED** 되었다(§5 참고).
-- **V1.3 현재 상태**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 완료. Bond Domain은 READ-ONLY audit만 수행했고 구현하지 않았다 — 정의 backlog(BOND-DEF-01~05, §9-2)를 확보한 상태이며, 다음 V1.3 우선순위는 PM이 별도로 결정한다(audit 완료가 Bond 구현 착수 승인을 의미하지 않는다).
+- **V1.3 — CLOSED**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 두 항목을 릴리즈하고 종료했다. Bond Domain은 READ-ONLY audit + Decision Gate만 수행했고 **production code는 변경하지 않았다** — BOND-DEF-01~05의 PM 최종 결정은 §9-3 참고. V1.3 종료가 Bond 구현 착수 승인을 의미하지 않으며, 다음 단계는 PM이 별도로 결정한다.
 - V1.2-B에서는 대규모 UX/기능 확장을 하지 않는다.
 
 ## 4. Current V1.2-A Resolved
@@ -284,6 +284,20 @@
 
 **금지 유지**: duration·credit rating·yield curve·spread·bond pricing engine·채권 전용 Monte Carlo·Risk Universe 확대는 PM의 별도 승인 없이 구현하지 않는다.
 
+### 9-3. Bond Definition Decision Gate — PM 최종 결정 (V1.3 종료)
+
+> **V1.3 Bond Definition Decision Gate 결과, 현재 production에서 수정이 필요한 P0/P1 이슈는 없으며, BOND-DEF-01~05는 각각 정책/모델 backlog 또는 현행 유지로 결정하였다. BOND-DEF-02는 유효한 소규모 UX 개선 후보이나 V1.3 범위에서는 구현하지 않는다.**
+
+| ID | PM 최종 결정 | 비고 |
+|---|---|---|
+| BOND-DEF-01 | **BACKLOG 유지** | 현재 구조를 변경하지 않는다. |
+| BOND-DEF-02 | **BACKLOG 유지** | 직접 입력한 채권 `currentPrice`가 자동 갱신되지 않는다는 사용자 안내. V1.3에는 구현하지 않으며, **향후 작은 UX 개선 후보로만** 기록한다. **P1이나 필수 개선사항으로 승격하지 않는다.** |
+| BOND-DEF-03 | **POLICY/MODEL BACKLOG** | 개별채권 σ=0 단순화. 현재 계산 구조를 변경하지 않는다. |
+| BOND-DEF-04 | **현행 유지** | BOND.STOCK 사용자 정의 Return Key. 추가 분리·자동 재분류하지 않는다. |
+| BOND-DEF-05 | **현행 유지** | 해외채권 Return Key. 근거 CMA가 없는 상태에서 임의 Key를 생성하지 않는다. |
+
+이 Decision Gate에서 **production code 변경은 0건**이었다(Bond 관련 코드 무변경).
+
 ## 10. Macro / Risk
 
 현재 macro:
@@ -393,6 +407,8 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - V1.3 BL-19 — **RESOLVED / v226 RELEASE PASS** — correction-path 안내 강화(Option 1 TEXT-ONLY): 현재 자산값 vs 거래내역 기준값 대조 표시 + 확인 경로 문장 안내, `assessPositionConsistency()` 무변경, `#assetDetailPositionNotice` 내부 button/link = 0 정책 유지
 - V1.3 P1-1 — **RESOLVED / v226 RELEASE PASS** — 종합 위험점수 범위 고지: 메인 RISK 카드는 기존 `#riskScopeNote`로 이미 충족되어 있었고, 누락 지점이던 `riskAlertModal`에만 동일 고지 추가. Risk 계산/산식/Universe 무변경
 - V1.3 Bond Domain Audit — **READ-ONLY 완료 / 코드 변경 0건** — 신규 P0/P1 구현 버그 없음. 정의 backlog(BOND-DEF-01~05)를 §9-2에 기록하고 구현은 보류(정책 결정 선행 필요)
+- V1.3 Bond Definition Decision Gate — **완료 / 코드 변경 0건** — BOND-DEF-01~05 각각 backlog 유지 또는 현행 유지로 PM 최종 결정(§9-3). BOND-DEF-02는 소규모 UX 개선 후보로만 유지하며 P1로 승격하지 않는다
+- **V1.3 — CLOSED** — BL-19(v226) + P1-1(v226) 릴리즈 완료, Bond는 추가 구현 없이 종료
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 

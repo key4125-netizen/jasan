@@ -53,8 +53,10 @@ PM 주도 거버넌스 세션. 한 세션에서 v223~v226까지 4번 릴리즈�
 - 신규 P0/P1 **구현 버그 없음**. 남은 쟁점은 전부 정책/모델 정의 문제라 `BOND-DEF-01~05` backlog로만 남겼다.
 - 알아둘 사실: 개별채권(티커 없음)은 `NON_TRADABLE_CATEGORIES`라 시세조회에서 빠지고 `currentPrice`가 **사용자 입력값 그대로 유지**된다. 채권 ETF는 가격/변동성/Risk는 ETF 경로지만 **Return Assumption에서는 `resolveAssetCharacter`가 채권 성격을 따로 인식**한다(감사 1차 보고의 "일반 ETF와 완전 동일" 서술은 정정됨). 개별채권 σ=0은 `isRiskFree`(js/16)의 **의도된 모델링**이며 "데이터 부족"과는 코드상 분리돼 있다(Phase 3-5 B1).
 
+**🔚 V1.3 CLOSED (PM 최종 결정)** — BL-19(v226) + P1-1(v226) 릴리즈로 종료. Bond는 Decision Gate까지 마치고 **production code 변경 0건**으로 닫았다. BOND-DEF-01/02는 BACKLOG 유지, 03은 POLICY/MODEL BACKLOG, 04·05는 현행 유지(체크리스트 §9-3). **BOND-DEF-02(직접 입력 채권 currentPrice 자동 갱신 안 됨 안내)는 소규모 UX 개선 후보일 뿐이며 P1로 승격하지 않는다** — 다음 세션이 이걸 "해야 할 일"로 오해하지 말 것.
+
 **⚠️ 다음 세션이 반드시 알아야 할 것**
-1. **Bond 구현을 임의로 시작하지 말 것.** audit이 끝났다는 것이 구현 승인이 아니다 — 다음 V1.3 우선순위는 PM이 별도로 정한다.
+1. **Bond 구현을 임의로 시작하지 말 것.** audit·Decision Gate가 끝났다는 것이 구현 승인이 아니다 — V1.3은 CLOSED이고 다음 단계는 PM이 별도로 정한다.
 2. `.claude/launch.json`은 이 PC의 로컬 변경이라 **계속 커밋 대상이 아니다**(unstaged로 남겨둔다).
 3. `e2e/06-mc-run-cancel`(MC 워커 시작 타이밍)과 `e2e/31-phase25-mobile`(뷰포트 렌더링)은 **전체 스위트에서 간헐적으로 1건 실패**하는 기존 flaky다. 격리 재실행·전체 재실행에서 모두 통과함을 확인했으니, 이 둘이 뜨면 먼저 재실행해 flaky인지 구분할 것.
 4. 미결로 남은 이론적 이슈: "같은 id가 기기마다 다른 `positionSource`를 가질 수 있는가"(실제 발생 가능성 미확정).
