@@ -840,6 +840,10 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     owner: document.getElementById('f_owner').value,
     accountType: document.getElementById('f_accountType').value.trim() || '일반계좌',
     category: document.getElementById('f_category').value.trim() || '주식',
+    // [V1.2-B BL-17] 이 화면(추가/수정 공용)은 저장 직전에 사용자가 반드시 눈으로 보는 유일한
+    // category 입력 경로다 - 자동추천(autoClassifyModal)이 채웠든 사용자가 직접 고쳤든, 이 값을
+    // 보고 저장 버튼을 눌렀다는 사실 자체가 확정이다(PM 확정: 추천 → 저장 = 확정).
+    categorySource: 'user',
     name,
     isDomestic: document.getElementById('f_isDomestic').value,
     currency: document.getElementById('f_currency').value,

@@ -2,7 +2,18 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v222'; // [V1.2-A Macro/Risk Clarity Release] 매크로 지표
+const CACHE_NAME = 'smart-asset-manager-v223'; // [V1.2-B BL-17 Category Confirmation Release]
+// "확인되지 않은 자산 분류를 확인된 사실처럼 저장하지 않는다"는 정책을 위해 category와 별도로
+// categorySource('user'/'system'/legacy 미지정)를 도입했다(js/01·07·12) - 신규 자산 폼 저장은 항상
+// 확정(user), Excel 셀이 비었으면 기존 확정값을 그대로 보존하고 값이 있으면(유효/오염 불문) 그
+// 입력을 우선 처리하며, JSON/Cloud도 같은 규칙을 공유한다. 특히 가족 동기화(Cloud Sync)에서
+// category(값)와 categorySource(확정 표식)가 서로 다른 기기의 레코드에서 결합되어 "확인한 적 없는
+// 분류에 확정 표식이 붙는" 결합 오류를 막기 위해, 이 둘을 항상 하나의 논리적 쌍으로만 이월하도록
+// mergeCollectionById를 고쳤다(js/12) - 기존 positionSource/buyRate 보존 규칙과 record-level 최신승
+// 구조는 그대로 두었다. 계산 로직(deterministic/MC/Risk/Return Key/rebalance/Macro/Safety)은 전혀
+// 건드리지 않았다. cache-first라 CACHE_NAME을 올리지 않으면 이 확정 여부 추적이 기존 사용자에게
+// 전달되지 않는다. 캐시 정책/APP_SHELL/install/activate/fetch 로직은 일절 무변경.
+// [V1.2-A Macro/Risk Clarity Release] 매크로 지표
 // (VIX/원달러/미10년물/금/달러인덱스/코스피 등)가 조회에 실패해도 이전 값을 그대로 보여주는 기존
 // 정책은 그대로 두되, "그 값이 마지막으로 언제 실제 조회에 성공했는지"를 지표 상세 팝업에서 확인할
 // 수 있게 했다(js/01·09·10·11) - 판단성 문구(위험/오래됨 등)나 새 stale 기준은 만들지 않았다.

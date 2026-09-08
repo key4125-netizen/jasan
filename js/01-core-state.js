@@ -345,6 +345,35 @@ function sanitizeAssetCategory(raw) {
   return ASSET_CATEGORIES.includes(v) ? v : undefined;
 }
 
+/* [V1.2-B BL-17] category 값 자체와 별도로 "누가 이 값을 확정했는가"만 표시한다 - positionSource와
+ * 똑같은 모양의 문제(값은 그대로 두고 출처만 별도 관리)라 같은 패턴(POSITION_SOURCES/
+ * sanitizePositionSource)을 그대로 재사용한다.
+ *   'user'   : 사용자가 직접 입력했거나(엑셀 셀에 값을 적음), 화면에 보이는 값을 보고 저장 버튼을
+ *              눌렀다(추천값을 그대로 받아들인 경우 포함 - PM 확정: 추천 → 저장 = 확정).
+ *   'system' : classifyCategory 추천값이 아직 사용자 확인 없이 그대로 채워진 상태.
+ *   undefined: 이 필드 자체가 없던 시절의 legacy 데이터. 출처를 알 수 없으므로 user/system 어느
+ *              쪽으로도 소급 확정하지 않는다(PM 확정 - 자동 migration 금지).
+ * [절대 추론하지 않는다] 다른 필드(거래 존재 여부, 이름 등)를 보고 이 값을 짐작하지 않는다. */
+const CATEGORY_SOURCES = Object.freeze(['user', 'system']);
+function sanitizeCategorySource(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const v = String(raw).trim();
+  return CATEGORY_SOURCES.includes(v) ? v : undefined;
+}
+
+/* [V1.2-B BL-17] JSON append/overwrite·Cloud sync 세 경로가 전부 이 함수 하나로 category/
+ * categorySource를 결정한다 - 경로마다 다르게 판단하면 "이 경로로는 확정이 살아남는데 저 경로로는
+ * 사라지는" 상태가 재발한다(Phase 1 BL-7a와 같은 종류의 함정).
+ * 파일에 유효한 category가 있으면 그 값을 그대로 쓰고(그 파일이 준 categorySource도 함께 보존 -
+ * 없으면 undefined로 남아 legacy 취급된다), 없으면(빈 칸/지원하지 않는 값) classifyCategory로
+ * 최소한의 추천만 채우고 categorySource='system'으로 "아직 확인되지 않았다"고 표시한다 - 예전처럼
+ * 무조건 '주식'으로 확정하지 않는다. */
+function resolveImportedCategory(a) {
+  const explicit = sanitizeAssetCategory(a && a.category);
+  if (explicit) return { category: explicit, categorySource: sanitizeCategorySource(a && a.categorySource) };
+  return { category: classifyCategory(a && a.ticker, a && a.name), categorySource: 'system' };
+}
+
 // 자산 식별자. 엑셀에 적힌 값을 그대로 되살리되, 빈 칸이나 이상한 값이면 undefined를 돌려줘
 // 호출부가 새 id를 만들게 한다(구형 엑셀에는 이 칸이 아예 없다).
 function sanitizeAssetId(raw) {
@@ -835,6 +864,12 @@ function makeAsset(raw) {
   const ticker = tickerStr;
   const name = String(raw.name ?? '').trim() || '이름없음';
   const { category, isDomestic: autoIsDomestic } = deriveDefaults(ticker, name, raw.currency);
+  // [V1.2-B BL-17] 이 호출이 명시적인(지원되는) category를 받았는지가 곧 "사용자 확정"의 신호다 -
+  // 엑셀 셀에 값이 있었거나(js/12가 이미 sanitizeAssetCategory로 걸러 넘김), 자산 폼이 화면에 보이는
+  // 값을 그대로 넘긴 경우(js/07)가 여기 해당한다. 값이 없으면(엑셀 공란, 거래원장에서 자산이 막
+  // 태어나는 경우 등) 위에서 이미 계산해 둔 classifyCategory 추천값을 쓰고 'system'(미확인)으로
+  // 표시한다 - 예전처럼 조용히 '주식' 확정으로 저장하지 않는다.
+  const explicitCategory = sanitizeAssetCategory(raw.category);
   const isDomestic = normalizeIsDomestic(raw.isDomestic, autoIsDomestic);
   // 통화 기본값은 국내/해외 판별 결과를 따르되(국내→KRW, 해외→USD), '통화' 컬럼이 명시되어 있으면 그 값이 최종 우선한다.
   const defaultCurrency = isDomestic === '해외' ? 'USD' : 'KRW';
@@ -851,7 +886,10 @@ function makeAsset(raw) {
     // 유효하지 않으면 화면이 "소유자를 지정해 달라"고 말한다 - 빈 값을 신랑/와이프로 몰래 채우지 않는다.
     owner: String(raw.owner ?? '').trim(),
     accountType: String(raw.accountType ?? '').trim() || '일반계좌',
-    category: raw.category || category,
+    category: explicitCategory || category,
+    // [V1.2-B BL-17] categorySource 자체를 raw로 받지 않는다 - 이 함수는 "지금 이 호출이 명시적
+    // category를 줬는가"만으로 판단해야 한 곳(makeAsset)에서 항상 같은 규칙이 적용된다.
+    categorySource: explicitCategory ? 'user' : 'system',
     name,
     isDomestic,
     currency,
@@ -1510,5 +1548,12 @@ function searchAssetsByQuery(query) {
     const hay = [a.name, a.ticker, a.accountType, a.owner].map(v => String(v ?? '').toLowerCase()).join(' ');
     return hay.includes(q);
   });
+}
+
+// [V1.2-B BL-17] test/*.test.js가 js/12-import-export-sync.js와 같은 방식(가짜 DOM + require)으로
+// category/categorySource 판단 함수를 순수 로직만 독립 검증할 수 있게 한다 - 브라우저에서는 이 분기가
+// 조용히 건너뛰어진다(module/exports가 브라우저 전역이 아니므로).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset };
 }
 

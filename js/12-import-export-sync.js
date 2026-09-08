@@ -162,6 +162,37 @@ function carryOverPositionSource(incoming, index) {
   return kept === undefined ? incoming : { ...incoming, positionSource: kept };
 }
 
+/* [V1.2-B BL-17 - PM 재확정] 엑셀/JSON 재업로드의 category 처리 원칙:
+ *   "기존 사용자 확정값은 빈 셀 때문에 사라지지 않는다. 그러나 새로운 category 값이 명시적으로
+ *   입력된 경우에는(유효하든, 앱이 모르는 값이든) 그 새 입력을 우선 처리한다."
+ * 판단 기준은 오직 "이번 파일이 이 행의 category 칸에 뭐라도(공백 제외) 적어 뒀는가" 하나뿐이다 -
+ * 그 칸에 적힌 값이 유효한지 아닌지, 기존 값이 user/system/legacy 중 무엇이었는지는 이 판단에
+ * 전혀 관여하지 않는다(칸이 비었으면 기존 값을 종류 불문 그대로 이어받고, 칸에 뭐라도 있으면 그
+ * 값에 대한 makeAsset/resolveImportedCategory의 판단 - 유효하면 user, 오염이면 system - 을 그대로
+ * 채택한다). 그래서 buildCategorySourceIndex는 'user'만 걸러내지 않고 존재하는 기존 자산 전부를
+ * 색인한다 - system이나 legacy(categorySource 없음)도 "빈 칸"을 만나면 그대로 보존 대상이다. */
+function buildCategorySourceIndex(existingAssets) {
+  const byId = new Map(), byKey = new Map();
+  (existingAssets || []).forEach((a) => {
+    if (!a) return;
+    const entry = { category: a.category, categorySource: a.categorySource };
+    if (a.id) byId.set(a.id, entry);
+    byKey.set(assetMergeKey(a), entry);
+  });
+  return { byId, byKey };
+}
+// incoming.categoryCellRaw는 makeAsset()이 category/categorySource를 판정하기 전, 뭉개지기 전의
+// 원본 셀 텍스트다(위 imported 매핑/restored 매핑 참고) - 이 표식을 여기서 소비하고 반드시 제거한다
+// (state.assets/localStorage에는 절대 남지 않아야 한다).
+function carryOverCategorySource(incoming, index) {
+  const cellRaw = incoming.categoryCellRaw;
+  const clean = { ...incoming };
+  delete clean.categoryCellRaw;
+  if (cellRaw !== '') return clean; // 이번 파일이 이 칸에 뭐라도 적어 뒀다 - 유효/오염 불문 그 결과를 그대로 채택
+  const kept = index.byId.get(clean.id) || index.byKey.get(assetMergeKey(clean));
+  return kept === undefined ? clean : { ...clean, category: kept.category, categorySource: kept.categorySource };
+}
+
 function mergeAssetsForAppend(existingAssets, incomingAssets) {
   const merged = existingAssets.map((a) => ({ ...a })); // 원본 배열/객체를 직접 변형하지 않도록 복사
   const indexByKey = new Map(merged.map((a, i) => [assetMergeKey(a), i]));
@@ -170,14 +201,19 @@ function mergeAssetsForAppend(existingAssets, incomingAssets) {
     const key = assetMergeKey(incoming);
     const idx = indexByKey.get(key);
     if (idx === undefined) {
-      merged.push({ ...incoming });
+      // 이어받을 기존 자산이 없다 - carryOverCategorySource가 개입할 이유도 없으므로, 이번 파일 자체의
+      // 판단(makeAsset/resolveImportedCategory)을 그대로 쓴다. categoryCellRaw 표식만 정리해서 뺀다.
+      const newAsset = { ...incoming };
+      delete newAsset.categoryCellRaw;
+      merged.push(newAsset);
       indexByKey.set(key, merged.length - 1);
       newCount++;
       return;
     }
     const kept = merged[idx];
-    // 값은 전부 최신 파일 기준, id만 기존 것 유지. positionSource는 아래 공용 규칙이 이어받는다.
-    merged[idx] = carryOverPositionSource({ ...incoming, id: kept.id }, buildPositionSourceIndex([kept]));
+    // 값은 전부 최신 파일 기준, id만 기존 것 유지. positionSource/categorySource는 아래 공용 규칙이 이어받는다.
+    const withPosition = carryOverPositionSource({ ...incoming, id: kept.id }, buildPositionSourceIndex([kept]));
+    merged[idx] = carryOverCategorySource(withPosition, buildCategorySourceIndex([kept]));
     updatedCount++;
   });
   return { assets: merged, newCount, updatedCount };
@@ -234,43 +270,53 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       // [Phase 53] 한 파일 안에서 같은 id가 두 번 나오면(사용자가 행을 복사했거나 두 파일을 합친 경우)
       // 뒤에 오는 행에는 새 id를 준다 - 같은 id를 가진 자산 두 개는 클라우드 병합에서 서로를 덮어쓴다.
       const seenIds = new Set();
-      const imported = json.map(row => makeAsset({
-        // [Phase 53] 자산 식별자를 되살린다. 칸이 없는 구형 파일이나 빈 칸이면 undefined가 넘어가
-        // makeAsset이 예전처럼 새 id를 만든다.
-        id: (() => {
-          const id = sanitizeAssetId(pick(row, 'id', 'ID', 'Id'));
-          if (!id || seenIds.has(id)) return undefined;
-          seenIds.add(id);
-          return id;
-        })(),
-        ticker: pick(row, 'ticker', 'Ticker', 'TICKER'),
-        owner: pick(row, '소유자'),
-        accountType: pick(row, '계좌구분'),
-        name: pick(row, '종목명'),
-        isDomestic: pick(row, '국내/해외', '국내해외', '국내외'),
-        currency: pick(row, '통화', 'Currency', 'CURRENCY'),
-        quantity: pick(row, '수량'),
-        buyPrice: pick(row, '매수단가'),
-        // [Phase 53] 내보내기가 이미 적고 있던 자산군을 이제 실제로 읽는다. 예전에는 이 칸을 무시하고
-        // 이름 키워드로 다시 분류해서, 이름에 키워드가 없는 티커 없는 자산(전세보증금·생활비 통장 등)이
-        // 왕복마다 '주식'이 됐다. 그 결과가 표시만의 문제가 아니었다 - 원화 현금 보호막이
-        // asset.category === '현금'에 걸려 있어서 재분류된 순간 잔고가 거래원장 값으로 덮어써졌고
-        // (실측: 5,000,000 -> 100), assetMergeKey에도 category가 들어가 있어 [추가하기]가 같은 자산을
-        // 새 행으로 복제했다(실측: 3개 -> 6개). 앱이 지원하지 않는 값이면 undefined가 되어
-        // makeAsset이 예전처럼 자동분류로 되돌아간다(sanitizeAssetCategory, js/01).
-        category: sanitizeAssetCategory(pick(row, '자산군(자동분류)', '자산군', 'category')),
-        // [Phase 53] 매수 시점 환율. 칸이 없는 구형 파일에서는 undefined가 되어 calcRow의 기존
-        // 폴백(오늘 환율)이 그대로 동작한다 - 구형 파일의 동작을 바꾸지 않는다.
-        buyRate: pick(row, '취득환율(매수시점)', '취득환율', 'buyRate'),
-        // 선택 입력: 값이 있으면 makeAsset이 그대로 현재가로 채택하고, 비어 있으면 매수단가로 초기화한다.
-        currentPrice: pick(row, '현재가'),
-        // [대표매칭 오버라이드 - 요청 반영] "대표매칭(수익률연동키)" 컬럼을 사용자가 직접 고쳐서 올리면
-        // rateMatchOverride로 저장된다(비어 있으면 makeAsset이 undefined로 남겨 자동판별을 그대로 쓴다) -
-        // getProjectionAssetGroupKey(js/05)가 이 값을 최우선으로 반영해 즉시 시뮬레이션에 연동된다.
-        rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키'),
-        // [자산별 역할(포지션) 분류] 한글 라벨('공격수' 등) 또는 내부 키 둘 다 인식한다(parseAssetRoleInput).
-        role: pick(row, '역할(포지션)', '역할', 'role')
-      }));
+      const imported = json.map(row => {
+        // [V1.2-B BL-17] 셀이 "비어 있었다"와 "지원하지 않는 값이 적혀 있었다"는 서로 다르다 - 전자만
+        // carryOverCategorySource의 보호 대상이다(sanitizeAssetCategory를 거치면 둘 다 undefined로
+        // 뭉개져 구분이 사라지므로, 뭉개지기 전의 원본 텍스트를 따로 남겨 둔다).
+        const categoryCellRaw = String(pick(row, '자산군(자동분류)', '자산군', 'category') ?? '').trim();
+        const asset = makeAsset({
+          // [Phase 53] 자산 식별자를 되살린다. 칸이 없는 구형 파일이나 빈 칸이면 undefined가 넘어가
+          // makeAsset이 예전처럼 새 id를 만든다.
+          id: (() => {
+            const id = sanitizeAssetId(pick(row, 'id', 'ID', 'Id'));
+            if (!id || seenIds.has(id)) return undefined;
+            seenIds.add(id);
+            return id;
+          })(),
+          ticker: pick(row, 'ticker', 'Ticker', 'TICKER'),
+          owner: pick(row, '소유자'),
+          accountType: pick(row, '계좌구분'),
+          name: pick(row, '종목명'),
+          isDomestic: pick(row, '국내/해외', '국내해외', '국내외'),
+          currency: pick(row, '통화', 'Currency', 'CURRENCY'),
+          quantity: pick(row, '수량'),
+          buyPrice: pick(row, '매수단가'),
+          // [Phase 53] 내보내기가 이미 적고 있던 자산군을 이제 실제로 읽는다. 예전에는 이 칸을 무시하고
+          // 이름 키워드로 다시 분류해서, 이름에 키워드가 없는 티커 없는 자산(전세보증금·생활비 통장 등)이
+          // 왕복마다 '주식'이 됐다. 그 결과가 표시만의 문제가 아니었다 - 원화 현금 보호막이
+          // asset.category === '현금'에 걸려 있어서 재분류된 순간 잔고가 거래원장 값으로 덮어써졌고
+          // (실측: 5,000,000 -> 100), assetMergeKey에도 category가 들어가 있어 [추가하기]가 같은 자산을
+          // 새 행으로 복제했다(실측: 3개 -> 6개). 앱이 지원하지 않는 값이면 undefined가 되어
+          // makeAsset이 예전처럼 자동분류로 되돌아간다(sanitizeAssetCategory, js/01).
+          category: sanitizeAssetCategory(categoryCellRaw),
+          // [Phase 53] 매수 시점 환율. 칸이 없는 구형 파일에서는 undefined가 되어 calcRow의 기존
+          // 폴백(오늘 환율)이 그대로 동작한다 - 구형 파일의 동작을 바꾸지 않는다.
+          buyRate: pick(row, '취득환율(매수시점)', '취득환율', 'buyRate'),
+          // 선택 입력: 값이 있으면 makeAsset이 그대로 현재가로 채택하고, 비어 있으면 매수단가로 초기화한다.
+          currentPrice: pick(row, '현재가'),
+          // [대표매칭 오버라이드 - 요청 반영] "대표매칭(수익률연동키)" 컬럼을 사용자가 직접 고쳐서 올리면
+          // rateMatchOverride로 저장된다(비어 있으면 makeAsset이 undefined로 남겨 자동판별을 그대로 쓴다) -
+          // getProjectionAssetGroupKey(js/05)가 이 값을 최우선으로 반영해 즉시 시뮬레이션에 연동된다.
+          rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키'),
+          // [자산별 역할(포지션) 분류] 한글 라벨('공격수' 등) 또는 내부 키 둘 다 인식한다(parseAssetRoleInput).
+          role: pick(row, '역할(포지션)', '역할', 'role')
+        });
+        // [V1.2-B BL-17] carryOverCategorySource 전용 임시 표식 - mergeAssetsForAppend와 아래 덮어쓰기
+        // 분기가 소비한 뒤 반드시 제거한다(state.assets/localStorage에는 절대 남지 않는다).
+        asset.categoryCellRaw = categoryCellRaw;
+        return asset;
+      });
 
       if (imported.length === 0) { alert('가져올 데이터가 없습니다. (ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 헤더를 확인하세요)'); return; }
       const choice = await openImportChoiceModal(`${imported.length}건을 불러옵니다.\n기존 데이터를 덮어쓸까요, 추가할까요?`);
@@ -285,7 +331,11 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         // positionSource를 이어받는다(엑셀에는 그 칸이 없어서 파일만으로는 알 수 없다).
         // 찾지 못한 자산은 값 없이 그대로 둔다 - 거래내역 유무로 추측하지 않는다.
         const keptSources = buildPositionSourceIndex(state.assets);
-        state.assets = imported.map((a) => carryOverPositionSource(a, keptSources));
+        // [V1.2-B BL-17] positionSource와 같은 이유로 categorySource도 덮어쓰기 전 기존 값에서 이어받는다.
+        const keptCategorySources = buildCategorySourceIndex(state.assets);
+        state.assets = imported
+          .map((a) => carryOverPositionSource(a, keptSources))
+          .map((a) => carryOverCategorySource(a, keptCategorySources));
         state.dayChangeMap = {};
         state.prevCloseMap = {};
         state.sessionMap = {};
@@ -359,7 +409,11 @@ function buildSyncBlob() {
     projection: state.projection,
     assets: state.assets.map(a => ({
       id: a.id, ticker: a.ticker, owner: a.owner, accountType: a.accountType,
-      category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
+      category: a.category,
+      // [V1.2-B BL-17] 빠지면 이 값이 사용자가 확정한 것인지 시스템 추천인지 복원 시 알 수 없게 된다
+      // (positionSource와 같은 이유 - makeAsset() 주석 참고).
+      categorySource: a.categorySource,
+      name: a.name, isDomestic: a.isDomestic, currency: a.currency,
       quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
       regularMarketPrice: a.regularMarketPrice,
       buyRate: a.buyRate,
@@ -492,7 +546,13 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         // [V1.1] 위와 같은 이유로 그대로 보존한다.
         owner: String(a.owner ?? '').trim(),
         accountType: a.accountType || '일반계좌',
-        category: a.category || '주식',
+        // [V1.2-B BL-17] 예전엔 빈 칸/누락을 무조건 '주식'으로 확정했다 - 이제 normalizeImportedAsset과
+        // 완전히 같은 판단(resolveImportedCategory, js/01)을 쓴다. 두 복원 경로가 다르게 판단하면
+        // "추가하기로는 확정이 살아남는데 덮어쓰기로는 사라지는"(또는 그 반대) 상태가 된다.
+        ...resolveImportedCategory(a),
+        // [V1.2-B BL-17] carryOverCategorySource 전용 임시 표식(엑셀 경로와 동일 규칙) - 이 파일의
+        // category 필드 자체가 비어 있었는지를 남긴다. mergeAssetsForAppend가 소비 후 반드시 제거한다.
+        categoryCellRaw: String(a.category ?? '').trim(),
         name: a.name || '이름없음',
         isDomestic: (a.isDomestic === '해외') ? '해외' : '국내',
         currency: (a.currency === 'USD') ? 'USD' : 'KRW',
@@ -651,7 +711,9 @@ function normalizeImportedAsset(a) {
     // [V1.1] 위와 같은 이유로 그대로 보존한다(기존 '공동' 자산도 '공동'인 채로 복원된다).
     owner: String(a.owner ?? '').trim(),
     accountType: a.accountType || '일반계좌',
-    category: a.category || '주식',
+    // [V1.2-B BL-17] JSON append 경로(위 restored 매핑)와 완전히 같은 판단(resolveImportedCategory,
+    // js/01)을 쓴다 - 예전엔 빈 칸/누락을 무조건 '주식'으로 확정했다.
+    ...resolveImportedCategory(a),
     name: a.name || '이름없음',
     isDomestic: (a.isDomestic === '해외') ? '해외' : '국내',
     currency: (a.currency === 'USD') ? 'USD' : 'KRW',
@@ -859,7 +921,7 @@ function applyRemoteScalarFields(parsed, opts) {
 // 더 최신이기만 하면 이쪽의 값이 통째로 사라졌다 - 사용자가 직접 입력한 positionSource가 그렇게
 // 사라지면 다음 부팅에 거래원장이 수량까지 덮어쓴다(실측).
 //
-// [왜 이 두 필드만인가] 앱에 "이 값을 지운다"는 조작이 없는 필드만 담는다 - 그래야
+// [왜 이 필드들만인가] 앱에 "이 값을 지운다"는 조작이 없는 필드만 담는다 - 그래야
 // "값이 없다 = 그 버전이 몰랐다"가 참이 된다.
 //   positionSource : 이 값을 undefined로 대입하는 코드가 저장소 전체에 0건이다.
 //   buyRate        : 사용자가 비울 수 있는 입력칸이 없고, 거래원장 동기화가 USD일 때만 채울 뿐
@@ -869,7 +931,15 @@ function applyRemoteScalarFields(parsed, opts) {
 //
 // [필드 단위 병합이 아니다] 승자를 고르는 규칙(updatedAt 최신승)은 그대로다. 양쪽에 값이
 // 있으면 언제나 승자 값을 쓴다 - 원격이 이겼는데 원격에 그 값이 아예 없을 때만 로컬 값을 남긴다.
-// 거래내역은 이 두 필드를 아예 갖지 않으므로 양쪽 모두 undefined가 되어 아무 일도 일어나지 않는다.
+// [V1.2-B BL-17 - categorySource는 이 배열에 없다] category는 categorySource와 반드시 같은 논리적
+// 쌍으로만 다뤄야 한다 - "categorySource='user'"는 "그 category 값을 사용자가 확인했다"는 뜻이라,
+// 값과 표식이 서로 다른 레코드에서 오면 그 주장 자체가 거짓이 된다(positionSource는 "이 값을 자동
+// 덮어쓰지 않는다"는 행동 보호 선언이라 어떤 값이 붙어도 의미가 안 깨지는 것과 다르다 - 실제로
+// PM Cloud Sync Audit에서 "local user + remote legacy, remote 승" 상황을 실측 재현: 원격이 이겼는데
+// 원격이 category를 몰랐다는 이유만으로 categorySource만 옮기면, 로컬이 확인한 적 없는 원격의
+// category 값에 로컬의 'user' 표식이 붙었다 - "확인되지 않은 분류를 확인된 사실처럼 저장" 금지
+// 정책 위반). 그래서 categorySource는 아래 mergeCollectionById 안에서 category와 함께(pair)만
+// 이월하는 전용 규칙으로 처리하고, 이 배열에서는 뺀다.
 const MERGE_PRESERVE_IF_ABSENT = ['positionSource', 'buyRate'];
 // [순수 함수 - 의존성 없음] 전역 num() 헬퍼조차 쓰지 않고 자체적으로 숫자 변환한다 - test/merge.test.js가
 // 이 파일 전체를 require()하지 않고도(브라우저 전용 top-level DOM 배선 코드가 많아 Node에서 그대로
@@ -897,6 +967,15 @@ function mergeCollectionById(localArr, remoteArr, lastSyncedIds) {
             picked[f] = l[f];
           }
         });
+        // [V1.2-B BL-17 - category/categorySource 전용 pair 이월] 위 배열 방식과 똑같은 조건
+        // (원격 승자가 이 개념 자체를 몰랐고, 로컬은 알고 있었다)이지만, categorySource 하나만
+        // 옮기지 않고 category "값"까지 반드시 함께 옮긴다 - 그래야 이월된 표식이 실제로 그 값을
+        // 가리키게 된다(PM Cloud Sync Audit Option A 확정).
+        if (picked.categorySource === undefined && l.categorySource !== undefined) {
+          if (picked === r) picked = { ...r };
+          picked.category = l.category;
+          picked.categorySource = l.categorySource;
+        }
       }
       merged.push(picked);
     } else if (l && !r) {
@@ -1243,7 +1322,8 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
 
 // [테스트 전용] 브라우저에는 `module`이 없으므로 이 블록은 그냥 무시된다 - Node의 test/merge.test.js가
 // mergeCollectionById()를 require해서 순수 함수 단위로 검증할 수 있도록 노출만 해준다.
+// [V1.2-B BL-17] carryOverCategorySource/buildCategorySourceIndex/mergeAssetsForAppend도 같은 이유로 노출한다.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { mergeCollectionById };
+  module.exports = { mergeCollectionById, carryOverCategorySource, buildCategorySourceIndex, mergeAssetsForAppend };
 }
 
