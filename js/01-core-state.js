@@ -1423,7 +1423,10 @@ function loadState() {
 function persistAssets(skipPush) {
   const clean = state.assets.map(a => ({
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
-    category: a.category, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
+    // [V1.2-B BL-17 Persistence Hotfix] category만 있고 categorySource가 이 목록에 없었다 - 저장 안
+    // 하면 새로고침마다 사라져서(positionSource와 같은 이유, 위 주석 참고) 사용자가 확정한 category도
+    // 매 새로고침 후 legacy로 되돌아갔다(state.assets 자체는 메모리상 멀쩡해 같은 세션에선 안 보였다).
+    category: a.category, categorySource: a.categorySource, name: a.name, isDomestic: a.isDomestic, currency: a.currency,
     quantity: a.quantity, buyPrice: a.buyPrice, currentPrice: a.currentPrice,
     // [버그 수정 - 기기 간 판정 불일치 제거] lastTradeKey/dailyRefTradeKey/dailyRefTradeKeyDate를 기기별
     // localStorage에 스냅샷해 비교하던 방식은 완전히 없앴다 - 이제 "오늘 새 정규장 체결이 있었는지"는
@@ -1553,7 +1556,10 @@ function searchAssetsByQuery(query) {
 // [V1.2-B BL-17] test/*.test.js가 js/12-import-export-sync.js와 같은 방식(가짜 DOM + require)으로
 // category/categorySource 판단 함수를 순수 로직만 독립 검증할 수 있게 한다 - 브라우저에서는 이 분기가
 // 조용히 건너뛰어진다(module/exports가 브라우저 전역이 아니므로).
+// [V1.2-B BL-17 Persistence Hotfix] persistAssets/LS_ASSETS도 함께 노출한다 - categorySource가
+// localStorage 왕복(persistAssets가 쓰고 loadState가 그대로 JSON.parse해 읽는 것)에서 실제로
+// 살아남는지를 그 저장 함수 자체로 검증하기 위함이다.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset };
+  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, state };
 }
 

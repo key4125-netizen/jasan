@@ -25,14 +25,22 @@ global.document = {
   documentElement: makeFakeElement(),
   body: makeFakeElement()
 };
-global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+// [V1.2-B BL-17 Persistence Hotfix] persistAssets 왕복 검증에는 실제로 값을 기억하는 localStorage가
+// 필요하다 - 기존 no-op 스텁(항상 getItem()===null)은 나머지 순수 로직 테스트에는 영향이 없으므로(그
+// 테스트들은 localStorage를 읽거나 쓰지 않는다) 그대로 in-memory 버전으로 바꿔도 안전하다.
+const fakeLocalStorageStore = {};
+global.localStorage = {
+  getItem: (k) => (k in fakeLocalStorageStore ? fakeLocalStorageStore[k] : null),
+  setItem: (k, v) => { fakeLocalStorageStore[k] = String(v); },
+  removeItem: (k) => { delete fakeLocalStorageStore[k]; }
+};
 global.window = global;
 // makeAsset()이 getTickerRole()을 거쳐 부르는 buildCustomRateKey는 js/05(다른 파일)에 있다 - 브라우저는
 // 모든 <script>가 전역을 공유해 문제없지만, 여기서는 js/01만 단독 require하므로 최소 스텁을 채운다.
 // 이 스텁은 role(포지션) 조회만 영향을 주고 category/categorySource 판단과는 무관하다.
 global.buildCustomRateKey = () => null;
 
-const { sanitizeCategorySource, resolveImportedCategory, makeAsset } = require(path.join(__dirname, '..', 'js', '01-core-state.js'));
+const { sanitizeCategorySource, resolveImportedCategory, makeAsset, persistAssets, LS_ASSETS, state } = require(path.join(__dirname, '..', 'js', '01-core-state.js'));
 const { carryOverCategorySource, buildCategorySourceIndex, mergeAssetsForAppend, mergeCollectionById } = require(path.join(__dirname, '..', 'js', '12-import-export-sync.js'));
 
 /* ── sanitizeCategorySource ─────────────────────────────────────────────── */
@@ -278,4 +286,51 @@ test('G. legacy 자산(categorySource 필드 자체가 없음)은 그대로 unde
   const r = resolveImportedCategory(legacy);
   assert.strictEqual(r.category, '주식'); // 기존 값 그대로
   assert.strictEqual(r.categorySource, undefined); // 자동 확정하지 않음
+});
+
+/* ── [V1.2-B BL-17 Persistence Hotfix] persistAssets -> localStorage -> (loadState가 그대로
+ * JSON.parse해 읽는 것과 동일한) 재파싱 왕복에서 categorySource가 살아남는지 직접 검증한다.
+ * persistAssets()의 저장 whitelist에 categorySource가 빠져 있던 것이 실제 원인이었다 - 새로고침 전
+ * state.assets(메모리)에는 값이 멀쩡했으므로 같은 세션 안에서 값을 읽기만 하는 위 테스트들은 이
+ * 결함을 잡지 못했다. loadState()는 localStorage에서 읽은 JSON을 그대로 state.assets에 대입할 뿐
+ * 별도 재해석을 하지 않으므로, "persistAssets가 쓴 JSON을 다시 파싱한 결과"가 곧 loadState 왕복
+ * 결과와 동일하다 - 이 테스트가 그 재파싱을 직접 수행한다. */
+function roundTrip(assets) {
+  state.assets = assets;
+  persistAssets(true); // skipPush - schedulePush()는 js/12 없이 이 파일만 require해서는 정의돼 있지 않다
+  return JSON.parse(localStorage.getItem(LS_ASSETS));
+}
+
+test('H-1. Persistence round-trip - categorySource=user는 새로고침(재파싱) 후에도 유지된다', () => {
+  const restored = roundTrip([{ id: 'p1', category: 'ETF', categorySource: 'user', quantity: 1, buyPrice: 1000, positionSource: 'manual' }]);
+  assert.strictEqual(restored[0].category, 'ETF');
+  assert.strictEqual(restored[0].categorySource, 'user');
+});
+
+test('H-2. Persistence round-trip - categorySource=system은 새로고침(재파싱) 후에도 유지된다', () => {
+  const restored = roundTrip([{ id: 'p2', category: 'ETF', categorySource: 'system', quantity: 1, buyPrice: 1000 }]);
+  assert.strictEqual(restored[0].category, 'ETF');
+  assert.strictEqual(restored[0].categorySource, 'system');
+});
+
+test('H-3. Persistence round-trip - legacy(categorySource 없음)는 새로고침 후에도 undefined로 남는다(user/system으로 승격되지 않는다)', () => {
+  const restored = roundTrip([{ id: 'p3', category: '주식', quantity: 1, buyPrice: 1000 }]); // categorySource 키 자체가 없음
+  assert.strictEqual(restored[0].category, '주식');
+  assert.strictEqual(restored[0].categorySource, undefined);
+});
+
+test('H-4. Persistence round-trip - 서로 다른 category/categorySource/positionSource를 가진 복수 자산이 각자 pair를 유지한다', () => {
+  const restored = roundTrip([
+    { id: 'm1', category: 'ETF', categorySource: 'user', positionSource: 'manual', quantity: 1, buyPrice: 1000 },
+    { id: 'm2', category: '주식', categorySource: 'system', positionSource: 'ledger', quantity: 2, buyPrice: 2000 },
+    { id: 'm3', category: '채권', quantity: 3, buyPrice: 3000 } // legacy, positionSource도 없음
+  ]);
+  assert.deepStrictEqual(
+    restored.map((a) => ({ id: a.id, category: a.category, categorySource: a.categorySource, positionSource: a.positionSource })),
+    [
+      { id: 'm1', category: 'ETF', categorySource: 'user', positionSource: 'manual' },
+      { id: 'm2', category: '주식', categorySource: 'system', positionSource: 'ledger' },
+      { id: 'm3', category: '채권', categorySource: undefined, positionSource: undefined }
+    ]
+  );
 });

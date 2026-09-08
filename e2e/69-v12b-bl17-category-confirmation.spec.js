@@ -248,3 +248,65 @@ test('F. categorySource 필드가 있어도 없어도 Risk/threshold 판정 로�
   expect(result.riskEligible).toEqual(['주식', 'ETF']);
   expect(result.nonTradable).toEqual(['채권', '현금', '부동산']);
 });
+
+/* ── H. [V1.2-B BL-17 Persistence Hotfix] 실제 새로고침(page.reload) 후에도 categorySource가
+ * 살아남는지 검증한다. A~G의 기존 테스트는 전부 seed/조작 직후 "같은 페이지 로드 안에서"
+ * state.assets를 읽었다 - persistAssets()가 localStorage 저장 목록에서 categorySource를 빠뜨렸어도
+ * 메모리상의 state.assets는 멀쩡했으므로 그 결함을 이 테스트들이 잡아내지 못했다. 진짜 새로고침이
+ * loadState()를 다시 타게 만들어야만 "localStorage에 실제로 뭐가 저장됐는지"가 드러난다. */
+test.describe('H. Persistence - 실제 새로고침 후 categorySource 보존', () => {
+  test('H-1. categorySource=user는 새로고침 후에도 유지된다', async ({ page }) => {
+    await open(page);
+    await seed(page, { id: 'h1', ticker: '', name: 'H1확정자산', owner: '신랑', accountType: '일반계좌', category: 'ETF', categorySource: 'user', currency: 'KRW', isDomestic: '국내', quantity: 1, buyPrice: 1000000, currentPrice: 1000000, updatedAt: Date.now() });
+    await page.reload();
+    await page.waitForFunction(() => typeof state !== 'undefined' && Array.isArray(state.assets) && state.assets.some((a) => a.id === 'h1'));
+    const a = await page.locator('body').evaluate(() => state.assets.find((x) => x.id === 'h1'));
+    expect(a.category).toBe('ETF');
+    expect(a.categorySource).toBe('user');
+  });
+
+  test('H-2. categorySource=system은 새로고침 후에도 유지된다', async ({ page }) => {
+    await open(page);
+    await seed(page, { id: 'h2', ticker: '', name: 'H2미확정자산', owner: '신랑', accountType: '일반계좌', category: 'ETF', categorySource: 'system', currency: 'KRW', isDomestic: '국내', quantity: 1, buyPrice: 1000000, currentPrice: 1000000, updatedAt: Date.now() });
+    await page.reload();
+    await page.waitForFunction(() => typeof state !== 'undefined' && Array.isArray(state.assets) && state.assets.some((a) => a.id === 'h2'));
+    const a = await page.locator('body').evaluate(() => state.assets.find((x) => x.id === 'h2'));
+    expect(a.category).toBe('ETF');
+    expect(a.categorySource).toBe('system');
+  });
+
+  test('H-3. legacy(categorySource 없음)는 새로고침 후에도 undefined로 남는다(user/system으로 승격되지 않는다)', async ({ page }) => {
+    await open(page);
+    await seed(page, { id: 'h3', ticker: '005930.KS', name: 'H3레거시', owner: '신랑', accountType: '일반계좌', category: '주식', currency: 'KRW', isDomestic: '국내', quantity: 10, buyPrice: 70000, currentPrice: 80000, updatedAt: Date.now() }); // categorySource 필드 자체가 없음
+    await page.reload();
+    await page.waitForFunction(() => typeof state !== 'undefined' && Array.isArray(state.assets) && state.assets.some((a) => a.id === 'h3'));
+    const a = await page.locator('body').evaluate(() => state.assets.find((x) => x.id === 'h3'));
+    expect(a.category).toBe('주식');
+    expect(a.categorySource).toBeUndefined();
+  });
+
+  test('H-4. 서로 다른 category/categorySource/positionSource를 가진 복수 자산이 새로고침 후에도 각자 pair를 유지한다', async ({ page }) => {
+    await open(page);
+    await page.locator('body').evaluate(() => {
+      state.exchangeRate = 1450; persistRate(true);
+      state.assets = [
+        { id: 'h4a', ticker: '', name: 'H4A', owner: '신랑', accountType: '일반계좌', category: 'ETF', categorySource: 'user', positionSource: 'manual', currency: 'KRW', isDomestic: '국내', quantity: 1, buyPrice: 1000, currentPrice: 1000, updatedAt: Date.now() },
+        { id: 'h4b', ticker: '', name: 'H4B', owner: '신랑', accountType: '일반계좌', category: '주식', categorySource: 'system', positionSource: 'ledger', currency: 'KRW', isDomestic: '국내', quantity: 2, buyPrice: 2000, currentPrice: 2000, updatedAt: Date.now() },
+        { id: 'h4c', ticker: '', name: 'H4C', owner: '신랑', accountType: '일반계좌', category: '채권', currency: 'KRW', isDomestic: '국내', quantity: 3, buyPrice: 3000, currentPrice: 3000, updatedAt: Date.now() }
+      ];
+      state.transactions = [];
+      persistAssets(); persistTransactions();
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof state !== 'undefined' && Array.isArray(state.assets) && state.assets.some((a) => a.id === 'h4c'));
+    const result = await page.locator('body').evaluate(() => ['h4a', 'h4b', 'h4c'].map((id) => {
+      const a = state.assets.find((x) => x.id === id);
+      return { id, category: a.category, categorySource: a.categorySource, positionSource: a.positionSource };
+    }));
+    expect(result).toEqual([
+      { id: 'h4a', category: 'ETF', categorySource: 'user', positionSource: 'manual' },
+      { id: 'h4b', category: '주식', categorySource: 'system', positionSource: 'ledger' },
+      { id: 'h4c', category: '채권', categorySource: undefined, positionSource: undefined }
+    ]);
+  });
+});

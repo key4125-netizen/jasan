@@ -2,7 +2,17 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v223'; // [V1.2-B BL-17 Category Confirmation Release]
+const CACHE_NAME = 'smart-asset-manager-v224'; // [V1.2-B BL-17 Persistence Hotfix]
+// v223에서 새로 만든 categorySource가 persistAssets()의 localStorage 저장 whitelist에 빠져 있었다
+// (js/01) - category는 저장 목록에 있는데 categorySource만 없어서, 사용자가 폼에서 방금 확정한
+// category(categorySource='user')도 새로고침/브라우저 재시작 한 번이면 조용히 legacy(표식 없음)로
+// 되돌아갔다(같은 탭 세션 안에서는 메모리의 state.assets가 멀쩡해 안 보였다 - loadState()가
+// localStorage에서 다시 읽어올 때만 드러난다). positionSource가 이미 이 목록에 있던 것과 정확히
+// 같은 이유(저장 안 하면 새로고침마다 사라짐)로 categorySource도 목록에 추가했다 - 그 외
+// serialization 구조/필드/Cloud merge 로직은 전혀 건드리지 않았다. cache-first라 CACHE_NAME을
+// 올리지 않으면 이 결함 수정이 기존 사용자에게 전달되지 않는다.
+// [V1.2-B BL-17 Category Confirmation Release]
+// "확인되지 않은 자산 분류를 확인된 사실처럼 저장하지 않는다"는 정책을 위해 category와 별도로
 // "확인되지 않은 자산 분류를 확인된 사실처럼 저장하지 않는다"는 정책을 위해 category와 별도로
 // categorySource('user'/'system'/legacy 미지정)를 도입했다(js/01·07·12) - 신규 자산 폼 저장은 항상
 // 확정(user), Excel 셀이 비었으면 기존 확정값을 그대로 보존하고 값이 있으면(유효/오염 불문) 그
