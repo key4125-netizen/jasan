@@ -26,7 +26,9 @@ test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자�
   await expect(page.locator('#projectionHeroCurrent')).toHaveText(expected.current);
   await expect(page.locator('#projectionHeroFuture')).toHaveText(expected.future);
   await expect(page.locator('#projectionHeroMonthly')).toHaveText(expected.monthly);
-  await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 예상 자산');
+  // [FUTURE-P1 Phase 3-2] "예상 자산"은 이 값을 미래 예측/보장으로 읽히게 한다 - 수익률이 매년
+  // 일정하다고 가정한 단일 경로 계산값이라는 성격을 라벨에 그대로 드러낸다(금액 계산은 무변경).
+  await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값');
 
   // [장기 투자계획 UX 개선] 아코디언을 펼치지 않아도 "투자 기간"·"투자금 증가"가 바로 보여야 한다
   // (contributionGrowthRate: 0으로 시딩했으므로 "증가 없음"으로 표시되어야 한다).
@@ -34,9 +36,13 @@ test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자�
   await expect(page.locator('#projectionPlanGrowthText')).toHaveText('증가 없음(매월 동일)');
 
   // 확정적 표현("~입니다")이 아니라 가정 기반 계산임을 알리는 문구가 있어야 한다.
+  // [FUTURE-P1 Phase 3-2] 여기서 한 걸음 더 나아가, ① 이 값이 "수익률이 매년 일정하다"는 가정의
+  // 단순 계산이라는 점 ② 대상 범위가 일반계좌라는 점 ③ 변동성은 Monte Carlo에서 봐야 한다는 점을
+  // 히어로 안에서 직접 읽을 수 있어야 한다(참고값으로 격하한 근거를 화면에서 설명한다).
   const heroText = await page.locator('#projectionHeroSummary').innerText();
-  expect(heroText).toContain('설정한 가정');
-  expect(heroText).toContain('실제 투자 결과는 매년 달라질 수 있습니다');
+  expect(heroText).toContain('매년 일정하다고 가정한 단순 계산값');
+  expect(heroText).toContain('일반계좌 기준');
+  expect(heroText).toContain('Monte Carlo에서 확인');
 });
 
 test('연간 납입액 증가율 입력을 바꾸면 히어로 요약의 20년 후 예상 자산도 기존 계산 흐름을 통해 함께 바뀐다', async ({ page }) => {
@@ -84,7 +90,11 @@ test('Monte Carlo 결과 - percentile이 초보자용 표현으로 바뀌고, �
   expect(headerText).toContain('낮은 편');
   expect(headerText).toContain('중간 수준');
   expect(headerText).toContain('높은 편');
-  expect(headerText).not.toMatch(/\bP10\b|\bP90\b/);
+  // [FUTURE-P1 Phase 3-2] 원래 이름(P10~P90)을 title 속성에만 두던 방식은 터치 기기에서 아예
+  // 전달되지 않았다 - 쉬운 말을 주 라벨로 두되 원래 이름도 실제 화면 텍스트로 함께 적는다.
+  expect(headerText).toMatch(/\bP10\b/);
+  expect(headerText).toMatch(/\bP50\b/);
+  expect(headerText).toMatch(/\bP90\b/);
 
   // "낮은 편=최악의 경우"처럼 단정하는 표현은 없어야 한다 - 오히려 "그렇지 않다"는 명시적 해명 문구가
   // 있어야 한다(단순 "최악의 경우" 문자열 포함 여부만 보면, 그 표현을 부정하는 정상적인 해명 문장까지
@@ -128,7 +138,9 @@ test('명목가치/실질가치 구분 문구가 표시되고, 가정 아코디�
 
   const p50BoxText = await page.locator('.text-center.rounded-lg.bg-brand-50').innerText();
   expect(p50BoxText).toContain('명목가치(미래 시점 금액)');
-  expect(p50BoxText).toContain('현재 구매력 기준(실질가치)');
+  // [FUTURE-P1 Phase 3-2] "실질"이라고만 쓰지 않고 어떤 물가상승률을 가정했는지 함께 밝힌다
+  // (값 자체는 js/20의 기존 변환 그대로 - 계산 무변경).
+  expect(p50BoxText).toContain('현재가치 기준(물가상승률 2.5% 가정)');
 
   // 가정 아코디언: 기본은 접힘(0px) -> 클릭하면 펼쳐짐(내용이 보임) -> 다시 클릭하면 접힘.
   const body = page.locator('#projectionAssumptionsAccordionBody');

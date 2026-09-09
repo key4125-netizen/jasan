@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v227</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v228</p>
           </div>
         </div>
 
@@ -1004,8 +1004,8 @@
          (요청 반영), 좀 더 포괄적인 이름으로 바꿨다 - 내부 subtab 키('target')와 DOM id(rebalanceSubTarget
          등)는 코드 영향 최소화를 위해 그대로 유지한다. -->
     <div class="flex items-center gap-1 mb-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
-      <button type="button" data-subtab="target" class="rebalance-subtab-btn active flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">포트폴리오 구성</button>
-      <button type="button" data-subtab="projection" class="rebalance-subtab-btn flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
+      <button type="button" data-subtab="target" class="rebalance-subtab-btn active touch-target min-h-[44px] flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">포트폴리오 구성</button>
+      <button type="button" data-subtab="projection" class="rebalance-subtab-btn touch-target min-h-[44px] flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
     </div>
 
     <div id="rebalanceSubTarget">
@@ -1131,11 +1131,11 @@
           <p id="projectionHeroMonthly" class="text-sm sm:text-base font-bold text-slate-700 dark:text-slate-200 mt-0.5">-</p>
         </div>
         <div>
-          <p id="projectionHeroFutureLabel" class="text-sm text-slate-400">20년 후 예상 자산</p>
-          <!-- [Phase 17 P1-3 - 미래자산을 가장 크게] 이 화면을 연 목적에 해당하는 숫자라 다른 두 칸보다
-               한 단계 큰 글자로 강조한다(text-lg/xl) - 계산값(fmtKRWShort(futureTotal))은 무변경, 폰트
-               크기만 키움. -->
-          <p id="projectionHeroFuture" class="text-lg sm:text-xl font-bold text-brand-600 dark:text-brand-300 mt-0.5">-</p>
+          <p id="projectionHeroFutureLabel" class="text-sm text-slate-400 break-keep">20년 후 예상 자산</p>
+          <!-- [FUTURE-P1 Phase 3-2 - 참고값으로 격하] 예전엔 이 숫자가 화면에서 가장 크고 브랜드색이라
+               "확정된 미래"로 읽히기 쉬웠다. 미래예측의 주 결과는 아래 Monte Carlo이므로, 계산값
+               (fmtKRWShort(futureTotal))은 그대로 두고 크기·색만 한 단계 낮춰 참고값 위계로 내린다. -->
+          <p id="projectionHeroFuture" class="text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 mt-0.5">-</p>
         </div>
       </div>
       <!-- [신규 - 장기 투자계획 UX 개선, Phase17에서 성장률/인플레이션까지 확장] "현재 자산 → 앞으로
@@ -1151,7 +1151,7 @@
         · 성장률 <b id="projectionPlanRateText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
         · 인플레이션 <b id="projectionPlanInflationText" class="font-semibold text-slate-700 dark:text-slate-200">-</b>
       </p>
-      <p class="text-sm text-slate-400 mt-1 leading-relaxed">현재 설정한 가정대로 계산하면 위와 같은 금액이며, 실제 투자 결과는 매년 달라질 수 있습니다.</p>
+      <p class="text-sm text-slate-400 mt-1 leading-relaxed break-keep">현재 설정한 수익률이 매년 일정하다고 가정한 단순 계산값입니다(일반계좌 기준). 실제 투자 결과의 변동성은 아래 Monte Carlo에서 확인할 수 있습니다.</p>
 
       <button type="button" id="projectionAssumptionsAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-1.5 mt-2 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
         <span class="detail-card-accordion-label">이 계산은 이런 가정을 사용했어요</span>
@@ -1170,27 +1170,6 @@
       </div>
     </section>
 
-    <!-- ===== [3가지 시나리오 동시 비교 - 구조 개편] =====
-         PROJECTION_SCENARIOS 배열(목표배분-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
-         그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
-         (renderScenarioSummaryCards/renderScenarioCompareChart/renderScenarioCompareScheduleTable,
-         updateProjection() 참고) - 시나리오를 늘리거나 줄여도 이 3곳만 자동으로 따라간다.
-         [버그 수정 - "현재 구성 유지" 제거] 예전엔 목표 비중대로 조정하지 않는 "현재 구성 유지"
-         시나리오도 함께 비교했으나, 요청에 따라 이 통합 비교에서는 완전히 뺐다(목표 배분 적용 3가지
-         케이스만 비교) - 그 기준값을 쓰던 "적용 효과 요약" 카드도 "포트폴리오 구성" 탭 개편으로 함께
-         제거되어, 이제 "현재 구성 유지" 계산 자체가 앱 어디에도 남아있지 않다.
-         "일반적" 프리셋은 예전 "목표 배분 적용"과 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
-         "보수적"/"긍정적"은 SCENARIO_RATE_PRESETS에 정의된 고정 근사치(±1σ 약세장/강세장 근사)를
-         쓴다 - 실제 백테스트 데이터가 아니라 참고용 근사치임을 카드 하단에 안내한다. -->
-    <!-- [버그 수정 - 자산 대상 범위를 일반계좌로 재통일] 한때는 "포트폴리오 구성" 탭과 달리 미래예측만
-         ISA/IRP/연금저축 및 부동산까지 전부 합산해 시뮬레이션했으나(계좌 구분과 무관하게 "총자산이
-         얼마나 불어나는가"를 보여주려던 정책), 요청에 따라 다시 순수 일반계좌 보유 자산만 대상으로
-         좁혔다 - 두 탭이 정확히 같은 자산 범위를 공유한다(getProjectionGroupStats 참고). -->
-    <!-- [안내 문구 삭제 - 요청 반영] "※ 절세계좌... 시뮬레이션합니다." 문구를 삭제했다(일반계좌 한정
-         범위는 아래 섹션 타이틀/각 카드 설명으로 이미 충분히 전달된다고 판단). -->
-    <!-- [타이틀 변경 - 요청 반영] "포트폴리오 기준"에서 "일반계좌 설정"으로 개명 - 아래 "절세계좌 현황"
-         카드와 짝을 이루도록, 일반계좌 관련 카드들(적립금 입력~시나리오별 일반계좌 금액 비교) 구간
-         전체를 대표하는 섹션 헤더. -->
     <h3 class="text-sm font-semibold mb-2">💰 나의 투자계획</h3>
     <!-- [Phase 25 P3] 이 화면의 모든 예측은 Portfolio 탭의 목표비중을 전제로 계산된다("목표 비중으로
          오늘 전액 조정했다고 가정") - 목표비중 자체는 현재비중과의 비교/리밸런싱 실행 맥락이 있는
@@ -1230,6 +1209,284 @@
            "이 계산은 이런 가정을 사용했어요" 영역의 [가정 수정] 버튼으로 옮겼다.
            매년 투자금 증가율도 [적립금 설정] 팝업으로 옮겨, "매달 얼마 / 몇 년 / 매년 얼마나
            늘릴지"가 한 화면에서 하나의 투자계획으로 읽히게 했다. id/리스너는 그대로 재사용한다. -->
+    </div>
+
+    <!-- [FUTURE-P1 Phase 3-2] 위 참고값(고정 수익률 단일 경로)과 아래 Monte Carlo(변동 범위)가 "같은
+         종류의 분석을 두 번 보여주는 것"으로 오해되지 않도록 색이 다른 구분 배지로 단계를 나눈다
+         (Phase 17 P1-3에서 도입한 구분자를 그대로 유지 - 새 계산/새 카드 없음, 순수 시각적 구분자). -->
+    <div class="flex items-center gap-2 my-4">
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+      <span class="text-sm font-semibold px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 whitespace-nowrap">여기부터가 미래예측의 핵심 결과입니다</span>
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+    </div>
+
+    <!-- ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3) =====
+         종목별 기대수익률(μ)·변동성(σ)·날짜정렬 상관관계를 반영한 Monthly Precision Monte Carlo가
+         공식 모델이다(js/15~18). 계산에 수 초~수십 초 걸릴 수 있어 자동 실행하지 않고 사용자가 직접
+         [Monte Carlo 실행] 버튼을 눌러야 시작된다(예전 버전은 렌더될 때마다 자동으로 돌았다) -
+         Web Worker에서 실행되어 계산 중에도 화면이 멈추지 않는다(js/17-monte-carlo-worker.js). -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-3 sm:p-4 mb-4">
+      <h3 class="text-sm font-semibold flex items-center gap-1">🎲 Monte Carlo 미래자산 예측</h3>
+      <!-- [Phase 24-B STEP 9 - 팝업화] 예전엔 이 설명 문단(위 "시나리오별 예상자산"과의 차이, 계산
+           방식)이 항상 펼쳐진 긴 텍스트였다(모바일에서 실행 버튼 도달 전 스크롤 부담이 큼, Phase 24-A
+           감사 지적) - 내용은 하나도 지우지 않고 짧은 한 줄 + ⓘ로 압축했다. 클릭하면 기존 문단과
+           "공식 모델" 박스 내용을 그대로 합쳐서 보여준다(openMcInfoModal, 아래 정의). -->
+      <button type="button" id="mcIntroInfoBtn" class="w-full min-h-[44px] flex items-center justify-between gap-2 text-left text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-3 hover:text-brand-600 dark:hover:text-brand-300">
+        <span class="break-keep">실제 미래는 여러 경로로 달라질 수 있습니다</span>
+        <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
+      </button>
+
+      <!-- [Phase 24-B STEP 6 - Owner 관점 선택] 기본값 "가구 전체"(기존 동작과 완전히 동일) - 신랑/
+           와이프를 선택하면 그 owner의 자산·목표비중·월적립금·적립기간만 반영해 계산한다(가구 전체
+           pooled 비중을 재사용하지 않음, js/05·js/16 참고). 44px 터치 타겟(Assets 관점전환 세그먼트
+           컨트롤과 동일한 패턴 재사용, syncAssetViewButtonsUI 참고). -->
+      <div id="mcOwnerScopeSegmented" class="grid grid-cols-3 gap-1.5 mb-3" role="group" aria-label="Monte Carlo 관점 선택">
+        <button type="button" data-scope="신랑" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">신랑</button>
+        <button type="button" data-scope="와이프" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">와이프</button>
+        <button type="button" data-scope="household" aria-pressed="true" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">가구 전체</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <label class="text-sm text-slate-400 block mb-1">시나리오</label>
+          <select id="mcPresetSelect" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+            <option value="conservative">보수적</option>
+            <option value="normal" selected>일반적</option>
+            <option value="optimistic">긍정적</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm text-slate-400 block mb-1">Simulation 횟수</label>
+          <select id="mcIterationsSelect" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+            <option value="5000">5,000회(Fast)</option>
+            <option value="10000" selected>10,000회(Standard)</option>
+            <option value="50000">50,000회(High Precision)</option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="text-sm text-slate-400 block mb-1">목표금액(선택, 원)</label>
+        <!-- [Phase 22 STEP 8] min="0" 추가 - 계산(js/19 goalAmount>0 게이트)은 이미 음수 입력을
+             "미설정"과 동일하게 안전 처리하고 있었다(실측 확인, 잘못된 확률/NaN 없음) - 이 속성은
+             그 안전한 기존 동작을 바꾸지 않고, 목표금액이 0 이상이어야 한다는 의도를 입력 단계에서도
+             드러내는 최소한의 UI 힌트다(브라우저 네이티브 스피너/유효성 표시, JS 로직 무변경). -->
+        <input id="mcGoalAmountInput" type="number" inputmode="numeric" min="0" placeholder="예: 1000000000 (10억원)" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
+        <!-- [Phase 3-2] 명목/실질 중 어느 기준의 목표금액인지 - 기본값은 기존 동작과의 호환을 위해
+             명목(변환 없이 그대로 Engine에 전달)으로 둔다(js/19 참고). -->
+        <div class="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="nominal" checked> 미래 명목금액</label>
+          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="real"> 현재 구매력 기준</label>
+        </div>
+      </div>
+
+      <!-- [Phase 3-4] 운용보수(Expense Ratio) - ETF/펀드의 연간 운용비용만 다룬다. 매매수수료·세금·
+           환전비용 등은 포함하지 않는다는 것을 문구로 명확히 한다(초보자 오해 방지, 요청 반영). 종목별
+           입력은 현재 목표비중에 포함된 항목만 동적으로 나열한다(js/19 renderFeeRatesEditor). -->
+      <div class="mb-3">
+        <!-- [Phase 25 P1] 예전엔 여기서 바로 펼쳐지는 dropdown이었다 - 종목이 늘어날수록 [실행]
+             버튼을 아래로 밀어내고, 입력이 즉시 저장돼 되돌릴 수 없었으며, 빈칸/placeholder "0"이라
+             "미확인"과 "명시적 0%"가 화면에서 구분되지 않았다. 팝업으로 옮기고 상태를 글자로 함께
+             표시한다(색상만으로 상태를 전달하지 않는다는 원칙). -->
+        <button type="button" id="mcFeeRatesToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2">
+          <span>운용보수(연간) 설정</span>
+          <span id="mcFeeSummary" class="shrink-0 font-semibold whitespace-nowrap">전부 미확인</span>
+        </button>
+      </div>
+
+      <button type="button" id="mcRunBtn" class="touch-target min-h-[44px] w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
+      <button type="button" id="mcCancelBtn" class="touch-target min-h-[44px] hidden w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
+
+      <!-- [Phase 3-5 Safety Layer] BLOCK 실패 시(비중 합계 오류 등)를 보여준다 - 이 경로는 계산 자체가
+           시작되지 못한 경우라 mcResultArea가 항상 hidden 상태이므로(handleMonteCarloError, js/19)
+           위치가 결과보다 먼저/나중이든 실제로는 서로 겹치지 않는다. [Phase 17 P1-4] 정상 완료 시의
+           Safety 표시는 더 이상 이 컨테이너를 쓰지 않는다 - 아래 mcResultArea 안의
+           mcSafetyCritical/mcSafetyDetail(결과 우선 배치, 3단계 표시)로 대체됐다(js/22 renderMonteCarloSafetyTiers). -->
+      <!-- [FUTURE-P1 Phase 3-2 - 실행 전 안내] Monte Carlo는 자동 실행하지 않는다(수 초~수십 초가
+           걸릴 수 있어 탭을 열 때마다 도는 것은 초보자 UX에 맞지 않는다 - PM 결정). 대신 이 화면이
+           비어 보이지 않도록 "무엇을 계산하는지 / 왜 버튼을 누르는지 / 시간이 걸릴 수 있다"를 짧게
+           안내한다. GBM·σ·상관계수 같은 용어는 여기 쓰지 않는다(상세는 기존 ⓘ 팝업에 그대로 있다). -->
+      <div id="mcEmptyState" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
+        <p class="text-sm text-slate-500 dark:text-slate-300 leading-relaxed break-keep">같은 계획이라도 시장이 어떻게 움직이느냐에 따라 결과는 넓게 달라집니다. 위 <b class="whitespace-nowrap">[Monte Carlo 실행]</b>을 누르면 수천 번의 시장 경로를 만들어, 미래 자산이 어느 범위에 놓이는지 보여드려요.</p>
+        <p class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep">계산에 몇 초에서 수십 초가 걸릴 수 있어요. 계산하는 동안에도 화면은 그대로 사용할 수 있습니다.</p>
+      </div>
+
+      <div id="mcSafetyIssues" class="hidden mt-3"></div>
+
+      <div id="mcProgressArea" class="hidden mt-3">
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
+        <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div id="mcProgressBar" class="h-full bg-brand-600 transition-[width] duration-150" style="width:0%"></div>
+        </div>
+        <p id="mcProgressText" class="text-sm text-slate-400 mt-1 text-right">0 / 0회 (0%)</p>
+      </div>
+
+      <p id="mcStatusText" class="text-sm text-center mt-3 hidden"></p>
+
+      <div id="mcResultArea" class="hidden mt-3">
+        <!-- ===== [FUTURE-P1 Phase 3-2] 결과 순서 = 계좌 범위 -> 기간 -> 중앙값 -> 분포표 -> 해설 ->
+             (접힘)범위 막대 -> 목표 도달 가능성 -> 기술 정보 -> 상세 주의사항.
+             엔진(js/15)이 이미 계산해 둔 accountScopes/milestones를 표시만 재배치한 것이며 새 계산은
+             없다. 절세계좌가 없는 사용자는 범위 선택 영역이 계속 hidden이라 기존 화면과 같다. -->
+
+        <!-- 1) 계좌 범위 - 절세계좌 자산/납입이 있을 때만 나타난다(renderMonteCarloScopeSelector). -->
+        <div id="mcAccountScopeArea" class="hidden mb-3">
+          <p class="text-sm text-slate-400 mb-1">계좌 범위</p>
+          <!-- [FUTURE-P1 Phase 3-2] 선택/비선택 색 클래스를 정적 마크업에 그대로 적어 둔다 - Tailwind
+               CDN은 로드 시점 DOM을 스캔해 CSS를 만들기 때문에, 나중에 classList.add로만 붙는 dark:
+               변형은 class 방식(darkMode:'class')이 아니라 media 방식 규칙으로 만들어져 라이트 모드에서도
+               다크 색이 적용된다(기존 #mcOwnerScopeSegmented에서 실측으로 확인된 현상). -->
+          <div id="mcScopeSegmented" class="grid grid-cols-3 gap-1.5" role="group" aria-label="계좌 범위 선택">
+            <button type="button" data-scope="general" aria-pressed="true" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">일반계좌</button>
+            <button type="button" data-scope="taxAdvantaged" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">절세계좌</button>
+            <button type="button" data-scope="combined" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">통합</button>
+          </div>
+          <p id="mcScopeDesc" class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep"></p>
+        </div>
+
+        <!-- 2) 기간 - milestone(5/10/15/20년)을 하나 골라 아래 중앙값/범위 막대에 적용한다. 표는 네
+             기간을 한꺼번에 비교할 수 있게 그대로 둔다(선택과 비교 중 하나를 없애지 않는다). -->
+        <div class="mb-3">
+          <p class="text-sm text-slate-400 mb-1">기간</p>
+          <div id="mcMilestoneSegmented" class="grid grid-cols-4 gap-1.5" role="group" aria-label="기간 선택"></div>
+        </div>
+
+        <!-- 3) 핵심 결과 - 시뮬레이션 중앙값(P50) -->
+        <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
+          <p class="text-sm text-slate-500 dark:text-slate-400">시뮬레이션 중앙값(P50)</p>
+          <p id="mcP50ScopeNote" class="text-sm text-slate-400 mt-0.5">-</p>
+          <p class="text-sm text-slate-400 mt-1">명목가치(미래 시점 금액)</p>
+          <p id="mcP50Text" class="text-xl font-bold text-brand-600 dark:text-brand-300">-</p>
+          <p id="mcP50RealLabel" class="text-sm text-slate-400 mt-1">현재가치 기준</p>
+          <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
+          <p class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep">시뮬레이션 결과를 작은 값부터 줄 세웠을 때 딱 가운데에 오는 값입니다. 절반은 이보다 낮게, 절반은 이보다 높게 끝났다는 뜻이며 앞으로 이 금액이 된다는 뜻은 아닙니다. 명목가치는 미래 시점의 금액이고, 현재가치는 물가상승률을 적용해 오늘 돈 가치로 환산한 금액입니다.</p>
+        </div>
+
+        <!-- [Phase 17 P1-4] 결과 해석에 직접 영향을 주는 주의사항만 여기 항상 펼쳐서 보여준다. -->
+        <div id="mcSafetyCritical" class="hidden mb-3 space-y-1.5"></div>
+
+        <!-- 4) 기간별 분포 - 선택한 계좌 범위의 5/10/15/20년 x P10~P90.
+             [FUTURE-P1 Phase 3-2] 예전엔 P10/P25/P50/P75/P90이 title 속성에만 있어 터치 기기에서는
+             전달되지 않았다 - 초보자 표현을 그대로 두고 그 아래에 실제 화면 텍스트로 함께 적는다. -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left align-bottom">
+                <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
+                <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">낮은 편<br><span class="font-normal text-slate-400">P10</span></th>
+                <th class="px-0.5 py-2 text-right font-semibold break-keep">약간 낮음<br><span class="font-normal text-slate-400">P25</span></th>
+                <th class="px-0.5 py-2 text-right font-bold break-keep">중간 수준<br><span class="font-normal text-slate-400">P50</span></th>
+                <th class="px-0.5 py-2 text-right font-semibold break-keep">약간 높음<br><span class="font-normal text-slate-400">P75</span></th>
+                <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">높은 편<br><span class="font-normal text-slate-400">P90</span></th>
+              </tr>
+            </thead>
+            <tbody id="mcMilestoneTableBody"></tbody>
+          </table>
+        </div>
+        <!-- 5) 결과 해설 - percentile은 "분포에서의 위치"이고 목표 도달 가능성(아래)과는 다른 개념이라는
+             점을 결과 바로 옆에서 최소 1회는 읽을 수 있게 항상 펼쳐 둔다(상세 영역에만 숨기지 않는다). -->
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">"낮은 편"은 시뮬레이션 결과 중 하위 10% 수준(P10), "중간 수준"은 중앙값(P50), "높은 편"은 상위 10% 수준(P90)입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액입니다. 이 값들은 결과가 어디쯤에 놓이는지를 나타내는 <b>위치</b>이며, 아래의 목표 도달 가능성(<b>비율</b>)과는 다른 개념입니다.</p>
+
+        <!-- 6) 범위 막대 - 표와 같은 값을 그림으로 다시 보여주는 것이라 기본은 접어 둔다(모바일 세로
+             공간 절약). 계산값은 그대로 유지하며 renderBarsInto를 그대로 재사용한다. -->
+        <button type="button" id="mcRangeBarsToggleBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
+          <span id="mcRangeBarsToggleLabel">선택한 기간의 범위를 막대로 보기</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcRangeBarsChevron"></i>
+        </button>
+        <div id="mcRangeBarsBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <p id="mcRangeBarsNominalLabel" class="text-sm text-slate-400 mt-3 mb-1">명목가치 범위</p>
+          <div id="mcRangeBarsArea" class="space-y-1.5"></div>
+          <p id="mcRangeBarsRealLabel" class="text-sm text-slate-400 mt-3 mb-1">현재가치 기준 범위</p>
+          <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
+        </div>
+
+        <!-- 7) 목표 도달 가능성 - 보조 정보다. 핵심 금액(P50)과 같은 브랜드색/굵기를 쓰지 않고,
+             테두리 박스 + "보조 정보" 라벨이라는 구조 자체로 성격을 구분한다(색만으로 구분하지 않는다). -->
+        <div class="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+          <p class="text-sm font-semibold text-slate-400">보조 정보 · 목표 도달 가능성</p>
+          <div id="mcGoalArea" class="mt-1"></div>
+        </div>
+
+        <!-- 8) 기술 정보 - 결과보다 먼저 나오면 초보자가 숫자를 만나기 전에 용어부터 만나게 되므로
+             핵심 결과 뒤로 내렸다(값은 그대로, 위치만 변경). -->
+        <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mt-3 leading-relaxed break-keep"></div>
+        <p id="mcInflationNote" class="text-sm text-slate-400 mt-1">인플레이션율: -</p>
+        <p id="mcWeightedFeeNote" class="text-sm text-slate-400">예상 연간 운용보수(포트폴리오 가중평균): -</p>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
+
+        <!-- 9) [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항과 매번
+             동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘 영역으로 모은다 - 숨기는
+             것이 아니라 원하면 언제든 펼쳐 전부 확인할 수 있다(판정 로직 무변경). -->
+        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
+          <span id="mcSafetyDetailToggleLabel">주의사항 및 계산 방법 자세히 보기</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcSafetyDetailChevron"></i>
+        </button>
+        <div id="mcSafetyDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <div id="mcSafetyDetail" class="pt-2 space-y-1.5"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== [절세계좌 현황] 카드 (신설 - 요청 반영) =====
+         [FUTURE-P1 Phase 3-3] 이 카드는 "지금 얼마 들어 있는가"(현재 현황) 전용이다. 미래 분포는
+         Phase 2-C부터 Monte Carlo가 계좌 범위(절세계좌)로 직접 계산하므로, 두 숫자를 서로 다른 미래
+         예측으로 혼동하지 않도록 카드 설명에서 역할을 분명히 하고 MC로 가는 길만 안내한다.
+         ISA/IRP/연금저축 등 절세계좌 보유 자산은 아래 일반계좌 전용 시나리오 계산에서는 빠져 있으므로,
+         별도로 현재 현황(소유자별 드롭다운)과 [적립 예상] 팝업(월 적립액 + 기간 → N년 후 예상액)을
+         제공한다. 계산 로직은 js/05 getTaxAdvantagedHoldingsByOwner/simulateTaxAdvantagedGrowth 참고 -
+         ISA/IRP/연금저축은 법적으로 개인 명의 전용이라 신랑/와이프 두 명 기준으로만 집계한다. -->
+    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
+      <!-- [UI 개편 - 요청 반영] [전체/신랑/와이프] 필터 select를 없애고, 카드는 항상 가구 합계 기준으로
+           보여준다. 소유자별 세부 현황은 카드 하단에 아코디언 2개(신랑/와이프)로 접어두고 필요할 때만
+           펼쳐 본다(renderTaxAdvantagedCard, js/05 참고) - taxAdvantagedCardScope/change 리스너도 함께
+           제거됐다. -->
+      <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <h3 class="text-sm font-semibold">🏦 절세계좌 현황</h3>
+        <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-sm font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
+          <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
+        </button>
+      </div>
+      <p class="text-sm text-slate-400 mb-3 break-keep">ISA/IRP/연금저축 등 절세계좌에 <b>지금 들어 있는</b> 자산의 가구 합계 현황입니다. 앞으로 얼마나 불어날지는 위 Monte Carlo에서 계좌 범위를 <b>절세계좌</b>로 바꿔 확인하세요.</p>
+      <div id="taxAdvantagedSummary"></div>
+    </section>
+
+
+    <!-- ===== [FUTURE-P1 Phase 3-2] 여기부터는 "참고 계산" 영역 =====
+         Monte Carlo(위)가 미래예측의 주 결과이고, 아래 성장률별 결과는 "수익률이 매년 일정하다고
+         가정했을 때의 단일 경로 계산"이다 - 확률분포가 아니므로 확률/신뢰구간/가능성이 높은 범위
+         같은 표현을 쓰지 않는다. 계산(updateProjection의 시나리오 계산 전체)은 한 글자도 바뀌지
+         않았고 DOM 위치와 제목만 바뀌었다(핸들러는 전부 id 기준이라 위치 이동과 무관하다). -->
+    <div class="flex items-center gap-2 my-4">
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+      <span class="text-sm font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 whitespace-nowrap">여기부터는 참고 계산입니다</span>
+      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+    </div>
+    <h3 class="text-sm font-semibold mb-2">📐 성장률별 참고 결과</h3>
+    <p class="text-sm text-slate-400 mb-2 leading-relaxed break-keep">수익률이 매년 똑같다고 가정했을 때의 단순 계산입니다. 변동성을 반영하지 않으므로 확률이나 범위가 아니며, 실제 결과의 흔들림은 위 Monte Carlo에서 확인하세요.</p>
+    <!-- ===== [3가지 시나리오 동시 비교 - 구조 개편] =====
+         PROJECTION_SCENARIOS 배열(목표배분-보수적·일반적·긍정적 3개)을 단일 소스로 두고, 요약 카드
+         그리드·비교 차트·비교표를 전부 이 배열을 순회(loop)해 동적으로 그린다
+         (renderScenarioSummaryCards/renderScenarioCompareChart/renderScenarioCompareScheduleTable,
+         updateProjection() 참고) - 시나리오를 늘리거나 줄여도 이 3곳만 자동으로 따라간다.
+         [버그 수정 - "현재 구성 유지" 제거] 예전엔 목표 비중대로 조정하지 않는 "현재 구성 유지"
+         시나리오도 함께 비교했으나, 요청에 따라 이 통합 비교에서는 완전히 뺐다(목표 배분 적용 3가지
+         케이스만 비교) - 그 기준값을 쓰던 "적용 효과 요약" 카드도 "포트폴리오 구성" 탭 개편으로 함께
+         제거되어, 이제 "현재 구성 유지" 계산 자체가 앱 어디에도 남아있지 않다.
+         "일반적" 프리셋은 예전 "목표 배분 적용"과 동일한 수익률(과거 30년 평균 근사)을 그대로 쓰고,
+         "보수적"/"긍정적"은 SCENARIO_RATE_PRESETS에 정의된 고정 근사치(±1σ 약세장/강세장 근사)를
+         쓴다 - 실제 백테스트 데이터가 아니라 참고용 근사치임을 카드 하단에 안내한다. -->
+    <!-- [버그 수정 - 자산 대상 범위를 일반계좌로 재통일] 한때는 "포트폴리오 구성" 탭과 달리 미래예측만
+         ISA/IRP/연금저축 및 부동산까지 전부 합산해 시뮬레이션했으나(계좌 구분과 무관하게 "총자산이
+         얼마나 불어나는가"를 보여주려던 정책), 요청에 따라 다시 순수 일반계좌 보유 자산만 대상으로
+         좁혔다 - 두 탭이 정확히 같은 자산 범위를 공유한다(getProjectionGroupStats 참고). -->
+    <!-- [안내 문구 삭제 - 요청 반영] "※ 절세계좌... 시뮬레이션합니다." 문구를 삭제했다(일반계좌 한정
+         범위는 아래 섹션 타이틀/각 카드 설명으로 이미 충분히 전달된다고 판단). -->
+    <!-- [타이틀 변경 - 요청 반영] "포트폴리오 기준"에서 "일반계좌 설정"으로 개명 - 아래 "절세계좌 현황"
+         카드와 짝을 이루도록, 일반계좌 관련 카드들(적립금 입력~시나리오별 일반계좌 금액 비교) 구간
+         전체를 대표하는 섹션 헤더. -->
+    <!-- [3개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
+         순회하며 채운다. 3개 고정이라 화면 폭과 무관하게 항상 3열로 나란히 보여준다. -->
+    <section id="scenarioSummaryCardsGrid" class="grid grid-cols-3 gap-2 sm:gap-3 mb-4"></section>
+    <div class="mb-3">
       <!-- [Phase 47-A §5] 예전 문구는 "과거 시장 평균·변동성을 참고한 근사치"라고 적혀 있었다. 이는
            앱의 실제 정책과 반대다 - 미국/선진국/신흥국 주식 가정은 기관의 장기 전망(Vanguard VCMM,
            forward-looking)이고, 앱은 "과거 수익률을 미래 기대수익률로 쓰지 않는다"를 명시적 원칙으로
@@ -1248,33 +1505,6 @@
         수익률 직접 조정(고급)
       </button>
     </div>
-    <!-- [3개 시나리오 요약 카드 - 동적 그리드] renderScenarioSummaryCards()가 PROJECTION_SCENARIOS를
-         순회하며 채운다. 3개 고정이라 화면 폭과 무관하게 항상 3열로 나란히 보여준다. -->
-    <section id="scenarioSummaryCardsGrid" class="grid grid-cols-3 gap-2 sm:gap-3 mb-4"></section>
-
-    <!-- [카드 제거 - 요청 반영] "목표 비중 적용(일반적) - 상품별 비중" 카드를 완전히 삭제했다
-         (targetAllocationAccordionBtn/Body, targetAllocationSummary, renderTargetAllocationSummary 포함) -
-         "포트폴리오 구성" 탭에서 이미 같은 목표 비중/상품 정보를 확인할 수 있어 중복이었다. -->
-
-    <!-- ===== [절세계좌 현황] 카드 (신설 - 요청 반영) =====
-         ISA/IRP/연금저축 등 절세계좌 보유 자산은 위 일반계좌 전용 시뮬레이션에서 완전히 빠져 있으므로,
-         별도로 현재 현황(소유자별 드롭다운)과 [적립 예상] 팝업(월 적립액 + 기간 → N년 후 예상액)을
-         제공한다. 계산 로직은 js/05 getTaxAdvantagedHoldingsByOwner/simulateTaxAdvantagedGrowth 참고 -
-         ISA/IRP/연금저축은 법적으로 개인 명의 전용이라 신랑/와이프 두 명 기준으로만 집계한다. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm mb-4">
-      <!-- [UI 개편 - 요청 반영] [전체/신랑/와이프] 필터 select를 없애고, 카드는 항상 가구 합계 기준으로
-           보여준다. 소유자별 세부 현황은 카드 하단에 아코디언 2개(신랑/와이프)로 접어두고 필요할 때만
-           펼쳐 본다(renderTaxAdvantagedCard, js/05 참고) - taxAdvantagedCardScope/change 리스너도 함께
-           제거됐다. -->
-      <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
-        <h3 class="text-sm font-semibold">🏦 절세계좌 현황</h3>
-        <button type="button" id="taxAdvantagedPlanBtn" class="touch-target shrink-0 flex items-center gap-1 text-sm font-semibold px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-950/60 min-h-[44px]">
-          <i data-lucide="trending-up" class="w-3 h-3"></i> 적립설정
-        </button>
-      </div>
-      <p class="text-sm text-slate-400 mb-3">ISA/IRP/연금저축 등 절세계좌 보유 자산의 가구 합계 현황입니다. 위 일반계좌 시나리오와는 별도로 계산됩니다.</p>
-      <div id="taxAdvantagedSummary"></div>
-    </section>
 
     <!-- ===== [Phase 24-B STEP 4] Scenario(보수적/일반적/긍정적) 전체를 상세 분석 영역으로 내림 =====
          Future Projection의 "주인공"은 위 Hero(지금 계획대로면)와 아래 Monte Carlo이고, Scenario는 그
@@ -1286,7 +1516,7 @@
       <button type="button" id="scenarioSectionAccordionBtn" class="detail-card-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-3 text-left">
         <span>
           <span class="text-sm font-semibold block">📈 성장률별 결과 보기</span>
-          <span class="text-sm text-slate-400 mt-0.5 block">보수적 · 일반적 · 긍정적 3가지 성장률을 가정했을 때 각각 어떻게 되는지 비교합니다(변동성 없는 단일 경로 계산).</span>
+          <span class="text-sm text-slate-400 mt-0.5 block break-keep">보수적 · 일반적 · 긍정적 3가지 성장률을 가정했을 때 각각 어떻게 되는지 비교합니다(변동성 없는 단일 경로 계산).</span>
         </span>
         <i data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform duration-200 detail-card-accordion-chevron"></i>
       </button>
@@ -1375,181 +1605,11 @@
       </div>
     </section>
 
-    <!-- [Phase 17 P1-3 - Scenario ↔ Monte Carlo 시각적 단계 구분] 위 시나리오 비교(보수/일반/긍정,
-         전부 확정된 단일 경로 계산)와 아래 Monte Carlo(변동성을 반영한 확률분포)가 "같은 종류의 분석을
-         두 번 보여주는 것"으로 오해되지 않도록, 색이 다른 구분 배지로 단계 전환을 명시한다(Phase 16-B
-         재검증 결과 - 새 계산/새 카드 없음, 순수 시각적 구분자). -->
-    <div class="flex items-center gap-2 my-4">
-      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
-      <span class="text-sm font-semibold px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 whitespace-nowrap">여기부터는 계획의 불확실성을 살펴봅니다</span>
-      <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
-    </div>
 
-    <!-- ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3) =====
-         종목별 기대수익률(μ)·변동성(σ)·날짜정렬 상관관계를 반영한 Monthly Precision Monte Carlo가
-         공식 모델이다(js/15~18). 계산에 수 초~수십 초 걸릴 수 있어 자동 실행하지 않고 사용자가 직접
-         [Monte Carlo 실행] 버튼을 눌러야 시작된다(예전 버전은 렌더될 때마다 자동으로 돌았다) -
-         Web Worker에서 실행되어 계산 중에도 화면이 멈추지 않는다(js/17-monte-carlo-worker.js). -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-3 sm:p-4 mb-4">
-      <h3 class="text-sm font-semibold flex items-center gap-1">🎲 Monte Carlo 미래자산 예측</h3>
-      <!-- [Phase 24-B STEP 9 - 팝업화] 예전엔 이 설명 문단(위 "시나리오별 예상자산"과의 차이, 계산
-           방식)이 항상 펼쳐진 긴 텍스트였다(모바일에서 실행 버튼 도달 전 스크롤 부담이 큼, Phase 24-A
-           감사 지적) - 내용은 하나도 지우지 않고 짧은 한 줄 + ⓘ로 압축했다. 클릭하면 기존 문단과
-           "공식 모델" 박스 내용을 그대로 합쳐서 보여준다(openMcInfoModal, 아래 정의). -->
-      <button type="button" id="mcIntroInfoBtn" class="w-full min-h-[44px] flex items-center justify-between gap-2 text-left text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-2 mb-3 hover:text-brand-600 dark:hover:text-brand-300">
-        <span>실제 미래는 여러 경로로 달라질 수 있습니다</span>
-        <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
-      </button>
+    <!-- [카드 제거 - 요청 반영] "목표 비중 적용(일반적) - 상품별 비중" 카드를 완전히 삭제했다
+         (targetAllocationAccordionBtn/Body, targetAllocationSummary, renderTargetAllocationSummary 포함) -
+         "포트폴리오 구성" 탭에서 이미 같은 목표 비중/상품 정보를 확인할 수 있어 중복이었다. -->
 
-      <!-- [Phase 24-B STEP 6 - Owner 관점 선택] 기본값 "가구 전체"(기존 동작과 완전히 동일) - 신랑/
-           와이프를 선택하면 그 owner의 자산·목표비중·월적립금·적립기간만 반영해 계산한다(가구 전체
-           pooled 비중을 재사용하지 않음, js/05·js/16 참고). 44px 터치 타겟(Assets 관점전환 세그먼트
-           컨트롤과 동일한 패턴 재사용, syncAssetViewButtonsUI 참고). -->
-      <div id="mcOwnerScopeSegmented" class="grid grid-cols-3 gap-1.5 mb-3" role="group" aria-label="Monte Carlo 관점 선택">
-        <button type="button" data-scope="신랑" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">신랑</button>
-        <button type="button" data-scope="와이프" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">와이프</button>
-        <button type="button" data-scope="household" aria-pressed="true" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">가구 전체</button>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2 mb-3">
-        <div>
-          <label class="text-sm text-slate-400 block mb-1">시나리오</label>
-          <select id="mcPresetSelect" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
-            <option value="conservative">보수적</option>
-            <option value="normal" selected>일반적</option>
-            <option value="optimistic">긍정적</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-sm text-slate-400 block mb-1">Simulation 횟수</label>
-          <select id="mcIterationsSelect" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
-            <option value="5000">5,000회(Fast)</option>
-            <option value="10000" selected>10,000회(Standard)</option>
-            <option value="50000">50,000회(High Precision)</option>
-          </select>
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="text-sm text-slate-400 block mb-1">목표금액(선택, 원)</label>
-        <!-- [Phase 22 STEP 8] min="0" 추가 - 계산(js/19 goalAmount>0 게이트)은 이미 음수 입력을
-             "미설정"과 동일하게 안전 처리하고 있었다(실측 확인, 잘못된 확률/NaN 없음) - 이 속성은
-             그 안전한 기존 동작을 바꾸지 않고, 목표금액이 0 이상이어야 한다는 의도를 입력 단계에서도
-             드러내는 최소한의 UI 힌트다(브라우저 네이티브 스피너/유효성 표시, JS 로직 무변경). -->
-        <input id="mcGoalAmountInput" type="number" inputmode="numeric" min="0" placeholder="예: 1000000000 (10억원)" class="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 mb-1.5">
-        <!-- [Phase 3-2] 명목/실질 중 어느 기준의 목표금액인지 - 기본값은 기존 동작과의 호환을 위해
-             명목(변환 없이 그대로 Engine에 전달)으로 둔다(js/19 참고). -->
-        <div class="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="nominal" checked> 미래 명목금액</label>
-          <label class="flex items-center gap-1"><input type="radio" name="mcGoalMode" value="real"> 현재 구매력 기준</label>
-        </div>
-      </div>
-
-      <!-- [Phase 3-4] 운용보수(Expense Ratio) - ETF/펀드의 연간 운용비용만 다룬다. 매매수수료·세금·
-           환전비용 등은 포함하지 않는다는 것을 문구로 명확히 한다(초보자 오해 방지, 요청 반영). 종목별
-           입력은 현재 목표비중에 포함된 항목만 동적으로 나열한다(js/19 renderFeeRatesEditor). -->
-      <div class="mb-3">
-        <!-- [Phase 25 P1] 예전엔 여기서 바로 펼쳐지는 dropdown이었다 - 종목이 늘어날수록 [실행]
-             버튼을 아래로 밀어내고, 입력이 즉시 저장돼 되돌릴 수 없었으며, 빈칸/placeholder "0"이라
-             "미확인"과 "명시적 0%"가 화면에서 구분되지 않았다. 팝업으로 옮기고 상태를 글자로 함께
-             표시한다(색상만으로 상태를 전달하지 않는다는 원칙). -->
-        <button type="button" id="mcFeeRatesToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2">
-          <span>운용보수(연간) 설정</span>
-          <span id="mcFeeSummary" class="shrink-0 font-semibold whitespace-nowrap">전부 미확인</span>
-        </button>
-      </div>
-
-      <button type="button" id="mcRunBtn" class="w-full py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
-      <button type="button" id="mcCancelBtn" class="hidden w-full py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
-
-      <!-- [Phase 3-5 Safety Layer] BLOCK 실패 시(비중 합계 오류 등)를 보여준다 - 이 경로는 계산 자체가
-           시작되지 못한 경우라 mcResultArea가 항상 hidden 상태이므로(handleMonteCarloError, js/19)
-           위치가 결과보다 먼저/나중이든 실제로는 서로 겹치지 않는다. [Phase 17 P1-4] 정상 완료 시의
-           Safety 표시는 더 이상 이 컨테이너를 쓰지 않는다 - 아래 mcResultArea 안의
-           mcSafetyCritical/mcSafetyDetail(결과 우선 배치, 3단계 표시)로 대체됐다(js/22 renderMonteCarloSafetyTiers). -->
-      <div id="mcSafetyIssues" class="hidden mt-3"></div>
-
-      <div id="mcProgressArea" class="hidden mt-3">
-        <p class="text-sm text-slate-500 dark:text-slate-400 mb-1">Monte Carlo 시뮬레이션 실행 중</p>
-        <div class="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-          <div id="mcProgressBar" class="h-full bg-brand-600 transition-[width] duration-150" style="width:0%"></div>
-        </div>
-        <p id="mcProgressText" class="text-sm text-slate-400 mt-1 text-right">0 / 0회 (0%)</p>
-      </div>
-
-      <p id="mcStatusText" class="text-sm text-center mt-3 hidden"></p>
-
-      <div id="mcResultArea" class="hidden mt-3">
-        <p id="mcInflationNote" class="text-sm text-slate-400 mb-1">인플레이션율: -</p>
-        <p id="mcWeightedFeeNote" class="text-sm text-slate-400 mb-1">예상 연간 운용보수(포트폴리오 가중평균): -</p>
-        <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mb-2 leading-relaxed"></div>
-
-        <!-- [FUTURE-P1 Phase 2-C - 계좌 범위 최소 연결] 절세계좌(ISA/IRP/연금저축) 자산이나 납입계획이
-             있는 사용자에게만 표시된다(없으면 계속 hidden - 기존 화면과 완전히 동일). 아래 P50 카드와
-             표는 예전부터 "일반계좌(리밸런싱 대상)" 기준이므로, 절세계좌를 가진 사용자가 그 숫자를
-             전체 자산으로 오해하지 않도록 범위를 명시하고 세 범위의 중앙값을 함께 보여준다.
-             본격적인 UI 개편(hero 승격/그래프/설명 재구성)은 다음 Phase에서 한다. -->
-        <div id="mcAccountScopeArea" class="hidden mb-3"></div>
-
-        <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
-          <p class="text-sm text-slate-500 dark:text-slate-400">중간 수준 예상자산</p>
-          <p class="text-sm text-slate-400 mt-1">명목가치(미래 시점 금액)</p>
-          <p id="mcP50Text" class="text-xl font-bold text-brand-600 dark:text-brand-300">-</p>
-          <p class="text-sm text-slate-400 mt-1">현재 구매력 기준(실질가치)</p>
-          <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
-          <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">이 값은 시뮬레이션 결과 중 "가장 전형적인(중앙값, P50)" 경우입니다. 실제 미래자산은 이보다 낮거나 높을 수 있습니다. 명목가치는 미래 시점의 금액이며, 실질가치는 인플레이션율을 적용해 현재 구매력 기준으로 환산한 금액입니다.</p>
-        </div>
-
-        <!-- [Phase 22 STEP 10 - P50 바로 다음에 목표 도달 가능성] Phase 21 T-11: 목표금액을 설정한
-             사용자가 가장 궁금해할 "그래서 목표에 도달할까?"에 대한 답이 화면 하단(범위표 이후)에
-             있어 발견성이 낮았다 - 새 카드를 만들지 않고 기존 #mcGoalArea 엘리먼트를 P50 카드 바로
-             아래로 옮기기만 했다(js/19의 innerHTML 대입 로직은 id 기준이라 위치 변경과 무관하게
-             그대로 동작). 목표금액이 설정되지 않았으면 기존과 동일하게 안내 문구만 표시된다. -->
-        <div id="mcGoalArea" class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center"></div>
-
-        <!-- [Phase 17 P1-4 - 핵심 결과 다음, 핵심 WARNING] 결과 해석에 직접 영향을 주는 주의사항(운용
-             보수 미확인/극단적 기대수익률 등)만 여기 결과 바로 아래 항상 펼쳐서 보여준다 - 판정
-             로직(js/21 assess*)은 전혀 바꾸지 않고, 이미 계산된 issue를 어디에 배치할지만 바꿨다
-             (js/22 renderMonteCarloSafetyTiers). 동일 원인이 여러 자산에서 반복되면 "자산 N개"로
-             묶어 보여주되, 원본 issue 데이터(개별 자산명/메시지)는 펼치면 전부 그대로 확인할 수 있다. -->
-        <div id="mcSafetyCritical" class="hidden mb-3 space-y-1.5"></div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left">
-                <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
-                <th class="px-1 py-2 text-right" title="P10">낮은 편</th>
-                <th class="px-1 py-2 text-right" title="P25">약간 낮음</th>
-                <th class="px-1 py-2 text-right font-bold" title="P50">중간 수준</th>
-                <th class="px-1 py-2 text-right" title="P75">약간 높음</th>
-                <th class="px-1 py-2 text-right" title="P90">높은 편</th>
-              </tr>
-            </thead>
-            <tbody id="mcMilestoneTableBody"></tbody>
-          </table>
-        </div>
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed">"낮은 편"은 시뮬레이션 결과 중 하위 10% 수준(P10), "중간 수준"은 중앙값(P50), "높은 편"은 상위 10% 수준(P90)입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 실질가치(현재 구매력 기준)입니다.</p>
-
-        <p class="text-sm text-slate-400 mt-3 mb-1">명목가치 범위(20년 후 기준)</p>
-        <div id="mcRangeBarsArea" class="space-y-1.5"></div>
-        <p class="text-sm text-slate-400 mt-3 mb-1">실질가치 범위(현재 구매력 기준, 20년 후 기준)</p>
-        <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
-
-        <p class="text-sm text-slate-400 mt-3 leading-relaxed">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
-
-        <!-- [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항(변동성/데이터
-             충분성/상관계수 등)과 매번 동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘
-             영역으로 모은다 - 숨기는 것이 아니라 원하면 언제든 펼쳐 전부 확인할 수 있다(위험을 숨기지
-             않는다는 원칙 유지, 판정 로직 무변경). -->
-        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-          <span id="mcSafetyDetailToggleLabel">주의사항 및 계산 방법 자세히 보기</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcSafetyDetailChevron"></i>
-        </button>
-        <div id="mcSafetyDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          <div id="mcSafetyDetail" class="pt-2 space-y-1.5"></div>
-        </div>
-      </div>
-    </section>
   </div> <!-- /tabPanelProjection -->
   </div> <!-- /tabPanelRebalance (포트폴리오/자산예측 통합 탭) -->
 

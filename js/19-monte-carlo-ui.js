@@ -64,11 +64,15 @@ document.getElementById('closeMcInfoModalBtn').addEventListener('click', () => c
 document.getElementById('closeMcInfoModalBtnBottom').addEventListener('click', () => closeMcInfoModal());
 document.getElementById('mcInfoModal').addEventListener('click', (e) => { if (e.target.id === 'mcInfoModal') closeMcInfoModal(); });
 
-// [Phase 24-B STEP 9] 기존 "위 시나리오별 예상자산은..." 설명 문단 + "공식 모델: Monthly Precision
-// Monte Carlo" 박스 내용을 한 글자도 지우지 않고 그대로 팝업 본문으로 옮겼다(문구 재배치일 뿐).
+// [Phase 24-B STEP 9] 기존 설명 문단 + "공식 모델: Monthly Precision Monte Carlo" 박스 내용을
+// 한 글자도 지우지 않고 그대로 팝업 본문으로 옮겼다(문구 재배치일 뿐).
+// [FUTURE-P1 Phase 3-2 후속] Phase 3-2에서 deterministic 시나리오 영역이 Monte Carlo "아래"로
+// 내려가면서 이 문단 첫머리의 "위"라는 위치 지시어가 실제 화면과 어긋나게 됐다 - 위치 지시어를
+// 없애고, 화면에 실제로 적혀 있는 이름("성장률별 참고 결과")으로 가리킨다. 설명의 의미·계산·구조는
+// 그대로이며 문구만 고쳤다.
 document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
   openMcInfoModal('Monte Carlo란?', `
-    <p>위 "시나리오별 예상자산"은 선택한 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 종목별 변동성·상관관계를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
+    <p>"성장률별 참고 결과"는 선택한 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 종목별 변동성·상관관계를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
     <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
       <p class="font-semibold text-slate-700 dark:text-slate-200">공식 모델: Monthly Precision Monte Carlo</p>
       <p class="mt-1">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
@@ -86,6 +90,7 @@ document.getElementById('mcOwnerScopeSegmented').addEventListener('click', (e) =
   // [Monte Carlo 실행]을 눌러야 하게 한다(계산을 자동 재실행하지 않음 - 기존 "실행 버튼을 직접 눌러야
   // 시작" 원칙 유지).
   mcUiEl('mcResultArea').classList.add('hidden');
+  if (mcUiEl('mcEmptyState')) mcUiEl('mcEmptyState').classList.remove('hidden');
   mcUiEl('mcSafetyIssues').classList.add('hidden');
   showMonteCarloStatus('');
   mcUiEl('mcStatusText').classList.add('hidden');
@@ -265,6 +270,8 @@ function resetMonteCarloUiToReady() {
   mcUiEl('mcCancelBtn').classList.add('hidden');
   mcUiEl('mcProgressArea').classList.add('hidden');
   mcUiEl('mcResultArea').classList.add('hidden');
+  // [FUTURE-P1 Phase 3-2] 결과가 없는 상태로 돌아왔으므로 "왜 실행 버튼을 눌러야 하는지" 안내를 다시 띄운다.
+  if (mcUiEl('mcEmptyState')) mcUiEl('mcEmptyState').classList.remove('hidden');
   mcUiEl('mcStatusText').classList.add('hidden');
   mcUiEl('mcPresetSelect').disabled = false;
   mcUiEl('mcIterationsSelect').disabled = false;
@@ -280,6 +287,8 @@ function setMonteCarloUiRunning() {
   mcUiEl('mcCancelBtn').classList.remove('hidden');
   mcUiEl('mcProgressArea').classList.remove('hidden');
   mcUiEl('mcResultArea').classList.add('hidden');
+  // [FUTURE-P1 Phase 3-2] 실행 중에는 진행률이 안내를 대신한다.
+  if (mcUiEl('mcEmptyState')) mcUiEl('mcEmptyState').classList.add('hidden');
   mcUiEl('mcStatusText').classList.add('hidden');
   mcUiEl('mcProgressBar').style.width = '0%';
   mcUiEl('mcProgressText').textContent = '0 / 0회 (0%)';
@@ -303,25 +312,159 @@ function showMonteCarloStatus(text) {
   el.classList.remove('hidden');
 }
 
-// [초보자용 표현] 막대 라벨도 표(mcMilestoneTableBody)와 동일한 원칙 - P10/P50/P90을 그대로 크게
-// 보여주지 않고, 값을 왜곡하지 않는 쉬운 말로 바꾼다. 기술 용어(P10 등)는 title 툴팁에만 남긴다.
-function renderBarsInto(elId, last, colorSet) {
-  const maxV = last.p90 || 1;
+/* -------------------------------------------------------------------------
+ * [FUTURE-P1 Phase 3-2] Monte Carlo 결과 표시 상태
+ *    - 계좌 범위(scope)와 기간(milestone)은 순수 화면 상태다(localStorage에 저장하지 않는다 -
+ *      mcOwnerScope와 동일한 패턴). 값을 다시 계산하지 않고, 엔진이 이미 만들어 둔
+ *      accountScopes/milestones 중 "어느 것을 보여줄지"만 고른다.
+ *    - 기본값은 general + 마지막 milestone(=기존 화면과 완전히 같은 숫자)이다. 절세계좌가 없는
+ *      사용자는 accountScopes 자체가 없어 범위 선택 UI가 뜨지 않고 기존과 동일하게 동작한다.
+ * ---------------------------------------------------------------------- */
+const MC_SCOPE_META = {
+  general: { label: '일반계좌', desc: '일반(과세) 계좌만. 해마다 한 번 목표 비중대로 다시 맞춘다고 가정합니다.' },
+  taxAdvantaged: { label: '절세계좌', desc: 'ISA·IRP·연금저축. 지금 들고 있는 그대로 두고 사고팔지 않는다고 가정합니다.' },
+  combined: { label: '통합', desc: '같은 시장 흐름 안에서 두 계좌를 합친 결과입니다. 각 계좌의 중앙값을 그냥 더한 값과는 다를 수 있습니다.' }
+};
+let mcSelectedScope = 'general';
+let mcSelectedMilestoneIdx = null; // null = 가장 긴 기간(기존 동작)
+let mcRangeBarsOpen = false;
+// 마지막으로 렌더한 결과 - 범위/기간 버튼을 눌렀을 때 재계산 없이 다시 그리기 위해 보관한다.
+let mcLastRender = null;
+
+// [초보자용 표현] 막대 라벨은 표(mcMilestoneTableBody)와 **같은 어휘**를 쓴다 - 예전엔 표가
+// "낮은 편/약간 낮음/…", 막대가 "낮음/약간낮음/…"으로 서로 달라 같은 값이 다른 지표처럼 보였다.
+// [FUTURE-P1 Phase 3-2] P10~P90을 title 속성에만 두지 않는다 - title은 터치 기기에서 뜨지 않아
+// 모바일 사용자에게는 없는 정보와 같았다. 쉬운 말과 원래 이름을 함께 화면에 적는다.
+function renderBarsInto(elId, point, colorSet) {
+  const maxV = point.p90 || 1;
   const bars = [
-    { label: '낮음', title: 'P10', value: last.p10, color: colorSet.p10 },
-    { label: '약간낮음', title: 'P25', value: last.p25, color: colorSet.p25 },
-    { label: '중간', title: 'P50', value: last.p50, color: colorSet.p50 },
-    { label: '약간높음', title: 'P75', value: last.p75, color: colorSet.p75 },
-    { label: '높음', title: 'P90', value: last.p90, color: colorSet.p90 }
+    { label: '낮은 편', code: 'P10', value: point.p10, color: colorSet.p10 },
+    { label: '약간 낮음', code: 'P25', value: point.p25, color: colorSet.p25 },
+    { label: '중간 수준', code: 'P50', value: point.p50, color: colorSet.p50 },
+    { label: '약간 높음', code: 'P75', value: point.p75, color: colorSet.p75 },
+    { label: '높은 편', code: 'P90', value: point.p90, color: colorSet.p90 }
   ];
   mcUiEl(elId).innerHTML = bars.map((b) => `
     <div class="flex items-center gap-2 text-sm">
-      <span class="w-11 shrink-0 text-slate-400" title="${b.title}">${b.label}</span>
+      <span class="w-20 shrink-0 text-slate-400 leading-tight">${b.label}<br><span class="text-slate-500 dark:text-slate-500">${b.code}</span></span>
       <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div class="h-full rounded-full ${b.color}" style="width:${Math.max(2, (b.value / maxV) * 100)}%"></div>
       </div>
       <span class="w-16 shrink-0 text-right text-slate-500 dark:text-slate-400">${fmtKRWShort(b.value)}</span>
     </div>`).join('');
+}
+
+const MC_SEG_BTN_IDLE = ['border-slate-200', 'dark:border-slate-700', 'bg-slate-50', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400'];
+const MC_SEG_BTN_ACTIVE = ['border-brand-600', 'dark:border-brand-400', 'bg-brand-50', 'dark:bg-brand-950', 'text-brand-700', 'dark:text-brand-200'];
+function paintSegmentedButton(btn, active) {
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  btn.classList.remove(...MC_SEG_BTN_IDLE, ...MC_SEG_BTN_ACTIVE);
+  btn.classList.add(...(active ? MC_SEG_BTN_ACTIVE : MC_SEG_BTN_IDLE));
+}
+
+// 이 결과에서 실제로 고를 수 있는 milestone 배열(선택된 계좌 범위 기준)을 돌려준다.
+// accountScopes가 없으면(절세계좌 없는 사용자) 기존 milestones를 그대로 쓴다 - 숫자가 전혀 달라지지 않는다.
+function mcScopedMilestones(withReal, scope) {
+  const scopes = withReal.accountScopes;
+  if (!scopes) return withReal.milestones;
+  return scopes[scope] || withReal.milestones;
+}
+function mcHasAccountScopes(withReal) {
+  const s = withReal && withReal.accountScopes;
+  return !!(s && s.general && s.taxAdvantaged && s.combined);
+}
+
+/* [FUTURE-P1 Phase 3-2] 계좌 범위 선택 - 절세계좌 자산/납입이 실제로 있을 때만 나타난다.
+ * 예전(Phase 2-C)엔 세 범위의 중앙값을 한꺼번에 나열했는데, 바로 아래 P50 카드가 같은 일반계좌
+ * 값을 다시 보여줘 같은 숫자가 400px 안에서 두 번 나왔다 - 이제 여기서는 "무엇을 볼지"만 고르고
+ * 금액은 아래 결과 영역 한 곳에서만 보여준다. */
+function renderMonteCarloScopeSelector(withReal) {
+  const el = mcUiEl('mcAccountScopeArea');
+  if (!mcHasAccountScopes(withReal)) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden');
+  el.querySelectorAll('.mc-scope-btn').forEach((btn) => paintSegmentedButton(btn, btn.dataset.scope === mcSelectedScope));
+  mcUiEl('mcScopeDesc').textContent = MC_SCOPE_META[mcSelectedScope].desc;
+}
+
+// 기간 선택 - milestone 배열(5/10/15/20년)에서 그대로 만든다. 새 기간을 만들지 않는다.
+function renderMonteCarloMilestoneSelector(milestones) {
+  const el = mcUiEl('mcMilestoneSegmented');
+  const activeIdx = mcSelectedMilestoneIdx === null ? milestones.length - 1 : mcSelectedMilestoneIdx;
+  el.innerHTML = milestones.map((m, i) => `
+    <button type="button" data-milestone-idx="${i}" aria-pressed="${i === activeIdx ? 'true' : 'false'}"
+      class="mc-milestone-btn flex items-center justify-center min-h-[44px] px-1 py-2 rounded-xl border-2 text-sm font-semibold transition-colors">${m.year}년</button>`).join('');
+  el.querySelectorAll('.mc-milestone-btn').forEach((btn) => paintSegmentedButton(btn, Number(btn.dataset.milestoneIdx) === activeIdx));
+}
+
+/* 선택된 계좌 범위/기간에 해당하는 결과를 그린다. 값은 전부 엔진(js/15)이 만들고 js/20이 실질로
+ * 환산해 둔 것을 읽기만 한다 - 이 함수 안에 어떤 산술 계산도 새로 만들지 않는다. */
+function renderMonteCarloScopedResult() {
+  if (!mcLastRender) return;
+  const { withReal, goalMeta, inflationRatePct } = mcLastRender;
+  const milestones = mcScopedMilestones(withReal, mcSelectedScope);
+  const idx = mcSelectedMilestoneIdx === null ? milestones.length - 1 : Math.min(mcSelectedMilestoneIdx, milestones.length - 1);
+  const sel = milestones[idx];
+  const last = milestones[milestones.length - 1];
+  const scopeLabel = mcHasAccountScopes(withReal) ? MC_SCOPE_META[mcSelectedScope].label : null;
+
+  renderMonteCarloScopeSelector(withReal);
+  renderMonteCarloMilestoneSelector(milestones);
+
+  mcUiEl('mcP50ScopeNote').textContent = scopeLabel ? `${scopeLabel} · ${sel.year}년 후` : `${sel.year}년 후`;
+  mcUiEl('mcP50Text').textContent = fmtKRWShort(sel.p50);
+  mcUiEl('mcP50RealLabel').textContent = `현재가치 기준(물가상승률 ${fmtNum(inflationRatePct, 1)}% 가정)`;
+  mcUiEl('mcP50RealText').textContent = fmtKRWShort(sel.real.p50);
+
+  mcUiEl('mcMilestoneTableBody').innerHTML = milestones.map((m) => `
+    <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${m.year}년후</td>
+      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p10)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p10)}</span></td>
+      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p25)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p25)}</span></td>
+      <td class="px-0.5 py-2 text-right font-bold whitespace-nowrap">${fmtKRWShort(m.p50)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p50)}</span></td>
+      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p75)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p75)}</span></td>
+      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p90)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p90)}</span></td>
+    </tr>`).join('');
+
+  // [범위 시각화 - 단순 막대] 선택한 기간 하나만 그린다. 새 chart library를 추가하지 않는다.
+  mcUiEl('mcRangeBarsNominalLabel').textContent = `명목가치 범위(${sel.year}년 후 기준)`;
+  mcUiEl('mcRangeBarsRealLabel').textContent = `현재가치 기준 범위(${sel.year}년 후 기준)`;
+  renderBarsInto('mcRangeBarsArea', sel, { p10: 'bg-red-400', p25: 'bg-amber-400', p50: 'bg-brand-500', p75: 'bg-emerald-400', p90: 'bg-emerald-600' });
+  renderBarsInto('mcRangeBarsRealArea', sel.real, { p10: 'bg-red-200', p25: 'bg-amber-200', p50: 'bg-brand-300', p75: 'bg-emerald-200', p90: 'bg-emerald-300' });
+  if (typeof setAccordionOpen === 'function') {
+    setAccordionOpen(mcUiEl('mcRangeBarsBody'), mcUiEl('mcRangeBarsChevron'), mcRangeBarsOpen);
+  }
+
+  /* 목표 도달 가능성 - 계좌 범위는 따라가되 기간은 목표금액을 만들 때 쓴 기간(goalMeta.targetYears)에
+   * 고정한다. "현재 구매력 기준" 목표는 실행 시점에 그 기간으로 명목 환산해 엔진에 넘긴 값이라,
+   * 다른 기간의 확률에 같은 목표금액을 갖다 붙이면 의미가 달라지기 때문이다(새 확률을 만들지 않는다). */
+  const goalArea = mcUiEl('mcGoalArea');
+  if (goalMeta && last.goalProbability && last.goalProbability[goalMeta.nominalGoalAmount] !== undefined) {
+    const probDecimal = last.goalProbability[goalMeta.nominalGoalAmount];
+    // [Phase 4 - Goal Probability 표시 정책] js/22 참고 - 꼬리 확률(<10% 또는 >90%)만 정밀도를
+    // 낮추고("약 N%"), 중심부는 기존 소수점 1자리 표시를 그대로 유지한다.
+    const display = (typeof formatGoalProbabilityDisplay === 'function') ? formatGoalProbabilityDisplay(probDecimal) : { text: `${fmtNum(probDecimal * 100, 1)}%`, isTail: false };
+    const tailCaptionHtml = display.isTail ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
+    const scopePrefix = scopeLabel ? `${scopeLabel} 기준 · ` : '';
+    // [초보자용 짧은 안내] 확률 숫자 바로 밑에 한 줄로 "실제 미래 확률이 아니라 지금 가정 기준
+    // 시뮬레이션 결과"임을 덧붙인다(자세한 설명은 아래 상세 영역의 항상-on INFO 카드에 그대로 있다).
+    const goalShortCaption = '<p class="text-sm text-slate-400 mt-1 leading-relaxed break-keep">현재 설정을 기준으로 한 시뮬레이션 결과예요. 목표금액 이상으로 끝난 경로가 전체 중 몇 %였는지를 뜻하며, 실제로 그 확률로 목표를 달성한다는 뜻은 아닙니다.</p>';
+    const goalAmountLine = goalMeta.mode === 'real'
+      ? `<p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(goalMeta.rawAmount)} (현재 구매력 기준)</p>
+         <p class="text-sm text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표 ${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>`
+      : `<p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>`;
+    goalArea.innerHTML = `
+      <p class="text-sm text-slate-400">목표금액</p>
+      ${goalAmountLine}
+      <p class="text-sm text-slate-400 mt-1.5">${scopePrefix}${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
+      <p class="text-base font-bold text-slate-700 dark:text-slate-200">${display.text}</p>
+      ${goalShortCaption}
+      ${tailCaptionHtml}`;
+  } else {
+    goalArea.innerHTML = `<p class="text-sm text-slate-400">목표금액이 설정되지 않았습니다.</p>`;
+  }
 }
 
 // result: js/15 원본(명목) 결과. inflationRatePct: state.projection.inflationRate(예: 2.5, %단위 그대로).
@@ -330,44 +473,6 @@ function renderBarsInto(elId, last, colorSet) {
 // contributionMeta: { initialMonthly, growthRatePct, years } - [Phase 3-3] 납입 스케줄 표시용.
 // weightedFeePct: [Phase 3-4] 포트폴리오 가중평균 운용보수(%) - 표시 전용, 계산에는 이미 instrument별로
 // 반영된 뒤라(js/15) 여기서 다시 쓰지 않는다.
-/* [FUTURE-P1 Phase 2-C - 계좌 범위 최소 연결] withReal.accountScopes(js/15가 절세계좌 잔고/납입이
- * 실제로 있을 때만 만든다 → js/20이 범위별로 실질가치를 붙인 것)를 있는 그대로 표시만 한다 - 이 함수는
- * 어떤 값도 다시 계산하지 않는다(중앙값 합산 같은 파생 계산 금지 - 합계는 엔진이 경로 단위로 이미 구했다).
- * 절세계좌가 없는 사용자는 accountScopes 자체가 없어 이 영역이 계속 hidden으로 남는다(기존 화면 동일). */
-function renderMonteCarloAccountScopes(withReal) {
-  const el = mcUiEl('mcAccountScopeArea');
-  const scopes = withReal.accountScopes;
-  if (!scopes || !scopes.general || !scopes.taxAdvantaged || !scopes.combined) {
-    el.classList.add('hidden');
-    el.innerHTML = '';
-    return;
-  }
-  const lastOf = (arr) => arr[arr.length - 1];
-  const rows = [
-    { label: '일반계좌', sub: '연 1회 목표비중으로 재조정', m: lastOf(scopes.general) },
-    { label: '절세계좌', sub: 'ISA·IRP·연금저축 - 매수 후 그대로 보유', m: lastOf(scopes.taxAdvantaged) },
-    { label: '두 계좌 합계', sub: '같은 시장 경로에서 두 계좌를 더한 결과', m: lastOf(scopes.combined) }
-  ];
-  const years = lastOf(scopes.combined).year;
-  el.innerHTML = `
-    <p class="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1.5">계좌 범위별 중간 수준 예상자산(${years}년 후)</p>
-    <div class="space-y-1.5">
-      ${rows.map((r) => `
-        <div class="flex items-baseline justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2">
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${r.label}</p>
-            <p class="text-sm text-slate-400 break-keep">${r.sub}</p>
-          </div>
-          <div class="text-right whitespace-nowrap">
-            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(r.m.p50)}</p>
-            <p class="text-sm text-slate-400">${fmtKRWShort(r.m.real.p50)} (현재 구매력)</p>
-          </div>
-        </div>`).join('')}
-    </div>
-    <p class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep">합계는 시뮬레이션 경로마다 두 계좌를 먼저 더한 뒤 구한 중앙값이라, 위 두 중앙값을 그냥 더한 값과 다를 수 있습니다. 아래의 중간 수준 예상자산·범위표·목표 도달 가능성은 <b>일반계좌 기준</b>입니다.</p>`;
-  el.classList.remove('hidden');
-}
-
 function renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct) {
   mcUiEl('mcProgressArea').classList.add('hidden');
   mcUiEl('mcCancelBtn').classList.add('hidden');
@@ -376,6 +481,7 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   mcUiEl('mcPresetSelect').disabled = false;
   mcUiEl('mcIterationsSelect').disabled = false;
   mcUiEl('mcResultArea').classList.remove('hidden');
+  if (mcUiEl('mcEmptyState')) mcUiEl('mcEmptyState').classList.add('hidden');
   showMonteCarloStatus(MC_UI_STATUS_LABEL.COMPLETED);
 
   // [Phase 3-5 Result Safety] result.safety는 js/18이 COMPLETED 시점에 preflight(fee/return/weight-sum
@@ -394,11 +500,9 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation(contributionMeta && contributionMeta.ownerScope)) : null,
       (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn() : null,
     ].filter(Boolean);
-    // [Phase 17 P1-4] 예전엔 이 issue 전부(WARNING+INFO)를 결과보다 먼저 나오는 mcSafetyIssues
-    // 하나에 몰아서 보여줬다 - 이제 "결과 해석에 직접 영향(critical)"만 결과 바로 아래 펼쳐서 보여주고,
-    // 나머지(참고성 WARNING + 항상-on INFO 6종)는 결과 아래 "상세보기"로 옮긴다(js/22
-    // renderMonteCarloSafetyTiers). 판정 결과(issue 배열) 자체는 한 글자도 바뀌지 않았다 - 어디에
-    // 그릴지만 바뀜.
+    // [Phase 17 P1-4] "결과 해석에 직접 영향(critical)"만 결과 바로 아래 펼쳐서 보여주고, 나머지
+    // (참고성 WARNING + 항상-on INFO 6종)는 결과 아래 "상세보기"로 옮긴다(js/22
+    // renderMonteCarloSafetyTiers). 판정 결과(issue 배열) 자체는 한 글자도 바뀌지 않았다.
     if (typeof renderMonteCarloSafetyTiers === 'function') {
       renderMonteCarloSafetyTiers(mcUiEl('mcSafetyCritical'), mcUiEl('mcSafetyDetailToggleBtn'), mcUiEl('mcSafetyDetail'), nonBlockIssues.concat(semanticIssues));
     } else {
@@ -408,12 +512,8 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
 
   // [js/20 재사용 - 계산 반복 구현 금지] 명목 결과(result)는 그대로 두고, 실질가치는 이 변환 레이어의
   // 결과(withReal)에서만 읽는다 - result 자체를 mutate하지 않으므로 엔진 회귀에 영향 없음.
-  // [Phase 3-5 B2 수정] 예전엔 여기서만 Math.max(0, ...)로 음수를 0으로 바닥 처리했다 - 그 결과
-  // "-1% 입력 -> 화면 라벨은 -1% 그대로 표시(바로 아래 mcInflationNote)하면서 실제 계산은 0%로
-  // 수행"되는 표시값≠계산값 불일치가 있었다. 저장(state.projection.inflationRate)도 애초에 음수를
-  // 그대로 허용하므로(js/05 inflationRateInput 리스너), 소비 지점에서만 몰래 바닥 처리하지 않고 저장된
-  // 값을 그대로 쓴다 - 디플레이션(-1% 등) 자체는 수학적으로 유효한 시나리오라 막을 이유가 없다(BLOCK은
-  // assessInflation이 -100% 이하일 때만 별도로 건다).
+  // [Phase 3-5 B2 수정] 저장된 inflationRate를 그대로 쓴다(소비 지점에서 몰래 바닥 처리하지 않는다) -
+  // 디플레이션(-1% 등)도 수학적으로 유효한 시나리오이며, BLOCK은 assessInflation이 별도로 건다.
   const inflationRate = num(inflationRatePct) / 100;
   const withReal = applyInflationToResult(result, inflationRate);
   mcUiEl('mcInflationNote').textContent = `인플레이션율: ${fmtNum(inflationRatePct, 1)}%`;
@@ -425,22 +525,15 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
     const { initialMonthly, growthRatePct, years, streams } = contributionMeta;
     const growthRate = growthRatePct / 100;
     const finalYearMonthly = initialMonthly * Math.pow(1 + growthRate, years - 1);
-    // [Step 2 - 적립기간 연결] owner 중 누구라도 실제로 적립기간을 설정했으면(streams에 null이 아닌
-    // years가 하나라도 있으면), "총 납입원금" 표시도 그 owner의 적립기간만큼만 계산해야 정확하다 -
-    // 그렇지 않으면 실제로는 조기 종료된 적립인데 화면은 20년 내내 적립한 것처럼 과대 표시된다.
-    // computeTotalContributionPrincipal(단일 스트림, 기존 무변경) 자체는 그대로 재사용하고,
-    // computeTotalContributionPrincipalMultiStream(신규·추가)이 각 스트림을 그 함수로 위임만 한다.
+    // [Step 2 - 적립기간 연결] owner 중 누구라도 실제로 적립기간을 설정했으면, "총 납입원금" 표시도
+    // 그 owner의 적립기간만큼만 계산해야 정확하다 - 그렇지 않으면 실제로는 조기 종료된 적립인데
+    // 화면은 20년 내내 적립한 것처럼 과대 표시된다.
     const hasExplicitYears = (streams || []).some((s) => s.years !== null && s.years !== undefined);
     const totalPrincipal = hasExplicitYears
       ? computeTotalContributionPrincipalMultiStream(streams, growthRate, years)
       : computeTotalContributionPrincipal(initialMonthly, growthRate, years);
-    // [P5 - Phase 9 감사 후속] Monte Carlo는 owner별 종목 배분(Deterministic처럼)이 아니라 가구 전체
-    // 목표비중을 기준으로 신규 적립금을 배분한다(household pooled target-weight, js/16
-    // buildMonteCarloInputFromState - 이번 작업에서 구조 자체는 바꾸지 않음). 두 결과를 비교하는
-    // 초보자가 "왜 다르지?"라고 오해하지 않도록 짧게 고지만 한다(복잡한 기술 설명 없이).
-    // [Phase 24-B STEP 6 - Owner MC] 문구만 선택된 관점에 맞게 바꾼다(계산 자체는 이미 그 owner
-    // 기준으로 끝난 뒤이므로 여기서는 표시만 다르게 함) - ownerScope 미설정(undefined/null)은 기존과
-    // 완전히 동일한 "가구 전체" 문구.
+    // [P5 - Phase 9 감사 후속] Monte Carlo는 owner별 종목 배분이 아니라 가구 전체 목표비중을 기준으로
+    // 신규 적립금을 배분한다 - 두 결과를 비교하는 초보자가 "왜 다르지?"라고 오해하지 않도록 짧게 고지한다.
     const scopeLabel = contributionMeta.ownerScope ? `${contributionMeta.ownerScope}님의` : '가구 전체';
     const allocationNote = `참고: Monte Carlo는 ${scopeLabel} 목표비중을 기준으로 계산합니다.`;
     mcUiEl('mcContributionScheduleArea').innerHTML = (growthRatePct > 0
@@ -449,61 +542,37 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       + `<br>${escapeHtml(allocationNote)}`;
   }
 
-  renderMonteCarloAccountScopes(withReal);
-
-  const last = withReal.milestones[withReal.milestones.length - 1];
-  mcUiEl('mcP50Text').textContent = fmtKRWShort(last.p50);
-  mcUiEl('mcP50RealText').textContent = fmtKRWShort(last.real.p50);
-
-  mcUiEl('mcMilestoneTableBody').innerHTML = withReal.milestones.map((m) => `
-    <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${m.year}년후</td>
-      <td class="px-1 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p10)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p10)}</span></td>
-      <td class="px-1 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p25)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p25)}</span></td>
-      <td class="px-1 py-2 text-right font-bold whitespace-nowrap">${fmtKRWShort(m.p50)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p50)}</span></td>
-      <td class="px-1 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p75)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p75)}</span></td>
-      <td class="px-1 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p90)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p90)}</span></td>
-    </tr>`).join('');
-
-  // [범위 시각화 - 단순 막대, 명목/실질 구분] 화려한 차트 대신 P10~P90을 가로 막대로 표시(마지막
-  // milestone 기준) - 숫자의 명확성을 우선한다(요청 반영). 새 chart library를 추가하지 않는다.
-  renderBarsInto('mcRangeBarsArea', last, { p10: 'bg-red-400', p25: 'bg-amber-400', p50: 'bg-brand-500', p75: 'bg-emerald-400', p90: 'bg-emerald-600' });
-  renderBarsInto('mcRangeBarsRealArea', last.real, { p10: 'bg-red-200', p25: 'bg-amber-200', p50: 'bg-brand-300', p75: 'bg-emerald-200', p90: 'bg-emerald-300' });
-
-  const goalArea = mcUiEl('mcGoalArea');
-  if (goalMeta && last.goalProbability && last.goalProbability[goalMeta.nominalGoalAmount] !== undefined) {
-    const probDecimal = last.goalProbability[goalMeta.nominalGoalAmount];
-    // [Phase 4 - Goal Probability 표시 정책] js/22 참고 - 꼬리 확률(<10% 또는 >90%)만 정밀도를
-    // 낮추고("약 N%"), 중심부는 기존 소수점 1자리 표시를 그대로 유지한다.
-    const display = (typeof formatGoalProbabilityDisplay === 'function') ? formatGoalProbabilityDisplay(probDecimal) : { text: `${fmtNum(probDecimal * 100, 1)}%`, isTail: false };
-    const tailCaptionHtml = display.isTail ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1">${GOAL_PROBABILITY_TAIL_CAPTION}</p>` : '';
-    // [초보자용 짧은 안내] 별도의 Safety INFO 카드(explainGoalProbabilitySemanticAlwaysOn, js/21)가
-    // 더 자세히 설명하지만, 그 카드는 아래쪽 mcSafetyIssues 영역에 따로 있어 놓치기 쉽다 - 확률 숫자
-    // 바로 밑에 한 줄로도 "실제 미래 확률이 아니라 지금 가정 기준 시뮬레이션 결과"임을 짧게 덧붙인다.
-    const goalShortCaption = '<p class="text-sm text-slate-400 mt-1">현재 설정을 기준으로 한 시뮬레이션 결과예요.</p>';
-    if (goalMeta.mode === 'real') {
-      goalArea.innerHTML = `
-        <p class="text-sm text-slate-400">목표금액</p>
-        <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (현재 구매력 기준)</p>
-        <p class="text-sm text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표</p>
-        <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>
-        <p class="text-sm text-slate-400 mt-1.5">현재 구매력 기준으로 목표에 도달할 가능성</p>
-        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
-        ${goalShortCaption}
-        ${tailCaptionHtml}`;
-    } else {
-      goalArea.innerHTML = `
-        <p class="text-sm text-slate-400">목표금액</p>
-        <p class="text-sm font-bold">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>
-        <p class="text-sm text-slate-400 mt-1.5">${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
-        <p class="text-lg font-bold text-brand-600 dark:text-brand-300">${display.text}</p>
-        ${goalShortCaption}
-        ${tailCaptionHtml}`;
-    }
-  } else {
-    goalArea.innerHTML = `<p class="text-sm text-slate-400">목표금액이 설정되지 않았습니다.</p>`;
-  }
+  // [FUTURE-P1 Phase 3-2] 새 결과가 오면 선택 상태를 기본값(일반계좌 · 가장 긴 기간)으로 되돌린다 -
+  // 기존 화면과 완전히 같은 숫자에서 시작하고, 이전 실행에서 고른 범위가 남아 오해를 만들지 않게 한다.
+  mcSelectedScope = 'general';
+  mcSelectedMilestoneIdx = null;
+  mcRangeBarsOpen = false;
+  mcLastRender = { withReal, goalMeta, inflationRatePct };
+  renderMonteCarloScopedResult();
 }
+
+/* 계좌 범위 / 기간 / 범위 막대 토글 - 전부 이미 계산된 결과를 다시 그릴 뿐이라 Monte Carlo를 다시
+ * 실행하지 않는다(Worker를 새로 띄우지 않는다). 결과가 없을 때(mcLastRender null)는 아무 일도 없다. */
+document.addEventListener('click', (e) => {
+  const scopeBtn = e.target.closest('#mcScopeSegmented .mc-scope-btn');
+  if (scopeBtn) {
+    mcSelectedScope = scopeBtn.dataset.scope;
+    renderMonteCarloScopedResult();
+    return;
+  }
+  const msBtn = e.target.closest('#mcMilestoneSegmented .mc-milestone-btn');
+  if (msBtn) {
+    mcSelectedMilestoneIdx = Number(msBtn.dataset.milestoneIdx);
+    renderMonteCarloScopedResult();
+    return;
+  }
+  if (e.target.closest('#mcRangeBarsToggleBtn')) {
+    mcRangeBarsOpen = !mcRangeBarsOpen;
+    if (typeof setAccordionOpen === 'function') {
+      setAccordionOpen(mcUiEl('mcRangeBarsBody'), mcUiEl('mcRangeBarsChevron'), mcRangeBarsOpen);
+    }
+  }
+});
 
 function handleMonteCarloError(error) {
   mcUiEl('mcProgressArea').classList.add('hidden');
@@ -518,6 +587,7 @@ function handleMonteCarloError(error) {
   // [조건부승인 항목 12 - Error Code 세분화] Safety Layer가 만든 BLOCK(SAFETY_* code, safetyIssues
   // 동반)은 기존 5개짜리 고정 문구 맵으로 뭉개지 않고, 각 issue를 3단 구조 카드로 그대로 보여준다 -
   // "비중 합계 오류"와 "가격 데이터 조회 실패"가 이제 서로 다른 문구로 사용자에게 전달된다.
+  if (mcUiEl('mcEmptyState')) mcUiEl('mcEmptyState').classList.remove('hidden');
   if (error && Array.isArray(error.safetyIssues) && error.safetyIssues.length > 0 && typeof renderSafetyIssueList === 'function') {
     mcUiEl('mcResultArea').classList.add('hidden');
     renderSafetyIssueList(mcUiEl('mcSafetyIssues'), error.safetyIssues);

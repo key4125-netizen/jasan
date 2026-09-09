@@ -242,6 +242,43 @@
 - UI는 최소 연결만 수행(계좌 범위별 중앙값 표시 + 기존 대표 숫자가 일반계좌 기준임을 명시).
   **UI/UX 전면 개편은 다음 Phase**이며 이 절이 그것을 승인하지 않는다
 
+### 7-3. FUTURE-P1 Phase 3-2 / 3-3 — 미래예측 UI/UX 재구성과 통합검증 (2026-09-09, v228)
+
+Phase 2-C에서 완성한 계산 계층을 **계산은 한 줄도 바꾸지 않고** 초보자가 올바르게 읽을 수 있도록
+표시 구조만 재배치했다. `js/15` · `js/16` · `js/17` · `js/18` · `js/20` · `js/21` 변경 **0건**,
+Return Key · SoT 변경 **0건**, General-only golden **39/39 유지**.
+
+**Phase 3-2 — 구현**
+- Monte Carlo를 미래예측의 주 결과로 승격(투자계획 입력 직후로 이동). **자동 실행은 하지 않는다**
+  — 수 초~수십 초가 걸릴 수 있어 기존 수동 실행 정책을 유지하고, 대신 실행 전 초보자 안내
+  (`#mcEmptyState`)를 둔다
+- deterministic hero를 참고값으로 격하: 라벨 `${years}년 후 자산 참고값`, 브랜드 강조 해제,
+  "수익률이 매년 일정하다고 가정한 단순 계산값(일반계좌 기준)"임을 화면에서 직접 설명
+- P50 명칭을 `시뮬레이션 중앙값(P50)`으로 확정("예상자산" 표현 제거)
+- 계좌 범위(일반계좌 / 절세계좌 / 통합) 선택과 기간(5·10·15·20년) 선택을 세그먼트 컨트롤로 제공.
+  선택은 중앙값·기간별 표·범위 막대·목표 도달 가능성에 모두 연동된다
+- Phase 2-C의 계좌 범위 금액 나열을 선택 컨트롤로 바꿔 **같은 금액이 두 번 표시되던 중복을 제거**
+- P10~P90을 title 속성이 아니라 실제 화면 텍스트로 표시(터치 기기 대응). 표와 막대의 어휘 통일
+- Goal Probability를 보조 정보로 강등(브랜드색 해제 + "보조 정보" 테두리 박스, 위치를 분포표 뒤로)
+- percentile(위치) ≠ probability(비율) 설명을 결과 바로 옆 항상-노출 문단에 배치
+- deterministic 시나리오/그래프는 삭제하지 않고 "여기부터는 참고 계산입니다" 구역으로 후순위 배치
+- 명목 / `현재가치 기준(물가상승률 N% 가정)` 구분 명시(js/20 변환식 무변경)
+
+**Phase 3-3 — 통합검증(야간)**
+- 실제 브라우저에서 Monte Carlo를 직접 실행해 확인: 클릭 158ms 내 진행 표시, 10,000회 완료,
+  취소·재실행·범위/기간 전환 정상, 재실행 시 선택 상태가 기본값으로 복귀
+- SoT 무변경 실측: MC 실행 전후 및 UI 조작 전후로 `state`/`localStorage` **바이트 동일**,
+  범위·기간 선택은 localStorage에 저장되지 않는다(순수 화면 상태)
+- 375 / 768 / 1024 × Light/Dark 6조합: 가로 overflow 0, 잘린 요소 0, 14px 미만 0
+- Typography/줄바꿈 전수 감사: 어절 중간에서 끊기던 10곳을 `break-keep`/`whitespace-nowrap`으로 교정
+  (글자 크기 축소·무차별 nowrap 없음). 표는 375px에서 가로 스크롤 없이 정확히 들어맞는다
+- 재배치 때문에 사실과 어긋나게 된 안내 문구 2건 교정: Monte Carlo 설명 팝업의 위치 지시어,
+  절세계좌 카드의 "별도로 계산됩니다"(→ 현재 현황 카드임을 명시하고 미래 분포는 MC로 안내)
+- 핵심 터치 컨트롤 점검(I-3 게이트): 미래예측 실행 흐름에서 매번 조작하는 컨트롤 6종을 44px로
+  맞췄다(MC 실행/취소, 시나리오·횟수 select, 목표금액 입력, 서브탭). 앱 전역 버튼 스타일은
+  건드리지 않았고, 보조 아코디언 토글(33~37px)은 이번 범위에서 제외했다
+- 계산 회귀 0건 / Data Guard PASS / 전체 E2E PASS
+
 ### 7-2. FUTURE-P1 Backlog
 
 **FUTURE-P1-BL-01 — `runAnnualPreviewMC` taxScope compatibility**
@@ -552,7 +589,9 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - FUTURE-P1 Monte Carlo 중심 미래예측 구조 개편 — **진입 승인 / 다음 단계**(§8-4 RET-03-09)
 - FUTURE-P1 Phase 2-C 계산 계층(일반/절세/통합 3-scope) — **구현 완료 / commit `e783568` / v227 / NOT PUSHED · NOT DEPLOYED**(§7-1) — General-only golden 39/39, Unit 274/274, E2E 686/686, ESLint 0, Data Guard·Release Guard PASS. SoT·Return Key 무변경
 - FUTURE-P1-BL-01 `runAnnualPreviewMC` taxScope compatibility — **Deferred / Non-blocking**(§7-2) — 현재 production 경로에 preview mode 호출부 없음, 사용자 영향 0
-- FUTURE-P1 UI/UX restructuring — **다음 단계 / 별도 PM 지시 후 착수**(이번 Phase에서 UI 코드 변경 없음)
+- FUTURE-P1 Phase 3-2 UI/UX restructuring — **구현 완료**(§7-3) — Monte Carlo 주 결과 승격(자동 실행 없음), deterministic 참고값 격하, 계좌 범위·기간 선택, P50/percentile/Goal Probability 의미 구분, 명목·현재가치 구분. 계산 계층·Return Key·SoT 변경 0건
+- FUTURE-P1 Phase 3-3 통합검증 — **완료**(§7-3) — P0/P1 0건, 계산 regression 0건, SoT 실측 무변경, 375/768/1024 Light·Dark PASS, Typography 감사 완료, Data Guard PASS
+- **FUTURE-P1 Release Candidate — v228** — Phase 2-C 계산 계층 + Phase 3-2 UI/UX + Phase 3-3 검증 결과를 하나의 release로 묶는다
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 

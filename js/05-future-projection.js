@@ -1723,7 +1723,9 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
   const futureEl = document.getElementById('projectionHeroFuture');
   if (currentEl) currentEl.textContent = fmtKRWShort(currentTotal);
   if (monthlyEl) monthlyEl.textContent = monthly > 0 ? `${fmtKRWShort(monthly)}/월` : '미설정';
-  if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 예상 자산`;
+  // [FUTURE-P1 Phase 3-2] "예상 자산"은 이 값을 미래 예측/보장으로 읽히게 한다 - 실제로는 수익률이
+  // 매년 일정하다고 가정한 단일 경로 계산값이므로 "참고값"이라고 그대로 부른다(계산은 무변경).
+  if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 자산 참고값`;
   if (futureEl) futureEl.textContent = fmtKRWShort(futureTotal);
 
   // [장기 투자계획 UX 개선 - 신규] "현재자산 → 앞으로 투자 → 미래자산"으로 이어지는 계획의 핵심 조건 중
@@ -3051,7 +3053,7 @@ function renderScenarioSummaryCards(scenarioData) {
              원칙에 어긋난다. 글자를 줄이지 않고 줄바꿈을 허용한다. -->
         <span class="text-sm font-semibold leading-tight min-w-0">${escapeHtml(s.label)}</span>
       </div>
-      <p class="text-sm">
+      <p class="text-sm break-keep">
         <span class="text-slate-400">기준 연간 성장률</span>
         <span class="text-sm sm:text-lg font-bold" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</span>
       </p>
