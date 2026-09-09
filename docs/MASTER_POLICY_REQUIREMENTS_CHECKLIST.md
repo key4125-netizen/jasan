@@ -59,6 +59,7 @@
 - 현재 V1.2-B는 **자산/거래내역 정합성** 중심.
 - 우선순위였던 BL-17 → BL-18은 각각 v224 / v225로 **RESOLVED** — 아래 5장 참고.
 - **V1.2-B closeout**: BL-17(v224)/BL-18(v225) 두 항목 모두 RESOLVED로 확정. BL-19 correction-path UX는 그 closeout 범위에 포함되지 않았고, 이후 **V1.3에서 PM 승인 하에 Option 1(TEXT-ONLY)로 구현되어 v226으로 RESOLVED** 되었다(§5 참고).
+- **다음 작업 우선순위(PM 확정)**: ① RET-02(Return Key 정기 검토 거버넌스 — §8-1~8-3, **확정 완료**) → ② RET-03(전체 Return Key 정책 End-to-End 감사) → ③ FUTURE-P1(Monte Carlo 중심 미래예측 구조 개편) → ④ BOND-P1 → ⑤ FX-P1 → ⑥ UX-P1. 앞 단계가 끝났다는 사실이 다음 단계의 착수/변경을 자동 승인하지 않는다.
 - **V1.3 — CLOSED**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 두 항목을 릴리즈하고 종료했다. Bond Domain은 READ-ONLY audit + Decision Gate만 수행했고 **production code는 변경하지 않았다** — BOND-DEF-01~05의 PM 최종 결정은 §9-3 참고. V1.3 종료가 Bond 구현 착수 승인을 의미하지 않으며, 다음 단계는 PM이 별도로 결정한다.
 - V1.2-B에서는 대규모 UX/기능 확장을 하지 않는다.
 
@@ -236,6 +237,74 @@
 - Return Key와 asset character 연결은 명시적으로 검증한다.
 - BOND.STOCK은 user-defined scenario key이며 system default Return Key로 오용하지 않는다.
 
+### 8-1. RET-02 — Return Key 정기 검토 운영정책 (거버넌스, PM 확정)
+
+> **목적**: Return Key 및 장기 기대수익률 가정을 최소 반기 1회 검토하되, **검토와 변경을 명확히 구분하고**, 근거 없는 자동 변경을 방지하며, RET-03 정책감사의 공식 운영 기준을 확립한다.
+>
+> 이 절은 **Return Key 값을 결정하는 규정이 아니라, 값을 언제·어떻게 검토하고 어떤 조건에서만 변경할 수 있는지를 정하는 거버넌스 규정**이다. 실제 값의 정책 판단은 RET-03에서 PM이 별도로 결정한다.
+
+**RET-02-01 검토 주기**
+- Return Key 및 장기 기대수익률 정책은 **최소 연 2회(반기 1회 이상)** 검토한다.
+- **"검토"와 "변경"은 별개의 행위다.** 반기 검토를 했다는 사실이 수익률 변경의 근거가 되지 않으며, 검토 결과 **"변경하지 않음"도 정상적인 검토 결과로 인정**한다.
+
+**RET-02-02 검토 대상** (최소 항목)
+- 등록된 모든 Return Key / system default / user override와 system default의 구분
+- Return Key별 Asset Character 연결, deterministic 연결, Monte Carlo 연결
+- 장기 역사적 실현수익률, 주요 기관의 장기 기대수익률 전망
+- 전망 horizon · nominal/real · total/price return · geometric/arithmetic · 배당 포함 여부
+- 현재 정책값의 출처와 근거, 장기 전망의 변화 여부
+- 초보자에게 과도한 기대수익률을 유도할 가능성
+- Monte Carlo 결과에 대한 민감도
+
+**RET-02-03 검토 자료의 우선순위**
+1. 신뢰할 수 있는 기관의 최신 장기 기대수익률 전망
+2. 장기 역사적 실현수익률
+3. 자산 특성과 구조적 변화
+4. 기타 보조자료
+
+금지: **역사적 실현수익률을 미래 기대수익률로 자동 대체하지 않는다.** 특정 기관의 단일 전망을 이유로 자동 변경하지 않는다. **다기관 평균을 자동 계산해 system default로 채택하지 않는다.**
+
+**RET-02-04 변경 원칙**
+- 다음 경우 **기존 값을 유지할 수 있다**: 새로운 근거가 충분하지 않음 · 기관 전망 간 차이가 큼 · 기존 정책이 이 프로젝트의 보수적/안전한 목적에 부합함 · 장기 구조 변화가 명확하지 않음.
+- 다음의 **충분한 정책적 근거가 있을 때만 PM Decision 대상으로 올린다**: 장기 기대수익률 전망의 구조적 변화 · 기존 가정의 명확한 근거 상실 · 자산 특성의 구조적 변화 · 장기 투자 전제 자체의 변화.
+
+**RET-02-05 사용자 Override 보호**
+- system default와 user override(`state.projection.customScenarioRates`)를 명확히 구분한다.
+- **반기 정책 검토 결과가 user override를 자동 변경해서는 안 된다.**
+- system default 변경과 사용자 정책값 변경은 **별도의 의사결정**이다.
+- 사용자가 명시한 값을 시스템이 임의로 평가하거나 교정하지 않는다(Phase 43 "사용자 값을 평가하지 않는다" 원칙과 동일 선상, `e2e/43` 고정).
+
+**RET-02-06 근거 불충분 자산의 취급**
+- 근거가 충분하지 않은 Return Key에 **임의의 수익률을 새로 만들지 않는다.**
+- KOSDAQ · 국내 개별주식 · BOND · 부동산 · mixed asset 등에 대해 **이 절에서는 어떤 숫자도 결정하지 않는다.**
+- **"근거 부족"은 "즉시 수정"과 동일한 의미가 아니다.** 해당 항목은 RET-03에서 별도 정책감사 대상으로 다룬다.
+
+**RET-02-07 현재 정책 사례 기록(값 변경 없음)**
+- US equity system default는 Vanguard VCMM 2026-06-30 기준의 **4.1 / 5.1 / 6.0** 구조이며, 이 값은 RET-02 문서화 작업에서 변경하지 않았다.
+- **다른 기관의 전망이 더 높다는 사실만으로 현재 값을 변경하지 않는다.**
+- 다음 3가지를 상시 금지 원칙으로 기록한다: ① **개별 종목 system alpha 재도입 금지**(Phase 47-A에서 폐지된 정책을 되돌리지 않는다) ② **historical return을 미래 기대수익률로 직접 대체 금지** ③ **근거 없는 KOSDAQ 전용 default 생성 금지**.
+
+### 8-2. RET-02 검토 이력 (문서 관리)
+
+검토 이력은 **이 표로만 관리한다.** 이를 저장하기 위한 새로운 코드·DB·JSON 구조를 만들지 않는다(`CMA_SOURCE_METADATA`의 `asOfDate`는 **외부 자료의 기준일**이지 우리의 검토일이 아니므로, 검토일 기록을 그 필드에 섞지 않는다).
+
+기록 항목: 검토일 · 검토 대상 Return Key · 주요 검토 자료/출처 · 외부 자료 기준일 · 기존 정책값 · 변경 여부 · (변경 시) old → new · 변경 사유 · PM 승인 여부 · 적용 release/version · 비고
+
+| 검토일 | 대상 Key | 검토 자료/출처 | 자료 기준일 | 기존 값 | 변경 | old → new | 사유 | PM 승인 | 적용 release | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| (다음 검토 시 이 표에 1행씩 추가한다) | | | | | | | | | | |
+
+> 참고: RET-02 정책 수립 직전(2026-09) 수행한 READ-ONLY 감사에서 확인된 사실 — deterministic과 Monte Carlo는 `getTargetProjectionRate()` 단일 진입점을 공유하고, user override는 모든 resolver에서 최우선이며, 성격 미확인 자산에는 어떤 가정도 적용되지 않는다(지역 폴백은 Phase 47-A에서 삭제됨). 이 감사 자체는 검토 이력의 1회차가 아니며, **정식 반기 검토는 이 표의 첫 행부터 시작한다.**
+
+### 8-3. RET-02와 RET-03의 관계
+
+- **RET-02**: Return Key 정책의 **정기 검토/변경 거버넌스**(이 절).
+- **RET-03**: 현재 모든 Return Key와 자산별 기대수익률의 **실제 정책 End-to-End 감사**.
+
+진행 순서: **RET-02 정책 확정 → RET-03 전체 정책 감사 → PM Decision → 필요 시 구현 → FUTURE-P1 연결.**
+
+RET-02는 RET-03의 선행 조건이며, RET-02가 확정되었다는 사실이 RET-03의 값 변경을 승인하는 것은 아니다.
+
 ## 9. Bond Domain — BACKLOG / 별도 단계
 
 본 항목은 V1.2-B의 현재 범위를 무리하게 확장하지 않는다.
@@ -409,6 +478,8 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - V1.3 Bond Domain Audit — **READ-ONLY 완료 / 코드 변경 0건** — 신규 P0/P1 구현 버그 없음. 정의 backlog(BOND-DEF-01~05)를 §9-2에 기록하고 구현은 보류(정책 결정 선행 필요)
 - V1.3 Bond Definition Decision Gate — **완료 / 코드 변경 0건** — BOND-DEF-01~05 각각 backlog 유지 또는 현행 유지로 PM 최종 결정(§9-3). BOND-DEF-02는 소규모 UX 개선 후보로만 유지하며 P1로 승격하지 않는다
 - **V1.3 — CLOSED** — BL-19(v226) + P1-1(v226) 릴리즈 완료, Bond는 추가 구현 없이 종료
+- RET-02 Return Key 정기 검토 거버넌스 — **확정 / 문서 정책 수립 완료**(§8-1~8-3) — 코드 변경 0건, Return Key 값 변경 0건. 검토 이력은 §8-2 표로만 관리하며 별도 코드 구조를 만들지 않는다
+- RET-03 Return Key End-to-End 정책 감사 — **OPEN / 다음 단계** (RET-02가 선행 조건이며, RET-02 확정이 값 변경을 승인하는 것은 아님)
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
