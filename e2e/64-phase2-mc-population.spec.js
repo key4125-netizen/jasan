@@ -258,7 +258,7 @@ test('I. MC 결과 화면에 표시되는 범위 안내가 실제 원금 계산�
   // 항상-on 설명은 "상세보기" 토글 뒤에 접혀 있다(mcSafetyDetail) - 실제 사용자처럼 펼친다.
   await page.locator('#mcSafetyDetailToggleBtn').click();
   const noticeText = await page.locator('#mcSafetyDetail').innerText();
-  expect(noticeText).toContain('이 시뮬레이션은 일반계좌의 투자자산을 기준으로 하며, 절세계좌·부동산·공동 자산은 계산에서 제외됩니다.');
+  expect(noticeText).toContain('화면 위쪽의 중간 수준 예상자산과 범위표는 일반계좌의 투자자산을 기준으로 합니다. 절세계좌(ISA·IRP·연금저축)는 매수 후 그대로 보유하는 것으로 보고 따로 계산해 "계좌 범위별" 항목에 함께 보여드리며, 부동산과 "공동" 자산은 계산에서 제외됩니다.');
 
   // 그 문구가 말하는 범위가 실제 계산과 일치하는지 - 원금은 일반계좌 1억뿐이어야 한다(2.1억이 아니다).
   const pv = await page.locator('body').evaluate(() => Math.round(computeHouseholdMonteCarloPV()));

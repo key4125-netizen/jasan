@@ -394,15 +394,43 @@ function runMonthlyPrecisionMC(config, hooks) {
     }
   }
 
+  /* [FUTURE-P1] 절세계좌(buy-and-hold) 동시 시뮬레이션 - config.taxScope가 있을 때만 켜진다.
+   *
+   * 왜 같은 루프 안에서 도는가: 일반계좌와 절세계좌의 결과를 path 단위로 합치려면(combined) 두 계좌가
+   * "같은 달에 같은 시장 충격"을 받아야 한다. 엔진을 두 번 돌리면 instrument 구성이 달라 난수 소비가
+   * 어긋나므로 path i끼리 더하는 것 자체가 의미를 잃는다. 그래서 X(=L·Z)를 한 번만 만들어 두 계좌의
+   * 잔고에 그대로 적용한다 - 상관행렬/Cholesky/GBM 식은 전혀 바뀌지 않는다.
+   *
+   * 두 계좌의 차이는 리밸런싱 하나뿐이다: 일반계좌는 기존대로 12개월마다 목표비중으로 재배분하고,
+   * 절세계좌는 건드리지 않는다(buy-and-hold) - 이것이 js/05 simulateTaxAdvantagedOwnerGrowth가 이미
+   * 쓰고 있는 의미와 같다(보유 종목이 각자 자기 수익률로 복리 성장, 종목 간 재배분 없음).
+   *
+   * taxScope가 없으면 아래 hasTax 분기가 전부 꺼져 기존 경로와 완전히 같은 연산만 남는다
+   * (RNG 소비량은 n에만 의존하므로 시퀀스도 동일 - 기존 골든값 그대로 유지된다). */
+  const taxScope = config.taxScope;
+  const hasTax = !!(taxScope && taxScope.initialBalances);
+
   // milestone(5/10/15/20년)에서만 iteration별 "포트폴리오 총액"을 저장한다 - 240개월 전체 경로는
   // 메모리에 남기지 않는다(요청사항). milestoneMonthSet으로 해당 월인지만 빠르게 확인한다.
   const milestoneMonths = MILESTONE_YEARS.filter((y) => y <= years).map((y) => y * 12);
   const milestoneSamples = milestoneMonths.map(() => new Float64Array(iterations));
+  // [FUTURE-P1] 절세계좌/합산 표본 - combined는 "path별로 먼저 더한 뒤" 그 분포에서 백분위를 뽑는다
+  // (P50끼리 더하는 방식은 분포가 달라 성립하지 않는다).
+  const taxMilestoneSamples = hasTax ? milestoneMonths.map(() => new Float64Array(iterations)) : null;
+  const combinedMilestoneSamples = hasTax ? milestoneMonths.map(() => new Float64Array(iterations)) : null;
+
+  // [FUTURE-P1] 절세계좌 입력 - 자산별 초기 평가액과 월별 납입액(연납이면 각 연도 첫 달에만 값이 있다).
+  const taxInitial = hasTax ? Float64Array.from(taxScope.initialBalances) : null;
+  const taxMonthlyContrib = hasTax && taxScope.monthlyContributions
+    ? taxScope.monthlyContributions.map((row) => Float64Array.from(row)) : null;
+  const taxBalances = hasTax ? new Float64Array(n) : null;
 
   const balances = new Float64Array(n), Z = new Float64Array(n), X = new Float64Array(n);
 
   for (let iter = 0; iter < iterations; iter++) {
     for (let i = 0; i < n; i++) balances[i] = pv0 * weight[i];
+    // [FUTURE-P1] 절세계좌는 목표비중이 아니라 "지금 실제로 들고 있는 자산별 평가액"에서 출발한다.
+    if (hasTax) for (let i = 0; i < n; i++) taxBalances[i] = taxInitial[i];
     let nextMilestoneIdx = 0;
     for (let m = 1; m <= months; m++) {
       // Step 1: 신규 월 납입금 반영(연차별 증가율 적용) + Step 2: 목표비중 배분(contribShare/weight가
@@ -423,15 +451,31 @@ function runMonthlyPrecisionMC(config, hooks) {
         for (let k = 0; k <= i; k++) s += Lflat[rowOff + k] * Z[k];
         X[i] = s;
       }
+      // [FUTURE-P1] Step 1-T: 절세계좌 신규 납입 - 계좌별 적립 계획(월납/연납)을 어댑터가 미리 월별
+      // 배열로 펼쳐 둔 값을 그대로 더한다(연납이면 각 연도 첫 달에만 값이 들어 있다). 일반계좌와 달리
+      // 목표비중이 아니라 사용자가 지정한 종목별 배분 그대로 들어간다.
+      if (hasTax && taxMonthlyContrib) {
+        for (let i = 0; i < n; i++) taxBalances[i] += taxMonthlyContrib[i][m - 1];
+      }
       // Step 4: 자산별 월간 GBM 수익률 적용(Gross Return - Fee와 완전히 분리된 계산)
       for (let i = 0; i < n; i++) {
         const sm = sigmaM[i];
         balances[i] *= Math.exp((muM[i] - (sm * sm) / 2) + sm * X[i]);
       }
+      // [FUTURE-P1] Step 4-T: 절세계좌도 "같은 달의 같은 X"로 성장한다 - 두 계좌가 같은 시장을 겪게
+      // 하는 지점이다(μ/σ/X 어느 것도 새로 만들지 않고 위와 완전히 같은 값을 쓴다).
+      if (hasTax) {
+        for (let i = 0; i < n; i++) {
+          const sm = sigmaM[i];
+          taxBalances[i] *= Math.exp((muM[i] - (sm * sm) / 2) + sm * X[i]);
+        }
+      }
       // Step 4.5: [Phase 3-4] instrument별 월간 운용보수 차감 - Gross Return(Step 4)과 별도의 곱셈으로
       // 적용한다(μ_GBM 공식 자체를 수정하지 않음). Rebalancing(Step 5)보다 반드시 먼저 적용해야 한다 -
       // 리밸런싱은 "그 시점의 실제 잔고"(이미 그 달까지의 보수가 빠진 금액)를 재분배하는 것이 맞다.
       for (let i = 0; i < n; i++) balances[i] *= feeMonthlyFactor[i];
+      // [FUTURE-P1] 절세계좌도 같은 운용보수 정책을 그대로 적용한다(새 정책 없음).
+      if (hasTax) for (let i = 0; i < n; i++) taxBalances[i] *= feeMonthlyFactor[i];
       // Step 5: 12개월마다 연 1회 리밸런싱
       // [Phase 26 - 측정 기반 최적화] 예전엔 rebalanceToWeights(Array.from(balances), Array.from(weight))로
       // 호출당 배열 3개(Array.from ×2 + 내부 map ×1)를 새로 만들었다 - 50,000회 실행이면 리밸런싱만
@@ -448,6 +492,14 @@ function runMonthlyPrecisionMC(config, hooks) {
       if (nextMilestoneIdx < milestoneMonths.length && m === milestoneMonths[nextMilestoneIdx]) {
         let total = 0; for (let i = 0; i < n; i++) total += balances[i];
         milestoneSamples[nextMilestoneIdx][iter] = total;
+        // [FUTURE-P1] 이 iteration(=하나의 시장 경로)에서 두 계좌 값을 각각 남기고, 그 자리에서 바로
+        // 더해 combined 표본을 만든다 - 백분위는 나중에 "이미 합쳐진 분포"에서만 뽑으므로
+        // P50(일반)+P50(절세) 같은 계산이 구조적으로 생길 수 없다.
+        if (hasTax) {
+          let taxTotal = 0; for (let i = 0; i < n; i++) taxTotal += taxBalances[i];
+          taxMilestoneSamples[nextMilestoneIdx][iter] = taxTotal;
+          combinedMilestoneSamples[nextMilestoneIdx][iter] = total + taxTotal;
+        }
         nextMilestoneIdx++;
       }
     }
@@ -465,6 +517,17 @@ function runMonthlyPrecisionMC(config, hooks) {
     { year: m / 12 },
     extractMilestoneStats(Array.from(milestoneSamples[idx]), goalAmounts)
   ));
+  /* [FUTURE-P1] 계좌 범위별 결과 - taxScope를 넘겼을 때만 생긴다(없으면 이 필드 자체가 없어서
+   * 기존 호출부/테스트가 보는 출력은 예전과 완전히 같다). 세 분포 모두 같은 extractMilestoneStats를
+   * 쓰므로 백분위·목표달성확률 계산 방식이 범위마다 달라지지 않는다. combined는 위 루프에서 이미
+   * path 단위로 더해 둔 표본을 그대로 넣는다. */
+  const accountScopes = hasTax ? {
+    general: milestones,
+    taxAdvantaged: milestoneMonths.map((m, idx) => Object.assign(
+      { year: m / 12 }, extractMilestoneStats(Array.from(taxMilestoneSamples[idx]), goalAmounts))),
+    combined: milestoneMonths.map((m, idx) => Object.assign(
+      { year: m / 12 }, extractMilestoneStats(Array.from(combinedMilestoneSamples[idx]), goalAmounts)))
+  } : null;
 
   return {
     mode: 'official',
@@ -473,6 +536,7 @@ function runMonthlyPrecisionMC(config, hooks) {
     years,
     assets: n,
     milestones,
+    ...(accountScopes ? { accountScopes } : {}),
     finalValue: milestones.length ? milestones[milestones.length - 1] : null,
     executionTime: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
     diagnostics: { seed, correlationMethod: 'date-aligned', psdCorrectionApplied: choleskyDiagnostics.psdCorrectionApplied,

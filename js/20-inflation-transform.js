@@ -50,9 +50,20 @@ function applyInflationToMilestone(milestone, annualInflationRate) {
 // result: js/15 runMonthlyPrecisionMC/runAnnualPreviewMC의 반환 객체. 원본을 변경하지 않고 milestones만
 // 교체한 새 객체를 반환한다(순수 함수 - 같은 입력엔 항상 같은 출력, 부작용 없음).
 function applyInflationToResult(result, annualInflationRate) {
-  return Object.assign({}, result, {
+  const out = Object.assign({}, result, {
     milestones: result.milestones.map((m) => applyInflationToMilestone(m, annualInflationRate))
   });
+  // [FUTURE-P1] 계좌 범위별 milestone(general/taxAdvantaged/combined)이 있으면 각각 같은 규칙으로
+  // 변환한다 - 변환은 milestone 하나당 자기 year로 딱 한 번만 적용되므로(각 배열이 서로 독립적인
+  // 명목값 원본이다) 중복 적용이 일어나지 않는다. 없으면 필드 자체가 생기지 않아 기존과 동일하다.
+  if (result.accountScopes) {
+    const scopes = {};
+    Object.keys(result.accountScopes).forEach((scope) => {
+      scopes[scope] = result.accountScopes[scope].map((m) => applyInflationToMilestone(m, annualInflationRate));
+    });
+    out.accountScopes = scopes;
+  }
+  return out;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

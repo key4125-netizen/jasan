@@ -3300,6 +3300,106 @@ function computeHouseholdMonteCarloPV(ownerFilter) {
   return owners.reduce((s, owner) => s + getProjectionGroupTotal(getProjectionGroupStats(owner)), 0);
 }
 
+/* [FUTURE-P1] 절세계좌를 Monte Carlo 범위에 넣기 위한 입력 빌더.
+ *
+ * 절세계좌에는 "목표 비중"이라는 개념이 없다 - 리밸런싱 탭이 처음부터 절세계좌를 제외해 왔고
+ * (isRebalanceEligibleAccount), simulateTaxAdvantagedOwnerGrowth도 보유 종목이 각자 자기 수익률로
+ * 복리 성장하는 buy-and-hold로 계산한다. 그래서 여기서도 목표비중을 새로 만들지 않고 "지금 실제로
+ * 들고 있는 자산의 평가액"과 "이미 입력된 적립 계획"만 그대로 읽는다.
+ *
+ * 키는 일반계좌 목표(computeOwnerTargetInstrumentWeights)와 **같은 형식**으로 맞춘다 - 같은 종목이
+ * 두 계좌에 있으면 하나의 instrument로 합쳐져야 상관행렬과 시장 충격이 종목 단위로 정확해진다.
+ *
+ * 반환: Map(key -> { initial, monthly[], kind, ticker, name, category, region, label })
+ *   monthly[]: months 길이. 연납(frequency==='yearly')은 각 연도 첫 달에만 값이 들어간다 -
+ *   computeFutureValueAnnual이 "매년 초 1회 납입"(기초급)이라고 명시하고 있어 그 의미를 그대로 옮긴 것이다. */
+function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years) {
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  const months = years * 12;
+  const map = new Map();
+  const ensure = (key, meta) => {
+    if (!map.has(key)) map.set(key, Object.assign({ initial: 0, monthly: new Array(months).fill(0) }, meta));
+    return map.get(key);
+  };
+  // 목표 항목과 같은 키 규칙(T:/N:/C:) - 절세계좌 자산/배분 항목을 같은 형식으로 정규화한다.
+  const tickerKey = (ticker) => `T:${sanitizeTicker(ticker).yahooTicker}`;
+  const namedKey = (region, name) => `N:${region}:${name}`;
+  /* 이 항목이 무위험(σ=0)인지를 여기서 한 번만 정한다 - 어댑터(js/16)와 시계열 빌더
+   * (buildTaxInstrumentReturnSeries)가 각자 다시 판정하다가 어긋나면, 한쪽은 "가격 이력이 필요한
+   * 위험자산"으로 보고 다른 쪽은 시계열을 만들지 않아 "데이터를 못 가져왔다"는 엉뚱한 오류가 난다.
+   *  - 티커가 있으면 일반계좌 목표와 똑같이 항상 실측 가격 이력으로 σ를 구한다(카테고리로 덮지 않는다).
+   *  - 티커가 없으면 사용자가 자산에 직접 지정한 category를 신뢰한다 - 일반계좌의 namedHolding 목표는
+   *    category 필드 자체가 없어 이름으로 추정할 수밖에 없지만, 절세계좌 항목은 state.assets라는 SoT가
+   *    있으므로 이름 추정("국고채"라는 단어가 들어갔는지)보다 그 값이 우선이다. */
+  const isRiskFreeEntry = (kind, category, name) => {
+    if (kind === 'ticker') return false;
+    const c = category || classifyCategory('', name);
+    return c === '채권' || c === '현금';
+  };
+
+  owners.forEach((owner) => {
+    // 1) 초기 보유자산 - 절세계좌에 실제로 들어 있는 자산의 현재 평가액(calcRow)을 그대로 쓴다.
+    //    부동산은 기존 MC 정책대로 제외한다(이번 확장은 "금융자산의 계좌 유형 확대"이지 부동산 편입이 아니다).
+    state.assets.forEach((a) => {
+      if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
+      if (a.category === '부동산') return;
+      const t = String(a.ticker ?? '').trim();
+      const region = a.isDomestic === '해외' ? '해외' : '국내';
+      const key = t ? tickerKey(t) : namedKey(region, a.name);
+      const entry = ensure(key, t
+        ? { kind: 'ticker', ticker: t, name: a.name, label: a.name, category: a.category, region, riskFree: false }
+        : { kind: 'namedHolding', ticker: '', name: a.name, label: a.name, category: a.category, region, riskFree: isRiskFreeEntry('namedHolding', a.category, a.name) });
+      entry.initial += calcRow(a).curAmount;
+    });
+
+    // 2) 신규 납입 - deterministic(simulateTaxAdvantagedOwnerGrowth)이 읽는 바로 그 구조를 그대로 쓴다.
+    const plan = state.projection.taxAdvantagedPlan || {};
+    const accountPlans = (plan.contributionByOwnerAccount && plan.contributionByOwnerAccount[owner]) || [];
+    const allAllocations = (plan.allocationByOwner && plan.allocationByOwner[owner]) || [];
+    // 납입 한 건을 월별 배열에 얹는다. 연납은 각 연도 첫 달에 전액, 월납은 매월.
+    const addContribution = (key, meta, amountPerPeriod, contribYears, frequency) => {
+      if (!(amountPerPeriod > 0)) return;
+      const entry = ensure(key, meta);
+      const capMonths = Math.min(months, Math.max(0, Math.round(num(contribYears) * 12)));
+      for (let m = 1; m <= capMonths; m++) {
+        if (frequency === 'yearly') { if ((m - 1) % 12 === 0) entry.monthly[m - 1] += amountPerPeriod; }
+        else entry.monthly[m - 1] += amountPerPeriod;
+      }
+    };
+    // 미배분 잔여분은 deterministic과 완전히 같은 규칙(TAX_ADVANTAGED_RISK_SHARE로 국내지수/BOND 분할)을 쓴다.
+    const addRemainder = (amount, contribYears, frequency) => {
+      if (!(amount > 0)) return;
+      addContribution('C:국내:주식', { kind: 'category', ticker: '', name: '국내주식', label: '국내주식', category: '주식', region: '국내', riskFree: false },
+        amount * TAX_ADVANTAGED_RISK_SHARE, contribYears, frequency);
+      addContribution('C:국내:채권', { kind: 'category', ticker: '', name: '채권', label: '채권', category: '채권', region: '국내', riskFree: true },
+        amount * (1 - TAX_ADVANTAGED_RISK_SHARE), contribYears, frequency);
+    };
+    const addAllocationSet = (allocation, amount, contribYears, frequency) => {
+      const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
+      allocation.forEach((item) => {
+        const region = sanitizeTicker(item.ticker).isDomestic === '해외' ? '해외' : '국내';
+        addContribution(tickerKey(item.ticker),
+          { kind: 'ticker', ticker: item.ticker, name: item.label || item.ticker, label: item.label || item.ticker, category: undefined, region, riskFree: false },
+          amount * num(item.pct) / 100, contribYears, frequency);
+      });
+      addRemainder(amount * Math.max(0, 100 - allocatedPct) / 100, contribYears, frequency);
+    };
+
+    if (accountPlans.length > 0) {
+      accountPlans.forEach((acc) => {
+        addAllocationSet(allAllocations.filter((it) => it.accountType === acc.accountType && num(it.pct) > 0),
+          num(acc.amount), num(acc.years), acc.frequency);
+      });
+    } else {
+      // [하위호환 폴백] deterministic과 동일 - 계좌별 설정이 없으면 owner 단일 풀(monthlyByOwner/yearsByOwner).
+      addAllocationSet(allAllocations.filter((it) => num(it.pct) > 0),
+        num((plan.monthlyByOwner || {})[owner]), num((plan.yearsByOwner || {})[owner]), 'monthly');
+    }
+  });
+
+  return map;
+}
+
 // 소유자 한 명의 목표 비중(전체 포트폴리오 대비 0~1, 국내/해외 split × 지역 내 항목 비중)을
 // "종목(티커)/자산군 캐치올" 단위로 펼쳐서 Map으로 반환한다 - computePositionRoleBreakdown의
 // computeOwnerTargetRoleWeights(js/04)와 같은 원리이지만, 여기서는 role이 아니라 실제 수익률/변동성
@@ -3458,6 +3558,38 @@ async function buildHouseholdInstrumentReturnSeries(ownerFilter) {
       const data = await getCachedDailyCloses(indexTicker);
       if (data && data.closes.length >= 10) {
         withReturns.push({ key, weight: v.weight, returns: dailyReturnsFromCloses(data.closes), dates: data.dates || null, closes: data.closes });
+      }
+    })());
+  });
+  await Promise.all(tasks);
+  return withReturns;
+}
+
+/* [FUTURE-P1] 절세계좌 전용 instrument의 일별 수익률 시계열 - 위 buildHouseholdInstrumentReturnSeries와
+ * **완전히 같은 규칙**을 쓴다(티커면 그 종목의 캐시 종가, 채권/현금이면 시계열을 만들지 않아 σ=0 경로로
+ * 가고, 그 외에는 지역 대표지수). 새 변동성 모델을 만들지 않으며, 데이터가 모자라면 시계열을 넣지 않아
+ * 어댑터의 기존 "데이터 부족이면 조용히 0으로 채우지 않고 오류로 알린다" 정책이 그대로 적용된다.
+ * 일반계좌 목표에 이미 있는 키는 호출부가 걸러서 넘기므로 여기서 중복 조회하지 않는다. */
+async function buildTaxInstrumentReturnSeries(taxEntries) {
+  const withReturns = [];
+  const tasks = [];
+  taxEntries.forEach(({ key, entry }) => {
+    if (entry.kind === 'ticker' && String(entry.ticker ?? '').trim()) {
+      tasks.push((async () => {
+        const yahoo = sanitizeTicker(entry.ticker).yahooTicker;
+        const data = await getCachedDailyCloses(yahoo);
+        if (data && data.closes.length >= 10) {
+          withReturns.push({ key, weight: 0, returns: dailyReturnsFromCloses(data.closes), dates: data.dates || null, closes: data.closes });
+        }
+      })());
+      return;
+    }
+    if (entry.riskFree) return; // 위 함수와 동일 - 변동성 0 근사(판정은 buildTaxAdvantagedMonteCarloInputs가 이미 끝냈다)
+    const indexTicker = entry.region === '해외' ? INDEX_TICKERS.SP500 : INDEX_TICKERS.KOSPI;
+    tasks.push((async () => {
+      const data = await getCachedDailyCloses(indexTicker);
+      if (data && data.closes.length >= 10) {
+        withReturns.push({ key, weight: 0, returns: dailyReturnsFromCloses(data.closes), dates: data.dates || null, closes: data.closes });
       }
     })());
   });

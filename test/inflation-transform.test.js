@@ -58,3 +58,38 @@ test('Real→Nominal 왕복 변환이 원래 값으로 정확히 돌아와야 �
   const roundTrip = convertNominalToReal(nominal, 0.025, 20);
   assert.ok(Math.abs(roundTrip - real) < 1e-6, '왕복 변환 오차가 너무 크다');
 });
+
+/* [FUTURE-P1 Phase 2-C] 계좌 범위(general/taxAdvantaged/combined)도 같은 규칙으로 실질 환산된다.
+ * 세 범위는 서로 독립적인 명목값 원본이므로, 각 milestone이 자기 year로 딱 한 번만 나뉜다
+ * (한 범위의 결과를 다른 범위에 다시 적용하는 중복 할인이 일어나지 않는다). */
+test('Test F - accountScopes의 세 범위가 각각 자기 year로 한 번씩만 실질 환산된다', () => {
+  const scopeMilestones = (base) => [
+    { year: 5, mean: base, p10: base * 0.5, p25: base * 0.7, p50: base, p75: base * 1.3, p90: base * 1.7 },
+    { year: 20, mean: base * 5, p10: base * 2, p25: base * 3.5, p50: base * 5, p75: base * 7, p90: base * 10 }
+  ];
+  const result = {
+    mode: 'official', simulations: 1000, years: 20, assets: 2,
+    milestones: scopeMilestones(1e8),
+    accountScopes: {
+      general: scopeMilestones(1e8), taxAdvantaged: scopeMilestones(4e7), combined: scopeMilestones(1.4e8)
+    }
+  };
+  const rate = 0.025;
+  const converted = applyInflationToResult(result, rate);
+  ['general', 'taxAdvantaged', 'combined'].forEach((scope) => {
+    converted.accountScopes[scope].forEach((m, idx) => {
+      const orig = result.accountScopes[scope][idx];
+      // 할인은 정확히 (1+i)^year 한 번 - 두 번 적용되면 이 값보다 작아진다.
+      assert.ok(Math.abs(m.real.p50 - orig.p50 / Math.pow(1 + rate, orig.year)) < 1e-6,
+        `${scope} ${orig.year}년 실질 환산이 어긋났다(중복 적용 의심)`);
+      assert.strictEqual(m.p50, orig.p50, '명목값이 변형되면 안 된다');
+    });
+  });
+  assert.strictEqual(result.accountScopes.general[0].real, undefined, '원본 accountScopes를 mutate했다');
+});
+
+test('Test G - accountScopes가 없으면 반환 객체에도 그 필드가 생기지 않는다(기존 호출부 무영향)', () => {
+  const result = { milestones: [{ year: 5, mean: 1, p10: 1, p25: 1, p50: 1, p75: 1, p90: 1 }] };
+  const converted = applyInflationToResult(result, 0.02);
+  assert.strictEqual(converted.accountScopes, undefined);
+});

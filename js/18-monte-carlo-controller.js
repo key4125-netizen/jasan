@@ -123,7 +123,12 @@ async function startMonteCarloRun(params, callbacks) {
 
   // [Phase 24-B - Owner MC] params.ownerFilter를 어댑터에 그대로 전달만 한다(js/15 엔진 자체는 무변경 -
   // 아래 input 객체에는 ownerFilter가 들어가지 않는다, 엔진은 여전히 owner 개념을 모른다).
-  const adapterResult = await buildMonteCarloInputFromState({ presetKey: params.presetKey || 'normal', ownerFilter: params.ownerFilter });
+  // [FUTURE-P1] includeTaxAdvantaged/years는 어댑터가 절세계좌 초기잔고·납입계획을 월별 배열로 펴는 데
+  // 필요한 값이라 그대로 전달만 한다 - 이 파일은 여전히 state를 직접 읽지 않는다(어댑터 전담).
+  const adapterResult = await buildMonteCarloInputFromState({
+    presetKey: params.presetKey || 'normal', ownerFilter: params.ownerFilter,
+    includeTaxAdvantaged: params.includeTaxAdvantaged, years: params.years
+  });
   if (requestId !== mcActiveRequestId) return; // 어댑터가 비동기로 데이터를 가져오는 동안 취소/재시작됐으면 중단
   if (adapterResult.errors && adapterResult.errors.length > 0) {
     mcState = MC_WORKER_STATE.FAILED;
@@ -156,6 +161,9 @@ async function startMonteCarloRun(params, callbacks) {
     contributionGrowthRate: params.contributionGrowthRate, // [Phase 3-3] 생략 시 엔진에서 0으로 처리(하위호환)
     // [Step 2 - 적립기간 연결] 생략 시(하위호환) js/15가 기존 monthlyContribution 단일 흐름으로 처리한다.
     contributionStreams: params.contributionStreams,
+    // [FUTURE-P1] 어댑터가 절세계좌 잔고/납입을 실제로 찾았을 때만 존재한다 - 없으면 필드가 아예
+    // 붙지 않아(undefined) 엔진이 기존 General-only 경로를 그대로 탄다.
+    taxScope: adapterResult.taxScope,
     years: params.years,
     simulations: params.simulations,
     seed: params.seed,

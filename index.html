@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v226</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v227</p>
           </div>
         </div>
 
@@ -1482,6 +1482,14 @@
         <p id="mcInflationNote" class="text-sm text-slate-400 mb-1">인플레이션율: -</p>
         <p id="mcWeightedFeeNote" class="text-sm text-slate-400 mb-1">예상 연간 운용보수(포트폴리오 가중평균): -</p>
         <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mb-2 leading-relaxed"></div>
+
+        <!-- [FUTURE-P1 Phase 2-C - 계좌 범위 최소 연결] 절세계좌(ISA/IRP/연금저축) 자산이나 납입계획이
+             있는 사용자에게만 표시된다(없으면 계속 hidden - 기존 화면과 완전히 동일). 아래 P50 카드와
+             표는 예전부터 "일반계좌(리밸런싱 대상)" 기준이므로, 절세계좌를 가진 사용자가 그 숫자를
+             전체 자산으로 오해하지 않도록 범위를 명시하고 세 범위의 중앙값을 함께 보여준다.
+             본격적인 UI 개편(hero 승격/그래프/설명 재구성)은 다음 Phase에서 한다. -->
+        <div id="mcAccountScopeArea" class="hidden mb-3"></div>
+
         <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
           <p class="text-sm text-slate-500 dark:text-slate-400">중간 수준 예상자산</p>
           <p class="text-sm text-slate-400 mt-1">명목가치(미래 시점 금액)</p>

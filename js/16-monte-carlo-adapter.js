@@ -35,7 +35,18 @@ async function buildMonteCarloInputFromState(config) {
 
   const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
   const returnsList = await buildHouseholdInstrumentReturnSeries(ownerFilter);
-  const returnsByKey = new Map(returnsList.map((r) => [r.key, r]));
+  /* [FUTURE-P1] 절세계좌 입력 - config.includeTaxAdvantaged일 때만 구성한다(생략하면 아래 taxEntries가
+   * 비어 있어 기존 경로와 완전히 같다). 절세계좌는 목표비중이 아니라 "지금 들고 있는 자산 + 이미 입력된
+   * 적립 계획"이므로 weight를 만들지 않고, 일반계좌 목표와 같은 키 규칙으로만 맞춰 둔다 - 같은 종목이면
+   * 하나의 instrument로 합쳐져 같은 시장 충격을 받고, 잔고만 계좌별로 따로 유지된다. */
+  const taxMap = config.includeTaxAdvantaged
+    ? buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, config.years || 20)
+    : null;
+  // 일반계좌 목표에 없는 절세 전용 종목만 추가로 시계열을 받아온다(있는 것은 위에서 이미 받았다).
+  const taxOnlyEntries = [];
+  if (taxMap) taxMap.forEach((entry, key) => { if (!weightsMap.has(key)) taxOnlyEntries.push({ key, entry }); });
+  const taxOnlyReturns = taxOnlyEntries.length ? await buildTaxInstrumentReturnSeries(taxOnlyEntries) : [];
+  const returnsByKey = new Map(returnsList.concat(taxOnlyReturns).map((r) => [r.key, r]));
 
   const assetOrder = [];
   const instruments = [];
@@ -94,6 +105,50 @@ async function buildMonteCarloInputFromState(config) {
     datedClosesForCorrelation.push({ key, label, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
   });
 
+  /* [FUTURE-P1] 절세계좌 전용 instrument를 universe에 추가한다 - 일반계좌 목표에는 없는 종목이므로
+   * weight는 0이다(일반계좌 잔고/납입 배분에 전혀 참여하지 않는다). weight가 0이어도 이 종목은
+   * 상관행렬과 시장 충격 생성에는 정상적으로 참여해야 하므로 universe에서 빼지 않는다.
+   * μ/σ 판정은 위 일반계좌 루프와 완전히 같은 규칙(getTargetProjectionRate / isRiskFree / 시계열 부족 시
+   * 오류)을 그대로 적용한다 - 절세계좌라고 해서 데이터 부족을 σ=0으로 덮지 않는다. */
+  if (taxMap) {
+    taxOnlyEntries.forEach(({ key, entry }) => {
+      const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: undefined };
+      const muAnnualPct = getTargetProjectionRate(pseudoTarget, presetKey, entry.region);
+      const muAnnual = num(muAnnualPct) / 100;
+      const feeRatePctRaw = getTargetProjectionFeeRate(pseudoTarget);
+      const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
+      safetyIssues.push(...assessFee(feeRatePctRaw, entry.label, isFeeExplicitlySet(pseudoTarget)));
+      const returnIssue = assessExpectedReturn(muAnnualPct, entry.label);
+      if (returnIssue) safetyIssues.push(returnIssue);
+
+      // 무위험 여부는 js/05의 buildTaxAdvantagedMonteCarloInputs가 이미 판정해 entry.riskFree에 실어 준다 -
+      // 여기서 다시 추정하면 시계열 빌더와 판정이 어긋나 "가격 이력을 못 가져왔다"는 잘못된 오류가 난다.
+      if (entry.riskFree) {
+        assetOrder.push(key);
+        instruments.push({ key, weight: 0, muAnnual, sigmaAnnual: 0, feeRateAnnual });
+        return;
+      }
+      const series = returnsByKey.get(key);
+      if (!series || !series.dates) {
+        errors.push(`instrument "${key}"(절세계좌 보유분)의 가격 이력을 가져오지 못해 변동성을 계산할 수 없습니다.`);
+        return;
+      }
+      const observationCount = (series.returns || []).length;
+      const dataIssue = assessDataSufficiency(observationCount, entry.label);
+      if (dataIssue) dataQualityIssues.push(dataIssue);
+      const sigmaAnnualPct = computeAnnualizedVolatilityPct(series.returns);
+      if (sigmaAnnualPct === null || sigmaAnnualPct === undefined) {
+        errors.push(`instrument "${key}"(절세계좌 보유분)의 가격 데이터가 부족해(${observationCount}개) 변동성을 계산할 수 없습니다.`);
+        return;
+      }
+      const volIssue = assessVolatility(sigmaAnnualPct, entry.label, false);
+      if (volIssue) safetyIssues.push(volIssue);
+      assetOrder.push(key);
+      instruments.push({ key, weight: 0, muAnnual, sigmaAnnual: sigmaAnnualPct / 100, feeRateAnnual });
+      datedClosesForCorrelation.push({ key, label: entry.label, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
+    });
+  }
+
   if (errors.length > 0) return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };
 
   // 상관행렬: 위험자산끼리는 날짜정렬 상관계수, 채권/현금은 σ=0이라 상관계수가 결과에 영향을 주지
@@ -134,7 +189,35 @@ async function buildMonteCarloInputFromState(config) {
 
   const safety = buildSafetyResult(safetyIssues, dataQualityIssues, []);
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, correlationDiagnostics: config.__lastPairDiagnostics || {} };
+  /* [FUTURE-P1] taxScope 조립 - 엔진이 쓰는 배열은 전부 assetOrder와 같은 순서여야 한다.
+   * initialBalances[i]는 그 종목의 절세계좌 현재 평가액(calcRow 합계), monthlyContributions[i][m-1]은
+   * 그 종목에 매달 들어가는 절세계좌 납입금이다(연납이면 각 연도 첫 달에만 값이 있다).
+   * 같은 종목이 일반계좌 목표에도 있으면 instrument는 하나로 합쳐지지만 잔고는 여기서 절세계좌 몫만
+   * 넣으므로 두 계좌의 돈이 섞이지 않는다. */
+  let taxScope = null;
+  if (taxMap && assetOrder.length > 0) {
+    const months = (config.years || 20) * 12;
+    const initialBalances = new Array(assetOrder.length).fill(0);
+    const monthlyContributions = assetOrder.map(() => new Array(months).fill(0));
+    let hasAnyTaxValue = false;
+    assetOrder.forEach((key, idx) => {
+      const entry = taxMap.get(key);
+      if (!entry) return;
+      initialBalances[idx] = entry.initial || 0;
+      if (entry.initial > 0) hasAnyTaxValue = true;
+      const src = entry.monthly || [];
+      for (let m = 0; m < months; m++) {
+        const v = src[m] || 0;
+        monthlyContributions[idx][m] = v;
+        if (v > 0) hasAnyTaxValue = true;
+      }
+    });
+    // 절세계좌에 자산도 납입도 전혀 없으면 taxScope를 만들지 않는다 - 그래야 그런 사용자는
+    // 기존 General-only 경로와 완전히 같은 출력(accountScopes 없음)을 그대로 받는다.
+    if (hasAnyTaxValue) taxScope = { initialBalances, monthlyContributions };
+  }
+
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, correlationDiagnostics: config.__lastPairDiagnostics || {}, ...(taxScope ? { taxScope } : {}) };
 }
 
 /* -------------------------------------------------------------------------
@@ -217,6 +300,26 @@ function validateMonteCarloInput(input) {
           errors.push(`contributionStreams[${idx}].years가 유효하지 않습니다(null 또는 0 이상이어야 함): ${sy}`);
         }
       });
+    }
+  }
+
+  // [FUTURE-P1] taxScope는 생략 가능(undefined -> 엔진이 기존 General-only 경로). 있다면 배열 길이가
+  // instruments와 정확히 같아야 한다 - 길이가 어긋나면 "몇 번 종목의 절세계좌 잔고인지"가 통째로
+  // 밀려버려(조용히 다른 종목의 돈이 되어) 결과가 틀린 줄도 모르고 나오기 때문이다.
+  if (input.taxScope !== undefined && input.taxScope !== null) {
+    const ts = input.taxScope;
+    const isNumArray = (a) => Array.isArray(a) || ArrayBuffer.isView(a);
+    if (!isNumArray(ts.initialBalances) || ts.initialBalances.length !== instruments.length) {
+      errors.push(`taxScope.initialBalances 길이(${ts.initialBalances ? ts.initialBalances.length : 'null'})가 asset 수(${instruments.length})와 다릅니다.`);
+    } else if (Array.prototype.some.call(ts.initialBalances, (v) => !Number.isFinite(v) || v < 0)) {
+      errors.push('taxScope.initialBalances에 유효하지 않은 값(음수 또는 숫자 아님)이 있습니다.');
+    }
+    if (ts.monthlyContributions !== undefined && ts.monthlyContributions !== null) {
+      if (!isNumArray(ts.monthlyContributions) || ts.monthlyContributions.length !== instruments.length) {
+        errors.push(`taxScope.monthlyContributions 길이(${ts.monthlyContributions ? ts.monthlyContributions.length : 'null'})가 asset 수(${instruments.length})와 다릅니다.`);
+      } else if (Array.prototype.some.call(ts.monthlyContributions, (row) => !isNumArray(row) || Array.prototype.some.call(row, (v) => !Number.isFinite(v) || v < 0))) {
+        errors.push('taxScope.monthlyContributions에 유효하지 않은 값(음수 또는 숫자 아님)이 있습니다.');
+      }
     }
   }
 

@@ -330,6 +330,44 @@ function renderBarsInto(elId, last, colorSet) {
 // contributionMeta: { initialMonthly, growthRatePct, years } - [Phase 3-3] 납입 스케줄 표시용.
 // weightedFeePct: [Phase 3-4] 포트폴리오 가중평균 운용보수(%) - 표시 전용, 계산에는 이미 instrument별로
 // 반영된 뒤라(js/15) 여기서 다시 쓰지 않는다.
+/* [FUTURE-P1 Phase 2-C - 계좌 범위 최소 연결] withReal.accountScopes(js/15가 절세계좌 잔고/납입이
+ * 실제로 있을 때만 만든다 → js/20이 범위별로 실질가치를 붙인 것)를 있는 그대로 표시만 한다 - 이 함수는
+ * 어떤 값도 다시 계산하지 않는다(중앙값 합산 같은 파생 계산 금지 - 합계는 엔진이 경로 단위로 이미 구했다).
+ * 절세계좌가 없는 사용자는 accountScopes 자체가 없어 이 영역이 계속 hidden으로 남는다(기존 화면 동일). */
+function renderMonteCarloAccountScopes(withReal) {
+  const el = mcUiEl('mcAccountScopeArea');
+  const scopes = withReal.accountScopes;
+  if (!scopes || !scopes.general || !scopes.taxAdvantaged || !scopes.combined) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  const lastOf = (arr) => arr[arr.length - 1];
+  const rows = [
+    { label: '일반계좌', sub: '연 1회 목표비중으로 재조정', m: lastOf(scopes.general) },
+    { label: '절세계좌', sub: 'ISA·IRP·연금저축 - 매수 후 그대로 보유', m: lastOf(scopes.taxAdvantaged) },
+    { label: '두 계좌 합계', sub: '같은 시장 경로에서 두 계좌를 더한 결과', m: lastOf(scopes.combined) }
+  ];
+  const years = lastOf(scopes.combined).year;
+  el.innerHTML = `
+    <p class="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1.5">계좌 범위별 중간 수준 예상자산(${years}년 후)</p>
+    <div class="space-y-1.5">
+      ${rows.map((r) => `
+        <div class="flex items-baseline justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${r.label}</p>
+            <p class="text-sm text-slate-400 break-keep">${r.sub}</p>
+          </div>
+          <div class="text-right whitespace-nowrap">
+            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(r.m.p50)}</p>
+            <p class="text-sm text-slate-400">${fmtKRWShort(r.m.real.p50)} (현재 구매력)</p>
+          </div>
+        </div>`).join('')}
+    </div>
+    <p class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep">합계는 시뮬레이션 경로마다 두 계좌를 먼저 더한 뒤 구한 중앙값이라, 위 두 중앙값을 그냥 더한 값과 다를 수 있습니다. 아래의 중간 수준 예상자산·범위표·목표 도달 가능성은 <b>일반계좌 기준</b>입니다.</p>`;
+  el.classList.remove('hidden');
+}
+
 function renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct) {
   mcUiEl('mcProgressArea').classList.add('hidden');
   mcUiEl('mcCancelBtn').classList.add('hidden');
@@ -410,6 +448,8 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       : `월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`)
       + `<br>${escapeHtml(allocationNote)}`;
   }
+
+  renderMonteCarloAccountScopes(withReal);
 
   const last = withReal.milestones[withReal.milestones.length - 1];
   mcUiEl('mcP50Text').textContent = fmtKRWShort(last.p50);
@@ -553,7 +593,10 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   // 이번 Phase에서 변경 금지)을 건드리지 않고 어댑터를 한 번 더(캐시된 데이터라 저렴함) 직접 호출한다.
   // 이 결과는 화면 표시에만 쓰고, 실제 시뮬레이션 입력은 여전히 startMonteCarloRun 내부에서 독립적으로
   // 다시 만들어진다(계산 경로 자체는 그대로 유지).
-  const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey, ownerFilter: mcOwnerScope });
+  // [FUTURE-P1] 아래 startMonteCarloRun이 내부에서 어댑터를 다시 부르므로, 이 표시용 호출도 반드시
+  // 같은 config로 불러야 한다 - 그러지 않으면 여기서 본 preflight safety(절세계좌 종목의 운용보수/
+  // 데이터 부족 issue 포함)와 실제 실행 경로가 서로 다른 것을 보게 된다.
+  const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey, ownerFilter: mcOwnerScope, includeTaxAdvantaged: true, years });
   const weightedFeePct = (feeDisplayResult.instruments || []).reduce((s, i) => s + i.weight * i.feeRateAnnual, 0) * 100;
 
   // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] startMonteCarloRun 내부(js/18)에서도 동일하게 다시
@@ -577,6 +620,9 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   setMonteCarloUiRunning();
   startMonteCarloRun({
     presetKey, mode: 'official', ownerFilter: mcOwnerScope, // [Phase 24-B STEP 6] js/18 -> js/16 어댑터로 그대로 전달만 됨
+    // [FUTURE-P1] 절세계좌 자산/납입계획이 하나도 없는 사용자는 어댑터가 taxScope를 만들지 않으므로
+    // 이 값이 true여도 엔진 입력·결과가 기존과 완전히 동일하다(General-only 경로 그대로).
+    includeTaxAdvantaged: true,
     initialPrincipal, monthlyContribution, contributionGrowthRate: contributionGrowthRatePct / 100, years,
     contributionStreams, // [Step 2] 모든 owner가 years:null(제한없음)이면 엔진이 기존 monthlyContribution 경로로 폴백 - bit-identical
     simulations: iterations, seed: 20260101,
