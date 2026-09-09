@@ -32,6 +32,86 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-09) — ⚠️ **FUTURE-P1 Phase 2-C 완료 / 커밋됨 · 아직 PUSH 안 함** (v226 → **v227**)
+
+**버전: v226 → v227** — 단, **push/deploy 모두 미실행**이다. 다음 세션은 이 상태(로컬 커밋만 존재)를
+그대로 이어받는다. `git log`에는 있지만 `origin/main`에는 없다.
+
+### 무엇을 했나
+Monte Carlo가 일반계좌만 계산하던 것을 **일반 / 절세 / 통합 세 가지 계좌 범위**로 넓혔다
+(체크리스트 §7 "Tax MC — REQUIRED THREE SCOPES"의 계산 계층 충족). PM 지시로 UI 전면 개편은 하지
+않았고, 최소 표시 연결만 했다.
+
+| 파일 | 역할 |
+|---|---|
+| `js/15` | `config.taxScope`가 있을 때만 절세계좌 잔고를 **같은 루프**에서 함께 시뮬레이션. 같은 달의 같은 `X(=L·Z)`를 두 계좌가 공유하고, 연 1회 리밸런싱(`m % 12 === 0`)은 `balances`(일반계좌)만 건드린다 |
+| `js/05` | `buildTaxAdvantagedMonteCarloInputs()` / `buildTaxInstrumentReturnSeries()` 신규(순수 추가, 삭제 줄 0) |
+| `js/16` | tax universe 통합, 절세 전용 instrument(weight 0), `taxScope` 조립, 검증 추가 |
+| `js/17` / `js/18` | passthrough + adapter↔worker 연결만 |
+| `js/19` + `index.html` | `#mcAccountScopeArea` — 세 범위 중앙값(명목/실질) 표시 + 기존 대표 숫자가 일반계좌 기준임을 명시 |
+| `js/20` | `accountScopes`도 milestone별 1회 실질 환산 |
+| `js/21` | 범위 안내 문구를 실제 동작에 맞게 수정(아래 참고) |
+
+### 반드시 알아야 할 설계 결정
+- **combined는 path 단위 합산이다.** `combined[iter] = general[iter] + tax[iter]`를 iteration 안에서
+  만들고, 백분위는 그 분포에서만 뽑는다. **P50끼리 더하는 경로는 코드에 존재하지 않는다.**
+- **절세계좌는 buy-and-hold.** 리밸런싱 블록이 `taxBalances`를 건드리지 않는다. 절세계좌 target
+  weight를 만들지 않으며, 현재 보유 비중을 영구 target으로 쓰지 않는다.
+- **같은 종목은 instrument 하나로 merge**되어 같은 충격을 받되 **잔고는 계좌별로 분리**된다.
+- **절세 전용 종목은 weight 0이지만 universe에서 빼지 않는다** — 상관행렬·난수 소비에 정상 참여한다.
+  따라서 절세 전용 종목이 생기면 `n`이 커져 **일반계좌 결과도 달라진다**(PM 승인 사항, `Case B` 테스트가
+  실제 값으로 고정). 절세계좌 자산·납입이 전혀 없는 사용자는 기존과 완전히 동일하다.
+- **연납 타이밍**은 deterministic `computeFutureValueAnnual`의 "매년 초 1회 납입" 의미대로 m=1,13,25…
+- 미배분 잔여분은 기존 `TAX_ADVANTAGED_RISK_SHARE` 규칙 그대로. 부동산·'공동' 자산은 계속 제외.
+- **GBM·σ·상관행렬·Cholesky·Return Key·SoT는 한 줄도 바꾸지 않았다.**
+
+### 구현 중 발견해 고친 실제 결함 (다시 만들지 말 것)
+절세계좌 항목의 무위험(σ=0) 판정을 어댑터와 시계열 빌더가 **각자 이름으로 카테고리를 추정**하고
+있었다. 그래서 이름에 단서가 없는 채권 자산(사용자가 category를 '채권'으로 직접 지정한 자산)이
+위험자산으로 잘못 분류돼 가격 이력을 요구했고 **MC 실행 자체가 막혔다**(`e2e/64` I가 실제로 잡아냄).
+수정: 판정을 `buildTaxAdvantagedMonteCarloInputs`에서 **한 번만** 내려 `entry.riskFree`로 공유한다.
+티커가 있으면 일반계좌와 똑같이 항상 실측 가격 이력을 쓰고, 티커가 없을 때만 `state.assets`의
+category(SoT)를 신뢰한다. `test/mc-adapter-account-scope.test.js` 8-c가 이 정책을 고정한다.
+
+### 사용자 노출 문구 변경 1건
+`js/21 explainAccumulationScopeAlwaysOn()`이 "절세계좌·부동산·공동 자산은 계산에서 제외됩니다"라고
+말하고 있었는데, 절세계좌가 별도 범위로 계산되면서 **사실이 아니게 되어** 고쳤다. 이 문구를 인용하던
+`e2e/64` 1줄과 `test/safety-layer.test.js` 검증도 함께 갱신했다(약화가 아니라, 옛 문장이 남아 있으면
+실패하도록 조건을 추가했다). PM 승인 완료.
+
+### 새 테스트 인프라
+`test/mc-adapter-sandbox.js` — `test/risk-sandbox.js`와 같은 vm 샌드박스 방식으로 js/16 어댑터를
+production export 추가 없이 테스트한다(네트워크 차단, 가격 이력은 fixture 주입).
+**주의**: vm 컨텍스트의 배열은 realm이 달라 `assert.deepStrictEqual`이 실패한다 — `Array.from()`으로
+복사해서 비교해야 한다(테스트 파일의 `arr()` 헬퍼).
+
+### 검증 결과 (최종 working tree 기준 재실행)
+```
+ESLint 0 / Unit 274-274 / E2E 686-686 / General-only golden 39-39
+Data Guard PASS / Release Guard PASS (v227)
+```
+
+### 커밋 상태
+- **코드 커밋: `e783568` (amend 후 최종 hash)** — 이전 hash `3c69453`은 커밋 메시지 첫 줄에 `@`가
+  잘못 들어가 amend했다. **`3c69453`은 최종 hash가 아니다.** 파일/patch/tree hash는 amend 전후 동일함을
+  확인했다. (원인: Bash 도구에서 PowerShell heredoc 문법 `@'...'@`를 썼다 — 다음엔 `-F 파일`을 쓸 것)
+- **push 하지 않았다. deploy 하지 않았다.**
+- `.claude/launch.json`은 이번에도 커밋에 넣지 않았다(계속 working tree에 modified로 남아 있다).
+
+### Deferred
+- **FUTURE-P1-BL-01 — `runAnnualPreviewMC` taxScope 미지원 / Non-blocking.** preview mode는 production
+  경로에 없다(`startMonteCarloRun`의 유일한 호출부인 js/19가 `mode: 'official'` 고정, 저장소 전체에
+  preview 호출부 없음). 사용자 영향 0이라 수정하지 않았다. 체크리스트 §7-2에 기록됨.
+
+### 다음 단계
+**FUTURE-P1 UI/UX restructuring** — 별도 PM 지시 후 착수한다. 방향: MC를 미래예측 주 결과로 승격,
+deterministic hero 후순위화(계산 자체는 삭제하지 않고 하단 참고 문구로 유지), 5/10/15/20년 ×
+P10~P90 × 세 계좌 범위 노출, 목표확률은 보조 정보, percentile ≠ probability 명확화, P50을
+"예상/보장금액"처럼 표현하지 않기, Mobile/Dark First 375px. **계산 계층은 Phase 2-C 상태를 기준선으로
+고정하고 UI만 그 위에 올린다 — UI를 바꾸면서 계산을 동시에 손대지 않는다.**
+
+---
+
 ## 최근 세션 요약 (2026-09-09) — 🚀 **V1.2-B 종료 + V1.3 BL-19/P1-1 릴리즈** (v222 → **v226**)
 
 PM 주도 거버넌스 세션. 한 세션에서 v223~v226까지 4번 릴리즈했다. **전부 push 완료.**

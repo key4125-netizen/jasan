@@ -225,6 +225,33 @@
 - 중복/누락 asset이 없어야 한다.
 - 결과 화면에 scope를 명확히 표시한다.
 
+### 7-1. FUTURE-P1 Phase 2-C — 계산 계층 구현 완료 기록 (2026-09-09)
+
+위 "Tax MC — REQUIRED THREE SCOPES" 요구사항의 **계산 계층**이 구현·검증되었다(commit `e783568`, v227,
+**push/deploy 미실행**). 새 요구사항을 추가한 기록이 아니라, 기존 요구사항의 충족 상태를 기록한 것이다.
+
+- 일반계좌 = 기존과 동일한 연 1회 목표비중 리밸런싱. **General-only golden 39/39 무변경**
+- 절세계좌 = deterministic `simulateTaxAdvantagedOwnerGrowth`와 같은 의미의 buy-and-hold. 초기 잔고는
+  `state.assets`의 `calcRow(a).curAmount`, 납입은 기존 `taxAdvantagedPlan` 구조를 그대로 읽는다.
+  절세계좌 target weight를 새로 만들지 않으며, 현재 보유 비중을 영구 target으로 쓰지 않는다
+- 통합 = 같은 simulation path에서 두 계좌를 먼저 더한 뒤 그 분포에서 백분위/목표확률을 산출한다
+  (P50 단순 합산 경로가 코드에 존재하지 않는다)
+- instrument universe는 기존 `T:` / `N:` / `C:` 키 규칙 그대로 통합하며, 같은 종목은 하나로 merge되어
+  같은 시장 충격을 받되 잔고는 계좌별로 분리 유지된다. 부동산·'공동' 자산은 계속 제외
+- GBM·σ·상관행렬·Cholesky·Return Key·SoT **무변경**. inflation은 기존대로 js/20에서 범위별 post-transform
+- UI는 최소 연결만 수행(계좌 범위별 중앙값 표시 + 기존 대표 숫자가 일반계좌 기준임을 명시).
+  **UI/UX 전면 개편은 다음 Phase**이며 이 절이 그것을 승인하지 않는다
+
+### 7-2. FUTURE-P1 Backlog
+
+**FUTURE-P1-BL-01 — `runAnnualPreviewMC` taxScope compatibility**
+- **상태: Deferred / Non-blocking**
+- 사유: preview mode는 현재 production 사용자 경로에 존재하지 않는다. `startMonteCarloRun`의 production
+  호출은 `mode: 'official'` 고정이며 저장소 전체에 preview 호출부가 없다 — 현재 사용자 영향 0
+- 재검토 조건: preview mode가 실제 사용자 경로로 복원/활성화될 경우
+- 범위 한정: preview 경로의 **호환성**만 검토한다. 별도의 금융모델 확장이나 새 계산 정책을 의미하지 않는다
+- Phase 2-C에서는 코드를 수정하지 않았다
+
 ## 8. Asset Assumption Policy
 
 - US_EQUITY V1.0: Vanguard VCMM 기반 4.1 / 5.1 / 6.0 유지.
@@ -523,6 +550,9 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - RET-03 Return Key End-to-End 정책 감사 — **완료 / 코드 변경 0건** — 전체 Key inventory·End-to-End mapping·기관 전망 및 역사적 근거 조사 수행. 한국 주식 CMA는 **4번째 조사에서도 확보 실패**(한국투자신탁운용 2026 LTCMA 수치 비공개 확인)
 - RET-03 PM Policy Decision — **확정(2026-09-09) / 거버넌스 결정, 값 변경 release 아님**(§8-4) — KOSPI·KOSDAQ·BOND·부동산·US Equity·개별주식 anchor·CASH·Mixed Asset **전부 현행 유지**, legacy Key는 근거 확보 전 **동결**. Return Key 숫자 변경 **0건**, 코드 변경 **0건**
 - FUTURE-P1 Monte Carlo 중심 미래예측 구조 개편 — **진입 승인 / 다음 단계**(§8-4 RET-03-09)
+- FUTURE-P1 Phase 2-C 계산 계층(일반/절세/통합 3-scope) — **구현 완료 / commit `e783568` / v227 / NOT PUSHED · NOT DEPLOYED**(§7-1) — General-only golden 39/39, Unit 274/274, E2E 686/686, ESLint 0, Data Guard·Release Guard PASS. SoT·Return Key 무변경
+- FUTURE-P1-BL-01 `runAnnualPreviewMC` taxScope compatibility — **Deferred / Non-blocking**(§7-2) — 현재 production 경로에 preview mode 호출부 없음, 사용자 영향 0
+- FUTURE-P1 UI/UX restructuring — **다음 단계 / 별도 PM 지시 후 착수**(이번 Phase에서 UI 코드 변경 없음)
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
