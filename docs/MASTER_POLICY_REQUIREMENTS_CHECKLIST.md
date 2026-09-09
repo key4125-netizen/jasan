@@ -59,7 +59,7 @@
 - 현재 V1.2-B는 **자산/거래내역 정합성** 중심.
 - 우선순위였던 BL-17 → BL-18은 각각 v224 / v225로 **RESOLVED** — 아래 5장 참고.
 - **V1.2-B closeout**: BL-17(v224)/BL-18(v225) 두 항목 모두 RESOLVED로 확정. BL-19 correction-path UX는 그 closeout 범위에 포함되지 않았고, 이후 **V1.3에서 PM 승인 하에 Option 1(TEXT-ONLY)로 구현되어 v226으로 RESOLVED** 되었다(§5 참고).
-- **다음 작업 우선순위(PM 확정)**: ① RET-02(Return Key 정기 검토 거버넌스 — §8-1~8-3, **확정 완료**) → ② RET-03(전체 Return Key 정책 End-to-End 감사) → ③ FUTURE-P1(Monte Carlo 중심 미래예측 구조 개편) → ④ BOND-P1 → ⑤ FX-P1 → ⑥ UX-P1. 앞 단계가 끝났다는 사실이 다음 단계의 착수/변경을 자동 승인하지 않는다.
+- **다음 작업 우선순위(PM 확정)**: ① RET-02(Return Key 정기 검토 거버넌스 — §8-1~8-3, **확정 완료**) → ② RET-03(전체 Return Key 정책 감사 + PM Decision — §8-4, **확정 완료 / 값 변경 0건**) → ③ **FUTURE-P1(Monte Carlo 중심 미래예측 구조 개편 — 진입 승인, 다음 단계)** → ④ BOND-P1 → ⑤ FX-P1 → ⑥ UX-P1. 앞 단계가 끝났다는 사실이 다음 단계의 착수/변경을 자동 승인하지 않는다(FUTURE-P1은 §8-4 RET-03-09로 진입이 명시 승인됨).
 - **V1.3 — CLOSED**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 두 항목을 릴리즈하고 종료했다. Bond Domain은 READ-ONLY audit + Decision Gate만 수행했고 **production code는 변경하지 않았다** — BOND-DEF-01~05의 PM 최종 결정은 §9-3 참고. V1.3 종료가 Bond 구현 착수 승인을 의미하지 않으며, 다음 단계는 PM이 별도로 결정한다.
 - V1.2-B에서는 대규모 UX/기능 확장을 하지 않는다.
 
@@ -305,6 +305,47 @@
 
 RET-02는 RET-03의 선행 조건이며, RET-02가 확정되었다는 사실이 RET-03의 값 변경을 승인하는 것은 아니다.
 
+### 8-4. RET-03 — Return Key 정책 PM Decision (확정)
+
+> **PM Decision date: 2026-09-09** · RET-03 READ-ONLY 감사(코드 변경 0건) 결과를 근거로 아래 정책을 확정한다. **이 결정으로 Return Key 숫자는 하나도 변경되지 않았다** — "현행 유지 + 근거 확보 전 동결"도 정식 정책 확정으로 인정한다.
+
+**RET-03-00 Legacy Return Key 공통 운영 원칙**
+> **Legacy/source unknown Return Key는 근거가 충분히 확보되기 전까지 현재 값을 동결하고, RET-02의 반기 검토에서 근거 확보 여부를 재검토한다.**
+
+대상: KOSPI · KOSDAQ(별도 default 없음 → "KOSPI 상속 유지"로 기록) · BOND · 부동산.
+
+**"근거 없음"을 다음 중 어느 것으로도 자동 처리하지 않는다**: ① 0%로 낮추기 ② 새로운 보수적 숫자 생성. 코드의 **unresolved 0% 정책**(성격을 확인하지 못한 자산에 가정을 적용하지 않음)과 **legacy system default의 근거 부족**은 서로 다른 개념이며 혼동하지 않는다.
+
+| Key | 현행 값 | PM 결정 | 근거 상태 |
+|---|---|---|---|
+| **KOSPI** | 5 / 7 / 11 | **현행 유지 + 동결** | legacy / source unknown |
+| **KOSDAQ** | 전용 default 없음 | **KOSPI 상속 유지**(별도 Key 미생성) | — |
+| **BOND** | 3.5 / 4.0 / 5.5 | **현행 유지 + 동결** | legacy / source unknown |
+| **부동산** | 3.0 / 5.5 / 8.0 | **현행 유지 + 동결** | legacy / source unknown |
+| **US Equity** | 4.1 / 5.1 / 6.0 | **현행 유지** | Vanguard VCMM 2026-06-30 (cma_verified) |
+| **Individual Stock Anchor** | system alpha 없음 | **현행 유지 / alpha 재도입 NO-GO** | 개별종목 CMA 부재가 근거 |
+| **CASH / CASH.USD** | 0 / 0 / 0 | **현행 유지** | 정책값 |
+| **Mixed Asset / BOND.STOCK** | 자동 Key 부여 없음 | **현행 유지** | user-defined 전용 |
+
+**RET-03-01 KOSPI** — 현행 5/7/11 유지. 근거 확보 전 동결하며 RET-02 반기 검토에서 근거 확보를 계속 시도한다. 근거 없는 대체 수치를 만들지 않고, 최근 역사적 수익률로 상향하지 않으며, 다른 자산(예: 한국을 포함하는 DEV_EX_US)의 기대수익률을 가져와 KOSPI 값으로 직접 대체하지 않는다. **Bull 11%가 상대적으로 높은 장기 민감도를 갖는다는 사실은 검토 기록으로 남기되, 대체 근거가 없으므로 Bull만 임의로 하향하지 않는다.**
+> PM 판단: **"근거가 부족하다" ≠ "임의로 보수적인 숫자를 만들어야 한다".**
+
+**RET-03-02 KOSDAQ** — 현행 KOSPI 상속 유지. 별도 default를 만들지 않으며, **"KOSDAQ 특성이 KOSPI와 다르다"는 이유만으로 새 숫자를 생성하지 않는다.** 별도 장기 기대수익률 근거가 확보되면 RET-02/RET-03을 통해 재검토한다. 사용자 override는 기존 원칙대로 보호한다.
+
+**RET-03-03 BOND** — 현행 3.5/4.0/5.5 유지, legacy/source unknown으로 기록, 근거 확보 전 동결. 개별채권/채권 ETF의 정책 및 모델 구조는 **BOND-P1에서 별도 감사**한다. **이 결정은 Bond 모델을 승인하거나 확정하지 않는다** — duration · credit · YTM · maturity cashflow · coupon reinvestment · 개별채권 전용 Monte Carlo는 전부 BOND-P1 범위다.
+
+**RET-03-04 부동산** — 현행 3.0/5.5/8.0 유지, 근거 확보 전 동결, RET-02 반기 검토에서 근거 확보 시도. **현재 계산 범위(MC 제외 / 총자산 미래예측 포함)는 이번 결정에서 변경하지 않으며, 범위 문제는 별도 backlog/policy review로 관리한다.**
+
+**RET-03-05 US Equity** — 현행 4.1/5.1/6.0 유지. 근거: Vanguard VCMM 2026-06-30 원문 확인, 4.2~6.2% range의 변환 구조 확인, 다기관 종합 자료와 normal 수준이 정합적, 과도한 기대수익률을 제시하지 않는다는 프로젝트 목적과 부합. **다기관 평균을 system default로 자동 채택하지 않으며, Capital Group/JPMorgan/State Street가 더 높다는 이유로 상향하지 않는다.** Vanguard 단일 source 구조를 당분간 유지하고, 타 기관 자료는 RET-02 검토의 **참고자료로만** 사용한다. 반기 검토 때 source 변화 여부를 재검토한다.
+
+**RET-03-06 Individual Stock Anchor** — 개별주식 system alpha를 **재도입하지 않는다(NO-GO)**. 개별주식은 대표 시장/자산군 anchor를 사용하고, 종목별 volatility만 별도 실측한다. **"개별 종목에 연 15% 성장" 같은 system-generated expectation을 다시 만들지 않는다.** 사용자 override는 별도로 취급하며 시스템이 평가·교정하지 않는다.
+
+**RET-03-07 CASH / CASH.USD** — 0/0/0 유지. 이는 "현금이 반드시 0% 수익"이라는 예측이 아니라 **"시스템이 현금에 성장 가정을 부여하지 않는다"는 정책값**이다. 사용자 override 시 기존 resolver 우선순위를 유지한다.
+
+**RET-03-08 Mixed Asset** — 현행 유지. 정의되지 않은 mixed asset에 자동 Return Key를 부여하지 않고 unresolved 처리를 유지하며, BOND.STOCK의 user-defined 전용 구조를 유지한다. 근거 없는 composition 추정으로 system default를 만들지 않는다.
+
+**RET-03-09 FUTURE-P1 진입 승인** — 아래 선행조건이 모두 충족되어 **FUTURE-P1(Monte Carlo 중심 미래예측 구조 개편) 진입을 승인한다**: ① Return Key system default 정책 확정(이 절) ② user override 보호 확인 ③ deterministic / MC 공통 rate source 확인(`getTargetProjectionRate` 단일 진입점) ④ unresolved 처리 확인 ⑤ 주요 Key policy classification 완료. **모든 legacy Key의 숫자를 새로 산정하는 것은 선행조건이 아니다** — "현행 유지 + 근거 확보 전 동결"도 정책 확정으로 인정한다.
+
 ## 9. Bond Domain — BACKLOG / 별도 단계
 
 본 항목은 V1.2-B의 현재 범위를 무리하게 확장하지 않는다.
@@ -479,7 +520,9 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - V1.3 Bond Definition Decision Gate — **완료 / 코드 변경 0건** — BOND-DEF-01~05 각각 backlog 유지 또는 현행 유지로 PM 최종 결정(§9-3). BOND-DEF-02는 소규모 UX 개선 후보로만 유지하며 P1로 승격하지 않는다
 - **V1.3 — CLOSED** — BL-19(v226) + P1-1(v226) 릴리즈 완료, Bond는 추가 구현 없이 종료
 - RET-02 Return Key 정기 검토 거버넌스 — **확정 / 문서 정책 수립 완료**(§8-1~8-3) — 코드 변경 0건, Return Key 값 변경 0건. 검토 이력은 §8-2 표로만 관리하며 별도 코드 구조를 만들지 않는다
-- RET-03 Return Key End-to-End 정책 감사 — **OPEN / 다음 단계** (RET-02가 선행 조건이며, RET-02 확정이 값 변경을 승인하는 것은 아님)
+- RET-03 Return Key End-to-End 정책 감사 — **완료 / 코드 변경 0건** — 전체 Key inventory·End-to-End mapping·기관 전망 및 역사적 근거 조사 수행. 한국 주식 CMA는 **4번째 조사에서도 확보 실패**(한국투자신탁운용 2026 LTCMA 수치 비공개 확인)
+- RET-03 PM Policy Decision — **확정(2026-09-09) / 거버넌스 결정, 값 변경 release 아님**(§8-4) — KOSPI·KOSDAQ·BOND·부동산·US Equity·개별주식 anchor·CASH·Mixed Asset **전부 현행 유지**, legacy Key는 근거 확보 전 **동결**. Return Key 숫자 변경 **0건**, 코드 변경 **0건**
+- FUTURE-P1 Monte Carlo 중심 미래예측 구조 개편 — **진입 승인 / 다음 단계**(§8-4 RET-03-09)
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
