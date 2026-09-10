@@ -32,6 +32,82 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-10) — 🚀 **P1 데이터 보존 유지보수 릴리즈** (v228 → **v229**)
+
+**버전: v228 → v229.** 기능 추가가 아니라 **데이터 보존 결함 수정**이다. commit `eb7191d`,
+push 완료, GitHub Pages 배포 완료(build status `built`, commit 일치), production smoke 통과.
+
+### 왜 했나 — P1 데이터 사고 신고
+사용자가 "PC와 동기화한 뒤 스마트폰 포트폴리오가 다른 값으로 바뀌었다"고 신고했다. 읽기 전용
+포렌식 감사를 4단계로 진행했다(코드 감사 → 실사용 백업 JSON 4건 포렌식 → Excel/Cloud 통합 감사 →
+JSON 백업/복원 감사). **사고 자체는 UNDETERMINED로 남았다** — 2026-09-07~09-10 백업 4건 전 구간에
+되돌아간 값이 하나도 없어서, 사고가 있었다고도 없었다고도 확정할 수 없다. 대신 그 과정에서
+**재현 가능한 데이터 보존 결함 9건**을 찾아 이번에 고쳤다.
+
+**포렌식에서 확정된 판정(다시 뒤집지 말 것)**
+- `Date.now()` boot backfill(js/01:1329) → **이번 사고 원인에서 REJECTED**(백필은 내용을 못 바꾸고,
+  `updatedAt`≠0이라 실행 조건 자체가 성립하지 않았다). 잠재 위험으로는 여전히 실재한다.
+- 2026-09-08 `rebalance` 변경 → **실제 사용자 편집 HIGH CONFIDENCE**. 결정적 근거는 어휘 계보다 —
+  `core_mid` → `core`/`midfielder` 전환은 코드가 자동으로 못 한다(js/01:1272 마이그레이션 삭제됨).
+  스테일한 PC 사본이 덮어썼다면 `core_mid`가 남아 있어야 한다.
+- 2026-09-07~09-10 구간에 Excel import·JSON restore가 실행된 흔적 → **없음(반증됨)**.
+
+### 고친 것 (전부 js/05·js/06·js/12 세 파일 안)
+
+| ID | 내용 |
+|---|---|
+| FIX-1 | 거래 저장이 자산의 `role`/`rateMatchOverride`를 **실제로 바꾼 경우에만** `asset.updatedAt`을 찍는다(js/06:975~992). 예전엔 안 찍어서 두 기기가 영원히 갈라졌고, 다음 정상 편집 한 번에 상대 지정이 사라졌다. 실사용 백업에서 33건 실측 |
+| FIX-2 | 절세계좌 적립계획 저장 시 role이 지정된 항목만 `setTickerRole()`에 넘긴다(js/05:2135). 예전엔 role 없는 배분 항목이 다른 화면의 티커 역할을 지웠다 — 실사용 백업의 `tickerRoles` 4키 소실이 이것과 정확히 일치했다 |
+| FIX-3 | 엑셀 내보내기가 평가금액 0인 자산을 더 이상 빼지 않는다(js/12:16). **화면 표시 정책(`tableAssets`/`filteredAssets`/`hasRealEstateHoldings`)은 안 건드렸다** — 화면에는 계속 안 보인다 |
+| FIX-4/5 | 엑셀 가져오기에서 `buyRate`/`rateMatchOverride` 칸이 비었거나 열이 없으면 기존 값을 이어받는다. 새 헬퍼 `buildCarryIfAbsentIndex`/`carryOverAbsentFields`(js/12) — `carryOverPositionSource`와 동형이다 |
+| FIX-6 | JSON [추가하기]가 `restoredAt`을 자산 `updatedAt`에 적용한다(js/12). 예전엔 비어서 같은 세션 push 선병합에서 복원본이 무조건 졌다 |
+| FIX-7 | JSON 덮어쓰기에서 `tickerRoles`/`learnedTickerNames`를 **키 없음=유지 / 정상 object=복원 / `{}`=명시적 초기화**로 구분한다(`hasOwn`, js/12) |
+| J-1 | JSON 덮어쓰기가 `rebalance`/`projection`에도 `restoredAt`을 적용한다(`adoptRemoteRebalanceAndProjection`의 `opts.stampAt`). 예전엔 이 둘만 파일의 옛 시각을 유지해 복원 직후 pull에서 되돌아갔다. **클라우드 동기화(`force:false`) 경로는 무변경** |
+| J-4 | `transactions` 키가 없는 구버전 JSON(커밋 `3acbe9c` 시절 정상 백업)을 그대로 호환한다 — 원장을 지우지 않고, 자산만 되돌렸다는 사실을 결과 문구로 알린다 |
+
+### 손대지 않기로 한 것 (PM이 명시적으로 수용 — 다시 열지 말 것)
+- **N-1** 오래된 JSON [추가하기]가 클라우드보다 우선할 수 있다 → ACCEPTED / OBSERVE (BL-15가 이미
+  덮어쓰기에 대해 택한 것과 같은 트레이드오프)
+- **N-7** 클라우드 병합은 `role`/`rateMatchOverride`를 여전히 필드 단위로 보호하지 않는다(엑셀
+  경로만 보존) → OBSERVE. **`MERGE_PRESERVE_IF_ABSENT`에 이 두 필드를 추가하지 않는다** — 그
+  배열의 선정 기준이 "앱에 지우는 조작이 없는 필드만"이라 기준 자체를 깨야 한다
+- **B-5**(projection 통 객체 교체) · **B-7**(거래 엑셀 후 legacy 재계산) · **B-9**(키 개명
+  마이그레이션 `updatedAt` 미갱신) → OBSERVE
+- **B-6**(엑셀 가져오기 시각 비교) · **B-8**(거래 엑셀 id 재발급) → DEFER
+- 과거에 이미 발생했을 수 있는 손실의 **소급 복구** → 이번 범위 아님
+
+### 테스트
+- **ESLint 0 / Unit 283 (274→283) / E2E 711 (693→711) / Golden 유지 / Data Guard PASS /
+  Release Guard PASS.**
+- 신규 `e2e/74-p1-data-preservation-batch.spec.js` 18건 — FIX-1~7·J-1·J-4 전부 + 화면 표시 정책
+  불변 + manual 자산 보호 + 명시적 해제 경로 유지 + 클라우드 경로 무변경 회귀.
+- `test/merge.test.js` +9건(빈 칸/없는 열/신규 자산/원본 불변). 새 헬퍼 2개를 기존 `module.exports`
+  목록에 덧붙였다(새 export 블록 만들지 않음).
+- **`e2e/53-phase53-excel-restore.spec.js:349` 단언을 정책 변경에 맞춰 갱신했다** — 지우지 않고
+  "열이 없으면 기존 값 이월" + "없던 값은 만들어내지 않는다" + "파일 값이 이긴다" 3개로 늘렸다.
+  이 테스트를 다시 되돌리지 말 것.
+
+### 안전 확인
+- **계산 계층 변경 0건** — `js/15`·`16`·`17`·`18`·`19`·`20`·`21`·`22`가 v228과 **바이트 동일**함을
+  SHA-256으로 확인했다. μ·σ·correlation·Cholesky·contribution·rebalancing·inflation·Return Key·
+  `SCENARIO_RATE_PRESETS`·`getTargetProjectionRate()` 전부 무변경.
+- **실제 사용자 데이터 변경 0 / 실제 JSON import 0 / 실제 Excel import 0 / Cloud write 0.**
+  검증은 전부 합성 fixture·mock·E2E로만 했다. 사용자 백업 4건은 읽기 전용 분석에만 썼고 저장소에
+  들어가지 않았다(Data Guard PASS).
+- production 배포본 25개 파일 전부 커밋과 **SHA-256 동일**. SW `smart-asset-manager-v229`,
+  `appVersionLabel` v229, pageerror 0, SoT 무변경 실측.
+
+### 다음 세션이 알아야 할 것
+- **v229 이후 자동으로 V1.4를 시작하지 않는다.** 현재 단계는 "안정화 / 운영 / 관찰"이다.
+- `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` **§17**에 이번 배치 전체가 기록돼 있다.
+- ⚠️ **미승인 상태로 남아 있는 변경 1건**: 같은 문서 §3에 v228 OPTION C 관련 추가분(+26/−0)이
+  working tree에만 있고 아직 PM 승인을 못 받았다. 이번 릴리즈 커밋에 **의도적으로 포함하지
+  않았다** — 임의로 커밋하지 말고 PM 승인을 먼저 받을 것.
+- `.claude/launch.json`은 이 세션의 scratchpad 경로를 가리키는 로컬 전용 파일이라 **절대 커밋하지
+  않는다**(계속 dirty 상태로 남는 것이 정상).
+
+---
+
 ## 최근 세션 요약 (2026-09-09) — 🚀 **FUTURE-P1 Release Candidate** (v227 → **v228**)
 
 **버전: v227 → v228.** Phase 2-C 계산 계층 + Phase 3-2 UI/UX + Phase 3-3 통합검증을 하나의 release로
