@@ -34,7 +34,7 @@ global.document = {
 global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 global.window = global;
 
-const { mergeCollectionById } = require(path.join(__dirname, '..', 'js', '12-import-export-sync.js'));
+const { mergeCollectionById, buildCarryIfAbsentIndex, carryOverAbsentFields } = require(path.join(__dirname, '..', 'js', '12-import-export-sync.js'));
 
 test('1. id가 겹치지 않는 신규 레코드는 양쪽 다 유지된다 (Append-Only 핵심 케이스)', () => {
   const local = [{ id: 'A', name: '로컬신규', updatedAt: 100 }];
@@ -115,4 +115,76 @@ test('8. 실제 사용 시나리오 - 부부가 비슷한 시간에 각자 다�
   const merged = mergeCollectionById(local, remote, baseline);
   const ids = merged.map((x) => x.id).sort();
   assert.deepStrictEqual(ids, ['HUSBAND-NEW', 'WIFE-NEW', 'X', 'Y']); // 둘 다 살아남음 - 원래 버그였던 소실 시나리오 해결 확인
+});
+
+/* =========================================================================
+ * [P1 데이터 보존 - FIX-4/FIX-5] 엑셀 가져오기의 buyRate / rateMatchOverride 이월
+ *
+ * pick()이 "빈 셀"과 "열 자체가 없음"을 똑같이 ''로 뭉개기 때문에, 구형 엑셀(열 없음)을 올리기만
+ * 해도 이 두 값이 사라졌다. carryOverAbsentFields는 "파일이 값을 안 담고 있으면 기존 값을 그대로
+ * 둔다"만 하고, 없던 값을 추정해 만들지는 않는다(상시 정책 5항).
+ * ====================================================================== */
+const A = (over) => Object.assign({
+  id: 'A1', ticker: 'GOOGL', owner: '신랑', accountType: '일반계좌',
+  category: '주식', name: 'Alphabet', currency: 'USD', isDomestic: '해외'
+}, over);
+
+test('9. [FIX-4] 파일에 buyRate가 없으면 기존 값을 이어받는다 (id로 매칭)', () => {
+  const index = buildCarryIfAbsentIndex([A({ buyRate: 1200 })]);
+  const out = carryOverAbsentFields(A({ buyRate: undefined }), index);
+  assert.strictEqual(out.buyRate, 1200);
+});
+
+test('10. [FIX-4] 파일에 buyRate가 있으면 파일 값이 이긴다', () => {
+  const index = buildCarryIfAbsentIndex([A({ buyRate: 1200 })]);
+  const out = carryOverAbsentFields(A({ buyRate: 1350 }), index);
+  assert.strictEqual(out.buyRate, 1350);
+});
+
+test('11. [FIX-4] id가 없는 구형 파일도 identity(assetMergeKey)로 찾아 이어받는다', () => {
+  const index = buildCarryIfAbsentIndex([A({ id: 'OLD', buyRate: 1200 })]);
+  const out = carryOverAbsentFields(A({ id: 'NEW', buyRate: undefined }), index);
+  assert.strictEqual(out.buyRate, 1200);
+});
+
+test('12. [FIX-5] 파일에 rateMatchOverride가 없으면 기존 값을 이어받는다', () => {
+  const index = buildCarryIfAbsentIndex([A({ rateMatchOverride: 'S&P500' })]);
+  const out = carryOverAbsentFields(A({ rateMatchOverride: undefined }), index);
+  assert.strictEqual(out.rateMatchOverride, 'S&P500');
+});
+
+test('13. [FIX-5] 파일에 rateMatchOverride가 있으면 파일 값이 이긴다', () => {
+  const index = buildCarryIfAbsentIndex([A({ rateMatchOverride: 'S&P500' })]);
+  const out = carryOverAbsentFields(A({ rateMatchOverride: 'KOSPI' }), index);
+  assert.strictEqual(out.rateMatchOverride, 'KOSPI');
+});
+
+test('14. [FIX-4/5] 매칭되는 기존 자산이 없으면(신규 자산) 남의 값을 이월하지 않는다', () => {
+  const index = buildCarryIfAbsentIndex([A({ buyRate: 1200, rateMatchOverride: 'S&P500' })]);
+  const 신규 = carryOverAbsentFields(A({ id: 'B1', ticker: 'MSFT', name: 'Microsoft', buyRate: undefined, rateMatchOverride: undefined }), index);
+  assert.strictEqual(신규.buyRate, undefined);
+  assert.strictEqual(신규.rateMatchOverride, undefined);
+});
+
+test('15. [FIX-4/5] 기존 자산에도 값이 없으면 없는 채로 둔다 - 값을 만들어내지 않는다', () => {
+  const index = buildCarryIfAbsentIndex([A({})]);
+  const out = carryOverAbsentFields(A({}), index);
+  assert.strictEqual(out.buyRate, undefined);
+  assert.strictEqual(out.rateMatchOverride, undefined);
+});
+
+test('16. [FIX-4/5] 두 필드 중 하나만 비어 있으면 그 하나만 이어받는다', () => {
+  const index = buildCarryIfAbsentIndex([A({ buyRate: 1200, rateMatchOverride: 'S&P500' })]);
+  const out = carryOverAbsentFields(A({ buyRate: undefined, rateMatchOverride: 'KOSPI' }), index);
+  assert.strictEqual(out.buyRate, 1200);
+  assert.strictEqual(out.rateMatchOverride, 'KOSPI');
+});
+
+test('17. [FIX-4/5] 원본 객체를 변형하지 않는다', () => {
+  const index = buildCarryIfAbsentIndex([A({ buyRate: 1200 })]);
+  const incoming = A({ buyRate: undefined });
+  const out = carryOverAbsentFields(incoming, index);
+  assert.strictEqual(incoming.buyRate, undefined);
+  assert.strictEqual(out.buyRate, 1200);
+  assert.notStrictEqual(out, incoming);
 });

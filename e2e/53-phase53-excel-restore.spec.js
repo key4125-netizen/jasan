@@ -345,10 +345,31 @@ test('구형 엑셀(컬럼 없음)도 그대로 열리고 예전 동작을 유�
   expect(got.length, '가져오기가 실패하지 않는다').toBe(2);
   // id 칸이 없으면 예전처럼 새로 발급된다.
   expect(got.every((a) => a.id && !beforeIds.includes(a.id)), '새 id 발급').toBe(true);
-  // 취득환율 칸이 없으면 예전 폴백(오늘 환율) 그대로 - 없던 값을 추정해 만들지 않는다.
-  expect(got.find((a) => a.종목 === 'Alphabet').취득환율).toBe('UNDEFINED');
+  // [P1 데이터 보존 - FIX-4 정책 변경] 예전에는 이 줄이 'UNDEFINED'였다. 취득환율 칸이 없는 파일을
+  // 올리기만 해도 기존 값이 사라졌고(외화 원가가 오늘 환율로 폴백해 손익·수익률이 조용히 달라진다),
+  // 같은 필드를 클라우드 병합은 이미 MERGE_PRESERVE_IF_ABSENT로 보호하고 있어 두 경로의 판단이
+  // 서로 달랐다. 이제 "칸이 없음 = 그 파일이 이 정보를 모른다"로 보고 기존 값을 이어받는다
+  // (positionSource/categorySource가 이미 쓰던 것과 같은 carry-over 규칙, id가 없으면 identity로 찾는다).
+  expect(got.find((a) => a.종목 === 'Alphabet').취득환율, '칸이 없으면 기존 취득환율을 이어받는다').toBe(1200);
+  // [값을 추정해 만들지는 않는다] 원래 취득환율이 없던 자산은 계속 없는 채로 남는다 - 이어받기는
+  // "기존에 저장돼 있던 사실"을 지키는 것이지 없던 값을 만들어내는 것이 아니다.
+  expect(got.find((a) => a.종목 === '전세보증금').취득환율, '없던 값을 만들어내지 않는다').toBe('UNDEFINED');
   // 자산군 칸은 예전에도 있었으므로 이제 정상 복원된다.
   expect(got.find((a) => a.종목 === '전세보증금').category).toBe('부동산');
+
+  // [정상 값이 실린 파일은 그 값이 그대로 이긴다] 이어받기가 파일 값을 가리지 않는다는 것까지 함께 고정한다.
+  const edited = await page.locator('#exportExcelBtn').evaluate((btn, b64) => {
+    const XL = btn.ownerDocument.defaultView.XLSX;
+    const wb = XL.read(b64, { type: 'base64' });
+    const rows = XL.utils.sheet_to_json(wb.Sheets['자산목록'], { defval: '' })
+      .map((r) => (r['종목명'] === 'Alphabet' ? Object.assign({}, r, { '취득환율(매수시점)': 1300 }) : r));
+    const out = XL.utils.book_new();
+    XL.utils.book_append_sheet(out, XL.utils.json_to_sheet(rows), '자산목록');
+    return XL.write(out, { type: 'base64', bookType: 'xlsx' });
+  }, exported.base64);
+  await importReal(page, edited, 'overwrite');
+  const after = await page.evaluate(() => (state.assets.find((a) => a.name === 'Alphabet') || {}).buyRate);
+  expect(after, '파일에 값이 있으면 파일 값이 이긴다').toBe(1300);
 });
 
 /* ═════════ 다른 정책이 다치지 않았는가 ═════════ */

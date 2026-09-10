@@ -972,11 +972,25 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 해석하고 기존 값을 유지한다 - 정말 지우려면 수정 모드에서 기존 값이 보이는 상태로 비우면 된다
   // (수정 모드는 openTransactionModal이 기존 값을 미리 채워주므로 "보고 비우는" 의도가 분명하다).
   const isEditingExistingTx = !!document.getElementById('tx_id').value;
+  // [가족 동기화 - 스마트 머지 / P1 데이터 보존 FIX-1] 아래 두 대입은 자산 레코드를 실제로 바꾸는데
+  // updatedAt을 찍지 않고 있었다. mergeCollectionById(js/12)는 updatedAt이 더 "최신"인 쪽만 채택하고
+  // 동점이면 로컬을 남기므로, 이 값들이 바뀐 기기와 안 바뀐 기기가 영원히 갈라진 채 수렴하지 않았고,
+  // 그 뒤 어느 한쪽이 그 자산을 정상적으로 편집하는 순간 상대 쪽 지정이 조용히 사라졌다(실사용 백업
+  // 실측: 거래 재저장 한 세션에서 rateMatchOverride 21건·role 12건이 바뀌었는데 updatedAt은 전부
+  // 그대로였다). rateMatchOverride는 미래예측 수익률 매칭의 최우선 키라(js/05) 계산 결과까지 달라진다.
+  // [값이 실제로 바뀔 때만 찍는다] 이 함수 위쪽 syncAssetsFromTransactions()가 quantity/buyPrice/
+  // buyRate에 쓰는 규칙과 같다 - 수정 모드에서는 값이 그대로여도 매번 대입이 일어나므로, 무조건
+  // 찍으면 "아무것도 안 바뀌었는데 방금 수정됨"이 되어 병합에서 상대의 진짜 편집을 이겨버린다.
+  const beforeRateMatch = matchedAsset ? matchedAsset.rateMatchOverride : undefined;
+  const beforeRole = matchedAsset ? matchedAsset.role : undefined;
   if (matchedAsset && (rateMatchRaw || isEditingExistingTx)) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
   // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 위와 같은 이유로 신규 거래의 빈칸은
   // 기존 역할을 지우지 않는다(수정 모드에서 비우면 기존처럼 미지정으로 되돌아간다).
   const roleRaw = document.getElementById('tx_role').value.trim();
   if (matchedAsset && (roleRaw || isEditingExistingTx)) matchedAsset.role = parseAssetRoleInput(roleRaw);
+  if (matchedAsset && (matchedAsset.rateMatchOverride !== beforeRateMatch || matchedAsset.role !== beforeRole)) {
+    matchedAsset.updatedAt = Date.now();
+  }
   // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] matchedAsset의 role 변경을 다른 화면에서도
   // 이어받게 레지스트리에도 반영한다. 티커가 없으면 이름으로 대신 키를 만든다.
   if (matchedAsset && (matchedAsset.ticker || matchedAsset.name)) setTickerRole(matchedAsset.ticker, matchedAsset.role, matchedAsset.name);

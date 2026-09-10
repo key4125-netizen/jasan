@@ -2121,9 +2121,18 @@ function commitTaxAdvantagedPlanDraft() {
   const errors = validateTaxAdvantagedPlanDraft(taxAdvantagedPlanDraft);
   if (errors.length > 0) { alert(errors.join('\n')); return; } // state를 건드리지 않고 중단
   // [티커별 역할(포지션) 단일 소스] 팝업에서 지정한 role을 이 시점에 한 번에 레지스트리로 넘긴다.
+  // [P1 데이터 보존 - FIX-2] role이 지정돼 있을 때만 넘긴다. setTickerRole()은 값이 비면 그 티커의
+  // 레지스트리 항목을 지우도록 되어 있는데(js/01), 이 팝업의 배분 항목은 role을 요구하지 않아 대부분
+  // 비어 있다 - 그래서 값을 바꾸지 않고 [저장]만 눌러도 다른 화면에서 지정해 둔 역할이 통째로
+  // 사라졌다(실사용 백업에서 4개 티커 소실 확인: role 없는 배분 항목의 티커 집합과 정확히 일치).
+  // 월적립 배분 팝업(saveMonthlyContributionAllocation)은 draft 시딩 단계에서 role이 항상 채워져
+  // 있어 같은 문제가 없다 - 여기만 그 전제가 성립하지 않았다.
+  // [명시적 해제는 그대로 살아있다] 사용자가 정말로 역할을 지우려면 자산 상세(js/07)·거래 폼(js/06)·
+  // 리밸런싱 목표(js/04)에서 선택칸을 비우면 된다 - 그 세 경로는 건드리지 않았다. setTickerRole()
+  // 자체의 동작(빈 값 = 삭제)도 그대로다.
   TAX_ADVANTAGED_OWNERS.forEach((owner) => {
     (taxAdvantagedPlanDraft.allocationByOwner[owner] || []).forEach((it) => {
-      if (it.ticker || it.label) setTickerRole(it.ticker, it.role, it.label);
+      if ((it.ticker || it.label) && parseAssetRoleInput(it.role)) setTickerRole(it.ticker, it.role, it.label);
     });
   });
   state.projection.taxAdvantagedPlan = taxAdvantagedPlanDraft;

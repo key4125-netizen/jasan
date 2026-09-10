@@ -607,6 +607,7 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - FUTURE-P1 Phase 3-2 UI/UX restructuring — **구현 완료**(§7-3) — Monte Carlo 주 결과 승격(자동 실행 없음), deterministic 참고값 격하, 계좌 범위·기간 선택, P50/percentile/Goal Probability 의미 구분, 명목·현재가치 구분. 계산 계층·Return Key·SoT 변경 0건
 - FUTURE-P1 Phase 3-3 통합검증 — **완료**(§7-3) — P0/P1 0건, 계산 regression 0건, SoT 실측 무변경, 375/768/1024 Light·Dark PASS, Typography 감사 완료, Data Guard PASS
 - **FUTURE-P1 Release Candidate — v228** — Phase 2-C 계산 계층 + Phase 3-2 UI/UX + Phase 3-3 검증 결과를 하나의 release로 묶는다
+- **P1 DATA PRESERVATION MAINTENANCE — v229 / 구현·검증 완료**(§17) — 거래 저장·절세계좌 계획 저장·엑셀 가져오기·JSON 복원 네 경로에서 사용자가 지정한 값이 조용히 사라지던 결함 9건(FIX-1~FIX-7 · J-1 · J-4)을 최소 범위로 수정. **계산 계층 변경 0건**(js/15·16·17·18·20·21 무변경, Return Key·SCENARIO_RATE_PRESETS·getTargetProjectionRate 무변경), **실제 사용자 데이터 변경 0건**, **실제 JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 711 / Golden 유지 / Data Guard PASS / Release Guard PASS
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
@@ -622,3 +623,60 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - Golden Reference의 존재와 검증 원칙만 유지한다.
 - 개인 데이터가 필요한 테스트는 별도 안전한 테스트 fixture 또는
   합성 데이터로 수행한다.
+
+## 17. P1 데이터 보존 유지보수 (v229 · PM Approval 2026-09-10)
+
+V1.3 이후 안정화 단계에서 발견된 **P1 데이터 보존 문제에 대한 예외적 유지보수 작업**이다. 기능 확장이
+아니며, "사용자가 명시적으로 입력·복원·가져온 데이터가 앱 내부의 다른 경로 때문에 조용히 사라지지
+않게 한다"는 목적 하나만 수행했다. Cloud Sync·Excel·JSON 세 경로에 대한 읽기 전용 포렌식 감사
+4회(코드 감사 → 백업 포렌식 → Excel/Cloud 통합 감사 → JSON 감사) 후 PM이 승인한 범위다.
+
+**17-1. 수정 항목**
+
+| ID | 파일 | 내용 |
+|---|---|---|
+| FIX-1 | `js/06-transactions.js` | 거래 저장이 자산의 `role`/`rateMatchOverride`를 **실제로 바꾼 경우에만** `asset.updatedAt`을 갱신한다. 예전에는 값만 바뀌고 timestamp가 그대로여서 두 기기가 영원히 갈라진 뒤, 다음 정상 편집 한 번에 상대 기기 지정이 사라졌다. 기존 change-only timestamp 패턴 재사용, manual/ledger/legacy SoT 무변경 |
+| FIX-2 | `js/05-future-projection.js` | 절세계좌 적립계획 저장 시 `role`이 지정된 배분 항목만 `setTickerRole()`에 넘긴다. 예전에는 role 없는 항목 때문에 다른 화면에서 지정해 둔 티커 역할이 삭제됐다. `setTickerRole()` semantics 무변경, 명시적 해제 경로(자산 상세·거래 폼·리밸런싱 목표) 유지 |
+| FIX-3 | `js/12-import-export-sync.js` | 엑셀 내보내기를 **"전체 자산 백업"** 정의에 맞춘다 — 평가금액이 0이라는 이유로 자산 레코드를 제외하지 않는다. 화면 표시 정책(`tableAssets`/`filteredAssets`/`hasRealEstateHoldings`)은 **변경하지 않았다** |
+| FIX-4 | `js/12-import-export-sync.js` | 엑셀 가져오기에서 `buyRate` 칸이 비었거나 열이 없으면 기존 값을 이어받는다. 같은 필드를 클라우드 병합은 이미 보호하고 있어 경로 간 판단이 서로 달랐다 |
+| FIX-5 | `js/12-import-export-sync.js` | 동일 규칙을 `rateMatchOverride`에도 적용한다. **엑셀 명시적 삭제 문법을 만들지 않았고**, **Cloud의 `MERGE_PRESERVE_IF_ABSENT`에 `role`/`rateMatchOverride`를 추가하지 않았다** |
+| FIX-6 | `js/12-import-export-sync.js` | JSON [추가하기] 복원이 핸들러에서 1회 계산한 `restoredAt`을 자산 `updatedAt`에 적용한다. 예전에는 값이 비어 같은 세션 push 직전 선병합에서 복원본이 무조건 패배했다. 부팅 시점 백필에 의존하지 않는다 |
+| FIX-7 | `js/12-import-export-sync.js` | JSON 덮어쓰기에서 `tickerRoles`/`learnedTickerNames`를 **키 없음 = 기존 값 유지 / 키 + 정상 object = 복원 / 키 + `{}` = 명시적 초기화**로 구분한다(`hasOwn`) |
+| J-1 | `js/12-import-export-sync.js` | JSON 덮어쓰기 복원에서 `rebalance`/`projection`도 `restoredAt`으로 갱신한다(Option A — 명시적 복원을 최신 local intent로 취급). 예전에는 이 둘만 파일의 옛 시각을 유지해 복원 직후 pull에서 되돌아갔다. **일반 Cloud sync 경로(`force:false`)의 semantics는 변경하지 않았다** |
+| J-4 | `js/12-import-export-sync.js` | `transactions` 키가 없는 구버전 JSON(이 필드가 생기기 전의 정상 백업)을 그대로 호환한다 — 기존 거래내역을 삭제하지 않고, 자산만 되돌렸다는 사실을 결과 문구로 알린다. 새 validation framework·새 UI 없음 |
+
+**17-2. PM이 명시적으로 수용한 잔존 사항**
+
+| ID | 내용 | 상태 |
+|---|---|---|
+| N-1 | 오래된 JSON [추가하기] 복원이 클라우드의 최신 `rebalance`/`projection`보다 우선할 수 있다 — BL-15의 명시적 사용자 복원 정책과 같은 방향으로 수용 | **ACCEPTED / OBSERVE** |
+| N-7 | Cloud merge에서 `role`/`rateMatchOverride`가 여전히 field-level 보호를 받지 않는 비대칭(엑셀 경로만 보존) — `MERGE_PRESERVE_IF_ABSENT` semantics를 변경하지 않는다 | **OBSERVE** |
+| B-5 | `projection` 통 객체 교체(단일 `updatedAt`) — 의도된 설계 | OBSERVE |
+| B-7 | 거래 엑셀 업로드 후 legacy 자산 재계산 — 의도된 SoT일 가능성 | OBSERVE |
+| B-9 | 대표매칭 키 개명 마이그레이션의 `updatedAt` 미갱신 — 백필 위험과 충돌 | OBSERVE |
+| B-6 | 엑셀 가져오기에 시각 비교 없음 — 복원 시맨틱과 충돌 | DEFER |
+| B-8 | 거래 엑셀의 id 재발급 — 스키마 변경 필요, 실피해 없음 | DEFER |
+| — | 과거에 이미 발생했을 수 있는 데이터 손실의 **소급 복구** | **이번 릴리스 범위 아님 / 수행하지 않음** |
+
+**17-3. 사고 판정 (변경 없음)**
+
+스마트폰 포트폴리오 대체 신고는 **UNDETERMINED**를 유지한다. 2026-09-07~09-10 백업 4건에서
+regression이 발견되지 않았다는 사실만 사용하며, 사고 발생도 부재도 확정하지 않는다. `Date.now()`
+boot backfill은 이번 사건 원인에서 **REJECTED**, 2026-09-08 `rebalance` 변경은 **실제 사용자 편집
+HIGH CONFIDENCE**를 유지한다. 위 9건은 전부 **사고 원인 확정과 무관하게 재현 가능한 결함**으로서만
+수정했다.
+
+**17-4. 안전 선언**
+
+- **계산 계층 변경 0건** — `js/15`·`js/16`·`js/17`·`js/18`·`js/20`·`js/21` 무변경. μ·σ·correlation·
+  Cholesky·contribution·annual rebalancing·inflation·Return Key·`SCENARIO_RATE_PRESETS`·
+  `getTargetProjectionRate()` 전부 무변경.
+- **실제 사용자 데이터 변경 0건 / 실제 JSON import 0건 / 실제 Excel import 0건 / Cloud write 0건.**
+  모든 검증은 합성 fixture·mock·E2E 환경에서만 수행했다(§16 Data-Safety Rule 준수).
+- 테스트: ESLint 0 error · Unit **283/283** · E2E **711/711** · Golden 유지(대표 13개 Return Key
+  등록값 불변, 백업 왕복 값 불변, Deterministic ↔ MC adapter 동일) · Data Guard PASS ·
+  Release Guard PASS.
+- **v228 → v229** — 기능 확장 릴리스가 아니라 *V1.3 stabilization P1 data-preservation maintenance
+  release*다. cache-first 환경에서 이 수정이 실제 사용자에게 전달되게 하기 위한 버전 상승이다.
+- **v229 이후 자동으로 V1.4를 시작하지 않는다.** 새 개선은 별도 PM 판단을 거친다.
+

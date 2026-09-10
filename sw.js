@@ -2,7 +2,7 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v228'; // [FUTURE-P1 RC] 계좌 범위 계산(2-C) + 미래예측 UI/UX 재구성(3-2) + 통합검증(3-3)
+const CACHE_NAME = 'smart-asset-manager-v229'; // [P1 데이터 보존 유지보수] 거래 저장·절세계좌 저장·엑셀/JSON 가져오기가 사용자 지정을 지우지 않게 한다
 // Monte Carlo를 미래예측의 주 결과로 올리고 deterministic 결과를 참고값으로 내렸다 - 계산은 한 줄도
 // 바꾸지 않고 표시 구조만 재배치했다(js/15~18·js/20·js/21 변경 0건, Return Key·SoT 변경 0건,
 // General-only golden 39/39 유지). 계좌 범위(일반/절세/통합)와 기간(5·10·15·20년)을 직접 골라

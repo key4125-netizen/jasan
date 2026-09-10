@@ -2,14 +2,17 @@
  * 21. 엑셀 내보내기 (전체 백업 - 파생 필드 포함)
  * ---------------------------------------------------------------------- */
 document.getElementById('exportExcelBtn').addEventListener('click', () => {
-  // [버그 수정 - 전량 매도 종목 제외] 전량 매도된 포지션은 자산 목록에서 삭제되지 않고 수량만 0으로
-  // 남는다(syncAssetsFromTransactions 참고, 삭제는 사용자가 원할 때 직접 하도록 의도적으로 남겨둠).
-  // 채권처럼 수동 등록하는 자산은 수량은 남아있는데 시세(가격)가 0/미입력이라 평가금액만 0인 경우도
-  // 있다 - 수량이 아니라 실제 평가금액(calcRow(a).curAmount)이 0인 자산을 걸러야 두 경우 다 잡힌다
-  // (포트폴리오 구성 탭의 리밸런싱 가이드에 적용한 것과 동일한 필터, js/04 참고). "포트폴리오 구성"의
-  // 신규 매수 목표는 state.rebalance.targets에 별도로 저장되어 이 배열(state.assets)에 애초에 없으므로
-  // 이 필터로 영향받지 않는다.
-  const rows = state.assets.filter((a) => Math.round(calcRow(a).curAmount) !== 0).map(a => {
+  // [P1 데이터 보존 - FIX-3] 예전엔 평가금액이 0인 자산(전량 매도된 포지션, 수량이 0으로 들어간
+  // 부동산 등)을 "표시할 필요 없는 행"으로 보고 이 시트에서 걸러냈다. 그런데 이 파일은 화면 스냅샷이
+  // 아니라 전체 백업이고(위 섹션 제목 참고), [덮어쓰기]로 다시 올리면 state.assets를 파일 내용으로
+  // 통째 교체한다 - 걸러진 자산은 그 왕복 한 번으로 영구히 사라졌고, 동기화가 켜져 있으면 배우자
+  // 기기에서도 함께 사라졌다(실사용 데이터에서 대상 자산 2건 확인). 백업의 목적은 보존이므로
+  // state.assets 레코드는 평가금액과 무관하게 전부 내보낸다.
+  // [화면 정책은 그대로다] 화면에서 이런 자산을 숨기는 규칙(tableAssets/filteredAssets/
+  // hasRealEstateHoldings, js/01)은 전혀 건드리지 않았다 - 화면에는 계속 안 보이고, 백업 파일에만
+  // 들어간다. "포트폴리오 구성"의 신규 매수 목표는 state.rebalance.targets에 따로 저장되어 이
+  // 배열(state.assets)에 애초에 없으므로 여기 영향이 없다.
+  const rows = state.assets.map(a => {
     const r = calcRow(a);
     return {
       'ticker': a.ticker || '', '소유자': a.owner, '계좌구분': a.accountType, '종목명': a.name,
@@ -100,6 +103,11 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
  *      비어있거나 인식할 수 없는 값이면 ticker 형식을 기준으로 한 자동판별로 폴백한다.
  *    - 그 외 컬럼(자산군, 매입금액 등)이 섞여 있어도 무시하고 자동판별/자동계산을 다시 적용한다.
  * ---------------------------------------------------------------------- */
+// [P1 데이터 보존 - FIX-7] 백업 파일이 그 키를 "안 담고 있었다"와 "빈 값으로 담고 있었다"를
+// 구분한다 - 전자만 기존 값을 보존해야 한다(값이 {}인 것은 그 시점에 실제로 비어 있었다는 사실이다).
+function hasOwn(obj, key) {
+  return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+}
 function pick(row, ...keys) {
   for (const k of keys) { if (row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k]; }
   return '';
@@ -191,6 +199,47 @@ function carryOverCategorySource(incoming, index) {
   if (cellRaw !== '') return clean; // 이번 파일이 이 칸에 뭐라도 적어 뒀다 - 유효/오염 불문 그 결과를 그대로 채택
   const kept = index.byId.get(clean.id) || index.byKey.get(assetMergeKey(clean));
   return kept === undefined ? clean : { ...clean, category: kept.category, categorySource: kept.categorySource };
+}
+
+/* [P1 데이터 보존 - FIX-4/FIX-5] 엑셀 시트의 빈 칸(또는 아예 없는 열)이 기존 값을 지우지 않게 한다.
+ *
+ * pick()은 "빈 셀"과 "열 자체가 없음"을 똑같이 ''로 뭉갠다 - 그래서 Phase 53 이전에 만들어진 구형
+ * 파일처럼 열이 아예 없는 파일을 올리기만 해도 취득환율(buyRate)과 대표매칭(rateMatchOverride)이
+ * 통째로 사라졌다. 이건 "사용자가 지웠다"가 아니라 "그 파일에는 그 정보가 없다"이다.
+ *
+ * [왜 이 두 필드인가]
+ *   buyRate            : 앱에 이 값을 비우는 입력칸 자체가 없다(거래원장 동기화가 USD일 때만 채운다).
+ *                        클라우드 병합은 이미 MERGE_PRESERVE_IF_ABSENT로 보호하고 있었는데 엑셀
+ *                        경로만 지우고 있었다 - 같은 필드에 대한 두 경로의 판단이 서로 달랐다.
+ *   rateMatchOverride  : 지우는 조작이 존재하는 필드라 클라우드 병합에서는 일부러 보호하지 않는다.
+ *                        엑셀은 다르다 - 구형 파일에는 이 열이 없어서 "비었다"가 의도를 뜻하지 못한다.
+ *                        엑셀로 해제하는 문법은 이번에 만들지 않는다(자산 상세/거래 폼에서 그대로
+ *                        해제할 수 있다). 클라우드 쪽 MERGE_PRESERVE_IF_ABSENT는 건드리지 않는다.
+ *
+ * 구조는 positionSource(buildPositionSourceIndex/carryOverPositionSource)와 똑같다 - id로 먼저 찾고,
+ * id가 없는 구형 파일은 identity(assetMergeKey)로 찾는다. 기존 자산을 못 찾으면 값 없이 그대로 둔다
+ * (없던 값을 추정해 만들지 않는다 - 상시 정책 5항). */
+const IMPORT_CARRY_IF_ABSENT_FIELDS = ['buyRate', 'rateMatchOverride'];
+function buildCarryIfAbsentIndex(existingAssets) {
+  const byId = new Map(), byKey = new Map();
+  (existingAssets || []).forEach((a) => {
+    if (!a) return;
+    const entry = {};
+    IMPORT_CARRY_IF_ABSENT_FIELDS.forEach((f) => { if (a[f] !== undefined) entry[f] = a[f]; });
+    if (Object.keys(entry).length === 0) return;
+    if (a.id) byId.set(a.id, entry);
+    byKey.set(assetMergeKey(a), entry);
+  });
+  return { byId, byKey };
+}
+function carryOverAbsentFields(incoming, index) {
+  const missing = IMPORT_CARRY_IF_ABSENT_FIELDS.filter((f) => incoming[f] === undefined);
+  if (missing.length === 0) return incoming;
+  const kept = index.byId.get(incoming.id) || index.byKey.get(assetMergeKey(incoming));
+  if (kept === undefined) return incoming;
+  const out = { ...incoming };
+  missing.forEach((f) => { if (kept[f] !== undefined) out[f] = kept[f]; });
+  return out;
 }
 
 function mergeAssetsForAppend(existingAssets, incomingAssets) {
@@ -322,9 +371,15 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       const choice = await openImportChoiceModal(`${imported.length}건을 불러옵니다.\n기존 데이터를 덮어쓸까요, 추가할까요?`);
       if (choice === 'cancel') return; // 가져오기 자체를 취소 - 아무 것도 바뀌지 않는다.
       let resultMsg;
+      // [P1 데이터 보존 - FIX-4/FIX-5] 엑셀에 그 칸이 비어 있거나 열 자체가 없을 때 기존
+      // buyRate/rateMatchOverride를 이어받는다. 반드시 state.assets를 바꾸기 **전에** 색인을 만든다.
+      // 두 분기 모두 마지막에 한 번씩만 적용한다 - mergeAssetsForAppend()와 덮어쓰기 분기의 기존
+      // 규칙(assetMergeKey 매칭, positionSource/categorySource 이월)은 그대로 두고 그 결과 위에
+      // 덧입히는 방식이라, 이 경로 밖(JSON 복원/클라우드 병합)의 동작은 전혀 달라지지 않는다.
+      const keptCarryFields = buildCarryIfAbsentIndex(state.assets);
       if (choice === 'append') {
         const { assets, newCount, updatedCount } = mergeAssetsForAppend(state.assets, imported);
-        state.assets = assets;
+        state.assets = assets.map((a) => carryOverAbsentFields(a, keptCarryFields));
         resultMsg = `신규 ${newCount}개 추가, 기존 ${updatedCount}개 최신 수량으로 업데이트됨`;
       } else {
         // [V1.1 M4] 덮어쓰기는 state.assets를 통째로 갈아치운다 - 갈아치우기 전의 자산에서
@@ -335,7 +390,10 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         const keptCategorySources = buildCategorySourceIndex(state.assets);
         state.assets = imported
           .map((a) => carryOverPositionSource(a, keptSources))
-          .map((a) => carryOverCategorySource(a, keptCategorySources));
+          .map((a) => carryOverCategorySource(a, keptCategorySources))
+          // categorySource 이월이 category까지 되돌린 뒤에 실행해야 identity(assetMergeKey)가
+          // 기존 자산과 같은 값으로 계산된다 - id가 없는 구형 파일에서 이 순서가 중요하다.
+          .map((a) => carryOverAbsentFields(a, keptCarryFields));
         state.dayChangeMap = {};
         state.prevCloseMap = {};
         state.sessionMap = {};
@@ -539,6 +597,9 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       const parsed = JSON.parse(evt.target.result);
       if (!parsed || !Array.isArray(parsed.assets)) throw new Error('올바른 백업 파일 형식이 아닙니다(assets 배열 없음)');
 
+      // [P1 데이터 보존 - FIX-6] 이 가져오기 동작 전체가 공유하는 "복원 시각" - 핸들러에서 한 번만
+      // 계산한다(applyRemoteState의 restoredAt과 같은 의미).
+      const restoredAt = Date.now();
       // JSON 백업은 이미 완전한 자산 객체이므로 makeAsset()으로 재분류하지 않고 타입 안전성만 보정한다.
       const restored = parsed.assets.map(a => ({
         id: a.id || genId(),
@@ -577,7 +638,16 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         // 두 복원 경로가 다르게 판단하면 "덮어쓰기로는 살아남는데 추가하기로는 뒤집히는" 상태가 된다.
         // 파일에 값이 없으면 예전 그대로 undefined로 두고, carryOverPositionSource의 legacy 규칙에
         // 맡긴다 - 여기서 거래 유무나 이름으로 추론해 채우지 않는다.
-        positionSource: sanitizePositionSource(a.positionSource)
+        positionSource: sanitizePositionSource(a.positionSource),
+        // [P1 데이터 보존 - FIX-6] 이 줄이 없었다. 그래서 [추가하기]로 복원한 자산은 updatedAt이
+        // undefined가 됐고, mergeAssetsForAppend가 기존 자산을 갱신할 때 그 자산이 갖고 있던
+        // updatedAt까지 함께 지워버렸다. mergeCollectionById(js/12)는 값이 없으면 0으로 보므로,
+        // 같은 세션에서 3초 뒤 자동 push가 도는 순간(persistAssets -> schedulePush) push 직전
+        // 선병합에서 원격이 모든 공통 id를 이겨, 방금 복원한 값이 올라가기도 전에 폐기됐다.
+        // "다음 부팅의 loadState 백필(js/01)이 채워줄 것"에 기대면 안 된다 - 그 백필은 push/pull
+        // 보다 한참 뒤다. 덮어쓰기 복원이 쓰는 것과 같은 restoredAt 규칙을 여기에도 적용한다
+        // (BL-15와 동일한 근거: 사용자가 [추가하기]를 실행한 것 자체가 실제 변경이다).
+        updatedAt: restoredAt
       }));
 
       if (restored.length === 0) { alert('복원할 자산 데이터가 없습니다.'); return; }
@@ -628,6 +698,14 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         // pull이 정확히 같은 복원 로직을 타야 두 경로가 어긋나지 않는다.
         await applyRemoteState(parsed);
         resultMsg = `JSON 백업 ${restored.length}건을 복원했습니다.`;
+        // [P1 데이터 보존 - J-4] 이 파일에 거래내역이 아예 없으면 applyRemoteState는 자산만 바꾸고
+        // 기존 거래원장을 그대로 남긴다. 그게 맞는 처리다 - 거래내역 필드가 생기기 전(index.html
+        // 시절)의 정상 백업에는 이 키 자체가 없었고, "파일이 모르는 데이터"를 복원이라는 이유로
+        // 지워버리면 복구 경로가 없는 원장을 앱이 먼저 없애는 셈이 된다. 대신 자산만 되돌아갔다는
+        // 사실을 조용히 넘기지 않고 결과 문구로 알린다(새 화면/검증 단계를 만들지 않는다).
+        if (!Array.isArray(parsed.transactions)) {
+          resultMsg += ' 이 파일에는 거래내역이 없어 자산만 되돌렸습니다 - 기존 거래내역은 그대로 남아 있습니다.';
+        }
       }
       showToast(resultMsg, 'success');
     } catch (err) {
@@ -776,7 +854,12 @@ async function applyRemoteState(parsed) {
     state.prevCloseMap = {};
     state.sessionMap = {};
     state.priceFetchFailedIds = new Set();
-    applyRemoteScalarFields(parsed);
+    // [P1 데이터 보존 - J-1] stampAt을 넘겨 rebalance/projection도 자산·거래내역과 같은 복원 시각을
+    // 갖게 한다. 예전엔 이 둘만 파일에 적힌 옛 시각을 그대로 이어받아서(skipStamp), 복원 직후 10초
+    // 주기 pull이 "원격이 더 최신"이라고 판정해 방금 되돌린 목표비중/미래예측 설정만 원격 값으로
+    // 되돌려놓았다 - 사용자 눈에는 [덮어쓰기] 한 번에 자산은 복원되고 목표비중만 잠시 뒤 되돌아가는,
+    // 설명할 수 없는 동작이었다. BL-15가 자산/거래내역에 대해 이미 택한 것과 같은 규칙으로 통일한다.
+    applyRemoteScalarFields(parsed, { stampAt: restoredAt });
     if (Array.isArray(parsed.transactions)) {
       // 거래내역도 같은 병합 규칙(mergeCollectionById)을 타므로 자산과 같은 이유로 함께 찍는다 -
       // 한쪽만 보호하면 복원이 절반만 살아남는다.
@@ -784,11 +867,20 @@ async function applyRemoteState(parsed) {
       persistTransactions();
     }
     // [학습된 종목명 캐시] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다.
-    state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
-    persistLearnedTickerNames();
+    // [P1 데이터 보존 - FIX-7] 단, "파일에 키가 아예 없다"와 "파일이 빈 레지스트리를 담고 있다"는
+    // 다르다. 예전엔 둘 다 {}로 처리해서, 이 키가 없던 시절의 백업이나 손으로 편집한 파일을
+    // 복원하기만 해도 이 기기가 쌓아 온 캐시/역할 지정이 통째로 사라졌다. 키가 없으면 "그 파일이
+    // 이 개념을 몰랐다"는 뜻이므로 기존 값을 그대로 둔다(MERGE_PRESERVE_IF_ABSENT와 같은 원칙).
+    // 키가 있으면 빈 객체({})여도 "그 시점에 비어 있었다"는 사실이므로 예전 그대로 교체한다.
+    if (hasOwn(parsed, 'learnedTickerNames')) {
+      state.learnedTickerNames = (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) ? parsed.learnedTickerNames : {};
+      persistLearnedTickerNames();
+    }
     // [티커별 역할(포지션) 단일 소스] 동일한 이유로 통째 교체한다.
-    state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
-    persistTickerRoles();
+    if (hasOwn(parsed, 'tickerRoles')) {
+      state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
+      persistTickerRoles();
+    }
     // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
     // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
     if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
@@ -840,18 +932,25 @@ async function applyRemoteState(parsed) {
 // 타임스탬프를 비교하면 안 된다(복원 대상이 항상 더 오래된 값일 수 있으므로, 비교하면 복원 자체가
 // 조용히 무시된다) - opts.force로 이 차이를 구분한다: force(기본값, 복원용)는 무조건 채택, force:false
 // (클라우드 동기화 전용, pull/push 양쪽에서 재사용)는 필드 자체의 updatedAt이 더 최신일 때만 채택한다.
+// [P1 데이터 보존 - J-1] opts.stampAt: JSON 백업 "덮어쓰기" 복원만 넘긴다(applyRemoteState). 채택한
+// 값의 updatedAt을 파일에 적힌 옛 시각이 아니라 복원 시각으로 바꿔, 복원 직후 10초 주기 pull이
+// "원격이 더 최신"이라고 판정해 방금 되돌린 설정만 다시 뒤집는 일을 막는다 - 자산/거래내역이 이미
+// 쓰고 있는 BL-15와 같은 규칙이다. 클라우드 동기화(force:false) 경로는 이 값을 넘기지 않으므로
+// 예전과 완전히 동일하게 원격의 updatedAt을 그대로 이어받는다.
 function adoptRemoteRebalanceAndProjection(parsed, opts) {
   const force = !opts || opts.force !== false;
+  const stampAt = (opts && Number(opts.stampAt)) || 0;
   const ts = (v) => Number(v) || 0;
   if (parsed.rebalance && typeof parsed.rebalance === 'object' && (force || ts(parsed.rebalance.updatedAt) > ts(state.rebalance.updatedAt))) {
     // [소유자별 독립 리밸런싱 목표 - Option B] loadState와 동일한 normalizeRebalanceState(js/01)로
     // 옛 단일 구조/새 owner-keyed 구조를 모두 안전하게 처리한다.
     state.rebalance = normalizeRebalanceState(parsed.rebalance);
-    persistRebalance(true); // skipStamp - 원격의 updatedAt을 그대로 이어받는다("지금"으로 새로 찍지 않음)
+    if (stampAt) state.rebalance.updatedAt = stampAt;
+    persistRebalance(true); // skipStamp - 위에서 정한 updatedAt을 그대로 저장한다(여기서 다시 찍지 않음)
   }
   if (parsed.projection && typeof parsed.projection === 'object' && (force || ts(parsed.projection.updatedAt) > ts(state.projection.updatedAt))) {
     state.projection = {
-      updatedAt: ts(parsed.projection.updatedAt),
+      updatedAt: stampAt || ts(parsed.projection.updatedAt),
       monthlyContribution: num(parsed.projection.monthlyContribution),
       categoryReturns: parsed.projection.categoryReturns || {},
       inflationRate: (parsed.projection.inflationRate !== undefined && parsed.projection.inflationRate !== null && parsed.projection.inflationRate !== '') ? num(parsed.projection.inflationRate) : 2.5,
@@ -894,7 +993,8 @@ function applyRemoteScalarFields(parsed, opts) {
     document.getElementById('dailyChangeInput').value = state.dailyChangeRate;
     persistDaily();
   }
-  adoptRemoteRebalanceAndProjection(parsed, { force: !gated });
+  // [P1 데이터 보존 - J-1] stampAt은 JSON 덮어쓰기 복원에서만 넘어온다(위 함수 주석 참고).
+  adoptRemoteRebalanceAndProjection(parsed, { force: !gated, stampAt: opts && opts.stampAt });
   // [버그 수정 - 동기화가 과거 일별 손익 이력을 지움] dailySnapshots는 예전엔 이 함수 안에서 다른
   // 설정값들과 똑같이 "원격이 최신이면 통째 교체"했다 - 그런데 이 함수는 JSON 복원과 클라우드 동기화
   // 양쪽에서 공용으로 쓰인다. JSON 복원은 "이 시점으로 되돌리기"라 통째 교체가 맞지만, 클라우드
@@ -1341,6 +1441,8 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
 // mergeCollectionById()를 require해서 순수 함수 단위로 검증할 수 있도록 노출만 해준다.
 // [V1.2-B BL-17] carryOverCategorySource/buildCategorySourceIndex/mergeAssetsForAppend도 같은 이유로 노출한다.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { mergeCollectionById, carryOverCategorySource, buildCategorySourceIndex, mergeAssetsForAppend };
+  module.exports = { mergeCollectionById, carryOverCategorySource, buildCategorySourceIndex, mergeAssetsForAppend,
+    // [P1 데이터 보존 - FIX-4/FIX-5] 같은 이유로 노출한다(순수 함수라 단위 테스트로 검증 가능).
+    buildCarryIfAbsentIndex, carryOverAbsentFields };
 }
 
