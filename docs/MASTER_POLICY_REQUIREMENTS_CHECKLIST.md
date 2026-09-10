@@ -608,6 +608,7 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - FUTURE-P1 Phase 3-3 통합검증 — **완료**(§7-3) — P0/P1 0건, 계산 regression 0건, SoT 실측 무변경, 375/768/1024 Light·Dark PASS, Typography 감사 완료, Data Guard PASS
 - **FUTURE-P1 Release Candidate — v228** — Phase 2-C 계산 계층 + Phase 3-2 UI/UX + Phase 3-3 검증 결과를 하나의 release로 묶는다
 - **P1 DATA PRESERVATION MAINTENANCE — v229 / 구현·검증 완료**(§17) — 거래 저장·절세계좌 계획 저장·엑셀 가져오기·JSON 복원 네 경로에서 사용자가 지정한 값이 조용히 사라지던 결함 9건(FIX-1~FIX-7 · J-1 · J-4)을 최소 범위로 수정. **계산 계층 변경 0건**(js/15·16·17·18·20·21 무변경, Return Key·SCENARIO_RATE_PRESETS·getTargetProjectionRate 무변경), **실제 사용자 데이터 변경 0건**, **실제 JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 711 / Golden 유지 / Data Guard PASS / Release Guard PASS
+- **DASHBOARD KPI / ASSET DETAIL UX — v230 / RELEASED · ACCEPTED**(§18) — WORK PACKAGE A(대시보드 KPI 표시 정비) + WORK PACKAGE B(자산 현황 화면 표시 정비)를 하나의 release로 배포. 계산 정정은 **USD 금융자산 집계에서 부동산 제외 1건**이며, 그 외 **계산 계층 변경 0건**(Monte Carlo·deterministic·Return Key·RET-02 정책 무변경), **실제 사용자 데이터 변경 0건**, **JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 735 / Golden 35 / Data Guard PASS / Release Guard PASS / production smoke PASS. commit `59b4c75`, 인계장 `1865c66`
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
@@ -680,3 +681,54 @@ HIGH CONFIDENCE**를 유지한다. 위 9건은 전부 **사고 원인 확정과 
   release*다. cache-first 환경에서 이 수정이 실제 사용자에게 전달되게 하기 위한 버전 상승이다.
 - **v229 이후 자동으로 V1.4를 시작하지 않는다.** 새 개선은 별도 PM 판단을 거친다.
 
+## 18. 대시보드 KPI / 자산 세부현황 표시 개선 (v230 · PM Approval 2026-09-10)
+
+안정화 단계에서 수행한 **표시 계층 정비 릴리스**다. 숫자를 새로 만들지 않았고, 이미 있는 숫자가
+무엇을 뜻하는지 이름과 배치로 드러내는 데 범위를 한정했다. 계산 정정은 아래 18-2의 1건뿐이다.
+
+**18-1. 범위**
+
+| 묶음 | 내용 |
+|---|---|
+| WORK PACKAGE A | 일간 금융 평가손익 표시 용어 정비(**원화자산 / 외화자산 / 달러 현금**) · 총자산평가금액 카드 구조 개선(**금융자산 총평가금액 = 원화자산 평가금액 + 달러자산 평가금액**, 부동산 분리) · **달러자산 미실현 환차손익** 명칭 확정 · 실현손익과 미실현손익의 의미 구분 안내 |
+| WORK PACKAGE B | 필터 → 통계 그래프 → 자산 세부현황 **범위 통일** · 전체 / 소유자별 / 국내·해외 / 자산군별 **4개 보기 방식 전부 아코디언** · 필터 초기화 버튼 화면 제거 · 모바일 필터 배치 개선 · 필터 결과가 없을 때의 안내 · 기존 검색 팝업 정책 유지 |
+
+**18-2. 계산 정정 (1건)**
+
+USD 자산 집계에서 **USD 부동산이 달러자산 평가금액에 포함**되는 범위 불일치가 있었다. 같은 자산이
+금융자산에는 들어가지 않으면서 달러자산에는 들어가, 두 값의 기준이 서로 달랐다.
+
+v230에서 다음 구조가 되도록 정정했다.
+
+- **USD 금융자산만** 달러자산 평가금액에 포함한다.
+- **USD 부동산은 금융자산 범위에서 제외**한다.
+- **금융자산 = 원화자산 + 달러자산**이 성립한다.
+
+`financialCur` · `totalCur` · `realEstateCur`는 **변경하지 않았다**. 표시 용어 변경은 렌더 시점의
+표시 계층에서만 처리했고 `categoryDisplayKey()`는 변경하지 않아, `dailySnapshots` 저장 키
+호환성을 그대로 유지한다.
+
+**18-3. OBSERVE 항목 (v230에서 해결하지 않는다)**
+
+| ID | 내용 | 상태 |
+|---|---|---|
+| OBSERVE-01 | 전체 vs 자산군별의 접힌 상태 유사성 | OBSERVE |
+| OBSERVE-02 | `renderCharts()` + `renderTable()` 호출 구조 분산 | OBSERVE |
+| OBSERVE-03 | production 호출자 0인 `tableAssets()` | OBSERVE |
+| OBSERVE-04 | 아코디언 펼침 상태가 새로고침·탭 이동 시 초기화 | OBSERVE |
+| OBSERVE-05 | 실제 사용자 피드백 | OBSERVE |
+
+다섯 항목 모두 **해결되지 않았고, 개발 과제로 승격하지도 않는다.** 관찰 상태를 유지한다.
+
+**18-4. 안전 / 검증**
+
+- **계산 엔진 변경 0건** — Monte Carlo · deterministic projection · μ · σ · correlation · Cholesky ·
+  contribution · annual rebalancing · inflation 전부 무변경.
+- **Return Key 변경 0건 / RET-02 정책 변경 0건**(§8-1~8-3 그대로 유지).
+- **실제 사용자 데이터 변경 0건 / JSON import 0건 / Excel import·export 0건 / Cloud write 0건.**
+  모든 검증은 합성 fixture · E2E 환경에서만 수행했다(§16 Data-Safety Rule 준수).
+- 테스트: ESLint PASS · Unit **283/283** · E2E **735/735** · Golden **35/35** · Data Guard PASS ·
+  Release Guard PASS · **production smoke PASS**.
+- **v229 → v230 / production release 완료 — RELEASED · ACCEPTED.** cache-first 환경에서 이 변경이
+  실제 사용자에게 전달되게 하기 위한 버전 상승이다.
+- **v230 이후에도 V1.4를 시작하지 않는다.** 새 개선은 별도 PM 판단을 거친다.
