@@ -32,6 +32,85 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-10) — 🚀 **대시보드 KPI · 자산 세부현황 표시 개선 릴리즈** (v229 → **v230**)
+
+**버전: v229 → v230.** 커밋 `59b4c75`, push 완료, GitHub Pages 배포 완료(build `built`, commit 일치),
+production smoke 통과. 숫자를 새로 만든 릴리즈가 아니라 **이미 있는 숫자가 무엇인지 이름과 배치로
+드러낸** 릴리즈다. 계산 정정은 딱 1건이다.
+
+### WORK PACKAGE A — 대시보드 KPI
+- **일간 금융 평가손익 용어 정비**: 통화 축을 `원화 / 해외통화 / 달러` → **`원화자산 / 외화자산 /
+  달러 현금`**으로 바꿔 부른다. ⚠️ `categoryDisplayKey()`는 **건드리지 않았다** — 그 출력이
+  `byOwnerCategory` → `recordDailySnapshot()`로 `state.dailySnapshots`에 **저장되기 때문**이다.
+  대신 표시 전용 맵 `KPI_BREAKDOWN_LABEL_OVERRIDES = { '달러': '달러 현금' }`(js/02:203)을
+  `renderKpiBreakdown` 안에서만 적용했다. **집계 키 '달러'는 그대로다. 이걸 다시 바꾸지 말 것.**
+- **총자산평가금액 카드 재구성**: `금융자산 총평가금액 = 원화자산 평가금액 + 달러자산 평가금액`
+  구조로 나눠 보이게 하고, 소유자 구성을 큰 숫자 옆으로 올리고, 부동산 줄을 마지막으로 내렸다.
+- **🔴 이번 릴리즈의 유일한 계산 정정**: `foreignCur`를 `isRealEstate` 분기 **밖**에서 더하고 있어
+  **USD 부동산이 달러자산만 부풀렸다**(금융자산에는 안 들어가는데 달러자산에는 들어갔다 —
+  실측 금융자산 11,470,000 vs 달러자산 145,670,000). 집계를 금융자산 분기 **안**으로 옮겼다
+  (js/02:345~360). `financialCur` / `totalCur` / `realEstateCur`는 무변경.
+- `달러자산 누적 환차손익` → **`달러자산 미실현 환차손익`**. `computeForeignFxPnL()` 식은 무변경.
+- 총금융자산평가손익 카드에 "지금 보유 중인 자산의 미실현 손익이며, 확정 손익은 총 실현손익에
+  따로 있다"는 설명을 붙였다.
+
+### WORK PACKAGE B — 자산 현황 화면
+- **필터 범위 통일 (실제 결함 수정)**: 상단 필터가 도넛 3개만 다시 그리고 아래 목록은 전체를
+  계속 보여줘서, **같은 화면 위아래에 다른 총액이 동시에 보였다**(신랑 필터 기준 그래프 분모
+  43,300,000 vs 목록 556,620,000). `js/08:1133~1135`·`:1140`의 핸들러에 `renderTable()`을
+  추가하고, 목록 SoT를 `tableAssets()` → **`filteredAssets()`**로 바꿨다(js/07:206).
+  새 필터 SoT를 만들지 않았다 — 그래프와 목록이 같은 함수를 본다.
+- **자산 세부현황 아코디언**: 4개 보기 방식(**전체 포함**) 모두 요약 행(건수/소계/비중)으로 접히고
+  탭하면 펼쳐진다. 복수 그룹 동시 펼침 지원. 375px 목록 높이가 1,160px → 한 화면으로 줄었다.
+  **폰트를 줄여 해결하지 않았다.** 펼침 상태는 `js/07:55`의 모듈 지역 `Set`이며 `state`에도
+  `localStorage`에도 저장하지 않는다(의도된 설계 — 새로고침 시 초기화가 정상).
+- 필터 초기화 버튼을 화면에서 감췄다(`hidden`). **요소와 핸들러는 남겨 뒀다** — 지우면
+  `js/08:1136`이 null 참조로 죽는다.
+- 필터 결과 0건과 자산 0건을 다른 문구로 구분한다("데이터가 사라졌다" 오해 방지).
+- 검색은 예전 그대로 팝업이며 목록을 자동으로 펼치지 않는다.
+
+### 안전 확인
+- **계산 계층 변경 0건** — `calcRow` / `calcDailyPnL` / `computeForeignFxPnL` / `financialCur` /
+  `financialBuy` / `totalCur` / `totalBuy` / `realEstateCur` / `realEstateBuy` / `byOwner` /
+  `byCategory` / `byCurrency` / `categoryDisplayKey` / Monte Carlo / Return Key / `state.assets` /
+  `state.transactions` / `state.dailySnapshots` 전부 무변경.
+- production 배포본 웹 자산 29개 전부 커밋과 **SHA-256 동일**. SW `smart-asset-manager-v230`,
+  `appVersionLabel` v230, **pageerror 0**.
+- **실제 사용자 데이터 사용 0** — 검증은 전부 synthetic fixture. production smoke는
+  `--host-resolver-rules`로 DNS를 앱 셸 CDN 3곳 + github.io로만 제한해 돌렸다(차단 확인된 호스트:
+  `asset-manager-proxy.key4125.workers.dev`, `keymaster.key4125.workers.dev`, 시세/환율 API 등
+  11곳). **Cloud write 0 / 가격 API 호출 0**이 구조적으로 보장된 상태에서 측정했다.
+
+### 다음 세션이 알아야 할 것
+- **v230 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 계속 "안정화 / 운영 / 관찰"이다.
+- **OBSERVE 항목 5건 (v230에서 고치지 않기로 PM이 확정한 것 — 임의로 손대지 말 것)**
+  - `OBSERVE-01` `전체` vs `자산군별`이 **접힌 상태에서 건수만 다르다**(주식 2건 vs 3건, 소계·비중은
+    동일). 펼치면 전체 = `buildMergedRows()` 통합 관점 / 자산군별 = 원본 보유 행 관점으로 갈라지므로
+    기능 결함이 아니다. 라벨 변경·건수 변경·그룹 구조 변경 **금지**.
+  - `OBSERVE-02` `renderCharts() + renderTable()` 쌍이 5곳에 흩어져 있다
+    (`js/07:61`·`:203`·`:652`, `js/08:1121`·`1133~1135`·`1140`). `renderInvestmentDetailTab()`으로
+    일원화할 수 있으나 **이번엔 리팩터링하지 않는다.**
+  - `OBSERVE-03` `tableAssets()`(js/01:1533)가 production 호출자 0건이다. `e2e/74:274`가 참조 중이라
+    **삭제하지 않는다.**
+  - `OBSERVE-04` 아코디언 펼침 상태가 새로고침·탭 이동 시 초기화된다. `state`/`localStorage`에
+    **새 상태를 추가하지 않는다.**
+  - `OBSERVE-05` 실제 사용자 피드백 관찰.
+- ⚠️ **미승인 상태로 남아 있는 변경 2건**(v229 때와 동일하게 이번에도 커밋에서 제외했다):
+  - `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` §3 추가분(+26/−0) — PM 승인 전. 이 파일이
+    dirty라서 **v230 내용도 체크리스트에 아직 기록하지 못했다**. PM 승인 후 §3 처리와 함께
+    v230 항목(§18 등)을 추가할 것.
+  - `.claude/launch.json` — 로컬 전용 scratchpad 경로. **절대 커밋하지 않는다**(dirty가 정상).
+- 다음 주요 운영 이벤트는 **RET-02 Return Key 분기별 정기 검토**(첫 공식 검토 2026년 12월경)다.
+  그 전까지 Return Key 자동 변경 / Golden Reference 변경 / 계산 엔진 변경 / AI 기능 / 새 Risk Score /
+  Macro→Risk 정량 연결 / FX stochastic / 복잡한 Bond 모델 / 새 자산군 / Expert 설정 / Tax 재설계 /
+  MC 구조 확장 / 전체 UX 재설계 **전부 금지**.
+
+### 테스트 (v230 시점)
+ESLint 0 · Unit **283/283** · E2E **735/735** · Golden(계산경로/Return Key/데이터무결성) **35/35** ·
+Data Guard PASS · Release Guard PASS(v230 일치) · production smoke 6뷰포트 PASS.
+
+---
+
 ## 최근 세션 요약 (2026-09-10) — 🚀 **P1 데이터 보존 유지보수 릴리즈** (v228 → **v229**)
 
 **버전: v228 → v229.** 기능 추가가 아니라 **데이터 보존 결함 수정**이다. commit `eb7191d`,
