@@ -140,7 +140,7 @@ function isDomesticAfterHoursIneligible(yahooTicker, name) {
 //   3) 채권/현금/부동산(NON_TRADABLE_CATEGORIES) 카테고리는 티커 입력 여부와 무관하게 항상 0 -
 //      시세 자체가 없는 자산군이므로 전역 수동 변동률의 영향을 받지 않는다. 단 예외로, 달러(USD)
 //      현금은 가격 변동은 없어도 환율은 매일 움직이므로 qty*(오늘환율-오늘 기준환율)만큼만 반영한다
-//      (아래 함수 맨 앞의 '현금' 분기 참고) - "해외통화" 일간손익 버킷에 달러 현금의 환차손익이
+//      (아래 함수 맨 앞의 '현금' 분기 참고) - "외화자산" 일간손익 버킷에 달러 현금의 환차손익이
 //      잡히도록 하기 위함.
 //   4) 그 외 티커가 아예 없는 자산도 시세 조회 대상이 아니므로 항상 0 - 이게 이전 버전의 버그였다
 //      (수동 변동률이 현금/채권에도 적용됨).
@@ -154,7 +154,7 @@ function isDomesticAfterHoursIneligible(yahooTicker, name) {
 function calcDailyPnL(a, r) {
   // [달러 현금 - 환차만 반영] 현금성 자산은 시세(가격) 자체가 없어 주가 변동분은 존재하지 않지만,
   // 달러라면 원/달러 환율이 매일 움직이므로 그 변동분(오늘 환율 - 오늘 하루 기준환율)만큼은 원화
-  // 평가액이 실제로 바뀐다 - 이걸 반영해야 "해외통화" 일간손익 버킷에 달러 현금의 환차손익이 잡힌다.
+  // 평가액이 실제로 바뀐다 - 이걸 반영해야 "외화자산" 일간손익 버킷에 달러 현금의 환차손익이 잡힌다.
   // 원화 현금/채권/부동산은 이 예외에 해당하지 않아 아래 NON_TRADABLE_CATEGORIES 규칙대로 항상 0이다.
   if (a.category === '현금') {
     if (a.currency !== 'USD') return 0;
@@ -199,6 +199,18 @@ function categoryDisplayKey(a) {
   return a.category;
 }
 
+// [용어 정비 - 표시 전용] 집계 키는 한 글자도 바꾸지 않고, KPI 태그에 "찍는 이름"만 바꾼다.
+// '달러'라는 키만 보면 "외화자산 전체"로 읽히기 쉬운데 실제로는 USD 현금(category='현금')만
+// 들어있는 버킷이라, 화면에서는 그 범위를 그대로 말해주는 이름을 쓴다.
+// [왜 categoryDisplayKey를 안 고쳤나] 그 함수의 반환값은 byOwnerCategory를 거쳐
+// recordDailySnapshot(js/11)이 state.dailySnapshots에 날짜별로 "저장"한다 - 키를 바꾸면 이미
+// 쌓인 과거 스냅샷('달러')과 앞으로 쌓일 스냅샷('달러 현금')이 서로 다른 항목이 되어 자산군별
+// 추이가 두 갈래로 끊긴다. 표시 계층에서만 바꾸면 저장 값은 그대로 유지된다.
+const KPI_BREAKDOWN_LABEL_OVERRIDES = { '달러': '달러 현금' };
+function kpiBreakdownLabel(key) {
+  return KPI_BREAKDOWN_LABEL_OVERRIDES[key] || key;
+}
+
 // [일간평가손익/총평가손익 카드 - 실현손익 배지] 세부내용 버튼 밑에 다는 소형 배지 공용 렌더러.
 // amount가 0이면(해당 없음 - 오늘 매도 없음/전체 매도 이력 없음) 배지 자체를 숨긴다.
 function renderRealizedBadge(elId, amount, label) {
@@ -236,7 +248,7 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored,
   container.classList.add('flex');
   container.innerHTML = entries.map(e => {
     const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
-    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(e.cat)} ${formatFn(e.val)}</span>`;
+    return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(kpiBreakdownLabel(e.cat))} ${formatFn(e.val)}</span>`;
   }).join('');
 }
 
@@ -269,9 +281,15 @@ function renderKpiOwnerProfitBreakdown(containerId, byOwner) {
   }).join('');
 }
 
-// [달러자산 누적 환차손익] 해외주식/ETF/달러현금 전체를 대상으로, 매수 시점 가중평균 환율(buyRate) 대비
+// [달러자산 미실현 환차손익] 해외주식/ETF/달러현금을 대상으로, 매수 시점 가중평균 환율(buyRate) 대비
 // 현재 환율이 얼마나 움직였는지만 떼어낸 순수 환차손익 합계를 구한다(주가 변동분은 제외) - "총자산
 // 평가금액" 카드의 "달러자산 평가금액" 바로 아래 라인에 표시된다.
+// [이름을 "미실현"으로 바꾼 이유 - 계산식 무변경] 예전 라벨은 "누적 환차손익"이었는데, 이 함수는
+// state.assets(=지금 보유 중인 자산)만 훑으므로 이미 팔아서 확정된 환차손익은 들어있지 않다.
+// "누적"은 실현분까지 합산한 값으로 읽혀서 실제 범위를 과장했다 - 계산은 그대로 두고 이름만 맞췄다.
+// [범위 주의] 대상은 USD × category ∈ {주식, ETF, 현금}뿐이다. 같은 카드 윗줄의 "달러자산 평가금액"은
+// USD 금융자산 전체(USD 채권 등 포함)라서 두 줄의 모집합이 서로 다르다 - 이 범위 확대는 PM이 이번
+// 작업에서 명시적으로 제외했으므로 여기서 손대지 않는다(별도 검토 대상).
 //   - 해외주식/ETF: 수량 × 매수단가($) × (현재환율 - 매수시환율) = buyAmountOriginal × (오늘환율-buyRate)
 //   - 달러현금: 보유 달러($) × (현재환율 - 가중평균 매수환율) - buyPrice가 항상 1로 고정이라 위 공식과
 //     형태는 같지만(수량 자체가 곧 달러 금액이므로) 별도 분기 없이 동일한 식으로 처리된다.
@@ -287,7 +305,16 @@ function computeForeignFxPnL() {
 }
 
 function renderKPIs() {
-  let totalBuy = 0, totalCur = 0, foreignCur = 0, dailyProfit = 0;
+  let totalBuy = 0, totalCur = 0, dailyProfit = 0;
+  // [총자산평가금액 카드 - 금융자산의 통화별 구분] "원화자산 평가금액"/"달러자산 평가금액" 두 줄에만
+  // 쓴다. 두 값 모두 부동산을 뺀 **금융자산 범위**이므로 항상
+  //   krwFinancialCur + foreignFinancialCur === financialCur
+  // 가 성립한다 - 카드가 그 등식을 그대로 보여주기 때문에 이 범위가 어긋나면 화면이 거짓말을 한다.
+  // [예전 동작] 이 자리에는 foreignCur 하나만 있었고, 누적 지점이 아래 isRealEstate 분기 **밖**이라
+  // USD 부동산까지 함께 더해졌다 - 바로 윗줄(부동산 제외)과 모집합이 달라, USD 부동산을 가진
+  // 사용자에게는 "금융자산보다 큰 달러자산"이 표시됐다(감사에서 합성 fixture로 실측).
+  // 평가금액 자체는 예전 그대로 calcRow(a).curAmount를 재사용한다 - 다시 계산하지 않는다.
+  let krwFinancialCur = 0, foreignFinancialCur = 0;
   // [부동산 제외 - 금융자산 전용 집계] "총금융자산평가손익"/"일간금융평가손익" 카드는 부동산을 뺀
   // 순수 금융자산 기준으로만 계산한다 - totalBuy/totalCur/dailyProfit(전체, 부동산 포함)와는 별도로
   // financialBuy/financialCur/financialDailyProfit를 따로 누적한다. 부동산 쪽 합계(realEstateBuy/Cur)는
@@ -309,9 +336,14 @@ function renderKPIs() {
   // 이 자산군"을 따로 뽑아낼 수 없음). recordDailySnapshot에 그대로 전달해 일자별 스냅샷에도 이 교차
   // 집계 기준으로 남긴다.
   const byOwnerCategory = {}; // { owner: { category: { dailyPnL, cur, buy } } }
-  // [일간금융평가손익 카드 - 통화별 표기] 거래 통화(a.currency) 기준 원화/해외통화 일간손익(부동산 제외) -
-  // 계산 로직은 전혀 바꾸지 않고 이미 구한 dp(원화 환산 완료된 값)를 통화 라벨로 다시 묶기만 한다.
-  const byCurrency = {}; // { '원화': { dailyPnL }, '해외통화': { dailyPnL } }
+  // [일간금융평가손익 카드 - 통화별 표기] 거래 통화(a.currency) 기준 원화자산/외화자산 일간손익
+  // (부동산 제외) - 계산 로직은 전혀 바꾸지 않고 이미 구한 dp(원화 환산 완료된 값)를 통화 라벨로
+  // 다시 묶기만 한다.
+  // [용어 정비] 예전 라벨은 '원화'/'해외통화'였다. 바로 아래 자산군 태그에 '달러'(USD 현금)가 함께
+  // 보이는데, '해외통화'와 '달러'가 같은 것을 가리키는 것처럼 읽혔다 - 실제로는 이 버킷에 해외주식·
+  // 해외 ETF까지 전부 들어가고 달러 현금은 그 일부일 뿐이다. 이 객체는 아래 renderKpiBreakdown
+  // 한 곳에서만 쓰이고 저장되지 않으므로, 키를 그대로 화면 라벨로 쓴다.
+  const byCurrency = {}; // { '원화자산': { dailyPnL }, '외화자산': { dailyPnL } }
 
   state.assets.forEach(a => {
     const r = calcRow(a);
@@ -319,7 +351,6 @@ function renderKPIs() {
     const isRealEstate = a.category === '부동산';
     totalBuy += r.buyAmount;
     totalCur += r.curAmount;
-    if (r.isForeign) foreignCur += r.curAmount;
     dailyProfit += dp;
     if (isRealEstate) {
       realEstateBuy += r.buyAmount;
@@ -328,6 +359,11 @@ function renderKPIs() {
       financialBuy += r.buyAmount;
       financialCur += r.curAmount;
       financialDailyProfit += dp;
+      // 금융자산 안에서만 통화로 가른다(위 변수 선언부 주석 참고). r.isForeign은 calcRow가 판정한
+      // a.currency === 'USD'이며, 통화는 makeAsset/복원 3경로가 KRW/USD 둘로 정규화하므로 두 버킷이
+      // 금융자산 전체를 남김없이 나눈다.
+      if (r.isForeign) foreignFinancialCur += r.curAmount;
+      else krwFinancialCur += r.curAmount;
     }
 
     const catKey = categoryDisplayKey(a);
@@ -358,7 +394,7 @@ function renderKPIs() {
       byCategoryFinancial[catKey].cur += r.curAmount;
       byCategoryFinancial[catKey].dailyPnL += dp;
 
-      const currencyLabel = a.currency === 'KRW' ? '원화' : '해외통화';
+      const currencyLabel = a.currency === 'KRW' ? '원화자산' : '외화자산';
       if (!byCurrency[currencyLabel]) byCurrency[currencyLabel] = { dailyPnL: 0 };
       byCurrency[currencyLabel].dailyPnL += dp;
     }
@@ -388,6 +424,10 @@ function renderKPIs() {
   realEstateCostRow.classList.toggle('flex', Math.round(realEstateBuy) !== 0);
   renderKpiBreakdown('kpiTotalValueOwnerBreakdown', byOwner, o => o.cur, fmtKRWShort, false, 'text-sm text-slate-500 dark:text-slate-400', true);
   renderKpiBreakdown('kpiTotalValueBreakdown', byCategory, c => c.cur, fmtKRWShort, false);
+  // 태그가 한 건도 없으면(보유 자산군이 없거나 전부 0원) 위에 붙은 "전체 자산군 구성" 라벨과 구분선만
+  // 덩그러니 남으므로 감싸는 블록째로 숨긴다 - renderKpiBreakdown이 내부 div에만 hidden을 토글한다.
+  document.getElementById('kpiTotalValueBreakdownWrap')
+    .classList.toggle('hidden', document.getElementById('kpiTotalValueBreakdown').classList.contains('hidden'));
   renderKpiBreakdown('kpiTotalCostBreakdown', byCategory, c => c.buy, fmtKRWShort, false);
 
   // [알림 배너] 직전 시세 갱신에서 실패한 종목이 1건이라도 있으면 총평가금액/총평가손익 카드 바로 위
@@ -414,7 +454,8 @@ function renderKPIs() {
   profitEl.className = 'text-lg font-bold ' + profitColor(totalProfit);
   const profitRateEl = document.getElementById('kpiTotalProfitRate');
   profitRateEl.textContent = fmtPct(totalProfitRate);
-  profitRateEl.className = 'text-sm font-semibold mt-0.5 ' + profitColor(totalProfitRate);
+  // 이 요소는 "매입원가 기준" 문구와 한 줄에 놓인 <span>이라 여백은 바깥 <p>가 갖는다(index.html).
+  profitRateEl.className = 'text-sm font-semibold ' + profitColor(totalProfitRate);
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 금액+수익률(부동산 제외) - 다른 태그보다 눈에
   // 잘 띄도록 크게 표시
   renderKpiOwnerProfitBreakdown('kpiTotalProfitOwnerBreakdown', byOwnerFinancial);
@@ -423,7 +464,9 @@ function renderKPIs() {
   // 부동산 매매 실현손익도 포함 - 거래내역 기준이라 부동산 제외 여부와 무관하게 항상 전체를 본다).
   // 위 총금융자산평가손익 계산(totalProfit = financialCur - financialBuy, 미실현)과는 완전히 독립된
   // 별도 표시다.
-  renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익');
+  // [범위 표기] 이 배지는 거래원장 기준이라 부동산 매매 실현손익까지 포함한다 - 바로 옆 본문
+  // (총금융자산평가손익, 부동산 제외)과 범위가 달라서 라벨에 그 사실을 적는다(계산 무변경).
+  renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익 · 전체 자산');
 
   // 일간 변동률(%)의 분모는 "전일 기준 금융자산" = 현재 금융자산에서 오늘 하루 손익만큼을 뺀 값
   // (부동산 제외).
@@ -440,7 +483,7 @@ function renderKPIs() {
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익(부동산 제외) - 다른 태그보다 눈에
   // 잘 띄도록 크게 표시
   renderKpiBreakdown('kpiDailyOwnerBreakdown', byOwnerFinancial, o => o.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold', true);
-  // 그 바로 아래: 거래 통화(원화/해외통화) 기준 일간손익(부동산 제외) - 소유자 태그와 동일한 글씨 크기로 표시
+  // 그 바로 아래: 거래 통화(원화자산/외화자산) 기준 일간손익(부동산 제외) - 소유자 태그와 동일한 글씨 크기로 표시
   renderKpiBreakdown('kpiDailyCurrencyBreakdown', byCurrency, c => c.dailyPnL, fmtSignedShort, true, 'text-sm font-semibold');
   // 카드 하단: 다른 KPI 카드와 동일하게 자산군 기준 세부 손익(부동산 제외)
   renderKpiBreakdown('kpiDailyProfitBreakdown', byCategoryFinancial, c => c.dailyPnL, fmtSignedShort, true);
@@ -448,11 +491,13 @@ function renderKPIs() {
   // 매매 포함). 위 dailyProfit(미실현 평가손익) 계산은 전혀 건드리지 않고, 별도로 계산해 배지로만 덧붙인다.
   renderRealizedBadge('kpiTodayRealizedBadge', getTodayRealizedPnL(), '오늘 실현손익');
 
-  // [4가지 구분값 표기] 총자산평가금액 카드의 달러자산 라인 - 예전엔 "(달러자산 ...)"처럼 메인 숫자
-  // 옆에 괄호로 병기했으나, 이제 금융자산/부동산과 같은 줄 형식(라벨+금액)으로 통일했다.
-  document.getElementById('kpiForeignValueInline').textContent = fmtKRW(foreignCur);
+  // [총자산평가금액 카드 - 금융자산의 통화별 구분] 두 줄 모두 금융자산 범위이며 합이 위 금융자산
+  // 총평가금액과 정확히 같다(변수 선언부 주석 참고). 값은 루프에서 이미 더해 둔 것을 그대로 쓴다.
+  document.getElementById('kpiKrwFinancialValue').textContent = fmtKRW(krwFinancialCur);
+  document.getElementById('kpiForeignValueInline').textContent = fmtKRW(foreignFinancialCur);
 
-  // [달러자산 누적 환차손익] computeForeignFxPnL 참고 - 기존 손익 색상 규칙(양수=빨강/음수=파랑) 그대로 적용.
+  // [달러자산 미실현 환차손익] computeForeignFxPnL 참고 - 계산식은 그대로이고 라벨만 실제 범위(지금
+  // 보유 중인 USD 주식/ETF/현금의 미실현분)에 맞췄다. 기존 손익 색상 규칙(양수=빨강/음수=파랑) 유지.
   const fxPnL = computeForeignFxPnL();
   const fxPnlEl = document.getElementById('kpiForeignFxPnl');
   fxPnlEl.textContent = fmtSigned(fxPnL);

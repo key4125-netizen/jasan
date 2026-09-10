@@ -1125,16 +1125,19 @@ document.querySelectorAll('th.sortable').forEach(th => {
 /* -------------------------------------------------------------------------
  * 15. 필터 이벤트
  * [PART B - 상단 필터 독립화] 이 3개 필터(소유자/자산군/계좌)는 이제 상단 도넛 차트 3개(renderCharts)
- * 에만 영향을 준다 - 아래 자산 관리 목록(renderTable)은 tableAssets()를 써서 항상 전체를 보여주므로
- * 여기서 더 이상 renderTable()을 호출하지 않는다(상태 간섭 완전 차단).
+ * 와 아래 자산 세부현황 목록(renderTable) 양쪽에 함께 영향을 준다 - 둘 다 filteredAssets()를 쓴다.
  * ---------------------------------------------------------------------- */
-document.getElementById('filterOwner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderCharts(); });
-document.getElementById('filterCategory').addEventListener('change', (e) => { state.filters.category = e.target.value; renderCharts(); });
-document.getElementById('filterAccount').addEventListener('change', (e) => { state.filters.account = e.target.value; renderCharts(); });
+// [필터 범위 통일] 예전에는 renderCharts()만 다시 그려서, 필터를 골라도 아래 자산 세부현황은
+// 그대로였다("필터가 안 먹는다"로 읽혔다). 이제 renderTable()도 함께 다시 그려 통계와 목록이 같은
+// 선택 범위를 본다 - 두 함수 모두 filteredAssets()를 쓰므로 새 필터 SoT를 만들지 않았다.
+document.getElementById('filterOwner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderCharts(); renderTable(); });
+document.getElementById('filterCategory').addEventListener('change', (e) => { state.filters.category = e.target.value; renderCharts(); renderTable(); });
+document.getElementById('filterAccount').addEventListener('change', (e) => { state.filters.account = e.target.value; renderCharts(); renderTable(); });
 document.getElementById('filterResetBtn').addEventListener('click', () => {
   state.filters = { owner: 'ALL', category: 'ALL', account: 'ALL' };
   populateFilterOptions();
   renderCharts();
+  renderTable();
 });
 
 // [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 세그먼트 버튼 중 하나를 탭하면 그 관점으로 전환해
@@ -1147,7 +1150,7 @@ document.getElementById('assetViewSegmented').addEventListener('click', (e) => {
 });
 
 // [PART B - 검색 팝업화] 자산 관리 목록 상단의 검색창은 더 이상 입력할 때마다 목록을 실시간으로
-// 필터링하지 않는다(tableAssets()가 항상 전체를 그린다) - Enter 또는 [검색] 버튼을 눌렀을 때만
+// 필터링하지 않는다(목록은 상단 필터만 따른다) - Enter 또는 [검색] 버튼을 눌렀을 때만
 // searchAssetsByQuery()로 검색해 결과를 팝업(assetSearchResultModal)으로 보여주거나, 매칭이 없으면
 // 안내 알림을 띄운다.
 document.getElementById('assetSearchInput').addEventListener('keydown', (e) => {

@@ -29,11 +29,22 @@ test('4개 관점 전환 시 총자산/보유자산수는 항상 동일하고, �
   expect(totalBefore).toBe('190,000,000원');
   expect(countBefore).toContain('총 3건');
 
-  // 전체(기본값) - 그룹 헤더 없이 3건이 그대로 보인다.
+  // 전체(기본값) - [정책 변경] 예전에는 3건의 개별 자산을 그대로 펼쳐 보여줬다. 자산이 늘수록 모바일
+  // 화면이 끝없이 길어져서, 이제 '전체'도 자산군 요약 행만 먼저 보여주고 누른 자산군만 펼친다.
   const noneText = await page.locator('#assetCardList').innerText();
-  expect(noneText).toContain('E2E26신랑국내');
-  expect(noneText).toContain('E2E26와이프국내');
-  expect(noneText).toContain('E2E26신랑해외');
+  expect(noneText, '자산군 요약 행이 보인다').toContain('채권 (3건)');
+  expect(noneText, '개별 자산은 기본으로 접혀 있다').not.toContain('E2E26신랑국내');
+  // 요약 행을 누르면 그 자산군의 개별 자산이 펼쳐진다 - 펼친 뒤에는 예전과 같은 3건이 그대로 보인다.
+  // (기본 뷰포트에서는 카드 뷰가 sm:hidden이라 화면에 보이는 테이블 쪽 헤더를 누른다 - 클릭 위임
+  //  핸들러가 #assetManagementSection 하나라 어느 쪽을 눌러도 같은 그룹이 열린다)
+  await page.locator('#assetTableBody [data-group-toggle]').first().click();
+  const noneExpanded = await page.locator('#assetCardList').innerText();
+  expect(noneExpanded).toContain('E2E26신랑국내');
+  expect(noneExpanded).toContain('E2E26와이프국내');
+  expect(noneExpanded).toContain('E2E26신랑해외');
+  // 다시 누르면 접힌다.
+  await page.locator('#assetTableBody [data-group-toggle]').first().click();
+  expect(await page.locator('#assetCardList').innerText()).not.toContain('E2E26신랑국내');
 
   // 소유자별 - 신랑(2건)/와이프(1건) 그룹 헤더가 보여야 한다.
   await page.locator('#assetViewSegmented .asset-view-btn[data-view="owner"]').click();
@@ -54,8 +65,9 @@ test('4개 관점 전환 시 총자산/보유자산수는 항상 동일하고, �
   const categoryText = await page.locator('#assetCardList').innerText();
   expect(categoryText).toContain('채권 (3건)');
 
-  // 전체로 되돌아가도 데이터가 그대로 유지된다(기존 데이터 보존).
+  // 전체로 되돌아가도 데이터가 그대로 유지된다(기존 데이터 보존) - 요약 행을 펼쳐 확인한다.
   await page.locator('#assetViewSegmented .asset-view-btn[data-view="none"]').click();
+  await page.locator('#assetTableBody [data-group-toggle]').first().click();
   expect(await page.locator('#assetCardList').innerText()).toContain('E2E26신랑국내');
 });
 

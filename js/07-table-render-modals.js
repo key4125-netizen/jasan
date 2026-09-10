@@ -45,23 +45,42 @@ function getTableGroupKey(mode, r) {
   return null;
 }
 
+/* [자산 세부현황 아코디언] 그룹 헤더를 눌러 그 그룹의 개별 자산만 펼친다.
+ *
+ * 예전에는 어떤 보기 방식을 골라도 보유 자산 전체의 상세 행을 한 번에 다 그렸다 - 자산 12건짜리
+ * 합성 데이터에서도 목록 높이가 1,160px(375px 화면의 3배)이라, 자산이 늘수록 화면이 끝없이 길어지고
+ * "지금 내 자산이 어떤 구성인지"를 한눈에 볼 수 없었다. 이제 요약 행(자산군명·건수·금액·비중)을
+ * 먼저 보여주고, 사용자가 누른 그룹만 펼친다.
+ *
+ * 열림 상태는 이 모듈 변수 하나에만 있다 - localStorage에 저장하지 않고 state schema도 만들지 않는다
+ * (assetListViewMode와 같은 순수 화면 상태). 보기 방식을 바꾸면 그룹 키 체계 자체가 달라지므로 비운다. */
+const assetGroupExpanded = new Set(); // 펼쳐진 그룹 키(비어 있으면 전부 접힘 = 기본 상태)
+function isAssetGroupExpanded(key) { return assetGroupExpanded.has(key); }
+function toggleAssetGroup(key) {
+  if (assetGroupExpanded.has(key)) assetGroupExpanded.delete(key); else assetGroupExpanded.add(key);
+  renderTable();
+}
+
 // 그룹 헤더(소계) 한 줄 - 데스크톱 테이블용(<tr>, 전체 컬럼에 걸쳐 병합).
-function groupHeaderRowHtml(label, count, subtotal, pct) {
+// 금액/비중/건수는 renderGroupedRows가 이미 구한 값을 그대로 받는다(새 계산 없음).
+function groupHeaderRowHtml(label, count, subtotal, pct, key, expanded) {
   return `
-  <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
-    <td colspan="4" class="px-3 py-2">
-      <div class="flex items-center justify-between gap-2">
-        <span class="font-semibold text-sm">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
+  <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+      data-group-toggle="1" data-group-key="${escapeHtml(key)}" role="button" tabindex="0" aria-expanded="${expanded ? 'true' : 'false'}">
+    <td colspan="4" class="px-3 py-2.5">
+      <div class="flex items-center justify-between gap-2 min-h-[24px]">
+        <span class="font-semibold text-sm min-w-0"><span class="text-slate-400 mr-1">${expanded ? '▼' : '▶'}</span>${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
         <span class="text-sm text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
       </div>
     </td>
   </tr>`;
 }
-// 그룹 헤더(소계) - 모바일 카드 뷰용.
-function groupHeaderCardHtml(label, count, subtotal, pct) {
+// 그룹 헤더(소계) - 모바일 카드 뷰용. 눌러서 여닫는 행이므로 touch target을 44px로 맞춘다.
+function groupHeaderCardHtml(label, count, subtotal, pct, key, expanded) {
   return `
-  <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2">
-    <span class="font-semibold text-sm">${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
+  <div class="px-4 py-2.5 min-h-[44px] bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2 cursor-pointer active:bg-slate-100 dark:active:bg-slate-800"
+       data-group-toggle="1" data-group-key="${escapeHtml(key)}" role="button" tabindex="0" aria-expanded="${expanded ? 'true' : 'false'}">
+    <span class="font-semibold text-sm min-w-0"><span class="text-slate-400 mr-1">${expanded ? '▼' : '▶'}</span>${escapeHtml(label)} <span class="text-slate-400 font-normal">(${count}건)</span></span>
     <span class="text-sm text-slate-500 dark:text-slate-400 shrink-0 whitespace-nowrap">${fmtKRW(subtotal)} · ${fmtNum(pct, 1)}%</span>
   </div>`;
 }
@@ -95,7 +114,11 @@ function renderGroupedRows(rows, mode, rowRenderer, headerRenderer) {
     const groupRows = groupsMap[key];
     const subtotal = groupRows.reduce((s, r) => s + r.curAmount, 0);
     const pct = grandTotal !== 0 ? (subtotal / grandTotal * 100) : 0;
-    return headerRenderer(key, groupRows.length, subtotal, pct) + groupRows.map(rowRenderer).join('');
+    // [아코디언] 접혀 있으면 요약 행만 그린다 - 건수·소계·비중 계산은 접힘 여부와 무관하게 항상
+    // 전체 그룹 행으로 하므로 요약 숫자가 달라지지 않는다.
+    const expanded = isAssetGroupExpanded(key);
+    const header = headerRenderer(key, groupRows.length, subtotal, pct, key, expanded);
+    return expanded ? header + groupRows.map(rowRenderer).join('') : header;
   }).join('');
 }
 
@@ -174,13 +197,19 @@ function syncAssetViewButtonsUI() {
 
 function setAssetListView(mode) {
   assetListViewMode = mode;
+  // 보기 방식이 바뀌면 그룹 키 체계 자체가 달라진다(소유자 이름 ↔ 자산군명 ↔ 국내/해외) - 이전
+  // 방식의 열림 상태를 그대로 들고 가면 엉뚱한 그룹이 펼쳐진 것처럼 보이므로 비우고 시작한다.
+  assetGroupExpanded.clear();
   renderTable();
 }
 
 function renderTable() {
-  // [PART B] 상단 필터 바와 완전히 분리된 tableAssets()를 쓴다 - 자산 관리 목록은 이제 항상 보유
-  // 자산 전체를 보여주고, 부분집합 확인은 검색 팝업(runAssetSearch)으로만 한다.
-  const rawRows = tableAssets().map(a => ({ ...a, ...calcRow(a) }));
+  // [필터 범위 통일] 예전에는 상단 필터와 완전히 분리된 tableAssets()를 써서, 사용자가 필터를 골라도
+  // 위 그래프만 바뀌고 아래 목록은 그대로였다 - 화면상 "필터가 안 먹는다"로 읽혔다. 이제 그래프
+  // (renderCharts, js/03)와 같은 filteredAssets()를 써서 "필터 → 통계 → 자산 세부현황"이 하나의
+  // 선택 범위 위에서 움직인다. 새 필터 SoT를 만들지 않고 기존 함수를 그대로 재사용한다.
+  // 검색은 예전 그대로 별도 팝업(runAssetSearch)이며 이 목록을 실시간으로 걸러내지 않는다.
+  const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
   const emptyMsg = document.getElementById('emptyTableMsg');
   const totalCur = rawRows.reduce((s, r) => s + r.curAmount, 0);
   document.getElementById('assetListTotalValue').textContent = fmtKRW(totalCur);
@@ -188,7 +217,11 @@ function renderTable() {
   if (rawRows.length === 0) {
     document.getElementById('assetTableBody').innerHTML = '';
     document.getElementById('assetCardList').innerHTML = '';
-    emptyMsg.textContent = '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
+    // 필터를 걸어 결과가 0건인 것과, 자산을 아직 하나도 등록하지 않은 것은 다른 상황이라 문구를 나눈다.
+    const isFiltered = state.filters.owner !== 'ALL' || state.filters.category !== 'ALL' || state.filters.account !== 'ALL';
+    emptyMsg.textContent = isFiltered
+      ? '선택한 필터에 해당하는 자산이 없습니다. 위 필터를 바꿔보세요.'
+      : '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
     emptyMsg.classList.remove('hidden');
     document.getElementById('tableCountLabel').textContent = '총 0건';
     renderTableFooter(rawRows);
@@ -203,10 +236,16 @@ function renderTable() {
   // 무관하게 항상 이 병합 기준(merged)으로 계산한다(예전에도 4개 아코디언 헤더 전부 동일했다).
   const merged = sortRows(buildMergedRows(rawRows));
   if (assetListViewMode === 'none') {
-    document.getElementById('assetTableBody').innerHTML = merged.map(r => rowHtml(r)).join('');
-    document.getElementById('assetCardList').innerHTML = merged.map(r => cardHtml(r)).join('');
+    // [전체 = 자산군 요약 + 접힘] '전체'는 이제 "모든 개별 자산을 한 번에 펼쳐 보여주는 상태"가 아니라
+    // "전체 자산군의 구성을 보여주는 상태"다 - 자산군 요약 행만 먼저 그리고, 사용자가 누른 자산군의
+    // 개별 자산만 펼친다. '전체'만의 성격인 종목 통합(같은 티커를 소유자/계좌 구분 없이 한 행으로)은
+    // 그대로 유지한다 - merged를 그대로 그룹핑하므로 펼쳤을 때 보이는 행은 예전과 똑같다.
+    document.getElementById('assetTableBody').innerHTML = renderGroupedRows(merged, 'category', rowHtml, groupHeaderRowHtml);
+    document.getElementById('assetCardList').innerHTML = renderGroupedRows(merged, 'category', cardHtml, groupHeaderCardHtml);
   } else {
     // 소유자별/국내해외별/자산군별 - 그룹 헤더(소계)와 함께 나열한다(병합하지 않음, 기존과 동일).
+    // 이쪽도 같은 아코디언을 쓴다 - 보기 방식만 다를 뿐 "요약 먼저, 필요한 것만 펼치기"라는 정보
+    // 계층은 네 방식이 같아야 사용자가 혼란스럽지 않다.
     const sortedRows = sortRows(rawRows);
     document.getElementById('assetTableBody').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, rowHtml, groupHeaderRowHtml);
     document.getElementById('assetCardList').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, cardHtml, groupHeaderCardHtml);
@@ -894,6 +933,13 @@ function handleAssetListClick(e) {
   // 상세 모달의 [수정] 버튼으로, 티커 있는 자산은 시세 자동 조회로만 갱신된다).
   // data-member-ids가 있으면(여러 소유자/계좌를 통합한 행) 그룹 상세 모달로, 없으면 단일 자산
   // 상세 모달로 연다.
+  // [아코디언] 그룹 요약 행을 누르면 그 그룹만 펼치거나 접는다. 개별 자산 행(open-detail)보다 먼저
+  // 확인해야 헤더 클릭이 상세 모달로 새지 않는다.
+  const groupEl = e.target.closest('[data-group-toggle]');
+  if (groupEl) {
+    toggleAssetGroup(groupEl.dataset.groupKey);
+    return;
+  }
   const detailEl = e.target.closest('[data-action="open-detail"]');
   if (detailEl) {
     const memberIdsAttr = detailEl.dataset.memberIds;
@@ -910,4 +956,12 @@ function handleAssetListClick(e) {
 // [계층별 독립 아코디언] 4개 섹션(전체/소유자별/국내해외별/자산군별)마다 별도의 tbody/카드리스트가
 // 있으므로, 각각에 리스너를 붙이는 대신 카드 전체(assetManagementSection)에서 한 번만 위임 처리한다.
 document.getElementById('assetManagementSection').addEventListener('click', handleAssetListClick);
+// 그룹 요약 행은 role="button"/tabindex="0"이라 키보드로도 접근된다 - Enter/Space로도 여닫히게 한다.
+document.getElementById('assetManagementSection').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const groupEl = e.target.closest('[data-group-toggle]');
+  if (!groupEl) return;
+  e.preventDefault();
+  toggleAssetGroup(groupEl.dataset.groupKey);
+});
 

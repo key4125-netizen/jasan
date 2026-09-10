@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v229</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v230</p>
           </div>
         </div>
 
@@ -410,7 +410,7 @@
       <p id="kpiDailyProfitRate" class="text-sm font-semibold mt-0.5">0.00%</p>
       <!-- 총 손익 바로 아래에 보유자별(신랑/와이프/공동 등) 손익을 함께 보여준다 -->
       <div id="kpiDailyOwnerBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
-      <!-- [통화별 일간손익] 신랑/와이프 손익 바로 아래에 거래 통화(a.currency) 기준 원화/해외통화
+      <!-- [통화별 일간손익] 신랑/와이프 손익 바로 아래에 거래 통화(a.currency) 기준 원화자산/외화자산
            일간손익을 같은 글씨 크기(text-sm font-semibold)로 추가 표기한다 - renderKPIs() 참고,
            손익 계산 로직 자체는 전혀 건드리지 않고 기존 dp 값을 통화별로 다시 묶어서 보여줄 뿐이다. -->
       <div id="kpiDailyCurrencyBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
@@ -446,7 +446,16 @@
         </div>
       </div>
       <p id="kpiTotalProfit" class="text-base sm:text-lg font-bold truncate">0원</p>
-      <p id="kpiTotalProfitRate" class="text-sm font-semibold mt-0.5">0.00%</p>
+      <!-- [수익률 기준 표기] 분모는 "지금 보유 중인 금융자산의 매입원가"(financialBuy, js/02)다 - 팔아서
+           확정한 이익은 분자에도 분모에도 없어서, 표기가 없으면 "투자기간 전체 누적 총수익률"로 읽힌다.
+           계산은 그대로 두고 기준만 옆에 적는다. -->
+      <p class="mt-0.5 flex items-baseline flex-wrap gap-x-1.5">
+        <span id="kpiTotalProfitRate" class="text-sm font-semibold">0.00%</span>
+        <span class="text-sm text-slate-400">매입원가 기준</span>
+      </p>
+      <!-- [의미 명확화] 메인 숫자가 "지금까지 번 돈"이 아니라 "아직 팔지 않은 자산의 평가손익"임을
+           한 줄로 밝힌다(계산 무변경). 실현손익은 우측 상단 배지에 따로 있다. -->
+      <p class="text-sm text-slate-400 mt-0.5 break-keep">현재 보유 금융자산의 미실현 평가손익이며, 팔아서 확정한 손익은 오른쪽 위 <span class="text-slate-500 dark:text-slate-300">총 실현손익</span>에 따로 있어요.</p>
       <!-- [Phase 17 P1-1 - 금융자산 평가금액 보조정보] 새 카드를 만들지 않고 기존 손익 카드 안에 보조
            줄만 추가한다 - renderKPIs()(js/02)가 이미 계산해 둔 financialCur(부동산 제외, 이 카드의
            다른 숫자들과 동일한 범위)를 그대로 재사용한다(새 계산 없음). "총자산"이라는 표현은 부동산
@@ -654,15 +663,40 @@
           <button type="button" id="kpiTotalValueDetailBtn" class="detail-btn"><i data-lucide="search" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
         </div>
       </div>
-      <p id="kpiTotalValue" class="text-lg font-bold truncate">0원</p>
-      <!-- [4가지 구분값 표기 - 요청 반영] 카드 제목(총자산평가금액)+메인 숫자가 "전체(금융자산+부동산)"를
-           나타내고, 그 아래 3줄로 금융자산/부동산/달러자산 평가금액을 구분해 보여준다. 예전엔 달러자산만
-           메인 숫자 옆에 괄호로 병기했는데(kpiForeignValueInline), 이제 다른 두 구분값과 같은 줄 형식으로
-           통일했다(JS 쪽은 renderKPIs()에서 같은 id로 계속 채운다). -->
+      <!-- [소유자 금액을 총액 옆으로] 총액과 소유자별 금액은 "이 돈이 누구 것인가"를 같이 읽는 정보라
+           한 줄에 둔다. 좁은 화면에서는 flex-wrap이 소유자 묶음을 통째로 아랫줄로 내린다(글자를 줄이거나
+           잘라내지 않는다). 소유자 태그 렌더링은 예전 그대로 renderKpiBreakdown이 같은 id를 채운다. -->
+      <div class="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
+        <p id="kpiTotalValue" class="text-lg font-bold truncate min-w-0">0원</p>
+        <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 hidden text-sm"></div>
+      </div>
+      <!-- [구분값 표기] 카드 제목(총자산평가금액)+메인 숫자가 "전체(금융자산+부동산)"를 나타내고, 그
+           아래에서 금융자산을 원화/달러로 한 단계 더 쪼개 보여준다. 읽는 순서가 곧 포함관계다:
+             총자산 = 금융자산(= 원화자산 + 달러자산) + 부동산
+           [범위 정정] 예전에는 "달러자산 평가금액"이 부동산까지 포함한 전체 자산 기준으로 계산돼,
+           바로 윗줄(부동산을 뺀 금융자산)과 모집합이 달랐다 - USD 부동산을 가진 사용자에게는 달러자산이
+           금융자산보다 크게 표시됐다. 이제 두 줄 모두 금융자산 기준으로 맞춰 위 등식이 항상 성립한다. -->
       <div class="space-y-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-sm">
         <div class="flex items-center justify-between gap-2">
           <span class="text-slate-400 shrink-0">금융자산 총평가금액</span>
           <span id="kpiFinancialValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
+        </div>
+        <!-- 아래 두 줄은 금융자산을 통화로 쪼갠 하위 항목이라 살짝 들여쓴다(합계는 바로 윗줄과 같다). -->
+        <div class="flex items-center justify-between gap-2 pl-3">
+          <span class="text-slate-400 shrink-0">원화자산 평가금액</span>
+          <span id="kpiKrwFinancialValue" class="font-semibold text-slate-500 dark:text-slate-400 truncate">0원</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 pl-3">
+          <span class="text-slate-400 shrink-0">달러자산 평가금액</span>
+          <span id="kpiForeignValueInline" class="font-semibold text-slate-500 dark:text-slate-400 truncate">0원</span>
+        </div>
+        <!-- [달러자산 미실현 환차손익] 지금 보유 중인 USD 주식/ETF/현금의 매수 시점 환율 대비 현재 환율
+             변동분만 떼어낸 값 - computeForeignFxPnL() 참고. 주가 변동분은 포함하지 않고, 이미 팔아서
+             확정된 환차손익(실현분)도 포함하지 않는다. 예전 라벨은 "누적 환차손익"이었는데 실현분까지
+             합산한 것으로 읽혀서, 실제 계산 범위를 그대로 말하는 "미실현"으로 바꿨다(계산식 무변경). -->
+        <div class="flex items-center justify-between gap-2 pl-3">
+          <span class="text-slate-400 shrink-0">달러자산 미실현 환차손익</span>
+          <span id="kpiForeignFxPnl" class="font-semibold truncate">0원</span>
         </div>
         <!-- [보유 부동산 없으면 숨김] renderKPIs()가 realEstateCur===0이면 이 줄 자체를 hidden 처리한다 -
              부동산을 아예 보유하지 않는 사용자에게 "부동산 0원" 줄이 영구히 남아있지 않도록. -->
@@ -670,21 +704,15 @@
           <span class="text-slate-400 shrink-0">부동산 자산 총평가금액</span>
           <span id="kpiRealEstateValue" class="font-semibold text-slate-700 dark:text-slate-200 truncate">0원</span>
         </div>
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-slate-400 shrink-0">달러자산 평가금액</span>
-          <span id="kpiForeignValueInline" class="font-semibold text-slate-500 dark:text-slate-400 truncate">0원</span>
-        </div>
-        <!-- [달러자산 누적 환차손익] 해외주식/ETF/달러현금 전체의 매수 시점 환율 대비 현재 환율 변동분만
-             떼어낸 누적 환차손익 - computeForeignFxPnL() 참고. 주가 변동분은 포함하지 않는다. -->
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-slate-400 shrink-0">달러자산 누적 환차손익</span>
-          <span id="kpiForeignFxPnl" class="font-semibold truncate">0원</span>
-        </div>
       </div>
-      <!-- 그 아래: 소유자(신랑/와이프/공동 등) 기준 세부 평가금액 -->
-      <div id="kpiTotalValueOwnerBreakdown" class="flex-wrap gap-1 mt-2 hidden text-sm"></div>
-      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리 -->
-      <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 hidden"></div>
+      <!-- 자산군별 세부 집계(주식/채권/현금/부동산 등) - 태그 형태, 보유 자산군이 없으면 JS가 숨김 처리.
+           [라벨을 붙인 이유] 이 태그는 위 금융자산 상세와 달리 부동산까지 포함한 "전체 자산" 기준이다
+           (renderKPIs의 byCategory - 집계 기준은 이번에 바꾸지 않았다). 라벨 없이 바로 아래 붙어 있으면
+           금융자산의 내역으로 읽히므로, 기준이 다르다는 것을 한 줄로 밝힌다. -->
+      <div id="kpiTotalValueBreakdownWrap" class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <span class="text-sm text-slate-400">전체 자산군 구성</span>
+        <div id="kpiTotalValueBreakdown" class="flex-wrap gap-1 mt-1 hidden"></div>
+      </div>
     </div>
   </section>
 
@@ -724,12 +752,15 @@
   </section>
 
   <!-- ============================= FILTER BAR ============================= -->
-  <!-- [가로 1줄 재배치] 'Y 필터' 아이콘/텍스트를 없애고 그 자리에 [필터 초기화] 버튼을 배치, 이어서
-       3개 드롭다운을 한 줄로 나열한다. flex-nowrap + overflow-x-auto로 375px처럼 좁은 화면에서도
-       절대 2줄로 줄바꿈되지 않고(필요하면 가로 스크롤), 대신 padding/font-size를 컴팩트하게 줄여
-       실제로는 375px에서도 스크롤 없이 한 줄에 다 들어가도록 맞췄다. -->
-  <section class="flex flex-nowrap items-center gap-1.5 sm:gap-2 mb-4 overflow-x-auto">
-    <button id="filterResetBtn" class="shrink-0 text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap">필터 초기화</button>
+  <!-- [모바일 배치 - 줄바꿈 허용] 예전에는 flex-nowrap + overflow-x-auto로 "무슨 일이 있어도 한 줄"을
+       강제했다 - 좁은 화면에서 마지막 드롭다운이 화면 밖으로 밀려 가로 스크롤을 해야만 보였고,
+       스크롤 막대가 눈에 띄지 않아 필터가 아예 없는 것처럼 보였다. 이제 한 줄에 안 들어가면 자연스럽게
+       다음 줄로 내려간다(글자를 줄이거나 잘라내지 않는다). 드롭다운 3개의 순서와 의미는 그대로다. -->
+  <section class="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-4">
+    <!-- [필터 초기화 버튼 - 화면에서 숨김] PM 판단으로 이 버튼은 화면에 노출하지 않는다. 초기화 로직
+         자체(js/08의 click 핸들러)는 그대로 두고 표시만 없앤다 - 요소를 삭제하면 그 핸들러가
+         null 참조로 부팅을 끊는다(index.html의 dailyChangeInput/kpiDailyHint와 같은 처리 방식). -->
+    <button id="filterResetBtn" class="hidden shrink-0 text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap">필터 초기화</button>
     <select id="filterOwner" class="shrink-0 text-sm sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 sm:px-3 py-1.5 outline-none">
       <option value="ALL">전체 소유자</option>
     </select>
@@ -757,6 +788,14 @@
       <h3 class="text-sm font-semibold mb-1 sm:mb-3 truncate">국내/해외 비중</h3>
       <div class="h-28 sm:h-56"><canvas id="domesticChart"></canvas></div>
     </div>
+    <!-- [그래프 기준 안내] 세 그래프는 filteredAssets() 하나를 공유한다(js/03 renderCharts) - 위 필터를
+         바꾸면 함께 다시 계산된다. 국내/해외는 저장된 isDomestic(상장 시장) 기준이라 국내 상장 해외
+         ETF가 '국내'로 잡히는데, 화면만 보면 "해외 투자 비중"으로 읽히기 쉬워 기준을 밝혀 둔다.
+         계산은 그대로 두고 문구만 덧붙인다. -->
+    <p class="col-span-3 text-sm text-slate-400 break-keep">
+      세 그래프 모두 지금 고른 필터 범위의 평가금액 기준이며 부동산도 포함합니다.
+      국내/해외는 상장된 시장 기준이라, 국내에 상장된 해외 ETF는 국내로 셉니다.
+    </p>
   </section>
 
   <!-- ============================= TABLE ============================= -->
@@ -1995,7 +2034,7 @@
 <div id="totalProfitModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-sm font-semibold">누적 평가손익 추이</h3>
+      <h3 class="text-sm font-semibold">기간별 평가손익 누적 추이</h3>
       <button type="button" id="closeTotalProfitModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
@@ -2008,6 +2047,12 @@
         <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
         <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
       </div>
+
+      <!-- [범위 안내] 이 그래프는 카드 본문 숫자(현재가-매입원가, 부동산 제외)를 쪼갠 것이 아니다 -
+           buildCumulativeProfitSeries(js/11)가 dailySnapshots에 쌓인 하루치 변동분을 고른 기간만큼
+           누적한 값이고, 그 스냅샷은 부동산까지 포함한 전체 자산 기준이다(recordDailySnapshot, js/02).
+           같은 카드 안에 있어 "그 숫자의 내역"으로 읽히기 쉬워 차이를 밝혀 둔다. 계산은 무변경. -->
+      <p class="text-sm text-slate-400 break-keep">고른 기간 동안 시세·환율이 움직여 쌓인 손익을 첫날 0원부터 더해 나간 값입니다. 부동산을 포함한 전체 자산 기준이라, 이 카드 본문의 평가손익과는 다른 숫자예요.</p>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
         <canvas id="totalProfitChart"></canvas>
