@@ -1141,7 +1141,7 @@ document.getElementById('filterResetBtn').addEventListener('click', () => {
 });
 
 // [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 세그먼트 버튼 중 하나를 탭하면 그 관점으로 전환해
-// 단일 목록을 다시 그린다(setAssetListView, js/07). 4개 버튼에 각각 리스너를 붙이는 대신 컨테이너
+// 단일 목록을 다시 그린다(setAssetListView, js/07). 버튼마다 리스너를 붙이는 대신 컨테이너
 // 하나(assetViewSegmented)에 위임 처리한다.
 document.getElementById('assetViewSegmented').addEventListener('click', (e) => {
   const btn = e.target.closest('.asset-view-btn');

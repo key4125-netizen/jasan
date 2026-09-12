@@ -21,7 +21,7 @@ async function seedMixedAssets(page) {
   await page.getByText('총자산현황', { exact: true }).click();
 }
 
-test('4개 관점 전환 시 총자산/보유자산수는 항상 동일하고, 목록만 다르게 그룹핑된다', async ({ page }) => {
+test('3개 관점 전환 시 총자산/보유자산수는 항상 동일하고, 목록만 다르게 그룹핑된다', async ({ page }) => {
   await seedMixedAssets(page);
 
   const totalBefore = await page.locator('#assetListTotalValue').textContent();
@@ -60,13 +60,15 @@ test('4개 관점 전환 시 총자산/보유자산수는 항상 동일하고, �
   const domesticText = await page.locator('#assetCardList').innerText();
   expect(domesticText.indexOf('해외 (1건)')).toBeLessThan(domesticText.indexOf('국내 (2건)'));
 
-  // 자산군별 - 전부 채권이라 단일 그룹(채권 3건)으로 묶인다.
-  await page.locator('#assetViewSegmented .asset-view-btn[data-view="category"]').click();
-  const categoryText = await page.locator('#assetCardList').innerText();
-  expect(categoryText).toContain('채권 (3건)');
+  // [자산군 버튼 제거] 상단에서 고르는 '자산군' 보기 방식은 없앴다 - 같은 개념을 '전체'가 이미
+  // 보여주기 때문이다. 버튼이 실제로 사라졌는지, 그리고 자산군 요약이 '전체'에서 그대로 나오는지
+  // 두 가지를 함께 고정한다(기능이 아니라 중복 선택지만 사라졌다는 뜻).
+  await expect(page.locator('#assetViewSegmented .asset-view-btn[data-view="category"]')).toHaveCount(0);
+  await expect(page.locator('#assetViewSegmented .asset-view-btn')).toHaveCount(3);
 
-  // 전체로 되돌아가도 데이터가 그대로 유지된다(기존 데이터 보존) - 요약 행을 펼쳐 확인한다.
+  // 전체로 되돌아가면 자산군 요약(전부 채권이라 채권 3건)이 보이고, 펼치면 데이터도 그대로다.
   await page.locator('#assetViewSegmented .asset-view-btn[data-view="none"]').click();
+  expect(await page.locator('#assetCardList').innerText()).toContain('채권 (3건)');
   await page.locator('#assetTableBody [data-group-toggle]').first().click();
   expect(await page.locator('#assetCardList').innerText()).toContain('E2E26신랑국내');
 });
@@ -83,17 +85,29 @@ test('세그먼트 전환 중에도 검색 결과는 팝업으로 독립적으�
   expect(resultText).not.toContain('E2E26와이프국내');
 });
 
-test('375px에서 세그먼트 컨트롤이 2x2로 배치되고 가로 스크롤(clipping)이 없다', async ({ page }) => {
+test('375px에서 세그먼트 컨트롤 3개가 한 줄에 들어가고 가로 스크롤(clipping)이 없다', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await seedMixedAssets(page);
 
   const bodyScrollWidth = await page.locator('body').evaluate((el) => el.scrollWidth);
   expect(bodyScrollWidth).toBeLessThanOrEqual(375);
 
-  // 2x2 배치 확인 - 1번째/2번째 버튼(전체/소유자)이 같은 y좌표, 3번째(국내외)는 다음 줄.
-  const boxes = await page.locator('#assetViewSegmented .asset-view-btn').evaluateAll(
-    (els) => els.map((el) => el.getBoundingClientRect().top)
+  // 1행 3열 확인 - 세 버튼의 y좌표가 모두 같아야 한다(예전에는 375px에서 2x2로 접혔다).
+  const m = await page.locator('#assetViewSegmented .asset-view-btn').evaluateAll(
+    (els) => els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const span = el.querySelector('span');
+      return { top: r.top, height: Math.round(r.height), clipped: span.scrollWidth > span.clientWidth + 1,
+        font: parseFloat(el.ownerDocument.defaultView.getComputedStyle(span).fontSize) };
+    })
   );
-  expect(boxes[0]).toBe(boxes[1]); // 전체 · 소유자 - 같은 줄
-  expect(boxes[2]).toBeGreaterThan(boxes[0]); // 국내외 - 다음 줄
+  expect(m).toHaveLength(3);
+  expect(m[1].top).toBe(m[0].top);
+  expect(m[2].top).toBe(m[0].top);
+  // 한 줄로 만들기 위해 글자를 줄이거나 잘라내지 않았는지 함께 고정한다.
+  m.forEach((b) => {
+    expect(b.height).toBeGreaterThanOrEqual(44);
+    expect(b.font).toBeGreaterThanOrEqual(14);
+    expect(b.clipped).toBe(false);
+  });
 });

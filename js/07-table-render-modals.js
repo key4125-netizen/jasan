@@ -41,6 +41,9 @@ function sortRows(rows) {
 function getTableGroupKey(mode, r) {
   if (mode === 'owner') return r.owner;
   if (mode === 'domestic') return r.isDomestic;
+  // 'category'는 세그먼트 버튼에서는 사라졌지만 **여전히 쓰인다** - '전체'(none) 보기가
+  // renderGroupedRows(merged, 'category', ...)로 자산군 요약 행을 만든다. 지우면 주식/ETF/채권/
+  // 현금/부동산 그룹이 통째로 사라진다.
   if (mode === 'category') return r.category;
   return null;
 }
@@ -171,7 +174,7 @@ function buildMergedRows(rows) {
   });
 }
 
-// [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 4개 보기 방식(전체/소유자별/국내해외별/자산군별) 중
+// [자산 관리 카드 - 관점 전환(Phase 18 P2-1)] 3개 보기 방식(전체/소유자별/국내해외별) 중
 // 한 번에 하나만 단일 목록 영역(assetTableBody/assetCardList)에 렌더링한다 - 예전(4개 독립 아코디언,
 // 전부 동시에 계산·렌더링)과 달리 이제 현재 선택된 관점 하나만 계산한다. 값 자체(그룹핑 규칙/정렬/
 // 병합)는 전혀 바뀌지 않았고 "몇 개를 동시에 그리는가"만 바뀌었다. 화면 진입 시 기본값은 '전체'(none)
@@ -233,7 +236,7 @@ function renderTable() {
   emptyMsg.classList.add('hidden');
 
   // '전체' - 같은 종목을 여러 소유자/계좌가 나눠 보유해도 한 행으로 합친다. 총 건수 라벨은 관점과
-  // 무관하게 항상 이 병합 기준(merged)으로 계산한다(예전에도 4개 아코디언 헤더 전부 동일했다).
+  // 무관하게 항상 이 병합 기준(merged)으로 계산한다(예전에도 아코디언 헤더 전부 동일했다).
   const merged = sortRows(buildMergedRows(rawRows));
   if (assetListViewMode === 'none') {
     // [전체 = 자산군 요약 + 접힘] '전체'는 이제 "모든 개별 자산을 한 번에 펼쳐 보여주는 상태"가 아니라
@@ -243,9 +246,9 @@ function renderTable() {
     document.getElementById('assetTableBody').innerHTML = renderGroupedRows(merged, 'category', rowHtml, groupHeaderRowHtml);
     document.getElementById('assetCardList').innerHTML = renderGroupedRows(merged, 'category', cardHtml, groupHeaderCardHtml);
   } else {
-    // 소유자별/국내해외별/자산군별 - 그룹 헤더(소계)와 함께 나열한다(병합하지 않음, 기존과 동일).
+    // 소유자별/국내해외별 - 그룹 헤더(소계)와 함께 나열한다(병합하지 않음, 기존과 동일).
     // 이쪽도 같은 아코디언을 쓴다 - 보기 방식만 다를 뿐 "요약 먼저, 필요한 것만 펼치기"라는 정보
-    // 계층은 네 방식이 같아야 사용자가 혼란스럽지 않다.
+    // 계층은 세 방식이 같아야 사용자가 혼란스럽지 않다.
     const sortedRows = sortRows(rawRows);
     document.getElementById('assetTableBody').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, rowHtml, groupHeaderRowHtml);
     document.getElementById('assetCardList').innerHTML = renderGroupedRows(sortedRows, assetListViewMode, cardHtml, groupHeaderCardHtml);

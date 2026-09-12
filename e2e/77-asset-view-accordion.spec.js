@@ -107,7 +107,9 @@ test('C. 보기 방식을 바꾸면 그 방식의 그룹으로 다시 접힌 상
   await open(page);
   await seedAndRead(page);
   await page.locator('#assetTableBody [data-group-key="주식"]').click();
-  for (const [view, keys] of [['owner', ['신랑', '와이프']], ['domestic', ['해외', '국내']], ['category', ['주식', 'ETF', '채권', '현금', '부동산']]]) {
+  // 'category' 보기 방식은 상단 버튼에서 제거됐다 - '전체'가 같은 자산군 그룹을 보여주므로
+  // 마지막에 '전체'로 돌아와 그 그룹 키가 그대로인지까지 확인한다.
+  for (const [view, keys] of [['owner', ['신랑', '와이프']], ['domestic', ['해외', '국내']], ['none', ['주식', 'ETF', '채권', '현금', '부동산']]]) {
     await page.locator(`#assetViewSegmented .asset-view-btn[data-view="${view}"]`).click();
     const r = await read(page);
     expect(r.groupKeys, `${view} 그룹 키`).toEqual(keys);
