@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v230</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v231</p>
           </div>
         </div>
 
@@ -2946,6 +2946,26 @@
       <!-- [오타 방지] "클라우드에 아직 아무 데이터도 없음"은 (a) 정말 이 기기가 최초 설정이거나
            (b) 배우자 기기와 다른 암호를 잘못 입력했을 때 똑같이 발생한다 - 구분할 방법이 없으므로,
            바로 업로드하지 않고 한 번 더 확인을 받는다(onSyncPasswordSaved 참고). -->
+      <!-- [P1-1 데이터 보존 - 동기화 재개 시 방향 선택] 예전에는 암호를 저장하면 곧장 클라우드 데이터를
+           통째로 받아와서, 동기화를 껐다 켜는 사이에 입력한 거래·자산이 조용히 사라졌다. 이제 클라우드에
+           데이터가 있으면 어느 쪽을 기준으로 할지 사용자가 직접 고른다(onSyncPasswordSaved 참고).
+           건수를 함께 보여주는 이유: 샘플 자산만 있는 새 기기에서 실수로 [올리기]를 누르면 가족의
+           실제 목록이 샘플로 바뀌므로, 숫자만 보고도 바로 알아챌 수 있게 한다. -->
+      <div id="syncDirectionBox" class="hidden text-sm rounded-lg px-3 py-3 space-y-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+        <p class="font-semibold text-slate-700 dark:text-slate-200">클라우드에 이미 저장된 데이터가 있습니다. 어떻게 맞출까요?</p>
+        <div class="space-y-1 text-slate-500 dark:text-slate-400">
+          <p id="syncDirectionLocalCounts">이 기기: 확인 중...</p>
+          <p id="syncDirectionRemoteCounts">클라우드: 확인 중...</p>
+        </div>
+        <div class="space-y-2">
+          <button type="button" id="syncDirectionPullBtn" class="w-full text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">클라우드 데이터 받기</button>
+          <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">클라우드에 있는 내용을 이 기기에 받아옵니다. 이 기기에만 있던 내용은 사라집니다.</p>
+        </div>
+        <div class="space-y-2">
+          <button type="button" id="syncDirectionPushBtn" class="w-full text-sm font-semibold px-3 py-2.5 min-h-[44px] rounded-lg border border-amber-400 dark:border-amber-500 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950">이 기기 데이터 올리기</button>
+          <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">이 기기의 내용을 클라우드에 반영합니다. 다른 기기에서 아직 동기화하지 않은 입력은 지워지지 않고 합쳐집니다.</p>
+        </div>
+      </div>
       <div id="syncUploadConfirmBox" class="hidden text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded-lg px-3 py-2 space-y-2">
         <p>클라우드에 저장된 데이터가 없거나 입력한 암호가 일치하지 않습니다. 모바일/상대 기기에서 설정한 암호와 대소문자 및 공백이 완벽히 같은지 확인해 주세요. 이 기기가 맞게 처음 설정하는 것이라면 아래 버튼으로 이 기기 데이터를 업로드하세요.</p>
         <button type="button" id="syncUploadConfirmBtn" class="w-full text-sm font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">이 기기 데이터 업로드</button>

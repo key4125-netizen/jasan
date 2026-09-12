@@ -1151,8 +1151,49 @@ function schedulePush() {
     pushToCloud().catch((e) => console.warn('[동기화] 업로드 실패', e));
   }, 3000); // 3초 트레일링 디바운스 - 엑셀 일괄 업로드 등 연속 변경을 한 번의 push로 합친다
 }
-async function pushToCloud() {
+/* -------------------------------------------------------------------------
+ * [P1-1 - 이 기기 데이터 올리기] 업로드 payload에만 "지금" 시각을 찍는다.
+ *
+ * 왜 필요한가: Cloud를 이 기기 내용으로 덮어써도, 받는 기기의 병합이 그것을 되돌릴 수 있다.
+ * mergeCollectionById는 같은 id를 updatedAt이 더 최신인 쪽으로 고르고(아래 :1058 근처),
+ * rebalance/projection은 adoptRemoteRebalanceAndProjection이 필드 자체의 updatedAt을 비교한다.
+ * 그래서 상대 기기가 그 레코드를 더 최근에 고쳐 뒀다면, 사용자가 "이 기기 기준"을 명시적으로
+ * 골랐는데도 상대 값이 그대로 남고 다음 push에서 되돌아간다(실측 재현).
+ *
+ * 왜 payload만인가: state.assets/state.transactions/state.rebalance/state.projection을 실제로
+ * 고치면 ① 업로드가 실패했을 때 로컬이 조용히 바뀐 채로 남고 ② 사용자가 실제로 편집한 시각
+ * (누가 언제 고쳤는지)이 영구히 사라진다. encryptSyncBlob은 JSON.stringify만 하므로,
+ * 복사본에 찍어 올리면 두 문제가 모두 생기지 않는다 - 실패해도 원복할 대상 자체가 없다.
+ *
+ * 찍는 것은 네 곳뿐이다(assets[].updatedAt / transactions[].updatedAt / rebalance.updatedAt /
+ * projection.updatedAt). createdAt은 정렬 안정성의 기준이라 절대 건드리지 않고, positionSource·
+ * categorySource·buyRate·rateMatchOverride·role 등 보존 대상 필드도 그대로 복사된다.
+ * tickerRoles/learnedTickerNames/dailySnapshots는 timestamp가 없는 합집합 구조라(병합 쪽 주석
+ * 참고) 여기서 다루지 않는다 - 덮어쓰기 개념 자체가 없다.
+ *
+ * 삭제는 이 함수와 무관하다 - "payload에 그 id가 없음 + 받는 기기의 기준선에 있었음"으로
+ * 표현되므로(mergeCollectionById), 시각을 새로 찍어도 삭제 전파는 그대로 동작한다.
+ * ---------------------------------------------------------------------- */
+function stampPayload(blob, ts) {
+  return {
+    ...blob,
+    assets: (blob.assets || []).map((a) => ({ ...a, updatedAt: ts })),
+    transactions: (blob.transactions || []).map((t) => ({ ...t, updatedAt: ts })),
+    rebalance: blob.rebalance ? { ...blob.rebalance, updatedAt: ts } : blob.rebalance,
+    projection: blob.projection ? { ...blob.projection, updatedAt: ts } : blob.projection
+  };
+}
+
+// opts.localWins: 사용자가 동기화 재개 화면에서 [이 기기 데이터 올리기]를 명시적으로 고른 경우에만
+// true로 넘어온다(onSyncPasswordSaved 아래 핸들러 참고). 그때만 아래 "덮어쓰기 전 병합"을 건너뛰고
+// 이 기기 상태를 그대로 올린다. 값을 넘기지 않는 기존 호출(schedulePush, 최초 업로드 버튼 등)은
+// 예전과 완전히 같은 경로를 탄다 - 자동 동기화가 스스로 한쪽을 이기게 만들지 않는다.
+async function pushToCloud(opts) {
+  const localWins = !!(opts && opts.localWins);
   if (!syncState.enabled) return;
+  // [실패 원자성] 성공 이후에만 바뀌어야 하는 값이다. 아래 선병합이 중간까지 진행된 뒤 POST가
+  // 실패하는 경우에도 이 기기가 "원격을 이미 반영했다"고 잘못 기억하지 않도록 catch에서 되돌린다.
+  const savedLastVersion = syncState.lastVersion;
   try {
     const kvKey = await deriveKvKey(syncState.password);
     // [스마트 머지 - 덮어쓰기 전 병합] 업로드 직전에 클라우드를 먼저 확인해, 로컬이 아직 못 받은 더
@@ -1163,7 +1204,7 @@ async function pushToCloud() {
     const getRes = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
     if (getRes.ok) {
       const remote = await getRes.json();
-      if (remote.version && remote.version > syncState.lastVersion) {
+      if (!localWins && remote.version && remote.version > syncState.lastVersion) {
         const parsed = await decryptSyncBlob(remote, syncState.password);
         applyingRemoteUpdate = true;
         try {
@@ -1185,7 +1226,9 @@ async function pushToCloud() {
       }
     }
     const version = Date.now();
-    const encrypted = await encryptSyncBlob(buildSyncBlob(), syncState.password);
+    // [P1-1] localWins일 때만 업로드본에 "지금"을 찍는다 - state는 건드리지 않는다(stampPayload 주석).
+    const blob = buildSyncBlob();
+    const encrypted = await encryptSyncBlob(localWins ? stampPayload(blob, version) : blob, syncState.password);
     const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1203,6 +1246,9 @@ async function pushToCloud() {
     localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
     updateSyncStatusUI();
   } catch (e) {
+    // [실패 원자성] 성공 경로에서만 갱신되는 값을 원래대로 돌려둔다 - 로컬 데이터(state/localStorage)는
+    // 애초에 건드리지 않으므로 되돌릴 것이 없고, 여기서는 메모리상 진행 상태만 원복한다.
+    syncState.lastVersion = savedLastVersion;
     syncState.hasError = true;
     updateSyncStatusUI();
     throw e; // schedulePush()의 .catch(console.warn)이 계속 받아 로그로 남기도록 그대로 전파
@@ -1375,6 +1421,9 @@ function showSyncDecryptFailure() {
 }
 function openSyncSettingsModal() {
   updateSyncStatusUI();
+  // [P1-1] 지난번에 열어두고 닫은 방향 선택이 그대로 남아 있으면, 지금 클라우드 상태와 무관한
+  // 선택지를 보여주게 된다 - 열 때마다 접어 두고 암호를 저장한 뒤에 다시 판단한다.
+  document.getElementById('syncDirectionBox')?.classList.add('hidden');
   document.getElementById('syncSettingsModal').classList.remove('hidden');
   pushModalHistoryState();
 }
@@ -1382,13 +1431,31 @@ function closeSyncSettingsModal(viaBackButton) {
   document.getElementById('syncSettingsModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
-// [최초 페어링] 신랑님 폰(먼저 설정, 클라우드 비어있음) -> pull이 'not_found' -> "이 기기 데이터 업로드"
+// [최초 페어링] 신랑님 폰(먼저 설정, 클라우드 비어있음) -> 슬롯 확인이 404 -> "이 기기 데이터 업로드"
 // 버튼을 한 번 더 눌러 확인해야 push된다(자동으로 바로 push하지 않는다 - 아래 이유 참고). 와이프님
-// 폰(나중에 설정, 클라우드에 이미 있음) -> pull이 'applied'로 자동 채택.
+// 폰(나중에 설정, 클라우드에 이미 있음) -> 방향 선택을 보여주고 사용자가 직접 고른다.
 // [오타 방지 - 자동 push하지 않는 이유] "클라우드에 데이터 없음(404)"은 (a) 정말 최초 기기이거나
 // (b) 배우자와 다른 암호를 잘못 입력했을 때 똑같이 발생해서 구분이 안 된다 - 자동으로 바로 push하면
 // 오타를 낸 사용자가 원래 있던 진짜 동기화 슬롯과 무관한 "유령" 슬롯을 조용히 만들고도 "동기화 시작됨"
 // 이라는 성공 메시지를 보게 되어, 정작 배우자 기기와는 영영 연결되지 않는 조용한 실패로 이어진다.
+//
+/* -------------------------------------------------------------------------
+ * [P1-1 데이터 보존 - 동기화 재개 시 방향을 묻는다]
+ *
+ * 예전에는 암호를 저장하면 곧장 pullFromCloud({fullAdopt:true})를 불렀다. fullAdopt는 병합이
+ * 아니라 통째 교체라, 사용자가 동기화를 껐다 켜는 사이에 입력한 거래·자산이 한 번에 사라졌다
+ * (실측: 거래 3건 추가 후 재개 -> 3건 전부 소멸, 자산 수량도 클라우드의 과거 값으로 회귀).
+ * "동기화를 다시 켠다"와 "이 기기를 지우고 클라우드로 되돌린다"는 전혀 다른 뜻인데 코드가
+ * 그 둘을 구분하지 않았다.
+ *
+ * 앱이 어느 쪽이 맞는지 추측하지 않는다 - 클라우드에 데이터가 있으면 사용자에게 직접 묻는다.
+ * fullAdopt 자체는 그대로 둔다: 처음 연결하는 기기에는 샘플 자산이 들어 있어서, 병합으로 붙이면
+ * 배우자의 실제 목록에 샘플이 섞인다(실측: 자산 1건이 되어야 할 상황에서 7건). 그 보호는
+ * [클라우드 데이터 받기]를 고른 경우에 그대로 살아 있다.
+ *
+ * 슬롯 확인은 GET 한 번으로 끝내고 state에 아무것도 반영하지 않는다 - 404면 예전 그대로
+ * 업로드 확인 흐름으로 가고(불필요한 선택을 묻지 않는다), 200이면 방향 선택을 보여준다.
+ * ---------------------------------------------------------------------- */
 async function onSyncPasswordSaved(password) {
   localStorage.setItem(LS_SYNC_PASSWORD, password);
   localStorage.setItem(LS_SYNC_ENABLED, '1');
@@ -1398,15 +1465,69 @@ async function onSyncPasswordSaved(password) {
   localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
   document.getElementById('syncDecryptErrorBox')?.classList.add('hidden');
   document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
-  const result = await pullFromCloud({ fullAdopt: true }); // 최초 페어링 - 병합 대신 통째 채택(위 pullFromCloud 주석 참고)
-  updateSyncStatusUI();
-  if (result === 'applied') {
-    showToast('클라우드 데이터를 이 기기에 반영했습니다.', 'success');
-    closeSyncSettingsModal(); // [자동 닫기] 저장이 실제로 성공(=최신 데이터 반영)했을 때만 닫는다
+  document.getElementById('syncDirectionBox')?.classList.add('hidden');
+
+  let probe;
+  try {
+    probe = await probeCloudSlot(password);
+  } catch (e) {
+    updateSyncStatusUI();
+    showToast('네트워크 오류로 동기화에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    return;
   }
-  else if (result === 'not_found') document.getElementById('syncUploadConfirmBox')?.classList.remove('hidden');
-  else if (result === 'decrypt_failed') showToast('비밀번호가 올바르지 않습니다.', 'error');
-  else if (result === 'error') showToast('네트워크 오류로 동기화에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+  updateSyncStatusUI();
+  if (!probe.exists) {
+    // 404 - 예전과 같은 업로드 확인 흐름. 방향 선택을 묻지 않는다.
+    document.getElementById('syncUploadConfirmBox')?.classList.remove('hidden');
+    return;
+  }
+  if (probe.decryptFailed) {
+    // 암호가 달라 복호화가 안 되는 경우 - 예전과 같은 안내. 방향을 고르게 하지 않는다
+    // (어느 쪽이 "내 데이터"인지 알 수 없는 상태에서 덮어쓰기를 제시하면 위험하다).
+    showSyncDecryptFailure();
+    updateSyncStatusUI();
+    return;
+  }
+  renderSyncDirectionCounts(probe.counts);
+  document.getElementById('syncDirectionBox')?.classList.remove('hidden');
+}
+
+/* [P1-1] 슬롯 존재 확인 전용 - state/localStorage에 아무것도 쓰지 않는다.
+ * 기존 deriveKvKey/decryptSyncBlob/Worker API를 그대로 쓰고 새 엔드포인트를 만들지 않는다.
+ * 복호화는 건수 안내를 위해서만 시도하고, 실패해도 슬롯 존재 사실은 그대로 반환한다. */
+async function probeCloudSlot(password) {
+  const kvKey = await deriveKvKey(password);
+  const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
+  if (res.status === 404) return { exists: false };
+  if (!res.ok) throw new Error('probe failed: ' + res.status);
+  const remote = await res.json();
+  if (!remote || !remote.version) return { exists: false };
+  try {
+    const parsed = await decryptSyncBlob(remote, password);
+    return {
+      exists: true,
+      counts: {
+        remoteAssets: Array.isArray(parsed.assets) ? parsed.assets.length : null,
+        remoteTx: Array.isArray(parsed.transactions) ? parsed.transactions.length : null
+      }
+    };
+  } catch (e) {
+    return { exists: true, decryptFailed: true };
+  }
+}
+
+/* [P1-1] 방향 선택 화면의 건수 안내 - 새 기기(샘플 자산만 있는 상태)에서 실수로 [이 기기 데이터
+ * 올리기]를 누르는 것을 막는 가장 단순한 장치다. 건수를 알 수 없으면 추측하지 않고 비워 둔다. */
+function renderSyncDirectionCounts(counts) {
+  const localEl = document.getElementById('syncDirectionLocalCounts');
+  const remoteEl = document.getElementById('syncDirectionRemoteCounts');
+  if (localEl) localEl.textContent = `이 기기: 자산 ${fmtNum(state.assets.length)}건 · 거래 ${fmtNum(state.transactions.length)}건`;
+  if (remoteEl) {
+    const known = counts && Number.isFinite(counts.remoteAssets) && Number.isFinite(counts.remoteTx);
+    remoteEl.textContent = known
+      ? `클라우드: 자산 ${fmtNum(counts.remoteAssets)}건 · 거래 ${fmtNum(counts.remoteTx)}건`
+      : '클라우드: 건수를 확인하지 못했습니다';
+  }
 }
 
 document.getElementById('syncSettingsBtn').addEventListener('click', () => openSyncSettingsModal());
@@ -1420,6 +1541,7 @@ document.getElementById('syncPasswordSaveBtn').addEventListener('click', async (
 });
 document.getElementById('syncUploadConfirmBtn').addEventListener('click', async () => {
   try {
+    // [빈 슬롯] 선병합할 원격 데이터가 없으므로 localWins가 필요 없다 - 예전 호출 그대로 둔다.
     await pushToCloud();
     document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
     updateSyncStatusUI();
@@ -1427,6 +1549,53 @@ document.getElementById('syncUploadConfirmBtn').addEventListener('click', async 
     closeSyncSettingsModal(); // [자동 닫기] 업로드가 실제로 성공했을 때만 닫는다
   } catch (e) {
     showToast('네트워크 오류로 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+  }
+});
+// [P1-1 - 클라우드 데이터 받기] 예전에 암호 저장 직후 자동으로 돌던 그 호출을 그대로 쓴다 -
+// pullFromCloud와 fullAdopt의 의미는 한 줄도 바꾸지 않았고, 실행 시점만 "사용자가 골랐을 때"로 옮겼다.
+document.getElementById('syncDirectionPullBtn').addEventListener('click', async () => {
+  document.getElementById('syncDirectionBox')?.classList.add('hidden');
+  const result = await pullFromCloud({ fullAdopt: true });
+  updateSyncStatusUI();
+  if (result === 'applied') {
+    showToast('클라우드 데이터를 이 기기에 반영했습니다.', 'success');
+    closeSyncSettingsModal();
+  } else if (result === 'not_found') {
+    document.getElementById('syncUploadConfirmBox')?.classList.remove('hidden');
+  } else if (result === 'decrypt_failed') {
+    showToast('비밀번호가 올바르지 않습니다.', 'error');
+  } else if (result === 'error') {
+    document.getElementById('syncDirectionBox')?.classList.remove('hidden'); // 재시도할 수 있게 되돌린다
+    showToast('네트워크 오류로 동기화에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+  } else {
+    // 'up_to_date' - 받아올 새 내용이 없었다(이 기기가 이미 그 버전을 본 적이 있는 경우).
+    showToast('클라우드에 새로 받아올 내용이 없습니다.', 'info');
+    closeSyncSettingsModal();
+  }
+});
+// [P1-1 - 이 기기 데이터 올리기] 되돌릴 수 없는 동작이라 한 번 더 확인을 받는다(거래 삭제와 같은 방식).
+// 문구는 실제 반영 범위와 정확히 일치시킨다 - tickerRoles/학습된 종목명/일별 손익 이력은 합집합
+// 구조라 덮이지 않고, 상대 기기가 아직 올리지 않은 입력도 지워지지 않는다. 그래서 "모든 데이터"나
+// "완전히 덮어쓰기" 같은 표현을 쓰지 않는다.
+document.getElementById('syncDirectionPushBtn').addEventListener('click', async () => {
+  const ok = confirm(
+    '이 기기 데이터를 클라우드에 올릴까요?\n\n'
+    + '이 기기의 자산, 거래내역, 목표비중, 미래예측 설정을 클라우드에 올립니다.\n'
+    + '클라우드와 다른 기기의 내용이 이 기기 기준으로 바뀔 수 있습니다.\n'
+    + '다른 기기에서 아직 동기화하지 않은 입력이 있으면 그 내용은 지워지지 않고 합쳐집니다.\n\n'
+    + '먼저 JSON 백업을 권장합니다.'
+  );
+  if (!ok) return; // 취소 - 네트워크 요청 자체를 하지 않는다
+  try {
+    await pushToCloud({ localWins: true });
+    document.getElementById('syncDirectionBox')?.classList.add('hidden');
+    updateSyncStatusUI();
+    showToast('이 기기 데이터를 클라우드에 올렸습니다.', 'success');
+    closeSyncSettingsModal();
+  } catch (e) {
+    // 실패해도 로컬 데이터는 그대로다(payload에만 시각을 찍으므로 state를 건드리지 않는다) -
+    // 선택 화면을 닫지 않고 그대로 두어 바로 다시 시도할 수 있게 한다.
+    showToast('클라우드에 올리지 못했습니다. 네트워크를 확인하고 다시 시도해주세요.', 'error');
   }
 });
 document.getElementById('syncDisableBtn').addEventListener('click', () => {
@@ -1443,6 +1612,8 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { mergeCollectionById, carryOverCategorySource, buildCategorySourceIndex, mergeAssetsForAppend,
     // [P1 데이터 보존 - FIX-4/FIX-5] 같은 이유로 노출한다(순수 함수라 단위 테스트로 검증 가능).
-    buildCarryIfAbsentIndex, carryOverAbsentFields };
+    buildCarryIfAbsentIndex, carryOverAbsentFields,
+    // [P1-1] 업로드 payload 스탬프도 순수 함수라 같은 방식으로 검증한다.
+    stampPayload };
 }
 
