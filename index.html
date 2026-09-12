@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v233</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v234</p>
           </div>
         </div>
 
@@ -499,17 +499,19 @@
          문구를 함께 보여준다. renderMacroBriefing()이 채운다 - refreshPricesAndRates() 갱신 주기에
          함께 계산되며 별도 폴링은 하지 않는다. -->
     <div id="macroBriefingSection" class="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-      <!-- [Phase 17 P1-1 - 기본 접힘] 개인 자산 진단(RISK 관리, 바로 아래)보다 시장 전반 참고정보가
-           먼저 화면을 차지하지 않도록 기본값을 접힘으로 바꾼다 - Top5 아코디언(reapplyTopHoldingsAccordionHeights)과
-           동일한 max-height 트랜지션 패턴, 접어도 데이터/계산에는 전혀 영향 없음(렌더링만 감춤). -->
+      <!-- [v234 - 기본 펼침] Phase 17 P1-1에서는 개인 자산 진단(RISK 관리)이 먼저 보이도록 이 섹션을
+           기본 접힘으로 뒀지만, 그러면 대시보드에 들어와도 지수·환율·금리가 하나도 보이지 않았다 -
+           지표 10개는 진입 직후부터 보이게 하고, 그 아래 해석만 접는다(macroBriefingOpen = true, js/10).
+           아래 max-height/chevron 초기값도 펼친 상태로 맞춰 첫 페인트부터 깜빡임 없이 보이게 한다.
+           접힘/펼침은 렌더링만 바꾼다 - 데이터·계산에는 전혀 영향이 없다. -->
       <button type="button" id="macroBriefingToggleBtn" class="w-full flex items-center justify-between gap-1.5 mb-1 text-left">
         <span class="flex items-center gap-1.5">
           <span class="text-base leading-none">🌍</span>
           <h4 class="text-base font-bold text-slate-600 dark:text-slate-300">시장 현황 &amp; 매크로 브리핑</h4>
         </span>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="macroBriefingChevron"></i>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 rotate-180" id="macroBriefingChevron"></i>
       </button>
-      <div id="macroBriefingBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+      <div id="macroBriefingBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out">
       <!-- [1행 5개 · 2행 5개 고정] 화면 크기와 무관하게 예외 없이 이 2행 구성으로 고정한다(1행:
            VIX/원달러/미10년물/금시세/달러인덱스, 2행: 코스피/코스닥/S&P500/나스닥/다우) - renderMacroBriefing()이
            내부에 grid-cols-5 행 두 개를 따로 만들어 채운다(gridEl 자체는 두 행을 세로로 쌓는 순수

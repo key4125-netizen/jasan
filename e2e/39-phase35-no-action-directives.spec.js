@@ -246,7 +246,8 @@ for (const w of [375, 390, 412, 768]) {
       const isDark = await page.locator('html').evaluate((el) => el.classList.contains('dark'));
       if (isDark !== dark) await page.locator('#darkModeBtn').click();
       await page.locator('[data-tab="dashboard"]').click();
-      await page.locator('#macroBriefingToggleBtn').click();
+      // [v234] 브리핑 자체는 기본 펼침이고, 그 아래 해석만 접혀 있다 - 문구를 재려면 해석을 연다.
+      await page.locator('#macroDiagnosisToggleBtn').click();
       await expect(page.locator('#macroBriefingDiagnosis')).toBeVisible();
       const info = await page.locator('#macroBriefingDiagnosis').evaluate((el) => {
         const win = el.ownerDocument.defaultView;

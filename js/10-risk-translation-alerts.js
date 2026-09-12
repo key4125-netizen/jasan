@@ -1250,7 +1250,11 @@ function renderMacroBriefing() {
   reapplyMacroBriefingAccordionHeight();
 }
 
-let macroBriefingOpen = false; // 기본값: 접힘(개인 자산 진단이 이보다 먼저 보이도록)
+// [v234 - 기본 펼침] Phase 17 P1-1에서 기본값을 접힘으로 뒀더니, 대시보드에 들어와도 지수·환율·
+// 금리가 하나도 보이지 않고 헤더를 한 번 더 눌러야 나타났다 - "초보자가 시장 현황을 바로 본다"는
+// 원칙과 어긋나, 지표 10개는 진입 직후부터 보이게 하고 그 아래 해석만 접어 두는 쪽으로 바꿨다.
+// 지표 종류·데이터·계산은 그대로다(표시 여부만 바뀐다).
+let macroBriefingOpen = true;
 function reapplyMacroBriefingAccordionHeight() {
   const body = document.getElementById('macroBriefingBody');
   const chevron = document.getElementById('macroBriefingChevron');
@@ -1286,6 +1290,24 @@ document.addEventListener('click', (e) => {
   if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
   // 이 가이드는 해석 아코디언 > 브리핑 아코디언 안에 3중으로 들어 있다 - 안쪽이 열리면 바깥
   // 두 개의 max-height도 다시 계산해야 내용이 잘리지 않는다.
+  reapplyMacroDiagnosisAccordionHeight();
+  reapplyMacroBriefingAccordionHeight();
+});
+
+// [v234 - 중첩 아코디언 높이 보정] 위 핸들러들이 안쪽 max-height를 먼저 확정한 뒤 바깥을 계산하는데,
+// 안쪽에도 max-height 트랜지션(300ms)이 걸려 있어서 "먼저 확정"이 실제로는 확정되지 않는다 - 바로
+// 뒤에서 읽는 바깥 scrollHeight에는 아직 접힌 높이가 잡히고, 그 값으로 바깥 max-height가 고정되면서
+// 방금 펼친 안쪽 내용을 그대로 잘라냈다(해석/상관관계 가이드를 눌러도 아무것도 안 보이던 원인).
+// 안쪽 트랜지션이 끝난 뒤 바깥을 한 번 더 계산해 실제 높이를 확정한다.
+// - transitionend는 버블링되므로, 정적 DOM인 #macroBriefingBody에 리스너 하나만 달면 2단(해석)과
+//   3단(상관관계 가이드)을 함께 덮는다. 가이드처럼 매 렌더마다 새로 그려지는 요소에도 재등록이
+//   필요 없다(중복 등록 방지).
+// - 바깥 자신의 트랜지션은 건너뛴다. 건너뛰지 않으면 자기 재계산 -> transitionend -> 재계산으로
+//   순환한다. 안쪽 재계산은 같은 값을 다시 쓰는 경우 트랜지션이 시작되지 않아 이벤트도 없다.
+// - 기존 즉시 계산은 그대로 둔다(누르는 즉시 반응이 시작되고, 이 보정은 끝난 높이만 확정한다).
+document.getElementById('macroBriefingBody').addEventListener('transitionend', (e) => {
+  if (e.propertyName !== 'max-height') return;
+  if (e.target === e.currentTarget) return;
   reapplyMacroDiagnosisAccordionHeight();
   reapplyMacroBriefingAccordionHeight();
 });

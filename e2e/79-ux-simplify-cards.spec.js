@@ -4,8 +4,9 @@
 //   ① 총금융자산평가손익 - [세부내용] 버튼과 그 팝업, 카드 안 설명문 두 줄을 없앴다.
 //      핵심 숫자(평가손익/수익률/금융자산 평가금액/소유자별/자산군별 chip)는 그대로 남는다.
 //   ② 국내·해외 자산 Top 5 두 카드를 없앴다. 국내/해외 비중 차트와 국내외 필터는 그대로 남는다.
-//   ③ 시장 현황 & 매크로 브리핑 - 지수 타일은 브리핑을 펼치면 항상 보이고,
+//   ③ 시장 현황 & 매크로 브리핑 - 지수 타일은 대시보드 진입 직후부터 보이고(v234),
 //      그 아래 해석(시장 종합 평가 등)만 한 번 더 접는다. 그 아래 RISK 관리 카드는 손대지 않았다.
+//      "실제로 보이는가"는 조상 클리핑까지 반영해서 재야 한다 - e2e/80의 visibleHeight 참고.
 //
 // 계산은 하나도 바꾸지 않았다 - 값이 그대로인지도 함께 확인한다.
 const { test, expect } = require('@playwright/test');
@@ -100,48 +101,55 @@ test('C. 국내/해외 자산 Top 5 카드가 사라지고, 국내외 차트와 
 
 /* ── ③ 매크로 브리핑 ──────────────────────────────────────────────────── */
 
-test('D. 브리핑을 펼치면 지수는 항상 보이고, 해석만 따로 접힌다', async ({ page }) => {
+test('D. 지수는 진입 직후부터 보이고, 해석만 따로 접힌다', async ({ page }) => {
   await open(page);
   await seed(page);
 
+  // [v234] 요소 자신의 높이가 아니라 "조상이 잘라낸 뒤 실제로 남는 높이"를 잰다 - 예전 vis()는
+  // 자기 높이만 봐서, 부모가 통째로 잘라내 아무것도 안 보이는 상태를 통과시켰다.
   const read = () => page.locator('body').evaluate((body) => {
     const doc = body.ownerDocument;
-    const vis = (id) => {
+    const visibleH = (id) => {
       const el = doc.getElementById(id);
       if (!el) return null;
-      return el.getBoundingClientRect().height > 0;
+      const r = el.getBoundingClientRect();
+      let top = r.top, bottom = r.bottom;
+      for (let p = el.parentElement; p && p !== doc.body; p = p.parentElement) {
+        if (doc.defaultView.getComputedStyle(p).overflowY === 'visible') continue;
+        const pr = p.getBoundingClientRect();
+        top = Math.max(top, pr.top); bottom = Math.min(bottom, pr.bottom);
+      }
+      return Math.max(0, Math.round(bottom - top));
     };
     return {
       gridExists: !!doc.getElementById('macroBriefingGrid'),
-      gridVisible: vis('macroBriefingGrid'),
-      diagnosisVisible: vis('macroDiagnosisBody'),
+      gridVisibleH: visibleH('macroBriefingGrid'),
+      diagnosisVisibleH: visibleH('macroBriefingDiagnosis'),
       toggleExists: !!doc.getElementById('macroDiagnosisToggleBtn'),
     };
   });
 
-  // 기본: 브리핑 자체가 접혀 있다(기존 동작 유지).
-  await page.locator('#macroBriefingToggleBtn').click();
-  await page.waitForTimeout(400);
+  // 기본: 아무것도 누르지 않아도 지수 타일이 보이고, 해석만 접혀 있다.
   let r = await read();
   expect(r.gridExists).toBe(true);
-  expect(r.gridVisible, '브리핑을 펼치면 지수 타일은 바로 보인다').toBe(true);
+  expect(r.gridVisibleH, '진입 직후부터 지수 타일이 보인다').toBeGreaterThan(0);
   expect(r.toggleExists, '해석 접기 버튼이 있다').toBe(true);
-  expect(r.diagnosisVisible, '해석은 처음엔 접혀 있다').toBe(false);
+  expect(r.diagnosisVisibleH, '해석은 처음엔 접혀 있다').toBe(0);
 
   // 해석을 펼쳐도 지수는 계속 보인다.
   await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(900);
   r = await read();
-  expect(r.gridVisible, '해석을 펼쳐도 지수는 계속 보인다').toBe(true);
-  expect(r.diagnosisVisible, '해석이 펼쳐진다').toBe(true);
+  expect(r.gridVisibleH, '해석을 펼쳐도 지수는 계속 보인다').toBeGreaterThan(0);
+  expect(r.diagnosisVisibleH, '해석이 실제로 펼쳐진다').toBeGreaterThan(0);
   await expect(page.locator('#macroBriefingDiagnosis')).toContainText('시장 종합 평가');
 
   // 다시 접어도 지수는 그대로다.
   await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(900);
   r = await read();
-  expect(r.gridVisible).toBe(true);
-  expect(r.diagnosisVisible).toBe(false);
+  expect(r.gridVisibleH).toBeGreaterThan(0);
+  expect(r.diagnosisVisibleH).toBe(0);
 });
 
 test('E. 그 아래 RISK 관리 카드는 그대로 있다', async ({ page }) => {
@@ -161,9 +169,9 @@ for (const scheme of ['light', 'dark']) {
     await page.locator('body').evaluate((el, dark) => {
       el.ownerDocument.documentElement.classList.toggle('dark', dark);
     }, scheme === 'dark');
-    await page.locator('#macroBriefingToggleBtn').click();
+    // [v234] 브리핑은 기본 펼침이라 해석만 연다.
     await page.locator('#macroDiagnosisToggleBtn').click();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(900);
 
     const m = await page.locator('#macroDiagnosisToggleBtn').evaluate((btn) => {
       const win = btn.ownerDocument.defaultView;
