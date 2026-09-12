@@ -610,6 +610,9 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - **P1 DATA PRESERVATION MAINTENANCE — v229 / 구현·검증 완료**(§17) — 거래 저장·절세계좌 계획 저장·엑셀 가져오기·JSON 복원 네 경로에서 사용자가 지정한 값이 조용히 사라지던 결함 9건(FIX-1~FIX-7 · J-1 · J-4)을 최소 범위로 수정. **계산 계층 변경 0건**(js/15·16·17·18·20·21 무변경, Return Key·SCENARIO_RATE_PRESETS·getTargetProjectionRate 무변경), **실제 사용자 데이터 변경 0건**, **실제 JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 711 / Golden 유지 / Data Guard PASS / Release Guard PASS
 - **DASHBOARD KPI / ASSET DETAIL UX — v230 / RELEASED · ACCEPTED**(§18) — WORK PACKAGE A(대시보드 KPI 표시 정비) + WORK PACKAGE B(자산 현황 화면 표시 정비)를 하나의 release로 배포. 계산 정정은 **USD 금융자산 집계에서 부동산 제외 1건**이며, 그 외 **계산 계층 변경 0건**(Monte Carlo·deterministic·Return Key·RET-02 정책 무변경), **실제 사용자 데이터 변경 0건**, **JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 735 / Golden 35 / Data Guard PASS / Release Guard PASS / production smoke PASS. commit `59b4c75`, 인계장 `1865c66`
 - **P1-1 SYNC DIRECTION SAFETY — v231 / RELEASED · ACCEPTED**(§19) — 동기화를 껐다 켜면 그 사이의 로컬 변경이 자동 fullAdopt로 클라우드의 과거 데이터에 덮여 사라질 수 있었다. **앱이 데이터 방향을 추측하던 것을 없애고, 클라우드에 데이터가 있으면 사용자가 Cloud→Local / Local→Cloud를 명시적으로 고르게** 했다. `fullAdopt`·`pullFromCloud`·`mergeCollectionById`·Cloud schema·암호화·localStorage 키 **전부 무변경**, **계산 계층 변경 0건**, **실제 사용자 데이터 변경 0건**, **Production Cloud write 0건**. ESLint 0 / Unit 290 / E2E 751 / Golden 35 / Data Guard PASS / Release Guard PASS / production smoke PASS WITH OBSERVATION(§19-5). commit `51818ae`
+- **ASSET LIST FILTER SIMPLIFICATION — v232 / RELEASED · ACCEPTED**(§20-1) — 자산목록 보기 버튼에서 **'자산군' 필터 하나만 제거**하고 남은 셋(전체 / 소유자 / 국내외)을 375px에서도 3열 한 줄로 배치. '전체'가 이미 자산군으로 그룹핑하므로(`renderTable`의 `none` 분기 → `'category'`) 같은 개념이 버튼으로 중복 노출돼 있던 것을 정리한 것이며, **자산군 기능 자체는 그대로**(자산군별 목록·건수·소계·비중·아코디언·비중 차트·분류/집계 전부 무변경, `getTableGroupKey`의 `'category'` 분기 유지). **계산 계층 변경 0건**. ESLint 0 / Unit 290 / E2E 751 / Golden 35 / Data Guard PASS / Release Guard PASS. commit `c4dc0d1`
+- **DASHBOARD / PROJECTION UX SIMPLIFICATION — v233 / RELEASED · ACCEPTED**(§20-2) — 이미 화면의 숫자로 알 수 있는 것을 설명문·별도 카드·팝업으로 한 번 더 보여주던 부분을 걷어내고(총금융자산평가손익 [세부내용] 버튼·팝업·설명문 2줄 제거, 국내/해외 Top 5 카드 2개 제거, 매크로 브리핑 하단 해석 영역 아코디언화), 찾기 어렵던 「⚙ 수익률 직접 조정 (고급)」 진입점을 미래예측 탭 회색 링크에서 포트폴리오 탭의 독립 버튼으로 옮겼다(같은 id 유지 → 기존 팝업·저장 로직 무변경, JS 0줄). **계산 계층 변경 0건**. ESLint 0 / Unit 290 / E2E 763 / Golden 86 / Data Guard PASS / Release Guard PASS. commit `d24cdb3`
+- **MACRO BRIEFING VISIBILITY FIX — v234 / RELEASED · ACCEPTED WITH OBSERVATION**(§20-3) — v233 이후 사용자가 제보한 두 가지, ① 대시보드에 들어와도 시장 지표가 하나도 보이지 않음 ② 「📌 시장 해석 보기」를 눌러도 아무것도 나타나지 않음을 수정. 중첩 아코디언의 **높이 계산 시점** 결함(안쪽 max-height 트랜지션이 끝나기 전에 바깥 scrollHeight를 읽어 부모가 자식을 통째로 잘라냄)을 `transitionend` 보정으로 해결하고, 매크로 1단을 기본 펼침으로 바꿨다. **기존 지표 10종 유지 · 신규 indicator 0건 · Macro→Risk 연결 0건 · 계산/데이터/Risk 구조 변경 0건 · 사용자 데이터 변경 0건 · Production Cloud write 0건**. ESLint 0 / Unit 290 / E2E 776 / Golden PASS / Data Guard PASS / Release Guard PASS / production smoke 6뷰포트 PASS. commit `6628653`. Observation 4건(OBS-1~4)은 §20-5에 기록하며 **개발 과제로 승격하지 않는다**
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
@@ -813,3 +816,133 @@ Cloud endpoint · Cloud schema · 새 localStorage 키 — **전부 무변경**.
   실제 사용자에게 전달되게 하기 위한 버전 상승이다.
 - **v231 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 안정화 / 운영 / 관찰이며, 다음 공식 운영
   마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**다.
+
+## 20. 화면 단순화 및 매크로 가시성 수정 (v232 · v233 · v234 · PM Approval 2026-09-12)
+
+v231 이후 같은 날 연속으로 진행된 UX 정리 3건이다. 기능 추가가 아니라 **이미 있는 화면을
+초보자가 바로 이해할 수 있게 정리**하는 작업이며, v234만 성격이 다르다 — v233이 만든 표시
+결함을 사용자 제보로 확인해 고친 수정 릴리스다.
+
+| Version | Date | Commit | Change | Validation | Decision / Status |
+|---|---|---|---|---|---|
+| **v232** | 2026-09-12 | `c4dc0d1` | 자산목록 '자산군' 필터 제거, 남은 3개 필터 1행 배치 | ESLint 0 / Unit 290 / E2E 751 / Golden 35 / Data Guard PASS / Release Guard PASS / 6뷰포트 실측 | **RELEASED · ACCEPTED** |
+| **v233** | 2026-09-12 | `d24cdb3` | 총금융자산평가손익 카드 정리 · Top 5 카드 제거 · 매크로 해석 아코디언화 · 수익률 직접 조정 진입점 이동 | ESLint 0 / Unit 290 / E2E 763 / Golden 86 / Data Guard PASS / Release Guard PASS / 6뷰포트 실측 | **RELEASED · ACCEPTED** |
+| **v234** | 2026-09-12 | `6628653` | 매크로 지표 10개 기본 표시 · 중첩 아코디언 clipping 수정 · 회귀 E2E 보강 | ESLint 0 / Unit 290 / E2E 776 / Golden PASS / Data Guard PASS / Release Guard PASS / production smoke 6뷰포트 PASS | **RELEASED · ACCEPTED WITH OBSERVATION** |
+
+**20-1. v232 — 자산목록 필터 단순화 (`c4dc0d1`)**
+
+자산목록 상단 보기 방식 버튼에서 **'자산군' 하나만** 없애고, 남은 셋(전체 / 소유자 / 국내외)을
+한 줄에 뒀다. '전체'가 이미 자산군(주식·ETF·채권·현금·부동산)으로 묶어 보여주기 때문에
+(`renderTable`의 `none` 분기가 `'category'`로 그룹핑한다) 같은 개념이 버튼으로 한 번 더
+노출돼 있었고, 두 방식은 접힌 상태에서 건수 표기만 달랐다 — v230 OBSERVE-01로 남겨 둔
+중복이다.
+
+**"자산군 필터를 없앤 것이지 자산군 기능을 없앤 것이 아니다."** 자산군별 목록·건수·소계·비중,
+아코디언 접기/펼치기, 자산군 비중 차트, 분류·집계·계산 로직 **전부 무변경**이다.
+`getTableGroupKey`의 `'category'` 분기도 남겨 뒀다 — '전체'가 그 키로 그룹을 만들기 때문에
+지우면 자산군 목록이 통째로 사라진다(주석으로 못박음). 375px에서 2×2로 접히던 배치가 3열 한
+줄이 됐고(`grid-cols-2 sm:grid-cols-4` → `grid-cols-3`), 한 줄로 만들려고 글자를 줄이거나
+잘라내지 않았다(버튼 높이 44px · 폰트 14px · clipping 0 · 가로 overflow 0, 6뷰포트 실측).
+
+변경 파일 6개: `index.html` · `sw.js` · `js/07`(주석만) · `js/08`(주석만) ·
+`e2e/26` · `e2e/77`. **로직 변경은 `index.html` 버튼 제거뿐이다.**
+
+**20-2. v233 — 대시보드 / 미래예측 UX 정리 (`d24cdb3`)**
+
+| 대상 | 변경 |
+|---|---|
+| 총금융자산평가손익 카드 | [세부내용] 버튼과 누적 평가손익 추이 팝업 제거 + 설명문 2줄 제거. 카드의 숫자(현재가−매입원가, 부동산 제외)와 팝업의 누적 추이(`dailySnapshots` 기반, 부동산 포함)는 **기준이 서로 달라** 같은 카드 안에서 "그 숫자의 내역"으로 오해되기 쉬웠다 — 차이를 설명하는 문구를 덧붙이는 대신 진입 자체를 없앴다. 제목·실현손익 배지·평가손익·수익률·매입원가 기준·금융자산 평가금액·소유자별/자산군별 chip은 그대로 |
+| 국내/해외 자산 Top 5 | 카드 2개 전부 제거. 같은 정보를 자산목록에서 볼 수 있다 |
+| 시장 현황 & 매크로 브리핑 | 지수 타일과 해석을 분리해, 하단 해석(시장 종합 평가 / 내 포트폴리오 영향 / 참고 / 상관관계 가이드)만 `#macroDiagnosisToggleBtn` 아코디언으로 접었다. **지수 종류·데이터 수집·계산 무변경**, 아래 RISK 관리 카드 무변경 |
+| 수익률 직접 조정(고급) | 미래예측 탭 시나리오 안내문 아래 작은 회색 링크였던 것을, 포트폴리오 탭의 "전체 포지션별 목표비중 분석"과 "종목별 실행 가이드" **사이 독립 긴 버튼**으로 이동. 같은 id를 유지해 기존 핸들러(`openScenarioRateManagerModal`, js/05)와 기존 [수익률 관리] 팝업을 그대로 쓴다 — **JS 변경 0줄** |
+
+승인 문구(그대로 유지): **"⚙ 수익률 직접 조정 (고급)"** /
+**"자산별 수익률 가정을 직접 설정할 수 있습니다."** — "(고급)" 라벨과 중립 색을 유지해
+고급 설정이라는 성격을 보존했고, **변동성까지 설정한다고 쓰지 않는다.**
+
+계산 계층 전부 무변경(`js/01·05·06·08·09·12·13·15~22` diff 0). Return Key ·
+`SCENARIO_RATE_PRESETS` · Monte Carlo · deterministic projection · Risk Engine · Macro 수집 ·
+동기화 · Cloud schema · Excel 구조 **어느 것도 건드리지 않았다.**
+
+**20-3. v234 — 매크로 브리핑 실가시성 수정 (`6628653`)**
+
+v233 배포 후 사용자가 두 가지를 제보했다. ① 대시보드에 들어와도 지수·환율·금리가 하나도
+보이지 않는다 ② 「📌 시장 해석 보기」를 눌러도 아무것도 나타나지 않는다. READ-ONLY 조사에서
+**둘 다 사실로 확인**됐고, 원인이 서로 달랐다.
+
+| 문제 | 원인 | 분류 |
+|---|---|---|
+| 지수가 안 보임 | 결함이 아니라 **의도 불일치**. Phase 17 P1-1이 매크로 브리핑 전체를 기본 접힘(`macroBriefingOpen = false`)으로 두었고, 지수 타일은 그 안에 있었다. v233 보고서의 "지수 카드는 항상 표시"는 "**브리핑을 펼치면** 항상 표시"의 조건절을 누락한 부정확한 서술이었다 | 요구사항/구현 의도 불일치 |
+| 해석이 안 열림 | **render lifecycle 결함**. 안쪽 `max-height`에 300ms 트랜지션이 걸려 있어, 클릭 직후 동기적으로 읽은 바깥 `scrollHeight`에는 아직 접힌 높이가 잡혔다. 그 값으로 바깥 `max-height`가 고정되면서 안쪽이 다 펼쳐져도 **부모가 통째로 잘라냈다**(6뷰포트 전부 해석 389px 중 **0px** 노출, 3단 상관관계 가이드는 263px 중 107px). 5분 자동 갱신이나 탭 왕복이 우연히 되살려 "가끔 되고 가끔 안 되는" 증상으로 보였다 | 신규 회귀(v233 도입) |
+
+**수정 (최소 변경, `js/10` 실질 7줄)**
+
+| 항목 | 내용 |
+|---|---|
+| FIX-1 clipping | 정적 DOM인 `#macroBriefingBody`에 `transitionend` 리스너 **1개**를 달아, 안쪽 트랜지션이 끝난 뒤 바깥 높이를 다시 확정한다. `transitionend`가 버블링되므로 2단(해석)과 3단(상관관계 가이드)을 **한 리스너로** 덮고, 매 렌더마다 새로 그려지는 가이드에도 **재등록이 필요 없다**. 바깥 자신의 트랜지션은 건너뛰어 순환을 막는다 |
+| FIX-2 기본 표시 | `macroBriefingOpen = false` → `true`. 첫 페인트부터 깜빡임이 없도록 `#macroBriefingBody`의 `max-height:0px` 인라인 초기값 제거 + chevron 초기 상태를 펼침으로 맞춤. **헤더로 접었다 펴는 기능은 그대로** |
+| 유지 | `setAccordionOpen()` · `reapplyMacroDiagnosisAccordionHeight()` · `reapplyMacroBriefingAccordionHeight()` · 기존 토글 핸들러 3개 · 기존 즉시 계산 **전부 무변경** |
+| 가이드 | 상관관계 가이드의 **내용·문구 변경 0건** — 같은 메커니즘으로 clipping만 해소 |
+
+**지표 10종 그대로 유지 · 추가/삭제/순서변경 0건**:
+VIX · 원/달러 · 美 10년물 금리 · 금 시세 · 달러인덱스 · 코스피 · 코스닥 · S&P 500 · 나스닥 · 다우.
+데이터가 없을 때의 기존 표현(`-` / `조회 전` / `조회 실패`)도 그대로이며,
+**결측이라고 카드를 접거나 숨기지 않는다**(`e2e/80` B 테스트로 고정).
+
+**20-4. v234 회귀 테스트 보강 — 이 결함을 놓친 이유**
+
+기존 검사가 **"그 요소 자신의 `height > 0`"만** 봤기 때문에 통과했다. 잘리는 쪽은 자식이
+아니라 **부모**라서, 자식은 389px 멀쩡한 채로 화면에는 0px만 나온다. `e2e/79`의 그 검사가
+정확히 이 위양성이었다.
+
+`e2e/80-macro-accordion-visibility.spec.js`(신규 13건)는 요소의 사각형을 **overflow를 자르는
+조상들로 차례로 깎아** "사용자가 실제로 보는 높이"로 검증한다 — 지수 10개 기본 표시, 결측 시
+카드 유지, 해석 열기/닫기/재열기, 재렌더 후, 탭 왕복 후, 3단 가이드, 1단 접기/재펼침,
+375·768·1024 × Light·Dark. `e2e/79`의 위양성 검사도 같은 방식으로 교체했고, 기본 펼침으로
+바뀐 `e2e/39` · `e2e/67`의 진입 절차를 맞췄다. **테스트를 약화시켜 통과시키지 않았다.**
+
+**20-5. Observation (v234에서 수정하지 않는다 · 개발 과제로 승격하지 않는다)**
+
+| ID | 내용 | 처리 |
+|---|---|---|
+| **OBS-1** | 토글 버튼 2개의 touch target이 44px 미만 — `macroBriefingToggleBtn` **24px**, `correlationGuideToggleBtn` **20px**(`macroDiagnosisToggleBtn`은 44px) | v234 **이전부터 동일**하며 이번 변경으로 나빠지지 않았다. 기존 UX observation으로 기록하고 **별도 backlog 후보로만 보존한다.** **V1.4 착수 근거로 사용하지 않는다** |
+| **OBS-2** | 매크로 10개 기본 표시로 RISK 관리 카드가 375px 기준 약 **269px 아래로 이동**(`1027px` → `1296px`) | **v234의 의도된 결과**로 기록한다. 변경 전에도 이미 첫 viewport(812px) 밖이었다는 사실을 함께 기록한다. **Risk 카드 자체는 수정하지 않으며** 별도 기능 변경으로 확대하지 않는다 |
+| **OBS-3** | 브라우저 resize 시 px 기반 accordion `max-height`가 즉시 재계산되지 않는다 | 앱의 **모든 아코디언에 공통인 기존 전역 특성**이다. v234에서 수정하지 않으며 **전역 accordion refactor로 확대하지 않는다** |
+| **OBS-4** | 중첩 아코디언의 약 **600ms 순차 애니메이션**(안쪽 300ms → 바깥 300ms) | 승인된 `transitionend` 보정 구조의 결과다. **최종 표시 결과에는 문제가 없다.** 현재 수정하지 않는다 |
+
+**20-6. 안전 / 검증 (v234)**
+
+- **계산 로직 변경 0건 · 데이터 구조 변경 0건 · Risk 구조 변경 0건.**
+  `js/09`(Macro 수집·Risk 엔진) · `js/05`(deterministic projection) · `js/15·16·17`(Monte Carlo) ·
+  `js/20`(inflation) · `js/21`(safety layer) · `js/12`(Cloud Sync · P1-1) · `js/01`(core state/SoT) ·
+  `js/06`(tax) · `cloudflare-worker*` · `data/` **전부 무변경**.
+  `SCENARIO_RATE_PRESETS` · Return Key · `MACRO_TICKERS` · `INDEX_TICKERS` ·
+  `RISK_ELIGIBLE_CATEGORIES` **diff 등장 0건**.
+- **신규 Macro indicator 0건 / Macro→Risk 정량 연결 0건**(§10 정책 유지).
+  Excel · asset/transaction SoT · tax scope · FX 모델 무변경. `aria-expanded` 미추가.
+- **실제 사용자 데이터 접근 0건 / 변경 0건 / JSON·Excel import 0건 / Production Cloud write 0건.**
+  조사·구현·검증 전 과정에서 합성 fixture만 사용했고, Cloud Worker 호스트는 DNS 격리
+  EXCLUDE 목록에 넣지 않아 요청 자체가 차단된 상태에서 측정했다(§16 Data-Safety Rule 준수).
+- 테스트: ESLint PASS · Unit **290/290** · E2E **776/776** · Golden PASS ·
+  Data Guard PASS · Release Guard PASS.
+- production: GitHub Pages **auto deploy SUCCESS**(run `34692075752`, build `built`, 41.2초,
+  error null), deployed SHA = origin/main = local HEAD = `6628653e76b1fd9ad48bd1470a0db99b158ac912`,
+  HTTP 200, `appVersionLabel` **v234**, SW `smart-asset-manager-v234`,
+  배포본 SHA-256 = 커밋 artifact **일치**, P1-1 동기화 코드 생존 확인.
+  **수동 deploy · workflow dispatch · rerun 0건.**
+- production 브라우저 smoke — 375·768·1024 × Light·Dark **6뷰포트 전부 PASS**:
+  지수 10개 최초 표시 PASS · 시장 해석 열기/닫기/재열기 PASS · 상관관계 가이드 clipping 없음 ·
+  탭 왕복 PASS · JS runtime error **0** · 가로 overflow 없음 · 최소 폰트 **14px**.
+- **v233 → v234 / production release 완료 — RELEASED · ACCEPTED WITH OBSERVATION.**
+
+**20-7. 표현 기준 (기록 시 지켜야 할 것)**
+
+이 릴리스를 "모든 Macro UX 문제 해결" / "Accordion 문제 전부 해결" / "UX 전면 개선 완료" /
+"V1.4 착수"로 표현하지 않는다. 정확한 표현은 다음 한 문장이다.
+
+> **사용자가 제보한 v233 Macro 표시 / 시장해석 가시성 문제를 v234에서 해결했으며,
+> 기존 touch target 및 전역 resize 특성은 observation으로 남겼다.**
+
+**v234 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 **STABILIZATION / OBSERVATION**이며,
+다음 공식 운영 마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**다(§8-1 정책·주기·
+횟수 **변경 없음**).
