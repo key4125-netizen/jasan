@@ -609,6 +609,7 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - **FUTURE-P1 Release Candidate — v228** — Phase 2-C 계산 계층 + Phase 3-2 UI/UX + Phase 3-3 검증 결과를 하나의 release로 묶는다
 - **P1 DATA PRESERVATION MAINTENANCE — v229 / 구현·검증 완료**(§17) — 거래 저장·절세계좌 계획 저장·엑셀 가져오기·JSON 복원 네 경로에서 사용자가 지정한 값이 조용히 사라지던 결함 9건(FIX-1~FIX-7 · J-1 · J-4)을 최소 범위로 수정. **계산 계층 변경 0건**(js/15·16·17·18·20·21 무변경, Return Key·SCENARIO_RATE_PRESETS·getTargetProjectionRate 무변경), **실제 사용자 데이터 변경 0건**, **실제 JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 711 / Golden 유지 / Data Guard PASS / Release Guard PASS
 - **DASHBOARD KPI / ASSET DETAIL UX — v230 / RELEASED · ACCEPTED**(§18) — WORK PACKAGE A(대시보드 KPI 표시 정비) + WORK PACKAGE B(자산 현황 화면 표시 정비)를 하나의 release로 배포. 계산 정정은 **USD 금융자산 집계에서 부동산 제외 1건**이며, 그 외 **계산 계층 변경 0건**(Monte Carlo·deterministic·Return Key·RET-02 정책 무변경), **실제 사용자 데이터 변경 0건**, **JSON/Excel import 0건**, **Cloud write 0건**. ESLint 0 / Unit 283 / E2E 735 / Golden 35 / Data Guard PASS / Release Guard PASS / production smoke PASS. commit `59b4c75`, 인계장 `1865c66`
+- **P1-1 SYNC DIRECTION SAFETY — v231 / RELEASED · ACCEPTED**(§19) — 동기화를 껐다 켜면 그 사이의 로컬 변경이 자동 fullAdopt로 클라우드의 과거 데이터에 덮여 사라질 수 있었다. **앱이 데이터 방향을 추측하던 것을 없애고, 클라우드에 데이터가 있으면 사용자가 Cloud→Local / Local→Cloud를 명시적으로 고르게** 했다. `fullAdopt`·`pullFromCloud`·`mergeCollectionById`·Cloud schema·암호화·localStorage 키 **전부 무변경**, **계산 계층 변경 0건**, **실제 사용자 데이터 변경 0건**, **Production Cloud write 0건**. ESLint 0 / Unit 290 / E2E 751 / Golden 35 / Data Guard PASS / Release Guard PASS / production smoke PASS WITH OBSERVATION(§19-5). commit `51818ae`
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
@@ -732,3 +733,83 @@ v230에서 다음 구조가 되도록 정정했다.
 - **v229 → v230 / production release 완료 — RELEASED · ACCEPTED.** cache-first 환경에서 이 변경이
   실제 사용자에게 전달되게 하기 위한 버전 상승이다.
 - **v230 이후에도 V1.4를 시작하지 않는다.** 새 개선은 별도 PM 판단을 거친다.
+
+## 19. P1-1 동기화 방향 선택 — 데이터 보존 (v231 · PM Approval 2026-09-12)
+
+안정화 단계에서 발견된 **동기화 데이터 보존 문제**를 고친 릴리스다. 기능 확장이 아니며,
+"앱이 사용자의 의사를 추측해 한쪽 데이터를 고르지 않는다"는 원칙 하나를 동기화 재개 지점에
+적용했다. §6 V1.1 핵심 목적("사용자가 입력한 자산 정보가 어떤 경로로도 조용히 사라지지 않게
+한다")에 직접 걸리는 문제였고, v229 배치(§17)가 다루지 않은 경로였다.
+
+**19-1. 문제**
+
+동기화를 끈 상태에서 거래·자산을 입력한 뒤 같은 암호로 다시 켜면, `onSyncPasswordSaved`가
+곧장 `pullFromCloud({ fullAdopt: true })`를 불렀다. `fullAdopt`는 병합이 아니라 통째 교체라
+그 사이의 입력이 한 번에 사라졌다(실측: 거래 3건 추가 후 재개 → 3건 전부 소멸, 자산 수량도
+클라우드의 과거 값으로 회귀). "동기화를 다시 켠다"와 "이 기기를 지우고 클라우드로 되돌린다"는
+다른 뜻인데 코드가 그 둘을 구분하지 않았다.
+
+**19-2. PM 결정 — 자동 판단 제거, 사용자 명시적 선택**
+
+| 검토안 | 결정 |
+|---|---|
+| 비밀번호·`lastSyncedAt` 비교로 기존 슬롯 여부를 **자동 판별** | **폐기** — 앱이 사용자의 의사를 추측하는 구조보다 사용자가 직접 고르는 구조가 안전하다 |
+| 비밀번호를 바꿔 새 슬롯에 올리는 **우회 방식** | **폐기** — 정식 경로가 아니다 |
+| 동기화 재개 시 **방향 선택을 묻는다** | **채택** |
+
+자동 동기화(10초 폴링·변경 시 자동 push)는 기존 병합/보존 정책 그대로 두고, 방향 선택은
+오직 재개 시점에서만 일어난다. 자동 덮어쓰기 금지 원칙은 유지되며, 사용자가 고지받고 직접
+누르는 반영은 별개의 승인 동작으로 취급한다.
+
+**19-3. 구현 (최소 변경)**
+
+| 지점 | 내용 |
+|---|---|
+| `onSyncPasswordSaved` | 자동 `pullFromCloud` 호출 제거. `probeCloudSlot()`로 슬롯 존재만 확인한다(GET 1회, state·localStorage에 아무것도 쓰지 않는다) |
+| Cloud 404 | 예전 업로드 확인 흐름 그대로. **방향을 묻지 않는다** |
+| 복호화 실패 | 예전 안내 그대로. 어느 쪽이 내 데이터인지 모르는 상태에서 덮어쓰기를 제시하지 않는다 |
+| Cloud 200 | 방향 선택 표시 + **양쪽 자산/거래 건수** 함께 표기(샘플만 있는 새 기기의 오조작 방지) |
+| Cloud→Local | 기존 `pullFromCloud({ fullAdopt: true })`를 **그대로** 호출. 함수도 `fullAdopt`의 의미도 무변경 — 최초 페어링의 샘플 혼입 방지가 그대로 유지된다 |
+| Local→Cloud | 확인 절차 후 `pushToCloud({ localWins: true })`. 기존 push의 **선병합 게이트만** 건너뛰고 GET·암호화·POST·lastVersion·lastSyncedAt·기준선 갱신·에러 처리는 전부 재사용 |
+| `stampPayload()` | 업로드 **payload 복사본에만** 시각을 찍는다 — `assets[].updatedAt` · `transactions[].updatedAt` · `rebalance.updatedAt` · `projection.updatedAt` 네 곳뿐. `createdAt`·`positionSource`·`categorySource`·`buyRate`·`rateMatchOverride`·`role`은 무변경 |
+| 로컬 state | **직접 변경하지 않는다.** 그래서 업로드가 실패해도 원복할 대상 자체가 없다(실패 원자성이 구조적으로 성립) |
+| 삭제 전파 | timestamp와 무관하게 기존 기준선 방식 그대로 동작한다 |
+| union metadata | `tickerRoles` · `learnedTickerNames` · `dailySnapshots`는 timestamp가 없는 합집합 구조 — **기존 동작 유지**, 덮어쓰기 대상이 아니다 |
+
+`mergeCollectionById` · `mergeAssetsAndTransactionsWithRemote` · `adoptRemoteRebalanceAndProjection` ·
+`applyRemoteState` · `buildSyncBlob` · `encryptSyncBlob`/`decryptSyncBlob` · `deriveKvKey` ·
+Cloud endpoint · Cloud schema · 새 localStorage 키 — **전부 무변경**.
+
+**19-4. 알려진 한계 (해결하지 않는다)**
+
+| 내용 | 상태 |
+|---|---|
+| 상대 기기가 **아직 올리지 않은** 신규 입력은 Local→Cloud 반영 후에도 지워지지 않고 합쳐진다 | 기능의 한계로 정의. 그 데이터는 상대 사용자가 실제로 입력한 것이므로 지우는 쪽이 §6 위반이다. 확인 문구에 그대로 고지한다. authority flag·device generation·sync epoch·snapshot version·tombstone·Cloud schema 변경 **도입하지 않는다** |
+| 기기 간 시계 오차가 크면 스탬프해도 이기지 못할 수 있다 | 기존 merge가 이미 갖고 있는 성질. 보정하지 않는다 |
+| 처음 연결하는 기기의 오조작 | UI로만 완화(버튼 위계·확인 절차·양쪽 건수 표기) |
+
+**19-5. 검증 한계 / Observation (제품 결함 아님 · 개발 과제로 승격하지 않는다)**
+
+| ID | 내용 | 판정 |
+|---|---|---|
+| OBS-v231-1 | production smoke에서 시세·환율 실패 토스트가 표시됨 | **검증환경 artifact** — 안전을 위해 DNS로 시세/환율 API를 차단한 결과다. 실제 production API 정상 환경에서는 발생하지 않으며 P1-1과 무관하다. 수정하지 않는다 |
+| OBS-v231-2 | `pullFromCloud` 인자 계측 시 10초 폴링의 `{silent:true}` 호출이 먼저 포착되어 버튼의 `{fullAdopt:true}`를 직접 캡처하지 못함 | **계측상의 한계** — 실제 결과(자산 6→12, 거래 10→34로 통째 교체)와 E2E T-02로 `fullAdopt` 동작이 검증됐다. 제품 결함이 아니다. 수정하지 않는다 |
+
+**19-6. 안전 / 검증**
+
+- **계산 엔진 변경 0건** — Monte Carlo · deterministic projection · μ · σ · correlation · Cholesky ·
+  contribution · annual rebalancing · inflation 전부 무변경.
+- **Return Key 변경 0건 / RET-02 정책 변경 0건**(§8-1~8-3 그대로 유지).
+- **실제 사용자 데이터 접근 0건 / 변경 0건 / JSON·Excel import 0건 / Production Cloud write 0건.**
+  구현·검증 전 과정에서 합성 fixture만 사용했고, Cloud Worker는 DNS 격리와 요청 가로채기로
+  이중 차단한 상태에서 측정했다(§16 Data-Safety Rule 준수).
+- 테스트: ESLint PASS · Unit **290/290** · E2E **751/751** · Golden **35/35** · Data Guard PASS ·
+  Release Guard PASS.
+- production: GitHub Pages **auto deploy SUCCESS**, deployed SHA = origin/main = local HEAD =
+  `51818aeb3903e113dd00337c8bd82367ac713d9d`, `appVersionLabel` v231, SW `smart-asset-manager-v231`,
+  배포본 SHA-256 = 커밋 artifact 일치, 6뷰포트(375/768/1024 × Light·Dark) PASS,
+  JS runtime exception 0 · unhandled exception 0 · static asset load failure 0.
+- **v230 → v231 / production release 완료 — RELEASED · ACCEPTED.** cache-first 환경에서 이 수정이
+  실제 사용자에게 전달되게 하기 위한 버전 상승이다.
+- **v231 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 안정화 / 운영 / 관찰이며, 다음 공식 운영
+  마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**다.

@@ -32,6 +32,97 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-12) — 🚀 **P1-1 동기화 방향 선택 릴리즈** (v230 → **v231**)
+
+**버전: v230 → v231.** 커밋 `51818ae`, push 완료, GitHub Pages 자동 배포 완료(build `built`/
+`success`, commit 일치), production smoke 통과. 기능 추가가 아니라 **동기화 데이터 보존 결함
+수정**이다. 체크리스트 **§19**에 전체 기록이 있다.
+
+### 왜 했나 — 동기화를 켜는 순간 데이터가 사라졌다
+동기화를 끈 상태에서 거래·자산을 입력한 뒤 같은 암호로 다시 켜면, `onSyncPasswordSaved`가
+곧장 `pullFromCloud({fullAdopt:true})`를 불렀다. fullAdopt는 병합이 아니라 **통째 교체**라
+그 사이의 입력이 한 번에 사라졌다(실측: 거래 3건 추가 후 재개 → 3건 전부 소멸, 자산 수량도
+클라우드의 과거 값으로 회귀). "동기화를 다시 켠다"와 "이 기기를 지우고 클라우드로 되돌린다"는
+전혀 다른 뜻인데 코드가 그 둘을 구분하지 않았다.
+
+**PM이 폐기한 두 가지(다시 꺼내지 말 것)**
+- 비밀번호·`lastSyncedAt` 비교로 기존 슬롯을 **자동 판별**하는 방식 → 앱이 사용자의 의사를
+  추측하는 구조보다 사용자가 직접 고르는 구조가 안전하다는 판단.
+- 비밀번호를 바꿔 새 슬롯을 만들어 올리는 **우회 방식** → 정식 경로가 아니다.
+
+### 구현 (js/12-import-export-sync.js + index.html, 최소 변경)
+- **`onSyncPasswordSaved`** — 자동 pull 제거. `probeCloudSlot()`로 슬롯 존재만 확인한다
+  (GET 1회, **state·localStorage에 아무것도 쓰지 않는다**).
+- **Cloud 404** → 예전 업로드 확인 흐름 그대로. **방향을 묻지 않는다.**
+  **복호화 실패** → 예전 안내 그대로(어느 쪽이 내 데이터인지 모르는 상태에서 덮어쓰기를 제시하지 않는다).
+- **Cloud 200** → `#syncDirectionBox` 표시 + **양쪽 자산/거래 건수**를 함께 보여준다
+  (샘플만 있는 새 기기에서 실수로 [올리기]를 누르는 것을 숫자로 막는다).
+- **Cloud→Local** = 기존 **`pullFromCloud({ fullAdopt: true })` 그대로 호출**. 함수도 fullAdopt의
+  의미도 한 줄 바꾸지 않았다 — ⚠️ **fullAdopt를 제거하지 말 것.** 처음 연결하는 기기에는 샘플
+  자산이 있어 병합으로 붙이면 배우자 목록에 섞인다(실측: 1건이 되어야 할 상황에서 7건).
+- **Local→Cloud** = 확인 절차 후 **`pushToCloud({ localWins: true })`**. 기존 push의 **선병합
+  게이트만** 건너뛰고 GET·암호화·POST·lastVersion·lastSyncedAt·기준선 갱신·에러 처리는 전부
+  재사용한다. 옵션을 넘기지 않는 기존 호출(`schedulePush`, 최초 업로드 버튼)은 예전 경로 그대로다.
+- **`stampPayload()`** — 업로드 **payload 복사본에만** 시각을 찍는다. `encryptSyncBlob`이
+  `JSON.stringify`만 하기에 가능한 방식이다. 대상은 `assets[].updatedAt` ·
+  `transactions[].updatedAt` · `rebalance.updatedAt` · `projection.updatedAt` **네 곳뿐**.
+  ⚠️ **`createdAt`은 절대 건드리지 않는다**(정렬 안정성 기준). `positionSource`·`categorySource`·
+  `buyRate`·`rateMatchOverride`·`role`도 무변경.
+- **로컬 state 직접 mutation 금지** — `persistAssets/persistTransactions/persistRebalance/
+  persistProjection` 어느 것도 부르지 않는다. 그래서 업로드가 실패해도 **원복할 대상 자체가 없다**
+  (실패 원자성이 구조적으로 성립).
+- **union metadata 기존 동작 유지** — `tickerRoles` · `learnedTickerNames` · `dailySnapshots`는
+  timestamp가 없는 합집합 구조라 덮어쓰기 대상이 아니다. 그래서 확인 문구에서도 이 셋을
+  언급하지 않는다("모든 데이터 / 완전히 덮어쓰기" 같은 표현 금지).
+- **삭제 전파는 무영향** — 삭제는 "payload에 그 id가 없음 + 받는 기기 기준선에 있었음"으로
+  표현되므로 시각을 새로 찍어도 그대로 동작한다.
+- 무변경: `mergeCollectionById` · `mergeAssetsAndTransactionsWithRemote` ·
+  `adoptRemoteRebalanceAndProjection` · `applyRemoteState` · `buildSyncBlob` · `encryptSyncBlob`/
+  `decryptSyncBlob` · `deriveKvKey` · Cloud endpoint · Cloud schema · 새 localStorage 키 0개.
+
+### 검증
+- ESLint PASS · Unit **290/290** · E2E **751/751** · Golden **35/35** ·
+  Data Guard PASS · Release Guard PASS.
+- 신규 테스트: `test/sync-payload.test.js`(stampPayload 순수 함수 7건 — 원본 불변·네 필드만 변경·
+  보존 필드 불변) · `e2e/78-p1-1-sync-direction.spec.js`(16건 — 방향 선택·404·OFF 기간 보존·
+  삭제 전파·충돌·실패 원자성·취소·union 유지·375px Light/Dark).
+  **기존 테스트는 한 줄도 수정하지 않았다.**
+- production smoke: 6뷰포트(375/768/1024 × Light·Dark) PASS,
+  자동 Cloud→Local overwrite 방지 PASS, Cloud→Local fullAdopt PASS,
+  Local→Cloud `localWins` PASS, 건수 표시 PASS,
+  JS runtime exception 0 · unhandled exception 0 · static asset load failure 0.
+
+### Production
+- **v231** / deployed SHA = origin/main = local HEAD = `51818aeb3903e113dd00337c8bd82367ac713d9d`
+- GitHub Pages **auto deployment SUCCESS**(build `1210296051`, run `34683488564`).
+  ⚠️ 이 저장소는 Pages source가 `main`/`root`라 **main push 자체가 production 배포**다.
+  별도 deploy 명령을 실행하지 않아도 배포된다는 점을 기억할 것.
+- artifact integrity: 배포본 `index.html`·`sw.js`·`js/12-import-export-sync.js` 모두 커밋과
+  **SHA-256 동일**. `appVersionLabel` v231, SW `smart-asset-manager-v231`.
+
+### 안전성
+- **실제 사용자 데이터 접근 0 / 변경 0 / JSON·Excel import 0 / Production Cloud write 0.**
+  전 과정에서 합성 fixture만 썼고, Cloud Worker는 DNS 격리 + 요청 가로채기로 이중 차단했다.
+
+### 다음 세션이 알아야 할 것
+- **v231 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 계속 "안정화 / 운영 / 관찰"이다.
+  다음 공식 운영 마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**이며,
+  RET-02 정책은 변경되지 않았다.
+- **v231 검증 한계 2건 — 제품 결함이 아니고 개발 과제로 승격하지 않는다**(체크리스트 §19-5)
+  - `OBS-v231-1` smoke에서 뜬 시세·환율 실패 토스트는 DNS 격리 때문에 생긴 검증환경 artifact다.
+  - `OBS-v231-2` `pullFromCloud` 계측에서 10초 폴링의 `{silent:true}`가 먼저 잡혀 버튼의
+    `{fullAdopt:true}`를 직접 캡처하지 못했다. 실제 결과(자산 6→12, 거래 10→34)와 E2E T-02로
+    동작은 검증됐다.
+- **v231 알려진 한계**(§19-4, 고치지 않기로 확정) — 상대 기기가 아직 올리지 않은 신규 입력은
+  Local→Cloud 반영 후에도 합쳐진다 / 기기 간 시계 오차 / 처음 연결하는 기기의 오조작은 UI로만 완화.
+  이를 위해 authority flag·device generation·sync epoch·snapshot version·tombstone·
+  Cloud schema 변경을 **도입하지 않는다**.
+- v230 OBSERVE 5건(전체 vs 자산군별 유사성 · renderCharts/renderTable 분산 · `tableAssets()` ·
+  아코디언 상태 초기화 · 사용자 피드백)은 그대로 유지된다.
+- `.claude/launch.json`은 로컬 전용 파일이라 **절대 커밋하지 않는다**(계속 dirty가 정상).
+
+---
+
 ## 최근 세션 요약 (2026-09-10) — 🚀 **대시보드 KPI · 자산 세부현황 표시 개선 릴리즈** (v229 → **v230**)
 
 **버전: v229 → v230.** 커밋 `59b4c75`, push 완료, GitHub Pages 배포 완료(build `built`, commit 일치),
