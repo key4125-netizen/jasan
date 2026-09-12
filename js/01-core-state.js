@@ -1122,23 +1122,42 @@ function normalizeMonthlyContributionAllocation(raw) {
     .map((it) => ({ ticker: String(it.ticker), label: it.label ? String(it.label) : String(it.ticker), pct: num(it.pct), role: parseAssetRoleInput(it.role) }));
 }
 
-// [버그 수정 - 엑셀 재업로드 시 일간손익 이중 누적 정리, 1회성] 소급 채우기 "이미 채움" 판정 기준을
-// asset.id에서 소유자+계좌구분+티커 지문으로 바꾼 것(js/11 getBackfillFingerprint)과 짝을 이루는
-// 데이터 정리 - 그 버그 때문에 이미 최근 1년 구간에 중복 누적된 dailySnapshots 과거값을 걷어낸다.
-// 오늘 날짜 스냅샷은 실시간 기록(recordDailySnapshot)이 만든 진짜 값이라 절대 건드리지 않고, 그 이전
-// 날짜만 지운다 - 전부 backfillDailyPnlHistory가 실제 종가 이력으로 다시 정확하게 채워 넣으므로
-// (bootApp이 매번 부팅 시 backfillAllHoldingsDailyPnlHistory를 호출) 값을 잃는 게 아니라 중복만
-// 제거되고 정상적으로 다시 채워진다. 딱 한 번만 실행되도록 플래그로 막는다(매번 실행하면 매 부팅마다
-// 과거 이력을 통째로 날리고 API를 다시 두들겨야 해서 낭비).
+// [일간손익 이중 누적 정리 마이그레이션 - 완료 플래그] 소급 채우기 "이미 채움" 판정 기준을 asset.id에서
+// 소유자+계좌구분+티커 지문으로 바꾼 것(js/11 getBackfillFingerprint)과 짝을 이루는 1회성 마이그레이션의
+// 완료 표시다. 이 마이그레이션은 과거 스냅샷을 지우지 않는다 - 기존 이력은 그대로 두고, 이 기기가 그
+// 지점을 지나갔다는 사실만 한 번 기록한다(아래 함수 주석 참고).
 const LS_DAILY_SNAPSHOT_DEDUP_MIGRATED = 'sam_daily_snapshot_dedup_migrated_v1';
+
+// [POLICY-SNAPSHOT-PRESERVATION] 이 함수는 더 이상 과거 이력을 지우지 않는다.
+//
+// 원래 목적은 "엑셀 재업로드로 이중 가산된 과거 일간손익 정리"였고, 그 방법이 오늘 이전 스냅샷을
+// 통째로 지운 뒤 소급 채우기로 다시 채우는 것이었다. 두 가지가 잘못됐다.
+//   ① 재채움이 실제로 돌지 않았다 - 소급 채우기는 지문에 없는 자산만 대상으로 삼는데, 이미 채운
+//      기기에서는 대상이 0건이라 삭제만 남았다.
+//   ② 되살릴 수 없는 것까지 지웠다 - 부동산·채권·현금·달러는 티커가 없어 시세 이력을 조회할 수
+//      없다. 소급 채우기가 이 자산군을 아예 건너뛰므로(js/11 backfillDailyPnlHistory 맨 앞),
+//      한 번 지우면 그 이력은 어떤 경로로도 돌아오지 않는다.
+// "중복 가능성이 있다"는 이유로 되살릴 수 없는 기록까지 지우는 것은 이 프로젝트가 지키기로 한
+// 원칙(사용자가 입력한 데이터가 어떤 경로로도 조용히 사라지지 않는다)과 정면으로 어긋난다.
+//
+// 그래서 정리 방식을 삭제에서 "덧쓰지 않기"로 바꿨다 - 소급 채우기가 이미 기록이 있는 날짜를
+// 건너뛰므로(js/11 protectedDates), 기존 이력을 그대로 두어도 이중 가산이 생기지 않는다.
+// 이중 가산의 원인이던 휘발성 asset.id 판정도 a731d9c에서 이미 안정적인 지문으로 바뀌었다.
+//
+// 남은 역할은 "이 기기가 파괴적 정리를 지나갔다"는 사실을 한 번 기록하는 것뿐이다 - 플래그를
+// 남겨야 예전 버전으로 되돌아가더라도 그 삭제가 다시 실행되지 않는다.
+// 이미 이력을 잃은 기기를 되돌리지는 못한다(그건 백업에서 복구하는 별도 경로, js/12
+// planSnapshotRecovery의 일이다).
 function remediateDuplicatedDailySnapshotHistory() {
-  if (localStorage.getItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED) === '1') return;
+  if (localStorage.getItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED) === '1') {
+    return { case: 'ALREADY_MIGRATED', deleted: 0, fingerprintsCleared: false };
+  }
   const today = todayDateStr();
-  Object.keys(state.dailySnapshots).forEach((dateKey) => {
-    if (dateKey < today) delete state.dailySnapshots[dateKey];
-  });
-  localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
+  const pastKeys = Object.keys(state.dailySnapshots).filter((k) => k < today);
+  // 스냅샷도 지문도 건드리지 않는다 - 지문을 비우면 이미 채워진 자산이 다시 대상이 되고,
+  // 지문을 새로 채우면 아직 못 채운 자산이 영영 대상에서 빠진다. 둘 다 하지 않는 것이 맞다.
   localStorage.setItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED, '1');
+  return { case: 'PRESERVED', deleted: 0, preservedPastDays: pastKeys.length, fingerprintsCleared: false };
 }
 
 // [소유자별 독립 리밸런싱 목표 - 값 정규화] 한 owner 몫의 targets를 예전부터 써온 정제 로직
@@ -1475,7 +1494,14 @@ function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.strin
 // skipStamp: persistRebalance와 동일한 이유(위 주석 참고).
 function persistProjection(skipStamp) { if (!skipStamp) state.projection.updatedAt = Date.now(); localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
-function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
+// [일별 이력만 복구 - FIX-2] 인자 없이 부르면 예전과 완전히 동일하다(저장 + 클라우드 push 예약).
+// 복구 경로만 { skipPush: true }를 넘겨 로컬 저장까지만 하고 업로드 예약을 건너뛴다 - 복구는 "이
+// 기기의 빈 과거를 되메우는" 작업이라, 그 결과를 사용자 동의 없이 클라우드로 올려 배우자 기기까지
+// 바꾸면 안 된다(올릴지 말지는 사용자가 평소의 동기화 흐름에서 스스로 정한다).
+function persistDailySnapshots(opts) {
+  localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
+  if (!(opts && opts.skipPush)) schedulePush();
+}
 function persistLearnedTickerNames() { localStorage.setItem(LS_LEARNED_TICKER_NAMES, JSON.stringify(state.learnedTickerNames)); schedulePush(); }
 // [종목 분석 모달] 조회에 성공해 실제 종목명을 확인한 티커를 캐시에 기록한다 - trimmedRaw(사용자가
 // 입력한 원문 그대로)와 다를 때만 저장한다(같으면 "이름을 못 찾아서 입력값을 그대로 돌려준 것"뿐이라

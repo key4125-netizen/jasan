@@ -1606,6 +1606,286 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
   showToast('동기화를 껐습니다.', 'info');
 });
 
+/* -------------------------------------------------------------------------
+ * [FIX-2] 일별 이력만 복구 (dailySnapshots ADD MISSING ONLY)
+ *
+ * 왜 필요한가: remediateDuplicatedDailySnapshotHistory(js/01)가 오늘 이전 스냅샷을 전부 지우는데,
+ * 재채움을 맡기로 한 backfill은 이미 채운 자산을 지문으로 걸러내므로(js/11 backfillAllHoldings…)
+ * 대상이 0건이 되어 실행되지 않는다. 그 결과 과거 이력이 사라진 채로 남고, 차트는 과거를 오늘
+ * 값으로 복제한 수평선을 그린다. 사용자가 갖고 있는 백업의 원본 이력을 되메우는 경로가 이것이다.
+ *
+ * 왜 전체 복원(jsonFileInput)을 쓰지 않는가: 그 경로는 assets/transactions/rebalance/projection까지
+ * 백업 시점으로 되돌린다. 지금 필요한 것은 "비어 있는 과거 이력을 채우는 것"뿐이라, 백업 파일을
+ * 통째 state로 취급하지 않고 dailySnapshots 컨테이너로만 읽는다.
+ *
+ * 정책은 ADD MISSING ONLY 하나다.
+ *   - 백업에만 있는 날짜  -> 추가
+ *   - 지금만 있는 날짜    -> 그대로
+ *   - 양쪽 같고 값도 같음 -> 변화 없음
+ *   - 양쪽 있는데 값이 다름 -> 자동으로 고르지 않는다. 지금 값을 유지하고 충돌로 보고한다
+ * 어느 쪽이 옳은지는 데이터만으로 알 수 없다("백업이 오래됐으니"도 "지금이 최신이니"도 근거가
+ * 아니다). 그래서 덮어쓰지 않고 사람이 판단하도록 남긴다.
+ * ---------------------------------------------------------------------- */
+
+const SNAPSHOT_DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// { cur:number, dailyPnL:number } 꼴인지. 둘 다 유한수여야 한다(NaN/Infinity/문자열 전부 거절).
+function isValidSnapshotMetric(m) {
+  return !!m && typeof m === 'object' && !Array.isArray(m)
+    && Number.isFinite(m.cur) && Number.isFinite(m.dailyPnL);
+}
+
+// 하루치 스냅샷이 v234가 읽는 구조 그대로인지 검사한다. buildSnapshotSeries(js/11)가 snap.total[metric]과
+// snap.byOwner[o][metric]을, reconstructHistoricalCurValues가 snap.byOwnerCategory[o][cat].dailyPnL을
+// 읽으므로 세 축이 모두 성립해야 한다. 모양이 다르면 고쳐서 넣지 않고 통째로 거절한다 - 자동 보정은
+// 원본이 아닌 값을 원본인 척 집어넣는 일이라 복구의 의미를 없앤다.
+function isValidSnapshotEntry(snap) {
+  if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return false;
+  if (!isValidSnapshotMetric(snap.total)) return false;
+  if (!snap.byOwner || typeof snap.byOwner !== 'object' || Array.isArray(snap.byOwner)) return false;
+  if (!snap.byOwnerCategory || typeof snap.byOwnerCategory !== 'object' || Array.isArray(snap.byOwnerCategory)) return false;
+  for (const o of Object.keys(snap.byOwner)) {
+    if (!isValidSnapshotMetric(snap.byOwner[o])) return false;
+  }
+  for (const o of Object.keys(snap.byOwnerCategory)) {
+    const byCat = snap.byOwnerCategory[o];
+    if (!byCat || typeof byCat !== 'object' || Array.isArray(byCat)) return false;
+    for (const c of Object.keys(byCat)) {
+      if (!isValidSnapshotMetric(byCat[c])) return false;
+    }
+  }
+  return true;
+}
+
+// 같은 날짜가 양쪽에 있을 때 "값이 같은가"를 판정한다. 키 순서 차이로 충돌이 잘못 잡히지 않도록
+// 키를 정렬해서 비교한다(JSON.stringify 직비교는 순서에 민감해 오탐이 난다).
+function stableSnapshotJson(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableSnapshotJson).join(',') + ']';
+  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stableSnapshotJson(v[k])).join(',') + '}';
+}
+
+/* -------------------------------------------------------------------------
+ * [FIX-2a] "키가 없는 날짜"와 "재구성으로 채워진 날짜"를 구분한다.
+ *
+ * 왜 필요한가: 이력이 사라진 기기에서도 과거 날짜의 키는 비어 있지 않다. 예전
+ * reconstructHistoricalCurValues가 기록 없는 날짜마다 스냅샷을 새로 만들어 오늘 값을 복제해
+ * 넣었기 때문이다(FIX-3에서 그 생성은 막았지만, 이미 만들어져 저장된 것은 그대로 남아 있다).
+ * 그래서 "없는 날짜만 추가"라는 규칙만으로는 실제 피해 상태에서 단 하루도 복구되지 않는다.
+ *
+ * 그렇다고 자동으로 바꾸지는 않는다. 아래 판정은 어디까지나 "후보"이고, 교체하려면 사용자가
+ * 그 항목을 따로 승인해야 한다. 시스템의 추정을 사실로 취급하지 않는다.
+ * ---------------------------------------------------------------------- */
+
+// 재구성으로 만들어진 스냅샷은 dailyPnL을 어느 축에도 쓰지 않는다(cur만 채운다) - 그래서
+// total/byOwner/byOwnerCategory 전부에서 dailyPnL이 0이다. 다만 "그날 실제로 손익이 0이었던"
+// 정상 기록도 같은 모양일 수 있으므로, 이것 하나만으로는 절대 판정하지 않는다.
+function hasNoRecordedPnl(snap) {
+  if (!snap || !snap.total || snap.total.dailyPnL !== 0) return false;
+  const byOwner = snap.byOwner || {};
+  for (const o of Object.keys(byOwner)) {
+    if (byOwner[o].dailyPnL !== 0) return false;
+  }
+  const byOC = snap.byOwnerCategory || {};
+  for (const o of Object.keys(byOC)) {
+    for (const c of Object.keys(byOC[o])) {
+      if (byOC[o][c].dailyPnL !== 0) return false;
+    }
+  }
+  return true;
+}
+
+// cur만 뽑아 정렬 직렬화한다 - "이 날짜의 평가금액 구성이 저 날짜와 완전히 같은가"를 비교할 때 쓴다.
+function snapshotCurShape(snap) {
+  if (!snap) return '';
+  const pick = (m) => (m && Number.isFinite(m.cur)) ? m.cur : null;
+  const owner = {};
+  Object.keys(snap.byOwner || {}).sort().forEach((o) => { owner[o] = pick(snap.byOwner[o]); });
+  const oc = {};
+  Object.keys(snap.byOwnerCategory || {}).sort().forEach((o) => {
+    oc[o] = {};
+    Object.keys(snap.byOwnerCategory[o]).sort().forEach((c) => { oc[o][c] = pick(snap.byOwnerCategory[o][c]); });
+  });
+  return stableSnapshotJson({ t: pick(snap.total), owner, oc });
+}
+
+// [보수적으로만 후보에 넣는다] 아래 조건을 전부 만족해야 한다. 하나라도 빠지면 정상 데이터로 본다.
+//   ① 오늘 이전 날짜        - 오늘은 실시간 기록이라 대상이 아니다
+//   ② 모든 축의 dailyPnL이 0 - 재구성은 dailyPnL을 쓰지 않는다
+//   ③ cur 구성이 오늘 값과 완전히 동일 - 역산 근거가 없으면 매일 0을 빼서 오늘 값이 그대로 복제된다
+//   ④ 그런 날이 PLACEHOLDER_MIN_RUN일 이상 연속 - 주말/연휴처럼 실제로 값이 안 움직인 날을 배제한다
+//   ⑤⑥ 백업에 같은 날짜가 있고, 그 구조가 정상
+// ②만으로도, ③만으로도, ④만으로도 판정하지 않는다. 셋의 논리곱 + 백업 존재까지 요구한다.
+// [PM 확정 14일] 실제 백업으로 확인한 결과 7/10/14일 어느 기준이든 복구 후보가 363일로 같았고(피해
+// 구간이 365일 단일 연속이라), 실제 원본 이력을 정상 데이터로 놓고 검사했을 때 오탐은 세 기준 모두
+// 0일이었다 - 복구 대상 손실 없이 더 보수적인 쪽을 고를 수 있어 14일로 정했다.
+const PLACEHOLDER_MIN_RUN = 14;
+
+function detectPlaceholderCandidates(currentSnapshots, backupSnapshots, todayKey) {
+  const cur = currentSnapshots || {};
+  const today = cur[todayKey];
+  // 오늘 기록이 없으면 "오늘 값과 같은가"를 판정할 기준 자체가 없다 - 그러면 후보를 만들지 않는다.
+  if (!today) return [];
+  const todayShape = snapshotCurShape(today);
+  if (!todayShape) return [];
+
+  const pastKeys = Object.keys(cur).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && k < todayKey).sort();
+  // ①②③을 만족하는 날짜를 먼저 표시한다.
+  const marked = pastKeys.map((k) => hasNoRecordedPnl(cur[k]) && snapshotCurShape(cur[k]) === todayShape);
+
+  // ④ 연속 구간 길이가 기준 이상인 구간만 남긴다(날짜가 실제로 하루씩 이어지는 구간이어야 한다).
+  const out = [];
+  let i = 0;
+  while (i < pastKeys.length) {
+    if (!marked[i]) { i++; continue; }
+    let j = i;
+    while (j + 1 < pastKeys.length && marked[j + 1]
+      && (Date.parse(pastKeys[j + 1]) - Date.parse(pastKeys[j])) === 86400000) j++;
+    if ((j - i + 1) >= PLACEHOLDER_MIN_RUN) {
+      for (let k = i; k <= j; k++) {
+        const d = pastKeys[k];
+        // ⑤⑥ 백업에 정상적인 같은 날짜가 있어야만 후보가 된다 - 교체할 원본이 없으면 후보가 아니다.
+        if (hasOwn(backupSnapshots, d) && isValidSnapshotEntry(backupSnapshots[d])) out.push(d);
+      }
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
+// [순수 함수 - 아무것도 쓰지 않는다] 미리보기와 실행이 똑같이 이 결과를 쓴다. 미리보기 단계에서
+// localStorage/state를 건드리지 않으려면 계획 수립과 저장이 분리되어 있어야 한다.
+// opts.includePlaceholders: 사용자가 "후보도 백업 값으로 교체"를 따로 승인했을 때만 true.
+function planSnapshotRecovery(backupSnapshots, currentSnapshots, opts) {
+  const cur = (currentSnapshots && typeof currentSnapshots === 'object' && !Array.isArray(currentSnapshots)) ? currentSnapshots : {};
+  if (!backupSnapshots || typeof backupSnapshots !== 'object' || Array.isArray(backupSnapshots)) {
+    return { ok: false, reason: 'NO_SNAPSHOTS', merged: cur, added: [], kept: Object.keys(cur),
+      conflicts: [], invalid: [], placeholderCandidates: [], replaced: [] };
+  }
+  const todayKey = todayDateStr();
+  const candidates = detectPlaceholderCandidates(cur, backupSnapshots, todayKey);
+  const candidateSet = new Set(candidates);
+  const includePlaceholders = !!(opts && opts.includePlaceholders);
+
+  const merged = { ...cur };
+  const added = [], conflicts = [], invalid = [], replaced = [];
+  Object.keys(backupSnapshots).sort().forEach((dateKey) => {
+    const snap = backupSnapshots[dateKey];
+    if (!SNAPSHOT_DATE_KEY_RE.test(dateKey) || !isValidSnapshotEntry(snap)) { invalid.push(dateKey); return; }
+    if (!hasOwn(cur, dateKey)) { merged[dateKey] = snap; added.push(dateKey); return; }
+    // 재구성 후보는 충돌로 세지 않는다 - 별도 항목으로 분리해 사용자가 따로 판단한다.
+    if (candidateSet.has(dateKey)) {
+      if (includePlaceholders) { merged[dateKey] = snap; replaced.push(dateKey); }
+      return;
+    }
+    // 그 밖에 이미 있는 날짜는 어떤 경우에도 덮지 않는다 - 값이 다르면 충돌로만 남긴다.
+    if (stableSnapshotJson(cur[dateKey]) !== stableSnapshotJson(snap)) conflicts.push(dateKey);
+  });
+  return {
+    ok: true,
+    merged,
+    added,
+    kept: Object.keys(cur),
+    conflicts,
+    invalid,
+    placeholderCandidates: candidates,
+    replaced
+  };
+}
+
+// [실제 저장 - 정확히 1회] 날짜별로 나눠 쓰지 않는다. 계획이 이미 완성된 병합 결과를 들고 있으므로
+// 여기서는 통째로 한 번만 저장하고, 저장이 실패하면 메모리 참조도 원래대로 되돌린다(부분 반영 없음).
+function applySnapshotRecovery(plan) {
+  if (!plan || !plan.ok) throw new Error('복구 계획이 유효하지 않습니다.');
+  const prev = state.dailySnapshots;
+  state.dailySnapshots = plan.merged;
+  try {
+    persistDailySnapshots({ skipPush: true }); // 클라우드 자동 업로드 예약을 걸지 않는다
+  } catch (e) {
+    state.dailySnapshots = prev;
+    throw e;
+  }
+  return { added: plan.added.length, replaced: plan.replaced.length,
+    conflicts: plan.conflicts.length, invalid: plan.invalid.length };
+}
+
+document.getElementById('recoverSnapshotsBtn').addEventListener('click', () => document.getElementById('snapshotRecoveryFileInput').click());
+
+document.getElementById('snapshotRecoveryFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const parsed = JSON.parse(evt.target.result);
+      // 백업 파일에서 읽는 것은 dailySnapshots 하나뿐이다 - assets/transactions/rebalance/projection/
+      // tickerRoles/learnedTickerNames/exchangeRate는 쳐다보지도 않는다.
+      const plan = planSnapshotRecovery(parsed && parsed.dailySnapshots, state.dailySnapshots);
+      if (!plan.ok) { showToast('이 파일에는 일별 자산 이력이 없습니다.', 'error', 5000); return; }
+      const candidates = plan.placeholderCandidates;
+      if (plan.added.length === 0 && candidates.length === 0) {
+        showToast(`추가할 이력이 없습니다 - 이미 ${plan.kept.length}일이 기록되어 있습니다.`
+          + (plan.conflicts.length ? ` (값이 다른 날짜 ${plan.conflicts.length}일은 현재 값을 유지합니다)` : ''), 'info', 6000);
+        return;
+      }
+      // [미리보기 -> 명시적 실행] 여기까지 state/localStorage에 쓴 것은 없다. 사용자가 확인을 눌러야만
+      // 실제 저장이 일어난다. 후보 교체는 그 위에 한 번 더 따로 묻는다(두 가지는 성격이 다르다 -
+      // 하나는 빈 곳을 채우는 것이고, 다른 하나는 이미 있는 값을 바꾸는 것이다).
+      const rangeOf = (a) => a.length ? `${a[0]} ~ ${a[a.length - 1]}` : '-';
+      const lines = [
+        '일별 자산 이력을 복구합니다.',
+        '',
+        `· 새로 추가되는 이력: ${plan.added.length}일 (${rangeOf(plan.added)})`,
+        `· 복구 후보: ${candidates.length}일 (${rangeOf(candidates)})`,
+        `· 기존 유지: ${plan.kept.length - candidates.length}일`,
+        `· 값이 달라 건너뜀(현재 값 유지): ${plan.conflicts.length}일`,
+        `· 형식이 맞지 않아 제외: ${plan.invalid.length}건`,
+        '',
+        '자산·거래·리밸런싱·미래예측 설정은 변경하지 않습니다.',
+        '클라우드에는 자동으로 올리지 않습니다.',
+        '',
+        candidates.length
+          ? '먼저 새로 추가되는 이력만 복구합니다. 계속할까요?'
+          : '복구를 실행할까요?'
+      ];
+      if (!confirm(lines.join('\n'))) { showToast('복구를 취소했습니다.', 'info'); return; }
+
+      // [후보는 따로 승인] 후보는 "현재 기기에 남아 있는 값이 실제 과거 기록이 아닐 가능성이 있어"
+      // 분류된 것이지, 틀렸다고 확정한 것이 아니다 - 문구도 그 수준으로만 쓴다.
+      let includePlaceholders = false;
+      if (candidates.length) {
+        includePlaceholders = confirm([
+          `복구 후보 ${candidates.length}일 (${rangeOf(candidates)})`,
+          '',
+          '이 날짜들은 현재 기기에 값이 남아 있지만, 실제 과거 기록이 아니라 앱이 오늘 값을 바탕으로',
+          '다시 계산해 채워 넣은 것일 가능성이 있습니다(연속으로 손익이 0이고 평가금액이 오늘과',
+          '완전히 같습니다).',
+          '',
+          '이 날짜들도 백업 파일의 이력으로 바꿀까요?',
+          '바꾸지 않으면 현재 값이 그대로 유지됩니다.'
+        ].join('\n'));
+      }
+
+      const finalPlan = includePlaceholders
+        ? planSnapshotRecovery(parsed.dailySnapshots, state.dailySnapshots, { includePlaceholders: true })
+        : plan;
+      const result = applySnapshotRecovery(finalPlan);
+      renderAll();
+      showToast(`일별 이력 ${result.added}일을 추가했습니다`
+        + (result.replaced ? ` · 후보 ${result.replaced}일을 백업 이력으로 교체` : '')
+        + (candidates.length && !includePlaceholders ? ` · 후보 ${candidates.length}일은 현재 값 유지` : '')
+        + (result.conflicts ? ` · 값이 다른 ${result.conflicts}일은 현재 값 유지` : '')
+        + (result.invalid ? ` · 형식 오류 ${result.invalid}건 제외` : '')
+        + ' · 클라우드에는 올리지 않았습니다.', 'success', 9000);
+    } catch (err) {
+      console.error('[일별 이력 복구] 실패', err);
+      showToast(`복구 실패: ${err.message} (기존 데이터는 그대로입니다)`, 'error', 6000);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 // [테스트 전용] 브라우저에는 `module`이 없으므로 이 블록은 그냥 무시된다 - Node의 test/merge.test.js가
 // mergeCollectionById()를 require해서 순수 함수 단위로 검증할 수 있도록 노출만 해준다.
 // [V1.2-B BL-17] carryOverCategorySource/buildCategorySourceIndex/mergeAssetsForAppend도 같은 이유로 노출한다.
@@ -1614,6 +1894,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // [P1 데이터 보존 - FIX-4/FIX-5] 같은 이유로 노출한다(순수 함수라 단위 테스트로 검증 가능).
     buildCarryIfAbsentIndex, carryOverAbsentFields,
     // [P1-1] 업로드 payload 스탬프도 순수 함수라 같은 방식으로 검증한다.
-    stampPayload };
+    stampPayload,
+    // [FIX-2] 일별 이력 복구도 계획 수립(planSnapshotRecovery)이 순수 함수라 단위 테스트로 검증한다.
+    isValidSnapshotEntry, planSnapshotRecovery,
+    // [FIX-2a] placeholder 판정도 순수 함수라 같은 방식으로 검증한다.
+    hasNoRecordedPnl, detectPlaceholderCandidates, PLACEHOLDER_MIN_RUN };
 }
 

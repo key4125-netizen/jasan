@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v234</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v235</p>
           </div>
         </div>
 
@@ -1623,6 +1623,15 @@
       <button id="autoBackupToggleBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left" title="켜두면 하루 1회 자동으로 JSON 백업 파일을 내려받습니다">JSON 자동 백업 종료</button>
       <button id="importJsonBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">JSON 불러오기</button>
       <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden">
+      <!-- [일별 이력만 복구 - FIX-2] 바로 위 [JSON 불러오기]는 백업 시점으로 되돌리는 "전체 복원"이고,
+           이쪽은 백업에서 일별 자산 이력(dailySnapshots)만 꺼내 비어 있는 날짜에 채워 넣는다. 둘을
+           혼동하면 안 되므로 설명문을 버튼 아래 한 줄로 붙여 범위를 분명히 적는다 - 복구 대상이
+           아닌 자산/거래/투자설정까지 되돌아간다고 읽히지 않게 한다. -->
+      <button id="recoverSnapshotsBtn" class="w-full flex flex-col items-start text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-left">
+        <span>일별 이력만 복구</span>
+        <span class="text-sm font-normal text-slate-400 break-keep">백업 파일의 일별 자산 이력만 추가합니다. 현재 자산·거래·투자설정은 변경하지 않습니다.</span>
+      </button>
+      <input type="file" id="snapshotRecoveryFileInput" accept=".json,application/json" class="hidden">
       <p class="px-1 pt-3 pb-0.5 text-sm font-semibold text-red-400 uppercase tracking-wide border-t border-slate-100 dark:border-slate-800 mt-2">주의 - 되돌릴 수 없음</p>
       <button id="resetDataBtn" class="w-full flex items-center text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-500 dark:text-red-400 text-left">데이터 초기화</button>
     </div>

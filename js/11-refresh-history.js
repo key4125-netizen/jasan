@@ -345,9 +345,20 @@ function dateKeyFromDate(d) {
 //     동일하게 적용하는 근사치를 쓴다.
 //   - 오늘 날짜는 건드리지 않는다 - renderKPIs()가 매 렌더링마다 실시간 값으로 그 날짜를 새로 계산해
 //     덮어쓰므로, 여기서 과거치 방식으로 채워봐야 곧바로 실제 값으로 대체된다.
-//   - 이미 그 날짜에 스냅샷이 있으면(다른 자산의 실시간 기록 등) 새로 만들지 않고 더해 넣는다 - 이후
-//     이 함수가 다른 신규 자산에도 반복 호출될 수 있으므로 항상 "누적"이 맞다.
-async function backfillDailyPnlHistory(asset) {
+//   - 호출 시점(일괄 실행이면 패스 시작 시점)에 이미 스냅샷이 있는 날짜는 건너뛴다 - 기존 기록에
+//     더하면 그 날의 손익이 부풀려진다. 같은 패스 안에서 새로 만든 날짜에는 여러 자산이 누적된다
+//     (아래 protectedDates 주석 참고).
+// [POLICY-SNAPSHOT-PRESERVATION] protectedDates: 이 함수가 절대 건드리면 안 되는 날짜 집합.
+// 이 함수는 dailySnapshots에 값을 더하는(+=) 구조라, 이미 기록이 있는 날짜에 또 더하면 그 날의
+// 손익이 부풀려진다(실측: 실시간 기록 30일에 소급 채우기가 겹쳐 1,000원이 2,000원이 됐다).
+// 예전에는 마이그레이션이 과거 스냅샷을 통째로 지워서 이 충돌을 피했지만, 그 삭제는 소급 채우기로
+// 되살릴 수 없는 자산(부동산·채권·현금·달러 - 티커가 없어 시세 이력을 조회할 수 없다)의 이력까지
+// 영구히 없앴다. 이제 지우는 대신, 더할 날짜를 "아직 기록이 없는 날"로만 제한한다.
+// 인자를 주지 않으면 호출 시점에 존재하는 모든 날짜를 보호한다(신규 자산 1건을 채우는 경로가 그렇다).
+// 일괄 실행(backfillAllHoldingsDailyPnlHistory)만 "패스 시작 시점"의 집합을 넘겨, 같은 패스 안에서
+// 여러 자산이 같은 새 날짜에 정상적으로 누적되게 한다.
+async function backfillDailyPnlHistory(asset, protectedDates) {
+  const protectedSet = protectedDates || new Set(Object.keys(state.dailySnapshots));
   const sanitized = sanitizeTicker(asset.ticker);
   if (!sanitized.yahooTicker) return; // 티커 없는 자산(채권/현금 등)은 시세 자체가 없어 대상 아님
   const qty = num(asset.quantity);
@@ -398,6 +409,7 @@ async function backfillDailyPnlHistory(asset) {
     const p = windowPoints[i];
     const dateKey = dateKeyFromDate(p.date);
     if (dateKey >= today) continue; // 오늘/미래 날짜는 실시간 기록에 맡긴다
+    if (protectedSet.has(dateKey)) continue; // 이미 기록이 있는 날 - 덧쓰지 않는다(위 주석 참고)
 
     const prevClose = windowPoints[i - 1].close;
     const dailyPnLKRW = (p.close - prevClose) * qty * fxRate;
@@ -458,9 +470,12 @@ async function backfillAllHoldingsDailyPnlHistory() {
   const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneFingerprints.has(getBackfillFingerprint(a)));
   if (targets.length > 0) {
     console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
+    // [POLICY-SNAPSHOT-PRESERVATION] 패스 시작 시점에 이미 있던 날짜만 보호한다 - 이 패스가 새로
+    // 만든 날짜는 보호 대상이 아니라, 여러 자산이 같은 날에 정상적으로 누적된다.
+    const preExistingDates = new Set(Object.keys(state.dailySnapshots));
     for (const a of targets) {
       try {
-        await backfillDailyPnlHistory(a);
+        await backfillDailyPnlHistory(a, preExistingDates);
         doneFingerprints.add(getBackfillFingerprint(a));
         localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
       } catch (e) {
@@ -535,7 +550,13 @@ function reconstructHistoricalCurValues() {
 
     if (dateKey === todayKey) return; // 오늘은 renderKPIs()의 실시간 기록을 그대로 둔다.
 
-    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
+    // [FIX-3 - 없는 날짜를 만들어내지 않는다] 예전엔 기록이 없는 날짜에도 스냅샷을 새로 만들어
+    // 역산값을 채워 넣었다. 그런데 역산의 근거가 되는 과거 dailyPnL까지 없으면(이력이 통째로
+    // 사라진 기기) 매일 0을 빼게 되어, 결국 365일 전부에 "오늘 값"이 그대로 복제된 스냅샷이
+    // 만들어졌다 - 화면에는 6개월 내내 변동이 없었다는 완전한 수평선으로 나타났다. 근거가 없는
+    // 값을 시스템이 만들어 실제 기록인 것처럼 보여주는 셈이라, 기록이 없는 날짜는 건너뛴다.
+    // 이미 기록이 있는 날짜의 cur 재계산은 예전 그대로 수행한다(아래) - 그게 이 함수의 본래 일이다.
+    if (!state.dailySnapshots[dateKey]) return;
     const snap = state.dailySnapshots[dateKey];
     if (!snap.byOwnerCategory) snap.byOwnerCategory = {};
     // [버그 수정 - 1년 전 구간 음수(-) 평가금액] "현재 수량이 과거에도 그대로 있었다"는 근사이다 보니
