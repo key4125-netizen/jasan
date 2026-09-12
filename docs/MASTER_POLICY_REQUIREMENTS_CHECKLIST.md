@@ -613,6 +613,7 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - **ASSET LIST FILTER SIMPLIFICATION — v232 / RELEASED · ACCEPTED**(§20-1) — 자산목록 보기 버튼에서 **'자산군' 필터 하나만 제거**하고 남은 셋(전체 / 소유자 / 국내외)을 375px에서도 3열 한 줄로 배치. '전체'가 이미 자산군으로 그룹핑하므로(`renderTable`의 `none` 분기 → `'category'`) 같은 개념이 버튼으로 중복 노출돼 있던 것을 정리한 것이며, **자산군 기능 자체는 그대로**(자산군별 목록·건수·소계·비중·아코디언·비중 차트·분류/집계 전부 무변경, `getTableGroupKey`의 `'category'` 분기 유지). **계산 계층 변경 0건**. ESLint 0 / Unit 290 / E2E 751 / Golden 35 / Data Guard PASS / Release Guard PASS. commit `c4dc0d1`
 - **DASHBOARD / PROJECTION UX SIMPLIFICATION — v233 / RELEASED · ACCEPTED**(§20-2) — 이미 화면의 숫자로 알 수 있는 것을 설명문·별도 카드·팝업으로 한 번 더 보여주던 부분을 걷어내고(총금융자산평가손익 [세부내용] 버튼·팝업·설명문 2줄 제거, 국내/해외 Top 5 카드 2개 제거, 매크로 브리핑 하단 해석 영역 아코디언화), 찾기 어렵던 「⚙ 수익률 직접 조정 (고급)」 진입점을 미래예측 탭 회색 링크에서 포트폴리오 탭의 독립 버튼으로 옮겼다(같은 id 유지 → 기존 팝업·저장 로직 무변경, JS 0줄). **계산 계층 변경 0건**. ESLint 0 / Unit 290 / E2E 763 / Golden 86 / Data Guard PASS / Release Guard PASS. commit `d24cdb3`
 - **MACRO BRIEFING VISIBILITY FIX — v234 / RELEASED · ACCEPTED WITH OBSERVATION**(§20-3) — v233 이후 사용자가 제보한 두 가지, ① 대시보드에 들어와도 시장 지표가 하나도 보이지 않음 ② 「📌 시장 해석 보기」를 눌러도 아무것도 나타나지 않음을 수정. 중첩 아코디언의 **높이 계산 시점** 결함(안쪽 max-height 트랜지션이 끝나기 전에 바깥 scrollHeight를 읽어 부모가 자식을 통째로 잘라냄)을 `transitionend` 보정으로 해결하고, 매크로 1단을 기본 펼침으로 바꿨다. **기존 지표 10종 유지 · 신규 indicator 0건 · Macro→Risk 연결 0건 · 계산/데이터/Risk 구조 변경 0건 · 사용자 데이터 변경 0건 · Production Cloud write 0건**. ESLint 0 / Unit 290 / E2E 776 / Golden PASS / Data Guard PASS / Release Guard PASS / production smoke 6뷰포트 PASS. commit `6628653`. Observation 4건(OBS-1~4)은 §20-5에 기록하며 **개발 과제로 승격하지 않는다**
+- **DAILY SNAPSHOT PRESERVATION & RECOVERY — v235 / RELEASED**(§21) — 과거 일별 자산 이력(`dailySnapshots`)이 조용히 사라지던 경로를 막고, 이미 잃은 이력을 사용자 백업에서 되찾는 경로를 추가했다. FIX-1(마이그레이션의 과거 스냅샷 삭제 제거 + 소급 채우기 `protectedDates`) · R-5(신규 자산의 기존 날짜 소급 금지) · FIX-2a(`dailySnapshots` 전용 미리보기 후 명시적 복구, placeholder 6조건 AND · `PLACEHOLDER_MIN_RUN = 14`) · FIX-3(근거 없는 과거 스냅샷 생성 금지). **계산 엔진·자산·거래·리밸런싱·미래예측·Cloud Sync 구조 변경 0건**, **실제 사용자 데이터 변경 0건**, **Production Cloud write 0건**. **복구 기능의 배포이며, 실제 사용자 백업의 자동 복구가 아니다.** Unit 317 / E2E 811 / Golden 122 / ESLint 0 / Data Guard PASS / Release Guard PASS. commit `1d5745d`
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 
@@ -946,3 +947,119 @@ VIX · 원/달러 · 美 10년물 금리 · 금 시세 · 달러인덱스 · 코
 **v234 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 **STABILIZATION / OBSERVATION**이며,
 다음 공식 운영 마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**다(§8-1 정책·주기·
 횟수 **변경 없음**).
+
+## 21. 일별 이력 보존·복구 — 데이터 보존 (v235 · PM Approval 2026-09-13)
+
+§6 V1.1 핵심 목적("사용자가 입력한 자산 정보가 어떤 경로로도 조용히 사라지지 않게 한다")에 직접 걸리는
+**데이터 보존 결함**을 고친 릴리스다. 기능 확장이 아니다.
+
+**21-1. 문제**
+
+| 결함 | 원인 |
+|---|---|
+| 과거 일별 이력 소실 | `remediateDuplicatedDailySnapshotHistory()`(js/01)가 오늘 이전 스냅샷을 1회성으로 **통째로 삭제**했다. 재채움을 맡기로 한 소급 채우기는 지문(`sam_daily_backfill_done_fingerprints_v2`)에 이미 있는 자산을 건너뛰어 대상이 0건이 됐고, 부동산·채권·현금·달러는 티커가 없어 **어떤 경로로도 되살릴 수 없었다** |
+| 사실 아닌 수평선 차트 | `reconstructHistoricalCurValues()`(js/11)가 기록 없는 과거 날짜에 스냅샷을 새로 만들고, 역산 근거가 없어 **오늘 값을 과거로 복제**했다 — 화면에는 수개월간 변동 없는 수평선으로 보였다 |
+| 이중 가산 위험 | 소급 채우기가 `dailyPnL`을 더하는(`+=`) 구조라, 기존 기록이 있는 날짜에 겹치면 손익이 부풀려진다(실측: 기존 30일이 1,000원 → 2,000원) |
+
+**21-2. PM 결정**
+
+| 항목 | 결정 |
+|---|---|
+| R-1 마이그레이션의 과거 스냅샷 삭제 | **해소** — 삭제 자체를 중단한다(POLICY-SNAPSHOT-PRESERVATION). "중복 가능성이 있다"는 이유로 되살릴 수 없는 기록을 지우지 않는다 |
+| R-5 신규 자산의 소급 | **승인** — 이력이 이미 있는 기기에 새 자산을 더해도, 이미 기록된 과거 날짜에는 소급하지 않는다. 실제로 보유하지 않았던 과거에 자산을 끼워 넣지 않는다 |
+| `PLACEHOLDER_MIN_RUN` | **14일 확정** |
+| R-3 기록 없는 구간의 차트 표현 | **BACKLOG**(`FIX-3-FULL`) — v235에서 차트 UI를 바꾸지 않는다 |
+| R-6 구 키 `sam_daily_backfill_done_ids_v1` | **OBSERVE** — 현재 코드가 읽지 않으므로 삭제 마이그레이션을 추가하지 않는다 |
+
+**21-3. 구현 (최소 변경)**
+
+| 구분 | 지점 | 내용 |
+|---|---|---|
+| **FIX-1** | `remediateDuplicatedDailySnapshotHistory()` | 과거 스냅샷을 **지우지 않는다**. 지문을 무조건 비우거나 채우지도 않는다. 완료 플래그만 한 번 남긴다(`case: 'PRESERVED'`) |
+| **FIX-1** | `backfillAllHoldingsDailyPnlHistory()` | 패스 **시작 시점**에 이미 있던 날짜를 `preExistingDates`로 한 번만 확보해 보호한다. 같은 패스 안에서 새로 만든 날짜에는 여러 자산이 정상 누적된다 |
+| **FIX-1 / R-5** | `backfillDailyPnlHistory(asset, protectedDates)` | 보호 날짜는 건너뛴다(`if (protectedSet.has(dateKey)) continue;`). 인자가 없으면 호출 시점의 모든 날짜를 보호한다 — 단건 호출부(js/06·js/07)는 이 기본값을 쓰므로 신규 자산이 기존 날짜에 소급되지 않는다. 빈 기기에서는 예전처럼 전 구간을 채운다 |
+| **FIX-2a** | 데이터 관리 → [일별 이력만 복구] | 백업 파일에서 **`dailySnapshots`만** 읽는다. 전체 JSON 복원 경로를 쓰지 않는다. 미리보기 → 사용자 확인 → 저장 |
+| **FIX-2a** | `planSnapshotRecovery()` | 순수 함수(미리보기 중 쓰기 0). invalid / confirmed missing / placeholder candidate / normal existing / conflict로 분류. **ADD MISSING ONLY** — 값이 다른 기존 날짜는 덮지 않고 충돌로만 보고한다 |
+| **FIX-2a** | placeholder candidate | **자동 적용하지 않는다.** `includePlaceholders: true`가 명시적으로 주어진 경우(사용자 2차 승인)에만 교체한다. 판정은 6조건 AND — ① 오늘 이전 ② 모든 축 `dailyPnL` 0 ③ `cur` 구성이 오늘과 완전 동일 ④ 14일 이상 연속 ⑤ 백업에 같은 날짜 존재 ⑥ 백업 항목 형식 정상. 오늘 기록이 없으면 후보를 만들지 않는다 |
+| **FIX-2a** | `applySnapshotRecovery()` | 저장 **1회**, 실패 시 메모리·저장소 원복. `persistDailySnapshots({ skipPush: true })` — 복구가 클라우드 업로드를 예약하지 않는다. 인자 없는 기존 호출부의 push 예약 동작은 그대로다 |
+| **FIX-3** | `reconstructHistoricalCurValues()` | 기록 없는 과거 날짜에 스냅샷을 **새로 만들지 않는다**. 오늘 값을 과거로 복제하지 않고, 실제 PnL 0을 만들어내지 않는다. 기존 스냅샷의 `cur` 재계산은 유지한다 |
+
+assets · transactions · rebalance · projection · Return Key · customScenarioRates · category · categorySource ·
+positionSource · quantity · buyPrice · buyRate · inflationRate · tickerRoles · learnedTickerNames · exchangeRate ·
+dailyChangeRate — **변경 경로 0건**. Cloud Sync 구조 · Excel · Risk/Macro · FX · Bond · Monte Carlo · 차트 UI 무변경.
+
+**21-4. 설계 근거 — 실제 백업 READ-ONLY 검증 (PM 승인 단계, 저장·복구·반입 0건)**
+
+| 항목 | 결과 |
+|---|---|
+| 원본 보유 | 2026-09-07 ~ 09-10 백업 4개 모두 이력 보존. 09-10 백업이 나머지를 완전히 포함(395일, 형식 일탈 0) |
+| 합성 피해 상태 Preview | confirmed missing **32일** + placeholder candidate **363일** = 백업 395일 전체, 충돌 0 |
+| threshold 민감도 | 7 / 10 / 14일 모두 후보 363일(피해 구간이 단일 연속) |
+| 정상 zero-PnL 오탐 | 실제 원본을 정상 데이터로 놓고 검사 시 **0일**(zero-PnL 112일 존재) |
+| 백업 파일 | 읽기만 했다. 수정·복사·저장소 반입 0건. 금액·종목명은 기록하지 않았다 |
+
+**21-5. 테스트 / 검증**
+
+- 신규: `test/snapshot-recovery.test.js`(27) · `e2e/81-snapshot-recovery.spec.js`(35). fixture는 전부 합성 데이터다.
+- 최종 게이트: **Unit 317/317 · E2E 811/811 · Golden 122/122 · ESLint 0 error / 0 warning · Data Guard PASS · Release Guard PASS**.
+- **E2E 날짜 기준 문제(해소)**: RC 감사 중 KST 00:00~08:59에 **809/811**이 발생했다. 원인은 제품 코드가 아니라
+  **테스트 코드의 UTC 날짜 계산**(`toISOString().slice(0, 10)`)이었다 — 앱은 로컬 날짜(`todayDateStr()`/`dateKeyFromDate()`)를 쓴다.
+  테스트 파일 2개의 19줄을 앱과 같은 로컬 기준으로 고치고(브라우저 쪽은 앱 함수 재사용, Node 쪽은 `localDateKey()`),
+  KST 06시대 실제 경계 조건(UTC 날짜가 하루 전)에서 **811/811**을 재검증했다. **제품 코드의 날짜 계산은 변경하지 않았다.**
+- v235 bump 직후 첫 전체 실행에서 `e2e/78` T-03(P1-1 동기화)이 1회 실패했다. 단독 5/5 · spec 16/16 통과로 재현되지 않아
+  타이밍 flaky로 판정했고, 커밋 전 전체 재실행에서 811/811을 확인했다(21-8 OBSERVE).
+- 주석 정정(AUDIT-1): js/01·js/11의 현재 동작과 모순되던 주석 2곳 — 실행 로직 변경 0.
+
+**21-6. Release**
+
+- commit `1d5745de2a3c786d000063033f4e2fe759915510` — `fix: preserve and recover historical daily snapshots (v235)`
+- GitHub Pages **auto deploy SUCCESS** — run `34721917506`(pages build and deployment), deployed SHA = origin/main = local HEAD.
+  수동 deploy · workflow dispatch · rerun 0건.
+- production: HTTP 200 · MIME 정상 · `appVersionLabel` **v235** · SW `smart-asset-manager-v235` ·
+  배포본 SHA-256 = 커밋 artifact **10/10 일치** · P1-1 동기화 marker 유지 · FIX-1/FIX-2a/FIX-3 marker 확인.
+- production 브라우저 smoke — 375 · 768 · 1024 × Light · Dark **6뷰포트 PASS**, runtime exception **0**,
+  static asset failure **0**, Cloud write **0**(합성 fixture · 일회용 브라우저 컨텍스트).
+- **v234 → v235 / production release 완료 — RELEASED.**
+
+**21-7. 실제 사용자 데이터 안전성 — v235는 "복구 기능의 배포"이지 "실제 백업의 자동 복구"가 아니다**
+
+v235 릴리스 과정(구현·테스트·배포·smoke)에서:
+- 실제 사용자 localStorage 접근 **없음** · 실제 production state 접근 **없음** · 실제 Cloud 데이터 접근 **없음** · Cloud write **없음**
+- 실제 백업 파일 접근 **없음** · 2026-09-10 실제 백업 **자동 복구 없음** · 실제 사용자 데이터 자동 변경 **없음**
+
+(21-4의 백업 분석은 그보다 앞선 설계 단계에서 PM 승인 하에 READ-ONLY로만 수행했다.)
+
+**실제 이력 복구는 아직 실행되지 않았다.** 다음 단계는 사용자가 직접 통제한다(21-9).
+
+**21-8. OBSERVE / BACKLOG (v235에서 수정하지 않는다)**
+
+| ID | 내용 | 상태 |
+|---|---|---|
+| OBS-v235-1 | `e2e/78` T-03 동기화 타이밍 flaky — 재현 안 됨 | **OBSERVE** |
+| OBS-v235-2 | `test/snapshot-recovery.test.js` 머리 주석의 "7일"(실제 상수 14) | **OBSERVE** |
+| OBS-v235-3 | js/11 소급 채우기 설명 주석의 오래된 매수단가 문장(v235 이전부터 존재, 아래 코드는 이미 매수단가 미사용) | **OBSERVE** |
+| OBS-v235-4 | 구 키 `sam_daily_backfill_done_ids_v1` 잔존(R-6) | **OBSERVE** |
+| FIX-3-FULL | 기록 없는 과거 구간의 차트 표현(historical no-data visualization, R-3) | **BACKLOG** |
+| BOND-P1 · FX-P1 | 기존 분류 그대로 | **DEFERRED** |
+| UX 보조 터치타깃 | v234 OBS-1(24/20px) 및 KPI `.detail-btn` 25px 등 | **OBSERVE** |
+
+**21-9. Next Action — 실제 백업 이력 복구 (사용자 통제 · 별도 단계)**
+
+2026-09-10 백업에 대해 사용자가 실기기에서 직접 진행한다.
+
+1. 사용자가 백업 파일을 선택한다
+2. Preview를 실행한다
+3. 추가 / placeholder 교체 후보 / 충돌 결과를 확인한다
+4. 사용자가 명시적으로 승인한다(교체 후보는 2차 승인)
+5. `dailySnapshots`만 Apply한다
+6. 복구 후 다른 데이터가 보존됐는지 검증한다
+
+**전체 JSON restore는 사용하지 않는다. 자동 복구도 하지 않는다.**
+
+**21-10. 프로젝트 방향**
+
+- **v235 이후에도 V1.4를 시작하지 않는다.** 현재 단계는 **STABILIZATION / OBSERVATION**이다.
+- 우선순위: ① 실제 사용자 데이터 복구 안전성 확인 → ② v235 운영 안정성 관찰 → ③ 사용자 피드백 수집 → ④ 정기 정책 검토.
+- 다음 공식 운영 마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**다(§8-1 정책·주기·횟수 **변경 없음**).
+- §13 Out-of-Scope 및 기존 착수 금지 목록(AI · 새 Risk Score · Macro→Risk 정량 결합 · FX stochastic · 복잡한 Bond 모델 ·
+  새 자산군 · Expert 설정 등)은 그대로 유지한다 — v235는 이 목록을 바꾸지 않는다.

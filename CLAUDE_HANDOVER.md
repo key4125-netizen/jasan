@@ -32,6 +32,74 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-13) — 🚀 **일별 이력 보존·복구 릴리스** (v234 → **v235**)
+
+**버전: v234 → v235.** 현재 **production = v235**, latest commit
+`1d5745de2a3c786d000063033f4e2fe759915510` (`fix: preserve and recover historical daily snapshots (v235)`),
+**local HEAD == origin/main**. GitHub Pages 자동 배포 완료(run `34721917506`, success), production smoke 6뷰포트 PASS.
+체크리스트 **§21**에 전체 기록이 있다. 기능 추가가 아니라 **데이터 보존 결함 수정**이다.
+
+### 왜 했나 — 과거 일별 이력이 사라지고, 차트가 사실 아닌 수평선을 그렸다
+- `remediateDuplicatedDailySnapshotHistory()`(js/01)가 오늘 이전 스냅샷을 **통째로 지웠다**. 재채움을 맡은 소급 채우기는
+  지문(`sam_daily_backfill_done_fingerprints_v2`)에 이미 있는 자산을 건너뛰어 대상이 0건이었고,
+  **부동산·채권·현금·달러는 티커가 없어 되살릴 방법이 없었다.**
+- `reconstructHistoricalCurValues()`(js/11)가 기록 없는 과거 날짜를 새로 만들어 **오늘 값을 복제**했다 → 수개월 수평선.
+
+### 무엇을 바꿨나 (역할을 섞지 말 것)
+- **FIX-1 = 앞으로의 손실 방지.** 마이그레이션은 이제 **아무것도 지우지 않는다**(`case: 'PRESERVED'`, 완료 플래그만 기록).
+  지문도 무조건 비우거나 채우지 않는다. 대신 소급 채우기가 이미 기록이 있는 날짜를 `protectedDates`로 건너뛴다 —
+  `+=` 구조라 기존 날짜에 겹치면 손익이 부풀려지기 때문이다(실측 1,000원 → 2,000원). 일괄 실행은 패스 시작 시점의
+  날짜만 보호하므로 같은 패스 안에서는 여러 자산이 정상 누적된다.
+- **R-5 (PM 승인).** 이력이 있는 기기에 새 자산을 더해도 이미 기록된 과거 날짜에는 소급하지 않는다(js/06·js/07 단건
+  호출이 인자 없이 호출 → 호출 시점 전체 날짜 보호). 빈 기기에서는 예전처럼 전 구간을 채운다.
+- **FIX-2a = 이미 잃은 이력의 원본 복구.** 데이터 관리 → **[일별 이력만 복구]**. 백업에서 `dailySnapshots`만 읽고
+  전체 JSON 복원을 쓰지 않는다. 미리보기 → 확인 → 저장 1회(실패 시 원복), `skipPush: true`로 클라우드 업로드 예약 없음.
+  ADD MISSING ONLY — 값이 다른 기존 날짜는 충돌로만 보고한다. 예전 재구성이 만든 placeholder는 **6조건 AND**
+  (오늘 이전 · 모든 축 손익 0 · `cur`가 오늘과 완전 동일 · **14일** 이상 연속 · 백업에 같은 날짜 · 백업 형식 정상)일 때만
+  후보로 분리하고, `includePlaceholders: true`(사용자 2차 승인) 없이는 절대 교체하지 않는다.
+- **FIX-3 = 없는 이력을 만들지 않음.** 재구성이 기록 없는 과거 날짜를 새로 만들지 않는다.
+
+### ⚠️ 다음 세션이 꼭 알아야 할 것
+- **v235는 "복구 기능의 배포"다. 실제 사용자 백업은 아직 복구하지 않았다.** 릴리스 과정에서 실제 localStorage ·
+  production state · Cloud 데이터 · 실제 백업 파일 접근 0건, Cloud write 0건, 자동 복구 0건.
+  (설계 단계에서 PM 승인 하에 백업을 READ-ONLY로 분석한 것이 전부다 — 09-10 백업 395일, 합성 피해 상태에서
+  missing 32 + 후보 363 = 전체, 정상 zero-PnL 오탐 0.)
+- **테스트 날짜는 반드시 로컬 기준으로 쓴다.** `toISOString().slice(0, 10)`(UTC)은 KST 00:00~08:59에 하루 어긋나
+  RC 감사 때 809/811을 냈다. 브라우저 쪽은 앱의 `todayDateStr()`/`dateKeyFromDate()`, Node 쪽은 `localDateKey()`를 쓴다.
+  제품 코드의 날짜 계산은 원래 로컬이며 바꾸지 않았다.
+- **소급 채우기를 "기존 날짜에 더하는" 방식으로 되돌리지 말 것** — 이중 가산이 다시 생긴다.
+
+### 검증 결과 (v235)
+- Unit **317/317** · E2E **811/811** · Golden **122/122** · ESLint 0/0 · Data Guard PASS · Release Guard PASS.
+- bump 직후 첫 전체 실행에서 `e2e/78` T-03 1회 실패 → 단독 5/5 · spec 16/16, 재현 안 됨(flaky) → 전체 재실행 811/811 후 커밋.
+- production: HTTP 200 · v235 표기 · SW v235 · 배포본 SHA-256 10/10 일치 · 6뷰포트 Light/Dark PASS ·
+  runtime exception 0 · static asset failure 0 · Cloud write 0.
+
+### Next Action — 실제 백업 이력 복구 (사용자 통제 · 별도 단계)
+2026-09-10 백업: ① 사용자가 파일 선택 → ② Preview → ③ 추가/교체 후보/충돌 확인 → ④ 명시적 승인(교체 후보는 2차)
+→ ⑤ `dailySnapshots`만 Apply → ⑥ 복구 후 다른 데이터 보존 검증. **전체 JSON restore 금지, 자동 복구 금지.**
+
+### 남은 항목 (수정하지 않는다)
+| 항목 | 상태 |
+|---|---|
+| `e2e/78` T-03 동기화 타이밍 flaky | OBSERVE |
+| `test/snapshot-recovery.test.js` 머리 주석 "7일"(실제 14) | OBSERVE |
+| js/11 소급 채우기 주석의 오래된 매수단가 문장(v235 이전부터) | OBSERVE |
+| 구 키 `sam_daily_backfill_done_ids_v1` 잔존(R-6) | OBSERVE |
+| FIX-3-FULL — 기록 없는 과거 구간의 차트 표현(R-3, 현재 0원으로 그려짐) | BACKLOG |
+| BOND-P1 · FX-P1 | DEFERRED |
+| UX 보조 터치타깃(v234 OBS-1 24/20px, KPI `.detail-btn` 25px 등) | OBSERVE |
+
+### 현재 프로젝트 상태 — 다음 세션은 여기서 시작한다
+- **APPLICATION VERSION: v235 / RELEASED**
+- **MODE: STABILIZATION / OBSERVATION** — V1.4를 시작하지 않는다.
+- 우선순위: ① 실제 사용자 데이터 복구 안전성 확인 → ② v235 운영 안정성 관찰 → ③ 사용자 피드백 수집 → ④ 정기 정책 검토.
+- 다음 공식 운영 마일스톤은 기존 결정대로 **2026-12경 RET-02 첫 정기 검토**(§8-1 정책·주기·횟수 변경 없음).
+- 체크리스트 §13 및 기존 착수 금지 목록(AI · 새 Risk Score · Macro→Risk 정량 결합 · FX stochastic · 복잡한 Bond 모델 ·
+  새 자산군 · Expert 설정 등) 그대로 유지.
+
+---
+
 ## 최근 세션 요약 (2026-09-12) — 🚀 **화면 단순화 3연속 + 매크로 가시성 수정** (v231 → v232 → v233 → **v234**)
 
 **버전: v231 → v232 → v233 → v234.** 현재 **production = v234**, latest commit
