@@ -1244,7 +1244,9 @@ function renderMacroBriefing() {
 
   // [Phase 17 P1-1 - 매크로 브리핑 기본 접힘] 이 섹션 전체도 macroBriefingGrid/Diagnosis와 마찬가지로
   // 매 갱신마다 다시 그려지므로, 펼침 상태(macroBriefingOpen)를 모듈 전역으로 기억해 뒀다가 재적용한다
-  // (Top5 아코디언과 동일한 패턴). 계산/데이터에는 영향 없음 - 화면 표시 여부만 바뀐다.
+  // (다른 아코디언과 동일한 패턴). 계산/데이터에는 영향 없음 - 화면 표시 여부만 바뀐다.
+  // [중첩 순서] 안쪽(해석)을 먼저 확정해야 바깥(브리핑 전체)의 scrollHeight가 올바르게 계산된다.
+  reapplyMacroDiagnosisAccordionHeight();
   reapplyMacroBriefingAccordionHeight();
 }
 
@@ -1259,6 +1261,21 @@ document.getElementById('macroBriefingToggleBtn').addEventListener('click', () =
   reapplyMacroBriefingAccordionHeight();
 });
 
+// [시장 해석 접기] 지수 타일은 브리핑을 펼치면 항상 보이고, 그 아래 해석만 한 번 더 접는다 -
+// "시장 데이터는 바로 확인하고, 해석은 필요할 때 펼쳐본다". 이 영역은 macroBriefingBody 안에 있는
+// 중첩 아코디언이라, 열고 닫을 때 바깥쪽 max-height도 함께 다시 계산해야 내용이 잘리지 않는다.
+let macroDiagnosisOpen = false;
+function reapplyMacroDiagnosisAccordionHeight() {
+  const body = document.getElementById('macroDiagnosisBody');
+  const chevron = document.getElementById('macroDiagnosisChevron');
+  if (body && chevron) setAccordionOpen(body, chevron, macroDiagnosisOpen);
+}
+document.getElementById('macroDiagnosisToggleBtn').addEventListener('click', () => {
+  macroDiagnosisOpen = !macroDiagnosisOpen;
+  reapplyMacroDiagnosisAccordionHeight();
+  reapplyMacroBriefingAccordionHeight();
+});
+
 // 매번 새로 그려지는 버튼이라 위임(delegated) 리스너 하나로 처리한다(data-info-tip과 동일한 이유).
 let correlationGuideOpen = false;
 document.addEventListener('click', (e) => {
@@ -1267,6 +1284,10 @@ document.addEventListener('click', (e) => {
   const guideBody = document.getElementById('correlationGuideBody');
   const guideChevron = document.getElementById('correlationGuideChevron');
   if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
+  // 이 가이드는 해석 아코디언 > 브리핑 아코디언 안에 3중으로 들어 있다 - 안쪽이 열리면 바깥
+  // 두 개의 max-height도 다시 계산해야 내용이 잘리지 않는다.
+  reapplyMacroDiagnosisAccordionHeight();
+  reapplyMacroBriefingAccordionHeight();
 });
 
 function renderRiskSection() {

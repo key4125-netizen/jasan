@@ -508,33 +508,6 @@ function renderKPIs() {
   recordDailySnapshot(totalCur, dailyProfit, byOwner, byOwnerCategory);
 }
 
-// [주요 금융 자산 Top 5] 집계: 소유자/계좌가 달라도 같은 티커면 수량·평가금액·매입금액을 하나로
-// 합산한다(예: 같은 ETF를 신랑 ISA와 와이프 ISA에 나눠 담은 경우). 티커가 없는 자산(채권/현금/부동산
-// 직접보유)은 애초에 순위 대상이 아니므로 집계에서 제외한다. 필터와 무관하게 전체 포트폴리오 기준.
-function getTopHoldings() {
-  const groups = {}; // ticker -> { name, isDomestic, isForeign, curAmount(KRW), buyAmount(KRW), curAmountOriginal(자산통화), dailyPnL(KRW) }
-  state.assets.forEach((a) => {
-    const ticker = String(a.ticker ?? '').trim();
-    if (!ticker) return;
-    const r = calcRow(a);
-    // [버그 수정 - 평가금액 0원인 유령 자산 제외] 예전엔 수량만 확인했으나, 채권처럼 수동 등록하는
-    // 자산은 수량은 남아있어도 시세 미입력으로 평가금액만 0인 경우가 있다 - 실제 평가금액이 0인
-    // 자산을 걸러야 전량 매도/미입력 두 경우 다 순위 후보에서 빠진다(포트폴리오 구성 탭 리밸런싱
-    // 가이드·엑셀 다운로드와 동일한 기준).
-    if (Math.round(r.curAmount) === 0) return;
-    if (!groups[ticker]) {
-      groups[ticker] = { ticker, name: a.name, isDomestic: a.isDomestic, isForeign: r.isForeign, curAmount: 0, buyAmount: 0, curAmountOriginal: 0, dailyPnL: 0, currentPrice: a.currentPrice };
-    }
-    const g = groups[ticker];
-    g.curAmount += r.curAmount;
-    g.buyAmount += r.buyAmount;
-    g.curAmountOriginal += num(a.quantity) * num(a.currentPrice); // 원래 통화(원화 또는 달러) 기준 평가금액
-    // [Top5 당일손익 컬럼] 소유자/계좌가 달라도 같은 티커면 당일손익도 합산한다(평가금액/평가손익과 동일한 규칙).
-    g.dailyPnL += calcDailyPnL(a, r);
-  });
-  return Object.values(groups);
-}
-
 /* -------------------------------------------------------------------------
  * 11-A. [핵심종목 실시간] 헤더 버튼 팝업 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 기준 국내/해외
  *    자동 전환)의 실시간 시세를 그 자리에서 즉석 조회해 보여준다. 기존 목록/그래프와 달리 저장된 시세를
@@ -552,7 +525,7 @@ function getCoreStocksRegion() {
 
 // 무티커 자산(현금/채권/부동산)과 주식/ETF가 아닌 자산, 전량 매도 포지션은 공통으로 제외한다 - RISK
 // 카드가 쓰는 RISK_ELIGIBLE_CATEGORIES(['주식','ETF'])와 동일한 기준. 같은 티커를 소유자별로 나눠 든
-// 경우 getTopHoldings()처럼 평가금액을 합산해 하나로 보여준다(신랑+와이프가 같이 든 SK하이닉스가 두
+// 경우 같은 티커의 평가금액을 합산해 하나로 보여준다(신랑+와이프가 같이 든 SK하이닉스가 두
 // 줄로 안 나뉘게). filterFn으로 지역(국내/해외)·통화 조건을 추가로 좁힌다.
 function buildCoreStockGroups(filterFn) {
   const groups = {};
@@ -780,110 +753,5 @@ document.getElementById('closeCoreStocksModalBtn').addEventListener('click', (e)
 });
 document.getElementById('coreStocksModal').addEventListener('click', (e) => {
   if (e.target.id === 'coreStocksModal') closeCoreStocksModal();
-});
-
-// list: 이미 상위 5개로 잘라낸 한 지역(국내 또는 해외)의 합산 종목 배열.
-// grandTotal: 예전엔 비중(%) 계산에 썼으나 [최종 5열 확정] Top5에서 비중 열을 제외하면서 더는 쓰이지
-// 않는다 - 호출부(renderTopHoldings)와의 시그니처 호환을 위해 인자만 남겨둔다.
-function renderTopHoldingsTable(containerId, list, grandTotal) {
-  const tbody = document.getElementById(containerId);
-  if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-400">보유 종목 없음</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = list.map((g) => {
-    const profit = g.curAmount - g.buyAmount;
-    // 당일손익률 분모는 renderKPIs()의 dailyProfitRate와 동일한 규칙(전일 기준 평가금액 = 오늘 평가금액
-    // - 오늘 하루 손익)을 이 종목(합산 그룹) 단위로 그대로 적용한다. 이 값이 곧 "당일 실시간 주가등락율"
-    // 열이다(보유수량은 하루 안에 안 바뀌므로 포지션 당일손익률 = 종목 당일 주가등락률과 동일).
-    const prevDayAmount = g.curAmount - g.dailyPnL;
-    const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
-    // [Top5 표시값 - 평가금액 대신 현재주가] 국내는 원화 표기("72,500원"), 해외는 달러 표기("$182.50")로
-    // 보여준다 - 정렬 기준(Top5 선정 순서)은 그대로 평가금액(curAmount) 합산 기준을 유지하고, 화면에
-    // 노출되는 숫자만 종목의 현재가로 바꾼다.
-    const valueHtml = g.isForeign ? `$${fmtNum(g.currentPrice, 2)}` : `${krwFmt.format(Math.round(num(g.currentPrice)))}원`;
-    // [최종 5열 확정] 상품명·평가금액·등락률·당일손익·총손익 5개의 독립된 열로 나란히 배치한다(비중은
-    // 제외, 카드 상단 comment 참고) - 손익 금액 아래 수익률을 두 줄로 쌓지 않고 각 지표를 한 열의
-    // 한 줄 값으로만 표시해야 세로 높이가 줄어 좁은 화면에도 가로 스크롤 없이 들어간다.
-    return `
-    <tr class="border-b border-slate-50 dark:border-slate-800/70 last:border-b-0">
-      <td class="py-1.5 pr-1 font-medium truncate cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</td>
-      <td class="py-1.5 px-1 text-right whitespace-nowrap">${valueHtml}</td>
-      <td class="py-1.5 px-1 text-right whitespace-nowrap ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</td>
-      <td class="py-1.5 px-1 text-right whitespace-nowrap ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</td>
-      <td class="py-1.5 pl-1 text-right whitespace-nowrap ${profitColor(profit)}">${fmtSignedShort(profit)}</td>
-    </tr>`;
-  }).join('');
-}
-
-// [모바일 2단(두 줄) 카드 레이아웃] 640px 미만 전용 - 좁은 화면에서 5열 표(text-sm)가 너무 작아
-// 읽기 어렵다는 신고에 따라, 종목당 두 줄짜리 큼직한 카드로 대체한다(위 hidden sm:block 표와 데이터는
-// 완전히 동일, 화면 폭에 따라 둘 중 하나만 보임 - index.html 참고). 1줄: 종목명 + 현재가/등락률,
-// 2줄: 당일손익 + 총손익. 계산 로직(dailyRate/profit/valueHtml)은 renderTopHoldingsTable과 동일하게
-// 맞춰 두 레이아웃의 숫자가 항상 일치하도록 한다.
-function renderTopHoldingsMobileCards(containerId, list) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  if (list.length === 0) {
-    container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">보유 종목 없음</p>`;
-    return;
-  }
-  container.innerHTML = list.map((g) => {
-    const profit = g.curAmount - g.buyAmount;
-    const prevDayAmount = g.curAmount - g.dailyPnL;
-    const dailyRate = prevDayAmount !== 0 ? (g.dailyPnL / prevDayAmount) * 100 : 0;
-    const valueHtml = g.isForeign ? `$${fmtNum(g.currentPrice, 2)}` : `${krwFmt.format(Math.round(num(g.currentPrice)))}원`;
-    return `
-    <div class="rounded-xl border border-slate-100 dark:border-slate-800 px-3.5 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
-      data-open-stock-detail data-ticker="${escapeHtml(g.ticker)}" data-name="${escapeHtml(g.name)}">
-      <div class="flex items-baseline justify-between gap-2">
-        <span class="text-base font-semibold truncate min-w-0">${escapeHtml(g.name)}</span>
-        <span class="flex items-baseline gap-1.5 shrink-0">
-          <span class="text-base font-semibold">${valueHtml}</span>
-          <span class="text-sm font-semibold ${profitColor(g.dailyPnL)}">${fmtPct(dailyRate)}</span>
-        </span>
-      </div>
-      <div class="flex items-baseline justify-between gap-2 mt-2">
-        <span class="text-sm"><span class="text-slate-400 dark:text-slate-500">당일손익</span> <span class="font-semibold ${profitColor(g.dailyPnL)}">${fmtSignedShort(g.dailyPnL)}</span></span>
-        <span class="text-sm"><span class="text-slate-400 dark:text-slate-500">총손익</span> <span class="font-semibold ${profitColor(profit)}">${fmtSignedShort(profit)}</span></span>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderTopHoldings() {
-  const groups = getTopHoldings();
-  // 비중(%)의 분모는 국내/해외를 합친 "티커가 존재하는 전체 상품"의 합계 평가금액 하나로 통일한다 -
-  // 두 표(국내/해외 Top 5)가 서로 다른 기준으로 100%를 잡으면 두 표를 나란히 비교하기 어렵기 때문이다.
-  const grandTotal = groups.reduce((s, g) => s + g.curAmount, 0);
-  const domestic = groups.filter((g) => g.isDomestic === '국내').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
-  const foreign = groups.filter((g) => g.isDomestic === '해외').sort((a, b) => b.curAmount - a.curAmount).slice(0, 5);
-  renderTopHoldingsTable('topHoldingsDomestic', domestic, grandTotal);
-  renderTopHoldingsTable('topHoldingsForeign', foreign, grandTotal);
-  renderTopHoldingsMobileCards('topHoldingsDomesticMobile', domestic);
-  renderTopHoldingsMobileCards('topHoldingsForeignMobile', foreign);
-  // 시세 갱신 등으로 표 내용(행 수)이 바뀌면 펼쳐진 상태의 max-height도 새 내용 높이에 맞게 갱신해야
-  // 한다 - 거래 목록 아코디언의 setAccordionOpen 재적용과 동일한 이유.
-  reapplyTopHoldingsAccordionHeights();
-}
-
-// [Top 5 드롭다운(아코디언)] 공간 절약을 위해 기본은 접힘 상태 - 헤더를 누르면 펼쳐진다.
-let topHoldingsAccordionOpen = { domestic: false, foreign: false };
-function reapplyTopHoldingsAccordionHeights() {
-  const suffixMap = { domestic: 'Domestic', foreign: 'Foreign' };
-  Object.keys(suffixMap).forEach((key) => {
-    const suffix = suffixMap[key];
-    const body = document.getElementById(`topHoldings${suffix}Body`);
-    const chevron = document.getElementById(`topHoldings${suffix}Chevron`);
-    if (body && chevron) setAccordionOpen(body, chevron, topHoldingsAccordionOpen[key]);
-  });
-}
-document.getElementById('topHoldingsDomesticToggleBtn').addEventListener('click', () => {
-  topHoldingsAccordionOpen.domestic = !topHoldingsAccordionOpen.domestic;
-  reapplyTopHoldingsAccordionHeights();
-});
-document.getElementById('topHoldingsForeignToggleBtn').addEventListener('click', () => {
-  topHoldingsAccordionOpen.foreign = !topHoldingsAccordionOpen.foreign;
-  reapplyTopHoldingsAccordionHeights();
 });
 

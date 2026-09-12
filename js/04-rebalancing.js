@@ -1565,7 +1565,7 @@ function renderPositionAnalysisCard(containerId, ownerFilter) {
 }
 
 // [포지션 카드 아코디언 부활 - 요청 반영] 가구 합산/신랑/와이프 3개 포지션 분석 카드 모두 기본은
-// 닫힘(topHoldingsAccordionOpen과 동일한 setAccordionOpen 패턴, js/10) - 헤더를 눌러야 펼쳐지고,
+// 닫힘(setAccordionOpen 패턴, js/10) - 헤더를 눌러야 펼쳐지고,
 // 탭 전환 시 resetAllAccordionsOnTabSwitch()(js/03)가 전부 다시 닫는다. [가구합산 카드는 아코디언 제외
 // - 요청 반영] "전체 포지션별 목표비중 분석"(household 합산) 카드는 접힘 없이 항상 펼쳐져 있어야 해서
 // 이 상태 객체·아코디언 클릭 바인딩 대상에서 뺐다(index.html에 그 카드의 accordion 버튼/바디 id 자체가
@@ -1573,7 +1573,7 @@ function renderPositionAnalysisCard(containerId, ownerFilter) {
 let positionAnalysisAccordionOpen = { '신랑': false, '와이프': false };
 const POSITION_ANALYSIS_ACCORDION_SUFFIX = { '신랑': 'Husband', '와이프': 'Wife' };
 // renderPositionAnalysisCard()로 내부 콘텐츠가 다시 그려질 때마다(합계/탭 값이 바뀌어 높이도 바뀔 수
-// 있음) 호출해, 열려 있는 카드의 max-height를 새 scrollHeight로 재계산한다(topHoldings와 동일한 이유).
+// 있음) 호출해, 열려 있는 카드의 max-height를 새 scrollHeight로 재계산한다(다른 아코디언과 동일한 이유).
 function reapplyPositionAnalysisAccordionHeights() {
   Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
     const suffix = POSITION_ANALYSIS_ACCORDION_SUFFIX[key];

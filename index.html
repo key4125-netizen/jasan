@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v232</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v233</p>
           </div>
         </div>
 
@@ -432,14 +432,11 @@
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
         <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">총금융자산평가손익</span>
-        <!-- [세부내용 버튼 신설] 클릭 시 openTotalProfitModal()로 누적 평가손익 추이(꺾은선) 모달을 연다 -
-             다른 카드들과 동일하게 버튼 밑에 소형 배지(kpiTotalRealizedBadge, '총 실현손익')를 함께 쌓는다. -->
+        <!-- [세부내용 버튼/팝업 제거] 이 카드가 보여주는 숫자(현재가-매입원가, 부동산 제외)와 팝업이
+             보여주던 누적 추이(dailySnapshots 기반, 부동산 포함)는 기준이 서로 달라 같은 카드 안에서
+             "그 숫자의 내역"으로 오해되기 쉬웠다 - 차이를 설명하는 문구까지 덧붙이는 대신 진입 자체를
+             없앴다. 카드에 남는 숫자와 계산은 하나도 바뀌지 않는다. -->
         <div class="flex flex-col items-end gap-1 shrink-0">
-          <!-- [카드 우측 상단 아이콘 제거] 세부내용 버튼 옆에 있던 원형 아이콘 배지(trending-up)를 없애서
-               버튼이 카드 우측 상단 여백에 그대로 붙도록 정렬을 자연스럽게 맞췄다. -->
-          <div class="flex items-center gap-1 sm:gap-1.5">
-            <button type="button" id="kpiTotalProfitDetailBtn" class="detail-btn"><i data-lucide="line-chart" class="w-3 h-3"></i> 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
-          </div>
           <!-- [총 실현손익 배지] 매도 거래 전체 누적 실현손익(getTotalRealizedPnL) - renderKPIs() 참고,
                매도 내역이 아예 없으면 숨긴다. -->
           <span id="kpiTotalRealizedBadge" class="hidden text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 whitespace-nowrap"></span>
@@ -453,9 +450,6 @@
         <span id="kpiTotalProfitRate" class="text-sm font-semibold">0.00%</span>
         <span class="text-sm text-slate-400">매입원가 기준</span>
       </p>
-      <!-- [의미 명확화] 메인 숫자가 "지금까지 번 돈"이 아니라 "아직 팔지 않은 자산의 평가손익"임을
-           한 줄로 밝힌다(계산 무변경). 실현손익은 우측 상단 배지에 따로 있다. -->
-      <p class="text-sm text-slate-400 mt-0.5 break-keep">현재 보유 금융자산의 미실현 평가손익이며, 팔아서 확정한 손익은 오른쪽 위 <span class="text-slate-500 dark:text-slate-300">총 실현손익</span>에 따로 있어요.</p>
       <!-- [Phase 17 P1-1 - 금융자산 평가금액 보조정보] 새 카드를 만들지 않고 기존 손익 카드 안에 보조
            줄만 추가한다 - renderKPIs()(js/02)가 이미 계산해 둔 financialCur(부동산 제외, 이 카드의
            다른 숫자들과 동일한 범위)를 그대로 재사용한다(새 계산 없음). "총자산"이라는 표현은 부동산
@@ -463,7 +457,6 @@
            포함 전체 금액은 총자산현황 탭에 있다는 점만 짧게 안내한다. -->
       <p class="text-sm text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
         금융자산 평가금액 <span id="kpiFinancialValueInline" class="font-semibold text-slate-600 dark:text-slate-300">0원</span>
-        <span class="block text-sm mt-0.5">부동산을 포함한 전체 자산은 옆 탭에서 확인할 수 있어요.</span>
       </p>
       <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
            (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
@@ -474,83 +467,11 @@
   </section>
 
   <!-- ============================= 종목 분석 & 투자 검토 보고서 진입 버튼 =============================
-       국내자산 Top 5 카드 바로 위 - 보유 여부와 무관하게 아무 티커나 입력해 정밀 분석 결과를 볼 수
+       RISK 관리 카드 바로 위 - 보유 여부와 무관하게 아무 티커나 입력해 정밀 분석 결과를 볼 수
        있다(openStockAnalysisModal, js/10-risk-translation-alerts.js 참고). -->
   <button type="button" id="stockAnalysisBtn" class="w-full mb-4 rounded-2xl border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-colors px-4 py-3 text-sm font-semibold text-brand-700 dark:text-brand-300">
     🔍 종목 분석 &amp; 투자 검토 보고서
   </button>
-
-  <!-- ============================= 주요 금융 자산 TOP 5 =============================
-       [탭 재배치] 투자세부 탭에 있던 국내/해외 자산 Top5를 총투자현황의 [일간 평가손익] 카드 바로
-       다음 자리로 옮겨왔다 - 소유자/계좌가 달라도 같은 티커는 합산해서 순위를 매긴다(renderTopHoldings
-       참고). [모바일 5열 한 줄 표기 - 최종] 상품명·평가금액·등락률·당일손익·총손익 5열(비중은 제외)을
-       모든 화면 폭에서 동일하게 보여준다 - table-fixed + colgroup로 열 너비를 퍼센트 고정해 내용이
-       가로로 삐져나오지 않게 하고, 상품명만 truncate로 말줄임 처리한다. 폰트를 text-sm로 줄이고
-       각 숫자 열은 손익률을 금액 아래 두 줄로 쌓지 않고 한 열의 한 줄 값으로만 표시해(renderTopHoldingsTable
-       참고) 320~375px 폭에서도 가로 스크롤 없이 한 줄에 다 들어간다. -->
-  <!-- [드롭다운(아코디언)화] 공간 절약을 위해 기본 접힘 상태로 시작하고, 헤더를 누르면 펼쳐진다 -
-       자산 관리 카드의 계층별 아코디언(setAccordionOpen, max-height 트랜지션)과 동일한 패턴을
-       재사용한다(topHoldingsAccordionOpen, reapplyTopHoldingsAccordionHeights 참고). -->
-  <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-      <button type="button" id="topHoldingsDomesticToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <h3 class="text-base font-bold">국내 자산 Top 5</h3>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsDomesticChevron"></i>
-      </button>
-      <div id="topHoldingsDomesticBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <!-- [모바일 2단(두 줄) 카드 레이아웃] 640px 미만에서는 5열 표 대신 종목당 두 줄(1줄: 종목명+
-             현재가/등락률, 2줄: 당일손익/총손익) 카드로 보여준다 - 예전 표(text-sm)는 좁은 화면에서
-             글자가 너무 작아 식별이 어렵다는 신고가 있었다. sm 이상(데스크탑/태블릿)은 폭 여유가 있어
-             기존 5열 표를 그대로 유지한다. renderTopHoldingsMobileCards()(js/02)가 채운다. -->
-        <div id="topHoldingsDomesticMobile" class="sm:hidden px-4 pb-4 space-y-3"></div>
-        <div class="hidden sm:block px-4 pb-4 overflow-x-auto">
-          <table class="w-full table-fixed text-sm whitespace-nowrap">
-            <colgroup>
-              <col style="width:20%"><col style="width:23%"><col style="width:15%">
-              <col style="width:19%"><col style="width:23%">
-            </colgroup>
-            <thead>
-              <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-                <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-                <th class="text-right font-medium py-1.5 px-1">현재가</th>
-                <th class="text-right font-medium py-1.5 px-1">등락률</th>
-                <th class="text-right font-medium py-1.5 px-1">당일손익</th>
-                <th class="text-right font-medium py-1.5 pl-1">총손익</th>
-              </tr>
-            </thead>
-            <tbody id="topHoldingsDomestic"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-      <button type="button" id="topHoldingsForeignToggleBtn" class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <h3 class="text-base font-bold">해외 자산 Top 5</h3>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="topHoldingsForeignChevron"></i>
-      </button>
-      <div id="topHoldingsForeignBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <div id="topHoldingsForeignMobile" class="sm:hidden px-4 pb-4 space-y-3"></div>
-        <div class="hidden sm:block px-4 pb-4 overflow-x-auto">
-          <table class="w-full table-fixed text-sm whitespace-nowrap">
-            <colgroup>
-              <col style="width:20%"><col style="width:23%"><col style="width:15%">
-              <col style="width:19%"><col style="width:23%">
-            </colgroup>
-            <thead>
-              <tr class="text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-                <th class="text-left font-medium py-1.5 pr-1">상품명</th>
-                <th class="text-right font-medium py-1.5 px-1">현재가</th>
-                <th class="text-right font-medium py-1.5 px-1">등락률</th>
-                <th class="text-right font-medium py-1.5 px-1">당일손익</th>
-                <th class="text-right font-medium py-1.5 pl-1">총손익</th>
-              </tr>
-            </thead>
-            <tbody id="topHoldingsForeign"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <!-- ============================= RISK 관리 =============================
        [개별 종목 정밀 주가 분석 엔진] RSI14 과열(70이상)/추세 이탈(20일선 아래)/52주 고점대비 급락
@@ -595,7 +516,19 @@
            래퍼). 좁은 화면에서 답답해 보이는 문제는 열 수를 바꾸는 대신 카드 내부 패딩/폰트를 키우는
            쪽으로 대응한다(macroTileHtml의 md: 이상 스타일, js/10-risk-translation-alerts.js). -->
       <div id="macroBriefingGrid" class="space-y-1 sm:space-y-2 mb-2"></div>
-      <div id="macroBriefingDiagnosis" class="space-y-1"></div>
+      <!-- [시장 데이터는 바로, 해석은 필요할 때] 브리핑을 펼치면 위 지수 타일은 항상 보이고, 그 아래
+           해석(시장 종합 평가 / 내 포트폴리오 영향 / 참고 / 상관관계 가이드)만 한 번 더 접는다 -
+           Top5·상관관계 가이드와 같은 setAccordionOpen(max-height) 패턴을 그대로 재사용한다
+           (macroDiagnosisOpen, js/10). 지수 종류·데이터·계산은 전혀 바뀌지 않는다. -->
+      <div class="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800">
+        <button type="button" id="macroDiagnosisToggleBtn" class="w-full flex items-center justify-between gap-2 min-h-[44px] text-left">
+          <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">📌 시장 해석 보기</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0" id="macroDiagnosisChevron"></i>
+        </button>
+        <div id="macroDiagnosisBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+          <div id="macroBriefingDiagnosis" class="space-y-1 pt-1"></div>
+        </div>
+      </div>
       </div>
     </div>
 
@@ -1064,7 +997,7 @@
          [포지션 카드 아코디언 부활 - 요청 반영] 타이틀 행 전체(비중조절 버튼 제외)를 누르면 바로 아래
          포지션별 목표비중 분석 카드가 펼쳐진다 - 기본은 닫힘, 탭 전환 시 자동으로 다시 닫힌다
          (positionAnalysisAccordionOpen/reapplyPositionAnalysisAccordionHeights, js/04 - 기존
-         topHoldingsAccordionOpen과 동일한 setAccordionOpen 패턴). [비중조절] 버튼은 별도 클릭 대상이라
+         setAccordionOpen 패턴). [비중조절] 버튼은 별도 클릭 대상이라
          (data-rebalance-detail-btn) 아코디언 토글과 겹치지 않는다. -->
     <div id="positionAnalysisAccordionHusbandBtn" class="flex items-center justify-between gap-2 mb-2 cursor-pointer">
       <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">👤 신랑 목표 비중
@@ -1114,6 +1047,19 @@
       <p id="positionScopeNote" class="text-sm text-slate-400 mb-3">일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.</p>
       <div id="positionAnalysisCardAll"></div>
     </section>
+
+    <!-- [수익률 직접 조정(고급) 진입] 예전에는 미래예측 탭의 시나리오 안내문 아래 작은 회색 링크였다 -
+         찾기 어렵다는 지적이 있어 목표 비중을 다 정한 다음, 실행 가이드를 보기 직전인 이 자리로 옮겼다.
+         id와 클릭 핸들러(openScenarioRateManagerModal, js/05:2509)는 그대로라 JS는 전혀 바뀌지 않았고,
+         열리는 팝업도 기존 [수익률 관리] 모달 그대로다(customScenarioRates 구조·저장·Return Key 무변경).
+         [스타일] 위 stockAnalysisBtn과 같은 full-width 카드형 버튼 구조를 재사용하되, 브랜드 색이 아닌
+         중립 색을 쓴다 - 모든 사용자가 꼭 손봐야 하는 설정처럼 보이면 안 되기 때문이다("(고급)" 라벨도
+         같은 이유로 유지). 새 디자인 시스템을 만들지 않았다. -->
+    <button type="button" id="openScenarioRateManagerBtn"
+      class="w-full mb-4 text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors shadow-sm px-4 py-3">
+      <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">⚙ 수익률 직접 조정 (고급)</span>
+      <span class="block mt-0.5 text-sm text-slate-400 break-keep">자산별 수익률 가정을 직접 설정할 수 있습니다.</span>
+    </button>
 
     <!-- ===== 종목별 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이
          탭으로 통합됐다 - 자산군/티커 단위로 뭉쳐 있던 목표를 실제 보유 개별 종목 단위로 풀어서, 위의
@@ -1533,16 +1479,10 @@
            ① 시나리오라는 점 ② 예측/확률이 아니라는 점 ③ 출처가 항목마다 다르다는 점 ④ 10년 전망을
            20년 계산에 그대로 쓰는 단순화가 들어있다는 점을 사실대로 적는다. -->
       <span class="block mt-1.5 text-sm text-slate-400">기준 · "보수적/일반적/긍정적"은 장기 투자 가정 시나리오이며 <b>예측이나 확률이 아닙니다</b>. 항목에 따라 기관의 장기 전망(10년)을 쓰기도 하고, 근거가 제한된 기존 근사치를 그대로 두기도 합니다. 10년 전망을 20년 계산에 그대로 적용하는 단순화가 포함되어 있으며, 실제 수익률을 보장하지 않습니다.</span>
-      <!-- [Phase 7-F - 일반 사용자 기본 흐름에서 비노출/저시인성 처리] 이 버튼은 "월 적립금" 옆 브랜드
-           색 버튼 행에서 여기(시나리오 근사치 안내 문구 바로 아래)로 옮기고, 작은 회색 텍스트 링크로
-           되돌렸다(예전 스타일 - 위 안내 주석에 남아있던 "예전엔 눈에 잘 안 띄는 회색 테두리 버튼"
-           스타일 참고) - 초보자가 "수익률을 직접 설정해야 한다"는 인상을 받지 않도록, 일반적인 사용
-           흐름에서는 거의 마주치지 않는 위치·스타일로 낮췄다. id/클릭 핸들러(openScenarioRateManagerModal,
-           js/05)는 그대로이므로 JS는 전혀 건드리지 않았다 - customScenarioRates/getTargetProjectionRate()/
-           키워드 기반 종목 분류 기능은 기능 삭제 없이 그대로 유지된다(Phase 7-E/7-F ISSUE A 결정). -->
-      <button type="button" id="openScenarioRateManagerBtn" class="block mt-1 text-sm text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600 dark:hover:text-slate-300">
-        수익률 직접 조정(고급)
-      </button>
+      <!-- [진입 위치 이동] 여기 작은 회색 링크로 있던 [수익률 직접 조정(고급)]은 찾기가 너무 어려웠다 -
+           포트폴리오 탭의 "전체 포지션별 목표비중 분석"과 "종목별 실행 가이드" 사이로 옮겼다
+           (openScenarioRateManagerBtn, 같은 id·같은 핸들러 그대로). 고급 설정이라는 성격은 유지한다 -
+           "(고급)" 라벨을 그대로 두고 브랜드 색이 아닌 차분한 스타일을 쓴다. -->
     </div>
 
     <!-- ===== [Phase 24-B STEP 4] Scenario(보수적/일반적/긍정적) 전체를 상세 분석 영역으로 내림 =====
@@ -2024,42 +1964,6 @@
       </div>
 
       <div id="totalValueList" class="pt-1"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ============================= 누적 평가손익 추이 모달 (총 평가손익 KPI 카드 [세부내용] 터치) =============================
-     바로 위 [총 평가금액 추이] 모달과 완전히 동일한 마크업/기간탭 구조를 재사용한다(id 접두사만 tv->tp로
-     교체) - buildCumulativeProfitSeries()/openTotalProfitModal() 참고. -->
-<div id="totalProfitModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-      <h3 class="text-sm font-semibold">기간별 평가손익 누적 추이</h3>
-      <button type="button" id="closeTotalProfitModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-
-    <div class="px-4 py-3 overflow-y-auto space-y-3">
-      <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tp-days="30" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-        <button type="button" data-tp-days="90" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tp-days="180" class="total-profit-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-        <button type="button" data-tp-days="365" class="total-profit-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
-      </div>
-
-      <!-- [범위 안내] 이 그래프는 카드 본문 숫자(현재가-매입원가, 부동산 제외)를 쪼갠 것이 아니다 -
-           buildCumulativeProfitSeries(js/11)가 dailySnapshots에 쌓인 하루치 변동분을 고른 기간만큼
-           누적한 값이고, 그 스냅샷은 부동산까지 포함한 전체 자산 기준이다(recordDailySnapshot, js/02).
-           같은 카드 안에 있어 "그 숫자의 내역"으로 읽히기 쉬워 차이를 밝혀 둔다. 계산은 무변경. -->
-      <p class="text-sm text-slate-400 break-keep">고른 기간 동안 시세·환율이 움직여 쌓인 손익을 첫날 0원부터 더해 나간 값입니다. 부동산을 포함한 전체 자산 기준이라, 이 카드 본문의 평가손익과는 다른 숫자예요.</p>
-
-      <div class="daily-pnl-chart-box relative h-56 sm:h-64">
-        <canvas id="totalProfitChart"></canvas>
-        <p id="totalProfitChartMsg" class="hidden absolute inset-0 flex items-center justify-center text-center text-sm text-slate-400 px-4"></p>
-      </div>
-
-      <div id="totalProfitList" class="pt-1"></div>
     </div>
   </div>
 </div>

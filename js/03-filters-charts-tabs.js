@@ -221,17 +221,13 @@ document.getElementById('chartZoomModal').addEventListener('click', (e) => {
 // 기본(접힘) 상태로 되돌린다. investmentDetail/transactions/rebalance 탭의 아코디언은 상태 변수만
 // 초기화해도 충분하다 - switchTab() 아래에서 그 탭의 render 함수가 곧바로 다시 호출되면서(이미 각
 // render 함수 안에 setAccordionOpen(..., 그 상태 변수) 호출이 내장돼 있음) 자연히 접힌 채로 다시
-// 그려진다. 반면 대시보드 탭(RISK 관리/Top5 보유종목)의 아코디언은 탭을 전환해도 renderAll()이 당장
+// 그려진다. 반면 대시보드 탭(RISK 관리)의 아코디언은 탭을 전환해도 renderAll()이 당장
 // 다시 호출되지 않으므로, 이미 그려져 있는 DOM을 여기서 직접 접어준다.
 function resetAllAccordionsOnTabSwitch() {
   riskyAccordionOpen = false;
   const riskyBody = document.getElementById('riskyAccordionBody');
   const riskyChevron = document.getElementById('riskyAccordionChevron');
   if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, false);
-
-  topHoldingsAccordionOpen.domestic = false;
-  topHoldingsAccordionOpen.foreign = false;
-  reapplyTopHoldingsAccordionHeights();
 
   Object.keys(rebalanceGuideAccordionOpen).forEach((k) => { rebalanceGuideAccordionOpen[k] = false; });
 
@@ -322,7 +318,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'totalProfitModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'systemManagementModal', 'mcInfoModal', 'projectionAssumptionsModal', 'mcFeeRatesModal', 'cmaRecommendationModal'];
+const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'systemManagementModal', 'mcInfoModal', 'projectionAssumptionsModal', 'mcFeeRatesModal', 'cmaRecommendationModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -355,7 +351,6 @@ const MODAL_CLOSE_FNS = {
   dailyPnlModal: (viaBack) => closeDailyPnlModal(viaBack),
   stockAllocationModal: (viaBack) => closeStockAllocationModal(viaBack),
   totalValueModal: (viaBack) => closeTotalValueModal(viaBack),
-  totalProfitModal: (viaBack) => closeTotalProfitModal(viaBack),
   importChoiceModal: (viaBack) => closeImportChoiceModal('cancel', viaBack),
   exchangeRateModal: (viaBack) => closeExchangeRateModal(viaBack),
   scenarioRateManagerModal: (viaBack) => closeScenarioRateManagerModal(viaBack),

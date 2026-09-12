@@ -94,7 +94,6 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // DailyPnlHistory에서 쓰는 것과 동일한 패턴).
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
-  if (!document.getElementById('totalProfitModal').classList.contains('hidden')) updateTotalProfitModal();
   showToast('모든 데이터가 초기화되었습니다.', 'success');
 });
 

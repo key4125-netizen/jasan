@@ -477,7 +477,6 @@ async function backfillAllHoldingsDailyPnlHistory() {
   // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운/보정한 값을 즉시 보여준다.
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
-  if (!document.getElementById('totalProfitModal').classList.contains('hidden')) updateTotalProfitModal();
 }
 
 // [버그 수정 - 총 평가금액 추이 과거 데이터 0원 표시] backfillDailyPnlHistory가 채우는 건 자산별 종가
@@ -606,27 +605,6 @@ function buildTotalValueSeries(days) {
     row.total = Object.values(row.byOwnerAmounts).reduce((sum, v) => sum + v, 0);
   });
   return series;
-}
-
-// [총 평가손익 카드 - 누적 평가손익 추이 팝업] 일자별 "절대 평가금액(cur)"이 아니라 "그날의 시세
-// 변동분(dailyPnL)"을 선택 기간 시작일부터 누적으로 더해 나간다 - 이미 검증된 buildUnrealizedPnlSeries
-// (일별 손익 추이 팝업과 동일 소스)를 그대로 재사용하므로 새로운 이력 추적 없이 바로 만들 수 있다.
-// 매입금액(원금) 자체의 과거 이력은 저장하지 않으므로 "그 기간 동안 순수 시세 변동으로 쌓인 손익"만
-// 보여준다(중간에 추가 매수/매도로 원금이 바뀌어도 왜곡되지 않는, 증권사 앱의 "기간 수익률" 그래프와
-// 같은 개념) - 선택한 기간의 첫날은 항상 0에서 시작해 오늘까지 누적된다.
-function buildCumulativeProfitSeries(days) {
-  const dailySeries = buildUnrealizedPnlSeries(days);
-  const runningByOwner = {};
-  let runningTotal = 0;
-  return dailySeries.map((row) => {
-    runningTotal += row.total;
-    const byOwnerAmounts = {};
-    Object.keys(row.byOwnerAmounts).forEach((o) => {
-      runningByOwner[o] = (runningByOwner[o] || 0) + row.byOwnerAmounts[o];
-      byOwnerAmounts[o] = runningByOwner[o];
-    });
-    return { date: row.date, total: runningTotal, byOwnerAmounts };
-  });
 }
 
 // 실현손익 시리즈 - 거래내역의 매도 건을 날짜별/소유자별로 집계한다(기간별 실현손익 리포트와 같은
@@ -995,72 +973,6 @@ document.getElementById('totalValueModal').addEventListener('click', (e) => {
 });
 document.getElementById('dailyPnlModal').addEventListener('click', (e) => {
   if (e.target.id === 'dailyPnlModal') closeDailyPnlModal();
-});
-
-/* ---- 20-1-1. 누적 평가손익 추이 팝업 (총 평가손익 KPI 카드 [세부내용] 터치) ----
- *    총 평가금액 추이 팝업(20-1)과 완전히 같은 패턴(기간 탭 4개, renderMultiSeriesLineChart 공용 렌더러,
- *    3초 툴팁 자동숨김)을 그대로 따르되, 시리즈만 buildCumulativeProfitSeries로 교체했다. -------- */
-let totalProfitPopupDays = 180; // 30 | 90 | 180 | 365
-
-function renderTotalProfitChart(series) {
-  const emptyMessage = '아직 기록된 평가손익 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
-  renderMultiSeriesLineChart('totalProfit', 'totalProfitChart', 'totalProfitChartMsg', series, emptyMessage, (v) => fmtSigned(v));
-}
-
-// 차트 하단 요약 - 시리즈 자체가 이미 "선택 기간 첫날=0"부터의 누적값이므로, 마지막(오늘) 값이 곧 그
-// 기간 동안의 누적 평가손익이다(일별 손익 추이 팝업의 합계 요약과 같은 스타일로 통일).
-function renderTotalProfitSummary(series) {
-  const container = document.getElementById('totalProfitList');
-  if (series.length === 0) { container.innerHTML = ''; return; }
-
-  const owners = getDailyPnlOwnerList();
-  const last = series[series.length - 1];
-  const periodBtn = document.querySelector('#totalProfitModal .total-profit-period-btn.active');
-  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
-
-  const rows = owners.map((o) => ({ label: `${o} 누적 평가손익`, amount: last.byOwnerAmounts[o] || 0 }));
-  rows.push({ label: '총 누적 평가손익', amount: last.total, emphasize: true });
-
-  container.innerHTML = `
-    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 누적 합계</p>
-    <div class="space-y-1.5">
-      ${rows.map((r) => `
-        <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
-          <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
-          <span class="shrink-0 whitespace-nowrap ${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
-        </div>`).join('')}
-    </div>`;
-}
-
-function updateTotalProfitModal() {
-  const series = buildCumulativeProfitSeries(totalProfitPopupDays);
-  renderTotalProfitChart(series);
-  renderTotalProfitSummary(series);
-}
-
-document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    totalProfitPopupDays = Number(btn.dataset.tpDays);
-    document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    updateTotalProfitModal();
-  });
-});
-
-function openTotalProfitModal() {
-  totalProfitPopupDays = 180;
-  document.querySelectorAll('#totalProfitModal .total-profit-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tpDays) === 180));
-  document.getElementById('totalProfitModal').classList.remove('hidden');
-  pushModalHistoryState();
-  updateTotalProfitModal();
-}
-function closeTotalProfitModal(viaBackButton) {
-  document.getElementById('totalProfitModal').classList.add('hidden');
-  if (!viaBackButton) popModalHistoryIfNeeded();
-}
-document.getElementById('kpiTotalProfitDetailBtn').addEventListener('click', openTotalProfitModal);
-document.getElementById('closeTotalProfitModalBtn').addEventListener('click', () => closeTotalProfitModal());
-document.getElementById('totalProfitModal').addEventListener('click', (e) => {
-  if (e.target.id === 'totalProfitModal') closeTotalProfitModal();
 });
 
 /* ---- 20-2. 환율 추이 모달 (달러자산 총액/적용환율 KPI 카드 터치 시) ----

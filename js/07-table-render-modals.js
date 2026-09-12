@@ -660,9 +660,6 @@ function renderAll() {
   updateRealEstateGuidanceText();
   renderKPIs();
   renderRiskSection();
-  // [탭 재배치] Top5는 금융투자현황 탭으로 옮겨왔다 - 캔버스가 아니라 일반 테이블이라 숨겨진 탭에서
-  // 갱신해도 크기가 0이 되는 문제가 없으므로, 다른 KPI/RISK 렌더링과 함께 항상 갱신한다.
-  renderTopHoldings();
   // 총자산현황/리밸런싱/미래예측 탭은 숨겨진 캔버스에 차트를 그리면 크기가 0이 되므로, 실제로 보이고
   // 있을 때만 갱신한다. (다른 탭으로 전환되는 순간에는 switchTab()이 별도로 해당 탭을 다시 그려준다.)
   if (state.activeTab === 'investmentDetail') renderInvestmentDetailTab();
