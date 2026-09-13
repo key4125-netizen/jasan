@@ -1695,62 +1695,82 @@ function hasNoRecordedPnl(snap) {
   return true;
 }
 
-// cur만 뽑아 정렬 직렬화한다 - "이 날짜의 평가금액 구성이 저 날짜와 완전히 같은가"를 비교할 때 쓴다.
-function snapshotCurShape(snap) {
-  if (!snap) return '';
-  const pick = (m) => (m && Number.isFinite(m.cur)) ? m.cur : null;
-  const owner = {};
-  Object.keys(snap.byOwner || {}).sort().forEach((o) => { owner[o] = pick(snap.byOwner[o]); });
-  const oc = {};
-  Object.keys(snap.byOwnerCategory || {}).sort().forEach((o) => {
-    oc[o] = {};
-    Object.keys(snap.byOwnerCategory[o]).sort().forEach((c) => { oc[o][c] = pick(snap.byOwnerCategory[o][c]); });
-  });
-  return stableSnapshotJson({ t: pick(snap.total), owner, oc });
-}
-
-// [보수적으로만 후보에 넣는다] 아래 조건을 전부 만족해야 한다. 하나라도 빠지면 정상 데이터로 본다.
-//   ① 오늘 이전 날짜        - 오늘은 실시간 기록이라 대상이 아니다
-//   ② 모든 축의 dailyPnL이 0 - 재구성은 dailyPnL을 쓰지 않는다
-//   ③ cur 구성이 오늘 값과 완전히 동일 - 역산 근거가 없으면 매일 0을 빼서 오늘 값이 그대로 복제된다
-//   ④ 그런 날이 PLACEHOLDER_MIN_RUN일 이상 연속 - 주말/연휴처럼 실제로 값이 안 움직인 날을 배제한다
-//   ⑤⑥ 백업에 같은 날짜가 있고, 그 구조가 정상
-// ②만으로도, ③만으로도, ④만으로도 판정하지 않는다. 셋의 논리곱 + 백업 존재까지 요구한다.
-// [PM 확정 14일] 실제 백업으로 확인한 결과 7/10/14일 어느 기준이든 복구 후보가 363일로 같았고(피해
-// 구간이 365일 단일 연속이라), 실제 원본 이력을 정상 데이터로 놓고 검사했을 때 오탐은 세 기준 모두
-// 0일이었다 - 복구 대상 손실 없이 더 보수적인 쪽을 고를 수 있어 14일로 정했다.
+/* [F2 - placeholder 후보 판정 기준]
+ * 예전 기준(③ "과거 cur 구성이 오늘 cur과 완전히 같다")은 제거했다. 최근 366일의 과거 cur은
+ * reconstructHistoricalCurValues가 부팅마다 "오늘 값 - 그 사이 기록된 손익"으로 다시 계산하는 파생값이라
+ * 생성 출처의 증거가 되지 못한다. 그 뒤에 실제 손익이 하루라도 기록되거나, 부팅 뒤 시세가 바뀌거나,
+ * 기록 경로마다 USD 현금 키('달러'/'현금')와 덧셈 순서가 달라지면 진짜 placeholder도 오늘 값과 어긋났다.
+ * 날짜에 고유하게 남는 정보는 dailyPnL뿐이므로, 판정은 손익 기록 · 연속성 · 백업의 손익 증거만 쓴다.
+ *
+ * 날짜 d는 아래를 전부 만족할 때만 "복구 후보"다(추정일 뿐 확정이 아니다 - 교체는 사용자가 따로 승인한다).
+ *   ① d < 오늘, d <= 백업의 최대 날짜  - 오늘 기록과 백업보다 최신인 기록은 어떤 경우에도 대상이 아니다
+ *   ② 현재 d의 모든 축 dailyPnL === 0 - 재구성이 만든 날짜는 손익을 쓰지 않는다
+ *   ③ d가 ②를 만족하는 달력상 연속 구간 R에 속하고 |R| >= PLACEHOLDER_MIN_RUN
+ *      - 주말·연휴처럼 실제로 손익이 없던 짧은 구간을 배제한다(빠진 날짜가 있으면 구간이 끊긴다)
+ *   ④ R 중 백업에 정상 스냅샷이 있는 날짜 n개 가운데 손익이 기록된 날이 max(1, ceil(n x 비율)) 이상
+ *      - "현재에는 없는 손익 기록이 백업에는 있다"는 정보 공백의 증거다. 백업 값이 현재와 다르다는
+ *        사실만으로는 판정하지 않는다(과거 cur은 기준 시점만 달라도 전부 달라진다)
+ *   ⑤⑥ 백업에 d의 정상 스냅샷이 있다
+ *
+ * [PM 확정 기준값] 14일 · 25%. 실제 백업 READ-ONLY 검증에서 정상 zero-PnL 구간은 최대 3일이었고,
+ * 손익 기록 비율은 어느 7~30일 창에서도 50% 이상이었다. 25%는 그 최저값의 절반이라 진짜 피해 구간을
+ * 놓치지 않으면서, 손익이 드문드문 한두 날만 있는 백업까지 후보로 올리지는 않는다.
+ * [알려진 한계] 계보가 다른 백업(다른 가계·다른 포트폴리오의 파일)은 이 기준으로 구분할 수 없다.
+ * 그래서 2차 확인창에 백업의 내보낸 시각·이력 기간·소유자를 보여 사용자가 파일을 직접 확인하게 한다.
+ */
 const PLACEHOLDER_MIN_RUN = 14;
+const PLACEHOLDER_BACKUP_PNL_RATIO = 0.25;
 
 function detectPlaceholderCandidates(currentSnapshots, backupSnapshots, todayKey) {
   const cur = currentSnapshots || {};
-  const today = cur[todayKey];
-  // 오늘 기록이 없으면 "오늘 값과 같은가"를 판정할 기준 자체가 없다 - 그러면 후보를 만들지 않는다.
-  if (!today) return [];
-  const todayShape = snapshotCurShape(today);
-  if (!todayShape) return [];
+  const backup = (backupSnapshots && typeof backupSnapshots === 'object' && !Array.isArray(backupSnapshots)) ? backupSnapshots : {};
+  const backupValid = (d) => hasOwn(backup, d) && isValidSnapshotEntry(backup[d]);
+  const backupDates = Object.keys(backup).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && backupValid(k)).sort();
+  if (!backupDates.length) return [];
+  const backupMaxKey = backupDates[backupDates.length - 1];
 
-  const pastKeys = Object.keys(cur).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && k < todayKey).sort();
-  // ①②③을 만족하는 날짜를 먼저 표시한다.
-  const marked = pastKeys.map((k) => hasNoRecordedPnl(cur[k]) && snapshotCurShape(cur[k]) === todayShape);
-
-  // ④ 연속 구간 길이가 기준 이상인 구간만 남긴다(날짜가 실제로 하루씩 이어지는 구간이어야 한다).
   const out = [];
-  let i = 0;
-  while (i < pastKeys.length) {
-    if (!marked[i]) { i++; continue; }
-    let j = i;
-    while (j + 1 < pastKeys.length && marked[j + 1]
-      && (Date.parse(pastKeys[j + 1]) - Date.parse(pastKeys[j])) === 86400000) j++;
-    if ((j - i + 1) >= PLACEHOLDER_MIN_RUN) {
-      for (let k = i; k <= j; k++) {
-        const d = pastKeys[k];
-        // ⑤⑥ 백업에 정상적인 같은 날짜가 있어야만 후보가 된다 - 교체할 원본이 없으면 후보가 아니다.
-        if (hasOwn(backupSnapshots, d) && isValidSnapshotEntry(backupSnapshots[d])) out.push(d);
+  let run = [];
+  // 구간 하나가 끝날 때마다 ③④를 검사하고, 통과하면 ①⑤⑥을 만족하는 날짜만 후보로 넣는다.
+  // ④의 분모도 ①⑤⑥을 만족하는 날짜만 센다 - 백업에 없는 최신 날짜가 비율을 끌어내리지 않게 한다.
+  const closeRun = () => {
+    if (run.length >= PLACEHOLDER_MIN_RUN) {
+      const inBackup = run.filter((d) => d < todayKey && d <= backupMaxKey && backupValid(d));
+      const withPnl = inBackup.filter((d) => !hasNoRecordedPnl(backup[d])).length;
+      if (inBackup.length && withPnl >= Math.max(1, Math.ceil(inBackup.length * PLACEHOLDER_BACKUP_PNL_RATIO))) {
+        inBackup.forEach((d) => out.push(d));
       }
     }
-    i = j + 1;
-  }
+    run = [];
+  };
+  // ② 오늘 이전 날짜를 날짜순으로 훑으며, 손익 0인 날이 하루씩 이어지는 구간을 만든다.
+  Object.keys(cur).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && k < todayKey).sort().forEach((k) => {
+    if (!hasNoRecordedPnl(cur[k])) { closeRun(); return; }
+    if (run.length && (Date.parse(k) - Date.parse(run[run.length - 1])) !== 86400000) closeRun();
+    run.push(k);
+  });
+  closeRun();
   return out;
+}
+
+// [2차 확인창 - 선택한 백업이 맞는지 사용자가 확인할 정보] 파싱한 백업에 이미 있는 값만 쓴다(저장 없음).
+// exportedAt은 toISOString()으로 저장된 UTC라, 기기 시간대와 무관하게 한국 시간으로 바꿔 보여준다.
+function describeRecoveryBackup(parsed) {
+  const snaps = (parsed && parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots))
+    ? parsed.dailySnapshots : {};
+  const dates = Object.keys(snaps).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && isValidSnapshotEntry(snaps[k])).sort();
+  const owners = [];
+  dates.forEach((d) => Object.keys(snaps[d].byOwner).forEach((o) => { if (owners.indexOf(o) < 0) owners.push(o); }));
+  owners.sort();
+  let exportedAtKst = '알 수 없음';
+  const t = (parsed && typeof parsed.exportedAt === 'string') ? Date.parse(parsed.exportedAt) : NaN;
+  if (Number.isFinite(t)) {
+    const p = {};
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date(t)).forEach((x) => { p[x.type] = x.value; });
+    exportedAtKst = `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (KST)`;
+  }
+  return { exportedAtKst, start: dates[0] || null, end: dates[dates.length - 1] || null, owners };
 }
 
 // [순수 함수 - 아무것도 쓰지 않는다] 미리보기와 실행이 똑같이 이 결과를 쓴다. 미리보기 단계에서
@@ -1842,7 +1862,10 @@ document.getElementById('snapshotRecoveryFileInput').addEventListener('change', 
         `· 형식이 맞지 않아 제외: ${plan.invalid.length}건`,
         '',
         '자산·거래·리밸런싱·미래예측 설정은 변경하지 않습니다.',
-        '클라우드에는 자동으로 올리지 않습니다.',
+        // 복구 적용 자체는 클라우드에 쓰지 않지만(P1-A), 동기화가 켜져 있으면 이후 일반 동기화가 이 기기의
+        // 이력을 함께 올린다 - '올리지 않는다'로만 쓰면 영영 안 올라간다는 오해를 준다.
+        '복구 적용 중에는 클라우드에 저장하지 않습니다.',
+        '이후 일반 동기화가 실행되면 복구 결과가 반영될 수 있습니다.',
         '',
         candidates.length
           ? '먼저 새로 추가되는 이력만 복구합니다. 계속할까요?'
@@ -1854,14 +1877,22 @@ document.getElementById('snapshotRecoveryFileInput').addEventListener('change', 
       // 분류된 것이지, 틀렸다고 확정한 것이 아니다 - 문구도 그 수준으로만 쓴다.
       let includePlaceholders = false;
       if (candidates.length) {
+        const backupInfo = describeRecoveryBackup(parsed);
+        const segments = candidates.filter((d, i) => i === 0 || (Date.parse(d) - Date.parse(candidates[i - 1])) !== 86400000).length;
         includePlaceholders = confirm([
-          `복구 후보 ${candidates.length}일 (${rangeOf(candidates)})`,
+          `복구 후보 ${candidates.length}일 (${rangeOf(candidates)}${segments > 1 ? ` · ${segments}개 구간` : ''})`,
           '',
-          '이 날짜들은 현재 기기에 값이 남아 있지만, 실제 과거 기록이 아니라 앱이 오늘 값을 바탕으로',
-          '다시 계산해 채워 넣은 것일 가능성이 있습니다(연속으로 손익이 0이고 평가금액이 오늘과',
-          '완전히 같습니다).',
+          `이 날짜들은 현재 기기에 손익 기록이 없는 날이 ${PLACEHOLDER_MIN_RUN}일 이상 이어진 구간이고,`,
+          '백업에는 해당 기간의 손익 기록이 있습니다. 실제 과거 기록이 아니라 앱이 다시 계산해',
+          '채워 넣은 값일 가능성이 있어 복구 후보로 분류했습니다.',
           '',
-          '이 날짜들도 백업 파일의 이력으로 바꿀까요?',
+          '[선택한 백업 파일]',
+          `· 내보낸 시각: ${backupInfo.exportedAtKst}`,
+          `· 이력 기간: ${backupInfo.start && backupInfo.end ? `${backupInfo.start} ~ ${backupInfo.end}` : '-'}`,
+          `· 소유자: ${backupInfo.owners.length ? backupInfo.owners.join(', ') : '-'}`,
+          `· 복구 후보: ${candidates.length}일`,
+          '',
+          '내가 선택한 백업이 맞는지 확인해 주세요. 이 날짜들도 백업 파일의 이력으로 바꿀까요?',
           '바꾸지 않으면 현재 값이 그대로 유지됩니다.'
         ].join('\n'));
       }
@@ -1869,14 +1900,33 @@ document.getElementById('snapshotRecoveryFileInput').addEventListener('change', 
       const finalPlan = includePlaceholders
         ? planSnapshotRecovery(parsed.dailySnapshots, state.dailySnapshots, { includePlaceholders: true })
         : plan;
-      const result = applySnapshotRecovery(finalPlan);
-      renderAll();
+      // [P1-A - 복구 과정의 Cloud write 0] applySnapshotRecovery 자체는 skipPush로 저장하지만, 바로 뒤
+      // renderAll()이 renderKPIs -> recordDailySnapshot -> persistDailySnapshots()를 거쳐 push를 예약해
+      // 동기화가 켜진 기기에서는 3초 뒤 복구 결과가 그대로 업로드됐다. JSON 복원과 같은 안전장치
+      // (applyingRemoteUpdate)를 이 구간에만 씌워 예약 자체를 막는다 - 전역 push나 동기화 설정은 건드리지 않는다.
+      // 복구 직전에 다른 변경으로 이미 걸려 있던 예약도 여기서 취소한다. 남겨 두면 복구가 끝난 직후
+      // 실행되어 복구된 이력까지 함께 올라간다. 취소는 전송을 미룰 뿐 로컬 데이터는 그대로이고,
+      // 다음 정상 변경/정기 갱신이 다시 예약하면 그때 함께 반영된다.
+      clearTimeout(pushDebounceTimer);
+      let result;
+      applyingRemoteUpdate = true;
+      try {
+        result = applySnapshotRecovery(finalPlan);
+        renderAll();
+      } finally {
+        applyingRemoteUpdate = false;
+      }
+      // 복구 과정에서 올리지 않은 것은 사실이지만, 동기화가 켜져 있으면 이후 정상 동기화가 이 기기의
+      // 이력을 함께 올린다 - "올리지 않았다"로만 끝내면 영영 안 올라간다는 오해를 준다.
+      const cloudNote = syncState.enabled
+        ? ' · 복구하는 동안에는 클라우드에 올리지 않았습니다. 이후 정상 동기화에서 이 기기의 변경사항이 반영됩니다.'
+        : ' · 클라우드에는 올리지 않았습니다.';
       showToast(`일별 이력 ${result.added}일을 추가했습니다`
         + (result.replaced ? ` · 후보 ${result.replaced}일을 백업 이력으로 교체` : '')
         + (candidates.length && !includePlaceholders ? ` · 후보 ${candidates.length}일은 현재 값 유지` : '')
         + (result.conflicts ? ` · 값이 다른 ${result.conflicts}일은 현재 값 유지` : '')
         + (result.invalid ? ` · 형식 오류 ${result.invalid}건 제외` : '')
-        + ' · 클라우드에는 올리지 않았습니다.', 'success', 9000);
+        + cloudNote, 'success', 9000);
     } catch (err) {
       console.error('[일별 이력 복구] 실패', err);
       showToast(`복구 실패: ${err.message} (기존 데이터는 그대로입니다)`, 'error', 6000);
@@ -1898,6 +1948,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // [FIX-2] 일별 이력 복구도 계획 수립(planSnapshotRecovery)이 순수 함수라 단위 테스트로 검증한다.
     isValidSnapshotEntry, planSnapshotRecovery,
     // [FIX-2a] placeholder 판정도 순수 함수라 같은 방식으로 검증한다.
-    hasNoRecordedPnl, detectPlaceholderCandidates, PLACEHOLDER_MIN_RUN };
+    hasNoRecordedPnl, detectPlaceholderCandidates, PLACEHOLDER_MIN_RUN,
+    // [F2] 후보 비율 기준과 2차 확인창 메타데이터도 상수/순수 함수라 같은 방식으로 검증한다.
+    PLACEHOLDER_BACKUP_PNL_RATIO, describeRecoveryBackup };
 }
 

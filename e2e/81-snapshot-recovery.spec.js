@@ -599,11 +599,35 @@ test('V. 복구 -> 다음 부팅 재구성이 복구된 이력을 훼손하지 �
   expect(r.uniqAfter, '재구성 후에도 수평선으로 되돌아가면 안 된다').toBeGreaterThan(1);
 });
 
-test('W. 정상 zero-PnL 기록이 섞여 있어도 후보로 오판하지 않는다', async ({ page }) => {
+test('W. 손익이 기록된 정상 기록이 끼어 있으면 그 날은 후보가 아니고 구간이 끊긴다', async ({ page }) => {
   await open(page);
   // 한복판을 끊어도 양쪽이 14일 기준을 넘도록 충분히 긴 구간으로 만든다.
   const dates = await seedDamaged(page, 40);
-  // 후보 구간 한복판의 하루를 "평가금액이 오늘과 다른 정상 기록"으로 바꾼다(손익은 0).
+  // 후보 구간 한복판의 하루를 "실제로 손익이 기록된 정상 기록"으로 바꾼다.
+  const target = dates[19];
+  await page.locator('body').evaluate((el, d) => {
+    state.dailySnapshots[d] = {
+      total: { cur: 12345678, dailyPnL: 4321 },
+      byOwner: { '신랑': { cur: 12345678, dailyPnL: 4321 } },
+      byOwnerCategory: { '신랑': { '주식': { cur: 12345678, dailyPnL: 4321 } } }
+    };
+    persistDailySnapshots();
+  }, target);
+
+  const p = await page.locator('body').evaluate((el, bk) => {
+    const pl = planSnapshotRecovery(bk.dailySnapshots, state.dailySnapshots);
+    return { cands: pl.placeholderCandidates, conflicts: pl.conflicts };
+  }, backupForDates(dates));
+
+  expect(p.cands, '손익이 기록된 정상 기록은 후보가 아니다').not.toContain(target);
+  expect(p.conflicts, '그 날짜는 충돌로만 보고된다').toContain(target);
+  // 끊긴 양쪽 구간(19일 + 20일)은 각각 14일 기준을 넘으므로 후보로 남는다 - 그 하루만 빠진다.
+  expect(p.cands.length).toBe(39);
+});
+
+test('W-2. [F2] 구간 안 하루의 평가금액이 달라도(손익 0) cur은 판정에 쓰지 않는다', async ({ page }) => {
+  await open(page);
+  const dates = await seedDamaged(page, 40);
   const target = dates[19];
   await page.locator('body').evaluate((el, d) => {
     state.dailySnapshots[d] = {
@@ -619,11 +643,9 @@ test('W. 정상 zero-PnL 기록이 섞여 있어도 후보로 오판하지 않�
     return { cands: pl.placeholderCandidates, conflicts: pl.conflicts };
   }, backupForDates(dates));
 
-  expect(p.cands, '평가금액이 오늘과 다른 정상 기록은 후보가 아니다').not.toContain(target);
-  expect(p.conflicts, '그 날짜는 충돌로만 보고된다').toContain(target);
-  // 남은 두 구간(9일 + 10일)은 각각 7일 기준을 넘는 쪽만 후보가 된다.
-  // 끊긴 양쪽 구간(19일 + 20일)은 각각 14일 기준을 넘으므로 후보로 남는다 - 그 하루만 빠진다.
-  expect(p.cands.length).toBe(39);
+  expect(p.cands, '손익 0 구간의 날짜는 평가금액과 무관하게 같은 판정을 받는다').toContain(target);
+  expect(p.cands.length).toBe(40);
+  expect(p.conflicts).not.toContain(target);
 });
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -955,4 +977,366 @@ test('X-L. 통합 시나리오 - 피해 -> FIX-3 -> Preview -> 승인 -> 복구 
 
   // ⑤ 다른 state는 전혀 바뀌지 않았다
   expect(await fingerprint(page)).toBe(beforeOther);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+ * [v236 P1-A] 실제 UI 경로(파일 선택 -> 확인창)로 복구해도 Cloud write가 0이다
+ *
+ * 위 J/U는 복구 함수를 직접 불렀다 - 그래서 핸들러가 복구 직후 부르는 renderAll()이
+ * renderKPIs -> recordDailySnapshot -> persistDailySnapshots()를 거쳐 push를 예약하는 경로를 놓쳤다.
+ * 여기서는 사용자가 실제로 거치는 파일 입력과 확인창을 그대로 태운다.
+ * Worker는 route로 가로채 쓰기 메서드만 센다(실제 Worker 호출 0).
+ * ══════════════════════════════════════════════════════════════════════ */
+
+async function routeWrites(context) {
+  const writes = [];
+  await context.route(WORKER, async (route) => {
+    const m = route.request().method();
+    if (m !== 'GET' && m !== 'HEAD') writes.push(m);
+    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  return writes;
+}
+
+const enableSyntheticSync = (page) => page.locator('body').evaluate(() => {
+  syncState.enabled = true;
+  syncState.password = 'e81-ui-pw';
+});
+
+// 파일 입력으로 복구를 실행한다. answers는 확인창 순서대로 수락/거절이다.
+// acceptDelayMs: 확인창을 그만큼 띄워 둔 뒤 답한다 - 확인창이 떠 있는 동안 페이지 스크립트는 멈추므로,
+// 그 사이 예약 시각이 지난 push 타이머도 확인창이 닫힌 뒤에야 실행 기회를 얻는다.
+async function recoverViaUi(page, backup, opts) {
+  const o = opts || {};
+  const answers = (o.answers || ['accept']).slice();
+  const messages = [];
+  const onDialog = async (dialog) => {
+    messages.push(dialog.message());
+    const answer = answers.length ? answers.shift() : 'dismiss';
+    if (o.acceptDelayMs) await new Promise((r) => setTimeout(r, o.acceptDelayMs));
+    if (answer === 'accept') await dialog.accept(); else await dialog.dismiss();
+  };
+  page.on('dialog', onDialog);
+  await page.setInputFiles('#snapshotRecoveryFileInput', {
+    name: 'synthetic-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup))
+  });
+  const toast = page.locator('#toastContainer');
+  await expect(toast).toContainText(o.expectToast || '일별 이력', { timeout: 15000 });
+  page.off('dialog', onDialog);
+  return { messages, toastText: await toast.innerText() };
+}
+
+// 1차 확인창 문구 -> 숫자. 화면 문구와 내부 값의 대응이 틀어지면 여기서 드러난다.
+function parsePreview(msg) {
+  const n = (re) => { const m = msg.match(re); return m ? Number(m[1]) : null; };
+  return {
+    added: n(/새로 추가되는 이력: (\d+)일/),
+    candidates: n(/복구 후보: (\d+)일/),
+    kept: n(/기존 유지: (\d+)일/),
+    conflicts: n(/값이 달라 건너뜀\(현재 값 유지\): (\d+)일/),
+    invalid: n(/형식이 맞지 않아 제외: (\d+)건/)
+  };
+}
+
+const SYNC_ON_NOTE = '복구하는 동안에는 클라우드에 올리지 않았습니다. 이후 정상 동기화에서 이 기기의 변경사항이 반영됩니다.';
+const SYNC_OFF_NOTE = '클라우드에는 올리지 않았습니다.';
+// 1차 확인창의 클라우드 안내 - 복구 적용 중에는 쓰지 않고, 이후 일반 동기화로 반영될 수 있음을 함께 알린다.
+const CONFIRM_CLOUD_LINES = ['복구 적용 중에는 클라우드에 저장하지 않습니다.', '이후 일반 동기화가 실행되면 복구 결과가 반영될 수 있습니다.'];
+const CONFIRM_CLOUD_OLD = '클라우드에는 자동으로 올리지 않습니다';
+
+test('Y-1. [P1-A] 동기화 OFF - UI로 복구해도 Cloud POST 0, 안내는 "올리지 않았습니다"', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  await seed(page, CUR);
+  const before = await fingerprint(page);
+
+  const r = await recoverViaUi(page, makeBackup(BK));
+  expect(r.messages.length, '후보가 없으면 확인창은 1번뿐이다').toBe(1);
+  CONFIRM_CLOUD_LINES.forEach((line) => expect(r.messages[0]).toContain(line));
+  expect(r.messages[0], '오해 가능한 예전 문구는 남아 있으면 안 된다').not.toContain(CONFIRM_CLOUD_OLD);
+  // 기존 유지 3 = seed한 2일 + renderAll이 실시간으로 기록한 오늘
+  expect(parsePreview(r.messages[0])).toEqual({ added: 4, candidates: 0, kept: 3, conflicts: 1, invalid: 0 });
+  await page.waitForTimeout(4500);
+
+  expect(writes, `Cloud write가 발생했다: ${writes.join(',')}`).toEqual([]);
+  expect(r.toastText).toContain(SYNC_OFF_NOTE);
+  expect(r.toastText).not.toContain('복구하는 동안');
+  expect(await storedKeys(page)).toEqual(
+    ['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-08', '2026-03-09']);
+  expect(await fingerprint(page), '다른 state가 바뀌면 안 된다').toBe(before);
+});
+
+test('Y-2. [P1-A] 동기화 ON - UI로 복구하고 4.5초가 지나도 Cloud POST 0, 동기화 설정은 그대로다', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  await enableSyntheticSync(page);
+  await seed(page, CUR);
+  await page.waitForTimeout(4500); // seed가 건 예약을 먼저 흘려보낸다
+  writes.length = 0;
+  const before = await fingerprint(page);
+
+  const r = await recoverViaUi(page, makeBackup(BK));
+  await page.waitForTimeout(4500); // schedulePush 3초 디바운스보다 길게
+  // 동기화 ON이어도 1차 확인창 문구는 같다 - 동작(POST 0 · 이후 일반 동기화)은 아래에서 따로 확인한다.
+  CONFIRM_CLOUD_LINES.forEach((line) => expect(r.messages[0]).toContain(line));
+  expect(r.messages[0]).not.toContain(CONFIRM_CLOUD_OLD);
+
+  expect(writes, `복구 과정에서 Cloud write가 발생했다: ${writes.join(',')}`).toEqual([]);
+  expect(r.toastText).toContain(SYNC_ON_NOTE);
+  const s = await page.locator('body').evaluate(() => ({
+    enabled: syncState.enabled, password: syncState.password, guard: applyingRemoteUpdate
+  }));
+  expect(s).toEqual({ enabled: true, password: 'e81-ui-pw', guard: false });
+  expect(await storedKeys(page)).toEqual(
+    ['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-08', '2026-03-09']);
+  expect(await fingerprint(page), '다른 state가 바뀌면 안 된다').toBe(before);
+});
+
+test('Y-3. [P1-A] 동기화 ON - 복구 과정은 POST 0이고, 이후 정상 사용자 변경은 기존처럼 올라간다', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  await enableSyntheticSync(page);
+  await seed(page, CUR);
+  await page.waitForTimeout(4500);
+  writes.length = 0;
+
+  await recoverViaUi(page, makeBackup(BK));
+  await page.waitForTimeout(4500);
+  expect(writes, '복구 과정').toEqual([]);
+
+  // 일반 편집 저장 경로(persistAssets)는 예전처럼 push를 예약해야 한다.
+  await page.locator('body').evaluate(() => { state.assets[0].quantity = 11; persistAssets(); });
+  await page.waitForTimeout(4500);
+  expect(writes.length, '복구 뒤 정상 변경의 동기화가 끊기면 안 된다').toBeGreaterThan(0);
+});
+
+test('Y-4. [P1-A] 복구 직전에 이미 예약된 push도 복구 직후 실행되지 않는다(로컬 변경은 그대로)', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  await enableSyntheticSync(page);
+  await seed(page, CUR);
+  await page.waitForTimeout(4500);
+  writes.length = 0;
+
+  // 정상 편집으로 push가 예약된 상태에서 곧바로 복구를 시작하고, 확인창을 예약 시각(3초)보다 오래 띄워 둔다.
+  await page.locator('body').evaluate(() => { state.assets[0].quantity = 12; persistAssets(); });
+  await recoverViaUi(page, makeBackup(BK), { acceptDelayMs: 3500 });
+  await page.waitForTimeout(4500);
+  expect(writes, `예약돼 있던 push가 복구 직후 실행됐다: ${writes.join(',')}`).toEqual([]);
+
+  // 예약 취소는 전송을 미룬 것뿐이다 - 로컬 변경은 state와 localStorage에 그대로 남아 있어야 한다.
+  const kept = await page.locator('body').evaluate(() => ({
+    mem: state.assets[0].quantity,
+    stored: JSON.parse(localStorage.getItem(LS_ASSETS)).find((a) => a.id === state.assets[0].id).quantity
+  }));
+  expect(kept).toEqual({ mem: 12, stored: 12 });
+});
+
+test('Y-5. [P1-A] 복구가 끝나면 정기 갱신(renderAll) 경로의 동기화도 다시 동작한다', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  await enableSyntheticSync(page);
+  await seed(page, CUR);
+  await page.waitForTimeout(4500);
+  writes.length = 0;
+
+  await page.locator('body').evaluate(() => { state.assets[0].quantity = 13; persistAssets(); });
+  await recoverViaUi(page, makeBackup(BK), { acceptDelayMs: 3500 });
+  await page.waitForTimeout(4500);
+  expect(writes, '복구 과정').toEqual([]);
+
+  // 시세 자동 갱신·탭 복귀가 부르는 것과 같은 renderAll() - 가드가 풀려 있어야 다시 예약된다.
+  await page.locator('body').evaluate(() => { renderAll(); });
+  await page.waitForTimeout(4500);
+  expect(writes.length, '복구 뒤 정기 동기화가 끊기면 안 된다').toBeGreaterThan(0);
+  expect(await page.locator('body').evaluate(() => applyingRemoteUpdate)).toBe(false);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+ * [v236 P1-B · F2] 최근 실제 손익 + 부팅 재구성 뒤에도 placeholder 후보를 놓치지 않는다
+ *
+ * 과거 cur은 부팅 재구성이 "오늘 값 - 그 사이 손익"으로 다시 계산하는 파생값이다. 그래서 F2는 cur을 판정에
+ * 쓰지 않고, 현재의 손익 0 연속 구간(14일 이상)과 백업의 손익 기록(25% 이상)만 본다.
+ * 피해 state는 앱 코드 경로로 만든다: 오늘 기록(renderAll, USD 현금은 '달러') -> 빈 과거 날짜를 재구성이 채움
+ * ('현금') -> 최근 3일에 실제 손익 기록 -> 부팅 재구성을 한 번 더 실행해 placeholder cur이 오늘 값에서 벗어난 상태.
+ * 부팅의 비동기 재구성이 뒤늦게 한 번 더 돌아도 cur만 같은 값으로 다시 계산할 뿐이라 판정 결과는 같다 -
+ * 그래서 경쟁 상태를 대기 시간으로 숨길 필요가 없다.
+ * 구성: 오늘 + 최근 실제 기록 3일(백업에 없음) + placeholder 362일(백업과 겹침) / 백업: 겹치는 362일 + 더 과거 33일.
+ * 실제 휴대폰 state나 실제 백업을 반입한 것이 아니다 - 휴대폰 관찰값과 같은 모양을 합성으로 만든 것이다.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+function seedUsdCashDamage(page) {
+  return page.locator('body').evaluate(() => {
+    const A = (id, own, cat, qty, price, ccy) => ({
+      id, ticker: '', owner: own, accountType: '일반계좌', category: cat, categorySource: 'user',
+      name: 'E81_USD_' + id, isDomestic: ccy === 'USD' ? '해외' : '국내', currency: ccy, quantity: qty,
+      buyPrice: price, currentPrice: price, positionSource: 'manual', createdAt: 1000, updatedAt: 1000
+    });
+    state.assets = [A('u1', '신랑', '주식', 100, 71000, 'KRW'), A('u2', '신랑', '현금', 1, 3000000, 'KRW'),
+      A('u3', '신랑', '현금', 1000, 1, 'USD')];
+    state.transactions = [];
+    state.exchangeRate = 1382.37;
+    state.dailySnapshots = {};
+    renderAll(); // 오늘 기록 - USD 현금은 '달러' 키
+
+    const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
+    const today = todayDateStr();
+    for (let n = 1; n <= 365; n++) state.dailySnapshots[dk(n)] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
+    reconstructHistoricalCurValues(); // 기존 날짜의 cur 채우기 - USD 현금은 '현금' 키
+
+    // 최근 3일은 실제로 손익이 기록된 날이다(백업보다 최신이라 백업에 없다).
+    const recent = [];
+    for (let n = 1; n <= 3; n++) {
+      const v = 70000000 + n * 111111;
+      state.dailySnapshots[dk(n)] = { total: { cur: v, dailyPnL: n * 1000 }, byOwner: { '신랑': { cur: v, dailyPnL: n * 1000 } },
+        byOwnerCategory: { '신랑': { '주식': { cur: v, dailyPnL: n * 1000 } } } };
+      recent.push(dk(n));
+    }
+    reconstructHistoricalCurValues(); // 다음 부팅의 재구성 - 최근 손익만큼 placeholder cur이 오늘 값에서 벗어난다
+    persistAssets(true); persistTransactions(); persistDailySnapshots();
+
+    const placeholders = [];
+    for (let n = 4; n <= 365; n++) placeholders.push(dk(n));
+    const backupOnly = [];
+    for (let n = 366; n <= 398; n++) backupOnly.push(dk(n));
+    return { today, recent, placeholders, backupOnly };
+  });
+}
+
+function usdBackup(dates) {
+  const mk = (i) => {
+    const cur = 45000000 + i * 23456, pnl = ((i % 7) - 3) * 12000;
+    return { total: { cur, dailyPnL: pnl }, byOwner: { '신랑': { cur, dailyPnL: pnl } },
+      byOwnerCategory: { '신랑': { '주식': { cur: cur - 2000000, dailyPnL: pnl }, '현금': { cur: 2000000, dailyPnL: 0 } } } };
+  };
+  const snaps = {};
+  dates.forEach((d, i) => { snaps[d] = mk(i); });
+  return { app: 'smart-asset-manager', exportedAt: '2026-09-09T15:30:00.000Z', dailySnapshots: snaps,
+    assets: [{ id: 'POISON', ticker: 'ZZZ', owner: '신랑', name: '오염', quantity: 999, buyPrice: 1 }],
+    transactions: [{ id: 'POISON_TX', date: '2020-01-01', ticker: 'ZZZ', name: '오염', type: 'buy', quantity: 999, price: 1 }],
+    rebalance: { updatedAt: 9e12 }, projection: { updatedAt: 9e12, inflationRate: 99 }, exchangeRate: 99999 };
+}
+
+test('Y-6. [P1-B·F2] 최근 실제 손익 + 부팅 재구성 뒤에도 Preview 후보 362 / 건너뜀 0, 33일 분리 · 최신 날짜 보호', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  const s = await seedUsdCashDamage(page);
+  expect(s.placeholders.length).toBe(362);
+  expect(s.backupOnly.length).toBe(33);
+
+  // 전제: placeholder cur이 오늘 값과 실제로 다르고(재구성 이동), 손익은 0이며, 최근 3일은 실제 손익 기록이다.
+  const st = await page.locator('body').evaluate((el, d) => ({
+    todayTotal: state.dailySnapshots[d.today].total.cur,
+    phTotal: state.dailySnapshots[d.placeholders[0]].total.cur,
+    phZero: d.placeholders.every((k) => hasNoRecordedPnl(state.dailySnapshots[k])),
+    recentRecorded: d.recent.every((k) => !hasNoRecordedPnl(state.dailySnapshots[k])),
+    todayKeys: Object.keys(state.dailySnapshots[d.today].byOwnerCategory['신랑']).sort(),
+    phKeys: Object.keys(state.dailySnapshots[d.placeholders[0]].byOwnerCategory['신랑']).sort()
+  }), s);
+  expect(st.phTotal, 'placeholder cur이 오늘 값과 같으면 이 테스트의 전제가 무너진다').not.toBe(st.todayTotal);
+  expect(st.phZero).toBe(true);
+  expect(st.recentRecorded).toBe(true);
+  expect(st.todayKeys).toContain('달러');
+  expect(st.phKeys).not.toContain('달러');
+
+  const bk = usdBackup(s.placeholders.concat(s.backupOnly));
+  // 계획 단계에서 33일 분리와 최신 날짜 보호를 직접 확인한다.
+  const p = await page.locator('body').evaluate((el, a) => {
+    const pl = planSnapshotRecovery(a.bk.dailySnapshots, state.dailySnapshots);
+    const c = new Set(pl.placeholderCandidates);
+    return {
+      latestHit: [a.s.today].concat(a.s.recent).filter((d) => c.has(d)).length,
+      addedInCandidates: pl.added.filter((d) => c.has(d)).length,
+      addedAlreadyInCurrent: pl.added.filter((d) => Object.prototype.hasOwnProperty.call(state.dailySnapshots, d)).length,
+      candidatesArePlaceholders: JSON.stringify(pl.placeholderCandidates) === JSON.stringify(a.s.placeholders.slice().sort()),
+      addedAreBackupOnly: JSON.stringify(pl.added) === JSON.stringify(a.s.backupOnly.slice().sort())
+    };
+  }, { s, bk });
+  expect(p).toEqual({ latestHit: 0, addedInCandidates: 0, addedAlreadyInCurrent: 0, candidatesArePlaceholders: true, addedAreBackupOnly: true });
+
+  const beforePast = await pastSnapshotsJson(page);
+  const r = await recoverViaUi(page, bk, { answers: ['dismiss'], expectToast: '복구를 취소했습니다' });
+  expect(r.messages.length).toBe(1);
+  expect(parsePreview(r.messages[0])).toEqual({ added: 33, candidates: 362, kept: 4, conflicts: 0, invalid: 0 });
+  expect(await pastSnapshotsJson(page), '취소하면 아무것도 바뀌지 않는다').toBe(beforePast);
+  expect(writes).toEqual([]);
+});
+
+test('Y-7. [P1-B·F2] 같은 state를 UI에서 승인 - 확인창 메타데이터 표시, 추가 33 · 교체 362, 최신 기록·다른 state 보존, Cloud POST 0', async ({ page, context }) => {
+  const writes = await routeWrites(context);
+  await open(page);
+  const s = await seedUsdCashDamage(page);
+  await enableSyntheticSync(page);
+  await page.waitForTimeout(4500); // seed가 건 push 예약(3초 디바운스)을 먼저 흘려보낸다
+  writes.length = 0;
+
+  const bk = usdBackup(s.placeholders.concat(s.backupOnly));
+  const before = await fingerprint(page);
+  const recentBefore = await page.locator('body').evaluate((el, d) => JSON.stringify(d.map((k) => state.dailySnapshots[k])), s.recent);
+
+  const r = await recoverViaUi(page, bk, { answers: ['accept', 'accept'] });
+  expect(r.messages.length, '후보가 있으면 확인창이 2번 뜬다').toBe(2);
+  expect(parsePreview(r.messages[0])).toEqual({ added: 33, candidates: 362, kept: 4, conflicts: 0, invalid: 0 });
+
+  const second = r.messages[1];
+  const allDates = s.placeholders.concat(s.backupOnly).sort();
+  expect(second).toContain('복구 후보 362일');
+  expect(second).toContain('손익 기록이 없는 날이 14일 이상 이어진 구간');
+  expect(second).toContain('[선택한 백업 파일]');
+  expect(second).toContain('· 내보낸 시각: 2026-09-10 00:30 (KST)');
+  expect(second).toContain(`· 이력 기간: ${allDates[0]} ~ ${allDates[allDates.length - 1]}`);
+  expect(second).toContain('· 소유자: 신랑');
+  expect(second).toContain('· 복구 후보: 362일');
+  expect(second, '예전의 확정적 표현은 남아 있으면 안 된다').not.toContain('평가금액이 오늘과');
+
+  expect(r.toastText).toContain('일별 이력 33일을 추가했습니다 · 후보 362일을 백업 이력으로 교체');
+  expect(r.toastText).toContain(SYNC_ON_NOTE);
+  await page.waitForTimeout(4500);
+  expect(writes, `복구 과정에서 Cloud write가 발생했다: ${writes.join(',')}`).toEqual([]);
+
+  const after = await page.locator('body').evaluate((el, a) => {
+    const stored = JSON.parse(localStorage.getItem('sam_daily_snapshot_v1') || '{}');
+    const dates = a.s.placeholders.concat(a.s.backupOnly);
+    return {
+      allFromBackup: dates.every((d) => JSON.stringify(stored[d]) === JSON.stringify(a.bk.dailySnapshots[d])),
+      memMatchesStored: dates.every((d) => JSON.stringify(state.dailySnapshots[d]) === JSON.stringify(stored[d])),
+      recent: JSON.stringify(a.s.recent.map((k) => stored[k])),
+      todayKeys: Object.keys(stored[a.s.today].byOwnerCategory['신랑']).sort(),
+      total: Object.keys(stored).length
+    };
+  }, { s, bk });
+  expect(after.allFromBackup, '추가 33일과 교체 362일이 백업 값이어야 한다').toBe(true);
+  expect(after.memMatchesStored).toBe(true);
+  expect(after.recent, '백업보다 최신인 기록은 한 글자도 바뀌면 안 된다').toBe(recentBefore);
+  expect(after.todayKeys, '오늘 기록의 키는 그대로다').toContain('달러');
+  expect(after.total).toBe(366 + 33);
+  expect(await fingerprint(page), '다른 state가 바뀌면 안 된다').toBe(before);
+});
+
+test('Y-8. [F2] 경계값 - 백업 손익 비율 24% 불통과 / 25% 통과, 연속 13일 불통과 / 14일 통과, 오늘 이후 제외', async ({ page }) => {
+  await open(page);
+  const r = await page.locator('body').evaluate(() => {
+    const today = todayDateStr();
+    const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
+    const mk = (cur, pnl) => ({ total: { cur, dailyPnL: pnl }, byOwner: { '신랑': { cur, dailyPnL: pnl } },
+      byOwnerCategory: { '신랑': { '주식': { cur, dailyPnL: pnl } } } });
+    // 현재: 손익 0이지만 평가금액은 날마다 다르다(cur은 판정에 쓰지 않는다)
+    const current = (days) => { const c = {}; c[today] = mk(1000, 7); for (let n = 1; n <= days; n++) c[dk(n)] = mk(1000 - n, 0); return c; };
+    const backup = (days, pnlDays) => { const b = {}; for (let n = 1; n <= days; n++) b[dk(n)] = mk(2000 + n, n <= pnlDays ? 100 + n : 0); return b; };
+    const count = (cur, bk) => detectPlaceholderCandidates(cur, bk, today).length;
+
+    const t = new Date(); t.setDate(t.getDate() + 1);
+    const tomorrow = dateKeyFromDate(t);
+    const cL = current(30); cL[today] = mk(1000, 0); cL[tomorrow] = mk(1000, 0);
+    const bL = backup(30, 30); bL[today] = mk(1, 1); bL[tomorrow] = mk(1, 1);
+    const latest = detectPlaceholderCandidates(cL, bL, today);
+
+    return {
+      ratio: PLACEHOLDER_BACKUP_PNL_RATIO, minRun: PLACEHOLDER_MIN_RUN,
+      p24: count(current(100), backup(100, 24)), p25: count(current(100), backup(100, 25)),
+      run13: count(current(13), backup(13, 13)), run14: count(current(14), backup(14, 14)),
+      latestCount: latest.length, latestHit: latest.filter((d) => d >= today).length
+    };
+  });
+  expect(r).toEqual({ ratio: 0.25, minRun: 14, p24: 0, p25: 100, run13: 0, run14: 14, latestCount: 30, latestHit: 0 });
 });
