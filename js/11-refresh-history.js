@@ -306,8 +306,21 @@ function getDailyPnlOwnerList() {
 
 // 오늘 날짜 키를 항상 최신값으로 덮어쓴다 - 하루 중 여러 번 호출돼도(자동 5분 갱신 등) 그날의 가장
 // 최근 값만 남는다.
+// [신규 시작 - 빈 포트폴리오는 기록하지 않는다] 자산이 하나도 없는 상태(데이터 초기화 직후·아무것도 입력하지 않은
+// 기기)는 "평가금액이 0원인 날"이 아니라 "아직 입력된 자산이 없는 날"이다. 예전엔 이 상태에서도 렌더링마다 오늘을
+// 0원으로 기록해, 초기화한 다음 날 자산을 입력하면 그래프가 전날 0원에서 실제 금액으로 튀어 올랐다(가짜 급등).
+// 그래서 자산이 없으면 오늘을 기록하지 않고, 같은 날 앞서 남긴 오늘 기록이 있으면(자산을 모두 지운 경우) 그 오늘
+// 기록만 지운다 - 과거 날짜는 읽지도 쓰지도 않는다. 자산은 있는데 평가금액이 0원인 경우(전량 매도로 수량 0 등)는
+// 실제로 기록된 0원이라 예전처럼 남긴다.
 function recordDailySnapshot(totalCur, dailyProfit, byOwner, byOwnerCategory) {
   const dateKey = todayDateStr();
+  if (!Array.isArray(state.assets) || state.assets.length === 0) {
+    if (state.dailySnapshots[dateKey]) {
+      delete state.dailySnapshots[dateKey];
+      persistDailySnapshots();
+    }
+    return;
+  }
   const byOwnerSnap = {};
   Object.keys(byOwner).forEach((owner) => {
     byOwnerSnap[owner] = { cur: byOwner[owner].cur, dailyPnL: byOwner[owner].dailyPnL };

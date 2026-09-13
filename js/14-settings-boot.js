@@ -61,6 +61,11 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: normalizeMonthlyContributionByOwner() };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
+  // [신규 시작 - 메모리 캐시도 비운다] 티커 역할·학습 종목명은 위에서 localStorage 키만 지워지고 메모리에는 남아 있었다.
+  // 앱을 다시 열기 전에 자산을 추가하면 역할 레지스트리 저장 경로가 예전 역할을 그대로 다시 저장해 새 데이터에 섞였다.
+  // 다시 열었을 때와 같은 상태(빈 객체 - 기본 역할 시딩은 지금 자산·목표비중이 비어 있어 추가할 것이 없다)로 맞춘다.
+  state.tickerRoles = {};
+  state.learnedTickerNames = {};
   // [일별 손익 그래프 완전 초기화] state.dailySnapshots는 위 자산/거래내역과 별개로 관리되는 이력이라
   // 명시적으로 함께 비워야 한다 - 안 그러면 자산은 0건인데 [일별 손익 추이] 그래프에는 지운 자산의
   // 과거 손익 막대가 계속 남아있는 상태가 된다.
