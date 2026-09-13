@@ -1215,13 +1215,10 @@ function renderMacroBriefing() {
     ${stackedTitleBody('📌 시장 종합 평가', escapeHtml(commentary.cause), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     ${stackedTitleBody('💰 내 포트폴리오 영향', escapeHtml(commentary.impact), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
     ${stackedTitleBody('🔎 참고', escapeHtml(commentary.note), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')}
-    <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-      <button type="button" id="correlationGuideToggleBtn" class="w-full flex items-center justify-between gap-2 text-left">
-        <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">💡 상관관계 가이드 보기</span>
-        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="correlationGuideChevron"></i>
-      </button>
-      <div id="correlationGuideBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-        <ul class="space-y-1 list-none mt-1.5">
+    <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+      <p class="font-semibold mb-0.5">💡 상관관계 가이드</p>
+      <div id="correlationGuide">
+        <ul class="space-y-1 list-none">
           ${correlation.lines.map((l) => `<li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">${escapeHtml(l)}</li>`).join('')}
         </ul>
         <p class="text-sm text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">${escapeHtml(correlation.note)}</p>
@@ -1235,39 +1232,16 @@ function renderMacroBriefing() {
       매크로 동향과 보유자산 위험은 서로 다른 기준으로 계산됩니다. 매크로 동향은 현재 시장환경을, 보유자산 위험은 내 자산의 위험 특성을 보여줍니다.
     </p>`;
 
-  // [F1 - 상관관계 가이드 아코디언화] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이
-  // 통째로 새로 그려지므로, 버튼 요소 자체가 매번 새로 생긴다 - 펼침 상태(correlationGuideOpen)를
-  // 모듈 전역 변수로 기억해 뒀다가 방금 새로 그린 DOM에 재적용한다(다른 아코디언들과 동일한 패턴).
-  const guideBody = document.getElementById('correlationGuideBody');
-  const guideChevron = document.getElementById('correlationGuideChevron');
-  if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
-
-  // [Phase 17 P1-1 - 매크로 브리핑 기본 접힘] 이 섹션 전체도 macroBriefingGrid/Diagnosis와 마찬가지로
-  // 매 갱신마다 다시 그려지므로, 펼침 상태(macroBriefingOpen)를 모듈 전역으로 기억해 뒀다가 재적용한다
-  // (다른 아코디언과 동일한 패턴). 계산/데이터에는 영향 없음 - 화면 표시 여부만 바뀐다.
-  // [중첩 순서] 안쪽(해석)을 먼저 확정해야 바깥(브리핑 전체)의 scrollHeight가 올바르게 계산된다.
+  // [세부 내용 높이 재적용] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이 통째로 새로 그려진다 -
+  // 「세부 내용 보기」가 펼쳐져 있다면 새 내용의 높이로 max-height를 다시 맞춘다(계산/데이터 영향 없음).
   reapplyMacroDiagnosisAccordionHeight();
-  reapplyMacroBriefingAccordionHeight();
 }
 
-// [v234 - 기본 펼침] Phase 17 P1-1에서 기본값을 접힘으로 뒀더니, 대시보드에 들어와도 지수·환율·
-// 금리가 하나도 보이지 않고 헤더를 한 번 더 눌러야 나타났다 - "초보자가 시장 현황을 바로 본다"는
-// 원칙과 어긋나, 지표 10개는 진입 직후부터 보이게 하고 그 아래 해석만 접어 두는 쪽으로 바꿨다.
-// 지표 종류·데이터·계산은 그대로다(표시 여부만 바뀐다).
-let macroBriefingOpen = true;
-function reapplyMacroBriefingAccordionHeight() {
-  const body = document.getElementById('macroBriefingBody');
-  const chevron = document.getElementById('macroBriefingChevron');
-  if (body && chevron) setAccordionOpen(body, chevron, macroBriefingOpen);
-}
-document.getElementById('macroBriefingToggleBtn').addEventListener('click', () => {
-  macroBriefingOpen = !macroBriefingOpen;
-  reapplyMacroBriefingAccordionHeight();
-});
-
-// [시장 해석 접기] 지수 타일은 브리핑을 펼치면 항상 보이고, 그 아래 해석만 한 번 더 접는다 -
-// "시장 데이터는 바로 확인하고, 해석은 필요할 때 펼쳐본다". 이 영역은 macroBriefingBody 안에 있는
-// 중첩 아코디언이라, 열고 닫을 때 바깥쪽 max-height도 함께 다시 계산해야 내용이 잘리지 않는다.
+// [매크로 브리핑 구조 정정] PM 확정 정책: 「시장 현황 & 매크로 브리핑」 자체와 지표 10개는 접지 않고 항상
+// 보인다. 접는 것은 그 아래 「📌 세부 내용 보기」 하나뿐이고(시장 종합 평가 / 내 포트폴리오 영향 / 참고 /
+// 상관관계 가이드), 그 안에 접기를 다시 두지 않는다. 예전의 브리핑 전체 접기와 상관관계 가이드 접기는 이
+// 정책과 어긋나 제거했다 - 중첩이 없어져 v234의 transitionend 높이 보정(바깥이 안쪽을 잘라내던 문제)도
+// 더는 필요 없다. 표시 구조만 바뀌고 데이터·계산은 그대로다.
 let macroDiagnosisOpen = false;
 function reapplyMacroDiagnosisAccordionHeight() {
   const body = document.getElementById('macroDiagnosisBody');
@@ -1277,39 +1251,6 @@ function reapplyMacroDiagnosisAccordionHeight() {
 document.getElementById('macroDiagnosisToggleBtn').addEventListener('click', () => {
   macroDiagnosisOpen = !macroDiagnosisOpen;
   reapplyMacroDiagnosisAccordionHeight();
-  reapplyMacroBriefingAccordionHeight();
-});
-
-// 매번 새로 그려지는 버튼이라 위임(delegated) 리스너 하나로 처리한다(data-info-tip과 동일한 이유).
-let correlationGuideOpen = false;
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#correlationGuideToggleBtn')) return;
-  correlationGuideOpen = !correlationGuideOpen;
-  const guideBody = document.getElementById('correlationGuideBody');
-  const guideChevron = document.getElementById('correlationGuideChevron');
-  if (guideBody && guideChevron) setAccordionOpen(guideBody, guideChevron, correlationGuideOpen);
-  // 이 가이드는 해석 아코디언 > 브리핑 아코디언 안에 3중으로 들어 있다 - 안쪽이 열리면 바깥
-  // 두 개의 max-height도 다시 계산해야 내용이 잘리지 않는다.
-  reapplyMacroDiagnosisAccordionHeight();
-  reapplyMacroBriefingAccordionHeight();
-});
-
-// [v234 - 중첩 아코디언 높이 보정] 위 핸들러들이 안쪽 max-height를 먼저 확정한 뒤 바깥을 계산하는데,
-// 안쪽에도 max-height 트랜지션(300ms)이 걸려 있어서 "먼저 확정"이 실제로는 확정되지 않는다 - 바로
-// 뒤에서 읽는 바깥 scrollHeight에는 아직 접힌 높이가 잡히고, 그 값으로 바깥 max-height가 고정되면서
-// 방금 펼친 안쪽 내용을 그대로 잘라냈다(해석/상관관계 가이드를 눌러도 아무것도 안 보이던 원인).
-// 안쪽 트랜지션이 끝난 뒤 바깥을 한 번 더 계산해 실제 높이를 확정한다.
-// - transitionend는 버블링되므로, 정적 DOM인 #macroBriefingBody에 리스너 하나만 달면 2단(해석)과
-//   3단(상관관계 가이드)을 함께 덮는다. 가이드처럼 매 렌더마다 새로 그려지는 요소에도 재등록이
-//   필요 없다(중복 등록 방지).
-// - 바깥 자신의 트랜지션은 건너뛴다. 건너뛰지 않으면 자기 재계산 -> transitionend -> 재계산으로
-//   순환한다. 안쪽 재계산은 같은 값을 다시 쓰는 경우 트랜지션이 시작되지 않아 이벤트도 없다.
-// - 기존 즉시 계산은 그대로 둔다(누르는 즉시 반응이 시작되고, 이 보정은 끝난 높이만 확정한다).
-document.getElementById('macroBriefingBody').addEventListener('transitionend', (e) => {
-  if (e.propertyName !== 'max-height') return;
-  if (e.target === e.currentTarget) return;
-  reapplyMacroDiagnosisAccordionHeight();
-  reapplyMacroBriefingAccordionHeight();
 });
 
 function renderRiskSection() {

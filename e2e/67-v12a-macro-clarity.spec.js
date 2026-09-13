@@ -15,8 +15,8 @@ async function open(page) {
   await page.waitForFunction(() => typeof state !== 'undefined' && typeof renderMacroBriefing === 'function');
 }
 
-// [v234] 매크로 브리핑은 대시보드 진입 직후부터 펼쳐져 있다 - 예전처럼 헤더를 누르면 오히려
-// 접히므로 클릭하지 않는다. 지수 타일을 바로 쓸 수 있는 상태로만 만들어 준다.
+// 매크로 브리핑과 지수 타일은 접지 않고 항상 보인다 - 대시보드 탭으로 이동만 하면 지수 타일을
+// 바로 쓸 수 있다.
 async function openMacroBriefing(page) {
   await page.locator('[data-tab="dashboard"]').click();
 }
