@@ -353,13 +353,15 @@ test('L. 저장이 실패하면 state도 localStorage도 그대로다', async ({
 
 /* ── 전부 소실된 실제 피해 상태에서의 회복 ──────────────────────────── */
 
-test('M. 과거가 전부 소실된 상태에서 복구하면 차트 계열이 수평선에서 벗어난다', async ({ page }) => {
+test('M. 과거가 전부 소실된 상태에서 복구하면 기록된 날짜가 늘고 차트 계열이 수평선에서 벗어난다', async ({ page }) => {
   await open(page);
   await seed(page, []); // 과거 이력 0일 = 피해 상태
-  const flat = await page.locator('body').evaluate(() => {
-    const s = buildTotalValueSeries(30);
-    return new Set(s.map((r) => Math.round(r.total))).size;
+  // [P0 D3] 기록이 없는 날은 null(공백)이다 - 기록 수와 고유값은 기록된 날만 센다.
+  const read = () => page.locator('body').evaluate(() => {
+    const s = buildTotalValueSeries(30).filter((r) => r.recorded);
+    return { recorded: s.length, unique: new Set(s.map((r) => Math.round(r.total))).size };
   });
+  const before = await read();
 
   const dates = [];
   for (let i = 25; i >= 1; i--) {
@@ -369,11 +371,9 @@ test('M. 과거가 전부 소실된 상태에서 복구하면 차트 계열이 �
   const r = await runRecovery(page, makeBackup(dates));
   expect(r.added).toBe(25);
 
-  const varied = await page.locator('body').evaluate(() => {
-    const s = buildTotalValueSeries(30);
-    return new Set(s.map((r2) => Math.round(r2.total))).size;
-  });
-  expect(varied, `복구 후에도 고유값이 늘지 않았다(before=${flat})`).toBeGreaterThan(flat);
+  const after = await read();
+  expect(after.recorded, '복구한 25일이 기록으로 잡힌다').toBe(before.recorded + 25);
+  expect(after.unique, `복구 후에도 고유값이 늘지 않았다(before=${before.unique})`).toBeGreaterThan(before.unique);
 });
 
 /* ── UI 진입점 ──────────────────────────────────────────────────────── */
@@ -396,7 +396,7 @@ test('N. 데이터 관리에 [일별 이력만 복구] 진입점이 있고 전�
  * 예전 reconstructHistoricalCurValues는 기록이 없는 날짜에도 스냅샷을 만들어 역산값을 채웠다.
  * 역산의 근거인 과거 dailyPnL까지 없으면 매일 0을 빼게 되어, 365일 전부에 오늘 값이 복제된
  * 스냅샷이 생겼다 - 화면에는 "6개월 내내 무변동"이라는 사실 아닌 수평선으로 나타났다.
- * 이제 기록이 없는 날짜는 건너뛴다. 이미 기록이 있는 날짜의 cur 재계산은 그대로 유지한다.
+ * v237 이후(P0 D1)에는 재구성 자체가 과거 이력을 읽거나 쓰지 않는다 - 기록이 없는 날짜도, 이미 기록이 있는 날짜도 건드리지 않는다.
  * ══════════════════════════════════════════════════════════════════════ */
 
 test('O. 이력이 전부 소실된 상태에서 재구성이 가짜 과거 스냅샷을 만들지 않는다', async ({ page }) => {
@@ -411,11 +411,13 @@ test('O. 이력이 전부 소실된 상태에서 재구성이 가짜 과거 스�
   expect(r.past, '근거 없는 과거 날짜를 만들어내면 안 된다').toBe(0);
 });
 
-test('P. 기록이 있는 날짜의 cur 재계산은 예전처럼 동작한다', async ({ page }) => {
+test('P. [P0 D1] 기록이 있는 날짜의 cur도 자동 재구성으로 다시 계산하지 않는다', async ({ page }) => {
+  // 예전 기대값은 "기록이 있는 날짜의 cur 재계산은 예전처럼 동작"이었다. 그 재계산은 지금 보유 자산을 기준으로
+  // 과거 값을 역산해 덮어쓰는 일이라, 매도·자산 추가만으로 과거 전체가 바뀌었고 복구한 이력도 다음 부팅에
+  // 다시 쓰였다(합성 실험 362/362일). 과거 기록은 저장된 그대로 두는 것이 맞다.
   await open(page);
   await seed(page, []);
   const r = await page.locator('body').evaluate(() => {
-    // 실제 기록이 있는 과거 2일을 심는다(dailyPnL 보유 = 역산 근거 있음).
     const mk = (cur, pnl) => ({
       total: { cur, dailyPnL: pnl },
       byOwner: { '신랑': { cur, dailyPnL: pnl } },
@@ -427,14 +429,15 @@ test('P. 기록이 있는 날짜의 cur 재계산은 예전처럼 동작한다',
     state.dailySnapshots = {};
     state.dailySnapshots[k1] = mk(111, 11);
     state.dailySnapshots[k2] = mk(222, 22);
+    const before = JSON.stringify([state.dailySnapshots[k1], state.dailySnapshots[k2]]);
     reconstructHistoricalCurValues();
-    const keys = Object.keys(state.dailySnapshots).sort();
-    return { keys, k1, k2, stillThere: !!(state.dailySnapshots[k1] && state.dailySnapshots[k2]),
-      pnlKept: state.dailySnapshots[k1].total.dailyPnL };
+    return {
+      unchanged: before === JSON.stringify([state.dailySnapshots[k1], state.dailySnapshots[k2]]),
+      keys: Object.keys(state.dailySnapshots).length
+    };
   });
-  expect(r.stillThere, '기록이 있는 날짜는 그대로 남는다').toBe(true);
-  expect(r.pnlKept, '기록된 손익은 재구성이 건드리지 않는다').toBe(11);
-  expect(r.keys.length, '있는 날짜 외에 새로 만들어지지 않는다').toBeLessThanOrEqual(3);
+  expect(r.unchanged, '기록된 과거 스냅샷(cur·dailyPnL·소유자·자산군)이 한 글자도 바뀌지 않는다').toBe(true);
+  expect(r.keys, '있는 날짜 외에 새로 만들어지지 않는다').toBe(2);
 });
 
 /* ── FIX-2a : placeholder 후보 ──────────────────────────────────────── */
@@ -518,7 +521,7 @@ test('R. 후보를 승인하면 교체되고, 차트가 수평선에서 벗어�
   await open(page);
   const dates = await seedDamaged(page, 20);
   const flat = await page.locator('body').evaluate(() =>
-    new Set(buildTotalValueSeries(25).map((r) => Math.round(r.total))).size);
+    new Set(buildTotalValueSeries(25).filter((r) => r.recorded).map((r) => Math.round(r.total))).size);
 
   const r = await page.locator('body').evaluate((el, bk) => {
     const plan = planSnapshotRecovery(bk.dailySnapshots, state.dailySnapshots, { includePlaceholders: true });
@@ -527,7 +530,7 @@ test('R. 후보를 승인하면 교체되고, 차트가 수평선에서 벗어�
   expect(r.replaced).toBe(20);
 
   const varied = await page.locator('body').evaluate(() =>
-    new Set(buildTotalValueSeries(25).map((r2) => Math.round(r2.total))).size);
+    new Set(buildTotalValueSeries(25).filter((r2) => r2.recorded).map((r2) => Math.round(r2.total))).size);
   expect(varied, `복구 후에도 수평선이다(before=${flat})`).toBeGreaterThan(flat);
 });
 
@@ -577,26 +580,30 @@ test('U. 후보 교체 중에도 Cloud write가 0이다', async ({ page, context
   expect(writes, `후보 교체로 Cloud write가 발생했다: ${writes.join(',')}`).toEqual([]);
 });
 
-test('V. 복구 -> 다음 부팅 재구성이 복구된 이력을 훼손하지 않는다(순환 안정성)', async ({ page }) => {
+test('V. [P0 D1] 복구 -> 다음 부팅 이력 경로가 복구된 이력을 한 글자도 바꾸지 않는다(순환 안정성)', async ({ page }) => {
+  // 예전 기대값은 "dailyPnL은 그대로이고 재구성 후에도 수평선이 아니다"였다 - cur은 재구성이 다시 계산해
+  // 바뀌는 것을 정상으로 봤다. 그 재계산이 복구한 이력을 지금 보유 기준 값으로 덮어써 복구를 무의미하게 만들었다.
   await open(page);
   const dates = await seedDamaged(page, 20);
-  await page.locator('body').evaluate((el, bk) =>
+  const applied = await page.locator('body').evaluate((el, bk) =>
     applySnapshotRecovery(planSnapshotRecovery(bk.dailySnapshots, state.dailySnapshots, { includePlaceholders: true })),
   backupForDates(dates));
+  expect(applied.replaced, '전제: 20일이 백업 값으로 교체됐다').toBe(20);
 
-  const r = await page.locator('body').evaluate((el, ds) => {
-    const pnlBefore = ds.map((d) => state.dailySnapshots[d].total.dailyPnL);
-    const uniqBefore = new Set(ds.map((d) => Math.round(state.dailySnapshots[d].total.cur))).size;
-    reconstructHistoricalCurValues();       // 다음 부팅에서 도는 것과 같은 경로
-    const stillAll = ds.every((d) => !!state.dailySnapshots[d]);
-    const pnlAfter = ds.map((d) => state.dailySnapshots[d].total.dailyPnL);
-    const uniqAfter = new Set(ds.map((d) => Math.round(state.dailySnapshots[d].total.cur))).size;
-    return { stillAll, same: JSON.stringify(pnlBefore) === JSON.stringify(pnlAfter), uniqBefore, uniqAfter };
+  const r = await page.locator('body').evaluate(async (el, ds) => {
+    const before = JSON.stringify(ds.map((d) => state.dailySnapshots[d]));
+    await backfillAllHoldingsDailyPnlHistory(); // 부팅·pull·가져오기가 부르던 경로
+    reconstructHistoricalCurValues();
+    return {
+      stillAll: ds.every((d) => !!state.dailySnapshots[d]),
+      same: before === JSON.stringify(ds.map((d) => state.dailySnapshots[d])),
+      uniq: new Set(ds.map((d) => Math.round(state.dailySnapshots[d].total.cur))).size
+    };
   }, dates);
 
   expect(r.stillAll, '복구된 날짜가 사라지면 안 된다').toBe(true);
-  expect(r.same, '복구된 dailyPnL을 재구성이 바꾸면 안 된다').toBe(true);
-  expect(r.uniqAfter, '재구성 후에도 수평선으로 되돌아가면 안 된다').toBeGreaterThan(1);
+  expect(r.same, '복구된 스냅샷(cur·dailyPnL·소유자·자산군)이 그대로여야 한다').toBe(true);
+  expect(r.uniq, '복구 이력이 수평선으로 되돌아가면 안 된다').toBeGreaterThan(1);
 });
 
 test('W. 손익이 기록된 정상 기록이 끼어 있으면 그 날은 후보가 아니고 구간이 끊긴다', async ({ page }) => {
@@ -700,6 +707,8 @@ function runMigration(page, opts) {
 function stubDailyHistory(page) {
   return page.locator('body').evaluate((el) => {
     el.ownerDocument.defaultView.fetchDailyHistory = async () => {
+      // [P0 D2] 과거 시세 조회 횟수를 센다 - 소급 채우기는 이제 이 함수를 부르지 않아야 한다.
+      el.ownerDocument.defaultView.__historyCalls = (el.ownerDocument.defaultView.__historyCalls || 0) + 1;
       const pts = [];
       for (let i = 400; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); pts.push({ date: d, close: 10000 + (400 - i) * 100 }); }
       return pts;
@@ -739,7 +748,10 @@ test('X-2. Case 2 - 이력 있음 + 지문 없음: 지우지 않으며, 그래�
   expect(dbl.changed, `기존 날짜의 손익이 바뀌었다(${dbl.before} -> ${dbl.after})`).toBe(0);
 });
 
-test('X-3. Case 3 - 이력 없음 + 지문 없음: 신규 소급 채우기가 정상 동작한다', async ({ page }) => {
+test('X-3. [P0 D2] Case 3 - 이력 없음 + 지문 없음: 자동 소급 채우기가 과거 날짜를 만들지 않는다', async ({ page }) => {
+  // 예전 기대값은 "빈 기기에서는 소급 채우기가 과거를 채워야 한다(100일 초과)"였다. 그 값은 지금 수량 × 종가
+  // 변화 × 지금 환율로 만든 것이라, 실제로 보유하지 않았던 과거(매수일 이전)에도 손익·평가액이 생겼다.
+  // 사실이 아닌 과거를 만들지 않는 것이 맞다 - 기록이 없는 날은 그래프에서 공백으로 보인다.
   await open(page);
   await seed(page, []);
   await stubDailyHistory(page);
@@ -747,12 +759,13 @@ test('X-3. Case 3 - 이력 없음 + 지문 없음: 신규 소급 채우기가 �
   expect(r.result.case).toBe('PRESERVED');
   expect(r.pastLeft).toBe(0);
 
-  const filled = await page.locator('body').evaluate(async () => {
+  const filled = await page.locator('body').evaluate(async (el) => {
     await backfillAllHoldingsDailyPnlHistory();
     const today = todayDateStr();
-    return Object.keys(state.dailySnapshots).filter((k) => k !== today).length;
+    return { past: Object.keys(state.dailySnapshots).filter((k) => k !== today).length, historyCalls: el.ownerDocument.defaultView.__historyCalls || 0 };
   });
-  expect(filled, '빈 기기에서는 소급 채우기가 과거를 채워야 한다').toBeGreaterThan(100);
+  expect(filled.past, '빈 기기에서도 과거 날짜를 만들어내면 안 된다').toBe(0);
+  expect(filled.historyCalls, '과거 시세를 조회하지 않는다').toBe(0);
 });
 
 test('X-4. Case 4 - 이력 없음 + 지문 있음: 아무것도 다시 계산하지 않는다', async ({ page }) => {
@@ -772,7 +785,9 @@ test('X-4. Case 4 - 이력 없음 + 지문 있음: 아무것도 다시 계산하
   expect(r.past, '지문이 다 있으면 재계산 대상이 없다').toBe(0);
 });
 
-test('X-5. 소급 채우기는 기존 기록이 있는 날짜를 절대 덧쓰지 않는다', async ({ page }) => {
+test('X-5. [P0 D2] 소급 채우기는 기존 기록을 덧쓰지 않고, 비어 있는 과거 날짜도 만들지 않는다', async ({ page }) => {
+  // 예전 기대값의 절반("비어 있던 날짜는 정상적으로 채워져야 한다 - 100일 초과")은 지금 수량으로 과거를 만드는
+  // 일이었다. 기존 기록을 덧쓰지 않는 절반은 그대로 유지한다.
   await open(page);
   await seed(page, []);
   await stubDailyHistory(page);
@@ -793,10 +808,11 @@ test('X-5. 소급 채우기는 기존 기록이 있는 날짜를 절대 덧쓰�
     };
   });
   expect(r.keptSame, '기존 5일의 손익이 그대로여야 한다').toBe(true);
-  expect(r.filled, '비어 있던 날짜는 정상적으로 채워져야 한다').toBeGreaterThan(100);
+  expect(r.filled, '비어 있던 과거 날짜를 새로 만들면 안 된다').toBe(0);
 });
 
-test('X-6. 한 번의 패스 안에서는 여러 자산이 같은 날짜에 정상 누적된다', async ({ page }) => {
+test('X-6. [P0 D2] 여러 자산을 한 번에 처리해도 과거 날짜를 만들어내지 않는다', async ({ page }) => {
+  // 예전 기대값(100일 초과 · 두 소유자가 같은 날짜에 누적)은 지금 수량으로 만든 과거라 더 이상 만들지 않는다.
   await open(page);
   await seed(page, []);
   await stubDailyHistory(page);
@@ -809,12 +825,9 @@ test('X-6. 한 번의 패스 안에서는 여러 자산이 같은 날짜에 정�
     state.dailySnapshots = {};
     await backfillAllHoldingsDailyPnlHistory();
     const today = todayDateStr();
-    const keys = Object.keys(state.dailySnapshots).filter((k) => k !== today).sort();
-    const mid = state.dailySnapshots[keys[Math.floor(keys.length / 2)]];
-    return { days: keys.length, owners: Object.keys(mid.byOwner || {}).sort() };
+    return { days: Object.keys(state.dailySnapshots).filter((k) => k !== today).length };
   });
-  expect(r.days).toBeGreaterThan(100);
-  expect(r.owners, '두 자산이 같은 날짜에 함께 반영되어야 한다').toEqual(['신랑', '와이프']);
+  expect(r.days).toBe(0);
 });
 
 test('X-7. 소급 채우기를 두 번 돌려도 값이 변하지 않는다', async ({ page }) => {
@@ -1157,10 +1170,10 @@ test('Y-5. [P1-A] 복구가 끝나면 정기 갱신(renderAll) 경로의 동기�
  *
  * 과거 cur은 부팅 재구성이 "오늘 값 - 그 사이 손익"으로 다시 계산하는 파생값이다. 그래서 F2는 cur을 판정에
  * 쓰지 않고, 현재의 손익 0 연속 구간(14일 이상)과 백업의 손익 기록(25% 이상)만 본다.
- * 피해 state는 앱 코드 경로로 만든다: 오늘 기록(renderAll, USD 현금은 '달러') -> 빈 과거 날짜를 재구성이 채움
- * ('현금') -> 최근 3일에 실제 손익 기록 -> 부팅 재구성을 한 번 더 실행해 placeholder cur이 오늘 값에서 벗어난 상태.
- * 부팅의 비동기 재구성이 뒤늦게 한 번 더 돌아도 cur만 같은 값으로 다시 계산할 뿐이라 판정 결과는 같다 -
- * 그래서 경쟁 상태를 대기 시간으로 숨길 필요가 없다.
+ * 피해 state: 오늘 기록(renderAll, USD 현금은 '달러') + v237 이전 기기에 남아 있는 placeholder 모양(예전 재구성이
+ * 지금 보유 자산을 자산군 기준으로 합산해 cur만 채우고 손익 0 - '현금' 키) + 최근 3일 실제 손익 기록.
+ * 예전 부팅 재구성이 남긴 대로 placeholder cur이 최근 손익만큼 오늘 값에서 벗어나 있다. 재구성은 이제 과거를
+ * 쓰지 않으므로(P0 D1) 테스트가 그 결과물을 직접 만들고, 경쟁 상태를 대기 시간으로 숨길 필요도 없다.
  * 구성: 오늘 + 최근 실제 기록 3일(백업에 없음) + placeholder 362일(백업과 겹침) / 백업: 겹치는 362일 + 더 과거 33일.
  * 실제 휴대폰 state나 실제 백업을 반입한 것이 아니다 - 휴대폰 관찰값과 같은 모양을 합성으로 만든 것이다.
  * ══════════════════════════════════════════════════════════════════════ */
@@ -1181,8 +1194,16 @@ function seedUsdCashDamage(page) {
 
     const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
     const today = todayDateStr();
-    for (let n = 1; n <= 365; n++) state.dailySnapshots[dk(n)] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
-    reconstructHistoricalCurValues(); // 기존 날짜의 cur 채우기 - USD 현금은 '현금' 키
+    // v237 이전 기기에 남아 있는 placeholder를 그대로 만든다: 예전 재구성은 지금 보유 자산을 자산군(a.category)
+    // 기준으로 합산해 cur만 채우고 손익은 0으로 두었다('달러'가 아니라 '현금' 키). 최근 3일 실제 손익(1,000+2,000+3,000)
+    // 만큼 오늘 값에서 벗어난 상태가 예전 부팅 재구성이 남긴 모양이다.
+    const byCat = {};
+    state.assets.forEach((a) => { byCat[a.category] = (byCat[a.category] || 0) + calcRow(a).curAmount; });
+    const shifted = { ...byCat, '주식': byCat['주식'] - 6000 };
+    const phTotal = Object.values(shifted).reduce((z, v) => z + v, 0);
+    const placeholder = () => ({ total: { cur: phTotal, dailyPnL: 0 }, byOwner: { '신랑': { cur: phTotal, dailyPnL: 0 } },
+      byOwnerCategory: { '신랑': Object.fromEntries(Object.keys(shifted).map((c) => [c, { cur: shifted[c], dailyPnL: 0 }])) } });
+    for (let n = 1; n <= 365; n++) state.dailySnapshots[dk(n)] = placeholder();
 
     // 최근 3일은 실제로 손익이 기록된 날이다(백업보다 최신이라 백업에 없다).
     const recent = [];
@@ -1192,7 +1213,6 @@ function seedUsdCashDamage(page) {
         byOwnerCategory: { '신랑': { '주식': { cur: v, dailyPnL: n * 1000 } } } };
       recent.push(dk(n));
     }
-    reconstructHistoricalCurValues(); // 다음 부팅의 재구성 - 최근 손익만큼 placeholder cur이 오늘 값에서 벗어난다
     persistAssets(true); persistTransactions(); persistDailySnapshots();
 
     const placeholders = [];

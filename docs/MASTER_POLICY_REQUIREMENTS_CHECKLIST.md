@@ -1242,3 +1242,106 @@ Return Key · Risk Score · Macro→Risk 정량 연결 · FX stochastic · Bond 
 - 다음 자연스러운 공식 milestone은 **RET-02 Return Key Quarterly Review의 첫 공식 검토 시점인 2026-12경**이다.
 - **RET-03 2026-09-09 감사는 RET-02의 공식 1회차로 소급하지 않는다**(§8-2 RET-02-08 그대로).
 - §13 Out-of-Scope 및 기존 착수 금지 목록(AI · 새 Risk Score · Macro→Risk 정량 결합 · FX stochastic · 복잡한 Bond 모델 · 새 자산군 · Expert 설정 등)은 그대로 유지한다.
+
+## 25. 과거 일별 이력 무결성 — P0 Historical Snapshot Integrity (PM Approval 2026-09-13 · v238 릴리스)
+
+> **상태: v238 릴리스 (PM Release Approval 2026-09-13) · v237 → v238.** 릴리스 노트·후속 backlog는 §25-8.
+> **Recovery Apply는 계속 BLOCKED**이며, 이 절의 구현은 실제 사용자 데이터에 어떤 복구도 실행하지 않았다(§24).
+
+**25-1. PM 확정 정책**
+
+| ID | 정책 |
+|---|---|
+| **D1** | 부팅·pull·엑셀/JSON 가져오기의 자동 재구성(`reconstructHistoricalCurValues`)이 기존 과거 스냅샷의 `cur`을 지금 보유 자산 기준으로 다시 계산해 덮어쓰지 않는다 |
+| **D2** | 자동 소급 채우기(`backfillDailyPnlHistory` · `backfillAllHoldingsDailyPnlHistory`)가 기록이 없는 과거 날짜를 지금 수량·가격·환율로 만들어내지 않는다. 오늘 기록(`recordDailySnapshot`)과 사용자가 명시적으로 입력하는 현재 데이터는 그대로다 |
+| **D3** | 스냅샷 존재 + 값 0 → 0 / 스냅샷 존재 + 값 → 값 / **스냅샷 없음 → null(공백)**. 그래프·요약에서 "기록 없음"을 0원으로 표시하지 않는다 |
+| **D4** | 백그라운드 과거 이력 변경이 끝나기 전 Preview가 흔들리는 구조를 허용하지 않는다 — **원인(자동 과거 이력 변경) 자체를 제거**해 해결했다. 별도 상태 머신·UI 없음 |
+
+**25-2. 백업 `cur`의 의미 (정책)**
+
+2026-09-10 백업의 최근 1년 `cur`은 READ-ONLY 분석에서 **백업 시점 보유 자산을 anchor로 역산된 파생값**으로 확인됐다
+(인접일 관계식 일치 364/365, 소유자 = 자산군 합 789/790, 합계 = 소유자 합 395/395).
+- 백업에서 복구할 수 있는 것: 날짜 · `dailyPnL` · owner/category 키 · 스냅샷 구조 · 백업에 실제로 존재하는 historical snapshot.
+- 백업 `cur`은 **"2026-09-10 시점 데이터 구조에서 계산되어 저장된 historical snapshot value"**로 취급한다. 복구 시 `cur`을 버리지는 않지만,
+  UI·문서에서 **"해당 날짜의 실제 계좌 평가금액"이나 검증된 historical valuation fact로 표현하지 않는다.**
+
+**25-3. 구현 (코드 변경 범위)**
+
+| 파일 | 변경 |
+|---|---|
+| `js/11-refresh-history.js` | `backfillDailyPnlHistory` · `backfillAllHoldingsDailyPnlHistory` · `reconstructHistoricalCurValues` — 기존 호출부(js/06·07·12)가 깨지지 않도록 이름만 남기고 **과거 이력을 읽거나 쓰지 않으며 과거 시세도 조회하지 않는다**(D1·D2). 지문 헬퍼(`getBackfillFingerprint` 등)는 JSON 복원이 쓰므로 유지 |
+| `js/11-refresh-history.js` | `buildSnapshotSeries` — 없는 날 `{ recorded: false, total: null }`. `buildTotalValueSeries` — null 유지. `seriesAmountForOwner` — 기록 없음 null, 기록된 날 소유자 항목 없음 0 |
+| `js/11-refresh-history.js` | `renderMultiSeriesLineChart` — 합계·소유자 라인 null, `spanGaps: false`, 툴팁에서 null 제외. `renderDailyPnlChart` — 기록 없는 날 막대 없음(기록된 0원은 0 막대) |
+| `js/11-refresh-history.js` | `renderTotalValueSummary` — 기간 안 첫·마지막 **기록된 날** 기준(첫날이 기록 없음이면 "기간 내 첫 기록일 대비 증감"). `renderDailyPnlSummary` — 기록된 날만 합산. 기록이 없으면 "데이터 없음", 공백이 있으면 "기록이 없는 날짜는 그래프에서 비워 표시합니다." 한 줄 |
+| `js/14-settings-boot.js` | 부팅 `refreshPricesAndRates().finally()`에서 `backfillAllHoldingsDailyPnlHistory()` 호출 제거 |
+
+변경하지 않은 것: `planSnapshotRecovery` 분류 순서 · F2(`PLACEHOLDER_MIN_RUN = 14` · `PLACEHOLDER_BACKUP_PNL_RATIO = 0.25`) · P1-A 가드 · `skipPush` ·
+2차 확인창 metadata · `recordDailySnapshot` · pull 날짜 단위 합집합(로컬 우선) · JSON 복원 · 엑셀 경로 · Cloud schema · 지문 키 · 자산/거래/리밸런싱/미래예측 ·
+Return Key · Risk · Macro · Monte Carlo · FX · Bond. **이미 저장된 과거 값은 되돌리지 않았다(마이그레이션 없음).**
+엑셀/JSON 가져오기 뒤 과거 이력 자동 재구성·소급이 더 이상 실행되지 않는 것은 이 정책에 따른 정상 변화다.
+
+**25-4. 복구 병합 정책 (현행 유지 · 테스트로 고정)**
+
+backup-only → ADD · current-only → KEEP · 둘 다 같음 → KEEP · 값이 다름 → 충돌 표시(자동 교체 금지) ·
+F2 후보 → Preview 표시 후 **사용자 2차 승인 시에만** 교체 · 현재·백업 어디에도 없는 날짜 생성 0 · 복구 대상은 `dailySnapshots`뿐.
+
+**25-4a. 수정 전 오류 재현 (RECOVERY ERROR ZERO)**
+
+같은 합성 시나리오를 수정 전 코드(HEAD e1b8663의 js/11·js/14를 route로 주입)와 수정 후 코드에서 실행해 비교했다. js/12는 두 코드가 동일하다.
+
+| ID | 시나리오 | 수정 전 | 수정 후 |
+|---|---|---|---|
+| R0-1 | 백업 395일 복구(추가 33 · 교체 362) → 자산 변경(매도·추가·소유자·자산군) → 실제 부팅 3회 | 부팅마다 창 안 cur 변경 **362/362** | **0/395** (부팅 3회 모두) |
+| R0-2 | D1 기록 1억 · D2 기록 0 · D3 기록 없음 · D4 기록 2억 | 시계열·합계/소유자 라인·손익 막대 D3 = **0** | D3 = **null**, D2 = 0 유지 |
+| R0-3 | 매수일 30일 전 자산 · 소급 지문 없음 | 과거 날짜 생성 **251** · 매수일 이전 **221**(손익≠0 221 · 평가액>0 221) · 과거 시세 조회 1 | **0 · 0 · 0 · 0 · 조회 0** · 오늘 기록 유지 |
+| R0-4 | Preview 1 → 백그라운드 소급 → Preview 2 / 지연 소급 중 Apply | 추가 60→**0** · 충돌 0→**60** · 스냅샷 1→**252** · 복구 날짜 손익 변경 **60/60** · 충돌 0→60 | Preview 동일 · 스냅샷 1→1 · 변경 **0** · 충돌 변화 0 |
+| R0-5 | D1 기록 없음 · D2 1억 · D3 1.1억 요약 | 시작값 0 → 증감 **+1.1억** · 기록 없는 날 0원 합산 1 | 시작값 1억 → 증감 **+1천만원** · "기간 내 첫 기록일 대비 증감" |
+
+각 R0 시나리오는 e2e/82 R0-1~R0-5로 고정했고, 같은 테스트를 수정 전 코드에 주입해 실행하면 실패함을 확인했다.
+
+**25-5. 테스트**
+
+- 신규 `e2e/82-historical-snapshot-integrity.spec.js` 15건: T1 부팅 불변(재부팅 2회) · T2 복구 후 재부팅 3회 불변 · T3 매수·매도·자산 추가·삭제·소유자·자산군 변경 후 불변(+재부팅) ·
+  T3-b 매수일 이전 과거 생성 0 · T4 기록 없음 null(시계열·라인·막대, `spanGaps: false`) · T5 기록된 0은 0 · T6 요약 첫 기록일 기준·데이터 없음 ·
+  T7 백그라운드 이력 경로와 복구 경쟁·Preview 안정성 · T8 복구 적용 POST 0 · 이후 이력 경로 POST 0 · 오늘 기록 push 유지 · T9 state isolation.
+- e2e/82 R0-1~R0-5(§25-4a 재현 시나리오 고정): 395일 백업 복구 후 부팅 3회 변경 0/395 · 그래프 [1억, 0, null, 2억] · 매수일 이전 생성 0 · 지연 이력 작업과 Preview/Apply 경쟁 변화 0 · 요약 시작 1억/증감 1천만원.
+- 신규 Unit `U-48`: 병합 정책 6항목(backup-only·current-only·같음·충돌·후보·생성 0).
+- 기존 테스트 기대값 변경(각 테스트에 사유 주석): `e2e/81` M(기록된 날 기준 계산) · O 머리 주석 · P(기록된 과거 cur 불변) · R(기록된 날만 고유값) ·
+  V(복구 이력 byte 불변) · X-3 · X-5 · X-6(과거 날짜 생성 0 · 과거 시세 조회 0) · Y-6/Y-7 피해 state 생성(재구성 대신 예전 placeholder 모양을 직접 구성).
+- 게이트: **Unit 338/338 · E2E 835/835 · Golden 122/122 · ESLint 0 · Data Guard PASS** · Release Guard는 version bump 전이라 예상된 FAIL(js/11·js/14 변경).
+- 수정 전 코드 주입 실행(e2e/82 사본에 HEAD js/11·js/14 route 주입): R0-1~R0-5 5/5 실패 · T1~T8 8/8 실패 · T9 통과(state isolation은 수정 전에도 성립).
+
+**25-6. 실제 사용자 데이터**
+
+실제 휴대폰 state · 실제 사용자 localStorage 접근/변경 0 · Cloud write 0 · 백업 파일 수정 0 · Recovery Apply 0.
+실제 백업 수치는 이전 READ-ONLY 분석 결과를 인용했고, 코드에 하드코딩하지 않았다.
+
+**25-7. Recovery Apply 전제조건 (여전히 BLOCKED)**
+
+1. ~~이 절의 변경을 PM이 검토하고 version bump · commit · push · 배포 · production smoke를 별도 승인~~ → v238 릴리스로 충족(PM Release Approval 2026-09-13)
+2. 휴대폰에서 새 버전 로딩 후 Preview(1차 확인창 취소)만으로 추가 · 후보 · 충돌 수치 확인 → PM 보고
+3. 2차 확인창 metadata로 백업 계보 확인 · 적용 전 동기화 일시 중지 여부 PM 결정
+4. **PM의 별도 Recovery Apply 승인** — 테스트 PASS만으로 승인하지 않는다
+
+**25-8. v238 릴리스 노트 · 후속 backlog**
+
+**사용자 영향 (F-1 · PM 정책 수용)**
+
+> 신규 자산의 과거 이력 자동 소급 생성을 중단했습니다. 실제로 기록된 이력이 없는 기간은 그래프에서 공백으로 표시됩니다.
+
+- 대상: 자산 추가 · 거래원장에서 새로 생긴 자산 · 엑셀 가져오기 · JSON 추가하기. 예전에는 등록 직후 과거 약 1년 추세를 현재 수량·환율로 채워 보여줬다.
+- 결함이 아니라 "실제로 기록되지 않은 과거 데이터를 현재 자산 상태로 추정하여 사실처럼 보여주지 않는다"는 데이터 안전 정책의 결과다. 이번 릴리스에 대체 기능은 없다.
+
+**릴리스 전 최종 영향성 검증 (수정 전/후 코드 비교 · 합성 데이터 · 코드 무수정)**
+
+- 단일 자산 추가·수정 · 거래원장 신규 자산 · 엑셀 덮어쓰기 · JSON 추가/복원 · Cloud pull · 오늘 기록: 자산·거래·리밸런싱·미래예측·설정·KPI/Risk/Macro/Projection 화면값·Return Key·오늘 스냅샷이 수정 전과 동일.
+- 과거 이력: 수정 전 경로별 생성 227일 · 재구성 변경 24일(JSON 복원은 파일 대비 30/30 변경) → 수정 후 자동 생성 0 · 재구성 0. Cloud pull의 원격 전용 날짜 추가는 기존 날짜 단위 합집합(로컬 우선) 정책 그대로다.
+- 복구 lifecycle(적용 → renderAll → 재부팅 → pull → renderAll → 오늘 갱신): 과거 변경 0/63, 복구 적용 POST 0, 올라간 과거 = 로컬(Cloud 과거 재작성 0), 오늘 스냅샷 갱신·push 정상.
+- 그래프 D1 1억 · D2 기록 0 · D3 기록 없음 · D4 2억 → 시계열·합계/소유자 라인·손익 막대(전체/소유자)·툴팁·요약 전 경로 [1억, 0, null, 2억].
+- 테스트 수: Unit 337 → 338(+U-48) · E2E 820 → 835(+e2e/82 15건, e2e/81 기대값 변경 8건) · Golden 122 → 122 · 삭제 0.
+
+**후속 backlog (F-2 · v238 미포함)**
+
+- 옛 소급 채우기 동작을 현재형으로 설명하는 주석 정리 — js/06:264~268 · js/07:913~915 · js/12:430~434 · js/12:691 · js/12:889~893 · js/01:1138 · sw.js:377. 기능 영향 없음.
+
+**version**: v237 → v238 (`index.html` appVersionLabel · `sw.js` CACHE_NAME).

@@ -685,3 +685,40 @@ test('U-47. [F2] 판정과 메타데이터 계산은 입력을 바꾸지 않는�
   assert.deepStrictEqual(s.cur, curBefore);
   assert.deepStrictEqual(s.backup, backupBefore);
 });
+
+test('U-48. [P0] 복구 병합 정책 - backup-only ADD · current-only KEEP · 같음 KEEP · 충돌 보고 · 후보는 승인 전 유지 · 없는 날짜 생성 0', () => {
+  // 백업 395일(dk4~dk398) + 현재 일부: current-only(1~3일) · 같음(4~10일, 71~365일) · 충돌(11~20일) ·
+  // placeholder(21~60일, 손익 0) · missing(61~70일과 366일 이후 - 현재에 없음)
+  const backup = {};
+  range(4, 398).forEach((n) => { backup[dayBefore(n)] = snap(60000000 + n * 1000, isWeekendLike(n) ? 0 : 1000 + n); });
+  const cur = {};
+  cur[TODAY_KEY] = f2Today(false);
+  range(1, 3).forEach((n) => { cur[dayBefore(n)] = snap(80000000 + n, 100 + n); });
+  range(4, 10).concat(range(71, 365)).forEach((n) => { cur[dayBefore(n)] = JSON.parse(JSON.stringify(backup[dayBefore(n)])); });
+  range(11, 20).forEach((n) => { cur[dayBefore(n)] = snap(70000000 + n, 555); });
+  range(21, 60).forEach((n) => { cur[dayBefore(n)] = f2Zero(F2_TODAY_CUR); });
+
+  const plan = planSnapshotRecovery(backup, cur);
+  const conflicts = new Set(plan.conflicts);
+  assert.deepStrictEqual(plan.added, range(61, 70).concat(range(366, 398)).map(dayBefore).sort(), '1. backup-only -> ADD');
+  range(1, 3).forEach((n) => assert.deepStrictEqual(plan.merged[dayBefore(n)], cur[dayBefore(n)], '2. current-only -> KEEP'));
+  assert.deepStrictEqual(plan.merged[TODAY_KEY], cur[TODAY_KEY], '2. 오늘 기록 -> KEEP');
+  range(4, 10).concat(range(71, 365)).forEach((n) => {
+    const d = dayBefore(n);
+    assert.deepStrictEqual(plan.merged[d], cur[d], '3. both(같은 값) -> KEEP');
+    assert.ok(!conflicts.has(d), '3. 같은 값은 충돌이 아니다');
+  });
+  assert.deepStrictEqual(plan.conflicts, range(11, 20).map(dayBefore).sort(), '4. 값이 다름 -> 충돌로만 보고');
+  range(11, 20).forEach((n) => assert.deepStrictEqual(plan.merged[dayBefore(n)], cur[dayBefore(n)], '4. 충돌은 자동 교체하지 않는다'));
+  assert.deepStrictEqual(plan.placeholderCandidates, range(21, 60).map(dayBefore).sort(), '5. placeholder 후보 표시');
+  assert.deepStrictEqual(plan.replaced, [], '5. 승인 전에는 교체 0');
+  range(21, 60).forEach((n) => assert.deepStrictEqual(plan.merged[dayBefore(n)], cur[dayBefore(n)], '5. 승인 전에는 현재 값 유지'));
+  const allowed = new Set(Object.keys(cur).concat(Object.keys(backup)));
+  assert.ok(Object.keys(plan.merged).every((d) => allowed.has(d)), '6. 현재·백업 어디에도 없는 날짜를 만들지 않는다');
+  assert.strictEqual(Object.keys(plan.merged).length, allowed.size);
+
+  const approved = planSnapshotRecovery(backup, cur, { includePlaceholders: true });
+  assert.strictEqual(approved.replaced.length, 40, '사용자가 승인하면 후보만 교체된다');
+  range(11, 20).forEach((n) => assert.deepStrictEqual(approved.merged[dayBefore(n)], cur[dayBefore(n)], '승인해도 충돌은 그대로다'));
+  range(1, 3).forEach((n) => assert.deepStrictEqual(approved.merged[dayBefore(n)], cur[dayBefore(n)], '승인해도 최신 기록은 그대로다'));
+});

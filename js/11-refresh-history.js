@@ -329,127 +329,29 @@ function dateKeyFromDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// [최초 등록 소급 히스토리] 새로 등록된 티커 보유 자산의 최근 1년(영업일 기준 252일 - PERIOD_TRADING_DAYS.1y와
-// 동일 기준)치 일별 종가(fetchDailyHistory, 종목 상세 차트와 같은 소스를 재사용)를 가져와 그 구간의
-// "일간 평가손익"(하루 대비 변동분)을 역산해 state.dailySnapshots에 채워 넣는다. 자산을 막 등록한 첫날에도
-// [일별 손익 추이] 그래프가 텅 비어 있지 않고 바로 최근 1년 추세로 보이게 하기 위함이다(일별 손익
-// 추이/총 평가금액 추이 팝업의 [1년] 탭 데이터도 이 백필 결과를 그대로 재사용한다).
-//   - 값의 "단위"를 실시간 기록(recordDailySnapshot)과 반드시 맞춘다 - 하루 대비 변동분(누적 매수 대비
-//     손익이 아니다). 그래야 소급된 과거 구간과 오늘부터 실시간으로 쌓이는 구간이 그래프 상에서 자연스럽게
-//     이어지고, 큰 폭(누적)에서 작은 폭(하루치)으로 뚝 떨어지는 단절이 생기지 않는다.
-//   - 구간 첫째 날만 예외적으로 "그날 종가 - 매수단가"를 전일 대비 변동분으로 간주한다(그 이전 체결
-//     종가를 알 수 없으므로 매수단가를 사실상의 "전일 종가"로 취급). 이후 날짜는 전날 종가 대비 종가
-//     변동분 × 수량이다.
-//   - 해외 자산은 과거 일자별 환율까지는 조회하지 않고(무료 API 호출 부담이 커지고, 이 기능의 목적이
-//     정밀 회계가 아니라 "빈 그래프 대신 바로 추세를 보여주는 것"이므로) 현재 환율을 구간 전체에
-//     동일하게 적용하는 근사치를 쓴다.
-//   - 오늘 날짜는 건드리지 않는다 - renderKPIs()가 매 렌더링마다 실시간 값으로 그 날짜를 새로 계산해
-//     덮어쓰므로, 여기서 과거치 방식으로 채워봐야 곧바로 실제 값으로 대체된다.
-//   - 호출 시점(일괄 실행이면 패스 시작 시점)에 이미 스냅샷이 있는 날짜는 건너뛴다 - 기존 기록에
-//     더하면 그 날의 손익이 부풀려진다. 같은 패스 안에서 새로 만든 날짜에는 여러 자산이 누적된다
-//     (아래 protectedDates 주석 참고).
-// [POLICY-SNAPSHOT-PRESERVATION] protectedDates: 이 함수가 절대 건드리면 안 되는 날짜 집합.
-// 이 함수는 dailySnapshots에 값을 더하는(+=) 구조라, 이미 기록이 있는 날짜에 또 더하면 그 날의
-// 손익이 부풀려진다(실측: 실시간 기록 30일에 소급 채우기가 겹쳐 1,000원이 2,000원이 됐다).
-// 예전에는 마이그레이션이 과거 스냅샷을 통째로 지워서 이 충돌을 피했지만, 그 삭제는 소급 채우기로
-// 되살릴 수 없는 자산(부동산·채권·현금·달러 - 티커가 없어 시세 이력을 조회할 수 없다)의 이력까지
-// 영구히 없앴다. 이제 지우는 대신, 더할 날짜를 "아직 기록이 없는 날"로만 제한한다.
-// 인자를 주지 않으면 호출 시점에 존재하는 모든 날짜를 보호한다(신규 자산 1건을 채우는 경로가 그렇다).
-// 일괄 실행(backfillAllHoldingsDailyPnlHistory)만 "패스 시작 시점"의 집합을 넘겨, 같은 패스 안에서
-// 여러 자산이 같은 새 날짜에 정상적으로 누적되게 한다.
-async function backfillDailyPnlHistory(asset, protectedDates) {
-  const protectedSet = protectedDates || new Set(Object.keys(state.dailySnapshots));
-  const sanitized = sanitizeTicker(asset.ticker);
-  if (!sanitized.yahooTicker) return; // 티커 없는 자산(채권/현금 등)은 시세 자체가 없어 대상 아님
-  const qty = num(asset.quantity);
-  if (qty <= 0) return;
-
-  let points;
-  try {
-    points = await fetchDailyHistory(sanitized.yahooTicker);
-  } catch (e) {
-    console.warn(`[소급 히스토리] ${asset.name || asset.ticker}(${asset.owner}) 과거 시세 조회 실패 - 건너뜀: ${e.message}`);
-    return;
-  }
-  // [버그 수정 - 일간손익 그래프 이상 스파이크] 예전엔 "구간의 첫째 날"은 그 전날 종가를 알 수 없다는
-  // 이유로 매수단가(취득 시점 가격 - 몇 달~몇 년 전일 수 있음)를 그날의 "전일 종가" 대용으로 썼다.
-  // 그 결과 (그날 종가 - 매수단가)라는, 사실은 "취득 이후 누적 손익"에 가까운 큰 값이 "하루치 손익"으로
-  // 잘못 기록되어 그래프에 비정상적으로 큰 스파이크가 찍혔다(신고된 버그의 원인 - 환율 이중 곱셈이나
-  // 누적 합산 오류는 아니었고, 이 한 지점의 잘못된 "전일 종가" 대입이 원인이었다).
-  // fetchDailyHistory가 range=2y로 2년치를 받아오므로, 1년치보다 하루 더 앞선 봉까지 가져오면 1년
-  // 구간의 첫째 날에도 진짜 전일 종가를 쓸 수 있다 - 매수단가는 더 이상 전일 종가 대용으로 쓰지 않는다.
-  // [기간 확장: 6개월→1년] 일별 손익 추이/총 평가금액 추이 팝업에 [1년] 기간 탭이 생겼는데, 소급
-  // 히스토리는 여전히 6개월치만 채워서 "1년" 탭을 눌러도 앞쪽 6개월은 빈 데이터(0원)로 보이는 문제가
-  // 있었다 - 이미 2년치를 받아오고 있으므로 API 호출 추가 없이 슬라이싱 구간만 1년으로 늘렸다.
-  const rawWindow = points.slice(-(PERIOD_TRADING_DAYS['1y'] + 1));
-  const windowPoints = [];
-  let lastValidClose = null;
-  rawWindow.forEach((p) => {
-    if (typeof p.close === 'number' && p.close > 0) {
-      lastValidClose = p.close;
-      windowPoints.push(p);
-    } else if (lastValidClose !== null) {
-      windowPoints.push({ ...p, close: lastValidClose }); // 이월
-    }
-    // lastValidClose가 아직 없는데(구간 맨 앞부터 비정상) close도 없으면 그 봉은 아예 버린다.
-  });
-  // 기준이 될 "전일 종가" 봉 하나 + 실제로 기록할 최소 하루가 있어야 한다(상장 초기라 데이터가
-  // 그만큼도 없으면 매수단가로 근사조차 하지 않고 소급 자체를 건너뛴다 - 틀린 값보다 빈 값이 낫다).
-  if (windowPoints.length < 2) return;
-
-  const fxRate = asset.currency === 'USD' ? state.exchangeRate : 1;
-  const today = todayDateStr();
-  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) ticker=${sanitized.yahooTicker} qty=${qty} - 조회된 봉 ${points.length}개 중 최근 ${windowPoints.length}개 사용(첫 번째는 전일종가 기준봉, 실제 반영은 그 다음날부터) (${dateKeyFromDate(windowPoints[0].date)} ~ ${dateKeyFromDate(windowPoints[windowPoints.length - 1].date)}), 종가 흐름:`,
-    windowPoints.map((p) => `${dateKeyFromDate(p.date)}=${p.close}`).join(', '));
-
-  let appliedDays = 0;
-  let sumDailyPnLKRW = 0;
-  // i=0은 전일 종가 기준봉일 뿐 그 자체는 기록하지 않는다 - i=1부터가 실제로 반영할 구간이다.
-  for (let i = 1; i < windowPoints.length; i++) {
-    const p = windowPoints[i];
-    const dateKey = dateKeyFromDate(p.date);
-    if (dateKey >= today) continue; // 오늘/미래 날짜는 실시간 기록에 맡긴다
-    if (protectedSet.has(dateKey)) continue; // 이미 기록이 있는 날 - 덧쓰지 않는다(위 주석 참고)
-
-    const prevClose = windowPoints[i - 1].close;
-    const dailyPnLKRW = (p.close - prevClose) * qty * fxRate;
-    sumDailyPnLKRW += dailyPnLKRW;
-    appliedDays++;
-
-    if (!state.dailySnapshots[dateKey]) state.dailySnapshots[dateKey] = { total: { cur: 0, dailyPnL: 0 }, byOwner: {}, byOwnerCategory: {} };
-    const snap = state.dailySnapshots[dateKey];
-    if (!snap.byOwnerCategory) snap.byOwnerCategory = {}; // 이 기능 이전에 만들어진 스냅샷 방어
-    snap.total.dailyPnL += dailyPnLKRW;
-    if (!snap.byOwner[asset.owner]) snap.byOwner[asset.owner] = { cur: 0, dailyPnL: 0 };
-    snap.byOwner[asset.owner].dailyPnL += dailyPnLKRW;
-    // [자산군별 투자금액 추이 팝업] 소유자×자산군 교차 집계에도 같은 변동액을 반영한다.
-    if (!snap.byOwnerCategory[asset.owner]) snap.byOwnerCategory[asset.owner] = {};
-    if (!snap.byOwnerCategory[asset.owner][asset.category]) snap.byOwnerCategory[asset.owner][asset.category] = { cur: 0, dailyPnL: 0 };
-    snap.byOwnerCategory[asset.owner][asset.category].dailyPnL += dailyPnLKRW;
-  }
-  console.log(`[소급 히스토리] ${asset.name}(${asset.owner}) - ${appliedDays}일 반영 완료, 구간 합산 손익 ${Math.round(sumDailyPnLKRW).toLocaleString()}원`);
-  persistDailySnapshots();
+/* -------------------------------------------------------------------------
+ * [P0 HISTORICAL SNAPSHOT INTEGRITY - 과거 이력 자동 생성·재작성 중단] (PM 확정 D1 · D2 · D3)
+ *
+ * 과거 dailySnapshots는 "그날 기록된 값"이어야 한다. 예전에는 두 자동 경로가 과거를 만들거나 바꿨다.
+ *   - 소급 채우기(backfillDailyPnlHistory / backfillAllHoldingsDailyPnlHistory): 부팅·pull·엑셀/JSON 가져오기·
+ *     자산 추가 때 기록이 없는 과거 날짜를 새로 만들고, "지금 수량 × 종가 변화 × 지금 환율"로 손익을 채웠다.
+ *     실제로 보유하지 않았던 매수일 이전 날짜에도 손익·평가액이 생겼다(합성 실험: 매수 30일 전 자산에 221일).
+ *   - 재구성(reconstructHistoricalCurValues): 같은 경로 끝에서 매번, 366일 창 안 기존 과거 스냅샷의 cur을
+ *     "지금 보유 평가액 − 그 사이 손익"으로 덮어쓰고 저장(push)했다. 매도·자산 추가만으로 과거 전체가
+ *     바뀌었고, 백업에서 복구한 이력도 다음 부팅에 다시 쓰였다(합성 실험: 362/362일).
+ * 둘 다 사실이 아닌 값을 과거 기록처럼 저장하는 일이라 중단한다. 세 함수는 기존 호출부(js/06·07·12)가
+ * 깨지지 않도록 이름만 남기고, 과거 이력을 읽거나 쓰지 않으며 과거 시세도 조회하지 않는다.
+ * 오늘 기록(recordDailySnapshot)과 사용자가 명시적으로 실행하는 복구·JSON 복원·동기화 병합은 그대로다.
+ * 이미 저장된 과거 값은 되돌리거나 다시 계산하지 않는다(마이그레이션 없음). 새로 등록한 자산의 과거 구간은
+ * 이제 "기록 없음"이며, 그래프에서 0원이 아니라 공백으로 보인다(buildSnapshotSeries).
+ * ---------------------------------------------------------------------- */
+function backfillDailyPnlHistory() {
+  return Promise.resolve({ appliedDays: 0, disabled: true });
 }
 
-// [기존 보유 자산 소급 히스토리 일괄 실행] backfillDailyPnlHistory는 "새로 등록되는 자산"에만 걸려 있어,
-// 이 기능이 추가되기 전부터 있던 기존 보유 자산(예: 이미 몇 달 전부터 들고 있던 SK하이닉스)에는 한 번도
-// 실행된 적이 없었다 - 그 결과 실제로는 최근 주가가 하락했어도 [일별 손익 추이] 그래프/리스트에는 전혀
-// 반영되지 않는 문제가 있었다.
-// [버그 수정 - 자산 ID 단위 추적] 예전엔 "앱 생애주기에 딱 한 번"만 실행되는 전역 플래그로 막았는데,
-// 실사용 테스트(엑셀 표준템플릿 업로드) 도중 이 설계의 구멍이 실제로 재현됐다: 처음 앱을 켜면 샘플
-// 데이터 6건에 대해 이 마이그레이션이 먼저 실행되어 전역 플래그가 소모되고, 그 직후 사용자가 진짜
-// 보유 자산 28건을 엑셀로 업로드해도(엑셀/JSON 일괄 업로드는 신규 자산 개별 등록 경로를 타지 않아
-// backfillDailyPnlHistory가 걸리지 않는다) 전역 플래그가 이미 소모된 뒤라 새로 들어온 22개 종목은
-// 영원히 소급 이력 없이 남는다. 이제 "언제 한 번 실행했는가"가 아니라 "이 자산이 이미 채워졌는가"를
-// 기준으로 판단해, 샘플 데이터를 실제 자산으로 교체하거나 엑셀/JSON을 일괄 업로드해도 아직 한 번도
-// 채워지지 않은 자산은 다음 로드 때 자동으로 채워진다.
-// [버그 수정 - 엑셀 "덮어쓰기" 재업로드 시 일간손익 이중 누적] "이 자산이 이미 채워졌는가"를 처음엔
-// asset.id로 판단했는데, 엑셀 업로드는 매번 makeAsset()이 새 id를 발급한다(엑셀 시트에 id 컬럼 자체가
-// 없음) - 그래서 같은 포트폴리오를 엑셀로 재업로드할 때마다 모든 종목이 "새 자산"으로 오인되어 소급
-// 채우기가 매번 다시 실행됐고, backfillDailyPnlHistory는 dailySnapshots에 값을 "합산(+=)"하므로 재업로드
-// 할 때마다 최근 1년 구간의 일간손익이 그대로 한 번씩 더 쌓여 2배·3배로 부풀려졌다(사용자 실측 신고로
-// 확인 - 엑셀을 2번 재업로드해 정확히 2배가 됨). 휘발성 id 대신 "소유자+계좌구분+티커"라는 안정적인
-// 지문으로 바꿔, 재업로드로 id가 바뀌어도 같은 보유 종목은 "이미 채운 것"으로 정확히 인식한다.
+// [소급 채우기 지문] 소급 채우기는 중단됐지만, JSON 복원(js/12)이 복원한 자산을 "이미 채워짐"으로 기록할 때
+// 이 지문을 그대로 쓴다 - 복원 이력에 이중으로 더하지 않게 하던 기존 안전장치라 키와 형식을 바꾸지 않는다.
+// 휘발성 asset.id 대신 "소유자+계좌구분+티커"를 쓰는 이유는 엑셀 재업로드마다 id가 새로 발급되기 때문이다.
 function getBackfillFingerprint(asset) {
   return `${asset.owner}|${asset.accountType}|${sanitizeTicker(asset.ticker).yahooTicker}`;
 }
@@ -460,141 +362,29 @@ function getBackfillDoneFingerprints() {
     return new Set(Array.isArray(raw) ? raw : []);
   } catch (e) { return new Set(); }
 }
-// [버그 수정] 원래 Promise.allSettled로 보유 자산 전체(티커마다 직접호출+프록시 5개 경쟁)를 한꺼번에
-// 쐈더니, 페이지 로드 직후 실시간 시세 갱신(refreshPricesAndRates)과 같은 CORS 프록시 풀을 두고
-// 동시에 자원 경합이 벌어져(이번 세션 내내 관찰된 429/타임아웃과 동일 현상) 실기기 환경에서 완료까지
-// 지나치게 오래 걸리거나 일부만 반영된 채 남는 문제가 있었다. (1) 실시간 시세 갱신이 끝난 뒤에
-// 시작하고, (2) 자산을 한 번에 하나씩 순차 처리해서 동시 요청 폭주를 줄인다.
-async function backfillAllHoldingsDailyPnlHistory() {
-  const doneFingerprints = getBackfillDoneFingerprints();
-  const targets = state.assets.filter((a) => sanitizeTicker(a.ticker).yahooTicker && num(a.quantity) > 0 && !doneFingerprints.has(getBackfillFingerprint(a)));
-  if (targets.length > 0) {
-    console.log(`[소급 히스토리 일괄 실행] 대상 ${targets.length}건 (순차 처리 시작):`, targets.map((a) => `${a.name}(${a.owner})`).join(', '));
-    // [POLICY-SNAPSHOT-PRESERVATION] 패스 시작 시점에 이미 있던 날짜만 보호한다 - 이 패스가 새로
-    // 만든 날짜는 보호 대상이 아니라, 여러 자산이 같은 날에 정상적으로 누적된다.
-    const preExistingDates = new Set(Object.keys(state.dailySnapshots));
-    for (const a of targets) {
-      try {
-        await backfillDailyPnlHistory(a, preExistingDates);
-        doneFingerprints.add(getBackfillFingerprint(a));
-        localStorage.setItem(LS_DAILY_BACKFILL_DONE_FINGERPRINTS, JSON.stringify(Array.from(doneFingerprints)));
-      } catch (e) {
-        console.warn(`[소급 히스토리 일괄 실행 실패] ${a.name}(${a.owner}):`, e);
-      }
-    }
-    console.log('[소급 히스토리 일괄 실행] 전체 완료');
-  }
-  // [버그 수정 - 총 평가금액 추이 과거 0원 표시] 위 backfillDailyPnlHistory는 자산별 종가만 보고 그날의
-  // "변동액(dailyPnL)"만 채울 수 있을 뿐 그날의 "절대 평가금액(cur)"은 알 수 없다(포트폴리오 전체를
-  // 봐야 하는 값이라 자산 단위 함수에서는 계산 불가) - 그래서 이미 채워진 종목이라 위 for문을 건너뛰는
-  // 날에도(targets.length === 0) 매번 다시 실행해 오늘 날짜를 기준(anchor)으로 재계산해야 한다.
-  reconstructHistoricalCurValues();
-  // 팝업이 이미 열려 있었다면(드문 경우) 바로 다시 그려서 방금 채운/보정한 값을 즉시 보여준다.
-  if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
-  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
+
+// [P0 D2] 부팅·pull·가져오기가 부르던 일괄 소급 채우기 - 과거 날짜를 만들지 않고, 끝에서 재구성도 하지 않는다.
+function backfillAllHoldingsDailyPnlHistory() {
+  return Promise.resolve({ targets: 0, disabled: true });
 }
 
-// [버그 수정 - 총 평가금액 추이 과거 데이터 0원 표시] backfillDailyPnlHistory가 채우는 건 자산별 종가
-// 이력에서 뽑아낸 "그날의 변동액(dailyPnL)"뿐이다 - 그 결과 [총 평가금액 추이] 차트(metricKey='cur')는
-// 실제로 앱이 켜져 recordDailySnapshot()이 실행된 날짜에만 값이 있고, 그 외 소급 채운 과거 날짜는
-// snap.total.cur 기본값 0 그대로 남아 그래프가 뚝뚝 끊겨 보였다([일별 손익 추이]는 dailyPnL만 쓰므로
-// 이 문제와 무관했다).
-// 해결: 오늘의 실제 총/소유자별 평가금액(현재 state.assets 기준 - 방금 끝난 시세 갱신을 확실히 반영하기
-// 위해 매번 새로 계산)을 기준(anchor)으로, 최신 날짜부터 거꾸로 하루씩 훑으며
-//   cur[D] = cur[D+1] - dailyPnL[D+1]
-// 을 반복 적용해 과거 각 날짜의 절대 평가금액을 재구성한다. 스냅샷 자체가 없던 날(주말/휴장일)도 이
-// 재구성 과정에서 dailyPnL 0(변동 없음)인 새 스냅샷을 만들어 cur를 이어붙인다 - 그래야 총 평가금액
-// 그래프가 주말마다 0원으로 끊기지 않고 직전 값을 그대로 이어간다(일별 손익 추이 쪽은 0원 표시가
-// 원래도 옳으므로 영향 없음). 오늘 날짜 자체는 renderKPIs()가 실시간으로 관리하므로 건드리지 않는다.
-const CUR_RECONSTRUCTION_DAYS = 366; // 팝업 최대 기간 탭([1년]=365일)을 여유 있게 덮는다.
-// [자산군별 투자금액 추이 팝업] 소유자 단독 역산에서 "소유자×자산군" 역산으로 한 단계 더 세분화했다.
-// 가장 세밀한 단위(소유자×자산군)에서 먼저 역산+0원 바닥 처리를 하고, 소유자 합계·전체 합계는 그
-// 세분화된 값들을 그대로 더해서 "재계산"한다(따로 역산하지 않음) - 그래야 전체=Σ소유자=Σ(소유자×자산군)
-// 3단 계층이 항상 정확히 일치한다(합계 ≠ 신랑+와이프 불일치 버그와 같은 원리를 한 단계 더 확장).
+// [P0 D1] 과거 cur 자동 재구성 - 기존 과거 스냅샷(복구한 이력 포함)의 cur·dailyPnL·소유자·자산군을 바꾸지 않는다.
 function reconstructHistoricalCurValues() {
-  const owners = getDailyPnlOwnerList();
-  // anchor: 오늘 시점의 실제 소유자×자산군 평가금액(방금 끝난 시세 갱신을 확실히 반영하기 위해 매번 새로 계산)
-  const ownerCategoryCur = {}; // { owner: { category: cur } }
-  owners.forEach((o) => { ownerCategoryCur[o] = {}; });
-  state.assets.forEach((a) => {
-    const curAmount = calcRow(a).curAmount;
-    if (!ownerCategoryCur[a.owner]) ownerCategoryCur[a.owner] = {};
-    ownerCategoryCur[a.owner][a.category] = (ownerCategoryCur[a.owner][a.category] || 0) + curAmount;
-  });
-
-  const todayKey = todayDateStr();
-  const cursor = new Date();
-  const dateKeys = [];
-  for (let i = 0; i < CUR_RECONSTRUCTION_DAYS; i++) {
-    dateKeys.push(dateKeyFromDate(cursor));
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  // dateKeys[0] === todayKey이고, 뒤로 갈수록 하루씩 과거로 간다(최신 -> 과거 순).
-
-  const runningOC = {}; // { owner: { category: 클램프 전 역산값 } }
-  owners.forEach((o) => { runningOC[o] = { ...ownerCategoryCur[o] }; });
-
-  dateKeys.forEach((dateKey, i) => {
-    if (i > 0) {
-      // 하루 더 과거로 넘어가기 전에, 방금 처리한(하루 더 최신인) 날짜의 변동액만큼을 빼서 이 날짜의
-      // 값을 구한다 - runningOC는 이 시점까지 "dateKeys[i-1]의 cur"를 들고 있다.
-      const prevSnap = state.dailySnapshots[dateKeys[i - 1]];
-      owners.forEach((o) => {
-        const ownerCatSnap = prevSnap && prevSnap.byOwnerCategory && prevSnap.byOwnerCategory[o];
-        Object.keys(runningOC[o]).forEach((cat) => {
-          const catSnap = ownerCatSnap && ownerCatSnap[cat];
-          runningOC[o][cat] -= num(catSnap && catSnap.dailyPnL);
-        });
-      });
-    }
-
-    if (dateKey === todayKey) return; // 오늘은 renderKPIs()의 실시간 기록을 그대로 둔다.
-
-    // [FIX-3 - 없는 날짜를 만들어내지 않는다] 예전엔 기록이 없는 날짜에도 스냅샷을 새로 만들어
-    // 역산값을 채워 넣었다. 그런데 역산의 근거가 되는 과거 dailyPnL까지 없으면(이력이 통째로
-    // 사라진 기기) 매일 0을 빼게 되어, 결국 365일 전부에 "오늘 값"이 그대로 복제된 스냅샷이
-    // 만들어졌다 - 화면에는 6개월 내내 변동이 없었다는 완전한 수평선으로 나타났다. 근거가 없는
-    // 값을 시스템이 만들어 실제 기록인 것처럼 보여주는 셈이라, 기록이 없는 날짜는 건너뛴다.
-    // 이미 기록이 있는 날짜의 cur 재계산은 예전 그대로 수행한다(아래) - 그게 이 함수의 본래 일이다.
-    if (!state.dailySnapshots[dateKey]) return;
-    const snap = state.dailySnapshots[dateKey];
-    if (!snap.byOwnerCategory) snap.byOwnerCategory = {};
-    // [버그 수정 - 1년 전 구간 음수(-) 평가금액] "현재 수량이 과거에도 그대로 있었다"는 근사이다 보니
-    // 구간이 길어질수록(특히 1년) 역산 누적값이 실제로는 있을 수 없는 음수까지 내려가는 경우가
-    // 있었다 - 평가금액은 개념상 0원 미만이 될 수 없으므로 저장 시점에(가장 세밀한 소유자×자산군
-    // 단위에서) 0원 바닥을 씌운다. runningOC 자체는 클램프하지 않고 그대로 다음(더 과거) 날짜 역산의
-    // 기준으로 계속 쓴다 - 그래야 화면에 보여줄 값만 보정되고, 재귀 계산 자체는 매일의 실제 dailyPnL
-    // 누적을 그대로 반영해 왜곡되지 않는다.
-    // [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 상위 단계(소유자 합계/전체 합계)를 각각 따로 역산해
-    // 클램프하면 서로 어긋날 수 있다 - 그래서 가장 세밀한 단위만 역산+클램프하고, 그 위 단계는 전부
-    // "재계산"(합산)한다. 이러면 전체=Σ소유자=Σ(소유자×자산군)이 항상 정확히 일치한다.
-    owners.forEach((o) => {
-      if (!snap.byOwner[o]) snap.byOwner[o] = { cur: 0, dailyPnL: 0 };
-      if (!snap.byOwnerCategory[o]) snap.byOwnerCategory[o] = {};
-      let ownerTotal = 0;
-      Object.keys(runningOC[o]).forEach((cat) => {
-        const floored = Math.max(0, runningOC[o][cat]);
-        if (!snap.byOwnerCategory[o][cat]) snap.byOwnerCategory[o][cat] = { cur: 0, dailyPnL: 0 };
-        snap.byOwnerCategory[o][cat].cur = floored;
-        ownerTotal += floored;
-      });
-      snap.byOwner[o].cur = ownerTotal;
-    });
-    snap.total.cur = owners.reduce((sum, o) => sum + snap.byOwner[o].cur, 0);
-  });
-
-  persistDailySnapshots();
+  return { changedDates: 0, disabled: true };
 }
 
-// [공용 스냅샷 시리즈 빌더] metricKey: 'cur'(평가금액) | 'dailyPnL'(일간손익) - 일별 손익 추이(평가손익
-// 모드)와 총 평가금액 추이 팝업이 이 함수를 공유한다. 최근 days일 "전체 달력 날짜"를 하루도 빠짐없이
-// 순회하며, 스냅샷이 있는 날은 그 값을, 없는 날(앱을 그날 안 열었거나 아직 기록 전인 경우)은 0으로
-// 채운 항목을 명시적으로 만든다.
-// [버그 수정 - 최신 날짜 누락] 예전엔 state.dailySnapshots에 실제로 키가 있는 날짜만 나열했다 - 그
-// 결과 특정 날짜에 키 자체가 없으면 그 날짜가 X축에서 통째로 빠져(끼어 있어야 할 날짜가 건너뛰어짐)
-// "그 날짜 데이터가 안 보인다"는 문제로 이어졌다. 달력 채우기로 X축이 항상 최신 날짜(오늘)까지
-// 끊기지 않고 이어지게 한다(막대/라인 어느 쪽으로 그리든 Chart.js의 spanGaps에 기댈 필요 없이, 이
-// 달력 채우기 자체가 "끊김 없이 이어서 그리기"의 실질적인 구현이다).
+// [P0 D3 - 기록 없음 ≠ 0원] 그래프 요약에 한 줄만 덧붙이는 안내 문구.
+const HISTORY_GAP_NOTE = '기록이 없는 날짜는 그래프에서 비워 표시합니다.';
+
+// [공용 스냅샷 시리즈 빌더] metricKey: 'cur'(평가금액) | 'dailyPnL'(일간손익) - 일별 손익 추이와 총 평가금액 추이
+// 팝업이 공유한다. 최근 days일의 달력 날짜를 하루도 빠짐없이 나열해 X축이 오늘까지 끊기지 않게 한다.
+// [P0 D3] 스냅샷이 없는 날은 값을 0으로 채우지 않고 null로 둔다(recorded: false).
+//   - 스냅샷 있음 + 값 0 → 0 (그날 실제로 기록된 0)
+//   - 스냅샷 있음 + 값   → 값
+//   - 스냅샷 없음       → null (데이터 없음 - 차트는 공백, 요약은 제외)
+// 예전엔 없는 날을 0으로 채워, 앱을 안 연 날이 "자산 0원"·"손익 0원"처럼 보였고 요약의 기간 시작값도 0이 됐다.
+// 기록된 스냅샷 안에 어떤 소유자 항목이 없으면 그날 그 소유자의 기록 대상 자산이 없었다는 뜻이라 0으로 본다
+// (seriesAmountForOwner) - 스냅샷 자체가 없는 경우와는 다르다.
 function buildSnapshotSeries(days, metricKey) {
   const todayKey = todayDateStr();
   const result = [];
@@ -603,27 +393,30 @@ function buildSnapshotSeries(days, metricKey) {
   while (dateKeyFromDate(cursor) <= todayKey) {
     const dateKey = dateKeyFromDate(cursor);
     const snap = state.dailySnapshots[dateKey];
-    const byOwnerAmounts = {};
-    if (snap) {
-      Object.keys(snap.byOwner || {}).forEach((o) => { byOwnerAmounts[o] = snap.byOwner[o][metricKey]; });
+    if (snap && snap.total) {
+      const byOwnerAmounts = {};
+      Object.keys(snap.byOwner || {}).forEach((o) => { byOwnerAmounts[o] = num(snap.byOwner[o][metricKey]); });
+      result.push({ date: dateKey, recorded: true, total: num(snap.total[metricKey]), byOwnerAmounts });
+    } else {
+      result.push({ date: dateKey, recorded: false, total: null, byOwnerAmounts: {} });
     }
-    result.push({ date: dateKey, total: snap ? snap.total[metricKey] : 0, byOwnerAmounts });
     cursor.setDate(cursor.getDate() + 1);
   }
   return result;
 }
 function buildUnrealizedPnlSeries(days) { return buildSnapshotSeries(days, 'dailyPnL'); }
-// 평가금액(총 평가금액 추이)은 개념상 음수가 될 수 없다 - reconstructHistoricalCurValues가 저장 시점에
-// 이미 0원 바닥을 씌우지만, 차트 렌더링 직전에도 한 번 더 방어적으로 클램프해 둔다(일별 손익 추이는
+// 평가금액(총 평가금액 추이)은 개념상 음수가 될 수 없어 차트 렌더링 직전에 0원 바닥을 씌운다(일별 손익 추이는
 // 하루치 손실이 음수인 게 정상이라 공용 buildSnapshotSeries가 아닌 'cur' 전용 래퍼인 여기서만 처리한다).
-// [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 합계(row.total)를 소유자별 값과 따로 클램프하면 두 값이
-// 어긋날 수 있다 - 소유자별 값을 먼저 바닥 처리한 뒤, 합계는 그 값들의 합으로 다시 계산해 항상
-// "합계 = 신랑 + 와이프"가 성립하도록 한다.
+// [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 소유자별 값을 먼저 바닥 처리한 뒤, 합계는 그 값들의 합으로 다시
+// 계산해 항상 "합계 = 신랑 + 와이프"가 성립하도록 한다. 소유자 항목이 없는 기록이면 저장된 합계를 쓴다.
+// [P0 D3] 기록 없는 날(recorded: false)은 null 그대로 둔다 - 0으로 합산하지 않는다.
 function buildTotalValueSeries(days) {
   const series = buildSnapshotSeries(days, 'cur');
   series.forEach((row) => {
-    Object.keys(row.byOwnerAmounts).forEach((o) => { row.byOwnerAmounts[o] = Math.max(0, row.byOwnerAmounts[o]); });
-    row.total = Object.values(row.byOwnerAmounts).reduce((sum, v) => sum + v, 0);
+    if (!row.recorded) return;
+    const owners = Object.keys(row.byOwnerAmounts);
+    owners.forEach((o) => { row.byOwnerAmounts[o] = Math.max(0, row.byOwnerAmounts[o]); });
+    row.total = owners.length ? owners.reduce((sum, o) => sum + row.byOwnerAmounts[o], 0) : Math.max(0, row.total);
   });
   return series;
 }
@@ -712,17 +505,16 @@ function scheduleDailyPnlTooltipHide(chart) {
   }, 3000);
 }
 
-// [공용 멀티 라인 차트 렌더러] 합계 + 소유자별 라인을 한 차트에 동시에 그린다 - 일별 손익 추이(평가/
-// 실현손익)와 총 평가금액 추이 팝업이 공유한다. chartKey는 charts 레지스트리의 키('dailyPnl'|'totalValue'),
-// valueLabelFn(v)은 툴팁/범례에 쓸 금액 포맷터(손익은 부호 있는 fmtSigned, 평가금액은 fmtKRW 등 호출부가
-// 넘겨준다).
+// [공용 멀티 라인 차트 렌더러] 합계 + 소유자별 라인을 한 차트에 동시에 그린다 - 총 평가금액 추이 팝업이 쓴다.
+// chartKey는 charts 레지스트리의 키, valueLabelFn(v)은 툴팁에 쓸 금액 포맷터(호출부가 넘겨준다).
+// [P0 D3] 기록 없는 날은 합계·소유자 라인 모두 null이라 선이 0원으로 떨어지지 않고 끊긴다(spanGaps: false).
 function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMessage, valueLabelFn) {
   const canvas = document.getElementById(canvasId);
   const msgEl = document.getElementById(msgElId);
   clearTimeout(dailyPnlTooltipHideTimer);
   if (charts[chartKey]) { charts[chartKey].destroy(); charts[chartKey] = null; }
 
-  if (series.length === 0) {
+  if (!series.some((s) => s.recorded)) {
     canvas.classList.add('hidden');
     msgEl.textContent = emptyMessage;
     msgEl.classList.remove('hidden');
@@ -739,7 +531,7 @@ function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMe
   const datasets = [
     {
       label: '합계',
-      data: series.map((s) => s.total),
+      data: series.map((s) => seriesAmountForOwner(s, 'all')),
       borderColor: seriesColors.total,
       backgroundColor: 'transparent',
       borderWidth: 2.5,
@@ -749,7 +541,7 @@ function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMe
     },
     ...owners.map((o, idx) => ({
       label: o,
-      data: series.map((s) => s.byOwnerAmounts[o] ?? 0),
+      data: series.map((s) => seriesAmountForOwner(s, o)),
       borderColor: seriesColors.owners[idx % seriesColors.owners.length],
       backgroundColor: 'transparent',
       borderWidth: 1.5,
@@ -764,12 +556,16 @@ function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMe
     data: { labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
+      spanGaps: false, // 기록 없는 날(null)을 이어 그리지 않는다
       interaction: { mode: 'index', intersect: false }, // 세 라인이 겹쳐 있어도 같은 날짜의 세 값을 한 번에 툴팁으로 보여준다
       plugins: {
         // 기본 범례를 그대로 쓴다 - 항목을 클릭하면 그 라인만 숨기고 보일 수 있어(Chart.js 내장 동작),
         // 예전의 소유자 필터 탭을 대신한다.
         legend: { display: true, position: 'top', labels: { color: textColor, boxWidth: 10, font: { size: 10 }, padding: 10 } },
-        tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${valueLabelFn(c.parsed.y)}` } }
+        tooltip: {
+          filter: (item) => item.parsed.y !== null, // 기록 없는 날은 툴팁에도 금액을 만들어 보여주지 않는다
+          callbacks: { label: (c) => ` ${c.dataset.label}: ${valueLabelFn(c.parsed.y)}` }
+        }
       },
       scales: {
         x: { ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false } },
@@ -785,8 +581,12 @@ function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMe
   canvas.onclick = () => scheduleDailyPnlTooltipHide(charts[chartKey]);
 }
 
+// [P0 D3] 시리즈 한 칸의 금액. 기록 없는 날은 null(0으로 바꾸지 않는다). 기록된 날에 그 소유자 항목이 없으면
+// 그날 그 소유자의 기록 대상 자산이 없었다는 뜻이라 0이다.
 function seriesAmountForOwner(entry, owner) {
-  return owner === 'all' ? entry.total : (entry.byOwnerAmounts[owner] || 0);
+  if (!entry.recorded) return null;
+  if (owner === 'all') return entry.total;
+  return Object.prototype.hasOwnProperty.call(entry.byOwnerAmounts, owner) ? entry.byOwnerAmounts[owner] : 0;
 }
 
 function dailyPnlLineColor(v) {
@@ -801,7 +601,8 @@ function renderDailyPnlChart(series, owner) {
   clearTimeout(dailyPnlTooltipHideTimer);
   if (charts.dailyPnl) { charts.dailyPnl.destroy(); charts.dailyPnl = null; }
 
-  if (series.length === 0) {
+  // [P0 D3] 기간 안에 기록된 날이 하루도 없으면 차트 대신 안내를 보여준다 - 기록 없는 날을 0 막대로 채우지 않는다.
+  if (!series.some((s) => s.recorded)) {
     canvas.classList.add('hidden');
     msgEl.textContent = dailyPnlPopupType === 'unrealized'
       ? '아직 기록된 일별 평가손익 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.'
@@ -814,6 +615,7 @@ function renderDailyPnlChart(series, owner) {
 
   const textColor = chartTextColor();
   const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
+  // 기록 없는 날은 null → 막대를 그리지 않는다. 기록된 0원 손익은 0 막대로 그대로 보인다.
   const data = series.map((s) => seriesAmountForOwner(s, owner));
   const colors = data.map((v) => dailyPnlLineColor(v));
 
@@ -824,7 +626,7 @@ function renderDailyPnlChart(series, owner) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (c) => fmtSigned(c.parsed.y) } }
+        tooltip: { filter: (item) => item.parsed.y !== null, callbacks: { label: (c) => fmtSigned(c.parsed.y) } }
       },
       scales: {
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
@@ -842,14 +644,10 @@ function renderDailyPnlChart(series, owner) {
 
 // 차트 하단 요약 - 선택된 기간/소유자 필터 조건에 맞는 "합계"만 보여준다. 전체(합계) 선택 시에는
 // 소유자별 합계 + 총 합계를, 특정 소유자 선택 시에는 그 소유자의 합계만 표시한다.
+// [P0 D3] 합계는 기록된 날만 더한다 - 기록 없는 날을 손익 0원으로 간주하지 않는다. 기록이 하나도 없으면 "데이터 없음".
 function renderDailyPnlSummary(series) {
   const container = document.getElementById('dailyPnlList');
   if (series.length === 0) { container.innerHTML = ''; return; }
-
-  const owners = getDailyPnlOwnerList();
-  const totalSum = series.reduce((acc, s) => acc + s.total, 0);
-  const ownerSums = {};
-  owners.forEach((o) => { ownerSums[o] = series.reduce((acc, s) => acc + (s.byOwnerAmounts[o] || 0), 0); });
 
   // ["당월"은 "최근" 접두어가 어색해 그 경우만 문구를 다르게 조합한다 - 다른 기간(3/6/12개월)은
   // 기존처럼 "최근 N개월 기준 합계".]
@@ -857,16 +655,31 @@ function renderDailyPnlSummary(series) {
   const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
   const periodSummaryPrefix = periodLabel === '당월' ? '당월 기준 합계' : `최근 ${periodLabel} 기준 합계`;
 
+  const recorded = series.filter((s) => s.recorded);
+  if (recorded.length === 0) {
+    container.innerHTML = `
+      <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>`;
+    return;
+  }
+
+  const owners = getDailyPnlOwnerList();
+  const totalSum = recorded.reduce((acc, s) => acc + s.total, 0);
+  const ownerSums = {};
+  owners.forEach((o) => { ownerSums[o] = recorded.reduce((acc, s) => acc + seriesAmountForOwner(s, o), 0); });
+
   const rows = [];
   if (dailyPnlPopupOwner === 'all') {
-    owners.forEach((o) => rows.push({ label: `${o} 손익 합계`, amount: ownerSums[o] || 0 }));
+    owners.forEach((o) => rows.push({ label: `${o} 손익 합계`, amount: ownerSums[o] }));
     rows.push({ label: '총 손익 합계', amount: totalSum, emphasize: true });
   } else {
     rows.push({ label: `${dailyPnlPopupOwner} 손익 합계`, amount: ownerSums[dailyPnlPopupOwner] || 0, emphasize: true });
   }
+  const gapNote = recorded.length < series.length ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
 
   container.innerHTML = `
     <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
+    ${gapNote}
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
@@ -930,26 +743,39 @@ function renderTotalValueChart(series) {
   renderMultiSeriesLineChart('totalValue', 'totalValueChart', 'totalValueChartMsg', series, emptyMessage, (v) => fmtKRW(v));
 }
 
-// 차트 하단 요약 - 현재(기간 마지막 날) 평가금액과, 기간 시작일 대비 증감을 합계/소유자별로 보여준다.
+// 차트 하단 요약 - 기간 안 마지막 기록일의 평가금액과, 첫 기록일 대비 증감을 합계/소유자별로 보여준다.
+// [P0 D3] 시작값·마지막값은 "기록된 날" 기준이다. 예전엔 기간 첫날에 기록이 없으면 0원을 시작값으로 써서
+// 증감이 총자산 전체만큼 부풀려졌다. 기록이 하나도 없으면 "데이터 없음".
 function renderTotalValueSummary(series) {
   const container = document.getElementById('totalValueList');
   if (series.length === 0) { container.innerHTML = ''; return; }
 
-  const owners = getDailyPnlOwnerList();
-  const first = series[0];
-  const last = series[series.length - 1];
   const periodBtn = document.querySelector('#totalValueModal .total-value-period-btn.active');
   const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+  const recorded = series.filter((s) => s.recorded);
+  if (recorded.length === 0) {
+    container.innerHTML = `
+      <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>`;
+    return;
+  }
+
+  const owners = getDailyPnlOwnerList();
+  const first = recorded[0];
+  const last = recorded[recorded.length - 1];
 
   const rows = owners.map((o) => {
-    const startAmt = first.byOwnerAmounts[o] || 0;
-    const endAmt = last.byOwnerAmounts[o] || 0;
+    const startAmt = seriesAmountForOwner(first, o);
+    const endAmt = seriesAmountForOwner(last, o);
     return { label: o, current: endAmt, diff: endAmt - startAmt };
   });
   rows.push({ label: '합계', current: last.total, diff: last.total - first.total, emphasize: true });
+  const basis = first.date === series[0].date ? '기간 시작 대비 증감' : '기간 내 첫 기록일 대비 증감';
+  const gapNote = recorded.length < series.length ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
 
   container.innerHTML = `
-    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (기간 시작 대비 증감)</p>
+    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (${basis})</p>
+    ${gapNote}
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
