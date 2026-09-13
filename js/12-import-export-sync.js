@@ -1144,8 +1144,12 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
 
 let pushDebounceTimer = null;
 let applyingRemoteUpdate = false; // 원격 데이터 반영 중엔 재push 금지(무한루프/낭비 방지)
+// [클라우드 데이터 초기화 - 경합 방지] 초기화가 진행되는 동안 예약 push·push·pull을 모두 멈추고(cloudResetInProgress),
+// 이미 시작된 push/pull이 끝날 때까지 기다리기 위해 진행 중인 개수를 센다(syncOpsInFlight). resetCloudData 참고.
+let cloudResetInProgress = false;
+let syncOpsInFlight = 0;
 function schedulePush() {
-  if (!syncState.enabled || applyingRemoteUpdate) return;
+  if (!syncState.enabled || applyingRemoteUpdate || cloudResetInProgress) return;
   clearTimeout(pushDebounceTimer);
   pushDebounceTimer = setTimeout(() => {
     pushToCloud().catch((e) => console.warn('[동기화] 업로드 실패', e));
@@ -1188,7 +1192,40 @@ function stampPayload(blob, ts) {
 // true로 넘어온다(onSyncPasswordSaved 아래 핸들러 참고). 그때만 아래 "덮어쓰기 전 병합"을 건너뛰고
 // 이 기기 상태를 그대로 올린다. 값을 넘기지 않는 기존 호출(schedulePush, 최초 업로드 버튼 등)은
 // 예전과 완전히 같은 경로를 탄다 - 자동 동기화가 스스로 한쪽을 이기게 만들지 않는다.
+// [다른 기기의 클라우드 데이터 초기화 감지 - PM 지시 3/3] 원격 version이 0(클라우드 데이터 초기화의 표시)인데, 이 기기는 이 슬롯의
+// 유효한 version을 이미 알고 있었다면(동기화를 시작한 시점의 lastVersion > 0) 다른 기기에서 클라우드가 초기화된 것이다.
+// 이때 예전처럼 push를 이어 가면 이 기기의 로컬 데이터가 초기화된 클라우드를 곧바로 다시 채운다(합성 실험 재현). 그래서
+// 업로드·병합을 하지 않고 이 기기의 동기화만 멈춘다 - 로컬 데이터는 지우지도, 클라우드에서 받지도 않는다. 판정은 호출을
+// 시작할 때 저장한 lastVersion으로 해서, 동시에 돈 push와 pull 중 한쪽이 먼저 멈춰도 다른 쪽이 업로드로 넘어가지 않는다.
+// 암호를 새로 저장하면 lastVersion이 0이 되므로, 새 기기나 다시 연결하는 기기의 [이 기기 데이터 업로드]는 그대로 동작한다.
+function isCloudResetSinceLastSync(remote, lastVersionAtStart) {
+  return !!remote && Number(remote.version) === 0 && Number(lastVersionAtStart) > 0;
+}
+function stopSyncAfterRemoteCloudReset() {
+  const wasEnabled = syncState.enabled;
+  clearTimeout(pushDebounceTimer);
+  syncState.enabled = false;
+  syncState.hasError = false;
+  syncState.lastVersion = 0;
+  localStorage.setItem(LS_SYNC_ENABLED, '0');
+  localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
+  // 초기화된 슬롯 기준으로 병합 기준선도 비운다 - 나중에 다시 연결할 때 예전 기준선이 삭제 판정에 쓰이지 않게 한다.
+  localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify([]));
+  localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify([]));
+  updateSyncStatusUI();
+  if (wasEnabled) showToast('클라우드 데이터가 초기화되어 이 기기의 동기화를 중지했습니다. 이 기기의 데이터는 삭제되지 않았습니다. 다시 동기화하려면 가족 동기화 설정에서 암호를 입력해 주세요.', 'warn', 10000);
+}
+// [클라우드 데이터 초기화 - 경합 방지] 바깥 함수는 초기화 중 호출만 막고 진행 중 개수를 센다. 실제 동작은 pushToCloudNow 그대로다.
 async function pushToCloud(opts) {
+  if (cloudResetInProgress) return;
+  syncOpsInFlight++;
+  try {
+    return await pushToCloudNow(opts);
+  } finally {
+    syncOpsInFlight--;
+  }
+}
+async function pushToCloudNow(opts) {
   const localWins = !!(opts && opts.localWins);
   if (!syncState.enabled) return;
   // [실패 원자성] 성공 이후에만 바뀌어야 하는 값이다. 아래 선병합이 중간까지 진행된 뒤 POST가
@@ -1204,6 +1241,7 @@ async function pushToCloud(opts) {
     const getRes = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
     if (getRes.ok) {
       const remote = await getRes.json();
+      if (isCloudResetSinceLastSync(remote, savedLastVersion)) { stopSyncAfterRemoteCloudReset(); return 'cloud_reset'; } // 다른 기기에서 초기화됨 - 업로드하지 않는다
       if (!localWins && remote.version && remote.version > syncState.lastVersion) {
         const parsed = await decryptSyncBlob(remote, syncState.password);
         applyingRemoteUpdate = true;
@@ -1262,10 +1300,21 @@ async function pushToCloud(opts) {
 // 버린다 - 그 결과 신랑님의 실제 자산 목록에 와이프님 폰의 샘플 자산이 섞여 들어가는 사고가 난다.
 // 최초 1회만은 예전처럼 원격을 통째로 "채택"해 이 문제를 원천 차단하고, 이후 편집분부터는 정상적으로
 // 병합된다(기준선이 이 시점에 채택된 id 목록으로 설정되므로).
+// [클라우드 데이터 초기화 - 경합 방지] pushToCloud와 같은 이유. 실제 동작은 pullFromCloudNow 그대로다.
 async function pullFromCloud(opts) {
+  if (cloudResetInProgress) return 'busy';
+  syncOpsInFlight++;
+  try {
+    return await pullFromCloudNow(opts);
+  } finally {
+    syncOpsInFlight--;
+  }
+}
+async function pullFromCloudNow(opts) {
   const silent = opts && opts.silent;
   const fullAdopt = opts && opts.fullAdopt;
   if (!syncState.enabled) return 'disabled';
+  const lastVersionAtStart = syncState.lastVersion;
   try {
     const kvKey = await deriveKvKey(syncState.password);
     const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
@@ -1277,6 +1326,7 @@ async function pullFromCloud(opts) {
     if (!res.ok) throw new Error('pull failed: ' + res.status);
     const remote = await res.json();
     syncState.hasError = false; // 여기까지 왔으면 통신은 정상 - 이후 분기는 통신 오류가 아니다
+    if (isCloudResetSinceLastSync(remote, lastVersionAtStart)) { stopSyncAfterRemoteCloudReset(); return 'cloud_reset'; } // 받지도 병합하지도 않는다
     if (!remote.version || remote.version <= syncState.lastVersion) { updateSyncStatusUI(); return 'up_to_date'; }
     let parsed;
     try {
@@ -1456,11 +1506,18 @@ function closeSyncSettingsModal(viaBackButton) {
  * 슬롯 확인은 GET 한 번으로 끝내고 state에 아무것도 반영하지 않는다 - 404면 예전 그대로
  * 업로드 확인 흐름으로 가고(불필요한 선택을 묻지 않는다), 200이면 방향 선택을 보여준다.
  * ---------------------------------------------------------------------- */
+// [동기화 방향 선택 전 자동 동기화 멈춤] 사용자가 [업로드]·[클라우드 데이터 받기]·[이 기기 데이터 올리기] 중 하나를 고른 순간에만
+// 동기화를 켠다. 예전엔 암호를 저장하자마자 켜서, 고르기 전에도 10초 주기 pull이 돌아 클라우드 데이터가 이 기기에
+// 합쳐졌다(합성 실험: 빈 기기에 12초 안에 자산·거래·일별 이력 유입) - 방향 선택이 사실상 무시됐다.
+function enableSyncAfterChoice() {
+  syncState.enabled = true;
+  localStorage.setItem(LS_SYNC_ENABLED, '1');
+}
 async function onSyncPasswordSaved(password) {
   localStorage.setItem(LS_SYNC_PASSWORD, password);
-  localStorage.setItem(LS_SYNC_ENABLED, '1');
+  localStorage.setItem(LS_SYNC_ENABLED, '0'); // 방향을 고르기 전에는 자동 pull/push가 돌지 않는다(enableSyncAfterChoice 참고)
   syncState.password = password;
-  syncState.enabled = true;
+  syncState.enabled = false;
   syncState.lastVersion = 0; // 비밀번호가 바뀌면 이전 버전 기록은 의미가 없으므로 초기화하고 다시 판정
   localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
   document.getElementById('syncDecryptErrorBox')?.classList.add('hidden');
@@ -1542,6 +1599,7 @@ document.getElementById('syncPasswordSaveBtn').addEventListener('click', async (
 document.getElementById('syncUploadConfirmBtn').addEventListener('click', async () => {
   try {
     // [빈 슬롯] 선병합할 원격 데이터가 없으므로 localWins가 필요 없다 - 예전 호출 그대로 둔다.
+    enableSyncAfterChoice();
     await pushToCloud();
     document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
     updateSyncStatusUI();
@@ -1555,6 +1613,7 @@ document.getElementById('syncUploadConfirmBtn').addEventListener('click', async 
 // pullFromCloud와 fullAdopt의 의미는 한 줄도 바꾸지 않았고, 실행 시점만 "사용자가 골랐을 때"로 옮겼다.
 document.getElementById('syncDirectionPullBtn').addEventListener('click', async () => {
   document.getElementById('syncDirectionBox')?.classList.add('hidden');
+  enableSyncAfterChoice();
   const result = await pullFromCloud({ fullAdopt: true });
   updateSyncStatusUI();
   if (result === 'applied') {
@@ -1586,6 +1645,7 @@ document.getElementById('syncDirectionPushBtn').addEventListener('click', async 
     + '먼저 JSON 백업을 권장합니다.'
   );
   if (!ok) return; // 취소 - 네트워크 요청 자체를 하지 않는다
+  enableSyncAfterChoice();
   try {
     await pushToCloud({ localWins: true });
     document.getElementById('syncDirectionBox')?.classList.add('hidden');
@@ -1607,333 +1667,159 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
 });
 
 /* -------------------------------------------------------------------------
- * [FIX-2] 일별 이력만 복구 (dailySnapshots ADD MISSING ONLY)
+ * [클라우드 데이터 초기화] (PM 작업지시 2/3 - 일별 이력 복구 기능을 대체)
  *
- * 왜 필요한가: remediateDuplicatedDailySnapshotHistory(js/01)가 오늘 이전 스냅샷을 전부 지우는데,
- * 재채움을 맡기로 한 backfill은 이미 채운 자산을 지문으로 걸러내므로(js/11 backfillAllHoldings…)
- * 대상이 0건이 되어 실행되지 않는다. 그 결과 과거 이력이 사라진 채로 남고, 차트는 과거를 오늘
- * 값으로 복제한 수평선을 그린다. 사용자가 갖고 있는 백업의 원본 이력을 되메우는 경로가 이것이다.
+ * 무엇을 하나: 이 기기에 저장된 동기화 암호의 클라우드 슬롯(sync: + SHA-256(암호) 앞 32자리)만 빈 데이터로 덮어쓴다.
+ * 이 기기의 자산·거래·일별 이력·목표비중·미래예측·설정은 읽지도 바꾸지도 않는다. 기기 데이터 초기화(js/14)와 서로
+ * 부르지 않는다 - 두 기능은 범위가 다르다(이 기기 / 동기화 서버).
  *
- * 왜 전체 복원(jsonFileInput)을 쓰지 않는가: 그 경로는 assets/transactions/rebalance/projection까지
- * 백업 시점으로 되돌린다. 지금 필요한 것은 "비어 있는 과거 이력을 채우는 것"뿐이라, 백업 파일을
- * 통째 state로 취급하지 않고 dailySnapshots 컨테이너로만 읽는다.
+ * 왜 version 0으로 올리는가: Worker는 GET/POST만 있어 삭제할 수 없다(새 엔드포인트·스키마를 만들지 않는다). 빈 데이터를
+ * 평소처럼 새 version으로 올리면, 같은 암호를 쓰는 다른 기기의 정기 pull이 그것을 최신으로 받아 병합 기준선에 있던
+ * 자산·거래를 "삭제됨"으로 전파한다(합성 실험에서 실제로 지워졌다). version 0은 기존 코드가 모두 "빈 슬롯"과 같게 다룬다 -
+ * probeCloudSlot은 없음으로 보고 [업로드] 확인만 띄우고, pullFromCloud는 받아올 것이 없다고 보고, pushToCloud는 선병합하지
+ * 않는다. 그래서 어느 기기의 로컬 데이터도 지워지지 않는다. 같은 암호로 동기화가 켜진 다른 기기는 다음 동기화 때 version 0을
+ * 감지해 업로드하지 않고 자기 동기화만 멈춘다(isCloudResetSinceLastSync) - 이 코드가 없는 이전 버전 기기는 다시 올릴 수 있어
+ * 2차 확인창에 적는다.
  *
- * 정책은 ADD MISSING ONLY 하나다.
- *   - 백업에만 있는 날짜  -> 추가
- *   - 지금만 있는 날짜    -> 그대로
- *   - 양쪽 같고 값도 같음 -> 변화 없음
- *   - 양쪽 있는데 값이 다름 -> 자동으로 고르지 않는다. 지금 값을 유지하고 충돌로 보고한다
- * 어느 쪽이 옳은지는 데이터만으로 알 수 없다("백업이 오래됐으니"도 "지금이 최신이니"도 근거가
- * 아니다). 그래서 덮어쓰지 않고 사람이 판단하도록 남긴다.
+ * 경합 방지: 확인을 받은 뒤 cloudResetInProgress로 예약 push·push·pull을 막고, 예약된 push 타이머를 취소하고, 이미 시작된
+ * push/pull이 끝날 때까지 기다린 다음 올린다 - 먼저 시작된 push가 초기화 뒤에 예전 데이터를 덮어쓰지 못한다.
+ * 성공 판정: POST 응답만 믿지 않고 같은 슬롯을 다시 GET해 version 0 · 복호화한 자산/거래/일별 이력이 모두 0건인지 확인한다.
+ * 끝나면 이 기기의 동기화만 끈다(암호는 남긴다) - 켜 둔 채면 이 기기의 다음 업로드가 곧바로 이 기기 데이터를 다시 올린다.
+ * 다시 켜면 빈 슬롯이라 [업로드] 확인부터 거친다.
  * ---------------------------------------------------------------------- */
+const CLOUD_RESET_IDLE_TIMEOUT_MS = 20000;
 
-const SNAPSHOT_DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// { cur:number, dailyPnL:number } 꼴인지. 둘 다 유한수여야 한다(NaN/Infinity/문자열 전부 거절).
-function isValidSnapshotMetric(m) {
-  return !!m && typeof m === 'object' && !Array.isArray(m)
-    && Number.isFinite(m.cur) && Number.isFinite(m.dailyPnL);
-}
-
-// 하루치 스냅샷이 v234가 읽는 구조 그대로인지 검사한다. buildSnapshotSeries(js/11)가 snap.total[metric]과
-// snap.byOwner[o][metric]을, reconstructHistoricalCurValues가 snap.byOwnerCategory[o][cat].dailyPnL을
-// 읽으므로 세 축이 모두 성립해야 한다. 모양이 다르면 고쳐서 넣지 않고 통째로 거절한다 - 자동 보정은
-// 원본이 아닌 값을 원본인 척 집어넣는 일이라 복구의 의미를 없앤다.
-function isValidSnapshotEntry(snap) {
-  if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return false;
-  if (!isValidSnapshotMetric(snap.total)) return false;
-  if (!snap.byOwner || typeof snap.byOwner !== 'object' || Array.isArray(snap.byOwner)) return false;
-  if (!snap.byOwnerCategory || typeof snap.byOwnerCategory !== 'object' || Array.isArray(snap.byOwnerCategory)) return false;
-  for (const o of Object.keys(snap.byOwner)) {
-    if (!isValidSnapshotMetric(snap.byOwner[o])) return false;
-  }
-  for (const o of Object.keys(snap.byOwnerCategory)) {
-    const byCat = snap.byOwnerCategory[o];
-    if (!byCat || typeof byCat !== 'object' || Array.isArray(byCat)) return false;
-    for (const c of Object.keys(byCat)) {
-      if (!isValidSnapshotMetric(byCat[c])) return false;
-    }
-  }
-  return true;
-}
-
-// 같은 날짜가 양쪽에 있을 때 "값이 같은가"를 판정한다. 키 순서 차이로 충돌이 잘못 잡히지 않도록
-// 키를 정렬해서 비교한다(JSON.stringify 직비교는 순서에 민감해 오탐이 난다).
-function stableSnapshotJson(v) {
-  if (v === null || typeof v !== 'object') return JSON.stringify(v);
-  if (Array.isArray(v)) return '[' + v.map(stableSnapshotJson).join(',') + ']';
-  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stableSnapshotJson(v[k])).join(',') + '}';
-}
-
-/* -------------------------------------------------------------------------
- * [FIX-2a] "키가 없는 날짜"와 "재구성으로 채워진 날짜"를 구분한다.
- *
- * 왜 필요한가: 이력이 사라진 기기에서도 과거 날짜의 키는 비어 있지 않다. 예전
- * reconstructHistoricalCurValues가 기록 없는 날짜마다 스냅샷을 새로 만들어 오늘 값을 복제해
- * 넣었기 때문이다(FIX-3에서 그 생성은 막았지만, 이미 만들어져 저장된 것은 그대로 남아 있다).
- * 그래서 "없는 날짜만 추가"라는 규칙만으로는 실제 피해 상태에서 단 하루도 복구되지 않는다.
- *
- * 그렇다고 자동으로 바꾸지는 않는다. 아래 판정은 어디까지나 "후보"이고, 교체하려면 사용자가
- * 그 항목을 따로 승인해야 한다. 시스템의 추정을 사실로 취급하지 않는다.
- * ---------------------------------------------------------------------- */
-
-// 재구성으로 만들어진 스냅샷은 dailyPnL을 어느 축에도 쓰지 않는다(cur만 채운다) - 그래서
-// total/byOwner/byOwnerCategory 전부에서 dailyPnL이 0이다. 다만 "그날 실제로 손익이 0이었던"
-// 정상 기록도 같은 모양일 수 있으므로, 이것 하나만으로는 절대 판정하지 않는다.
-function hasNoRecordedPnl(snap) {
-  if (!snap || !snap.total || snap.total.dailyPnL !== 0) return false;
-  const byOwner = snap.byOwner || {};
-  for (const o of Object.keys(byOwner)) {
-    if (byOwner[o].dailyPnL !== 0) return false;
-  }
-  const byOC = snap.byOwnerCategory || {};
-  for (const o of Object.keys(byOC)) {
-    for (const c of Object.keys(byOC[o])) {
-      if (byOC[o][c].dailyPnL !== 0) return false;
-    }
-  }
-  return true;
-}
-
-/* [F2 - placeholder 후보 판정 기준]
- * 예전 기준(③ "과거 cur 구성이 오늘 cur과 완전히 같다")은 제거했다. 최근 366일의 과거 cur은
- * reconstructHistoricalCurValues가 부팅마다 "오늘 값 - 그 사이 기록된 손익"으로 다시 계산하는 파생값이라
- * 생성 출처의 증거가 되지 못한다. 그 뒤에 실제 손익이 하루라도 기록되거나, 부팅 뒤 시세가 바뀌거나,
- * 기록 경로마다 USD 현금 키('달러'/'현금')와 덧셈 순서가 달라지면 진짜 placeholder도 오늘 값과 어긋났다.
- * 날짜에 고유하게 남는 정보는 dailyPnL뿐이므로, 판정은 손익 기록 · 연속성 · 백업의 손익 증거만 쓴다.
- *
- * 날짜 d는 아래를 전부 만족할 때만 "복구 후보"다(추정일 뿐 확정이 아니다 - 교체는 사용자가 따로 승인한다).
- *   ① d < 오늘, d <= 백업의 최대 날짜  - 오늘 기록과 백업보다 최신인 기록은 어떤 경우에도 대상이 아니다
- *   ② 현재 d의 모든 축 dailyPnL === 0 - 재구성이 만든 날짜는 손익을 쓰지 않는다
- *   ③ d가 ②를 만족하는 달력상 연속 구간 R에 속하고 |R| >= PLACEHOLDER_MIN_RUN
- *      - 주말·연휴처럼 실제로 손익이 없던 짧은 구간을 배제한다(빠진 날짜가 있으면 구간이 끊긴다)
- *   ④ R 중 백업에 정상 스냅샷이 있는 날짜 n개 가운데 손익이 기록된 날이 max(1, ceil(n x 비율)) 이상
- *      - "현재에는 없는 손익 기록이 백업에는 있다"는 정보 공백의 증거다. 백업 값이 현재와 다르다는
- *        사실만으로는 판정하지 않는다(과거 cur은 기준 시점만 달라도 전부 달라진다)
- *   ⑤⑥ 백업에 d의 정상 스냅샷이 있다
- *
- * [PM 확정 기준값] 14일 · 25%. 실제 백업 READ-ONLY 검증에서 정상 zero-PnL 구간은 최대 3일이었고,
- * 손익 기록 비율은 어느 7~30일 창에서도 50% 이상이었다. 25%는 그 최저값의 절반이라 진짜 피해 구간을
- * 놓치지 않으면서, 손익이 드문드문 한두 날만 있는 백업까지 후보로 올리지는 않는다.
- * [알려진 한계] 계보가 다른 백업(다른 가계·다른 포트폴리오의 파일)은 이 기준으로 구분할 수 없다.
- * 그래서 2차 확인창에 백업의 내보낸 시각·이력 기간·소유자를 보여 사용자가 파일을 직접 확인하게 한다.
- */
-const PLACEHOLDER_MIN_RUN = 14;
-const PLACEHOLDER_BACKUP_PNL_RATIO = 0.25;
-
-function detectPlaceholderCandidates(currentSnapshots, backupSnapshots, todayKey) {
-  const cur = currentSnapshots || {};
-  const backup = (backupSnapshots && typeof backupSnapshots === 'object' && !Array.isArray(backupSnapshots)) ? backupSnapshots : {};
-  const backupValid = (d) => hasOwn(backup, d) && isValidSnapshotEntry(backup[d]);
-  const backupDates = Object.keys(backup).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && backupValid(k)).sort();
-  if (!backupDates.length) return [];
-  const backupMaxKey = backupDates[backupDates.length - 1];
-
-  const out = [];
-  let run = [];
-  // 구간 하나가 끝날 때마다 ③④를 검사하고, 통과하면 ①⑤⑥을 만족하는 날짜만 후보로 넣는다.
-  // ④의 분모도 ①⑤⑥을 만족하는 날짜만 센다 - 백업에 없는 최신 날짜가 비율을 끌어내리지 않게 한다.
-  const closeRun = () => {
-    if (run.length >= PLACEHOLDER_MIN_RUN) {
-      const inBackup = run.filter((d) => d < todayKey && d <= backupMaxKey && backupValid(d));
-      const withPnl = inBackup.filter((d) => !hasNoRecordedPnl(backup[d])).length;
-      if (inBackup.length && withPnl >= Math.max(1, Math.ceil(inBackup.length * PLACEHOLDER_BACKUP_PNL_RATIO))) {
-        inBackup.forEach((d) => out.push(d));
-      }
-    }
-    run = [];
-  };
-  // ② 오늘 이전 날짜를 날짜순으로 훑으며, 손익 0인 날이 하루씩 이어지는 구간을 만든다.
-  Object.keys(cur).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && k < todayKey).sort().forEach((k) => {
-    if (!hasNoRecordedPnl(cur[k])) { closeRun(); return; }
-    if (run.length && (Date.parse(k) - Date.parse(run[run.length - 1])) !== 86400000) closeRun();
-    run.push(k);
-  });
-  closeRun();
-  return out;
-}
-
-// [2차 확인창 - 선택한 백업이 맞는지 사용자가 확인할 정보] 파싱한 백업에 이미 있는 값만 쓴다(저장 없음).
-// exportedAt은 toISOString()으로 저장된 UTC라, 기기 시간대와 무관하게 한국 시간으로 바꿔 보여준다.
-function describeRecoveryBackup(parsed) {
-  const snaps = (parsed && parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots))
-    ? parsed.dailySnapshots : {};
-  const dates = Object.keys(snaps).filter((k) => SNAPSHOT_DATE_KEY_RE.test(k) && isValidSnapshotEntry(snaps[k])).sort();
-  const owners = [];
-  dates.forEach((d) => Object.keys(snaps[d].byOwner).forEach((o) => { if (owners.indexOf(o) < 0) owners.push(o); }));
-  owners.sort();
-  let exportedAtKst = '알 수 없음';
-  const t = (parsed && typeof parsed.exportedAt === 'string') ? Date.parse(parsed.exportedAt) : NaN;
-  if (Number.isFinite(t)) {
-    const p = {};
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(new Date(t)).forEach((x) => { p[x.type] = x.value; });
-    exportedAtKst = `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (KST)`;
-  }
-  return { exportedAtKst, start: dates[0] || null, end: dates[dates.length - 1] || null, owners };
-}
-
-// [순수 함수 - 아무것도 쓰지 않는다] 미리보기와 실행이 똑같이 이 결과를 쓴다. 미리보기 단계에서
-// localStorage/state를 건드리지 않으려면 계획 수립과 저장이 분리되어 있어야 한다.
-// opts.includePlaceholders: 사용자가 "후보도 백업 값으로 교체"를 따로 승인했을 때만 true.
-function planSnapshotRecovery(backupSnapshots, currentSnapshots, opts) {
-  const cur = (currentSnapshots && typeof currentSnapshots === 'object' && !Array.isArray(currentSnapshots)) ? currentSnapshots : {};
-  if (!backupSnapshots || typeof backupSnapshots !== 'object' || Array.isArray(backupSnapshots)) {
-    return { ok: false, reason: 'NO_SNAPSHOTS', merged: cur, added: [], kept: Object.keys(cur),
-      conflicts: [], invalid: [], placeholderCandidates: [], replaced: [] };
-  }
-  const todayKey = todayDateStr();
-  const candidates = detectPlaceholderCandidates(cur, backupSnapshots, todayKey);
-  const candidateSet = new Set(candidates);
-  const includePlaceholders = !!(opts && opts.includePlaceholders);
-
-  const merged = { ...cur };
-  const added = [], conflicts = [], invalid = [], replaced = [];
-  Object.keys(backupSnapshots).sort().forEach((dateKey) => {
-    const snap = backupSnapshots[dateKey];
-    if (!SNAPSHOT_DATE_KEY_RE.test(dateKey) || !isValidSnapshotEntry(snap)) { invalid.push(dateKey); return; }
-    if (!hasOwn(cur, dateKey)) { merged[dateKey] = snap; added.push(dateKey); return; }
-    // 재구성 후보는 충돌로 세지 않는다 - 별도 항목으로 분리해 사용자가 따로 판단한다.
-    if (candidateSet.has(dateKey)) {
-      if (includePlaceholders) { merged[dateKey] = snap; replaced.push(dateKey); }
-      return;
-    }
-    // 그 밖에 이미 있는 날짜는 어떤 경우에도 덮지 않는다 - 값이 다르면 충돌로만 남긴다.
-    if (stableSnapshotJson(cur[dateKey]) !== stableSnapshotJson(snap)) conflicts.push(dateKey);
-  });
+function buildEmptyCloudBlob() {
   return {
-    ok: true,
-    merged,
-    added,
-    kept: Object.keys(cur),
-    conflicts,
-    invalid,
-    placeholderCandidates: candidates,
-    replaced
+    app: 'smart-asset-manager',
+    schemaVersion: LS_ASSETS,
+    exportedAt: new Date().toISOString(),
+    assets: [],
+    transactions: [],
+    dailySnapshots: {},
+    learnedTickerNames: {},
+    tickerRoles: {}
   };
 }
 
-// [실제 저장 - 정확히 1회] 날짜별로 나눠 쓰지 않는다. 계획이 이미 완성된 병합 결과를 들고 있으므로
-// 여기서는 통째로 한 번만 저장하고, 저장이 실패하면 메모리 참조도 원래대로 되돌린다(부분 반영 없음).
-function applySnapshotRecovery(plan) {
-  if (!plan || !plan.ok) throw new Error('복구 계획이 유효하지 않습니다.');
-  const prev = state.dailySnapshots;
-  state.dailySnapshots = plan.merged;
-  try {
-    persistDailySnapshots({ skipPush: true }); // 클라우드 자동 업로드 예약을 걸지 않는다
-  } catch (e) {
-    state.dailySnapshots = prev;
-    throw e;
+async function waitForSyncIdle(timeoutMs) {
+  const startedAt = Date.now();
+  while (syncOpsInFlight > 0) {
+    if (Date.now() - startedAt > timeoutMs) throw new Error('sync_busy');
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  return { added: plan.added.length, replaced: plan.replaced.length,
-    conflicts: plan.conflicts.length, invalid: plan.invalid.length };
 }
 
-document.getElementById('recoverSnapshotsBtn').addEventListener('click', () => document.getElementById('snapshotRecoveryFileInput').click());
+// 슬롯 한 번 조회 - state/localStorage에 아무것도 쓰지 않는다.
+async function readCloudSlot(password) {
+  const kvKey = await deriveKvKey(password);
+  const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
+  if (res.status === 404) return { kvKey, exists: false, version: 0, counts: { assets: 0, transactions: 0, snapshots: 0 } };
+  if (!res.ok) throw new Error('cloud_get_failed:' + res.status);
+  const remote = await res.json();
+  const version = Number(remote && remote.version) || 0;
+  let counts;
+  try {
+    const parsed = await decryptSyncBlob(remote, password);
+    counts = {
+      assets: Array.isArray(parsed.assets) ? parsed.assets.length : 0,
+      transactions: Array.isArray(parsed.transactions) ? parsed.transactions.length : 0,
+      snapshots: parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' ? Object.keys(parsed.dailySnapshots).length : 0
+    };
+  } catch (e) {
+    counts = null;
+  }
+  return { kvKey, exists: true, version, counts };
+}
 
-document.getElementById('snapshotRecoveryFileInput').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (evt) => {
-    try {
-      const parsed = JSON.parse(evt.target.result);
-      // 백업 파일에서 읽는 것은 dailySnapshots 하나뿐이다 - assets/transactions/rebalance/projection/
-      // tickerRoles/learnedTickerNames/exchangeRate는 쳐다보지도 않는다.
-      const plan = planSnapshotRecovery(parsed && parsed.dailySnapshots, state.dailySnapshots);
-      if (!plan.ok) { showToast('이 파일에는 일별 자산 이력이 없습니다.', 'error', 5000); return; }
-      const candidates = plan.placeholderCandidates;
-      if (plan.added.length === 0 && candidates.length === 0) {
-        showToast(`추가할 이력이 없습니다 - 이미 ${plan.kept.length}일이 기록되어 있습니다.`
-          + (plan.conflicts.length ? ` (값이 다른 날짜 ${plan.conflicts.length}일은 현재 값을 유지합니다)` : ''), 'info', 6000);
-        return;
-      }
-      // [미리보기 -> 명시적 실행] 여기까지 state/localStorage에 쓴 것은 없다. 사용자가 확인을 눌러야만
-      // 실제 저장이 일어난다. 후보 교체는 그 위에 한 번 더 따로 묻는다(두 가지는 성격이 다르다 -
-      // 하나는 빈 곳을 채우는 것이고, 다른 하나는 이미 있는 값을 바꾸는 것이다).
-      const rangeOf = (a) => a.length ? `${a[0]} ~ ${a[a.length - 1]}` : '-';
-      const lines = [
-        '일별 자산 이력을 복구합니다.',
-        '',
-        `· 새로 추가되는 이력: ${plan.added.length}일 (${rangeOf(plan.added)})`,
-        `· 복구 후보: ${candidates.length}일 (${rangeOf(candidates)})`,
-        `· 기존 유지: ${plan.kept.length - candidates.length}일`,
-        `· 값이 달라 건너뜀(현재 값 유지): ${plan.conflicts.length}일`,
-        `· 형식이 맞지 않아 제외: ${plan.invalid.length}건`,
-        '',
-        '자산·거래·리밸런싱·미래예측 설정은 변경하지 않습니다.',
-        // 복구 적용 자체는 클라우드에 쓰지 않지만(P1-A), 동기화가 켜져 있으면 이후 일반 동기화가 이 기기의
-        // 이력을 함께 올린다 - '올리지 않는다'로만 쓰면 영영 안 올라간다는 오해를 준다.
-        '복구 적용 중에는 클라우드에 저장하지 않습니다.',
-        '이후 일반 동기화가 실행되면 복구 결과가 반영될 수 있습니다.',
-        '',
-        candidates.length
-          ? '먼저 새로 추가되는 이력만 복구합니다. 계속할까요?'
-          : '복구를 실행할까요?'
-      ];
-      if (!confirm(lines.join('\n'))) { showToast('복구를 취소했습니다.', 'info'); return; }
+async function resetCloudData() {
+  const password = syncState.password;
+  if (!password) {
+    showToast('이 기기에 연결된 동기화 암호가 없습니다. 가족 동기화 설정에서 암호를 먼저 입력해 주세요.', 'warn', 6000);
+    return 'not_connected';
+  }
+  if (cloudResetInProgress) return 'busy';
 
-      // [후보는 따로 승인] 후보는 "현재 기기에 남아 있는 값이 실제 과거 기록이 아닐 가능성이 있어"
-      // 분류된 것이지, 틀렸다고 확정한 것이 아니다 - 문구도 그 수준으로만 쓴다.
-      let includePlaceholders = false;
-      if (candidates.length) {
-        const backupInfo = describeRecoveryBackup(parsed);
-        const segments = candidates.filter((d, i) => i === 0 || (Date.parse(d) - Date.parse(candidates[i - 1])) !== 86400000).length;
-        includePlaceholders = confirm([
-          `복구 후보 ${candidates.length}일 (${rangeOf(candidates)}${segments > 1 ? ` · ${segments}개 구간` : ''})`,
-          '',
-          `이 날짜들은 현재 기기에 손익 기록이 없는 날이 ${PLACEHOLDER_MIN_RUN}일 이상 이어진 구간이고,`,
-          '백업에는 해당 기간의 손익 기록이 있습니다. 실제 과거 기록이 아니라 앱이 다시 계산해',
-          '채워 넣은 값일 가능성이 있어 복구 후보로 분류했습니다.',
-          '',
-          '[선택한 백업 파일]',
-          `· 내보낸 시각: ${backupInfo.exportedAtKst}`,
-          `· 이력 기간: ${backupInfo.start && backupInfo.end ? `${backupInfo.start} ~ ${backupInfo.end}` : '-'}`,
-          `· 소유자: ${backupInfo.owners.length ? backupInfo.owners.join(', ') : '-'}`,
-          `· 복구 후보: ${candidates.length}일`,
-          '',
-          '내가 선택한 백업이 맞는지 확인해 주세요. 이 날짜들도 백업 파일의 이력으로 바꿀까요?',
-          '바꾸지 않으면 현재 값이 그대로 유지됩니다.'
-        ].join('\n'));
-      }
+  let before;
+  try {
+    before = await readCloudSlot(password);
+  } catch (e) {
+    showToast('클라우드 상태를 확인하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요. 이 기기의 데이터는 그대로입니다.', 'error', 6000);
+    return 'error';
+  }
+  if (!before.exists || before.version === 0) {
+    showToast('클라우드에 초기화할 데이터가 없습니다. 이미 비어 있습니다.', 'info', 5000);
+    return 'already_empty';
+  }
 
-      const finalPlan = includePlaceholders
-        ? planSnapshotRecovery(parsed.dailySnapshots, state.dailySnapshots, { includePlaceholders: true })
-        : plan;
-      // [P1-A - 복구 과정의 Cloud write 0] applySnapshotRecovery 자체는 skipPush로 저장하지만, 바로 뒤
-      // renderAll()이 renderKPIs -> recordDailySnapshot -> persistDailySnapshots()를 거쳐 push를 예약해
-      // 동기화가 켜진 기기에서는 3초 뒤 복구 결과가 그대로 업로드됐다. JSON 복원과 같은 안전장치
-      // (applyingRemoteUpdate)를 이 구간에만 씌워 예약 자체를 막는다 - 전역 push나 동기화 설정은 건드리지 않는다.
-      // 복구 직전에 다른 변경으로 이미 걸려 있던 예약도 여기서 취소한다. 남겨 두면 복구가 끝난 직후
-      // 실행되어 복구된 이력까지 함께 올라간다. 취소는 전송을 미룰 뿐 로컬 데이터는 그대로이고,
-      // 다음 정상 변경/정기 갱신이 다시 예약하면 그때 함께 반영된다.
-      clearTimeout(pushDebounceTimer);
-      let result;
-      applyingRemoteUpdate = true;
-      try {
-        result = applySnapshotRecovery(finalPlan);
-        renderAll();
-      } finally {
-        applyingRemoteUpdate = false;
-      }
-      // 복구 과정에서 올리지 않은 것은 사실이지만, 동기화가 켜져 있으면 이후 정상 동기화가 이 기기의
-      // 이력을 함께 올린다 - "올리지 않았다"로만 끝내면 영영 안 올라간다는 오해를 준다.
-      const cloudNote = syncState.enabled
-        ? ' · 복구하는 동안에는 클라우드에 올리지 않았습니다. 이후 정상 동기화에서 이 기기의 변경사항이 반영됩니다.'
-        : ' · 클라우드에는 올리지 않았습니다.';
-      showToast(`일별 이력 ${result.added}일을 추가했습니다`
-        + (result.replaced ? ` · 후보 ${result.replaced}일을 백업 이력으로 교체` : '')
-        + (candidates.length && !includePlaceholders ? ` · 후보 ${candidates.length}일은 현재 값 유지` : '')
-        + (result.conflicts ? ` · 값이 다른 ${result.conflicts}일은 현재 값 유지` : '')
-        + (result.invalid ? ` · 형식 오류 ${result.invalid}건 제외` : '')
-        + cloudNote, 'success', 9000);
-    } catch (err) {
-      console.error('[일별 이력 복구] 실패', err);
-      showToast(`복구 실패: ${err.message} (기존 데이터는 그대로입니다)`, 'error', 6000);
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
+  const countLine = before.counts
+    ? `· 저장된 내용: 자산 ${fmtNum(before.counts.assets)}건 · 거래 ${fmtNum(before.counts.transactions)}건 · 일별 이력 ${fmtNum(before.counts.snapshots)}일`
+    : '· 저장된 내용: 건수를 확인하지 못했습니다';
+  const firstOk = confirm([
+    '클라우드 데이터 초기화',
+    '',
+    '이 기기에 저장된 동기화 암호에 연결된 클라우드 데이터를 초기화합니다.',
+    `· 이 기기의 동기화: ${syncState.enabled ? '켜짐' : '꺼짐'}`,
+    countLine,
+    '',
+    '이 기기의 데이터는 삭제되지 않습니다.',
+    '다음 화면에서 한 번 더 확인합니다.'
+  ].join('\n'));
+  if (!firstOk) { showToast('클라우드 데이터 초기화를 취소했습니다.', 'info'); return 'cancelled'; }
+  const secondOk = confirm([
+    '정말 클라우드 데이터를 초기화할까요?',
+    '',
+    '클라우드 데이터만 초기화합니다.',
+    '이 기기의 데이터는 삭제되지 않습니다.',
+    '',
+    '같은 암호로 동기화가 켜진 다른 기기가 있으면, 그 기기는 다음 동기화 때 초기화를 감지해 동기화를 멈춥니다(그 기기의 데이터는 삭제되지 않습니다). 최신 버전으로 업데이트하지 않은 기기는 자기 데이터를 다시 올릴 수 있으니 먼저 동기화를 꺼 주세요.',
+    '초기화가 끝나면 이 기기의 동기화도 꺼집니다.',
+    '',
+    '이 작업은 되돌릴 수 없습니다.'
+  ].join('\n'));
+  if (!secondOk) { showToast('클라우드 데이터 초기화를 취소했습니다.', 'info'); return 'cancelled'; }
+
+  cloudResetInProgress = true;
+  clearTimeout(pushDebounceTimer);
+  try {
+    await waitForSyncIdle(CLOUD_RESET_IDLE_TIMEOUT_MS);
+    const encrypted = await encryptSyncBlob(buildEmptyCloudBlob(), password);
+    const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(before.kvKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...encrypted, version: 0, updatedAt: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error('cloud_post_failed:' + res.status);
+    const after = await readCloudSlot(password);
+    const verified = after.exists && after.version === 0 && after.counts
+      && after.counts.assets === 0 && after.counts.transactions === 0 && after.counts.snapshots === 0;
+    if (!verified) throw new Error('cloud_verify_failed');
+
+    // 이 기기는 동기화만 끈다(자산·거래·일별 이력·설정은 그대로). 병합 기준선도 비워, 나중에 다시 켤 때 예전 기준선이
+    // 삭제 판정에 쓰이지 않게 한다(JSON 복원과 같은 처리).
+    syncState.enabled = false;
+    syncState.hasError = false;
+    syncState.lastVersion = 0;
+    localStorage.setItem(LS_SYNC_ENABLED, '0');
+    localStorage.setItem(LS_SYNC_LAST_VERSION, '0');
+    localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify([]));
+    localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify([]));
+    showToast('클라우드 데이터를 초기화했습니다. 이 기기의 데이터는 그대로이며, 이 기기의 동기화는 꺼졌습니다.', 'success', 8000);
+    return 'reset';
+  } catch (e) {
+    console.warn('[클라우드 데이터 초기화] 실패', e);
+    showToast('클라우드 데이터를 초기화하지 못했습니다. 이 기기의 데이터는 그대로입니다. 네트워크를 확인하고 다시 시도해 주세요.', 'error', 8000);
+    return 'error';
+  } finally {
+    cloudResetInProgress = false;
+    updateSyncStatusUI();
+  }
+}
+
+// 데이터 관리(시스템관리) 화면과 가족 동기화 설정 화면의 버튼이 같은 함수를 부른다. 다른 핸들러처럼 id로 등록한다(단위 테스트 샌드박스의 document 스텁과도 맞다).
+['resetCloudDataBtn', 'resetCloudDataSyncBtn'].forEach((id) => {
+  const btn = document.getElementById(id);
+  if (btn) btn.addEventListener('click', () => { resetCloudData(); });
 });
 
 // [테스트 전용] 브라우저에는 `module`이 없으므로 이 블록은 그냥 무시된다 - Node의 test/merge.test.js가
@@ -1944,12 +1830,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // [P1 데이터 보존 - FIX-4/FIX-5] 같은 이유로 노출한다(순수 함수라 단위 테스트로 검증 가능).
     buildCarryIfAbsentIndex, carryOverAbsentFields,
     // [P1-1] 업로드 payload 스탬프도 순수 함수라 같은 방식으로 검증한다.
-    stampPayload,
-    // [FIX-2] 일별 이력 복구도 계획 수립(planSnapshotRecovery)이 순수 함수라 단위 테스트로 검증한다.
-    isValidSnapshotEntry, planSnapshotRecovery,
-    // [FIX-2a] placeholder 판정도 순수 함수라 같은 방식으로 검증한다.
-    hasNoRecordedPnl, detectPlaceholderCandidates, PLACEHOLDER_MIN_RUN,
-    // [F2] 후보 비율 기준과 2차 확인창 메타데이터도 상수/순수 함수라 같은 방식으로 검증한다.
-    PLACEHOLDER_BACKUP_PNL_RATIO, describeRecoveryBackup };
+    stampPayload };
 }
 

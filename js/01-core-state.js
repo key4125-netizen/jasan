@@ -1146,8 +1146,7 @@ const LS_DAILY_SNAPSHOT_DEDUP_MIGRATED = 'sam_daily_snapshot_dedup_migrated_v1';
 //
 // 남은 역할은 "이 기기가 파괴적 정리를 지나갔다"는 사실을 한 번 기록하는 것뿐이다 - 플래그를
 // 남겨야 예전 버전으로 되돌아가더라도 그 삭제가 다시 실행되지 않는다.
-// 이미 이력을 잃은 기기를 되돌리지는 못한다(그건 백업에서 복구하는 별도 경로, js/12
-// planSnapshotRecovery의 일이다).
+// 이미 이력을 잃은 기기를 되돌리지는 못한다(백업에서 일별 이력만 되메우던 복구 기능은 PM 지시로 제거됐다).
 function remediateDuplicatedDailySnapshotHistory() {
   if (localStorage.getItem(LS_DAILY_SNAPSHOT_DEDUP_MIGRATED) === '1') {
     return { case: 'ALREADY_MIGRATED', deleted: 0, fingerprintsCleared: false };
@@ -1494,14 +1493,8 @@ function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.strin
 // skipStamp: persistRebalance와 동일한 이유(위 주석 참고).
 function persistProjection(skipStamp) { if (!skipStamp) state.projection.updatedAt = Date.now(); localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
-// [일별 이력만 복구 - FIX-2] 인자 없이 부르면 예전과 완전히 동일하다(저장 + 클라우드 push 예약).
-// 복구 경로만 { skipPush: true }를 넘겨 로컬 저장까지만 하고 업로드 예약을 건너뛴다 - 복구는 "이
-// 기기의 빈 과거를 되메우는" 작업이라, 그 결과를 사용자 동의 없이 클라우드로 올려 배우자 기기까지
-// 바꾸면 안 된다(올릴지 말지는 사용자가 평소의 동기화 흐름에서 스스로 정한다).
-function persistDailySnapshots(opts) {
-  localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots));
-  if (!(opts && opts.skipPush)) schedulePush();
-}
+// [일별 이력 복구 제거] 복구 경로만 쓰던 skipPush 옵션을 없앴다 - 모든 호출부가 "저장 + 클라우드 push 예약"으로 같다.
+function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
 function persistLearnedTickerNames() { localStorage.setItem(LS_LEARNED_TICKER_NAMES, JSON.stringify(state.learnedTickerNames)); schedulePush(); }
 // [종목 분석 모달] 조회에 성공해 실제 종목명을 확인한 티커를 캐시에 기록한다 - trimmedRaw(사용자가
 // 입력한 원문 그대로)와 다를 때만 저장한다(같으면 "이름을 못 찾아서 입력값을 그대로 돌려준 것"뿐이라

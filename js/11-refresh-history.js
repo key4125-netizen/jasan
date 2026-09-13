@@ -354,7 +354,7 @@ function dateKeyFromDate(d) {
  *     바뀌었고, 백업에서 복구한 이력도 다음 부팅에 다시 쓰였다(합성 실험: 362/362일).
  * 둘 다 사실이 아닌 값을 과거 기록처럼 저장하는 일이라 중단한다. 세 함수는 기존 호출부(js/06·07·12)가
  * 깨지지 않도록 이름만 남기고, 과거 이력을 읽거나 쓰지 않으며 과거 시세도 조회하지 않는다.
- * 오늘 기록(recordDailySnapshot)과 사용자가 명시적으로 실행하는 복구·JSON 복원·동기화 병합은 그대로다.
+ * 오늘 기록(recordDailySnapshot)과 사용자가 명시적으로 실행하는 JSON 복원·동기화 병합은 그대로다.
  * 이미 저장된 과거 값은 되돌리거나 다시 계산하지 않는다(마이그레이션 없음). 새로 등록한 자산의 과거 구간은
  * 이제 "기록 없음"이며, 그래프에서 0원이 아니라 공백으로 보인다(buildSnapshotSeries).
  * ---------------------------------------------------------------------- */
@@ -381,7 +381,7 @@ function backfillAllHoldingsDailyPnlHistory() {
   return Promise.resolve({ targets: 0, disabled: true });
 }
 
-// [P0 D1] 과거 cur 자동 재구성 - 기존 과거 스냅샷(복구한 이력 포함)의 cur·dailyPnL·소유자·자산군을 바꾸지 않는다.
+// [P0 D1] 과거 cur 자동 재구성 - 기존 과거 스냅샷(JSON 복원·동기화로 받은 이력 포함)의 cur·dailyPnL·소유자·자산군을 바꾸지 않는다.
 function reconstructHistoricalCurValues() {
   return { changedDates: 0, disabled: true };
 }

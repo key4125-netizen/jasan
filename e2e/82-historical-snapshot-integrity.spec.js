@@ -4,8 +4,10 @@
 //   D1 부팅·pull·가져오기의 자동 재구성이 기존 과거 스냅샷의 cur을 지금 보유 기준으로 다시 계산해 덮어쓰지 않는다.
 //   D2 자동 소급 채우기가 기록이 없는 과거 날짜를 지금 수량·환율로 만들어내지 않는다.
 //   D3 스냅샷이 없는 날은 그래프·요약에서 null(공백)이다. 스냅샷이 있고 값이 0이면 0이다.
-// 복구(dailySnapshots만)로 되살린 이력은 재부팅 뒤에도 백업 값 그대로여야 하고, 복구 적용과 이후 이력 경로에서
-// 과거 이력이 Cloud로 다시 올라가면 안 된다(오늘 기록 push는 기존대로).
+// JSON 복원·동기화 병합으로 받은 과거 이력은 재부팅 뒤에도 그대로여야 하고, 이후 이력 경로에서 과거 이력이 Cloud로
+// 다시 올라가면 안 된다(오늘 기록 push는 기존대로).
+// [PM 지시 2/3] 일별 이력 복구 기능이 제거되어, 예전에 복구 API로 검증하던 T2·T7·T8·T9·R0-1·R0-4는 같은 성질(받거나
+// 저장된 과거 이력 불변)을 JSON 복원·동기화 병합(pull 경로)·직접 저장으로 검증한다.
 //
 // 전부 합성 데이터다. 실제 사용자 데이터·실제 백업·실제 Cloud를 쓰지 않는다(Worker는 route로 가로챈다).
 const { test, expect } = require('@playwright/test');
@@ -15,7 +17,7 @@ const WORKER = /steep-haze-01f0/;
 // 부팅 비동기 작업(시세 갱신 → finally)이 끝날 때까지 기다린다. 검증환경은 외부 시세가 DNS 단계에서 막혀 곧 끝난다.
 async function settle(page) {
   await page.waitForFunction(() => typeof state !== 'undefined' && typeof renderAll === 'function'
-    && typeof planSnapshotRecovery === 'function' && typeof refreshBtn !== 'undefined' && !refreshBtn.disabled);
+    && typeof pullFromCloud === 'function' && typeof refreshBtn !== 'undefined' && !refreshBtn.disabled);
   await page.waitForTimeout(500);
 }
 async function open(page) { await page.goto('/'); await settle(page); }
@@ -71,7 +73,8 @@ function seedHistory(page, opts) {
 function historySnapshot(page) {
   return page.locator('body').evaluate(() => {
     const today = todayDateStr();
-    const pick = (src) => { const o = {}; Object.keys(src).forEach((k) => { if (k !== today) o[k] = src[k]; }); return stableSnapshotJson(o); };
+    const sortK = (x) => (Array.isArray(x) ? x.map(sortK) : (x && typeof x === 'object') ? Object.keys(x).sort().reduce((acc, k) => { acc[k] = sortK(x[k]); return acc; }, {}) : x);
+    const pick = (src) => { const o = {}; Object.keys(src).forEach((k) => { if (k !== today) o[k] = src[k]; }); return JSON.stringify(sortK(o)); };
     return {
       mem: pick(state.dailySnapshots),
       stored: pick(JSON.parse(localStorage.getItem('sam_daily_snapshot_v1') || '{}')),
@@ -123,42 +126,37 @@ test('T1. [P0 D1·D2] 부팅해도 과거 이력(cur·dailyPnL·소유자·자�
   expect((await historySnapshot(page)).stored, '부팅 2회 뒤').toBe(before.stored);
 });
 
-/* ── T2 복구 후 재부팅 3회 ──────────────────────────────────────────── */
+/* ── T2 JSON 복원으로 받은 이력 · 재부팅 3회 ────────────────────────── */
 
-test('T2. [P0] 복구한 과거 이력은 부팅 3회 뒤에도 백업 값 그대로다', async ({ page }) => {
+// [PM 지시 2/3] 예전 T2는 일별 이력 복구 API로 받은 이력을 검증했다. 복구 기능이
+// 제거되어, 과거 이력을 통째로 받는 남은 사용자 경로인 JSON 복원(applyRemoteState)으로 같은 성질을 검증한다.
+test('T2. [P0] JSON 복원으로 받은 과거 이력은 부팅 3회 뒤에도 파일 값 그대로다', async ({ page }) => {
   await open(page);
-  await seedHistory(page, { days: 3 }); // 최근 실제 기록 3일(백업에 없음)
-  const r = await page.locator('body').evaluate(() => {
+  await seedHistory(page, { days: 3 });
+  const backup = await page.locator('body').evaluate(async () => {
     const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
-    // 피해 state: 4~60일 placeholder(손익 0, cur은 예전 재구성처럼 오늘 값 복제)
-    const t = state.dailySnapshots[todayDateStr()];
-    for (let n = 4; n <= 60; n++) {
-      state.dailySnapshots[dk(n)] = { total: { cur: t.total.cur, dailyPnL: 0 },
-        byOwner: Object.fromEntries(Object.keys(t.byOwner).map((o) => [o, { cur: t.byOwner[o].cur, dailyPnL: 0 }])), byOwnerCategory: {} };
-    }
-    persistDailySnapshots();
-    const backup = {};
+    const snaps = {};
     for (let n = 4; n <= 120; n++) {
       const cur = 40000000 + n * 12345.67;
       const pnl = n % 7 === 3 ? 0 : ((n % 5) - 2) * 1000.5;
-      backup[dk(n)] = { total: { cur, dailyPnL: pnl }, byOwner: { '신랑': { cur, dailyPnL: pnl } }, byOwnerCategory: { '신랑': { '주식': { cur, dailyPnL: pnl } } } };
+      snaps[dk(n)] = { total: { cur, dailyPnL: pnl }, byOwner: { '신랑': { cur, dailyPnL: pnl } }, byOwnerCategory: { '신랑': { '주식': { cur, dailyPnL: pnl } } } };
     }
-    const plan = planSnapshotRecovery(JSON.parse(JSON.stringify(backup)), state.dailySnapshots, { includePlaceholders: true });
-    return { res: applySnapshotRecovery(plan), backup };
+    const blob = JSON.parse(JSON.stringify(buildSyncBlob()));
+    blob.dailySnapshots = JSON.parse(JSON.stringify(snaps));
+    await applyRemoteState(blob);
+    return snaps;
   });
-  expect(r.res.added, '61~120일 추가').toBe(60);
-  expect(r.res.replaced, '4~60일 placeholder 교체(승인)').toBe(57);
-
-  const recoveredDiff = () => page.locator('body').evaluate((el, bk) => {
+  const restoredDiff = () => page.locator('body').evaluate((el, bk) => {
+    const sortK = (x) => (Array.isArray(x) ? x.map(sortK) : (x && typeof x === 'object') ? Object.keys(x).sort().reduce((acc, k) => { acc[k] = sortK(x[k]); return acc; }, {}) : x);
     const stored = JSON.parse(localStorage.getItem('sam_daily_snapshot_v1') || '{}');
-    return Object.keys(bk).filter((d) => stableSnapshotJson(stored[d]) !== stableSnapshotJson(bk[d])).length;
-  }, r.backup);
-  expect(await recoveredDiff(), '적용 직후 복구 날짜 = 백업').toBe(0);
+    return Object.keys(bk).filter((d) => JSON.stringify(sortK(stored[d])) !== JSON.stringify(sortK(bk[d]))).length;
+  }, backup);
+  expect(await restoredDiff(), '복원 직후 = 파일 값').toBe(0);
   const baseline = await historySnapshot(page);
 
   for (let i = 1; i <= 3; i++) {
     await reboot(page);
-    expect(await recoveredDiff(), `부팅 ${i}회 뒤 복구 날짜가 백업과 달라졌다`).toBe(0);
+    expect(await restoredDiff(), `부팅 ${i}회 뒤 복원한 날짜가 파일과 달라졌다`).toBe(0);
     const h = await historySnapshot(page);
     expect(h.stored, `부팅 ${i}회 뒤 과거 이력 전체(저장소)`).toBe(baseline.stored);
     expect(h.mem, `부팅 ${i}회 뒤 과거 이력 전체(메모리)`).toBe(baseline.stored);
@@ -337,74 +335,53 @@ test('T6. [P0 D3] 요약은 기간 안 첫·마지막 "기록된 날" 기준이�
   expect(r.emptyDp).toContain('데이터 없음');
 });
 
-/* ── T7 경쟁 상태 · Preview 안정성 ──────────────────────────────────── */
+/* ── T7 경쟁 상태 ──────────────────────────────────────────────────── */
 
-test('T7. [P0] 백그라운드 이력 작업과 복구가 겹쳐도 복구된 날짜가 바뀌지 않고, Preview 숫자도 흔들리지 않는다', async ({ page }) => {
+// [PM 지시 2/3] 예전 T7은 복구 Preview/Apply와의 경합을 검증했다. 복구 기능이 제거되어, 과거 이력을 받는 남은 자동 경로인
+// 동기화 병합(mergeAssetsAndTransactionsWithRemote - pull이 부르는 함수)과 지연된 백그라운드 이력 경로의 경합으로 검증한다.
+test('T7. [P0] 백그라운드 이력 작업과 동기화 병합이 겹쳐도 받은 날짜가 바뀌지 않고 과거 날짜가 새로 생기지 않는다', async ({ page }) => {
   await open(page);
   await seedHistory(page, { days: 3 });
   await stubHistory(page, true);
   const r = await page.locator('body').evaluate(async (el) => {
     const win = el.ownerDocument.defaultView;
     localStorage.removeItem('sam_daily_backfill_done_fingerprints_v2');
+    const sortK = (x) => (Array.isArray(x) ? x.map(sortK) : (x && typeof x === 'object') ? Object.keys(x).sort().reduce((acc, k) => { acc[k] = sortK(x[k]); return acc; }, {}) : x);
     const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
     const bk = {};
     for (let n = 4; n <= 63; n++) bk[dk(n)] = { total: { cur: 9000000 + n, dailyPnL: 777 }, byOwner: { '신랑': { cur: 9000000 + n, dailyPnL: 777 } }, byOwnerCategory: { '신랑': { '주식': { cur: 9000000 + n, dailyPnL: 777 } } } };
-    const pick = () => stableSnapshotJson(Object.fromEntries(Object.keys(bk).map((d) => [d, state.dailySnapshots[d]])));
-    const counts = (p) => [p.added.length, p.conflicts.length, p.placeholderCandidates.length];
-
-    const p1 = counts(planSnapshotRecovery(bk, state.dailySnapshots));
-    const running = backfillAllHoldingsDailyPnlHistory();          // 예전엔 패스 시작 시점 날짜만 보호한 채 진행됐다
-    const p2 = counts(planSnapshotRecovery(bk, state.dailySnapshots));
-    applySnapshotRecovery(planSnapshotRecovery(JSON.parse(JSON.stringify(bk)), state.dailySnapshots));
-    const afterApply = pick();
+    const pick = () => JSON.stringify(sortK(Object.fromEntries(Object.keys(bk).map((d) => [d, state.dailySnapshots[d]]))));
+    const countBefore = Object.keys(state.dailySnapshots).length;
+    const running = backfillAllHoldingsDailyPnlHistory();
+    const countDuring = Object.keys(state.dailySnapshots).length;
+    mergeAssetsAndTransactionsWithRemote({ assets: state.assets, transactions: state.transactions, dailySnapshots: JSON.parse(JSON.stringify(bk)) });
+    const afterMerge = pick();
     if (win.__releaseHistory) win.__releaseHistory();
     await running;
     reconstructHistoricalCurValues();
     await new Promise((res) => setTimeout(res, 300));
-    return { p1, p2, p3: counts(planSnapshotRecovery(bk, state.dailySnapshots)), same: afterApply === pick(),
-      equalsBackup: afterApply === stableSnapshotJson(bk), historyCalls: win.__historyCalls };
+    return { countBefore, countDuring, countAfter: Object.keys(state.dailySnapshots).length, same: afterMerge === pick(),
+      equalsRemote: afterMerge === JSON.stringify(sortK(bk)), historyCalls: win.__historyCalls };
   });
-  expect(r.p1).toEqual([60, 0, 0]);
-  expect(r.p2, '백그라운드 작업이 시작돼도 같은 백업의 Preview 숫자가 같다').toEqual(r.p1);
-  expect(r.equalsBackup).toBe(true);
-  expect(r.same, '적용 뒤 끝난 백그라운드 작업이 복구 날짜를 바꾸지 않는다').toBe(true);
-  expect(r.p3, '다시 Preview하면 추가 0 · 충돌 0').toEqual([0, 0, 0]);
+  expect(r.countDuring, '백그라운드 작업이 시작돼도 날짜가 생기지 않는다').toBe(r.countBefore);
+  expect(r.equalsRemote, '병합으로 받은 날짜 = 원격 값').toBe(true);
+  expect(r.same, '끝난 백그라운드 작업이 받은 날짜를 바꾸지 않는다').toBe(true);
+  expect(r.countAfter, '받은 60일만 늘어난다').toBe(r.countBefore + 60);
   expect(r.historyCalls).toBe(0);
 });
 
 /* ── T8 Cloud ───────────────────────────────────────────────────────── */
 
-async function recoverViaUi(page, backup) {
-  const messages = [];
-  const onDialog = async (dialog) => { messages.push(dialog.message()); await dialog.accept(); };
-  page.on('dialog', onDialog);
-  await page.setInputFiles('#snapshotRecoveryFileInput', {
-    name: 'synthetic-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup))
-  });
-  await expect(page.locator('#toastContainer')).toContainText('일별 이력', { timeout: 15000 });
-  page.off('dialog', onDialog);
-  return messages;
-}
-
-test('T8. [P0] 복구 적용 POST 0, 이후 부팅 이력 경로도 과거 재작성 POST 0 - 오늘 기록 push는 기존대로', async ({ page, context }) => {
+// [PM 지시 2/3] 예전 T8 앞부분은 복구 적용의 POST 0을 검증했다. 복구 기능이 제거되어 그 부분을 뺐고, 이력 경로의 POST 0과
+// 오늘 기록 push 유지(올라가는 과거 이력 불변)는 그대로 검증한다.
+test('T8. [P0] 부팅 이력 경로는 과거 재작성 POST 0 - 오늘 기록 push는 기존대로이고 과거 이력은 그대로다', async ({ page, context }) => {
   const writes = await routeWrites(context);
   await open(page);
-  await seedHistory(page, { days: 3 });
+  await seedHistory(page, { days: 40 });
   await stubHistory(page);
   await page.locator('body').evaluate(() => { syncState.enabled = true; syncState.password = 'e82-pw'; });
-  await page.waitForTimeout(4500); // seed가 건 push 예약(3초 디바운스)을 흘려보낸다
-  writes.length = 0;
-
-  const backup = await page.locator('body').evaluate(() => {
-    const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
-    const snaps = {};
-    for (let n = 4; n <= 40; n++) snaps[dk(n)] = { total: { cur: 5000000 + n, dailyPnL: n % 2 ? 100 : -50 }, byOwner: { '신랑': { cur: 5000000 + n, dailyPnL: n % 2 ? 100 : -50 } }, byOwnerCategory: { '신랑': { '주식': { cur: 5000000 + n, dailyPnL: n % 2 ? 100 : -50 } } } };
-    return { app: 'smart-asset-manager', exportedAt: '2026-09-09T15:30:00.000Z', dailySnapshots: snaps };
-  });
-  const messages = await recoverViaUi(page, backup);
-  expect(messages.length).toBe(1);
   await page.waitForTimeout(4500);
-  expect(writes, `복구 적용으로 Cloud write가 발생했다: ${writes.join(',')}`).toEqual([]);
+  writes.length = 0;
   const baseline = await historySnapshot(page);
 
   // 부팅·pull·가져오기가 부르던 이력 경로 - 과거를 만들거나 다시 쓰지 않으니 push도 예약되지 않는다.
@@ -413,7 +390,7 @@ test('T8. [P0] 복구 적용 POST 0, 이후 부팅 이력 경로도 과거 재�
   expect(writes, `이력 경로가 Cloud write를 유발했다: ${writes.join(',')}`).toEqual([]);
   expect((await historySnapshot(page)).stored).toBe(baseline.stored);
 
-  // 오늘 기록(renderAll → recordDailySnapshot)의 push는 기존 기능 그대로다 - 올라가는 과거 이력은 바뀌지 않은 값이다.
+  // 오늘 기록(renderAll → recordDailySnapshot)의 push는 기존 기능 그대로다.
   await page.locator('body').evaluate(() => { renderAll(); });
   await page.waitForTimeout(4500);
   expect(writes.length, '오늘 기록 동기화는 기존대로 동작한다').toBeGreaterThan(0);
@@ -422,7 +399,7 @@ test('T8. [P0] 복구 적용 POST 0, 이후 부팅 이력 경로도 과거 재�
 
 /* ── T9 State isolation ─────────────────────────────────────────────── */
 
-test('T9. [P0] 복구와 이력 경로 전후로 자산·거래·리밸런싱·미래예측·설정이 그대로다', async ({ page }) => {
+test('T9. [P0] 동기화 병합과 이력 경로 전후로 자산·거래·리밸런싱·미래예측·설정이 그대로다', async ({ page }) => {
   await open(page);
   await seedHistory(page, { days: 10 });
   await stubHistory(page);
@@ -431,11 +408,11 @@ test('T9. [P0] 복구와 이력 경로 전후로 자산·거래·리밸런싱·�
     const dk = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dateKeyFromDate(d); };
     const bk = {};
     for (let n = 11; n <= 40; n++) bk[dk(n)] = { total: { cur: 7000000 + n, dailyPnL: 10 }, byOwner: { '신랑': { cur: 7000000 + n, dailyPnL: 10 } }, byOwnerCategory: { '신랑': { '주식': { cur: 7000000 + n, dailyPnL: 10 } } } };
-    applySnapshotRecovery(planSnapshotRecovery(bk, state.dailySnapshots));
+    mergeAssetsAndTransactionsWithRemote({ assets: state.assets, transactions: state.transactions, dailySnapshots: bk }); // [PM 지시 2/3] 복구 대신 동기화 병합으로 이력만 받는다
     await backfillAllHoldingsDailyPnlHistory();
     reconstructHistoricalCurValues();
   });
-  expect(await fingerprint(page), '복구·이력 경로가 dailySnapshots 밖을 바꾸면 안 된다').toBe(before);
+  expect(await fingerprint(page), '동기화 병합·이력 경로가 dailySnapshots 밖을 바꾸면 안 된다').toBe(before);
 });
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -450,7 +427,7 @@ const R0_ASSET = (id, t, own, cat, qty, price) => ({
   isDomestic: '국내', currency: 'KRW', quantity: qty, buyPrice: price, currentPrice: price, positionSource: 'manual', createdAt: 1, updatedAt: 1
 });
 
-test('R0-1. [P0-1] 백업 395일 복구 → 자산 변경 → 실제 부팅 3회: 복구 날짜 변경 0/395 (수정 전 창 안 362/362 변경)', async ({ page }) => {
+test('R0-1. [P0-1] 과거 395일 이력 저장 → 자산 변경 → 실제 부팅 3회: 저장된 날짜 변경 0/395 (수정 전 창 안 362/362 변경)', async ({ page }) => {
   test.setTimeout(120000);
   await open(page);
   const setup = await page.locator('body').evaluate((el, A) => {
@@ -484,19 +461,21 @@ test('R0-1. [P0-1] 백업 395일 복구 → 자산 변경 → 실제 부팅 3회
         byOwner: { '신랑': { cur: c1 + c2, dailyPnL: p1 }, '와이프': { cur: c3, dailyPnL: p2 } },
         byOwnerCategory: { '신랑': { '주식': { cur: c1, dailyPnL: p1 }, '현금': { cur: c2, dailyPnL: 0 } }, '와이프': { 'ETF': { cur: c3, dailyPnL: p2 } } } };
     }
-    const res = applySnapshotRecovery(planSnapshotRecovery(JSON.parse(JSON.stringify(backup)), state.dailySnapshots, { includePlaceholders: true }));
+    // [PM 지시 2/3] 예전엔 복구 API로 이 395일을 적용했다(추가 33 · 교체 362). 복구 기능이 제거되어 같은 395일이 저장된 상태를
+    // 직접 만든다 - 검증 대상(부팅·자산 변경이 저장된 과거 이력을 바꾸지 않는가)은 같다.
+    Object.keys(backup).forEach((k) => { state.dailySnapshots[k] = JSON.parse(JSON.stringify(backup[k])); });
+    persistDailySnapshots();
     // 현재 자산 변경: 매도 · 자산 추가 · 소유자 변경 · 자산군 변경
     state.assets[0].quantity = 50;
     state.assets.push(mkA('r1', '', '신랑', '부동산', 1, 500000000));
     state.assets[2].owner = '신랑';
     state.assets[1].category = '채권';
     persistAssets(true); persistTransactions();
-    return { backup, added: res.added, replaced: res.replaced };
+    return { backup };
   }, R0_ASSET('x', '', '신랑', '주식', 1, 1));
-  expect(setup.added, '추가 33일').toBe(33);
-  expect(setup.replaced, '승인한 placeholder 362일 교체').toBe(362);
 
   const count = () => page.locator('body').evaluate((el, bk) => {
+    const sortK = (x) => (Array.isArray(x) ? x.map(sortK) : (x && typeof x === 'object') ? Object.keys(x).sort().reduce((acc, k) => { acc[k] = sortK(x[k]); return acc; }, {}) : x);
     const stored = JSON.parse(localStorage.getItem('sam_daily_snapshot_v1') || '{}');
     const d = new Date(); d.setDate(d.getDate() - 365);
     const d365 = dateKeyFromDate(d);
@@ -504,7 +483,7 @@ test('R0-1. [P0-1] 백업 395일 복구 → 자산 변경 → 실제 부팅 3회
     const inWin = keys.filter((k) => k >= d365);
     return {
       backupDates: keys.length, windowDates: inWin.length,
-      changed: keys.filter((k) => stableSnapshotJson(stored[k]) !== stableSnapshotJson(bk[k])).length,
+      changed: keys.filter((k) => JSON.stringify(sortK(stored[k])) !== JSON.stringify(sortK(bk[k]))).length,
       windowCurChanged: inWin.filter((k) => !stored[k] || stored[k].total.cur !== bk[k].total.cur).length
     };
   }, setup.backup);
@@ -576,7 +555,9 @@ test('R0-3. [P0-2] 매수일 30일 전 자산 · 지문 없음: 과거 생성 0 
   expect(r).toEqual({ pastDatesCreated: 0, createdBeforePurchase: 0, beforePurchaseNonZeroPnL: 0, beforePurchasePositiveCur: 0, todaySnapshotRecorded: true, historyCalls: 0 });
 });
 
-test('R0-4. [P0-3·P0-4] 지연된 백그라운드 이력 작업과 Preview·Apply가 겹쳐도 Preview 결과·스냅샷 수·복구 날짜 손익·충돌 수 변화 0', async ({ page }) => {
+// [PM 지시 2/3] 예전 R0-4는 복구 Preview/Apply와 지연된 백그라운드 이력 작업의 경합을 검증했다. 복구 기능이 제거되어
+// 같은 경합을 동기화 병합(pull 경로)으로 검증한다 - 스냅샷 수·받은 날짜 손익 변화 0.
+test('R0-4. [P0-3·P0-4] 지연된 백그라운드 이력 작업과 동기화 병합이 겹쳐도 스냅샷 수·받은 날짜 손익 변화 0', async ({ page }) => {
   await open(page);
   await stubHistory(page, true);
   const r = await page.locator('body').evaluate(async (el, A) => {
@@ -590,32 +571,29 @@ test('R0-4. [P0-3·P0-4] 지연된 백그라운드 이력 작업과 Preview·App
     renderAll();
     const bk = {};
     for (let n = 1; n <= 60; n++) bk[dk(n)] = mk(9000000 + n, 777);
-    const c = (p) => ({ added: p.added.length, candidates: p.placeholderCandidates.length, conflicts: p.conflicts.length });
 
     const count1 = Object.keys(state.dailySnapshots).length;
-    const p1 = c(planSnapshotRecovery(bk, state.dailySnapshots));
     const running = backfillAllHoldingsDailyPnlHistory();       // 지연된 백그라운드 작업(수정 전: 과거 날짜 생성 · 손익 가산)
     await new Promise((res) => setTimeout(res, 50));
-    const p2 = c(planSnapshotRecovery(bk, state.dailySnapshots));
     const count2 = Object.keys(state.dailySnapshots).length;
-    applySnapshotRecovery(planSnapshotRecovery(JSON.parse(JSON.stringify(bk)), state.dailySnapshots));
-    const pnlAfterApply = Object.keys(bk).map((d) => state.dailySnapshots[d].total.dailyPnL);
-    const conflictsAfterApply = planSnapshotRecovery(bk, state.dailySnapshots).conflicts.length;
+    mergeAssetsAndTransactionsWithRemote({ assets: state.assets, transactions: state.transactions, dailySnapshots: JSON.parse(JSON.stringify(bk)) });
+    const pnlAfterMerge = Object.keys(bk).map((d) => state.dailySnapshots[d].total.dailyPnL);
+    const count3 = Object.keys(state.dailySnapshots).length;
     if (win.__releaseHistory) win.__releaseHistory();
     await running;
     reconstructHistoricalCurValues();
     await new Promise((res) => setTimeout(res, 300));
     return {
-      p1, p2, count1, count2,
-      recoveredPnLChanged: Object.keys(bk).filter((d, i) => state.dailySnapshots[d].total.dailyPnL !== pnlAfterApply[i]).length,
-      conflictsAfterApply, conflictsAfterBackground: planSnapshotRecovery(bk, state.dailySnapshots).conflicts.length
+      count1, count2, count3, count4: Object.keys(state.dailySnapshots).length,
+      mergedPnLChanged: Object.keys(bk).filter((d, i) => state.dailySnapshots[d].total.dailyPnL !== pnlAfterMerge[i]).length,
+      historyCalls: win.__historyCalls
     };
   }, R0_ASSET('t1', '005930', '신랑', '주식', 10, 50000));
-  expect(r.p1).toEqual({ added: 60, candidates: 0, conflicts: 0 });
-  expect(r.p2, 'Preview 결과 동일(수정 전: 추가 0 · 충돌 60)').toEqual(r.p1);
   expect(r.count2, '백그라운드 작업 중 스냅샷 수 동일').toBe(r.count1);
-  expect(r.recoveredPnLChanged, '복구 날짜 손익 변경 0(수정 전 60/60)').toBe(0);
-  expect(r.conflictsAfterBackground, '충돌 수 변화 0').toBe(r.conflictsAfterApply);
+  expect(r.count3, '병합으로 받은 60일만 늘어난다').toBe(r.count1 + 60);
+  expect(r.count4, '백그라운드 작업이 끝나도 날짜가 늘지 않는다').toBe(r.count3);
+  expect(r.mergedPnLChanged, '받은 날짜 손익 변경 0').toBe(0);
+  expect(r.historyCalls).toBe(0);
 });
 
 test('R0-5. [P0-5] D1 기록 없음 · D2 1억 · D3 1.1억 → 요약 시작값 1억 · 증감 +1천만원 (수정 전 시작값 0 · +1.1억)', async ({ page }) => {

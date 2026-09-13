@@ -22,7 +22,22 @@ document.getElementById('systemManagementModal').addEventListener('click', (e) =
  * 23. 데이터 초기화
  * ---------------------------------------------------------------------- */
 document.getElementById('resetDataBtn').addEventListener('click', () => {
-  if (!confirm('모든 자산 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+  // [기기 데이터 초기화 - 범위 안내] 아래 삭제 코드가 실제로 지우는 범위(sam_ 키 전부 - 다크모드·첫 실행 표시 제외)와
+  // 지우지 않는 것(클라우드: 동기화를 먼저 끄므로 업로드도 하지 않는다)을 그대로 적는다. 항목을 바꾸면 이 문구도 함께 고친다.
+  if (!confirm([
+    '기기 데이터 초기화',
+    '',
+    '이 기기에 저장된 이 앱의 데이터를 모두 삭제합니다.',
+    '· 자산 · 거래내역 · 일별 이력',
+    '· 목표비중 · 미래예측 설정 · 환율 입력값',
+    '· 이 기기의 동기화 연결(암호) · 자동 백업 설정 · 티커 역할·종목명 기억',
+    '화면 테마(다크모드) 설정만 유지됩니다.',
+    '',
+    '클라우드에 저장된 데이터는 삭제되지 않습니다.',
+    '이 기기와 클라우드의 동기화 연결만 해제됩니다.',
+    '',
+    '이 작업은 되돌릴 수 없습니다. 계속할까요?'
+  ].join('\n'))) return;
 
   // [데이터 초기화 강화] 예전엔 state의 주요 필드만 비우고 그에 대응하는 persist*()만 다시 호출했다 -
   // 그 결과 이 앱이 만든 적 있는 다른 localStorage 키(특히 일별 손익 스냅샷 sam_daily_snapshot_v1,
@@ -99,7 +114,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // DailyPnlHistory에서 쓰는 것과 동일한 패턴).
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
-  showToast('모든 데이터가 초기화되었습니다.', 'success');
+  showToast('이 기기의 데이터를 초기화했습니다. 클라우드 데이터는 삭제하지 않았습니다.', 'success');
 });
 
 /* -------------------------------------------------------------------------

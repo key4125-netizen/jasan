@@ -1,4 +1,4 @@
-// E2E-21 Phase 14-B / N-1 - "데이터 초기화" 버튼이 신규 설치와 동일한 monthlyContributionByOwner
+// E2E-21 Phase 14-B / N-1 - "기기 데이터 초기화" 버튼이 신규 설치와 동일한 monthlyContributionByOwner
 // 기본값(years: null = 제한없음)을 생성하는지 검증한다. 예전엔 이 리셋 핸들러가 years:15를 직접
 // 하드코딩해, 신규 설치(js/01 기본값, years:null)와 조용히 어긋났었다(Phase 14-A N-1).
 const { test, expect } = require('@playwright/test');
@@ -13,7 +13,7 @@ test('신규 설치 기본값 - monthlyContributionByOwner.years는 두 owner �
   expect(years).toEqual({ 신랑: null, 와이프: null });
 });
 
-test('데이터 초기화 - 적립기간을 5년으로 바꾼 뒤 초기화하면 신규 설치와 동일하게 null(제한없음)로 되돌아간다', async ({ page }) => {
+test('기기 데이터 초기화 - 적립기간을 5년으로 바꾼 뒤 초기화하면 신규 설치와 동일하게 null(제한없음)로 되돌아간다', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof state !== 'undefined');
 
@@ -26,8 +26,8 @@ test('데이터 초기화 - 적립기간을 5년으로 바꾼 뒤 초기화하�
   const beforeReset = await page.evaluate(() => state.projection.monthlyContributionByOwner['신랑'].years);
   expect(beforeReset).toBe(5);
 
-  page.once('dialog', (dialog) => dialog.accept()); // "모든 자산 데이터를 삭제하시겠습니까?" 확인
-  // [Phase 17 P1-1] 데이터 초기화 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그
+  page.once('dialog', (dialog) => dialog.accept()); // "기기 데이터 초기화" 확인창
+  // [Phase 17 P1-1] 기기 데이터 초기화 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그
   // 진입점을 열어야 실제 버튼이 보인다(기능/id/핸들러는 전혀 바뀌지 않았다).
   await page.locator('#systemManagementBtn').click();
   await page.locator('#resetDataBtn').click();
@@ -42,12 +42,12 @@ test('데이터 초기화 - 적립기간을 5년으로 바꾼 뒤 초기화하�
   expect(afterReset).toEqual({ 신랑: null, 와이프: null, total: 0, allocation: [] });
 });
 
-test('데이터 초기화 이후에도 사용자가 명시적으로 적립기간(0/10/20)을 설정하는 기존 동작은 그대로 유지된다', async ({ page }) => {
+test('기기 데이터 초기화 이후에도 사용자가 명시적으로 적립기간(0/10/20)을 설정하는 기존 동작은 그대로 유지된다', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof state !== 'undefined');
 
   page.once('dialog', (dialog) => dialog.accept());
-  // [Phase 17 P1-1] 데이터 초기화 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그
+  // [Phase 17 P1-1] 기기 데이터 초기화 버튼이 헤더에서 시스템관리(⚙) 모달 안으로 이동했다 - 먼저 그
   // 진입점을 열어야 실제 버튼이 보인다(기능/id/핸들러는 전혀 바뀌지 않았다).
   await page.locator('#systemManagementBtn').click();
   await page.locator('#resetDataBtn').click();
