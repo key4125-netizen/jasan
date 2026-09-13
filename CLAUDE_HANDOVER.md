@@ -32,6 +32,63 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-13) — 🧭 **v236 복구 안전성 코드 배포 + v237 매크로 UX 릴리스** (v235 → v236 → **v237**)
+
+**현재 production = v237** — commit `1bf07ab1a51f9507c36842a882cd8ae5b4ba0355` (`feat: simplify macro briefing UX (v237)`),
+local HEAD == origin/main. 체크리스트 **§22(v236) · §23(v237) · §24(현재 상태)**에 전체 기록이 있다.
+
+### ⛔ 가장 중요한 안전 조건 — Recovery Apply는 BLOCKED
+- **v236은 복구 기능의 안전성 수정을 배포했을 뿐이며, Recovery 문제는 해결 완료가 아니다.** 실제 휴대폰에서 Recovery Apply를 **실행하지 않았다.**
+- "복구 완료" · "데이터 복구 완료" · "Recovery 정상 완료" · "historical snapshot 복원 완료" · "손상 데이터 정상 복원 확인"으로 쓰지 않는다. **Preview 실행/취소는 Apply가 아니다.**
+- 미확정: 휴대폰 362일 구간이 F2 조건을 만족하는지 · 최종 후보 일수 · Apply 후 historical graph 복구 여부 · P8 최종 사용자 확인.
+- 다음 단계: 사용자가 휴대폰에서 v237 로딩 확인 → [일별 이력만 복구] → 2026-09-10 백업 선택 → **1차 확인창 숫자만 기록 후 취소** → PM 보고.
+  예상(추가 33 · 후보 362 · 건너뜀 0 · 형식 오류 0)과 다르면 즉시 중단. **Apply는 PM 별도 승인 전까지 금지.**
+
+### v236 — Recovery 안전성 (commit `94f1544`, 체크리스트 §22)
+- 계기: v235로 휴대폰 Preview(취소)를 하자 추가 33 · 후보 0 · 기존 유지 366 · 건너뜀 362 · 형식 오류 0(사용자 보고). 감사에서 두 결함을 확인했다.
+- **P1-A**: v235 복구 핸들러가 적용 직후 `renderAll()`을 불러, 동기화 ON이면 약 3초 뒤 업로드될 수 있었다
+  (아래 v235 기록의 "`skipPush`로 업로드 예약 없음"은 함수 기준으로만 맞았다). 적용 구간을 기존 `applyingRemoteUpdate` 가드로 감싸고
+  대기 중인 push 예약을 취소했다. **Recovery Apply 처리 자체의 Cloud POST 0**(E2E UI 경로 · route 가로채기로 확인) —
+  단 **동기화 ON이면 이후 일반 동기화에서 반영될 수 있다.** 확인창·토스트 문구도 이 의미로 고쳤다.
+- **P1-B F2**(후보 **탐지** 기준 — 복구 대상 **확정** 규칙이 아니다): 현재 모든 축 dailyPnL 0 · 연속 zero-PnL ≥ **14일** ·
+  그 구간의 백업 유효 날짜 중 손익 기록 ≥ max(1, ceil(n × **0.25**)) · 오늘 이전 & 백업 최대 날짜 이하 · 백업 유효 snapshot.
+  **`cur` 비교는 근거로 쓰지 않는다**(과거 `cur`은 부팅마다 재구성되는 파생값). `snapshotCurShape`/USD alias는 릴리스되지 않고 제거됐다.
+- 14일·25% 근거: 09-10 실제 백업 `dailySnapshots` READ-ONLY 통계(정상 zero-PnL 최대 3일, 362일 구간 손익 기록 256/362 = 70.72%, 창별 최저 50%).
+  **실제 휴대폰 state에 대한 최종 검증이 아니다.**
+- **P8**: 계보가 다른 백업은 자동 판별하지 않는다. 2차 확인창에 exportedAt(KST) · 이력 기간 · 소유자 · 후보 일수를 보여
+  사용자가 확인하는 **제한적 통제**다(완전한 lineage 검증 시스템이 아니다).
+- 검증: Unit 337 · E2E 820 · Golden 122 · ESLint 0 · Data Guard / Release Guard PASS · Pages run `34731709210` success ·
+  production v236 6뷰포트 PASS · SHA-256 25/25 · Cloud 요청 0 · Apply 0.
+
+### v237 — Macro UX 단순화 (commit `1bf07ab`, 체크리스트 §23) — RELEASE ACCEPTED
+- **시장 현황 & 매크로 브리핑 제목 우측의 상하 아이콘은 제거되었으며, 상단 브리핑 영역은 항상 펼쳐진 상태로 표시된다. 접기/펼치기는 '세부 내용 보기' 영역에서만 수행한다.**
+- 「시장 해석 보기」 → 「세부 내용 보기」 · 내부 「상관관계 가이드 보기」 토글 제거 · 지표 10개 항상 표시 · Risk Management 변경 없음.
+- 제거된 것: `macroBriefingOpen` · 제목 리스너 · `#macroBriefingChevron` · `#macroBriefingBody` · 가이드 토글 · v234 `transitionend` 보정.
+  **이 구조를 되돌리지 말 것**(`e2e/80`이 고정한다).
+- 검증: Unit 337 · E2E 820 · Golden 122 · ESLint 0 · Data Guard / Release Guard PASS · Pages run `34738712186` success ·
+  production v237 8뷰포트(375/768/1024/1440 × Dark/Light) PASS · SHA-256 25/25 · overflow 0 · exception 0 · Cloud 요청 0 · Apply 0.
+- 범위 밖: Recovery · dailySnapshots · P1-A/P1-B · buildSnapshotSeries · backfill · reconstruct · Cloud Sync · MC · Return Key · Risk Score 등 변경 0.
+  `js/04` stale 주석 미수정 · `.claude/launch.json`은 기존 dirty이며 commit 미포함.
+
+### 남은 항목
+| 항목 | 상태 |
+|---|---|
+| 실제 사용자 Recovery Apply | **BLOCKED** |
+| `e2e/78` T-03 flaky · js/11 매수단가 주석 · 구 키 `sam_daily_backfill_done_ids_v1` | OBSERVE |
+| `js/04` stale `correlationGuideToggleBtn` 주석 · 375px 지표 라벨 말줄임 | OBSERVE |
+| UX 보조 터치타깃(KPI `.detail-btn` 25px 등) | OBSERVE |
+| FIX-3-FULL | BACKLOG |
+| BOND-P1 · FX-P1 · FUTURE-P1-BL-01 · UX-P1 | DEFERRED |
+
+### 현재 프로젝트 상태 — 다음 세션은 여기서 시작한다
+- **APPLICATION VERSION: v237 / RELEASED · ACCEPTED**
+- **Recovery Apply: BLOCKED**
+- **MODE: STABILIZATION / OPERATIONS** — V1.4를 시작하지 않는다.
+- 다음 공식 milestone: **2026-12경 RET-02 Return Key Quarterly Review 첫 공식 검토**. RET-03(2026-09-09) 감사는 RET-02 공식 1회차로 소급하지 않는다.
+- 체크리스트 §13 및 기존 착수 금지 목록(AI · 새 Risk Score · Macro→Risk 정량 결합 · FX stochastic · 복잡한 Bond 모델 · 새 자산군 · Expert 설정 등) 그대로 유지.
+
+---
+
 ## 최근 세션 요약 (2026-09-13) — 🚀 **일별 이력 보존·복구 릴리스** (v234 → **v235**)
 
 **버전: v234 → v235.** 현재 **production = v235**, latest commit
@@ -53,10 +110,10 @@
 - **R-5 (PM 승인).** 이력이 있는 기기에 새 자산을 더해도 이미 기록된 과거 날짜에는 소급하지 않는다(js/06·js/07 단건
   호출이 인자 없이 호출 → 호출 시점 전체 날짜 보호). 빈 기기에서는 예전처럼 전 구간을 채운다.
 - **FIX-2a = 이미 잃은 이력의 원본 복구.** 데이터 관리 → **[일별 이력만 복구]**. 백업에서 `dailySnapshots`만 읽고
-  전체 JSON 복원을 쓰지 않는다. 미리보기 → 확인 → 저장 1회(실패 시 원복), `skipPush: true`로 클라우드 업로드 예약 없음.
+  전체 JSON 복원을 쓰지 않는다. 미리보기 → 확인 → 저장 1회(실패 시 원복), `skipPush: true`로 저장(⚠ v236 정정: 핸들러가 직후 `renderAll()`을 호출해 동기화 ON이면 업로드될 수 있었다 — v236 P1-A로 수정, 체크리스트 §21-11).
   ADD MISSING ONLY — 값이 다른 기존 날짜는 충돌로만 보고한다. 예전 재구성이 만든 placeholder는 **6조건 AND**
   (오늘 이전 · 모든 축 손익 0 · `cur`가 오늘과 완전 동일 · **14일** 이상 연속 · 백업에 같은 날짜 · 백업 형식 정상)일 때만
-  후보로 분리하고, `includePlaceholders: true`(사용자 2차 승인) 없이는 절대 교체하지 않는다.
+  후보로 분리하고, `includePlaceholders: true`(사용자 2차 승인) 없이는 절대 교체하지 않는다. ⚠ v236에서 판정 기준이 F2로 대체됨(체크리스트 §22-3).
 - **FIX-3 = 없는 이력을 만들지 않음.** 재구성이 기록 없는 과거 날짜를 새로 만들지 않는다.
 
 ### ⚠️ 다음 세션이 꼭 알아야 할 것
@@ -75,7 +132,7 @@
 - production: HTTP 200 · v235 표기 · SW v235 · 배포본 SHA-256 10/10 일치 · 6뷰포트 Light/Dark PASS ·
   runtime exception 0 · static asset failure 0 · Cloud write 0.
 
-### Next Action — 실제 백업 이력 복구 (사용자 통제 · 별도 단계)
+### Next Action — 실제 백업 이력 복구 (사용자 통제 · 별도 단계) — ⚠ v236 closeout: 대체됨. Recovery Apply BLOCKED(맨 위 요약 · 체크리스트 §22-7)
 2026-09-10 백업: ① 사용자가 파일 선택 → ② Preview → ③ 추가/교체 후보/충돌 확인 → ④ 명시적 승인(교체 후보는 2차)
 → ⑤ `dailySnapshots`만 Apply → ⑥ 복구 후 다른 데이터 보존 검증. **전체 JSON restore 금지, 자동 복구 금지.**
 
@@ -90,7 +147,7 @@
 | BOND-P1 · FX-P1 | DEFERRED |
 | UX 보조 터치타깃(v234 OBS-1 24/20px, KPI `.detail-btn` 25px 등) | OBSERVE |
 
-### 현재 프로젝트 상태 — 다음 세션은 여기서 시작한다
+### (v235 당시) 프로젝트 상태 — ⚠ 현재 상태는 맨 위 v236/v237 요약을 본다
 - **APPLICATION VERSION: v235 / RELEASED**
 - **MODE: STABILIZATION / OBSERVATION** — V1.4를 시작하지 않는다.
 - 우선순위: ① 실제 사용자 데이터 복구 안전성 확인 → ② v235 운영 안정성 관찰 → ③ 사용자 피드백 수집 → ④ 정기 정책 검토.
