@@ -365,10 +365,167 @@ function dvBuildRows(input) {
   });
 }
 
+// [일별 손익 · PM 확정 U1=C · U2] 거래 한 건의 원화 환산 환율 - 원장 함수(computePositionsAndRealizedPnL)와 같은 규칙이다
+// (달러 거래는 적용 환율, 비어 있으면 원장과 같은 기본값 · 원화 거래는 1).
+function dvTradeRate(tx, defaultTradeRate) {
+  if (tx.currency !== 'USD') return 1;
+  return num(tx.appliedRate) || defaultTradeRate;
+}
+
+// [일별 손익 · U1=C · U2] 포지션 하나의 D일 손익(원화). 매수 · 매도 대금 자체는 손익이 아니다.
+//   손익 = D일 수량 × D일 단위평가(가격 × 환율) − D−1일 수량 × D−1일 단위평가 − 당일 매수대금 + 당일 매도대금
+//   매매대금 = 수량 × 체결가 × 적용환율. 수수료는 빼지 않는다(U2). 당일 거래는 원장과 같은 순서로 다시 재생해 매도 수량을
+//   원장과 똑같이 그 시점 보유수량으로 제한한다 - 끝 수량(endQty)이 원장의 D일 수량과 같은지는 호출부가 확인한다.
+//   input: { qtyPrev, unitPrev, qtyCur, unitCur, trades: [{ type: 'buy'|'sell', quantity, price, rate }] }
+function dvPositionDailyPnl(input) {
+  const { qtyPrev, unitPrev, qtyCur, unitCur, trades } = input;
+  let running = qtyPrev > 0 ? qtyPrev : 0;
+  let flow = 0;
+  (trades || []).forEach((t) => {
+    if (t.type === 'buy') {
+      running += t.quantity;
+      flow -= t.quantity * t.price * t.rate;
+    } else {
+      const sold = Math.min(t.quantity, running);
+      running = Math.max(0, running - sold);
+      flow += sold * t.price * t.rate;
+    }
+  });
+  const endValue = qtyCur > 0 ? qtyCur * unitCur : 0;
+  const startValue = qtyPrev > 0 ? qtyPrev * unitPrev : 0;
+  return { value: endValue - startValue + flow, endQty: running };
+}
+
+// 원장 포지션 맵에서 자산과 같은 대상의 { key, pos } - findLedgerPositionForAsset(js/06)와 같은 판정 · 같은 순서다.
+function dvFindLedgerEntry(asset, positions) {
+  const hit = Object.entries(positions || {}).find(([, p]) => assetMatchesLedgerIdentity(asset, p));
+  return hit ? { key: hit[0], pos: hit[1] } : null;
+}
+
+// [일별 손익 추이 · U1=C · U2 · U3 · U4] 날짜별 일별 손익 행을 만든다. 총자산 행(dvBuildRows)과 같은 모양이라 같은 렌더러 규칙을 쓴다.
+//   input: { dates, owners, classified, transactions, seriesBySymbol, K, defaultTradeRate }
+//   - 원장 자산(시세 종목 · 원장 달러 현금)만 손익을 만든다. 원화 현금 · 부동산 · 채권은 시세가 없어 0이다(기존 앱과 같다).
+//     이 값들의 기록값을 쓰지 않으므로 일별 손익은 dailySnapshots를 읽지 않는다.
+//   - 원장으로 수량을 알 수 없는 달러 현금은 과거 환율 손익을 정확히 계산할 수 없어 계산 불가다(U3). 스냅샷에는 원화 금액만
+//     있고 그때 적용된 환율이 없어 달러 수량을 되돌릴 수 없다 - 추정 환율로 나눠 만들지 않는다.
+//   - 계산 불가 자산이 하나라도 있는 소유자는 null, 소유자 중 하나라도 null이면 합계도 null이다(U4 = U-B).
+//   - D−1은 달력 전날이다. 주말 · 휴장일은 직전 종가 유지라 가격 손익이 0이고, 다음 거래일 손익이 직전 거래일 종가 대비가 된다.
+function dvBuildDailyPnlRows(input) {
+  const { dates, owners, classified, transactions, seriesBySymbol, K, defaultTradeRate } = input;
+  const positionsAsOf = dvPositionsAsOfFactory(transactions);
+  const fxSeries = seriesBySymbol[DV_FX_SYMBOL];
+  const txByDate = new Map();
+  transactions.forEach((t) => {
+    const d = String(t.date);
+    if (!txByDate.has(d)) txByDate.set(d, []);
+    txByDate.get(d).push(t);
+  });
+  // 원장 함수는 날짜 → 입력 시각(createdAt) 순으로 안정 정렬한다 - 같은 날짜 안의 순서도 똑같이 맞춘다.
+  txByDate.forEach((list) => list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+  const ownerAssets = owners.map((owner) => ({ owner, mine: classified.filter((c) => c.asset.owner === owner) }));
+
+  // 그날 단위평가(가격 × 환율)와 그 판정 상태들. 하나라도 계산 불가면 사유를 돌려준다.
+  const unitAt = (cls, date) => {
+    let unit = 1;
+    const states = [];
+    if (cls.kind === 'ledgerMarket') {
+      const indexSeries = seriesBySymbol[DV_MARKETS[cls.marketKey].indexSymbol];
+      const p = dvPriceAt(seriesBySymbol[cls.symbol], date, indexSeries && indexSeries.ok ? indexSeries : null, K);
+      if (p.value === null) return { unit: null, reason: p.reason };
+      unit = p.value;
+      states.push(p.state);
+    }
+    if (cls.kind === 'ledgerUsdCash' || cls.needsFx) {
+      const fx = dvPriceAt(fxSeries, date, DV_NO_HOLIDAY_REF, K);
+      if (fx.value === null) return { unit: null, reason: 'fx:' + fx.reason };
+      unit *= fx.value;
+      states.push(fx.state);
+    }
+    return { unit, states };
+  };
+
+  return dates.map((date) => {
+    const prevDate = dvAddDays(date, -1);
+    const posCur = positionsAsOf(date);
+    const posPrev = positionsAsOf(prevDate);
+    const dayTrades = txByDate.get(date) || [];
+    const ownerValues = {}, ownerFlags = {}, ownerReasons = {};
+    const ownerParts = [];
+    ownerAssets.forEach(({ owner, mine }) => {
+      const parts = [];
+      mine.forEach(({ asset, cls }) => {
+        if (cls.kind === 'maintained') {
+          if (cls.key === DV_USD_CASH_KEY) parts.push({ value: null, state: 'unavailable', reason: 'usdCashNoLedger' });
+          else parts.push({ value: 0, state: 'confirmed' }); // 원화 현금 · 부동산 · 채권 - 시세가 없어 손익 0
+          return;
+        }
+        if (cls.kind === 'unavailable') { parts.push({ value: null, state: 'unavailable', reason: cls.reason }); return; }
+        const cur = dvFindLedgerEntry(asset, posCur);
+        const prev = dvFindLedgerEntry(asset, posPrev);
+        const qtyCur = cur ? cur.pos.quantity : 0;
+        const qtyPrev = prev ? prev.pos.quantity : 0;
+        const trades = cur ? dayTrades.filter((t) => transactionIdentityKey(t) === cur.key) : [];
+        // 전날도 그날도 보유하지 않았고 그날 거래도 없다 = 실제 손익 0
+        if (!(qtyCur > 0) && !(qtyPrev > 0) && trades.length === 0) { parts.push({ value: 0, state: 'confirmed' }); return; }
+        // [M4] 전날 이후 분할 · 병합이 있으면 전날 종가와 원장 수량의 기준이 다를 수 있다 - 그날 손익을 계산하지 않는다.
+        if (cls.kind === 'ledgerMarket' && dvCorporateActionAfter(seriesBySymbol[cls.symbol], prevDate)) {
+          parts.push({ value: null, state: 'unavailable', reason: 'corporateActionUnverified' });
+          return;
+        }
+        const states = [];
+        let unitCur = null, unitPrev = null;
+        if (qtyCur > 0) {
+          const u = unitAt(cls, date);
+          if (u.unit === null) { parts.push({ value: null, state: 'unavailable', reason: u.reason }); return; }
+          unitCur = u.unit;
+          states.push(...u.states);
+        }
+        if (qtyPrev > 0) {
+          const u = unitAt(cls, prevDate);
+          if (u.unit === null) { parts.push({ value: null, state: 'unavailable', reason: u.reason }); return; }
+          unitPrev = u.unit;
+          states.push(...u.states);
+        }
+        const r = dvPositionDailyPnl({
+          qtyPrev, unitPrev, qtyCur, unitCur,
+          trades: trades.map((t) => ({ type: t.type, quantity: t.quantity, price: t.price, rate: dvTradeRate(t, defaultTradeRate) }))
+        });
+        // 다시 재생한 끝 수량이 원장의 그날 수량과 다르면 어느 쪽이 맞는지 알 수 없다 - 계산하지 않는다.
+        if (positionValuesDiffer(r.endQty, qtyCur)) { parts.push({ value: null, state: 'unavailable', reason: 'ledgerReplayMismatch' }); return; }
+        parts.push({
+          value: r.value,
+          state: states.reduce((acc, s) => dvWeakerState(acc, s), 'confirmed'),
+          flags: states.filter((s) => DV_STATE_FLAGS.includes(s))
+        });
+      });
+      const combined = dvCombineParts(parts);
+      ownerValues[owner] = combined.value;
+      ownerFlags[owner] = combined.flags;
+      ownerReasons[owner] = combined.reasons;
+      ownerParts.push({ value: combined.value, state: combined.value === null ? 'unavailable' : 'confirmed', flags: combined.flags, reason: combined.reasons[0] || null });
+    });
+    const total = ownerParts.length ? dvCombineParts(ownerParts) : { value: null, flags: [], reasons: ['noOwners'] };
+    const reasons = new Set(total.reasons);
+    Object.values(ownerReasons).forEach((list) => list.forEach((r) => reasons.add(r)));
+    return {
+      date,
+      recorded: Object.values(ownerValues).some((v) => v !== null) || total.value !== null,
+      total: total.value,
+      owners: ownerValues,
+      byOwnerAmounts: ownerValues,
+      flags: total.flags,
+      ownerFlags,
+      reasons: [...reasons].sort(),
+      ownerReasons
+    };
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DV_K_MISSING_TRADING_DAYS, DV_LOOKBACK_CALENDAR_DAYS, DV_FX_SYMBOL, DV_MARKETS, DV_MAINTAINED_KEYS, DV_NO_HOLIDAY_REF,
     dvZonedParts, dvAddDays, dvIsWeekend, dvDateList, dvIsSameDayCloseConfirmed, dvNormalizeChart,
-    dvLastBarDateBefore, dvPriceAt, dvCorporateActionAfter, dvLatestSnapshotDate, dvMaintainedAt, dvCombineParts, dvWeakerState
+    dvLastBarDateBefore, dvPriceAt, dvCorporateActionAfter, dvLatestSnapshotDate, dvMaintainedAt, dvCombineParts, dvWeakerState,
+    dvPositionDailyPnl
   };
 }

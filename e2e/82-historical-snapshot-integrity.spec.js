@@ -230,7 +230,6 @@ test('T4. [P0 D3] 기록이 없는 날은 시계열·차트에서 null(공백)�
     const label = (g) => `${Number(g.slice(5, 7))}/${Number(g.slice(8, 10))}`;
     const gapLabels = gaps.map(label);
     const tv = buildTotalValueSeries(30);
-    const dp = buildDailyPnlSeries(30);
 
     // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
     // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
@@ -243,24 +242,25 @@ test('T4. [P0 D3] 기록이 없는 날은 시계열·차트에서 null(공백)�
     const lineSpanGaps = lc.options.spanGaps;
     tvModal.classList.add('hidden');
 
-    openDailyPnlModal();
-    dailyPnlPopupDays = 30; updateDailyPnlModal();
+    // [Daily Valuation 통합] 일별 손익 막대의 원천은 이제 스냅샷이 아니라 거래내역 기반 계산이다(e2e/88). 여기서는 막대 렌더러가
+    // 값이 없는 날(null)을 0 막대로 채우지 않는 성질만, 같은 공백 구간을 가진 행으로 고정한다.
+    const pnlModal = doc.getElementById('dailyPnlModal');
+    pnlModal.classList.remove('hidden');
+    renderDailyPnlChart(tv.map((x) => ({ ...x })), 'all');
     const bc = win.Chart.getChart(doc.getElementById('dailyPnlChart'));
     const bi = bc.data.labels.map((l, i) => i).filter((i) => gapLabels.includes(bc.data.labels[i]));
     const barGapValues = bi.map((i) => bc.data.datasets[0].data[i]);
     const barNonGapNull = bc.data.datasets[0].data.filter((v, i) => !bi.includes(i) && v === null).length;
-    closeDailyPnlModal();
+    pnlModal.classList.add('hidden');
 
     return {
       tvGap: tv.filter((x) => gaps.includes(x.date)).map((x) => [x.recorded, x.total, Object.keys(x.byOwnerAmounts).length]),
-      dpGap: dp.filter((x) => gaps.includes(x.date)).map((x) => [x.recorded, x.total]),
       tvOthersNumeric: tv.filter((x) => !gaps.includes(x.date)).every((x) => x.recorded && typeof x.total === 'number'),
       lineGapLabels: li.length, lineGapValues, lineSpanGaps, datasets: lc.data.datasets.length,
       barGapLabels: bi.length, barGapValues, barNonGapNull
     };
   });
   expect(r.tvGap).toEqual(Array(5).fill([false, null, 0]));
-  expect(r.dpGap).toEqual(Array(5).fill([false, null]));
   expect(r.tvOthersNumeric, '기록된 날은 숫자다').toBe(true);
   expect(r.lineGapLabels).toBe(5);
   expect(r.datasets, '합계 + 소유자 2').toBe(3);
@@ -280,12 +280,13 @@ test('T5. [P0 D3] 스냅샷이 있고 값이 0인 날은 0이다 - 기록된 0�
     const k = dateKeyFromDate(d);
     const lbl = `${Number(k.slice(5, 7))}/${Number(k.slice(8, 10))}`;
     const tvRow = buildTotalValueSeries(20).find((x) => x.date === k);
-    const dpRow = buildDailyPnlSeries(20).find((x) => x.date === k);
-    openDailyPnlModal();
-    dailyPnlPopupDays = 20; updateDailyPnlModal();
+    // [Daily Valuation 통합] 일별 손익 막대의 원천은 거래내역 기반 계산이다(e2e/88). 막대 렌더러가 값 0을 공백(null)으로 숨기지 않는 성질만 고정한다.
+    const pnlModal = doc.getElementById('dailyPnlModal');
+    pnlModal.classList.remove('hidden');
+    renderDailyPnlChart(buildTotalValueSeries(20), 'all');
     const bc = win.Chart.getChart(doc.getElementById('dailyPnlChart'));
     const bar = bc.data.datasets[0].data[bc.data.labels.indexOf(lbl)];
-    closeDailyPnlModal();
+    pnlModal.classList.add('hidden');
     // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
     // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
     const tvModal = doc.getElementById('totalValueModal');
@@ -294,10 +295,9 @@ test('T5. [P0 D3] 스냅샷이 있고 값이 0인 날은 0이다 - 기록된 0�
     const lc = win.Chart.getChart(doc.getElementById('totalValueChart'));
     const line = lc.data.datasets[0].data[lc.data.labels.indexOf(lbl)];
     tvModal.classList.add('hidden');
-    return { tv: [tvRow.recorded, tvRow.total], dp: [dpRow.recorded, dpRow.total], bar, line };
+    return { tv: [tvRow.recorded, tvRow.total], bar, line };
   });
   expect(r.tv).toEqual([true, 0]);
-  expect(r.dp).toEqual([true, 0]);
   expect(r.bar, '기록된 0원 손익은 0 막대').toBe(0);
   expect(r.line, '기록된 0원 평가액은 0').toBe(0);
 });
@@ -313,7 +313,9 @@ test('T6. [P0 D3] 요약은 기간 안 첫·마지막 "기록된 날" 기준이�
     const rec = tv.filter((x) => x.recorded);
     renderTotalValueSummary(tv);
     const tvText = doc.getElementById('totalValueList').textContent;
-    const dp = buildDailyPnlSeries(30);
+    // [Daily Valuation 통합] 일별 손익 요약의 원천은 거래내역 기반 계산이다(e2e/88). 같은 모양의 행으로, 값이 없는 날(null)을
+    // 0원으로 세지 않고 값이 있는 날만 더하는 요약 규칙을 고정한다.
+    const dp = tv.map((x) => ({ ...x }));
     renderDailyPnlSummary(dp);
     const dpText = doc.getElementById('dailyPnlList').textContent;
     const pnlSum = dp.filter((x) => x.recorded).reduce((z, x) => z + x.total, 0);
@@ -516,7 +518,9 @@ test('R0-2. [P0-5] D1 기록 1억 · D2 기록 0 · D3 기록 없음 · D4 기�
     delete state.dailySnapshots[dk(2)];
     state.dailySnapshots[dk(1)] = mk(200000000, 2000);
     const tv = buildTotalValueSeries(5).slice(0, 4).map((x) => x.total);
-    const dp = buildDailyPnlSeries(5).slice(0, 4).map((x) => x.total);
+    // [Daily Valuation 통합] 일별 손익의 원천은 거래내역 기반 계산이다(e2e/88). 막대 렌더러가 [값, 0, 계산 불가, 값]을 그대로 그리는 성질만 고정한다.
+    const pnlRows = [1000, 0, null, 2000, 0].map((v, i) => ({ date: dk(4 - i), recorded: v !== null, total: v, byOwnerAmounts: v === null ? {} : { '신랑': v } }));
+    const dp = pnlRows.slice(0, 4).map((x) => x.total);
     // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
     // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
     const tvModal = doc.getElementById('totalValueModal');
@@ -526,9 +530,11 @@ test('R0-2. [P0-5] D1 기록 1억 · D2 기록 0 · D3 기록 없음 · D4 기�
     const lineTotal = lc.data.datasets[0].data.slice(0, 4);
     const lineOwner = lc.data.datasets[1].data.slice(0, 4);
     tvModal.classList.add('hidden');
-    openDailyPnlModal(); dailyPnlPopupDays = 5; updateDailyPnlModal();
+    const pnlModal = doc.getElementById('dailyPnlModal');
+    pnlModal.classList.remove('hidden');
+    renderDailyPnlChart(pnlRows, 'all');
     const bar = win.Chart.getChart(doc.getElementById('dailyPnlChart')).data.datasets[0].data.slice(0, 4);
-    closeDailyPnlModal();
+    pnlModal.classList.add('hidden');
     return { tv, dp, lineTotal, lineOwner, bar, spanGaps: lc.options.spanGaps };
   }, R0_ASSET('s1', '', '신랑', '주식', 100, 70000));
   expect(r.tv, '총 평가금액 시계열').toEqual([100000000, 0, null, 200000000]);
@@ -621,7 +627,8 @@ test('R0-5. [P0-5] D1 기록 없음 · D2 1억 · D3 1.1억 → 요약 시작값
     const series = buildTotalValueSeries(3);
     renderTotalValueSummary(series);
     const text = doc.getElementById('totalValueList').textContent;
-    const dps = buildDailyPnlSeries(3);
+    // [Daily Valuation 통합] 일별 손익 요약의 원천은 거래내역 기반 계산이다(e2e/88). 값이 없는 날(null)을 0원으로 세지 않는 요약 규칙을 고정한다.
+    const dps = [null, 500, 700].map((v, i) => ({ date: dk(2 - i), recorded: v !== null, total: v, byOwnerAmounts: v === null ? {} : { '신랑': v } }));
     renderDailyPnlSummary(dps);
     const dpText = doc.getElementById('dailyPnlList').textContent;
     return {

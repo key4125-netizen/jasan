@@ -272,21 +272,22 @@ test('N4. Day1 자산·거래 엑셀 + 최초 동기화 → Day2 거래 없음(0
   expect(cloud3).toMatchObject({ assets: 3, tx: 3, snapKeys: ['2026-09-14', '2026-09-15', '2026-09-16'] });
 });
 
-test('N5. 앱을 열지 않은 날(Day2)은 그래프에서 공백이고 0원이 아니다', async ({ page, context }) => {
+test('N5. 앱을 열지 않은 날(Day2)은 스냅샷을 새로 만들지 않고(기록 시리즈는 0원이 아닌 공백), 일별 손익은 거래·시세 기반 계산이라 끊기지 않는다', async ({ page, context }) => {
   await context.clock.setFixedTime(new Date('2026-09-14T10:00:00+09:00'));
   await cleanOpen(page);
   await page.locator('body').evaluate((el, bond) => { state.assets = [bond]; persistAssets(true); renderAll(); }, BOND);
   await context.clock.setFixedTime(new Date('2026-09-16T10:00:00+09:00'));
   await page.reload();
   await settle(page);
-  const r = await page.locator('body').evaluate(() => ({
+  const r = await page.locator('body').evaluate(async () => ({
     keys: Object.keys(state.dailySnapshots).sort(),
     series: buildTotalValueSeries(3).map((x) => [x.date, x.recorded, x.total]),
-    pnl: buildDailyPnlSeries(3).map((x) => x.total)
+    // [Daily Valuation 통합] 일별 손익은 스냅샷이 아니라 거래내역 · 시세로 계산한다 - 채권은 시세가 없어 손익 0이고, 앱을 열지 않은 날도 0(공백 아님)이다.
+    pnl: (await loadDailyPnlRows(3)).rows.map((x) => x.total)
   }));
   expect(r.keys).toEqual(['2026-09-14', '2026-09-16']);
   expect(r.series).toEqual([['2026-09-14', true, 3000000], ['2026-09-15', false, null], ['2026-09-16', true, 3000000]]);
-  expect(r.pnl).toEqual([0, null, 0]);
+  expect(r.pnl).toEqual([0, 0, 0]);
 });
 
 for (const op of ['pull', 'push']) {

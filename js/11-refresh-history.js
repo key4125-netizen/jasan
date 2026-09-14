@@ -190,9 +190,10 @@ async function refreshPricesAndRates() {
 
   if (successCount > 0) persistAssets(true); // 배경 자동 갱신 - 동기화 push 안 함(persistRate skipPush 주석 참고)
   renderAll();
-  // [D-1 Daily Valuation] 총자산 추이 팝업이 열려 있으면 다시 계산한다 - 오늘 잠정값이 종가 확인 뒤 확정으로 바뀌는 것을
-  // 팝업을 다시 열지 않아도 보이게 하기 위함이다. 이 갱신 주기에 얹을 뿐 별도 자동 조회는 만들지 않는다.
-  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal({ silent: true });
+  // [D-1 Daily Valuation] 총자산 추이 · 일별 손익 추이 팝업이 열려 있으면 다시 계산한다 - 오늘 잠정값이 종가 확인 뒤 확정으로 바뀌는 것을
+  // 팝업을 다시 열지 않아도 보이게 하기 위함이다. 이 갱신 주기에 얹을 뿐 별도 자동 조회는 만들지 않는다. fresh: 오늘 봉은 새로 받는다.
+  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal({ silent: true, fresh: true });
+  if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal({ silent: true, fresh: true });
   lastRefreshAt = Date.now(); // 자동 폴링 타이머 및 "다음 자동 갱신까지" 표시의 기준 시각
 
   const parts = [];
@@ -281,10 +282,11 @@ document.addEventListener('visibilitychange', () => {
 
 /* -------------------------------------------------------------------------
  * 20. 일별 손익 추이 / 총 평가금액 추이 팝업
- *    - 일별 평가손익: renderKPIs()가 매 렌더링마다 자동으로 남기는 오늘자 스냅샷(state.dailySnapshots,
- *      소유자별 평가금액+당일손익)을 그대로 모아서 보여준다. 사용자가 아무것도 입력하지 않아도 앱을
- *      켜서 렌더링될 때마다 자동으로 쌓인다(다만 앱을 켜지 않은 날은 그 날짜의 기록 자체가 없다 -
- *      "수동 입력 Zero"의 필연적인 한계).
+ *    - [Daily Valuation 통합] 일별 손익 추이 · 총 평가금액 추이 두 팝업 모두 거래내역 + 시장 종가 · 환율로 계산한다
+ *      (js/23 · js/24). 그래프가 있는지 없는지는 "그날 앱을 열었는가"가 아니라 "그날 값을 계산할 수 있는가"로 정해진다.
+ *      기간 버튼 · 기본값(당월)도 두 팝업이 같다. renderKPIs()가 매 렌더링마다 남기는 오늘자 스냅샷(state.dailySnapshots)은
+ *      그대로 기록 · 동기화 · 백업되지만 그래프의 원천이 아니다 - 총 평가금액 계산이 원화 현금 · 부동산 · 채권의 마지막
+ *      기록값을 얻을 때만 읽는다. 위 KPI 카드의 일간 손익은 예전 실시간 산식 그대로다.
  *    - 일별 실현손익: [거래내역] 탭의 실현손익 리포트와 같은 계산 결과(computePositionsAndRealizedPnL의
  *      annotated 배열, 매도 건마다 이동평균법으로 계산된 computedRealizedPnL)를 날짜별로 다시 집계한다.
  *    - [멀티 라인 통합] 예전엔 소유자 필터 탭으로 한 번에 한 시리즈만 보여줬는데, 이제 합계/신랑/와이프
@@ -297,8 +299,15 @@ let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
 // [월 단위 기간 기준 - 요청 반영] dailyPnlPopupDays는 더 이상 고정값(30/90/180/365)이 아니라
 // daysSinceMonthsAgoStart(js/01)로 그때그때 계산되는 "해당 월 1일부터 오늘까지의 일수"다 - 날짜가
 // 바뀌면 같은 개월 수 선택이어도 일수가 달라질 수 있어(예: 당월은 매일 커짐), 팝업을 열 때/기간 버튼을
-// 누를 때마다 다시 계산한다.
+// 누를 때마다 다시 계산한다. [기간 통일] 총 평가금액 추이 팝업(totalValuePopupDays)도 같은 함수 · 같은 버튼 · 같은 기본값(당월)을 쓴다.
 let dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업 최초 오픈 시 항상 당월부터
+
+// [기간 통일] 두 팝업(일별 손익 · 총 평가금액) 요약의 기간 머리말 - "당월"은 "최근" 접두어가 어색해 따로 조합한다.
+function periodSummaryLabel(activeBtnSelector) {
+  const btn = document.querySelector(activeBtnSelector);
+  const label = btn ? btn.textContent.trim() : '';
+  return label === '당월' ? '당월 기준' : `최근 ${label} 기준`;
+}
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
 // 이름을 쓰는 경우에도 그대로 동작한다) - ownerRank로 신랑→와이프→그 외 순 정렬.
@@ -392,8 +401,9 @@ function reconstructHistoricalCurValues() {
 // [P0 D3 - 기록 없음 ≠ 0원] 그래프 요약에 한 줄만 덧붙이는 안내 문구.
 const HISTORY_GAP_NOTE = '기록이 없는 날짜는 그래프에서 비워 표시합니다.';
 
-// [공용 스냅샷 시리즈 빌더] metricKey: 'cur'(평가금액) | 'dailyPnL'(일간손익) - 일별 손익 추이와 총 평가금액 추이
-// 팝업이 공유한다. 최근 days일의 달력 날짜를 하루도 빠짐없이 나열해 X축이 오늘까지 끊기지 않게 한다.
+// [스냅샷(실제 기록) 시리즈 빌더] metricKey: 'cur'(평가금액) | 'dailyPnL'(일간손익). [Daily Valuation 통합] 일별 손익 추이와 총 평가금액
+// 추이 팝업은 이제 둘 다 Daily Valuation(js/23 · js/24)을 그리고 이 빌더를 쓰지 않는다 - 스냅샷에 무엇이 기록됐는지 그대로 보여주는
+// 시리즈로 남아 있다(e2e/82 · e2e/83이 기록 없음 null · 기록된 0 규칙을 이 빌더로 고정한다). 최근 days일의 달력 날짜를 하루도 빠짐없이 나열한다.
 // [P0 D3] 스냅샷이 없는 날은 값을 0으로 채우지 않고 null로 둔다(recorded: false).
 //   - 스냅샷 있음 + 값 0 → 0 (그날 실제로 기록된 0)
 //   - 스냅샷 있음 + 값   → 값
@@ -420,7 +430,6 @@ function buildSnapshotSeries(days, metricKey) {
   }
   return result;
 }
-function buildUnrealizedPnlSeries(days) { return buildSnapshotSeries(days, 'dailyPnL'); }
 // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation(loadDailyValuationRows, js/24)을 그린다. 이 함수는
 // 스냅샷(실제 기록) 시리즈 빌더로 남아 있고, 같은 행 모양이라 renderTotalValueChart/renderTotalValueSummary가 그대로 그릴 수 있다.
 // 평가금액(총 평가금액 추이)은 개념상 음수가 될 수 없어 차트 렌더링 직전에 0원 바닥을 씌운다(일별 손익 추이는
@@ -474,12 +483,10 @@ function getTotalRealizedPnL() {
     .reduce((sum, tx) => sum + tx.computedRealizedPnL, 0);
 }
 
-// [일별 실현손익 항목 제거] 팝업의 [일별 평가손익]/[일별 실현손익] 전환 토글을 없애면서, 이 팝업은
-// 항상 일별 평가손익(buildUnrealizedPnlSeries)만 보여준다 - buildRealizedPnlSeries는 더 이상 호출되지
-// 않지만, 계산 로직 자체는 그대로 남겨둔다(다른 화면에서 재사용될 가능성을 열어둠).
-function buildDailyPnlSeries(days) {
-  return buildUnrealizedPnlSeries(days);
-}
+// [일별 실현손익 항목 제거] 팝업의 [일별 평가손익]/[일별 실현손익] 전환 토글을 없애면서 buildRealizedPnlSeries는 더 이상
+// 호출되지 않지만, 계산 로직 자체는 그대로 남겨둔다(다른 화면에서 재사용될 가능성을 열어둠).
+// [Daily Valuation 통합] 일별 손익 추이 팝업의 원천이던 스냅샷 손익 시리즈(buildDailyPnlSeries · buildUnrealizedPnlSeries)는 없앴다 -
+// 앱을 연 날에만 값이 생겨 열지 않은 날이 늘 공백이었다. 이제 loadDailyPnlRows(js/24) → dvBuildDailyPnlRows(js/23)가 원천이다.
 
 // [차트 선 색상 고대비 개선과 동일한 방식] 합계/소유자별 라인 색상을 라이트/다크 모드별로 분리한다 -
 // 합계=브랜드 보라, 첫 번째 소유자(ownerRank 기준 신랑)=파랑 계열, 두 번째(와이프)=분홍 계열. 다크
@@ -611,20 +618,28 @@ function dailyPnlLineColor(v) {
   return v > 0 ? '#ef4444' : (v < 0 ? '#3b82f6' : '#94a3b8');
 }
 
+// [일별 손익 · Daily Valuation] 막대 툴팁 - 금액 뒤에 그날의 상태(잠정 · 추정 포함)를 글자로 붙인다(색만으로 구분하지 않는다).
+// 확정과 휴장일 직전 종가 유지는 표시하지 않는다.
+function dailyPnlTooltipLabel(series, owner, c) {
+  const row = series[c.dataIndex];
+  const flags = !row ? [] : (owner === 'all' ? row.flags : ((row.ownerFlags || {})[owner] || []));
+  const words = dvFlagWords(flags);
+  return words ? `${fmtSigned(c.parsed.y)} (${words})` : fmtSigned(c.parsed.y);
+}
+
 // [사용자 요청: 기존 형태 유지] 소유자 필터(전체(합계)/신랑/와이프) 탭으로 한 번에 한 시리즈만
 // 막대그래프로 보여준다(총 평가금액 추이 팝업의 멀티 라인 방식과는 별개로, 이 팝업은 원래 방식 그대로).
+// [Daily Valuation 통합] series는 dvBuildDailyPnlRows 행이다 - 계산할 수 없는 날은 null이라 막대가 없고, 실제 손익 0원인 날은 0 막대다.
 function renderDailyPnlChart(series, owner) {
   const canvas = document.getElementById('dailyPnlChart');
   const msgEl = document.getElementById('dailyPnlChartMsg');
   clearTimeout(dailyPnlTooltipHideTimer);
   if (charts.dailyPnl) { charts.dailyPnl.destroy(); charts.dailyPnl = null; }
 
-  // [P0 D3] 기간 안에 기록된 날이 하루도 없으면 차트 대신 안내를 보여준다 - 기록 없는 날을 0 막대로 채우지 않는다.
+  // 기간 안에 계산할 수 있는 날이 하루도 없으면 차트 대신 안내를 보여준다 - 계산할 수 없는 날을 0 막대로 채우지 않는다.
   if (!series.some((s) => s.recorded)) {
     canvas.classList.add('hidden');
-    msgEl.textContent = dailyPnlPopupType === 'unrealized'
-      ? '아직 기록된 일별 평가손익 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.'
-      : '해당 기간에 매도 거래 내역이 없습니다.';
+    msgEl.textContent = '계산할 수 있는 날이 아직 없습니다. 거래내역과 시세가 있는 날부터 표시됩니다.';
     msgEl.classList.remove('hidden');
     return;
   }
@@ -633,18 +648,19 @@ function renderDailyPnlChart(series, owner) {
 
   const textColor = chartTextColor();
   const labels = series.map((s) => `${Number(s.date.slice(5, 7))}/${Number(s.date.slice(8, 10))}`);
-  // 기록 없는 날은 null → 막대를 그리지 않는다. 기록된 0원 손익은 0 막대로 그대로 보인다.
+  // 계산할 수 없는 날은 null → 막대를 그리지 않는다. 실제 손익 0원인 날은 0 막대다.
   const data = series.map((s) => seriesAmountForOwner(s, owner));
   const colors = data.map((v) => dailyPnlLineColor(v));
 
   charts.dailyPnl = new Chart(canvas, {
     type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28 }] },
+    // minBarLength: 손익 0원인 날도 얇은 회색 막대로 보이게 한다 - 막대가 아예 없는 "계산할 수 없는 날"과 눈으로 구분된다.
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28, minBarLength: 3 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { filter: (item) => item.parsed.y !== null, callbacks: { label: (c) => fmtSigned(c.parsed.y) } }
+        tooltip: { filter: (item) => item.parsed.y !== null, callbacks: { label: (c) => dailyPnlTooltipLabel(series, owner, c) } }
       },
       scales: {
         x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
@@ -660,70 +676,101 @@ function renderDailyPnlChart(series, owner) {
   canvas.onclick = () => scheduleDailyPnlTooltipHide(charts.dailyPnl);
 }
 
-// 차트 하단 요약 - 선택된 기간/소유자 필터 조건에 맞는 "합계"만 보여준다. 전체(합계) 선택 시에는
-// 소유자별 합계 + 총 합계를, 특정 소유자 선택 시에는 그 소유자의 합계만 표시한다.
-// [P0 D3] 합계는 기록된 날만 더한다 - 기록 없는 날을 손익 0원으로 간주하지 않는다. 기록이 하나도 없으면 "데이터 없음".
-function renderDailyPnlSummary(series) {
+// 차트 하단 요약 - 선택한 기간 · 소유자 탭 기준 손익 합계. [Daily Valuation] 계산할 수 없는 날(null)은 0원으로 세지 않고 합계에서 뺀다.
+// 전체(합계) 탭에서 합계가 계산된 날이 있으면 모든 줄을 그 날들로만 더한다 - 소유자 합계를 더한 값이 총 합계와 같아야 읽는 사람이
+// 헷갈리지 않는다(U-B상 합계가 있는 날은 모든 소유자 값도 있다). 합계가 한 번도 없으면 소유자 줄은 각자 값이 있는 날로 더한다.
+// 값이 있는 날이 하나도 없으면 "데이터 없음". dvInfo가 있으면 안내 문구를 붙인다.
+function renderDailyPnlSummary(series, dvInfo) {
   const container = document.getElementById('dailyPnlList');
   if (series.length === 0) { container.innerHTML = ''; return; }
 
-  // ["당월"은 "최근" 접두어가 어색해 그 경우만 문구를 다르게 조합한다 - 다른 기간(3/6/12개월)은
-  // 기존처럼 "최근 N개월 기준 합계".]
-  const periodBtn = document.querySelector('#dailyPnlModal .daily-pnl-period-btn.active');
-  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
-  const periodSummaryPrefix = periodLabel === '당월' ? '당월 기준 합계' : `최근 ${periodLabel} 기준 합계`;
+  const periodSummaryPrefix = `${periodSummaryLabel('#dailyPnlModal .daily-pnl-period-btn.active')} 합계`;
+  const owner = dailyPnlPopupOwner;
+  const notesHtml = dvInfo
+    ? `<div class="mt-2 space-y-1">${dvPnlSummaryNotes(series, dvInfo, owner).map((n) => `<p class="text-sm text-slate-400 break-keep">${escapeHtml(n)}</p>`).join('')}</div>`
+    : '';
+  const hasValue = (v) => v !== null && v !== undefined;
+  const daysWithValue = (who) => series.filter((s) => hasValue(seriesAmountForOwner(s, who)));
+  const sumDays = (days, who) => (days.length ? days.reduce((acc, s) => acc + seriesAmountForOwner(s, who), 0) : null);
+  const totalDays = daysWithValue('all');
 
-  const recorded = series.filter((s) => s.recorded);
-  if (recorded.length === 0) {
+  const rows = [];
+  if (owner === 'all') {
+    getDailyPnlOwnerList().forEach((o) => rows.push({ label: `${o} 손익 합계`, amount: sumDays(totalDays.length ? totalDays : daysWithValue(o), o) }));
+    rows.push({ label: '총 손익 합계', amount: sumDays(totalDays, 'all'), emphasize: true });
+  } else {
+    rows.push({ label: `${owner} 손익 합계`, amount: sumDays(daysWithValue(owner), owner), emphasize: true });
+  }
+  if (rows.every((r) => r.amount === null)) {
     container.innerHTML = `
       <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
-      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>`;
+      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>${notesHtml}`;
     return;
   }
 
-  const owners = getDailyPnlOwnerList();
-  const totalSum = recorded.reduce((acc, s) => acc + s.total, 0);
-  const ownerSums = {};
-  owners.forEach((o) => { ownerSums[o] = recorded.reduce((acc, s) => acc + seriesAmountForOwner(s, o), 0); });
-
-  const rows = [];
-  if (dailyPnlPopupOwner === 'all') {
-    owners.forEach((o) => rows.push({ label: `${o} 손익 합계`, amount: ownerSums[o] }));
-    rows.push({ label: '총 손익 합계', amount: totalSum, emphasize: true });
-  } else {
-    rows.push({ label: `${dailyPnlPopupOwner} 손익 합계`, amount: ownerSums[dailyPnlPopupOwner] || 0, emphasize: true });
-  }
-  const gapNote = recorded.length < series.length ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
-
   container.innerHTML = `
     <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodSummaryPrefix)}</p>
-    ${gapNote}
     <div class="space-y-1.5">
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
           <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
-          <span class="shrink-0 whitespace-nowrap ${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>
+          ${r.amount === null
+            ? '<span class="text-right text-slate-400">표시할 값 없음</span>'
+            : `<span class="shrink-0 whitespace-nowrap ${profitColor(r.amount)}">${fmtSigned(r.amount)}</span>`}
         </div>`).join('')}
-    </div>`;
+    </div>${notesHtml}`;
 }
 
-function updateDailyPnlModal() {
-  const series = buildDailyPnlSeries(dailyPnlPopupDays);
-  renderDailyPnlChart(series, dailyPnlPopupOwner);
-  renderDailyPnlSummary(series);
+// [일별 손익 추이 · Daily Valuation] 팝업은 거래내역 + 시장 종가 · 환율로 계산한 일별 손익(U1=C)을 그린다 - 총자산 추이 팝업과 같은 흐름이다.
+// 시세 일봉을 받아야 해서 비동기이며, 기간을 빠르게 바꾸면 마지막 요청 결과만 그린다. silent(시세 갱신 뒤 재계산)면 불러오는 중 안내 없이
+// 기존 그래프를 유지한 채 바꾼다. 소유자 탭은 다시 계산하지 않고 마지막 결과를 다시 그린다.
+let dailyPnlDvSeq = 0;
+let dailyPnlLastResult = null;
+function renderDailyPnlFromResult(result) {
+  renderDailyPnlChart(result.rows, dailyPnlPopupOwner);
+  renderDailyPnlSummary(result.rows, result);
+}
+function showDailyPnlChartMessage(text) {
+  if (charts.dailyPnl) { charts.dailyPnl.destroy(); charts.dailyPnl = null; }
+  document.getElementById('dailyPnlChart').classList.add('hidden');
+  const msgEl = document.getElementById('dailyPnlChartMsg');
+  msgEl.textContent = text;
+  msgEl.classList.remove('hidden');
+  document.getElementById('dailyPnlList').innerHTML = '';
+}
+function updateDailyPnlModal(opts) {
+  const seq = ++dailyPnlDvSeq;
+  const modalEl = document.getElementById('dailyPnlModal');
+  if (!(opts && opts.silent)) {
+    dailyPnlLastResult = null;
+    showDailyPnlChartMessage('시세 기록을 불러오는 중...');
+  }
+  return loadDailyPnlRows(dailyPnlPopupDays, { fresh: !!(opts && opts.fresh) }).then((result) => {
+    if (seq !== dailyPnlDvSeq || modalEl.classList.contains('hidden')) return null;
+    dailyPnlLastResult = result;
+    renderDailyPnlFromResult(result);
+    return result;
+  }).catch((err) => {
+    console.warn('[일별 손익 추이] 계산 실패:', err);
+    if (seq !== dailyPnlDvSeq || modalEl.classList.contains('hidden')) return null;
+    dailyPnlLastResult = null;
+    showDailyPnlChartMessage('시세 기록을 불러오지 못했습니다. 잠시 후 다시 열어 보세요.');
+    return null;
+  });
 }
 
 function renderDailyPnlOwnerTabs() {
   const wrap = document.getElementById('dailyPnlOwnerTabs');
   const tabs = [{ key: 'all', label: '전체(합계)' }, ...getDailyPnlOwnerList().map((o) => ({ key: o, label: o }))];
   wrap.innerHTML = tabs.map((t) => `
-    <button type="button" data-pnl-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === dailyPnlPopupOwner ? 'active' : ''} text-sm font-medium px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(t.label)}</button>
+    <button type="button" data-pnl-owner="${escapeHtml(t.key)}" class="daily-pnl-owner-btn ${t.key === dailyPnlPopupOwner ? 'active' : ''} min-h-[44px] text-sm font-medium px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 break-keep">${escapeHtml(t.label)}</button>
   `).join('');
   wrap.querySelectorAll('button[data-pnl-owner]').forEach((btn) => {
     btn.addEventListener('click', () => {
       dailyPnlPopupOwner = btn.dataset.pnlOwner;
       renderDailyPnlOwnerTabs();
-      updateDailyPnlModal();
+      // 소유자 탭은 계산 결과를 바꾸지 않는다 - 마지막 결과를 다시 그리기만 한다(계산 중이면 끝난 뒤 이 탭 기준으로 그려진다).
+      if (dailyPnlLastResult) renderDailyPnlFromResult(dailyPnlLastResult);
     });
   });
 }
@@ -744,7 +791,7 @@ function openDailyPnlModal() {
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
-  updateDailyPnlModal();
+  return updateDailyPnlModal();
 }
 function closeDailyPnlModal(viaBackButton) {
   document.getElementById('dailyPnlModal').classList.add('hidden');
@@ -754,7 +801,8 @@ document.getElementById('kpiDailyProfitDetailBtn').addEventListener('click', ope
 document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () => closeDailyPnlModal());
 
 /* ---- 20-1. 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) ---- */
-let totalValuePopupDays = 180; // 30 | 90 | 180 | 365
+// [기간 통일] 일별 손익 추이와 같은 당월/3/6/12개월(daysSinceMonthsAgoStart) - 열 때마다 당월로 돌아간다.
+let totalValuePopupDays = daysSinceMonthsAgoStart(1);
 
 // [D-1 Daily Valuation] 점마다의 상태를 사용자 말로 바꾼다 - 내부 상태명은 화면에 쓰지 않는다. 확정과 휴장일 직전 종가 유지는 표시하지 않는다.
 const DV_FLAG_WORDS = Object.freeze({ provisional: '잠정', estimated: '추정 포함', maintained: '마지막 기록값 포함' });
@@ -779,7 +827,7 @@ function renderTotalValueChart(series, dv) {
 }
 
 // [D-1 Daily Valuation] 요약 아래 안내 - 해당하는 것만 짧게. 내부 상태명·사유 코드는 쓰지 않는다.
-const DV_PERMANENT_REASONS = Object.freeze(['manualMarketAsset', 'tickerlessMarketAsset', 'noLedger', 'ledgerMismatch', 'usdCashMixed']);
+const DV_PERMANENT_REASONS = Object.freeze(['manualMarketAsset', 'tickerlessMarketAsset', 'noLedger', 'ledgerMismatch', 'usdCashMixed', 'usdCashNoLedger', 'ledgerReplayMismatch']);
 function dvSummaryNotes(series, info) {
   const flags = new Set();
   const reasons = new Set();
@@ -801,6 +849,26 @@ function dvSummaryNotes(series, info) {
   return notes;
 }
 
+// [일별 손익 추이 · Daily Valuation] 요약 아래 안내 - 해당하는 것만 짧게. 내부 상태명 · 사유 코드는 쓰지 않는다.
+// 위 KPI 카드(일간금융평가손익)는 실시간 시세 산식을 그대로 쓰므로 오늘 값이 다를 수 있다는 점을 늘 알려 준다(U6).
+function dvPnlSummaryNotes(series, info, owner) {
+  const flags = new Set();
+  const reasons = new Set();
+  series.forEach((row) => {
+    ((owner === 'all' ? row.flags : (row.ownerFlags || {})[owner]) || []).forEach((f) => flags.add(f));
+    ((owner === 'all' ? row.reasons : (row.ownerReasons || {})[owner]) || []).forEach((r) => reasons.add(r));
+  });
+  const notes = ['일별 손익은 거래내역과 각 시장의 종가·환율로 계산합니다. 사고판 금액 자체는 손익에 넣지 않습니다.'];
+  if (flags.has('provisional')) notes.push('오늘 값은 장중 시세에 따른 잠정값이며, 종가가 확인되면 확정됩니다.');
+  notes.push('위 카드의 일간 손익은 실시간 시세로 계산해, 이 그래프의 오늘 값과 다를 수 있습니다.');
+  if (flags.has('estimated')) notes.push('시세를 받지 못한 날은 직전 확정값을 기준으로 추정합니다.');
+  if (info && info.hasMaintained) notes.push('현금·부동산·채권은 시세가 없어 일별 손익에 넣지 않습니다.');
+  if (reasons.has('corporateActionUnverified')) notes.push('분할 또는 병합 이력을 안전하게 반영할 수 없어 해당 이전 날짜의 손익을 표시하지 않습니다.');
+  if (DV_PERMANENT_REASONS.some((r) => reasons.has(r))) notes.push('거래내역으로 과거 수량을 확인할 수 없는 자산이 있어, 그 자산을 가진 소유자와 합계는 표시하지 않습니다.');
+  if (series.some((s) => seriesAmountForOwner(s, owner) === null)) notes.push('계산할 수 없는 날은 막대를 표시하지 않고, 합계에서도 뺍니다.');
+  return notes;
+}
+
 // 차트 하단 요약 - 선마다(소유자별 · 합계) 기간 안 값이 있는 마지막 날의 금액과, 값이 있는 첫날 대비 증감을 보여준다.
 // [P0 D3] 스냅샷 행이면 "기록된 날"이 기준이다. 예전엔 기간 첫날에 기록이 없으면 0원을 시작값으로 써서
 // 증감이 총자산 전체만큼 부풀려졌다. 값이 하나도 없으면 "데이터 없음".
@@ -811,8 +879,7 @@ function renderTotalValueSummary(series, dvInfo) {
   const container = document.getElementById('totalValueList');
   if (series.length === 0) { container.innerHTML = ''; return; }
 
-  const periodBtn = document.querySelector('#totalValueModal .total-value-period-btn.active');
-  const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
+  const periodPrefix = periodSummaryLabel('#totalValueModal .total-value-period-btn.active');
   const notesHtml = dvInfo
     ? `<div class="mt-2 space-y-1">${dvSummaryNotes(series, dvInfo).map((n) => `<p class="text-sm text-slate-400 break-keep">${escapeHtml(n)}</p>`).join('')}</div>`
     : '';
@@ -830,7 +897,7 @@ function renderTotalValueSummary(series, dvInfo) {
   lines.push({ label: '합계', amounts: totalAmounts, edge: edges(totalAmounts), emphasize: true });
   if (lines.every((l) => !l.edge)) {
     container.innerHTML = `
-      <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준</p>
+      <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodPrefix)}</p>
       <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>${notesHtml}`;
     return;
   }
@@ -851,7 +918,7 @@ function renderTotalValueSummary(series, dvInfo) {
   const gapNote = !dvInfo && series.some((s) => !s.recorded) ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
 
   container.innerHTML = `
-    <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (${basis})</p>
+    <p class="text-sm text-slate-400 mb-2">${escapeHtml(periodPrefix)} (${basis})</p>
     ${gapNote}
     <div class="space-y-1.5">
       ${rows.map((r) => `
@@ -881,7 +948,7 @@ function updateTotalValueModal(opts) {
     msgEl.classList.remove('hidden');
     document.getElementById('totalValueList').innerHTML = '';
   }
-  return loadDailyValuationRows(totalValuePopupDays).then((result) => {
+  return loadDailyValuationRows(totalValuePopupDays, { fresh: !!(opts && opts.fresh) }).then((result) => {
     if (seq !== totalValueDvSeq || modalEl.classList.contains('hidden')) return null;
     renderTotalValueChart(result.rows, true);
     renderTotalValueSummary(result.rows, result);
@@ -897,15 +964,15 @@ function updateTotalValueModal(opts) {
 
 document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    totalValuePopupDays = Number(btn.dataset.tvDays);
+    totalValuePopupDays = daysSinceMonthsAgoStart(Number(btn.dataset.tvMonths));
     document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateTotalValueModal();
   });
 });
 
 function openTotalValueModal() {
-  totalValuePopupDays = 180;
-  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvDays) === 180));
+  totalValuePopupDays = daysSinceMonthsAgoStart(1); // [기간 통일 · 기본 당월] 일별 손익 추이 팝업과 같다
+  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvMonths) === 1));
   document.getElementById('totalValueModal').classList.remove('hidden');
   pushModalHistoryState();
   return updateTotalValueModal();

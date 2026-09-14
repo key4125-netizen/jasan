@@ -959,9 +959,8 @@ function yesterdayDateStr() { return daysAgoDateStr(1); }
 // [일별 손익 추이 팝업 - 월 단위 기간 집계, 요청 반영] "오늘로부터 N일 전"이 아니라 "이번 달(포함)에서
 // monthsBack개월 거슬러 올라간 달의 1일"을 기준으로 삼는다 - 당월(1)은 이번 달 1일부터, 3/6/12개월은
 // 그 달을 포함해 monthsBack개월치 달의 1일부터 오늘까지를 뜻한다(예: 9월 기준 3개월 → 7월 1일부터).
-// 반환값은 "오늘로부터 며칠 전"과 같은 단위라 기존 buildSnapshotSeries(days, ...)에 그대로 넘길 수
-// 있다 - 그 함수와 이를 공유하는 다른 두 팝업(총 평가금액/총 평가손익 추이)의 기존 "N일" 동작은
-// 이 함수와 무관하게 그대로 유지된다(일별 손익 추이 팝업만 이 함수로 days를 계산해 넘긴다).
+// 반환값은 "오늘 포함 최근 며칠"과 같은 단위라 dvDateList(오늘, days)(js/23)에 그대로 넘길 수 있다.
+// [기간 통일] 일별 손익 추이 · 총 평가금액 추이 두 팝업이 모두 이 함수로 days를 계산한다(같은 날짜 목록).
 function daysSinceMonthsAgoStart(monthsBack) {
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth() - (monthsBack - 1), 1);

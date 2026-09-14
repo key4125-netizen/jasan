@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v241</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v242</p>
           </div>
         </div>
 
@@ -1901,11 +1901,12 @@
 </div>
 
 <!-- ============================= 일별 손익 추이 팝업 (일간 평가손익 KPI 카드 터치 시) =============================
-     [사용자 요청: 기존 형태 유지] [일별 평가손익/일별 실현손익] 전환 + [전체(합계)/신랑/와이프] 소유자
-     필터 + [당월/3개월/6개월/1년] 기간 선택으로 일자별 손익 추이를 막대그래프 + 세부 리스트로 보여준다.
+     [사용자 요청: 기존 형태 유지] [전체(합계)/신랑/와이프] 소유자 필터 + [당월/3개월/6개월/1년] 기간 선택으로
+     일자별 손익 추이를 막대그래프 + 세부 리스트로 보여준다.
      [월 단위 기간 기준 - 요청 반영] "오늘로부터 N일 전" 상대 계산이 아니라 "해당 월 1일부터 오늘까지"
-     기준이다(daysSinceMonthsAgoStart, js/01). 관련 상태/계산 함수는 섹션 20 참고
-     (dailyPnlPopupType/Owner/Days, buildDailyPnlSeries 등). -->
+     기준이다(daysSinceMonthsAgoStart, js/01 - 총 평가금액 추이 팝업도 같다).
+     [Daily Valuation 통합] 값은 거래내역 + 시장 종가·환율로 계산한다(loadDailyPnlRows, js/24 → dvBuildDailyPnlRows, js/23).
+     앱을 연 날에만 쌓이는 스냅샷을 원천으로 쓰지 않는다. -->
 <div id="dailyPnlModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -1918,17 +1919,18 @@
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <!-- [일별 실현손익 항목 제거] 예전엔 [일별 평가손익]/[일별 실현손익] 전환 토글이 있었으나 요청에
            따라 완전히 삭제했다 - 이 팝업은 이제 항상 일별 평가손익만 보여준다(dailyPnlPopupType은
-           'unrealized' 고정, buildDailyPnlSeries 참고). -->
+           'unrealized' 고정, renderDailyPnlChart 참고). -->
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div id="dailyPnlOwnerTabs" class="flex items-center gap-1.5 flex-wrap"></div>
         <!-- [월 단위 기간 기준 - 요청 반영] "오늘로부터 N일 전" 상대 계산이 아니라 "해당 월 1일부터"
-             기준으로 바뀌었다 - data-pnl-months(개월 수)를 daysSinceMonthsAgoStart(js/01)로 실제 일수로
-             환산해 기존 buildSnapshotSeries(days, ...)에 넘긴다(js/11 참고). -->
-        <div class="flex items-center gap-1 shrink-0 flex-nowrap">
-          <button type="button" data-pnl-months="1" class="daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">당월</button>
-          <button type="button" data-pnl-months="3" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">3개월</button>
-          <button type="button" data-pnl-months="6" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">6개월</button>
-          <button type="button" data-pnl-months="12" class="daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap">1년</button>
+             기준이다 - data-pnl-months(개월 수)를 daysSinceMonthsAgoStart(js/01)로 실제 일수로 환산해
+             loadDailyPnlRows(days)에 넘긴다(js/11 참고). [기간 통일] 총 평가금액 추이 팝업의 버튼과 문구 · 크기 · 기본값이 같다.
+             터치 영역 44px · 줄바꿈을 강제로 막지 않고 단어 단위로만 넘긴다. -->
+        <div class="flex items-center gap-1 flex-wrap">
+          <button type="button" data-pnl-months="1" class="daily-pnl-period-btn active min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">당월</button>
+          <button type="button" data-pnl-months="3" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">3개월</button>
+          <button type="button" data-pnl-months="6" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">6개월</button>
+          <button type="button" data-pnl-months="12" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">1년</button>
         </div>
       </div>
 
@@ -1943,9 +1945,10 @@
 </div>
 
 <!-- ============================= 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) =============================
-     [1개월/3개월/6개월/1년] 기간 선택으로 일자별 총 평가금액 추이를 [합계/신랑/와이프] 3개 라인으로
-     한 그래프 안에서 비교해 보여준다. 관련 함수는 섹션 20 참고(buildTotalValueSeries,
-     renderMultiSeriesLineChart 등 - 일별 손익 추이 팝업과 데이터 집계/차트 렌더링 로직을 공유한다). -->
+     [당월/3개월/6개월/1년] 기간 선택으로 일자별 총 평가금액 추이를 [합계/신랑/와이프] 3개 라인으로
+     한 그래프 안에서 비교해 보여준다. [Daily Valuation] 값은 거래내역 + 시장 종가·환율 + 현금·부동산·채권의
+     마지막 기록값으로 계산한다(loadDailyValuationRows, js/24). [기간 통일] 기간 의미 · 버튼 · 기본값(당월)은
+     일별 손익 추이 팝업과 같다(daysSinceMonthsAgoStart, js/01). -->
 <div id="totalValueModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -1956,11 +1959,11 @@
     </div>
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
-      <div class="flex items-center justify-end gap-1">
-        <button type="button" data-tv-days="30" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1개월</button>
-        <button type="button" data-tv-days="90" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">3개월</button>
-        <button type="button" data-tv-days="180" class="total-value-period-btn daily-pnl-period-btn active text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">6개월</button>
-        <button type="button" data-tv-days="365" class="total-value-period-btn daily-pnl-period-btn text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">1년</button>
+      <div class="flex items-center justify-end gap-1 flex-wrap">
+        <button type="button" data-tv-months="1" class="total-value-period-btn daily-pnl-period-btn active min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">당월</button>
+        <button type="button" data-tv-months="3" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">3개월</button>
+        <button type="button" data-tv-months="6" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">6개월</button>
+        <button type="button" data-tv-months="12" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">1년</button>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">
