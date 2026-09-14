@@ -32,6 +32,20 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-14 저녁) — 📊 **v242 Daily Valuation 통합** (v241 → **v242**)
+
+**v242 (commit `6a3e6d6d55ca8c9ae6e1a756c3bc49f62ce257a6`, production 배포 완료 · Pages run `34843844850` success · 산출물 27개 해시 일치 · 민감 경로 25개 404 · production smoke 8뷰포트 PASS: v242 · SW `smart-asset-manager-v242` 활성 · 두 팝업 DV 값 합성 fixture와 일치 · 기간 버튼 당월 기본 · 44px · 부팅 시 DV 요청 0 · localStorage/스냅샷 불변 · KPI 산식 일치 · Cloud 쓰기 0 · pageerror 0)**. 체크리스트 **§29**에 전체 기록이 있다.
+
+- 일별 손익 추이 그래프도 거래내역 기반 Daily Valuation(PM 확정 U1=C): 손익 = D일 수량×평가 − 전날 수량×평가 − 당일 매수대금 + 당일 매도대금(원장 자산만 · 수수료 미차감 · 원화 현금/부동산/채권 0). 원장 없는 달러 현금 · 계산 불가 자산이 있으면 그 소유자 · 합계 null(U3 · U4).
+- 두 팝업(일별 손익 · 총 평가금액) 기간 = 당월/3/6/12개월 · 기본 당월(daysSinceMonthsAgoStart). 버튼 · 소유자 탭 44px.
+- dailySnapshots는 삭제하지 않음 — 그래프 원천이 아니라 총 평가금액의 현금 · 부동산 · 채권 마지막 기록값 보조 원천. 기록 · 동기화 · 백업 · 초기화 그대로. KPI 일간 손익 카드 산식 무변경(U6 안내 문구).
+- 코드: js/23 dvBuildDailyPnlRows · dvPositionDailyPnl(신규 순수 함수) · js/24 두 팝업 공용 입력 · 60초 잠정 시세 재사용(fresh는 새로 받음) · js/11 일별 손익 팝업 비동기 DV · buildDailyPnlSeries 제거.
+- 확인된 사실: U3-B(원장 외 달러 수량 복원) 기존 데이터 없음 → 원장 없는 달러 현금은 계산 불가. 총 평가금액은 소유자별 D일 이전 기록 1건 필요(v241 규칙 유지).
+- 테스트: 신규 unit test/daily-pnl-valuation.test.js 12 · e2e/88 10 · e2e/82 T4/T5/T6/R0-2/R0-5 · e2e/83 N5 일별 손익 부분 재작성. 게이트 Unit 312 · E2E 847 · Golden 122 · ESLint 0 · Data Guard PASS · Release Guard PASS.
+- 다음: 실기기 첫 팝업 지연 관찰.
+
+---
+
 ## 최근 세션 요약 (2026-09-14) — 📈 **v241 총자산 추이 Daily Valuation** (v240 → **v241**)
 
 **v241 (commit `d2f3a7cfa065058c992caaaa5f78e36f44010423`, production 배포 완료 · Pages run `34825799644` success · 산출물 27개 해시 일치 · 민감 경로 21개 404 · production smoke 8뷰포트 PASS: v241 · SW `smart-asset-manager-v241` 활성 · 부팅 시 DV 요청 0 · 팝업 값 합성 fixture와 일치 · localStorage 불변 · Cloud 쓰기 0 · pageerror 0)**. 체크리스트 **§28**에 전체 기록이 있다.
