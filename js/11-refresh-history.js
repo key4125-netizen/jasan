@@ -190,6 +190,9 @@ async function refreshPricesAndRates() {
 
   if (successCount > 0) persistAssets(true); // 배경 자동 갱신 - 동기화 push 안 함(persistRate skipPush 주석 참고)
   renderAll();
+  // [D-1 Daily Valuation] 총자산 추이 팝업이 열려 있으면 다시 계산한다 - 오늘 잠정값이 종가 확인 뒤 확정으로 바뀌는 것을
+  // 팝업을 다시 열지 않아도 보이게 하기 위함이다. 이 갱신 주기에 얹을 뿐 별도 자동 조회는 만들지 않는다.
+  if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal({ silent: true });
   lastRefreshAt = Date.now(); // 자동 폴링 타이머 및 "다음 자동 갱신까지" 표시의 기준 시각
 
   const parts = [];
@@ -418,6 +421,8 @@ function buildSnapshotSeries(days, metricKey) {
   return result;
 }
 function buildUnrealizedPnlSeries(days) { return buildSnapshotSeries(days, 'dailyPnL'); }
+// [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation(loadDailyValuationRows, js/24)을 그린다. 이 함수는
+// 스냅샷(실제 기록) 시리즈 빌더로 남아 있고, 같은 행 모양이라 renderTotalValueChart/renderTotalValueSummary가 그대로 그릴 수 있다.
 // 평가금액(총 평가금액 추이)은 개념상 음수가 될 수 없어 차트 렌더링 직전에 0원 바닥을 씌운다(일별 손익 추이는
 // 하루치 손실이 음수인 게 정상이라 공용 buildSnapshotSeries가 아닌 'cur' 전용 래퍼인 여기서만 처리한다).
 // [버그 수정 - 합계 ≠ 신랑+와이프 불일치] 소유자별 값을 먼저 바닥 처리한 뒤, 합계는 그 값들의 합으로 다시
@@ -577,7 +582,7 @@ function renderMultiSeriesLineChart(chartKey, canvasId, msgElId, series, emptyMe
         legend: { display: true, position: 'top', labels: { color: textColor, boxWidth: 10, font: { size: 10 }, padding: 10 } },
         tooltip: {
           filter: (item) => item.parsed.y !== null, // 기록 없는 날은 툴팁에도 금액을 만들어 보여주지 않는다
-          callbacks: { label: (c) => ` ${c.dataset.label}: ${valueLabelFn(c.parsed.y)}` }
+          callbacks: { label: (c) => ` ${c.dataset.label}: ${valueLabelFn(c.parsed.y, c)}` }
         }
       },
       scales: {
@@ -751,40 +756,99 @@ document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () =>
 /* ---- 20-1. 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) ---- */
 let totalValuePopupDays = 180; // 30 | 90 | 180 | 365
 
-function renderTotalValueChart(series) {
-  const emptyMessage = '아직 기록된 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
-  renderMultiSeriesLineChart('totalValue', 'totalValueChart', 'totalValueChartMsg', series, emptyMessage, (v) => fmtKRW(v));
+// [D-1 Daily Valuation] 점마다의 상태를 사용자 말로 바꾼다 - 내부 상태명은 화면에 쓰지 않는다. 확정과 휴장일 직전 종가 유지는 표시하지 않는다.
+const DV_FLAG_WORDS = Object.freeze({ provisional: '잠정', estimated: '추정 포함', maintained: '마지막 기록값 포함' });
+function dvFlagWords(flags) {
+  return (flags || []).map((f) => DV_FLAG_WORDS[f]).filter(Boolean).join(' · ');
 }
 
-// 차트 하단 요약 - 기간 안 마지막 기록일의 평가금액과, 첫 기록일 대비 증감을 합계/소유자별로 보여준다.
-// [P0 D3] 시작값·마지막값은 "기록된 날" 기준이다. 예전엔 기간 첫날에 기록이 없으면 0원을 시작값으로 써서
-// 증감이 총자산 전체만큼 부풀려졌다. 기록이 하나도 없으면 "데이터 없음".
-function renderTotalValueSummary(series) {
+// dv가 참이면 Daily Valuation 행이다 - 툴팁 금액 뒤에 그 점의 상태를 글자로 붙인다(색만으로 구분하지 않는다).
+// 스냅샷 행과 Daily Valuation 행 모두 null은 선을 끊고(spanGaps false) 0은 0으로 그린다.
+function renderTotalValueChart(series, dv) {
+  const emptyMessage = dv
+    ? '계산할 수 있는 날이 아직 없습니다. 거래내역·시세·앱 기록이 모두 있는 날부터 표시됩니다.'
+    : '아직 기록된 평가금액 데이터가 없습니다. 앱을 열 때마다 자동으로 쌓입니다.';
+  const labelFn = (v, ctx) => {
+    if (!dv || !ctx) return fmtKRW(v);
+    const row = series[ctx.dataIndex];
+    const flags = !row ? [] : (ctx.dataset.label === '합계' ? row.flags : ((row.ownerFlags || {})[ctx.dataset.label] || []));
+    const words = dvFlagWords(flags);
+    return words ? `${fmtKRW(v)} (${words})` : fmtKRW(v);
+  };
+  renderMultiSeriesLineChart('totalValue', 'totalValueChart', 'totalValueChartMsg', series, emptyMessage, labelFn);
+}
+
+// [D-1 Daily Valuation] 요약 아래 안내 - 해당하는 것만 짧게. 내부 상태명·사유 코드는 쓰지 않는다.
+const DV_PERMANENT_REASONS = Object.freeze(['manualMarketAsset', 'tickerlessMarketAsset', 'noLedger', 'ledgerMismatch', 'usdCashMixed']);
+function dvSummaryNotes(series, info) {
+  const flags = new Set();
+  const reasons = new Set();
+  let hasGap = false;
+  series.forEach((row) => {
+    (row.flags || []).forEach((f) => flags.add(f));
+    Object.values(row.ownerFlags || {}).forEach((list) => list.forEach((f) => flags.add(f)));
+    (row.reasons || []).forEach((r) => reasons.add(r));
+    if (row.total === null || Object.values(row.owners || {}).some((v) => v === null)) hasGap = true;
+  });
+  const notes = ['과거 날짜는 거래내역과 각 시장의 종가·환율로 계산합니다.'];
+  if (flags.has('provisional')) notes.push('오늘 값은 현재 정규장 시세를 반영한 잠정값이며, 종가가 확인되면 확정됩니다.');
+  if (flags.has('estimated')) notes.push('시세를 받지 못한 날은 직전 확정값을 기준으로 추정합니다.');
+  if (flags.has('maintained')) notes.push('현금·부동산·채권은 앱에 마지막으로 기록된 값을 이어서 사용합니다.');
+  if (info && info.hasLedger) notes.push('거래내역과 현금 잔액은 자동으로 연결되지 않으므로, 과거 날짜의 총자산은 실제 당시 잔액과 차이가 날 수 있습니다.');
+  if (reasons.has('corporateActionUnverified')) notes.push('분할 또는 병합 이력을 안전하게 반영할 수 없어 해당 이전 날짜의 평가값을 표시하지 않습니다.');
+  if (DV_PERMANENT_REASONS.some((r) => reasons.has(r))) notes.push('거래내역으로 과거 수량을 확인할 수 없는 자산이 있어, 그 자산을 가진 소유자와 합계는 표시하지 않습니다.');
+  if (hasGap) notes.push('계산할 수 없는 날은 표시하지 않습니다.');
+  return notes;
+}
+
+// 차트 하단 요약 - 선마다(소유자별 · 합계) 기간 안 값이 있는 마지막 날의 금액과, 값이 있는 첫날 대비 증감을 보여준다.
+// [P0 D3] 스냅샷 행이면 "기록된 날"이 기준이다. 예전엔 기간 첫날에 기록이 없으면 0원을 시작값으로 써서
+// 증감이 총자산 전체만큼 부풀려졌다. 값이 하나도 없으면 "데이터 없음".
+// [D-1 Daily Valuation] dvInfo가 있으면 Daily Valuation 행이다 - 계산할 수 없는 날(null)은 시작·끝 값으로 쓰지 않고,
+// 소유자 선과 합계 선은 값이 있는 날이 서로 다를 수 있어(U-B) 선마다 따로 찾는다. 스냅샷 행은 기록된 날에 모든 선의
+// 값이 있으므로 예전과 결과가 같다.
+function renderTotalValueSummary(series, dvInfo) {
   const container = document.getElementById('totalValueList');
   if (series.length === 0) { container.innerHTML = ''; return; }
 
   const periodBtn = document.querySelector('#totalValueModal .total-value-period-btn.active');
   const periodLabel = periodBtn ? periodBtn.textContent.trim() : '';
-  const recorded = series.filter((s) => s.recorded);
-  if (recorded.length === 0) {
+  const notesHtml = dvInfo
+    ? `<div class="mt-2 space-y-1">${dvSummaryNotes(series, dvInfo).map((n) => `<p class="text-sm text-slate-400 break-keep">${escapeHtml(n)}</p>`).join('')}</div>`
+    : '';
+  const owners = getDailyPnlOwnerList();
+  const edges = (amounts) => {
+    const idx = [];
+    amounts.forEach((v, i) => { if (v !== null && v !== undefined) idx.push(i); });
+    return idx.length ? { first: idx[0], last: idx[idx.length - 1] } : null;
+  };
+  const lines = owners.map((o) => {
+    const amounts = series.map((s) => seriesAmountForOwner(s, o));
+    return { label: o, amounts, edge: edges(amounts) };
+  });
+  const totalAmounts = series.map((s) => seriesAmountForOwner(s, 'all'));
+  lines.push({ label: '합계', amounts: totalAmounts, edge: edges(totalAmounts), emphasize: true });
+  if (lines.every((l) => !l.edge)) {
     container.innerHTML = `
       <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준</p>
-      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>`;
+      <p class="text-sm text-slate-500 dark:text-slate-400">데이터 없음</p>${notesHtml}`;
     return;
   }
 
-  const owners = getDailyPnlOwnerList();
-  const first = recorded[0];
-  const last = recorded[recorded.length - 1];
-
-  const rows = owners.map((o) => {
-    const startAmt = seriesAmountForOwner(first, o);
-    const endAmt = seriesAmountForOwner(last, o);
-    return { label: o, current: endAmt, diff: endAmt - startAmt };
+  // 합계가 있는 날이 있으면 모든 선을 합계와 같은 첫날·마지막날로 비교한다 - 소유자 증감의 합이 합계 증감과 같아야
+  // 읽는 사람이 헷갈리지 않는다(U-B상 합계가 있는 날은 모든 소유자 값도 있다). 합계가 한 번도 없으면 선마다 따로 찾는다.
+  const totalEdge = lines[lines.length - 1].edge;
+  const basisEdge = totalEdge || lines.find((l) => l.edge).edge;
+  const firstLabel = dvInfo ? '기간 내 첫 표시일 대비 증감' : '기간 내 첫 기록일 대비 증감';
+  const basis = basisEdge.first === 0 ? '기간 시작 대비 증감' : firstLabel;
+  const rows = lines.map((l) => {
+    const edge = totalEdge || l.edge;
+    const start = edge ? l.amounts[edge.first] : null;
+    const end = edge ? l.amounts[edge.last] : null;
+    if (start === null || start === undefined || end === null || end === undefined) return { label: l.label, current: null, diff: null, emphasize: l.emphasize };
+    return { label: l.label, current: end, diff: end - start, emphasize: l.emphasize };
   });
-  rows.push({ label: '합계', current: last.total, diff: last.total - first.total, emphasize: true });
-  const basis = first.date === series[0].date ? '기간 시작 대비 증감' : '기간 내 첫 기록일 대비 증감';
-  const gapNote = recorded.length < series.length ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
+  const gapNote = !dvInfo && series.some((s) => !s.recorded) ? `<p class="text-sm text-slate-400 mb-2">${escapeHtml(HISTORY_GAP_NOTE)}</p>` : '';
 
   container.innerHTML = `
     <p class="text-sm text-slate-400 mb-2">최근 ${escapeHtml(periodLabel)} 기준 (${basis})</p>
@@ -793,18 +857,42 @@ function renderTotalValueSummary(series) {
       ${rows.map((r) => `
         <div class="flex items-center justify-between text-sm ${r.emphasize ? 'pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 font-semibold' : ''}">
           <span class="text-slate-500 dark:text-slate-400 truncate">${escapeHtml(r.label)}</span>
-          <span class="text-right shrink-0 whitespace-nowrap">
+          ${r.current === null
+            ? '<span class="text-right text-slate-400">표시할 값 없음</span>'
+            : `<span class="text-right shrink-0 whitespace-nowrap">
             <span class="font-medium">${fmtKRW(r.current)}</span>
             <span class="ml-1.5 text-sm ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span>
-          </span>
+          </span>`}
         </div>`).join('')}
-    </div>`;
+    </div>${notesHtml}`;
 }
 
-function updateTotalValueModal() {
-  const series = buildTotalValueSeries(totalValuePopupDays);
-  renderTotalValueChart(series);
-  renderTotalValueSummary(series);
+// [D-1 Daily Valuation] 팝업은 원장 기반 Daily Valuation을 그린다. 시세 일봉을 받아야 해서 비동기이며, 기간을 빠르게
+// 바꾸면 마지막 요청 결과만 그린다. silent(시세 갱신 뒤 재계산)면 불러오는 중 안내 없이 기존 그래프를 유지한 채 바꾼다.
+let totalValueDvSeq = 0;
+function updateTotalValueModal(opts) {
+  const seq = ++totalValueDvSeq;
+  const modalEl = document.getElementById('totalValueModal');
+  if (!(opts && opts.silent)) {
+    if (charts.totalValue) { charts.totalValue.destroy(); charts.totalValue = null; }
+    document.getElementById('totalValueChart').classList.add('hidden');
+    const msgEl = document.getElementById('totalValueChartMsg');
+    msgEl.textContent = '시세 기록을 불러오는 중...';
+    msgEl.classList.remove('hidden');
+    document.getElementById('totalValueList').innerHTML = '';
+  }
+  return loadDailyValuationRows(totalValuePopupDays).then((result) => {
+    if (seq !== totalValueDvSeq || modalEl.classList.contains('hidden')) return null;
+    renderTotalValueChart(result.rows, true);
+    renderTotalValueSummary(result.rows, result);
+    return result;
+  }).catch((err) => {
+    console.warn('[총자산 추이] 계산 실패:', err);
+    if (seq !== totalValueDvSeq || modalEl.classList.contains('hidden')) return null;
+    renderMultiSeriesLineChart('totalValue', 'totalValueChart', 'totalValueChartMsg', [], '시세 기록을 불러오지 못했습니다. 잠시 후 다시 열어 보세요.', (v) => fmtKRW(v));
+    document.getElementById('totalValueList').innerHTML = '';
+    return null;
+  });
 }
 
 document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((btn) => {
@@ -820,7 +908,7 @@ function openTotalValueModal() {
   document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvDays) === 180));
   document.getElementById('totalValueModal').classList.remove('hidden');
   pushModalHistoryState();
-  updateTotalValueModal();
+  return updateTotalValueModal();
 }
 function closeTotalValueModal(viaBackButton) {
   document.getElementById('totalValueModal').classList.add('hidden');

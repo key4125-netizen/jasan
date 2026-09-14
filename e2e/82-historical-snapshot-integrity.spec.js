@@ -232,13 +232,16 @@ test('T4. [P0 D3] 기록이 없는 날은 시계열·차트에서 null(공백)�
     const tv = buildTotalValueSeries(30);
     const dp = buildDailyPnlSeries(30);
 
-    openTotalValueModal();
-    totalValuePopupDays = 30; updateTotalValueModal();
+    // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
+    // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
+    const tvModal = doc.getElementById('totalValueModal');
+    tvModal.classList.remove('hidden');
+    renderTotalValueChart(tv);
     const lc = win.Chart.getChart(doc.getElementById('totalValueChart'));
     const li = lc.data.labels.map((l, i) => i).filter((i) => gapLabels.includes(lc.data.labels[i]));
     const lineGapValues = lc.data.datasets.map((ds) => li.map((i) => ds.data[i]));
     const lineSpanGaps = lc.options.spanGaps;
-    closeTotalValueModal();
+    tvModal.classList.add('hidden');
 
     openDailyPnlModal();
     dailyPnlPopupDays = 30; updateDailyPnlModal();
@@ -283,11 +286,14 @@ test('T5. [P0 D3] 스냅샷이 있고 값이 0인 날은 0이다 - 기록된 0�
     const bc = win.Chart.getChart(doc.getElementById('dailyPnlChart'));
     const bar = bc.data.datasets[0].data[bc.data.labels.indexOf(lbl)];
     closeDailyPnlModal();
-    openTotalValueModal();
-    totalValuePopupDays = 30; updateTotalValueModal();
+    // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
+    // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
+    const tvModal = doc.getElementById('totalValueModal');
+    tvModal.classList.remove('hidden');
+    renderTotalValueChart(buildTotalValueSeries(30));
     const lc = win.Chart.getChart(doc.getElementById('totalValueChart'));
     const line = lc.data.datasets[0].data[lc.data.labels.indexOf(lbl)];
-    closeTotalValueModal();
+    tvModal.classList.add('hidden');
     return { tv: [tvRow.recorded, tvRow.total], dp: [dpRow.recorded, dpRow.total], bar, line };
   });
   expect(r.tv).toEqual([true, 0]);
@@ -511,11 +517,15 @@ test('R0-2. [P0-5] D1 기록 1억 · D2 기록 0 · D3 기록 없음 · D4 기�
     state.dailySnapshots[dk(1)] = mk(200000000, 2000);
     const tv = buildTotalValueSeries(5).slice(0, 4).map((x) => x.total);
     const dp = buildDailyPnlSeries(5).slice(0, 4).map((x) => x.total);
-    openTotalValueModal(); totalValuePopupDays = 5; updateTotalValueModal();
+    // [D-1 Daily Valuation] 총자산 추이 팝업은 이제 원장 기반 Daily Valuation을 그린다(e2e/87에서 검증). 여기서는 스냅샷(기록)
+    // 시리즈를 같은 렌더러로 직접 그려, 기록 없는 날이 null로 끊기고 기록된 0은 0으로 그려지는 성질을 계속 고정한다.
+    const tvModal = doc.getElementById('totalValueModal');
+    tvModal.classList.remove('hidden');
+    renderTotalValueChart(buildTotalValueSeries(5));
     const lc = win.Chart.getChart(doc.getElementById('totalValueChart'));
     const lineTotal = lc.data.datasets[0].data.slice(0, 4);
     const lineOwner = lc.data.datasets[1].data.slice(0, 4);
-    closeTotalValueModal();
+    tvModal.classList.add('hidden');
     openDailyPnlModal(); dailyPnlPopupDays = 5; updateDailyPnlModal();
     const bar = win.Chart.getChart(doc.getElementById('dailyPnlChart')).data.datasets[0].data.slice(0, 4);
     closeDailyPnlModal();

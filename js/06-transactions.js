@@ -51,9 +51,11 @@ function assetMatchesLedgerIdentity(asset, ledger) {
   return !String(asset.ticker ?? '').trim() && asset.name === ledger.name && asset.currency === ledger.currency;
 }
 
-function computePositionsAndRealizedPnL() {
+// [D-1 Daily Valuation · A2] 거래 배열을 넘길 수 있게 인자를 하나 받는다. 넘기지 않으면 예전과 똑같이 state.transactions를
+// 쓴다(기존 호출부는 전부 인자가 없다). Daily Valuation은 "D일 이하 거래"만 담은 배열을 넘겨 같은 규칙으로 D일 보유를 구한다.
+function computePositionsAndRealizedPnL(txs = state.transactions) {
   const positions = {}; // key(transactionIdentityKey) -> { owner, accountType, ticker, name, currency, quantity, avgPrice, totalCost, avgRate, totalRateWeighted, realizedPnL }
-  const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
   const annotated = sorted.map((tx) => {
     const key = transactionIdentityKey(tx);
     if (!positions[key]) positions[key] = { owner: tx.owner, accountType: tx.accountType, ticker: tx.ticker, name: tx.name, currency: tx.currency, quantity: 0, avgPrice: 0, totalCost: 0, avgRate: 1, totalRateWeighted: 0, realizedPnL: 0 };

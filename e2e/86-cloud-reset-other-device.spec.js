@@ -251,7 +251,9 @@ test('NS-1. 신규 시작 전체 절차 - 초기화를 빠뜨린 기기가 동�
     await d.page.reload();
     await settle(d.page);
     const s = await d.page.locator('body').evaluate((el) => ({ assets: state.assets.length, enabled: syncState.enabled, version: el.ownerDocument.getElementById('appVersionLabel').textContent }));
-    expect(s).toEqual({ assets: 0, enabled: false, version: 'v240' });
+    // 원격 초기화 감지 코드가 들어간 v240 이상 앱을 로딩했는지 본다(특정 버전 문자열로 고정하면 다음 릴리스마다 깨진다).
+    expect({ assets: s.assets, enabled: s.enabled }).toEqual({ assets: 0, enabled: false });
+    expect(Number((s.version.match(/^v(\d+)$/) || [])[1])).toBeGreaterThanOrEqual(240);
   }
   // OLD1: 기존 암호 입력 → 방향 선택 전 자동 유입 없음
   await OLD1.page.locator('#syncSettingsBtn').click();
