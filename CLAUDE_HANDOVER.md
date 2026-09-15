@@ -32,6 +32,23 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-15) — 🔄 **v243 P1-1 동기화 차이 확인** (v242 → **v243**)
+
+**v243 (commit `ce40c06414c725b60cc050ec59e11ebee4a18d75`, production 배포 완료 · Pages run `34912910563` success · 산출물 28개 해시 일치 · 민감 경로 22개 404 · production smoke 8뷰포트 PASS: v243 · SW `smart-asset-manager-v243` 활성 · js/25가 js/12보다 먼저 로드 · 차이 없음 자동 동기화 · 차이 있음 보류 화면(헤더 "서버 동기화 확인 필요" · 수량 양쪽 값 · 클라우드에만 있는 거래 · 버튼/상세 보기 44px · 14px · 잘림/가로 넘침 0) · 취소 시 이 기기 무변경 · 보류 중 업로드 0 · malformed 차단 · pageerror 0 · 실제 Worker 도달 0(메모리 가짜 클라우드))**. 체크리스트 **§30**에 전체 기록이 있다.
+
+- 자동 동기화(부팅 pull · 10초 pull · 편집 뒤 push 선병합)가 받은 클라우드 데이터가 이 기기와 **의미 있게 다르면 병합 · 업로드하지 않고** 차이를 보여 준 뒤 [클라우드 데이터 받기](기존 fullAdopt) / [이 기기 데이터 올리기](기존 localWins) / [취소]를 고르게 했다. 차이가 없으면 예전 그대로 자동 동기화.
+- 비교: 자산 · 거래 id별 사용자 필드(받는 쪽 정규화와 같은 규칙) · 목표비중 · 미래예측. 제외: version · updatedAt · createdAt · 순서 · 현재가 · regularMarketPrice · 환율 · 일간변동률 · 합집합 3종.
+- **PM 결정(2026-09-15)**: [받기]는 목표비중 · 미래예측 설정도 클라우드 값으로 맞춘다(`adoptSettings`). "더 최근 쪽 유지"로는 새로 연결한 기기에서 설정 차이가 끝나지 않아 보류가 반복됐다.
+- ⚠️ **정책상 결과(PM 요구 T02/T03)**: 한쪽 기기의 자산 · 거래 추가/수정/삭제는 다른 기기에서 다음 동기화 때 확인 화면으로 뜬다. 사용자 데이터의 자동 병합은 더 이상 없다. 보류 중에는 그 기기 편집도 업로드되지 않는다. 보류 상태는 메모리(새 localStorage 키 없음) — 재실행 시 다시 비교해 보여 준다.
+- 확인하는 사이 차이가 달라지면 반영하지 않고 새 차이로 다시 보여 준다(`expectSignature`). 상대 기기가 시세 · 일별 기록만 올려 버전만 바뀐 경우는 그대로 진행.
+- malformed payload(복호화 성공 · assets/transactions 배열 아님 · id 없음)는 빈 목록으로 보지 않고 동기화를 중단한다.
+- 코드: 신규 js/25-sync-diff.js(순수 비교) · js/12(반영 직전 검사 · 보류 · 확인 화면) · index.html(방향 선택 박스 확장 · 모달 스크롤 · v243) · sw.js v243. **무변경**: mergeCollectionById · buildSyncBlob · stampPayload · 암호화 · Worker API · Cloud schema · localStorage 키.
+- 테스트: 신규 test/sync-diff.test.js 12 · e2e/89 16. 기대값 변경(옛 자동 병합을 전제한 것만): e2e/78 T-03 · T-06~T-11 · T-15 · T-16/17 · T-19~25 · T-27, e2e/85 RR-3~5. 게이트 Unit 324 · E2E 863 · Golden 122 · ESLint 0 · Data Guard PASS · Release Guard PASS.
+- 백로그 유지(구현 금지): P1-2 자동 충돌 관리 고도화 · field-level/3-way merge · device registry · 메인기기/읽기 전용 정책 · conflict history.
+- 같은 날 READ-ONLY 감사(코드 무변경): v242 D-3 maintained — `dvMaintainedAt`가 최신 스냅샷 날짜 하나만 보고 카테고리 키가 없으면 0으로 계산(v241 PM 지시 §7 · §21 "key 없음 = 0 복사 금지"와 불일치). 9/13 신랑 −102,000,000원 급감이 이 경로로 재현된다. PM 결정 대기 — 결정 전 수정 금지.
+
+---
+
 ## 최근 세션 요약 (2026-09-14 저녁) — 📊 **v242 Daily Valuation 통합** (v241 → **v242**)
 
 **v242 (commit `6a3e6d6d55ca8c9ae6e1a756c3bc49f62ce257a6`, production 배포 완료 · Pages run `34843844850` success · 산출물 27개 해시 일치 · 민감 경로 25개 404 · production smoke 8뷰포트 PASS: v242 · SW `smart-asset-manager-v242` 활성 · 두 팝업 DV 값 합성 fixture와 일치 · 기간 버튼 당월 기본 · 44px · 부팅 시 DV 요청 0 · localStorage/스냅샷 불변 · KPI 산식 일치 · Cloud 쓰기 0 · pageerror 0)**. 체크리스트 **§29**에 전체 기록이 있다.
