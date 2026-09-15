@@ -41,7 +41,13 @@ async function buildMonteCarloInputFromState(config) {
       seenReturnIssues.add('missing|' + label);
       safetyIssues.push(assessReturnAssumptionMissing(label));
     }
-    const autoMatched = rateDetail.subject && !['override', 'customKey', 'customKeyword'].includes(rateDetail.source);
+    // [v246 · D-4] Instrument Master 충돌은 가정 없음 여부와 따로 알린다(자동 판별 결과가 UNRESOLVED여도 둘 다 보인다).
+    if (rateDetail.instrumentConflict && !seenReturnIssues.has('review|' + label)) {
+      seenReturnIssues.add('review|' + label);
+      safetyIssues.push(assessReturnAssumptionNeedsReview(label, describeInstrumentReturnKeyConflict(rateDetail.instrumentConflictKeys)));
+    }
+    // [v246] 종목 기준(instrument)은 사용자가 정한 확정 기준이다 - 자동 연결 확인 필요 대상이 아니다.
+    const autoMatched = rateDetail.subject && !['override', 'instrument', 'customKey', 'customKeyword'].includes(rateDetail.source);
     if (autoMatched && !rateDetail.assumptionMissing && !seenReturnIssues.has('review|' + label)) {
       const status = assessReturnAssumptionStatus(rateDetail.subject);
       if (status.status === RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW) {

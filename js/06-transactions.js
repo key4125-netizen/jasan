@@ -708,7 +708,7 @@ document.getElementById('tx_name').addEventListener('click', () => {
 function populateRateMatchOverrideOptions(currentValue) {
   const select = document.getElementById('tx_rateMatchOverride');
   const rows = getScenarioRateDisplayRows().slice().sort((a, b) => a.label.localeCompare(b.label, 'ko'));
-  const options = ['<option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>'];
+  const options = ['<option value="">자동판별 (비워두면 종목 기준 → 시스템 자동 매칭 순으로 적용)</option>'];
   if (currentValue && !rows.some((r) => r.key === currentValue)) {
     options.push(`<option value="${escapeHtml(currentValue)}">⚠ 현재값: ${escapeHtml(currentValue)} (등록되지 않은 키)</option>`);
   }
@@ -742,6 +742,26 @@ function findAssetForTxForm() {
   return state.assets.find((a) => assetMatchesLedgerIdentity(a, { owner, accountType, ticker, name, currency })) || null;
 }
 
+// [v246 · 포지션 기준정보] 신규 거래가 새 자산이 될 때만 종목 포지션(tickerRoles)을 역할 칸에 미리 채운다 - makeAsset의 역할
+// 폴백과 같은 값이라 저장 결과는 같다. 같은 소유자 · 계좌 · 종목의 자산이 이미 있으면 채우지 않고(그 자산의 역할에 새로 쓰지 않는다),
+// 사용자가 역할 칸을 직접 고른 뒤에는 건드리지 않는다.
+function prefillTxRoleFromRegistry() {
+  const roleSelect = document.getElementById('tx_role');
+  if (document.getElementById('tx_id').value || roleSelect.dataset.userTouched === '1') return;
+  const ticker = document.getElementById('tx_ticker').value.trim();
+  const name = document.getElementById('tx_name').value.trim();
+  const role = ((ticker || name) && !findAssetForTxForm()) ? (getTickerRole(ticker, name) || '') : '';
+  if (!role && roleSelect.dataset.autofilled !== '1') return;
+  roleSelect.innerHTML = assetRoleSelectOptionsHtml(role, '미지정');
+  roleSelect.value = role;
+  if (role) roleSelect.dataset.autofilled = '1';
+  else delete roleSelect.dataset.autofilled;
+}
+document.getElementById('tx_role').addEventListener('change', (e) => {
+  e.target.dataset.userTouched = '1';
+  delete e.target.dataset.autofilled;
+});
+
 // opts.allowPrefill: 기존 자산의 지정값을 빈 선택칸에 자동으로 채워도 되는 시점인지. 종목/소유자/
 // 계좌가 정해지는 순간에만 true다 - 선택칸 자체를 사용자가 조작했을 때(change)는 절대 채우지 않는다.
 // 그렇지 않으면 사용자가 값을 비우는 즉시 다시 채워져 "해제"가 불가능해진다.
@@ -757,12 +777,15 @@ function refreshTxRateMatchRecommendation(opts) {
   txRateMatchRecommendation = null;
   applyBtn.classList.add('hidden');
 
+  prefillTxRoleFromRegistry();
   if (!ticker && !name) { help.classList.add('hidden'); return; }
   help.classList.remove('hidden');
 
   // [기존 자산 보호] 이미 사용자가 정해둔 값이 있으면 추천하지 않는다 - 거래를 하나 더 넣었다고
   // 해서 그 선택을 다시 흔들지 않는다(Phase 28-F override 보호 계약과 같은 방향).
   const existing = findAssetForTxForm();
+  // [v246 · PMD-12] 종목 기준(Instrument Return Key Master) - 아래 안내 문구가 "지정을 비우면 어디로 돌아가는지"를 정확히 말하게 먼저 찾는다.
+  const instrument = findInstrumentReturnKey(ticker, name);
   if (existing && existing.rateMatchOverride) {
     // 기존 값을 화면에도 채워 보여준다(빈칸이었을 때만 - 사용자가 이번에 일부러 다른 걸 골랐다면
     // 그 선택을 존중한다). 이 칸이 빈 채로 저장돼 기존 값이 조용히 지워지는 사고를 막는 장치다.
@@ -774,11 +797,26 @@ function refreshTxRateMatchRecommendation(opts) {
     } else if (!select.value) {
       // 수정 모드에서 비운 경우만 실제로 해제된다(신규 거래의 빈칸은 기존 값을 건드리지 않는다).
       text.textContent = isEditMode
-        ? `저장하면 기존 지정(${existingLabel})이 해제되고 자동판별로 돌아갑니다.`
+        ? `저장하면 기존 지정(${existingLabel})이 해제되고 ${(instrument && !instrument.conflict) ? `종목 기준(${getRateMatchKeyDisplayLabel(instrument.key)})` : '자동판별'}으로 돌아갑니다.`
         : `이미 지정해 둔 기준이 있어 그대로 유지됩니다: ${existingLabel}`;
     } else {
       text.textContent = `저장하면 이 종목의 기준이 "${getRateMatchKeyDisplayLabel(select.value)}"(으)로 바뀝니다.`;
     }
+    return;
+  }
+
+  // [v246 · D-10] 종목 기준(Instrument Return Key Master)이 있으면 선택칸은 비워 둔 채 안내만 한다 - 빈칸이 곧 "종목 기준 사용"이다.
+  // 선택칸에 그 키를 채우면 저장 핸들러가 이 자산의 사용자 지정(rateMatchOverride)으로 저장하므로 절대 채우지 않는다.
+  // 이 분기는 추천보다 먼저 본다(종목 기준은 추천 대상 source가 아니라 뒤에 두면 "추천할 기준을 찾지 못했어요"가 뜬다).
+  if (instrument && !instrument.conflict) {
+    const instrumentLabel = getRateMatchKeyDisplayLabel(instrument.key);
+    text.textContent = !select.value
+      ? `종목 기준: ${instrumentLabel} 적용 - 비워 두면 이 기준으로 계산합니다. 다른 기준을 고르면 이 자산에만 사용자 지정으로 저장됩니다.`
+      : `저장하면 이 자산에만 "${getRateMatchKeyDisplayLabel(select.value)}" 기준이 사용자 지정으로 저장됩니다(종목 기준 ${instrumentLabel}은 바뀌지 않고, 이 자산은 이후 종목 기준 변경을 따르지 않습니다).`;
+    return;
+  }
+  if (instrument && instrument.conflict && !select.value) {
+    text.textContent = describeInstrumentReturnKeyConflict(instrument.keys);
     return;
   }
 
@@ -826,6 +864,8 @@ document.getElementById('tx_accountType').addEventListener('blur', () => refresh
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
+  delete document.getElementById('tx_role').dataset.userTouched; // [v246] 이전 모달 세션의 역할 칸 표식 정리
+  delete document.getElementById('tx_role').dataset.autofilled;
   document.getElementById('tx_id').value = '';
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
@@ -958,6 +998,10 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   } else {
     state.transactions.push(tx);
   }
+  // [v246] 역할 칸이 종목 포지션으로 미리 채워진 값이고 이 거래의 자산이 저장 전부터 있었다면, 그 자산의 역할은 건드리지 않는다
+  // (미리 채움은 새 자산일 때만의 도움말이다 - 기존 자산에 새 쓰기를 만들지 않는다).
+  const roleWasAutofilled = document.getElementById('tx_role').dataset.autofilled === '1';
+  const assetExistedBeforeSave = state.assets.some((a) => assetMatchesLedgerIdentity(a, tx));
 
   persistTransactions();
   syncAssetsFromTransactions();
@@ -988,7 +1032,7 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   if (matchedAsset && (rateMatchRaw || isEditingExistingTx)) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
   // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 위와 같은 이유로 신규 거래의 빈칸은
   // 기존 역할을 지우지 않는다(수정 모드에서 비우면 기존처럼 미지정으로 되돌아간다).
-  const roleRaw = document.getElementById('tx_role').value.trim();
+  const roleRaw = (roleWasAutofilled && assetExistedBeforeSave) ? '' : document.getElementById('tx_role').value.trim();
   if (matchedAsset && (roleRaw || isEditingExistingTx)) matchedAsset.role = parseAssetRoleInput(roleRaw);
   if (matchedAsset && (matchedAsset.rateMatchOverride !== beforeRateMatch || matchedAsset.role !== beforeRole)) {
     matchedAsset.updatedAt = Date.now();

@@ -298,14 +298,27 @@ function resolveRateKeyFromAssetCharacter(assetLike) {
 // 결정됐는지"를 source로 함께 돌려준다는 점뿐이다 - 거래 입력의 대표매칭키 추천(js/06)이 "근거 있는
 // 매칭"과 "마지막 지역 폴백"을 구분해야 하는데, 그걸 위해 판별 로직을 복사해 두 번 관리하면 언젠가
 // 반드시 어긋난다. 그래서 판별은 여기 한 곳에만 두고 두 용도가 이 함수를 공유한다.
-//   source: 'override' | 'customKey' | 'customKeyword' | 'category' | 'presetTicker' | 'tickerAlias'
-//           | 'nameKeyword' | 'assetCharacter' | 'unresolved'   ([Phase 47-A] regionFallback 제거)
+//   source: 'override' | 'instrument' | 'customKey' | 'customKeyword' | 'category' | 'presetTicker' | 'tickerAlias'
+//           | 'nameKeyword' | 'assetCharacter' | 'unresolved'   ([Phase 47-A] regionFallback 제거 · [v246] instrument 추가)
+//   Master 충돌이면 source는 기존 단계 그대로이고 instrumentConflict: true · instrumentConflictKeys가 함께 붙는다.
 function resolveAssetGroupKeyDetail(asset, presetKey) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
   // 처리한다(못 알아보는 키는 지역 대표지수로 조용히 대체) - 여기서는 형식 검증을 하지 않는다.
   if (asset.rateMatchOverride) return { key: asset.rateMatchOverride, source: 'override' };
+  // [v246 · PMD-12] Instrument Return Key Master - 사용자 지정 다음, 기존 사전 매칭 · 자동 판별보다 먼저 본다.
+  // 연결된 키에 그 시나리오 수익률이 없어도 다른 기준으로 넘기지 않는다(D-5: 0% + 가정 없음 경고).
+  // 같은 종목에 서로 다른 키가 연결돼 있으면 채택하지 않고 아래 기존 순서로 계속 해석한 뒤 충돌 표식을 붙인다(D-4).
+  const instrument = findInstrumentReturnKey(asset.ticker, asset.name);
+  if (instrument && !instrument.conflict) return { key: instrument.key, source: 'instrument' };
+  if (instrument && instrument.conflict) {
+    return Object.assign(resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey), { instrumentConflict: true, instrumentConflictKeys: instrument.keys });
+  }
+  return resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey);
+}
+// resolveAssetGroupKeyDetail의 3단계 이후(기존 v245 순서 그대로) - Master가 없거나 충돌일 때만 온다.
+function resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey) {
   // [정확매칭·키워드매칭 - 카테고리 캐치올보다 우선, 요청 반영] 예전엔 findCustomRateKeyForAsset가
   // '주식형자산' 카테고리 안에서만 동작해, 채권/현금/부동산 카테고리 자산은 아무리 정확히 등록해도(혹은
   // 키워드가 걸려도) 항상 카테고리 캐치올(예: 현금=하드코딩 0%)로만 갔다 - 두 매칭을 카테고리 분기보다
@@ -403,12 +416,15 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
 // 모두 이 함수를 거친다(목표 항목은 resolveTargetRateDetail이 보유 자산을 찾아 이 함수에 넘긴다).
 function resolveAssetRateDetail(asset, presetKey) {
   const detail = resolveAssetGroupKeyDetail(asset, presetKey);
-  return {
+  const out = {
     key: detail.key,
     source: detail.source,
     rate: resolveProjectionRateForKey(detail.key, presetKey, asset.isDomestic === '해외'),
     assumptionMissing: isRateAssumptionMissingForKey(detail.key, presetKey)
   };
+  // [v246 · D-4] Master 충돌 표식은 가정 없음 여부와 따로 전달한다(Safety가 둘을 각각 알린다).
+  if (detail.instrumentConflict) Object.assign(out, { instrumentConflict: true, instrumentConflictKeys: detail.instrumentConflictKeys });
+  return out;
 }
 function getAssetProjectionRate(asset, presetKey) {
   return resolveAssetRateDetail(asset, presetKey).rate;
@@ -579,6 +595,56 @@ function findCustomRateKeyForAsset(ticker, name) {
   const nameKey = 'NAME:' + normalizeNameKey(name);
   if (name && customRates[nameKey]) return nameKey;
   return null;
+}
+
+/* -------------------------------------------------------------------------
+ * [v246 · PMD-12] Instrument Return Key Master - "이 종목은 이 Return Key를 따른다"는 종목 자체의 기준정보.
+ *    state.projection.instrumentReturnKeys: { [종목 식별자 원문]: returnKey }
+ *    식별자는 사용자가 적은 그대로 저장한다(티커, 티커가 없으면 'NAME:이름') - 비교할 때만 정규화한다(D-7).
+ *    소유자 · 계좌 · 보유 여부와 무관하게 적용되며, 자산에 사용자가 직접 지정한 대표매칭(rateMatchOverride)이
+ *    항상 먼저다. 다른 보유분의 대표매칭을 빌려 오는 것이 아니다(PMD-02 유지).
+ * ---------------------------------------------------------------------- */
+function getInstrumentReturnKeys() {
+  const map = state.projection && state.projection.instrumentReturnKeys;
+  return (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+}
+// 식별자 원문 → 비교용 값(buildCustomRateKey와 같은 규칙). 원문은 바꾸지 않는다. 알아볼 수 없으면 null.
+function instrumentIdentityOf(identifier) {
+  const raw = String(identifier ?? '').trim();
+  if (!raw) return null;
+  if (/^NAME:/i.test(raw)) {
+    const normalized = normalizeNameKey(raw.slice(5));
+    return normalized ? 'NAME:' + normalized : null;
+  }
+  return sanitizeTicker(raw).yahooTicker || null;
+}
+// 반환: { key, identifiers } | { conflict: true, keys, identifiers } | null
+// 같은 종목에 서로 다른 키가 연결돼 있으면 어느 쪽도 고르지 않는다(D-4) - '채권'/'BOND'처럼 표기만 다른 같은 기준은 충돌이 아니다.
+function findInstrumentReturnKey(ticker, name) {
+  const want = buildCustomRateKey(ticker, name);
+  if (!want) return null;
+  const map = getInstrumentReturnKeys();
+  const identifiers = [];
+  const keys = [];
+  Object.keys(map).forEach((id) => {
+    const value = String(map[id] ?? '').trim();
+    if (!value || instrumentIdentityOf(id) !== want) return;
+    identifiers.push(id);
+    const canonical = canonicalRateKey(value);
+    if (!keys.includes(canonical)) keys.push(canonical);
+  });
+  if (identifiers.length === 0) return null;
+  if (keys.length > 1) return { conflict: true, keys, identifiers };
+  return { key: String(map[identifiers[0]]).trim(), identifiers };
+}
+// 이 Return Key에 연결된 식별자 원문 목록(저장 순서 그대로).
+function getInstrumentIdentifiersForKey(key) {
+  const map = getInstrumentReturnKeys();
+  return Object.keys(map).filter((id) => String(map[id] ?? '').trim() === key);
+}
+function describeInstrumentReturnKeyConflict(keys) {
+  const labels = (keys || []).map((k) => getRateMatchKeyDisplayLabel(k === '채권' ? 'BOND' : k)).join(' · ');
+  return `같은 종목에 서로 다른 종목 기준(${labels})이 연결되어 있어 어느 쪽도 고르지 않고 자동 판별로 계산했습니다. 「수익률 관리」의 적용 종목을 한 기준에만 남겨 주세요.`;
 }
 
 /* -------------------------------------------------------------------------
@@ -1146,6 +1212,18 @@ function assessReturnAssumptionStatus(asset) {
   const isUserDefined = !!customEntry && (getUserOverriddenPresets(appliedKey).length > 0
     || (Array.isArray(customEntry.keywords) && customEntry.keywords.length > 0));
 
+  // [v246 · D-4] 같은 종목에 서로 다른 종목 기준이 연결돼 있으면 자동 판별로 계산 중이라는 사실과 함께 확인을 요청한다.
+  // 자동 판별로도 가정을 찾지 못했으면 0% 계산 중이라는 사실도 같은 문구에 담는다(상세 화면은 문구가 하나다).
+  if (detail.instrumentConflict) {
+    const missing = detail.source === 'unresolved' || isRateAssumptionMissingForKey(appliedKey, 'normal');
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW, instrumentConflict: true,
+      message: describeInstrumentReturnKeyConflict(detail.instrumentConflictKeys)
+        + (missing ? ' 자동 판별로도 적용할 가정을 찾지 못해 지금은 성장 없이(0%) 계산하고 있습니다.' : '')
+    };
+  }
+
   // [Phase 47-A] 가장 먼저 볼 것은 성격이 아니라 "이 자산에 실제로 적용된 가정이 있는가"다.
   // 예전엔 이 자리에서 "성격을 모르는데 지역 폴백으로 주식 기준이 붙어 있다"를 알렸는데, 그 폴백은
   // 이제 존재하지 않는다. 성격을 알아도(예: 금 ETF = 원자재) 그 성격에 맞는 기준이 앱에 없으면
@@ -1221,10 +1299,13 @@ function assessReturnAssumptionStatus(asset) {
  * ====================================================================== */
 // source(판별 단계) -> 사용자에게 보여줄 "적용 방식". 사용자가 직접 만든 근거인지, 앱이 스스로
 // 판단한 것인지만 구분한다 - 내부 단계 이름(presetTicker 등)을 그대로 노출하지 않는다.
+// [v246 · D-6] customKey/customKeyword는 계산 의미를 바꾸지 않고 표시만 "종목 기준"으로 구분한다.
+// 사용자 지정 여부(isUserSet)는 이 라벨 문자열이 아니라 아래 USER_SET_RATE_KEY_SOURCES(실제 source)로 판정한다.
 const RATE_KEY_SOURCE_LABELS = Object.freeze({
   override: '사용자 지정',        // 자산에 직접 지정한 대표매칭키
-  customKey: '사용자 지정',       // "수익률 관리"에 등록한 종목으로 매칭됨
-  customKeyword: '사용자 지정',   // "수익률 관리"에 등록한 키워드로 매칭됨
+  instrument: '종목 기준',        // [v246] 「수익률 관리」 적용 종목(Instrument Return Key Master)
+  customKey: '종목 기준',         // "수익률 관리"에 등록한 종목으로 매칭됨
+  customKeyword: '종목 기준',     // "수익률 관리"에 등록한 키워드로 매칭됨
   category: '자동 판별',
   presetTicker: '자동 판별',
   tickerAlias: '자동 판별',
@@ -1238,6 +1319,19 @@ const RATE_ASSUMPTION_DEFAULT_MESSAGES = Object.freeze({
   OK: '적합한 장기 수익률 가정을 사용하고 있습니다.',
   USER_DEFINED: '사용자가 지정한 수익률 기준을 사용하고 있습니다.'
 });
+// [v246 · D-6] 사용자 지정으로 보는 실제 source(라벨 문자열에 의존하지 않는다). instrument는 여기 없다.
+const USER_SET_RATE_KEY_SOURCES = Object.freeze(['override', 'customKey', 'customKeyword']);
+const INSTRUMENT_RATE_ASSUMPTION_MESSAGE = '「수익률 관리」에서 이 종목에 연결한 기준(종목 기준)을 사용하고 있습니다.';
+// [v246 · D-3] 엑셀 1시트 "수익률 기준 출처"(표시용 - 가져오기는 이 칸을 읽지 않는다).
+function describeReturnKeyProvenanceForExport(asset) {
+  const detail = resolveAssetGroupKeyDetail(asset);
+  let text;
+  if (detail.source === 'override') text = '사용자 지정';
+  else if (detail.source === 'unresolved') text = '미확정(0%)';
+  else if (RATE_KEY_SOURCE_LABELS[detail.source] === '종목 기준') text = `종목 기준(${detail.key})`;
+  else text = `자동 판별(${detail.key})`;
+  return detail.instrumentConflict ? `${text} · 종목 기준 충돌` : text;
+}
 
 // 반환: { keyLabel, appliedKey, sourceLabel, isUserSet, status, message, tone, resolved }
 //   resolved=false면 적용된 가정이 없다는 뜻이다(성장 0%로 계산 중).
@@ -1248,15 +1342,23 @@ function describeAppliedReturnAssumption(asset) {
   // [M3] 사용자가 「수익률 관리」에서 그 키의 숫자를 직접 넣어둔 경우도 "사용자 지정"이다.
   // 예전에는 키를 고른 경로(source)만 봤기 때문에, 원자재처럼 키가 카테고리에서 자동으로 붙는
   // 자산은 사용자가 값을 넣어도 "자동 판별"로 표시됐다 - 자기가 넣은 값인데 앱이 정한 것처럼 보였다.
-  const isUserSet = RATE_KEY_SOURCE_LABELS[detail.source] === '사용자 지정'
-    || assessed.status === RETURN_ASSUMPTION_STATUS.USER_DEFINED;
+  // [v246 · D-6] 라벨 문자열이 아니라 실제 source로 판정한다 - customKey/customKeyword는 예전과 같이 사용자 지정으로 보고,
+  // Instrument Master(instrument)는 사용자 지정(자산 단위)으로 보지 않는다.
+  const isInstrument = detail.source === 'instrument';
+  const isUserSet = USER_SET_RATE_KEY_SOURCES.includes(detail.source)
+    || (!isInstrument && assessed.status === RETURN_ASSUMPTION_STATUS.USER_DEFINED);
   // 문구는 assessed.message가 있으면 그것을 그대로 쓴다(UNRESOLVED/NEEDS_REVIEW - 더 구체적이다).
   // 비어 있을 때만 여기서 채우는데, 기준은 assessed.status가 아니라 "사용자가 지정한 것인가"다 -
   // status의 USER_DEFINED는 "customScenarioRates에 등록된 키"만 가리켜서, 사용자가 자산에
   // KOSDAQ 같은 시스템 키를 직접 지정한 경우를 놓친다(그때 status는 OK다). 그러면 화면에
   // "적용 방식: 사용자 지정"과 "적합한 가정을 사용 중"이 나란히 뜨는 앞뒤가 안 맞는 조합이 된다.
   const message = assessed.message
-    || (isUserSet ? RATE_ASSUMPTION_DEFAULT_MESSAGES.USER_DEFINED : RATE_ASSUMPTION_DEFAULT_MESSAGES.OK);
+    || (isUserSet ? RATE_ASSUMPTION_DEFAULT_MESSAGES.USER_DEFINED
+      : (isInstrument ? INSTRUMENT_RATE_ASSUMPTION_MESSAGE : RATE_ASSUMPTION_DEFAULT_MESSAGES.OK));
+  // 적용 방식 라벨: 자산에 직접 지정 → 사용자 지정, 종목 단위 기준 → 종목 기준, 그 외에는 예전 규칙.
+  const sourceLabel = detail.source === 'override' ? '사용자 지정'
+    : (RATE_KEY_SOURCE_LABELS[detail.source] === '종목 기준' ? '종목 기준'
+      : (isUserSet ? '사용자 지정' : (RATE_KEY_SOURCE_LABELS[detail.source] || null)));
   return {
     appliedKey: detail.key,
     // 사람이 읽는 이름은 "수익률 관리"가 쓰는 것과 같은 표를 그대로 쓴다(라벨을 새로 짓지 않는다).
@@ -1264,7 +1366,7 @@ function describeAppliedReturnAssumption(asset) {
     // [M3] isUserSet을 표시의 단일 기준으로 삼는다. 예전에는 라벨만 "키를 고른 경로"(source)에서
     // 따로 뽑아서, 사용자가 값을 직접 넣은 자산이 "적용 방식: 자동 판별 / 사용자가 지정한 값 사용 중"
     // 처럼 앞뒤가 안 맞게 보였다(47-F가 반대 방향으로 겪은 것과 같은 종류의 불일치다).
-    sourceLabel: isUserSet ? '사용자 지정' : (RATE_KEY_SOURCE_LABELS[detail.source] || null),
+    sourceLabel,
     isUserSet,
     status: assessed.status,
     message,
@@ -1274,7 +1376,7 @@ function describeAppliedReturnAssumption(asset) {
     // 위 message와 아래 UI의 기호가 먼저 구분한다.
     tone: (!resolved || assessed.status === RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW
       || assessed.status === RETURN_ASSUMPTION_STATUS.NO_SYSTEM_ASSUMPTION)
-      ? 'weak' : (isUserSet ? 'user' : 'ok'),
+      ? 'weak' : ((isUserSet || isInstrument) ? 'user' : 'ok'),
     resolved
   };
 }
@@ -1439,7 +1541,9 @@ function resolveTargetRateDetail(target, presetKey, region, scope) {
     const { subject, held, conflict } = resolveTargetRateSubject(target, region, scope);
     if (presetKey === undefined) {
       const choice = resolveAssetGroupKeyDetail(subject);
-      return { key: choice.key, source: choice.source, rate: undefined, assumptionMissing: undefined, subject, held, conflict };
+      const keyOnly = { key: choice.key, source: choice.source, rate: undefined, assumptionMissing: undefined, subject, held, conflict };
+      if (choice.instrumentConflict) Object.assign(keyOnly, { instrumentConflict: true, instrumentConflictKeys: choice.instrumentConflictKeys });
+      return keyOnly;
     }
     return Object.assign(resolveAssetRateDetail(subject, presetKey), { subject, held, conflict });
   }
@@ -1589,7 +1693,53 @@ function getScenarioRateDisplayRows() {
     rows.push({ key, label: findLabelForRateKey(key), custom: true, orphan: true });
     shownKeys.add(key);
   });
+  // [v246 · PMD-12] Instrument Return Key Master가 가리키는 키는 항상 목록에 둔다 - 팝업 초안 · 엑셀 2시트에서 빠지면 저장 · 내보내기
+  // 한 번에 그 연결이 조용히 사라진다(지금 포트폴리오에 그 종목이 없어도 연결은 남아 있어야 한다).
+  const instrumentKeys = getInstrumentReturnKeys();
+  Object.keys(instrumentKeys).forEach((id) => {
+    const key = String(instrumentKeys[id] ?? '').trim();
+    if (!key || key === UNRESOLVED_RATE_KEY || shownKeys.has(key)) return;
+    const baseRow = SCENARIO_RATE_BASE_ROWS.find((r) => r.key === key);
+    rows.push(baseRow || { key, label: findLabelForRateKey(key), custom: true, orphan: true });
+    shownKeys.add(key);
+  });
   return rows;
+}
+// [v246 · D-3] 엑셀 2시트 "적용 종목" 칸 이름(가져오기는 둘 다 인식한다).
+const INSTRUMENT_RETURN_KEY_COLUMN_NAMES = ['적용 종목', '적용 종목(종목코드, 쉼표로 구분)'];
+function parseInstrumentTokens(value) {
+  return String(value ?? '').split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
+}
+// [v246 · D-3 · D-4 · D-7] 엑셀 2시트의 적용 종목 칸으로 Master를 만든다(적용 종목 칸이 있는 파일에서만 호출).
+//   rows: [{ key, cell }] - 파일에 있는 키 행. 파일에 있는 키의 연결은 파일 내용으로 바꾸고(빈 칸 = 해제), 파일에 없는 키의 연결은 그대로 둔다.
+//   같은 종목이 서로 다른 기준에 적혀 있으면(파일 안 또는 남겨 둔 연결과) 반영하지 않고 기존 연결을 유지한다. 표기는 바꾸지 않는다.
+function mergeInstrumentReturnKeysFromImport(current, rows) {
+  const fileKeys = new Set(rows.map((r) => r.key));
+  const next = {};
+  Object.keys(current).forEach((id) => { if (!fileKeys.has(String(current[id] ?? '').trim())) next[id] = current[id]; });
+  const byIdentity = new Map();
+  const invalid = [];
+  rows.forEach((r) => parseInstrumentTokens(r.cell).forEach((token) => {
+    const identity = instrumentIdentityOf(token);
+    if (!identity) { invalid.push(token); return; }
+    if (!byIdentity.has(identity)) byIdentity.set(identity, []);
+    byIdentity.get(identity).push({ token, key: r.key });
+  }));
+  const conflicts = [];
+  byIdentity.forEach((list, identity) => {
+    const keys = new Set(list.map((x) => canonicalRateKey(x.key)));
+    Object.keys(next).forEach((id) => { if (instrumentIdentityOf(id) === identity) keys.add(canonicalRateKey(String(next[id] ?? '').trim())); });
+    if (keys.size > 1) {
+      conflicts.push(list[0].token);
+      Object.keys(current).forEach((id) => { if (instrumentIdentityOf(id) === identity) next[id] = current[id]; });
+      return;
+    }
+    // 같은 종목을 같은 기준에 여러 표기로 적었으면 처음 적은 표기 하나만 남긴다.
+    Object.keys(next).forEach((id) => { if (instrumentIdentityOf(id) === identity) delete next[id]; });
+    next[list[0].token] = list[0].key;
+  });
+  const stable = (m) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
+  return { next, changed: stable(next) !== stable(current), conflicts, invalid };
 }
 // BOND/KOSPI는 SCENARIO_RATE_PRESETS[x].tickers가 아니라 categories/indexRates에 있으므로 별도로 조회하고,
 // 그 외 모든 키는 사용자 정의 오버라이드를 먼저 확인한 뒤 프리셋 표 기본값으로 대체(fallback)한다.
@@ -2567,6 +2717,8 @@ function renderTaxAdvantagedPlanResults() {
  *    닫으면 초안이 버려진다.
  * ---------------------------------------------------------------------- */
 let scenarioRateManagerDraft = [];
+// [v246] 이번 팝업에서 사용자가 행 삭제로 지운 키 - 그 키의 적용 종목 연결도 저장 시 함께 해제한다.
+let scenarioRateManagerRemovedKeys = new Set();
 
 // 모달을 열 때 현재 유효 수익률(오버라이드가 있으면 그 값, 없으면 시스템 기본값)로 초안을 채운다.
 // [F-03] 시스템 기준 키인지 - 목록에 어떤 경로로 올라왔는지(row.custom)와 무관하게 키 자체로 판단한다. 예전엔 보유 ·
@@ -2607,13 +2759,17 @@ function buildScenarioRateManagerDraft() {
       touched: {},
       // [키워드 자동매칭 - 요청 반영] 종목명에 이 키워드가 있으면 카테고리/지역 폴백보다 우선해서 이
       // 키로 자동 매칭된다(getCustomKeywordRateKey 참고) - 등록 안 해도 그만이라 안 써도 기존과 동일.
-      keywords: (customRates[row.key] && Array.isArray(customRates[row.key].keywords)) ? customRates[row.key].keywords.slice() : []
+      keywords: (customRates[row.key] && Array.isArray(customRates[row.key].keywords)) ? customRates[row.key].keywords.slice() : [],
+      // [v246 · PMD-12] 이 기준에 연결된 종목(식별자 원문 그대로). instrumentsTouched는 이번에 사용자가 고친 행만 표시한다.
+      instruments: getInstrumentIdentifiersForKey(row.key),
+      instrumentsTouched: false
     };
   });
 }
 
 function openScenarioRateManagerModal() {
   scenarioRateManagerDraft = buildScenarioRateManagerDraft();
+  scenarioRateManagerRemovedKeys = new Set();
   const form = document.getElementById('scenarioRateAddNewForm');
   form.classList.add('hidden');
   form.innerHTML = '';
@@ -2751,6 +2907,9 @@ function renderScenarioRateManagerList() {
       <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
         placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
         class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+      <input type="text" value="${escapeHtml((row.instruments || []).join(', '))}" data-rate-idx="${idx}" data-rate-field="instruments"
+        placeholder="적용 종목(종목코드 또는 NAME:이름, 쉼표로 구분) - 예: 278530.KS"
+        class="scenario-rate-instrument-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
       <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[src.tone]} flex items-center gap-1">
         <span>${src.tone === 'user' ? '📝 ' : ''}장기 수익률 가정: ${escapeHtml(src.label)}</span>
         <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
@@ -2776,6 +2935,11 @@ document.getElementById('scenarioRateManagerList').addEventListener('input', (e)
     row[field] = e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     return;
   }
+  if (field === 'instruments') {
+    row.instruments = parseInstrumentTokens(e.target.value);
+    row.instrumentsTouched = true;
+    return;
+  }
   // [F-02] 사용자가 실제로 만진 칸만 저장 대상으로 표시한다. 칸을 비우면 0이 아니라 "미입력"이다.
   const raw = String(e.target.value ?? '').trim();
   row.touched = row.touched || {};
@@ -2786,7 +2950,8 @@ document.getElementById('scenarioRateManagerList').addEventListener('input', (e)
 document.getElementById('scenarioRateManagerList').addEventListener('click', (e) => {
   const removeBtn = e.target.closest('.scenario-rate-remove-btn');
   if (removeBtn) {
-    scenarioRateManagerDraft.splice(Number(removeBtn.dataset.rateIdx), 1);
+    const removed = scenarioRateManagerDraft.splice(Number(removeBtn.dataset.rateIdx), 1)[0];
+    if (removed) scenarioRateManagerRemovedKeys.add(removed.key);
     renderScenarioRateManagerList();
     return;
   }
@@ -2878,6 +3043,7 @@ document.getElementById('cmaRecommendationApplyBtn').addEventListener('click', (
   // 있었다면 함께 새로고침됨 - 적용은 그 자체로 즉시 커밋되는 동작이라는 게 이 기능의 전제).
   if (!document.getElementById('scenarioRateManagerModal').classList.contains('hidden')) {
     scenarioRateManagerDraft = buildScenarioRateManagerDraft();
+    scenarioRateManagerRemovedKeys = new Set();
   }
   renderScenarioRateManagerList();
   updateProjection();
@@ -2992,6 +3158,7 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
     scenarioRateManagerDraft.push({
       key, label: name || code, isBase: isScenarioRateBaseKey(key), removable: true,
       conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic), keywords,
+      instruments: [], instrumentsTouched: false,
       touched: { conservative: true, normal: true, optimistic: true }
     });
     renderScenarioRateManagerList();
@@ -3004,12 +3171,15 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
 // 시스템 기본 상품(동적 필터링, getActiveScenarioRateKeys)만 남기고 각 수치도 SCENARIO_RATE_PRESETS
 // 원본값으로 되돌린다 - 관련 없는 상품까지 되살리지 않는다. 아직 초안일 뿐이라 [저장]을 눌러야 확정된다.
 document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click', () => {
+  // [v246] 초기화는 수익률 · 키워드만 되돌린다 - 적용 종목(Instrument Master)은 유지한다(초안에 없는 키의 연결도 저장 시 그대로 남는다).
+  scenarioRateManagerRemovedKeys = new Set();
   const activeKeys = getActiveScenarioRateKeys();
   scenarioRateManagerDraft = SCENARIO_RATE_BASE_ROWS.filter((row) => activeKeys.has(row.key)).map((row) => ({
     key: row.key, label: row.label, isBase: true, removable: false,
     conservative: num(getSystemDefaultRate('conservative', row.key)),
     normal: num(getSystemDefaultRate('normal', row.key)),
     optimistic: num(getSystemDefaultRate('optimistic', row.key)),
+    instruments: getInstrumentIdentifiersForKey(row.key), instrumentsTouched: false,
     keywords: [], // 시스템 기본값엔 등록된 키워드가 없다(전부 사용자가 직접 등록한 것) - 초기화 시 함께 비운다.
     // [F-02] 초기화는 사용자가 명시적으로 고른 동작이다 - 세 칸 모두 "기본값으로 고침"으로 저장하고 기존 등록 내용도 남기지 않는다.
     touched: { conservative: true, normal: true, optimistic: true }, resetToDefault: true
@@ -3027,6 +3197,30 @@ document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click'
 // 실제로 다른 필드만 오버라이드로 저장하고(전부 기본값과 같으면 그 종목의 오버라이드를 아예 지운다 -
 // 기본값으로 초기화 후 저장한 경우가 여기 해당), 신규 등록 행은 입력값을 그대로 저장한다.
 document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('click', () => {
+  // [v246 · PMD-12] 적용 종목 검사 - 이번에 고친 행에 알아볼 수 없는 표기나 같은 종목의 중복이 있으면 저장하지 않고 알린다
+  // (자동으로 고치거나 하나를 고르지 않는다). 손대지 않은 기존 연결은 그대로 둔다(충돌이면 계산이 자동 판별 + 확인 필요로 알린다).
+  const identityRows = new Map();
+  const invalidInstrumentTokens = [];
+  scenarioRateManagerDraft.forEach((row) => {
+    (row.instruments || []).forEach((token) => {
+      const identity = instrumentIdentityOf(token);
+      if (!identity) { if (row.instrumentsTouched) invalidInstrumentTokens.push(token); return; }
+      if (!identityRows.has(identity)) identityRows.set(identity, []);
+      identityRows.get(identity).push({ row, token });
+    });
+  });
+  const duplicateInstruments = [];
+  identityRows.forEach((list) => {
+    if (list.length > 1 && list.some((x) => x.row.instrumentsTouched)) duplicateInstruments.push(list.map((x) => `${x.token}(${x.row.label})`).join(' · '));
+  });
+  if (invalidInstrumentTokens.length > 0) {
+    alert(`적용 종목을 알아볼 수 없습니다: ${invalidInstrumentTokens.join(', ')} - 종목코드(예: 278530.KS) 또는 NAME:이름 형식으로 적어 주세요.`);
+    return;
+  }
+  if (duplicateInstruments.length > 0) {
+    alert(`같은 종목이 두 번 이상 적혀 있습니다: ${duplicateInstruments.join(' / ')} - 한 기준에 한 번만 남겨 주세요.`);
+    return;
+  }
   // [통합 수정 · F-01 · F-02 · F-03 · N-01] 사용자가 이번에 실제로 고친 칸만 새 값으로 저장하고, 손대지 않은 칸은
   // 저장돼 있던 그대로 둔다(없던 칸은 계속 없음 - 0으로 채우지 않는다).
   //   - 시스템 기준 키(SCENARIO_RATE_BASE_ROWS)는 고친 값이 시스템 기본값과 같으면 저장하지 않는다(기존 규칙) -
@@ -3055,6 +3249,16 @@ document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('cli
     if (Object.keys(entry).length > 0 || prevEntry) { entry.label = row.label; next[row.key] = entry; }
   });
   state.projection.customScenarioRates = next;
+  // [v246 · PMD-12] 적용 종목 저장 - 초안에 있는 키는 초안 내용으로, 이번에 행 삭제한 키는 해제, 초안에 없는 키의 연결은 그대로 둔다.
+  const prevInstrumentKeys = getInstrumentReturnKeys();
+  const draftKeys = new Set(scenarioRateManagerDraft.map((row) => row.key));
+  const nextInstrumentKeys = {};
+  Object.keys(prevInstrumentKeys).forEach((id) => {
+    const value = String(prevInstrumentKeys[id] ?? '').trim();
+    if (!draftKeys.has(value) && !scenarioRateManagerRemovedKeys.has(value)) nextInstrumentKeys[id] = prevInstrumentKeys[id];
+  });
+  scenarioRateManagerDraft.forEach((row) => (row.instruments || []).forEach((token) => { nextInstrumentKeys[token] = row.key; }));
+  state.projection.instrumentReturnKeys = nextInstrumentKeys;
   persistProjection();
   closeScenarioRateManagerModal(false);
   updateProjection();

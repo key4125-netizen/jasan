@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v245</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v246</p>
           </div>
         </div>
 
@@ -2111,6 +2111,7 @@
         <h3 class="text-sm font-semibold">수익률 관리</h3>
         <p class="text-sm text-slate-400 mt-0.5">종목별 보수적/일반적/긍정적 시나리오의 기준 연간 성장률을 직접 등록·수정합니다(평균이 아닌 전형적 경로 기준)</p>
         <p id="scenarioRateCompoundingNote" class="text-sm text-slate-400 mt-0.5 break-keep">입력한 연 수익률은 월복리 기준입니다 - 12로 나눠 매달 복리로 계산하므로 10%를 넣으면 1년에 약 10.47% 늘어납니다.</p>
+        <p id="scenarioRateInstrumentNote" class="text-sm text-slate-400 mt-0.5 break-keep">적용 종목에 종목코드를 적으면 소유자 · 보유 여부와 관계없이 그 종목에 이 기준을 씁니다(자산에 직접 지정한 대표매칭이 있으면 그것이 먼저입니다).</p>
       </div>
       <button type="button" id="closeScenarioRateManagerModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0">
         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2574,7 +2575,7 @@
         <span class="text-slate-500 dark:text-slate-400">대표 추종 수익률 종목 (선택)</span>
         <select id="tx_rateMatchOverride"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
-          <option value="">자동판별 (비워두면 시스템이 종목/종목명으로 자동 매칭)</option>
+          <option value="">자동판별 (비워두면 종목 기준 → 시스템 자동 매칭 순으로 적용)</option>
         </select>
         <!-- [Phase 30] 대표매칭키 추천/안내 - 위 선택칸이 항상 실제 선택값이고, 이 블록은 그 값을
              정하는 걸 도와줄 뿐이다(핵심 선택값을 팝업 안에 숨기지 않는다). 세 상태만 있다:

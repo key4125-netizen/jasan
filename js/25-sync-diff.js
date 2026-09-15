@@ -138,7 +138,8 @@ function syncDiffRebalanceKey(r) {
 
 // adoptRemoteRebalanceAndProjection(js/12)이 실제로 옮기는 설정만 비교한다. cmaRecommendationStatus는 추천 배지를
 // 봤는지 기록하는 화면 상태라 계산에 영향이 없어 넣지 않는다.
-function syncDiffProjectionKey(p) {
+// [v246 · PMD-12] instrumentReturnKeys: 필드가 없으면 받아도 이 기기 값이 유지되므로(adopt의 hasOwn 규칙) fallbackInstrumentKeys로 비교한다.
+function syncDiffProjectionKey(p, fallbackInstrumentKeys) {
   const optNum = (v, d) => ((v !== undefined && v !== null && v !== '') ? num(v) : d);
   return syncDiffStableJson({
     monthlyContribution: num(p.monthlyContribution),
@@ -147,6 +148,8 @@ function syncDiffProjectionKey(p) {
     contributionGrowthRate: optNum(p.contributionGrowthRate, 0),
     customScenarioRates: p.customScenarioRates || {},
     customFeeRates: p.customFeeRates || {},
+    instrumentReturnKeys: Object.prototype.hasOwnProperty.call(p, 'instrumentReturnKeys')
+      ? sanitizeInstrumentReturnKeys(p.instrumentReturnKeys) : sanitizeInstrumentReturnKeys(fallbackInstrumentKeys),
     taxAdvantagedPlan: normalizeTaxAdvantagedPlan(p.taxAdvantagedPlan),
     monthlyContributionAllocation: normalizeMonthlyContributionAllocation(p.monthlyContributionAllocation),
     monthlyContributionByOwner: normalizeMonthlyContributionByOwner(p.monthlyContributionByOwner)
@@ -166,7 +169,7 @@ function compareSyncData(localData, cloudData) {
   const rebalanceChanged = isSyncPlainObject(local.rebalance) && isSyncPlainObject(cloud.rebalance)
     && syncDiffRebalanceKey(local.rebalance) !== syncDiffRebalanceKey(cloud.rebalance);
   const projectionChanged = isSyncPlainObject(local.projection) && isSyncPlainObject(cloud.projection)
-    && syncDiffProjectionKey(local.projection) !== syncDiffProjectionKey(cloud.projection);
+    && syncDiffProjectionKey(local.projection) !== syncDiffProjectionKey(cloud.projection, local.projection.instrumentReturnKeys);
   const size = (g) => g.localOnly.length + g.cloudOnly.length + g.different.length;
   return {
     assets,

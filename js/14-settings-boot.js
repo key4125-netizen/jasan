@@ -73,7 +73,7 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   // owner가 {total:0, years:null, allocation:[]}가 됨 - null은 "제한없음")를 그대로 재사용해, 신규
   // 설치 기본값과 데이터 초기화 기본값이 항상 같은 소스에서 나오도록 한다(예전엔 이 자리에 years:15가
   // 하드코딩돼 있어 신규 설치(null)와 어긋났었다).
-  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: normalizeMonthlyContributionByOwner() };
+  state.projection = { monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {}, instrumentReturnKeys: {}, taxAdvantagedPlan: { yearsByOwner: { '신랑': 15, '와이프': 15 }, monthlyByOwner: { '신랑': 0, '와이프': 0 }, allocationByOwner: { '신랑': [], '와이프': [] }, contributionByOwnerAccount: { '신랑': [], '와이프': [] } }, monthlyContributionAllocation: [], monthlyContributionByOwner: normalizeMonthlyContributionByOwner() };
   state.transactions = [];
   state.txFilters = { from: '', to: '', account: 'ALL', type: 'ALL', search: '' };
   // [신규 시작 - 메모리 캐시도 비운다] 티커 역할·학습 종목명은 위에서 localStorage 키만 지워지고 메모리에는 남아 있었다.

@@ -1734,3 +1734,44 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 **32-5. PM Decision 기록**
 - **PMD-03 계산 방식 — 확정(A, 2026-09-15)**: 구현 보고 당시 "미선택 적립금을 목표 비중에 자동 분산하지 않는다"와 §7 기본 순서(contribution → target allocation)의 충돌, 미선택 금액의 계산 방법 부재를 PM Decision으로 올렸다. PM이 A(현행 MC 계산 유지 + 미선택 경고)로 확정했다 - 추가 계산 코드 없음, v245 경고 구현이 최종 정책이다. 선택지 B(선택 종목 MC 반영) · C(미선택분 투자 제외) · D(실행 차단)는 채택하지 않았다.
 - **N-02**(엑셀 무수정 왕복 시 system → user 승격)는 이번 통합 과제에서 제외된 OPEN ISSUE로 유지한다(수정 · migration 없음).
+
+## 33. Instrument Return Key Master (PMD-12 · v246 · PM 승인 · 조사 1 · 조사 2 완료 · 릴리스 전)
+
+> 요구: 자산관리 파일 2번째 시트(수익률 관리 기준)의 Return Key에 종목이 연결돼 있으면, 신랑/와이프 · 계좌 · 보유 여부와 관계없이 그 종목에 같은 Return Key를 적용하고 결정론 · Monte Carlo 실제 입력까지 연결한다. **계산 변경은 "Instrument Master에 명시적으로 연결된 종목은 그 Return Key를 쓴다" 하나뿐이다.** GBM · σ · 상관 · RNG · 적립 · 리밸런싱 · 보수 · APR 월복리 · Return Key 수치 · 자동 추천 규칙 · UNRESOLVED 0% 정책 · MC 엔진은 바꾸지 않았다.
+
+**33-1. PM 확정 정책**
+
+| ID | 정책 |
+|---|---|
+| **PMD-12** | `state.projection.instrumentReturnKeys = { [종목 식별자 원문]: returnKey }`가 시스템 단위 **Instrument Return Key Master**다. 소유자 · 계좌 · 보유 여부와 무관하게 그 종목의 모든 보유분 · 목표 · 월 적립 배분 · 절세 배분에 적용된다. 해석 순서는 **USER override(`asset.rateMatchOverride`) → INSTRUMENT MASTER → 기존 자동 추천(customKey · customKeyword · category · presetTicker · tickerAlias · nameKeyword · assetCharacter) → UNRESOLVED**. Master는 자산 설정이 아니라 금융상품 자체의 기준정보이므로 PMD-02(다른 소유자 · 계좌의 `rateMatchOverride` 차용 금지)와 충돌하지 않는다 - 다른 보유분의 대표매칭은 계속 빌리지 않는다 |
+| D-1 · D-7 | 식별자는 사용자가 적은 원문(티커, 티커 없으면 `NAME:이름`)을 그대로 저장하고 비교할 때만 `sanitizeTicker` · `normalizeNameKey`로 정규화한다 |
+| D-3 | 엑셀 1시트 `대표매칭(수익률연동키)` = USER override 원본(Phase 48-A 유지) · 표시용 `수익률 기준 출처`(가져오기에서 읽지 않음). 2시트에 `적용 종목` 칸 추가(3시트 없음). 헤더에 칸이 없으면 옛 파일 → Master 불변, 칸이 있고 빈 칸이면 그 키의 연결 해제, 값이 있으면 복원 · 교체 |
+| D-4 | 같은 종목에 서로 다른 Master 키 → 자동 선택 금지 · 기존 자동 추천 체인으로 계산 · NEEDS_REVIEW. 자동 결과가 UNRESOLVED여도 MISSING과 NEEDS_REVIEW를 따로 발생. Master와 사전 티커 키 행(customKey)이 함께 있으면 승인 순서대로 Master가 우선(충돌 아님) |
+| D-5 | Master 키에 그 시나리오 수익률이 없으면 0% + MISSING, 다른 키로 대체하지 않는다 |
+| D-6 | customKey · customKeyword 계산 의미 불변, 표시만 "종목 기준". 사용자 지정 판정(`isUserSet`)은 라벨 문자열이 아니라 source 기반이며 instrument는 사용자 지정(자산 단위)이 아니다 |
+| D-8 | 기존 `asset.rateMatchOverride`를 Master로 자동 migration하지 않는다 |
+| D-9 | 엑셀 1시트 같은 종목의 비어 있지 않은 역할이 모두 같으면 `tickerRoles`에 반영(한 번 저장) · 빈 칸은 기존 값을 지우지 않음 · 서로 다르면 반영하지 않고 알림 |
+| D-10 | 거래 등록 · 수정에서 직접 고른 Return Key는 USER override로만 저장 · Master는 거래 경로에서 바뀌지 않는다. Master가 있으면 선택칸은 빈값(= Master 사용)을 유지하고 안내만 표시 |
+
+**33-2. 구현**
+
+| 영역 | 내용 | 파일 |
+|---|---|---|
+| 해석 | `findInstrumentReturnKey` · `resolveAssetGroupKeyDetail` 2단계 삽입(source `instrument`) · 충돌 표식 `instrumentConflict`를 `resolveAssetRateDetail` · `resolveTargetRateDetail`까지 전달 · 목표 · 미보유 목표 · 적립 · 절세 · MC는 기존 해석기를 그대로 경유 | js/05 |
+| 표시 · 경고 | `RATE_KEY_SOURCE_LABELS` 종목 기준 · `describeAppliedReturnAssumption` source 기반 판정 · `assessReturnAssumptionStatus` 충돌 문구 · MC `pushReturnAssumptionIssues`(instrument 제외 목록 · 충돌 NEEDS_REVIEW를 MISSING과 독립 발행) | js/05 · js/16 |
+| 수익률 관리 | 행별 적용 종목 입력 · Master 참조 키는 항상 목록에 포함 · 무수정 저장 유지 · 알아볼 수 없는 표기 · 중복은 저장 전 알림 · 행 삭제 = 그 키의 연결 해제 · 기본값 초기화는 Master 유지 | js/05 · index.html |
+| 거래 | 종목 기준 안내(추천보다 먼저) · 선택칸 빈값 유지 · 새 자산일 때만 종목 포지션 미리 채움(기존 자산에는 새 쓰기 없음) | js/06 · index.html |
+| 엑셀 | 1시트 출처 칸 · 2시트 적용 종목 칸(헤더 판정 · 매핑만 적힌 시스템 키 행 보존 · 충돌/표기 알림 · Master 변경도 저장) · 1시트 역할 → tickerRoles | js/12 · js/05 |
+| 저장 · 동기화 | 기본값/로드/초기화 필드 · adopt(JSON 복원 · Cloud) FIX-7 hasOwn 규칙(필드 없음 = 로컬 유지, `{}` = 명시적 초기화) · 동기화 차이 비교 · MC 결과 유효성 서명 | js/01 · js/14 · js/12 · js/25 · js/19 |
+
+무변경: js/15 · 17 · 18 · 20 · 21 · 22 · GBM/σ/상관/RNG/적립/리밸런싱/보수/월복리 · Return Key 숫자 · 자동 추천 규칙 · 기존 override/사전/tickerRoles 데이터
+
+**33-3. 테스트**
+- 신규 Unit `test/instrument-return-key-master.test.js`(I-1~I-9 · M-1 · S-1)
+- 신규 E2E `e2e/92-instrument-return-key-master.spec.js`(T-1~T-3 · X-1~X-3 · P-1 · M-2 · R 375 Dark/Light · 768 · 1440)
+- 기존 테스트 기대값 변경 없음
+
+**33-4. 알려진 한계(숨기지 않음)**
+- 앱 화면의 자동 추천 라벨은 기존 계약(e2e/48)대로 "자동 판별"을 유지한다(엑셀 출처 칸도 같은 말).
+- v245 이하 기기는 Master를 표시 · 편집하지 못한다. 그 기기가 올린 projection에는 필드가 없어 신규 기기의 Master는 유지된다(projection 전체 LWW는 기존 그대로).
+- 사전 티커 키 행이 있는 종목에 Master를 연결하면 그 행의 수익률은 그 종목 계산에 쓰이지 않는다(승인 순서).

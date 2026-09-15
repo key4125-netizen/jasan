@@ -46,6 +46,9 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 그것이 자동 판별인지 사용자 지정인지를 함께 보여준다(Phase 47-F) - 그 정보를 이 칸에 섞어
       // 내보내면 위 승격 문제가 되살아나므로 여기서는 의도적으로 내보내지 않는다.
       '대표매칭(수익률연동키)': sanitizeRateMatchOverride(a.rateMatchOverride) || '',
+      // [v246 · D-3] 지금 적용 중인 기준이 어디서 왔는지(사용자 지정 / 종목 기준 / 자동 판별 / 미확정) - 표시용이다.
+      // 가져오기는 이 칸을 읽지 않는다(아래 pick 별칭에 없다) - 위 대표매칭 칸의 의미(사용자 지정 원본)는 그대로다.
+      '수익률 기준 출처': describeReturnKeyProvenanceForExport(a),
       // [자산별 역할(포지션) 분류] 값을 고쳐서 다시 업로드하면 makeAsset()이 role로 저장한다.
       '역할(포지션)': ASSET_ROLE_LABELS[a.role] || '',
       // [Phase 53] 자산 식별자. 사용자가 볼 일이 없는 값이라 맨 끝에 둔다 - 지우거나 고치지 말 것.
@@ -84,6 +87,8 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 그 키워드가 포함된 자산이 카테고리/지역 폴백보다 우선해서 이 키로 자동 매칭된다
       // (getCustomKeywordRateKey, js/05). 다시 업로드하면 그대로 반영된다.
       '키워드(쉼표로 구분)': keywords.join(', '),
+      // [v246 · D-3 · PMD-12] 이 기준을 따르는 종목(Instrument Return Key Master, 식별자 원문 그대로).
+      '적용 종목': getInstrumentIdentifiersForKey(row.key).join(', '),
       '보수적(%)': overrideOnly('conservative'),
       '일반적(%)': overrideOnly('normal'),
       '긍정적(%)': overrideOnly('optimistic')
@@ -315,6 +320,10 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       // 적용은 아래에서 [덮어쓰기/추가] 선택 후, [취소]가 아닐 때만 한다(자산과 동일한 취소 시맨틱).
       const rateSheetName = wb.SheetNames.find((n) => n === '수익률 관리 기준') || wb.SheetNames[1];
       const rateJson = rateSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[rateSheetName]) : [];
+      // [v246 · D-3] "적용 종목" 칸이 파일에 있는지는 헤더 행으로 판정한다 - sheet_to_json은 빈 셀을 생략하므로 행만 보면
+      // "칸이 없는 옛 파일(연결 유지)"과 "칸은 있는데 비어 있음(연결 해제)"을 구분할 수 없다.
+      const rateHeader = rateSheetName ? (XLSX.utils.sheet_to_json(wb.Sheets[rateSheetName], { header: 1 })[0] || []).map((h) => String(h ?? '').trim()) : [];
+      const hasInstrumentColumn = INSTRUMENT_RETURN_KEY_COLUMN_NAMES.some((n) => rateHeader.includes(n));
 
       // [Phase 53] 한 파일 안에서 같은 id가 두 번 나오면(사용자가 행을 복사했거나 두 파일을 합친 경우)
       // 뒤에 오는 행에는 새 id를 준다 - 같은 id를 가진 자산 두 개는 클라우드 병합에서 서로를 덮어쓴다.
@@ -401,17 +410,40 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       }
       persistAssets();
 
+      // [v246 · D-9] 1시트 역할(포지션) → 종목 포지션 기준정보(tickerRoles). 같은 종목 행의 비어 있지 않은 역할이 모두 같을 때만
+      // 반영한다. 빈 칸은 기존 값을 지우지 않고, 서로 다르면 어느 쪽도 고르지 않고 알린다. 저장은 모아서 한 번만 한다.
+      // 자산별 역할(asset.role) 가져오기 규칙은 위 makeAsset 그대로다.
+      const importedRolesByKey = new Map();
+      json.forEach((row) => {
+        const role = parseAssetRoleInput(pick(row, '역할(포지션)', '역할', 'role'));
+        const roleKey = buildTickerRoleKey(pick(row, 'ticker', 'Ticker', 'TICKER'), pick(row, '종목명'));
+        if (!role || !roleKey) return;
+        if (!importedRolesByKey.has(roleKey)) importedRolesByKey.set(roleKey, new Set());
+        importedRolesByKey.get(roleKey).add(role);
+      });
+      const roleConflictKeys = [];
+      let tickerRoleUpdatedCount = 0;
+      importedRolesByKey.forEach((roles, roleKey) => {
+        if (roles.size > 1) { roleConflictKeys.push(roleKey); return; }
+        const role = Array.from(roles)[0];
+        if (state.tickerRoles[roleKey] !== role) { state.tickerRoles[roleKey] = role; tickerRoleUpdatedCount++; }
+      });
+      if (tickerRoleUpdatedCount > 0) persistTickerRoles();
+
       // [멀티 시트 - 요청 반영] 두 번째 시트 내용을 state.projection.customScenarioRates에 업서트한다 -
       // 자산 가져오기를 [취소]했으면(위 return으로 이미 걸러짐) 여기까지 오지 않으므로 함께 취소된다.
       // 키가 비어있는 행은 건너뛰고, 세 수익률이 전부 빈칸인 행도 의미가 없어 건너뛴다 - 일부만 채워도
       // (예: 일반적만) 그 값만 오버라이드로 저장되고 나머지는 기존처럼 시스템 기본값으로 대체된다.
       let rateUpdatedCount = 0;
+      const instrumentRows = [];
       rateJson.forEach((row) => {
         const key = String(pick(row, '키(수익률연동키)', '키', 'key') || '').trim();
         if (!key) return;
         // [통합 수정 · N-01] 'UNRESOLVED'는 "적용할 가정이 없다"는 상태값이지 키가 아니다 - 예전 내보내기 파일에 그 행이 있어도
         // 새로 저장하지 않는다(이미 저장돼 있는 항목은 자동으로 지우지 않는다).
         if (typeof UNRESOLVED_RATE_KEY !== 'undefined' && key === UNRESOLVED_RATE_KEY) return;
+        // [v246 · D-3] 적용 종목은 아래 "키만 있는 행" 규칙과 무관하게 읽는다 - 수익률 칸이 빈 KOSPI 행에 종목만 적어도 연결이 남는다.
+        if (hasInstrumentColumn) instrumentRows.push({ key, cell: pick(row, ...INSTRUMENT_RETURN_KEY_COLUMN_NAMES) });
         const label = String(pick(row, '종목명', 'label') || key);
         const conservative = pick(row, '보수적(%)', '보수적', 'conservative');
         const normal = pick(row, '일반적(%)', '일반적', 'normal');
@@ -437,7 +469,10 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         state.projection.customScenarioRates[key] = entry;
         rateUpdatedCount++;
       });
-      if (rateUpdatedCount > 0) persistProjection();
+      // [v246 · D-3] 적용 종목 칸이 있는 파일만 Master를 바꾼다(칸이 없는 옛 파일은 기존 연결 유지).
+      const instrumentImport = hasInstrumentColumn ? mergeInstrumentReturnKeysFromImport(getInstrumentReturnKeys(), instrumentRows) : null;
+      if (instrumentImport && instrumentImport.changed) state.projection.instrumentReturnKeys = instrumentImport.next;
+      if (rateUpdatedCount > 0 || (instrumentImport && instrumentImport.changed)) persistProjection();
 
       renderAll();
       // [일괄 업로드 소급 히스토리] 엑셀로 한 번에 들어온 종목들은 개별 등록 경로(assetForm 제출)를
@@ -456,7 +491,15 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       const formatNote = unmatchedFormatKeys.length > 0
         ? ` / 종목코드 형식이 달라 보유 종목과 자동으로 연결되지 않는 수익률 키 ${unmatchedFormatKeys.length}건(${unmatchedFormatKeys.join(', ')}) - 「수익률 관리」에서 확인해 주세요`
         : '';
-      alert(`${resultMsg}${rateUpdatedCount > 0 ? ` / 수익률 관리 ${rateUpdatedCount}건 반영` : ''}${formatNote} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
+      // [v246] 적용 종목 · 종목 포지션 반영 결과와, 반영하지 않은 항목(충돌 · 알아볼 수 없는 표기)을 함께 알린다.
+      const instrumentNote = instrumentImport
+        ? `${instrumentImport.changed ? ' / 적용 종목 연결 반영' : ''}`
+          + `${instrumentImport.conflicts.length > 0 ? ` / 여러 기준에 적혀 반영하지 않은 종목 ${instrumentImport.conflicts.length}건(${instrumentImport.conflicts.join(', ')}) - 한 기준에만 남겨 주세요` : ''}`
+          + `${instrumentImport.invalid.length > 0 ? ` / 알아볼 수 없는 적용 종목 표기 ${instrumentImport.invalid.length}건(${instrumentImport.invalid.join(', ')})` : ''}`
+        : '';
+      const roleNote = `${tickerRoleUpdatedCount > 0 ? ` / 종목 포지션 ${tickerRoleUpdatedCount}건 반영` : ''}`
+        + `${roleConflictKeys.length > 0 ? ` / 같은 종목에 역할이 서로 달라 종목 포지션에 반영하지 않은 종목 ${roleConflictKeys.length}건(${roleConflictKeys.join(', ')})` : ''}`;
+      alert(`${resultMsg}${rateUpdatedCount > 0 ? ` / 수익률 관리 ${rateUpdatedCount}건 반영` : ''}${instrumentNote}${roleNote}${formatNote} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {
@@ -975,6 +1018,11 @@ function adoptRemoteRebalanceAndProjection(parsed, opts) {
       contributionGrowthRate: (parsed.projection.contributionGrowthRate !== undefined && parsed.projection.contributionGrowthRate !== null && parsed.projection.contributionGrowthRate !== '') ? num(parsed.projection.contributionGrowthRate) : 0,
       customScenarioRates: parsed.projection.customScenarioRates || {},
       customFeeRates: parsed.projection.customFeeRates || {}, // [Phase 3-4]
+      // [v246 · PMD-12] FIX-7과 같은 원칙 - 원격 · 백업에 필드 자체가 없으면(이 개념을 모르는 v245 이전 기기 · 파일) 이 기기의 연결을
+      // 그대로 두고, 필드가 있으면 {}여도 그 값을 채택한다(명시적 초기화). 이 식은 state.projection을 바꾸기 전에 평가된다.
+      instrumentReturnKeys: hasOwn(parsed.projection, 'instrumentReturnKeys')
+        ? sanitizeInstrumentReturnKeys(parsed.projection.instrumentReturnKeys)
+        : sanitizeInstrumentReturnKeys(state.projection && state.projection.instrumentReturnKeys),
       // [Phase 29-A] 빠지면 다른 기기의 배지 확인/적용 이력이 복원·동기화 시 사라진다(js/01 loadState의
       // 같은 필드 백필 주석 참고 - 계산에는 영향 없는 순수 UI 상태).
       cmaRecommendationStatus: parsed.projection.cmaRecommendationStatus || {},

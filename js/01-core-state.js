@@ -148,6 +148,17 @@ function getTickerRole(ticker, name) {
   const key = buildTickerRoleKey(ticker, name);
   return key ? state.tickerRoles[key] : undefined;
 }
+// [v246 · PMD-12] Instrument Return Key Master 저장값 정리 - 객체가 아니면 {}. 식별자 원문은 바꾸지 않고(D-7),
+// 비어 있는 식별자 · 키만 뺀다. "필드 없음"과 "{}"의 구분은 호출부(hasOwn)가 한다.
+function sanitizeInstrumentReturnKeys(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  Object.keys(raw).forEach((id) => {
+    const value = typeof raw[id] === 'string' ? raw[id].trim() : '';
+    if (String(id).trim() && value) out[id] = value;
+  });
+  return out;
+}
 function setTickerRole(ticker, role, name) {
   const key = buildTickerRoleKey(ticker, name);
   if (!key) return;
@@ -681,6 +692,8 @@ const state = {
   // customScenarioRates와 같은 key 체계 - buildCustomRateKey 재사용). 등록 안 된 종목은 0%로 계산된다 -
   // 확인 안 된 보수율을 임의로 추정해 채워 넣지 않는다(요청 반영).
   projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {},
+    // [v246 · PMD-12] instrumentReturnKeys: { [종목 식별자 원문]: returnKey } - Instrument Return Key Master(js/05 findInstrumentReturnKey).
+    instrumentReturnKeys: {},
     // [Phase 29-A] { [anchor]: { seenVersion } } - 사용자가 CMA_SOURCE_METADATA[anchor].recommended의
     // 몇 번 버전까지 "나중에"/"적용"으로 처리했는지만 기록하는 UI 상태다. customScenarioRates/
     // SCENARIO_RATE_PRESETS 등 실제 계산에 쓰이는 값과는 완전히 분리되어 있고, 이 필드 자체는 어떤
@@ -1380,6 +1393,8 @@ function loadState() {
           return migrated;
         })(),
         customFeeRates: parsed.customFeeRates || {}, // [Phase 3-4] 미등록 종목은 0%(기본값)로 계산됨
+        // [v246 · PMD-12] 이 필드가 없던 저장값(v245 이전)은 연결 없음({})으로 시작한다.
+        instrumentReturnKeys: sanitizeInstrumentReturnKeys(parsed.instrumentReturnKeys),
         // [Phase 29-A - 하위호환] 이 필드가 없던 기존 사용자는 "모든 추천을 아직 안 봤음" 상태로
         // 시작한다 - 계산에 영향 없음(js/05 getPendingCmaFields의 seenVersion 기본값 0과 동일한 의미).
         cmaRecommendationStatus: parsed.cmaRecommendationStatus || {},

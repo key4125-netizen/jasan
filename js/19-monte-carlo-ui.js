@@ -347,7 +347,7 @@ function computeMonteCarloInputSignature() {
   };
   return stableStringify({
     assets, rebalance,
-    rates: p.customScenarioRates, fees: p.customFeeRates,
+    rates: p.customScenarioRates, fees: p.customFeeRates, instruments: p.instrumentReturnKeys || {},
     monthly: p.monthlyContribution, allocation: p.monthlyContributionAllocation, byOwner: p.monthlyContributionByOwner,
     growth: p.contributionGrowthRate, inflation: p.inflationRate, tax: p.taxAdvantagedPlan,
     run: { preset: mcUiEl('mcPresetSelect').value, iterations: mcUiEl('mcIterationsSelect').value, owner: mcOwnerScope,
