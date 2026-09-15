@@ -32,6 +32,29 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-15 심야) — 🧭 **v246 Instrument Return Key Master** (v245 → **v246**)
+
+**v246 (commit `ee3bee58ada6a5b7608170d96e9f10c1fe03e556`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님** — 배포 확인(Pages run · production smoke)은 별도 PM 승인 사항. 체크리스트 **§33 PMD-12**(D-1~D-10)에 전체 기록. 사전 조사 2회(READ-ONLY) → 구현 → PM 최종 검증 순서로 진행했다.
+
+- **요구**: 자산관리 파일 2시트 Return Key에 종목이 연결돼 있으면 신랑/와이프 · 계좌 · 보유 여부와 무관하게 같은 Return Key를 쓰고, 결정론 · MC 실제 입력까지 연결.
+- **저장**: `state.projection.instrumentReturnKeys = { 종목 식별자 원문: returnKey }`(티커, 없으면 `NAME:이름`) - 원문 보존, 비교 시에만 정규화(`instrumentIdentityOf`).
+- **해석 순서(js/05 `resolveAssetGroupKeyDetail`)**: USER override(`rateMatchOverride`) → **instrument**(`findInstrumentReturnKey`) → 기존 customKey/customKeyword/자동 판별 → UNRESOLVED. 충돌(같은 종목에 다른 키)은 채택하지 않고 기존 체인 + `instrumentConflict` 표식 → NEEDS_REVIEW(MISSING과 독립). Master 키에 수익률이 없으면 0% + MISSING(대체 없음). Master + 사전 티커 키 행이면 Master 우선. PMD-02(다른 보유분 override 차용 금지)는 그대로.
+- **표시**: source 라벨 instrument/customKey/customKeyword = "종목 기준", isUserSet은 source 기반(instrument는 사용자 지정 아님). 앱 자동 라벨은 기존대로 "자동 판별".
+- **수익률 관리 팝업**: 행별 "적용 종목" 입력 · Master 참조 키는 목록에 항상 포함 · 알아볼 수 없는 표기/중복은 저장 전 알림 · 행 삭제 = 연결 해제 · 기본값 초기화는 Master 유지.
+- **거래 폼(js/06)**: Master가 있으면 안내만("종목 기준: ○○ 적용"), 선택칸은 빈값 유지(채우면 USER override로 굳음) · 직접 고른 키만 override · 거래 경로는 Master를 쓰지 않음 · 종목 포지션 미리 채움은 새 자산일 때만(기존 자산 역할에 새 쓰기 없음).
+- **엑셀(js/12)**: 2시트 "적용 종목"(헤더로 칸 존재 판정 - 칸 없음 = Master 유지 · 빈칸 = 그 키 해제 · 값 = 교체, 충돌/잘못된 표기는 반영 안 하고 알림) · 1시트 "수익률 기준 출처"(표시용, 가져오기 무시) · 1시트 역할 → tickerRoles(같은 종목 행이 일치할 때만, 빈칸 삭제 없음).
+- **동기화/복원**: adopt · loadState · 동기화 차이 비교에 필드 추가 - 원격/백업에 필드 없음 = 로컬 유지(FIX-7 hasOwn), `{}` = 초기화. MC 결과 유효성 서명에 포함.
+- **무변경**: MC 엔진/모델(js/15 · 17 · 18 · 20 · 21 · 22 · 24), Return Key 수치, 자동 추천 규칙, 기존 override · 사전 · tickerRoles 데이터(자동 migration 없음).
+- 파일: js/01 · 05 · 06 · 12 · 14 · 16 · 19 · 25 · index.html · sw.js v246 · checklist §33 · 신규 `test/instrument-return-key-master.test.js` 13 · 신규 `e2e/92-instrument-return-key-master.spec.js` 12. 기존 테스트 기대값 변경 0건.
+- 게이트(PM 최종 검증): **Unit 358/358 · E2E 899/899(flaky 0, 11.2m) · ESLint 0/0 · Data Guard PASS · Release Guard PASS(v246) · scan 0건**. 커밋 규칙 준수: 13개 파일 명시 staging · `.claude/launch.json`(사용자 기존 변경) 제외 · force push 없음.
+
+**남은 OPEN / 참고**
+- v245 이하 기기는 Master를 표시 · 편집하지 못함(그 기기가 올린 projection엔 필드가 없어 신규 기기 Master는 유지) · projection 전체 LWW는 기존 그대로.
+- PM 환경에서 `npx playwright test`가 2~3ms로 전부 즉시 실패한 보고가 있었으나 이 PC에서는 재현 안 됨(chromium-1234 설치 · webServer 8644 기동 정상). 다른 PC에서 같은 증상이면 `npx playwright install chromium` · 실행 경로(저장소 루트) · 브라우저/로컬 서버 실행 차단 여부부터 확인.
+- 기존 OPEN 유지: N-02(엑셀 왕복 category 승격) 등 v245 섹션의 항목.
+
+---
+
 ## 최근 세션 요약 (2026-09-15 밤) — 🧮 **v245 Return Key → Return Rate → Deterministic → Monte Carlo 통합 수정** (v244 → **v245**)
 
 **v245 (commit `a079efc7a1b2e19cb88283e9d85ec4f22eb7e558`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님** — 배포 확인(Pages run 확인 · production smoke)은 하지 않았고 별도 PM 승인 사항이다. 체크리스트 **§32**(PMD-01~11 · FIX · 테스트 · 한계 · PM 결정 기록)에 전체 기록이 있다. 3차 READ-ONLY 검증(HEAD `6599d0e`)의 확정 결함과 PM Decision을 한 번에 반영했다. **GBM · σ · 상관 모델 · 연 1회 리밸런싱 · 월 순서 · seed · 인플레이션 외부 적용 · Tax MC 3-scope · goalProbability 정의 · Return Key 숫자 · 저장 스키마 · 동기화는 바꾸지 않았다.** 사용자 데이터 자동 migration 없음.
