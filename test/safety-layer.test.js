@@ -233,6 +233,10 @@ test('WARNING/INFO - PSD correction 규모별 등급(큰 보정 vs 경미한 보
 test('WARNING - 낮은 iteration + 극단 goalProbability', () => {
   const issue = assessSimulationConfidence(5000, { 1000000000: 0.99 });
   assert.strictEqual(issue.severity, SAFETY_LEVEL.WARNING);
+  // [MC 표시 정책 ⑤ 후속] 판정 입력은 일반계좌 결과(js/18)다 - 기본 화면이 통합이어도 통합 결과에 대한
+  // 경고로 읽히지 않게 결과 범위 판정(assessResultSpread)과 같은 표현으로 기준을 밝힌다.
+  assert.ok(issue.message.includes('일반계좌 결과 기준으로'), '판정 기준 범위(일반계좌)가 문구에 있어야 한다');
+  assert.ok(assessResultSpread(1, 50, 30).message.includes('일반계좌 결과 기준으로'), '두 post-hoc 안내가 같은 표현을 써야 한다');
 });
 
 test('PASS - 충분한 iteration이면 극단 goalProbability라도 경고 없음', () => {

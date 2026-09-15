@@ -280,8 +280,11 @@ function assessSimulationConfidence(iterations, goalProbabilityByAmount) {
   const values = Object.values(goalProbabilityByAmount);
   const extreme = values.some((p) => p <= SAFETY_THRESHOLDS.GOAL_PROB_EXTREME_LOW || p >= SAFETY_THRESHOLDS.GOAL_PROB_EXTREME_HIGH);
   if (iterations < SAFETY_THRESHOLDS.SIM_LOW_ITERATION_FOR_GOAL_PROB && extreme) {
+    // [MC 표시 정책 ⑤ 후속] 판정 기준(횟수 < 10,000 · 확률 ≤5% 또는 ≥95%)과 입력(js/18이 넘기는 일반계좌
+    // 결과의 goalProbability)은 그대로다. 기본 화면이 통합일 때 통합 결과에 대한 경고로 읽히지 않도록
+    // assessResultSpread와 같은 표현으로 기준 범위만 밝힌다.
     return makeIssue('SAFETY_LOW_SIMULATION_CONFIDENCE', SAFETY_LEVEL.WARNING, 'simulation', '목표달성확률 정밀도 낮음',
-      '낮은 시뮬레이션 횟수에서는 0%/100%에 가까운 목표달성확률의 정밀도가 낮을 수 있습니다.',
+      '일반계좌 결과 기준으로, 낮은 시뮬레이션 횟수에서는 0%/100%에 가까운 목표달성확률의 정밀도가 낮을 수 있습니다.',
       '더 높은 시뮬레이션 횟수를 선택하면 더 안정적인 추정을 얻을 수 있습니다.');
   }
   return null;
@@ -295,8 +298,11 @@ function assessResultSpread(p10, p50, p90) {
   if (!(p50 > 0) || !(p10 > 0) || !(p90 > 0)) return null;
   const spreadRatio = p90 / p10;
   if (spreadRatio > 20) {
+    // [MC 표시 정책 ④·⑤] 판정 기준(p90/p10 > 20)은 그대로다. P90은 화면에 표시하지 않으므로 코드명
+    // 대신 쉬운 말로 적고, 이 판정이 일반계좌 결과로 이뤄진다는 사실(js/18)을 문구에 밝힌다 - 기본 화면이
+    // 통합일 때 이 안내가 통합 결과에 대한 것으로 읽히지 않게 한다.
     return makeIssue('SAFETY_EXTREME_SPREAD', SAFETY_LEVEL.INFO, 'result', '결과 범위가 매우 넓음',
-      `상위 10%(P90)가 하위 10%(P10)의 ${spreadRatio.toFixed(1)}배로, 결과의 범위가 매우 넓게 나타났습니다.`,
+      `일반계좌 결과 기준으로, 결과를 줄 세웠을 때 상위 10% 지점의 금액이 하위 10% 지점의 ${spreadRatio.toFixed(1)}배로 결과의 범위가 매우 넓게 나타났습니다.`,
       '계산 오류가 아니라, 입력한 변동성 가정이 큰 데서 비롯된 결과일 수 있습니다.');
   }
   return null;
@@ -357,10 +363,13 @@ function explainFxRiskIfForeign(hasForeignAllocation) {
 // 보이지 않도록, 이미 항상 표시되는 이 INFO 한 줄에 범위를 덧붙인다 - 새 카드/새 팝업을 만들지 않는다.
 // [FUTURE-P1 Phase 2-C] 절세계좌가 더 이상 "계산에서 제외"가 아니라 별도 범위로 함께 계산되므로
 // (일반계좌 = 연 1회 리밸런싱 / 절세계좌 = 매수 후 보유 / 합계 = 같은 시장 경로) 문구를 사실에 맞게
-// 고쳤다 - 화면 위쪽 숫자가 여전히 일반계좌 기준이라는 점은 그대로 명시한다.
+// 고쳤다.
+// [MC 표시 정책 ⑤] Phase 3-2부터 위쪽 금액·표는 사용자가 고른 계좌 범위를 따르고, 이제 절세계좌가 있으면
+// 기본 화면이 통합이다 - "화면 위쪽은 일반계좌 기준"이라는 옛 문장은 기본 화면부터 사실과 달라지므로
+// 범위별 계산 방식을 설명하는 문장으로 바꿨다(계산 범위 자체는 그대로).
 function explainAccumulationScopeAlwaysOn() {
   return makeIssue('SAFETY_ACCUMULATION_SCOPE', SAFETY_LEVEL.INFO, 'result', '이 시뮬레이션의 범위 안내',
-    '이 시뮬레이션은 자산을 모아가는 적립 단계만 다룹니다. 적립 기간 중 수익률이 오고 가는 순서에 따른 결과 차이는 반영되지만, 은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다. 화면 위쪽의 중간 수준 예상자산과 범위표는 일반계좌의 투자자산을 기준으로 합니다. 절세계좌(ISA·IRP·연금저축)는 매수 후 그대로 보유하는 것으로 보고 따로 계산해 "계좌 범위별" 항목에 함께 보여드리며, 부동산과 "공동" 자산은 계산에서 제외됩니다.',
+    '이 시뮬레이션은 자산을 모아가는 적립 단계만 다룹니다. 적립 기간 중 수익률이 오고 가는 순서에 따른 결과 차이는 반영되지만, 은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다. 화면 위쪽의 금액과 범위표는 위에서 고른 계좌 범위(일반계좌·절세계좌·통합)를 따릅니다. 일반계좌는 해마다 목표 비중대로 다시 맞춘다고 보고, 절세계좌(ISA·IRP·연금저축)는 매수 후 그대로 보유하는 것으로 보고 따로 계산하며, 통합은 같은 시장 흐름에서 두 계좌를 합친 결과입니다. 부동산과 "공동" 자산은 계산에서 제외됩니다.',
     '');
 }
 

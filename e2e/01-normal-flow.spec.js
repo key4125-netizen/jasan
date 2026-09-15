@@ -2,7 +2,7 @@
 const { test, expect } = require('@playwright/test');
 const { seedPortfolio, goToProjectionTab } = require('./fixtures');
 
-test('정상 포트폴리오 입력 -> Monte Carlo 실행 -> P10/P50/P90/Goal Probability가 정상 표시된다', async ({ page }) => {
+test('정상 포트폴리오 입력 -> Monte Carlo 실행 -> P25/P50/범위표/Goal Probability가 정상 표시된다', async ({ page }) => {
   await seedPortfolio(page, {
     targets: [
       { owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 },

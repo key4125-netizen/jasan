@@ -208,9 +208,11 @@ for (const dark of [true, false]) {
     const p50Box = await page.locator('#mcP50Text').locator('..').innerText();
     expect(p50Box).toContain('명목가치');
     expect(p50Box).toContain('현재가치 기준');
-    // 터치 기기에서도 P10~P90을 읽을 수 있어야 한다(title 속성 의존 금지).
+    // 터치 기기에서도 백분위 이름을 읽을 수 있어야 한다(title 속성 의존 금지).
     const headerText = await page.locator('table:has(#mcMilestoneTableBody) thead').innerText();
-    ['P10', 'P25', 'P50', 'P75', 'P90'].forEach((code) => expect(headerText).toContain(code));
+    ['P10', 'P25', 'P50', 'P75'].forEach((code) => expect(headerText).toContain(code));
+    // [MC 표시 정책 ④ - PM 승인] P90은 계산에는 남기고 화면에서만 뺐다.
+    expect(headerText).not.toContain('P90');
 
     // 44px 터치 타겟 - 새로 생긴 선택 컨트롤도 기존 기준을 지킨다.
     for (const sel of ['#mcScopeSegmented button', '#mcMilestoneSegmented button']) {

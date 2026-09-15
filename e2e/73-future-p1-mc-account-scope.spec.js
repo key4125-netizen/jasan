@@ -52,15 +52,19 @@ test('B. 절세계좌 자산이 있으면 일반계좌/절세계좌/통합 세 �
   await expect(scopeBtn(page, 'general')).toBeVisible();
   await expect(scopeBtn(page, 'taxAdvantaged')).toBeVisible();
   await expect(scopeBtn(page, 'combined')).toBeVisible();
-  // 기본 선택은 일반계좌 - 절세계좌가 생겼다고 해서 기본 화면의 기준이 바뀌지 않는다.
-  await expect(scopeBtn(page, 'general')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#mcP50ScopeNote')).toHaveText('일반계좌 · 20년 후');
+  // [MC 표시 정책 ② - PM 승인] 절세계좌 결과가 있으면 기본 선택은 통합이다(예전 기본은 일반계좌).
+  await expect(scopeBtn(page, 'combined')).toHaveAttribute('aria-pressed', 'true');
+  await expect(scopeBtn(page, 'general')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mcP50ScopeNote')).toHaveText('통합 · 20년 후');
 });
 
 test('C. 범위를 바꾸면 중앙값·표·설명이 그 범위의 계산 결과로 함께 바뀐다', async ({ page }) => {
   await seedWithTaxAccount(page, { name: 'E73ISA채권', accountType: 'ISA', amount: 30000000 });
   await runMonteCarlo(page);
 
+  // 기본은 통합이므로 일반계좌 값은 직접 골라서 읽는다(사용자 전환 기능 보존 확인).
+  await scopeBtn(page, 'general').click();
+  await expect(page.locator('#mcP50ScopeNote')).toHaveText('일반계좌 · 20년 후');
   const generalP50 = await page.locator('#mcP50Text').innerText();
   const generalRow = await page.locator('#mcMilestoneTableBody tr').last().innerText();
 
@@ -94,7 +98,8 @@ test('D. 기간을 바꾸면 중앙값과 범위 막대가 그 기간 기준으�
 
   const at20 = await page.locator('#mcP50Text').innerText();
   await milestoneBtn(page, 0).click();
-  await expect(page.locator('#mcP50ScopeNote')).toHaveText('일반계좌 · 5년 후');
+  // 기간을 바꿔도 계좌 범위(기본 통합)는 그대로 유지된다.
+  await expect(page.locator('#mcP50ScopeNote')).toHaveText('통합 · 5년 후');
   const at5 = await page.locator('#mcP50Text').innerText();
   expect(at5).not.toBe(at20);
   await expect(milestoneBtn(page, 0)).toHaveAttribute('aria-pressed', 'true');
@@ -106,19 +111,26 @@ test('D. 기간을 바꾸면 중앙값과 범위 막대가 그 기간 기준으�
   await expect(page.locator('#mcRangeBarsRealLabel')).toHaveText('현재가치 기준 범위(5년 후 기준)');
 });
 
-test('E. P10~P90이 title 속성이 아니라 실제 화면 텍스트로 보인다(터치 기기 대응)', async ({ page }) => {
+test('E. 백분위가 title 속성이 아니라 실제 화면 텍스트로 보이고, P90은 화면에 표시하지 않는다', async ({ page }) => {
   await seedWithTaxAccount(page, { name: 'E73연금채권2', accountType: '연금저축', amount: 20000000 });
   await runMonteCarlo(page);
   const headerText = await page.locator('table:has(#mcMilestoneTableBody) thead').innerText();
-  ['P10', 'P25', 'P50', 'P75', 'P90'].forEach((code) => expect(headerText).toContain(code));
-  ['낮은 편', '약간 낮음', '중간 수준', '약간 높음', '높은 편'].forEach((word) => expect(headerText).toContain(word));
+  ['P10', 'P25', 'P50', 'P75'].forEach((code) => expect(headerText).toContain(code));
+  ['낮은 편', '약간 낮음', '중간 수준', '약간 높음'].forEach((word) => expect(headerText).toContain(word));
+  // [MC 표시 정책 ④ - PM 승인] P90은 계산에는 남기고 화면에서만 뺐다.
+  expect(headerText).not.toContain('P90');
+  expect(headerText).not.toContain('높은 편');
 
   // 막대 라벨도 표와 같은 어휘 + 같은 코드를 쓴다(같은 값이 다른 지표처럼 보이지 않도록).
   await page.locator('#mcRangeBarsToggleBtn').click();
   const barsText = await page.locator('#mcRangeBarsArea').innerText();
-  ['P10', 'P25', 'P50', 'P75', 'P90'].forEach((code) => expect(barsText).toContain(code));
+  ['P10', 'P25', 'P50', 'P75'].forEach((code) => expect(barsText).toContain(code));
+  expect(barsText).not.toContain('P90');
   expect(barsText).toContain('낮은 편');
   expect(barsText).toContain('중간 수준');
+  // 엔진 결과에는 P90이 그대로 있다(표시만 뺀 것).
+  const hasP90 = await page.evaluate(() => mcLastRender.withReal.accountScopes.combined.every((m) => Number.isFinite(m.p90) && Number.isFinite(m.real.p90)));
+  expect(hasP90).toBe(true);
 });
 
 test('F. 계좌 범위 영역은 선택만 담당하고 금액을 중복 표시하지 않는다', async ({ page }) => {
@@ -140,6 +152,9 @@ test('G. 목표 도달 가능성이 선택한 계좌 범위와 함께 표시된�
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
+  // [MC 표시 정책 ②] 기본 범위가 통합이므로 목표 도달 가능성도 통합 기준으로 시작하고, 범위를 바꾸면 따라간다.
+  await expect(page.locator('#mcGoalArea')).toContainText('통합 기준');
+  await scopeBtn(page, 'general').click();
   await expect(page.locator('#mcGoalArea')).toContainText('일반계좌 기준');
   await scopeBtn(page, 'combined').click();
   await expect(page.locator('#mcGoalArea')).toContainText('통합 기준');

@@ -84,17 +84,20 @@ test('Monte Carlo 결과 - percentile이 초보자용 표현으로 바뀌고, �
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  // 전문용어(P10/P50/P90)가 큰 표 헤더로 그대로 노출되지 않고, 초보자 표현으로 바뀌어야 한다.
+  // 전문용어(P10/P25/P50/P75)가 큰 표 헤더로 그대로 노출되지 않고, 초보자 표현으로 바뀌어야 한다.
   // (이 탭에는 표가 여러 개라 mcMilestoneTableBody를 담은 table로 범위를 좁힌다.)
   const headerText = await page.locator('table:has(#mcMilestoneTableBody) thead').innerText();
   expect(headerText).toContain('낮은 편');
   expect(headerText).toContain('중간 수준');
-  expect(headerText).toContain('높은 편');
-  // [FUTURE-P1 Phase 3-2] 원래 이름(P10~P90)을 title 속성에만 두던 방식은 터치 기기에서 아예
-  // 전달되지 않았다 - 쉬운 말을 주 라벨로 두되 원래 이름도 실제 화면 텍스트로 함께 적는다.
+  expect(headerText).toContain('약간 높음');
+  // [FUTURE-P1 Phase 3-2] 원래 이름을 title 속성에만 두던 방식은 터치 기기에서 아예 전달되지 않았다 -
+  // 쉬운 말을 주 라벨로 두되 원래 이름도 실제 화면 텍스트로 함께 적는다.
   expect(headerText).toMatch(/\bP10\b/);
+  expect(headerText).toMatch(/\bP25\b/);
   expect(headerText).toMatch(/\bP50\b/);
-  expect(headerText).toMatch(/\bP90\b/);
+  // [MC 표시 정책 ④ - PM 승인] P90은 계산에는 남기고 화면에서만 뺐다(옛 "높은 편" 열 제거).
+  expect(headerText).not.toMatch(/\bP90\b/);
+  expect(headerText).not.toContain('높은 편');
 
   // "낮은 편=최악의 경우"처럼 단정하는 표현은 없어야 한다 - 오히려 "그렇지 않다"는 명시적 해명 문구가
   // 있어야 한다(단순 "최악의 경우" 문자열 포함 여부만 보면, 그 표현을 부정하는 정상적인 해명 문장까지

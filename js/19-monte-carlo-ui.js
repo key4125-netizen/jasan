@@ -128,8 +128,9 @@ function resolveFeeUILabel(v) {
   return `${v.region} ${v.category}`;
 }
 
-// 현재 목표비중에 실제로 들어있는 항목만 나열한다(존재하지 않는 종목에 fee를 미리 등록해봐야 쓸 데가
-// 없다) - computeHouseholdTargetInstrumentWeights는 어댑터(js/16)가 쓰는 것과 동일한 함수다.
+// 실제 Monte Carlo 계산에 들어가는 항목만 나열한다(존재하지 않는 종목에 fee를 미리 등록해봐야 쓸 데가
+// 없다) - 일반계좌는 computeHouseholdTargetInstrumentWeights, 절세계좌는 buildTaxAdvantagedMonteCarloInputs로,
+// 둘 다 어댑터(js/16)가 includeTaxAdvantaged:true 실행에서 쓰는 것과 동일한 함수다.
 /* -------------------------------------------------------------------------
  * [Phase 25 P1 - 운용보수 팝업] "미확인"과 "명시적 0%"를 화면에서 구분한다.
  *    - 데이터 모델은 그대로다: customFeeRates[key]가 undefined면 미확인, 숫자면 명시적 설정
@@ -139,14 +140,34 @@ function resolveFeeUILabel(v) {
  * ---------------------------------------------------------------------- */
 let mcFeeRatesDraft = null;
 
+// [MC 표시 정책 ①] 예전엔 일반계좌 목표비중만 나열해, 절세계좌에만 있는 종목(보유분·적립 배분·미배분
+// 잔여분)은 계산에서는 운용보수가 적용되는데도 사용자가 값을 넣을 방법이 없어 "미확인" 경고가 영구히
+// 남았다. 이제 어댑터가 실제로 쓰는 절세계좌 항목도 함께 나열한다. 키 규칙(resolveFeeUIKey)과 계산은
+// 그대로이고, 같은 키가 여러 항목에서 나오면(같은 종목이 두 계좌에 있거나, '주식형자산'처럼 지역 구분
+// 없는 카테고리 키) 입력칸을 하나로 합친다 - 한 키에 입력칸이 둘이면 서로 다른 값을 넣은 것처럼 보인다.
 function buildFeeRateRows() {
-  const weightsMap = computeHouseholdTargetInstrumentWeights();
   const rows = [];
-  weightsMap.forEach((v) => {
+  const byKey = new Map();
+  const add = (v, account) => {
     const key = resolveFeeUIKey(v);
     if (!key) return;
-    rows.push({ key, label: resolveFeeUILabel(v) });
-  });
+    const label = resolveFeeUILabel(v);
+    let row = byKey.get(key);
+    if (!row) {
+      row = { key, label, labels: [label], accounts: [] };
+      byKey.set(key, row);
+      rows.push(row);
+    } else if (!row.labels.includes(label)) {
+      row.labels.push(label);
+      row.label = row.labels.join(' · ');
+    }
+    if (!row.accounts.includes(account)) row.accounts.push(account);
+  };
+  computeHouseholdTargetInstrumentWeights().forEach((v) => add(v, '일반계좌'));
+  if (typeof buildTaxAdvantagedMonteCarloInputs === 'function') {
+    const years = Math.max(...getMilestoneYearOffsets());
+    buildTaxAdvantagedMonteCarloInputs(null, 'normal', years).forEach((v) => add(v, '절세계좌'));
+  }
   return rows;
 }
 
@@ -179,6 +200,7 @@ function renderFeeRatesEditor() {
         <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(r.label)}</span>
         <span data-fee-status class="shrink-0 text-sm font-semibold ${isUnknown ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}">${isUnknown ? '미확인' : escapeHtml(fmtNum(v, 2)) + '%'}</span>
       </div>
+      <p data-fee-accounts class="text-sm text-slate-400 mt-0.5">${escapeHtml(r.accounts.join(' · '))}</p>
       <div class="flex items-center gap-1.5 mt-2">
         <button type="button" data-fee-unknown="${escapeHtml(r.key)}" class="touch-target min-h-[44px] px-3 rounded-lg border text-sm font-semibold ${isUnknown ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}">미확인</button>
         <input type="number" step="0.01" min="0" data-fee-key="${escapeHtml(r.key)}" value="${isUnknown ? '' : v}" placeholder="직접 입력"
@@ -317,8 +339,9 @@ function showMonteCarloStatus(text) {
  *    - 계좌 범위(scope)와 기간(milestone)은 순수 화면 상태다(localStorage에 저장하지 않는다 -
  *      mcOwnerScope와 동일한 패턴). 값을 다시 계산하지 않고, 엔진이 이미 만들어 둔
  *      accountScopes/milestones 중 "어느 것을 보여줄지"만 고른다.
- *    - 기본값은 general + 마지막 milestone(=기존 화면과 완전히 같은 숫자)이다. 절세계좌가 없는
- *      사용자는 accountScopes 자체가 없어 범위 선택 UI가 뜨지 않고 기존과 동일하게 동작한다.
+ *    - 결과가 올 때의 기본값: 절세계좌 결과(accountScopes)가 있으면 combined, 없으면 general +
+ *      마지막 milestone이다([MC 표시 정책 ②], renderMonteCarloResult). 절세계좌가 없는 사용자는
+ *      accountScopes 자체가 없어 범위 선택 UI가 뜨지 않고 기존과 동일하게 동작한다.
  * ---------------------------------------------------------------------- */
 const MC_SCOPE_META = {
   general: { label: '일반계좌', desc: '일반(과세) 계좌만. 해마다 한 번 목표 비중대로 다시 맞춘다고 가정합니다.' },
@@ -333,16 +356,18 @@ let mcLastRender = null;
 
 // [초보자용 표현] 막대 라벨은 표(mcMilestoneTableBody)와 **같은 어휘**를 쓴다 - 예전엔 표가
 // "낮은 편/약간 낮음/…", 막대가 "낮음/약간낮음/…"으로 서로 달라 같은 값이 다른 지표처럼 보였다.
-// [FUTURE-P1 Phase 3-2] P10~P90을 title 속성에만 두지 않는다 - title은 터치 기기에서 뜨지 않아
+// [FUTURE-P1 Phase 3-2] 백분위를 title 속성에만 두지 않는다 - title은 터치 기기에서 뜨지 않아
 // 모바일 사용자에게는 없는 정보와 같았다. 쉬운 말과 원래 이름을 함께 화면에 적는다.
+// [MC 표시 정책 ④] P90은 엔진·Safety(결과 범위 판정)·데이터에는 그대로 남기고 화면에서만 뺀다.
+// 막대 길이의 기준도 화면에 보이는 가장 큰 값(P75)으로 맞춘다 - 숨긴 P90을 기준으로 두면 가장 긴
+// 막대도 끝까지 차지 않아, 보이지 않는 더 큰 값이 있는 것처럼 읽힌다(표시 배율만 바뀌고 값은 그대로).
 function renderBarsInto(elId, point, colorSet) {
-  const maxV = point.p90 || 1;
+  const maxV = point.p75 || 1;
   const bars = [
     { label: '낮은 편', code: 'P10', value: point.p10, color: colorSet.p10 },
     { label: '약간 낮음', code: 'P25', value: point.p25, color: colorSet.p25 },
     { label: '중간 수준', code: 'P50', value: point.p50, color: colorSet.p50 },
-    { label: '약간 높음', code: 'P75', value: point.p75, color: colorSet.p75 },
-    { label: '높은 편', code: 'P90', value: point.p90, color: colorSet.p90 }
+    { label: '약간 높음', code: 'P75', value: point.p75, color: colorSet.p75 }
   ];
   mcUiEl(elId).innerHTML = bars.map((b) => `
     <div class="flex items-center gap-2 text-sm">
@@ -417,22 +442,25 @@ function renderMonteCarloScopedResult() {
   mcUiEl('mcP50Text').textContent = fmtKRWShort(sel.p50);
   mcUiEl('mcP50RealLabel').textContent = `현재가치 기준(물가상승률 ${fmtNum(inflationRatePct, 1)}% 가정)`;
   mcUiEl('mcP50RealText').textContent = fmtKRWShort(sel.real.p50);
+  // [MC 표시 정책 ③] P25 - P50과 같은 범위·같은 기간의 값을 그대로 읽는다(새 계산 없음).
+  mcUiEl('mcP25Text').textContent = fmtKRWShort(sel.p25);
+  mcUiEl('mcP25RealText').textContent = `현재가치 기준 ${fmtKRWShort(sel.real.p25)}`;
 
+  // [MC 표시 정책 ④] P90 열은 화면에서 뺀다 - 값(m.p90/m.real.p90)은 결과 데이터에 그대로 남아 있다.
   mcUiEl('mcMilestoneTableBody').innerHTML = milestones.map((m) => `
     <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
       <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${m.year}년후</td>
       <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p10)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p10)}</span></td>
-      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p25)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p25)}</span></td>
+      <td class="px-0.5 py-2 text-right font-bold whitespace-nowrap">${fmtKRWShort(m.p25)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p25)}</span></td>
       <td class="px-0.5 py-2 text-right font-bold whitespace-nowrap">${fmtKRWShort(m.p50)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p50)}</span></td>
       <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p75)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p75)}</span></td>
-      <td class="px-0.5 py-2 text-right whitespace-nowrap">${fmtKRWShort(m.p90)}<br><span class="text-slate-400 font-normal">${fmtKRWShort(m.real.p90)}</span></td>
     </tr>`).join('');
 
   // [범위 시각화 - 단순 막대] 선택한 기간 하나만 그린다. 새 chart library를 추가하지 않는다.
   mcUiEl('mcRangeBarsNominalLabel').textContent = `명목가치 범위(${sel.year}년 후 기준)`;
   mcUiEl('mcRangeBarsRealLabel').textContent = `현재가치 기준 범위(${sel.year}년 후 기준)`;
-  renderBarsInto('mcRangeBarsArea', sel, { p10: 'bg-red-400', p25: 'bg-amber-400', p50: 'bg-brand-500', p75: 'bg-emerald-400', p90: 'bg-emerald-600' });
-  renderBarsInto('mcRangeBarsRealArea', sel.real, { p10: 'bg-red-200', p25: 'bg-amber-200', p50: 'bg-brand-300', p75: 'bg-emerald-200', p90: 'bg-emerald-300' });
+  renderBarsInto('mcRangeBarsArea', sel, { p10: 'bg-red-400', p25: 'bg-amber-400', p50: 'bg-brand-500', p75: 'bg-emerald-400' });
+  renderBarsInto('mcRangeBarsRealArea', sel.real, { p10: 'bg-red-200', p25: 'bg-amber-200', p50: 'bg-brand-300', p75: 'bg-emerald-200' });
   if (typeof setAccordionOpen === 'function') {
     setAccordionOpen(mcUiEl('mcRangeBarsBody'), mcUiEl('mcRangeBarsChevron'), mcRangeBarsOpen);
   }
@@ -455,11 +483,17 @@ function renderMonteCarloScopedResult() {
       ? `<p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(goalMeta.rawAmount)} (현재 구매력 기준)</p>
          <p class="text-sm text-slate-400 mt-1">${goalMeta.targetYears}년 후 명목 환산 목표 ${fmtKRWShort(goalMeta.nominalGoalAmount)}</p>`
       : `<p class="text-sm font-bold text-slate-700 dark:text-slate-200">${fmtKRWShort(goalMeta.rawAmount)} (미래 명목금액)</p>`;
+    // [MC 표시 정책 ③] 위쪽 P50/P25 금액은 선택한 기간을 따르지만 목표 도달 가능성은 목표 기간에 고정이다 -
+    // 두 기간이 다를 때만 그 사실을 한 줄로 밝혀 5년 후 금액과 20년 후 확률을 같은 시점으로 읽지 않게 한다.
+    const periodNoteHtml = sel.year !== goalMeta.targetYears
+      ? `<p class="text-sm text-slate-400 mt-1 leading-relaxed break-keep">위쪽 금액은 ${sel.year}년 후 기준이고, 목표 도달 가능성은 ${goalMeta.targetYears}년 후 기준입니다.</p>`
+      : '';
     goalArea.innerHTML = `
       <p class="text-sm text-slate-400">목표금액</p>
       ${goalAmountLine}
       <p class="text-sm text-slate-400 mt-1.5">${scopePrefix}${goalMeta.targetYears}년 후 목표에 도달할 가능성</p>
       <p class="text-base font-bold text-slate-700 dark:text-slate-200">${display.text}</p>
+      ${periodNoteHtml}
       ${goalShortCaption}
       ${tailCaptionHtml}`;
   } else {
@@ -517,7 +551,9 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   const inflationRate = num(inflationRatePct) / 100;
   const withReal = applyInflationToResult(result, inflationRate);
   mcUiEl('mcInflationNote').textContent = `인플레이션율: ${fmtNum(inflationRatePct, 1)}%`;
-  mcUiEl('mcWeightedFeeNote').textContent = `예상 연간 운용보수(포트폴리오 가중평균): ${fmtNum(weightedFeePct || 0, 2)}%`;
+  // [MC 표시 정책 ⑤] 이 값은 일반계좌 목표비중(weight)으로만 가중평균한 것이다(절세 전용 종목은 weight 0) -
+  // 통합 결과 옆에서 전체 보수로 읽히지 않도록 기준을 문구에 적는다(값 계산은 그대로).
+  mcUiEl('mcWeightedFeeNote').textContent = `예상 연간 운용보수(일반계좌 목표비중 가중평균): ${fmtNum(weightedFeePct || 0, 2)}%`;
 
   // [Phase 3-3] 총 납입원금은 Monte Carlo path와 무관한 순수 현금흐름 합계라 js/15의 계산 반복 없이
   // computeTotalContributionPrincipal(js/15, 회귀테스트 D로 검증된 동일 공식)을 그대로 재사용한다.
@@ -534,17 +570,21 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       : computeTotalContributionPrincipal(initialMonthly, growthRate, years);
     // [P5 - Phase 9 감사 후속] Monte Carlo는 owner별 종목 배분이 아니라 가구 전체 목표비중을 기준으로
     // 신규 적립금을 배분한다 - 두 결과를 비교하는 초보자가 "왜 다르지?"라고 오해하지 않도록 짧게 고지한다.
+    // [MC 표시 정책 ⑤] 이 줄의 월 적립금·총 납입원금·배분 기준은 전부 일반계좌 값이다(절세계좌 적립은
+    // 적립설정의 배분대로 따로 들어간다) - 기본 화면이 통합일 때 전체 적립금으로 읽히지 않게 앞에 밝힌다.
     const scopeLabel = contributionMeta.ownerScope ? `${contributionMeta.ownerScope}님의` : '가구 전체';
-    const allocationNote = `참고: Monte Carlo는 ${scopeLabel} 목표비중을 기준으로 계산합니다.`;
+    const allocationNote = `참고: 일반계좌 적립금은 ${scopeLabel} 목표비중을 기준으로 계산합니다.`;
     mcUiEl('mcContributionScheduleArea').innerHTML = (growthRatePct > 0
-      ? `초기 월 적립금 ${fmtKRWShort(initialMonthly)} · 연간 증가율 ${fmtNum(growthRatePct, 1)}% · ${years}년차 월 적립금 약 ${fmtKRWShort(finalYearMonthly)}<br>총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`
-      : `월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`)
+      ? `일반계좌 초기 월 적립금 ${fmtKRWShort(initialMonthly)} · 연간 증가율 ${fmtNum(growthRatePct, 1)}% · ${years}년차 월 적립금 약 ${fmtKRWShort(finalYearMonthly)}<br>일반계좌 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`
+      : `일반계좌 월 적립금 ${fmtKRWShort(initialMonthly)}(매월 동일) · 총 납입원금(${years}년) ${fmtKRWShort(totalPrincipal)}`)
       + `<br>${escapeHtml(allocationNote)}`;
   }
 
-  // [FUTURE-P1 Phase 3-2] 새 결과가 오면 선택 상태를 기본값(일반계좌 · 가장 긴 기간)으로 되돌린다 -
-  // 기존 화면과 완전히 같은 숫자에서 시작하고, 이전 실행에서 고른 범위가 남아 오해를 만들지 않게 한다.
-  mcSelectedScope = 'general';
+  // [FUTURE-P1 Phase 3-2] 새 결과가 오면 선택 상태를 기본값(가장 긴 기간)으로 되돌린다 - 이전 실행에서
+  // 고른 범위가 남아 오해를 만들지 않게 한다.
+  // [MC 표시 정책 ②] 기본 계좌 범위: 절세계좌 결과(accountScopes)가 있으면 통합, 없으면 일반계좌.
+  // 엔진이 이미 같은 경로에서 합쳐 둔 combined 분포를 "처음에 무엇을 보여줄지"만 바꾼 것이다.
+  mcSelectedScope = mcHasAccountScopes(withReal) ? 'combined' : 'general';
   mcSelectedMilestoneIdx = null;
   mcRangeBarsOpen = false;
   mcLastRender = { withReal, goalMeta, inflationRatePct };

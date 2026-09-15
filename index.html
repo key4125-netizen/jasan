@@ -235,7 +235,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v243</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v244</p>
           </div>
         </div>
 
@@ -1315,9 +1315,9 @@
                변형은 class 방식(darkMode:'class')이 아니라 media 방식 규칙으로 만들어져 라이트 모드에서도
                다크 색이 적용된다(기존 #mcOwnerScopeSegmented에서 실측으로 확인된 현상). -->
           <div id="mcScopeSegmented" class="grid grid-cols-3 gap-1.5" role="group" aria-label="계좌 범위 선택">
-            <button type="button" data-scope="general" aria-pressed="true" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">일반계좌</button>
+            <button type="button" data-scope="general" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">일반계좌</button>
             <button type="button" data-scope="taxAdvantaged" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">절세계좌</button>
-            <button type="button" data-scope="combined" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">통합</button>
+            <button type="button" data-scope="combined" aria-pressed="true" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">통합</button>
           </div>
           <p id="mcScopeDesc" class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep"></p>
         </div>
@@ -1329,7 +1329,9 @@
           <div id="mcMilestoneSegmented" class="grid grid-cols-4 gap-1.5" role="group" aria-label="기간 선택"></div>
         </div>
 
-        <!-- 3) 핵심 결과 - 시뮬레이션 중앙값(P50) -->
+        <!-- 3) 핵심 결과 - 시뮬레이션 중앙값(P50) + 보수적으로 본 참고 금액(P25).
+             [MC 표시 정책 ③] P25/P50은 금액의 위치(percentile)이며 확률이 아니다. 목표 도달 가능성은
+             아래 별도 박스에 하나만 둔다(P25/P50별 확률을 만들지 않는다). -->
         <div class="text-center rounded-lg bg-brand-50 dark:bg-brand-900/20 p-3 mb-3">
           <p class="text-sm text-slate-500 dark:text-slate-400">시뮬레이션 중앙값(P50)</p>
           <p id="mcP50ScopeNote" class="text-sm text-slate-400 mt-0.5">-</p>
@@ -1337,25 +1339,31 @@
           <p id="mcP50Text" class="text-xl font-bold text-brand-600 dark:text-brand-300">-</p>
           <p id="mcP50RealLabel" class="text-sm text-slate-400 mt-1">현재가치 기준</p>
           <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
-          <p class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep">시뮬레이션 결과를 작은 값부터 줄 세웠을 때 딱 가운데에 오는 값입니다. 절반은 이보다 낮게, 절반은 이보다 높게 끝났다는 뜻이며 앞으로 이 금액이 된다는 뜻은 아닙니다. 명목가치는 미래 시점의 금액이고, 현재가치는 물가상승률을 적용해 오늘 돈 가치로 환산한 금액입니다.</p>
+          <div class="mt-3 pt-3 border-t border-brand-100 dark:border-brand-900/60">
+            <p class="text-sm text-slate-500 dark:text-slate-400 break-keep">보수적으로 볼 때의 참고 금액(P25)</p>
+            <p id="mcP25Text" class="text-lg font-bold text-slate-700 dark:text-slate-200">-</p>
+            <p id="mcP25RealText" class="text-sm text-slate-400">-</p>
+          </div>
+          <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">시뮬레이션 결과를 작은 금액부터 줄 세웠을 때 가운데 금액이 P50, 25% 지점의 금액이 P25입니다. 결과가 어디쯤에 놓이는지를 나타내는 위치이며 확률을 뜻하지 않고, 앞으로 이 금액이 된다는 뜻도 아닙니다. 명목가치는 미래 시점의 금액이고, 현재가치는 물가상승률을 적용해 오늘 돈 가치로 환산한 금액입니다.</p>
         </div>
 
         <!-- [Phase 17 P1-4] 결과 해석에 직접 영향을 주는 주의사항만 여기 항상 펼쳐서 보여준다. -->
         <div id="mcSafetyCritical" class="hidden mb-3 space-y-1.5"></div>
 
-        <!-- 4) 기간별 분포 - 선택한 계좌 범위의 5/10/15/20년 x P10~P90.
-             [FUTURE-P1 Phase 3-2] 예전엔 P10/P25/P50/P75/P90이 title 속성에만 있어 터치 기기에서는
-             전달되지 않았다 - 초보자 표현을 그대로 두고 그 아래에 실제 화면 텍스트로 함께 적는다. -->
+        <!-- 4) 기간별 분포 - 선택한 계좌 범위의 5/10/15/20년 x P10/P25/P50/P75.
+             [FUTURE-P1 Phase 3-2] 예전엔 백분위 이름이 title 속성에만 있어 터치 기기에서는 전달되지
+             않았다 - 초보자 표현을 그대로 두고 그 아래에 실제 화면 텍스트로 함께 적는다.
+             [MC 표시 정책 ③·④] P25·P50을 굵게 강조하고, P90은 화면에 표시하지 않는다(엔진·Safety·
+             결과 데이터에는 그대로 남아 있다). -->
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left align-bottom">
                 <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
                 <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">낮은 편<br><span class="font-normal text-slate-400">P10</span></th>
-                <th class="px-0.5 py-2 text-right font-semibold break-keep">약간 낮음<br><span class="font-normal text-slate-400">P25</span></th>
+                <th class="px-0.5 py-2 text-right font-bold break-keep">약간 낮음<br><span class="font-normal text-slate-400">P25</span></th>
                 <th class="px-0.5 py-2 text-right font-bold break-keep">중간 수준<br><span class="font-normal text-slate-400">P50</span></th>
                 <th class="px-0.5 py-2 text-right font-semibold break-keep">약간 높음<br><span class="font-normal text-slate-400">P75</span></th>
-                <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">높은 편<br><span class="font-normal text-slate-400">P90</span></th>
               </tr>
             </thead>
             <tbody id="mcMilestoneTableBody"></tbody>
@@ -1363,7 +1371,7 @@
         </div>
         <!-- 5) 결과 해설 - percentile은 "분포에서의 위치"이고 목표 도달 가능성(아래)과는 다른 개념이라는
              점을 결과 바로 옆에서 최소 1회는 읽을 수 있게 항상 펼쳐 둔다(상세 영역에만 숨기지 않는다). -->
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">"낮은 편"은 시뮬레이션 결과 중 하위 10% 수준(P10), "중간 수준"은 중앙값(P50), "높은 편"은 상위 10% 수준(P90)입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액입니다. 이 값들은 결과가 어디쯤에 놓이는지를 나타내는 <b>위치</b>이며, 아래의 목표 도달 가능성(<b>비율</b>)과는 다른 개념입니다.</p>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">결과를 작은 금액부터 줄 세웠을 때 "낮은 편"은 10% 지점(P10), "약간 낮음"은 25% 지점(P25), "중간 수준"은 가운데(P50), "약간 높음"은 75% 지점(P75)의 금액입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액입니다. 이 값들은 결과가 어디쯤에 놓이는지를 나타내는 <b>위치</b>이며, 아래의 목표 도달 가능성(<b>비율</b>)과는 다른 개념입니다.</p>
 
         <!-- 6) 범위 막대 - 표와 같은 값을 그림으로 다시 보여주는 것이라 기본은 접어 둔다(모바일 세로
              공간 절약). 계산값은 그대로 유지하며 renderBarsInto를 그대로 재사용한다. -->
@@ -1389,8 +1397,8 @@
              핵심 결과 뒤로 내렸다(값은 그대로, 위치만 변경). -->
         <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mt-3 leading-relaxed break-keep"></div>
         <p id="mcInflationNote" class="text-sm text-slate-400 mt-1">인플레이션율: -</p>
-        <p id="mcWeightedFeeNote" class="text-sm text-slate-400">예상 연간 운용보수(포트폴리오 가중평균): -</p>
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 이 결과는 '포트폴리오 구성'에서 설정한 목표 비중, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
+        <p id="mcWeightedFeeNote" class="text-sm text-slate-400">예상 연간 운용보수(일반계좌 목표비중 가중평균): -</p>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 일반계좌는 '포트폴리오 구성'의 목표 비중, 절세계좌는 현재 보유 자산과 적립설정의 배분을 기준으로 하며, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
 
         <!-- 9) [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항과 매번
              동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘 영역으로 모은다 - 숨기는
@@ -1999,6 +2007,7 @@
     </div>
     <div class="px-4 py-4 overflow-y-auto space-y-3">
       <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">투자상품을 운용하는 데 발생하는 연간 비용입니다. 매매수수료·세금·환전비용 등은 포함하지 않습니다. <b class="text-slate-700 dark:text-slate-200">"미확인"인 종목은 0%로 계산하되, 결과에 그 사실을 경고로 함께 표시합니다</b> - 임의로 추정하지 않습니다.</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">일반계좌 목표 종목과 절세계좌 보유·적립 종목이 함께 나옵니다. 같은 종목은 한 번만 입력하면 두 계좌에 똑같이 적용됩니다.</p>
       <div id="mcFeeRatesList" class="space-y-2"></div>
     </div>
     <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">

@@ -207,6 +207,12 @@ test('12. MC 운용보수 - "미확인"과 "명시적 0%"가 화면에서 구분
   await expect(page.locator('#mcFeeRatesModal')).toBeHidden();
   // 데이터 모델에서도 구분된다: 키가 존재하면 명시적 설정.
   expect(await page.evaluate(() => Object.values(state.projection.customFeeRates)[0])).toBe(0);
+  // [MC 표시 정책 ①] 이 시드에는 절세계좌(ISA) 채권도 있어, 이제 그 종목도 팝업에 나온다 - 첫 행만
+  // 확인했으므로 요약은 "미확인 1개"이고, 나머지까지 명시하면 "전부 확인됨"이 된다.
+  await expect(page.locator('#mcFeeSummary')).toHaveText('미확인 1개');
+  await page.locator('#mcFeeRatesToggleBtn').click();
+  await page.locator('#mcFeeRatesList input[data-fee-key]').nth(1).fill('0');
+  await page.locator('#saveMcFeeRatesModalBtn').click();
   await expect(page.locator('#mcFeeSummary')).toHaveText('전부 확인됨');
 });
 
