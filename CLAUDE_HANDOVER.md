@@ -32,6 +32,30 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-15 오후) — 🎲 **v244 Monte Carlo 결과 표시 · 운용보수 입력 정합성** (v243 → **v244**)
+
+**v244 (commit `bccad345e86b236d508d5d492184719d26801a8c`, PM RELEASE APPROVAL · push 완료 · Pages run `34925924861` success)**. production smoke 결과는 PM 보고에 기록한다. 체크리스트 **§31**(MCD-1~5)에 전체 기록이 있다. **계산 엔진(js/15) · 어댑터(js/16) · Worker(js/17) · Controller(js/18) · js/20 · Return Key · 동기화 · Safety 판정 기준은 한 줄도 바꾸지 않았다(git diff 0)** — 표시 · 입력 경로와 문구만 바뀌었다.
+
+- **① 운용보수 팝업**(js/19 `buildFeeRateRows`): 일반계좌 목표 종목 + 절세계좌 보유 · 적립 배분 · 미배분 잔여분(`buildTaxAdvantagedMonteCarloInputs`, 어댑터와 같은 함수)을 나열. 같은 키는 한 행(입력칸 하나), 행마다 계좌 표시(일반계좌 / 절세계좌 / 일반계좌 · 절세계좌). 키 규칙 · 카테고리 키(`주식형자산`/`채권`/`현금`, 지역 구분 없음) · 미확인 vs 명시 0% · 기존 입력값 보존은 그대로. 예전엔 절세 전용 종목의 "운용보수 미확인" 경고를 화면에서 해소할 방법이 없었다.
+- **② 기본 계좌 범위**: 결과가 오면 `accountScopes`가 있으면 **통합**, 없으면 **일반계좌**(js/19 `renderMonteCarloResult`). 재실행 시 기본값 복귀 · 기간 변경 시 범위 유지 · 사용자 전환 그대로.
+- **③ P25/P50 중심**: 핵심 카드에 P50 + "보수적으로 볼 때의 참고 금액(P25)"(명목 + 현재가치). "위치이며 확률을 뜻하지 않는다" 설명. 목표 도달 가능성은 기존 goalProbability 1개만(P25/P50별 확률 NO-GO). 선택 기간 ≠ 목표 기간이면 한 줄 안내.
+- **④ P90**: 표 열 · 막대 행 · 해설에서 제거(막대 길이 기준 P75). 엔진 · accountScopes · js/20 · `assessResultSpread` · 테스트 데이터에는 그대로 있다.
+- **⑤ 일반계좌 기준 문구**: 가중평균 보수 "(일반계좌 목표비중 가중평균)" · 적립금 "일반계좌 월 적립금 …" · 결과 범위 판정 / 목표확률 정밀도 WARNING "일반계좌 결과 기준으로, …"(PM 후속 지시 · 판정 입력은 js/18이 넘기는 일반계좌 milestones 그대로) · 범위 안내 문장 정정(`explainAccumulationScopeAlwaysOn`) · 결과 하단 ※ 문구.
+- 파일: js/19 · js/21(문구) · js/03(문구) · index.html(P25 카드 · 표 헤더 · 해설 · 범위 정적 기본 통합 · v244) · sw.js v244 · checklist §31 · §7-3 개정 표기.
+- 테스트: 신규 `e2e/90-mc-display-policy.spec.js` 16건(F-1/F-2 fee · S-1/S-2 scope · P-1 P90 · G-1 goal · W-1 문구 · R 7뷰포트) · `test/safety-layer.test.js` 문구 단언 추가. 기대값 변경(새 정책과 직접 충돌): e2e/73 B·C·D·E·G · e2e/11 · e2e/32 · e2e/64 · e2e/30 #12 · e2e/01 제목.
+- 게이트(최종): **Unit 324 · E2E 877 · Golden 118(monte-carlo-engine · calibration · risk-engine · risk-rules 4파일 기준) · ESLint 0 · Data Guard PASS · Release Guard PASS(v244)** · 버전 상향 뒤 버전/SW 관련 e2e 27건 재확인 · 실브라우저 375 Dark/Light: 통합 기본 · P25/P50 = 엔진 combined · P90 미표시 · 목표 확률 1개 · 정밀도 WARNING 문구 · 14px · 가로 넘침 0 · pageerror 0.
+- 커밋 메시지는 PM이 지정한 문구 그대로라 제목과 본문 사이 빈 줄이 없어 `git log --oneline`에 본문까지 한 줄로 보인다(히스토리 재작성 금지로 수정하지 않음).
+
+**다음 PM 관찰사항(구현 금지 · 결정 대기)**
+- **G-1(P1)**: Return Key UNRESOLVED → 0% 계산 시 MC 경고 없음. SECTOR_MAP(37종) 미등재 개별주(예: PLTR · 에코프로비엠)도 이 경로로 0%.
+- Return Key 관찰(READ-ONLY 감사 R-2~R-5): 이름 키워드가 자산 성격보다 우선(코리아배당다우존스 → SCHD) · 절세계좌 namedHolding의 MC 0% vs deterministic 4% · 미등록 대표매칭 0% 무경고 · 현금 분기가 사용자 CASH 값 무시.
+- **P1-2 A-1**(기기 시계 차이로 버전 순서 역전) · **A-2**(GET→POST 경합) — 미수정.
+- **D-3**(v242 maintained 카테고리 키 없음 = 0) — PM 결정 대기.
+- 카테고리 fee 키 `주식형자산`이 국내 · 해외 캐치올과 절세 잔여분에 공유(기존 구조 유지, 팝업에선 한 행).
+- post-hoc safety(결과 범위 · 정밀도)는 계속 일반계좌 결과로 판정 — 문구로만 기준 표시.
+
+---
+
 ## 최근 세션 요약 (2026-09-15) — 🔄 **v243 P1-1 동기화 차이 확인** (v242 → **v243**)
 
 **v243 (commit `ce40c06414c725b60cc050ec59e11ebee4a18d75`, production 배포 완료 · Pages run `34912910563` success · 산출물 28개 해시 일치 · 민감 경로 22개 404 · production smoke 8뷰포트 PASS: v243 · SW `smart-asset-manager-v243` 활성 · js/25가 js/12보다 먼저 로드 · 차이 없음 자동 동기화 · 차이 있음 보류 화면(헤더 "서버 동기화 확인 필요" · 수량 양쪽 값 · 클라우드에만 있는 거래 · 버튼/상세 보기 44px · 14px · 잘림/가로 넘침 0) · 취소 시 이 기기 무변경 · 보류 중 업로드 0 · malformed 차단 · pageerror 0 · 실제 Worker 도달 0(메모리 가짜 클라우드))**. 체크리스트 **§30**에 전체 기록이 있다.
