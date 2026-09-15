@@ -32,6 +32,31 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-15 밤) — 🧮 **v245 Return Key → Return Rate → Deterministic → Monte Carlo 통합 수정** (v244 → **v245**)
+
+**v245 (commit `a079efc7a1b2e19cb88283e9d85ec4f22eb7e558`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님** — 배포 확인(Pages run 확인 · production smoke)은 하지 않았고 별도 PM 승인 사항이다. 체크리스트 **§32**(PMD-01~11 · FIX · 테스트 · 한계 · PM 결정 기록)에 전체 기록이 있다. 3차 READ-ONLY 검증(HEAD `6599d0e`)의 확정 결함과 PM Decision을 한 번에 반영했다. **GBM · σ · 상관 모델 · 연 1회 리밸런싱 · 월 순서 · seed · 인플레이션 외부 적용 · Tax MC 3-scope · goalProbability 정의 · Return Key 숫자 · 저장 스키마 · 동기화는 바꾸지 않았다.** 사용자 데이터 자동 migration 없음.
+
+- **PM 최종 결정**: PMD-01~11 승인. **PMD-03 = A "현행 MC 계산 유지 + 미선택 경고"** — 미선택 적립금 자동 배분 · 투자 제외 · 현금 처리 · 실행 차단 · 계산 변경 모두 금지(경고만).
+- **해석 경로 통일(F-04 · F-24 · N-08 · N-10 · N-11)**: 목표 · 적립 배분 · 절세 MC 항목도 "그 소유자 · 그 계좌 범위"의 보유 자산으로 경로 A(`resolveAssetGroupKeyDetail`)를 쓴다(js/05 `resolveTargetRateDetail` · `resolveMcEntryRateDetail`). 다른 소유자 · 다른 계좌의 대표매칭은 빌리지 않는다(보유분이 없으면 자산 사실만 참고). 같은 종목이라도 세 시나리오 키가 다르면 MC instrument를 `T:티커|키`로 분리하고 경고. `채권`/`BOND` 표기 차이는 같은 기준(`canonicalRateKey`).
+- **PMD-10**: 사용자 확정 category 우선. 시스템 추천은 현재 티커 · 이름으로 `classifyCategory`를 다시 했을 때 같은 값일 때만 자동 판별 근거. legacy(표식 없음)는 기존대로 사용(소급 변경 없음).
+- **사전(F-01 · F-02 · F-03 · N-01)**: 사전에 수익률이 없는 키는 매칭하지 않고 자동 판별로 넘어간다(0%가 되지 않음). 팝업은 고친 칸만 저장 · 빈 칸 = 미입력 · 명시 0 보존 · 시스템 키 판정은 키 자체. 엑셀은 처음 보는 사용자 키의 키만 있는 행을 `{label}`로 보존(시스템 키 빈 행 · 기존 키는 기존대로 건드리지 않음) · `UNRESOLVED` 행은 저장하지 않음(기존 저장분 자동 삭제 없음).
+- **결정론(N-05 · PMD-04)**: 절세 연납 = 연초 납입 + 월복리(실효 연율) · 절세 운용보수 = 일반계좌와 같은 월 보수 배율. 영향 없는 포트폴리오 결정론 · MC 값은 수정 전과 비트 동일(Unit D-4 · 수치 검증).
+- **엔진(N-07 · F-07 · N-09)**: 계산용 비중만 합계로 정규화(입력 불변 · 합계 1이면 비트 동일) · Cholesky가 기존 경로로 실패할 때만 고유값 하한 재시도(ρ=±1 계산) · 상관 경고는 수익률 관측치 수 기준.
+- **MC UI(F-06a · PMD-09)**: 실행 중에는 READY로 되돌리지 않음 · 중복 실행 방지. 결과가 있으면 입력 서명(시세 · 환율 제외, 키 정렬 비교)을 비교해 "다시 계산이 필요합니다" + 중앙값 제목 "이전 설정 기준" 표시(되돌리면 해소) · 시세 갱신 · 탭 이동은 결과 유지.
+- **경고(F-08 · PMD-02/03/07/08)**: `SAFETY_RETURN_ASSUMPTION_MISSING` · `SAFETY_RETURN_KEY_NEEDS_REVIEW` · `SAFETY_RETURN_KEY_CONFLICT` · `SAFETY_CONTRIBUTION_TARGET_UNSELECTED` · `SAFETY_CONTRIBUTION_OWNER_NOT_WEIGHTED`(결과 바로 아래). 자산 상세: 같은 종목 다른 보유분 기준 불일치 · 수익률 없는 지정 기준 0% 안내. 수익률 관리: 월복리 안내(PMD-06) · 접미사 없는 종목코드 키 안내(PMD-01, 키 자동 변경 없음).
+- 파일: js/05 · 08 · 12 · 15 · 16 · 18 · 19 · 21 · 22 · index.html(월복리 안내 · `#mcStaleNotice` · v245) · sw.js v245 · checklist §32 · 신규 `test/return-rate-integration.test.js` 21 · 신규 `e2e/91-return-rate-integration.spec.js` 10 · 기대값 변경 `e2e/29` #4(관점 전환 시 결과 숨김 → "다시 계산 필요", PMD-09와 직접 충돌).
+- 게이트(최종 · 커밋 직전 재실행): **Unit 345/345 · E2E 887/887(flaky 0) · ESLint 0 · Data Guard PASS · Release Guard PASS(v245)** · PMD-03 CASE 1~4 합성 비교(HEAD 대비 MC 입력 · P10~P90 동일, 미선택일 때만 경고) · 추가 코드 secret/키/PII 패턴 0건 · 실제 사용자 금융데이터 · Cloud write · 외부 시세 호출 0(DNS 차단) · 375 Dark 실브라우저 캡처 pageerror 0.
+- 더미 자산 전 과정 검증(합성 · 엑셀/자산 폼/거래 폼 입력 → 결정론 → 가구 · 소유자별 MC → 유효성 → 자산 상세 → 엑셀 왕복 → JSON 복원 → 375px): 이번 수정 범위 버그 0건.
+- 커밋 규칙 준수: 15개 파일 명시 staging · `.claude/launch.json`(사용자 기존 변경) 제외 · force push 없음.
+
+**남은 OPEN / 백로그(구현 금지 · PM 결정 대기)**
+- **N-02 OPEN**: 엑셀 무수정 왕복 시 system category → user 승격. 이번 범위 제외 · migration 없음. 이름으로 재확인되지 않는 시스템 추천은 왕복 뒤 계산 근거가 바뀔 수 있다.
+- 기존 저장된 `UNRESOLVED` 사전 항목 · 과거에 0으로 저장된 값 · 시스템 값으로 굳은 항목은 되돌리지 않았다(새로 생기는 것만 막음).
+- 관찰(범위 밖): 영숫자 신형 국내 코드(예: `0052D0`)를 `sanitizeTicker`가 해외 티커로 조회 · 티커 없는 채권혼합 펀드가 시스템 추천 '채권'으로 σ=0 · "운용보수 미확인" 경고가 현금/채권/잔여분까지 길게 나열 · SECTOR_MAP 미등재 개별주 0%(PMD-08 정책대로 경고).
+- 기존 백로그 유지: P1-2 A-1/A-2 · v242 D-3 maintained · 결과 유효성 서명은 목표/배분 배열 순서가 바뀌면 "다시 계산 필요"를 띄움(보수적 방향) · 같은 소유자 · 같은 계좌 보유분끼리 대표매칭이 다르면 자동 판별 + 경고 · FUTURE-P1-BL-01 preview mode(비중 정규화 미적용 · 사용자 경로 없음).
+
+---
+
 ## 최근 세션 요약 (2026-09-15 오후) — 🎲 **v244 Monte Carlo 결과 표시 · 운용보수 입력 정합성** (v243 → **v244**)
 
 **v244 (commit `bccad345e86b236d508d5d492184719d26801a8c`, PM RELEASE APPROVAL · push 완료 · Pages run `34925924861` success)**. production smoke 결과는 PM 보고에 기록한다. 체크리스트 **§31**(MCD-1~5)에 전체 기록이 있다. **계산 엔진(js/15) · 어댑터(js/16) · Worker(js/17) · Controller(js/18) · js/20 · Return Key · 동기화 · Safety 판정 기준은 한 줄도 바꾸지 않았다(git diff 0)** — 표시 · 입력 경로와 문구만 바뀌었다.
