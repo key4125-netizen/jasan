@@ -104,6 +104,14 @@ const addTx = (page, tx) => page.locator('body').evaluate((el, t) => {
 const push = (page) => page.locator('body').evaluate(() => pushToCloud());
 const pull = (page) => page.locator('body').evaluate(() => pullFromCloud({ silent: true }));
 const disableSync = (page) => page.locator('body').evaluate((el) => { el.ownerDocument.getElementById('syncDisableBtn').click(); });
+// [v243 P1-1 차이 확인] 받은 클라우드 데이터가 이 기기와 의미 있게 다르면 자동 동기화는 합치지 않고 확인을 기다린다.
+// 상대 기기가 올린 내용은 그 기기에서 차이 화면의 [클라우드 데이터 받기]를 눌러야 반영된다(예전: pull이 곧바로 병합했다).
+async function pullAndAccept(page) {
+  expect(await pull(page)).toBe('held');
+  await expect(page.locator('#syncDirectionBox')).toBeVisible();
+  await page.locator('#syncDirectionPullBtn').click();
+  await expect(page.locator('#syncSettingsModal')).toBeHidden();
+}
 
 // 이미 정상 동기화가 끝난 두 기기(휴대폰/PC)를 만든다.
 async function pairedDevices(browser, kv) {
@@ -180,7 +188,7 @@ test('T-03. [이 기기 데이터 올리기]를 고르면 이 기기 내용이 �
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 상대 기기는 자동 병합 대신 차이 확인 뒤 받기
   const pcState = await snap(pc.page);
   expect(pcState.txIds).toEqual(['e78-tx-base', 'e78-tx-phone']);
   expect(pcState.ledgerQty).toBe(110);
@@ -231,7 +239,7 @@ test('T-06~T-08. OFF 기간의 거래 추가·자산 수정·신규 자산이 [�
   expect(after.assetPrice).toBe(9999);
   expect(after.assetCount).toBe(2);
 
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 자동 병합 대신 차이 확인 뒤 받기
   const pcState = await snap(pc.page);
   expect(pcState.txIds).toEqual(['e78-tx-base', 'e78-tx-off']);
   expect(pcState.assetCount).toBe(2);
@@ -244,7 +252,7 @@ test('T-09. OFF 기간에 지운 거래는 [올리기] 후 상대 기기에서�
   const { phone, pc } = await pairedDevices(browser, kv);
   await addTx(phone.page, { ...BASE_TX, id: 'e78-tx-del', quantity: 10, createdAt: 2000, updatedAt: 2000 });
   await push(phone.page);
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 자동 병합 대신 차이 확인 뒤 받기
   expect((await snap(pc.page)).txIds).toEqual(['e78-tx-base', 'e78-tx-del']);
 
   await disableSync(phone.page);
@@ -256,8 +264,8 @@ test('T-09. OFF 기간에 지운 거래는 [올리기] 후 상대 기기에서�
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pull(pc.page);
-  // 삭제는 "payload에 id 없음 + 받는 기기 기준선에 있었음"으로 전파된다 - 시각 스탬프와 무관하다.
+  // [v243] 삭제도 상대 기기에서 차이(그 기기에만 있는 거래)로 보여 준 뒤 [받기]를 골라야 반영된다.
+  await pullAndAccept(pc.page);
   expect((await snap(pc.page)).txIds).toEqual(['e78-tx-base']);
   await phone.context.close(); await pc.context.close();
 });
@@ -277,7 +285,7 @@ test('T-10/T-11. OFF 기간의 rebalance/projection 변경이 [올리기]로 상
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 설정 차이도 확인 뒤 받기 - 받기는 설정도 클라우드 값으로 맞춘다(PM 결정)
   expect((await snap(pc.page)).monthly).toBe(111111);
   expect((await snap(phone.page)).monthly).toBe(111111);
   await phone.context.close(); await pc.context.close();
@@ -314,7 +322,7 @@ test('T-12~T-14. 상대가 더 최근에 고친 레코드도 [올리기]로 수�
   await phone.context.close(); await pc.context.close();
 });
 
-test('T-15. 상대 기기가 아직 올리지 않은 신규 입력은 지워지지 않고 합쳐진다(현재 한계 고정)', async ({ browser }) => {
+test('T-15. 상대 기기가 아직 올리지 않은 신규 입력은 지워지지 않는다 - v243부터 자동으로 합치지 않고 차이를 보여 주며 확인을 기다린다', async ({ browser }) => {
   const kv = makeKv();
   const { phone, pc } = await pairedDevices(browser, kv);
   await disableSync(phone.page);
@@ -328,9 +336,12 @@ test('T-15. 상대 기기가 아직 올리지 않은 신규 입력은 지워지�
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pull(pc.page);
   // 상대 기기 사용자가 실제로 입력한 데이터다 - 지우지 않는 것이 데이터 보존 정책에 맞다.
-  expect((await snap(pc.page)).txIds).toEqual(['e78-tx-base', 'e78-tx-pc-unsynced', 'e78-tx-phone']);
+  // [v243] 예전엔 곧바로 합쳤다. 이제는 합치지도 지우지도 않고, 각 기기에만 있는 거래를 보여 주며 사용자의 선택을 기다린다.
+  expect(await pull(pc.page)).toBe('held');
+  expect((await snap(pc.page)).txIds).toEqual(['e78-tx-base', 'e78-tx-pc-unsynced']);
+  await expect(pc.page.locator('#syncDiffSummary')).toContainText('이 기기에만 있음: 1건');
+  await expect(pc.page.locator('#syncDiffSummary')).toContainText('클라우드에만 있음: 1건');
   await phone.context.close(); await pc.context.close();
 });
 
@@ -364,7 +375,7 @@ test('T-16/T-17. 업로드 실패 시 로컬·클라우드·metadata가 모두 �
   phone.page.once('dialog', (d) => d.accept());
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 자동 병합 대신 차이 확인 뒤 받기
   expect((await snap(pc.page)).txIds).toEqual(['e78-tx-base', 'e78-tx-fail']);
   await phone.context.close(); await pc.context.close();
 });
@@ -412,7 +423,7 @@ test('T-19~T-25. 자산/거래/설정은 반영되고, 합집합 3종은 예전 
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pull(pc.page);
+  await pullAndAccept(pc.page); // [v243] 자동 병합 대신 차이 확인 뒤 받기(합집합 3종은 받기에서도 합쳐진다)
   const merged = await pc.page.locator('body').evaluate(() => ({
     monthly: state.projection.monthlyContribution,
     roleKeys: Object.keys(state.tickerRoles).sort(),
@@ -451,16 +462,28 @@ test('T-26. JSON 복원 뒤 동기화를 다시 켜도 방향을 직접 고를 �
   await phone.context.close(); await pc.context.close();
 });
 
-test('T-27. 옵션 없는 pushToCloud는 예전처럼 원격을 먼저 병합한다(일반 동기화 무변경)', async ({ browser }) => {
+test('T-27. 옵션 없는 pushToCloud - 받은 클라우드 데이터와 내용 차이가 없으면 예전처럼 선병합 후 올리고, 차이가 있으면(v243) 병합 · 업로드 없이 확인을 기다린다', async ({ browser }) => {
   const kv = makeKv();
   const { phone, pc } = await pairedDevices(browser, kv);
+  // 내용 차이 없음(상대가 시세만 바꿔 올림) - 예전 선병합 경로 그대로 올라간다.
+  await pc.page.locator('body').evaluate(() => { const a = state.assets.find((x) => x.id === 'e78-as'); a.currentPrice = 4321; persistAssets(true); });
+  await push(pc.page);
+  expect(await push(phone.page)).toBeUndefined();
+  expect(await pull(pc.page)).toBe('applied');
+
+  // 양쪽이 각자 다른 거래를 추가 - 상대 거래가 올라온 뒤의 옵션 없는 push는 합치지도 덮어쓰지도 않고 멈춘다.
   await addTx(pc.page, { ...BASE_TX, id: 'e78-tx-pc', quantity: 20, createdAt: 3000, updatedAt: 3000 });
   await push(pc.page);
   await addTx(phone.page, { ...BASE_TX, id: 'e78-tx-phone', quantity: 10, createdAt: 4000, updatedAt: 4000 });
 
-  await push(phone.page); // 옵션 없음 - 선병합이 돌아 양쪽 거래가 모두 살아남아야 한다
+  expect(await push(phone.page)).toBe('held');
   const after = await snap(phone.page);
-  expect(after.txIds).toEqual(['e78-tx-base', 'e78-tx-pc', 'e78-tx-phone']);
+  expect(after.txIds).toEqual(['e78-tx-base', 'e78-tx-phone']);   // 이 기기 데이터 그대로
+  await expect(phone.page.locator('#syncDirectionBox')).toBeVisible();
+  await expect(phone.page.locator('#syncDiffSummary')).toContainText('이 기기에만 있음: 1건');
+  await expect(phone.page.locator('#syncDiffSummary')).toContainText('클라우드에만 있음: 1건');
+  const cloud = await phone.page.locator('body').evaluate(async (el, { b, pw }) => (await decryptSyncBlob(b, pw)).transactions.map((t) => t.id).sort(), { b: Object.values(kv.store)[0], pw: PW });
+  expect(cloud).toEqual(['e78-tx-base', 'e78-tx-pc']);             // 클라우드도 PC가 올린 그대로(휴대폰이 덮지 않았다)
   await phone.context.close(); await pc.context.close();
 });
 

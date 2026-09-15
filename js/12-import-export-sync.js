@@ -1212,8 +1212,89 @@ function stopSyncAfterRemoteCloudReset() {
   // 초기화된 슬롯 기준으로 병합 기준선도 비운다 - 나중에 다시 연결할 때 예전 기준선이 삭제 판정에 쓰이지 않게 한다.
   localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify([]));
   localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify([]));
+  clearSyncDiffHold();
   updateSyncStatusUI();
   if (wasEnabled) showToast('클라우드 데이터가 초기화되어 이 기기의 동기화를 중지했습니다. 이 기기의 데이터는 삭제되지 않았습니다. 다시 동기화하려면 가족 동기화 설정에서 암호를 입력해 주세요.', 'warn', 10000);
+}
+/* -------------------------------------------------------------------------
+ * [P1-1 동기화 차이 확인 - 사용자 확정 전 반영 보류] (PM 구현 지시 · v243)
+ *
+ * 자동 동기화(부팅 pull · 10초 주기 pull · 편집 뒤 push 직전 선병합)가 클라우드에서 받은 데이터를 이 기기에 반영하기 직전에
+ * compareSyncData(js/25)로 이 기기 데이터와 비교한다.
+ *   - 의미 있는 차이가 없으면 예전 그대로 병합 · 업로드한다(확인 화면 없음).
+ *   - 차이가 있으면 병합도 업로드도 하지 않고(lastVersion도 그대로) 받은 데이터를 메모리에만 들고 있다가, 동기화 설정의
+ *     방향 선택 화면에 실제 자산 · 거래 단위의 차이를 보여 준다. 사용자가 [클라우드 데이터 받기](기존 fullAdopt) 또는
+ *     [이 기기 데이터 올리기](기존 localWins)를 고를 때까지 자동 동기화는 이 데이터를 반영하지 않는다. [취소]하면 아무것도 바뀌지 않는다.
+ *   - 확인을 기다리는 동안 주기 동기화는 같은 클라우드 버전을 다시 복호화하지 않고 들고 있는 데이터로 다시 비교만 한다.
+ *     화면이 열려 있으면 새로 만들지 않는다. 취소한 뒤에는 클라우드 버전과 차이 내용이 둘 다 달라졌을 때만 다시 띄운다
+ *     (이 기기 편집만 했거나, 상대 기기가 시세 · 일별 기록만 올린 경우에는 다시 띄우지 않는다). 헤더 동기화 버튼은
+ *     "확인 필요" 상태를 계속 보여 주고, 동기화 설정을 열면 같은 화면을 다시 볼 수 있다.
+ *   - 보류 상태는 메모리에만 있다(새 localStorage 키 없음). 앱을 다시 열면 첫 동기화가 다시 비교해 같은 확인을 보여 준다.
+ * mergeCollectionById · fullAdopt · localWins의 의미 · buildSyncBlob · 암호화 · Cloud schema는 바꾸지 않았다.
+ * ---------------------------------------------------------------------- */
+let syncDiffHold = null;                 // { remote: 복호화한 클라우드 데이터, remoteVersion }
+let syncDiffDismissed = null;            // [취소]한 확인 화면 { signature, remoteVersion }
+let syncInvalidPayloadNotifiedVersion = null;
+let syncDirectionMode = 'resume';        // 방향 선택 화면을 연 이유: 'resume'(암호 저장) | 'hold'(자동 동기화 보류)
+let syncDirectionShownSignature = null;  // 지금 화면에 보여 준 차이
+let syncDirectionRemoteVersion = null;   // 그 차이를 계산한 클라우드 버전(취소한 확인을 다시 띄울지 판단할 때 쓴다)
+const SYNC_INVALID_PAYLOAD_MESSAGE = '클라우드 데이터 형식을 확인할 수 없어 동기화를 중단했습니다. 현재 기기의 데이터는 변경되지 않았습니다.';
+
+function heldRemoteFor(remoteVersion) {
+  return syncDiffHold && syncDiffHold.remoteVersion === remoteVersion ? syncDiffHold.remote : null;
+}
+function syncLocalDataForCompare() {
+  return { assets: state.assets, transactions: state.transactions, rebalance: state.rebalance, projection: state.projection };
+}
+function clearSyncDiffHold() {
+  syncDiffHold = null;
+  syncDiffDismissed = null;
+  if (syncDirectionMode === 'hold') {
+    document.getElementById('syncDirectionBox')?.classList.add('hidden');
+    syncDirectionMode = 'resume';
+    syncDirectionShownSignature = null;
+  }
+}
+// 모양 검사만 한다([클라우드 데이터 받기] · 동기화 재개 확인). 자동 동기화에서는 같은 클라우드 버전에 대해 안내를 한 번만 띄운다.
+function checkSyncPayloadShape(parsed, remoteVersion, opts) {
+  if (validateSyncPayload(parsed).ok) return 'ok';
+  syncState.hasError = true;
+  if (!(opts && opts.silent) || syncInvalidPayloadNotifiedVersion !== remoteVersion) {
+    syncInvalidPayloadNotifiedVersion = remoteVersion;
+    showToast(SYNC_INVALID_PAYLOAD_MESSAGE, 'error', 10000);
+  }
+  return 'invalid_payload';
+}
+// 자동 동기화의 반영 직전 검사. 'ok'(차이 없음 - 예전 그대로 반영) | 'held'(차이 있음 - 반영하지 않음) | 'invalid_payload'
+function gateIncomingSyncData(parsed, remoteVersion, opts) {
+  const shape = checkSyncPayloadShape(parsed, remoteVersion, opts);
+  if (shape !== 'ok') return shape;
+  const diff = compareSyncData(syncLocalDataForCompare(), parsed);
+  if (!diff.hasMeaningfulDifference) { clearSyncDiffHold(); return 'ok'; }
+  holdSyncForDifference(parsed, remoteVersion, diff);
+  return 'held';
+}
+function holdSyncForDifference(parsed, remoteVersion, diff) {
+  const signature = syncDiffSignature(diff);
+  syncDiffHold = { remote: parsed, remoteVersion };
+  updateSyncStatusUI();
+  const modal = document.getElementById('syncSettingsModal');
+  const box = document.getElementById('syncDirectionBox');
+  const showing = modal && !modal.classList.contains('hidden') && box && !box.classList.contains('hidden');
+  if (showing) {
+    // 이미 떠 있으면 새 화면을 만들지 않는다 - 차이가 달라졌을 때만 내용을 맞춘다.
+    if (syncDirectionMode === 'hold') {
+      if (syncDirectionShownSignature !== signature) {
+        renderSyncDirectionCounts({ remoteAssets: parsed.assets.length, remoteTx: parsed.transactions.length });
+        renderSyncDirectionDiff(diff, 'hold', remoteVersion);
+      } else {
+        syncDirectionRemoteVersion = remoteVersion; // 차이가 같으면 다시 그리지 않는다(펼쳐 둔 상세 보기가 접히지 않게)
+      }
+    }
+    return;
+  }
+  if (syncDiffDismissed && (syncDiffDismissed.signature === signature || syncDiffDismissed.remoteVersion === remoteVersion)) return;
+  openSyncSettingsModal();
 }
 // [클라우드 데이터 초기화 - 경합 방지] 바깥 함수는 초기화 중 호출만 막고 진행 중 개수를 센다. 실제 동작은 pushToCloudNow 그대로다.
 async function pushToCloud(opts) {
@@ -1242,8 +1323,20 @@ async function pushToCloudNow(opts) {
     if (getRes.ok) {
       const remote = await getRes.json();
       if (isCloudResetSinceLastSync(remote, savedLastVersion)) { stopSyncAfterRemoteCloudReset(); return 'cloud_reset'; } // 다른 기기에서 초기화됨 - 업로드하지 않는다
+      // [P1-1] [이 기기 데이터 올리기]를 고르는 사이 차이가 달라졌으면(사용자가 본 것과 다르면) 올리지 않고 다시 보여 준다.
+      //   상대 기기가 시세 · 일별 기록만 올려 클라우드 버전만 바뀐 경우는 차이가 같으므로 그대로 올린다.
+      if (localWins && opts.expectSignature && remote.version) {
+        const current = heldRemoteFor(remote.version) || await decryptSyncBlob(remote, syncState.password);
+        const shape = checkSyncPayloadShape(current, remote.version);
+        if (shape !== 'ok') { updateSyncStatusUI(); return shape; }
+        if (syncDiffSignature(compareSyncData(syncLocalDataForCompare(), current)) !== opts.expectSignature) { updateSyncStatusUI(); return 'remote_changed'; }
+      }
       if (!localWins && remote.version && remote.version > syncState.lastVersion) {
-        const parsed = await decryptSyncBlob(remote, syncState.password);
+        const parsed = heldRemoteFor(remote.version) || await decryptSyncBlob(remote, syncState.password);
+        // [P1-1 차이 확인] 받은 클라우드 데이터가 이 기기와 의미 있게 다르면 병합도 업로드도 하지 않고 사용자 확인을 기다린다
+        // (lastVersion도 그대로라 확인 전까지는 편집할 때마다 이 검사를 다시 거친다). 모양이 잘못된 데이터도 병합 · 업로드하지 않는다.
+        const gate = gateIncomingSyncData(parsed, remote.version, { silent: true });
+        if (gate !== 'ok') { updateSyncStatusUI(); return gate; }
         applyingRemoteUpdate = true;
         try {
           mergeAssetsAndTransactionsWithRemote(parsed);
@@ -1282,6 +1375,7 @@ async function pushToCloudNow(opts) {
     // 상대의 삭제가 이 기기에서 "삭제로 인식"되지 못하고 되살아나 버린다.
     localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
     localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+    clearSyncDiffHold(); // [P1-1] 클라우드가 이 기기 내용과 같아졌다
     updateSyncStatusUI();
   } catch (e) {
     // [실패 원자성] 성공 경로에서만 갱신되는 값을 원래대로 돌려둔다 - 로컬 데이터(state/localStorage)는
@@ -1328,13 +1422,27 @@ async function pullFromCloudNow(opts) {
     syncState.hasError = false; // 여기까지 왔으면 통신은 정상 - 이후 분기는 통신 오류가 아니다
     if (isCloudResetSinceLastSync(remote, lastVersionAtStart)) { stopSyncAfterRemoteCloudReset(); return 'cloud_reset'; } // 받지도 병합하지도 않는다
     if (!remote.version || remote.version <= syncState.lastVersion) { updateSyncStatusUI(); return 'up_to_date'; }
-    let parsed;
-    try {
-      parsed = await decryptSyncBlob(remote, syncState.password);
-    } catch (e) {
-      showSyncDecryptFailure();
+    // [P1-1 차이 확인] 확인을 기다리는 같은 클라우드 버전이면 주기마다 다시 복호화하지 않고 들고 있는 데이터로 다시 비교한다.
+    let parsed = fullAdopt ? null : heldRemoteFor(remote.version);
+    if (!parsed) {
+      try {
+        parsed = await decryptSyncBlob(remote, syncState.password);
+      } catch (e) {
+        showSyncDecryptFailure();
+        updateSyncStatusUI();
+        return 'decrypt_failed';
+      }
+    }
+    // [P1-1] 모양이 잘못된 클라우드 데이터는 빈 목록으로 보고 받거나 병합하지 않는다(checkSyncPayloadShape).
+    // 자동 동기화(fullAdopt 아님)는 이 기기와 의미 있는 차이가 있으면 반영하지 않고 사용자 확인을 기다린다(gateIncomingSyncData).
+    // [클라우드 데이터 받기](fullAdopt)는 사용자가 차이를 보고 고른 동작이라 모양만 검사한다.
+    const gate = fullAdopt ? checkSyncPayloadShape(parsed, remote.version, { silent }) : gateIncomingSyncData(parsed, remote.version, { silent });
+    if (gate !== 'ok') { updateSyncStatusUI(); return gate; }
+    // [P1-1] 방향 선택 화면에서 사용자가 본 차이와 지금 차이가 다르면(확인하는 사이 클라우드나 이 기기 데이터가 바뀌었으면)
+    // 받지 않고 다시 보여 준다. 상대 기기가 시세 · 일별 기록만 올려 클라우드 버전만 바뀐 경우는 차이가 같으므로 그대로 받는다.
+    if (opts && opts.expectSignature && syncDiffSignature(compareSyncData(syncLocalDataForCompare(), parsed)) !== opts.expectSignature) {
       updateSyncStatusUI();
-      return 'decrypt_failed';
+      return 'remote_changed';
     }
     applyingRemoteUpdate = true;
     try {
@@ -1370,7 +1478,11 @@ async function pullFromCloudNow(opts) {
       // { gated: true }로 넘겨 필드 자체의 updatedAt을 따로 비교하게 한다(아래 adoptRemoteRebalanceAndProjection
       // 주석 참고 - fullAdopt 최초 페어링이어도 예외 없이 적용: 이 필드는 "샘플/데모 데이터 섞임" 문제와
       // 무관해 최초 페어링을 다르게 취급할 이유가 없다).
-      applyRemoteScalarFields(parsed, { gated: true });
+      // [P1-1 · PM 결정 2026-09-15] 사용자가 차이를 보고 [클라우드 데이터 받기]를 고른 경우(opts.adoptSettings)에는 목표비중 ·
+      // 미래예측 설정도 클라우드 값으로 맞춘다. 예전처럼 "더 최근에 바꾼 쪽"만 남기면 이 기기 설정 시각이 더 최근일 때(예: 새로 연결한
+      // 기기의 기본 설정) 받은 뒤에도 차이가 남아, 자동 동기화가 같은 설정 차이로 계속 보류된다. 자동 동기화(adoptSettings 없음)는
+      // 예전 그대로 필드 시각을 비교한다. 자산 · 거래 통째 받기(fullAdopt)의 의미는 바꾸지 않았다.
+      applyRemoteScalarFields(parsed, { gated: !(opts && opts.adoptSettings) });
       persistAssets();
       persistTransactions();
       renderAll();
@@ -1382,6 +1494,7 @@ async function pullFromCloudNow(opts) {
     syncState.lastVersion = remote.version;
     localStorage.setItem(LS_SYNC_LAST_VERSION, String(remote.version));
     localStorage.setItem(LS_SYNC_LAST_SYNCED_AT, new Date().toISOString());
+    clearSyncDiffHold(); // [P1-1] 받은 데이터를 반영했다 - 확인을 기다리던 차이는 끝났다
     updateSyncStatusUI();
     if (!silent) showToast('클라우드에서 최신 데이터를 받아왔습니다.', 'success');
     return 'applied';
@@ -1420,7 +1533,9 @@ function applySyncColorSet(el, state) {
 const SYNC_BTN_PRESENTATION = {
   inactive: { icon: 'cloud-off', label: '서버 동기화중지' },
   error: { icon: 'alert-triangle', label: '서버 동기화오류' },
-  active: { icon: 'refresh-cw', label: '서버 동기화중' }
+  active: { icon: 'refresh-cw', label: '서버 동기화중' },
+  // [P1-1] 클라우드와 이 기기 데이터가 달라 사용자 확인을 기다리는 상태 - 오류와 같은 색이지만 아이콘 모양이 다르다.
+  hold: { icon: 'alert-circle', label: '서버 동기화 확인 필요' }
 };
 function applySyncButtonPresentation(btn, state) {
   const p = SYNC_BTN_PRESENTATION[state];
@@ -1435,9 +1550,9 @@ function applySyncButtonPresentation(btn, state) {
 function updateSyncStatusUI() {
   const toggleBtn = document.getElementById('syncSettingsBtn');
   if (toggleBtn) {
-    const state = !syncState.enabled ? 'inactive' : (syncState.hasError ? 'error' : 'active');
+    const state = !syncState.enabled ? 'inactive' : (syncDiffHold ? 'hold' : (syncState.hasError ? 'error' : 'active'));
     applySyncButtonPresentation(toggleBtn, state);
-    applySyncColorSet(toggleBtn, state);
+    applySyncColorSet(toggleBtn, state === 'hold' ? 'error' : state);
   }
   // [모달 안 상태 배지] 암호 입력란보다 위에서 크게 보여준다(요청에 따라 위치 이동) - 헤더 버튼과
   // 같은 3색 규칙 + 마지막 동기화 시각까지 함께 표기한다.
@@ -1446,6 +1561,9 @@ function updateSyncStatusUI() {
     if (!syncState.enabled) {
       statusEl.textContent = '서버 동기화중지';
       applySyncColorSet(statusEl, 'inactive');
+    } else if (syncDiffHold) {
+      statusEl.textContent = '동기화 보류 · 클라우드와 이 기기의 데이터가 달라 확인이 필요합니다';
+      applySyncColorSet(statusEl, 'error');
     } else if (syncState.hasError) {
       statusEl.textContent = '서버 동기화오류 · 네트워크 연결을 확인해주세요';
       applySyncColorSet(statusEl, 'error');
@@ -1471,13 +1589,36 @@ function showSyncDecryptFailure() {
 }
 function openSyncSettingsModal() {
   updateSyncStatusUI();
+  const modal = document.getElementById('syncSettingsModal');
+  const box = document.getElementById('syncDirectionBox');
+  const wasHidden = modal.classList.contains('hidden');
   // [P1-1] 지난번에 열어두고 닫은 방향 선택이 그대로 남아 있으면, 지금 클라우드 상태와 무관한
   // 선택지를 보여주게 된다 - 열 때마다 접어 두고 암호를 저장한 뒤에 다시 판단한다.
-  document.getElementById('syncDirectionBox')?.classList.add('hidden');
-  document.getElementById('syncSettingsModal').classList.remove('hidden');
-  pushModalHistoryState();
+  box?.classList.add('hidden');
+  if (syncDirectionMode === 'hold') syncDirectionMode = 'resume';
+  // [P1-1 차이 확인] 자동 동기화가 확인을 기다리는 중이면, 들고 있는 클라우드 데이터와 지금 이 기기 데이터를 다시 비교해 보여 준다.
+  let showDiff = false;
+  if (syncState.enabled && syncDiffHold) {
+    const diff = compareSyncData(syncLocalDataForCompare(), syncDiffHold.remote);
+    if (diff.hasMeaningfulDifference) {
+      renderSyncDirectionCounts({ remoteAssets: syncDiffHold.remote.assets.length, remoteTx: syncDiffHold.remote.transactions.length });
+      renderSyncDirectionDiff(diff, 'hold', syncDiffHold.remoteVersion);
+      box?.classList.remove('hidden');
+      showDiff = true;
+    } else {
+      pullFromCloud({ silent: true }); // 그 사이 두 곳이 같아졌다 - 다음 동기화를 바로 돌려 예전처럼 반영한다
+    }
+  }
+  modal.classList.remove('hidden');
+  if (wasHidden) pushModalHistoryState(); // 이미 열려 있는 모달을 다시 그릴 때 뒤로가기 기록을 겹쳐 쌓지 않는다
+  if (showDiff && box && typeof box.scrollIntoView === 'function') box.scrollIntoView({ block: 'start' });
 }
 function closeSyncSettingsModal(viaBackButton) {
+  // [P1-1] 차이 확인 화면이 떠 있는 채로 닫으면(X · 바깥 · 뒤로가기) [취소]와 같다 - 같은 확인을 곧바로 다시 띄우지 않는다.
+  const box = document.getElementById('syncDirectionBox');
+  if (syncDirectionMode === 'hold' && syncDiffHold && box && !box.classList.contains('hidden')) {
+    syncDiffDismissed = { signature: syncDirectionShownSignature, remoteVersion: syncDirectionRemoteVersion };
+  }
   document.getElementById('syncSettingsModal').classList.add('hidden');
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
@@ -1523,6 +1664,10 @@ async function onSyncPasswordSaved(password) {
   document.getElementById('syncDecryptErrorBox')?.classList.add('hidden');
   document.getElementById('syncUploadConfirmBox')?.classList.add('hidden');
   document.getElementById('syncDirectionBox')?.classList.add('hidden');
+  // [P1-1] 동기화를 다시 켜는 것이므로, 예전 슬롯에서 확인을 기다리던 차이는 버린다(동기화가 꺼진 상태에서 새로 판단한다).
+  syncDiffHold = null;
+  syncDiffDismissed = null;
+  syncDirectionMode = 'resume';
 
   let probe;
   try {
@@ -1545,13 +1690,20 @@ async function onSyncPasswordSaved(password) {
     updateSyncStatusUI();
     return;
   }
+  if (probe.invalidPayload) {
+    // [P1-1] 모양이 잘못된 클라우드 데이터 - 방향을 고르게 하지 않는다([받기]가 이 기기 데이터를 빈 목록으로 바꿀 수 있었다).
+    showToast(SYNC_INVALID_PAYLOAD_MESSAGE, 'error', 10000);
+    updateSyncStatusUI();
+    return;
+  }
   renderSyncDirectionCounts(probe.counts);
+  renderSyncDirectionDiff(probe.diff, 'resume', probe.remoteVersion);
   document.getElementById('syncDirectionBox')?.classList.remove('hidden');
 }
 
 /* [P1-1] 슬롯 존재 확인 전용 - state/localStorage에 아무것도 쓰지 않는다.
  * 기존 deriveKvKey/decryptSyncBlob/Worker API를 그대로 쓰고 새 엔드포인트를 만들지 않는다.
- * 복호화는 건수 안내를 위해서만 시도하고, 실패해도 슬롯 존재 사실은 그대로 반환한다. */
+ * 복호화는 건수 · 차이 안내를 위해서만 시도하고(받은 데이터는 메모리에서 비교만 한다), 실패해도 슬롯 존재 사실은 그대로 반환한다. */
 async function probeCloudSlot(password) {
   const kvKey = await deriveKvKey(password);
   const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
@@ -1559,18 +1711,20 @@ async function probeCloudSlot(password) {
   if (!res.ok) throw new Error('probe failed: ' + res.status);
   const remote = await res.json();
   if (!remote || !remote.version) return { exists: false };
+  let parsed;
   try {
-    const parsed = await decryptSyncBlob(remote, password);
-    return {
-      exists: true,
-      counts: {
-        remoteAssets: Array.isArray(parsed.assets) ? parsed.assets.length : null,
-        remoteTx: Array.isArray(parsed.transactions) ? parsed.transactions.length : null
-      }
-    };
+    parsed = await decryptSyncBlob(remote, password);
   } catch (e) {
     return { exists: true, decryptFailed: true };
   }
+  if (!validateSyncPayload(parsed).ok) return { exists: true, invalidPayload: true };
+  return {
+    exists: true,
+    remoteVersion: remote.version,
+    counts: { remoteAssets: parsed.assets.length, remoteTx: parsed.transactions.length },
+    // [P1-1 차이 확인] 이 기기와 무엇이 다른지 - 저장하지 않고 방향 선택 화면에 보여 주기만 한다.
+    diff: compareSyncData(syncLocalDataForCompare(), parsed)
+  };
 }
 
 /* [P1-1] 방향 선택 화면의 건수 안내 - 새 기기(샘플 자산만 있는 상태)에서 실수로 [이 기기 데이터
@@ -1585,6 +1739,127 @@ function renderSyncDirectionCounts(counts) {
       ? `클라우드: 자산 ${fmtNum(counts.remoteAssets)}건 · 거래 ${fmtNum(counts.remoteTx)}건`
       : '클라우드: 건수를 확인하지 못했습니다';
   }
+}
+
+/* [P1-1 동기화 차이 확인] 방향 선택 박스에 실제 차이를 채운다. 종목명 · 계좌명 같은 사용자 입력 문자열은 textContent로만 넣는다.
+ *   mode 'resume' : 암호를 저장해 동기화를 다시 켤 때(클라우드에 데이터가 있음) - 차이가 없어도 방향 선택은 예전처럼 묻는다
+ *   mode 'hold'   : 자동 동기화가 받은 클라우드 데이터가 이 기기와 달라 반영을 멈췄을 때
+ *   remoteVersion : 이 차이를 계산한 클라우드 버전(취소 판정용). 버튼을 누를 때 보여 준 차이와 지금 차이가 다르면 반영하지 않고 다시 보여 준다. */
+function renderSyncDirectionDiff(diff, mode, remoteVersion) {
+  syncDirectionMode = mode;
+  syncDirectionRemoteVersion = remoteVersion || null;
+  syncDirectionShownSignature = syncDiffSignature(diff);
+  const differs = diff.hasMeaningfulDifference;
+  const titleEl = document.getElementById('syncDirectionTitle');
+  if (titleEl) titleEl.textContent = differs ? '클라우드와 이 기기의 데이터가 다릅니다' : '클라우드에 이미 저장된 데이터가 있습니다. 어떻게 맞출까요?';
+  const introEl = document.getElementById('syncDirectionIntro');
+  if (introEl) {
+    introEl.textContent = !differs
+      ? '자산 · 거래내역 · 목표비중 · 미래예측 설정이 클라우드와 같습니다.'
+      : mode === 'hold'
+        ? '차이를 확인할 때까지 자동 동기화를 멈췄습니다. 아래 내용을 확인하고 어느 쪽으로 맞출지 골라 주세요.'
+        : '동기화하기 전에 차이를 확인하고 어느 쪽으로 맞출지 골라 주세요.';
+  }
+  const summaryEl = document.getElementById('syncDiffSummary');
+  if (summaryEl) {
+    summaryEl.replaceChildren();
+    if (differs) {
+      summaryEl.append(
+        buildSyncDiffGroup('asset', '자산', '자산', diff.assets),
+        buildSyncDiffGroup('transaction', '거래내역', '거래', diff.transactions),
+        buildSyncDiffSettings(diff)
+      );
+    }
+  }
+  setSyncDirectionEffect('syncDirectionPullEffect', syncDiffEffectLines(diff, 'pull'));
+  setSyncDirectionEffect('syncDirectionPushEffect', syncDiffEffectLines(diff, 'push'));
+}
+function syncDiffEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+const SYNC_DIFF_CARD_CLASS = 'space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3';
+const SYNC_DIFF_HEAD_CLASS = 'font-semibold text-slate-700 dark:text-slate-200';
+const SYNC_DIFF_TEXT_CLASS = 'text-slate-600 dark:text-slate-300';
+function buildSyncDiffGroup(kind, groupLabel, itemNoun, group) {
+  const section = syncDiffEl('section', SYNC_DIFF_CARD_CLASS);
+  section.dataset.syncDiffGroup = kind;
+  section.append(syncDiffEl('p', SYNC_DIFF_HEAD_CLASS, `${groupLabel} 차이`));
+  const counts = syncDiffEl('ul', `space-y-1 ${SYNC_DIFF_TEXT_CLASS}`);
+  counts.append(
+    syncDiffEl('li', '', `이 기기에만 있음: ${group.localOnly.length}건`),
+    syncDiffEl('li', '', `클라우드에만 있음: ${group.cloudOnly.length}건`),
+    syncDiffEl('li', '', `내용이 다른 ${itemNoun}: ${group.different.length}건`)
+  );
+  section.append(counts);
+  if (!group.localOnly.length && !group.cloudOnly.length && !group.different.length) return section;
+  const details = syncDiffEl('details', 'space-y-3');
+  details.append(syncDiffEl('summary', 'min-h-[44px] flex items-center cursor-pointer font-semibold text-brand-600 dark:text-brand-400', `${groupLabel} 상세 보기`));
+  if (group.localOnly.length) details.append(buildSyncDiffItemList(`이 기기에만 있는 ${itemNoun}`, kind, group.localOnly));
+  if (group.cloudOnly.length) details.append(buildSyncDiffItemList(`클라우드에만 있는 ${itemNoun}`, kind, group.cloudOnly));
+  if (group.different.length) details.append(buildSyncDiffChangedList(`내용이 다른 ${itemNoun}`, kind, group.different));
+  section.append(details);
+  return section;
+}
+function buildSyncDiffItemCard(lines) {
+  const li = syncDiffEl('li', 'rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2 space-y-0.5 break-words');
+  lines.forEach((line, i) => li.append(syncDiffEl('p', i === 0 ? SYNC_DIFF_HEAD_CLASS : SYNC_DIFF_TEXT_CLASS, line)));
+  return li;
+}
+function buildSyncDiffItemList(heading, kind, views) {
+  const wrap = syncDiffEl('div', 'space-y-2');
+  wrap.dataset.syncDiffList = heading;
+  wrap.append(syncDiffEl('p', SYNC_DIFF_HEAD_CLASS, heading));
+  const list = syncDiffEl('ul', 'space-y-2');
+  views.forEach((view) => list.append(buildSyncDiffItemCard(syncDiffItemLines(kind, view))));
+  wrap.append(list);
+  return wrap;
+}
+function buildSyncDiffChangedList(heading, kind, items) {
+  const wrap = syncDiffEl('div', 'space-y-2');
+  wrap.dataset.syncDiffList = heading;
+  wrap.append(syncDiffEl('p', SYNC_DIFF_HEAD_CLASS, heading));
+  const list = syncDiffEl('ul', 'space-y-2');
+  items.forEach((item) => {
+    const li = buildSyncDiffItemCard(syncDiffItemLines(kind, item.local).slice(0, 2));
+    item.fields.forEach((f) => {
+      const row = syncDiffEl('div', 'pt-1');
+      row.append(
+        syncDiffEl('p', 'font-medium text-slate-700 dark:text-slate-200', SYNC_DIFF_FIELD_LABELS[f.field] || f.field),
+        syncDiffEl('p', SYNC_DIFF_TEXT_CLASS, `이 기기: ${syncDiffValueText(f.field, f.local, item.local)}`),
+        syncDiffEl('p', SYNC_DIFF_TEXT_CLASS, `클라우드: ${syncDiffValueText(f.field, f.cloud, item.cloud)}`)
+      );
+      li.append(row);
+    });
+    list.append(li);
+  });
+  wrap.append(list);
+  return wrap;
+}
+function buildSyncDiffSettings(diff) {
+  const section = syncDiffEl('section', SYNC_DIFF_CARD_CLASS);
+  section.dataset.syncDiffGroup = 'settings';
+  section.append(
+    syncDiffEl('p', SYNC_DIFF_HEAD_CLASS, '기타 설정'),
+    syncDiffEl('p', SYNC_DIFF_TEXT_CLASS, `목표비중 설정: ${diff.rebalance.changed ? '서로 다름' : '같음'}`),
+    syncDiffEl('p', SYNC_DIFF_TEXT_CLASS, `미래예측 설정: ${diff.projection.changed ? '서로 다름' : '같음'}`)
+  );
+  return section;
+}
+function setSyncDirectionEffect(id, lines) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.replaceChildren(...lines.map((line) => syncDiffEl('p', '', line)));
+  el.classList.toggle('hidden', lines.length === 0);
+}
+// [P1-1] 확인하는 사이 차이가 달라졌다 - 반영하지 않았으니, 지금 데이터로 다시 비교해 보여 준다
+// (차이가 없어졌으면 예전처럼 그대로 동기화된다).
+function showSyncRemoteChangedNotice() {
+  syncDiffDismissed = null;
+  showToast('확인하는 사이 데이터가 바뀌었습니다. 달라진 내용을 다시 확인해 주세요.', 'warn', 8000);
+  pullFromCloud({ silent: true });
 }
 
 document.getElementById('syncSettingsBtn').addEventListener('click', () => openSyncSettingsModal());
@@ -1614,11 +1889,17 @@ document.getElementById('syncUploadConfirmBtn').addEventListener('click', async 
 document.getElementById('syncDirectionPullBtn').addEventListener('click', async () => {
   document.getElementById('syncDirectionBox')?.classList.add('hidden');
   enableSyncAfterChoice();
-  const result = await pullFromCloud({ fullAdopt: true });
+  // [P1-1] 사용자가 본 차이를 함께 넘긴다 - 확인하는 사이 차이가 달라졌으면 받지 않고 다시 보여 준다.
+  // 목표비중 · 미래예측 설정도 클라우드 값으로 맞춘다(adoptSettings - pullFromCloudNow의 PM 결정 주석 참고).
+  const result = await pullFromCloud({ fullAdopt: true, adoptSettings: true, expectSignature: syncDirectionShownSignature });
   updateSyncStatusUI();
   if (result === 'applied') {
     showToast('클라우드 데이터를 이 기기에 반영했습니다.', 'success');
     closeSyncSettingsModal();
+  } else if (result === 'remote_changed') {
+    showSyncRemoteChangedNotice();
+  } else if (result === 'invalid_payload') {
+    // 안내는 checkSyncPayloadShape가 이미 띄웠다 - 이 기기 데이터는 바뀌지 않았다.
   } else if (result === 'not_found') {
     document.getElementById('syncUploadConfirmBox')?.classList.remove('hidden');
   } else if (result === 'decrypt_failed') {
@@ -1634,20 +1915,27 @@ document.getElementById('syncDirectionPullBtn').addEventListener('click', async 
 });
 // [P1-1 - 이 기기 데이터 올리기] 되돌릴 수 없는 동작이라 한 번 더 확인을 받는다(거래 삭제와 같은 방식).
 // 문구는 실제 반영 범위와 정확히 일치시킨다 - tickerRoles/학습된 종목명/일별 손익 이력은 합집합
-// 구조라 덮이지 않고, 상대 기기가 아직 올리지 않은 입력도 지워지지 않는다. 그래서 "모든 데이터"나
-// "완전히 덮어쓰기" 같은 표현을 쓰지 않는다.
+// 구조라 덮이지 않는다. 그래서 "모든 데이터"나 "완전히 덮어쓰기" 같은 표현을 쓰지 않는다.
+// [v243] 다른 기기는 받은 클라우드 데이터가 자기 데이터와 다르면 자동으로 합치지 않고 차이를 보여 준 뒤 그 기기
+// 사용자가 고르게 바뀌었다 - 예전 문구("아직 동기화하지 않은 입력은 합쳐집니다")를 실제 동작에 맞게 고쳤다.
 document.getElementById('syncDirectionPushBtn').addEventListener('click', async () => {
   const ok = confirm(
     '이 기기 데이터를 클라우드에 올릴까요?\n\n'
     + '이 기기의 자산, 거래내역, 목표비중, 미래예측 설정을 클라우드에 올립니다.\n'
-    + '클라우드와 다른 기기의 내용이 이 기기 기준으로 바뀔 수 있습니다.\n'
-    + '다른 기기에서 아직 동기화하지 않은 입력이 있으면 그 내용은 지워지지 않고 합쳐집니다.\n\n'
+    + '클라우드의 내용이 이 기기 기준으로 바뀝니다.\n'
+    + '다른 기기는 다음 동기화 때 달라진 내용을 보여 주고, 그 기기에서 고를 때까지 자기 데이터를 바꾸지 않습니다.\n\n'
     + '먼저 JSON 백업을 권장합니다.'
   );
   if (!ok) return; // 취소 - 네트워크 요청 자체를 하지 않는다
   enableSyncAfterChoice();
   try {
-    await pushToCloud({ localWins: true });
+    const pushed = await pushToCloud({ localWins: true, expectSignature: syncDirectionShownSignature });
+    if (pushed === 'remote_changed') {
+      document.getElementById('syncDirectionBox')?.classList.add('hidden');
+      showSyncRemoteChangedNotice();
+      return;
+    }
+    if (pushed === 'invalid_payload') return; // 안내는 이미 띄웠다 - 올리지 않았고 이 기기 데이터도 그대로다
     document.getElementById('syncDirectionBox')?.classList.add('hidden');
     updateSyncStatusUI();
     showToast('이 기기 데이터를 클라우드에 올렸습니다.', 'success');
@@ -1658,7 +1946,19 @@ document.getElementById('syncDirectionPushBtn').addEventListener('click', async 
     showToast('클라우드에 올리지 못했습니다. 네트워크를 확인하고 다시 시도해주세요.', 'error');
   }
 });
+// [P1-1 - 취소] 동기화하지 않는다. 이 기기 · 클라우드 데이터를 바꾸지 않고 네트워크 요청도 하지 않는다.
+// 자동 동기화 보류 중이면 같은 확인을 곧바로 다시 띄우지 않도록 지금 본 차이를 기억한다(메모리에만).
+document.getElementById('syncDirectionCancelBtn').addEventListener('click', () => {
+  const holding = syncDirectionMode === 'hold' && !!syncDiffHold;
+  if (holding) syncDiffDismissed = { signature: syncDirectionShownSignature, remoteVersion: syncDirectionRemoteVersion };
+  document.getElementById('syncDirectionBox')?.classList.add('hidden');
+  closeSyncSettingsModal();
+  showToast(holding
+    ? '동기화를 보류했습니다. 이 기기와 클라우드의 데이터는 바뀌지 않았습니다. 가족 동기화 설정에서 다시 확인할 수 있습니다.'
+    : '동기화를 시작하지 않았습니다. 이 기기와 클라우드의 데이터는 바뀌지 않았습니다.', 'info', 6000);
+});
 document.getElementById('syncDisableBtn').addEventListener('click', () => {
+  clearSyncDiffHold();
   syncState.enabled = false;
   syncState.hasError = false;
   localStorage.setItem(LS_SYNC_ENABLED, '0');

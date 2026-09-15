@@ -129,12 +129,15 @@ test('RR-3~RR-5. 부팅·Cloud pull·JSON 가져오기가 복구 코드 없이 �
   const phone = await openDevice();
   await seedSynced(phone.page, 'e85-rr');
   const pc = await openDevice();
-  // Cloud pull(스마트 머지 경로)
-  const pulled = await pc.page.locator('body').evaluate(async () => {
+  // Cloud pull - [v243 P1-1 차이 확인] 빈 기기와 클라우드 데이터가 달라 자동 동기화는 합치지 않고 확인을 기다린다.
+  // 차이 화면에서 [클라우드 데이터 받기]를 눌러 받는다(받기 경로도 일별 이력은 날짜 합집합으로 받는다).
+  const res = await pc.page.locator('body').evaluate(async () => {
     localStorage.setItem('sam_sync_password_v1', 'e85-rr'); localStorage.setItem('sam_sync_enabled_v1', '1'); loadSyncState();
-    const res = await pullFromCloud({ silent: true });
-    return { res, assets: state.assets.map((a) => a.name), snaps: Object.keys(state.dailySnapshots).length };
+    return pullFromCloud({ silent: true });
   });
+  await pc.page.locator('#syncDirectionPullBtn').click();
+  await pc.page.locator('#syncSettingsModal').waitFor({ state: 'hidden' });
+  const pulled = await pc.page.locator('body').evaluate((el, r) => ({ res: r, assets: state.assets.map((a) => a.name), snaps: Object.keys(state.dailySnapshots).length }), res);
   // JSON 가져오기(덮어쓰기 = 복원)
   const file = await pc.page.locator('body').evaluate(() => {
     const blob = JSON.parse(JSON.stringify(buildSyncBlob()));
@@ -153,7 +156,7 @@ test('RR-3~RR-5. 부팅·Cloud pull·JSON 가져오기가 복구 코드 없이 �
   });
   await pc.page.reload();
   await settle(pc.page);
-  expect(pulled.res).toBe('applied');
+  expect(pulled.res).toBe('held');
   expect(pulled.assets).toEqual(['E85_채권']);
   expect(pulled.snaps).toBeGreaterThanOrEqual(3);
   expect(restored).toEqual({ value: 123, pastKeys: 1 });
