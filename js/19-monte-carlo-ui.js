@@ -85,6 +85,10 @@ document.getElementById('mcOwnerScopeSegmented').addEventListener('click', (e) =
   if (!btn) return;
   mcOwnerScope = btn.dataset.scope === 'household' ? null : btn.dataset.scope;
   syncMcOwnerScopeButtonsUI();
+  // [통합 수정 · PMD-09 · F-06a] 결과가 있으면 지우지 않고 "다시 계산 필요"로 표시한다(자동 재실행은 하지 않는 원칙 그대로).
+  // 실행 중이면 진행 표시를 건드리지 않는다 - 완료되면 결과가 바뀐 관점과 비교돼 같은 표시가 붙는다.
+  if (isMonteCarloRunInProgress()) return;
+  if (hasDisplayedMonteCarloResult()) { refreshMonteCarloResultValidity(); return; }
   // [기존 결과 오해 방지] 이전 관점(예: 가구 전체)으로 실행한 결과가 새 관점 선택 후에도 화면에 남아있으면
   // "이 결과가 방금 고른 관점 기준"이라고 오해할 수 있다 - 관점을 바꾸면 이전 결과를 숨기고 다시
   // [Monte Carlo 실행]을 눌러야 하게 한다(계산을 자동 재실행하지 않음 - 기존 "실행 버튼을 직접 눌러야
@@ -282,6 +286,7 @@ mcUiEl('saveMcFeeRatesModalBtn').addEventListener('click', () => {
   persistProjection();
   closeMcFeeRatesModal(false);
   updateMcFeeSummary();
+  refreshMonteCarloResultValidity(); // [PMD-09] 운용보수는 결과에 영향을 준다 - 결과가 있으면 "다시 계산 필요"로 표시
   showToast('운용보수 설정을 저장했습니다.', 'success');
 });
 
@@ -301,6 +306,71 @@ function resetMonteCarloUiToReady() {
   // [Phase 17 P1-4] 새 2단 Safety 컨테이너도 함께 리셋한다(재실행 시 이전 결과의 카드가 잠깐 남아있지 않도록).
   if (mcUiEl('mcSafetyCritical')) { mcUiEl('mcSafetyCritical').classList.add('hidden'); mcUiEl('mcSafetyCritical').innerHTML = ''; }
   if (mcUiEl('mcSafetyDetailToggleBtn')) mcUiEl('mcSafetyDetailToggleBtn').classList.add('hidden');
+  if (mcUiEl('mcStaleNotice')) mcUiEl('mcStaleNotice').classList.add('hidden');
+}
+
+/* -------------------------------------------------------------------------
+ * [통합 수정 · F-06a · PMD-09] Monte Carlo 결과의 유효성 상태
+ *    - 실행 중(Worker WAITING/RUNNING)에는 화면을 READY로 되돌리지 않는다. 예전엔 자산 저장 · 시세 갱신 · 탭 이동이
+ *      updateProjection()을 거치며 진행 표시와 취소 버튼을 지웠고, 계산은 계속 돌다가 결과가 갑자기 나타났다.
+ *    - 결과가 떠 있으면 지우지 않는다. 결과를 계산한 입력의 서명과 지금 입력의 서명을 비교해, 다르면 "다시 계산이
+ *      필요합니다"를 결과 맨 위와 중앙값 제목에 표시한다(값은 그대로 두고 오인만 막는다). 입력을 되돌리면 표시도 사라진다.
+ *    - 서명에 넣는 것 = 실제로 Monte Carlo 입력을 만드는 값: 자산(수량 · 매입가 · 계좌 · 소유자 · 자산군과 확정 여부 ·
+ *      대표매칭 · 시세가 없는 자산의 직접 입력 평가액), 목표 비중, 수익률 사전, 운용보수, 월 적립금 · 배분 · 증가율, 절세계좌
+ *      계획, 물가상승률, 실행 조건(시나리오 · 반복 횟수 · 소유자 관점 · 목표금액 · 목표 기준).
+ *    - 넣지 않는 것 = 시장 시세와 환율. 시세는 계속 움직이므로 시세 갱신만으로는 결과를 무효로 보지 않는다(PM 결정).
+ * ---------------------------------------------------------------------- */
+function isMonteCarloRunInProgress() {
+  return typeof mcState !== 'undefined' && mcActiveRequestId !== null
+    && (mcState === MC_WORKER_STATE.RUNNING || mcState === MC_WORKER_STATE.WAITING);
+}
+function hasDisplayedMonteCarloResult() {
+  return !!mcLastRender && !mcUiEl('mcResultArea').classList.contains('hidden');
+}
+function computeMonteCarloInputSignature() {
+  const priceFollowsMarket = (a) => String(a.ticker ?? '').trim() !== '' && !NON_TRADABLE_CATEGORIES.includes(a.category);
+  const assets = (state.assets || []).map((a) => [a.id, a.ticker, a.name, a.owner, a.accountType, a.category, a.categorySource,
+    a.isDomestic, a.currency, a.quantity, a.buyPrice, a.buyRate, a.rateMatchOverride, priceFollowsMarket(a) ? null : a.currentPrice])
+    .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
+  const rebalance = {};
+  REBALANCE_OWNERS.forEach((owner) => {
+    const r = (state.rebalance && state.rebalance[owner]) || {};
+    rebalance[owner] = { domestic: r.domestic, targets: r.targets };
+  });
+  const p = state.projection || {};
+  const goalMode = (document.querySelector('input[name="mcGoalMode"]:checked') || {}).value || 'nominal';
+  // 객체 키 순서는 비교하지 않는다 - 저장 · 동기화 과정에서 같은 내용의 필드 순서만 바뀌어도 "다시 계산 필요"가 뜨지 않게 한다.
+  const stableStringify = (value) => {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+    return JSON.stringify(value === undefined ? null : value);
+  };
+  return stableStringify({
+    assets, rebalance,
+    rates: p.customScenarioRates, fees: p.customFeeRates,
+    monthly: p.monthlyContribution, allocation: p.monthlyContributionAllocation, byOwner: p.monthlyContributionByOwner,
+    growth: p.contributionGrowthRate, inflation: p.inflationRate, tax: p.taxAdvantagedPlan,
+    run: { preset: mcUiEl('mcPresetSelect').value, iterations: mcUiEl('mcIterationsSelect').value, owner: mcOwnerScope,
+      goal: mcUiEl('mcGoalAmountInput').value, goalMode }
+  });
+}
+function applyMonteCarloStaleNotice() {
+  const notice = mcUiEl('mcStaleNotice');
+  if (notice) notice.classList.toggle('hidden', !(mcLastRender && mcLastRender.stale));
+}
+function refreshMonteCarloResultValidity() {
+  if (!hasDisplayedMonteCarloResult()) return;
+  const stale = mcLastRender.signature !== computeMonteCarloInputSignature();
+  if (stale === !!mcLastRender.stale) return;
+  mcLastRender.stale = stale;
+  renderMonteCarloScopedResult();
+  showMonteCarloStatus(stale ? '설정이 바뀌어 다시 계산이 필요합니다.' : MC_UI_STATUS_LABEL.COMPLETED);
+}
+// updateProjection()(js/05)이 입력 변경 · 탭 이동 · 시세 갱신 뒤마다 부른다.
+function refreshMonteCarloAfterInputChange() {
+  if (isMonteCarloRunInProgress()) return;
+  if (hasDisplayedMonteCarloResult()) { refreshMonteCarloResultValidity(); return; }
+  resetMonteCarloUiToReady();
 }
 
 function setMonteCarloUiRunning() {
@@ -438,7 +508,9 @@ function renderMonteCarloScopedResult() {
   renderMonteCarloScopeSelector(withReal);
   renderMonteCarloMilestoneSelector(milestones);
 
-  mcUiEl('mcP50ScopeNote').textContent = scopeLabel ? `${scopeLabel} · ${sel.year}년 후` : `${sel.year}년 후`;
+  // [PMD-09] 결과를 계산한 뒤 입력이 바뀌었으면 제목에도 "이전 설정 기준"을 붙여 현재 결과로 읽히지 않게 한다.
+  const stalePrefix = mcLastRender.stale ? '이전 설정 기준 · ' : '';
+  mcUiEl('mcP50ScopeNote').textContent = stalePrefix + (scopeLabel ? `${scopeLabel} · ${sel.year}년 후` : `${sel.year}년 후`);
   mcUiEl('mcP50Text').textContent = fmtKRWShort(sel.p50);
   mcUiEl('mcP50RealLabel').textContent = `현재가치 기준(물가상승률 ${fmtNum(inflationRatePct, 1)}% 가정)`;
   mcUiEl('mcP50RealText').textContent = fmtKRWShort(sel.real.p50);
@@ -499,6 +571,7 @@ function renderMonteCarloScopedResult() {
   } else {
     goalArea.innerHTML = `<p class="text-sm text-slate-400">목표금액이 설정되지 않았습니다.</p>`;
   }
+  applyMonteCarloStaleNotice();
 }
 
 // result: js/15 원본(명목) 결과. inflationRatePct: state.projection.inflationRate(예: 2.5, %단위 그대로).
@@ -507,7 +580,8 @@ function renderMonteCarloScopedResult() {
 // contributionMeta: { initialMonthly, growthRatePct, years } - [Phase 3-3] 납입 스케줄 표시용.
 // weightedFeePct: [Phase 3-4] 포트폴리오 가중평균 운용보수(%) - 표시 전용, 계산에는 이미 instrument별로
 // 반영된 뒤라(js/15) 여기서 다시 쓰지 않는다.
-function renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct) {
+// runSignature: [PMD-09] 실행 버튼을 누른 시점의 입력 서명(computeMonteCarloInputSignature). 생략하면 지금 입력 기준이다.
+function renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct, runSignature) {
   mcUiEl('mcProgressArea').classList.add('hidden');
   mcUiEl('mcCancelBtn').classList.add('hidden');
   mcUiEl('mcRunBtn').disabled = false;
@@ -587,7 +661,11 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   mcSelectedScope = mcHasAccountScopes(withReal) ? 'combined' : 'general';
   mcSelectedMilestoneIdx = null;
   mcRangeBarsOpen = false;
-  mcLastRender = { withReal, goalMeta, inflationRatePct };
+  // [PMD-09] 실행 중에 입력이 바뀌었으면 결과가 오자마자 "다시 계산 필요"로 표시된다.
+  const currentSignature = computeMonteCarloInputSignature();
+  const signature = runSignature !== undefined ? runSignature : currentSignature;
+  mcLastRender = { withReal, goalMeta, inflationRatePct, signature, stale: signature !== currentSignature };
+  if (mcLastRender.stale) showMonteCarloStatus('설정이 바뀌어 다시 계산이 필요합니다.');
   renderMonteCarloScopedResult();
 }
 
@@ -639,12 +717,17 @@ function handleMonteCarloError(error) {
   showMonteCarloStatus(friendly);
 }
 
-function handleMonteCarloCancelled() {
+function handleMonteCarloCancelled(info) {
+  // [F-06a] 새 실행이 이 실행을 대신한 취소면 화면은 이미 새 실행의 진행 상태다 - READY로 되돌리지 않는다.
+  if (info && info.superseded) return;
   resetMonteCarloUiToReady();
   showToast(MC_UI_STATUS_LABEL.CANCELLED, 'info');
 }
 
-document.getElementById('mcRunBtn').addEventListener('click', async () => {
+// [통합 수정 · F-06a] 실행 버튼 처리 본문 - 아래 클릭 리스너가 중복 실행을 막고 호출한다.
+async function runMonteCarloFromUi() {
+  // [PMD-09] 이 실행이 어떤 입력으로 계산됐는지 기억해 두었다가, 결과가 온 뒤 입력이 바뀌면 "다시 계산 필요"로 표시한다.
+  const runSignature = computeMonteCarloInputSignature();
   const presetKey = mcUiEl('mcPresetSelect').value;
   const iterations = parseInt(mcUiEl('mcIterationsSelect').value, 10);
   const years = Math.max(...getMilestoneYearOffsets());
@@ -707,7 +790,10 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   // 같은 config로 불러야 한다 - 그러지 않으면 여기서 본 preflight safety(절세계좌 종목의 운용보수/
   // 데이터 부족 issue 포함)와 실제 실행 경로가 서로 다른 것을 보게 된다.
   const feeDisplayResult = await buildMonteCarloInputFromState({ presetKey, ownerFilter: mcOwnerScope, includeTaxAdvantaged: true, years });
-  const weightedFeePct = (feeDisplayResult.instruments || []).reduce((s, i) => s + i.weight * i.feeRateAnnual, 0) * 100;
+  // [N-07] 엔진이 계산용 비중을 합계로 나눠 쓰므로 표시용 가중평균 보수도 같은 기준(비중 합계로 나눔)으로 맞춘다.
+  const feeInstruments = feeDisplayResult.instruments || [];
+  const feeWeightSum = feeInstruments.reduce((s, i) => s + i.weight, 0);
+  const weightedFeePct = feeWeightSum > 0 ? feeInstruments.reduce((s, i) => s + i.weight * i.feeRateAnnual, 0) / feeWeightSum * 100 : 0;
 
   // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] startMonteCarloRun 내부(js/18)에서도 동일하게 다시
   // 검사하지만(어댑터를 이 화면에서 한 번 더 부르므로 결과가 항상 같음), 여기서 먼저 걸러야 진행바가
@@ -740,11 +826,24 @@ document.getElementById('mcRunBtn').addEventListener('click', async () => {
   }, {
     onStarted: () => showMonteCarloStatus(MC_UI_STATUS_LABEL.RUNNING),
     onProgress: (completed, total, progress) => updateMonteCarloProgress(completed, total, progress),
-    onCompleted: (result) => renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct),
-    onCancelled: () => handleMonteCarloCancelled(),
+    onCompleted: (result) => renderMonteCarloResult(result, inflationRatePct, goalMeta, contributionMeta, weightedFeePct, runSignature),
+    onCancelled: (info) => handleMonteCarloCancelled(info),
     onFailed: (error) => handleMonteCarloError(error)
   });
+}
+// [F-06a] 입력 준비(어댑터 호출) 중에 두 번 누르거나 실행 중에 다시 누르면, 앞선 실행을 취소하며 화면이 READY로 되돌아가는
+// 경합이 생길 수 있었다 - 준비 중 · 실행 중에는 새 실행을 시작하지 않는다(실행 중 버튼은 이미 비활성).
+let mcRunClickPending = false;
+document.getElementById('mcRunBtn').addEventListener('click', async () => {
+  if (mcRunClickPending || isMonteCarloRunInProgress()) return;
+  mcRunClickPending = true;
+  try { await runMonteCarloFromUi(); } finally { mcRunClickPending = false; }
 });
+// [PMD-09] 실행 조건(시나리오 · 반복 횟수 · 목표금액 · 목표 기준)을 바꾸면 결과를 지우지 않고 "다시 계산 필요"로 표시한다.
+mcUiEl('mcPresetSelect').addEventListener('change', () => refreshMonteCarloResultValidity());
+mcUiEl('mcIterationsSelect').addEventListener('change', () => refreshMonteCarloResultValidity());
+mcUiEl('mcGoalAmountInput').addEventListener('input', () => refreshMonteCarloResultValidity());
+document.querySelectorAll('input[name="mcGoalMode"]').forEach((el) => el.addEventListener('change', () => refreshMonteCarloResultValidity()));
 
 document.getElementById('mcCancelBtn').addEventListener('click', () => {
   cancelMonteCarloRun();

@@ -409,6 +409,9 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       rateJson.forEach((row) => {
         const key = String(pick(row, '키(수익률연동키)', '키', 'key') || '').trim();
         if (!key) return;
+        // [통합 수정 · N-01] 'UNRESOLVED'는 "적용할 가정이 없다"는 상태값이지 키가 아니다 - 예전 내보내기 파일에 그 행이 있어도
+        // 새로 저장하지 않는다(이미 저장돼 있는 항목은 자동으로 지우지 않는다).
+        if (typeof UNRESOLVED_RATE_KEY !== 'undefined' && key === UNRESOLVED_RATE_KEY) return;
         const label = String(pick(row, '종목명', 'label') || key);
         const conservative = pick(row, '보수적(%)', '보수적', 'conservative');
         const normal = pick(row, '일반적(%)', '일반적', 'normal');
@@ -416,11 +419,20 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         // [키워드 자동매칭 - 요청 반영] 이 칸에 쉼표로 구분해 적은 키워드가 종목명에 포함되면 카테고리/
         // 지역 폴백보다 우선해서 이 키로 자동 매칭된다(getCustomKeywordRateKey, js/05).
         const keywordsRaw = String(pick(row, '키워드(쉼표로 구분)', '키워드', 'keywords') || '').trim();
-        if (conservative === '' && normal === '' && optimistic === '' && keywordsRaw === '') return;
+        // [통합 수정 · F-01] 키만 적힌 행(수익률 · 키워드가 모두 빈 칸)도 사전에 남긴다 - 예전엔 이 행을 건너뛰어, 키를 적어
+        // 올려도 조용히 사라졌다. 키가 있다는 사실과 수익률을 정했다는 사실은 다르므로 빈 칸은 0으로 저장하지 않는다(그 시나리오
+        // 값을 정하지 않은 상태 - 계산은 그 키에 시스템 기본값이 있으면 그 값, 없으면 자동 판별을 따른다).
+        const isBlankCell = (v) => v === undefined || v === null || String(v).trim() === '';
+        if (isBlankCell(conservative) && isBlankCell(normal) && isBlankCell(optimistic) && keywordsRaw === '') {
+          // 키만 있는 행: 시스템 기준 키(내보내기가 "기본값을 따르는 중"을 빈 칸으로 적은 행)와 이미 등록된 키는 예전처럼 건드리지
+          // 않고, 처음 보는 사용자 키만 { label }로 남긴다 - 빈 행 때문에 시스템 키가 사용자 항목으로 굳거나 기존 값이 지워지지 않는다.
+          const existing = (state.projection.customScenarioRates || {})[key];
+          if (existing || (typeof isScenarioRateBaseKey === 'function' && isScenarioRateBaseKey(key))) return;
+        }
         const entry = { label };
-        if (conservative !== '') entry.conservative = num(conservative);
-        if (normal !== '') entry.normal = num(normal);
-        if (optimistic !== '') entry.optimistic = num(optimistic);
+        if (!isBlankCell(conservative)) entry.conservative = num(conservative);
+        if (!isBlankCell(normal)) entry.normal = num(normal);
+        if (!isBlankCell(optimistic)) entry.optimistic = num(optimistic);
         if (keywordsRaw !== '') entry.keywords = keywordsRaw.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
         state.projection.customScenarioRates[key] = entry;
         rateUpdatedCount++;
@@ -438,7 +450,13 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       // 새 포트폴리오 기준 위험점수/스트레스 테스트가 보이도록 명시적으로 한 번 더 호출한다.
       refreshPricesAndRates();
       updateProjection(); // 방금 반영된 customScenarioRates/대표매칭 오버라이드가 미래예측에도 즉시 보이도록.
-      alert(`${resultMsg}${rateUpdatedCount > 0 ? ` / 수익률 관리 ${rateUpdatedCount}건 반영` : ''} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
+      // [PMD-01] 종목코드를 접미사 없이 적은 키(예: 005930)는 바꾸지 않고 저장하되, 보유 종목과 연결되지 않는다는 사실을 알린다.
+      const unmatchedFormatKeys = (typeof getRateKeyFormatHint === 'function')
+        ? Object.keys(state.projection.customScenarioRates || {}).filter((k) => getRateKeyFormatHint(k)) : [];
+      const formatNote = unmatchedFormatKeys.length > 0
+        ? ` / 종목코드 형식이 달라 보유 종목과 자동으로 연결되지 않는 수익률 키 ${unmatchedFormatKeys.length}건(${unmatchedFormatKeys.join(', ')}) - 「수익률 관리」에서 확인해 주세요`
+        : '';
+      alert(`${resultMsg}${rateUpdatedCount > 0 ? ` / 수익률 관리 ${rateUpdatedCount}건 반영` : ''}${formatNote} (자산군/국내해외 자동판별 + 매입금액 자동계산 완료)`);
     } catch (err) {
       alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     } finally {

@@ -46,7 +46,11 @@ function renderSafetyIssueList(containerEl, issues) {
  * 숫자가 실제보다 크거나 작게 보일 수 있다"는 해석에 직접 영향을 주므로 critical로 분류했다. 판정
  * 로직(js/21 assess*) 자체는 전혀 건드리지 않는다 - 이미 계산된 issue를 어디에 그릴지만 결정한다.
  * ---------------------------------------------------------------------- */
-const MC_SAFETY_CRITICAL_CODES = new Set(['SAFETY_FEE_UNKNOWN', 'SAFETY_EXTREME_FEE', 'SAFETY_EXTREME_RETURN']);
+// [통합 수정] 수익률 가정 없음(0% 계산) · 서로 다른 기준 · 자동 연결 확인 필요 · 월 적립금 대상 미선택도
+// 결과 숫자를 실제와 다르게 읽게 만드는 원인이라 결과 바로 아래에 펼쳐 둔다.
+const MC_SAFETY_CRITICAL_CODES = new Set(['SAFETY_FEE_UNKNOWN', 'SAFETY_EXTREME_FEE', 'SAFETY_EXTREME_RETURN',
+  'SAFETY_RETURN_ASSUMPTION_MISSING', 'SAFETY_RETURN_KEY_CONFLICT', 'SAFETY_RETURN_KEY_NEEDS_REVIEW',
+  'SAFETY_CONTRIBUTION_TARGET_UNSELECTED', 'SAFETY_CONTRIBUTION_OWNER_NOT_WEIGHTED']);
 function classifyMcSafetyTier(issue) {
   if (issue.severity === 'INFO') return 'info';
   if (MC_SAFETY_CRITICAL_CODES.has(issue.code)) return 'critical';

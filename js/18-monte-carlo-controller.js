@@ -115,7 +115,12 @@ function launchMonteCarloWorker(requestId, mode, input, callbacks, safetyContext
 // callbacks: { onStarted, onProgress(completed,total,progress), onCompleted(result), onCancelled, onFailed(error) }
 async function startMonteCarloRun(params, callbacks) {
   callbacks = callbacks || {};
-  if (mcActiveRequestId !== null && mcState === MC_WORKER_STATE.RUNNING) cancelMonteCarloRun();
+  // [통합 수정 · F-06a] 이전 요청이 Worker를 막 띄운 직후(WAITING)이거나 실행 중(RUNNING)이면 먼저 취소한다(예전엔 RUNNING만
+  // 봐서 WAITING 구간의 Worker가 종료되지 않고 남았다). 새 요청이 이어받는 취소라는 표시(superseded)를 넘겨, 화면이 방금
+  // 시작한 새 실행을 READY로 되돌리지 않게 한다.
+  if (mcActiveRequestId !== null && mcActiveWorker && (mcState === MC_WORKER_STATE.RUNNING || mcState === MC_WORKER_STATE.WAITING)) {
+    cancelMonteCarloRun({ superseded: true });
+  }
 
   const requestId = mcNextRequestId();
   mcActiveRequestId = requestId;
@@ -183,7 +188,8 @@ async function startMonteCarloRun(params, callbacks) {
 // [취소] worker.terminate()는 즉시·동기적으로 스레드를 죽인다 - Worker 쪽이 스스로 CANCELLED를 보낼
 // 기회조차 없을 수 있으므로, CANCELLED 통지는 여기(메인 스레드)에서 직접 만들어 보낸다(요청한 흐름:
 // CANCEL REQUEST -> worker.terminate() -> request invalidation -> CANCELLED와 동일).
-function cancelMonteCarloRun() {
+// options.superseded: 새 실행이 이 실행을 대신하는 취소(startMonteCarloRun 내부) - 화면 콜백에 그대로 전달한다.
+function cancelMonteCarloRun(options) {
   if (!mcActiveWorker || mcState !== MC_WORKER_STATE.RUNNING && mcState !== MC_WORKER_STATE.WAITING) return;
   const cancelledId = mcActiveRequestId;
   const callbacks = mcActiveCallbacks;
@@ -192,7 +198,7 @@ function cancelMonteCarloRun() {
   mcActiveRequestId = null; // 이후 도착 가능한 모든 stale 메시지를 즉시 무효화
   mcActiveCallbacks = null;
   mcState = MC_WORKER_STATE.CANCELLED;
-  callbacks && callbacks.onCancelled && callbacks.onCancelled();
+  callbacks && callbacks.onCancelled && callbacks.onCancelled(options && options.superseded ? { superseded: true } : undefined);
   return cancelledId;
 }
 

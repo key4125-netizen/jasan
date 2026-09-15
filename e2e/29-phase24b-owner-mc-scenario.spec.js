@@ -81,12 +81,17 @@ test('3. 와이프 MC - 와이프의 자산/적립금만 반영되고 신랑 자
   expect(resultText).not.toContain('E2E29신랑채권');
 });
 
-test('4. owner 전환 - 관점을 바꾸면 이전 결과가 남아 오해를 주지 않도록 즉시 숨겨진다', async ({ page }) => {
+// [통합 수정 · PMD-09 - 기대값 변경] 관점을 바꾸면 결과를 지우지 않고 "다시 계산 필요"로 표시한다 - 이전 관점의 결과를 현재
+// 결과로 오해하지 않게 한다는 목적은 같고, 결과를 무조건 지우는 대신 유효성 상태를 보여 준다(PM 결정).
+test('4. owner 전환 - 관점을 바꾸면 이전 결과에 "다시 계산 필요"가 표시되어 현재 결과로 오해되지 않는다', async ({ page }) => {
   await seedTwoOwners(page);
   await runMcAndReadP50(page, 'household');
   await expect(page.locator('#mcResultArea')).toBeVisible();
+  await expect(page.locator('#mcStaleNotice')).toBeHidden();
   await page.locator('#mcOwnerScopeSegmented [data-scope="신랑"]').click();
-  await expect(page.locator('#mcResultArea')).toBeHidden(); // 새 관점으로 다시 실행해야 결과를 볼 수 있다
+  await expect(page.locator('#mcResultArea')).toBeVisible();
+  await expect(page.locator('#mcStaleNotice')).toBeVisible(); // 새 관점으로 다시 실행해야 현재 결과가 된다
+  await expect(page.locator('#mcP50ScopeNote')).toContainText('이전 설정 기준');
   await expect(page.locator('#mcOwnerScopeSegmented [data-scope="신랑"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#mcOwnerScopeSegmented [data-scope="household"]')).toHaveAttribute('aria-pressed', 'false');
 });

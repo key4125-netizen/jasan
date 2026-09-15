@@ -197,8 +197,36 @@ function renderAssetDetailReturnAssumption(assets) {
       ${cell('적용 중인 기준', info.resolved ? info.keyLabel : '적용된 기준 없음')}
       ${info.sourceLabel ? cell('적용 방식', info.sourceLabel) : ''}
     </div>
-    <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[info.tone]} break-keep">${mark} ${escapeHtml(info.message)}</p>`;
+    <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[info.tone]} break-keep">${mark} ${escapeHtml(info.message)}</p>${buildReturnKeyConflictNotice(list)}`;
   box.classList.remove('hidden');
+}
+
+/* [통합 수정 · PMD-02 · N-10] 같은 종목(티커, 없으면 이름)을 가진 다른 보유분이 다른 수익률 기준으로 계산되면 알린다.
+ * 어느 쪽이 맞는지 정하지 않고, 앱이 서로의 기준을 빌려 쓰지 않는다는 사실과 직접 맞추는 방법만 안내한다.
+ * 기준 판정은 계산과 같은 resolveAssetGroupKeyDetail(js/05)을 그대로 쓴다 - 이 함수는 문자열만 조립한다. */
+function findHoldingReturnKeyConflicts(asset) {
+  if (!asset) return [];
+  const ticker = sanitizeTicker(asset.ticker).yahooTicker;
+  const nameKey = normalizeNameKey(asset.name);
+  const sameInstrument = (a) => a !== asset && a.id !== asset.id
+    && (ticker ? sanitizeTicker(a.ticker).yahooTicker === ticker : (!String(a.ticker ?? '').trim() && normalizeNameKey(a.name) === nameKey));
+  // '채권'(확정 자산군 키)과 'BOND'는 같은 기준이다 - 표기만 다른 것을 불일치로 알리지 않는다(canonicalRateKey, js/05).
+  const myKey = canonicalRateKey(resolveAssetGroupKeyDetail(asset).key);
+  return (state.assets || []).filter(sameInstrument)
+    .map((a) => ({ asset: a, key: canonicalRateKey(resolveAssetGroupKeyDetail(a).key) }))
+    .filter((x) => x.key !== myKey);
+}
+function buildReturnKeyConflictNotice(list) {
+  const shown = new Set((list || []).map((a) => a.id));
+  const others = [];
+  (list || []).forEach((a) => findHoldingReturnKeyConflicts(a).forEach((c) => {
+    if (shown.has(c.asset.id)) return;
+    shown.add(c.asset.id);
+    const keyLabel = c.key === UNRESOLVED_RATE_KEY ? '적용된 기준 없음' : getRateMatchKeyDisplayLabel(c.key === '채권' ? 'BOND' : c.key);
+    others.push(`${c.asset.owner || '소유자 미지정'} ${c.asset.accountType || ''} → ${keyLabel}`.replace(/\s+→/, ' →'));
+  }));
+  if (others.length === 0) return '';
+  return `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep mt-1">⚠ ${escapeHtml(`같은 종목의 다른 보유분은 다른 수익률 기준으로 계산됩니다(${others.join(' · ')}). 앱은 서로의 기준을 빌려 쓰지 않으니, 같은 기준이어야 한다면 직접 맞춰 주세요.`)}</p>`;
 }
 
 // [V1.3 BL-19] LEDGER_UNKNOWN/MANUAL_WITH_TX 안내에 붙일 "현재 자산 vs 거래내역 기준" 대조 + 확인

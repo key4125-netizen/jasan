@@ -178,16 +178,51 @@ function assessDataSufficiency(observationCount, fieldLabel) {
   return null; // >= 200: PASS
 }
 
-/* ---- 5. Correlation: 공통거래일 부족으로 0 대체된 경우 ------------------------------------- */
+/* ---- 5. Correlation: 공통거래일 부족으로 0 대체된 경우 -------------------------------------
+ * [N-09] observationCount는 상관계수 계산에 실제로 쓰인 "수익률 관측치 수"다(공통 날짜 수 - 1).
+ * 예전엔 호출부가 공통 날짜 수를 넘겨, 날짜 10개(수익률 9개 → 상관 0 대체)가 경고 없이 지나갔다. */
 function assessCorrelationPair(observationCount, labelA, labelB) {
   if (observationCount === undefined || observationCount === null) return null;
   if (observationCount < SAFETY_THRESHOLDS.MIN_OBSERVATIONS_BLOCK) {
     return makeIssue('SAFETY_CORRELATION_INSUFFICIENT', SAFETY_LEVEL.WARNING, `correlation.${labelA}-${labelB}`,
       '상관관계 데이터 부족',
-      `${labelA}과(와) ${labelB}의 공통 거래일이 ${observationCount}개로 적어 상관관계를 0으로 처리했습니다.`,
+      `${labelA}과(와) ${labelB}의 공통 거래일 기준 수익률 관측치가 ${observationCount}개로 적어 상관관계를 0으로 처리했습니다.`,
       '실제 상관관계가 0이라는 뜻이 아니라, 데이터가 부족해 추정하지 못했다는 의미입니다.');
   }
   return null;
+}
+
+/* ---- 5-1. 수익률 가정 연결 상태 (통합 수정 · F-08 · PMD-02 · PMD-03 · PMD-07 · PMD-08) ----------
+ * 계산 값은 바꾸지 않는다. 호출부(js/16)가 이미 해석한 결과만 받아 "사용자가 알아야 하는 상태"를 알린다. */
+function assessReturnAssumptionMissing(fieldLabel) {
+  return makeIssue('SAFETY_RETURN_ASSUMPTION_MISSING', SAFETY_LEVEL.WARNING, fieldLabel, '수익률 가정 없음',
+    `${fieldLabel}에 적용할 장기 수익률 가정을 찾지 못해 성장 없이(0%) 계산했습니다.`,
+    '0%는 이 자산의 기대수익률이 0%라는 뜻이 아닙니다. 자산 상세나 「수익률 관리」에서 기준을 지정하면 그 값으로 계산합니다.');
+}
+function assessReturnAssumptionNeedsReview(fieldLabel, detailMessage) {
+  return makeIssue('SAFETY_RETURN_KEY_NEEDS_REVIEW', SAFETY_LEVEL.WARNING, fieldLabel, '자동 연결된 수익률 기준 확인 필요',
+    detailMessage || `${fieldLabel}에 자동으로 연결된 수익률 기준이 자산 성격과 맞지 않습니다.`,
+    '자동 연결은 그대로 두었습니다. 맞지 않다면 자산 상세에서 대표매칭을 직접 지정해 주세요.');
+}
+// parts: [{ who, keyLabel }] - 같은 종목에 쓰이는 서로 다른 기준. 어느 한쪽을 골라 쓰지 않는다.
+function assessReturnKeyConflict(fieldLabel, parts) {
+  const list = (parts || []).map((p) => `${p.who} → ${p.keyLabel}`).join(' · ');
+  return makeIssue('SAFETY_RETURN_KEY_CONFLICT', SAFETY_LEVEL.WARNING, fieldLabel, '같은 종목에 서로 다른 수익률 기준',
+    `${fieldLabel}에 소유자·계좌별로 서로 다른 수익률 기준이 쓰이고 있습니다: ${list}. 서로의 기준을 빌려 쓰지 않고 각자의 기준으로 계산했습니다.`,
+    '같은 기준이어야 한다면 자산 상세나 거래 등록에서 대표매칭을 직접 맞춰 주세요.');
+}
+// unselectedAmount: 대상 종목이 선택되지 않은 월 적립금(원). sharePct: 그 비율(%).
+function assessContributionTargetUnselected(owner, sharePct, unselectedAmount) {
+  return makeIssue('SAFETY_CONTRIBUTION_TARGET_UNSELECTED', SAFETY_LEVEL.WARNING, `monthlyContribution.${owner}`,
+    '월 적립금 대상 종목 미선택',
+    `${owner}님의 일반계좌 월 적립금 중 ${sharePct.toFixed(0)}%(월 ${Math.round(unselectedAmount).toLocaleString('ko-KR')}원)는 대상 종목이 선택되지 않았습니다. Monte Carlo는 이 금액을 목표 비중대로 나눠 계산했습니다.`,
+    '「월적립금 설정」에서 대상 종목을 선택해 주세요.');
+}
+function assessContributionOwnerWithoutPrincipal(owner) {
+  return makeIssue('SAFETY_CONTRIBUTION_OWNER_NOT_WEIGHTED', SAFETY_LEVEL.WARNING, `monthlyContribution.${owner}`,
+    '월 적립금이 다른 소유자 목표 비중으로 계산됨',
+    `${owner}님은 일반계좌 원금이 없어 가구 전체 계산에 ${owner}님의 목표 비중이 쓰이지 않았고, ${owner}님의 월 적립금도 다른 소유자의 목표 비중대로 나눠 계산했습니다.`,
+    `${owner}님만 선택해 실행하면 ${owner}님의 목표 비중으로 계산한 결과를 볼 수 있습니다.`);
 }
 
 /* ---- 6. PSD Correction 규모 ----------------------------------------------------------------- */
@@ -379,6 +414,8 @@ if (typeof module !== 'undefined' && module.exports) {
     makeIssue, combineSeverity, buildSafetyResult,
     assessWeightSums, assessIndividualWeightSigns, assessExpectedReturn, assessVolatility, assessDataSufficiency,
     assessCorrelationPair, assessPSDCorrection, assessContributionGrowth, assessInflation, assessFee,
+    assessReturnAssumptionMissing, assessReturnAssumptionNeedsReview, assessReturnKeyConflict,
+    assessContributionTargetUnselected, assessContributionOwnerWithoutPrincipal,
     assessSimulationConfidence, assessResultSpread, explainResultAlwaysOn, explainSimulationStabilityAlwaysOn,
     explainExpectedReturnSemanticAlwaysOn, explainGoalProbabilitySemanticAlwaysOn, explainHistoricalDataPeriodAlwaysOn,
     explainFxRiskIfForeign, explainAccumulationScopeAlwaysOn

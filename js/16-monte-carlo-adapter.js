@@ -32,6 +32,24 @@ async function buildMonteCarloInputFromState(config) {
   // 부족/상관계수 데이터부족처럼 "데이터 자체의 한계"를 담는다.
   const safetyIssues = [];
   const dataQualityIssues = [];
+  // [통합 수정 · F-08 · PMD-07 · PMD-08] 수익률 가정이 없어 0%로 계산되는 항목과, 자동으로 연결된 기준이 자산 성격과 맞지
+  // 않는 항목을 알린다(계산 값은 그대로). 같은 이름은 한 번만 알린다.
+  const seenReturnIssues = new Set();
+  const pushReturnAssumptionIssues = (rateDetail, label) => {
+    if (!rateDetail) return;
+    if (rateDetail.assumptionMissing && !seenReturnIssues.has('missing|' + label)) {
+      seenReturnIssues.add('missing|' + label);
+      safetyIssues.push(assessReturnAssumptionMissing(label));
+    }
+    const autoMatched = rateDetail.subject && !['override', 'customKey', 'customKeyword'].includes(rateDetail.source);
+    if (autoMatched && !rateDetail.assumptionMissing && !seenReturnIssues.has('review|' + label)) {
+      const status = assessReturnAssumptionStatus(rateDetail.subject);
+      if (status.status === RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW) {
+        seenReturnIssues.add('review|' + label);
+        safetyIssues.push(assessReturnAssumptionNeedsReview(label, status.message));
+      }
+    }
+  };
 
   const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
   const returnsList = await buildHouseholdInstrumentReturnSeries(ownerFilter);
@@ -57,7 +75,10 @@ async function buildMonteCarloInputFromState(config) {
     // 소유자 우선으로 조회하게 한다 - 결정론 경로(js/05 expandRebalanceTargetsForComputation)와 동일한 정보.
     const pseudoTarget = { type: v.kind, ticker: v.ticker, category: v.category, name: v.name, label: v.label, owner: v.owner };
     const label = v.label || v.name || key;
-    const muAnnualPct = getTargetProjectionRate(pseudoTarget, presetKey, v.region);
+    // [통합 수정 · N-08 · N-10] 그 소유자의 일반계좌 보유 자산(없으면 같은 입력의 가상 자산)으로 해석한다 - 결정론 일반계좌
+    // (computeRegionWeightedRate)와 같은 함수 · 같은 인자다. 다른 소유자 · 절세계좌의 대표매칭을 빌려 쓰지 않는다.
+    const rateDetail = resolveMcEntryRateDetail(v, presetKey);
+    const muAnnualPct = rateDetail.rate;
     const muAnnual = num(muAnnualPct) / 100;
     // [Phase 3-4] getTargetProjectionFeeRate(js/05)는 presetKey와 무관 - "수익률 관리"처럼 시나리오별로
     // 달라지지 않는다(운용보수는 시장 시나리오와 무관한 상품 고유 값). 미등록 종목은 0%.
@@ -65,12 +86,15 @@ async function buildMonteCarloInputFromState(config) {
     const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
     const feeExplicit = isFeeExplicitlySet(pseudoTarget);
 
-    const effectiveCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
-    const isRiskFree = effectiveCategory === '채권' || effectiveCategory === '현금';
+    // [N-06] 무위험(σ=0) 판정은 js/05가 보유 자산의 확정 자산군으로 정해 둔 값(v.riskFree)을 쓴다 - 예전엔 이름만 보고
+    // 판정해 사용자가 현금 · 채권으로 확정한 자산도 이름에 키워드가 없으면 주식 지수 변동성을 받았다. 시계열 빌더와 같은 값이다.
+    const legacyCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
+    const isRiskFree = v.riskFree !== undefined ? v.riskFree : (legacyCategory === '채권' || legacyCategory === '현금');
 
     safetyIssues.push(...assessFee(feeRatePctRaw, label, feeExplicit));
     const returnIssue = assessExpectedReturn(muAnnualPct, label);
     if (returnIssue) safetyIssues.push(returnIssue);
+    pushReturnAssumptionIssues(rateDetail, label);
 
     if (isRiskFree) {
       assetOrder.push(key);
@@ -113,13 +137,17 @@ async function buildMonteCarloInputFromState(config) {
   if (taxMap) {
     taxOnlyEntries.forEach(({ key, entry }) => {
       const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: undefined };
-      const muAnnualPct = getTargetProjectionRate(pseudoTarget, presetKey, entry.region);
+      // [통합 수정 · F-04] 절세계좌 보유분은 그 자산 자체, 적립 배분은 그 소유자 · 그 계좌 범위로 해석한다 - 절세계좌
+      // 결정론(simulateTaxAdvantagedOwnerGrowth)과 같은 경로다.
+      const rateDetail = resolveMcEntryRateDetail(entry, presetKey);
+      const muAnnualPct = rateDetail.rate;
       const muAnnual = num(muAnnualPct) / 100;
       const feeRatePctRaw = getTargetProjectionFeeRate(pseudoTarget);
       const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
       safetyIssues.push(...assessFee(feeRatePctRaw, entry.label, isFeeExplicitlySet(pseudoTarget)));
       const returnIssue = assessExpectedReturn(muAnnualPct, entry.label);
       if (returnIssue) safetyIssues.push(returnIssue);
+      pushReturnAssumptionIssues(rateDetail, entry.label);
 
       // 무위험 여부는 js/05의 buildTaxAdvantagedMonteCarloInputs가 이미 판정해 entry.riskFree에 실어 준다 -
       // 여기서 다시 추정하면 시계열 빌더와 판정이 어긋나 "가격 이력을 못 가져왔다"는 잘못된 오류가 난다.
@@ -170,7 +198,10 @@ async function buildMonteCarloInputFromState(config) {
     // 상관관계 0"과 "데이터 부족으로 0 대체"를 UI에서 구분할 수 있게 한다.
     Object.keys(pairDiagnostics).forEach((pairKey) => {
       const [keyA, keyB] = pairKey.split('|');
-      const issue = assessCorrelationPair(pairDiagnostics[pairKey].observationCount, labelByKey.get(keyA) || keyA, labelByKey.get(keyB) || keyB);
+      // [N-09] 경고 기준은 상관계수 계산에 실제로 쓰인 수익률 관측치 수다(공통 날짜 수 - 1).
+      const diag = pairDiagnostics[pairKey];
+      const returnCount = diag.returnObservationCount !== undefined ? diag.returnObservationCount : diag.observationCount;
+      const issue = assessCorrelationPair(returnCount, labelByKey.get(keyA) || keyA, labelByKey.get(keyB) || keyB);
       if (issue) dataQualityIssues.push(issue);
     });
     config.__lastPairDiagnostics = pairDiagnostics; // 디버그 확인용(선택 - 호출부가 필요하면 참조)
@@ -182,6 +213,12 @@ async function buildMonteCarloInputFromState(config) {
   // [B3 + Safety Layer] 목표 비중 합계(household 전체 소스인 state.rebalance 자체를 검사 - Future
   // Projection과 완전히 같은 기준, 조건부승인 항목 14) + Contribution Growth/Inflation 경제적 가정 경고.
   safetyIssues.push(...assessHouseholdWeightSums(ownerFilter));
+  // [통합 수정 · PMD-02 · N-10] 같은 종목에 소유자 · 계좌별로 서로 다른 수익률 기준 - 각자 기준으로 계산했다는 사실과 직접
+  // 맞추는 방법을 알린다. [PMD-03] 월 적립금 대상 종목 미선택 · 원금이 없어 가구 목표 비중에서 빠진 소유자의 적립금.
+  findMcReturnKeyConflicts(ownerFilter, !!taxMap).forEach((c) => safetyIssues.push(assessReturnKeyConflict(c.label, c.parts)));
+  const contributionGaps = findMonteCarloContributionTargetGaps(ownerFilter);
+  contributionGaps.unselected.forEach((g) => safetyIssues.push(assessContributionTargetUnselected(g.owner, g.sharePct, g.amount)));
+  contributionGaps.ownersWithoutWeight.forEach((owner) => safetyIssues.push(assessContributionOwnerWithoutPrincipal(owner)));
   const growthIssue = assessContributionGrowth(num(state.projection.contributionGrowthRate));
   if (growthIssue) safetyIssues.push(growthIssue);
   const inflationIssue = assessInflation(num(state.projection.inflationRate));

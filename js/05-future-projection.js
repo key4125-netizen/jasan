@@ -118,6 +118,21 @@ function matchesAnyKeyword(name, keywords) {
   return keywords.some((k) => hay.includes(k.toUpperCase()));
 }
 
+// [통합 수정 · PMD-10 · F-05] 수익률 해석(Return Key · 성격 판정 · 무위험 판정)의 근거로 쓸 수 있는 category.
+//   'user'    : 사용자가 확정한 값 - 그대로 쓴다.
+//   undefined : categorySource가 생기기 전의 legacy 데이터 - 소급 확정도 소급 격하도 하지 않고 지금까지처럼 쓴다
+//               (BL-17 "legacy는 user/system 어느 쪽으로도 소급하지 않는다" · 기존 사용자 계산값 보존).
+//   'system'  : 시스템 추천 - 확정값으로 쓰지 않는다(아래 자동 분류 재확인을 통과할 때만 자동 판별 근거). 추천 자체는 화면에 그대로 남는다.
+function getConfirmedCategoryForCalc(asset) {
+  if (!asset) return null;
+  if (asset.categorySource !== 'system') return asset.category || null;
+  // 시스템 추천은 저장된 값 자체를 근거로 쓰지 않는다. 지금의 티커 · 이름으로 같은 자동 분류(classifyCategory)를 다시 했을 때
+  // 같은 결과가 나올 때만 "자동 판별 근거"로 쓴다 - 이름 키워드처럼 확인 가능한 근거에서 나온 추천만 통과하고, 근거를 잃은
+  // 추천값(예: 이름에 채권 표시가 없는데 '채권'으로 남은 추천)은 계산 근거가 되지 않는다. 사용자 확정은 이 검사 없이 우선한다.
+  const autoCategory = classifyCategory(asset.ticker, asset.name);
+  return autoCategory === asset.category ? autoCategory : null;
+}
+
 // 지역만 아는 상태를 성격으로 착각하지 않기 위해 region은 character와 별도로 돌려준다.
 // confidence: 'high'(등록된 구성정보/명시적 카테고리) | 'medium'(이름 키워드/개별종목표) | 'none'
 function resolveAssetCharacter(asset) {
@@ -145,7 +160,10 @@ function resolveAssetCharacter(asset) {
   }
 
   // 1) 명시적 카테고리 - 사용자가 고르거나 티커 없는 자산이 확정된 경우.
-  const byCategory = CATEGORY_TO_CHARACTER[asset && asset.category];
+  //    [PMD-10] 시스템 추천(categorySource 'system')은 확정값이 아니므로 성격 판정 근거로 쓰지 않는다 - 이름 키워드(3단계)
+  //    등 나머지 근거로 판정한다. 사용자 확정(user)과 표식 없는 legacy는 기존 그대로다(6단계 개별 주식도 같다).
+  const confirmedCategory = getConfirmedCategoryForCalc(asset);
+  const byCategory = CATEGORY_TO_CHARACTER[confirmedCategory];
   if (byCategory) return out(byCategory, 'category', 'high');
 
   // 2) 이미 등록된 ETF 구성정보 - Risk 엔진이 쓰는 바로 그 표를 재사용한다.
@@ -196,7 +214,7 @@ function resolveAssetCharacter(asset) {
   //    키워드를 이미 걸러냈으므로 여기 남은 '주식'은 실제 개별 주식이다. 이건 "지역만 보고 찍는 것"이
   //    아니라 상품 구조(개별 지분증권)를 확인한 결과다. ETF는 무엇이든 담을 수 있으므로 제외한다 -
   //    성격을 모르는 ETF가 지역 대표지수로 흘러가던 문제가 이번 Phase가 막으려는 바로 그 경로다.
-  if (asset && asset.category === '주식' && region) {
+  if (confirmedCategory === '주식' && region) {
     return out(region === '해외' ? ASSET_CHARACTERS.US_EQUITY : ASSET_CHARACTERS.KR_EQUITY, 'individualStock', 'medium');
   }
 
@@ -282,7 +300,7 @@ function resolveRateKeyFromAssetCharacter(assetLike) {
 // 반드시 어긋난다. 그래서 판별은 여기 한 곳에만 두고 두 용도가 이 함수를 공유한다.
 //   source: 'override' | 'customKey' | 'customKeyword' | 'category' | 'presetTicker' | 'tickerAlias'
 //           | 'nameKeyword' | 'assetCharacter' | 'unresolved'   ([Phase 47-A] regionFallback 제거)
-function resolveAssetGroupKeyDetail(asset) {
+function resolveAssetGroupKeyDetail(asset, presetKey) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
@@ -293,12 +311,20 @@ function resolveAssetGroupKeyDetail(asset) {
   // 키워드가 걸려도) 항상 카테고리 캐치올(예: 현금=하드코딩 0%)로만 갔다 - 두 매칭을 카테고리 분기보다
   // 앞으로 옮겨 모든 카테고리에 동일하게 적용한다. 예: "달러 예수금"이 CASH 키워드("현금","달러")에
   // 걸리면 하드코딩된 0% 대신 CASH의 등록 수익률을 쓴다.
+  // [통합 수정 · F-01 · F-02] 사전에 등록된 키라도 그 시나리오(presetKey, 생략하면 기본 화면인 일반적)에 쓸 수익률이 없으면
+  // (값을 정하지 않은 사용자 키) 매칭으로 채택하지 않고 다음 단계로 넘어간다 - "값을 정하지 않음"이 0%가 되지 않게 한다
+  // (getCustomRate의 "칸이 비면 시스템 기본값으로 대체" 계약과 같다). 시스템 기본값이 있는 키(BOND · CASH · KOSPI · 시스템
+  // 상품표 등)에 키워드만 등록한 경우는 그 기본값을 쓰므로 예전처럼 매칭한다.
+  const definedFor = (key) => !isRateAssumptionMissingForKey(key, presetKey === undefined ? 'normal' : presetKey);
   const customKey = findCustomRateKeyForAsset(asset.ticker, asset.name);
-  if (customKey) return { key: customKey, source: 'customKey' }; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
+  if (customKey && definedFor(customKey)) return { key: customKey, source: 'customKey' }; // 사용자 정의 등록 종목 - 코드/티커/이름 중 하나로 매칭(SK하이닉스 등)
   const keywordKey = getCustomKeywordRateKey(asset.name);
-  if (keywordKey) return { key: keywordKey, source: 'customKeyword' };
-  const groupKey = getProjectionGroupKey(asset.category);
-  if (groupKey !== '주식형자산') return { key: groupKey, source: 'category' }; // 위 두 매칭에 안 걸린 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
+  if (keywordKey && definedFor(keywordKey)) return { key: keywordKey, source: 'customKeyword' };
+  // [PMD-10 · F-05] 자산군 단계는 계산 근거로 쓸 수 있는 category(사용자 확정 · legacy)만 본다 - 시스템 추천은 건너뛰고
+  // 아래 티커 · 이름 · 성격 판정으로 해석한다.
+  const confirmedCategory = getConfirmedCategoryForCalc(asset);
+  const groupKey = getProjectionGroupKey(confirmedCategory);
+  if (confirmedCategory && groupKey !== '주식형자산') return { key: groupKey, source: 'category' }; // 위 두 매칭에 안 걸린 채권/현금/커스텀 카테고리는 기존 카테고리 단위 유지
   const sanitized = sanitizeTicker(asset.ticker);
   const yahoo = sanitized.yahooTicker;
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return { key: yahoo, source: 'presetTicker' };
@@ -372,8 +398,30 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
 }
 // 보유 자산(또는 자산과 같은 모양의 객체) 하나의 대표 매칭 수익률 - 위 두 함수를 묶어서 "이 자산이
 // 지금 어떤 수익률로 계산돼야 하는가"를 한 번에 답한다. 절세계좌 원금/적립 계산(js/05 10-3-3-2)에서 쓴다.
+// [통합 수정 · F-01 · F-04 · N-08] 자산 하나의 "시나리오별" 수익률 해석 - 키 선택(resolveAssetGroupKeyDetail에 presetKey
+// 전달)과 수익률(resolveProjectionRateForKey)을 함께 돌려준다. 절세계좌 결정론 · 자산 상세 · 일반계좌 결정론 · Monte Carlo가
+// 모두 이 함수를 거친다(목표 항목은 resolveTargetRateDetail이 보유 자산을 찾아 이 함수에 넘긴다).
+function resolveAssetRateDetail(asset, presetKey) {
+  const detail = resolveAssetGroupKeyDetail(asset, presetKey);
+  return {
+    key: detail.key,
+    source: detail.source,
+    rate: resolveProjectionRateForKey(detail.key, presetKey, asset.isDomestic === '해외'),
+    assumptionMissing: isRateAssumptionMissingForKey(detail.key, presetKey)
+  };
+}
 function getAssetProjectionRate(asset, presetKey) {
-  return resolveProjectionRateForKey(getProjectionAssetGroupKey(asset), presetKey, asset.isDomestic === '해외');
+  return resolveAssetRateDetail(asset, presetKey).rate;
+}
+// [F-08 · PMD-08] 이 키로 계산한 0%가 "적용할 가정이 없어서"인지 판정한다 - resolveProjectionRateForKey의 분기와 같은
+// 순서다(UNRESOLVED이거나 그 함수의 마지막 return 0에 도달하는 경우만 true). 현금 0%는 정책값이라 가정 없음이 아니다.
+function isRateAssumptionMissingForKey(key, presetKey) {
+  if (key === UNRESOLVED_RATE_KEY || key === null || key === undefined || key === '') return true;
+  if (['현금', '채권', '부동산', 'BOND', 'CASH', 'CASH.USD', 'KOSPI', 'KOSDAQ', '005930.KS', 'S&P500'].includes(key)) return false;
+  if (getCustomRate(key, presetKey) !== undefined) return false;
+  if (SCENARIO_RATE_PRESETS[presetKey].tickers[key] !== undefined) return false;
+  if (/\.KQ$/i.test(key)) return false;
+  return true;
 }
 // ownerFilter: [소유자별 독립 리밸런싱 - Option B] 생략(또는 'all')하면 가구 전체(기존 동작), 실제
 // 소유자명을 넘기면 그 소유자 소유 자산만 집계한다 - simulateRebalancedPreset이 owner별 원금 계산에 쓴다.
@@ -1093,7 +1141,10 @@ function assessReturnAssumptionStatus(asset) {
   const appliedKey = detail.key;
   const char = resolveAssetCharacter(asset);
   const keyChar = getReturnKeyCharacter(appliedKey);
-  const isUserDefined = !!(state.projection.customScenarioRates || {})[appliedKey];
+  // [통합 수정 · F-01] 키만 있고 수익률 · 키워드를 정하지 않은 사전 항목은 "사용자가 정한 기준"으로 보지 않는다.
+  const customEntry = (state.projection.customScenarioRates || {})[appliedKey];
+  const isUserDefined = !!customEntry && (getUserOverriddenPresets(appliedKey).length > 0
+    || (Array.isArray(customEntry.keywords) && customEntry.keywords.length > 0));
 
   // [Phase 47-A] 가장 먼저 볼 것은 성격이 아니라 "이 자산에 실제로 적용된 가정이 있는가"다.
   // 예전엔 이 자리에서 "성격을 모르는데 지역 폴백으로 주식 기준이 붙어 있다"를 알렸는데, 그 폴백은
@@ -1104,6 +1155,17 @@ function assessReturnAssumptionStatus(asset) {
       appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
       status: RETURN_ASSUMPTION_STATUS.UNRESOLVED,
       message: '이 자산에 적용할 장기 수익률 가정을 찾지 못해 성장 없이(0%) 계산하고 있습니다. 기준을 지정하면 그 값이 사용됩니다.'
+    };
+  }
+  // [통합 수정 · F-08 · PMD-08] 기준은 연결됐지만 그 기준에 쓸 수익률이 없는 경우(값을 정하지 않은 사용자 키 등) - 계산은
+  // 0%이므로 "적합한 가정 사용 중"으로 보이지 않게 한다. 성격에 맞는 시스템 기준 자체가 없는 경우(원자재 등)는 아래 M3 문구가 맡는다.
+  const hasCharacterCandidates = char.character === ASSET_CHARACTERS.UNRESOLVED
+    || returnKeyCandidatesForCharacter(char.character, char.ticker).length > 0;
+  if (hasCharacterCandidates && isRateAssumptionMissingForKey(appliedKey, 'normal')) {
+    return {
+      appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
+      status: RETURN_ASSUMPTION_STATUS.NO_SYSTEM_ASSUMPTION,
+      message: `지정된 기준(${getRateMatchKeyDisplayLabel(appliedKey)})에 수익률이 정해져 있지 않아 성장 없이(0%) 계산하고 있습니다. 「수익률 관리」에서 값을 넣으면 그 값이 사용됩니다.`
     };
   }
   if (char.character === ASSET_CHARACTERS.UNRESOLVED) {
@@ -1274,7 +1336,8 @@ function getEffectiveIndexRate(presetKey, region) {
 function makeRateProbe(ticker, name, category, region) {
   const t = String(ticker ?? '');
   const n = String(name ?? '');
-  return { ticker: t, name: n, category: category || classifyCategory(t, n), isDomestic: region || sanitizeTicker(t).isDomestic };
+  // [PMD-10] category를 넘기지 않으면 자동 분류값이므로 시스템 추천(미확정)으로 표시한다 - 확정 자산군처럼 쓰지 않는다.
+  return { ticker: t, name: n, category: category || classifyCategory(t, n), categorySource: category ? undefined : 'system', isDomestic: region || sanitizeTicker(t).isDomestic };
 }
 
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 특정 프리셋·지역에서 쓸 예상 수익률을 정한다.
@@ -1294,100 +1357,110 @@ function makeRateProbe(ticker, name, category, region) {
 //   - namedHolding형: 티커 없는 보유 자산 중 정규화 이름(normalizeNameKey)이 같은 것
 //   - target.owner가 있으면 그 소유자의 자산을 우선한다(두 소유자가 같은 종목에 다른 키를 지정한 경우 대비).
 //   - category형(캐치올)은 특정 자산에 대응하지 않으므로 override 개념이 없다 -> null.
-function findRateMatchOverrideForTarget(target) {
-  if (!target) return null;
-  if (target.rateMatchOverride) return String(target.rateMatchOverride).trim() || null;
-  const assets = state.assets || [];
+// [통합 수정 · N-08 · N-10 · N-11 · PMD-02] 목표 · 배분 항목이 가리키는 "보유 자산"을 찾는다.
+// 예전(Phase 28-F)엔 목표 소유자의 보유분이 없으면 다른 소유자 보유분의 대표매칭키를 그대로 빌려 썼고, 목표 항목은
+// 보유 자산과 다른 판별 순서(경로 B)를 따로 탔다 - 같은 자산이 절세계좌 결정론 · 자산 상세(경로 A)와 일반계좌
+// 결정론 · Monte Carlo(경로 B)에서 서로 다른 수익률을 받았다.
+// 이제 목표 항목은 "그 소유자 · 그 계좌 범위"의 보유 자산을 찾아 경로 A를 그대로 쓰고, 보유 자산이 없으면 같은
+// 입력으로 만든 가상 자산(probe)으로 경로 A를 쓴다. 다른 소유자 · 다른 계좌의 설정은 보지 않는다.
+//   scope: 'general'(일반계좌) | 'tax'(절세계좌 전체) | 'ISA' 등 계좌종류 | undefined(계좌 제한 없음)
+function findRateSubjectHoldings(target, scope) {
+  if (!target) return [];
   let matcher = null;
   if (target.type === 'ticker') {
     const want = sanitizeTicker(target.ticker).yahooTicker;
-    if (!want) return null;
+    if (!want) return [];
     matcher = (a) => sanitizeTicker(a.ticker).yahooTicker === want;
   } else if (target.type === 'namedHolding') {
     const want = normalizeNameKey(target.name || target.label);
-    if (!want) return null;
+    if (!want) return [];
     matcher = (a) => !String(a.ticker ?? '').trim() && normalizeNameKey(a.name) === want;
   } else {
-    return null;
+    return [];
   }
-  const candidates = assets.filter((a) => a.rateMatchOverride && matcher(a));
-  if (candidates.length === 0) return null;
-  const preferred = target.owner ? candidates.find((a) => a.owner === target.owner) : null;
-  return String((preferred || candidates[0]).rateMatchOverride).trim() || null;
+  const inScope = (a) => {
+    if (scope === undefined || scope === null) return true;
+    if (scope === 'general') return isRebalanceEligibleAccount(a);
+    if (scope === 'tax') return !isRebalanceEligibleAccount(a);
+    return a.accountType === scope;
+  };
+  return (state.assets || []).filter((a) => matcher(a) && (!target.owner || a.owner === target.owner) && inScope(a));
 }
-function getTargetProjectionRate(target, presetKey, region) {
-  const preset = SCENARIO_RATE_PRESETS[presetKey];
-  // [Phase 28-F] 0순위: 사용자가 자산에 명시한 대표매칭키. 경로 A와 완전히 같은 resolver를 태워
-  // (customScenarioRates -> BOND/CASH 기존 정책 -> 시스템 프리셋 -> 지역 폴백) 두 경로의 의미를 통일한다.
-  const overrideKey = findRateMatchOverrideForTarget(target);
-  if (overrideKey) return resolveProjectionRateForKey(overrideKey, presetKey, region === '해외');
-  if (target.type === 'ticker') {
-    const customKey = findCustomRateKeyForAsset(target.ticker, target.label);
-    if (customKey) {
-      const custom = getCustomRate(customKey, presetKey);
-      if (custom !== undefined) return custom;
-    }
-    const keywordKey = getCustomKeywordRateKey(target.label);
-    if (keywordKey) {
-      const custom = getCustomRate(keywordKey, presetKey);
-      if (custom !== undefined) return custom;
-    }
-    const yahoo = sanitizeTicker(target.ticker).yahooTicker;
-    if (preset.tickers[yahoo] !== undefined) return getPresetTickerRate(presetKey, yahoo);
-    if (TICKER_RATE_KEY_ALIAS[yahoo]) return getPresetTickerRate(presetKey, TICKER_RATE_KEY_ALIAS[yahoo]); // 실제 QQQM/SPYM 티커 보유
-    // [절세계좌 국내상장 해외지수 ETF] KODEX 미국S&P500/TIGER 미국나스닥100/SOL 미국배당다우존스 등
-    // 이름 키워드로 실제 추종 지수의 대표 수익률에 매핑한다(getProjectionAssetGroupKey와 동일 규칙).
-    const nameKey = getNameKeywordRateKey(target.label);
-    if (nameKey) return getPresetTickerRate(presetKey, nameKey);
-    // [Phase 47-A] 경로 A(resolveAssetGroupKeyDetail)와 완전히 같은 규칙으로 성격을 물어본다 -
-    // 지역 폴백은 여기서도 제거됐다. 목표 항목에는 category가 없을 수 있어 자산 등록과 동일한
-    // classifyCategory로 채워 넣어, 같은 상품이 두 경로에서 다른 성격으로 읽히지 않게 한다.
-    const tickerCharKey = resolveRateKeyFromAssetCharacter(makeRateProbe(target.ticker, target.label, target.category, region));
-    return resolveProjectionRateForKey(tickerCharKey || UNRESOLVED_RATE_KEY, presetKey, region === '해외');
+// 보유 자산이 없는 목표 항목을 경로 A에 넣기 위한 가상 자산 - category는 자동 분류값이라 시스템 추천(미확정)으로 둔다.
+function makeTargetRateProbe(target, region) {
+  const isTicker = target.type === 'ticker';
+  const probe = makeRateProbe(isTicker ? target.ticker : '', isTicker ? (target.label || target.name) : (target.name || target.label), null, region);
+  if (target.rateMatchOverride) probe.rateMatchOverride = String(target.rateMatchOverride).trim() || undefined;
+  return probe;
+}
+// 반환: { subject, held, conflict }. 같은 범위 안의 보유분끼리 서로 다른 기준을 쓰고 있으면(conflict) 어느 한쪽을
+// 고르지 않는다(먼저/나중 저장 같은 우선순위를 만들지 않는다) - 자동 판별(probe)로 계산하고 경고로 알린다.
+// 같은 가정을 가리키는 키 표기를 하나로 맞춘다 - 확정 자산군 '채권'(카테고리 키)과 이름 · 성격으로 판정한 'BOND'는 같은 수익률
+// (getReferenceRate('BOND'))이다. instrument 구분 · 불일치 판정에서 표기만 다른 같은 기준을 "서로 다른 기준"으로 보지 않게 한다.
+function canonicalRateKey(key) {
+  return key === '채권' ? 'BOND' : key;
+}
+function resolveTargetRateSubject(target, region, scope) {
+  const holdings = findRateSubjectHoldings(target, scope);
+  if (holdings.length > 0) {
+    const keys = new Set(holdings.map((a) => canonicalRateKey(resolveAssetGroupKeyDetail(a).key)));
+    if (keys.size === 1) return { subject: holdings[0], held: true, conflict: false };
+    return { subject: makeTargetRateProbe(target, region), held: true, conflict: true };
   }
-  // [namedHolding 기대수익률 버그 수정 - 요청 반영] 티커 없는 보유 자산을 이름으로 지정한 목표
-  // (searchRtmAddCandidates의 이름 검색 결과, js/04)는 target.category가 아예 없어서, 예전엔 바로
-  // 아래 "category형 목표" 분기로 떨어져 target.name을 전혀 보지 않고 지역 대표지수(KOSPI/S&P500)를
-  // 적용했다 - "국채"/"현금"/"달러"처럼 이름만 봐도 명백한 자산도 마치 개별 주식인 것처럼 6~9%로
-  // 부풀려진 원인이다. type==='ticker'와 동일하게 사용자 정의 오버라이드(종목명 매칭)·키워드 매칭을
-  // 먼저 시도하고("수익률 관리"에 국채/현금/달러 키워드로 BOND/CASH/CASH.USD를 등록해뒀다면 그 값을
-  // 그대로 따른다), 등록된 게 하나도 없으면 자산 등록 시 자동판별과 동일한 규칙(BOND_KEYWORDS/
-  // CASH_KEYWORDS, js/01 classifyCategory)으로 이름만 보고 채권/현금 여부를 추론해 최소한 지역
-  // 지수보다는 훨씬 현실적인 값(채권 프리셋 수익률 / 현금 0%)으로 대체한다.
-  if (target.type === 'namedHolding') {
-    const customKey = findCustomRateKeyForAsset('', target.name);
-    if (customKey) {
-      const custom = getCustomRate(customKey, presetKey);
-      if (custom !== undefined) return custom;
+  // [PMD-02] 그 소유자 · 그 계좌 범위에 보유분이 없으면(예: 두 소유자 목표가 같은데 한 사람만 보유) 같은 종목의 다른 보유분에서
+  // "자산 자체의 사실"(자산군과 확정 여부 · 이름 · 국내/해외)만 가져오고, 대표매칭(사용자가 정한 수익률 기준)은 가져오지 않는다 -
+  // 다른 소유자 · 다른 계좌의 설정이 번지지 않는다. 그 사실들로도 기준이 하나로 정해지지 않으면 가상 자산(probe)으로 해석한다.
+  const others = findRateSubjectHoldings(Object.assign({}, target, { owner: undefined }), undefined)
+    .map((a) => Object.assign({}, a, { rateMatchOverride: undefined }));
+  if (others.length > 0) {
+    const keys = new Set(others.map((a) => canonicalRateKey(resolveAssetGroupKeyDetail(a).key)));
+    if (keys.size === 1) {
+      const subject = others[0];
+      if (target.rateMatchOverride) subject.rateMatchOverride = String(target.rateMatchOverride).trim() || undefined;
+      return { subject, held: false, conflict: false };
     }
-    const keywordKey = getCustomKeywordRateKey(target.name);
-    if (keywordKey) {
-      const custom = getCustomRate(keywordKey, presetKey);
-      if (custom !== undefined) return custom;
-    }
-    const inferredCategory = classifyCategory('', target.name);
-    if (inferredCategory === '현금') return 0;
-    if (inferredCategory === '채권') {
-      const custom = getCustomRate('BOND', presetKey);
-      return custom !== undefined ? custom : preset.categories['채권'];
-    }
-    // [Phase 47-A] 이름만 있는 보유 항목도 지역 폴백 대신 성격 판정을 따른다.
-    const namedCharKey = resolveRateKeyFromAssetCharacter(makeRateProbe('', target.name, inferredCategory, region));
-    return resolveProjectionRateForKey(namedCharKey || UNRESOLVED_RATE_KEY, presetKey, region === '해외');
   }
+  return { subject: makeTargetRateProbe(target, region), held: false, conflict: false };
+}
+function findRateMatchOverrideForTarget(target, scope) {
+  if (!target) return null;
+  if (target.rateMatchOverride) return String(target.rateMatchOverride).trim() || null;
+  if (target.type !== 'ticker' && target.type !== 'namedHolding') return null;
+  const { subject, held, conflict } = resolveTargetRateSubject(target, undefined, scope);
+  if (!held || conflict || !subject.rateMatchOverride) return null;
+  return String(subject.rateMatchOverride).trim() || null;
+}
+// 목표 항목 하나의 수익률 해석. ticker/namedHolding은 위 보유 자산(또는 probe)으로 경로 A를 쓰고, 자산군 캐치올
+// ('주식'/'채권'/'현금' 등)은 특정 자산을 가리키지 않으므로 기존 규칙을 그대로 쓴다.
+// presetKey를 생략하면 키 선택만 한다(목록 표시 · Monte Carlo instrument 구분용) - rate는 undefined다.
+// 반환: { key, source, rate, assumptionMissing, subject, held, conflict }
+function resolveTargetRateDetail(target, presetKey, region, scope) {
+  if (target.type === 'ticker' || target.type === 'namedHolding') {
+    const { subject, held, conflict } = resolveTargetRateSubject(target, region, scope);
+    if (presetKey === undefined) {
+      const choice = resolveAssetGroupKeyDetail(subject);
+      return { key: choice.key, source: choice.source, rate: undefined, assumptionMissing: undefined, subject, held, conflict };
+    }
+    return Object.assign(resolveAssetRateDetail(subject, presetKey), { subject, held, conflict });
+  }
+  const categoryDetail = (key, rate, assumptionMissing) => ({ key, source: 'categoryTarget', rate, assumptionMissing, subject: null, held: false, conflict: false });
   const groupKey = getProjectionGroupKey(target.category);
-  if (groupKey === '현금') return 0;
+  if (groupKey === '현금') return categoryDetail('현금', presetKey === undefined ? undefined : 0, presetKey === undefined ? undefined : false);
   if (groupKey === '채권') {
+    if (presetKey === undefined) return categoryDetail('BOND', undefined, undefined);
     const custom = getCustomRate('BOND', presetKey);
-    return custom !== undefined ? custom : preset.categories['채권'];
+    return categoryDetail('BOND', custom !== undefined ? custom : SCENARIO_RATE_PRESETS[presetKey].categories['채권'], false);
   }
-  // [Phase 47-A] 자산군 캐치올 목표('주식' 등)는 특정 상품을 가리키지 않는다 - 그 안에 무엇이 들어올지
-  // 모르는 상태에서 지역 대표지수를 붙이면 "국내 주식 캐치올"과 "국내 채권 ETF"가 같은 값을 받는다.
-  // 캐치올이 주식형으로 명시된 경우에만 해당 지역 대표지수를 쓰고, 그 외에는 가정을 적용하지 않는다.
+  // [Phase 47-A] 자산군 캐치올 목표('주식' 등)는 특정 상품을 가리키지 않는다 - 캐치올이 주식형으로 명시된 경우에만
+  // 해당 지역 대표지수를 쓰고, 그 외에는 가정을 적용하지 않는다.
   if (groupKey === '주식형자산') {
-    return region === '해외' ? getEffectiveIndexRate(presetKey, 'foreign') : getEffectiveIndexRate(presetKey, 'domestic');
+    const indexRegion = region === '해외' ? 'foreign' : 'domestic';
+    return categoryDetail(region === '해외' ? 'S&P500' : 'KOSPI', presetKey === undefined ? undefined : getEffectiveIndexRate(presetKey, indexRegion), presetKey === undefined ? undefined : false);
   }
-  return 0;
+  return categoryDetail(groupKey || UNRESOLVED_RATE_KEY, presetKey === undefined ? undefined : 0, presetKey === undefined ? undefined : true);
+}
+function getTargetProjectionRate(target, presetKey, region, scope) {
+  return resolveTargetRateDetail(target, presetKey, region, scope).rate;
 }
 
 // [시나리오별 적용 수익률 요약 표] 화면에 나열할 시스템 기본 참조 상품 목록 - SCENARIO_RATE_PRESETS.
@@ -1556,19 +1629,10 @@ function getSystemDefaultRate(presetKey, key) {
 // target/allocation 항목(자산 객체가 아니라 {ticker,label} 모양)에도 그대로 적용한다 - "수익률 관리"
 // 동적 목록(getActiveScenarioRateKeys)에서 여러 출처(목표 비중, 월적립금 배분, 절세계좌 배분)에 반복
 // 필요해 공용 함수로 뽑았다.
-function resolveTickerToRateKey(ticker, label) {
-  const customKey = findCustomRateKeyForAsset(ticker, label);
-  if (customKey) return customKey;
-  const keywordKey = getCustomKeywordRateKey(label);
-  if (keywordKey) return keywordKey;
-  const sanitized = sanitizeTicker(ticker);
-  if (SCENARIO_RATE_PRESETS.normal.tickers[sanitized.yahooTicker] !== undefined) return sanitized.yahooTicker;
-  if (TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker]) return TICKER_RATE_KEY_ALIAS[sanitized.yahooTicker];
-  const nameKey = getNameKeywordRateKey(label);
-  if (nameKey) return nameKey;
-  // [Phase 47-A] 계산 경로와 같은 규칙을 쓴다 - 여기만 지역 폴백을 남겨두면 "수익률 관리" 목록에는
-  // KOSPI 행이 보이는데 실제 계산은 가정 없음(0%)이 되어 화면과 계산이 다른 말을 하게 된다.
-  return resolveRateKeyFromAssetCharacter(makeRateProbe(ticker, label, null, sanitized.isDomestic)) || UNRESOLVED_RATE_KEY;
+function resolveTickerToRateKey(ticker, label, owner, scope) {
+  // [통합 수정 · F-24] 계산(resolveTargetRateDetail)과 같은 해석을 쓴다 - 보유 자산에 지정된 대표매칭도 반영하고,
+  // 성격을 확인하지 못하면 UNRESOLVED를 돌려준다(지역 폴백 없음 - Phase 47-A).
+  return resolveTargetRateDetail({ type: 'ticker', ticker, label, owner }, undefined, sanitizeTicker(ticker).isDomestic, scope).key;
 }
 // [수익률 관리 팝업 동적 필터링 - 요청 반영] "수익률 관리"에 나열할 상품을 하드코딩된 시스템 기본
 // 목록 그대로가 아니라, 지금 실제 포트폴리오에서 대표 수익률로 매칭·지정된 것만 모아 반환한다
@@ -1582,10 +1646,21 @@ function resolveTickerToRateKey(ticker, label) {
 //  ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
 function getActiveScenarioRateKeys() {
   const active = new Set();
+  // [통합 수정 · N-01] 'UNRESOLVED'는 키가 아니라 "적용할 가정이 없다"는 상태다 - 어느 출처에서 나오든 목록에 넣지 않는다.
+  // 목록에 들어가면 사용자가 거기에 값을 넣을 수 있게 되고, 저장 · 엑셀 내보내기에서 0/0/0 사용자 설정처럼 보였다.
+  const addKey = (key) => {
+    if (!key || key === UNRESOLVED_RATE_KEY || key === '현금') return;
+    active.add(key === '채권' ? 'BOND' : key);
+  };
   REBALANCE_OWNERS.forEach((owner) => {
     ['국내', '해외'].forEach((region) => {
       expandRebalanceTargetsForComputation(owner, region).filter((t) => num(t.pct) > 0).forEach((t) => {
-        if (t.type === 'ticker') { active.add(resolveTickerToRateKey(t.ticker, t.label)); return; }
+        // [F-24] 목표 항목도 계산과 같은 해석(그 소유자 일반계좌 보유분의 대표매칭 포함)으로 키를 고른다 - 예전엔
+        // 대표매칭을 보지 않아, 계산은 사용자 키로 하는데 목록에는 자동 판별 키가 올라왔다.
+        if (t.type === 'ticker' || t.type === 'namedHolding') {
+          addKey(resolveTargetRateDetail({ ...t, owner }, undefined, region, 'general').key);
+          return;
+        }
         const groupKey = getProjectionGroupKey(t.category);
         if (groupKey === '현금') return;
         active.add(groupKey === '채권' ? 'BOND' : (region === '해외' ? 'S&P500' : 'KOSPI'));
@@ -1597,27 +1672,21 @@ function getActiveScenarioRateKeys() {
     // 절세계좌 보유 종목도 이제 대표 매칭 수익률로 독립 복리 계산되므로(simulateTaxAdvantagedOwnerGrowth)
     // 여기서도 함께 봐야 "수익률 관리"가 절세계좌 보유 종목까지 놓치지 않는다.
     if (a.category === '부동산') { active.add('부동산'); return; }
-    const key = getProjectionAssetGroupKey(a); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
-    if (key === '현금') return;
-    // [Phase 47-A] 'UNRESOLVED'는 실제 Key가 아니라 "적용할 가정이 없다"는 상태다 - 목록에 넣으면
-    // 사용자가 거기에 값을 등록할 수 있게 되고, 그 값이 성격이 전혀 다른 모든 미확인 자산에
-    // 한꺼번에 적용된다. 상태를 Key처럼 다루지 않는다.
-    if (key === UNRESOLVED_RATE_KEY) return;
-    active.add(key === '채권' ? 'BOND' : key);
+    addKey(getProjectionAssetGroupKey(a)); // '채권'|'현금'|'KOSPI'|yahooTicker|'NAME:...'|커스텀 카테고리명
   });
   // ③ [월적립금 설정](일반계좌) 배분 종목 - 소유자별 독립 배분(신규) + 하위호환 단일 배분 둘 다 본다.
   (state.projection.monthlyContributionAllocation || []).filter((it) => num(it.pct) > 0).forEach((it) => {
-    active.add(resolveTickerToRateKey(it.ticker, it.label));
+    addKey(resolveTickerToRateKey(it.ticker, it.label, undefined, 'general'));
   });
   REBALANCE_OWNERS.forEach((owner) => {
     ((state.projection.monthlyContributionByOwner[owner] || {}).allocation || []).filter((it) => num(it.pct) > 0).forEach((it) => {
-      active.add(resolveTickerToRateKey(it.ticker, it.label));
+      addKey(resolveTickerToRateKey(it.ticker, it.label, owner, 'general'));
     });
   });
   // ④ [적립설정](절세계좌) 계좌별·종목별 배분 종목.
   TAX_ADVANTAGED_OWNERS.forEach((owner) => {
     (state.projection.taxAdvantagedPlan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0).forEach((it) => {
-      active.add(resolveTickerToRateKey(it.ticker, it.label));
+      addKey(resolveTickerToRateKey(it.ticker, it.label, owner, it.accountType || 'tax'));
     });
   });
   return active;
@@ -1885,6 +1954,21 @@ function getTaxAdvantagedAssetsByOwnerAccount(owner) {
 // [Phase 25 P0] planOverride는 절세계좌 팝업이 draft를 미리보기로 계산할 때만 넘긴다 - 생략하면
 // 예전과 완전히 동일하게 실제 state를 읽는다(Phase 24-B ownerFilter와 같은 "optional 인자, 기본값은
 // 기존 동작" 패턴).
+// [N-05] 절세계좌 연납 - 매년 초 한 번 넣고, 수익률은 앱의 다른 모든 계산과 같은 "연 수익률 ÷ 12, 월복리"로 불린다.
+// 예전(computeFutureValueAnnual에 입력 수익률을 그대로)엔 연납만 연복리(10% → 1년 10%)로 계산돼, 같은 입력이
+// 월납 · 원금 · Monte Carlo(10% → 1년 약 10.47%)와 다른 뜻이 됐다. 납입이 연초 1회뿐이라 월복리 1년 성장률을 실효 연율로
+// 바꿔 넘기면 매년 초 시점 값이 월 단위 계산과 정확히 같다. feeRateAnnual은 [PMD-04] 일반계좌와 같은 운용보수 정책 -
+// 월 성장률에 같은 월 보수 배율을 곱한다(computeFutureValueWithContributionGrowthAndFee와 같은 방식).
+function computeFutureValueAnnualWithMonthlyApr(pv, annualRatePct, years, annualContribution, feeRateAnnual) {
+  const monthlyGrowth = (1 + annualRatePct / 100 / 12) * computeMonthlyFeeFactor(feeRateAnnual || 0);
+  const effectiveAnnualRatePct = (Math.pow(monthlyGrowth, 12) - 1) * 100;
+  return computeFutureValueAnnual(pv, effectiveAnnualRatePct, years, annualContribution);
+}
+// [PMD-04] 보유 자산 하나의 운용보수(%) - Monte Carlo 어댑터가 절세계좌 보유분에 쓰는 것과 같은 키(티커, 없으면 이름).
+function getAssetProjectionFeeRate(asset) {
+  const ticker = String(asset.ticker ?? '').trim();
+  return getTargetProjectionFeeRate(ticker ? { type: 'ticker', ticker, label: asset.name } : { type: 'namedHolding', name: asset.name });
+}
 function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverride) {
   const plan = planOverride || state.projection.taxAdvantagedPlan;
   const accountPlans = (plan.contributionByOwnerAccount && plan.contributionByOwnerAccount[owner]) || [];
@@ -1896,17 +1980,26 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
   // PMT=0일 때 두 단계로 나눠 계산한 값은 한 번에 evalYears만큼 계산한 값과 수학적으로 완전히 같다
   // (연속 복리 곱셈 법칙: (1+r)^a * (1+r)^b = (1+r)^(a+b)) - 계좌마다 적립기간이 달라질 수 있는 이제는
   // 원금 성장 자체를 특정 계좌 기간에 묶을 이유가 없으므로 한 번에 계산하도록 단순화한다(결과값 불변).
-  const principalGroups = {}; // key -> { value, sample }
+  // [통합 수정 · F-01] 수익률은 시나리오별로 이 자산 자체로 해석한다(getAssetProjectionRate) - 사전에 키만 있고 그
+  // 시나리오 값이 빈 항목이 0%가 되지 않는다. [PMD-04] 운용보수도 일반계좌와 같은 방식으로 적용한다(0%면 기존과 동일).
+  const principalGroups = {}; // 키|수익률|보수 -> { value, rate, feeRate }
   state.assets.forEach((a) => {
     if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
-    const key = getProjectionAssetGroupKey(a);
-    if (!principalGroups[key]) principalGroups[key] = { value: 0, sample: a };
-    principalGroups[key].value += calcRow(a).curAmount;
+    const rate = getAssetProjectionRate(a, presetKey);
+    const feeRate = feePercentToDecimal(getAssetProjectionFeeRate(a));
+    const groupId = `${getProjectionAssetGroupKey(a)}|${rate}|${feeRate}`;
+    if (!principalGroups[groupId]) principalGroups[groupId] = { value: 0, rate, feeRate };
+    principalGroups[groupId].value += calcRow(a).curAmount;
   });
-  Object.keys(principalGroups).forEach((key) => {
-    const g = principalGroups[key];
-    total += computeFutureValue(g.value, getAssetProjectionRate(g.sample, presetKey), evalYears, 0);
+  Object.keys(principalGroups).forEach((groupId) => {
+    const g = principalGroups[groupId];
+    total += computeFutureValueWithContributionGrowthAndFee(g.value, g.rate, evalYears, 0, 0, g.feeRate);
   });
+
+  // [PMD-04] 적립 배분 종목과 미배분 잔여분(국내주식 · 채권)의 운용보수 - Monte Carlo가 같은 항목에 쓰는 키와 같다.
+  const itemFeeRate = (item) => feePercentToDecimal(getMonthlyAllocationItemFeeRate(item));
+  const remainderStockFeeRate = feePercentToDecimal(getTargetProjectionFeeRate({ type: 'category', category: '주식' }));
+  const remainderBondFeeRate = feePercentToDecimal(getTargetProjectionFeeRate({ type: 'category', category: '채권' }));
 
   if (accountPlans.length === 0) {
     // [하위호환 폴백] 이 소유자가 새 계좌별 적립 설정을 하나도 등록하지 않았으면(마이그레이션 직후
@@ -1917,20 +2010,20 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
     const allocation = (plan.allocationByOwner[owner] || []).filter((it) => num(it.pct) > 0);
     const contribYears = Math.min(contributionYears, evalYears);
     const idleYears = Math.max(0, evalYears - contributionYears);
-    const growWithStop = (pv, rate, monthly) => {
-      const atContribEnd = computeFutureValue(pv, rate, contribYears, monthly);
-      return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
+    const growWithStop = (pv, rate, monthly, feeRate) => {
+      const atContribEnd = computeFutureValueWithContributionGrowthAndFee(pv, rate, contribYears, monthly, 0, feeRate);
+      return idleYears > 0 ? computeFutureValueWithContributionGrowthAndFee(atContribEnd, rate, idleYears, 0, 0, feeRate) : atContribEnd;
     };
     const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
     allocation.forEach((item) => {
-      total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey), monthlyTotal * num(item.pct) / 100);
+      total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey, owner, 'tax'), monthlyTotal * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
     if (remainderPct > 0) {
       const remainderMonthly = monthlyTotal * remainderPct / 100;
       const riskShare = TAX_ADVANTAGED_RISK_SHARE;
-      total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare);
-      total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare));
+      total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare, remainderStockFeeRate);
+      total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare), remainderBondFeeRate);
     }
     return total;
   }
@@ -1941,24 +2034,26 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
     const accYears = num(acc.years);
     const contribYears = Math.min(accYears, evalYears);
     const idleYears = Math.max(0, evalYears - accYears);
-    const grow = (rate, amount) => {
-      const computeFn = acc.frequency === 'yearly' ? computeFutureValueAnnual : computeFutureValue;
-      const atContribEnd = computeFn(0, rate, contribYears, amount);
-      return idleYears > 0 ? computeFutureValue(atContribEnd, rate, idleYears, 0) : atContribEnd;
+    const grow = (rate, amount, feeRate) => {
+      // [N-05] 연납도 월납 · 원금과 같은 월복리 수익률로 불린다(computeFutureValueAnnualWithMonthlyApr 참고).
+      const atContribEnd = acc.frequency === 'yearly'
+        ? computeFutureValueAnnualWithMonthlyApr(0, rate, contribYears, amount, feeRate)
+        : computeFutureValueWithContributionGrowthAndFee(0, rate, contribYears, amount, 0, feeRate);
+      return idleYears > 0 ? computeFutureValueWithContributionGrowthAndFee(atContribEnd, rate, idleYears, 0, 0, feeRate) : atContribEnd;
     };
     // 이 계좌(accountType)에 배분된 종목만 - pct의 의미가 "이 계좌 적립금 중 비중"으로 바뀐다.
     const allocation = (plan.allocationByOwner[owner] || [])
       .filter((it) => it.accountType === acc.accountType && num(it.pct) > 0);
     const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
     allocation.forEach((item) => {
-      total += grow(getMonthlyAllocationItemRate(item, presetKey), num(acc.amount) * num(item.pct) / 100);
+      total += grow(getMonthlyAllocationItemRate(item, presetKey, owner, acc.accountType), num(acc.amount) * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
     if (remainderPct > 0) {
       const remainderAmount = num(acc.amount) * remainderPct / 100;
       const riskShare = TAX_ADVANTAGED_RISK_SHARE;
-      total += grow(getEffectiveIndexRate(presetKey, 'domestic'), remainderAmount * riskShare);
-      total += grow(getReferenceRate(presetKey, 'BOND'), remainderAmount * (1 - riskShare));
+      total += grow(getEffectiveIndexRate(presetKey, 'domestic'), remainderAmount * riskShare, remainderStockFeeRate);
+      total += grow(getReferenceRate(presetKey, 'BOND'), remainderAmount * (1 - riskShare), remainderBondFeeRate);
     }
   });
 
@@ -2474,19 +2569,47 @@ function renderTaxAdvantagedPlanResults() {
 let scenarioRateManagerDraft = [];
 
 // 모달을 열 때 현재 유효 수익률(오버라이드가 있으면 그 값, 없으면 시스템 기본값)로 초안을 채운다.
+// [F-03] 시스템 기준 키인지 - 목록에 어떤 경로로 올라왔는지(row.custom)와 무관하게 키 자체로 판단한다. 예전엔 보유 ·
+// 목표에서 쓰이지 않는 시스템 키(예: DEV_EX_US)가 사용자 행으로 취급돼, 저장만 해도 세 값이 전부 사용자 값으로 굳었다.
+function isScenarioRateBaseKey(key) { return SCENARIO_RATE_BASE_ROWS.some((r) => r.key === key); }
+// [PMD-01] 사용자가 입력한 키는 바꾸지 않는다. 다만 국내 종목코드를 접미사 없이 적은 키('005930')는 앱이 보유 종목과
+// 연결할 때 쓰는 형식('005930.KS')과 달라 자동으로 연결되지 않으므로 그 사실만 알린다(대표매칭에 그 키를 그대로 적은
+// 자산이 있으면 그 자산에는 연결되므로 알리지 않는다).
+function getRateKeyFormatHint(key) {
+  const k = String(key ?? '').trim();
+  if (!/^A?\d{6}$/i.test(k)) return null;
+  const normalized = sanitizeTicker(k).yahooTicker;
+  if (!normalized || normalized === k) return null;
+  if ((state.assets || []).some((a) => String(a.rateMatchOverride ?? '').trim() === k)) return null;
+  return `이 키(${k})는 앱이 보유 종목을 찾을 때 쓰는 종목코드 형식(${normalized})과 달라 자동으로 연결되지 않습니다. 키는 자동으로 바꾸지 않으니, 필요하면 ${normalized}로 등록해 주세요.`;
+}
+
+// 모달을 열 때 초안을 만든다. [F-02] 저장돼 있지 않은 칸(미입력)은 0으로 채우지 않는다 - 시스템 기준 행은 지금 따르고
+// 있는 기본값을 보여 주고, 사용자 행은 빈 칸으로 둔다. touched는 사용자가 이번에 실제로 고친 칸만 표시한다(저장 규칙 참고).
 function buildScenarioRateManagerDraft() {
   const customRates = state.projection.customScenarioRates || {};
-  return getScenarioRateDisplayRows().map((row) => ({
-    key: row.key,
-    label: row.label,
-    isBase: !row.custom,
-    conservative: num(getReferenceRate('conservative', row.key)),
-    normal: num(getReferenceRate('normal', row.key)),
-    optimistic: num(getReferenceRate('optimistic', row.key)),
-    // [키워드 자동매칭 - 요청 반영] 종목명에 이 키워드가 있으면 카테고리/지역 폴백보다 우선해서 이
-    // 키로 자동 매칭된다(getCustomKeywordRateKey 참고) - 등록 안 해도 그만이라 안 써도 기존과 동일.
-    keywords: (customRates[row.key] && Array.isArray(customRates[row.key].keywords)) ? customRates[row.key].keywords.slice() : []
-  }));
+  return getScenarioRateDisplayRows().map((row) => {
+    const isBase = isScenarioRateBaseKey(row.key);
+    const field = (preset) => {
+      const stored = getCustomRate(row.key, preset);
+      if (stored !== undefined) return stored;
+      return isBase ? num(getSystemDefaultRate(preset, row.key)) : '';
+    };
+    return {
+      key: row.key,
+      label: row.label,
+      isBase,
+      // 삭제 버튼은 예전과 같은 행에만 둔다(사용자 등록 행 · 쓰이지 않는 시스템 키 행).
+      removable: !!row.custom,
+      conservative: field('conservative'),
+      normal: field('normal'),
+      optimistic: field('optimistic'),
+      touched: {},
+      // [키워드 자동매칭 - 요청 반영] 종목명에 이 키워드가 있으면 카테고리/지역 폴백보다 우선해서 이
+      // 키로 자동 매칭된다(getCustomKeywordRateKey 참고) - 등록 안 해도 그만이라 안 써도 기존과 동일.
+      keywords: (customRates[row.key] && Array.isArray(customRates[row.key].keywords)) ? customRates[row.key].keywords.slice() : []
+    };
+  });
 }
 
 function openScenarioRateManagerModal() {
@@ -2539,7 +2662,13 @@ function getUserOverriddenPresets(key) {
 
 function getReturnAssumptionSourceInfo(key) {
   const custom = (state.projection.customScenarioRates || {})[key];
-  if (custom) {
+  // [통합 수정 · F-01] 키만 등록하고 수익률을 하나도 정하지 않은 사용자 키는 "사용자 설정값 적용"이 아니다(시스템 기준 키에
+  // 키워드만 넣은 경우는 아래 시스템 근거 표시를 그대로 따른다).
+  if (custom && getUserOverriddenPresets(key).length === 0 && !isScenarioRateBaseKey(key)) {
+    return { label: '수익률 미입력', tone: 'weak', systemReference: null, systemReferenceText: null,
+      detail: '이 기준에는 아직 수익률이 입력되지 않았습니다. 이 기준을 직접 지정한 자산은 성장 없이(0%) 계산되고, 종목 · 이름으로 연결된 자산은 자동 판별 기준을 따릅니다. 값을 입력하면 그 값이 사용됩니다.' };
+  }
+  if (custom && getUserOverriddenPresets(key).length > 0) {
     // 사용자 값을 "틀렸다"고 판단하지 않는다 - 어떤 값이 실제 계산에 쓰이는지만 밝힌다.
     const ref = getSystemReferenceRates(key);
     const refText = ref ? `${fmtNum(ref.conservative, 1)} / ${fmtNum(ref.normal, 1)} / ${fmtNum(ref.optimistic, 1)}%` : null;
@@ -2589,6 +2718,14 @@ function renderScenarioRateManagerList() {
     // [Phase 43] 사용자가 입력한 값과 시스템 참고 가정을 구분해 보여준다. 색만으로 구분하지 않도록
     // 아이콘과 문구를 함께 쓰고, 참고값이 없으면 줄 자체를 만들지 않는다(없는 근거를 지어내지 않는다).
     const overriddenPresets = getUserOverriddenPresets(row.key);
+    // [F-02] 빈 칸(미입력)이 0으로 보이지 않게 한다 - 시스템 기준 행은 따르고 있는 기본값을, 사용자 행은 "미입력"을 흐리게 보여 준다.
+    const ratePlaceholder = (preset) => (row.isBase ? fmtNum(getSystemDefaultRate(preset, row.key), 1) : '미입력');
+    // [PMD-01] 형식 때문에 보유 종목과 연결되지 않는 키 · [F-02] 값을 정하지 않은 칸이 있는 사용자 행 안내.
+    const formatHint = getRateKeyFormatHint(row.key);
+    const formatHintLine = formatHint ? `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep">⚠ ${escapeHtml(formatHint)}</p>` : '';
+    const blankNoticeLine = (!row.isBase && ['conservative', 'normal', 'optimistic'].some((p) => row[p] === ''))
+      ? '<p class="text-sm text-slate-500 dark:text-slate-400 break-keep">빈 칸은 값을 정하지 않은 상태로 저장되며 0%로 바뀌지 않습니다.</p>'
+      : '';
     const referenceLine = (overriddenPresets.length > 0 && src.systemReferenceText)
       ? `<p class="text-sm text-slate-500 dark:text-slate-400 break-keep">시스템 참고 가정: ${escapeHtml(src.systemReferenceText)}</p>`
       : '';
@@ -2602,13 +2739,13 @@ function renderScenarioRateManagerList() {
       <div class="flex items-center gap-1.5">
         <span class="flex-1 min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span>
         <div class="flex items-center gap-1 shrink-0">
-          <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative"
+          <input type="number" step="0.1" value="${row.conservative}" data-rate-idx="${idx}" data-rate-field="conservative" placeholder="${escapeHtml(ratePlaceholder('conservative'))}"
             class="scenario-rate-input w-14 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#ef4444">
-          <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal"
+          <input type="number" step="0.1" value="${row.normal}" data-rate-idx="${idx}" data-rate-field="normal" placeholder="${escapeHtml(ratePlaceholder('normal'))}"
             class="scenario-rate-input w-14 text-sm font-bold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none">
-          <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic"
+          <input type="number" step="0.1" value="${row.optimistic}" data-rate-idx="${idx}" data-rate-field="optimistic" placeholder="${escapeHtml(ratePlaceholder('optimistic'))}"
             class="scenario-rate-input w-14 text-sm font-semibold text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none" style="color:#10b981">
-          ${row.isBase ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+          ${!row.removable ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
         </div>
       </div>
       <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
@@ -2619,6 +2756,8 @@ function renderScenarioRateManagerList() {
         <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </p>
       ${referenceLine}
+      ${formatHintLine}
+      ${blankNoticeLine}
       ${badge}
     </div>`;
   }).join('');
@@ -2631,11 +2770,17 @@ document.getElementById('scenarioRateManagerList').addEventListener('input', (e)
   const idx = e.target.dataset.rateIdx;
   const field = e.target.dataset.rateField;
   if (idx === undefined || !field) return;
+  const row = scenarioRateManagerDraft[Number(idx)];
+  if (!row) return;
   if (field === 'keywords') {
-    scenarioRateManagerDraft[Number(idx)][field] = e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    row[field] = e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     return;
   }
-  scenarioRateManagerDraft[Number(idx)][field] = num(e.target.value);
+  // [F-02] 사용자가 실제로 만진 칸만 저장 대상으로 표시한다. 칸을 비우면 0이 아니라 "미입력"이다.
+  const raw = String(e.target.value ?? '').trim();
+  row.touched = row.touched || {};
+  row.touched[field] = true;
+  row[field] = raw === '' ? '' : num(raw);
 });
 
 document.getElementById('scenarioRateManagerList').addEventListener('click', (e) => {
@@ -2845,8 +2990,9 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
     if (scenarioRateManagerDraft.some((r) => r.key === key)) { alert('이미 등록된 종목입니다.'); return; }
     const keywords = document.getElementById('newScenarioRateKeywords').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     scenarioRateManagerDraft.push({
-      key, label: name || code, isBase: false,
-      conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic), keywords
+      key, label: name || code, isBase: isScenarioRateBaseKey(key), removable: true,
+      conservative: num(rawConservative), normal: num(rawNormal), optimistic: num(rawOptimistic), keywords,
+      touched: { conservative: true, normal: true, optimistic: true }
     });
     renderScenarioRateManagerList();
     form.classList.add('hidden');
@@ -2860,11 +3006,13 @@ document.getElementById('scenarioRateAddNewBtn').addEventListener('click', () =>
 document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click', () => {
   const activeKeys = getActiveScenarioRateKeys();
   scenarioRateManagerDraft = SCENARIO_RATE_BASE_ROWS.filter((row) => activeKeys.has(row.key)).map((row) => ({
-    key: row.key, label: row.label, isBase: true,
+    key: row.key, label: row.label, isBase: true, removable: false,
     conservative: num(getSystemDefaultRate('conservative', row.key)),
     normal: num(getSystemDefaultRate('normal', row.key)),
     optimistic: num(getSystemDefaultRate('optimistic', row.key)),
-    keywords: [] // 시스템 기본값엔 등록된 키워드가 없다(전부 사용자가 직접 등록한 것) - 초기화 시 함께 비운다.
+    keywords: [], // 시스템 기본값엔 등록된 키워드가 없다(전부 사용자가 직접 등록한 것) - 초기화 시 함께 비운다.
+    // [F-02] 초기화는 사용자가 명시적으로 고른 동작이다 - 세 칸 모두 "기본값으로 고침"으로 저장하고 기존 등록 내용도 남기지 않는다.
+    touched: { conservative: true, normal: true, optimistic: true }, resetToDefault: true
   }));
   // 신규 종목 추가 폼이 열려 있었다면 함께 접는다 - 방금 지워진 초안 목록과 어긋난 채로 남아있으면
   // 안 되므로(예: 방금 추가하려던 종목이 사라졌는데 입력 폼만 남아있는 상태 방지).
@@ -2879,19 +3027,32 @@ document.getElementById('scenarioRateResetDefaultsBtn').addEventListener('click'
 // 실제로 다른 필드만 오버라이드로 저장하고(전부 기본값과 같으면 그 종목의 오버라이드를 아예 지운다 -
 // 기본값으로 초기화 후 저장한 경우가 여기 해당), 신규 등록 행은 입력값을 그대로 저장한다.
 document.getElementById('saveScenarioRateManagerModalBtn').addEventListener('click', () => {
+  // [통합 수정 · F-01 · F-02 · F-03 · N-01] 사용자가 이번에 실제로 고친 칸만 새 값으로 저장하고, 손대지 않은 칸은
+  // 저장돼 있던 그대로 둔다(없던 칸은 계속 없음 - 0으로 채우지 않는다).
+  //   - 시스템 기준 키(SCENARIO_RATE_BASE_ROWS)는 고친 값이 시스템 기본값과 같으면 저장하지 않는다(기존 규칙) -
+  //     목록에 어떻게 올라왔는지와 무관하게 키 자체로 판단해, 보유하지 않은 시스템 키가 사용자 값으로 굳지 않는다.
+  //   - 비운 칸은 "미입력"으로 저장된다(명시적 0과 다르다). 저장돼 있던 명시적 0은 손대지 않으면 그대로 0이다.
+  //   - 키만 있는 항목(수익률 · 키워드 없음)도 사라지지 않는다. 한 번도 저장된 적 없는 행을 손대지 않고 저장하면
+  //     새 항목을 만들지 않는다(미확인 자산의 상태값이 0/0/0 항목으로 저장되던 경로).
+  //   - [기본값으로 초기화]로 만든 행은 기존 등록 내용을 남기지 않는다(사용자가 명시적으로 고른 동작).
+  const prevRates = state.projection.customScenarioRates || {};
   const next = {};
   scenarioRateManagerDraft.forEach((row) => {
-    if (row.isBase) {
-      const entry = {};
-      if (num(row.conservative) !== num(getSystemDefaultRate('conservative', row.key))) entry.conservative = num(row.conservative);
-      if (num(row.normal) !== num(getSystemDefaultRate('normal', row.key))) entry.normal = num(row.normal);
-      if (num(row.optimistic) !== num(getSystemDefaultRate('optimistic', row.key))) entry.optimistic = num(row.optimistic);
-      if (Array.isArray(row.keywords) && row.keywords.length > 0) entry.keywords = row.keywords;
-      if (Object.keys(entry).length > 0) { entry.label = row.label; next[row.key] = entry; }
-    } else {
-      next[row.key] = { label: row.label, conservative: num(row.conservative), normal: num(row.normal), optimistic: num(row.optimistic) };
-      if (Array.isArray(row.keywords) && row.keywords.length > 0) next[row.key].keywords = row.keywords;
-    }
+    const prevEntry = row.resetToDefault ? null : prevRates[row.key];
+    const touched = row.touched || {};
+    const entry = {};
+    ['conservative', 'normal', 'optimistic'].forEach((preset) => {
+      if (!touched[preset]) {
+        if (prevEntry && prevEntry[preset] !== undefined) entry[preset] = prevEntry[preset];
+        return;
+      }
+      if (row[preset] === '' || row[preset] === undefined || row[preset] === null) return;
+      const value = num(row[preset]);
+      if (row.isBase && value === num(getSystemDefaultRate(preset, row.key))) return;
+      entry[preset] = value;
+    });
+    if (Array.isArray(row.keywords) && row.keywords.length > 0) entry.keywords = row.keywords;
+    if (Object.keys(entry).length > 0 || prevEntry) { entry.label = row.label; next[row.key] = entry; }
   });
   state.projection.customScenarioRates = next;
   persistProjection();
@@ -2915,7 +3076,7 @@ function computeOwnerWeightedAvgRate(owner, presetKey) {
   ['국내', '해외'].forEach((region) => {
     const regionFrac = num(state.rebalance[owner].domestic[region]) / 100;
     const targets = expandRebalanceTargetsForComputation(owner, region);
-    targets.forEach((t) => { sum += regionFrac * (num(t.pct) / 100) * getTargetProjectionRate(t, presetKey, region); });
+    targets.forEach((t) => { sum += regionFrac * (num(t.pct) / 100) * getTargetProjectionRate(t, presetKey, region, 'general'); });
   });
   return sum;
 }
@@ -2945,7 +3106,7 @@ function computeRegionWeightedRate(owner, region, presetKey) {
   const sumPct = targets.reduce((s, t) => s + num(t.pct), 0);
   if (sumPct === 0) return 0;
   let weighted = 0;
-  targets.forEach((t) => { weighted += (num(t.pct) / sumPct) * getTargetProjectionRate(t, presetKey, region); });
+  targets.forEach((t) => { weighted += (num(t.pct) / sumPct) * getTargetProjectionRate(t, presetKey, region, 'general'); });
   return weighted;
 }
 
@@ -3011,7 +3172,7 @@ function simulateRebalancedPreset(presetKey, maxYears, ownerFilter) {
     const { monthlyContribution, years, allocation } = getOwnerMonthlyContributionInputs(owner);
     // [P1 수정 - Phase 9 감사 후속] totalValue===0일 때 아래 simulateMonthlyContributionGrowth가 안전한
     // fallback으로 쓸 수 있도록, 이 owner의 목표 국내/해외 비중(이미 존재하는 구조)을 함께 넘긴다.
-    return { totalValue, regionPV, regionRate, regionFeeRate, monthlyContribution, contributionYears: years, allocation, regionWeightPct: state.rebalance[owner].domestic };
+    return { owner, totalValue, regionPV, regionRate, regionFeeRate, monthlyContribution, contributionYears: years, allocation, regionWeightPct: state.rebalance[owner].domestic };
   });
   // [Phase 3-4] 원금(신규 납입 없음)도 Fee를 적용한다 - contributionGrowthRate는 PMT=0이라 의미가
   // 없지만(계산에 영향 없음), 동일한 fee-aware 함수를 재사용해 이 값도 Monte Carlo와 같은 가정을 쓴다.
@@ -3022,7 +3183,7 @@ function simulateRebalancedPreset(presetKey, maxYears, ownerFilter) {
     ownerCalcs.forEach((calc) => {
       domestic += principalFutureValue(calc, '국내', y);
       foreign += principalFutureValue(calc, '해외', y);
-      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate, calc.contributionYears, calc.regionWeightPct);
+      contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate, calc.contributionYears, calc.regionWeightPct, calc.owner);
     });
     yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
   }
@@ -3262,7 +3423,13 @@ function updateProjection(preserveMcResult) {
   // [Phase 19-P1] 단, preserveMcResult=true(다크모드 토글 전용 호출)면 이 리셋을 건너뛴다 - MC 결과
   // 표시는 전부 Tailwind dark: 클래스 기반이라(캔버스/JS 색상 계산 없음) html에 이미 토글된 dark 클래스만
   // 으로 자동으로 재도색되므로, 기존 결과 DOM을 그대로 두는 것만으로 아무 재계산 없이 보존된다.
-  if (!preserveMcResult && typeof resetMonteCarloUiToReady === 'function') resetMonteCarloUiToReady();
+  // [통합 수정 · F-06a · PMD-09] 예전엔 여기서 무조건 결과를 지우고 READY로 되돌렸다 - 계산이 아직 돌고 있어도 진행
+  // 표시 · 취소 버튼이 사라졌고(F-06a), 시세만 바뀌거나 탭만 옮겨도 결과가 사라졌다. 이제 js/19가 "실행 중이면 그대로 ·
+  // 결과가 있으면 입력이 바뀌었는지 판정해 '다시 계산 필요' 표시 · 결과가 없으면 예전처럼 READY"로 처리한다.
+  if (!preserveMcResult) {
+    if (typeof refreshMonteCarloAfterInputChange === 'function') refreshMonteCarloAfterInputChange();
+    else if (typeof resetMonteCarloUiToReady === 'function') resetMonteCarloUiToReady();
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -3324,42 +3491,43 @@ function computeHouseholdMonteCarloPV(ownerFilter) {
  * 반환: Map(key -> { initial, monthly[], kind, ticker, name, category, region, label })
  *   monthly[]: months 길이. 연납(frequency==='yearly')은 각 연도 첫 달에만 값이 들어간다 -
  *   computeFutureValueAnnual이 "매년 초 1회 납입"(기초급)이라고 명시하고 있어 그 의미를 그대로 옮긴 것이다. */
-function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years) {
+function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years, options) {
+  options = options || {};
+  // [N-10] 같은 종목이라도 수익률 기준이 다른 항목은 서로 다른 instrument로 나눈다(일반계좌 목표와 같은 규칙).
+  const split = options.splitBases || getMcRateSplitBaseKeys();
+  const onPiece = options.onPiece;
   const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
   const months = years * 12;
   const map = new Map();
-  const ensure = (key, meta) => {
-    if (!map.has(key)) map.set(key, Object.assign({ initial: 0, monthly: new Array(months).fill(0) }, meta));
-    return map.get(key);
+  const ensure = (baseKey, identity, meta, who) => {
+    const key = split.has(baseKey) ? `${baseKey}|${identity}` : baseKey;
+    if (onPiece) onPiece({ baseKey, identity, owner: meta.rateOwner, who, label: meta.label, displayKey: meta.displayKey, scopeKind: 'tax' });
+    if (!map.has(key)) map.set(key, Object.assign({ initial: 0, monthly: new Array(months).fill(0), rateIdentities: new Set() }, meta));
+    const entry = map.get(key);
+    entry.rateIdentities.add(identity);
+    return entry;
   };
   // 목표 항목과 같은 키 규칙(T:/N:/C:) - 절세계좌 자산/배분 항목을 같은 형식으로 정규화한다.
   const tickerKey = (ticker) => `T:${sanitizeTicker(ticker).yahooTicker}`;
   const namedKey = (region, name) => `N:${region}:${name}`;
-  /* 이 항목이 무위험(σ=0)인지를 여기서 한 번만 정한다 - 어댑터(js/16)와 시계열 빌더
-   * (buildTaxInstrumentReturnSeries)가 각자 다시 판정하다가 어긋나면, 한쪽은 "가격 이력이 필요한
-   * 위험자산"으로 보고 다른 쪽은 시계열을 만들지 않아 "데이터를 못 가져왔다"는 엉뚱한 오류가 난다.
-   *  - 티커가 있으면 일반계좌 목표와 똑같이 항상 실측 가격 이력으로 σ를 구한다(카테고리로 덮지 않는다).
-   *  - 티커가 없으면 사용자가 자산에 직접 지정한 category를 신뢰한다 - 일반계좌의 namedHolding 목표는
-   *    category 필드 자체가 없어 이름으로 추정할 수밖에 없지만, 절세계좌 항목은 state.assets라는 SoT가
-   *    있으므로 이름 추정("국고채"라는 단어가 들어갔는지)보다 그 값이 우선이다. */
-  const isRiskFreeEntry = (kind, category, name) => {
-    if (kind === 'ticker') return false;
-    const c = category || classifyCategory('', name);
-    return c === '채권' || c === '현금';
-  };
 
   owners.forEach((owner) => {
     // 1) 초기 보유자산 - 절세계좌에 실제로 들어 있는 자산의 현재 평가액(calcRow)을 그대로 쓴다.
     //    부동산은 기존 MC 정책대로 제외한다(이번 확장은 "금융자산의 계좌 유형 확대"이지 부동산 편입이 아니다).
+    // [통합 수정 · F-04] 수익률은 이 자산 자체로 해석한다(rateAsset) - 절세계좌 결정론(simulateTaxAdvantagedOwnerGrowth)이
+    // 원금에 쓰는 것과 같은 경로라, 같은 자산이 결정론과 Monte Carlo에서 서로 다른 기준을 받지 않는다.
     state.assets.forEach((a) => {
       if (isRebalanceEligibleAccount(a) || a.owner !== owner) return;
       if (a.category === '부동산') return;
       const t = String(a.ticker ?? '').trim();
       const region = a.isDomestic === '해외' ? '해외' : '국내';
-      const key = t ? tickerKey(t) : namedKey(region, a.name);
-      const entry = ensure(key, t
-        ? { kind: 'ticker', ticker: t, name: a.name, label: a.name, category: a.category, region, riskFree: false }
-        : { kind: 'namedHolding', ticker: '', name: a.name, label: a.name, category: a.category, region, riskFree: isRiskFreeEntry('namedHolding', a.category, a.name) });
+      const common = { name: a.name, label: a.name, category: a.category, region, rateAsset: a, rateOwner: owner, displayKey: resolveAssetGroupKeyDetail(a).key };
+      const entry = ensure(t ? tickerKey(t) : namedKey(region, a.name), rateIdentityOfAsset(a), t
+        // 티커가 있으면 일반계좌 목표와 똑같이 항상 실측 가격 이력으로 σ를 구한다(카테고리로 덮지 않는다).
+        ? Object.assign({ kind: 'ticker', ticker: t, riskFree: false }, common)
+        // [N-06] 티커가 없으면 계산 근거로 쓸 수 있는 자산군(사용자 확정 · legacy)을 따르고, 시스템 추천뿐이면 이름으로 판정한다.
+        : Object.assign({ kind: 'namedHolding', ticker: '', riskFree: isRateSubjectRiskFree(a) }, common),
+        `${owner} ${a.accountType}`);
       entry.initial += calcRow(a).curAmount;
     });
 
@@ -3368,9 +3536,9 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years) {
     const accountPlans = (plan.contributionByOwnerAccount && plan.contributionByOwnerAccount[owner]) || [];
     const allAllocations = (plan.allocationByOwner && plan.allocationByOwner[owner]) || [];
     // 납입 한 건을 월별 배열에 얹는다. 연납은 각 연도 첫 달에 전액, 월납은 매월.
-    const addContribution = (key, meta, amountPerPeriod, contribYears, frequency) => {
+    const addContribution = (baseKey, identity, meta, who, amountPerPeriod, contribYears, frequency) => {
       if (!(amountPerPeriod > 0)) return;
-      const entry = ensure(key, meta);
+      const entry = ensure(baseKey, identity, meta, who);
       const capMonths = Math.min(months, Math.max(0, Math.round(num(contribYears) * 12)));
       for (let m = 1; m <= capMonths; m++) {
         if (frequency === 'yearly') { if ((m - 1) % 12 === 0) entry.monthly[m - 1] += amountPerPeriod; }
@@ -3378,37 +3546,157 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years) {
       }
     };
     // 미배분 잔여분은 deterministic과 완전히 같은 규칙(TAX_ADVANTAGED_RISK_SHARE로 국내지수/BOND 분할)을 쓴다.
-    const addRemainder = (amount, contribYears, frequency) => {
+    const addRemainder = (amount, contribYears, frequency, who) => {
       if (!(amount > 0)) return;
-      addContribution('C:국내:주식', { kind: 'category', ticker: '', name: '국내주식', label: '국내주식', category: '주식', region: '국내', riskFree: false },
-        amount * TAX_ADVANTAGED_RISK_SHARE, contribYears, frequency);
-      addContribution('C:국내:채권', { kind: 'category', ticker: '', name: '채권', label: '채권', category: '채권', region: '국내', riskFree: true },
-        amount * (1 - TAX_ADVANTAGED_RISK_SHARE), contribYears, frequency);
+      addContribution('C:국내:주식', 'category:주식', { kind: 'category', ticker: '', name: '국내주식', label: '국내주식', category: '주식', region: '국내', riskFree: false, rateOwner: owner, displayKey: 'KOSPI' },
+        who, amount * TAX_ADVANTAGED_RISK_SHARE, contribYears, frequency);
+      addContribution('C:국내:채권', 'category:채권', { kind: 'category', ticker: '', name: '채권', label: '채권', category: '채권', region: '국내', riskFree: true, rateOwner: owner, displayKey: 'BOND' },
+        who, amount * (1 - TAX_ADVANTAGED_RISK_SHARE), contribYears, frequency);
     };
-    const addAllocationSet = (allocation, amount, contribYears, frequency) => {
+    // scope: 이 적립금이 들어가는 계좌(계좌별 설정이면 그 계좌종류, 하위호환 풀이면 절세계좌 전체) - 배분 종목의
+    // 수익률은 그 소유자 · 그 계좌 범위의 보유 자산으로 해석한다(결정론과 같은 인자).
+    const addAllocationSet = (allocation, amount, contribYears, frequency, scope, who) => {
       const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
       allocation.forEach((item) => {
         const region = sanitizeTicker(item.ticker).isDomestic === '해외' ? '해외' : '국내';
-        addContribution(tickerKey(item.ticker),
-          { kind: 'ticker', ticker: item.ticker, name: item.label || item.ticker, label: item.label || item.ticker, category: undefined, region, riskFree: false },
-          amount * num(item.pct) / 100, contribYears, frequency);
+        const label = item.label || item.ticker;
+        const rateTarget = { type: 'ticker', ticker: item.ticker, label, owner };
+        addContribution(tickerKey(item.ticker), rateIdentityOfTarget(rateTarget, region, scope),
+          { kind: 'ticker', ticker: item.ticker, name: label, label, category: undefined, region, riskFree: false,
+            rateTarget, rateScope: scope, rateOwner: owner, displayKey: resolveTargetRateDetail(rateTarget, undefined, region, scope).key },
+          who, amount * num(item.pct) / 100, contribYears, frequency);
       });
-      addRemainder(amount * Math.max(0, 100 - allocatedPct) / 100, contribYears, frequency);
+      addRemainder(amount * Math.max(0, 100 - allocatedPct) / 100, contribYears, frequency, who);
     };
 
     if (accountPlans.length > 0) {
       accountPlans.forEach((acc) => {
         addAllocationSet(allAllocations.filter((it) => it.accountType === acc.accountType && num(it.pct) > 0),
-          num(acc.amount), num(acc.years), acc.frequency);
+          num(acc.amount), num(acc.years), acc.frequency, acc.accountType, `${owner} ${acc.accountType} 적립`);
       });
     } else {
       // [하위호환 폴백] deterministic과 동일 - 계좌별 설정이 없으면 owner 단일 풀(monthlyByOwner/yearsByOwner).
       addAllocationSet(allAllocations.filter((it) => num(it.pct) > 0),
-        num((plan.monthlyByOwner || {})[owner]), num((plan.yearsByOwner || {})[owner]), 'monthly');
+        num((plan.monthlyByOwner || {})[owner]), num((plan.yearsByOwner || {})[owner]), 'monthly', 'tax', `${owner} 절세계좌 적립`);
     }
   });
 
   return map;
+}
+
+/* [통합 수정 · N-10 · PMD-02] Monte Carlo instrument 구분 기준.
+ * 예전엔 같은 종목(T:티커)이면 소유자 · 계좌와 상관없이 하나의 instrument로 합쳐, 먼저 들어온 항목의 수익률
+ * 기준이 나머지 보유분에도 그대로 쓰였다(신랑 채권혼합 4.5% → 와이프 KOSDAQ 보유분까지 4.5%). 이제 세 시나리오에서
+ * 실제로 쓰이는 키가 서로 다른 항목끼리는 합치지 않는다 - 어느 쪽 설정을 우선할지 정하지 않고 각자의 기준으로 계산한 뒤
+ * 경고로 알린다. 기준이 모두 같으면 키는 예전 그대로라 계산 결과도 그대로다. */
+const MC_RATE_IDENTITY_PRESETS = ['conservative', 'normal', 'optimistic'];
+function rateIdentityOfAsset(asset) {
+  return Array.from(new Set(MC_RATE_IDENTITY_PRESETS.map((p) => canonicalRateKey(resolveAssetGroupKeyDetail(asset, p).key)))).join('/');
+}
+function rateIdentityOfTarget(target, region, scope) {
+  if (target.type === 'ticker' || target.type === 'namedHolding') return rateIdentityOfAsset(resolveTargetRateSubject(target, region, scope).subject);
+  return `category:${target.category}`;
+}
+// [N-06] 무위험(σ=0) 판정 - 계산 근거로 쓸 수 있는 자산군(사용자 확정 · legacy)이 있으면 그 값, 시스템 추천뿐이면 이름으로 판정한다.
+function isRateSubjectRiskFree(subject) {
+  const category = getConfirmedCategoryForCalc(subject) || classifyCategory('', subject && subject.name);
+  return category === '채권' || category === '현금';
+}
+function isTargetRiskFree(target, region, scope) {
+  if (target.type === 'ticker') return false;
+  if (target.type === 'namedHolding') return isRateSubjectRiskFree(resolveTargetRateSubject(target, region, scope).subject);
+  return target.category === '채권' || target.category === '현금';
+}
+// Monte Carlo에 들어갈 수 있는 모든 항목(두 소유자의 일반계좌 목표 + 절세계좌 보유 · 적립)의 수익률 기준 목록.
+function collectMcRateIdentityPieces() {
+  const pieces = [];
+  REBALANCE_OWNERS.forEach((owner) => {
+    ['국내', '해외'].forEach((region) => {
+      if (!(num(state.rebalance[owner].domestic[region]) > 0)) return;
+      expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
+        if (!(num(t.pct) > 0) || (t.type !== 'ticker' && t.type !== 'namedHolding')) return;
+        const rateTarget = { ...t, owner };
+        pieces.push({
+          baseKey: t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}` : `N:${region}:${t.name}`,
+          identity: rateIdentityOfTarget(rateTarget, region, 'general'), owner, who: `${owner} 일반계좌`,
+          label: t.label || t.name || t.ticker,
+          displayKey: resolveTargetRateDetail(rateTarget, undefined, region, 'general').key, scopeKind: 'general'
+        });
+      });
+    });
+  });
+  buildTaxAdvantagedMonteCarloInputs(null, 'normal', 1, { splitBases: new Set(), onPiece: (p) => pieces.push(p) });
+  return pieces;
+}
+function getMcRateSplitBaseKeys() {
+  const byBase = new Map();
+  collectMcRateIdentityPieces().forEach((p) => {
+    if (!byBase.has(p.baseKey)) byBase.set(p.baseKey, new Set());
+    byBase.get(p.baseKey).add(p.identity);
+  });
+  const split = new Set();
+  byBase.forEach((ids, base) => { if (ids.size > 1) split.add(base); });
+  return split;
+}
+// [PMD-02 · N-10] 이번 실행에 들어가는 항목 중 같은 종목에 서로 다른 수익률 기준이 쓰이는 경우 - 경고용(계산은 바꾸지 않는다).
+function findMcReturnKeyConflicts(ownerFilter, includeTaxAdvantaged) {
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  const byBase = new Map();
+  collectMcRateIdentityPieces()
+    .filter((p) => owners.includes(p.owner) && (includeTaxAdvantaged || p.scopeKind === 'general'))
+    .forEach((p) => {
+      if (!byBase.has(p.baseKey)) byBase.set(p.baseKey, { label: p.label, byIdentity: new Map() });
+      const group = byBase.get(p.baseKey);
+      if (!group.byIdentity.has(p.identity)) group.byIdentity.set(p.identity, { displayKey: p.displayKey, who: [] });
+      const slot = group.byIdentity.get(p.identity);
+      if (!slot.who.includes(p.who)) slot.who.push(p.who);
+    });
+  const conflicts = [];
+  byBase.forEach((group) => {
+    if (group.byIdentity.size < 2) return;
+    conflicts.push({
+      label: group.label,
+      parts: Array.from(group.byIdentity.values()).map((slot) => ({
+        who: slot.who.join(', '),
+        keyLabel: (!slot.displayKey || slot.displayKey === UNRESOLVED_RATE_KEY) ? '적용된 기준 없음'
+          : getRateMatchKeyDisplayLabel(slot.displayKey === '채권' ? 'BOND' : slot.displayKey)
+      }))
+    });
+  });
+  return conflicts;
+}
+// [F-04] Monte Carlo 항목 하나의 수익률 해석 - 절세계좌 보유분은 그 자산 자체, 적립 배분은 그 소유자 · 그 계좌 범위,
+// 일반계좌 목표는 그 소유자의 일반계좌 범위로 해석한다(결정론과 같은 함수 · 같은 입력).
+function resolveMcEntryRateDetail(entry, presetKey) {
+  if (entry.rateAsset) return Object.assign(resolveAssetRateDetail(entry.rateAsset, presetKey), { subject: entry.rateAsset, held: true, conflict: false });
+  const target = entry.rateTarget || { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: entry.owner };
+  return resolveTargetRateDetail(target, presetKey, entry.region, entry.rateTarget ? entry.rateScope : 'general');
+}
+// [PMD-03] 일반계좌 월 적립금 중 대상 종목이 선택되지 않은 부분과, 원금이 없어 가구 목표 비중 가중에서 빠진 소유자.
+// 계산 방식은 바꾸지 않고 사실만 돌려준다(경고 문구는 js/21).
+function findMonteCarloContributionTargetGaps(ownerFilter) {
+  const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
+  const unselected = [];
+  owners.forEach((owner) => {
+    const inputs = getOwnerMonthlyContributionInputs(owner);
+    const monthly = num(inputs.monthlyContribution);
+    if (!(monthly > 0)) return;
+    const selectedPct = Math.min(100, (inputs.allocation || []).filter((it) => num(it.pct) > 0).reduce((s, it) => s + num(it.pct), 0));
+    const remainderPct = Math.max(0, 100 - selectedPct);
+    if (remainderPct > 0) unselected.push({ owner, sharePct: remainderPct, amount: monthly * remainderPct / 100 });
+  });
+  const ownersWithoutWeight = [];
+  if (!ownerFilter) {
+    const totals = {};
+    let grandTotal = 0;
+    REBALANCE_OWNERS.forEach((owner) => { totals[owner] = getProjectionGroupTotal(getProjectionGroupStats(owner)); grandTotal += totals[owner]; });
+    if (grandTotal > 0) {
+      REBALANCE_OWNERS.forEach((owner) => {
+        if (totals[owner] <= 0 && num(getOwnerMonthlyContributionInputs(owner).monthlyContribution) > 0) ownersWithoutWeight.push(owner);
+      });
+    }
+  }
+  return { unselected, ownersWithoutWeight };
 }
 
 // 소유자 한 명의 목표 비중(전체 포트폴리오 대비 0~1, 국내/해외 split × 지역 내 항목 비중)을
@@ -3416,7 +3704,8 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years) {
 // computeOwnerTargetRoleWeights(js/04)와 같은 원리이지만, 여기서는 role이 아니라 실제 수익률/변동성
 // 계산에 쓸 수 있도록 티커·카테고리 정보 자체를 담아 반환한다. selectedStocks까지 놓치지 않도록 펼쳐진
 // 목록(expandRebalanceTargetsForComputation, js/04)을 쓴다.
-function computeOwnerTargetInstrumentWeights(owner) {
+function computeOwnerTargetInstrumentWeights(owner, splitBases) {
+  const split = splitBases || getMcRateSplitBaseKeys();
   const weights = new Map();
   const domestic = state.rebalance[owner].domestic;
   ['국내', '해외'].forEach((region) => {
@@ -3428,16 +3717,27 @@ function computeOwnerTargetInstrumentWeights(owner) {
       // 전부 같은 키(C:지역:undefined)로 뭉개져 같은 지역의 "현금"과 "국채"처럼 서로 다른 namedHolding
       // 목표 둘 이상이 하나로 합산돼버렸다(비중은 합쳐지고 이름은 먼저 들어온 쪽만 남음) - 티커처럼
       // name까지 키에 포함해 서로 다른 항목으로 구분한다.
-      const key = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}`
+      const baseKey = t.type === 'ticker' ? `T:${sanitizeTicker(t.ticker).yahooTicker}`
         : t.type === 'namedHolding' ? `N:${region}:${t.name}`
         : `C:${region}:${t.category}`;
+      // [통합 수정 · N-10] 같은 종목이라도 소유자 · 계좌마다 수익률 기준이 다르면 하나로 합치지 않는다 - 키 뒤에
+      // 기준을 붙여 서로 다른 instrument로 둔다. 기준이 모두 같으면(대부분의 경우) 키는 예전 그대로다.
+      const rateTarget = { ...t, owner };
+      const identity = rateIdentityOfTarget(rateTarget, region, 'general');
+      const key = split.has(baseKey) ? `${baseKey}|${identity}` : baseKey;
       // label: [Monte Carlo Engine v2 어댑터 지원] getTargetProjectionRate(target, presetKey, region)가
       // 티커형 목표의 사용자 정의 오버라이드/키워드 매칭에 target.label을 쓴다(js/05:379) - 이 필드가
       // 없으면 어댑터가 이 Map에서 원본 t 없이 뽑아낸 값만으로는 그 매칭을 재현할 수 없었다.
-      // [Phase 28-F] owner를 함께 실어 어댑터(js/16)가 만드는 pseudoTarget이 findRateMatchOverrideForTarget에서
-      // 소유자별 보유 자산의 대표매칭키를 우선 조회할 수 있게 한다(state schema 변경 아님 - 파생 Map 필드).
-      const prev = weights.get(key) || { weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, label: t.label, region, owner };
+      // [Phase 28-F] owner를 함께 실어 어댑터(js/16)가 만드는 pseudoTarget이 그 소유자의 보유 자산으로 해석되게 한다
+      // (state schema 변경 아님 - 파생 Map 필드).
+      const prev = weights.get(key) || {
+        weight: 0, kind: t.type, ticker: t.ticker, category: t.category, name: t.name, label: t.label, region, owner,
+        // [N-06] 무위험(σ=0) 판정 - 이름형 목표는 보유 자산의 확정 자산군을 따른다(시스템 추천뿐이면 이름으로 판정).
+        riskFree: isTargetRiskFree(rateTarget, region, 'general'),
+        rateIdentities: new Set()
+      };
       prev.weight += rowWeight;
+      prev.rateIdentities.add(identity);
       weights.set(key, prev);
     });
   });
@@ -3515,12 +3815,15 @@ function computeHouseholdTargetInstrumentWeights(ownerFilter) {
   }
 
   const merged = new Map();
+  // [N-10] 두 소유자의 목표를 합칠 때도 instrument 구분 기준(같은 종목이라도 수익률 기준이 다르면 분리)을 한 번만 구해 같이 쓴다.
+  const splitBases = getMcRateSplitBaseKeys();
   REBALANCE_OWNERS.forEach((owner) => {
     const weightBasis = weightBasisByOwner[owner];
     if (weightBasis <= 0) return;
-    computeOwnerTargetInstrumentWeights(owner).forEach((v, key) => {
-      const prev = merged.get(key) || { ...v, weight: 0 };
+    computeOwnerTargetInstrumentWeights(owner, splitBases).forEach((v, key) => {
+      const prev = merged.get(key) || { ...v, weight: 0, rateIdentities: new Set() };
       prev.weight += v.weight * weightBasis;
+      v.rateIdentities.forEach((id) => prev.rateIdentities.add(id));
       merged.set(key, prev);
     });
   });
@@ -3562,8 +3865,11 @@ async function buildHouseholdInstrumentReturnSeries(ownerFilter) {
     // 그대로 적용받았다(자산 등록 화면과 동일한 BOND_KEYWORDS/CASH_KEYWORDS 이름 판정, js/01
     // classifyCategory 재사용) - "현금"/"국채"라는 이름의 목표가 실제로는 KOSPI/S&P500 수준
     // 변동성으로 잡혀 σ가 부풀려지던 원인이다.
-    const effectiveCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
-    if (effectiveCategory === '채권' || effectiveCategory === '현금') return; // 변동성 0으로 근사 - 시계열을 만들지 않음
+    // [N-06] 무위험(σ=0) 판정은 computeOwnerTargetInstrumentWeights가 보유 자산의 확정 자산군으로 이미 정해 둔 값을
+    // 그대로 쓴다 - 어댑터(js/16)와 이 시계열 빌더가 서로 다르게 판정하면 "가격 이력을 못 가져왔다"는 오류가 난다.
+    const legacyCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
+    const riskFree = v.riskFree !== undefined ? v.riskFree : (legacyCategory === '채권' || legacyCategory === '현금');
+    if (riskFree) return; // 변동성 0으로 근사 - 시계열을 만들지 않음
     const indexTicker = v.region === '해외' ? INDEX_TICKERS.SP500 : INDEX_TICKERS.KOSPI;
     tasks.push((async () => {
       const data = await getCachedDailyCloses(indexTicker);
@@ -3938,8 +4244,10 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
 // 이 함수는 "새로 들어오는 돈"만 다룬다. 기존 원금은 simulateRebalancedPreset의 지역별 계산이 그대로
 // 맡는다). getTargetProjectionRate가 type:'ticker' 대상의 수익률을 그대로 재사용한다(수익률 관리 모달의
 // 오버라이드, 시스템 기본 매핑, 이름 키워드 매핑, 국내/해외 대표지수 폴백까지 전부 동일하게 적용됨).
-function getMonthlyAllocationItemRate(item, presetKey) {
-  return getTargetProjectionRate({ type: 'ticker', ticker: item.ticker, label: item.label }, presetKey, sanitizeTicker(item.ticker).isDomestic);
+// [통합 수정 · PMD-02 · N-10] owner/scope를 주면 그 소유자 · 그 계좌 범위의 보유 자산만 보고 해석한다 - 다른 소유자나
+// 다른 계좌에 지정된 대표매칭을 빌려 쓰지 않는다. 둘 다 생략하면 계좌·소유자 제한 없이 해석한다(기존 호출 호환).
+function getMonthlyAllocationItemRate(item, presetKey, owner, scope) {
+  return getTargetProjectionRate({ type: 'ticker', ticker: item.ticker, label: item.label, owner }, presetKey, sanitizeTicker(item.ticker).isDomestic, scope);
 }
 
 // 월 적립금 전체의 미래가치(연차 y 기준) - 사용자가 [월적립금 설정]에서 배분한 종목들은 각자의 수익률로
@@ -3953,7 +4261,8 @@ function getMonthlyAllocationItemRate(item, presetKey) {
 // 의 growWithStop과 정확히 같은 두 단계(적립 구간을 먼저 계산 -> 그 잔고를 유휴 구간 동안 신규납입
 // 없이 이어서 복리성장)로 나눠 계산한다 - computeFutureValueWithContributionGrowthAndFee 자체는
 // 한 글자도 수정하지 않는다(새 계산 공식을 만들지 않고 기존 검증된 패턴만 재사용).
-function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate, contributionYears, regionWeightPct) {
+// owner: [통합 수정 · PMD-02] 배분 종목의 수익률을 이 소유자의 일반계좌 보유분 기준으로 해석한다(다른 소유자 설정을 빌리지 않는다).
+function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate, contributionYears, regionWeightPct, owner) {
   // [Phase 3-3 통합 감사] Monte Carlo와 동일한 state.projection.contributionGrowthRate를 여기서도
   // 그대로 읽는다 - state.projection.monthlyContributionAllocation을 이미 이 함수가 직접 읽고 있는
   // 것과 같은 방식(새 파라미터를 여러 호출부에 추가로 꿰어넣지 않는다).
@@ -3971,7 +4280,7 @@ function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regio
 
   let total = 0;
   allocation.forEach((item) => {
-    const rate = getMonthlyAllocationItemRate(item, presetKey);
+    const rate = getMonthlyAllocationItemRate(item, presetKey, owner, 'general');
     const feeRate = feePercentToDecimal(getMonthlyAllocationItemFeeRate(item)); // [Phase 3-4]
     const itemMonthly = monthlyContribution * num(item.pct) / 100;
     total += growWithOptionalStop(rate, itemMonthly, feeRate);

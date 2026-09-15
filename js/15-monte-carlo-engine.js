@@ -144,6 +144,9 @@ function dateAlignedReturns(datedClosesA, datedClosesB) {
   return {
     returnsA, returnsB,
     observationCount: commonDates.length,
+    // [N-09] 상관계수는 날짜가 아니라 수익률 쌍으로 계산한다 - 공통 날짜 10개면 수익률은 9개다.
+    // "관측치 10개 미만 → 0 대체 + 경고" 판정은 이 값을 기준으로 한다(observationCount는 날짜 수 그대로 유지).
+    returnObservationCount: returnsA.length,
     startDate: commonDates[0] || null,
     endDate: commonDates[commonDates.length - 1] || null
   };
@@ -169,10 +172,11 @@ function computeDateAlignedCorrelationMatrix(instruments) {
   for (let i = 0; i < n; i++) {
     matrix[i][i] = 1;
     for (let j = i + 1; j < n; j++) {
-      const { returnsA, returnsB, observationCount, startDate, endDate } = dateAlignedReturns(instruments[i].datedCloses, instruments[j].datedCloses);
-      const corr = observationCount >= 10 ? pearsonCorrelation(returnsA, returnsB) : 0;
+      const { returnsA, returnsB, observationCount, returnObservationCount, startDate, endDate } = dateAlignedReturns(instruments[i].datedCloses, instruments[j].datedCloses);
+      // pearsonCorrelation이 수익률 10개 미만이면 null을 돌려주므로 결과 행렬은 예전과 같다 - 판정 기준만 명시했다.
+      const corr = returnObservationCount >= 10 ? pearsonCorrelation(returnsA, returnsB) : 0;
       matrix[i][j] = matrix[j][i] = (corr === null ? 0 : corr);
-      pairDiagnostics[instruments[i].key + '|' + instruments[j].key] = { observationCount, startDate, endDate };
+      pairDiagnostics[instruments[i].key + '|' + instruments[j].key] = { observationCount, returnObservationCount, startDate, endDate };
     }
   }
   return { matrix, pairDiagnostics };
@@ -220,14 +224,18 @@ function jacobiEigenDecomposition(matrixIn, maxIter, tol) {
 // 비PSD 상관행렬을 "가장 가까운" 유효 상관행렬로 보정한다 - 음수 고유값을 아주 작은 양수로 클리핑한 뒤
 // 재구성하고, 대각선을 정확히 1로 재정규화한다(재구성 자체가 대칭성은 자동 보존). before/after 최소
 // 고유값을 함께 반환해 디버그 화면에서 "보정이 실제로 얼마나 일어났는지" 확인할 수 있게 한다.
-function ensurePSD(matrix) {
+// eigenFloor: [F-07] 생략하면 기존과 같다(음수 고유값만 1e-8로 클리핑). 값을 주면 고유값이 0에 가까운
+// 행렬(ρ=±1, 완전히 같은 두 자산)도 그 하한까지 올려 재구성한다 - prepareCholeskyFromCorrelation이
+// 기존 경로로 Cholesky에 실패했을 때만 쓴다(이미 성공하던 행렬의 결과는 바뀌지 않는다).
+function ensurePSD(matrix, eigenFloor) {
   const { eigenvalues, eigenvectors } = jacobiEigenDecomposition(matrix);
   const minEigenvalueBefore = Math.min(...eigenvalues);
-  if (minEigenvalueBefore >= -1e-8) {
+  if (eigenFloor === undefined && minEigenvalueBefore >= -1e-8) {
     return { matrix, correctionApplied: false, minEigenvalueBefore, minEigenvalueAfter: minEigenvalueBefore };
   }
   const n = matrix.length;
-  const clipped = eigenvalues.map((e) => Math.max(e, 1e-8));
+  const floor = eigenFloor === undefined ? 1e-8 : eigenFloor;
+  const clipped = eigenvalues.map((e) => Math.max(e, floor));
   const recon = Array.from({ length: n }, () => new Array(n).fill(0));
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
     let s = 0; for (let k = 0; k < n; k++) s += eigenvectors[i][k] * clipped[k] * eigenvectors[j][k];
@@ -260,17 +268,31 @@ function choleskyDecompose(matrix) {
 // 요청된 순서(symmetry→diagonal→range→PSD→correction→symmetry재확인→diagonal재확인→Cholesky) 그대로.
 function prepareCholeskyFromCorrelation(rawMatrix) {
   const shapeBefore = validateCorrelationMatrixShape(rawMatrix);
-  const psd = ensurePSD(rawMatrix);
+  let psd = ensurePSD(rawMatrix);
+  let chol = choleskyDecompose(psd.matrix);
+  // [F-07] 음수 고유값이 없어서 보정 대상이 아니었지만 고유값이 사실상 0인 행렬(ρ=+1/-1, 가격 이력이 같은
+  // 두 자산)은 Cholesky가 0으로 나누게 되어 계산 전체가 멈췄다. 기존 경로가 실패했을 때만 같은 PSD 보정을
+  // 고유값 하한을 두고 한 번 더 적용한다 - 새 상관 모델(Higham·shrinkage)이 아니라 기존 클리핑의 하한만
+  // 쓰는 것이며, 이미 성공하던 행렬은 이 분기에 들어오지 않아 결과가 한 비트도 달라지지 않는다.
+  const minEigenvalueOriginal = psd.minEigenvalueBefore;
+  let boundaryStabilized = false;
+  if (!chol.success) {
+    for (const floor of [1e-8, 1e-6]) {
+      const retry = ensurePSD(rawMatrix, floor);
+      const retryChol = choleskyDecompose(retry.matrix);
+      if (retryChol.success) { psd = retry; chol = retryChol; boundaryStabilized = true; break; }
+    }
+  }
   const shapeAfter = validateCorrelationMatrixShape(psd.matrix);
-  const chol = choleskyDecompose(psd.matrix);
   return {
     L: chol.L,
     choleskySucceeded: chol.success,
     diagnostics: {
       shapeBefore, shapeAfter,
       psdCorrectionApplied: psd.correctionApplied,
-      minEigenvalueBefore: psd.minEigenvalueBefore,
-      minEigenvalueAfter: psd.minEigenvalueAfter
+      minEigenvalueBefore: minEigenvalueOriginal,
+      minEigenvalueAfter: psd.minEigenvalueAfter,
+      boundaryStabilized
     }
   };
 }
@@ -354,10 +376,17 @@ function runMonthlyPrecisionMC(config, hooks) {
   const feeMonthlyFactor = new Float64Array(n);
   const Lflat = new Float64Array(n * n);
   for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) Lflat[i * n + j] = L[i][j];
+  // [N-07] 목표 비중 합계는 허용오차(±1%p) 안에서 100%가 아닐 수 있다(예: 99.5%). 그 비중을 그대로 쓰면
+  // 매년 리밸런싱(total × weight)마다 합계만큼 잔고가 새거나 불어나 20년 동안 복리로 누적됐다. 사용자 입력과
+  // 입력 데이터(instruments[i].weight)는 그대로 두고, 이 엔진 안에서 계산용 비중만 합계로 나눈다.
+  // 합계가 이미 1이면(부동소수점 오차 이내) 나누지 않아 기존 결과와 비트 단위로 같다.
+  let inputWeightSum = 0;
+  for (let i = 0; i < n; i++) inputWeightSum += instruments[i].weight;
+  const normalizeWeights = inputWeightSum > 0 && Math.abs(inputWeightSum - 1) > 1e-9;
   for (let i = 0; i < n; i++) {
     const ins = instruments[i];
-    weight[i] = ins.weight;
-    contribShare[i] = monthlyContribution * ins.weight;
+    weight[i] = normalizeWeights ? ins.weight / inputWeightSum : ins.weight;
+    contribShare[i] = monthlyContribution * weight[i];
     muM[i] = computeMuGBM(ins.muAnnual, ins.sigmaAnnual) / 12;
     sigmaM[i] = ins.sigmaAnnual / Math.sqrt(12);
     feeMonthlyFactor[i] = computeMonthlyFeeFactor(ins.feeRateAnnual);
@@ -540,7 +569,8 @@ function runMonthlyPrecisionMC(config, hooks) {
     finalValue: milestones.length ? milestones[milestones.length - 1] : null,
     executionTime: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
     diagnostics: { seed, correlationMethod: 'date-aligned', psdCorrectionApplied: choleskyDiagnostics.psdCorrectionApplied,
-      minEigenvalueBefore: choleskyDiagnostics.minEigenvalueBefore, minEigenvalueAfter: choleskyDiagnostics.minEigenvalueAfter }
+      minEigenvalueBefore: choleskyDiagnostics.minEigenvalueBefore, minEigenvalueAfter: choleskyDiagnostics.minEigenvalueAfter,
+      boundaryStabilized: choleskyDiagnostics.boundaryStabilized, inputWeightSum, weightsNormalized: normalizeWeights }
   };
 }
 
