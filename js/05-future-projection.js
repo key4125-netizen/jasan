@@ -1861,7 +1861,9 @@ function reapplyDetailCardAccordionHeight(key, btnId, bodyId) {
 // 세부 현황 아코디언 상태다(renderTaxAdvantagedCard 참고) - 다른 키들과 같은 객체에 두면
 // resetAllAccordionsOnTabSwitch(js/03)의 범용 순회가 자동으로 이 두 개도 초기화해준다(키를 따로
 // 나열할 필요 없음).
-let detailCardAccordionOpen = { generalSchedule: false, totalSchedule: false, taxHusband: false, taxWife: false, assumptions: false, scenarioSection: false };
+// [v248-1 REQ-01 · REQ-08] "이 계산은 이런 가정을 사용했어요"(assumptions) · "성장률별 결과 보기"(scenarioSection) ·
+// 그 안의 두 금액 비교표(generalSchedule/totalSchedule) 아코디언이 화면에서 삭제되어 그 키들도 함께 뺐다.
+let detailCardAccordionOpen = { taxHusband: false, taxWife: false };
 function toggleDetailCardAccordion(key, btnId, bodyId) {
   detailCardAccordionOpen[key] = !detailCardAccordionOpen[key];
   const btn = document.getElementById(btnId);
@@ -1870,68 +1872,25 @@ function toggleDetailCardAccordion(key, btnId, bodyId) {
   const label = btn.querySelector('.detail-card-accordion-label');
   if (label) label.textContent = detailCardAccordionOpen[key] ? '접기' : '세부 항목 보기';
 }
-// [드롭다운 요청 → 아코디언으로 확정] "시나리오별 일반계좌/총자산 금액 비교" 카드는 평소엔 표를 접어
-// 숨겨두고, 버튼을 눌렀을 때만 펼치는 아코디언으로 구현했다(사용자 확인 - 드롭다운 필터가 아니라
-// 접기/펼치기 토글을 원함) - 위 두 카드와 완전히 동일한 setAccordionOpen/detailCardAccordionOpen 패턴.
-document.getElementById('scenarioCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody'));
-// [Phase 24-B STEP 4] Scenario 전체를 감싸는 바깥 아코디언 - 기존 패턴(setAccordionOpen/
-// detailCardAccordionOpen) 그대로 재사용, 새 토글 메커니즘을 만들지 않았다.
-document.getElementById('scenarioSectionAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('scenarioSection', 'scenarioSectionAccordionBtn', 'scenarioSectionAccordionBody'));
+// [v248-1 REQ-01 · REQ-08] 예전 이 자리의 리스너들(금액 비교표 · "성장률별 결과 보기" · 일반계좌/전체 자산 관점 토글 ·
+// "이 계산은 이런 가정을 사용했어요")은 그 UI가 삭제되어 함께 제거했다. 계산(updateProjection의 totalScenarioData)은 그대로다.
 
-// [Phase 24-B STEP 5 - 일반계좌/전체 자산 관점 전환] Assets 관점전환 세그먼트 컨트롤과 동일한 시각
-// 패턴(active/idle 클래스 토글)을 재사용한다 - 계산은 항상 둘 다 실행되고, 여기서는 어느 쪽을 보여줄지만
-// 정한다.
-let scenarioViewMode = 'general';
-const SCENARIO_VIEW_BTN_IDLE_CLASSES = ['border-slate-200', 'dark:border-slate-700', 'bg-slate-50', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400'];
-const SCENARIO_VIEW_BTN_ACTIVE_CLASSES = ['border-brand-600', 'dark:border-brand-400', 'bg-brand-50', 'dark:bg-brand-950', 'text-brand-700', 'dark:text-brand-200'];
-function applyScenarioViewMode() {
-  document.getElementById('scenarioGeneralView').classList.toggle('hidden', scenarioViewMode !== 'general');
-  document.getElementById('scenarioTotalView').classList.toggle('hidden', scenarioViewMode !== 'total');
-  document.querySelectorAll('#scenarioViewToggle .scenario-view-btn').forEach((btn) => {
-    const active = btn.dataset.view === scenarioViewMode;
-    btn.classList.remove(...SCENARIO_VIEW_BTN_IDLE_CLASSES, ...SCENARIO_VIEW_BTN_ACTIVE_CLASSES);
-    btn.classList.add(...(active ? SCENARIO_VIEW_BTN_ACTIVE_CLASSES : SCENARIO_VIEW_BTN_IDLE_CLASSES));
-  });
-  reapplyDetailCardAccordionHeight('scenarioSection', 'scenarioSectionAccordionBtn', 'scenarioSectionAccordionBody');
-}
-document.getElementById('scenarioViewToggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('.scenario-view-btn');
-  if (!btn) return;
-  scenarioViewMode = btn.dataset.view;
-  applyScenarioViewMode();
-});
-// updateProjection()이 매 렌더마다 호출해 "총자산 관점이 일반계좌와 다른 숫자를 낼 때만" 토글 자체를
-// 보여준다(hasDistinctTotalAssetScenario, 위 정의) - 조건이 없으면(신규 사용자 다수) 토글을 숨기고
-// 일반계좌 관점만 보여줘 중복 카드를 없앤다(계산은 계속 실행됨, 표시만 다름).
-function updateScenarioViewToggleVisibility() {
-  const distinct = hasDistinctTotalAssetScenario();
-  document.getElementById('scenarioViewToggle').classList.toggle('hidden', !distinct);
-  if (!distinct && scenarioViewMode !== 'general') { scenarioViewMode = 'general'; }
-  applyScenarioViewMode();
-}
-document.getElementById('totalAssetCompareScheduleAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody'));
-document.getElementById('projectionAssumptionsAccordionBtn').addEventListener('click', () => toggleDetailCardAccordion('assumptions', 'projectionAssumptionsAccordionBtn', 'projectionAssumptionsAccordionBody'));
-
-// [P2 - Phase 9 감사 후속] years(null=제한없음/0=신규납입없음/숫자=사용자가 설정한 적립기간)를
-// 초보자가 이해할 수 있는 문장으로 바꾼다 - js/01 normalizeMonthlyContributionByOwnerEntry의 규약을
-// 그대로 반영한 표시 전용 함수(계산 없음).
-function formatContributionYearsForDisplay(years) {
-  if (years === null || years === undefined) return '제한 없음';
-  if (years === 0) return '0년(신규 납입 없음)';
-  return `${years}년`;
-}
-
-// [초보자용 핵심 요약 카드] "① 현재 자산 ② 앞으로 넣을 돈 ③ 예상 미래자산 ④ 어떤 가정을 썼는지"를
+// [초보자용 핵심 요약 카드] "① 현재 자산 ② 앞으로 넣을 돈 ③ 예상 미래자산"을
 // 새 계산 없이 이미 계산된 값만 읽어 조합한다 - presetResults.normal은 updateProjection()이 이미
 // simulateRebalancedPreset('normal', 20)으로 계산해둔 것을 그대로 받는다(이 함수 자신은 계산을 하지
 // 않고 표시만 담당 - "숫자와 설명을 분리"하되, 기존 코드 구조상 과도한 리팩터링은 하지 않는다).
-function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
+// [v248-1 REQ-09] totalNormal은 updateProjection()의 totalScenarioData 중 일반적(normal) 시나리오다 - 그 연도별
+// 포인트에 이미 계산돼 있던 절세계좌 합(taxAdvantaged) · 부동산(realEstate) · 공식 총자산(total)을 그대로 읽는다.
+// [v248-1 REQ-01] "이 계산은 이런 가정을 사용했어요" 목록(적립 기간 표시 포함)은 화면에서 삭제되어 그 렌더와
+// 전용 표시 함수(formatContributionYearsForDisplay)도 함께 뺐다.
+function renderProjectionHeroSummary(presetResults, milestoneOffsets, totalNormal) {
   const container = document.getElementById('projectionHeroSummary');
   if (!container) return;
   const points = presetResults.normal.yearlyPoints;
   const years = milestoneOffsets[milestoneOffsets.length - 1]; // 20(고정, getMilestoneYearOffsets 참고)
   const currentTotal = points[0].total;
   const futureTotal = points[years].total;
+  const futureCombined = totalNormal.points[years];
   // [기존 값 재사용] "월적립금 설정" 배지(updateMonthlyContributionSummary)와 정확히 같은 계산(js/19
   // getHouseholdMonthlyContributionTotal)을 그대로 호출한다 - 이 카드만의 별도 계산을 새로 만들지 않는다.
   const monthly = (typeof getHouseholdMonthlyContributionTotal === 'function') ? getHouseholdMonthlyContributionTotal() : num(state.projection.monthlyContribution);
@@ -1946,53 +1905,29 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets) {
   // 매년 일정하다고 가정한 단일 경로 계산값이므로 "참고값"이라고 그대로 부른다(계산은 무변경).
   if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 자산 참고값`;
   if (futureEl) futureEl.textContent = fmtKRWShort(futureTotal);
+  // [v248-1 REQ-09] 20년 후 절세계좌 · 합계 - totalScenarioData(normal)에 이미 있는 값을 표시만 한다.
+  // [v248-1 PM 결정 A] 이 카드의 합계 = 일반계좌 + 절세계좌(Tax MC "통합" 범위와 같은 뜻). 반올림 전 원시값(general ·
+  // taxAdvantaged)을 더한 뒤 표시 형식만 적용한다. 부동산 미래가치(realEstate)와 공식 총자산(total) 계산은 그대로 두고
+  // 이 합계에만 넣지 않는다(RET-03-04 - 부동산 미래예측 범위는 별도 정책 검토 대상).
+  const futureTaxEl = document.getElementById('projectionHeroFutureTax');
+  const futureTotalEl = document.getElementById('projectionHeroFutureTotal');
+  if (futureTaxEl) futureTaxEl.textContent = fmtKRWShort(futureCombined.taxAdvantaged);
+  if (futureTotalEl) futureTotalEl.textContent = fmtKRWShort(futureCombined.general + futureCombined.taxAdvantaged);
 
   // [장기 투자계획 UX 개선 - 신규] "현재자산 → 앞으로 투자 → 미래자산"으로 이어지는 계획의 핵심 조건 중
-  // "투자 기간"과 "투자금 증가"는 아코디언을 펼치지 않아도 바로 보이는 한 줄로도 함께 보여준다 - 아래
-  // items 배열과 동일하게 이미 구한 years/growthRate를 그대로 표시만 한다(새 계산 없음).
+  // "투자 기간"과 "투자금 증가"를 한 줄로 보여준다 -
+  // 이미 구한 years/growthRate를 그대로 표시만 한다(새 계산 없음).
   const growthRate = num(state.projection.contributionGrowthRate);
   const planYearsEl = document.getElementById('projectionPlanYearsText');
   if (planYearsEl) planYearsEl.textContent = `${years}년`;
   const planGrowthEl = document.getElementById('projectionPlanGrowthText');
   if (planGrowthEl) planGrowthEl.textContent = growthRate > 0 ? `매년 ${fmtNum(growthRate, 1)}%씩` : '증가 없음(매월 동일)';
-  // [Phase 17 P1-3] 한 줄 요약 확장분 - 아래 아코디언 목록이 이미 읽는 것과 동일한 값(presetResults.normal.weightedAvgRate,
+  // [Phase 17 P1-3] 한 줄 요약 확장분 - 이미 계산된 값(presetResults.normal.weightedAvgRate,
   // state.projection.inflationRate)을 여기서도 그대로 표시만 한다(새 계산 없음).
   const planRateEl = document.getElementById('projectionPlanRateText');
   if (planRateEl) planRateEl.textContent = `${fmtNum(presetResults.normal.weightedAvgRate, 2)}%`;
   const planInflationEl = document.getElementById('projectionPlanInflationText');
   if (planInflationEl) planInflationEl.textContent = `${fmtNum(num(state.projection.inflationRate), 1)}%`;
-
-  const list = document.getElementById('projectionAssumptionsList');
-  if (list) {
-    const inflationRate = num(state.projection.inflationRate);
-    const normalRatePct = presetResults.normal.weightedAvgRate;
-    // [P2 - Phase 9 감사 후속] owner별 적립기간이 실제로 계산에 반영되는데도(Step 1-4) 결과 화면
-    // 어디에도 텍스트로 드러나지 않아, 초보자가 "왜 이 금액이 나왔는지" 알기 어렵다는 문제가 있었다
-    // (Phase 9 감사 P2). Deterministic/Monte Carlo가 이미 공유하는 getOwnerMonthlyContributionInputs를
-    // 그대로 재사용해 표시만 한다(새 계산 없음) - "투자 기간"(미래예측이 몇 년 후를 계산하는가, 위
-    // 고정값)과 이 "적립 기간"(신규 월 적립을 몇 년 동안 하는가)은 서로 다른 개념임을 라벨로 구분한다.
-    const husbandYears = getOwnerMonthlyContributionInputs('신랑').years;
-    const wifeYears = getOwnerMonthlyContributionInputs('와이프').years;
-    const contributionPeriodText = husbandYears === wifeYears
-      ? formatContributionYearsForDisplay(husbandYears)
-      : `신랑 ${formatContributionYearsForDisplay(husbandYears)} · 와이프 ${formatContributionYearsForDisplay(wifeYears)}`;
-    const items = [
-      `투자 기간(미래예측 기간): ${years}년`,
-      // [Phase 22 STEP 9 - 용어 스코프 명확화] Dashboard의 "금융자산 평가금액"(절세계좌 포함), Assets의
-      // "총자산"(부동산까지 포함)과 범위가 다르다는 것을 이 한 줄에서 바로 알 수 있도록 "(일반계좌)"만
-      // 덧붙였다(Phase 21 T-09) - currentTotal 계산 자체는 무변경, 문구만 추가.
-      `현재 자산(일반계좌): ${fmtKRWShort(currentTotal)}`,
-      monthly > 0
-        ? `월 적립금: ${fmtKRWShort(monthly)}${growthRate > 0 ? ` (매년 ${fmtNum(growthRate, 1)}%씩 증가)` : '(매월 동일)'}`
-        : '월 적립금: 미설정',
-      `적립 기간(신규 납입 기간): ${contributionPeriodText}`,
-      `기준 연간 성장률(일반적 시나리오): ${fmtNum(normalRatePct, 2)}%`,
-      `물가상승률: ${fmtNum(inflationRate, 1)}%(Monte Carlo 실질가치 환산에 사용)`,
-      'Monte Carlo를 실행하면 변동성과 여러 번의 시뮬레이션을 반영한 결과 범위도 함께 볼 수 있어요.'
-    ];
-    list.innerHTML = items.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
-  }
-  reapplyDetailCardAccordionHeight('assumptions', 'projectionAssumptionsAccordionBtn', 'projectionAssumptionsAccordionBody');
 }
 
 /* -------------------------------------------------------------------------
@@ -2026,21 +1961,7 @@ function getTaxAdvantagedHoldingsByOwner() {
   return result;
 }
 
-// [Phase 24-B STEP 5 - Scenario 중복 판정] "시나리오별 총자산"(일반계좌+절세계좌+부동산)이 "시나리오별
-// 일반계좌"와 실제로 다른 숫자를 낼 조건이 하나라도 있는지 확인한다 - updateProjection()의 총자산
-// 계산(realEstateTotalValue/ownerPointsList, 아래 참고)이 실제로 참조하는 세 원천(부동산 보유,
-// 절세계좌 보유자산, 절세계좌 월적립 계획)을 그대로 다시 조회할 뿐 새 계산식을 만들지 않는다. 셋 다
-// 없으면(신규 사용자 다수) 총자산 시나리오는 일반계좌 시나리오와 100% 동일한 숫자를 반복 표시하므로
-// (Phase 24-A 감사에서 실측 확인된 중복), 그 경우에만 UI에서 "총자산" 관점을 숨긴다 - 계산 자체
-// (updateProjection의 totalScenarioData)는 계속 그대로 실행된다(삭제 아님, 표시 여부만 판단).
-function hasDistinctTotalAssetScenario() {
-  const realEstateTotal = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
-  if (realEstateTotal > 0) return true;
-  const holdingsByOwner = getTaxAdvantagedHoldingsByOwner();
-  if (TAX_ADVANTAGED_OWNERS.some((o) => holdingsByOwner[o] && holdingsByOwner[o].total > 0)) return true;
-  const monthlyByOwner = (state.projection.taxAdvantagedPlan && state.projection.taxAdvantagedPlan.monthlyByOwner) || {};
-  return TAX_ADVANTAGED_OWNERS.some((o) => num(monthlyByOwner[o]) > 0);
-}
+// [v248-1 REQ-08] hasDistinctTotalAssetScenario(일반계좌/전체 자산 관점 토글 노출 판정)는 그 토글이 삭제되어 함께 제거했다.
 
 // [계좈 세부/카드 상단 - 포지션(역할) 비중 표기 - 요청 반영] "위험/안전자산 구성" 대신, 절세계좈에
 // 실제로 보유 중인 종목들을 포지션(역할)별로 나눠 보여준다 - 개별 자산에 직접 지정된 role이 없으면
@@ -2271,13 +2192,14 @@ function renderTaxAdvantagedCard() {
     </div>`;
   };
 
+  // [v248-1 REQ-06] "합계 평가금액" → "현재 절세계좌 금액" - 라벨만 바꿨고 값(total)은 그대로다.
   container.innerHTML = `
     <div class="flex items-baseline justify-between mb-2">
-      <span class="text-sm text-slate-400">합계 평가금액</span>
+      <span class="text-sm text-slate-400">현재 절세계좌 금액</span>
       <span class="text-base font-bold whitespace-nowrap">${fmtKRWShort(total)}</span>
     </div>
     <div class="pb-2 border-b border-slate-100 dark:border-slate-800">
-      <p class="text-sm text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좈 실제 보유 기준)</p>
+      <p class="text-sm text-slate-400 mb-0.5">포지션별 비중(부부합산 · 절세계좌 실제 보유 기준)</p>
       <p class="text-sm text-slate-500 dark:text-slate-400">${householdRoleSummary}</p>
     </div>
     ${TAX_ADVANTAGED_OWNERS.map(ownerAccordionHtml).join('')}`;
@@ -2409,7 +2331,7 @@ function renderTaxAdvantagedAllocationEditor(owner, containerId) {
   const byAccount = getTaxAdvantagedAssetsByOwnerAccount(owner);
   const accountTypes = Object.keys(byAccount).sort();
   if (accountTypes.length === 0) {
-    container.innerHTML = '<p class="text-sm text-slate-400">보유 중인 절세계좈 종목이 없습니다 - 종목을 매수하면 계좈별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좈 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400">보유 중인 절세계좌 종목이 없습니다 - 종목을 매수하면 계좌별로 자동으로 카드가 생깁니다. 그 전까지는 예전처럼 계좌 구분 없는 단일 적립액(설정했다면)으로 계산됩니다.</p>';
     return;
   }
   const plan = taxPlanSource();
@@ -2863,7 +2785,7 @@ const RETURN_SOURCE_TONE_CLASSES = {
 function renderScenarioRateManagerList() {
   const container = document.getElementById('scenarioRateManagerList');
   if (scenarioRateManagerDraft.length === 0) {
-    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 구성" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-3">아직 매칭된 종목이 없습니다 - 보유 자산이나 "포트폴리오 설정" 목표 비중에 종목을 등록하면 여기 표시됩니다.</p>';
     return;
   }
   container.innerHTML = scenarioRateManagerDraft.map((row, idx) => {
@@ -2904,12 +2826,20 @@ function renderScenarioRateManagerList() {
           ${!row.removable ? '<span class="w-6 shrink-0"></span>' : `<button type="button" class="scenario-rate-remove-btn w-6 h-6 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 dark:hover:text-red-400" data-rate-idx="${idx}" title="삭제"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
         </div>
       </div>
-      <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
-        placeholder="종목명 키워드(쉼표로 구분) - 예: 현금, 달러"
-        class="scenario-rate-keyword-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
-      <input type="text" value="${escapeHtml((row.instruments || []).join(', '))}" data-rate-idx="${idx}" data-rate-field="instruments"
-        placeholder="적용 종목(종목코드 또는 NAME:이름, 쉼표로 구분) - 예: 278530.KS"
-        class="scenario-rate-instrument-input w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+      <!-- [v247-1 REQ-05 · REQ-06] 입력칸 앞에 "키워드 :" · "적용종목 :" 표시용 라벨을 둔다 - 입력칸 밖의 span이라
+           저장값(keywords 배열 · instrumentReturnKeys)에는 이 문자열이 들어가지 않고, 파싱 · 매칭 · 엑셀도 그대로다. -->
+      <div class="scenario-rate-field">
+        <span class="scenario-rate-field-label">키워드 :</span>
+        <input type="text" value="${escapeHtml(row.keywords.join(', '))}" data-rate-idx="${idx}" data-rate-field="keywords"
+          placeholder="쉼표로 구분 - 예: 현금, 달러"
+          class="scenario-rate-keyword-input flex-1 min-w-0 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+      </div>
+      <div class="scenario-rate-field">
+        <span class="scenario-rate-field-label">적용종목 :</span>
+        <input type="text" value="${escapeHtml((row.instruments || []).join(', '))}" data-rate-idx="${idx}" data-rate-field="instruments"
+          placeholder="종목코드 또는 NAME:이름 - 예: 278530.KS"
+          class="scenario-rate-instrument-input flex-1 min-w-0 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-500 dark:text-slate-400">
+      </div>
       <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[src.tone]} flex items-center gap-1">
         <span>${src.tone === 'user' ? '📝 ' : ''}장기 수익률 가정: ${escapeHtml(src.label)}</span>
         <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
@@ -3412,117 +3342,25 @@ const PROJECTION_SCENARIOS = [
 // PROJECTION_SCENARIOS 배열만 바꾸면 된다 - 색상 점 + 기대수익률 + 20년 후 예상자산만 보여주는 순수
 // 읽기 전용 요약이며, 수정 버튼은 없다(수익률은 전부 SCENARIO_RATE_PRESETS로 자동 계산됨).
 // [카드 내용 간소화 - 요청 반영] 예전엔 카드에 "15년 후/20년 후 예상자산" 금액까지 함께 보여줬으나,
-// 요청에 따라 기대수익률까지만 표시하도록 줄였다 - 구체적인 예상 자산 규모는 아래 "시나리오별 일반계좌
-// 그래프"/"금액 비교" 카드에서 확인할 수 있어 중복이었다.
+// 요청에 따라 기대수익률까지만 표시하도록 줄였다(v248-1부터 20년 후 값은 "지금 계획대로면"이 보여준다).
 function renderScenarioSummaryCards(scenarioData) {
   const grid = document.getElementById('scenarioSummaryCardsGrid');
   if (!grid) return;
 
+  // [v248-1 REQ-07 · REQ-08] "지금 계획대로면" 제목 아래 compact 칩 - "목표배분·" 접두어와 "기준 연간 성장률" 라벨을
+  // 빼고 "보수적 4.72%"처럼 이름과 값만 둔다. 값(s.weightedAvgRate)과 서식(fmtNum 2자리)은 그대로다. 375px에서
+  // 한 줄에 억지로 넣지 않고 이름/값 두 줄로 쌓는다(글자 14px 유지). 색 점은 보조이며 이름이 글자로 함께 있다.
   grid.innerHTML = scenarioData.map((s) => `
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0 flex flex-col">
-      <div class="flex items-center gap-1.5 mb-2 min-w-0">
-        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${s.color}"></span>
-        <!-- [Phase 27] 14px 상향 후 truncate가 걸리면 "목표배분..."까지만 남아 구분어(보수적/일반적/
-             긍정적)가 사라진다 - 색 점만으로 구분하게 되므로 "색상만으로 상태를 전달하지 않는다"는
-             원칙에 어긋난다. 글자를 줄이지 않고 줄바꿈을 허용한다. -->
-        <span class="text-sm font-semibold leading-tight min-w-0">${escapeHtml(s.label)}</span>
-      </div>
-      <p class="text-sm break-keep">
-        <span class="text-slate-400">기준 연간 성장률</span>
-        <span class="text-sm sm:text-lg font-bold" style="color:${s.color}">${fmtNum(s.weightedAvgRate, 2)}%</span>
+    <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 px-1 py-1.5 text-center">
+      <p class="text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1 whitespace-nowrap">
+        <span class="w-2 h-2 rounded-full shrink-0" style="background:${s.color}"></span>${escapeHtml(s.label.replace('목표배분·', ''))}
       </p>
+      <p class="text-sm font-bold text-slate-800 dark:text-slate-100">${fmtNum(s.weightedAvgRate, 2)}%</p>
     </div>`).join('');
 }
 
-// [금융자산 미래예측] 탭의 통합 비교 차트 전용: 평소에는 세부 현황(툴팁)을
-// 표시하지 않다가 그래프를 클릭/터치했을 때만 3초간 보여주고 자동으로 사라지게 한다.
-// [버그 수정 - 팝업마다 자동 숨김 시간이 제각각이었음] 예전엔 여기만 10초였고 다른 그래프 팝업(일별
-// 손익 추이/총 평가금액 추이/자산군별 투자금액 추이/환율 추이/비중 확대)은 3초(scheduleDailyPnl
-// TooltipHide)였다 - 전부 3초로 통일한다.
-// 각 차트의 options.events를 'click'만 남겨 마우스 호버만으로는 툴팁이 뜨지 않게 하고, 대신
-// options.onClick에서 이 함수를 호출해 3초 뒤 활성 요소를 비워 툴팁을 강제로 닫는다.
-// key로 charts 레지스트리와 비교해, 그 사이 차트가 다시 그려져 이전 인스턴스가 destroy됐으면
-// (예: 데이터 갱신으로 재렌더링) 파괴된 인스턴스를 건드리지 않도록 방어한다.
-const tooltipAutoHideTimers = {};
-function scheduleTooltipAutoHide(chart, key) {
-  clearTimeout(tooltipAutoHideTimers[key]);
-  tooltipAutoHideTimers[key] = setTimeout(() => {
-    if (charts[key] !== chart) return;
-    chart.setActiveElements([]);
-    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
-    chart.update();
-  }, 3000);
-}
-
-// [3가지 시나리오 리팩토링] scenarioData: [{key,label,color,points}, ...] (PROJECTION_SCENARIOS + 각자의
-// yearlyPoints) - 시나리오 수가 몇 개든 그대로 라인 하나씩 그린다. 라인이 여러 개로 늘면서 예전처럼
-// 시점마다 "더 큰 쪽 위/작은 쪽 아래" 방식으로 값을 라벨로 항상 띄워두면 라인이 겹치는 구간에서
-// 라벨끼리도 겹쳐 알아보기 어려워진다 - 대신 마일스톤 연도에는 점만 크게 찍어두고, 정확한 금액은 아래
-// 스케줄 표와 그래프를 탭했을 때 뜨는 툴팁(3개 시나리오 값이 한 번에 표시됨)으로 확인하도록 단순화했다.
-// [총자산 카드 재사용 - 파라미터화] chartKey(charts 레지스트리 키)/canvasId를 인자로 받아, "시나리오별
-// 일반계좌 그래프"와 "시나리오별 총 자산 그래프" 두 카드가 이 함수 하나를 그대로 공유한다(기본값은
-// 기존 일반계좌 카드 그대로라 기존 호출부는 수정 없이 동작).
-function renderScenarioCompareChart(scenarioData, milestoneOffsets, chartKey = 'scenarioCompare', canvasId = 'scenarioCompareChart') {
-  const textColor = chartTextColor();
-  if (charts[chartKey]) charts[chartKey].destroy();
-
-  const MILESTONE_YEARS = [0, ...milestoneOffsets];
-  const labels = scenarioData[0].points.map((p) => `Y${String(CURRENT_YEAR + p.year).slice(-2)}`);
-  const datasets = scenarioData.map((s) => ({
-    label: s.label,
-    data: s.points.map((p) => p.total),
-    borderColor: s.color,
-    backgroundColor: s.color,
-    fill: false,
-    tension: 0.3,
-    borderWidth: 2,
-    pointRadius: s.points.map((p) => (MILESTONE_YEARS.includes(p.year) ? 4 : 0)),
-    pointBackgroundColor: s.color
-  }));
-
-  charts[chartKey] = new Chart(document.getElementById(canvasId), {
-    type: 'line',
-    data: { labels, datasets }, // X축 연도 표기: "2026년"이 아니라 "Y26" 형식(년도 뒤 2자리)으로 축약
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false }, // 한 시점에 3개 시나리오 값을 모두 툴팁으로 보여준다
-      // 호버(마우스 이동)로는 반응하지 않고 클릭/터치했을 때만 툴팁이 뜨도록 이벤트를 click으로 제한한다.
-      events: ['click'],
-      onClick: (evt, elements, chart) => scheduleTooltipAutoHide(chart, chartKey),
-      scales: {
-        x: { ticks: { color: textColor, maxTicksLimit: 11 }, grid: { display: false } },
-        y: { ticks: { color: textColor, callback: (v) => fmtKRWShort(v) }, grid: { color: 'rgba(148,163,184,.15)' } }
-      },
-      plugins: {
-        legend: { display: true, position: 'bottom', labels: { color: textColor, boxWidth: 10, font: { size: 11 } } },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtKRWShort(ctx.raw)}` } }
-      }
-    }
-  });
-}
-
-// 통합 비교 차트 하단의 상세 스케줄 표 - 5년 단위 시점마다 3개 시나리오의 예상 자산(명목)을 나란히
-// 표기한다. rows: [{ year, values: { conservative, normal, optimistic } }, ...]
-// [모바일 가로 스크롤 제거] 예전엔 "1,234,567,890원" 전체 자릿수 + 긴 시나리오명("리밸런싱 후·보수적")
-// 헤더 때문에 5개 열이 375px 화면 폭을 넘어 가로 스크롤이 필요했다 - 금액을 fmtKRWShort로 축약하고
-// (요청 반영: 이제 "10.21억" 형식), 헤더도 "리밸런싱 후·" 접두어를 뗀 짧은 이름만 써서 한 화면에
-// 최대한 들어오게 했다(그래도 안 들어오면 표 자체가 가로 스크롤됨).
-// [총자산 카드 재사용 - 파라미터화] headId/bodyId를 인자로 받아 "시나리오별 일반계좌 금액 비교"와
-// "시나리오별 총자산 금액 비교" 두 카드가 이 함수 하나를 공유한다.
-function renderScenarioCompareScheduleTable(rows, scenarioData, headId = 'scenarioCompareScheduleHead', bodyId = 'scenarioCompareScheduleBody') {
-  const fmtEok = fmtKRWShort;
-  // 이 표 헤더에서만 쓰는 짧은 이름 - "리밸런싱 후·" 접두어를 뗀다(요약 카드/차트 범례의 원래 라벨은
-  // 그대로 둔다 - 그쪽은 폭 여유가 있어 줄일 필요가 없다).
-  const shortLabel = (label) => label.replace('목표배분·', '');
-  document.getElementById(headId).innerHTML = `
-    <th class="pl-1 pr-1.5 py-2 text-left font-semibold text-slate-500 dark:text-slate-400">시점</th>
-    ${scenarioData.map((s) => `<th class="px-1 py-2 text-right font-bold" style="color:${s.color}">${escapeHtml(shortLabel(s.label))}</th>`).join('')}`;
-  document.getElementById(bodyId).innerHTML = rows.map((r) => `
-    <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <td class="pl-1 pr-1.5 py-2 font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">${r.year === 0 ? '현재' : `${r.year}년후`}<span class="block text-sm font-normal text-slate-400">${CURRENT_YEAR + r.year}</span></td>
-      ${scenarioData.map((s) => `<td class="px-1 py-2 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${fmtEok(r.values[s.key])}</td>`).join('')}
-    </tr>`).join('');
-}
+// [v248-1 REQ-08] "성장률별 결과 보기" 안의 비교 차트 · 금액 비교표가 삭제되어 그 전용 렌더 함수(renderScenarioCompareChart ·
+// renderScenarioCompareScheduleTable)와 툴팁 자동 숨김 헬퍼(scheduleTooltipAutoHide)도 함께 제거했다.
 
 // [Phase 19-P1] preserveMcResult=true면 마지막에 MC UI를 READY로 되돌리는 단계만 건너뛴다 - 나머지
 // 계산/렌더링(deterministic 시나리오, 차트 등)은 평소와 완전히 동일하게 전부 수행된다. 다크모드
@@ -3532,6 +3370,11 @@ function updateProjection(preserveMcResult) {
   // [Phase 3-5 Safety Layer - B3] 목표 비중 합계가 깨져 있으면(±1%p 초과) 계산 자체를 시작하지 않고
   // 배너만 보여준다 - 자동으로 비중을 재정규화하지 않는다(사용자 지시). Monte Carlo(js/16 어댑터)도
   // 정확히 같은 assessHouseholdWeightSums()를 쓰므로 두 계산 경로가 항상 같은 기준으로 막힌다.
+  // [PM 감사 F-01] 적립계획 두 카드(포트폴리오 설정 탭)는 목표비중 계산과 무관한 저장값 표시다 - BLOCK 판정보다 먼저
+  // 갱신해, 비중 합계 오류 상태에서도 저장된 적립금 · 절세계좌 현황이 "미설정"/빈 카드로 보이지 않게 한다.
+  // BLOCK 판정 · 안내 배너 · 아래 계산 차단(시나리오 · MC 리셋 미실행)은 그대로다.
+  updateMonthlyContributionSummary();
+  renderTaxAdvantagedCard();
   const weightSumIssues = assessHouseholdWeightSums();
   const blockBanner = document.getElementById('projectionSafetyBlockBanner');
   if (weightSumIssues.length > 0) {
@@ -3544,7 +3387,7 @@ function updateProjection(preserveMcResult) {
   // monthlyContribution을 미리 구해 simulateRebalancedPreset에 넘겼으나, 이제 그 함수가 owner별로
   // 자기 자신의 원금·적립금을 내부에서 직접 계산하므로(getProjectionGroupStats(owner),
   // getOwnerMonthlyContributionInputs) 여기서 미리 구할 필요가 없다.
-  updateMonthlyContributionSummary();
+  // [PM 감사 F-01] 적립금 요약 배지 갱신은 BLOCK 판정 앞(함수 첫머리)으로 옮겼다.
   // [Phase 25 P1] 예전엔 여기서 DOM 입력값을 읽어 state에 되썼다 - 두 입력이 이제 draft를 가진 팝업
   // 안에 있으므로 그대로 두면 "취소했는데도 draft 값이 state로 새어 들어가는" 경로가 된다. state가
   // 단일 소스이고, 팝업의 [확인]만이 state를 바꾼다(계산 semantics는 그대로 - 같은 값을 읽는다).
@@ -3561,30 +3404,17 @@ function updateProjection(preserveMcResult) {
     presetResults[presetKey] = simulateRebalancedPreset(presetKey, 20);
   });
 
-  renderProjectionHeroSummary(presetResults, milestoneOffsets);
-
-  // ===== 3개 시나리오 데이터 묶기 - 요약 카드 그리드/비교 차트/비교표가 전부 이 배열 하나를 순회한다 =====
+  // ===== 3개 시나리오 데이터 묶기 - 성장률 칩(renderScenarioSummaryCards)이 이 배열을 순회한다 =====
   const scenarioData = PROJECTION_SCENARIOS.map((s) => {
     const result = presetResults[s.preset];
     return { ...s, points: result.yearlyPoints, weightedAvgRate: result.weightedAvgRate };
   });
 
   renderScenarioSummaryCards(scenarioData);
-  renderScenarioCompareChart(scenarioData, milestoneOffsets);
+  // [v248-1 REQ-08] 일반계좌 비교 차트 · 금액 비교표 렌더 호출은 그 화면이 삭제되어 뺐다(위 시나리오 계산은 그대로).
 
-  // 표/카드용: "현재" + 고정 5년 간격 마일스톤(5/10/15/20년 후)만 추린다. 각 시나리오의
-  // point.total은 이미 위에서 "자산군(또는 지역)별 합산" 방식으로 정확히 계산된 값이므로 그대로
-  // 재사용한다.
-  const compareRows = [0, ...milestoneOffsets].map((y) => {
-    const values = {};
-    scenarioData.forEach((s) => { values[s.key] = s.points[y].total; });
-    return { year: y, values };
-  });
-  renderScenarioCompareScheduleTable(compareRows, scenarioData);
-  reapplyDetailCardAccordionHeight('generalSchedule', 'scenarioCompareScheduleAccordionBtn', 'scenarioCompareScheduleAccordionBody');
-
-  // ===== [절세계좌 현황] 카드 =====
-  renderTaxAdvantagedCard();
+  // ===== [절세계좌 적립계획] 카드(구 "절세계좌 현황" - v248-1에서 포트폴리오 설정 탭으로 이동, id 그대로) =====
+  // [PM 감사 F-01] 렌더 호출은 BLOCK 판정 앞(함수 첫머리)으로 옮겼다.
 
   // ===== [시나리오별 총자산] 일반계좌 + 절세계좌(적립 예상 팝업의 저장된 계획) + 부동산(현재가치를
   // preset별 부동산 수익률로 복리 성장, 신규 매수 없음) 통합 - "포트폴리오 구성"/미래예측 본편은 순수
@@ -3593,6 +3423,9 @@ function updateProjection(preserveMcResult) {
   // 시작잔액 + 합산 월적립액"을 하나의 곡선으로 계산하는 이전 방식은 더 이상 정확하지 않다(예: 신랑
   // 10년·와이프 15년이면 11~15년째는 와이프만 적립 중이어야 한다) - 대신 소유자별로 각자의 적립 기간을
   // 반영한 연도별 포인트 배열을 독립적으로 계산한 뒤, 연도(인덱스)별로 두 배열을 합산한다.
+  // [v248-1 REQ-09] 이 총자산 계산은 그대로 두고, "지금 계획대로면"이 20년 후 절세계좌 · 합계를 따로 보여줄 수
+  // 있도록 합산에 이미 쓰이던 두 항(절세계좌 합 · 부동산 미래가치)을 포인트에 함께 담는다. total은 예전과 같은
+  // 항을 같은 순서로 더하므로 값이 한 자리도 달라지지 않는다(e2e/94에서 대조).
   const realEstateTotalValue = state.assets.filter((a) => a.category === '부동산').reduce((s, a) => s + calcRow(a).curAmount, 0);
 
   const totalScenarioData = PROJECTION_SCENARIOS.map((s) => {
@@ -3601,23 +3434,15 @@ function updateProjection(preserveMcResult) {
     // [버그 수정 - "수익률 관리" 오버라이드 미반영] 시스템 기본값을 직접 참조하던 것을 getReferenceRate로
     // 바꿔, 위 SCENARIO_RATE_BASE_ROWS에 복원한 "부동산" 행을 사용자가 수정하면 여기도 그대로 반영된다.
     const realEstateRate = getReferenceRate(s.preset, '부동산');
-    const points = generalPoints.map((p, idx) => ({
-      year: p.year,
-      total: p.total
-        + ownerPointsList.reduce((sum, pts) => sum + pts[idx].total, 0)
-        + computeFutureValue(realEstateTotalValue, realEstateRate, p.year, 0)
-    }));
+    const points = generalPoints.map((p, idx) => {
+      const taxAdvantaged = ownerPointsList.reduce((sum, pts) => sum + pts[idx].total, 0);
+      const realEstate = computeFutureValue(realEstateTotalValue, realEstateRate, p.year, 0);
+      return { year: p.year, total: p.total + taxAdvantaged + realEstate, general: p.total, taxAdvantaged, realEstate };
+    });
     return { ...s, points };
   });
-  renderScenarioCompareChart(totalScenarioData, milestoneOffsets, 'totalAssetCompare', 'totalAssetCompareChart');
-  const totalCompareRows = [0, ...milestoneOffsets].map((y) => {
-    const values = {};
-    totalScenarioData.forEach((s) => { values[s.key] = s.points[y].total; });
-    return { year: y, values };
-  });
-  renderScenarioCompareScheduleTable(totalCompareRows, totalScenarioData, 'totalAssetCompareScheduleHead', 'totalAssetCompareScheduleBody');
-  reapplyDetailCardAccordionHeight('totalSchedule', 'totalAssetCompareScheduleAccordionBtn', 'totalAssetCompareScheduleAccordionBody');
-  updateScenarioViewToggleVisibility(); // [Phase 24-B STEP 5]
+  // [v248-1 REQ-08 · REQ-09] 총자산 차트 · 비교표 · 관점 토글은 삭제되었고, 이 결과는 "지금 계획대로면"이 읽는다.
+  renderProjectionHeroSummary(presetResults, milestoneOffsets, totalScenarioData.find((s) => s.preset === 'normal'));
 
   // ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3, js/19) =====
   // [자동 실행 제거] 예전엔 이 렌더가 호출될 때마다(탭 진입/데이터 변경마다) renderMonteCarloSection()이
@@ -4177,12 +4002,7 @@ document.getElementById('inflationRateInput').addEventListener('input', (e) => {
   projectionAssumptionsDraft.inflationRate = num(e.target.value);
 });
 document.getElementById('openProjectionAssumptionsBtn').addEventListener('click', openProjectionAssumptionsModal);
-// [Phase 25 P3] 목표비중은 Portfolio에 그대로 둔다 - 여기서는 그 화면으로 이동만 시킨다(기존
-// 서브탭 전환 버튼을 그대로 클릭해 재사용하므로 새 라우팅 로직을 만들지 않는다).
-document.getElementById('goToRebalanceTargetBtn').addEventListener('click', () => {
-  const btn = document.querySelector('[data-subtab="target"]');
-  if (btn) { btn.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-});
+// [v248-1 REQ-02] "목표비중 보기"(goToRebalanceTargetBtn) 안내 버튼은 PM 지시로 삭제되어 그 리스너도 뺐다.
 document.getElementById('closeProjectionAssumptionsModalBtn').addEventListener('click', () => closeProjectionAssumptionsModal(false));
 document.getElementById('cancelProjectionAssumptionsModalBtn').addEventListener('click', () => closeProjectionAssumptionsModal(false));
 document.getElementById('projectionAssumptionsModal').addEventListener('click', (e) => {

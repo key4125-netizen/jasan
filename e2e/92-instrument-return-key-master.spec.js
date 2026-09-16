@@ -399,7 +399,8 @@ for (const [w, h, dark] of [[375, 812, true], [375, 812, false], [768, 1024, tru
     await expect(page.locator('#scenarioRateManagerModal')).toBeVisible();
     const modalCheck = await page.locator('#scenarioRateManagerModal').evaluate((modal) => {
       const win = modal.ownerDocument.defaultView;
-      const els = [modal.querySelector('#scenarioRateInstrumentNote'), ...modal.querySelectorAll('input[data-rate-field="instruments"]')];
+      // [v247-1 REQ-04] 상단 적용 종목 안내 문단은 삭제됐다 - 표시용 라벨과 입력칸이 14px 기준 대상이다.
+      const els = [...modal.querySelectorAll('.scenario-rate-field-label, input[data-rate-field="instruments"]')];
       return {
         count: modal.querySelectorAll('input[data-rate-field="instruments"]').length,
         smallFonts: els.filter((el) => el && parseFloat(win.getComputedStyle(el).fontSize) < 14).length,

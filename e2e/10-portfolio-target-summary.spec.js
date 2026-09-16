@@ -32,11 +32,11 @@ async function seedPreciseTargets(page) {
   await page.waitForFunction(() => typeof state !== 'undefined');
 }
 
-// [v247] 서브탭 이름이 "일반계좌 포트폴리오"로 바뀌었고, 세부 종목 현황은 소유자 타이틀의 접기/펼치기
+// [v247 → v248-1] 서브탭 이름이 "일반계좌 포트폴리오"를 거쳐 "포트폴리오 설정"으로 바뀌었고, 세부 종목 현황은 소유자 타이틀의 접기/펼치기
 // 상태를 포지션 그래프와 함께 공유한다 - 카드를 읽기 전에 그 타이틀을 눌러 펼친다(REQ-01 · REQ-08).
 async function goToPortfolioTab(page) {
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 }
 

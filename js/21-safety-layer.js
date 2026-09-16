@@ -85,7 +85,7 @@ function assessWeightSums(regionSums) {
       issues.push(makeIssue('SAFETY_WEIGHT_SUM', SAFETY_LEVEL.BLOCK, `rebalance.${owner}.${region}`,
         '목표 비중 합계 오류',
         `${owner}님의 ${region} 목표 비중 합계가 ${sumPct.toFixed(1)}%로, 100%에서 ${diff.toFixed(1)}%p 벗어났습니다.`,
-        '포트폴리오 구성 화면에서 비중 합계를 100%로 맞춰주세요. (비중은 자동으로 재조정되지 않습니다.)'));
+        '포트폴리오 설정 화면에서 비중 합계를 100%로 맞춰주세요. (비중은 자동으로 재조정되지 않습니다.)'));
     }
   });
   return issues;

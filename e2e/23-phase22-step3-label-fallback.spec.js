@@ -30,7 +30,7 @@ async function seedTarget(page, target) {
 // [v247] 서브탭 이름 변경(REQ-08) + 세부 종목 현황이 소유자 타이틀 아코디언 안으로 들어왔다(REQ-01).
 async function goToPortfolioTab(page) {
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 }
 

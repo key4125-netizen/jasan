@@ -20,7 +20,11 @@ test('정상 포트폴리오 입력 -> Monte Carlo 실행 -> P25/P50/범위표/G
   await expect(page.locator('#projectionSafetyBlockBanner')).toBeHidden();
 
   // 시나리오 카드(결정론적 Future Projection) 숫자가 존재하고 비어있지 않은지 확인.
-  await expect(page.getByText('목표배분·일반적')).toBeVisible();
+  // [v248-1 REQ-07] 성장률 칩은 "지금 계획대로면" 제목 아래에서 "목표배분·" 접두어 없이 "일반적 N%"로 보인다.
+  const rateChips = page.locator('#scenarioSummaryCardsGrid');
+  await expect(rateChips).toBeVisible();
+  await expect(rateChips).toContainText('일반적');
+  await expect(rateChips).toContainText(/\d+(\.\d+)?%/);
 
   // Monte Carlo 실행
   await page.locator('#mcRunBtn').click();

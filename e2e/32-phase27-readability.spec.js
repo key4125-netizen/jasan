@@ -1,6 +1,6 @@
 // E2E-32 Phase 27 - 전역 가독성(14px 하한) + 금액 천 단위 구분자 회귀.
 //
-// [기준] 「절세계좌 현황」 타이틀의 실측값(14px / weight 600 / line-height 20px, Tailwind text-sm)을
+// [기준] 「절세계좌 적립계획」(v248-1 이전 이름 「절세계좌 현황」) 타이틀의 실측값(14px / weight 600 / line-height 20px, Tailwind text-sm)을
 // 일반 사용자 노출 텍스트의 최소 가독성 기준으로 삼는다. 이 기준보다 작은 글자를 다시 만들지 않는다.
 // 공간이 부족하다고 글자를 줄이는 회귀를 막는 것이 이 파일의 목적이다.
 //
@@ -92,12 +92,13 @@ for (const [w, h] of VIEWPORTS) {
   }
 }
 
-test('기준 타이틀(「절세계좌 현황」)이 14px/600 그대로다 - 이 값이 정책의 기준점', async ({ page }) => {
+// [v248-1 REQ-05] 기준 타이틀 「절세계좌 현황」은 「절세계좌 적립계획」으로 이름만 바뀌어 포트폴리오 설정 탭으로 옮겨졌다(서식 그대로).
+test('기준 타이틀(「절세계좌 적립계획」, 구 「절세계좌 현황」)이 14px/600 그대로다 - 이 값이 정책의 기준점', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await seed(page);
   await page.locator('[data-tab="rebalance"]').click();
-  await page.locator('[data-subtab="projection"]').click();
-  const title = page.getByRole('heading', { name: /절세계좌 현황/ });
+  await page.locator('[data-subtab="target"]').click();
+  const title = page.getByRole('heading', { name: /절세계좌 적립계획/ });
   const css = await title.evaluate((el) => {
     const s = el.ownerDocument.defaultView.getComputedStyle(el);
     return { fontSize: s.fontSize, fontWeight: s.fontWeight, lineHeight: s.lineHeight };
@@ -117,7 +118,7 @@ test('주요 모달에서도 14px 하한과 금액 포맷이 유지된다(375px 
   expect(await unformattedAmounts(page), '목표비중 모달 금액').toEqual([]);
   await page.locator('#cancelRebalanceTargetModalBtn').click();
 
-  await page.locator('[data-subtab="projection"]').click();
+  // [v248-1] 적립금 설정 · 적립설정 버튼은 포트폴리오 설정 탭(현재 탭)에 있다.
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeVisible();
   expect(await tinyTexts(page), '적립금 설정 모달').toEqual([]);

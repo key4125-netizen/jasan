@@ -180,7 +180,7 @@ test('D. [C-2] 같은 이름이 양쪽 지역에 있어도 드릴다운이 서�
   await seedCrossRegionSameLabel(page);
   await page.getByText('포트폴리오/자산예측').click();
   // [v247] 서브탭 이름 변경(REQ-08) + 세부 종목 현황이 소유자 타이틀 아코디언 안으로 들어왔다(REQ-01).
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 
   const card = page.locator('#portfolioTargetSummaryHusband');
@@ -219,7 +219,7 @@ test('D-2. [C-4] 목표가 저장된 지역과 실제 보유 지역이 다르면
   expect(flags).toContainEqual(['해외|C57달러', null]);
 
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
   await expect(page.locator('#portfolioTargetSummaryHusband')).toContainText('같은 이름의 보유분이 해외에 있습니다');
 
@@ -239,7 +239,7 @@ test('E. [C-3] 세부 종목 현황이 국내/해외와 통화를 구분해 보�
   await page.setViewportSize({ width: 375, height: 812 });
   await seedCrossRegionSameLabel(page);
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 
   // 실행 가이드 카드는 더 이상 존재하지 않는다.

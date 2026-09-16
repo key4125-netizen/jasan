@@ -56,9 +56,9 @@ test('D-1. 수익률 관리 팝업 - 손대지 않고 저장하면 그대로, �
 
   await page.evaluate(() => openScenarioRateManagerModal());
   await expect(page.locator('#scenarioRateManagerModal')).toBeVisible();
-  // [PMD-06] 입력 수익률의 의미(월복리)
-  await expect(page.locator('#scenarioRateCompoundingNote')).toContainText('월복리');
-  await expect(page.locator('#scenarioRateCompoundingNote')).toContainText('10.47%');
+  // [v247-1 REQ-04] 팝업 상단 설명 문단은 삭제됐다 - 제목만 남는다(§32 PMD-06의 계산 정책 자체는 무변경).
+  await expect(page.locator('#scenarioRateCompoundingNote')).toHaveCount(0);
+  await expect(page.locator('#scenarioRateManagerModal')).toContainText('수익률 관리');
   // [F-02] 빈 칸은 0이 아니라 빈 칸 + "미입력", 명시 0은 0
   const partial = rateRow(page, 'E91 일부');
   await expect(partial.locator('input[data-rate-field="conservative"]')).toHaveValue('');
@@ -312,7 +312,7 @@ test('O-1. 같은 종목의 다른 보유분이 다른 수익률 기준을 쓰�
 
 const isDark = (page) => page.locator('html').evaluate((el) => el.classList.contains('dark'));
 for (const [w, h, dark] of [[375, 812, true], [375, 812, false], [768, 1024, true], [1440, 900, false]]) {
-  test(`R-${w} ${dark ? 'Dark' : 'Light'} - 월복리 안내 · 사전 안내 · 다시 계산 필요 표시가 14px 이상이고 가로로 넘치지 않는다`, async ({ page }) => {
+  test(`R-${w} ${dark ? 'Dark' : 'Light'} - 사전 안내 · 다시 계산 필요 표시가 14px 이상이고 가로로 넘치지 않는다`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     await seedPortfolio(page, { targets: BOND_TARGET, assetValueEach: 100000000 });
     await page.locator('body').evaluate(() => {
@@ -328,7 +328,8 @@ for (const [w, h, dark] of [[375, 812, true], [375, 812, false], [768, 1024, tru
     await expect(page.locator('#scenarioRateManagerModal')).toBeVisible();
     const modalCheck = await page.locator('#scenarioRateManagerModal').evaluate((modal) => {
       const win = modal.ownerDocument.defaultView;
-      const texts = [modal.querySelector('#scenarioRateCompoundingNote'), ...modal.querySelectorAll('#scenarioRateManagerList p')];
+      // [v247-1 REQ-04] 상단 설명 문단 삭제 후에는 목록 안 안내 문구와 표시용 라벨이 14px 기준 대상이다.
+      const texts = [...modal.querySelectorAll('#scenarioRateManagerList p, .scenario-rate-field-label')];
       return {
         smallFonts: texts.filter((el) => el && parseFloat(win.getComputedStyle(el).fontSize) < 14).map((el) => el.textContent.trim().slice(0, 30)),
         // 말줄임(truncate · overflow hidden)으로 의도적으로 자른 종목명은 넘침이 아니다 - 내용이 밖으로 새는(visible) 요소만 본다.

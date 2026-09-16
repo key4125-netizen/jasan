@@ -10,6 +10,8 @@
 // 가격 이력 조회가 막혀 있어도(Phase 23-R에서 원인 규명됨) MC가 정상 실행된다. 변동성이 0이라
 // 신랑 결과 + 와이프 결과 = 가구 전체 결과가 수학적으로 정확히 성립해, owner 분리가 올바른지
 // 숫자로 직접 검증할 수 있다는 이점도 있다.
+// page.evaluate 콜백은 브라우저에서 실행된다 - 그 안에서만 쓰는 브라우저 전역을 ESLint(e2e = node 전역)에 알린다.
+/* global document */
 const { test, expect } = require('@playwright/test');
 
 async function seedTwoOwners(page) {
@@ -136,39 +138,40 @@ test('6. Monte Carlo 설명 팝업 - 열기/닫기가 정상 동작하고 기존
   await expect(page.locator('#mcInfoModal')).toBeHidden();
 });
 
-test('7. Scenario 섹션 - 기본은 접혀 있고, 펼치면 3개 시나리오 비교 내용이 그대로 보인다', async ({ page }) => {
+// [v248-1 REQ-08] "성장률별 참고 결과" 카드(Scenario 아코디언 · 일반계좌/전체 자산 관점 토글 · 그래프 · 비교표)는 PM 지시로
+// 삭제됐다. 7~9는 그 UI가 없어졌는지, 그리고 성장률 3개와 20년 후 일반/절세/합계가 "지금 계획대로면"에 남아 있는지를 본다.
+test('7. 성장률별 참고 결과 카드와 "성장률별 결과 보기" 아코디언이 화면에 없다', async ({ page }) => {
   await seedTwoOwners(page);
-  const body = page.locator('#scenarioSectionAccordionBody');
-  await expect(body).toHaveAttribute('style', /max-height:\s*0px/); // 기본 접힘 - 화면 상단을 차지하지 않는다
-  await page.locator('#scenarioSectionAccordionBtn').click();
-  await expect(body).not.toHaveAttribute('style', /max-height:\s*0px/);
-  await expect(page.locator('#scenarioGeneralView')).toBeVisible();
-  await expect(page.locator('#scenarioGeneralView')).toContainText('시나리오별 일반계좌 그래프');
+  for (const sel of ['#scenarioSectionAccordionBtn', '#scenarioSectionAccordionBody', '#scenarioGeneralView', '#scenarioTotalView', '#scenarioCompareChart', '#totalAssetCompareChart']) {
+    await expect(page.locator(sel)).toHaveCount(0);
+  }
+  await expect(page.locator('#tabPanelProjection')).not.toContainText('성장률별 참고 결과');
+  await expect(page.locator('#tabPanelProjection')).not.toContainText('성장률별 결과 보기');
 });
 
-test('8. 절세계좌 적립계획이 없으면 "전체 자산" 관점 토글 자체가 숨겨진다(중복 표시 제거)', async ({ page }) => {
+test('8. 절세계좌 적립계획이 없으면 20년 후 절세계좌는 0이고 합계는 일반계좌와 같다', async ({ page }) => {
   await seedTwoOwners(page); // 시드에서 monthlyByOwner를 0으로 설정함
-  await expect(page.locator('#scenarioViewToggle')).toBeHidden();
-  await page.locator('#scenarioSectionAccordionBtn').click();
-  await expect(page.locator('#scenarioGeneralView')).toBeVisible();
-  await expect(page.locator('#scenarioTotalView')).toBeHidden(); // 일반계좌와 동일한 숫자를 반복하지 않는다
+  await expect(page.locator('#scenarioViewToggle')).toHaveCount(0);
+  const v = await page.evaluate(() => ({
+    general: document.getElementById('projectionHeroFuture').textContent,
+    tax: document.getElementById('projectionHeroFutureTax').textContent,
+    total: document.getElementById('projectionHeroFutureTotal').textContent,
+    zero: fmtKRWShort(0),
+  }));
+  expect(v.tax).toBe(v.zero);
+  expect(v.total).toBe(v.general);
 });
 
-test('9. 절세계좌 적립계획이 있으면 토글이 나타나고 [일반계좌]/[전체 자산] 관점 전환이 동작한다', async ({ page }) => {
+test('9. 절세계좌 적립계획이 있으면 20년 후 절세계좌 · 합계가 함께 늘어난다', async ({ page }) => {
   await seedTwoOwners(page);
+  const before = await page.locator('#projectionHeroFutureTotal').innerText();
   await page.evaluate(() => {
     state.projection.taxAdvantagedPlan.monthlyByOwner = { '신랑': 300000, '와이프': 200000 };
     persistProjection();
     renderAll();
   });
-  await expect(page.locator('#scenarioViewToggle')).toBeVisible();
-  await page.locator('#scenarioSectionAccordionBtn').click();
-  await expect(page.locator('#scenarioGeneralView')).toBeVisible();
-  await page.locator('#scenarioViewToggle [data-view="total"]').click();
-  await expect(page.locator('#scenarioTotalView')).toBeVisible();
-  await expect(page.locator('#scenarioGeneralView')).toBeHidden(); // 그래프 2벌을 동시에 쌓아두지 않는다
-  await page.locator('#scenarioViewToggle [data-view="general"]').click();
-  await expect(page.locator('#scenarioGeneralView')).toBeVisible();
+  await expect(page.locator('#projectionHeroFutureTax')).not.toHaveText(await page.evaluate(() => fmtKRWShort(0)));
+  await expect(page.locator('#projectionHeroFutureTotal')).not.toHaveText(before);
 });
 
 test('10. Dark Mode 전환 후에도 owner MC 결과가 그대로 보존된다(재실행되지 않음)', async ({ page }) => {

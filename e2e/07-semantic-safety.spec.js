@@ -12,7 +12,13 @@ test('Deterministic 시나리오 설명 - "기준 연간 성장률"과 Monte Car
   await goToProjectionTab(page);
 
   // 시나리오 카드 라벨이 "기대수익률"에서 "기준 연간 성장률"로 바뀌었는지(median 의미 명확화).
-  await expect(page.getByText('기준 연간 성장률').first()).toBeVisible();
+  // [v248-1 REQ-07] 메인 화면의 성장률 칩은 "보수적/일반적/긍정적 N%"로 간소화됐다 - "기대수익률"이라는 말이
+  // 다시 나타나지 않는지와, "기준 연간 성장률"의 의미가 설명 팝업에 그대로 있는지를 확인한다.
+  const rateChips = page.locator('#scenarioSummaryCardsGrid');
+  await expect(rateChips).toContainText('보수적');
+  await expect(rateChips).toContainText('일반적');
+  await expect(rateChips).toContainText('긍정적');
+  await expect(rateChips).not.toContainText('기대수익률');
 
   // [Phase 24-B STEP 9 - 검증 경로 갱신] 이 설명(“평균이 아니라”/“같은 조건을 두 방식으로 검증한 것이
   // 아니라”)은 문구가 삭제된 것이 아니라 메인 상시 노출에서 ⓘ 팝업으로 이동했다(모바일에서 실행 버튼
@@ -22,6 +28,7 @@ test('Deterministic 시나리오 설명 - "기준 연간 성장률"과 Monte Car
   await page.locator('#mcIntroInfoBtn').click();
   await expect(page.locator('#mcInfoModal')).toBeVisible();
   await expect(page.locator('#mcInfoModalBody')).toContainText('평균이 아니라');
+  await expect(page.locator('#mcInfoModalBody')).toContainText('기준 연간 성장률');
   await expect(page.locator('#mcInfoModalBody')).toContainText('같은 조건을 두 방식으로 검증한 것이 아니라');
   await page.locator('#closeMcInfoModalBtn').click();
   await expect(page.locator('#mcInfoModal')).toBeHidden();

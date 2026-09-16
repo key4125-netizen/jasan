@@ -136,4 +136,11 @@ async function goToProjectionTab(page) {
   await page.getByText('미래 예측', { exact: true }).click();
 }
 
-module.exports = { seedPortfolio, goToProjectionTab, seedPriceHistory };
+// [v248-1] 포트폴리오 설정 탭까지 이동(포트폴리오/자산예측 -> 포트폴리오 설정 서브탭, 내부 key 'target').
+// 일반계좌 적립계획([적립금 설정]) · 절세계좌 적립계획([적립설정]) 카드가 이 탭에 있다.
+async function goToPortfolioSettingsTab(page) {
+  await page.getByText('포트폴리오/자산예측').click();
+  await page.locator('[data-subtab="target"]').click();
+}
+
+module.exports = { seedPortfolio, goToProjectionTab, goToPortfolioSettingsTab, seedPriceHistory };

@@ -400,7 +400,7 @@ function renderRiskDiagnosisSummary() {
     <div class="mt-2.5 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/50">
       <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">
         📋 이 점수는 <span class="font-semibold">가격 변동 위험</span>만 봅니다. 목표 자산배분과 지금 비중의 차이는 별도로 확인하세요.
-        <button type="button" id="riskPlanCheckBtn" class="underline underline-offset-2 font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400">포트폴리오 구성에서 보기</button>
+        <button type="button" id="riskPlanCheckBtn" class="underline underline-offset-2 font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400">포트폴리오 설정에서 보기</button>
       </p>
     </div>
 

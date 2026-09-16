@@ -182,6 +182,8 @@ test('9. 목표비중은 위험점수에 편입되지 않는다(6대 요인 그�
 test('10. 계획 확인 버튼이 기존 포트폴리오 구성 탭으로 이동시킨다', async ({ page }) => {
   await boot(page);
   await renderCardWith(page);
+  // [PM 감사 F-02] 버튼 문구는 최종 탭 이름(포트폴리오 설정)을 쓴다.
+  await expect(page.locator('#riskPlanCheckBtn')).toHaveText('포트폴리오 설정에서 보기');
   await page.locator('#riskPlanCheckBtn').click();
   await expect(page.locator('#tabPanelRebalance')).toBeVisible();
 });

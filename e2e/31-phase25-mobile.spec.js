@@ -42,11 +42,10 @@ for (const [w, h] of VIEWPORTS) {
       expect(await isDark(page)).toBe(dark);
 
       await page.getByText('포트폴리오/자산예측').click();
-      await page.getByText('미래 예측', { exact: true }).click();
+      // [v248-1 REQ-03 · REQ-04] 적립계획 두 카드(적립금 설정 · 적립설정)는 포트폴리오 설정 탭에 있다.
+      await page.locator('[data-subtab="target"]').click();
       expect(await scrollWidthOf(page)).toBeLessThanOrEqual(w);
-
-      // 투자계획/가정으로 들어가는 진입 버튼 4종
-      for (const sel of ['#goToRebalanceTargetBtn', '#mcFeeRatesToggleBtn', '#taxAdvantagedPlanBtn', '#openMonthlyContributionAllocationBtn']) {
+      for (const sel of ['#taxAdvantagedPlanBtn', '#openMonthlyContributionAllocationBtn']) {
         await expectTouchOk(page, sel);
       }
 
@@ -55,6 +54,22 @@ for (const [w, h] of VIEWPORTS) {
       await expectTouchOk(page, '#cancelTaxAdvantagedPlanModalBtn');
       await expectTouchOk(page, '#saveTaxAdvantagedPlanModalBtn');
       await page.locator('#cancelTaxAdvantagedPlanModalBtn').click();
+
+      // 적립금 설정 팝업 - 증가율 입력이 여기로 옮겨왔다
+      await page.locator('#openMonthlyContributionAllocationBtn').click();
+      const growth = page.locator('#contributionGrowthRateInput');
+      expect((await growth.boundingBox()).height).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(await fontSizeOf(growth)).toBeGreaterThanOrEqual(12);
+      await page.locator('#cancelMonthlyContributionAllocationModalBtn').click();
+
+      await page.getByText('미래 예측', { exact: true }).click();
+      expect(await scrollWidthOf(page)).toBeLessThanOrEqual(w);
+
+      // 미래예측 가정/운용보수 진입 버튼([v248-1] 목표비중 보기 링크는 삭제됨)
+      await expect(page.locator('#goToRebalanceTargetBtn')).toHaveCount(0);
+      for (const sel of ['#mcFeeRatesToggleBtn', '#openProjectionAssumptionsBtn']) {
+        await expectTouchOk(page, sel);
+      }
 
       // 운용보수 팝업 - 입력칸 크기/글자크기 + 취소/확인
       await page.locator('#mcFeeRatesToggleBtn').click();
@@ -65,20 +80,12 @@ for (const [w, h] of VIEWPORTS) {
       expect(await fontSizeOf(feeInput)).toBeGreaterThanOrEqual(12);
       await page.locator('#cancelMcFeeRatesModalBtn').click();
 
-      // 미래예측 가정 팝업 - 인플레이션율 입력
-      await page.locator('#projectionAssumptionsAccordionBtn').click();
+      // 미래예측 가정 팝업 - 인플레이션율 입력([v248-1 REQ-01] MC 카드에 항상 보임)
       await page.locator('#openProjectionAssumptionsBtn').click();
       const inflation = page.locator('#inflationRateInput');
       expect((await inflation.boundingBox()).height).toBeGreaterThanOrEqual(TOUCH_MIN);
       expect(await fontSizeOf(inflation)).toBeGreaterThanOrEqual(12);
       await page.locator('#cancelProjectionAssumptionsModalBtn').click();
-
-      // 적립금 설정 팝업 - 증가율 입력이 여기로 옮겨왔다
-      await page.locator('#openMonthlyContributionAllocationBtn').click();
-      const growth = page.locator('#contributionGrowthRateInput');
-      expect((await growth.boundingBox()).height).toBeGreaterThanOrEqual(TOUCH_MIN);
-      expect(await fontSizeOf(growth)).toBeGreaterThanOrEqual(12);
-      await page.locator('#cancelMonthlyContributionAllocationModalBtn').click();
 
       expect(await scrollWidthOf(page)).toBeLessThanOrEqual(w);
     });

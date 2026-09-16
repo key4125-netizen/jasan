@@ -29,6 +29,16 @@ async function seed(page) {
   await page.getByText('포트폴리오/자산예측').click();
   await page.getByText('미래 예측', { exact: true }).click();
 }
+// [v248-1 REQ-03 · REQ-04] 일반계좌 적립계획 · 절세계좌 적립계획 카드(적립금 설정 · 적립설정 버튼)는 포트폴리오 설정 탭으로
+// 옮겨졌다 - 버튼 id · 팝업 · draft 계약은 그대로이므로 진입 경로만 바꾼다.
+async function toPlanTab(page) {
+  await page.locator('[data-subtab="target"]').click();
+  await expect(page.locator('#rebalanceSubTarget')).toBeVisible();
+}
+async function toProjectionTab(page) {
+  await page.locator('[data-subtab="projection"]').click();
+  await expect(page.locator('#tabPanelProjection')).toBeVisible();
+}
 
 const readProjectionLS = (page) => page.evaluate(() => localStorage.getItem('sam_projection_v1'));
 const readTaxPlan = (page) => page.evaluate(() => JSON.stringify(state.projection.taxAdvantagedPlan));
@@ -37,6 +47,7 @@ test('1. 절세계좌 팝업을 열기만 하고 취소하면 state도 localStor
   await seed(page);
   const lsBefore = await readProjectionLS(page);
   const planBefore = await readTaxPlan(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   await expect(page.locator('#taxAdvantagedPlanModal')).toBeVisible();
   // 예전엔 "열기만 해도" 계좌 기본값이 시드되며 persistProjection()이 실행됐다.
@@ -48,6 +59,7 @@ test('1. 절세계좌 팝업을 열기만 하고 취소하면 state도 localStor
 
 test('2. 절세계좌 적립금액을 바꾼 뒤 취소하면 기존값이 그대로 복원된다', async ({ page }) => {
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   const amount = page.locator('#taxAdvantagedPlanModal input[data-contrib-field="amount"]').first();
   await expect(amount).toBeVisible();
@@ -65,6 +77,7 @@ test('2. 절세계좌 적립금액을 바꾼 뒤 취소하면 기존값이 그�
 
 test('3. 절세계좌 - 배분 합계 100% 초과는 [확인]이 차단하고 state를 바꾸지 않는다', async ({ page }) => {
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   const alloc = page.locator('#taxAdvantagedPlanModal input.tax-alloc-input').first();
   await expect(alloc).toBeVisible();
@@ -82,6 +95,7 @@ test('3. 절세계좌 - 배분 합계 100% 초과는 [확인]이 차단하고 st
 
 test('4. 절세계좌 - 정상값으로 [확인]하면 state 반영 + persist + 미래예측 갱신', async ({ page }) => {
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   const amount = page.locator('#taxAdvantagedPlanModal input[data-contrib-field="amount"]').first();
   await amount.fill('500000');
@@ -98,6 +112,7 @@ test('4. 절세계좌 - 정상값으로 [확인]하면 state 반영 + persist + 
 
 test('5. 절세계좌 - 음수 적립기간은 [확인]이 차단하고 state를 바꾸지 않는다', async ({ page }) => {
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   // 금액 칸은 입력 포매터가 마이너스를 제거해 음수 자체가 들어가지 않는다(별도 방어) - 실제로 음수를
   // 넣을 수 있는 경로는 number 타입인 적립기간이므로 여기서 차단을 확인한다.
@@ -115,6 +130,7 @@ test('5. 절세계좌 - 음수 적립기간은 [확인]이 차단하고 state를
 
 test('6. 절세계좌 - 팝업 안 결과표는 draft 기준으로 실시간 갱신된다(미리보기 기능 유지)', async ({ page }) => {
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   const results = page.locator('#taxAdvantagedPlanResults');
   const before = (await results.innerText()).trim();
@@ -127,6 +143,7 @@ test('6. 절세계좌 - 팝업 안 결과표는 draft 기준으로 실시간 갱
 test('7. 절세계좌 - 취소/확인 버튼이 44px 터치 타겟을 만족한다(375px)', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await seed(page);
+  await toPlanTab(page);
   await page.locator('#taxAdvantagedPlanBtn').click();
   for (const id of ['#cancelTaxAdvantagedPlanModalBtn', '#saveTaxAdvantagedPlanModalBtn']) {
     const box = await page.locator(id).boundingBox();
@@ -137,8 +154,9 @@ test('7. 절세계좌 - 취소/확인 버튼이 44px 터치 타겟을 만족한�
 /* ---------------------------------------------------------------------------
  * P1 - 미래예측 가정(인플레이션율) / 투자금 증가율 / MC 운용보수
  * ------------------------------------------------------------------------ */
+// [v248-1 REQ-01] 인플레이션율 · [가정 수정]은 Monte Carlo 카드(운용보수 설정 아래)로 옮겨져 접힘 영역을 열 필요가 없다.
 async function openAssumptions(page) {
-  await page.locator('#projectionAssumptionsAccordionBtn').click();
+  await expect(page.locator('#mcFeeRatesToggleBtn').locator('xpath=ancestor::section[1]')).toContainText('인플레이션율');
   await page.locator('#openProjectionAssumptionsBtn').click();
   await expect(page.locator('#projectionAssumptionsModal')).toBeVisible();
 }
@@ -169,6 +187,7 @@ test('9. 인플레이션율 - 확인하면 state 반영 + persist + 요약 텍�
 test('10. 투자금 증가율 - 적립금 설정 팝업에서 취소하면 반영되지 않는다', async ({ page }) => {
   await seed(page);
   const lsBefore = await readProjectionLS(page);
+  await toPlanTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await page.locator('#contributionGrowthRateInput').fill('7');
   await page.waitForTimeout(150);
@@ -181,12 +200,14 @@ test('10. 투자금 증가율 - 적립금 설정 팝업에서 취소하면 반�
 test('11. 투자금 증가율 - 저장하면 반영되고 미래예측 결과가 갱신된다', async ({ page }) => {
   await seed(page);
   const before = await page.locator('#projectionHeroFuture').innerText();
+  await toPlanTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await page.locator('#monthlyContributionTotalInputHusband').fill('500000');
   await page.locator('#contributionGrowthRateInput').fill('5');
   await page.locator('#saveMonthlyContributionAllocationModalBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeHidden();
   expect(await page.evaluate(() => state.projection.contributionGrowthRate)).toBe(5);
+  await toProjectionTab(page);
   await expect(page.locator('#projectionHeroFuture')).not.toHaveText(before);
 });
 
@@ -249,8 +270,12 @@ test('14. 새 팝업 2개가 물리 뒤로가기로 닫힌다(레지스트리 �
   await expect(page.locator('#mcFeeRatesModal')).toBeHidden();
 });
 
-test('15. 미래예측 화면에서 목표비중 보기 링크로 포트폴리오 구성 탭으로 이동한다', async ({ page }) => {
+// [v248-1 REQ-02] "목표비중 보기" 링크(goToRebalanceTargetBtn)는 PM 지시로 삭제됐다 - 없어졌는지와, 같은 이동을
+// 서브탭 [포트폴리오 설정]으로 할 수 있는지(내부 key 'target' 그대로)를 확인한다.
+test('15. 목표비중 보기 링크는 없고, [포트폴리오 설정] 서브탭으로 목표비중 화면에 이동한다', async ({ page }) => {
   await seed(page);
-  await page.locator('#goToRebalanceTargetBtn').click();
+  await expect(page.locator('#goToRebalanceTargetBtn')).toHaveCount(0);
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await expect(page.locator('#rebalanceSubTarget')).toBeVisible();
+  await expect(page.locator('#tabPanelProjection')).toBeHidden();
 });

@@ -30,7 +30,7 @@ async function seedTargets(page) {
   await page.getByText('포트폴리오/자산예측').click();
   // [v247] 서브탭 이름 변경(REQ-08) + 세부 종목 현황이 소유자 타이틀 아코디언 안으로 들어왔다(REQ-01) -
   // 신랑/와이프 카드를 모두 읽는 스펙이라 둘 다 펼친다(두 상태는 서로 독립이다).
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
   await page.locator('#positionAnalysisAccordionWifeBtn h3').click();
 }
@@ -59,7 +59,7 @@ test('7. name-only(label 없음) target도 드릴다운이 정상 연결된다',
   });
   await page.reload();
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.getByText('포트폴리오 설정', { exact: true }).click();
   await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 
   const husbandCard = page.locator('#portfolioTargetSummaryHusband');

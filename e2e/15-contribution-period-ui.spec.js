@@ -2,7 +2,8 @@
 // null(제한없음)/0/명시값 저장·재진입·새로고침 유지 여부를 검증한다. 계산 로직은 Step 1/2에서 이미
 // 검증했으므로 이 파일은 UI 동작(값 표시/저장/유지, 회귀 없음)에 집중한다.
 const { test, expect } = require('@playwright/test');
-const { seedPortfolio, goToProjectionTab } = require('./fixtures');
+// [v248-1 REQ-03] [적립금 설정] 버튼은 포트폴리오 설정 탭의 "일반계좌 적립계획" 카드로 옮겨졌다(id · 팝업 그대로).
+const { seedPortfolio, goToPortfolioSettingsTab } = require('./fixtures');
 
 async function openModal(page) {
   await page.locator('#openMonthlyContributionAllocationBtn').click();
@@ -19,7 +20,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: { monthlyContributionByOwner: { '신랑': { total: 1000000, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } }
     });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await expect(page.locator('#monthlyContributionYearsInputHusband')).toHaveValue('');
     await expect(page.locator('#monthlyContributionYearsInputHusband')).toHaveAttribute('placeholder', '제한없음');
@@ -35,7 +36,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: { monthlyContributionByOwner: { '신랑': { total: 1000000, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } }
     });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await page.locator('#monthlyContributionYearsInputHusband').fill('0');
     await saveModal(page);
@@ -53,7 +54,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       ],
       projection: { monthlyContributionByOwner: { '신랑': { total: 1000000, years: null, allocation: [] }, '와이프': { total: 2000000, years: null, allocation: [] } } }
     });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await page.locator('#monthlyContributionYearsInputHusband').fill('10');
     await page.locator('#monthlyContributionYearsInputWife').fill('20');
@@ -67,7 +68,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
 
     // 새로고침 후에도 유지
     await page.reload();
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await expect(page.locator('#monthlyContributionYearsInputHusband')).toHaveValue('10');
     await expect(page.locator('#monthlyContributionYearsInputWife')).toHaveValue('20');
@@ -84,7 +85,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: { monthlyContributionByOwner: { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } }
     });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     // 금액만 입력하고 적립 기간 칸은 전혀 건드리지 않는다.
     await page.locator('#monthlyContributionTotalInputHusband').fill('1500000');
@@ -103,7 +104,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       projection: {}
     });
     await page.setViewportSize({ width: 375, height: 812 });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await expect(page.locator('#monthlyContributionTotalInputHusband')).toBeVisible();
     await expect(page.locator('#monthlyContributionYearsInputHusband')).toBeVisible();
@@ -120,7 +121,7 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: {}
     });
-    await goToProjectionTab(page);
+    await goToPortfolioSettingsTab(page);
     await openModal(page);
     await page.locator('#monthlyContributionTotalInputHusband').fill('3000000');
     await saveModal(page);

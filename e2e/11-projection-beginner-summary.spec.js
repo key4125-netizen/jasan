@@ -4,7 +4,7 @@
 // getHouseholdMonthlyContributionTotal/fmtKRWShort)를 page.evaluate로 그대로 호출해 얻은 값과
 // 렌더링된 텍스트를 비교한다.
 const { test, expect } = require('@playwright/test');
-const { seedPortfolio, goToProjectionTab } = require('./fixtures');
+const { seedPortfolio, goToProjectionTab, goToPortfolioSettingsTab } = require('./fixtures');
 
 test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자산)가 엔진 계산 결과와 정확히 일치한다', async ({ page }) => {
   await seedPortfolio(page, {
@@ -56,20 +56,22 @@ test('연간 납입액 증가율 입력을 바꾸면 히어로 요약의 20년 �
 
   // [Phase 25 P2] 증가율은 이제 [적립금 설정] 팝업 안에서 [저장]을 눌러야 반영된다("매달 얼마 /
   // 몇 년 / 매년 얼마나 늘릴지"를 하나의 투자계획으로 묶음) - 검증 내용은 그대로다.
+  // [v248-1 REQ-03] [적립금 설정]은 포트폴리오 설정 탭의 "일반계좌 적립계획" 카드로 옮겨졌다.
+  await goToPortfolioSettingsTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeVisible();
   await page.locator('#contributionGrowthRateInput').fill('5');
   await page.locator('#saveMonthlyContributionAllocationModalBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeHidden();
+  await goToProjectionTab(page);
 
   const expectedAfter = await page.evaluate(() => fmtKRWShort(simulateRebalancedPreset('normal', 20).yearlyPoints[20].total));
   await expect(page.locator('#projectionHeroFuture')).toHaveText(expectedAfter);
   const futureAfter = await page.locator('#projectionHeroFuture').innerText();
   expect(futureAfter).not.toBe(futureBefore);
 
-  // 가정 목록에도 새 증가율이 반영되어야 한다(같은 state를 읽어 그리므로 항상 동기화됨).
-  const assumptionsText = await page.locator('#projectionAssumptionsList').innerText();
-  expect(assumptionsText).toContain('5%씩 증가');
+  // [v248-1 REQ-01] "이 계산은 이런 가정을 사용했어요" 목록은 삭제됐다 - 증가율은 아래 한 줄 요약으로 확인한다.
+  await expect(page.locator('#projectionAssumptionsList')).toHaveCount(0);
 
   // 아코디언 밖의 "투자 기간·투자금 증가" 한 줄 요약도 같은 state를 읽으므로 함께 바뀌어야 한다.
   await expect(page.locator('#projectionPlanGrowthText')).toHaveText('매년 5%씩');
@@ -145,21 +147,13 @@ test('명목가치/실질가치 구분 문구가 표시되고, 가정 아코디�
   // (값 자체는 js/20의 기존 변환 그대로 - 계산 무변경).
   expect(p50BoxText).toContain('현재가치 기준(물가상승률 2.5% 가정)');
 
-  // 가정 아코디언: 기본은 접힘(0px) -> 클릭하면 펼쳐짐(내용이 보임) -> 다시 클릭하면 접힘.
-  const body = page.locator('#projectionAssumptionsAccordionBody');
-  await expect(body).toHaveCSS('max-height', '0px');
-  await page.locator('#projectionAssumptionsAccordionBtn').click();
-  const openedHeight = await body.evaluate((el) => el.style.maxHeight);
-  expect(openedHeight).not.toBe('0px');
-  const listText = await page.locator('#projectionAssumptionsList').innerText();
-  // [P2 - Phase 9 감사 후속] "투자 기간(미래예측이 몇 년 후를 계산하는가)"과 "적립 기간(신규 월
-  // 적립을 몇 년 동안 하는가)"이 서로 다른 개념임을 라벨로 명확히 구분했다 - 둘 다 화면에 보여야 한다.
-  expect(listText).toContain('투자 기간(미래예측 기간): 20년');
-  expect(listText).toContain('적립 기간(신규 납입 기간)');
-  expect(listText).toContain('기준 연간 성장률');
-  expect(listText).toContain('물가상승률');
-  expect(listText).toContain('Monte Carlo를 실행하면');
-
-  await page.locator('#projectionAssumptionsAccordionBtn').click();
-  await expect(body).toHaveCSS('max-height', '0px');
+  // [v248-1 REQ-01] 가정 아코디언("이 계산은 이런 가정을 사용했어요")은 PM 지시로 삭제됐다 - 접힘 UI가 없고,
+  // 투자 기간 · 성장률 · 인플레이션은 히어로의 한 줄 요약에서, 인플레이션 수정은 MC 카드에서 계속 보인다.
+  await expect(page.locator('#projectionAssumptionsAccordionBtn')).toHaveCount(0);
+  await expect(page.locator('#projectionAssumptionsAccordionBody')).toHaveCount(0);
+  await expect(page.locator('#projectionHeroSummary')).not.toContainText('세부 항목 보기');
+  await expect(page.locator('#projectionPlanYearsText')).toHaveText('20년');
+  await expect(page.locator('#projectionPlanRateText')).toHaveText(/%$/);
+  await expect(page.locator('#projectionPlanInflationText')).toHaveText('2.5%');
+  await expect(page.locator('#projectionInflationSummary')).toHaveText('2.5%');
 });

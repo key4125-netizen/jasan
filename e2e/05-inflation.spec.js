@@ -5,8 +5,8 @@ const { test, expect } = require('@playwright/test');
 const { seedPortfolio, goToProjectionTab } = require('./fixtures');
 
 // [Phase 25 P1] 인플레이션율 입력은 draft 팝업 안에 있다 - 열기 → 입력 → [확인]이 실제 사용자 경로다.
+// [v248-1 REQ-01] [가정 수정]은 Monte Carlo 카드의 운용보수 설정 아래에 항상 보인다(접힘 영역 삭제).
 async function setInflationViaModal(page, value) {
-  await page.locator('#projectionAssumptionsAccordionBtn').click();
   await page.locator('#openProjectionAssumptionsBtn').click();
   await expect(page.locator('#projectionAssumptionsModal')).toBeVisible();
   await page.locator('#inflationRateInput').fill(value);
