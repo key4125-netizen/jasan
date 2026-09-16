@@ -32,6 +32,26 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-16 새벽) — 📱 **v247 일반계좌 포트폴리오 화면 UX 정비** (v246 → **v247**)
+
+**v247 (commit `91dbee3b8764835df2b5deadfc062b82e091ce3d`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님**(배포 확인은 별도 PM 승인). 체크리스트 **§34**(REQ-01~09)에 전체 기록. **표시 계층만 바꿨다** — 목표비중 · 실행금액 계산(`computeIndividualRebalanceGuide` · `computePortfolioTargetSummaryRows` · `computePositionRoleBreakdown`), Return Key, Monte Carlo, deterministic projection, 자산/거래 구조, 저장 · 복원 · 동기화는 diff 0이다(js/01 · 05 · 06 · 12 · 15~22 · 24 · 25 무변경).
+
+- **REQ-01 · 02**: 소유자 타이틀의 접기/펼치기 상태 하나(`positionAnalysisAccordionOpen[owner]`, js/04)가 "세부 종목 현황"(`renderPortfolioTargetSummary`)과 "포지션 그래프"(`renderPositionAnalysisCard`)에 함께 적용된다 — 두 영역을 같은 아코디언 body(`positionAnalysisAccordion{Husband|Wife}Body`)로 옮겨 상태를 공유한다(새 상태 신설 없음 · 신랑/와이프 독립). 열림일 때 본문 max-height를 9999px로 두어 안쪽 실행 상세를 펼쳐도 부모가 잘라내지 않는다(v234 클리핑 재발 방지).
+- **REQ-05 · 06**: "📋 종목별 실행 가이드" 카드 삭제(세부 종목 현황과 중복) — 카드 렌더 · 상태(`rebalanceGuideAccordionOpen`) · 안내문(`guideScopeNote`) · 지역/통화 칩 HTML 제거. **엑셀 다운로드는 유지**하고 신랑/와이프 타이틀 행으로 이동(`data-rebalance-export-btn` 2개 → `exportRebalanceGuideWorkbook()`), 시트 구성 · 파일명(`포트폴리오구성_실행가이드_YYYYMMDD.xlsx`) · `buildRebalanceGuideSheetRows` 그대로.
+- **REQ-07**: 타이틀 행 버튼 색 분리 — [비중조절] 브랜드 채움 · [엑셀 다운로드] 라인, 둘 다 44px · 14px. 공용 `.detail-btn`(10px, KPI 카드 공용)은 건드리지 않고 화면 전용 `.portfolio-weight-btn` · `.portfolio-export-btn` 신설. 타이틀 클릭(펼치기)과 두 버튼은 분리(아코디언 가드에 export 버튼 추가).
+- **REQ-04**: "수익률 직접 조정 (고급)" violet 색 체계로 분석 카드와 구분(실측 `rgba(46,16,101,0.4)` vs 분석 카드 `rgb(15,23,42)`) — id · 핸들러 · 문구 · 팝업 무변경.
+- **REQ-03 · 08 · 09**: "전체 포지션별 목표비중 분석" 카드 유지 · 서브탭 표시명 "포트폴리오 구성" → **"일반계좌 포트폴리오"**(내부 키 `data-subtab="target"` · `rebalanceSubTab` · DOM id 무변경) · 중복 안내문 `rebalanceScopeNote` 및 관련 배선(js/03) 삭제.
+- 파일: index.html · js/03 · js/04 · sw.js v247 · checklist §34 · 기대값 수정 `e2e/10 · 23 · 27 · 57 · 79` · 신규 `e2e/93-portfolio-mobile-ux.spec.js` 12건.
+- 게이트: **Unit 358/358 · E2E 911/911(flaky 0, 10.7m) · ESLint 0 · Data Guard PASS · Release Guard PASS(v247) · 민감정보 스캔 0건**. 모바일 실측(e2e/93 J·K 375 Dark/Light · 768 · 1440): 제목·버튼 겹침 0 · 44px · 14px · 잘림 0 · 가로 넘침 0 · 두 버튼 배경색 상이. 375 Dark/Light 실브라우저 미리보기로도 확인.
+
+**남은 OPEN / 주의**
+- **실행 가이드 카드에만 있던 "목표 미지정 종목(전량 매도 검토)" · "구성 제외 자산(부동산 등)" 카드와 소유자별 매수/매도 합계 배지가 화면에서 사라졌다** — 세부 종목 현황은 목표에 매칭된 항목만 보여주므로 이 부분은 중복이 아니었다. 엑셀 다운로드에는 예전 그대로 포함된다(PM 명시 지시로 카드 삭제). 화면 복원 여부는 PM 결정 사항.
+- 미래예측 탭 문구("이 예측은 **포트폴리오 구성 탭**의 목표비중을 기준으로 합니다" 등)는 이번 범위 밖이라 옛 이름 그대로다(§34-3).
+- 소유자 카드는 기본 접힘이라 세부 종목 현황을 보려면 타이틀을 한 번 눌러야 한다(REQ-01의 의도된 결과).
+- v246 이하 기기 · Master 관련 주의사항은 아래 v246 섹션 참고.
+
+---
+
 ## 최근 세션 요약 (2026-09-15 심야) — 🧭 **v246 Instrument Return Key Master** (v245 → **v246**)
 
 **v246 (commit `ee3bee58ada6a5b7608170d96e9f10c1fe03e556`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님** — 배포 확인(Pages run · production smoke)은 별도 PM 승인 사항. 체크리스트 **§33 PMD-12**(D-1~D-10)에 전체 기록. 사전 조사 2회(READ-ONLY) → 구현 → PM 최종 검증 순서로 진행했다.
