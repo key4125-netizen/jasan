@@ -24,7 +24,7 @@ const LOAD_ORDER = [
   '01-core-state.js', '02-dashboard-kpi.js', '03-filters-charts-tabs.js',
   '04-rebalancing.js', '05-future-projection.js', '06-transactions.js',
   '07-table-render-modals.js', '08-detail-modal-fx.js', '09-price-fx-risk-engine.js',
-  '10-risk-translation-alerts.js', '15-monte-carlo-engine.js', '16-monte-carlo-adapter.js',
+  '10-risk-translation-alerts.js', '26-cma-data.js', '27-cma-runtime.js', '15-monte-carlo-engine.js', '16-monte-carlo-adapter.js',
   '20-inflation-transform.js', '21-safety-layer.js'
 ];
 

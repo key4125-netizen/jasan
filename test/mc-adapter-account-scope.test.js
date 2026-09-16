@@ -229,15 +229,29 @@ test('8-c. 이름에 채권 단어가 없어도 사용자가 채권으로 등록
   assert.strictEqual(taxInitialOf(r, 'N:국내:E64ISA'), 20000000);
 });
 
-test('8-b. 절세계좌 위험자산의 가격 이력이 없으면 조용히 σ=0으로 만들지 않고 오류로 알린다', async () => {
+// [§37] 변동성은 가격 이력이 아니라 장기 CMA 자산군에서 온다. 이 테스트의 원래 계약("위험자산의 변동성을 알 수 없으면 조용히
+// σ=0으로 만들지 않고 오류로 알린다")을 새 경로로 옮겼다: 수익률 가정이 있는데 연결된 CMA 자산군이 없는 절세계좌 위험자산은 오류다.
+test('8-b. 절세계좌 위험자산에 연결된 장기 CMA 자산군이 없으면 조용히 σ=0으로 만들지 않고 오류로 알린다', async () => {
   const s = freshSandbox();
   setSingleTickerTarget(s, '005930', '삼성전자');
-  s.setDailyCloses('005930.KS', priceSeries('2025-01-01'));
-  // NOPRICE는 fixture에 등록하지 않는다 - 가격 이력 없음 경로.
+  // '선진국' 이름 → 미국 외 선진국 주식(DEV_EX_US, Vanguard 수익률 있음) - ACTIVE CMA(AllianzGI)에 해당 자산군이 없다.
+  s.state.assets = [taxAsset({ name: 'NODEVX 선진국주식', ticker: 'NODEVX', isDomestic: '국내', category: 'ETF', quantity: 1, currentPrice: 1000000 })];
+  const r = await build(s);
+  assert.ok(r.errors.length > 0, 'CMA 자산군 없는 위험자산이 조용히 통과했다');
+  assert.ok(arr(r.errors).some((e) => e.indexOf('NODEVX') !== -1), `오류 메시지에 종목이 없다: ${arr(r.errors).join(' / ')}`);
+});
+
+test('8-c. 수익률 가정이 없는 절세계좌 자산(0% + 경고)은 성장 · 변동성 가정 없이(σ=0) 계산을 계속한다 - 오류로 막지 않는다', async () => {
+  const s = freshSandbox();
+  setSingleTickerTarget(s, '005930', '삼성전자');
   s.state.assets = [taxAsset({ name: 'NOPRICE', ticker: 'NOPRICE', isDomestic: '해외', quantity: 1, currentPrice: 1000000 })];
   const r = await build(s);
-  assert.ok(r.errors.length > 0, '데이터 부족이 조용히 통과했다');
-  assert.ok(arr(r.errors).some((e) => e.indexOf('NOPRICE') !== -1), `오류 메시지에 종목이 없다: ${arr(r.errors).join(' / ')}`);
+  assertNoErrors(r);
+  const ins = r.instruments[r.assetOrder.indexOf('T:NOPRICE')];
+  assert.strictEqual(ins.sigmaAnnual, 0);
+  assert.strictEqual(ins.muAnnual, 0);
+  assert.ok(r.safety.issues.some((i) => i.code === 'SAFETY_RETURN_ASSUMPTION_MISSING'), '가정 없음 경고가 없다');
+  assert.strictEqual(r.cma.instruments.find((i) => i.key === 'T:NOPRICE').noAssumption, true);
 });
 
 /* ── 15/16. 납입 타이밍과 잔여분 배분 규칙 ────────────────────────────────── */

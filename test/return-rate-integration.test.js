@@ -61,9 +61,11 @@ async function buildMc(sb, opts = {}) {
   const codes = [].concat(input.safety.issues, input.safety.dataQuality.issues).map((i) => i.code);
   return { input, codes, byKey: Object.fromEntries(input.instruments.map((i) => [i.key, i])) };
 }
+// [§37] 변동성은 이제 장기 CMA 자산군에서 온다(평평한 가격 이력으로 σ=0을 만들 수 없다) - 이 도구는 이름 그대로
+// "어댑터가 만든 μ · 보수 · 계좌 입력을 σ=0으로 돌려 결정론과 비교"하는 용도라 σ만 명시적으로 0으로 둔다.
 function runSigma0(sb, input, opts = {}) {
   return sb.runMonthlyPrecisionMC({
-    pv0: sb.computeHouseholdMonteCarloPV(opts.owner), instruments: input.instruments, correlationMatrix: input.correlationMatrix,
+    pv0: sb.computeHouseholdMonteCarloPV(opts.owner), instruments: input.instruments.map((i) => ({ ...i, sigmaAnnual: 0 })), correlationMatrix: input.correlationMatrix,
     monthlyContribution: 0, years: 20, iterations: 20, seed: 20260101, taxScope: input.taxScope
   });
 }
@@ -108,8 +110,9 @@ test('B-1. 사용자 확정 · legacy 채권은 경로 A · 일반계좌 결정�
     assert.strictEqual(sb.computeRegionWeightedRate('신랑', '국내', 'normal'), expectedRate, `일반계좌 결정론 (${source})`);
     const { byKey, codes } = await buildMc(sb);
     assert.strictEqual(byKey['N:국내:안전자산A'].muAnnual, expectedRate / 100, `MC μ (${source})`);
-    // [N-06] 확정 채권은 σ=0, 시스템 추천(이름에 채권 키워드 없음)은 위험자산 취급 + 가정 없음 경고
-    assert.strictEqual(byKey['N:국내:안전자산A'].sigmaAnnual === 0, source !== 'system', `σ (${source})`);
+    // [N-06] 확정 채권은 σ=0. 시스템 추천(이름에 채권 키워드 없음)은 가정 없음(0%) + 경고 - [§37 · RET-03-00] 가격 이력 변동성을
+    // 더 쓰지 않으므로, 가정이 없는 자산에는 성장과 마찬가지로 변동성 가정도 적용하지 않는다(σ=0, 경고로 알림).
+    assert.strictEqual(byKey['N:국내:안전자산A'].sigmaAnnual, 0, `σ (${source})`);
     assert.strictEqual(codes.includes('SAFETY_RETURN_ASSUMPTION_MISSING'), source === 'system', `경고 (${source})`);
   }
 });

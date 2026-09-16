@@ -17,7 +17,8 @@ const MC_UI_STATUS_LABEL = {
 };
 const MC_UI_ERROR_MESSAGE = {
   INPUT_ERROR: '입력값을 확인해주세요.',
-  DATA_ERROR: '시장 데이터 조회에 실패했습니다. 특정 자산의 가격 이력을 가져오지 못했습니다.',
+  // [§37] 어댑터가 장기 CMA 가정을 정하지 못한 경우(자산군 미연결 · 상관 출처 없음) - 어떤 자산인지는 상태 문구로 함께 보여준다.
+  DATA_ERROR: '장기 가정(CMA)을 정할 수 없는 자산이 있어 계산하지 못했습니다.',
   CORRELATION_ERROR: '자산 간 상관관계 행렬을 계산하지 못했습니다.',
   SIMULATION_ERROR: 'Monte Carlo 계산 중 오류가 발생했습니다.',
   WORKER_ERROR: '백그라운드 계산 프로세스 실행 중 오류가 발생했습니다.',
@@ -74,7 +75,7 @@ document.getElementById('mcInfoModal').addEventListener('click', (e) => { if (e.
 // 가리키는 이름만 바꿨다(나머지 설명 문장은 그대로).
 document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
   openMcInfoModal('Monte Carlo란?', `
-    <p>"지금 계획대로면"의 참고값은 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 종목별 변동성·상관관계를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
+    <p>"지금 계획대로면"의 참고값은 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 자산군별 장기 변동성·상관관계(공식 기관 CMA)를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
     <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
       <p class="font-semibold text-slate-700 dark:text-slate-200">공식 모델: Monthly Precision Monte Carlo</p>
       <p class="mt-1">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
@@ -309,6 +310,7 @@ function resetMonteCarloUiToReady() {
   if (mcUiEl('mcSafetyCritical')) { mcUiEl('mcSafetyCritical').classList.add('hidden'); mcUiEl('mcSafetyCritical').innerHTML = ''; }
   if (mcUiEl('mcSafetyDetailToggleBtn')) mcUiEl('mcSafetyDetailToggleBtn').classList.add('hidden');
   if (mcUiEl('mcStaleNotice')) mcUiEl('mcStaleNotice').classList.add('hidden');
+  if (mcUiEl('mcCmaSourceArea')) mcUiEl('mcCmaSourceArea').classList.add('hidden');
 }
 
 /* -------------------------------------------------------------------------
@@ -352,6 +354,8 @@ function computeMonteCarloInputSignature() {
     rates: p.customScenarioRates, fees: p.customFeeRates, instruments: p.instrumentReturnKeys || {},
     monthly: p.monthlyContribution, allocation: p.monthlyContributionAllocation, byOwner: p.monthlyContributionByOwner,
     growth: p.contributionGrowthRate, inflation: p.inflationRate, tax: p.taxAdvantagedPlan,
+    // [§37 CMA-VER-02] 장기 CMA 세트가 바뀌면 이전 결과를 조용히 현재 결과로 보이지 않게 한다.
+    cma: getActiveCmaSetVersion(),
     run: { preset: mcUiEl('mcPresetSelect').value, iterations: mcUiEl('mcIterationsSelect').value, owner: mcOwnerScope,
       goal: mcUiEl('mcGoalAmountInput').value, goalMode }
   });
@@ -630,6 +634,7 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   // [MC 표시 정책 ⑤] 이 값은 일반계좌 목표비중(weight)으로만 가중평균한 것이다(절세 전용 종목은 weight 0) -
   // 통합 결과 옆에서 전체 보수로 읽히지 않도록 기준을 문구에 적는다(값 계산은 그대로).
   mcUiEl('mcWeightedFeeNote').textContent = `예상 연간 운용보수(일반계좌 목표비중 가중평균): ${fmtNum(weightedFeePct || 0, 2)}%`;
+  renderMonteCarloCmaSource(result.cma, result.cmaDatasetVersion);
 
   // [Phase 3-3] 총 납입원금은 Monte Carlo path와 무관한 순수 현금흐름 합계라 js/15의 계산 반복 없이
   // computeTotalContributionPrincipal(js/15, 회귀테스트 D로 검증된 동일 공식)을 그대로 재사용한다.
@@ -671,6 +676,77 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
   renderMonteCarloScopedResult();
 }
 
+/* -------------------------------------------------------------------------
+ * [§37 CMA-UI-01 · CMA-CORR-09] 장기 가정 출처 - 결과(result.cma)에 담긴 "그 실행 당시" 세트를 보여준다.
+ *    요약 한 줄(기관 · 기준일 · 기간 · 통화 · 세트 버전 · 상관 출처 유형 개수)과 접힌 상세
+ *    (자산군 변동성, 자산군 쌍별 상관계수 · 출처 유형 · Benchmark 기관/자료/기준일/값). 계산에는 쓰지 않는다.
+ * ---------------------------------------------------------------------- */
+const MC_CMA_SOURCE_TYPE_LABEL = Object.freeze({
+  OFFICIAL_CMA_DIRECT: '공식 CMA 직접',
+  OFFICIAL_CMA_MAPPING: '공식 CMA 연결',
+  BENCHMARK_REFERENCE: 'Benchmark 참고값'
+});
+let mcCmaDetailOpen = false;
+function mcCmaHorizonText(h) {
+  if (h && typeof h === 'object') return `${h.min}~${h.max}년 전망`;
+  return h ? `${h}년 전망` : '기간 미표기';
+}
+function mcCmaCurrencyText(c) {
+  if (c === 'USD') return '달러(USD) 기준';
+  if (c === 'KRW') return '원화(KRW) 기준';
+  return c ? `${c} 기준` : '';
+}
+function renderMonteCarloCmaSource(cma, setVersion) {
+  const area = mcUiEl('mcCmaSourceArea');
+  if (!area) return;
+  if (!cma || !cma.primary) { area.classList.add('hidden'); return; }
+  const p = cma.primary;
+  const summary = typeof summarizeCmaCorrelationPairs === 'function' ? summarizeCmaCorrelationPairs(cma.pairs) : { rows: [], counts: {}, benchmarkUsed: false };
+  const usedBenchmarks = (cma.benchmarks || []).filter((b) => summary.rows.some((r) => r.sourceType === 'BENCHMARK_REFERENCE' && r.dataset && r.dataset.datasetId === b.datasetId));
+  const lines = [
+    `${p.provider} 장기 CMA · 기준일 ${p.asOfDate} · ${mcCmaHorizonText(p.horizonYears)} · ${mcCmaCurrencyText(p.currency)} · 세트 ${setVersion || cma.setVersion}`
+  ];
+  if (summary.rows.length > 0) {
+    const parts = Object.keys(MC_CMA_SOURCE_TYPE_LABEL).filter((k) => summary.counts[k] > 0)
+      .map((k) => `${MC_CMA_SOURCE_TYPE_LABEL[k]} ${summary.counts[k]}쌍`);
+    let corrLine = `상관계수: ${parts.join(' · ')}`;
+    if (usedBenchmarks.length) corrLine += ` - Benchmark는 ${usedBenchmarks.map((b) => `${b.provider}(기준일 ${b.asOfDate})`).join(', ')} 자료`;
+    lines.push(corrLine);
+  } else {
+    lines.push('상관계수: 서로 다른 위험자산 조합이 없어 사용하지 않았습니다.');
+  }
+  const allReturnKey = (cma.instruments || []).every((i) => i.riskFree || i.returnSource !== 'CMA');
+  if (allReturnKey && p.returnDefinition === 'NOT_STATED_IN_SOURCE') {
+    lines.push('수익률: 기존 수익률 기준을 그대로 씁니다(원문에 수익률 정의가 없어 CMA 수익률은 적용하지 않았습니다).');
+  }
+  mcUiEl('mcCmaSourceSummary').innerHTML = lines.map((l) => escapeHtml(l)).join('<br>');
+
+  const labelOf = (c) => (typeof getAssetCharacterLabel === 'function' ? getAssetCharacterLabel(c) : c);
+  const risky = (cma.instruments || []).filter((i) => !i.riskFree);
+  const byClass = new Map();
+  risky.forEach((i) => { if (!byClass.has(i.appClass)) byClass.set(i.appClass, i); });
+  const volRows = Array.from(byClass.values()).map((i) =>
+    `<li>${escapeHtml(labelOf(i.appClass))} → ${escapeHtml(i.cmaClass || '-')} · 변동성 ${escapeHtml(fmtNum(i.volatilityPct, 1))}%</li>`);
+  if ((cma.instruments || []).some((i) => i.riskFree && !i.noAssumption)) volRows.push('<li>채권 · 현금성 → 변동성 0(기존 정책)</li>');
+  const noAssumption = (cma.instruments || []).filter((i) => i.noAssumption);
+  if (noAssumption.length) volRows.push(`<li>수익률 가정이 없는 자산(${noAssumption.map((i) => escapeHtml(i.label)).join(', ')}) → 성장 · 변동성 가정 없이 원금 그대로 계산</li>`);
+  const pairRows = summary.rows.map((r) => {
+    const d = r.dataset || {};
+    return `<li>${escapeHtml(labelOf(r.appClassA))} ↔ ${escapeHtml(labelOf(r.appClassB))}: <span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(fmtNum(r.value, 2))}</span>`
+      + `<br>${escapeHtml(MC_CMA_SOURCE_TYPE_LABEL[r.sourceType] || r.sourceType)}(${escapeHtml(r.sourceType)}) · ${escapeHtml(d.provider || '-')}`
+      + ` · ${escapeHtml(d.sourceTitle || '-')} · 기준일 ${escapeHtml(d.asOfDate || '-')} · ${escapeHtml(mcCmaCurrencyText(d.currency))}`
+      + `<br>${escapeHtml(r.classA || '-')} ↔ ${escapeHtml(r.classB || '-')}</li>`;
+  });
+  mcUiEl('mcCmaDetail').innerHTML =
+    `<div><p class="font-semibold text-slate-600 dark:text-slate-300">자산군 변동성(${escapeHtml(p.provider)})</p><ul class="list-disc pl-5 space-y-1">${volRows.join('') || '<li>위험자산 없음</li>'}</ul></div>`
+    + `<div><p class="font-semibold text-slate-600 dark:text-slate-300">상관계수 출처</p><ul class="list-disc pl-5 space-y-1">${pairRows.join('') || '<li>해당 없음</li>'}</ul></div>`
+    + `<p>자료: ${escapeHtml(p.sourceTitle)} (${escapeHtml(p.version)})</p>`;
+  mcCmaDetailOpen = false;
+  if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaDetailBody'), mcUiEl('mcCmaDetailChevron'), false);
+  mcUiEl('mcCmaDetailToggleBtn').setAttribute('aria-expanded', 'false');
+  area.classList.remove('hidden');
+}
+
 /* 계좌 범위 / 기간 / 범위 막대 토글 - 전부 이미 계산된 결과를 다시 그릴 뿐이라 Monte Carlo를 다시
  * 실행하지 않는다(Worker를 새로 띄우지 않는다). 결과가 없을 때(mcLastRender null)는 아무 일도 없다. */
 document.addEventListener('click', (e) => {
@@ -684,6 +760,12 @@ document.addEventListener('click', (e) => {
   if (msBtn) {
     mcSelectedMilestoneIdx = Number(msBtn.dataset.milestoneIdx);
     renderMonteCarloScopedResult();
+    return;
+  }
+  if (e.target.closest('#mcCmaDetailToggleBtn')) {
+    mcCmaDetailOpen = !mcCmaDetailOpen;
+    mcUiEl('mcCmaDetailToggleBtn').setAttribute('aria-expanded', String(mcCmaDetailOpen));
+    if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaDetailBody'), mcUiEl('mcCmaDetailChevron'), mcCmaDetailOpen);
     return;
   }
   if (e.target.closest('#mcRangeBarsToggleBtn')) {
@@ -716,7 +798,8 @@ function handleMonteCarloError(error) {
   }
   const friendly = MC_UI_ERROR_MESSAGE[error && error.code] || 'Monte Carlo 계산 중 알 수 없는 오류가 발생했습니다.';
   showToast(friendly, 'error');
-  showMonteCarloStatus(friendly);
+  // [§37] 장기 가정 오류는 사용자가 고칠 수 있도록 어떤 자산인지(어댑터의 한국어 사유)를 함께 보여준다.
+  showMonteCarloStatus(error && error.code === 'DATA_ERROR' && error.message ? `${friendly} ${error.message}` : friendly);
 }
 
 function handleMonteCarloCancelled(info) {

@@ -366,7 +366,7 @@ function explainSimulationStabilityAlwaysOn() {
  * 해석해야 하는가"만 명시적으로 설명하는 카드 5종. Phase 6-B 감사에서 지적된 다음 사실을 반영한다:
  * (1) 화면의 "기대수익률"은 median-match 설계상 통계적으로 중앙값(median) 기준이지 산술평균(E[R])이
  * 아니다, (2) Goal Probability는 "입력한 가정을 전제로 한" 조건부 비율이지 실제 미래 확률이 아니다,
- * (3) 변동성/상관관계는 최근 약 1년 데이터로만 추정된다, (4) 해외자산의 미래 환율 변동은 전혀
+ * (3) 변동성/상관관계의 출처와 기간([2026-09-16 §37] 최근 가격 이력이 아니라 공식 기관의 장기 CMA), (4) 해외자산의 미래 환율 변동은 전혀
  * 모델링되지 않는다, (5) 이 앱은 적립(accumulation) 단계만 다루고 은퇴 후 인출 단계는 다루지 않는다.
  * 전부 SAFETY_LEVEL.INFO(계산에 영향 없음, 참고 정보)로만 반환한다. ---------------------------- */
 function explainExpectedReturnSemanticAlwaysOn() {
@@ -381,8 +381,8 @@ function explainGoalProbabilitySemanticAlwaysOn() {
 }
 function explainHistoricalDataPeriodAlwaysOn() {
   return makeIssue('SAFETY_HISTORICAL_DATA_PERIOD', SAFETY_LEVEL.INFO, 'result', '변동성·상관관계 데이터 기간 안내',
-    '변동성과 상관관계는 최근 약 1년간의 시장 데이터를 바탕으로 계산됩니다.',
-    '데이터가 충분한 것과 그 데이터가 앞으로도 시장환경을 대표하는 것은 다른 문제입니다 - 실제 미래의 변동성·상관관계는 이와 다를 수 있습니다.');
+    '변동성과 상관관계는 종목의 최근 가격이 아니라, 공식 기관이 발표한 약 10년 기준 장기 자산군 전망(CMA)을 사용합니다. 같은 자산군의 종목은 같은 변동성을 씁니다.',
+    '장기 전망도 예측일 뿐이며 개별 종목의 실제 변동은 자산군 평균보다 클 수 있습니다 - 출처와 기준일은 결과 아래 "장기 가정 출처"에서 확인할 수 있습니다.');
 }
 // hasForeignAllocation: 호출부(js/19)가 state.rebalance를 보고 판단해 넘긴다 - 이 파일은 state/DOM에
 // 의존하지 않는 순수 함수 원칙(파일 상단 주석)을 유지한다.

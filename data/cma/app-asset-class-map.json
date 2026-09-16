@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "description": "앱 자산 성격(js/05 ASSET_CHARACTERS) → 기관별 CMA 자산군 연결표. 원문에 해당 자산군이 명시돼 있을 때만 연결한다. 연결이 없는 성격은 장기 MC에서 변동성을 정할 수 없다(임의 숫자 금지).",
+  "appClasses": {
+    "KR_EQUITY": {
+      "label": "국내 주식",
+      "providers": {
+        "Allianz Global Investors": {
+          "class": "Korea Equities",
+          "evidence": "AllianzGI 원문 p.2 표 행 \"Korea Equities\", p.5 기준 지수 \"MSCI Emerging Markets Korea Net Total Return Index USD\""
+        },
+        "J.P. Morgan Asset Management": {
+          "class": "Korean Equity",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Korean Equity\""
+        }
+      }
+    },
+    "US_EQUITY": {
+      "label": "미국 주식",
+      "providers": {
+        "Allianz Global Investors": {
+          "class": "North America Equities",
+          "evidence": "AllianzGI 원문 p.2 표 행 \"North America Equities\", p.5 기준 지수 \"MSCI North America Net Total Return Index USD\"(미국 · 캐나다). 원문에 미국 단독 자산군이 없어 가장 가까운 공식 자산군으로 연결했다 - \"Developed World Equities\"(미국 외 선진국 포함)는 미국 주식으로 쓰지 않는다."
+        },
+        "J.P. Morgan Asset Management": {
+          "class": "U.S. Large Cap",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"U.S. Large Cap\"(원화 기준 · 환헤지 없음)"
+        }
+      }
+    },
+    "EM_EQUITY": {
+      "label": "신흥국 주식",
+      "providers": {
+        "Allianz Global Investors": {
+          "class": "Emerging Markets Equities",
+          "evidence": "AllianzGI 원문 p.2 표 행 \"Emerging Markets Equities\", p.5 기준 지수 \"MSCI Emerging Net Total Return Index USD\""
+        },
+        "J.P. Morgan Asset Management": {
+          "class": "Emerging Markets Equity",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Emerging Markets Equity\""
+        }
+      }
+    }
+  },
+  "officialMappings": [],
+  "officialMappingsNote": "OFFICIAL_CMA_MAPPING은 기관 원문이 두 자산군의 관계를 명시적으로 밝힌 경우만 등록한다. 현재 등록 없음 - Korea Equities와 Developed World Equities의 상관(0.84)을 Korea와 미국 주식의 상관으로 옮기지 않는다.",
+  "unmapped": {
+    "DEV_EX_US_EQUITY": "AllianzGI 원문에 '미국 외 선진국 주식' 자산군이 없다(Developed World Equities는 미국 포함). 연결하지 않으며, 이 성격의 위험자산은 장기 MC를 실행하지 않고 안내한다.",
+    "COMMODITY": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
+    "CRYPTO": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
+    "REAL_ESTATE": "부동산은 Monte Carlo 범위 밖이다(RET-03-04).",
+    "BOND": "채권은 기존 §7 정책대로 변동성 0으로 둔다(Bond Domain은 BACKLOG) - 이번 작업에서 바꾸지 않는다.",
+    "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다.",
+    "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다."
+  }
+}

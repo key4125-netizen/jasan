@@ -266,7 +266,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v248</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v249</p>
           </div>
         </div>
 
@@ -1220,7 +1220,7 @@
     </div>
 
     <!-- ===== [Part 5] Monte Carlo 미래자산 예측 v2 (Phase 2-3) =====
-         종목별 기대수익률(μ)·변동성(σ)·날짜정렬 상관관계를 반영한 Monthly Precision Monte Carlo가
+         종목별 기대수익률(μ)과 자산군별 장기 CMA 변동성(σ)·상관관계(§37)를 반영한 Monthly Precision Monte Carlo가
          공식 모델이다(js/15~18). 계산에 수 초~수십 초 걸릴 수 있어 자동 실행하지 않고 사용자가 직접
          [Monte Carlo 실행] 버튼을 눌러야 시작된다(예전 버전은 렌더될 때마다 자동으로 돌았다) -
          Web Worker에서 실행되어 계산 중에도 화면이 멈추지 않는다(js/17-monte-carlo-worker.js). -->
@@ -1432,7 +1432,20 @@
         <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mt-3 leading-relaxed break-keep"></div>
         <p id="mcInflationNote" class="text-sm text-slate-400 mt-1">인플레이션율: -</p>
         <p id="mcWeightedFeeNote" class="text-sm text-slate-400">예상 연간 운용보수(일반계좌 목표비중 가중평균): -</p>
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 일반계좌는 '포트폴리오 설정'의 목표 비중, 절세계좌는 현재 보유 자산과 적립설정의 배분을 기준으로 하며, 종목별 실측 변동성·날짜정렬 상관관계·등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
+        <!-- 8-1) [§37 CMA-UI-01] 장기 가정 출처 - 요약 한 줄 + 접힌 상세(자산군 변동성 · 상관계수 출처 유형 · Benchmark 기관/자료/기준일/값).
+             계산 결과(result.cma)에 담긴 그 실행 당시 세트를 그대로 보여준다(renderMonteCarloCmaSource, js/19). -->
+        <div id="mcCmaSourceArea" class="hidden mt-2 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+          <p class="text-sm font-semibold text-slate-500 dark:text-slate-300">장기 가정 출처</p>
+          <p id="mcCmaSourceSummary" class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-keep"></p>
+          <button type="button" id="mcCmaDetailToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-center gap-1 mt-1 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300" aria-expanded="false" aria-controls="mcCmaDetailBody">
+            <span>자산군 변동성 · 상관계수 출처 보기</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcCmaDetailChevron"></i>
+          </button>
+          <div id="mcCmaDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+            <div id="mcCmaDetail" class="pt-1 space-y-2 text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep"></div>
+          </div>
+        </div>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 일반계좌는 '포트폴리오 설정'의 목표 비중, 절세계좌는 현재 보유 자산과 적립설정의 배분을 기준으로 하며, 자산군별 장기 CMA 변동성·상관관계(위 출처)와 등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
 
         <!-- 9) [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항과 매번
              동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘 영역으로 모은다 - 숨기는
@@ -2800,6 +2813,8 @@
 <script src="js/12-import-export-sync.js"></script>
 <script src="js/13-fundamental-data.js"></script>
 <script src="js/14-settings-boot.js"></script>
+<script src="js/26-cma-data.js"></script>
+<script src="js/27-cma-runtime.js"></script>
 <script src="js/15-monte-carlo-engine.js"></script>
 <script src="js/16-monte-carlo-adapter.js"></script>
 <script src="js/18-monte-carlo-controller.js"></script>

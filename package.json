@@ -3,6 +3,8 @@
   "description": "이 파일은 브라우저 프론트엔드(index.html/js/*.js)와 무관합니다 - 저 파일들은 지금처럼 번들러 없이 <script> 태그로 그대로 로드됩니다. 여기 의존성은 GitHub Actions에서 실행하는 scripts/update-ticker-master.js(월간 종목 마스터 다운로드/파싱)와 test/merge.test.js(node --test, 별도 설치 불필요)에서만 씁니다.",
   "scripts": {
     "update-ticker-master": "node scripts/update-ticker-master.js",
+    "cma:check": "node scripts/cma-update.js check",
+    "cma:status": "node scripts/cma-update.js status",
     "test": "node --test test/*.test.js",
     "release-guard": "node scripts/verify-sw-release.js",
     "data-guard": "node scripts/verify-no-user-data.js",

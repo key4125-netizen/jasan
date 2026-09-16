@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+      "result": "NEW_VERSION",
+      "previousVersion": null,
+      "detectedVersion": "AGI-2026.1",
+      "datasetId": "AGI-LTCMA-2026Q1-USD",
+      "changedFields": [
+        "*"
+      ],
+      "changedFieldCount": 1,
+      "errorCode": null,
+      "errorMessage": null,
+      "resultingStatus": "VERIFIED"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q2-allianzgi-ap.pdf",
+      "result": "NEW_VERSION",
+      "previousVersion": "AGI-2026.1",
+      "detectedVersion": "AGI-2026.2",
+      "datasetId": "AGI-LTCMA-2026Q2-USD",
+      "changedFields": [
+        "sourceTitle",
+        "sourceUrl",
+        "edition",
+        "publishedAt",
+        "asOfDate",
+        "expectedReturn.US Government Bonds",
+        "expectedReturn.Euro Government Bonds",
+        "expectedReturn.Global Government Bonds",
+        "expectedReturn.US Corporates IG Bonds",
+        "expectedReturn.Euro Corporates IG Bonds",
+        "expectedReturn.Global Corporates IG Bonds",
+        "expectedReturn.US High Yield Bonds",
+        "expectedReturn.Euro High Yield Bonds",
+        "expectedReturn.Global High Yield Bonds",
+        "expectedReturn.Asian Aggregate Bonds",
+        "expectedReturn.Asian High Yield Bonds",
+        "expectedReturn.EM Government Bonds (HC)",
+        "expectedReturn.Developed World Equities",
+        "expectedReturn.North America Equities",
+        "expectedReturn.Europe Equities"
+      ],
+      "changedFieldCount": 64,
+      "errorCode": null,
+      "errorMessage": null,
+      "resultingStatus": "VERIFIED"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q3-allianzgi-ap.pdf | https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/web-capitalmarketassumptions-lite-r2026q3-allianzgi-ap-stamped.pdf",
+      "result": "NO_NEW_SOURCE",
+      "detectedVersion": null,
+      "note": "2026Q3 발행 자료 없음"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceId": "JPM_LTCMA_MATRIX_KRW",
+      "source": "https://cdn.jpmorganfunds.com/content/dam/jpm-am-aem/global/en/institutional/interactive-matrix/data/krw.csv",
+      "result": "NEW_VERSION",
+      "previousVersion": null,
+      "detectedVersion": "JPM-KRW-2026.1",
+      "datasetId": "JPM-LTCMA-2026-KRW",
+      "changedFields": [
+        "*"
+      ],
+      "changedFieldCount": 1,
+      "errorCode": null,
+      "errorMessage": null,
+      "resultingStatus": "VERIFIED"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceId": "JPM_LTCMA_FULL_REPORT",
+      "source": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf",
+      "result": "REFERENCE_UNCHANGED",
+      "note": "첫 확인 - 기준값 기록"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceId": "JPM_LTCMA_METHODOLOGY",
+      "source": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-methodology-handbook.pdf",
+      "result": "REFERENCE_UNCHANGED",
+      "note": "첫 확인 - 기준값 기록"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "Vanguard",
+      "sourceId": "VANGUARD_VCMM_FORECASTS",
+      "source": "https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html",
+      "result": "REFERENCE_UNCHANGED",
+      "note": "첫 확인 - 기준값 기록"
+    },
+    {
+      "checkedAt": "2026-09-16T15:08:01.786Z",
+      "provider": "BlackRock",
+      "sourceId": "BLACKROCK_CMA",
+      "source": "https://www.blackrock.com/institutions/en-global/institutional-insights/thought-leadership/capital-market-assumptions",
+      "result": "REFERENCE_UNCHANGED",
+      "note": "첫 확인 - 기준값 기록"
+    },
+    {
+      "checkedAt": "2026-09-16T15:09:25.238Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "activate",
+      "result": "ACTIVATED",
+      "previousVersion": null,
+      "detectedVersion": "CMA-2026.1",
+      "resultingStatus": "ACTIVE",
+      "note": "초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)"
+    }
+  ]
+}

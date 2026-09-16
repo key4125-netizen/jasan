@@ -90,6 +90,14 @@ function launchMonteCarloWorker(requestId, mode, input, callbacks, safetyContext
         ? buildSafetyResult(preflight.issues, preflight.dataQuality.issues, modelRiskIssues)
         : null;
       msg.result.safety = finalSafety;
+      // [§37 CMA-VER-02] 이 결과가 어떤 장기 CMA 세트 · 입력 방식으로 계산됐는지 결과 자체에 남긴다 - 나중에 ACTIVE 세트가
+      // 바뀌어도 이 결과의 표시는 계산 당시 버전을 그대로 보여준다(소급 변경 없음).
+      const resultMeta = safetyContext.resultMeta || null;
+      if (resultMeta) {
+        msg.result.cmaDatasetVersion = resultMeta.cmaDatasetVersion;
+        msg.result.inputModelVersion = resultMeta.inputModelVersion;
+        msg.result.cma = resultMeta.cma;
+      }
       callbacks.onCompleted && callbacks.onCompleted(msg.result);
       worker.terminate();
     } else if (msg.type === 'CANCELLED') {
@@ -181,7 +189,11 @@ async function startMonteCarloRun(params, callbacks) {
     return;
   }
 
-  launchMonteCarloWorker(requestId, params.mode || 'official', input, callbacks, { preflightSafety: adapterResult.safety });
+  const cma = adapterResult.cma || null;
+  launchMonteCarloWorker(requestId, params.mode || 'official', input, callbacks, {
+    preflightSafety: adapterResult.safety,
+    resultMeta: cma ? { cmaDatasetVersion: cma.setVersion, inputModelVersion: cma.inputModelVersion, cma } : null
+  });
   return requestId;
 }
 

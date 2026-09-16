@@ -3,12 +3,12 @@
  *    - [범위] 이 파일은 Phase 2-1(State → Engine Adapter) 전용이다 - Web Worker/UI 연동은 아직
  *      없다. 여기서 만드는 instruments/correlationMatrix는 그대로 js/15의 runMonthlyPrecisionMC/
  *      runAnnualPreviewMC에 넘길 수 있는 형태다.
- *    - [μ/σ 데이터 출처] μ는 js/05의 기존 목표비중 확장 로직(expandRebalanceTargetsForComputation,
- *      getTargetProjectionRate)을 그대로 재사용한다 - 새로 만들지 않고 기존 검증된 함수를 그대로
- *      불러 쓰는 것이 핵심이다. σ/상관계수용 원시 시계열은 js/05의 buildHouseholdInstrumentReturnSeries()
- *      (이번에 computeTargetPortfolioVolatilityPct에서 추출)를 재사용한다 - 두 경로가 같은 키 체계
- *      (T:/N:/C:, computeHouseholdTargetInstrumentWeights 참고)를 쓰므로 key로 안전하게 조인된다.
- *    - [잘못된 입력을 조용히 보정하지 않는다] 가격 이력이 없어 σ를 알 수 없는 "위험자산"(채권/현금이
+ *    - [μ 데이터 출처] μ는 js/05의 기존 목표비중 확장 로직(expandRebalanceTargetsForComputation,
+ *      resolveMcEntryRateDetail)을 그대로 재사용한다 - Return Key lineage(user override · Master · 자동 추천 ·
+ *      unresolved)가 결정론과 같다.
+ *    - [σ/상관 데이터 출처 · 2026-09-16 §37] 종목 가격 이력이 아니라 장기 CMA 자산군(js/26 CMA_ACTIVE_SET,
+ *      js/27 buildCmaRiskInputs)에서 온다. 상관계수는 OFFICIAL_CMA_DIRECT → OFFICIAL_CMA_MAPPING → BENCHMARK_REFERENCE.
+ *    - [잘못된 입력을 조용히 보정하지 않는다] 장기 CMA 자산군을 정할 수 없는 "위험자산"(채권/현금이
  *      아닌 종목)이 있으면, 그 종목을 임의로 빼거나 σ=0으로 채우지 않고 명확한 오류로 반환한다 -
  *      투자 판단에 쓰이는 시뮬레이션에서 데이터 누락을 조용히 넘기면 안 되기 때문이다.
  * ---------------------------------------------------------------------- */
@@ -20,6 +20,35 @@
 // 함수(js/05)에 전달만 한다 - 이 파일 자신의 로직(μ/σ/상관행렬 조립, Safety 집계)은 전혀 바뀌지 않았고,
 // "어떤 owner의 목표비중/원금/월적립금을 기준으로 계산할지"만 upstream(js/05)에서 좁혀진다.
 // ownerFilter 생략 시 기존과 완전히 동일(bit-identical).
+// [§37 CMA-01] MC 항목 하나의 "앱 자산 성격" - 장기 CMA 자산군을 고르는 근거다.
+//   1) 수익률 기준(Return Key)이 시스템 키면 그 키의 성격(RETURN_KEY_CHARACTER - 수익률 해석과 같은 표)
+//   2) 사용자 정의 키 · 기준 없음이면 종목 자체의 성격 판정(자동 수익률 추천과 같은 근거 목록만 인정)
+//   성격을 확인하지 못하면 UNRESOLVED - 지역만 보고 주식으로 단정하지 않는다(Phase 47-A 원칙 그대로).
+function resolveMcAppAssetClass(rateDetail) {
+  const key = rateDetail ? canonicalRateKey(rateDetail.key) : null;
+  if (key && RETURN_KEY_CHARACTER[key]) return { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey' };
+  if (key === '현금') return { appClass: ASSET_CHARACTERS.CASH, basis: 'returnKey' };
+  if (key && /\.KQ$/i.test(key)) return { appClass: ASSET_CHARACTERS.KR_EQUITY, basis: 'returnKey' };
+  const subject = rateDetail && rateDetail.subject;
+  if (subject) {
+    const ch = resolveAssetCharacter(subject);
+    // 위험 자산군 판정에는 "확정 자산군 '주식' + 상장 지역"(individualStock)도 인정한다 - 사용자가 정한 수익률 키를 쓰는 개별 주식의
+    // 변동성 근거다. 수익률 자동 추천(CHARACTER_SOURCES_FOR_AUTO_RATE_KEY)에는 여전히 쓰지 않는다.
+    const trusted = CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(ch.source) || ch.source === 'individualStock';
+    if (trusted && ch.character !== ASSET_CHARACTERS.UNRESOLVED) {
+      return { appClass: ch.character, basis: ch.source === 'individualStock' ? 'listedStock' : 'instrumentCharacter' };
+    }
+  }
+  return { appClass: ASSET_CHARACTERS.UNRESOLVED, basis: 'none' };
+}
+// 시스템 기본 수익률을 그대로 쓰는 항목인가 - 사용자가 정한 수익률(사전 키 · 키워드 · 시스템 키 값 변경)은 CMA 수익률로 바꾸지 않는다(RET-02-05).
+function isSystemDefaultMcRate(rateDetail, presetKey) {
+  if (!rateDetail || ['customKey', 'customKeyword'].includes(rateDetail.source)) return false;
+  const key = canonicalRateKey(rateDetail.key);
+  if (!RETURN_KEY_CHARACTER[key]) return false;
+  return getCustomRate(key, presetKey) === undefined;
+}
+
 async function buildMonteCarloInputFromState(config) {
   config = config || {};
   const presetKey = config.presetKey || 'normal';
@@ -28,8 +57,7 @@ async function buildMonteCarloInputFromState(config) {
   const warnings = [];
   // [Phase 3-5 Safety Layer] BLOCK 대상은 errors와 별개로도 safetyIssues에 함께 쌓는다(예: Fee<0/>=100%,
   // σ<0) - errors는 "계산 자체를 못 만드는" 치명적 상황 전용(즉시 return)이고, safetyIssues는 계산은
-  // 만들어지되 "이 계산을 믿고 시작해도 되는가"를 판단하는 별도 채널이다. dataQualityIssues는 관측치
-  // 부족/상관계수 데이터부족처럼 "데이터 자체의 한계"를 담는다.
+  // 만들어지되 "이 계산을 믿고 시작해도 되는가"를 판단하는 별도 채널이다. dataQualityIssues는 "데이터 자체의 한계"를 담는다.
   const safetyIssues = [];
   const dataQualityIssues = [];
   // [통합 수정 · F-08 · PMD-07 · PMD-08] 수익률 가정이 없어 0%로 계산되는 항목과, 자동으로 연결된 기준이 자산 성격과 맞지
@@ -58,7 +86,6 @@ async function buildMonteCarloInputFromState(config) {
   };
 
   const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
-  const returnsList = await buildHouseholdInstrumentReturnSeries(ownerFilter);
   /* [FUTURE-P1] 절세계좌 입력 - config.includeTaxAdvantaged일 때만 구성한다(생략하면 아래 taxEntries가
    * 비어 있어 기존 경로와 완전히 같다). 절세계좌는 목표비중이 아니라 "지금 들고 있는 자산 + 이미 입력된
    * 적립 계획"이므로 weight를 만들지 않고, 일반계좌 목표와 같은 키 규칙으로만 맞춰 둔다 - 같은 종목이면
@@ -66,15 +93,39 @@ async function buildMonteCarloInputFromState(config) {
   const taxMap = config.includeTaxAdvantaged
     ? buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, config.years || 20)
     : null;
-  // 일반계좌 목표에 없는 절세 전용 종목만 추가로 시계열을 받아온다(있는 것은 위에서 이미 받았다).
   const taxOnlyEntries = [];
   if (taxMap) taxMap.forEach((entry, key) => { if (!weightsMap.has(key)) taxOnlyEntries.push({ key, entry }); });
-  const taxOnlyReturns = taxOnlyEntries.length ? await buildTaxInstrumentReturnSeries(taxOnlyEntries) : [];
-  const returnsByKey = new Map(returnsList.concat(taxOnlyReturns).map((r) => [r.key, r]));
 
-  const assetOrder = [];
-  const instruments = [];
-  const datedClosesForCorrelation = []; // 위험자산만(채권/현금 제외) - 상관행렬 계산용
+  /* [§37 CMA-01~03] 변동성 · 상관계수는 장기 CMA 자산군에서 온다 - 종목의 최근 가격 이력을 쓰지 않는다.
+   * 수익률(μ)은 기존 Return Key 해석(resolveMcEntryRateDetail - 결정론과 같은 함수 · 같은 인자)을 그대로 쓴다.
+   * ACTIVE Dataset의 수익률 정의가 원문에서 확인된 경우(returnUsableForMc)에만 시스템 기본 수익률 항목을 CMA 수익률로 바꾼다. */
+  const cmaEntries = []; // assetOrder 순서
+  const addEntry = (key, weight, rateDetail, feeRatePctRaw, feeExplicit, label, riskFreeFlag) => {
+    const { appClass, basis } = resolveMcAppAssetClass(rateDetail);
+    // [§7 · Bond BACKLOG] 채권 · 현금은 기존 정책대로 σ=0이다 - 티커가 있는 채권형 · 현금성 상품도 가격 이력 대신 같은 정책을 쓴다.
+    // [RET-03-00 · PMD-08] 수익률 가정이 없는 자산(0% + 가정 없음 경고)은 "시스템이 가정을 적용하지 않고 원금 그대로 둔다" -
+    // 성장 가정과 마찬가지로 변동성 가정도 적용하지 않는다(MC는 경고와 함께 계속 실행된다). 수익률 가정이 있는데 CMA 자산군이
+    // 없는 위험자산만 오류로 막는다(임의 변동성을 만들지 않는다).
+    const noAssumption = !riskFreeFlag && rateDetail.assumptionMissing === true;
+    const riskFree = riskFreeFlag || noAssumption || appClass === ASSET_CHARACTERS.BOND || appClass === ASSET_CHARACTERS.CASH;
+    let muAnnualPct = rateDetail.rate;
+    let returnSource = 'RETURN_KEY';
+    if (!riskFree) {
+      const risk = resolveCmaRiskForAppClass(appClass);
+      if (risk.status === 'MAPPED' && risk.returnUsableForMc && isSystemDefaultMcRate(rateDetail, presetKey)) {
+        muAnnualPct = cmaGeometricToAppRate(risk.expectedReturnPct);
+        returnSource = 'CMA';
+      }
+    }
+    safetyIssues.push(...assessFee(feeRatePctRaw, label, feeExplicit));
+    const returnIssue = assessExpectedReturn(muAnnualPct, label);
+    if (returnIssue) safetyIssues.push(returnIssue);
+    pushReturnAssumptionIssues(rateDetail, label);
+    cmaEntries.push({
+      key, label, weight, riskFree, noAssumption, appClass, appClassBasis: basis, returnKey: rateDetail.key, returnSource,
+      muAnnual: num(muAnnualPct) / 100, feeRateAnnual: feePercentToDecimal(feeRatePctRaw)
+    });
+  };
 
   weightsMap.forEach((v, key) => {
     // [Phase 28-F] owner를 넘겨 getTargetProjectionRate가 보유 자산의 rateMatchOverride(사용자 대표매칭키)를
@@ -84,134 +135,51 @@ async function buildMonteCarloInputFromState(config) {
     // [통합 수정 · N-08 · N-10] 그 소유자의 일반계좌 보유 자산(없으면 같은 입력의 가상 자산)으로 해석한다 - 결정론 일반계좌
     // (computeRegionWeightedRate)와 같은 함수 · 같은 인자다. 다른 소유자 · 절세계좌의 대표매칭을 빌려 쓰지 않는다.
     const rateDetail = resolveMcEntryRateDetail(v, presetKey);
-    const muAnnualPct = rateDetail.rate;
-    const muAnnual = num(muAnnualPct) / 100;
-    // [Phase 3-4] getTargetProjectionFeeRate(js/05)는 presetKey와 무관 - "수익률 관리"처럼 시나리오별로
-    // 달라지지 않는다(운용보수는 시장 시나리오와 무관한 상품 고유 값). 미등록 종목은 0%.
-    const feeRatePctRaw = getTargetProjectionFeeRate(pseudoTarget);
-    const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
-    const feeExplicit = isFeeExplicitlySet(pseudoTarget);
-
-    // [N-06] 무위험(σ=0) 판정은 js/05가 보유 자산의 확정 자산군으로 정해 둔 값(v.riskFree)을 쓴다 - 예전엔 이름만 보고
-    // 판정해 사용자가 현금 · 채권으로 확정한 자산도 이름에 키워드가 없으면 주식 지수 변동성을 받았다. 시계열 빌더와 같은 값이다.
+    // [N-06] 무위험(σ=0) 판정은 js/05가 보유 자산의 확정 자산군으로 정해 둔 값(v.riskFree)을 쓴다.
     const legacyCategory = v.kind === 'namedHolding' ? classifyCategory('', v.name) : v.category;
     const isRiskFree = v.riskFree !== undefined ? v.riskFree : (legacyCategory === '채권' || legacyCategory === '현금');
-
-    safetyIssues.push(...assessFee(feeRatePctRaw, label, feeExplicit));
-    const returnIssue = assessExpectedReturn(muAnnualPct, label);
-    if (returnIssue) safetyIssues.push(returnIssue);
-    pushReturnAssumptionIssues(rateDetail, label);
-
-    if (isRiskFree) {
-      assetOrder.push(key);
-      instruments.push({ key, weight: v.weight, muAnnual, sigmaAnnual: 0, feeRateAnnual });
-      return;
-    }
-    const series = returnsByKey.get(key);
-    if (!series || !series.dates) {
-      // [명확한 오류] 위험자산인데 가격 이력(σ 계산 재료)이 없다 - 조용히 σ=0으로 채우거나 이 종목을
-      // 빼고 나머지 비중으로 재정규화하지 않는다(포트폴리오 구성을 몰래 바꾸는 셈이 되기 때문).
-      errors.push(`instrument "${key}"(weight ${(v.weight * 100).toFixed(1)}%)의 가격 이력을 가져오지 못해 변동성을 계산할 수 없습니다.`);
-      return;
-    }
-    // [Phase 3-5 B1 수정] 예전엔 여기서 computeAnnualizedVolatilityPct가 데이터 부족(null)을 반환해도
-    // `|| 0`으로 조용히 "변동성 0%"(=무위험 자산)로 둔갑시켰다 - 이 파일 자신의 정책(위 11-13행 주석,
-    // "가격 이력이 없으면 명확한 오류로 반환한다")과 정면으로 모순됐다. "데이터가 없어 모른다"와 "실제로
-    // 변동성이 0이다"는 절대 같은 값(0)으로 합쳐지면 안 된다 - 전자는 계산을 막고(errors.push), 후자만
-    // (채권/현금처럼 위 위쪽 분기에서 처리되는 경우) 진짜 0으로 취급한다.
-    const observationCount = (series.returns || []).length;
-    const dataIssue = assessDataSufficiency(observationCount, label);
-    if (dataIssue) dataQualityIssues.push(dataIssue);
-    const sigmaAnnualPct = computeAnnualizedVolatilityPct(series.returns);
-    if (sigmaAnnualPct === null || sigmaAnnualPct === undefined) {
-      errors.push(`instrument "${key}"(weight ${(v.weight * 100).toFixed(1)}%)의 가격 데이터가 부족해(${observationCount}개) 변동성을 계산할 수 없습니다.`);
-      return;
-    }
-    const volIssue = assessVolatility(sigmaAnnualPct, label, false);
-    if (volIssue) safetyIssues.push(volIssue);
-    const sigmaAnnual = sigmaAnnualPct / 100;
-    assetOrder.push(key);
-    instruments.push({ key, weight: v.weight, muAnnual, sigmaAnnual, feeRateAnnual });
-    datedClosesForCorrelation.push({ key, label, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
+    addEntry(key, v.weight, rateDetail, getTargetProjectionFeeRate(pseudoTarget), isFeeExplicitlySet(pseudoTarget), label, isRiskFree);
   });
 
   /* [FUTURE-P1] 절세계좌 전용 instrument를 universe에 추가한다 - 일반계좌 목표에는 없는 종목이므로
    * weight는 0이다(일반계좌 잔고/납입 배분에 전혀 참여하지 않는다). weight가 0이어도 이 종목은
    * 상관행렬과 시장 충격 생성에는 정상적으로 참여해야 하므로 universe에서 빼지 않는다.
-   * μ/σ 판정은 위 일반계좌 루프와 완전히 같은 규칙(getTargetProjectionRate / isRiskFree / 시계열 부족 시
-   * 오류)을 그대로 적용한다 - 절세계좌라고 해서 데이터 부족을 σ=0으로 덮지 않는다. */
-  if (taxMap) {
-    taxOnlyEntries.forEach(({ key, entry }) => {
-      const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: undefined };
-      // [통합 수정 · F-04] 절세계좌 보유분은 그 자산 자체, 적립 배분은 그 소유자 · 그 계좌 범위로 해석한다 - 절세계좌
-      // 결정론(simulateTaxAdvantagedOwnerGrowth)과 같은 경로다.
-      const rateDetail = resolveMcEntryRateDetail(entry, presetKey);
-      const muAnnualPct = rateDetail.rate;
-      const muAnnual = num(muAnnualPct) / 100;
-      const feeRatePctRaw = getTargetProjectionFeeRate(pseudoTarget);
-      const feeRateAnnual = feePercentToDecimal(feeRatePctRaw);
-      safetyIssues.push(...assessFee(feeRatePctRaw, entry.label, isFeeExplicitlySet(pseudoTarget)));
-      const returnIssue = assessExpectedReturn(muAnnualPct, entry.label);
-      if (returnIssue) safetyIssues.push(returnIssue);
-      pushReturnAssumptionIssues(rateDetail, entry.label);
+   * μ/σ 판정은 위 일반계좌와 완전히 같은 규칙을 쓴다 - 절세계좌라고 해서 자산군을 모르는 위험자산을 σ=0으로 덮지 않는다. */
+  taxOnlyEntries.forEach(({ key, entry }) => {
+    const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: undefined };
+    // [통합 수정 · F-04] 절세계좌 보유분은 그 자산 자체, 적립 배분은 그 소유자 · 그 계좌 범위로 해석한다.
+    const rateDetail = resolveMcEntryRateDetail(entry, presetKey);
+    addEntry(key, 0, rateDetail, getTargetProjectionFeeRate(pseudoTarget), isFeeExplicitlySet(pseudoTarget), entry.label, !!entry.riskFree);
+  });
 
-      // 무위험 여부는 js/05의 buildTaxAdvantagedMonteCarloInputs가 이미 판정해 entry.riskFree에 실어 준다 -
-      // 여기서 다시 추정하면 시계열 빌더와 판정이 어긋나 "가격 이력을 못 가져왔다"는 잘못된 오류가 난다.
-      if (entry.riskFree) {
-        assetOrder.push(key);
-        instruments.push({ key, weight: 0, muAnnual, sigmaAnnual: 0, feeRateAnnual });
-        return;
-      }
-      const series = returnsByKey.get(key);
-      if (!series || !series.dates) {
-        errors.push(`instrument "${key}"(절세계좌 보유분)의 가격 이력을 가져오지 못해 변동성을 계산할 수 없습니다.`);
-        return;
-      }
-      const observationCount = (series.returns || []).length;
-      const dataIssue = assessDataSufficiency(observationCount, entry.label);
-      if (dataIssue) dataQualityIssues.push(dataIssue);
-      const sigmaAnnualPct = computeAnnualizedVolatilityPct(series.returns);
-      if (sigmaAnnualPct === null || sigmaAnnualPct === undefined) {
-        errors.push(`instrument "${key}"(절세계좌 보유분)의 가격 데이터가 부족해(${observationCount}개) 변동성을 계산할 수 없습니다.`);
-        return;
-      }
-      const volIssue = assessVolatility(sigmaAnnualPct, entry.label, false);
-      if (volIssue) safetyIssues.push(volIssue);
-      assetOrder.push(key);
-      instruments.push({ key, weight: 0, muAnnual, sigmaAnnual: sigmaAnnualPct / 100, feeRateAnnual });
-      datedClosesForCorrelation.push({ key, label: entry.label, datedCloses: series.dates.map((d, i) => ({ date: d, close: series.closes[i] })).filter((x) => x.date) });
-    });
+  const cmaSet = getActiveCmaSet();
+  if (!cmaSet) {
+    errors.push('장기 CMA 가정(ACTIVE 세트)이 없어 Monte Carlo를 실행할 수 없습니다.');
+    return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };
   }
-
+  const cmaRisk = buildCmaRiskInputs(cmaEntries);
+  cmaRisk.errors.forEach((e) => {
+    if (e.code === 'UNMAPPED') {
+      const label = getAssetCharacterLabel(e.appClass || ASSET_CHARACTERS.UNRESOLVED);
+      errors.push(`"${e.label}"(${label})에 연결된 장기 CMA 자산군이 없어 변동성을 정할 수 없습니다 - 수익률 관리에서 기준을 지정하거나 목표 비중에서 조정해 주세요.`);
+    } else if (e.code === 'CORRELATION_SOURCE_MISSING') {
+      errors.push(`"${e.label}" 사이의 장기 상관계수가 공식 CMA · 등록된 Benchmark 어디에도 없어 계산할 수 없습니다.`);
+    } else {
+      errors.push(`"${e.label}"의 장기 CMA 가정을 불러오지 못했습니다(${e.code}).`);
+    }
+  });
   if (errors.length > 0) return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };
 
-  // 상관행렬: 위험자산끼리는 날짜정렬 상관계수, 채권/현금은 σ=0이라 상관계수가 결과에 영향을 주지
-  // 않으므로(GBM 식에서 σ_m*X 항이 0) 대각선 1 / 나머지 0으로 채워 넣는다.
-  const n = assetOrder.length;
-  const correlationMatrix = Array.from({ length: n }, () => new Array(n).fill(0));
-  for (let i = 0; i < n; i++) correlationMatrix[i][i] = 1;
-  if (datedClosesForCorrelation.length > 1) {
-    const { matrix: riskyMatrix, pairDiagnostics } = computeDateAlignedCorrelationMatrix(datedClosesForCorrelation);
-    const riskyKeys = datedClosesForCorrelation.map((d) => d.key);
-    const labelByKey = new Map(datedClosesForCorrelation.map((d) => [d.key, d.label]));
-    riskyKeys.forEach((keyA, ai) => {
-      riskyKeys.forEach((keyB, bi) => {
-        const outerA = assetOrder.indexOf(keyA), outerB = assetOrder.indexOf(keyB);
-        correlationMatrix[outerA][outerB] = riskyMatrix[ai][bi];
-      });
-    });
-    // [H. Correlation Quality] 공통거래일 부족으로 0 대체된 페어를 데이터 품질 이슈로 등록 - "실제
-    // 상관관계 0"과 "데이터 부족으로 0 대체"를 UI에서 구분할 수 있게 한다.
-    Object.keys(pairDiagnostics).forEach((pairKey) => {
-      const [keyA, keyB] = pairKey.split('|');
-      // [N-09] 경고 기준은 상관계수 계산에 실제로 쓰인 수익률 관측치 수다(공통 날짜 수 - 1).
-      const diag = pairDiagnostics[pairKey];
-      const returnCount = diag.returnObservationCount !== undefined ? diag.returnObservationCount : diag.observationCount;
-      const issue = assessCorrelationPair(returnCount, labelByKey.get(keyA) || keyA, labelByKey.get(keyB) || keyB);
-      if (issue) dataQualityIssues.push(issue);
-    });
-    config.__lastPairDiagnostics = pairDiagnostics; // 디버그 확인용(선택 - 호출부가 필요하면 참조)
-  }
+  const assetOrder = cmaEntries.map((e) => e.key);
+  const instruments = cmaEntries.map((e) => {
+    const sigmaAnnual = cmaRisk.sigmaByKey[e.key];
+    if (!e.riskFree) {
+      const volIssue = assessVolatility(sigmaAnnual * 100, e.label, false);
+      if (volIssue) safetyIssues.push(volIssue);
+    }
+    return { key: e.key, weight: e.weight, muAnnual: e.muAnnual, sigmaAnnual, feeRateAnnual: e.feeRateAnnual };
+  });
+  const correlationMatrix = cmaRisk.matrix;
 
   const totalWeight = instruments.reduce((s, i) => s + i.weight, 0);
   if (Math.abs(totalWeight - 1) > 0.01) warnings.push(`instrument weight 합계가 1이 아닙니다(${totalWeight.toFixed(4)}) - 목표비중 미설정 구간이 있을 수 있습니다.`);
@@ -260,7 +228,28 @@ async function buildMonteCarloInputFromState(config) {
     if (hasAnyTaxValue) taxScope = { initialBalances, monthlyContributions };
   }
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, correlationDiagnostics: config.__lastPairDiagnostics || {}, ...(taxScope ? { taxScope } : {}) };
+  // [§37 CMA-CORR-09 · CMA-VER-02] 결과 화면 · 결과 기록용 출처 정보 - 계산에는 쓰이지 않는다.
+  const cma = {
+    setVersion: cmaSet.setVersion,
+    inputModelVersion: MC_INPUT_MODEL_VERSION,
+    primary: cmaDatasetMetaForResult(cmaSet.primary),
+    benchmarks: (cmaSet.benchmarks || []).map(cmaDatasetMetaForResult),
+    instruments: cmaEntries.map((e) => ({
+      key: e.key, label: e.label, riskFree: e.riskFree, noAssumption: e.noAssumption, appClass: e.appClass, appClassBasis: e.appClassBasis,
+      cmaClass: e.riskFree ? null : (cmaRisk.risk[e.key] && cmaRisk.risk[e.key].cmaClass) || null,
+      volatilityPct: e.riskFree ? 0 : cmaRisk.sigmaByKey[e.key] * 100, returnKey: e.returnKey, returnSource: e.returnSource
+    })),
+    pairs: cmaRisk.pairs
+  };
+
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, ...(taxScope ? { taxScope } : {}) };
+}
+function cmaDatasetMetaForResult(ds) {
+  if (!ds) return null;
+  return {
+    datasetId: ds.datasetId, version: ds.version, provider: ds.provider, sourceTitle: ds.sourceTitle, sourceUrl: ds.sourceUrl,
+    asOfDate: ds.asOfDate, horizonYears: ds.horizonYears, currency: ds.currency, role: ds.role, returnDefinition: ds.returnDefinition
+  };
 }
 
 /* -------------------------------------------------------------------------

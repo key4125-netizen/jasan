@@ -74,6 +74,8 @@ Primary scope:
 
 Do not jump to Bond-domain implementation, Tax MC implementation, Macro redesign, AI, CMA automation, or other backlog/out-of-scope work unless the PM explicitly authorizes it.
 
+> 2026-09-16: the PM explicitly authorized **long-term MC CMA restructuring + CMA auto-update (review-gated, no auto-ACTIVE) + correlation Benchmark Reference** — see checklist §37. Other items in the sentence above remain out of scope.
+
 ## WORKING MODE
 
 For audit/review tasks:

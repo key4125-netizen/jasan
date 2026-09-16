@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "description": "CMA 공식 Source Registry (체크리스트 §37). kind=DATASET은 수치를 읽어 Dataset을 만들고, kind=REFERENCE는 방법론 문서의 변경만 확인한다. 블로그 · 뉴스 · 2차 자료는 등록하지 않는다.",
+  "sources": [
+    {
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "kind": "DATASET",
+      "provider": "Allianz Global Investors",
+      "sourceTitle": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD)",
+      "sourceUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+      "sourceType": "OFFICIAL_PDF",
+      "expectedFormat": "pdf",
+      "parser": "allianzgi-cma-text",
+      "role": "PRIMARY",
+      "publicationCycle": "QUARTERLY",
+      "checkFrequency": "MONTHLY",
+      "checkFrequencyDays": 25,
+      "discovery": {
+        "type": "QUARTERLY_URL_PATTERNS",
+        "lookAheadQuarters": 4,
+        "patterns": [
+          "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-{yyyy}q{q}-allianzgi-ap.pdf",
+          "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/web-capitalmarketassumptions-lite-r{yyyy}q{q}-allianzgi-ap-stamped.pdf"
+        ],
+        "evidence": "AllianzGI AP 공식 도메인에서 확인된 두 가지 파일 이름 규칙(2026 Q1·Q2: capitalmarketassumptions-YYYYqN-allianzgi-ap.pdf, 2024 Q3~2025 Q4: web-capitalmarketassumptions-lite-rYYYYqN-allianzgi-ap-stamped.pdf). 없는 분기는 HTML 페이지로 넘어가므로 PDF 형식일 때만 발견으로 본다."
+      },
+      "methodologyUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+      "requiredClasses": [
+        "Korea Equities",
+        "North America Equities",
+        "Emerging Markets Equities",
+        "Developed World Equities"
+      ],
+      "returnDefinition": "NOT_STATED_IN_SOURCE",
+      "returnDefinitionEvidence": "원문 열 이름은 \"10-year Expected Return p.a.\"뿐이며 기하(복리) · 산술 구분을 적지 않았다(2025 Q4 · 2026 Q1 · 2026 Q2 원문 확인). 앱이 임의로 해석하지 않는다.",
+      "volatilityDefinition": "10-year Expected Volatility p.a. (원문 표기 - 연율 표준편차)",
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": "AGI-2026.2"
+    },
+    {
+      "sourceId": "JPM_LTCMA_MATRIX_KRW",
+      "kind": "DATASET",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceTitle": "Long-Term Capital Market Assumptions - interactive assumptions matrix, Korean won (KRW)",
+      "sourceUrl": "https://cdn.jpmorganfunds.com/content/dam/jpm-am-aem/global/en/institutional/interactive-matrix/data/krw.csv",
+      "pageUrl": "https://am.jpmorgan.com/us/en/asset-management/institutional/insights/portfolio-insights/ltcma/interactive-assumptions-matrices/",
+      "sourceType": "OFFICIAL_DATA_DOWNLOAD",
+      "expectedFormat": "csv",
+      "parser": "jpm-ltcma-csv",
+      "role": "BENCHMARK",
+      "benchmarkSelectionReason": "PM 지시(2026-09-16 §2 SOURCE B · §11): 상관이 필요하면 J.P. Morgan 공식 Matrix를 우선 확인한다. AllianzGI 원문은 Developed World Equities와의 상관만 제공하므로, 한국 주식이 들어 있는 공식 전체 상관행렬(J.P. Morgan 2026 LTCMA 원화 기준 · 10~15년 전략적 자산배분용)을 Benchmark로 명시 등록한다. 코드는 Benchmark 기관을 자동으로 바꾸지 않는다.",
+      "publicationCycle": "ANNUAL",
+      "checkFrequency": "MONTHLY",
+      "checkFrequencyDays": 25,
+      "currency": "KRW",
+      "horizonYears": {
+        "min": 10,
+        "max": 15
+      },
+      "methodologyUrl": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-methodology-handbook.pdf",
+      "requiredClasses": [
+        "Korean Equity",
+        "U.S. Large Cap",
+        "Emerging Markets Equity"
+      ],
+      "returnDefinition": "COMPOUND",
+      "volatilityDefinition": "Annualized Volatility (%) (원문 머리글)",
+      "verifiedEditions": {
+        "2026": {
+          "sourceTitle": "2026 Long-Term Capital Market Assumptions - Korean won (KRW) assumptions matrix",
+          "asOfDate": "2025-09-30",
+          "publishedAt": "2025-10-20",
+          "evidence": {
+            "asOfDate": "2026 LTCMA 전체 보고서(https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf) 각 도표 출처 \"J.P. Morgan Asset Management; estimates as of September 30, 2025\" 및 행렬 쪽 제목 \"2026 estimates and correlations\"",
+            "publishedAt": "J.P. Morgan 공식 보도자료 \"J.P. Morgan Releases 2026 Long-Term Capital Market Assumptions\" 게시일 2025-10-20",
+            "horizonYears": "전체 보고서 각주 \"Annualized average expected return over our 10- to 15-year time horizon\"",
+            "currency": "공식 interactive matrix의 통화 목록(currencies.json) \"Korean Won - KRW\" 선택 시 불러오는 파일"
+          }
+        }
+      },
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": "JPM-KRW-2026.1"
+    },
+    {
+      "sourceId": "JPM_LTCMA_FULL_REPORT",
+      "kind": "REFERENCE",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceTitle": "2026 Long-Term Capital Market Assumptions - Full Report",
+      "sourceUrl": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf",
+      "sourceType": "OFFICIAL_PDF",
+      "expectedFormat": "pdf",
+      "purpose": "Benchmark 행렬의 기준일 · 투자기간 근거, 새 edition 발행 확인",
+      "checkFrequency": "MONTHLY",
+      "checkFrequencyDays": 25,
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": null
+    },
+    {
+      "sourceId": "JPM_LTCMA_METHODOLOGY",
+      "kind": "REFERENCE",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceTitle": "Long-Term Capital Market Assumptions: Methodology Handbook",
+      "sourceUrl": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-methodology-handbook.pdf",
+      "sourceType": "OFFICIAL_PDF",
+      "expectedFormat": "pdf",
+      "purpose": "변동성 · 상관 방법론(Chapter 4) 교차 확인",
+      "checkFrequency": "QUARTERLY",
+      "checkFrequencyDays": 85,
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": null
+    },
+    {
+      "sourceId": "VANGUARD_VCMM_FORECASTS",
+      "kind": "REFERENCE",
+      "provider": "Vanguard",
+      "sourceTitle": "Vanguard Capital Markets Model - return forecasts (Setting realistic expectations)",
+      "sourceUrl": "https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html",
+      "sourceType": "OFFICIAL_WEBPAGE",
+      "expectedFormat": "html",
+      "purpose": "장기 CMA 방법론 · 자산군 중심 설계 교차 확인(수치는 이 Dataset 체계에 복사하지 않는다 - US_EQUITY Return Key 근거는 기존 CMA_SOURCE_METADATA 그대로)",
+      "checkFrequency": "QUARTERLY",
+      "checkFrequencyDays": 85,
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": null
+    },
+    {
+      "sourceId": "BLACKROCK_CMA",
+      "kind": "REFERENCE",
+      "provider": "BlackRock",
+      "sourceTitle": "BlackRock Capital Market Assumptions",
+      "sourceUrl": "https://www.blackrock.com/institutions/en-global/institutional-insights/thought-leadership/capital-market-assumptions",
+      "sourceType": "OFFICIAL_WEBPAGE",
+      "expectedFormat": "html",
+      "purpose": "방법론 교차 확인(수치를 다른 기관과 평균 · 혼합하지 않는다)",
+      "checkFrequency": "QUARTERLY",
+      "checkFrequencyDays": 85,
+      "active": true,
+      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastDatasetVersion": null
+    }
+  ],
+  "http": {
+    "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf": {
+      "etag": null,
+      "lastModified": "Tue, 24 Feb 2026 09:14:32 GMT",
+      "sha256": "689512607c87830b3f1fd2b0e21ba1f4da45bb8a571ef93e8cc5adc6b0a96da0"
+    },
+    "https://cdn.jpmorganfunds.com/content/dam/jpm-am-aem/global/en/institutional/interactive-matrix/data/krw.csv": {
+      "etag": "\"b8a8-643764b223980-gzip\"",
+      "lastModified": "Thu, 13 Nov 2025 09:13:26 GMT",
+      "sha256": "b59143b645ac4538b52193043f93b1fc559691d2997477d5ccb9e571b81f96de"
+    },
+    "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf": {
+      "etag": null,
+      "lastModified": null,
+      "sha256": "915b291eac07acea62509c35d23746c0d26d783127574dd3174cf14fccf34b97"
+    },
+    "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-methodology-handbook.pdf": {
+      "etag": null,
+      "lastModified": null,
+      "sha256": "2cff6079c2f534dcc75985f62cab28711c2b29eb606af42eefc5f8fc9293adc5"
+    },
+    "https://corporate.vanguard.com/content/corporatesite/us/en/corp/vemo/vemo-return-forecasts.html": {
+      "etag": null,
+      "lastModified": null,
+      "sha256": null
+    },
+    "https://www.blackrock.com/institutions/en-global/institutional-insights/thought-leadership/capital-market-assumptions": {
+      "etag": "W/\"D+zqCgJ8i2sCStN7y7dYVKNYYYwsHiv7KeFa1Txw2RQ=\"",
+      "lastModified": "Invalid Date",
+      "sha256": null
+    }
+  }
+}
