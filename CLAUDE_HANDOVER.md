@@ -32,6 +32,27 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-17 새벽) — 📈 **v249 장기 MC CMA 체계 · CMA 자동 업데이트 · Correlation Benchmark** (v248 → **v249**)
+
+**PM FINAL IMPLEMENTATION DIRECTIVE(2026-09-16) 구현.** 체크리스트 **§37**(37-0 승인 정책 · 37-1 대체된 과거 문구 · 37-2 구현 기록 · 37-3 보수적 해석 · 37-4 PM 확인 필요)에 전체 기록. **로컬 커밋만 했고 push · 배포는 하지 않았다**(push 시 Pages 배포 + 매월 자동 확인 워크플로 활성화 → PM 승인 후).
+
+- **무엇이 바뀌었나**: 장기 Monte Carlo의 **변동성 · 상관계수**가 종목 1년 가격 이력 대신 **공식 기관 장기 CMA 자산군**에서 온다. 수익률(μ)은 기존 Return Key 그대로(아래 R-1). MC 엔진(js/15) 무변경.
+- **초기 ACTIVE 세트 CMA-2026.1**: PRIMARY `AGI-LTCMA-2026Q1-USD`(AllianzGI 2026 Q1 · 기준일 2025-12-31 · USD · 10년 - Korea 6.8/27.9/DW 0.84, North America 6.1/16.5, EM 6.7/24.1) + BENCHMARK `JPM-LTCMA-2026-KRW`(J.P. Morgan 2026 LTCMA 원화 행렬 · 기준일 2025-09-30 · 10~15년 - 국내↔미국 0.4124 · 국내↔신흥국 0.6772 · 미국↔신흥국 0.5007). 둘 다 실제 공식 원문을 Pipeline으로 받아 검증(원문 hash 기록).
+- **자동 발견**: AllianzGI **2026 Q2**(기준일 2026-03-31, Korea 7.3/29.4/0.84)가 `VERIFIED`(검토 대기)로 저장돼 있다 - 자동 ACTIVE 안 함.
+- **파일**: `data/cma/`(registry · datasets · active · audit-log · app-asset-class-map) · `scripts/cma/*` · `scripts/cma-update.js`(check/status/approve/activate/build) · `.github/workflows/cma-update-check.yml`(매달 3일, data/cma만 커밋) · `js/26-cma-data.js`(activate가 생성, 직접 수정 금지) · `js/27-cma-runtime.js` · js/16(어댑터 CMA 경로, 가격 이력 조회 제거) · js/18(결과에 cmaDatasetVersion · inputModelVersion · cma) · js/19("장기 가정 출처" 요약/상세 · 입력 서명에 세트 버전 · 장기 가정 오류 시 자산 이름) · js/21(안내 문구) · index.html(출처 영역 · script 2개 · v249) · sw.js v249 · package.json(cma:check/status) · CLAUDE.md(PM 승인 한 줄).
+- **CMA 운영 절차**: `npm run cma:check`(또는 Actions) → 새 Dataset VERIFIED → PM 승인 `node scripts/cma-update.js approve <id> --by .. --note ..` → `activate --primary <id> --benchmark <id> --by .. --note ..`(이전 ACTIVE는 SUPERSEDED, js/26 재생성) → sw.js · index.html 버전 올려 릴리스. 과거 MC 결과는 소급 변경되지 않고 "다시 계산 필요"로 표시된다.
+- **보수적 해석(§37-3)**: R-1 AllianzGI 수익률 정의(기하/산술) 원문 미표기 → MC 수익률은 Return Key 유지(정의 확인 시 쓰는 경로는 구현 · 테스트됨) · R-2 미국 주식 = North America Equities · R-3 DEV_EX_US 자산군 없음 → 해당 위험자산이 있으면 MC 실행 차단(자산 이름 안내) · R-4 채권/현금 티커 σ=0 · R-5 수익률 가정 없는 자산 σ=0(경고 유지) · R-6 사용자 키 개별주는 상장 시장 자산군 · R-7 같은 자산군 ρ=1 · R-8 PRIMARY USD vs Benchmark KRW 기준 차이 · R-9 엔진 diagnostics 문자열 'date-aligned' 그대로.
+- **테스트**: 신규 Unit `test/cma-dataset-parser`(14) · `test/cma-pipeline`(12, CASE A~L: 새 자료 · 변경 없음 · 값 변경 · 다운로드/timeout 실패 · 해석 실패 · 잘못된 행렬 · 404 · 중복 · 자동 ACTIVE 금지 · 활성화/SUPERSEDED · 참고 문서 · 실제 Registry) · `test/cma-runtime`(16) · 신규 E2E `e2e/95`(5). 정책에 따른 기존 기대값 변경 3곳(test/mc-adapter-account-scope 8-b→8-b/8-c · test/return-rate-integration B-1 σ · runSigma0 σ=0 명시).
+- **게이트**: Unit 401/401 · E2E 941/941 · ESLint 0 · Data Guard PASS · Release Guard PASS(v249) · 375 Dark 실브라우저 확인.
+- **수치 Backtest(공식 세트, PV 5억 · 월 200만 · 20년 · 1만 회, 억원)**: 단일 σ0 Det=P50 30.67 · 단일 국내 P50/Det 1.021 · 국내50+미국50 1.155 · 국내60+채권40 1.166 · 5자산 1.176. 합성(σ40% ρ0.3 5종목) 2.236 - 이전 1차~5차 조사의 과대 배율 원인이 종목 σ였음을 확인.
+
+**남은 OPEN / PM 결정 대기(§37-4)**
+1. CMA-2026.1 ACTIVE 승인 확인(지시서를 근거로 기록) · 2. AllianzGI 2026 Q2 활성화 여부 · 3. R-1 수익률 정의 · 4. R-3/R-4/R-5/R-8 처리 수용 여부 · 5. push 시 Pages 배포와 월간 자동 커밋 워크플로 활성화.
+- 로컬 PC에서 pdftotext(xpdf 4.06) 사용 확인. Actions는 poppler-utils를 설치한다(출력 형식이 다르면 PARSE_FAILED로 기록되고 ACTIVE 유지).
+- 기존 OPEN(F-03 등 v248 섹션)은 그대로.
+
+---
+
 ## 최근 세션 요약 (2026-09-16 저녁) — 🧭 **v248 적립계획 카드 이동 · 미래예측 정비 · 최종 감사 후속** (v247 → **v248**)
 
 **v248 (commit `dc5c0f039db9fc528f67fdc11cc15a37993b7f7e`, PM COMMIT · PUSH 승인 · origin/main push 완료)**. **production release 아님**(배포는 별도 PM 승인). 체크리스트 **§35 · §36(36-1~36-5)**에 전체 기록. **표시 계층만 바꿨다** — 계산 · 데이터 구조 · Return Key · Instrument Master · MC 엔진 · 저장/복원/동기화 · 엑셀 생성은 무변경(js/01 · 04 · 06~09 · 11~18 · 20 · 22~25 diff 0).
