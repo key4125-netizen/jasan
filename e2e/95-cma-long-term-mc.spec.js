@@ -67,7 +67,7 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(summary).toContainText('세트 CMA-2026.1');
   await expect(summary).toContainText('Benchmark 참고값 1쌍');
   await expect(summary).toContainText('J.P. Morgan Asset Management(기준일 2025-09-30)');
-  await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다');
+  await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)');
   // 상세는 기본 접힘 → 펼치면 자산군 변동성과 Benchmark 쌍이 보인다.
   const body = page.locator('#mcCmaDetailBody');
   await expect(body).toHaveAttribute('style', /max-height:\s*0px/);

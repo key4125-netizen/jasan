@@ -715,9 +715,10 @@ function renderMonteCarloCmaSource(cma, setVersion) {
   } else {
     lines.push('상관계수: 서로 다른 위험자산 조합이 없어 사용하지 않았습니다.');
   }
+  // [§37-5] 수익률은 정책상 기존 수익률 기준(Return Key)이다 - CMA에서는 변동성 · 상관계수만 쓴다.
   const allReturnKey = (cma.instruments || []).every((i) => i.riskFree || i.returnSource !== 'CMA');
-  if (allReturnKey && p.returnDefinition === 'NOT_STATED_IN_SOURCE') {
-    lines.push('수익률: 기존 수익률 기준을 그대로 씁니다(원문에 수익률 정의가 없어 CMA 수익률은 적용하지 않았습니다).');
+  if (allReturnKey) {
+    lines.push('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다).');
   }
   mcUiEl('mcCmaSourceSummary').innerHTML = lines.map((l) => escapeHtml(l)).join('<br>');
 

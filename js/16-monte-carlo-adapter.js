@@ -98,7 +98,8 @@ async function buildMonteCarloInputFromState(config) {
 
   /* [§37 CMA-01~03] 변동성 · 상관계수는 장기 CMA 자산군에서 온다 - 종목의 최근 가격 이력을 쓰지 않는다.
    * 수익률(μ)은 기존 Return Key 해석(resolveMcEntryRateDetail - 결정론과 같은 함수 · 같은 인자)을 그대로 쓴다.
-   * ACTIVE Dataset의 수익률 정의가 원문에서 확인된 경우(returnUsableForMc)에만 시스템 기본 수익률 항목을 CMA 수익률로 바꾼다. */
+   * [§37-5 PM 확정] CMA 기대수익률은 MC 직접 입력으로 쓰지 않는다(MC_CMA_RETURN_POLICY.useCmaExpectedReturn = false).
+   * 아래 CMA 수익률 분기는 그 정책이 PM 결정으로 바뀔 때만 동작하며, Dataset의 수익률 정의(returnUsableForMc)만으로는 켜지지 않는다. */
   const cmaEntries = []; // assetOrder 순서
   const addEntry = (key, weight, rateDetail, feeRatePctRaw, feeExplicit, label, riskFreeFlag) => {
     const { appClass, basis } = resolveMcAppAssetClass(rateDetail);
@@ -112,7 +113,7 @@ async function buildMonteCarloInputFromState(config) {
     let returnSource = 'RETURN_KEY';
     if (!riskFree) {
       const risk = resolveCmaRiskForAppClass(appClass);
-      if (risk.status === 'MAPPED' && risk.returnUsableForMc && isSystemDefaultMcRate(rateDetail, presetKey)) {
+      if (MC_CMA_RETURN_POLICY.useCmaExpectedReturn && risk.status === 'MAPPED' && risk.returnUsableForMc && isSystemDefaultMcRate(rateDetail, presetKey)) {
         muAnnualPct = cmaGeometricToAppRate(risk.expectedReturnPct);
         returnSource = 'CMA';
       }

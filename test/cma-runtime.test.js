@@ -260,7 +260,7 @@ test('M-3. 사용자 키 개별주는 사용자 수익률을 그대로 쓰고, �
   assert.strictEqual(r.cma.instruments[0].appClassBasis, 'listedStock');
 });
 
-test('M-4. [수익률 정의가 확인된 세트일 때만] 시스템 기본 수익률 항목은 CMA 수익률(APR 변환)로 바뀌고, 사용자 수익률은 그대로다', async () => {
+test('M-4. [§37-5 PM 확정] 수익률 정의가 확인된 세트여도 CMA 기대수익률은 MC에 쓰지 않는다 - 시스템 · 사용자 수익률 모두 Return Key 그대로', async () => {
   const sb = sandbox();
   const confirmed = JSON.parse(JSON.stringify(CMA_ACTIVE_SET));
   confirmed.primary.returnUsableForMc = true; // SYNTHETIC_TEST_DATA - 정의 확인 가정(실제 세트는 false)
@@ -270,9 +270,17 @@ test('M-4. [수익률 정의가 확인된 세트일 때만] 시스템 기본 수
   sb.state.projection.customScenarioRates = { NASDAQ: { normal: 9 } };
   const r = await build(sb);
   const kr = r.instruments[r.assetOrder.indexOf('T:069500.KS')], us = r.instruments[r.assetOrder.indexOf('T:QQQM')];
-  assert.strictEqual(kr.muAnnual, sb.cmaGeometricToAppRate(6.8) / 100);
+  assert.strictEqual(kr.muAnnual, 0.07); // KOSPI Return Key(일반적) - CMA 6.8%가 아니다
   assert.strictEqual(us.muAnnual, 0.09); // 사용자 값 보호(RET-02-05)
-  assert.deepStrictEqual(Array.from(r.cma.instruments, (i) => i.returnSource).sort(), ['CMA', 'RETURN_KEY']);
+  assert.strictEqual(kr.sigmaAnnual, 27.9 / 100); // 변동성은 CMA
+  assert.deepStrictEqual(Array.from(r.cma.instruments, (i) => i.returnSource), ['RETURN_KEY', 'RETURN_KEY']);
+});
+
+test('M-6. [§37-5] 장기 MC 수익률 정책 상수 - CMA 기대수익률 미사용 · CMA 변동성 · 상관 사용 · 수익률 출처 RETURN_KEY', () => {
+  assert.deepStrictEqual({ ...rt.MC_CMA_RETURN_POLICY }, { useCmaExpectedReturn: false, useCmaVolatility: true, useCmaCorrelation: true, returnSource: 'RETURN_KEY' });
+  assert.ok(Object.isFrozen(rt.MC_CMA_RETURN_POLICY));
+  // 실제 ACTIVE 세트의 수익률 정의도 미표기 상태로 기록돼 있다(정책과 별개로 원문 사실).
+  assert.strictEqual(CMA_ACTIVE_SET.primary.returnUsableForMc, false);
 });
 
 test('M-5. 같은 입력이면 어댑터 출력이 같고(결정적), 어댑터는 state를 바꾸지 않는다', async () => {

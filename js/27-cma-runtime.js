@@ -10,6 +10,14 @@ const CMA_CORRELATION_SOURCE = Object.freeze({
   OFFICIAL_CMA_MAPPING: 'OFFICIAL_CMA_MAPPING',
   BENCHMARK_REFERENCE: 'BENCHMARK_REFERENCE'
 });
+// [§37-5 PM 확정 · 2026-09-17] 장기 MC 수익률 정책 - CMA 변동성 · 상관계수는 쓰고, CMA 기대수익률은 MC 직접 입력으로 쓰지 않는다
+// (기존 Return Key 유지). Dataset의 수익률 정의가 확인되더라도 이 값은 별도 PM 정책 결정 없이 바꾸지 않는다.
+const MC_CMA_RETURN_POLICY = Object.freeze({
+  useCmaExpectedReturn: false,
+  useCmaVolatility: true,
+  useCmaCorrelation: true,
+  returnSource: 'RETURN_KEY'
+});
 // 장기 MC 입력 방식의 버전 - 엔진 계산식(js/15 MC_MODEL_VERSION)과 별개로 "무엇을 입력으로 썼는가"를 결과에 남긴다.
 const MC_INPUT_MODEL_VERSION = 'CMA-ASSET-CLASS-1';
 
@@ -182,7 +190,7 @@ function summarizeCmaCorrelationPairs(pairs) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    CMA_CORRELATION_SOURCE, MC_INPUT_MODEL_VERSION, getActiveCmaSet, getActiveCmaSetVersion, resolveCmaRiskForAppClass,
+    CMA_CORRELATION_SOURCE, MC_INPUT_MODEL_VERSION, MC_CMA_RETURN_POLICY, getActiveCmaSet, getActiveCmaSetVersion, resolveCmaRiskForAppClass,
     resolveCmaCorrelation, buildCmaRiskInputs, summarizeCmaCorrelationPairs
   };
 }

@@ -207,8 +207,10 @@
 - order: contribution → target allocation → correlated shock → gross return → fee → annual rebalancing → milestone snapshot
 - inflation은 engine 외부 milestone에서 적용
 - GBM은 geometric/median-like annual growth 가정
-- correlation은 date-aligned daily returns + Pearson + PSD correction + Cholesky *(→ 2026-09-16 PM 승인으로 장기 MC 상관계수는 CMA 체계로 대체, §37)*
-- missing observations <10 → corr 0 + Safety WARNING *(→ §37로 대체 - 장기 MC는 가격이력 상관을 쓰지 않는다)*
+- 수익률(μ)은 기존 Return Key를 쓴다 - CMA Expected Return은 MC 직접 입력으로 쓰지 않는다(§37-5)
+- volatility는 장기 CMA 자산군 변동성을 쓴다 - 종목 최근 가격이력 변동성을 쓰지 않는다(§37)
+- correlation은 장기 CMA 상관(OFFICIAL_CMA_DIRECT → OFFICIAL_CMA_MAPPING → BENCHMARK_REFERENCE) + PSD correction + Cholesky(§37)
+- 공식 CMA · 등록 Benchmark 어디에도 상관이 없거나 CMA 자산군이 없는 위험자산이 있으면 임의 값 없이 실행 전 오류로 알린다(§37)
 - bond/cash sigma 0은 의도적일 수 있으므로 데이터 부족과 구분
 - goal probability = samples >= goal / n
 - deterministic와 MC는 경제적으로 동일하지 않다.
@@ -562,7 +564,6 @@ Release gate:
 다음은 PM 승인 없이는 추가하지 않는다.
 - AI 기능
 - local AI on mobile
-- ~~CMA 자동 업데이트~~ *(→ 2026-09-16 PM 승인으로 범위 포함, §37 CMA-AUTO-01~06)*
 - 실시간 데이터 redesign
 - 대규모 sector map expansion
 - 새 Macro indicator
@@ -571,6 +572,9 @@ Release gate:
 - 주식 Alpha / NASDAQ premium / SCHD premium 임의 추가
 - 과도한 계좌 segmentation
 - 전문가용 CMA research platform
+- 새 CMA provider 추가 · CMA Return의 MC 적용 · Benchmark 변경(§37-6, 별도 PM 승인 필요)
+
+> CMA 자동 업데이트(Fetch → Parse → Validate → Diff → Version → Review, 자동 ACTIVE 금지)는 2026-09-16 PM 승인으로 범위에 포함됐다(§37). 과거 Out-of-Scope 기록과 변경 사실은 §15 Change Log에 보존한다.
 - 기능성 카드/화면의 무분별한 추가
 
 ## 14. PM Decision Gate
@@ -628,6 +632,11 @@ Claude Code가 다음 중 하나를 발견하면 구현하지 말고 PM에게 ST
 - Bond domain — BACKLOG / 별도 Phase (§9-1 audit 결과 · §9-2 정의 backlog 참고)
 - Tax MC 3-scope — REQUIRED / 구현 시 반드시 체크
 - **장기 MC CMA 체계 · CMA 자동 업데이트 · Correlation Benchmark — PM 승인 정책 등록(2026-09-16, §37)** — §7 상관 · RET-03-06 변동성 · §13 CMA 자동 업데이트 문구를 §37로 대체(삭제 없음). 구현 기록은 §37-2 이후
+- **v249 정책 · 문서 Finalization(2026-09-17, §37-6)** — 본문을 최신 정책으로 정리하고 과거 문구는 여기에 보존한다.
+  - 과거 §13 Out-of-Scope 항목: "CMA 자동 업데이트" → 2026-09-16 PM 승인으로 범위 포함(§37 CMA-AUTO-01~06). §13 목록에서 제외하고 안내 문장으로 대체
+  - 과거 §7 기본 구조: "correlation은 date-aligned daily returns + Pearson + PSD correction + Cholesky" · "missing observations <10 → corr 0 + Safety WARNING" → 장기 CMA 상관 · 변동성, Return Key 수익률로 본문 교체(§37 · §37-5)
+  - RET-03-06(PM Decision 기록)은 원문을 유지하고 §37 대체 표시만 둔다
+  - 정책 고정: CMA-2026.1 ACTIVE 유지 · AllianzGI 2026 Q2 VERIFIED 유지 · Return 정책(CMA-RET-01~05) 확정 · J.P. Morgan 2026 KRW Benchmark 유지 · DEV_EX_US 별도 PM 검토 · 자동 업데이트 현행 유지 · 추가 구현 금지
 
 ## 16. Source Repository Data-Safety Rule
 
@@ -1923,3 +1932,31 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 3. R-1 수익률 정의(기관 문의 · 기하로 간주 · Return Key 유지 중 선택).
 4. R-3 DEV_EX_US 처리(현재 실행 차단) · R-4/R-5 σ=0 처리 · R-8 통화 기준 차이 수용 여부.
 5. 자동 확인 워크플로가 main에 `data/cma` 변경을 매달 커밋한다(종목 마스터 워크플로와 같은 방식) - push 시 Pages 배포가 함께 일어나는지 확인.
+
+**37-5. 장기 MC 수익률 정책 고정 (PM 확정 · 2026-09-17)** - 37-3 R-1의 보수적 해석을 정책으로 확정한다(37-4 3번 해소).
+
+| ID | 확정 내용 |
+|---|---|
+| CMA-RET-01 | CMA Expected Return은 현재 Monte Carlo의 직접 입력값으로 **사용하지 않는다** |
+| CMA-RET-02 | MC 수익률(μ)은 **기존 Return Key**(user override · Instrument Master · 자동 추천 · unresolved · legacy)를 그대로 쓴다 - 결정론과 같은 해석 경로 |
+| CMA-RET-03 | CMA **Volatility는 사용**한다(Asset Class 변동성) |
+| CMA-RET-04 | CMA **Correlation은 사용**한다(Direct → Mapping → Benchmark) |
+| CMA-RET-05 | 향후 CMA Return 적용은 **별도 PM 정책 결정 없이는 변경하지 않는다** - Dataset의 수익률 정의가 확인되거나(returnUsableForMc) 새 세트가 ACTIVE가 되어도 자동으로 바뀌지 않는다 |
+
+- 구현: `js/27` `MC_CMA_RETURN_POLICY`(useCmaExpectedReturn false · useCmaVolatility true · useCmaCorrelation true · returnSource RETURN_KEY, 동결 객체) · `js/16` CMA 수익률 분기는 이 정책 값이 true일 때만 동작 · `js/19` 요약 문구 "수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)".
+- 테스트: `test/cma-runtime` M-4(정의가 확인된 세트여도 Return Key 유지) · M-6(정책 상수) · `e2e/95` A(요약 문구).
+- CMA Dataset에 저장된 기대수익률 값은 원문 기록 · 비교 목적으로 그대로 보존한다(삭제하지 않음).
+
+**37-6. v249 PM 최종 정책 고정 (PM FINALIZATION · 2026-09-17)** - 개발이 아니라 정책 · 문서 확정이다(코드 · 모델 변경 없음).
+
+| 항목 | 확정 |
+|---|---|
+| ACTIVE 세트 | **CMA-2026.1 ACTIVE 유지** (PRIMARY `AGI-LTCMA-2026Q1-USD` + BENCHMARK `JPM-LTCMA-2026-KRW`) - 37-4 1번 해소 |
+| AllianzGI 2026 Q2 | **VERIFIED 유지** - 자동 ACTIVE 금지 · 활성화하지 않는다. 동일 조건 비교(READ-ONLY): Det 변화 0% · P50 +0.0~+1.8% · 분포 폭 확대(단일 국내주식 P90 +8.5% · 평균 +7.9% · P10 −5.7%, 한국 변동성 27.9→29.4%) - 37-4 2번 해소 |
+| Return | §37-5 CMA-RET-01~05 최종 확정 - CMA Expected Return은 MC 직접 입력 아님 · 기존 Return Key 유지 · CMA Volatility 사용 · CMA Correlation 사용 · 향후 CMA Return 적용은 별도 PM 승인 없이 변경 금지(`js/27 MC_CMA_RETURN_POLICY`) - 37-4 3번 해소 |
+| J.P. Morgan 2026 KRW Matrix | 공식 Source 검증 완료(공식 interactive matrix 데이터 파일, 재수집 SHA-256 `b59143b645ac4538b52193043f93b1fc559691d2997477d5ccb9e571b81f96de` = 저장값) · 62×62 · 자산군 순서 동일 · Korea-US **0.4124456921608721**(CSV 29행 33열) · Korea-EM **0.6772476909891292**(42행 33열) · US-EM **0.5007268458463904**(42행 34열). **Benchmark Reference 정책 유지** |
+| DEV_EX_US | **현재 해결하지 않는다 · 별도 PM 정책 검토 대상**(AllianzGI에 해당 자산군 없음). σ=0 등 임의 fallback을 두지 않는다 - 현행대로 이 성격의 위험자산(수익률 가정 있음)이 목표에 있으면 MC를 실행하지 않고 자산 이름과 함께 안내한다(`test/cma-runtime` M-2 · `e2e/95` D) - 37-4 4번 중 R-3 |
+| CMA 자동 업데이트 | 현재 구현 유지 - Fetch → Parse → Validate → Diff → Version → Review · 자동 ACTIVE 금지 · 실패 시 기존 ACTIVE 유지 |
+| 추가 구현 금지 | 새 CMA provider · Return 모델 변경 · DEV_EX_US 해결 · UI 확장 · MC Engine 변경 · Benchmark 변경 |
+
+- 남은 PM 검토(구현 금지 상태로 기록만): DEV_EX_US 정책 · R-4/R-5(채권 · 현금 티커와 가정 없는 자산 σ=0, 기존 §7 · RET-03-00 적용) · R-8(PRIMARY USD vs Benchmark KRW 기준 차이) · push 시 Pages 배포와 월간 자동 확인 워크플로 활성화(37-4 5번).
