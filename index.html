@@ -180,6 +180,22 @@
      이 카드가 외부 시세 없이는 렌더되지 않아 e2e/32가 그동안 측정하지 못했던 사각지대였다. */
   #riskDetailBtn { font-size: 14px; }
 
+  /* [v247 REQ-06 · REQ-07] 일반계좌 포트폴리오 타이틀 행의 두 버튼.
+     - 핵심 조작인 [비중조절]은 브랜드 채움(가장 눈에 띔), 보조 기능인 [엑셀 다운로드]는 같은 크기의 라인 버튼으로
+       색과 강조도를 분명히 다르게 둔다(둘 다 44px 터치 · 14px 글자 · Global Readability Policy 준수).
+     - 공용 .detail-btn(10px)은 KPI 카드들이 함께 쓰므로 건드리지 않고, 이 화면 전용 클래스만 새로 둔다. */
+  .portfolio-weight-btn, .portfolio-export-btn {
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-size: 14px; font-weight: 600; min-height: 44px; padding: 8px 12px; border-radius: 10px;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .portfolio-weight-btn { background: #4f46e5; color: #fff; border: 1px solid #4f46e5; }
+  .portfolio-weight-btn:hover { background: #4338ca; border-color: #4338ca; }
+  .portfolio-export-btn { background: transparent; color: #475569; border: 1px solid #cbd5e1; }
+  .portfolio-export-btn:hover { border-color: #818cf8; color: #4f46e5; }
+  .dark .portfolio-export-btn { color: #cbd5e1; border-color: #475569; }
+  .dark .portfolio-export-btn:hover { border-color: #818cf8; color: #a5b4fc; }
+
   /* [모바일 당겨서 새로고침(Pull-to-Refresh) 방지] 화면을 아래로 당기면 브라우저가 전체 페이지를
      새로고침해버리는 제스처를 최상위 스크롤 지점에서 차단한다. */
   html, body { overscroll-behavior-y: contain; }
@@ -235,7 +251,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v246</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v247</p>
           </div>
         </div>
 
@@ -970,16 +986,16 @@
          (요청 반영), 좀 더 포괄적인 이름으로 바꿨다 - 내부 subtab 키('target')와 DOM id(rebalanceSubTarget
          등)는 코드 영향 최소화를 위해 그대로 유지한다. -->
     <div class="flex items-center gap-1 mb-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
-      <button type="button" data-subtab="target" class="rebalance-subtab-btn active touch-target min-h-[44px] flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">포트폴리오 구성</button>
+      <button type="button" data-subtab="target" class="rebalance-subtab-btn active touch-target min-h-[44px] flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">일반계좌 포트폴리오</button>
       <button type="button" data-subtab="projection" class="rebalance-subtab-btn touch-target min-h-[44px] flex-1 sm:flex-none text-sm font-semibold px-3 py-2 rounded-lg whitespace-nowrap">미래 예측</button>
     </div>
 
     <div id="rebalanceSubTarget">
     <!-- [일반계좌 한정] 연금저축/IRP/ISA 등 절세 계좌는 세제 혜택 유지를 위해 자유롭게 매도/매수하기
          어려운 경우가 많아, 실제로 매수/매도 실행이 가능한 '일반계좌' 보유 자산만 계산 대상으로 삼는다.
-         대시보드("금융투자현황")는 계좌 구분과 무관하게 전체 자산을 그대로 보여준다 - 이 안내 배지는
-         이 탭에서만 적용되는 범위 제한임을 알리기 위한 것이다. -->
-    <p id="rebalanceScopeNote" class="text-sm font-medium text-amber-600 dark:text-amber-400 mb-3">※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.</p>
+         [v247 REQ-08 · REQ-09] 그 사실을 서브탭 이름("일반계좌 포트폴리오")이 직접 말하게 되어, 같은 말을
+         반복하던 안내 문구(rebalanceScopeNote)와 그 아래 여백을 함께 없앴다 - 계산 대상 범위는 그대로다
+         (getRebalanceTotals 등 계산 로직 무변경). -->
 
     <!-- [소유자별 독립 목표 비중 - Option B] 신랑/와이프가 완전히 독립된 목표를 갖는다 - 팝업
          (rebalanceTargetModal)은 하나를 공유하되 openRebalanceTargetModal(owner)로 어느 쪽을 편집
@@ -993,38 +1009,50 @@
          (positionAnalysisAccordionOpen/reapplyPositionAnalysisAccordionHeights, js/04 - 기존
          setAccordionOpen 패턴). [비중조절] 버튼은 별도 클릭 대상이라
          (data-rebalance-detail-btn) 아코디언 토글과 겹치지 않는다. -->
-    <div id="positionAnalysisAccordionHusbandBtn" class="flex items-center justify-between gap-2 mb-2 cursor-pointer">
-      <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">👤 신랑 목표 비중
+    <!-- [v247 REQ-01 · REQ-02] 소유자 타이틀의 접기/펼치기 상태 하나(positionAnalysisAccordionOpen[owner], js/04)가
+         "세부 종목 현황"(renderPortfolioTargetSummary)과 "포지션 그래프"(renderPositionAnalysisCard)에 함께 적용된다 -
+         예전엔 요약 카드가 아코디언 밖에 있어 그래프만 접혔다. 두 영역을 같은 body 안에 두어 상태를 하나로 공유한다
+         (새 상태를 만들지 않는다 · 계산/집계 로직 무변경 · 신랑/와이프는 예전처럼 서로 독립).
+         [v247 REQ-06 · REQ-07] 타이틀 행 오른쪽에 [엑셀 다운로드](보조 · 라인 버튼)와 [비중조절](핵심 조작 · 브랜드
+         채움 버튼)을 나란히 둔다. 두 버튼 모두 아코디언 토글과 겹치지 않게 data 속성으로 걸러진다(js/04). -->
+    <div id="positionAnalysisAccordionHusbandBtn" class="flex items-center justify-between gap-x-2 gap-y-1.5 flex-wrap mb-2 cursor-pointer">
+      <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 min-w-0">👤 신랑 목표 비중
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="positionAnalysisAccordionHusbandChevron"></i>
       </h3>
-      <button type="button" data-rebalance-detail-btn data-owner="신랑" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" data-rebalance-export-btn class="portfolio-export-btn">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
+        </button>
+        <button type="button" data-rebalance-detail-btn data-owner="신랑" class="portfolio-weight-btn">비중조절 <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+      </div>
     </div>
-    <!-- [Phase 8 - 초보자용 요약, 항상 펼쳐짐] "내 돈이 지금 어떻게 나뉘어 있는가"를 클릭 없이 바로
-         보여준다 - renderPortfolioTargetSummary(js/04)가 채운다. 아래 상세 분석 아코디언(기본 닫힘)보다
-         먼저(1순위) 배치한다. -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-3 p-3 sm:p-4">
-      <div id="portfolioTargetSummaryHusband"></div>
-    </section>
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-4 overflow-hidden">
       <div id="positionAnalysisAccordionHusbandBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <div class="p-3 sm:p-4">
+          <!-- [Phase 8 - 초보자용 요약] "내 돈이 지금 어떻게 나뉘어 있는가" - renderPortfolioTargetSummary(js/04)가 채운다. -->
+          <div id="portfolioTargetSummaryHusband"></div>
+          <div class="my-3 border-t border-slate-100 dark:border-slate-800"></div>
           <div id="positionAnalysisCardHusband"></div>
         </div>
       </div>
     </section>
 
-    <div id="positionAnalysisAccordionWifeBtn" class="flex items-center justify-between gap-2 mb-2 cursor-pointer">
-      <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">👤 와이프 목표 비중
+    <div id="positionAnalysisAccordionWifeBtn" class="flex items-center justify-between gap-x-2 gap-y-1.5 flex-wrap mb-2 cursor-pointer">
+      <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 min-w-0">👤 와이프 목표 비중
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="positionAnalysisAccordionWifeChevron"></i>
       </h3>
-      <button type="button" data-rebalance-detail-btn data-owner="와이프" class="detail-btn shrink-0">비중조절 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" data-rebalance-export-btn class="portfolio-export-btn">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
+        </button>
+        <button type="button" data-rebalance-detail-btn data-owner="와이프" class="portfolio-weight-btn">비중조절 <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+      </div>
     </div>
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-3 p-3 sm:p-4">
-      <div id="portfolioTargetSummaryWife"></div>
-    </section>
     <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm mb-4 overflow-hidden">
       <div id="positionAnalysisAccordionWifeBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
         <div class="p-3 sm:p-4">
+          <div id="portfolioTargetSummaryWife"></div>
+          <div class="my-3 border-t border-slate-100 dark:border-slate-800"></div>
           <div id="positionAnalysisCardWife"></div>
         </div>
       </div>
@@ -1049,39 +1077,19 @@
          [스타일] 위 stockAnalysisBtn과 같은 full-width 카드형 버튼 구조를 재사용하되, 브랜드 색이 아닌
          중립 색을 쓴다 - 모든 사용자가 꼭 손봐야 하는 설정처럼 보이면 안 되기 때문이다("(고급)" 라벨도
          같은 이유로 유지). 새 디자인 시스템을 만들지 않았다. -->
+    <!-- [v247 REQ-04] 위 분석 카드들과 한눈에 구분되도록 색 체계만 바꾼다(제목 · 설명 · id · 핸들러 · 팝업 전부 그대로).
+         분석 카드는 흰색/슬레이트 계열이라, 이 "직접 조정하는 고급 기능"만 violet 계열 테두리 · 배경 · 제목색을 쓴다 -
+         경고(amber)나 핵심 조작(brand)과도 색이 겹치지 않는다. 색만으로 뜻을 전달하지 않도록 ⚙ 아이콘과 "(고급)" 라벨을 유지한다. -->
     <button type="button" id="openScenarioRateManagerBtn"
-      class="w-full mb-4 text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors shadow-sm px-4 py-3">
-      <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">⚙ 수익률 직접 조정 (고급)</span>
-      <span class="block mt-0.5 text-sm text-slate-400 break-keep">자산별 수익률 가정을 직접 설정할 수 있습니다.</span>
+      class="w-full mb-4 text-left rounded-2xl border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors shadow-sm px-4 py-3">
+      <span class="block text-sm font-semibold text-violet-800 dark:text-violet-200">⚙ 수익률 직접 조정 (고급)</span>
+      <span class="block mt-0.5 text-sm text-violet-700 dark:text-violet-300 break-keep">자산별 수익률 가정을 직접 설정할 수 있습니다.</span>
     </button>
 
-    <!-- ===== 종목별 실행 가이드 (예전엔 별도 "실행 가이드" 서브탭이었으나, 요청에 따라 이
-         탭으로 통합됐다 - 자산군/티커 단위로 뭉쳐 있던 목표를 실제 보유 개별 종목 단위로 풀어서, 위의
-         목표 비중 입력에 이어 종목별로 정확히 얼마를 사고 팔아야 하는지 바로 보여준다. 예전에 여기 있던
-         "국내/해외 구성 결과" 등 자산군 단위 요약 카드 3개는 이 더 상세한 가이드와 내용이 겹쳐
-         제거했다.
-         [안내 문구 삭제 - 요청 반영] "목표 항목에 해당하지 않는 자산(부동산 등)은 계산에서 제외됨"을
-         알리던 안내 문구(rebalanceUncoveredNote)를 삭제했다 - 부동산은 이미 이 탭 상단의 정책
-         안내문(※ 절세계좌... 및 부동산을 제외한...)에서 항상 명시되고 있어 중복이었다. -->
-    <!-- [소유자별 순차 아코디언] 설명 문구와 엑셀 다운로드는 접힘/펼침과 무관하게 항상 최상단에 고정
-         노출된다. 그 아래 [전체]/[신랑]/[와이프] 등 실제 소유자 수만큼(getDailyPnlOwnerList() 기준
-         동적 생성) 독립적인 접힘/펼침 섹션이 순서대로 쌓인다 - 서로 배타적이지 않고 동시에 여러 개를
-         펼쳐 둘 수 있다. 각 섹션 헤더에는 그 소유자 기준 요약(총 매수/매도 필요금액, 조정 필요 종목수)이
-         항상 보인다. rebalanceGuideAccordionOpen{ownerKey: bool}로 섹션별 열림 상태를 개별 관리한다
-         (renderIndividualRebalanceGuide 하단 참고). -->
-    <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <div class="flex items-start justify-between gap-2 mb-1">
-          <h3 class="text-sm font-semibold">📋 종목별 실행 가이드</h3>
-          <button type="button" id="rebalanceGuideExportBtn"
-            class="shrink-0 flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-brand-400 hover:text-brand-600">
-            <i data-lucide="file-down" class="w-3.5 h-3.5"></i> 엑셀 다운로드
-          </button>
-        </div>
-        <p id="guideScopeNote" class="text-sm text-slate-400">절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.</p>
-      </div>
-      <div id="rebalanceGuideAccordionsContainer"></div>
-    </section>
+    <!-- [v247 REQ-05] "📋 종목별 실행 가이드" 카드를 삭제했다 - 위 소유자별 "세부 종목 현황"이 같은 종목을
+         같은 계산(computeIndividualRebalanceGuide)으로 이미 보여주고 있어 화면에서 두 번 읽히는 중복이었다.
+         [엑셀 다운로드는 유지] 이 카드 안에 있던 엑셀 다운로드는 삭제하지 않고 신랑/와이프 타이틀 행으로 옮겼다
+         (REQ-06 · data-rebalance-export-btn) - 생성 로직(buildRebalanceGuideSheetRows, js/04)은 그대로 재사용한다. -->
     </div> <!-- /rebalanceSubTarget -->
 
   <!-- ============================= 금융자산 미래예측 (서브탭: 미래 예측) ============================= -->

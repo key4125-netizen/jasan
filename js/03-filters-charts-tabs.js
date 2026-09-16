@@ -38,15 +38,11 @@ function updateRealEstateGuidanceText() {
   setText('riskScopeNote',
     '진단 대상: 소유자 구분 없이 가구 전체 합산 · 주식·ETF만 해당(현금/채권/부동산 등은 가격 변동성 진단 대상이 아니라 제외)',
     '진단 대상: 소유자 구분 없이 가구 전체 합산 · 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)');
-  setText('rebalanceScopeNote',
-    '※ 절세계좌(ISA/IRP/연금저축) 및 부동산을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.',
-    '※ 절세계좌(ISA/IRP/연금저축)을 제외한 일반 금융자산만을 대상으로 목표 비중을 계산합니다.');
+  // [v247 REQ-09] 탭 이름이 "일반계좌 포트폴리오"가 되면서 같은 말을 반복하던 rebalanceScopeNote를 삭제했다.
   setText('positionScopeNote',
     '일반계좌(절세계좌·부동산 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.',
     '일반계좌(절세계좌 제외) 목표 비중 기준으로 국내/해외 배분과 종목별 포지션(역할)을 함께 집계합니다. 각 항목을 탭하면 구성 종목을 볼 수 있습니다.');
-  setText('guideScopeNote',
-    '절세계좌 및 부동산을 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.',
-    '절세계좌를 제외한 일반 금융자산 종목을 대상으로 자산군별 결과를 개별 종목 단위로 풀어서 보여줍니다. 지정 티커가 아닌 종목은 같은 목표 항목을 공유하는 종목들과 현재 비중 비율대로 목표금액을 나눠 갖습니다. 차액이 현재 평가금액의 2% 미만이면 "유지"로 표시됩니다.');
+  // [v247 REQ-05] "종목별 실행 가이드" 카드와 함께 guideScopeNote도 삭제했다.
   setHtml('scenarioCompareGeneralDesc',
     '같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌·부동산은 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.',
     '같은 일반계좌 금융자산 원금을 <b>"목표 비중으로 오늘 전액 조정"</b>했다고 가정하고, <b>보수적/일반적/긍정적</b> 수익률 시나리오별 총자산(명목) 성장 곡선 3개를 한 차트에서 비교합니다. 절세계좌는 포함되지 않습니다(아래 "시나리오별 총자산" 카드 참고). 그래프를 탭하면 해당 연도의 3개 시나리오 금액이 툴팁으로 동시에 표시됩니다.');
@@ -229,7 +225,7 @@ function resetAllAccordionsOnTabSwitch() {
   const riskyChevron = document.getElementById('riskyAccordionChevron');
   if (riskyBody && riskyChevron) setAccordionOpen(riskyBody, riskyChevron, false);
 
-  Object.keys(rebalanceGuideAccordionOpen).forEach((k) => { rebalanceGuideAccordionOpen[k] = false; });
+  // [v247 REQ-05] 실행 가이드 카드 삭제로 rebalanceGuideAccordionOpen 리셋도 함께 사라졌다.
 
   // [포지션 카드 아코디언 부활 - 요청 반영] 신랑/와이프/가구합산 포지션 분석 카드도 탭을 벗어나면
   // 항상 다시 닫힌 상태로 리셋된다(js/04 positionAnalysisAccordionOpen).

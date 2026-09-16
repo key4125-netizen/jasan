@@ -179,7 +179,9 @@ test('C. [환차손익 회귀] 통화 분리가 환차손익 계산을 바꾸지
 test('D. [C-2] 같은 이름이 양쪽 지역에 있어도 드릴다운이 서로 섞이지 않는다', async ({ page }) => {
   await seedCrossRegionSameLabel(page);
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('포트폴리오 구성', { exact: true }).click();
+  // [v247] 서브탭 이름 변경(REQ-08) + 세부 종목 현황이 소유자 타이틀 아코디언 안으로 들어왔다(REQ-01).
+  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 
   const card = page.locator('#portfolioTargetSummaryHusband');
   await expect(card).toContainText('국내 · C57달러');
@@ -217,7 +219,8 @@ test('D-2. [C-4] 목표가 저장된 지역과 실제 보유 지역이 다르면
   expect(flags).toContainEqual(['해외|C57달러', null]);
 
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('포트폴리오 구성', { exact: true }).click();
+  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
   await expect(page.locator('#portfolioTargetSummaryHusband')).toContainText('같은 이름의 보유분이 해외에 있습니다');
 
   // [자동 수정 금지] 목표는 저장된 그대로 남아 있어야 한다.
@@ -229,25 +232,29 @@ test('D-2. [C-4] 목표가 저장된 지역과 실제 보유 지역이 다르면
   expect(stillThere['해외']).toEqual(['C57원화', 'C57달러']);
 });
 
-test('E. [C-3] 실행 가이드 카드가 국내/해외와 통화를 구분해 보여주고 375px에서 넘치지 않는다', async ({ page }) => {
+// [v247 REQ-05] "종목별 실행 가이드" 카드는 삭제됐다(세부 종목 현황과 중복). C-3이 고정하려던 계약(같은 이름이라도
+// 지역과 통화를 화면에서 구분할 수 있어야 한다)은 이제 소유자별 세부 종목 현황에서 확인한다 - 행 제목의 "지역 · 이름"과
+// 드릴다운 안의 USD 칩이 그 역할을 그대로 한다. 계산(computeIndividualRebalanceGuide)은 무변경이다.
+test('E. [C-3] 세부 종목 현황이 국내/해외와 통화를 구분해 보여주고 375px에서 넘치지 않는다', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await seedCrossRegionSameLabel(page);
   await page.getByText('포트폴리오/자산예측').click();
-  await page.getByText('포트폴리오 구성', { exact: true }).click();
+  await page.getByText('일반계좌 포트폴리오', { exact: true }).click();
+  await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
 
-  // 신랑 실행 가이드 아코디언을 펼친다.
-  const guide = page.locator('#rebalanceGuideAccordionsContainer');
-  await guide.getByRole('button', { name: /신랑 실행 가이드/ }).click();
-  const body = guide.locator('[data-guide-body-key="신랑"]');
-  await expect(body).toContainText('국내');
-  await expect(body).toContainText('해외');
-  await expect(body).toContainText('USD'); // 달러 자산에만 붙는 통화 칩
+  // 실행 가이드 카드는 더 이상 존재하지 않는다.
+  await expect(page.locator('#rebalanceGuideAccordionsContainer')).toHaveCount(0);
 
-  // 색이 아니라 글자로 구분한다 - 지역 칩이 실제 텍스트 노드로 존재하는지 확인한다.
+  const body = page.locator('#portfolioTargetSummaryHusband');
+  await expect(body).toContainText('국내 · C57달러');
+  await expect(body).toContainText('해외 · C57달러');
+  // 해외 달러 행을 펼치면 통화 칩(USD)이 보인다.
+  await body.getByRole('button', { name: /해외 · C57달러/ }).click();
+  await expect(body).toContainText('USD');
+
+  // 색이 아니라 글자로 구분한다 - 지역/통화가 실제 텍스트로 존재하는지 확인한다.
   const chipTexts = await body.evaluate((el) =>
-    Array.from(el.querySelectorAll('span')).map((s) => s.textContent.trim()).filter((t) => t === '국내' || t === '해외' || t === 'USD'));
-  expect(chipTexts).toContain('국내');
-  expect(chipTexts).toContain('해외');
+    Array.from(el.querySelectorAll('span')).map((s) => s.textContent.trim()).filter((t) => t === 'USD'));
   expect(chipTexts).toContain('USD');
 
   // 14px 미만 텍스트가 생기지 않아야 한다(Global Readability Policy 3~5항).

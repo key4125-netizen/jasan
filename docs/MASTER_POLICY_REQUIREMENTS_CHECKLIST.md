@@ -1775,3 +1775,24 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 - 앱 화면의 자동 추천 라벨은 기존 계약(e2e/48)대로 "자동 판별"을 유지한다(엑셀 출처 칸도 같은 말).
 - v245 이하 기기는 Master를 표시 · 편집하지 못한다. 그 기기가 올린 projection에는 필드가 없어 신규 기기의 Master는 유지된다(projection 전체 LWW는 기존 그대로).
 - 사전 티커 키 행이 있는 종목에 Master를 연결하면 그 행의 수익률은 그 종목 계산에 쓰이지 않는다(승인 순서).
+
+## 34. 일반계좌 포트폴리오 화면 UX 정비 (v247 · PM 승인 · 모바일 우선 · 릴리스 전)
+
+> **표시 계층만 바꾼다.** 목표 비중 계산 · 실행 금액 계산(`computeIndividualRebalanceGuide` · `computePortfolioTargetSummaryRows` · `computePositionRoleBreakdown` · `computeTargetRegionBreakdown`) · Return Key · Monte Carlo · deterministic projection · 자산/거래 데이터 구조 · 저장/복원/동기화는 **한 줄도 바꾸지 않았다.**
+
+| ID | 확정 내용 |
+|---|---|
+| REQ-01 · REQ-02 | 소유자 타이틀의 접기/펼치기 상태(`positionAnalysisAccordionOpen[owner]`) **하나**가 "세부 종목 현황"과 "포지션 그래프"에 함께 적용된다. 두 영역을 같은 아코디언 body로 옮겨 상태를 공유하며 **새 상태를 만들지 않는다.** 신랑/와이프 상태는 예전처럼 독립 |
+| REQ-03 | "전체 포지션별 목표비중 분석" 카드는 위치 · 계산 · 표시 모두 유지 |
+| REQ-04 | "수익률 직접 조정 (고급)"은 제목 · 설명 · id · 핸들러 · 팝업 그대로, **색 체계만** violet 계열로 분석 카드와 구분(경고 amber · 핵심 조작 brand와도 겹치지 않음). 색만으로 뜻을 전달하지 않도록 ⚙ 아이콘과 "(고급)" 라벨 유지 |
+| REQ-05 | "📋 종목별 실행 가이드" 카드 삭제(세부 종목 현황과 중복). 카드 전용 렌더 · 상태 · 안내문(`renderIndividualRebalanceGuide` · `rebalanceGuideAccordionOpen` · `guideScopeNote` 등)도 함께 제거. **엑셀 다운로드 기능은 삭제하지 않는다** |
+| REQ-06 | 엑셀 다운로드를 신랑/와이프 타이틀 행(제목과 [비중조절] 사이)으로 이동(`data-rebalance-export-btn`). 시트 구성 · 파일명(`포트폴리오구성_실행가이드_YYYYMMDD.xlsx`) · 생성 로직(`buildRebalanceGuideSheetRows`)은 그대로 재사용 |
+| REQ-07 | [비중조절] = 브랜드 채움(핵심 조작), [엑셀 다운로드] = 라인 버튼(보조). 둘 다 44px 터치 · 14px 글자. 공용 `.detail-btn`(10px, KPI 카드 공용)은 건드리지 않고 이 화면 전용 클래스(`.portfolio-weight-btn` · `.portfolio-export-btn`)만 신설 |
+| REQ-08 | 서브탭 표시 이름 "포트폴리오 구성" → **"일반계좌 포트폴리오"**. 내부 키(`data-subtab="target"` · `rebalanceSubTab` · DOM id)는 변경하지 않는다 |
+| REQ-09 | 탭 이름과 중복되던 안내문(`rebalanceScopeNote`)과 그 여백 삭제. 계산 대상 범위는 무변경 |
+
+**34-1. 변경 파일** — `index.html`(탭 라벨 · 안내문 삭제 · 타이틀 행 · 아코디언 구조 · 고급 카드 색 · 버튼 클래스 · v247) · `js/03`(삭제된 문구/상태 배선 정리) · `js/04`(아코디언 가드 · 열림 높이 · 가이드 카드 렌더/상태 제거 · 엑셀 버튼 바인딩) · `sw.js`(v247) · `e2e/10 · 23 · 27 · 57 · 79`(변경된 UX 기준으로 기대값 수정) · 신규 `e2e/93-portfolio-mobile-ux.spec.js`
+
+**34-2. 기존 기록과의 관계** — §20-2(v233)의 "수익률 직접 조정(고급) = 전체 포지션별 목표비중 분석과 종목별 실행 가이드 **사이**" 기록은 그대로 보존한다. v247에서 아래 카드가 삭제되어 기준점이 사라졌을 뿐, 그 버튼의 위치(포지션 카드 아래 · 독립 긴 버튼) · id · 핸들러 · 승인 문구는 변하지 않았다.
+
+**34-3. 알려진 한계** — 미래예측 탭의 안내 문구("이 예측은 **포트폴리오 구성 탭**의 목표비중을 기준으로 합니다" 등)는 이번 범위(REQ-01~09) 밖이라 문구를 그대로 두었다. 탭 이름과 표현이 달라 보일 수 있으며, 변경은 PM 승인 사항이다.

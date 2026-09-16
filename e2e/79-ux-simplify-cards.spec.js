@@ -200,33 +200,33 @@ async function openRebalanceTab(page) {
   await expect(page.locator('#rebalanceSubTarget')).toBeVisible();
 }
 
-test('G. 새 버튼이 포지션별 비중 카드와 종목별 실행 가이드 카드 사이에 딱 하나 있다', async ({ page }) => {
+// [v247 REQ-05] 아래에 있던 "종목별 실행 가이드" 카드가 삭제되면서 "두 카드 사이"라는 기준점도 함께 사라졌다 -
+// 남은 계약(전체 포지션 카드 아래 · 카드 내부가 아닌 독립 요소 · 같은 폭의 긴 버튼)은 그대로 고정한다.
+test('G. 새 버튼이 전체 포지션별 비중 카드 아래에 독립 요소로 딱 하나 있다', async ({ page }) => {
   await open(page);
   await seed(page);
   await openRebalanceTab(page);
 
   // 진입점은 화면 전체에서 정확히 하나다(옛 자리에 남아 있지 않다).
   await expect(page.locator('#openScenarioRateManagerBtn')).toHaveCount(1);
+  // 실행 가이드 카드는 삭제됐다(엑셀 다운로드는 소유자 타이틀 행으로 이동 - e2e/93).
+  await expect(page.locator('#rebalanceGuideExportBtn')).toHaveCount(0);
+  await expect(page.locator('#rebalanceGuideAccordionsContainer')).toHaveCount(0);
 
   const order = await page.locator('#openScenarioRateManagerBtn').evaluate((btn) => {
     const doc = btn.ownerDocument;
     const positionCard = doc.getElementById('positionAnalysisCardAll').closest('section');
-    const guideCard = doc.getElementById('rebalanceGuideExportBtn').closest('section');
     const top = (el) => el.getBoundingClientRect().top;
     return {
       insidePositionCard: positionCard.contains(btn),
-      insideGuideCard: guideCard.contains(btn),
       afterPosition: top(btn) > top(positionCard),
-      beforeGuide: top(btn) < top(guideCard),
       parentIsPanel: btn.parentElement.id === 'rebalanceSubTarget',
       fullWidth: Math.round(btn.getBoundingClientRect().width) === Math.round(positionCard.getBoundingClientRect().width),
     };
   });
   expect(order.insidePositionCard, '포지션 카드 내부가 아니다').toBe(false);
-  expect(order.insideGuideCard, '실행 가이드 카드 내부가 아니다').toBe(false);
   expect(order.afterPosition, '포지션 카드보다 아래').toBe(true);
-  expect(order.beforeGuide, '실행 가이드 카드보다 위').toBe(true);
-  expect(order.parentIsPanel, '카드와 카드 사이의 독립 요소').toBe(true);
+  expect(order.parentIsPanel, '카드 사이의 독립 요소').toBe(true);
   expect(order.fullWidth, '카드와 같은 폭의 긴 버튼').toBe(true);
 });
 

@@ -2,7 +2,8 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v246'; // [Instrument Return Key Master · PMD-12] 수익률 관리 "적용 종목"으로 종목 단위 Return Key를 소유자 · 보유 여부와 무관하게 적용(사용자 지정 대표매칭이 우선 · 충돌은 자동 판별 + 확인 필요 · 엑셀 2시트 적용 종목 · 1시트 출처 · 동기화 필드 보존, checklist §33)
+const CACHE_NAME = 'smart-asset-manager-v247'; // [모바일 포트폴리오 UX 정비] 소유자 타이틀 상태 하나로 세부 종목 현황 + 포지션 그래프 함께 접기/펼치기 · 타이틀 행 [엑셀 다운로드]/[비중조절] 분리 · 종목별 실행 가이드 카드 삭제(엑셀 기능 유지) · 수익률 직접 조정(고급) 색 구분 · 서브탭 '일반계좌 포트폴리오' · 중복 안내문 삭제(checklist §34)
+// v246: [Instrument Return Key Master · PMD-12] 수익률 관리 "적용 종목"으로 종목 단위 Return Key 적용(checklist §33)
 // v245: [Return Key → Return Rate → Deterministic → Monte Carlo 통합 수정] 사전 빈 칸 · 키만 있는 항목 보존 · 경로 A/B 일치 · 소유자별 기준 분리 · 절세 연납/보수 · 비중 정규화 · ρ=±1 · MC 결과 유효성 표시(checklist §32)
 // v244: [MC 표시 정책 ①~⑤] 운용보수 팝업에 절세계좌 종목 추가 · 절세계좌가 있으면 통합 기본 · P25/P50 중심 · P90 화면 미표시 · 일반계좌 기준 안내 문구(계산 엔진 무변경)
 // v243: [P1-1 동기화 차이 확인] 자동 동기화가 받은 클라우드 데이터가 이 기기와 다르면 반영하지 않고, 자산 · 거래 단위 차이를 보여 준 뒤 사용자가 방향을 고르게 했다

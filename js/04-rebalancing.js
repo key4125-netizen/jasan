@@ -1402,8 +1402,8 @@ document.querySelectorAll('[data-rebalance-detail-btn]').forEach((btn) => {
 
 // [버그 수정 - 옛 "목표 비중 설정" 탭 통합] 예전엔 여기서 "국내/해외 구성 결과"·"국내/해외 세부
 // 구성 결과" 아코디언 카드 3개를 채웠으나(renderRebalanceResultGroup/renderTargetRebalanceResultGroup),
-// 요청에 따라 그 카드들을 완전히 삭제하고 그 자리에 더 상세한 "종목별 실행 가이드"(옛 "실행
-// 가이드" 탭 - renderIndividualRebalanceGuide)를 대신 보여주게 됐다. [3카드 그리드 완전 삭제 - 요청
+// 요청에 따라 그 카드들을 완전히 삭제했다. [v247 REQ-05] 그 자리를 대신하던 "종목별 실행 가이드" 카드도
+// 소유자별 "세부 종목 현황"과 중복이라 삭제됐다 - 이제 이 함수는 소유자별 요약 · 포지션 분석 카드 · 미래예측만 다시 그린다. [3카드 그리드 완전 삭제 - 요청
 // 반영] 목표비중 입력 섹션의 "합계 N%" 배지(updateTargetSum)를 표시하던 카드 자체가 삭제되어 이
 // 호출도 함께 제거됐다 - 합계는 이제 rebalanceTargetModal 안(rtmSumDomestic/Foreign)에서만 보인다.
 function updateRebalanceResults() {
@@ -1413,7 +1413,6 @@ function updateRebalanceResults() {
   renderPositionAnalysisCard('positionAnalysisCardHusband', '신랑');
   renderPositionAnalysisCard('positionAnalysisCardWife', '와이프');
   reapplyPositionAnalysisAccordionHeights();
-  renderIndividualRebalanceGuide();
   updateProjection();
 }
 
@@ -1579,7 +1578,12 @@ function reapplyPositionAnalysisAccordionHeights() {
     const suffix = POSITION_ANALYSIS_ACCORDION_SUFFIX[key];
     const body = document.getElementById(`positionAnalysisAccordion${suffix}Body`);
     const chevron = document.getElementById(`positionAnalysisAccordion${suffix}Chevron`);
-    if (body && chevron) setAccordionOpen(body, chevron, positionAnalysisAccordionOpen[key]);
+    if (!body || !chevron) return;
+    setAccordionOpen(body, chevron, positionAnalysisAccordionOpen[key]);
+    // [v247 REQ-01] 이 본문에는 세부 종목 현황(행마다 펼쳐지는 실행 상세)과 포지션 그래프가 함께 들어 있다 -
+    // 안쪽 행을 펼치면 높이가 늘어나는데 setAccordionOpen이 잡아 둔 scrollHeight 그대로면 부모가 그만큼을 잘라낸다.
+    // 열려 있을 때만 넉넉한 상한으로 바꿔 클리핑을 원천 차단한다(닫힘/화살표 회전은 위 공용 함수 그대로).
+    if (positionAnalysisAccordionOpen[key]) body.style.maxHeight = '9999px';
   });
 }
 Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
@@ -1589,7 +1593,8 @@ Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
   btn.addEventListener('click', (e) => {
     // [비중조절 버튼과 겹침 방지] 신랑/와이프 헤더는 [비중조절] 버튼과 같은 행을 공유한다 - 그 버튼
     // 클릭이 이 행으로 버블링돼도 아코디언까지 함께 토글되지 않게 걸러낸다.
-    if (e.target.closest('[data-rebalance-detail-btn]')) return;
+    // [v247 REQ-06] 타이틀 행은 [엑셀 다운로드]·[비중조절]과 같은 줄을 공유한다 - 두 버튼 클릭이 버블링돼도 아코디언이 함께 토글되지 않게 거른다.
+    if (e.target.closest('[data-rebalance-detail-btn], [data-rebalance-export-btn]')) return;
     positionAnalysisAccordionOpen[key] = !positionAnalysisAccordionOpen[key];
     reapplyPositionAnalysisAccordionHeights();
   });
@@ -1712,169 +1717,14 @@ function rebalanceActionBadge(diff, curAmount) {
   return { label: `${fmtSigned(diff)} 매도`, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400' };
 }
 
-// [소유자별 순차 아코디언] 'all'(전체, 가구 합산) + 실제 소유자명(신랑/와이프 등) 각각을 독립적인
-// 아코디언 섹션으로 늘어놓는다 - 예전엔 탭으로 하나만 골라 보는 방식이었지만, 이제 전부 동시에 펼쳐 둘
-// 수 있다. 기본값은 전부 접힘이며, 새로 추가된 소유자는 기본 접힘으로 시작하고 기존에 펼쳐 둔 섹션의
-// 상태는 재렌더링돼도 그대로 유지된다.
-let rebalanceGuideAccordionOpen = {};
-
-// [헤더 요약 HTML] 특정 소유자(rows)의 매수/매도 필요금액 합계·조정 필요 종목 수를 뱃지로 만든다 -
-// rebalanceActionBadge와 동일한 기준(현재 평가금액의 2% 미만 차이는 "유지")으로 분류해 합산한다.
-function buildRebalanceGuideSummaryHtml(rows) {
-  if (rows.length === 0) return '';
-  let buyTotal = 0, sellTotal = 0, adjustCount = 0;
-  rows.forEach((r) => {
-    const badge = rebalanceActionBadge(r.diff, r.curAmount);
-    if (badge.label === '유지') return;
-    adjustCount += 1;
-    if (r.diff > 0) buyTotal += r.diff; else sellTotal += r.diff;
-  });
-  return `
-    <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">매수 ${fmtSigned(buyTotal)}</span>
-    <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">매도 ${fmtSigned(sellTotal)}</span>
-    <span class="text-sm text-slate-400">조정 필요 ${adjustCount}종목</span>
-  `;
-}
-
+// [v247 REQ-05] "종목별 실행 가이드" 카드를 삭제하면서 그 카드 전용 상태(rebalanceGuideAccordionOpen)와
+// 헤더 요약 HTML(buildRebalanceGuideSummaryHtml)도 함께 제거했다 - 같은 종목 정보는 소유자별 "세부 종목 현황"이
+// 이미 같은 계산(computeIndividualRebalanceGuide)으로 보여준다. 계산 함수와 엑셀 생성은 그대로 남는다.
 const qtyRebalanceGuideText = (qtyDelta, isForeign) => {
   const rounded = isForeign ? Math.round(qtyDelta * 100) / 100 : Math.round(qtyDelta);
   if (rounded === 0) return '0주';
   return (rounded > 0 ? '+' : '') + fmtNum(rounded, isForeign ? 2 : 0) + '주';
 };
-
-/* [C-3] 카드 한 장이 어느 지역·어느 통화의 자산인지 표시한다.
- * 예전에는 이 카드가 region을 전혀 보여주지 않아, 국내 "달러"와 해외 "달러"가 이름도 목표 라벨도
- * 똑같은 카드 두 장으로 나란히 보였다(실측) - 초보자에게는 같은 항목이 중복된 것처럼 읽힌다.
- * 새 컴포넌트를 만들지 않고 기존 카드의 부제 줄에 칩 두 개만 얹는다. 색이 아니라 글자로 구분하고,
- * 글자 크기는 기존 text-sm(14px) 그대로 유지한다(Global Readability Policy 3~5항). USD 칩은 외화일
- * 때만 붙인다 - 이 앱의 모든 금액은 원화 환산 표시라, 원화 자산에 굳이 칩을 하나 더 붙이지 않는다. */
-function rebalanceRegionChipsHtml(region, isForeign) {
-  const regionChip = `<span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">${escapeHtml(region || '')}</span>`;
-  const usdChip = isForeign ? `<span class="shrink-0 text-sm font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">USD</span>` : '';
-  return `<span class="flex items-center gap-1 flex-wrap">${regionChip}${usdChip}</span>`;
-}
-
-// [카드 목록 HTML] 특정 소유자 기준 rows/excluded를 카드 그리드 HTML로 만든다 - 소유자별 아코디언
-// 섹션마다 이 함수를 재사용한다.
-function buildRebalanceGuideCardsHtml(rows, excluded) {
-  if (rows.length === 0 && excluded.length === 0) {
-    return '<p class="text-sm text-slate-400 col-span-full">등록된 자산이 없습니다.</p>';
-  }
-  const cards = rows.map((r) => {
-    const badge = rebalanceActionBadge(r.diff, r.curAmount);
-    return `
-    <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
-      <div class="flex items-start justify-between gap-2 mb-2">
-        <div class="min-w-0">
-          <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
-            ${rebalanceRegionChipsHtml(r.region, r.isForeign)}
-            <p class="text-sm font-semibold min-w-0 break-keep cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(r.ticker || '')}" data-name="${escapeHtml(r.name || '')}">${escapeHtml(r.name || r.ticker || '(이름 없음)')}</p>
-          </div>
-          <p class="text-sm text-slate-400 break-keep">${escapeHtml(r.ticker || '-')} · ${escapeHtml(r.owners.join('+') || '-')} · <span class="text-slate-300 dark:text-slate-600">목표: ${escapeHtml(r.targetLabel)}</span></p>
-        </div>
-        <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap ${badge.className}">${badge.label}</span>
-      </div>
-      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-sm">
-        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
-        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.targetAmount)}</span></div>
-        <div><span class="text-slate-400 block">조정 필요금액</span><span class="font-medium whitespace-nowrap ${profitColor(r.diff)}">${fmtSigned(r.diff)}</span></div>
-        <div><span class="text-slate-400 block">예상 매수/매도 수량</span><span class="font-medium whitespace-nowrap">${qtyRebalanceGuideText(r.qtyDelta, r.isForeign)}</span></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // [라벨 구분 - '주식' 캐치올 제거 후 보완] 부동산 등 진짜 실물자산(매수/매도 자체가 불가능해 "해당
-  // 없음")과, 아직 목표 티커를 지정하지 않았을 뿐인 보유 주식/ETF(목표를 0으로 보고 전량 매도를
-  // 검토할 수 있는 대상)를 같은 "구성 제외 자산" 배지로 뭉뚱그리면 후자가 마치 편입 자체가 불가능한
-  // 자산처럼 보인다 - 카테고리로 구분해 안내 문구를 다르게 보여준다(금액 집계 자체는 이미
-  // getRebalanceTotals에 반영돼 있어 여기는 표시 문구만 다르다).
-  const excludedCards = excluded.map((a) => {
-    const r = calcRow(a);
-    const isUntargetedStock = a.category === '주식' || a.category === 'ETF';
-    const badgeLabel = isUntargetedStock ? '목표 미지정 종목' : '구성 제외 자산';
-    const targetCellText = isUntargetedStock ? '전량 매도 검토' : '해당 없음';
-    return `
-    <div class="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40">
-      <div class="flex items-start justify-between gap-2 mb-2">
-        <div class="min-w-0">
-          <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
-            ${rebalanceRegionChipsHtml(a.isDomestic, a.currency === 'USD')}
-            <p class="text-sm font-semibold min-w-0 break-keep text-slate-500 dark:text-slate-400 cursor-pointer hover:underline" data-open-stock-detail data-ticker="${escapeHtml(a.ticker || '')}" data-name="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.ticker || '(이름 없음)')}</p>
-          </div>
-          <p class="text-sm text-slate-400 break-keep">${escapeHtml(a.ticker || '-')} · ${escapeHtml(a.owner || '-')}</p>
-        </div>
-        <span class="shrink-0 text-sm font-semibold px-1.5 py-1 rounded whitespace-nowrap bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">${badgeLabel}</span>
-      </div>
-      <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-sm">
-        <div><span class="text-slate-400 block">현재 평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
-        <div><span class="text-slate-400 block">목표 평가금액</span><span class="font-medium whitespace-nowrap text-slate-300 dark:text-slate-600">${targetCellText}</span></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  return cards + excludedCards;
-}
-
-// [포트폴리오 구성] 탭 맨 아래 "종목별 실행 가이드" - 자산군/티커 단위로 계산된 목표금액을
-// 실제 보유 개별 종목 단위로 풀어내 종목별 매수/매도 실행 가이드를 [전체]/[소유자별] 순차 아코디언
-// 카드 형태로 보여준다. 부동산 등 목표에 매칭되지 않는 자산은 별도로 "[구성 제외 자산]" 배지를
-// 달아 같은 목록에 구분 표시한다.
-function renderIndividualRebalanceGuide() {
-  const container = document.getElementById('rebalanceGuideAccordionsContainer');
-  if (!container) return;
-
-  // [소유자별 독립 실행 가이드 - 요청 반영] 가구 통합('all') 아코디언은 제거하고 신랑/와이프 각자의
-  // 독립 목표(state.rebalance[owner]) 기준 가이드만 보여준다.
-  const ownerKeys = REBALANCE_OWNERS;
-  ownerKeys.forEach((key) => { if (!(key in rebalanceGuideAccordionOpen)) rebalanceGuideAccordionOpen[key] = false; });
-
-  container.innerHTML = ownerKeys.map((key) => {
-    const label = key;
-    const { rows, excluded } = computeIndividualRebalanceGuide(key);
-    return `
-    <div class="border-t border-slate-100 dark:border-slate-800">
-      <button type="button" data-guide-accordion-key="${escapeHtml(key)}"
-        class="rebalance-guide-accordion-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors">
-        <div class="flex items-center gap-2 min-w-0 flex-wrap">
-          <span class="text-sm font-semibold shrink-0">${escapeHtml(label)} 실행 가이드</span>
-          <div class="flex items-center gap-1.5 flex-wrap">${buildRebalanceGuideSummaryHtml(rows)}</div>
-        </div>
-        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 rebalance-guide-chevron" data-guide-chevron-key="${escapeHtml(key)}"></i>
-      </button>
-      <div class="overflow-hidden transition-[max-height] duration-300 ease-in-out rebalance-guide-body" data-guide-body-key="${escapeHtml(key)}" style="max-height:0px;">
-        <div class="px-4 pb-4 pt-1">
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${buildRebalanceGuideCardsHtml(rows, excluded)}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-
-  lucide.createIcons();
-  reapplyRebalanceGuideAccordionHeights();
-}
-
-// 방금 다시 그린 섹션들 기준으로 각각의 펼침 상태를 재적용한다 - 소유자가 추가/제거되거나 카드 내용이
-// 바뀌어도 max-height가 새 높이에 맞게 갱신되고, 접힌 상태였다면 계속 접힌 채로 유지된다
-// (txListAccordion과 동일한 이유).
-function reapplyRebalanceGuideAccordionHeights() {
-  const container = document.getElementById('rebalanceGuideAccordionsContainer');
-  if (!container) return;
-  container.querySelectorAll('.rebalance-guide-body').forEach((body) => {
-    const key = body.dataset.guideBodyKey;
-    const chevron = container.querySelector(`.rebalance-guide-chevron[data-guide-chevron-key="${CSS.escape(key)}"]`);
-    if (chevron) setAccordionOpen(body, chevron, !!rebalanceGuideAccordionOpen[key]);
-  });
-}
-
-// [이벤트 위임] 매 렌더링마다 innerHTML로 통째로 다시 그려지므로, 섹션 헤더 버튼에 개별 리스너를
-// 매번 새로 붙이는 대신 컨테이너 하나에 위임해 둔다 - 재렌더링돼도 리스너가 끊기지 않는다.
-document.getElementById('rebalanceGuideAccordionsContainer').addEventListener('click', (e) => {
-  const btn = e.target.closest('.rebalance-guide-accordion-btn');
-  if (!btn) return;
-  const key = btn.dataset.guideAccordionKey;
-  rebalanceGuideAccordionOpen[key] = !rebalanceGuideAccordionOpen[key];
-  reapplyRebalanceGuideAccordionHeights();
-});
 
 // [종목별 실행 가이드 엑셀 다운로드] 화면에 보이는 카드와 같은 데이터(computeIndividualRebalanceGuide)를
 // 그대로 표로 옮긴다. 이 앱은 이미 SheetJS(xlsx.full.min.js)를 CDN으로 로드해 엑셀 백업/업로드에 쓰고
@@ -1927,7 +1777,8 @@ function buildRebalanceGuideSheetRows(ownerFilter) {
   return { rows: guideRows, excluded: excludedRows, isEmpty: rows.length === 0 && excluded.length === 0 };
 }
 
-document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () => {
+// [v247 REQ-06] 버튼 위치만 소유자 타이틀 행으로 옮겼다 - 시트 구성 · 파일명 · 계산은 예전 그대로다.
+function exportRebalanceGuideWorkbook() {
   // [소유자별 독립 실행 가이드 - 요청 반영] 가구 통합('all') 시트는 더 이상 의미가 없다(목표 자체가
   // 소유자별로 다르므로 "가구 통합 목표"가 존재하지 않는다) - 신랑/와이프 시트만 생성한다.
   const sheetDefs = REBALANCE_OWNERS.map((o) => ({ key: o, label: o }));
@@ -1960,5 +1811,6 @@ document.getElementById('rebalanceGuideExportBtn').addEventListener('click', () 
   const today = new Date();
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
   XLSX.writeFile(wb, `포트폴리오구성_실행가이드_${ymd}.xlsx`);
-});
+}
+document.querySelectorAll('[data-rebalance-export-btn]').forEach((btn) => btn.addEventListener('click', exportRebalanceGuideWorkbook));
 
