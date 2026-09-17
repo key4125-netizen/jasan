@@ -5,6 +5,7 @@
 //   C. 포트폴리오 설정: 신랑/와이프 목표 비중 드롭다운은 서로의 열림 상태를 바꾸지 않는다.
 //   D. 일반계좌 적립계획 버튼 = 「적립설정」(절세계좌 적립계획 버튼과 같은 이름).
 //   E. 375 / 1440 × Light / Dark - 14px 이상 · 잘림 없음 · 가로 넘침 없음.
+//   F. [v254 · v253 누락분] 메인 Risk 카드 하단의 계획 확인 안내를 그리지 않는다(빈 자리 없음) - 점수 · 진단 · 리스크 감지는 그대로.
 /* global document, getComputedStyle */
 const { test, expect } = require('@playwright/test');
 const { goToPortfolioSettingsTab } = require('./fixtures');
@@ -167,6 +168,46 @@ for (const w of [375, 1440]) {
       await page.locator('#positionAnalysisAccordionHusbandBtn h3').click();
       await page.locator('#positionAnalysisAccordionWifeBtn h3').click();
       expect(await accordionState(page)).toEqual(state4(true, true));
+      expect(await page.locator('body').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    });
+  }
+}
+
+for (const w of [375, 1440]) {
+  for (const dark of [false, true]) {
+    test(`F. ${w}px ${dark ? 'Dark' : 'Light'} - 메인 Risk 카드에 계획 확인 안내가 없고 빈 자리 없이 리스크 감지가 이어진다`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: 900 });
+      await boot(page);
+      const isDark = await page.locator('html').evaluate((el) => el.classList.contains('dark'));
+      if (isDark !== dark) await page.locator('#darkModeBtn').click();
+      await page.locator('[data-tab="dashboard"]').click();
+      await openNormalRiskDetail(page);
+      await page.evaluate(() => closeRiskDetailModal());
+      const card = page.locator('#riskDiagnosisSummary');
+      const txt = await card.innerText();
+      ['가격 변동 위험', '목표 자산배분과 지금 비중', '포트폴리오 설정에서 보기'].forEach((s) => expect(txt, s).not.toContain(s));
+      await expect(card.locator('#riskPlanCheckBtn')).toHaveCount(0);
+      // 유지되는 내용: 점수 · 데이터 상태 · 세부내용 버튼 · 진단 문장 · 확인 항목 1~2
+      expect(txt).toContain('종합 위험점수');
+      expect(txt).toContain('💡 1.');
+      await expect(card.locator('#riskDetailBtn')).toBeVisible();
+      await expect(page.locator('#riskyAccordionBtn')).toBeVisible();
+      await expect(page.locator('#riskyAccordionBtn')).toContainText('리스크 감지');
+      // 빈 자리 없음: 카드 안 마지막 요소 아래 여백이 카드 안쪽 여백(padding)과 같고, 구분선만 남은 빈 블록이 없다.
+      const tail = await card.evaluate((el) => {
+        const box = el.firstElementChild;
+        const win = el.ownerDocument.defaultView;
+        const last = box.lastElementChild;
+        const pad = parseFloat(win.getComputedStyle(box).paddingBottom) || 0;
+        return {
+          gap: Math.round(box.getBoundingClientRect().bottom - pad - last.getBoundingClientRect().bottom),
+          emptyBlocks: [...box.querySelectorAll('div')].filter((d) => !d.textContent.trim() && d.getBoundingClientRect().height > 0).length,
+          clipped: el.scrollWidth - el.clientWidth
+        };
+      });
+      expect(tail.gap).toBeLessThanOrEqual(1);
+      expect(tail.emptyBlocks).toBe(0);
+      expect(tail.clipped).toBeLessThanOrEqual(1);
       expect(await page.locator('body').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
     });
   }

@@ -371,6 +371,10 @@ function stressLossValueText(lossKRW, lossPct) {
   return `약 ${fmtKRWShort(Math.abs(lossKRW))} (${fmtNum(lossPct, 1)}%) 손실 예상`;
 }
 
+// [v254 · PM UI 정리(v253 누락분)] 메인 Risk 카드 하단의 계획 확인 안내(「이 점수는 가격 변동 위험만 봅니다 … 포트폴리오 설정에서 보기」)를
+// 화면에 그리지 않는다. 이동 버튼(#riskPlanCheckBtn) 클릭 처리 코드는 그대로 두며, 다시 보이려면 이 값만 true로 바꾼다.
+const RISK_SUMMARY_SHOW_PLAN_CHECK_NOTE = false;
+
 function renderRiskDiagnosisSummary() {
   const container = document.getElementById('riskDiagnosisSummary');
   if (!container) return;
@@ -432,12 +436,13 @@ function renderRiskDiagnosisSummary() {
          위험으로 계산되기 때문). 그 사실을 사용자에게 한 줄로 알리고, 이미 있는 "포트폴리오 구성"
          탭으로 보내기만 한다 - 새 계산도, 새 카드도 만들지 않는다.
          경고가 아니라 안내이므로 위험 신호 목록과 시각적으로 분리한다(구분선 + 낮은 대비). -->
+    ${RISK_SUMMARY_SHOW_PLAN_CHECK_NOTE ? `
     <div class="mt-2.5 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/50">
       <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">
         📋 이 점수는 <span class="font-semibold">가격 변동 위험</span>만 봅니다. 목표 자산배분과 지금 비중의 차이는 별도로 확인하세요.
         <button type="button" id="riskPlanCheckBtn" class="underline underline-offset-2 font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400">포트폴리오 설정에서 보기</button>
       </p>
-    </div>
+    </div>` : ''}
 
     <!-- [단기 변동성 급증 경고] 최근 20거래일 변동성이 최근 1년 평균의 1.5배 이상으로 튀었을 때만 표시된다
          (volatilitySpike, computeAdvancedRiskMetrics 참고) - 평소엔 공간을 차지하지 않는다. -->

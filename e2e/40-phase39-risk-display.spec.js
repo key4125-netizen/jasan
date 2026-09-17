@@ -1,3 +1,4 @@
+/* global document */
 // E2E-40 Phase 39 - "Risk 표시 최소 개선"의 상시 회귀.
 //
 // [핵심 계약]
@@ -151,21 +152,25 @@ test('6. 가구 기준 표기는 진단 대상 자산에 실제로 부합한다(
 
 /* ─────────────────────── 3. 목표비중 ↔ Risk Score 분리 ─────────────────────── */
 
-test('7. 계획 확인 안내가 위험점수와 분리되어 표시된다', async ({ page }) => {
+// [v254 · PM 지시] 메인 카드 하단의 계획 확인 안내는 화면에 그리지 않는다(RISK_SUMMARY_SHOW_PLAN_CHECK_NOTE, js/10).
+// 목표비중과 위험점수의 분리(9번)는 그대로이며, 안내 문장만 사라졌다.
+test('7. [v254] 계획 확인 안내는 메인 Risk 카드에 표시되지 않고 점수 · 진단은 그대로다', async ({ page }) => {
   await boot(page);
   await renderCardWith(page);
   const txt = await page.locator('#riskDiagnosisSummary').innerText();
-  expect(txt).toContain('가격 변동 위험');
-  expect(txt).toContain('목표 자산배분');
-  await expect(page.locator('#riskPlanCheckBtn')).toBeVisible();
+  expect(txt).not.toContain('가격 변동 위험');
+  expect(txt).not.toContain('포트폴리오 설정에서 보기');
+  await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
+  expect(txt).toContain('종합 위험점수');
+  await expect(page.locator('#riskDiagnosisSummary #riskDetailBtn')).toBeVisible();
 });
 
-test('8. 계획 확인 안내에 Risk 표현이나 행동 지시가 붙지 않는다', async ({ page }) => {
+test('8. [v254] 안내를 숨겨도 카드에 Risk 표현이나 행동 지시가 새로 붙지 않는다', async ({ page }) => {
   await boot(page);
   await renderCardWith(page);
-  const line = await page.locator('#riskPlanCheckBtn').evaluate((el) => el.closest('p').innerText);
-  ['위험합니다', '주의하세요', '경고', '매도', '매수', '줄이', '늘리', '손절'].forEach((w) => {
-    expect(line, `계획 안내에 Risk/행동 표현 발견: ${w} / 원문: ${line}`).not.toContain(w);
+  const txt = await page.locator('#riskDiagnosisSummary').innerText();
+  ['위험합니다', '주의하세요', '매도', '매수', '손절'].forEach((w) => {
+    expect(txt, `카드에 Risk/행동 표현 발견: ${w}`).not.toContain(w);
   });
 });
 
@@ -179,11 +184,16 @@ test('9. 목표비중은 위험점수에 편입되지 않는다(6대 요인 그�
   expect(keys).toEqual({ score: 50, factors: 6 });
 });
 
-test('10. 계획 확인 버튼이 기존 포트폴리오 구성 탭으로 이동시킨다', async ({ page }) => {
+test('10. [v254] 계획 확인 버튼은 그리지 않지만 이동 처리 코드는 남아 있다(다시 표시할 때 그대로 동작)', async ({ page }) => {
   await boot(page);
   await renderCardWith(page);
-  // [PM 감사 F-02] 버튼 문구는 최종 탭 이름(포트폴리오 설정)을 쓴다.
-  await expect(page.locator('#riskPlanCheckBtn')).toHaveText('포트폴리오 설정에서 보기');
+  await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
+  // 예전 렌더와 같은 id의 버튼을 넣어 기존 위임 처리(포트폴리오 설정 탭 이동)가 그대로인지 확인한다.
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'riskPlanCheckBtn'; b.textContent = '포트폴리오 설정에서 보기';
+    document.getElementById('riskDiagnosisSummary').appendChild(b);
+  });
   await page.locator('#riskPlanCheckBtn').click();
   await expect(page.locator('#tabPanelRebalance')).toBeVisible();
 });
@@ -293,9 +303,8 @@ for (const w of [375, 390, 412, 768]) {
       expect(detail.fs, 'Risk 세부내용 버튼 글꼴').toBeGreaterThanOrEqual(14);
       expect(detail.clipped, 'Risk 세부내용 버튼 가로 넘침').toBeLessThanOrEqual(1);
 
-      // 계획 확인 버튼은 눌러야 하므로 터치 목표 크기를 확보한다.
-      const btn = await page.locator('#riskPlanCheckBtn').boundingBox();
-      expect(btn.width).toBeGreaterThan(0);
+      // [v254] 계획 확인 안내(버튼 포함)는 표시하지 않는다.
+      await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
     });
   }
 }

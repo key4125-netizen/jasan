@@ -118,7 +118,7 @@ test('C. 고지 추가가 위험점수/등급/6대 요인/진단 대상 집합�
 
 /* ── G. 기존 "가격 변동 위험" 안내와 의미가 충돌하지 않는다 ──────────────────── */
 
-test('G. 범위 고지(어떤 자산이 대상인가)와 기존 성격 고지(어떤 위험을 보는가)가 함께, 충돌 없이 존재한다', async ({ page }) => {
+test('G. 범위 고지(어떤 자산이 대상인가)는 그대로 있고, 성격 고지(계획 확인 안내)는 v254부터 표시하지 않는다', async ({ page }) => {
   await boot(page);
   await seedMetrics(page);
   await page.evaluate(() => renderRiskDiagnosisSummary());
@@ -127,9 +127,10 @@ test('G. 범위 고지(어떤 자산이 대상인가)와 기존 성격 고지(�
 
   // 서로 다른 축이다: 범위(자산 종류) vs 성격(가격 변동 위험만 본다).
   expect(scope).toContain('주식·ETF');
-  expect(summary).toContain('가격 변동 위험');
-  // 범위 고지가 기존 계획-확인 안내를 대체하거나 지우지 않았다.
-  await expect(page.locator('#riskPlanCheckBtn')).toBeVisible();
+  // [v254 · PM 지시] 성격 고지(계획 확인 안내)는 메인 카드에서 표시하지 않는다 - 범위 고지는 그대로 남는다.
+  expect(summary).not.toContain('가격 변동 위험');
+  await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
+  await expect(page.locator('#riskScopeNote')).toBeVisible();
   // 범위 고지에 행동 지시/위험 표현을 얹지 않는다(기존 e2e/40 "8"과 같은 원칙).
   ['매도', '매수', '손절', '줄이', '늘리', '위험합니다'].forEach((w) => {
     expect(scope, `범위 고지에 행동/위험 표현 발견: ${w}`).not.toContain(w);
