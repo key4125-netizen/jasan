@@ -140,7 +140,7 @@ function attachRiskDiagnosisToDetailModal(ticker) {
     if (!flow) return;
     const labelEl = body.querySelector('[data-flow-tile-label]');
     const valueEl = body.querySelector('[data-flow-tile-value]');
-    if (labelEl) labelEl.textContent = '수급(외국인·기관)';
+    if (labelEl) labelEl.textContent = '외국인·기관 5일 순매수';
     if (valueEl) valueEl.textContent = `${flow.emoji} ${flow.label}`;
   });
 }

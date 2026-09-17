@@ -31,6 +31,8 @@ function stackedTitleBody(titleHtml, bodyHtml, extraClass) {
 }
 // [Sortino Ratio → 폭락장 방어 성적표 A~F] 연율화 Sortino 비율을 직관적인 학점으로 변환한다 - 학술적
 // 컷오프가 아니라 일반 투자자가 감을 잡기 위한 참고용 구간이다.
+// [용어 정비] Sortino는 '폭락 방어 능력'이 아니라 최근 1년 수익을 하락한 날의 흔들림으로 나눈 과거 값이다(등급 구간은 그대로).
+const SORTINO_GUIDE_TEXT = '최근 1년 수익을 하락한 날의 흔들림으로 나눈 값을 A~F 참고 구간으로 나타냈습니다(A가 가장 높음). 과거 성과이며 앞으로의 하락 방어를 보장하지 않습니다.';
 function sortinoToGrade(sortino) {
   if (typeof sortino !== 'number' || !Number.isFinite(sortino)) return null;
   if (sortino >= 2.0) return 'A';
@@ -64,28 +66,31 @@ function buildRiskDiagnosisLine(m) {
   if (maxKey === 'concentration' && m.topHolding) {
     const contrib = typeof m.topHolding.riskContributionPct === 'number' ? m.topHolding.riskContributionPct : null;
     return contrib !== null
-      ? `${m.topHolding.name}은(는) 투자 비중은 ${fmtNum(m.topWeight, 0)}%지만, 전체 계좌 위험의 ${fmtNum(contrib, 0)}%를 만듭니다.`
-      : `현재 ${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 너무 커서 하락장에 널뛰기가 심할 수 있습니다.`;
+      ? `${m.topHolding.name}은(는) 비중 ${fmtNum(m.topWeight, 0)}%, 위험 기여도 ${fmtNum(contrib, 0)}%로 가장 큽니다.`
+      : `${m.topHolding.name} 비중이 주식·ETF 중 ${fmtNum(m.topWeight, 0)}%로 가장 큽니다. 이 종목의 가격 움직임이 계좌 전체 등락에 크게 반영됩니다.`;
   }
   if (maxKey === 'volatility' && typeof m.portfolioVolatilityPct === 'number') {
-    return `포트폴리오 연환산 변동성이 ${fmtNum(m.portfolioVolatilityPct, 1)}%로 시장 평균보다 높은 편이라, 등락 폭 자체가 큽니다.`;
+    return `최근 1년 변동성(연환산)이 ${fmtNum(m.portfolioVolatilityPct, 1)}%로, 6개 요인 중 변동성 점수가 가장 높습니다.`;
   }
   if (maxKey === 'drawdown') {
     // [Phase 39-B] 손실 지표가 결측이면 Math.abs(null)=0 때문에 "하루 0%까지 하락"이라는 거짓 문장이
     // 만들어졌다. 이제 결측이면 숫자를 지어내지 않고 계산할 수 없다는 사실을 그대로 말한다.
     if (typeof m.var95Pct !== 'number' || typeof m.portfolioMDDPct !== 'number') {
-      return '가격 이력이 부족해 하락 위험(최대낙폭·하루 손실 예상)을 계산할 수 없습니다.';
+      return '가격 이력이 부족해 하락 지표(최대낙폭·하루 하락 기준선)를 계산할 수 없습니다.';
     }
-    return `평소에도 하루에 ${fmtNum(Math.abs(m.var95Pct), 1)}%(약 ${fmtKRWShort(Math.abs(m.var95KRW))}) 안팎까지 하락할 수 있고, 과거 데이터 기준 최대낙폭은 ${fmtNum(Math.abs(m.portfolioMDDPct), 1)}%였습니다.`;
+    // [용어 정비] VaR95는 최근 1년 일별 수익률 하위 약 5% 지점(과거 기록의 경계)이지 '최대 손실'이 아니다.
+    // 부호가 있는 값을 그대로 보여준다(하락이면 음수로 표시된다).
+    return `최근 1년 중 하락이 컸던 하위 약 5% 날의 하루 하락 기준선은 ${fmtNum(m.var95Pct, 1)}%(현재 평가액으로 약 ${fmtKRWShort(Math.abs(m.var95KRW))})였고, 같은 기간 최대낙폭(MDD)은 ${fmtNum(m.portfolioMDDPct, 1)}%였습니다.`;
   }
   if (maxKey === 'market' && typeof m.portfolioBeta === 'number') {
-    return `포트폴리오 전체가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 더 크게 움직이는 구조라, 하락장에서 손실 폭이 시장보다 클 수 있습니다.`;
+    // [용어 정비] 베타가 1 미만이어도 참인 정의형 문장만 쓴다("더 크게" 단정 금지).
+    return `기준 지수가 1% 움직일 때 내 주식·ETF는 평균 약 ${fmtNum(m.portfolioBeta, 1)}% 움직였습니다(시장 민감도, 최근 1년).`;
   }
   if (maxKey === 'correlation' && m.topCorrelationPair) {
-    return `${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}이(가) 같이 움직이는 경향이 커서, 종목 수는 여러 개여도 분산 효과가 기대만큼 크지 않을 수 있습니다.`;
+    return `비중이 큰 ${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}의 가격이 같은 방향으로 움직인 정도가 높아, 보유 종목 간 동조성(상관) 점수가 가장 높습니다.`;
   }
   if (maxKey === 'technical' && m.topHolding) {
-    return '보유 종목 중 일부가 단기 과열이거나 추세가 꺾여 있어 기술적 위험이 다소 높습니다.';
+    return '보유 종목 중 일부가 단기 과열권(RSI 70 이상)이거나 이동평균이 하락 배열이어서, 단기 과열·추세 점수가 가장 높습니다.';
   }
   return '포트폴리오가 비교적 안정적으로 분산되어 있습니다.';
 }
@@ -99,13 +104,13 @@ function buildRiskDiagnosisLine(m) {
 function buildRiskActionItems(m) {
   const items = [];
   if (m.topWeight >= 25 && m.topHolding) {
-    items.push(`${m.topHolding.name} 비중이 ${fmtNum(m.topWeight, 0)}%로 계좌에서 가장 큽니다. 이 비중이 본인의 투자 계획과 맞는지 전체 자산배분과 함께 확인해 보세요.`);
+    items.push('가장 큰 비중의 종목이 본인의 투자 계획과 맞는지 전체 자산배분과 함께 확인해 보세요.');
   }
   if (typeof m.portfolioBeta === 'number' && m.portfolioBeta >= 1.15) {
-    items.push(`포트폴리오가 시장보다 ${fmtNum(m.portfolioBeta, 1)}배 크게 움직이는 구조입니다. 하락장에서 평가액 변동이 시장보다 클 수 있다는 점을 감안해 자산배분을 확인해 보세요.`);
+    items.push(`시장 민감도(베타)가 ${fmtNum(m.portfolioBeta, 1)}로 1보다 큽니다. 시장이 내릴 때 평가액이 시장보다 더 크게 움직였던 구조인지 자산배분과 함께 확인해 보세요.`);
   }
   if (typeof m.weightedAvgCorrelation === 'number' && m.weightedAvgCorrelation >= 0.7 && m.topCorrelationPair) {
-    items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}은(는) 같이 움직이는 경향이 큽니다. 종목 수는 여러 개여도 분산 효과가 기대만큼 크지 않을 수 있습니다.`);
+    items.push(`${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}처럼 함께 움직인 종목이 많으면 종목 수에 비해 분산 효과가 작을 수 있습니다. 보유 목적이 겹치는지 확인해 보세요.`);
   }
   if (m.sectorExposure && m.sectorExposure.topSectorWeight >= 50 && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류') {
     items.push(`ETF 속 구성종목까지 합치면 '${m.sectorExposure.topSector}' 섹터 노출이 ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%입니다. 특정 섹터에 쏠려 있는지 함께 확인해 보세요.`);
@@ -195,16 +200,16 @@ function buildIndividualDiagnosisLine(h) {
   // [버그 수정 - 추세 판정 기준 통일] 6섹션 리포트의 핵심 요약(buildStockStatusSummary)과 완전히 같은
   // h.trendLabel(20/60/120일 정배열 기준, maTrendLabel)을 쓴다 - 예전엔 여기만 "현재가 vs 20일선"
   // 단순 이진 판정이라 같은 종목인데 리포트와 반대 신호(🟢인데 리포트는 🟡)를 보여주는 문제가 있었다.
-  const trendPhrase = h.trendLabel === '정배열(상승추세)' ? '20/60/120일 이동평균이 정배열로 상승 추세를 유지하고 있습니다.'
-    : h.trendLabel === '역배열(하락추세)' ? '20/60/120일 이동평균이 역배열로 하락 추세가 이어지고 있습니다.'
-    : '이동평균이 뚜렷한 방향 없이 혼조 상태입니다.';
+  const trendPhrase = h.trendLabel === '정배열(상승추세)' ? '20·60·120일 이동평균이 상승 배열입니다.'
+    : h.trendLabel === '역배열(하락추세)' ? '20·60·120일 이동평균이 하락 배열입니다.'
+    : '이동평균의 방향이 섞여 있습니다.';
   // [초보자 용어] 'RSI'라는 전문용어 대신 '과열지수'(0~100, 높을수록 단기간에 너무 급하게 오른 상태)로
   // 통일해서 표현한다 - 원래 수치(h.rsi14)는 괄호 안에 그대로 남겨 숙련자도 참고할 수 있게 한다.
   const rsiPhrase = h.rsiState === '과열'
-    ? `최근 며칠 너무 가파르게 올라 '숨 고르기'가 필요한 단기 과열 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100).`
+    ? `최근 14일 상승폭이 하락폭보다 크게 우세한 과열권입니다 (RSI ${fmtNum(h.rsi14, 0)}, 70 이상).`
     : h.rsiState === '과매도'
-      ? `단기간 너무 많이 빠져 '바닥 다지기' 구간에 가까운 상태입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100).`
-      : `과열도 과매도도 아닌 적정 구간입니다 (과열지수 ${typeof h.rsi14 === 'number' ? fmtNum(h.rsi14, 0) : '-'}/100).`;
+      ? `최근 14일 하락폭이 상승폭보다 크게 우세한 과매도권입니다 (RSI ${fmtNum(h.rsi14, 0)}, 30 이하).`
+      : `과열권도 과매도권도 아닌 중립 구간입니다 (RSI ${typeof h.rsi14 === 'number' ? fmtNum(h.rsi14, 0) : '-'}).`;
   return `${trendPhrase} ${rsiPhrase}`;
 }
 
@@ -216,16 +221,16 @@ function buildIndividualActionItem(h, weightPct) {
   if (!h || !h.hasData) return '가격 이력 데이터가 부족해 상태를 판단할 수 없습니다. 최근 상장/거래정지 종목일 수 있습니다.';
   const overweight = weightPct >= 25;
   if (overweight && h.rsiState === '과열') {
-    return `단기 과열 구간이면서 계좌 내 비중도 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 가격 흐름과 전체 자산배분을 함께 점검해 보세요.`;
+    return `단기 과열권(RSI 70 이상)이면서 계좌 내 비중도 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 가격 흐름과 전체 자산배분을 함께 점검해 보세요.`;
   }
   if (overweight) {
     return `계좌 내 비중이 ${fmtNum(weightPct, 1)}%로 높은 편입니다. 이 비중이 본인의 투자 계획과 맞는지 전체 자산배분과 함께 확인해 보세요.`;
   }
   if (h.rsiState === '과열') {
-    return `단기 과열 구간입니다 (과열지수 ${fmtNum(h.rsi14, 0)}/100). 짧은 기간에 가격이 크게 오른 상태라는 뜻입니다.`;
+    return `단기 과열권입니다 (RSI ${fmtNum(h.rsi14, 0)}, 70 이상). 짧은 기간에 가격이 크게 오른 상태라는 뜻입니다.`;
   }
   if (h.trendLabel === '역배열(하락추세)') {
-    return '이동평균이 역배열로 하락 추세가 이어지고 있습니다. 이 종목을 담은 이유가 지금도 유효한지 함께 확인해 보세요.';
+    return '20·60·120일 이동평균이 하락 배열입니다. 이 종목을 담은 이유가 지금도 유효한지 함께 확인해 보세요.';
   }
   if (h.flowSignal === 'outflow') {
     return '최근 거래량이 늘면서 가격이 하락한 흐름입니다(추정). 변동이 커진 배경을 함께 살펴보세요.';
@@ -245,29 +250,29 @@ function buildIndividualActionItem(h, weightPct) {
 function buildIndividualSignalLightsHtml(h) {
   if (!h || !h.hasData) {
     return `<div class="grid grid-cols-3 gap-1.5 text-center">
-      ${['추세', '과열도', '수급(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-sm text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
+      ${['이동평균 추세', '단기 과열(RSI)', '거래량 신호(추정)'].map((label) => `<div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2"><p class="text-sm text-slate-400">${label}</p><p class="text-sm font-semibold text-slate-400">⚪ 부족</p></div>`).join('')}
     </div>`;
   }
   // [버그 수정 - 추세 판정 기준 통일] h.trendLabel(20/60/120일 정배열 기준)을 6섹션 리포트의 핵심요약과
   // 완전히 같은 3단계로 표시한다 - 예전엔 여기만 "현재가 vs 20일선" 이진 판정(🟢/🔴 둘뿐)이라 혼조 구간도
   // 무조건 초록불로 보여, 바로 아래 리포트의 🟡(주의 필요) 판정과 어긋나 보였다.
-  const trendHtml = h.trendLabel === '정배열(상승추세)' ? '🟢 상승 추세'
-    : h.trendLabel === '역배열(하락추세)' ? '🔴 하락 추세'
-    : '🟡 방향 혼조';
-  const rsiHtml = h.rsiState === '과열' ? '🔥 단기 과열' : h.rsiState === '과매도' ? '🛡️ 바닥권' : '🟢 적정';
+  const trendHtml = h.trendLabel === '정배열(상승추세)' ? '🟢 상승 배열'
+    : h.trendLabel === '역배열(하락추세)' ? '🔴 하락 배열'
+    : '🟡 혼조';
+  const rsiHtml = h.rsiState === '과열' ? '🔥 과열권' : h.rsiState === '과매도' ? '🔵 과매도권' : '🟢 중립';
   const flow = flowSignalLabel(h.flowSignal);
   return `
   <div class="grid grid-cols-3 gap-1.5 text-center">
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-sm text-slate-400">추세</p>
+      <p class="text-sm text-slate-400">이동평균 추세</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${trendHtml}</p>
     </div>
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-sm text-slate-400">과열도</p>
+      <p class="text-sm text-slate-400">단기 과열(RSI)</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">${rsiHtml}</p>
     </div>
     <div class="rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 py-2">
-      <p class="text-sm text-slate-400" data-flow-tile-label>수급(추정)</p>
+      <p class="text-sm text-slate-400" data-flow-tile-label>거래량 신호(추정)</p>
       <p class="text-sm font-semibold text-slate-700 dark:text-slate-200" data-flow-tile-value>${flow.emoji} ${flow.label}</p>
     </div>
   </div>`;
@@ -286,14 +291,14 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
-      ${buildMetricItem('⚡ 종목 변동성(베타) - 지수 대비 널뛰기 심함', betaText, '시장이 1% 움직일 때 이 종목이 대략 몇 % 움직이는지 나타냅니다(포트폴리오 전체 베타와는 다른, 이 종목 하나만의 수치입니다). 1보다 크면 시장보다 더 크게 흔들려요.')}
-      ${buildMetricItem('폭락장 방어 성적표', sortinoText, '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
-      ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "한 종목 몰빵 위험"(RISK 세부내용 모달, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
-      ${buildMetricItem('52주 고점 대비', drawdownText, '최근 1년 최고가 대비 현재 주가가 얼마나 낮은지 나타냅니다.')}
-      ${buildMetricItem('💣 진짜 위험 만드는 주범', contribText, "투자 비중이 아니라 '실제로 내 계좌를 흔드는 힘'이 몇 %인지 보여줍니다. 이 숫자가 투자 비중보다 훨씬 크면 겉보기보다 훨씬 위험한 종목이에요.")}
+      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 지수(코스피·코스닥·나스닥100·다우·S&P500 중 하나)가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다).')}
+      ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoText, SORTINO_GUIDE_TEXT)}
+      ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(RISK 세부내용 모달, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
+      ${buildMetricItem('52주 고점 대비 현재 하락률', drawdownText, '지금 가격이 최근 1년 최고가보다 얼마나 낮은지(현재 위치)입니다. 1년 중 가장 크게 떨어졌던 폭인 최대낙폭(MDD)과는 다른 값입니다.')}
+      ${buildMetricItem('위험 기여도', contribText, '포트폴리오 전체 흔들림 중 이 종목이 차지하는 비율 추정입니다. 비중보다 크면 비중에 비해 계좌 등락에 더 크게 반영되고 있다는 뜻이며, 전체와 반대로 움직인 종목은 0%로 표시됩니다.')}
     </div>
     <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5">
-      <p class="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-1">💡 초직관적 권장 행동 지침</p>
+      <p class="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-1">💡 함께 확인할 점</p>
       <p class="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">${buildIndividualActionItem(h, weightPct)}</p>
     </div>
   </div>`;
@@ -409,7 +414,7 @@ function renderRiskDiagnosisSummary() {
     ${m.volatilitySpike ? `
     <div class="mt-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 p-2.5">
       <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">⚡ 최근 단기 변동성 급증 경고</p>
-      <p class="text-sm text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달간 계좌 흔들림(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 크게 커졌습니다 - 시장에 새로운 변수가 생겼을 수 있으니 최근 뉴스를 확인해 보세요.</p>
+      <p class="text-sm text-amber-700/90 dark:text-amber-400/90 mt-0.5 leading-relaxed">최근 한 달 변동성(연환산 ${fmtNum(m.portfolioVolatilityShortPct, 0)}%)이 최근 1년 평균(${fmtNum(m.portfolioVolatilityPct, 0)}%)보다 1.5배 이상 커졌습니다.</p>
     </div>` : ''}
   </div>`;
 
@@ -432,12 +437,12 @@ function renderRiskDetailModal() {
   const sortinoGrade = sortinoToGrade(m.sortino) || '-';
   const s = m.subScores;
   const barsHtml = [
-    buildFactorBarRow('🎯 몰빵위험', s.concentration, '100점에 가까울수록 위험해요. 한 종목/업종에 돈이 쏠려 있으면 그 종목이 흔들릴 때 계좌 전체가 같이 흔들립니다.'),
+    buildFactorBarRow('🎯 집중도', s.concentration, '100점에 가까울수록 위험해요. 한 종목/업종에 돈이 쏠려 있으면 그 종목이 흔들릴 때 계좌 전체가 같이 흔들립니다.'),
     buildFactorBarRow('🌊 변동성', s.volatility, '100점에 가까울수록 위험해요. 내 계좌 가격이 평소에 얼마나 위아래로 크게 출렁이는지를 나타냅니다.'),
-    buildFactorBarRow('📉 손실위험', s.drawdown, '100점에 가까울수록 위험해요. 과거 데이터로 계산한 "최악의 하루/최악의 구간에 얼마나 잃을 수 있는가"입니다.'),
-    buildFactorBarRow('⚡ 시장위험', s.market, '100점에 가까울수록 위험해요. 시장이 1% 빠질 때 내 계좌가 그보다 더 크게 빠지는 정도입니다.'),
+    buildFactorBarRow('📉 손실위험', s.drawdown, '100점에 가까울수록 위험해요. 최근 1년 최대낙폭(MDD)과 하락이 컸던 날들의 하루 하락폭(VaR·CVaR)을 합쳐 본 점수입니다.'),
+    buildFactorBarRow('⚡ 시장위험', s.market, '100점에 가까울수록 위험해요. 기준 지수가 1% 움직일 때 내 주식·ETF가 평균 몇 % 움직였는지(시장 민감도)가 클수록 점수가 높습니다.'),
     buildFactorBarRow('🔗 상관관계', s.correlation, '100점에 가까울수록 위험해요. 종목은 여러 개인데 실제로는 다 같이 오르고 같이 빠지면 분산 효과가 없다는 뜻입니다.'),
-    buildFactorBarRow('🔥 과열·수급', s.technical, '100점에 가까울수록 위험해요. 보유 종목이 단기간에 너무 많이 올라 숨고르기가 필요하거나, 거래량이 심상치 않은 정도입니다.')
+    buildFactorBarRow('🔥 단기 과열·거래량(추정)', s.technical, '100점에 가까울수록 위험해요. 보유 종목의 단기 과열 지표(RSI), 이동평균 하락 배열, 거래량 기반 추정 신호를 합친 점수입니다.')
   ].join('');
 
   // [F2 - 세부내용 모달로 이관] 메인 카드는 우선순위 지침 최대 2개만 보여주므로, 전체 목록은 여기서
@@ -455,28 +460,28 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 변동성(베타) - 지수 대비 널뛰기 심함', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '시장이 1% 움직일 때 내 포트폴리오 전체가 대략 몇 % 움직이는지 나타냅니다(종목 상세의 개별 종목 베타와는 다른, 보유종목 전체를 합친 수치입니다). 1보다 크면 시장보다 더 크게 흔들린다는 뜻이에요.')}
-      ${buildMetricItem('🎯 한 종목 몰빵 위험 (주식·ETF 중)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
-      ${buildMetricItem('📉 평소 하락장 하루 최대 손실 예상액', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : '데이터 부족', '일상적인 하락장에서 95% 확률로 겪을 수 있는 하루 손실액입니다.')}
-      ${buildMetricItem('💥 대폭락장(금융위기급) 손실 예상액', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : '데이터 부족', '2020년 코로나 폭락 같은 극단적인 위기 상황이 실제로 벌어졌을 때 예상되는 평균 손실액입니다.')}
-      ${buildMetricItem('폭락장 방어 성적표', sortinoGrade + '등급', '하락 위험 대비 실제로 벌어들인 수익의 성적표입니다(A가 가장 우수, F가 가장 저조).')}
-      ${buildMetricItem('🔗 운명 공동체(위험 중복)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : '데이터 부족', '종목이 달라도 주가가 같이 움직이는 정도입니다. 높을수록 "따로 담았지만 사실상 한 종목"과 비슷해 분산 효과가 떨어져요.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다.')}
+      ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
+      ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : '데이터 부족', '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
+      ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : '데이터 부족', '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}
+      ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoGrade + '등급', SORTINO_GUIDE_TEXT)}
+      ${buildMetricItem('🔗 보유 종목 간 동조성 (상관)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : '데이터 부족', '보유 종목들의 가격이 같은 방향으로 움직인 정도를 비중을 반영해 평균낸 값입니다(최근 1년). 높을수록 여러 종목을 담아도 함께 오르내린 경우가 많았다는 뜻입니다.')}
     </div>
     ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
 
     <!-- [역사적 하락장 체험하기] 2020 코로나(짧고 강한 급락) + 2022 고금리(길게 이어진 약세장) 두 시나리오
          - 모바일(375px)에서도 카드가 잘리지 않도록 grid-cols-1로 세로로 쌓고, sm 이상에서만 2열로
-         나란히 배치한다. 초보자 눈높이에 맞춰 "금융위기급 폭락이 재현될 경우"처럼 쉬운 말로 설명한다. -->
+         나란히 배치한다. [용어 정비] '재현'이 아니라 과거 지수 하락폭 × 베타로 계산한 가정 손실(추정)임을 밝힌다. -->
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
-        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020 코로나 폭락 재현 시</p>
+        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020년 초 급락 가정 시 (추정)</p>
         <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
-        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 코로나 폭락처럼 짧은 기간에 급격히 폭락하는 금융위기급 충격이 재현될 경우 예상 손실액입니다(코스피 -35.7%·S&P500 -33.9% 등 실측 낙폭 대입 추정치).</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2020년 2~3월 기준 지수 하락폭(코스피 -35.7%·S&P500 -33.9% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다. 그 사건이 다시 일어난다는 뜻이 아니며, 하루 하락 지표(VaR·CVaR)와는 다른 가정 계산입니다.</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
-        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022 고금리 기술주 폭락 재현 시</p>
+        <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022년 금리 인상기 하락 가정 시 (추정)</p>
         <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW2022))} (${fmtNum(m.stressLossPct2022, 1)}%) 손실 예상</p>
-        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년처럼 금리가 급격히 오르며 특히 기술/성장주가 길게 이어서 빠지는 약세장이 재현될 경우 예상 손실액입니다(코스피 -28.6%·나스닥100 -35.1% 등 실측 낙폭 대입 추정치).</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년 고점→저점 기준 지수 하락폭(코스피 -28.6%·나스닥100 -35.1% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다.</p>
       </div>
     </div>
 
@@ -676,7 +681,7 @@ function buildMacroCommentary(input) {
 
   if (typeof vix === 'number' && vix >= 30) {
     return {
-      cause: `시장 전반의 공포심리(VIX ${fmtNum(vix, 1)})가 높아진 고변동성 국면입니다.`,
+      cause: `VIX가 ${fmtNum(vix, 1)}로 30 이상인 구간입니다. 시장이 큰 등락을 예상하고 있는 상태입니다.`,
       impact: '주식 비중이 높을수록 단기 등락폭이 커질 수 있어 계좌 변동성이 확대될 수 있습니다.',
       note: '변동성이 큰 구간에서는 같은 자산이라도 평소보다 평가액 등락이 크게 나타납니다.'
     };
@@ -686,7 +691,7 @@ function buildMacroCommentary(input) {
   // 규칙 바로 다음 우선순위로 검사한다.
   if (typeof goldChangePct === 'number' && goldChangePct >= 1.5 && typeof vix === 'number' && vix >= 20) {
     return {
-      cause: `금값이 급등(${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%)하고 공포심리(VIX ${fmtNum(vix, 1)})도 함께 높아지며 안전자산 선호 심리가 뚜렷합니다.`,
+      cause: `오늘 금값이 ${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}% 오르고 VIX도 ${fmtNum(vix, 1)}로 20 이상입니다. 이런 조합은 안전자산 수요가 늘 때 자주 나타나지만, 하루 움직임만으로 단정할 수는 없습니다.`,
       impact: '위험자산(주식) 비중이 높은 계좌는 단기 변동성이 커질 수 있는 국면입니다.',
       note: '안전자산 선호가 강해질 때 나타나는 전형적인 흐름입니다.'
     };
@@ -695,15 +700,15 @@ function buildMacroCommentary(input) {
   // 신호라, 환율+금리 조합 규칙보다 먼저 검사한다(더 직접적인 원인 지표이므로 우선순위를 높게 둔다).
   if (isStrongUp(usdxChangePct)) {
     return {
-      cause: `달러인덱스가 급등(${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%)하며 강달러 국면입니다.`,
+      cause: `오늘 달러인덱스가 ${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}% 올라 달러 강세 방향으로 움직였습니다.`,
       impact: '원/달러 환율 상승 압박과 글로벌 유동성 긴축 신호로, 국내 증시·신흥국 자산에는 부담 요인이 될 수 있습니다.',
-      note: '강달러 국면에서는 달러 자산과 원화 자산의 평가액이 서로 다른 방향으로 움직일 수 있습니다.'
+      note: '달러 강세 방향일 때는 달러 자산과 원화 자산의 평가액이 서로 다른 방향으로 움직일 수 있습니다.'
     };
   }
   if (isStrongDown(usdxChangePct)) {
     return {
-      cause: `달러인덱스가 하락(${fmtNum(usdxChangePct, 2)}%)하며 약달러 국면입니다.`,
-      impact: '위험자산(주식) 선호 심리가 살아나고, 원화 자산에는 우호적인 환경입니다.',
+      cause: `오늘 달러인덱스가 ${fmtNum(usdxChangePct, 2)}% 내려 달러 약세 방향으로 움직였습니다.`,
+      impact: '달러 약세는 원화 자산과 위험자산(주식)에 유리하게 작용하는 경우가 많습니다.',
       note: '위험자산 선호가 회복될 때 나타나는 흐름입니다.'
     };
   }
@@ -711,21 +716,21 @@ function buildMacroCommentary(input) {
     return {
       cause: '미국 금리와 원/달러 환율이 동반 상승 중입니다.',
       impact: fw !== null
-        ? `달러 자산(전체의 ${fw}%) 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.`
-        : '달러 자산 평가액에는 호재이나, 국내 증시는 자금 이탈 압력으로 변동성이 커질 수 있습니다.',
+        ? `환율이 오르면 달러 자산(전체의 ${fw}%)의 원화 평가액은 늘어나는 방향이며, 국내 증시는 외국인 자금 흐름에 따라 등락이 커지는 경우가 있습니다.`
+        : '환율이 오르면 달러 자산의 원화 평가액은 늘어나는 방향이며, 국내 증시는 외국인 자금 흐름에 따라 등락이 커지는 경우가 있습니다.',
       note: '금리와 환율이 함께 오르면 달러 자산과 국내 자산의 평가액이 서로 다르게 움직이는 경향이 있습니다.'
     };
   }
   if (isDown(ust10yChangePct) && isUp(kospiChangePct)) {
     return {
-      cause: '금리가 진정되며 위험자산 선호 심리가 살아나는 분위기입니다.',
-      impact: '국내 주식 비중이 있는 계좌에는 우호적인 환경입니다.',
+      cause: '오늘 미국 금리가 내리고 코스피가 올랐습니다.',
+      impact: '금리 부담이 줄어드는 날에는 국내 주식이 함께 오르는 경우가 많습니다.',
       note: '금리 부담이 줄어들 때 국내 위험자산에 나타나는 흐름입니다.'
     };
   }
   if (isDown(fxChangePct) && isUp(kospiChangePct)) {
     return {
-      cause: '원화가 강세를 보이며 국내 증시에 우호적인 자금 유입이 기대되는 분위기입니다.',
+      cause: '오늘 원화가 강세 방향으로 움직이고 코스피가 올랐습니다.',
       impact: '달러 자산 평가액은 다소 줄어들 수 있으나, 국내 자산 비중에는 긍정적입니다.',
       note: '원화 강세 구간에서는 달러 자산의 원화 평가액이 줄어드는 방향으로 작용합니다.'
     };
@@ -733,7 +738,7 @@ function buildMacroCommentary(input) {
   if (isDown(kospiChangePct) && typeof vix === 'number' && vix >= 20) {
     return {
       cause: '국내 증시가 조정을 받고 있고 시장 불안 심리도 다소 높아진 상태입니다.',
-      impact: '단기 변동성 확대에 유의할 필요가 있습니다.',
+      impact: '지수 하락과 불안 지표 상승이 함께 나타나 단기 등락이 커질 수 있는 구간입니다.',
       note: '지수 조정과 불안 심리가 함께 나타나는 구간입니다.'
     };
   }
@@ -792,12 +797,11 @@ function buildAssetCorrelationGuide({ ust10yChangePct, fxChangePct }) {
  * ---------------------------------------------------------------------- */
 const MACRO_INDICATOR_INFO = {
   vix: {
-    label: 'VIX (공포·탐욕 지수)',
-    concept: '옵션 시장에서 예상하는 향후 변동성을 지수화한 값으로, 흔히 "공포지수"라고 불려요. 낮을수록 투자자들이 안정적이라고 느끼고, 높을수록 단기적인 불안 심리가 크다는 뜻이에요.',
+    label: 'VIX (변동성 지수)',
+    concept: "미국 S&P 500 옵션 가격으로 계산한, 시장이 예상하는 향후 30일 변동성 지수예요. 흔히 '공포지수'라고 불려요. 낮을수록 시장이 큰 등락을 덜 예상하고, 높을수록 큰 등락을 더 예상한다는 뜻이에요.",
     watchPoints: [
-      '20 미만은 평상시 수준, 30 이상이면 시장 전반이 긴장한 상태로 봅니다.',
-      'VIX가 급등하면 주식 비중이 높은 계좌일수록 단기 등락폭이 커질 수 있어요.',
-      '짧게 튀었다가 가라앉는 경우가 많아, 한 번의 급등만으로 판단하기보다는 며칠간 추이를 함께 지켜보는 게 좋아요.'
+      'VIX는 짧게 튀었다가 가라앉는 경우가 많아, 하루 값보다 5일·20일 흐름을 함께 보는 것이 좋아요.',
+      'VIX가 급등하면 주식 비중이 높은 계좌일수록 단기 등락폭이 커질 수 있어요.'
     ]
   },
   usdkrw: {
@@ -806,7 +810,7 @@ const MACRO_INDICATOR_INFO = {
     watchPoints: [
       '달러 자산을 보유 중이라면 환율 상승은 평가액 증가, 하락은 감소로 이어집니다.',
       '환율은 미국 금리·무역수지·글로벌 위험회피 심리 등 여러 요인이 함께 작용해 움직여요.',
-      '환전 계획이 있다면 하루 등락보다 며칠~몇 주 단위의 추세를 함께 참고하는 게 도움이 됩니다.'
+      '환율은 하루 등락보다 며칠~몇 주 단위로 보면 방향을 더 분명히 알 수 있어요.'
     ]
   },
   us10y: {
@@ -878,7 +882,7 @@ const MACRO_INDICATOR_INFO = {
     watchPoints: [
       '달러인덱스가 오르면(강달러) 원/달러 환율도 함께 오르는(원화 약세) 경향이 있어요.',
       '미국 금리가 오르면 더 높은 이자를 좇아 자금이 몰려 달러인덱스도 함께 오르는 경향이 있어요.',
-      '강달러 국면에서는 신흥국·위험자산(주식) 전반에 자금 이탈 압력이 커질 수 있어 함께 참고하면 좋아요.'
+      '달러 강세가 이어지는 시기에는 신흥국·위험자산(주식)에서 자금이 빠져나가는 경우가 있어요.'
     ]
   }
 };
@@ -958,11 +962,9 @@ function macroDetailValueText(key, s) {
 // [지표별 "그래서 무슨 뜻인지" 꼬리 문장] 1일/5일/20일 어느 조합으로 문장을 구성하든 마지막에 똑같이
 // 붙는다 - VIX는 상태(안정/주의/긴장) 자체가 이미 의미를 담고 있어 별도 꼬리가 없다.
 function macroMeaningTail(key) {
-  if (key === 'usdkrw') return '환율이 오르면 보유 중인 달러 자산의 원화 환산 평가액은 늘고, 내리면 줄어듭니다.';
-  if (key === 'us10y') return '금리가 오르면 채권가격은 내려가고, 성장주(고PER주)에는 대체로 부담 요인으로 작용하는 경향이 있습니다.';
+  // [용어 정비 S-36] 원/달러·美 10년물·금·달러인덱스는 같은 팝업의 개념/함께 볼 점과 같은 내용이라 꼬리 문장을 두지 않는다.
+  if (key === 'usdkrw' || key === 'us10y' || key === 'gold' || key === 'usdx') return null;
   if (key === 'vix') return null;
-  if (key === 'gold') return '금값이 오르면 안전자산 선호 심리가, 내리면 위험자산 선호 심리가 강해지는 경향이 있습니다.';
-  if (key === 'usdx') return '달러인덱스가 오르면(강달러) 원/달러 환율 상승 압박과 위험자산 이탈 압력이, 내리면(약달러) 위험자산 선호 심리 회복이 뒤따르는 경향이 있습니다.';
   return '지수 등락은 그 시장에 상장된 기업들의 평균적인 투자심리를 보여줍니다.';
 }
 
@@ -1072,7 +1074,7 @@ function buildMacroDetailBodyHtml(key) {
       <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep break-words">${escapeHtml(buildMacroDetailTrendText(key, s))}</p>
     </div>
     <div class="rounded-lg border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 p-3">
-      <p class="text-sm font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 관전 포인트 &amp; 대응 팁</p>
+      <p class="text-sm font-semibold text-brand-700 dark:text-brand-300 mb-1.5">🧭 함께 볼 점</p>
       ${info.watchPoints.map((w, i) => hangingIndentLine(`${i + 1}.`, escapeHtml(w), 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed mt-1')).join('')}
       <!-- [V1.2-A C4] 위 구간(예: VIX 20/30)은 계산식이 아니라 이 화면이 초보자 설명을 위해 쓰는 고정
            참고값이다(js/10 MACRO_TREND_THRESHOLDS/vixWeatherIcon 주석 참고) - 숫자·판정 로직은 그대로
@@ -1152,7 +1154,7 @@ function renderMacroBriefing() {
   const usdxTile = macroTileHtml('usdx', '달러인덱스', typeof usdx === 'number' ? fmtNum(usdx, 2) : '-', typeof usdxChangePct === 'number' ? `${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%` : '조회 전', trendArrowIcon(usdxChangePct));
   gridEl.innerHTML = `
     <div class="grid grid-cols-5 gap-1 sm:gap-2">
-      ${macroTileHtml('vix', 'VIX(공포지수)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
+      ${macroTileHtml('vix', 'VIX(변동성)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
       ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', typeof fxChangePct === 'number' ? `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%` : '조회 전', trendArrowIcon(fxChangePct))}
       ${macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
       ${goldTile}
@@ -1338,7 +1340,7 @@ function buildRiskAlertStockCards(m) {
   const cards = [];
   if (m.topWeight >= 25 && m.topHolding) {
     const contrib = typeof m.topHolding.riskContributionPct === 'number' ? m.topHolding.riskContributionPct : null;
-    cards.push(`⚠️ [${escapeHtml(m.topHolding.name)}] 비중 ${fmtNum(m.topWeight, 0)}%${contrib !== null ? ` · 위험기여도 ${fmtNum(contrib, 0)}%` : ''} (과도함)`);
+    cards.push(`⚠️ [${escapeHtml(m.topHolding.name)}] 주식·ETF 중 비중 ${fmtNum(m.topWeight, 0)}%${contrib !== null ? ` · 위험 기여도 ${fmtNum(contrib, 0)}%` : ''}`);
   }
   const { risky } = computeRiskClassifiedAssets();
   risky.slice(0, 3).forEach((r) => {
@@ -1374,7 +1376,7 @@ function openRiskAlertModal() {
 
   const actionItems = buildRiskActionItems(m);
   document.getElementById('riskAlertActionItems').innerHTML = `
-    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 초직관적 행동 제안</p>
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">💡 함께 확인할 점</p>
     ${actionItems.map((item, i) => hangingIndentLine(`${i + 1}.`, item, 'text-sm text-slate-600 dark:text-slate-300 leading-relaxed')).join('')}`;
 
   document.getElementById('riskAlertModal').classList.remove('hidden');
@@ -1440,11 +1442,11 @@ document.getElementById('riskAlertDetailBtn').addEventListener('click', (e) => {
 function bollingerPositionLabel(bollinger) {
   if (!bollinger || typeof bollinger.pctB !== 'number') return '데이터 부족';
   const pctB = bollinger.pctB;
-  if (pctB >= 1) return '상단 밴드 상회(단기 과열 가능)';
-  if (pctB >= 0.8) return '상단 부근(단기 과열 구간에 근접)';
-  if (pctB <= 0) return '하단 밴드 하회(단기 급락 상태)';
-  if (pctB <= 0.2) return '하단 부근(단기 반등 대기 구간 가능)';
-  return '중심선 부근(평상시 변동 범위)';
+  if (pctB >= 1) return '상단 밴드 위';
+  if (pctB >= 0.8) return '상단 밴드 부근';
+  if (pctB <= 0) return '하단 밴드 아래';
+  if (pctB <= 0.2) return '하단 밴드 부근';
+  return '중심선 부근(평상시 범위)';
 }
 
 // [📌 핵심 요약 & 현재 상태] 이동평균/RSI/52주 낙폭을 한데 모아 초보자가 한눈에 이해할 수 있는 상태
@@ -1458,17 +1460,17 @@ function buildStockStatusSummary(a) {
   const bigDrawdown = typeof a.week52DrawdownPct === 'number' && a.week52DrawdownPct <= -30;
 
   let trendPhrase;
-  if (a.trendLabel === '정배열(상승추세)') trendPhrase = '꾸준히 오르는 흐름을 이어가고 있어요';
-  else if (a.trendLabel === '역배열(하락추세)') trendPhrase = '하락 흐름이 이어지는 숨고르기(조정) 구간이에요';
-  else trendPhrase = '뚜렷한 방향 없이 등락을 반복하는 구간이에요';
+  if (a.trendLabel === '정배열(상승추세)') trendPhrase = '20·60·120일 이동평균이 상승 배열입니다';
+  else if (a.trendLabel === '역배열(하락추세)') trendPhrase = '20·60·120일 이동평균이 하락 배열입니다';
+  else trendPhrase = '이동평균의 방향이 섞여 있습니다';
 
   let extra = '';
-  if (isOverbought) extra = ' 최근 단기간 빠르게 올라 잠시 쉬어가기 좋은 위치일 수 있어요.';
-  else if (isOversold) extra = ' 단기간 많이 빠져서 관심 있게 지켜볼 만한 구간이에요.';
+  if (isOverbought) extra = ' 최근 짧은 기간에 빠르게 오른 상태입니다.';
+  else if (isOversold) extra = ' 최근 짧은 기간에 많이 내린 상태입니다.';
 
-  let tag = { emoji: '🟢', label: '안정적', color: 'green' };
-  if (isOverbought || isDownTrend || bigDrawdown) tag = { emoji: '🟡', label: '주의 필요', color: 'amber' };
-  else if (isOversold) tag = { emoji: '🔵', label: '관심 구간', color: 'blue' };
+  let tag = { emoji: '🟢', label: '특이 신호 없음', color: 'green' };
+  if (isOverbought || isDownTrend || bigDrawdown) tag = { emoji: '🟡', label: '확인 필요', color: 'amber' };
+  else if (isOversold) tag = { emoji: '🔵', label: '단기 하락 큼', color: 'blue' };
 
   return { tag, summaryText: trendPhrase + '.' + extra };
 }
@@ -1476,11 +1478,8 @@ function buildStockStatusSummary(a) {
 // [🎯 위험 관리 안내] 이 종목의 현재 가격/지표와 무관하게 어떤 종목을 보든 똑같이 적용되는 일반
 // 원칙만 담는다 - 특정 가격대·비중·시점을 지정하면 개인화된 매매 지시가 되므로, 의도적으로 이
 // 종목의 수치를 전혀 참조하지 않는 고정 문구다.
-const STOCK_ANALYSIS_RISK_TIPS = [
-  '한 번에 다 사기보다 나누어 접근하면 가격 변동에 따른 부담을 줄일 수 있어요.',
-  '단기간 급하게 오른 자산을 추격 매수하기보다는, 흐름을 지켜본 뒤 판단하는 투자자가 많아요.',
-  '여러 종목/자산군에 나눠 담으면 한 종목의 등락이 전체 계좌에 미치는 영향을 줄일 수 있어요.'
-];
+// [용어 정비 S-39] 투자 방법을 권하던 3개 문장(나누어 접근·추격 매수·나눠 담기)을 PM 승인안 한 문장으로 대체했다.
+const STOCK_ANALYSIS_RISK_NOTE = '🎯 참고: 한 종목·한 자산군의 비중이 크면 그 자산의 등락이 계좌 전체에 크게 반영됩니다.';
 
 // [초보자용 지표 가이드] guideText가 있으면 값 아래에 작은 회색 캡션으로 항상 보여준다 - 아이콘을
 // 눌러야 보이는 호버 툴팁 대신 항상 노출되는 캡션을 택했다(모바일에서는 호버가 없어 툴팁이 잘 안
@@ -1500,7 +1499,7 @@ function bollingerGuideText(bollinger) {
   if (!bollinger || typeof bollinger.pctB !== 'number') return '';
   return '최근 20일 평균 주가 대비 얼마나 벗어나 있는지 보여주는 지표예요.';
 }
-const MDD_GUIDE_TEXT = '최근 1년 중 고점 대비 가장 크게 떨어졌던 폭이에요 - 손실 위험도를 가늠하는 지표예요.';
+const MDD_GUIDE_TEXT = '최근 1년 중 고점에서 가장 크게 떨어졌던 폭이에요(이미 지나간 최대 하락). 지금 가격이 고점보다 얼마나 낮은지와는 다른 값이에요.';
 
 const STOCK_ANALYSIS_TAG_COLOR_CLASSES = {
   green: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400',
@@ -1545,8 +1544,8 @@ function renderStockAnalysisReportMain(a, sim) {
   <div class="mb-3">
     <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 &amp; 기술적 참고</p>
     <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('단기 벽 (최근 3개월 최고가)', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 가격이에요 - 이 부근에서 상승 속도가 둔해진 적이 있어요.')}
-      ${stockAnalysisStatTile('1차 버팀목 (최근 3개월 최저가)', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 가격이에요 - 이 부근에서 하락이 멈췄던 적이 있어요.')}
+      ${stockAnalysisStatTile('최근 3개월 최고가', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 가격이에요.')}
+      ${stockAnalysisStatTile('최근 3개월 최저가', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 가격이에요.')}
       <div class="col-span-2">${stockAnalysisStatTile('볼린저 밴드 위치', bollingerPositionLabel(a.bollinger), bollingerGuideText(a.bollinger))}</div>
       <div class="col-span-2">${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', typeof a.mdd === 'number' ? MDD_GUIDE_TEXT : '')}</div>
     </div>
@@ -1559,10 +1558,7 @@ function renderStockAnalysisReportMain(a, sim) {
 // 무관하게 리포트의 항상 맨 마지막에 와야 하는 고정 섹션이라 Main과 분리했다(위 주석 참고).
 function renderStockAnalysisReportFooter(a) {
   return `
-  <p class="text-sm text-slate-400 flex items-center gap-1 mb-1">
-    🎯 위험 관리 일반 원칙
-    <button type="button" data-info-tip="${escapeHtml(STOCK_ANALYSIS_RISK_TIPS.map((t, i) => `${i + 1}. ${t}`).join(' '))}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
-  </p>
+  <p class="text-sm text-slate-400 mb-1 leading-relaxed break-keep">${escapeHtml(STOCK_ANALYSIS_RISK_NOTE)}</p>
 
   <p class="text-sm text-slate-400 dark:text-slate-500 text-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">본 리포트는 참고용 정보이며, 최종 투자 판단과 책임은 본인에게 있습니다.</p>`;
 }

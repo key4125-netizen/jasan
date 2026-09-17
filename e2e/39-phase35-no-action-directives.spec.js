@@ -131,7 +131,8 @@ test('8. 거래량 급증 - 매매 행동 지시가 나오지 않는다', async 
 test('9. 추세 이탈 - 손절 기준 지시가 나오지 않는다', async ({ page }) => {
   await boot(page);
   const t = await page.evaluate(() => buildIndividualActionItem({ hasData: true, rsiState: '적정', trendLabel: '역배열(하락추세)' }, 10));
-  expect(t).toContain('역배열');
+  // [용어 정비] 추세 표기가 '역배열' → '하락 배열'로 통일됐다 - 이 분기가 선택됐는지만 확인하는 표지다.
+  expect(t).toContain('하락 배열');
   assertNoDirective(t, '추세 이탈');
 });
 

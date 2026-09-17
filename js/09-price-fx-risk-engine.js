@@ -1028,11 +1028,12 @@ function computeFlowSignal(h) {
   if (h.lastVolume <= h.volMA20 * 0.4) return 'quiet';
   return 'neutral';
 }
+// [용어 정비 S-31] 거래량+등락만 본 추정 신호라 매수·매도 주체를 단정하지 않는 이름으로 표시한다(판정은 그대로).
 function flowSignalLabel(signal) {
-  if (signal === 'outflow') return { label: '매물 압박', emoji: '🔴' };
-  if (signal === 'inflow') return { label: '매수 유입', emoji: '🟢' };
-  if (signal === 'quiet') return { label: '관망세 지속', emoji: '🟡' };
-  if (signal === 'neutral') return { label: '수급 안정', emoji: '🟢' };
+  if (signal === 'outflow') return { label: '거래량 늘며 하락', emoji: '🔴' };
+  if (signal === 'inflow') return { label: '거래량 늘며 상승', emoji: '🟢' };
+  if (signal === 'quiet') return { label: '거래 한산', emoji: '🟡' };
+  if (signal === 'neutral') return { label: '특이 신호 없음', emoji: '🟢' };
   return { label: '데이터 부족', emoji: '⚪' };
 }
 
