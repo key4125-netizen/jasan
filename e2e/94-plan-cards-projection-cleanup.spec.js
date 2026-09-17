@@ -341,7 +341,7 @@ for (const realEstate of [false, true]) {
         }
       };
     });
-    await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값');
+    await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값 (일반적 수익률 적용)');
     await expect(page.locator('#projectionHeroFuture')).toHaveText(exp.general);
     await expect(page.locator('#projectionHeroFutureTax')).toHaveText(exp.tax);
     await expect(page.locator('#projectionHeroFutureTotalLabel')).toHaveText('합계');

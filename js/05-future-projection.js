@@ -1903,7 +1903,8 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets, totalNorma
   if (monthlyEl) monthlyEl.textContent = monthly > 0 ? `${fmtKRWShort(monthly)}/월` : '미설정';
   // [FUTURE-P1 Phase 3-2] "예상 자산"은 이 값을 미래 예측/보장으로 읽히게 한다 - 실제로는 수익률이
   // 매년 일정하다고 가정한 단일 경로 계산값이므로 "참고값"이라고 그대로 부른다(계산은 무변경).
-  if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 자산 참고값`;
+  // [v255] 어떤 수익률 기준인지 제목에서 밝힌다 - 이 값은 presetResults.normal(일반적 수익률) 경로다(계산 무변경).
+  if (futureLabelEl) futureLabelEl.textContent = `${years}년 후 자산 참고값 (일반적 수익률 적용)`;
   if (futureEl) futureEl.textContent = fmtKRWShort(futureTotal);
   // [v248-1 REQ-09] 20년 후 절세계좌 · 합계 - totalScenarioData(normal)에 이미 있는 값을 표시만 한다.
   // [v248-1 PM 결정 A] 이 카드의 합계 = 일반계좌 + 절세계좌(Tax MC "통합" 범위와 같은 뜻). 반올림 전 원시값(general ·

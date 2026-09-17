@@ -32,6 +32,18 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-18) — 🔁 **v255 UI 상태 통일 · 참고값 기준 표시** (v254 → **v255**)
+
+**로컬 커밋만 · push/배포 안 함(PM 판단 대기). v254(`61bcd93`)도 아직 로컬.** 체크리스트 **§42**.
+
+- **필터**: 상단 필터(`state.filters`)와 자산 세부현황 보기 버튼(`assetListViewMode`)은 이미 독립 - 코드 변경 없음.
+- **펼침 상태**(js/03 `resetAllAccordionsOnTabSwitch`): 자산 세부현황 그룹 · 목표 비중 종목 행 · 기간별 실현손익 행 · 대시보드 상세 현황 보기 · MC 결과 주의사항 묶음/장기 가정 출처(js/19 `collapseMonteCarloResultAccordions`)를 탭 전환 시 닫는다. MC ⓘ 팝업은 열 때 주의사항 묶음 펼침 기록을 지운다(첫 클릭이 안 먹던 문제).
+- **스크롤**(js/03 `pushModalHistoryState` → `resetScrollOfNewlyOpenedModals`): 새로 연 팝업만 맨 위로(겹친 아래 팝업 · 여는 함수의 의도적 스크롤은 그대로). 닫힘은 MutationObserver로 기록. 탭 전환 문서 스크롤은 원래 맨 위.
+- **참고값 제목**: 「20년 후 자산 참고값 (일반적 수익률 적용)」(js/05 · index.html) - 값 무변경.
+- **테스트**: 신규 `e2e/100`(11) · 기대값 `e2e/11` · `e2e/94` · `e2e/80` E(탭 왕복 후 접힘). js/03의 MutationObserver는 단위 테스트 가짜 DOM을 위해 존재 여부를 확인한다. SW `smart-asset-manager-v255` + appVersionLabel v255.
+
+---
+
 ## 최근 세션 요약 (2026-09-17 심야 2) — 🧹 **v254 v253 누락 UI 1건(표시만)** (v253 → **v254**)
 
 **v253은 `f15205a`로 push · Pages 배포 성공(run 35229192331). v254는 로컬 커밋만 · push/배포 안 함(PM 판단 대기).** 체크리스트 **§41-2**.

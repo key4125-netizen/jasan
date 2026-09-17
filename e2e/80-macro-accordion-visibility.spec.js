@@ -191,14 +191,15 @@ test('E. 다른 탭에 다녀와도 지수와 세부 내용 토글이 정상이�
 
   let m = await measure(page);
   expect(m.tilesFullyVisible).toBe(10);
-  expect(m.diagnosisVisibleH, '복귀 후에도 세부 내용이 잘리지 않는다').toBe(m.diagnosisFullH);
+  // [v255 · PM 지시] 탭을 옮겼다 돌아오면 펼쳐 둔 영역은 접혀 있다(e2e/100 B-1) - 예전엔 펼친 채로 남았다.
+  expect(m.diagnosisVisibleH, '복귀하면 접혀 있다').toBe(0);
 
-  // 복귀 후 닫고 다시 열기까지 동작한다.
-  await clickDetails(page);
-  expect((await measure(page)).diagnosisVisibleH).toBe(0);
+  // 복귀 후 열고 닫기까지 동작하고, 열었을 때 잘리지 않는다(v234 회귀 방지 목적 그대로).
   await clickDetails(page);
   m = await measure(page);
-  expect(m.diagnosisVisibleH).toBe(m.diagnosisFullH);
+  expect(m.diagnosisVisibleH, '복귀 후에도 세부 내용이 잘리지 않는다').toBe(m.diagnosisFullH);
+  await clickDetails(page);
+  expect((await measure(page)).diagnosisVisibleH).toBe(0);
 });
 
 /* ── ⑦ 세부 내용 네 항목 ───────────────────────────────────────────── */

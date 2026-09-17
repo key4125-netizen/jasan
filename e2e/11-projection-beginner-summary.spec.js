@@ -28,7 +28,7 @@ test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자�
   await expect(page.locator('#projectionHeroMonthly')).toHaveText(expected.monthly);
   // [FUTURE-P1 Phase 3-2] "예상 자산"은 이 값을 미래 예측/보장으로 읽히게 한다 - 수익률이 매년
   // 일정하다고 가정한 단일 경로 계산값이라는 성격을 라벨에 그대로 드러낸다(금액 계산은 무변경).
-  await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값');
+  await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값 (일반적 수익률 적용)');
 
   // [장기 투자계획 UX 개선] 아코디언을 펼치지 않아도 "투자 기간"·"투자금 증가"가 바로 보여야 한다
   // (contributionGrowthRate: 0으로 시딩했으므로 "증가 없음"으로 표시되어야 한다).

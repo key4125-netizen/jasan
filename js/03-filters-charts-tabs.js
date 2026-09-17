@@ -235,6 +235,19 @@ function resetAllAccordionsOnTabSwitch() {
   assetListViewMode = 'none';
   // [Phase 18 P2-3] Excel 관리 아코디언도 탭을 벗어나면 항상 접힘으로 되돌아간다.
   txExcelAccordionOpen = false;
+
+  // [v255 · 펼침 상태 통일] 위 목록에서 빠져 있던 펼침 상태도 함께 닫는다 - 펼침/접힘만 되돌리며,
+  // 필터 · 입력값 · 저장 데이터 · 계산 결과는 건드리지 않는다.
+  // 자산 세부현황 그룹(renderTable) · 목표 비중 종목 행(renderPortfolioTargetSummary) · 기간별 실현손익 행
+  // (updatePnlSection)은 그 탭에 들어갈 때 다시 그려지므로 상태만 비운다.
+  assetGroupExpanded.clear();
+  portfolioDiagRowOpen = {};
+  pnlPeriodDetailOpen = {};
+  // 대시보드의 「상세 현황 보기」와 미래 예측의 Monte Carlo 결과(장기 가정 출처 · 주의사항 묶음)는 탭 전환으로
+  // 다시 그려지지 않으므로 그려져 있는 화면도 함께 접는다.
+  macroDiagnosisOpen = false;
+  if (typeof reapplyMacroDiagnosisAccordionHeight === 'function') reapplyMacroDiagnosisAccordionHeight();
+  if (typeof collapseMonteCarloResultAccordions === 'function') collapseMonteCarloResultAccordions();
 }
 
 // [버그 수정 - 탭 전환 시 스크롤 위치 초기화] 목록/표를 한참 스크롤한 상태에서 다른 탭으로 이동하면
@@ -369,6 +382,29 @@ let suppressNextPopstate = false;
 
 function pushModalHistoryState() {
   history.pushState({ smAppModal: true }, '');
+  resetScrollOfNewlyOpenedModals();
+}
+
+// [v255 · 팝업은 항상 맨 위부터] 브라우저는 display:none으로 숨겼다가 다시 보여 준 요소의 스크롤 위치를 기억한다 -
+// 그래서 팝업을 아래로 내린 채 닫았다가 다시 열면 그 위치에서 열렸다. 모든 팝업은 열자마자 이 함수(pushModalHistoryState)를
+// 부르므로, 여기서 "이번에 새로 열린" 팝업만 맨 위로 되돌린다. 이미 열려 있던 팝업(그 위에 겹쳐 연 팝업의 아래쪽)은 건드리지
+// 않고, 여는 함수가 이 호출 뒤에 일부러 옮기는 스크롤(예: 동기화 차이 확인 상자)은 그대로 적용된다.
+const modalsOpenForScroll = new Set();
+function resetScrollOfNewlyOpenedModals() {
+  document.querySelectorAll('[id$="Modal"]').forEach((modal) => {
+    if (modal.classList.contains('hidden') || modalsOpenForScroll.has(modal)) return;
+    modalsOpenForScroll.add(modal);
+    [modal, ...modal.querySelectorAll('*')].forEach((el) => { if (el.scrollTop) el.scrollTop = 0; });
+  });
+}
+// 닫힌(hidden) 팝업은 목록에서 빼서, 다음에 열 때 다시 맨 위부터 보이게 한다. 닫는 경로(버튼 · 바깥 · 뒤로가기)가 여러 곳이라
+// 각 닫기 함수를 고치지 않고 class 변화만 본다.
+// (MutationObserver가 없는 환경 - 단위 테스트의 가짜 DOM 등 - 에서는 관찰을 건너뛴다.)
+if (typeof MutationObserver === 'function') {
+  const modalHiddenObserver = new MutationObserver((records) => {
+    records.forEach((r) => { if (r.target.classList.contains('hidden')) modalsOpenForScroll.delete(r.target); });
+  });
+  document.querySelectorAll('[id$="Modal"]').forEach((modal) => modalHiddenObserver.observe(modal, { attributes: true, attributeFilter: ['class'] }));
 }
 
 // 모달을 UI(버튼/오버레이 클릭 등)로 닫을 때 호출한다 - 물리 뒤로가기로 닫을 때는(viaBackButton=true)

@@ -77,7 +77,30 @@ document.getElementById('mcInfoModal').addEventListener('click', (e) => { if (e.
 // 항상-on 계산 방법 설명)을 이 ⓘ 팝업 끝에 붙인다. 마지막 실행의 카드 HTML은 화면에 붙지 않은 보관용 요소에 그려 둔다
 // (js/22 renderMonteCarloSafetyTiers - 판정 · 분류 · 문구 무변경). 실행 전에는 기존 설명만 보인다.
 const mcSafetyDetailStore = document.createElement('div');
+// [v255 · 펼침 상태 통일] 결과 화면(critical 묶음)과 장기 가정 출처는 탭을 옮기면 접는다(resetAllAccordionsOnTabSwitch, js/03).
+// 결과를 다시 그리지 않으므로 상태와 이미 그려진 화면을 함께 접는다.
+function collapseMonteCarloResultAccordions() {
+  if (typeof mcSafetyGroupOpen !== 'undefined') {
+    document.querySelectorAll('.safety-group-body[data-safety-group-body]').forEach((body) => {
+      const key = body.dataset.safetyGroupBody;
+      mcSafetyGroupOpen[key] = false;
+      const chevron = document.querySelector(`.safety-group-chevron[data-safety-group-chevron="${CSS.escape(key)}"]`);
+      if (chevron && typeof setAccordionOpen === 'function') setAccordionOpen(body, chevron, false);
+    });
+  }
+  if (mcCmaSourceOpen) {
+    mcCmaSourceOpen = false;
+    if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaSourceBody'), mcUiEl('mcCmaSourceChevron'), false);
+    mcUiEl('mcCmaSourceToggleBtn').setAttribute('aria-expanded', 'false');
+  }
+}
+
 document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
+  // [v255 · 펼침 상태 통일] 이 팝업의 주의사항 묶음은 매번 접힌 상태(보관용 HTML)로 다시 그려진다 - 지난번에 팝업 안에서
+  // 펼쳤던 기록이 남아 있으면 다음 클릭이 "닫기"로 처리돼 한 번 눌러도 안 열렸다. 이 묶음들의 펼침 기록만 지운다.
+  if (typeof mcSafetyGroupOpen !== 'undefined') {
+    mcSafetyDetailStore.querySelectorAll('[data-safety-group-body]').forEach((el) => { delete mcSafetyGroupOpen[el.dataset.safetyGroupBody]; });
+  }
   openMcInfoModal('Monte Carlo란?', `
     <p>"지금 계획대로면"의 참고값은 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 자산군별 장기 변동성·상관관계(공식 기관 CMA)를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
     <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
