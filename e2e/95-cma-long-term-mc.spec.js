@@ -40,6 +40,10 @@ async function seedCmaPortfolio(page, extraOverseas) {
   }, extraOverseas || null);
   await page.reload();
   await page.waitForFunction(() => typeof state !== 'undefined');
+  // 부팅 때 자동으로 도는 시세 갱신(refreshPricesAndRates - 보유 종목 현재가 · 리스크 진단용 1년 시세 조회 포함)이
+  // 끝날 때까지 기다린다. 이 갱신은 MC와 무관한 요청을 보내는데, 끝나기 전에 요청 수집을 시작하면 부팅 요청이
+  // "MC 실행 중 요청"으로 섞여 A · B가 간헐적으로 실패했다. lastRefreshAt(js/11)은 갱신 주기가 모두 끝난 뒤에만 기록된다.
+  await page.waitForFunction(() => lastRefreshAt > 0);
   // 시세 캐시를 주입하지 않는다 - 장기 MC는 가격 이력을 쓰지 않아야 한다.
   await page.evaluate(() => { state.riskHistoryCache = {}; });
 }
@@ -52,6 +56,7 @@ async function runMc(page) {
 
 test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 기준일 · 세트 · Benchmark)가 결과 아래에 보인다', async ({ page }) => {
   await seedCmaPortfolio(page);
+  // 부팅 시세 갱신이 끝난 뒤(seedCmaPortfolio)부터 수집한다 - 탭 이동 · MC 실행 · 결과 확인 구간의 요청만 담긴다.
   const priceRequests = [];
   page.on('request', (req) => { if (/finance\.yahoo|stooq|corsproxy|allorigins/.test(req.url())) priceRequests.push(req.url()); });
   await runMc(page);
