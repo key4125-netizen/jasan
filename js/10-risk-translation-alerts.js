@@ -454,6 +454,10 @@ function renderRiskDiagnosisSummary() {
 
 // [🔍 세부내용 모달] 6대 위험요인 분해/정밀 수치/과거 폭락장 재현 시나리오/What-If 시뮬레이션 -
 // 메인 RISK 카드에서 분리해 이 모달 전용 컨테이너(#riskDetailModalBody)에 그린다.
+// [v253 · PM UI 정리] 세부 모달의 과거 하락장 가정 손실(2020 · 2022) 카드와 What-If(위험관리 시뮬레이션) 영역을 화면에 그리지 않는다.
+// 계산(computeStressScenario · computeScenarioRiskMetrics)과 프리셋 클릭 처리 코드는 그대로 두며, 다시 보이려면 이 값만 true로 바꾼다.
+const RISK_DETAIL_SHOW_STRESS_AND_WHATIF = false;
+
 function renderRiskDetailModal() {
   const body = document.getElementById('riskDetailModalBody');
   if (!body) return;
@@ -510,6 +514,7 @@ function renderRiskDetailModal() {
     <!-- [역사적 하락장 체험하기] 2020 코로나(짧고 강한 급락) + 2022 고금리(길게 이어진 약세장) 두 시나리오
          - 모바일(375px)에서도 카드가 잘리지 않도록 grid-cols-1로 세로로 쌓고, sm 이상에서만 2열로
          나란히 배치한다. [용어 정비] '재현'이 아니라 과거 지수 하락폭 × 베타로 계산한 가정 손실(추정)임을 밝힌다. -->
+    ${RISK_DETAIL_SHOW_STRESS_AND_WHATIF ? `
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020년 초 급락 가정 시 (추정)</p>
@@ -521,10 +526,10 @@ function renderRiskDetailModal() {
         <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW2022, m.stressLossPct2022))}</p>
         <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년 고점→저점 기준 지수 하락폭(코스피 -28.6%·나스닥100 -35.1% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다.</p>
       </div>
-    </div>
+    </div>` : ''}
 
     <!-- [What-If 리밸런싱 시뮬레이션] -->
-    ${m.topHolding ? `
+    ${RISK_DETAIL_SHOW_STRESS_AND_WHATIF && m.topHolding ? `
     <div class="mt-3 rounded-lg bg-white/70 dark:bg-black/20 p-3" id="whatIfSimBox" data-top-ticker="${escapeHtml(m.topHolding.ticker)}">
       <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
         💡 위험관리 시뮬레이션(What-If)
@@ -1274,12 +1279,12 @@ function renderMacroBriefing() {
     </p>`;
 
   // [세부 내용 높이 재적용] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이 통째로 새로 그려진다 -
-  // 「세부 내용 보기」가 펼쳐져 있다면 새 내용의 높이로 max-height를 다시 맞춘다(계산/데이터 영향 없음).
+  // 「상세 현황 보기」가 펼쳐져 있다면 새 내용의 높이로 max-height를 다시 맞춘다(계산/데이터 영향 없음).
   reapplyMacroDiagnosisAccordionHeight();
 }
 
 // [매크로 브리핑 구조 정정] PM 확정 정책: 「시장 현황 & 매크로 브리핑」 자체와 지표 10개는 접지 않고 항상
-// 보인다. 접는 것은 그 아래 「📌 세부 내용 보기」 하나뿐이고(시장 종합 평가 / 내 포트폴리오 영향 / 참고 /
+// 보인다. 접는 것은 그 아래 「📄 상세 현황 보기」(v253 전 「📌 세부 내용 보기」) 하나뿐이고(시장 종합 평가 / 내 포트폴리오 영향 / 참고 /
 // 상관관계 가이드), 그 안에 접기를 다시 두지 않는다. 예전의 브리핑 전체 접기와 상관관계 가이드 접기는 이
 // 정책과 어긋나 제거했다 - 중첩이 없어져 v234의 transitionend 높이 보정(바깥이 안쪽을 잘라내던 문제)도
 // 더는 필요 없다. 표시 구조만 바뀌고 데이터·계산은 그대로다.

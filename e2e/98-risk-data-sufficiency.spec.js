@@ -8,7 +8,7 @@
 //  5) 모바일/데스크톱 × 주간/야간에서 14px 이상, 가로 넘침 없음.
 //
 // [외부 API 비의존] e2e/40 · e2e/97과 같은 방식으로 실제 렌더 함수에 결과 객체를 직접 넣는다.
-/* global window */
+/* global window, document */
 const { test, expect } = require('@playwright/test');
 
 const TITLE = '종합 위험점수 계산 불가 (데이터 부족)';
@@ -87,16 +87,18 @@ test('2. 세부 모달도 같은 안내만 보여주고 What-If 영역을 그리
   await expect(body.locator('[data-scenario-preset]')).toHaveCount(0);
 });
 
-test('3. 열린 모달의 What-If 버튼도 데이터 부족 결과로는 계산하지 않는다', async ({ page }) => {
+test('3. What-If 클릭 처리도 데이터 부족 결과로는 계산하지 않는다', async ({ page }) => {
   await boot(page);
   await setNormal(page);
   await page.evaluate(() => openRiskDetailModal());
-  const preset = page.locator('#riskDetailModalBody [data-scenario-preset]').last();
-  await expect(preset).toBeVisible();
-  // 모달을 열면 기본 프리셋 결과가 먼저 그려진다(기존 동작) - 그 내용이 바뀌지 않아야 한다.
-  const before = await page.locator('#whatIfResultBox').innerHTML();
-  // 모달이 그려진 뒤 결과가 데이터 부족으로 바뀐 경우(버튼이 화면에 남아 있는 상태)를 만든다.
+  // [v253] 세부 모달은 What-If 영역을 그리지 않는다(e2e/99). 클릭 처리 코드는 남아 있으므로, 예전 렌더와 같은
+  // 구조의 버튼을 직접 넣어 데이터 부족 결과에서 계산하지 않는지 확인한다.
   await page.evaluate(() => {
+    const box = document.createElement('div');
+    box.id = 'whatIfSimBox';
+    box.dataset.topTicker = 'TEST.KS';
+    box.innerHTML = '<button type="button" data-scenario-preset="balanced" data-target-pct="20.0">균형 20%</button><div id="whatIfResultBox"></div>';
+    document.getElementById('riskDetailModalBody').appendChild(box);
     state.advancedRiskMetrics = Object.assign({}, state.advancedRiskMetrics, {
       dataSufficiency: { status: 'INSUFFICIENT', commonReturnCount: 50, required: 120 }
     });
@@ -104,8 +106,8 @@ test('3. 열린 모달의 What-If 버튼도 데이터 부족 결과로는 계산
     const orig = computeScenarioRiskMetrics;
     window.computeScenarioRiskMetrics = (...a) => { window.__scenarioCalls++; return orig(...a); };
   });
-  await preset.click();
-  expect(await page.locator('#whatIfResultBox').innerHTML()).toBe(before);
+  await page.locator('#whatIfSimBox [data-scenario-preset]').click();
+  expect(await page.locator('#whatIfResultBox').innerHTML()).toBe('');
   expect(await page.evaluate(() => window.__scenarioCalls)).toBe(0);
   expect(await page.evaluate(() => computeScenarioRiskMetrics({ dataSufficiency: { status: 'INSUFFICIENT' }, holdings: [] }, {}))).toBeNull();
 });
@@ -122,20 +124,17 @@ test('4. dataSufficiency가 없는 예전 결과와 SUFFICIENT 결과는 정상 
   expect(await page.evaluate(() => isRiskDataInsufficient(null))).toBe(false);
 });
 
-test('5. 스트레스 손실 추정이 없으면 0원이 아니라 계산할 수 없음으로 보인다', async ({ page }) => {
+test('5. 스트레스 손실 추정이 없으면 0원이 아니라 계산할 수 없음 문구를 쓴다(세부 모달에는 v253부터 미표시)', async ({ page }) => {
   await boot(page);
+  // 표시 문구 함수 - 값이 없으면 "계산할 수 없음", 있으면 기존 문구 그대로.
+  const texts = await page.evaluate(() => [stressLossValueText(null, null), stressLossValueText(-3000000, -30)]);
+  expect(texts[0]).toBe('계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)');
+  expect(texts[1]).toContain('(-30%) 손실 예상');
+  // [v253] 세부 모달에는 과거 하락장 가정 손실 카드 자체가 없다 - 값이 없어도 0원 · NaN이 보이지 않는다.
   await setNormal(page, { stressLossKRW: null, stressLossPct: null, stressLossKRW2022: null, stressLossPct2022: null, portfolioBeta: null });
   await page.evaluate(() => openRiskDetailModal());
   const txt = await page.locator('#riskDetailModalBody').innerText();
-  expect(txt.split('계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)').length - 1).toBe(2);
-  expect(txt).not.toContain('NaN');
-  expect(txt).not.toContain('약 0원');
-  // 값이 있으면 기존 문구 그대로다.
-  await setNormal(page);
-  await page.evaluate(() => openRiskDetailModal());
-  const normal = await page.locator('#riskDetailModalBody').innerText();
-  expect(normal).toContain('(-30%) 손실 예상');
-  expect(normal).not.toContain('계산할 수 없음 (기준 지수');
+  ['계산할 수 없음 (기준 지수', '2020년 초 급락', 'NaN', '약 0원'].forEach((w) => expect(txt, w).not.toContain(w));
 });
 
 /* ─────────────────────── 모바일 / 데스크톱 × 주간 / 야간 ─────────────────────── */

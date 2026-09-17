@@ -225,7 +225,7 @@ test('F. 세부 내용을 펼치면 네 항목(상관관계 가이드 포함)이
 
 /* ── ⑧ 브리핑 제목 구조 ────────────────────────────────────────────── */
 
-test('G. 브리핑 제목에는 접기 버튼/caret이 없고, 접기는 「세부 내용 보기」 하나뿐이다', async ({ page }) => {
+test('G. 브리핑 제목에는 접기 버튼/caret이 없고, 접기는 「상세 현황 보기」(v253 전 「세부 내용 보기」) 하나뿐이다', async ({ page }) => {
   await open(page);
   await seed(page);
 
@@ -243,7 +243,8 @@ test('G. 브리핑 제목에는 접기 버튼/caret이 없고, 접기는 「세�
   expect(s.titleInsideButton, '제목은 버튼이 아니다(눌러서 접히지 않는다)').toBe(false);
   expect(s.titleRowIcons, '제목 줄에 caret이 없다').toBe(0);
   expect(s.togglers, '브리핑 안의 접기는 세부 내용 하나뿐이다').toEqual(['macroDiagnosisToggleBtn']);
-  expect(s.detailsLabel.trim()).toBe('📌 세부 내용 보기');
+  // [v253] 명칭 · 아이콘만 바뀌었다(📌 세부 내용 보기 → 📄 상세 현황 보기). 접기 동작은 아래 검사 그대로다.
+  expect(s.detailsLabel.trim()).toBe('📄 상세 현황 보기');
   expect(s.detailsLabel).not.toContain('시장 해석 보기');
   await expect(page.locator('#macroBriefingToggleBtn')).toHaveCount(0);
   await expect(page.locator('#macroBriefingChevron')).toHaveCount(0);
