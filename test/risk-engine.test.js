@@ -12,7 +12,7 @@ const assert = require('node:assert');
 const { test } = require('node:test');
 const H = require('./risk-sandbox.js');
 
-const { loadRiskSandbox, makeTestAsset, flatCloses, zigzagCloses, volumes, datesFrom } = H;
+const { loadRiskSandbox, makeTestAsset, flatCloses, zigzagCloses, volumes, datesFrom, withDates } = H;
 
 // 테스트 전역에서 쓰는 고정 환율 - state.exchangeRate에 의존하는 calcRow()를 결정적으로 만든다.
 const FIXED_FX = 1300;
@@ -27,6 +27,15 @@ function freshSandbox() {
 // 표준 2종목 fixture - 여러 테스트가 공유한다.
 //   삼성전자: 신랑 300만 + 와이프 200만(표기가 005930 / 005930.KS로 서로 다르다) → 가구 합산 500만
 //   QQQM   : 신랑 연금저축 $1,000 × 1,300 = 130만
+// [Risk 정책 P-4 · v252] 개별 주식의 벤치마크는 종목 마스터의 실제 상장 거래소로만 정한다 - fixture에도 넣어 준다.
+const LISTED = {
+  '005930.KS': { exchange: 'KOSPI', nameKr: '삼성전자', market: 'KR' },
+  '000660.KS': { exchange: 'KOSPI', nameKr: 'SK하이닉스', market: 'KR' },
+  'A.KS': { exchange: 'KOSPI', nameKr: '테스트A', market: 'KR' },
+  'ZZZZ.KS': { exchange: 'KOSPI', nameKr: '테스트Z', market: 'KR' },
+  'AAPL': { exchange: 'NASDAQ', nameEn: 'APPLE INC', market: 'US' }
+};
+
 function buildStandardPortfolio(s) {
   s.state.assets = [
     makeTestAsset({ name: '삼성전자', ticker: '005930', owner: '신랑', quantity: 30, buyPrice: 100000, currentPrice: 100000 }),
@@ -34,10 +43,12 @@ function buildStandardPortfolio(s) {
     makeTestAsset({ name: 'QQQM', ticker: 'QQQM', owner: '신랑', accountType: '연금저축', category: 'ETF', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 }),
     makeTestAsset({ name: '현금', category: '현금', quantity: 1, buyPrice: 1000000, currentPrice: 1000000 })
   ];
-  s.setDailyCloses('005930.KS', { closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1.0) });
-  s.setDailyCloses('QQQM', { closes: zigzagCloses(260, 100, 0.8, 0.7), volumes: volumes(260, 500, 1.0) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) });
-  s.setDailyCloses('^NDX', { closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) });
+  // [Risk 정책 P-1 · v252] 모든 시계열에 같은 날짜를 붙인다 - 같은 달력이면 공통 거래일 결합이 예전 결과와 같아야 한다.
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1.0) }));
+  s.setDailyCloses('QQQM', withDates({ closes: zigzagCloses(260, 100, 0.8, 0.7), volumes: volumes(260, 500, 1.0) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
+  s.setDailyCloses('^NDX', withDates({ closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   return s;
 }
 
@@ -442,39 +453,40 @@ test('Edge - 대상 자산이 없거나 평가액이 0이면 null을 반환한�
   assert.strictEqual(await zero.computeAdvancedRiskMetrics(), null);
 });
 
-test('Edge - [Phase 39-B] 가격 이력이 전혀 없으면 손실위험도 중립(50)이 된다', async () => {
+test('Edge - [Risk 정책 P-2] 가격 이력이 전혀 없으면 정상 위험점수를 만들지 않는다(데이터 부족)', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
+  assert.deepStrictEqual(plain(m.dataSufficiency), { status: 'INSUFFICIENT', commonReturnCount: 0, required: 120 });
+  // [Phase 39-B 이력] 예전엔 결측을 중립(50)으로 채워 71점을 만들었다 - 이제 점수 자체를 만들지 않는다.
+  assert.strictEqual(m.riskScore, null);
+  assert.strictEqual(m.subScores, null);
+  assert.strictEqual(m.dataConfidence, null);
+  for (const k of ['portfolioBeta', 'portfolioVolatilityPct', 'portfolioMDDPct', 'var95Pct', 'cvarPct', 'var95KRW', 'cvarKRW',
+    'sortino', 'weightedAvgCorrelation', 'correlationMatrix', 'topCorrelation', 'topCorrelationPair',
+    'stressLossKRW', 'stressLossPct', 'stressLossKRW2022', 'stressLossPct2022', 'portfolioVolatilityShortPct']) {
+    assert.strictEqual(m[k], null, k);
+  }
+  assert.strictEqual(m.volatilitySpike, false);
+  // 수익률과 무관한 비중 정보와 종목 단위 필드는 남는다(편입 시뮬레이션 · 감지 목록 호환).
   assert.strictEqual(m.missingCount, 1);
+  assert.strictEqual(round(m.topWeight, 4), 100);
+  assert.strictEqual(round(m.hhi, 6), 1);
+  assert.strictEqual(m.sectorExposure.topSector, '반도체');
   assert.strictEqual(m.holdings[0].hasData, false);
-  assert.strictEqual(m.portfolioBeta, null);
-  assert.strictEqual(m.portfolioVolatilityPct, null);
-  assert.strictEqual(m.portfolioMDDPct, null);
-  assert.strictEqual(m.weightedAvgCorrelation, null);
   assert.strictEqual(m.holdings[0].rsi14, null);
   assert.strictEqual(m.holdings[0].trendLabel, null);
   assert.strictEqual(m.holdings[0].volumeSpike, false);
-  // 신뢰도는 떨어진다(100 - 35 - 0 - 8 = 57). 섹터는 매핑되어 있으므로 미분류 감점은 0이다.
-  // 가격 이력이 없으면 benchmark 감점은 중복 적용하지 않는다(missingPenalty가 이미 반영).
-  assert.strictEqual(m.dataConfidence.score, 57);
-  // [Phase 39-B] VaR/CVaR가 리터럴 0이 아니라 null이 되어, 손실위험이 최저(20)가 아니라 중립(50)이다.
-  assert.strictEqual(m.var95Pct, null);
-  assert.strictEqual(m.cvarPct, null);
-  assert.strictEqual(m.var95KRW, null, '금액도 0원이 아니라 null이어야 한다');
-  assert.strictEqual(m.cvarKRW, null);
-  assert.deepStrictEqual(plain(m.subScores), {
-    concentration: 100, volatility: 50, drawdown: 50, market: 50, correlation: 50, technical: 50
-  });
-  // 데이터가 없다고 위험이 낮아 보이지 않는다(64 -> 71). 위험이 커진 게 아니라 "모름"이 중립으로 옮겨간 것이다.
-  assert.strictEqual(m.riskScore, 71);
+  assert.strictEqual(m.holdings[0].riskContributionPct, null);
 });
 
 test('Edge - [Phase 39-B] benchmark만 없으면 beta는 null이 되고 신뢰도가 떨어진다', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
-  s.setDailyCloses('005930.KS', { closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) });
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setTickerMaster(LISTED);
   // ^KS11을 일부러 주지 않는다.
   const m = await s.computeAdvancedRiskMetrics();
 
@@ -487,31 +499,37 @@ test('Edge - [Phase 39-B] benchmark만 없으면 beta는 null이 되고 신뢰�
   assert.ok(m.dataConfidence.reasons.some((r) => r.includes('벤치마크')), '사유가 사용자에게 노출된다');
 });
 
-test('Edge - [Phase 39-B] 일부 종목만 beta가 있으면 그 종목들로만 재정규화한다', async () => {
+test('Edge - [Risk 정책 P-2] 일부 종목만 beta가 있으면 재정규화하지 않고 포트폴리오 beta를 만들지 않는다', async () => {
   const s = freshSandbox();
   s.state.assets = [
     makeTestAsset({ name: '국내', ticker: '005930.KS', quantity: 13, buyPrice: 100000, currentPrice: 100000 }),
     makeTestAsset({ name: '해외', ticker: 'QQQM', isDomestic: '해외', currency: 'USD', category: 'ETF', quantity: 10, buyPrice: 100, currentPrice: 100 })
   ];
-  s.setDailyCloses('005930.KS', { closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('QQQM', { closes: zigzagCloses(260, 100, 0.8, 0.7), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('QQQM', withDates({ closes: zigzagCloses(260, 100, 0.8, 0.7), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   // ^NDX를 주지 않아 QQQM만 beta 계산 불가 (50:50 비중)
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(round(m.holdings.find((h) => h.ticker === '005930.KS').beta, 4), 1.1579);
   assert.strictEqual(m.holdings.find((h) => h.ticker === 'QQQM').beta, null);
-  // 예전엔 (1.1579 + 1.0)/2 로 희석됐다. 이제 관측된 beta만 100%로 재정규화한다.
-  assert.strictEqual(round(m.portfolioBeta, 6), 1.157895);
+  // [Phase 39-B 이력] 예전엔 관측된 beta만 100%로 재정규화했다(1.157895). 이제 비중을 다시 나누지 않는다.
+  assert.strictEqual(m.portfolioBeta, null);
+  assert.strictEqual(m.subScores.market, 50, '기존 결측 요인 처리(50)');
   assert.strictEqual(m.dataConfidence.score, 85, '결측 비중 50% -> 100 - 7.5 - 8');
+  // beta가 없는 종목이 있으면 벤치마크 기반 스트레스도 만들지 않는다.
+  assert.strictEqual(m.stressLossPct, null);
+  assert.strictEqual(m.stressLossPct2022, null);
 });
 
 test('Edge - 종목이 1개면 상관관계는 null이 되고 [Phase 39-B] 중립(50)이 된다', async () => {
   const s = freshSandbox();
   // 섹터가 매핑된 티커를 써서 미분류 감점(-20)이 섞이지 않게 한다 - 여기서 보려는 건 상관관계뿐이다.
   s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
-  s.setDailyCloses('005930.KS', { closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(m.weightedAvgCorrelation, null);
@@ -529,9 +547,10 @@ test('Edge - [Phase 39-B] 2종목인데 상관관계를 못 구하면 신뢰도�
     makeTestAsset({ name: 'B', ticker: '000660.KS', quantity: 25, buyPrice: 100000, currentPrice: 100000 })
   ];
   // 완전 무변동 -> 분산 0 -> computeCorrelationFromReturns가 null을 반환한다.
-  s.setDailyCloses('005930.KS', { closes: flatCloses(260, 100000), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('000660.KS', { closes: flatCloses(260, 50000), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('005930.KS', withDates({ closes: flatCloses(260, 100000), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('000660.KS', withDates({ closes: flatCloses(260, 50000), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(m.weightedAvgCorrelation, null);
@@ -540,7 +559,7 @@ test('Edge - [Phase 39-B] 2종목인데 상관관계를 못 구하면 신뢰도�
   assert.ok(m.dataConfidence.reasons.some((r) => r.includes('상관관계를 계산할 수 없어')));
 });
 
-test('Edge - [Phase 39-B] 수익률 10개 미만이면 hasData=false로 결측 처리된다', async () => {
+test('Edge - [Phase 39-B · Risk 정책 P-2] 수익률 10개 미만이면 hasData=false이고 위험점수는 데이터 부족이다', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
   s.setDailyCloses('005930.KS', { closes: zigzagCloses(10, 100000, 1, 1), volumes: volumes(10, 1000, 1) });
@@ -551,9 +570,11 @@ test('Edge - [Phase 39-B] 수익률 10개 미만이면 hasData=false로 결측 �
   assert.strictEqual(m.holdings[0].returns.length, 9);
   assert.strictEqual(m.holdings[0].hasData, false);
   assert.strictEqual(m.missingCount, 1);
-  assert.strictEqual(m.dataConfidence.score, 57, '더 이상 "데이터 충분"이 아니다');
-  assert.strictEqual(m.subScores.volatility, 50);
-  assert.strictEqual(m.subScores.drawdown, 50);
+  // 날짜가 없는 시계열이라 공통 거래일도 만들 수 없다 - 점수 · 신뢰도를 만들지 않는다.
+  assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
+  assert.strictEqual(m.dataConfidence, null);
+  assert.strictEqual(m.subScores, null);
+  assert.strictEqual(m.riskScore, null);
 });
 
 test('Edge - [Phase 39-B] hasData 경계는 수익률 10개(= 종가 11개)다', async () => {
@@ -576,8 +597,9 @@ test('Edge - [Phase 39-B] hasData 경계는 수익률 10개(= 종가 11개)다',
 test('Edge - 무변동(가격이 전혀 안 움직임)이면 변동성·MDD·VaR가 모두 0이다', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: 'A', ticker: 'A.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
-  s.setDailyCloses('A.KS', { closes: flatCloses(260, 100000), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: flatCloses(260, 2500), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('A.KS', withDates({ closes: flatCloses(260, 100000), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: flatCloses(260, 2500), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(m.portfolioVolatilityPct, 0);
@@ -592,8 +614,9 @@ test('Edge - 무변동(가격이 전혀 안 움직임)이면 변동성·MDD·VaR
 test('Edge - 섹터 매핑에 없는 티커는 미분류로 안전하게 빠지고 신뢰도만 낮아진다', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: '미지의종목', ticker: 'ZZZZ.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
-  s.setDailyCloses('ZZZZ.KS', { closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('ZZZZ.KS', withDates({ closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(m.sectorExposure.topSector, '미분류');
@@ -607,16 +630,18 @@ test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에
     makeTestAsset({ name: '국내', ticker: 'A.KS', quantity: 13, buyPrice: 100000, currentPrice: 100000 }),
     makeTestAsset({ name: '해외', ticker: 'AAPL', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 })
   ];
-  s.setDailyCloses('A.KS', { closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('AAPL', { closes: zigzagCloses(260, 100, 1, 1), volumes: volumes(260, 1000, 1) });
-  s.setDailyCloses('^KS11', { closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
-  s.setDailyCloses('^NDX', { closes: zigzagCloses(260, 15000, 1, 1), volumes: volumes(260, 1, 1) });
+  s.setDailyCloses('A.KS', withDates({ closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('AAPL', withDates({ closes: zigzagCloses(260, 100, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setDailyCloses('^IXIC', withDates({ closes: zigzagCloses(260, 15000, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
   // $1,000 × 1,300 = 130만, 국내 130만 → 정확히 50:50
   assert.strictEqual(m.totalCur, 2600000);
   assert.deepStrictEqual(plain(m.holdings.map((h) => round(h.weight * 100, 4)).sort()), [50, 50]);
-  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'NASDAQ100');
+  // [Risk 정책 P-4] 예전 근사 집합(NASDAQ100 스타일) 대신 실제 상장 거래소 종합지수(NASDAQ)를 쓴다.
+  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'NASDAQ');
 });
 
 test('Edge - 계산 중 예외가 나면 null을 반환하고 앱을 멈추지 않는다', async () => {
@@ -650,9 +675,10 @@ async function betaWith(assetDates, benchDates, benchLen) {
     : { closes: zigzagCloses(benchLen, 2500, 1.0, 0.9), volumes: volumes(benchLen, 1, 1) };
   s.setDailyCloses('005930.KS', asset);
   s.setDailyCloses('^KS11', bench);
+  s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
   const h = m.holdings[0];
-  return { beta: round(h.beta, 4), aligned: h.betaAligned, obs: h.betaObservationCount, market: m.subScores.market };
+  return { beta: round(h.beta, 4), aligned: h.betaAligned, obs: h.betaObservationCount, market: m.subScores ? m.subScores.market : null, sufficiency: m.dataSufficiency.status };
 }
 
 test('날짜 정렬 - 양쪽에 날짜가 있으면 공통 거래일로만 beta를 계산한다', async () => {
@@ -661,10 +687,12 @@ test('날짜 정렬 - 양쪽에 날짜가 있으면 공통 거래일로만 beta�
   assert.strictEqual(same.obs, 260, '완전히 겹치면 260 거래일 전부 쓴다');
   assert.strictEqual(same.beta, 1.1579);
 
-  // 지수 이력이 짧으면 실제로 겹치는 30일만 쓴다(예전엔 260개 중 최근 30개를 잘라 붙였다).
+  // 지수 이력이 짧으면 실제로 겹치는 30일만 센다 - [Risk 정책 P-2] 공통 수익률 120개 미만이라 beta를 만들지 않는다.
   const shortBench = await betaWith('2025-01-01', '2025-01-01', 30);
   assert.strictEqual(shortBench.aligned, true);
   assert.strictEqual(shortBench.obs, 30);
+  assert.strictEqual(shortBench.beta, null);
+  assert.strictEqual(shortBench.market, 50);
 });
 
 test('날짜 정렬 - 기간이 겹치지 않으면 beta를 만들어내지 않는다', async () => {
@@ -683,12 +711,15 @@ test('날짜 정렬 - 부분적으로 겹치면 겹친 만큼만 관측치로 �
   assert.strictEqual(p60.obs, 60);
 });
 
-test('날짜 정렬 - 날짜가 없는 시계열은 기존 방식으로 안전하게 폴백한다', async () => {
-  // 구 캐시나 날짜를 못 받은 응답에서도 계산을 포기하지 않는다 - 정확도가 올라갈 수 있을 때만 올린다.
+test('날짜 정렬 - [Risk 정책 P-1] 날짜가 없는 시계열은 위치로 맞춰 대체 계산하지 않는다', async () => {
+  // 예전엔 "최근 N개를 나란히" 놓아 beta 1.1579를 냈다. 이제 비교할 수 없다는 사실을 그대로 둔다.
   const noDates = await betaWith(null, null, 260);
   assert.strictEqual(noDates.aligned, false);
   assert.strictEqual(noDates.obs, null);
-  assert.strictEqual(noDates.beta, 1.1579, '폴백 경로의 결과는 예전과 동일하다');
+  assert.strictEqual(noDates.beta, null);
+  // 종목 시계열에 날짜가 없으면 공통 거래일도 만들 수 없어 위험점수 자체가 데이터 부족이다.
+  assert.strictEqual(noDates.sufficiency, 'INSUFFICIENT');
+  assert.strictEqual(noDates.market, null);
 });
 
 test('날짜 정렬 - 종목 간 상관계수도 공통 거래일 기준으로 계산된다', async () => {
@@ -704,9 +735,11 @@ test('날짜 정렬 - 종목 간 상관계수도 공통 거래일 기준으로 �
   const m = await s.computeAdvancedRiskMetrics();
 
   // 예전엔 최근 259개를 나란히 놓아 상관계수 1.0(운명공동체)이 나왔다.
+  // [Risk 정책 P-1 · P-2] 두 종목의 공통 거래일이 없으므로 포트폴리오 위험 자체를 계산하지 않는다.
+  assert.deepStrictEqual(plain(m.dataSufficiency), { status: 'INSUFFICIENT', commonReturnCount: 0, required: 120 });
   assert.strictEqual(m.weightedAvgCorrelation, null);
-  assert.strictEqual(m.subScores.correlation, 50, '모르면 중립');
-  assert.strictEqual(m.dataConfidence.score, 82, '상관 계산 불가가 신뢰도에 반영된다');
+  assert.strictEqual(m.riskScore, null);
+  assert.strictEqual(m.subScores, null);
 });
 
 /* ==========================================================================
@@ -747,6 +780,10 @@ test('Golden - 표준 2종목 포트폴리오의 전체 지표', async () => {
   assert.strictEqual(m.riskScore, 66);
   assert.strictEqual(s.riskLevelFromScore(m.riskScore).label, '위험');
   assert.strictEqual(m.dataConfidence.score, 92);
+  // [Risk 정책 P-1 · P-2 · v252] 같은 달력 fixture - 공통 거래일 260개(수익률 259개), 결과는 예전 Golden 그대로다.
+  assert.deepStrictEqual(plain(m.dataSufficiency), {
+    status: 'SUFFICIENT', commonReturnCount: 259, required: 120, startDate: '2025-01-01', endDate: '2025-09-17'
+  });
 });
 
 test('Golden - 같은 입력을 두 번 계산하면 완전히 같은 결과가 나온다(외부 데이터 비의존)', async () => {
@@ -772,4 +809,249 @@ test('Golden - 스트레스 시나리오 상수와 손실 추정(beta × 실측 
   assert.strictEqual(round(m.stressLossPct, 6), -37.905057);
   assert.strictEqual(round(m.stressLossPct2022, 6), -32.673129);
   assert.strictEqual(Math.round(m.stressLossKRW), Math.round(m.totalCur * m.stressLossPct / 100));
+});
+
+/* ==========================================================================
+ * 10. [Risk 정책 P-1 ~ P-5 · v252] 공통 거래일 · 최소 관측 · 거래량 결측 · 벤치마크 · 채권 ETF
+ * ======================================================================= */
+
+// 시장별 휴장일이 다른 달력: 연속 날짜에서 skipEvery번째 날마다 뺀다(offset으로 서로 어긋나게).
+function calendar(n, startDate, skipEvery, offset = 0) {
+  return datesFrom(n, startDate).filter((d, i) => (i + offset) % skipEvery !== 0);
+}
+function seriesOn(dates, start, up, down) {
+  return { closes: zigzagCloses(dates.length, start, up, down), volumes: volumes(dates.length, 1000, 1), dates };
+}
+
+async function mixedMarketPortfolio() {
+  const s = freshSandbox();
+  s.state.assets = [
+    makeTestAsset({ name: '국내', ticker: '005930.KS', quantity: 20, buyPrice: 100000, currentPrice: 100000 }),
+    makeTestAsset({ name: '해외', ticker: 'AAPL', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 })
+  ];
+  const kr = calendar(300, '2025-01-01', 7, 0);   // 7일마다 국내 휴장
+  const us = calendar(300, '2025-01-01', 11, 5);  // 11일마다(다른 날) 미국 휴장
+  s.setDailyCloses('005930.KS', seriesOn(kr, 100000, 1.3, 0.9));
+  s.setDailyCloses('AAPL', seriesOn(us, 100, 0.7, 1.1));
+  s.setDailyCloses('^KS11', seriesOn(kr, 2500, 1.0, 0.8));
+  s.setDailyCloses('^IXIC', seriesOn(us, 15000, 0.9, 0.7));
+  s.setTickerMaster(LISTED);
+  const m = await s.computeAdvancedRiskMetrics();
+  return { s, m, kr, us };
+}
+
+test('P-1 - 거래일이 다른 두 시장은 공통 거래일로만 결합하고 휴장일을 0%로 넣지 않는다', async () => {
+  const { s, m, kr, us } = await mixedMarketPortfolio();
+  const krSet = new Set(kr);
+  const common = us.filter((d) => krSet.has(d)).sort();
+  assert.strictEqual(m.dataSufficiency.status, 'SUFFICIENT');
+  assert.strictEqual(m.dataSufficiency.commonReturnCount, common.length - 1);
+  assert.ok(common.length < kr.length && common.length < us.length, '교집합이어야 한다(합집합 아님)');
+
+  // 기대값을 직접 계산한다: 공통일 사이 종가 비율 - 한쪽만 쉰 날은 건너뛴 누적 변화가 된다.
+  const closeOn = (dates, closes) => new Map(dates.map((d, i) => [d, closes[i]]));
+  const krMap = closeOn(kr, zigzagCloses(kr.length, 100000, 1.3, 0.9));
+  const usMap = closeOn(us, zigzagCloses(us.length, 100, 0.7, 1.1));
+  const w = m.holdings.reduce((o, h) => (o[h.ticker] = h.weight, o), {});
+  const expected = [];
+  for (let k = 1; k < common.length; k++) {
+    const rk = krMap.get(common[k]) / krMap.get(common[k - 1]) - 1;
+    const ru = usMap.get(common[k]) / usMap.get(common[k - 1]) - 1;
+    expected.push(w['005930.KS'] * rk + w.AAPL * ru);
+  }
+  assert.ok(!expected.some((r) => r === 0), '휴장일 0% 수익률이 섞이지 않는다');
+  assert.strictEqual(round(m.portfolioVolatilityPct, 9), round(s.computeAnnualizedVolatilityPct(expected), 9));
+  assert.strictEqual(round(m.portfolioMDDPct, 9), round(s.computePortfolioMDDFromReturns(expected), 9));
+
+  // 예전 인덱스 결합(끝에서부터 같은 순번)으로 계산했다면 결과가 달랐다.
+  const krRet = s.dailyReturnsFromCloses(zigzagCloses(kr.length, 100000, 1.3, 0.9));
+  const usRet = s.dailyReturnsFromCloses(zigzagCloses(us.length, 100, 0.7, 1.1));
+  const n = Math.min(krRet.length, usRet.length);
+  const indexBased = [];
+  for (let i = 1; i <= n; i++) indexBased.unshift(w['005930.KS'] * krRet[krRet.length - i] + w.AAPL * usRet[usRet.length - i]);
+  assert.notStrictEqual(round(s.computeAnnualizedVolatilityPct(indexBased), 9), round(m.portfolioVolatilityPct, 9));
+});
+
+test('P-1 - 상위 2종목 상관 · 상관 행렬 · 위험 기여도도 같은 공통 거래일 수익률을 쓴다', async () => {
+  const { s, m } = await mixedMarketPortfolio();
+  const [a, b] = m.holdings;
+  assert.strictEqual(a.commonReturns.length, m.dataSufficiency.commonReturnCount);
+  assert.strictEqual(b.commonReturns.length, m.dataSufficiency.commonReturnCount);
+  const corr = s.computeCorrelationFromReturns(a.commonReturns, b.commonReturns);
+  assert.strictEqual(m.topCorrelation, corr);
+  assert.strictEqual(m.correlationMatrix[a.ticker][b.ticker], corr);
+  const total = m.holdings.reduce((sum, h) => sum + (h.riskContributionPct || 0), 0);
+  assert.strictEqual(round(total, 6), 100);
+});
+
+test('P-2 - 공통 수익률 120개는 정상, 119개는 데이터 부족(경계)', async () => {
+  const at = async (closeCount) => {
+    const s = freshSandbox();
+    s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
+    s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(closeCount, 100000, 1, 1), volumes: volumes(closeCount, 1000, 1) }));
+    s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+    s.setTickerMaster(LISTED);
+    return s.computeAdvancedRiskMetrics();
+  };
+  const ok = await at(121);
+  assert.strictEqual(ok.dataSufficiency.status, 'SUFFICIENT');
+  assert.strictEqual(ok.dataSufficiency.commonReturnCount, 120);
+  assert.strictEqual(typeof ok.riskScore, 'number');
+  const short = await at(120);
+  assert.strictEqual(short.dataSufficiency.status, 'INSUFFICIENT');
+  assert.strictEqual(short.dataSufficiency.commonReturnCount, 119);
+  assert.strictEqual(short.riskScore, null);
+  assert.strictEqual(short.holdings[0].hasData, true, '종목 단위 최소 관측(10)은 그대로다');
+});
+
+test('P-2 - 짧은 종목이 있으면 빼거나 비중을 다시 나누지 않고 전체를 데이터 부족으로 둔다', async () => {
+  const s = freshSandbox();
+  s.state.assets = [
+    makeTestAsset({ name: '긴이력', ticker: '005930.KS', quantity: 30, buyPrice: 100000, currentPrice: 100000 }),
+    makeTestAsset({ name: '신규상장', ticker: '000660.KS', quantity: 10, buyPrice: 100000, currentPrice: 100000 })
+  ];
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1, 1), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('000660.KS', withDates({ closes: zigzagCloses(60, 100000, 1, 1), volumes: volumes(60, 1000, 1) }, '2025-07-19'));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
+  const m = await s.computeAdvancedRiskMetrics();
+
+  assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
+  assert.strictEqual(m.dataSufficiency.commonReturnCount, 59);
+  assert.strictEqual(m.riskScore, null);
+  assert.deepStrictEqual(plain(m.holdings.map((h) => [h.ticker, round(h.weight * 100, 4)])), [['005930.KS', 75], ['000660.KS', 25]]);
+  assert.strictEqual(m.missingCount, 0, '두 종목 모두 종목 단위 이력은 있다');
+});
+
+test('P-2 - 종목-벤치마크 공통 수익률 120개면 beta를 기존 공식으로, 119개면 null', async () => {
+  const b120 = await betaWith('2025-01-01', '2025-01-01', 121);
+  assert.strictEqual(b120.obs, 121);
+  assert.strictEqual(typeof b120.beta, 'number');
+  const s = freshSandbox();
+  const asset = datedSeries(260, 0, 100000, 1.2, 1.0, '2025-01-01');
+  const bench = datedSeries(121, 0, 2500, 1.0, 0.9, '2025-01-01');
+  const al = s.dateAlignedReturns(s.datedClosesFromSeries(asset), s.datedClosesFromSeries(bench));
+  assert.strictEqual(b120.beta, round(s.computeBetaFromReturns(al.returnsA, al.returnsB), 4), '공식은 그대로다');
+  const b119 = await betaWith('2025-01-01', '2025-01-01', 120);
+  assert.strictEqual(b119.obs, 120);
+  assert.strictEqual(b119.beta, null);
+});
+
+test('P-3 - 거래량 결측은 null, 실제 0은 0으로 파싱된다', () => {
+  const s = freshSandbox();
+  const t0 = Date.UTC(2025, 0, 2) / 1000;
+  const data = { chart: { result: [{
+    timestamp: [t0, t0 + 86400, t0 + 172800, t0 + 259200, t0 + 345600],
+    indicators: { quote: [{ close: [100, 101, null, 103, 104], volume: [500, null, 700, 0, 'x'] }] }
+  }] } };
+  const parsed = plain(s.parseYahooDailySeries(data));
+  assert.deepStrictEqual(parsed.closes, [100, 101, 103, 104], '종가 없는 날은 예전처럼 통째로 빠진다');
+  assert.deepStrictEqual(parsed.volumes, [500, null, 0, null]);
+  assert.deepStrictEqual(parsed.dates, ['2025-01-02', '2025-01-03', '2025-01-05', '2025-01-06']);
+  assert.deepStrictEqual(plain(s.parseYahooDailySeries(null)), { closes: [], volumes: [], dates: [] });
+});
+
+test('P-3 - 거래량 이동평균은 결측을 빼고 실제 0은 포함한다', () => {
+  const s = freshSandbox();
+  const v = (tail) => new Array(20 - tail.length).fill(null).concat(tail);
+  assert.strictEqual(s.computeVolumeMA(v([100, 300]), 20), 200, 'null 제외');
+  assert.strictEqual(s.computeVolumeMA(v([0, 300]), 20), 150, '실제 0 포함');
+  assert.strictEqual(s.computeVolumeMA(new Array(20).fill(null), 20), null, '유효값 없음');
+  assert.strictEqual(s.computeVolumeMA(new Array(19).fill(100), 20), null, '길이 부족');
+  assert.strictEqual(s.computeVolumeMA(null, 20), null);
+  // 종가 이동평균(computeSMA)은 그대로다.
+  assert.strictEqual(s.computeSMA(new Array(20).fill(100), 20), 100);
+});
+
+test('P-3 - 마지막 거래량이 결측이면 거래량 신호를 만들지 않고 기술 점수에 가감이 없다', async () => {
+  const s = freshSandbox();
+  s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 10, buyPrice: 100000, currentPrice: 100000 })];
+  const vols = volumes(260, 1000, 3);
+  vols[vols.length - 1] = null;
+  vols[100] = null;
+  const closes = flatCloses(260, 100000);
+  closes[259] = 97000; // -3% (거래량만 있었다면 outflow)
+  s.setDailyCloses('005930.KS', withDates({ closes, volumes: vols }));
+  s.setDailyCloses('^KS11', withDates({ closes: flatCloses(260, 2500), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
+  const m = await s.computeAdvancedRiskMetrics();
+  const h = m.holdings[0];
+  assert.strictEqual(h.lastVolume, null);
+  assert.strictEqual(h.volumeSpike, false);
+  assert.strictEqual(h.flowSignal, null);
+  assert.strictEqual(h.volMA20, 1000, '결측을 뺀 최근 20개 평균');
+  assert.strictEqual(s.computeTechnicalFlowRiskScore([Object.assign({}, h)]), s.computeTechnicalFlowRiskScore([Object.assign({}, h, { flowSignal: null })]));
+});
+
+test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 벤치마크를 정한다', () => {
+  const s = freshSandbox();
+  s.setTickerMaster({
+    '005930.KS': { exchange: 'KOSPI', nameKr: '삼성전자' },
+    '247540.KQ': { exchange: 'KOSDAQ', nameKr: '에코프로비엠' },
+    'NVDA': { exchange: 'NASDAQ', nameEn: 'NVIDIA CORP' },
+    'JPM': { exchange: 'NYSE', nameEn: 'JPMORGAN CHASE & CO.' },
+    '360750.KS': { exchange: 'KOSPI', nameKr: 'TIGER 미국S&P500' },
+    'IBIT': { exchange: 'NASDAQ', nameEn: 'ISHARES BITCOIN TRUST ETF' }
+  });
+  const bm = (o) => plain(s.resolveRiskBenchmark(Object.assign({ category: '주식', name: '' }, o)));
+  // ① ETF 구성표에 추종 지수가 적힌 ETF
+  assert.deepStrictEqual(bm({ ticker: 'QQQM', category: 'ETF' }), { key: 'NASDAQ100', status: 'RESOLVED', source: 'etfIndex' });
+  assert.strictEqual(bm({ ticker: 'SPY', category: 'ETF' }).key, 'SP500');
+  // 추종 지수가 앱의 지수와 같지 않은 ETF(근사 금지)
+  for (const tk of ['SCHD', 'SOXX', 'TQQQ', '069500.KS', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
+  // ② 개별 주식 - 실제 상장 거래소 종합지수
+  assert.strictEqual(bm({ ticker: '005930.KS' }).key, 'KOSPI');
+  assert.strictEqual(bm({ ticker: '247540.KQ' }).key, 'KOSDAQ');
+  assert.strictEqual(bm({ ticker: 'NVDA' }).key, 'NASDAQ', '예전 근사(NASDAQ100 스타일)를 쓰지 않는다');
+  assert.strictEqual(bm({ ticker: 'JPM' }).key, null, 'NYSE 종합지수는 앱에 없다(예전 근사 DOW를 쓰지 않는다)');
+  // 접미사만으로 정하지 않는다 - 마스터에 없는 종목, ETF, 펀드 이름
+  assert.strictEqual(bm({ ticker: '123456.KS' }).status, 'UNRESOLVED');
+  assert.strictEqual(bm({ ticker: '360750.KS', category: 'ETF' }).key, null);
+  assert.strictEqual(bm({ ticker: 'IBIT' }).key, null, '이름이 ETF면 개별 주식으로 보지 않는다');
+  assert.strictEqual(bm({ ticker: 'NVDA', name: 'KODEX 엔비디아' }).key, null);
+  // Return Key(대표매칭)는 근거가 아니다
+  assert.strictEqual(bm({ ticker: '360750.KS', category: 'ETF', rateMatchOverride: 'S&P500', role: 'S&P500' }).key, null);
+  assert.strictEqual(bm({ ticker: '' }).status, 'UNRESOLVED');
+});
+
+test('P-4 · P-5 - 벤치마크가 없는 채권 ETF는 beta · 스트레스를 만들지 않고 주식 대체 낙폭을 쓰지 않는다', async () => {
+  const s = freshSandbox();
+  s.state.assets = [
+    makeTestAsset({ name: '삼성전자', ticker: '005930.KS', quantity: 30, buyPrice: 100000, currentPrice: 100000 }),
+    makeTestAsset({ name: 'iShares 20+ Year Treasury Bond ETF', ticker: 'TLT', category: 'ETF', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 })
+  ];
+  s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('TLT', withDates({ closes: zigzagCloses(260, 100, 0.3, 0.3), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
+  s.setDailyCloses('^GSPC', withDates({ closes: zigzagCloses(260, 5000, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
+  s.setTickerMaster(LISTED);
+  const m = await s.computeAdvancedRiskMetrics();
+  const tlt = m.holdings.find((h) => h.ticker === 'TLT');
+  assert.strictEqual(tlt.benchmarkKey, null);
+  assert.strictEqual(tlt.benchmarkStatus, 'UNRESOLVED');
+  assert.strictEqual(tlt.beta, null);
+  assert.strictEqual(m.stressLossKRW, null);
+  assert.strictEqual(m.stressLossPct, null);
+  assert.strictEqual(m.stressLossKRW2022, null);
+  assert.strictEqual(m.stressLossPct2022, null);
+  assert.strictEqual(m.portfolioBeta, null);
+  // 채권 ETF 모델은 만들지 않는다 - 나머지 계산 구조는 그대로(비중에 포함, 점수는 기존 공식).
+  assert.strictEqual(m.dataSufficiency.status, 'SUFFICIENT');
+  assert.strictEqual(typeof m.riskScore, 'number');
+  assert.strictEqual(m.subScores.market, 50);
+});
+
+test('What-If - 같은 비중이면 기준 결과와 같고, 데이터 부족이면 계산하지 않는다', async () => {
+  const s = buildStandardPortfolio(freshSandbox());
+  const m = await s.computeAdvancedRiskMetrics();
+  const top = m.holdings[0];
+  const same = s.computeScenarioRiskMetrics(m, { [top.ticker]: top.weight });
+  assert.strictEqual(round(same.portfolioVolatilityPct, 9), round(m.portfolioVolatilityPct, 9));
+  assert.strictEqual(round(same.var95Pct, 9), round(m.var95Pct, 9));
+  assert.strictEqual(round(same.portfolioMDDPct, 9), round(m.portfolioMDDPct, 9));
+  assert.strictEqual(round(same.portfolioBeta, 9), round(m.portfolioBeta, 9));
+  assert.strictEqual(same.riskScore, m.riskScore);
+  const moved = s.computeScenarioRiskMetrics(m, { [top.ticker]: 0.3 });
+  assert.notStrictEqual(round(moved.portfolioVolatilityPct, 9), round(m.portfolioVolatilityPct, 9));
+  assert.strictEqual(s.computeScenarioRiskMetrics({ dataSufficiency: { status: 'INSUFFICIENT' }, holdings: [] }, {}), null);
 });

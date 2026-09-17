@@ -32,6 +32,24 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-17 밤) — 📐 **v252 Risk 계산 정책 P-1~P-9 반영** (v251 → **v252**)
+
+**PM 최종 반영 지시 · 코드 · 테스트 · 체크리스트 · 인계장을 로컬 커밋 1개로 정리(PM 지시: 하나의 논리적 커밋) · push 안 함 · 배포 안 함.** 체크리스트 **§40**(P-1~P-9 표 · 화면 · 검증 · 남은 위험)에 기록. v251 커밋(`f7acf3b` · `33d0746`)도 아직 로컬에만 있다(origin/main = `4b29a53`).
+
+- **P-1 공통 거래일**(js/09): 포트폴리오 일간 수익률을 모든 위험 대상 종목의 날짜별 종가 **교집합**으로 결합(`buildCommonDateReturns` · `buildPortfolioCommonReturns`). 끝에서부터 순번 맞추기 · 0% 채움 · 제외 · 재정규화 없음. 상관 행렬 · 상위 2종목 상관 · 위험 기여도 · What-If도 같은 `commonReturns` 사용. 날짜 없는 시계열은 위치 결합 폴백 삭제(`alignedReturnPair` → 빈 배열).
+- **P-2 최소 표본 120**: 공통 수익률 < 120 → `dataSufficiency.status='INSUFFICIENT'`, 점수 · 등급 · 하위 점수 · 신뢰도 · 위험 지표 전부 null(50 대체 없음). 비중 · 집중도 · 섹터 · 종목 단위 필드는 남김. 종목 베타도 종목↔벤치마크 공통 수익률 120 미만이면 null. 포트폴리오 베타는 모든 종목에 베타가 있을 때만. `MIN_RETURNS_FOR_STATS=10` 유지.
+- **P-3 거래량**: `parseYahooDailySeries`(결측 → null, 실제 0 유지) · `computeVolumeMA`(null 제외). 마지막 거래량 결측이면 급증/신호 없음.
+- **P-4 벤치마크**: `resolveRiskBenchmark` - ETF 구성표 라벨이 앱 지수와 같을 때(나스닥100 · S&P500)와 개별 주식의 종목 마스터 상장 거래소(KOSPI · KOSDAQ · NASDAQ 종합)만. 그 외 UNRESOLVED(null). 옛 `getBenchmarkKeyForTicker`는 종목 분석 모달용으로 남아 있으나 위험 계산은 쓰지 않는다.
+- **P-5**: 채권 모델 없음. 스트레스는 모든 종목에 벤치마크 · 베타가 있을 때만(가정 베타 1.0 삭제). 없으면 화면 "계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)".
+- **P-6~P-9**: 섹터 · 환율 · Risk Score 구조(가중치/임계값/결측 50/등급/극단 가산/신뢰도/진단) · 위험 알림 팝업(미연결 유지) 전부 무변경.
+- **화면(js/10)**: 데이터 부족이면 요약 카드 · 세부 모달에 "종합 위험점수 계산 불가 (데이터 부족)" + 공통 거래일 수 안내만. What-If 차단. 분기는 `status === 'INSUFFICIENT'`일 때만(예전 형태 결과는 정상). 종목 베타 ⓘ 설명 보강. SW `smart-asset-manager-v252` + appVersionLabel v252.
+- **테스트**: `test/risk-engine.test.js`(날짜 · 종목 마스터 부여로 Golden 값 동일 유지 + P-1~P-5 · 경계 · What-If 신규) · `test/risk-rules.test.js`(날짜 부여) · `test/risk-sandbox.js`(`setTickerMaster` · `withDates`) · 신규 `e2e/98-risk-data-sufficiency.spec.js`(9) · `e2e/97` 금지 표현 검사에 데이터 부족/스트레스 불가 화면 추가.
+- **검증**: Unit **421/421**(risk-engine · risk-rules 81/81) · 관련 E2E **88/88**(39 · 40 · 67 · 72 · 80 · 97 · 신규 98) · 전체 E2E **962/962** · ESLint PASS · Data Guard PASS · Release Guard PASS. 같은 달력 fixture의 Golden 값(위험점수 66 · 하위 점수 · 베타 1.101037 · 변동성 · MDD · VaR · CVaR · 스트레스 · 신뢰도 92) 동일 · 서로 다른 시장 달력은 예전 인덱스 결합과 다른 값(의도) · Macro · MC(js/15~19) · Return Key · CMA 파일 diff 0.
+- **남은 위험**: 브랜드 키워드 없는 국내 ETF가 '주식'으로 저장되면 KOSPI를 받음 · NYSE/AMEX 주식은 베타/스트레스 null · NASDAQ 종합은 스트레스 대체 낙폭 사용 · 종목 마스터 캐시 없는 첫 실행은 다음 갱신까지 UNRESOLVED · 이력 120 거래일 미만 종목이 하나라도 있으면 사용자는 데이터 부족 안내를 본다(의도).
+- **push/배포 주의**: `main` push = GitHub Pages 자동 배포. v251 · v252 모두 PM 별도 승인 전까지 로컬에만 둔다.
+
+---
+
 ## 최근 세션 요약 (2026-09-17 오후) — 🔤 **v251 Macro/Risk 용어 · 설명 문구 정비(문구만)** (v250 → **v251**)
 
 **PM 승인 구현 · 코드 커밋 `f7acf3b` · 체크리스트/인계장 커밋은 이 커밋 · 배포 안 함(PM 별도 승인 대기).** 체크리스트 **§39**(표시 용어 기준표 · 기존 정책 연결 · 검증 · 보류)에 기록.

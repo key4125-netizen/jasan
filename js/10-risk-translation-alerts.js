@@ -291,7 +291,7 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
-      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 지수(코스피·코스닥·나스닥100·다우·S&P500 중 하나)가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다).')}
+      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 지수는 추종 지수나 상장 시장 지수(코스피·코스닥·나스닥 종합·나스닥100·S&P500)가 확인될 때만 정하고, 확인되지 않거나 함께 있는 거래일이 120일보다 적으면 \'데이터 부족\'으로 표시합니다.')}
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoText, SORTINO_GUIDE_TEXT)}
       ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(RISK 세부내용 모달, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('52주 고점 대비 현재 하락률', drawdownText, '지금 가격이 최근 1년 최고가보다 얼마나 낮은지(현재 위치)입니다. 1년 중 가장 크게 떨어졌던 폭인 최대낙폭(MDD)과는 다른 값입니다.')}
@@ -351,6 +351,26 @@ function buildMetricItem(label, valueHtml, tooltip) {
   </div>`;
 }
 
+// [Risk 정책 P-2 · v252] 공통 거래일 수익률이 120개 미만인 결과는 위험점수 · 등급 · 진단 대신 이 안내만 보여준다.
+// dataSufficiency가 없는 예전 형태의 결과는 정상 결과로 본다(명시적으로 INSUFFICIENT일 때만 분기).
+function isRiskDataInsufficient(m) {
+  return !!(m && m.dataSufficiency && m.dataSufficiency.status === 'INSUFFICIENT');
+}
+const RISK_INSUFFICIENT_TITLE = '종합 위험점수 계산 불가 (데이터 부족)';
+function riskInsufficientMessage(m) {
+  const ds = (m && m.dataSufficiency) || {};
+  const n = typeof ds.commonReturnCount === 'number' ? ds.commonReturnCount : 0;
+  const required = typeof ds.required === 'number' ? ds.required : 120;
+  return `보유 주식·ETF의 가격 기록이 함께 있는 거래일이 ${fmtNum(n, 0)}일이라, 계산에 필요한 ${fmtNum(required, 0)}일보다 적습니다. 최근 상장했거나 가격 기록을 받지 못한 종목이 있으면 이렇게 표시됩니다.`;
+}
+// [Risk 정책 P-4 · P-5 · v252] 스트레스 손실 추정이 없으면(벤치마크나 시장 민감도를 확인할 수 없는 종목 포함) 0원으로 보이지 않게 한다.
+function stressLossValueText(lossKRW, lossPct) {
+  if (typeof lossKRW !== 'number' || !Number.isFinite(lossKRW) || typeof lossPct !== 'number' || !Number.isFinite(lossPct)) {
+    return '계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)';
+  }
+  return `약 ${fmtKRWShort(Math.abs(lossKRW))} (${fmtNum(lossPct, 1)}%) 손실 예상`;
+}
+
 function renderRiskDiagnosisSummary() {
   const container = document.getElementById('riskDiagnosisSummary');
   if (!container) return;
@@ -363,6 +383,16 @@ function renderRiskDiagnosisSummary() {
     return;
   }
   container.classList.remove('hidden');
+
+  if (isRiskDataInsufficient(m)) {
+    container.innerHTML = `
+  <div class="rounded-xl border p-3.5 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+    <p class="text-lg font-bold text-slate-700 dark:text-slate-200">${RISK_INSUFFICIENT_TITLE}</p>
+    <p class="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed break-keep">${escapeHtml(riskInsufficientMessage(m))}</p>
+  </div>`;
+    refreshRiskDetailModalIfOpen();
+    return;
+  }
 
   const score = m.riskScore;
   const level = riskLevelFromScore(score);
@@ -433,6 +463,14 @@ function renderRiskDetailModal() {
     body.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">위험 분석 대상 보유 종목(주식/ETF)이 없습니다.</p>';
     return;
   }
+  if (isRiskDataInsufficient(m)) {
+    body.innerHTML = `
+    <div class="py-4">
+      <p class="text-base font-bold text-slate-700 dark:text-slate-200">${RISK_INSUFFICIENT_TITLE}</p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed break-keep">${escapeHtml(riskInsufficientMessage(m))}</p>
+    </div>`;
+    return;
+  }
 
   const sortinoGrade = sortinoToGrade(m.sortino) || '-';
   const s = m.subScores;
@@ -475,12 +513,12 @@ function renderRiskDetailModal() {
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020년 초 급락 가정 시 (추정)</p>
-        <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW))} (${fmtNum(m.stressLossPct, 1)}%) 손실 예상</p>
+        <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW, m.stressLossPct))}</p>
         <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2020년 2~3월 기준 지수 하락폭(코스피 -35.7%·S&P500 -33.9% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다. 그 사건이 다시 일어난다는 뜻이 아니며, 하루 하락 지표(VaR·CVaR)와는 다른 가정 계산입니다.</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022년 금리 인상기 하락 가정 시 (추정)</p>
-        <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">약 ${fmtKRWShort(Math.abs(m.stressLossKRW2022))} (${fmtNum(m.stressLossPct2022, 1)}%) 손실 예상</p>
+        <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW2022, m.stressLossPct2022))}</p>
         <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년 고점→저점 기준 지수 하락폭(코스피 -28.6%·나스닥100 -35.1% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다.</p>
       </div>
     </div>
@@ -555,9 +593,10 @@ document.addEventListener('click', (e) => {
   if (!btn) return;
   const box = document.getElementById('whatIfSimBox');
   const m = state.advancedRiskMetrics;
-  if (!box || !m || !m.topHolding) return;
+  if (!box || !m || !m.topHolding || isRiskDataInsufficient(m)) return; // [Risk 정책 P-2 · v252] 데이터 부족이면 What-If 없음
   const targetPct = parseFloat(btn.dataset.targetPct);
   const scenario = computeScenarioRiskMetrics(m, { [box.dataset.topTicker]: targetPct / 100 });
+  if (!scenario) return;
   const resultBox = document.getElementById('whatIfResultBox');
   if (!resultBox) return;
   const beforeLevel = riskLevelFromScore(m.riskScore);

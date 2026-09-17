@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const { test } = require('node:test');
 const H = require('./risk-sandbox.js');
 
-const { loadRiskSandbox, makeTestAsset, flatCloses, rsiCloses, volumes } = H;
+const { loadRiskSandbox, makeTestAsset, flatCloses, rsiCloses, volumes, withDates } = H;
 
 function freshSandbox() {
   const s = loadRiskSandbox();
@@ -304,8 +304,9 @@ test('Rule → 점수 연결 - RSI 과열이 기술요인을 통해 종합 위�
   async function scoreWith(closes) {
     const s = freshSandbox();
     s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 10, buyPrice: 100000, currentPrice: 100000 })];
-    s.setDailyCloses('005930.KS', { closes, volumes: volumes(closes.length, 1000, 1) });
-    s.setDailyCloses('^KS11', { closes: flatCloses(closes.length, 2500), volumes: volumes(closes.length, 1, 1) });
+    // [Risk 정책 P-1 · v252] 위험점수는 공통 거래일이 있어야 계산된다 - 같은 날짜를 붙인다.
+    s.setDailyCloses('005930.KS', withDates({ closes, volumes: volumes(closes.length, 1000, 1) }));
+    s.setDailyCloses('^KS11', withDates({ closes: flatCloses(closes.length, 2500), volumes: volumes(closes.length, 1, 1) }));
     const m = await s.computeAdvancedRiskMetrics();
     return { technical: m.subScores.technical, riskScore: m.riskScore, rsi: m.holdings[0].rsi14 };
   }

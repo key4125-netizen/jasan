@@ -86,7 +86,8 @@ function loadRiskSandbox() {
     'NASDAQ100_STYLE_TICKERS', 'DOW_STYLE_TICKERS', 'SECTOR_MAP', 'ETF_HOLDINGS_MAP',
     'COVID_CRASH_BENCHMARK_DROP_PCT', 'RATE_HIKE_2022_BENCHMARK_DROP_PCT',
     'CORE_MACRO_LABELS', 'MACRO_TREND_THRESHOLDS', 'TAX_ADVANTAGED_ACCOUNT_TYPES',
-    'NON_TRADABLE_CATEGORIES', 'REBALANCE_OWNERS'
+    'NON_TRADABLE_CATEGORIES', 'REBALANCE_OWNERS', 'MIN_COMMON_RISK_RETURNS',
+    'RISK_BENCHMARK_BY_ETF_INDEX_LABEL', 'RISK_BENCHMARK_BY_LISTING_EXCHANGE'
   ];
   vm.runInContext(BRIDGED.map((n) => `try{globalThis[${JSON.stringify(n)}]=${n};}catch(e){}`).join('\n'), sandbox, { filename: 'bridge' });
   // 임의 표현식 평가 - 브리지 목록에 없는 값을 테스트에서 직접 꺼내야 할 때 쓴다.
@@ -99,6 +100,8 @@ function loadRiskSandbox() {
   sandbox.getCachedDailyCloses = async (yahooTicker) => closesByTicker.get(yahooTicker) || null;
   sandbox.setDailyCloses = (yahooTicker, data) => { closesByTicker.set(yahooTicker, data); };
   sandbox.clearDailyCloses = () => { closesByTicker.clear(); };
+  // [Risk 정책 P-4 · v252] 종목 마스터(상장 거래소) 주입 - js/09의 tickerMasterByTicker(let)를 통째로 바꾼다.
+  sandbox.setTickerMaster = (map) => { vm.runInContext(`tickerMasterByTicker = ${JSON.stringify(map || {})};`, sandbox, { filename: 'ticker-master' }); };
 
   return sandbox;
 }
@@ -187,7 +190,13 @@ function drawdownCloses(n, high, targetPct) {
   return out;
 }
 
+// [Risk 정책 P-1 · v252] 날짜가 없는 시계열 fixture에 연속 날짜를 붙인다 - 모든 시계열에 같은 시작일을 주면
+// 공통 거래일 결합 결과가 예전 인덱스 결합과 같아진다(같은 달력이므로).
+function withDates(series, startDate = '2025-01-01') {
+  return Object.assign({}, series, { dates: datesFrom(series.closes.length, startDate) });
+}
+
 module.exports = {
-  loadRiskSandbox, stubEl, makeTestAsset, datesFrom,
+  loadRiskSandbox, stubEl, makeTestAsset, datesFrom, withDates,
   trendCloses, flatCloses, zigzagCloses, rsiCloses, volumes, drawdownCloses
 };

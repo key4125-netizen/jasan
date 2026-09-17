@@ -61,6 +61,22 @@ async function collectRiskHtml(page) {
       out.push(document.getElementById('riskAlertModal').innerHTML);
       closeRiskAlertModal();
     });
+    // [Risk 정책 P-2 · P-5 · v252] 데이터 부족 안내와 스트레스 계산 불가 문구(요약 카드 · 세부 모달).
+    // 알림 팝업은 연결되지 않은 기능(P-9)이라 이 두 결과로는 그리지 않는다.
+    [
+      base('concentration', {
+        dataSufficiency: { status: 'INSUFFICIENT', commonReturnCount: 87, required: 120 },
+        subScores: null, riskScore: null, dataConfidence: null
+      }),
+      base('market', { portfolioBeta: null, stressLossKRW: null, stressLossPct: null, stressLossKRW2022: null, stressLossPct2022: null })
+    ].forEach((m) => {
+      state.advancedRiskMetrics = m;
+      renderRiskDiagnosisSummary();
+      out.push(document.getElementById('riskDiagnosisSummary').innerHTML);
+      openRiskDetailModal();
+      out.push(document.getElementById('riskDetailModalBody').innerHTML);
+      closeRiskDetailModal();
+    });
     // 종목 상세 Risk 섹션 - RSI/추세/거래량 신호의 모든 상태
     const h = (over) => Object.assign({
       ticker: 'A.KS', name: 'A', hasData: true, beta: 0.9, sortino: 1.2, week52DrawdownPct: -12, riskContributionPct: 20,
@@ -137,7 +153,8 @@ test('3. 통일된 이름이 실제 화면에 나온다', async ({ page }) => {
     '보유 종목 간 동조성 (상관)', '하락 변동 대비 수익 (소르티노)', '52주 고점 대비 현재 하락률', '위험 기여도',
     '2020년 초 급락 가정 시 (추정)', '2022년 금리 인상기 하락 가정 시 (추정)', '🎯 집중도', '🔥 단기 과열·거래량(추정)',
     '거래량 신호(추정)', '단기 과열(RSI)', '이동평균 추세', '💡 함께 확인할 점', '최근 3개월 최고가', '최근 3개월 최저가',
-    '최대낙폭(MDD, 1년)', '🎯 참고: 한 종목·한 자산군의 비중이 크면'
+    '최대낙폭(MDD, 1년)', '🎯 참고: 한 종목·한 자산군의 비중이 크면',
+    '종합 위험점수 계산 불가 (데이터 부족)', '계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)'
   ].forEach((label) => expect(risk, label).toContain(label));
   const macro = (await collectMacroHtml(page)).join('\n');
   ['VIX(변동성)', '🧭 함께 볼 점', '흔히 &#39;공포지수&#39;라고 불려요'].forEach((label) => expect(macro, label).toContain(label));
