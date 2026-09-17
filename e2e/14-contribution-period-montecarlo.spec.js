@@ -112,10 +112,12 @@ test.describe('적립기간(년) - Monte Carlo 연결(Step 2)', () => {
     expect(displayedP50).toBe(await page.evaluate((v) => fmtKRWShort(v), expected));
   });
 
-  test('총 납입원금 표시 - owner별 적립기간이 반영되어 무제한 기준보다 작게 표시된다', async ({ page }) => {
+  // [v250 PM 수정 지시] 결과 화면의 월 적립금 · 총 납입원금 안내 줄은 삭제됐다(§38). 적립기간이 반영된 총 납입원금 계산
+  // (computeTotalContributionPrincipalMultiStream)은 그대로이므로, 계산 자체와 화면에서 줄이 빠졌다는 사실을 함께 확인한다.
+  test('총 납입원금 계산 - owner별 적립기간이 반영되어 무제한 기준보다 작다(결과 화면 안내 줄은 v250에서 삭제)', async ({ page }) => {
     await seedAndRunMC(page, { husbandMonthly: 1000000, husbandYears: 10, wifeMonthly: 2000000, wifeYears: 15 });
-    const scheduleText = await page.locator('#mcContributionScheduleArea').innerText();
-    expect(scheduleText).toContain('총 납입원금');
+    await expect(page.locator('#mcContributionScheduleArea')).toHaveCount(0);
+    await expect(page.locator('#mcResultArea')).not.toContainText('총 납입원금');
     const shownTotal = await page.evaluate(() => {
       const streams = [{ monthly: 1000000, years: 10 }, { monthly: 2000000, years: 15 }];
       return computeTotalContributionPrincipalMultiStream(streams, 0, 20);

@@ -115,22 +115,8 @@ document.addEventListener('click', (e) => {
   if (body && chevron) setAccordionOpen(body, chevron, mcSafetyGroupOpen[key]);
 });
 
-let mcSafetyDetailOpen = false;
-function reapplyMcSafetyDetailHeight() {
-  const body = document.getElementById('mcSafetyDetailBody');
-  const chevron = document.getElementById('mcSafetyDetailChevron');
-  if (body && chevron) setAccordionOpen(body, chevron, mcSafetyDetailOpen);
-}
-const mcSafetyDetailToggleBtn = document.getElementById('mcSafetyDetailToggleBtn');
-if (mcSafetyDetailToggleBtn) {
-  mcSafetyDetailToggleBtn.addEventListener('click', () => {
-    mcSafetyDetailOpen = !mcSafetyDetailOpen;
-    reapplyMcSafetyDetailHeight();
-  });
-}
-
-// Monte Carlo 결과 화면 전용 진입점 - critical은 항상 펼쳐서 결과 바로 아래, general+info는 기본 접힘
-// "상세보기" 영역으로. 호출부(js/19 renderMonteCarloResult)는 판정된 issue 배열만 그대로 넘긴다.
+// Monte Carlo 결과 화면 전용 진입점 - critical은 항상 펼쳐서 결과 바로 아래, general+info는 detailEl로
+// ([v250] 결과 아래 토글 대신 js/19의 보관용 요소 → 맨 위 ⓘ 팝업에서 표시). 호출부(js/19 renderMonteCarloResult)는 판정된 issue 배열만 그대로 넘긴다.
 function renderMonteCarloSafetyTiers(criticalEl, detailToggleBtn, detailEl, issues) {
   const list = (issues || []).filter(Boolean);
   const critical = [], rest = [];
@@ -154,8 +140,6 @@ function renderMonteCarloSafetyTiers(criticalEl, detailToggleBtn, detailEl, issu
       if (detailToggleBtn) detailToggleBtn.classList.remove('hidden');
     }
   }
-  mcSafetyDetailOpen = false; // 매 실행마다 기본 접힘으로 시작(항상-on 설명이 결과를 가리지 않도록)
-  reapplyMcSafetyDetailHeight();
   lucide.createIcons();
 }
 

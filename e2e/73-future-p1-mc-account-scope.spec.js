@@ -92,7 +92,7 @@ test('C. 범위를 바꾸면 중앙값·표·설명이 그 범위의 계산 결�
   expect(combinedRow).toContain(combinedP50);
 });
 
-test('D. 기간을 바꾸면 중앙값과 범위 막대가 그 기간 기준으로 바뀐다', async ({ page }) => {
+test('D. 기간을 바꾸면 중앙값과 참고금액 라벨이 그 기간 기준으로 바뀐다', async ({ page }) => {
   await seedWithTaxAccount(page, { name: 'E73IRP채권', accountType: 'IRP', amount: 50000000 });
   await runMonteCarlo(page);
 
@@ -104,11 +104,11 @@ test('D. 기간을 바꾸면 중앙값과 범위 막대가 그 기간 기준으�
   expect(at5).not.toBe(at20);
   await expect(milestoneBtn(page, 0)).toHaveAttribute('aria-pressed', 'true');
 
-  // 막대는 기본 접힘 - 펼치면 선택한 기간의 라벨이 따라와야 한다.
-  await expect(page.locator('#mcRangeBarsBody')).toHaveCSS('max-height', '0px');
-  await page.locator('#mcRangeBarsToggleBtn').click();
-  await expect(page.locator('#mcRangeBarsNominalLabel')).toHaveText('명목가치 범위(5년 후 기준)');
-  await expect(page.locator('#mcRangeBarsRealLabel')).toHaveText('현재가치 기준 범위(5년 후 기준)');
+  // [v250] 범위 막대는 삭제됐다 - 선택한 기간은 참고금액 라벨이 따라간다(기본 20년 → 5년).
+  await expect(page.locator('#mcRangeBarsBody')).toHaveCount(0);
+  await expect(page.locator('#mcP25Label')).toHaveText('시뮬레이션 결과 5년 기준 보수적으로 볼 때의 참고금액');
+  await milestoneBtn(page, 3).click();
+  await expect(page.locator('#mcP25Label')).toHaveText('시뮬레이션 결과 20년 기준 보수적으로 볼 때의 참고금액');
 });
 
 test('E. 백분위가 title 속성이 아니라 실제 화면 텍스트로 보이고, P90은 화면에 표시하지 않는다', async ({ page }) => {
@@ -116,18 +116,14 @@ test('E. 백분위가 title 속성이 아니라 실제 화면 텍스트로 보�
   await runMonteCarlo(page);
   const headerText = await page.locator('table:has(#mcMilestoneTableBody) thead').innerText();
   ['P10', 'P25', 'P50', 'P75'].forEach((code) => expect(headerText).toContain(code));
-  ['낮은 편', '약간 낮음', '중간 수준', '약간 높음'].forEach((word) => expect(headerText).toContain(word));
+  ['초약세', '약세', '보통', '강세'].forEach((word) => expect(headerText).toContain(word)); // [v250] 표 명칭
   // [MC 표시 정책 ④ - PM 승인] P90은 계산에는 남기고 화면에서만 뺐다.
   expect(headerText).not.toContain('P90');
   expect(headerText).not.toContain('높은 편');
 
-  // 막대 라벨도 표와 같은 어휘 + 같은 코드를 쓴다(같은 값이 다른 지표처럼 보이지 않도록).
-  await page.locator('#mcRangeBarsToggleBtn').click();
-  const barsText = await page.locator('#mcRangeBarsArea').innerText();
-  ['P10', 'P25', 'P50', 'P75'].forEach((code) => expect(barsText).toContain(code));
-  expect(barsText).not.toContain('P90');
-  expect(barsText).toContain('낮은 편');
-  expect(barsText).toContain('중간 수준');
+  // [v250] 범위 막대는 삭제됐다 - 결과 영역 어디에도 P90 코드가 없다.
+  await expect(page.locator('#mcRangeBarsArea')).toHaveCount(0);
+  expect(await page.locator('#mcResultArea').innerText()).not.toContain('P90');
   // 엔진 결과에는 P90이 그대로 있다(표시만 뺀 것).
   const hasP90 = await page.evaluate(() => mcLastRender.withReal.accountScopes.combined.every((m) => Number.isFinite(m.p90) && Number.isFinite(m.real.p90)));
   expect(hasP90).toBe(true);
@@ -161,8 +157,11 @@ test('G. 목표 도달 가능성이 선택한 계좌 범위와 함께 표시된�
   const goalText = await page.locator('#mcGoalArea').innerText();
   expect(goalText).not.toMatch(/NaN|undefined|Infinity/);
   expect(goalText).toContain('목표에 도달할 가능성');
-  // percentile(위치)과 목표 도달 가능성(비율)을 다른 개념으로 설명해야 한다.
-  expect(goalText).toContain('경로가 전체 중 몇 %');
+  // percentile(위치)과 목표 도달 가능성(비율)이 다른 개념이라는 설명은 [v250] 맨 위 ⓘ 팝업의 항상-on 안내에 있다.
+  expect(goalText).not.toContain('경로가 전체 중 몇 %');
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModalBody')).toContainText('목표금액 이상에 도달한 경로의 비율');
+  await page.locator('#closeMcInfoModalBtn').click();
 });
 
 test('H. 실행 전에는 결과 대신 초보자 안내가 보이고, 실행 후에는 안내가 사라진다', async ({ page }) => {

@@ -266,7 +266,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v249</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v250</p>
           </div>
         </div>
 
@@ -1238,11 +1238,12 @@
       <!-- [Phase 24-B STEP 6 - Owner 관점 선택] 기본값 "가구 전체"(기존 동작과 완전히 동일) - 신랑/
            와이프를 선택하면 그 owner의 자산·목표비중·월적립금·적립기간만 반영해 계산한다(가구 전체
            pooled 비중을 재사용하지 않음, js/05·js/16 참고). 44px 터치 타겟(Assets 관점전환 세그먼트
-           컨트롤과 동일한 패턴 재사용, syncAssetViewButtonsUI 참고). -->
+           컨트롤과 동일한 패턴 재사용, syncAssetViewButtonsUI 참고).
+           [v250] 표시 순서만 가구 전체 | 신랑 | 와이프 (data-scope · 기본값 · 계산 무변경). -->
       <div id="mcOwnerScopeSegmented" class="grid grid-cols-3 gap-1.5 mb-3" role="group" aria-label="Monte Carlo 관점 선택">
+        <button type="button" data-scope="household" aria-pressed="true" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">가구 전체</button>
         <button type="button" data-scope="신랑" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">신랑</button>
         <button type="button" data-scope="와이프" aria-pressed="false" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">와이프</button>
-        <button type="button" data-scope="household" aria-pressed="true" class="mc-owner-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">가구 전체</button>
       </div>
 
       <div class="grid grid-cols-2 gap-2 mb-3">
@@ -1336,8 +1337,8 @@
           <p class="text-sm font-semibold text-amber-800 dark:text-amber-200 break-keep">⚠ 다시 계산이 필요합니다</p>
           <p class="text-sm text-amber-700 dark:text-amber-300 mt-0.5 leading-relaxed break-keep">이 결과를 계산한 뒤 설정이 바뀌었습니다. 아래 금액과 확률은 바뀌기 전 설정 기준이니 「Monte Carlo 실행」을 다시 눌러 주세요.</p>
         </div>
-        <!-- ===== [FUTURE-P1 Phase 3-2] 결과 순서 = 계좌 범위 -> 기간 -> 중앙값 -> 분포표 -> 해설 ->
-             (접힘)범위 막대 -> 목표 도달 가능성 -> 기술 정보 -> 상세 주의사항.
+        <!-- ===== [v250] 결과 순서 = 계좌 범위 -> 기간 -> 중앙값 · 참고금액 -> 목표 도달 가능성 -> (주요 주의사항) -> 분포표 ->
+             한 줄 안내 -> 장기 가정 출처 -> ※ 문구.
              엔진(js/15)이 이미 계산해 둔 accountScopes/milestones를 표시만 재배치한 것이며 새 계산은
              없다. 절세계좌가 없는 사용자는 범위 선택 영역이 계속 hidden이라 기존 화면과 같다. -->
 
@@ -1347,16 +1348,17 @@
           <!-- [FUTURE-P1 Phase 3-2] 선택/비선택 색 클래스를 정적 마크업에 그대로 적어 둔다 - Tailwind
                CDN은 로드 시점 DOM을 스캔해 CSS를 만들기 때문에, 나중에 classList.add로만 붙는 dark:
                변형은 class 방식(darkMode:'class')이 아니라 media 방식 규칙으로 만들어져 라이트 모드에서도
-               다크 색이 적용된다(기존 #mcOwnerScopeSegmented에서 실측으로 확인된 현상). -->
+               다크 색이 적용된다(기존 #mcOwnerScopeSegmented에서 실측으로 확인된 현상).
+               [v250] 표시 순서만 통합 | 일반계좌 | 절세계좌 (data-scope · 기본 선택 규칙 MCD-2 무변경). -->
           <div id="mcScopeSegmented" class="grid grid-cols-3 gap-1.5" role="group" aria-label="계좌 범위 선택">
+            <button type="button" data-scope="combined" aria-pressed="true" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">통합</button>
             <button type="button" data-scope="general" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">일반계좌</button>
             <button type="button" data-scope="taxAdvantaged" aria-pressed="false" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">절세계좌</button>
-            <button type="button" data-scope="combined" aria-pressed="true" class="mc-scope-btn flex items-center justify-center min-h-[44px] px-2 py-2 rounded-xl border-2 text-sm font-semibold transition-colors border-brand-600 dark:border-brand-400 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-200">통합</button>
           </div>
           <p id="mcScopeDesc" class="text-sm text-slate-400 mt-1.5 leading-relaxed break-keep"></p>
         </div>
 
-        <!-- 2) 기간 - milestone(5/10/15/20년)을 하나 골라 아래 중앙값/범위 막대에 적용한다. 표는 네
+        <!-- 2) 기간 - milestone(5/10/15/20년)을 하나 골라 아래 중앙값 · 참고금액에 적용한다. 표는 네
              기간을 한꺼번에 비교할 수 있게 그대로 둔다(선택과 비교 중 하나를 없애지 않는다). -->
         <div class="mb-3">
           <p class="text-sm text-slate-400 mb-1">기간</p>
@@ -1374,11 +1376,16 @@
           <p id="mcP50RealLabel" class="text-sm text-slate-400 mt-1">현재가치 기준</p>
           <p id="mcP50RealText" class="text-base font-bold text-slate-500 dark:text-slate-400">-</p>
           <div class="mt-3 pt-3 border-t border-brand-100 dark:border-brand-900/60">
-            <p class="text-sm text-slate-500 dark:text-slate-400 break-keep">보수적으로 볼 때의 참고 금액(P25)</p>
+            <p id="mcP25Label" class="text-sm text-slate-500 dark:text-slate-400 break-keep">시뮬레이션 결과 20년 기준 보수적으로 볼 때의 참고금액</p>
             <p id="mcP25Text" class="text-lg font-bold text-slate-700 dark:text-slate-200">-</p>
             <p id="mcP25RealText" class="text-sm text-slate-400">-</p>
           </div>
-          <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">시뮬레이션 결과를 작은 금액부터 줄 세웠을 때 가운데 금액이 P50, 25% 지점의 금액이 P25입니다. 결과가 어디쯤에 놓이는지를 나타내는 위치이며 확률을 뜻하지 않고, 앞으로 이 금액이 된다는 뜻도 아닙니다. 명목가치는 미래 시점의 금액이고, 현재가치는 물가상승률을 적용해 오늘 돈 가치로 환산한 금액입니다.</p>
+        </div>
+
+        <!-- [v250] 목표 도달 가능성 - 참고금액 바로 아래(표시 위치만 이동, 값 · 계산 무변경). 핵심 금액과 같은 브랜드색/굵기를
+             쓰지 않는 테두리 박스 그대로이며 "보조 정보" 라벨은 뺐다(안의 "목표금액" · "목표에 도달할 가능성" 라벨로 충분). -->
+        <div id="mcGoalBox" class="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+          <div id="mcGoalArea"></div>
         </div>
 
         <!-- [Phase 17 P1-4] 결과 해석에 직접 영향을 주는 주의사항만 여기 항상 펼쳐서 보여준다. -->
@@ -1394,69 +1401,42 @@
             <thead>
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 text-left align-bottom">
                 <th class="pl-1 pr-1.5 py-2 font-semibold">시점</th>
-                <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">낮은 편<br><span class="font-normal text-slate-400">P10</span></th>
-                <th class="px-0.5 py-2 text-right font-bold break-keep">약간 낮음<br><span class="font-normal text-slate-400">P25</span></th>
-                <th class="px-0.5 py-2 text-right font-bold break-keep">중간 수준<br><span class="font-normal text-slate-400">P50</span></th>
-                <th class="px-0.5 py-2 text-right font-semibold break-keep">약간 높음<br><span class="font-normal text-slate-400">P75</span></th>
+                <th class="px-0.5 py-2 text-right font-semibold whitespace-nowrap">초약세<br><span class="font-normal text-slate-400">P10</span></th>
+                <th class="px-0.5 py-2 text-right font-bold break-keep">약세<br><span class="font-normal text-slate-400">P25</span></th>
+                <th class="px-0.5 py-2 text-right font-bold break-keep">보통<br><span class="font-normal text-slate-400">P50</span></th>
+                <th class="px-0.5 py-2 text-right font-semibold break-keep">강세<br><span class="font-normal text-slate-400">P75</span></th>
               </tr>
             </thead>
             <tbody id="mcMilestoneTableBody"></tbody>
           </table>
         </div>
-        <!-- 5) 결과 해설 - percentile은 "분포에서의 위치"이고 목표 도달 가능성(아래)과는 다른 개념이라는
-             점을 결과 바로 옆에서 최소 1회는 읽을 수 있게 항상 펼쳐 둔다(상세 영역에만 숨기지 않는다). -->
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">결과를 작은 금액부터 줄 세웠을 때 "낮은 편"은 10% 지점(P10), "약간 낮음"은 25% 지점(P25), "중간 수준"은 가운데(P50), "약간 높음"은 75% 지점(P75)의 금액입니다 - 낮은 편이 "최악의 경우"를 뜻하는 것은 아니며, 실제 결과는 이 범위를 벗어날 수도 있습니다. 각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액입니다. 이 값들은 결과가 어디쯤에 놓이는지를 나타내는 <b>위치</b>이며, 아래의 목표 도달 가능성(<b>비율</b>)과는 다른 개념입니다.</p>
+        <!-- [v250] 표 아래 문구는 PM 지정 한 줄만 둔다. 범위 막대(선택한 기간의 범위를 막대로 보기)는 삭제했다 - 같은 값은 위 표에 그대로 있다. -->
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액</p>
 
-        <!-- 6) 범위 막대 - 표와 같은 값을 그림으로 다시 보여주는 것이라 기본은 접어 둔다(모바일 세로
-             공간 절약). 계산값은 그대로 유지하며 renderBarsInto를 그대로 재사용한다. -->
-        <button type="button" id="mcRangeBarsToggleBtn" class="detail-card-accordion-btn w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-          <span id="mcRangeBarsToggleLabel">선택한 기간의 범위를 막대로 보기</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcRangeBarsChevron"></i>
-        </button>
-        <div id="mcRangeBarsBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          <p id="mcRangeBarsNominalLabel" class="text-sm text-slate-400 mt-3 mb-1">명목가치 범위</p>
-          <div id="mcRangeBarsArea" class="space-y-1.5"></div>
-          <p id="mcRangeBarsRealLabel" class="text-sm text-slate-400 mt-3 mb-1">현재가치 기준 범위</p>
-          <div id="mcRangeBarsRealArea" class="space-y-1.5"></div>
-        </div>
-
-        <!-- 7) 목표 도달 가능성 - 보조 정보다. 핵심 금액(P50)과 같은 브랜드색/굵기를 쓰지 않고,
-             테두리 박스 + "보조 정보" 라벨이라는 구조 자체로 성격을 구분한다(색만으로 구분하지 않는다). -->
-        <div class="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
-          <p class="text-sm font-semibold text-slate-400">보조 정보 · 목표 도달 가능성</p>
-          <div id="mcGoalArea" class="mt-1"></div>
-        </div>
-
-        <!-- 8) 기술 정보 - 결과보다 먼저 나오면 초보자가 숫자를 만나기 전에 용어부터 만나게 되므로
-             핵심 결과 뒤로 내렸다(값은 그대로, 위치만 변경). -->
-        <div id="mcContributionScheduleArea" class="text-sm text-slate-400 mt-3 leading-relaxed break-keep"></div>
-        <p id="mcInflationNote" class="text-sm text-slate-400 mt-1">인플레이션율: -</p>
-        <p id="mcWeightedFeeNote" class="text-sm text-slate-400">예상 연간 운용보수(일반계좌 목표비중 가중평균): -</p>
-        <!-- 8-1) [§37 CMA-UI-01] 장기 가정 출처 - 요약 한 줄 + 접힌 상세(자산군 변동성 · 상관계수 출처 유형 · Benchmark 기관/자료/기준일/값).
-             계산 결과(result.cma)에 담긴 그 실행 당시 세트를 그대로 보여준다(renderMonteCarloCmaSource, js/19). -->
-        <div id="mcCmaSourceArea" class="hidden mt-2 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
-          <p class="text-sm font-semibold text-slate-500 dark:text-slate-300">장기 가정 출처</p>
-          <p id="mcCmaSourceSummary" class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-keep"></p>
-          <button type="button" id="mcCmaDetailToggleBtn" class="touch-target min-h-[44px] w-full flex items-center justify-center gap-1 mt-1 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-300" aria-expanded="false" aria-controls="mcCmaDetailBody">
-            <span>자산군 변동성 · 상관계수 출처 보기</span>
-            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcCmaDetailChevron"></i>
-          </button>
-          <div id="mcCmaDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-            <div id="mcCmaDetail" class="pt-1 space-y-2 text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep"></div>
+        <!-- [§37 CMA-UI-01 · v250] 장기 가정 출처 - 기본 접힘 드롭다운(요약: 기관 · 기준일 · 기간 · 통화 · 세트 · 상관 출처 유형)과
+             옆 ⓘ(자산군별 변동성 · 상관계수 출처 상세 → 기존 mcInfoModal). 계산 결과(result.cma)에 담긴 그 실행 당시 세트를 그대로 보여준다(js/19). -->
+        <div id="mcCmaSourceArea" class="hidden mt-3 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5">
+          <div class="flex items-center gap-1">
+            <button type="button" id="mcCmaSourceToggleBtn" class="touch-target min-h-[44px] flex-1 flex items-center justify-between gap-2 text-left text-sm font-semibold text-slate-500 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-300" aria-expanded="false" aria-controls="mcCmaSourceBody">
+              <span>장기 가정 출처</span>
+              <i data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform duration-200" id="mcCmaSourceChevron"></i>
+            </button>
+            <button type="button" id="mcCmaInfoBtn" class="w-11 h-11 shrink-0 flex items-center justify-center text-slate-400 hover:text-brand-600 dark:hover:text-brand-300" aria-label="자산군별 변동성 · 상관계수 출처 자세히 보기">
+              <i data-lucide="info" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div id="mcCmaSourceBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
+            <p id="mcCmaSourceSummary" class="text-sm text-slate-500 dark:text-slate-400 pb-2 leading-relaxed break-keep"></p>
           </div>
         </div>
+        <!-- [v250 PM 수정 지시] 목표 도달 가능성 아래에 있던 설명 블록(일반계좌 월 적립금 · 총 납입원금 · "참고: 일반계좌 적립금은 …
+             목표비중을 기준으로 계산합니다." · 인플레이션율 · 예상 연간 운용보수(일반계좌 목표비중 가중평균))을 PM 지시로 삭제했다.
+             값의 계산 · 데이터는 그대로다 - 인플레이션율은 MC 카드 상단 입력 행과 현재가치 라벨(물가상승률 N% 가정)에, 운용보수는
+             [운용보수(연간) 설정] 팝업에, 적립금 · 적립 기간은 [적립금 설정] 팝업에 그대로 있다. -->
         <p class="text-sm text-slate-400 mt-2 leading-relaxed break-keep">※ 일반계좌는 '포트폴리오 설정'의 목표 비중, 절세계좌는 현재 보유 자산과 적립설정의 배분을 기준으로 하며, 자산군별 장기 CMA 변동성·상관관계(위 출처)와 등록한 운용보수를 반영합니다. 매매수수료·세금·환전비용은 아직 반영되지 않았습니다.</p>
 
-        <!-- 9) [Phase 17 P1-4 - 상세 보기] 결과 해석에 직접 영향을 주지는 않는 일반 주의사항과 매번
-             동일하게 뜨는 계산방법 설명(항상-on INFO 6종)을 여기 기본 접힘 영역으로 모은다 - 숨기는
-             것이 아니라 원하면 언제든 펼쳐 전부 확인할 수 있다(판정 로직 무변경). -->
-        <button type="button" id="mcSafetyDetailToggleBtn" class="hidden w-full flex items-center justify-center gap-1 py-2 mt-3 text-sm font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 border-t border-slate-100 dark:border-slate-800">
-          <span id="mcSafetyDetailToggleLabel">주의사항 및 계산 방법 자세히 보기</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" id="mcSafetyDetailChevron"></i>
-        </button>
-        <div id="mcSafetyDetailBody" class="overflow-hidden transition-[max-height] duration-300 ease-in-out" style="max-height:0px;">
-          <div id="mcSafetyDetail" class="pt-2 space-y-1.5"></div>
-        </div>
+        <!-- [v250] "주의사항 및 계산 방법 자세히 보기" 토글을 없앴다 - 같은 내용(결과 해석에 직접 영향을 주지 않는 주의사항 ·
+             항상-on 계산 방법 설명)은 맨 위 "실제 미래는 여러 경로로 달라질 수 있습니다 ⓘ" 팝업에서 확인한다(js/19 · js/22, 판정 로직 무변경). -->
       </div>
     </section>
 

@@ -197,7 +197,6 @@ async function openSynthetic(page) {
 
 test('P-1. P50과 P25가 핵심 결과로 보이고, 표·막대·결과 영역 어디에도 P90 코드나 P90 금액이 없다', async ({ page }) => {
   await openSynthetic(page);
-  await page.locator('#mcRangeBarsToggleBtn').click();
   const vals = await page.evaluate(() => {
     const combined = mcLastRender.withReal.accountScopes.combined;
     const last = combined[combined.length - 1];
@@ -209,7 +208,8 @@ test('P-1. P50과 P25가 핵심 결과로 보이고, 표·막대·결과 영역 
   await expect(page.locator('#mcP50Text')).toHaveText(vals.p50);
   await expect(page.locator('#mcP25Text')).toHaveText(vals.p25);
   await expect(page.locator('#mcP25RealText')).toHaveText(`현재가치 기준 ${vals.p25Real}`);
-  await expect(page.locator('#mcP25Text').locator('..')).toContainText('보수적으로 볼 때의 참고 금액(P25)');
+  // [v250] 참고금액 라벨(PM 지정 문장 · 기간은 선택 기간)
+  await expect(page.locator('#mcP25Label')).toHaveText('시뮬레이션 결과 20년 기준 보수적으로 볼 때의 참고금액');
 
   // 표의 20년 행에서 P25·P50 칸이 위 카드와 같은 값이다.
   const lastRow = await page.locator('#mcMilestoneTableBody tr').last().locator('td').allInnerTexts();
@@ -222,10 +222,9 @@ test('P-1. P50과 P25가 핵심 결과로 보이고, 표·막대·결과 영역 
   expect(vals.p90s.length).toBeGreaterThan(0);
   vals.p90s.forEach((t) => expect(resultText).not.toContain(t));
   expect(vals.dataHasP90).toBe(true);
-  // 막대 4개 · 가장 긴 막대(P75)가 끝까지 찬다(숨긴 P90을 기준으로 두지 않는다).
-  const widths = await page.locator('#mcRangeBarsArea .rounded-full > div').evaluateAll((els) => els.map((e) => e.style.width));
-  expect(widths.length).toBe(4);
-  expect(widths[3]).toBe('100%');
+  // [v250] 범위 막대 삭제 - 막대 요소 자체가 없다.
+  await expect(page.locator('#mcRangeBarsArea')).toHaveCount(0);
+  await expect(page.locator('#mcRangeBarsToggleBtn')).toHaveCount(0);
 });
 
 test('G-1. 목표 도달 가능성은 하나뿐이고, 백분위를 확률로 부르는 표현이 없으며, 기간이 다르면 그 사실을 밝힌다', async ({ page }) => {
@@ -235,7 +234,8 @@ test('G-1. 목표 도달 가능성은 하나뿐이고, 백분위를 확률로 �
   expect(resultText.split('42.3%').length - 1).toBe(1);
   expect(resultText.split('목표에 도달할 가능성').length - 1).toBe(1);
   await expect(page.locator('#mcGoalArea')).toContainText('통합 기준 · 20년 후 목표에 도달할 가능성');
-  await expect(page.locator('#mcP25Text').locator('..').locator('..')).toContainText('확률을 뜻하지 않고');
+  // [v250] 카드 안 장문 해설은 PM 지시로 삭제 - 카드에는 백분위를 확률로 부르는 표현이 없다.
+  await expect(page.locator('#mcP25Text').locator('..').locator('..')).not.toContainText('확률');
   await expect(page.locator('#mcGoalArea')).not.toContainText('위쪽 금액은');
 
   await milestoneBtn(page, 0).click();
@@ -245,10 +245,12 @@ test('G-1. 목표 도달 가능성은 하나뿐이고, 백분위를 확률로 �
 
 test('W-1. 일반계좌 기준인 표시는 그 사실을 밝힌다(가중평균 보수 · 적립금 안내 · 결과 범위 판정 · 범위 안내)', async ({ page }) => {
   await openSynthetic(page);
-  await expect(page.locator('#mcWeightedFeeNote')).toHaveText('예상 연간 운용보수(일반계좌 목표비중 가중평균): 0.15%');
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('일반계좌 월 적립금');
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('일반계좌 적립금은 가구 전체 목표비중을 기준으로 계산합니다');
+  // [v250 PM 수정 지시 · §38] 결과 아래 가중평균 보수 · 적립금 안내 줄은 삭제됐다(MCD-5 해당 문구 대체). 남은 일반계좌 기준 문구는 아래에서 확인한다.
+  for (const sel of ['#mcContributionScheduleArea', '#mcInflationNote', '#mcWeightedFeeNote']) await expect(page.locator(sel)).toHaveCount(0);
   const resultText = await page.locator('#mcResultArea').innerText();
+  expect(resultText).not.toContain('예상 연간 운용보수(일반계좌 목표비중 가중평균)');
+  expect(resultText).not.toContain('일반계좌 월 적립금');
+  expect(resultText).toContain('일반계좌는 \'포트폴리오 설정\'의 목표 비중');
   expect(resultText).not.toContain('일반계좌의 투자자산을 기준으로');
   const spread = await page.evaluate(() => assessResultSpread(1, 50, 30).message);
   expect(spread).toContain('일반계좌 결과 기준');
@@ -305,7 +307,6 @@ for (const [w, h, dark] of VIEWS) {
 
     await renderSyntheticMcResult(page);
     await expect(page.locator('#mcResultArea')).toBeVisible();
-    await page.locator('#mcRangeBarsToggleBtn').click();
     await expect(scopeBtn(page, 'combined')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#mcP50Text')).toBeVisible();
     await expect(page.locator('#mcP25Text')).toBeVisible();

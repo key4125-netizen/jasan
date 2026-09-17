@@ -89,9 +89,8 @@ test('Monte Carlo 결과 - percentile이 초보자용 표현으로 바뀌고, �
   // 전문용어(P10/P25/P50/P75)가 큰 표 헤더로 그대로 노출되지 않고, 초보자 표현으로 바뀌어야 한다.
   // (이 탭에는 표가 여러 개라 mcMilestoneTableBody를 담은 table로 범위를 좁힌다.)
   const headerText = await page.locator('table:has(#mcMilestoneTableBody) thead').innerText();
-  expect(headerText).toContain('낮은 편');
-  expect(headerText).toContain('중간 수준');
-  expect(headerText).toContain('약간 높음');
+  // [v250] 표 명칭(PM 지정): 초약세 P10 · 약세 P25 · 보통 P50 · 강세 P75
+  ['초약세', '약세', '보통', '강세'].forEach((word) => expect(headerText).toContain(word));
   // [FUTURE-P1 Phase 3-2] 원래 이름을 title 속성에만 두던 방식은 터치 기기에서 아예 전달되지 않았다 -
   // 쉬운 말을 주 라벨로 두되 원래 이름도 실제 화면 텍스트로 함께 적는다.
   expect(headerText).toMatch(/\bP10\b/);
@@ -101,11 +100,11 @@ test('Monte Carlo 결과 - percentile이 초보자용 표현으로 바뀌고, �
   expect(headerText).not.toMatch(/\bP90\b/);
   expect(headerText).not.toContain('높은 편');
 
-  // "낮은 편=최악의 경우"처럼 단정하는 표현은 없어야 한다 - 오히려 "그렇지 않다"는 명시적 해명 문구가
-  // 있어야 한다(단순 "최악의 경우" 문자열 포함 여부만 보면, 그 표현을 부정하는 정상적인 해명 문장까지
-  // 걸러지므로 부적절하다 - 실제로 이 문구가 "~아니며"로 부정되고 있는지까지 함께 확인한다).
+  // [v250] 표 아래 장문 해설은 PM 지시로 삭제하고 지정 문장 한 줄만 둔다. "최악의 경우" 같은 단정 표현도 없어야 한다.
   const bodyText = await page.locator('#mcResultArea').innerText();
-  expect(bodyText).toMatch(/최악의 경우.{0,20}아니/);
+  expect(bodyText).toContain('각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액');
+  expect(bodyText).not.toContain('최악의 경우');
+  expect(bodyText).not.toContain('결과를 작은 금액부터 줄 세웠을 때');
 
   // 표의 마지막(20년후) 행 "중간 수준" 칸 값이 상단 큰 박스(P50, 명목가치)와 동일해야 한다(같은
   // last.p50 값을 두 곳에서 그대로 재사용한다는 것을 실측으로 확인).
@@ -127,7 +126,12 @@ test('목표 달성 가능성 - 문구가 확정적 표현 없이 가정 기반�
   const goalText = await page.locator('#mcGoalArea').innerText();
   expect(goalText).not.toMatch(/NaN|undefined|Infinity/);
   expect(goalText).toContain('목표에 도달할 가능성');
-  expect(goalText).toContain('현재 설정을 기준으로 한 시뮬레이션 결과예요');
+  // [v250] 확률 아래 짧은 부연 설명은 PM 지시로 뺐다 - "가정 기반의 비율"이라는 설명은 맨 위 ⓘ 팝업의 항상-on 안내로 확인한다.
+  expect(goalText).not.toContain('현재 설정을 기준으로 한 시뮬레이션 결과예요');
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModalBody')).toContainText('목표 달성 확률의 의미');
+  await expect(page.locator('#mcInfoModalBody')).toContainText('목표금액 이상에 도달한 경로의 비율');
+  await page.locator('#closeMcInfoModalBtn').click();
   // 금지 표현("확률로 벌 수 있다" 등 확정적 서술)이 없어야 한다.
   expect(goalText).not.toMatch(/확률로.*벌 수 있습니다|정확히 \d+%/);
 });

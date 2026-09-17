@@ -197,8 +197,7 @@ for (const dark of [true, false]) {
     await expect(page.locator('#mcP50Text')).toBeVisible();            // P50
     await expect(page.locator('#mcMilestoneTableBody')).toBeVisible(); // P10~P90 × milestone
     await expect(page.locator('#mcGoalArea')).toBeVisible();           // 목표 도달 가능성
-    await page.locator('#mcRangeBarsToggleBtn').click();               // 범위 막대(접힘 해제)
-    await expect(page.locator('#mcRangeBarsArea')).toBeVisible();
+    await expect(page.locator('#mcRangeBarsArea')).toHaveCount(0);     // [v250] 범위 막대 삭제
 
     expect(await tinyTexts(page), 'MC 결과 14px 미만 텍스트').toEqual([]);
     expect(await unformattedAmounts(page), 'MC 결과 천단위 미적용 금액').toEqual([]);

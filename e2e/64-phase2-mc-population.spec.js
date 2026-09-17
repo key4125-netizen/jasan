@@ -255,9 +255,11 @@ test('I. MC 결과 화면에 표시되는 범위 안내가 실제 원금 계산�
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  // 항상-on 설명은 "상세보기" 토글 뒤에 접혀 있다(mcSafetyDetail) - 실제 사용자처럼 펼친다.
-  await page.locator('#mcSafetyDetailToggleBtn').click();
-  const noticeText = await page.locator('#mcSafetyDetail').innerText();
+  // 항상-on 설명은 [v250] 맨 위 "실제 미래는 여러 경로로 달라질 수 있습니다 ⓘ" 팝업에 있다 - 실제 사용자처럼 연다.
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeVisible();
+  const noticeText = await page.locator('#mcInfoModalBody').innerText();
+  await page.locator('#closeMcInfoModalBtn').click();
   // [MC 표시 정책 ⑤] 기본 화면이 통합이 되면서 "화면 위쪽은 일반계좌 기준"이라는 옛 문장이 사실과
   // 달라져 계좌 범위별 계산 방식을 설명하는 문장으로 바뀌었다. 이 테스트가 지키는 것(절세계좌를 따로
   // 계산한다 · 부동산/공동 자산은 제외한다 · 원금은 일반계좌 1억뿐)은 그대로다.

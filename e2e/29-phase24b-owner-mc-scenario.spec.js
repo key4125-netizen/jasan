@@ -1,3 +1,4 @@
+/* global window */
 // E2E-29 Phase 24-B - Owner별 Monte Carlo(신랑/와이프/가구 전체) + Scenario 통합/축소 전용 회귀.
 //
 // [핵심 검증 원칙] "가구 전체"는 Phase 24-B 이전과 완전히 동일한 결과여야 하고(기존 사용자 보호),
@@ -42,7 +43,20 @@ async function seedTwoOwners(page) {
   await page.getByText('미래 예측', { exact: true }).click();
 }
 
+// [v250] 결과 화면의 "월 적립금 · 목표비중 기준" 안내 줄이 PM 지시로 삭제되어, 같은 사실(어느 소유자의 적립금 · 목표비중으로
+// 계산했는가)을 실제 실행 입력(startMonteCarloRun에 넘어간 값)으로 확인한다 - 계산 경로는 건드리지 않고 기록만 한다.
+async function recordRunParams(page) {
+  await page.evaluate(() => {
+    if (window.__e2e29Wrapped) return;
+    window.__e2e29Wrapped = true;
+    const original = window.startMonteCarloRun;
+    window.startMonteCarloRun = (params, callbacks) => { window.__e2e29LastParams = { monthlyContribution: params.monthlyContribution, ownerFilter: params.ownerFilter }; return original(params, callbacks); };
+  });
+}
+const lastRunParams = (page) => page.evaluate(() => window.__e2e29LastParams);
+
 async function runMcAndReadP50(page, scope) {
+  await recordRunParams(page);
   await page.locator(`#mcOwnerScopeSegmented [data-scope="${scope}"]`).click();
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 30000 });
@@ -56,9 +70,9 @@ test('1+5. 기본값은 "가구 전체"이고, 그 상태로 실행하면 두 ow
 
   const p50 = await runMcAndReadP50(page, 'household');
   expect(p50).not.toBe('-');
-  // 월 적립금 표시는 두 owner 합계(30만+20만=50만)여야 한다.
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('50만원');
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('가구 전체 목표비중');
+  // 월 적립금은 두 owner 합계(30만+20만=50만)로, 가구 전체(ownerFilter 없음) 기준으로 실행된다.
+  expect(await lastRunParams(page)).toEqual({ monthlyContribution: 500000, ownerFilter: null });
+  await expect(page.locator('#mcContributionScheduleArea')).toHaveCount(0);
   // 목표확률 영역도 정상 렌더(목표금액 미설정 안내 또는 확률) - 존재 자체를 확인한다.
   await expect(page.locator('#mcGoalArea')).toBeVisible();
 });
@@ -66,8 +80,7 @@ test('1+5. 기본값은 "가구 전체"이고, 그 상태로 실행하면 두 ow
 test('2. 신랑 MC - 신랑의 자산/적립금만 반영되고 와이프 자산은 결과·Safety 어디에도 섞이지 않는다', async ({ page }) => {
   await seedTwoOwners(page);
   await runMcAndReadP50(page, '신랑');
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('30만원'); // 신랑 적립금만
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('신랑님의 목표비중');
+  expect(await lastRunParams(page)).toEqual({ monthlyContribution: 300000, ownerFilter: '신랑' }); // 신랑 적립금만 · 신랑 목표비중
   const resultText = await page.locator('#mcResultArea').innerText();
   expect(resultText).toContain('E2E29신랑채권');
   expect(resultText).not.toContain('E2E29와이프채권'); // 와이프 자산이 전혀 등장하지 않아야 한다
@@ -76,8 +89,7 @@ test('2. 신랑 MC - 신랑의 자산/적립금만 반영되고 와이프 자산
 test('3. 와이프 MC - 와이프의 자산/적립금만 반영되고 신랑 자산은 섞이지 않는다', async ({ page }) => {
   await seedTwoOwners(page);
   await runMcAndReadP50(page, '와이프');
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('20만원'); // 와이프 적립금만
-  await expect(page.locator('#mcContributionScheduleArea')).toContainText('와이프님의 목표비중');
+  expect(await lastRunParams(page)).toEqual({ monthlyContribution: 200000, ownerFilter: '와이프' }); // 와이프 적립금만 · 와이프 목표비중
   const resultText = await page.locator('#mcResultArea').innerText();
   expect(resultText).toContain('E2E29와이프채권');
   expect(resultText).not.toContain('E2E29신랑채권');

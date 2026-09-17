@@ -34,6 +34,17 @@ test('Deterministic 시나리오 설명 - "기준 연간 성장률"과 Monte Car
   await expect(page.locator('#mcInfoModal')).toBeHidden();
 });
 
+// [v250] 결과 해석용 항상-on 안내 · 참고성 주의사항은 결과 아래 "상세보기" 토글이 아니라 맨 위
+// "실제 미래는 여러 경로로 달라질 수 있습니다 ⓘ" 팝업에 있다 - 사용자처럼 팝업을 열어 읽고 닫는다.
+async function readMcIntroNotes(page) {
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeVisible();
+  const text = await page.locator('#mcInfoModalBody').innerText();
+  await page.locator('#closeMcInfoModalBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeHidden();
+  return text;
+}
+
 test('Monte Carlo 실행 결과에 기대수익률/Goal Probability/데이터 기간/모델 범위 안내 카드가 표시된다', async ({ page }) => {
   await seedPortfolio(page, {
     targets: [{ owner: '신랑', region: '국내', name: 'E2ESemantic국내2', pct: 100 }],
@@ -45,10 +56,9 @@ test('Monte Carlo 실행 결과에 기대수익률/Goal Probability/데이터 �
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  // [Phase 17 P1-4] 이 안내 카드들은 전부 severity=INFO(always-on 설명)라 이제 결과보다 아래
-  // "상세보기" 영역(mcSafetyDetail)에 표시된다 - mcSafetyIssues는 더 이상 정상 완료 경로에서 쓰이지
-  // 않는다(BLOCK 전용). 접힌 아코디언 안이라도 DOM에는 그대로 남아있어 innerText로 확인 가능하다.
-  const safetyText = await page.locator('#mcSafetyDetail').innerText();
+  // [Phase 17 P1-4 · v250] 이 안내 카드들은 전부 severity=INFO(always-on 설명)라 결과 영역에 펼치지 않고
+  // 맨 위 ⓘ 팝업에서 보여준다(v250 이전: 결과 아래 "상세보기" 토글). mcSafetyIssues는 BLOCK 전용 그대로다.
+  const safetyText = await readMcIntroNotes(page);
   // [Phase 22 STEP 9 - 용어 통일] "기대수익률의 의미" -> "기준 연간 성장률의 의미"로 문구만 변경
   // (Phase 21 T-08) - 판정/카드 노출 조건은 무변경.
   expect(safetyText).toContain('기준 연간 성장률의 의미');
@@ -69,7 +79,7 @@ test('목표금액 미설정 시 Goal Probability 안내 카드는 나타나지 
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  const safetyText = await page.locator('#mcSafetyDetail').innerText();
+  const safetyText = await readMcIntroNotes(page);
   expect(safetyText).not.toContain('목표 달성 확률의 의미');
 });
 
@@ -86,6 +96,6 @@ test('해외자산이 포함되면 FX 환율 변동 미반영 안내 카드가 �
   await page.locator('#mcRunBtn').click();
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
 
-  const safetyText = await page.locator('#mcSafetyDetail').innerText();
+  const safetyText = await readMcIntroNotes(page);
   expect(safetyText).toContain('해외자산 환율 변동 미반영 안내');
 });

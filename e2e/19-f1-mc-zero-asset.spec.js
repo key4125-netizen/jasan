@@ -251,9 +251,8 @@ test.describe('F-1 - 실제 UI(mcRunBtn) 흐름으로 재현', () => {
     await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
     const p50Text = await page.locator('#mcP50Text').innerText();
     expect(p50Text).not.toMatch(/NaN|undefined|Infinity|^0원$|^$/);
-    const scheduleText = await page.locator('#mcContributionScheduleArea').innerText();
-    expect(scheduleText).toContain('총 납입원금');
-    expect(scheduleText).toContain('가구 전체 목표비중을 기준으로 계산합니다');
+    // [v250 PM 수정 지시] 결과 아래 적립금 안내 블록은 삭제됐다 - 표시 대신 결과 값이 정상인지로 확인한다.
+    await expect(page.locator('#mcContributionScheduleArea')).toHaveCount(0);
     const milestoneText = await page.locator('#mcMilestoneTableBody').innerText();
     expect(milestoneText).not.toMatch(/NaN|undefined|Infinity/);
     const goalAreaText = await page.locator('#mcGoalArea').innerText();

@@ -1,8 +1,8 @@
 /* global window, document, getComputedStyle */
 // E2E-95 장기 MC CMA 체계(체크리스트 §37) - 화면에서 확인하는 것:
 //   A. 가격 이력 없이(시세 캐시 주입 없음) Monte Carlo가 CMA 변동성 · 상관으로 끝까지 계산된다.
-//   B. 결과 아래 "장기 가정 출처"에 기관 · 기준일 · 기간 · 통화 · 세트 버전 · 상관 출처 유형 개수가 보이고,
-//      상세를 펼치면 자산군 변동성과 Benchmark 쌍(기관 · 자료 · 기준일 · 값 · 출처 유형)이 보인다.
+//   B. 결과 아래 "장기 가정 출처"(v250부터 기본 접힘 드롭다운)에 기관 · 기준일 · 기간 · 통화 · 세트 버전 · 상관 출처 유형 개수가 보이고,
+//      옆 ⓘ 팝업에 자산군 변동성과 Benchmark 쌍(기관 · 자료 · 기준일 · 값 · 출처 유형)이 보인다.
 //   C. MC 입력 서명에 CMA 세트 버전이 들어가고, 세트가 바뀌면 이전 결과는 "다시 계산 필요"로 표시되며
 //      결과 자체의 세트 버전 표시는 계산 당시 값 그대로다(소급 변경 없음).
 //   D. 수익률 가정은 있는데 CMA 자산군이 없는 위험자산은 실행 전에 어떤 자산인지 알려 준다.
@@ -68,13 +68,16 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(summary).toContainText('Benchmark 참고값 1쌍');
   await expect(summary).toContainText('J.P. Morgan Asset Management(기준일 2025-09-30)');
   await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)');
-  // 상세는 기본 접힘 → 펼치면 자산군 변동성과 Benchmark 쌍이 보인다.
-  const body = page.locator('#mcCmaDetailBody');
+  // [v250] 출처 요약은 기본 접힘 드롭다운 - 펼치면 보인다. 자산군 변동성 · Benchmark 쌍 상세는 옆 ⓘ 팝업(mcInfoModal).
+  const body = page.locator('#mcCmaSourceBody');
   await expect(body).toHaveAttribute('style', /max-height:\s*0px/);
-  await page.locator('#mcCmaDetailToggleBtn').click();
-  await expect(page.locator('#mcCmaDetailToggleBtn')).toHaveAttribute('aria-expanded', 'true');
-  const detail = page.locator('#mcCmaDetail');
-  await expect(detail).toBeVisible();
+  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#mcCmaSourceToggleBtn').click();
+  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'true');
+  await expect(summary).toBeVisible();
+  await page.locator('#mcCmaInfoBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeVisible();
+  const detail = page.locator('#mcInfoModalBody');
   await expect(detail).toContainText('국내 주식 → Korea Equities · 변동성 27.9%');
   await expect(detail).toContainText('미국 주식 → North America Equities · 변동성 16.5%');
   await expect(detail).toContainText('국내 주식 ↔ 미국 주식: 0.41');
@@ -82,6 +85,8 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(detail).toContainText('2026 Long-Term Capital Market Assumptions - Korean won (KRW) assumptions matrix');
   await expect(detail).toContainText('기준일 2025-09-30');
   await expect(detail).toContainText('Korean Equity ↔ U.S. Large Cap');
+  await page.locator('#closeMcInfoModalBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeHidden();
   expect(priceRequests).toEqual([]);
 });
 
@@ -117,18 +122,31 @@ for (const scheme of ['dark', 'light']) {
     await page.evaluate((s) => { document.documentElement.classList.toggle('dark', s === 'dark'); }, scheme);
     await runMc(page);
     await expect(page.locator('#mcCmaSourceArea')).toBeVisible({ timeout: 30000 });
-    await page.locator('#mcCmaDetailToggleBtn').click();
-    await expect(page.locator('#mcCmaDetail')).toBeVisible();
+    await page.locator('#mcCmaSourceToggleBtn').click();
+    await expect(page.locator('#mcCmaSourceSummary')).toBeVisible();
     const m = await page.evaluate(() => {
       const area = document.getElementById('mcCmaSourceArea');
       const texts = [...area.querySelectorAll('p, li, span, button')].filter((el) => el.offsetParent !== null && el.textContent.trim());
       const minFont = Math.min(...texts.map((el) => parseFloat(getComputedStyle(el).fontSize)));
-      const btn = document.getElementById('mcCmaDetailToggleBtn').getBoundingClientRect();
+      const btn = document.getElementById('mcCmaSourceToggleBtn').getBoundingClientRect();
+      const info = document.getElementById('mcCmaInfoBtn').getBoundingClientRect();
       const rect = area.getBoundingClientRect();
-      return { minFont, btnH: btn.height, right: rect.right, scrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
+      return { minFont, btnH: btn.height, infoW: info.width, infoH: info.height, right: rect.right, scrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
     });
     expect(m.minFont).toBeGreaterThanOrEqual(14);
     expect(m.btnH).toBeGreaterThanOrEqual(44);
+    expect(m.infoW).toBeGreaterThanOrEqual(44);
+    expect(m.infoH).toBeGreaterThanOrEqual(44);
+    // ⓘ 팝업(상세)도 14px 이상 · 가로 넘침 없음
+    await page.locator('#mcCmaInfoBtn').click();
+    await expect(page.locator('#mcInfoModalBody')).toContainText('BENCHMARK_REFERENCE');
+    const pm = await page.evaluate(() => {
+      const body = document.getElementById('mcInfoModalBody');
+      const texts = [...body.querySelectorAll('p, li, span')].filter((el) => el.offsetParent !== null && el.textContent.trim());
+      return { minFont: Math.min(...texts.map((el) => parseFloat(getComputedStyle(el).fontSize))), scrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
+    });
+    expect(pm.minFont).toBeGreaterThanOrEqual(14);
+    expect(pm.scrollW).toBeLessThanOrEqual(pm.vw);
     expect(m.right).toBeLessThanOrEqual(m.vw);
     expect(m.scrollW).toBeLessThanOrEqual(m.vw);
   });

@@ -61,8 +61,10 @@ test.describe('P2 - 적립기간이 [적립금 설정] 팝업에 저장값 그�
   });
 });
 
-test.describe('P5 - Monte Carlo가 가구 전체 목표비중 기준임을 고지한다', () => {
-  test('MC 결과 화면에 안내 문구가 표시된다', async ({ page }) => {
+// [v250 PM 수정 지시 · §38] P5 고지 문구("일반계좌 적립금은 가구 전체 목표비중을 기준으로 계산합니다")를 포함한 결과 아래
+// 기술 정보 블록은 PM 지시로 삭제됐다. 계산(가구 전체 목표비중 기준 배분)은 그대로이며, 아래 두 번째 테스트가 값 일치를 계속 지킨다.
+test.describe('P5 - Monte Carlo 적립금 배분 고지(v250에서 결과 화면 문구 삭제)', () => {
+  test('MC 결과 화면에 적립금 배분 안내 블록이 더 이상 없다(PM 지시)', async ({ page }) => {
     await seedPortfolio(page, {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: { monthlyContributionByOwner: { '신랑': { total: 1000000, years: 10, allocation: [] }, '와이프': { total: 0, years: 10, allocation: [] } } }
@@ -70,8 +72,8 @@ test.describe('P5 - Monte Carlo가 가구 전체 목표비중 기준임을 고�
     await goToProjectionTab(page);
     await page.locator('#mcRunBtn').click();
     await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 15000 });
-    const scheduleText = await page.locator('#mcContributionScheduleArea').innerText();
-    expect(scheduleText).toContain('가구 전체 목표비중을 기준으로 계산합니다');
+    await expect(page.locator('#mcContributionScheduleArea')).toHaveCount(0);
+    await expect(page.locator('#mcResultArea')).not.toContainText('가구 전체 목표비중을 기준으로 계산합니다');
   });
 
   test('안내 문구가 추가되어도 기존 MC 계산값(P50) 자체는 엔진 결과와 정확히 일치한다(계산 변경 없음)', async ({ page }) => {
