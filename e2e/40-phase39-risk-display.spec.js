@@ -229,12 +229,18 @@ test('12. 거래량 계산값(volumeSpike)은 그대로 보존된다', async ({ 
   expect(r.spike).toBe(true);
 });
 
-test('13. 안내 문구에서도 거래량 급증이 감지 조건으로 남아있지 않다', async ({ page }) => {
+test('13. [v256] 화면에 보이는 RISK 안내 어디에도 거래량 급증이 감지 조건으로 남아있지 않다', async ({ page }) => {
   await boot(page);
-  const tip = await page.locator('#riskManagementSection button[title]').first().getAttribute('title');
-  expect(tip).not.toContain('거래량 급증');
-  expect(tip).toContain('단기 과열');
-  expect(tip).toContain('52주 고점대비 급락');
+  // [v256] 이 문구가 있던 제목 옆 ⓘ 버튼(title 속성)은 PM 지시로 삭제됐다(§43 UI-256-5) - 남아 있는
+  // 안내 문구와 툴팁 전체를 대신 확인한다. 태그 판정 자체는 위 11 · 12번이 그대로 지킨다.
+  const texts = await page.locator('#riskManagementSection').evaluate((sec) => ({
+    visible: sec.innerText,
+    tips: [...sec.querySelectorAll('[title], [data-info-tip]')].map((e) => (e.getAttribute('title') || '') + ' ' + (e.getAttribute('data-info-tip') || '')).join(' ')
+  }));
+  expect(texts.visible).not.toContain('거래량 급증');
+  expect(texts.tips).not.toContain('거래량 급증');
+  // 진단 대상 · 범위 안내는 그대로 보인다.
+  expect(texts.visible).toContain('진단 대상');
 });
 
 /* ─────────────────────── 5. 위험점수 불변 ─────────────────────── */

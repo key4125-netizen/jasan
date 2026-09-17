@@ -1545,10 +1545,10 @@ function calcRow(a) {
   return { isForeign, buyAmountOriginal, buyAmount: buyAmountKRW, curAmount, profit, rateOfReturn };
 }
 
-// [필터 범위 통일] 상단 FILTER BAR(전체 소유자/자산군/계좌)가 고른 "지금 보고 있는 자산 집합"이다 -
-// 상단 도넛 차트 3개(renderCharts/openChartZoomModal, js/03)와 자산 세부현황 목록(renderTable, js/07)이
-// 모두 이 함수 하나를 공유한다. 예전에는 목록만 tableAssets()로 따로 떨어져 있어서, 필터를 골라도
-// 그래프만 바뀌고 목록은 그대로였다(사용자 눈에는 "필터가 안 먹는다"로 보였다).
+// 상단 FILTER BAR(전체 소유자/자산군/계좌)가 고른 "지금 보고 있는 자산 집합"이다 - 상단 도넛 차트
+// 3개(renderCharts/openChartZoomModal, js/03)가 쓴다.
+// [v256 · PM 결정] 자산 세부현황 목록(renderTable, js/07)은 v230~v255 동안 이 함수를 함께 썼으나,
+// 상단 필터를 바꾸면 아래 종목 수까지 줄어드는 것이 혼란스럽다는 판단으로 tableAssets()로 되돌렸다.
 function filteredAssets() {
   return state.assets.filter(a => {
     // 전량 매도(수량 0 이하)된 포지션은 레코드는 남겨두되(syncAssetsFromTransactions 정책) 목록에는
@@ -1562,10 +1562,9 @@ function filteredAssets() {
 }
 
 // 상단 필터와 무관하게 항상 보유 중인(수량>0) 자산 전체를 반환한다.
-// [현재 상태] 자산 세부현황 목록이 filteredAssets()로 옮겨가면서 production 호출부가 남아 있지 않다 -
-// "수량 0 자산은 목록에 노출하지 않는다"는 화면 표시 규칙 자체는 filteredAssets()가 같은 조건으로
-// 그대로 이어받았다. 함수를 지우는 것은 이번 작업 범위 밖이라 그대로 둔다(e2e가 이 표시 규칙을
-// 확인하는 데 쓰고 있다).
+// [v256] 자산 세부현황 목록(renderTable, js/07)이 다시 이 함수를 쓴다 - 총자산 · 보유 자산 수 · 종목
+// 목록이 상단 필터와 무관하게 전체 기준으로 보인다. "수량 0 자산은 목록에 노출하지 않는다"는 표시
+// 규칙은 예전과 같다.
 function tableAssets() {
   return state.assets.filter(a => num(a.quantity) > 0);
 }

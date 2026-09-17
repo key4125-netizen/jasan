@@ -466,7 +466,8 @@ function renderKPIs() {
   // 별도 표시다.
   // [범위 표기] 이 배지는 거래원장 기준이라 부동산 매매 실현손익까지 포함한다 - 바로 옆 본문
   // (총금융자산평가손익, 부동산 제외)과 범위가 달라서 라벨에 그 사실을 적는다(계산 무변경).
-  renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익 · 전체 자산');
+  // [v256] 표시 문구만 「총 실현손익 : 금액」으로 바꿨다(계산 · 범위 무변경 - 아래 주석의 거래원장 기준 그대로).
+  renderRealizedBadge('kpiTotalRealizedBadge', getTotalRealizedPnL(), '총 실현손익 ');
 
   // 일간 변동률(%)의 분모는 "전일 기준 금융자산" = 현재 금융자산에서 오늘 하루 손익만큼을 뺀 값
   // (부동산 제외).

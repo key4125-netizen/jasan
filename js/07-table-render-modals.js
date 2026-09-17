@@ -207,12 +207,12 @@ function setAssetListView(mode) {
 }
 
 function renderTable() {
-  // [필터 범위 통일] 예전에는 상단 필터와 완전히 분리된 tableAssets()를 써서, 사용자가 필터를 골라도
-  // 위 그래프만 바뀌고 아래 목록은 그대로였다 - 화면상 "필터가 안 먹는다"로 읽혔다. 이제 그래프
-  // (renderCharts, js/03)와 같은 filteredAssets()를 써서 "필터 → 통계 → 자산 세부현황"이 하나의
-  // 선택 범위 위에서 움직인다. 새 필터 SoT를 만들지 않고 기존 함수를 그대로 재사용한다.
+  // [v256 · 목록 범위 분리 - PM 결정] 이 목록(총자산 · 보유 자산 수 · 종목 목록)은 상단 필터와 무관하게 항상
+  // 보유 중인 자산 전체를 보여준다. v230에서 상단 그래프와 같은 filteredAssets()로 묶었다가, 상단 필터를
+  // 바꾸면 아래 종목 수까지 함께 줄어드는 것이 혼란스럽다는 PM 판단으로 다시 tableAssets()로 되돌렸다
+  // (상단 도넛 3개는 그대로 filteredAssets() 기준 - 두 영역의 기준이 서로 다르다는 뜻이다).
   // 검색은 예전 그대로 별도 팝업(runAssetSearch)이며 이 목록을 실시간으로 걸러내지 않는다.
-  const rawRows = filteredAssets().map(a => ({ ...a, ...calcRow(a) }));
+  const rawRows = tableAssets().map(a => ({ ...a, ...calcRow(a) }));
   const emptyMsg = document.getElementById('emptyTableMsg');
   const totalCur = rawRows.reduce((s, r) => s + r.curAmount, 0);
   document.getElementById('assetListTotalValue').textContent = fmtKRW(totalCur);
@@ -220,11 +220,8 @@ function renderTable() {
   if (rawRows.length === 0) {
     document.getElementById('assetTableBody').innerHTML = '';
     document.getElementById('assetCardList').innerHTML = '';
-    // 필터를 걸어 결과가 0건인 것과, 자산을 아직 하나도 등록하지 않은 것은 다른 상황이라 문구를 나눈다.
-    const isFiltered = state.filters.owner !== 'ALL' || state.filters.category !== 'ALL' || state.filters.account !== 'ALL';
-    emptyMsg.textContent = isFiltered
-      ? '선택한 필터에 해당하는 자산이 없습니다. 위 필터를 바꿔보세요.'
-      : '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
+    // [v256] 이 목록은 상단 필터를 따르지 않으므로, 0건은 "등록된 자산이 없다"는 뜻 하나뿐이다.
+    emptyMsg.textContent = '등록된 자산이 없습니다. "최초등록" 버튼 또는 엑셀 업로드로 시작하세요.';
     emptyMsg.classList.remove('hidden');
     document.getElementById('tableCountLabel').textContent = '총 0건';
     renderTableFooter(rawRows);

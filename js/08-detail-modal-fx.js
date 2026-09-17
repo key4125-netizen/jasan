@@ -1152,12 +1152,11 @@ document.querySelectorAll('th.sortable').forEach(th => {
 
 /* -------------------------------------------------------------------------
  * 15. 필터 이벤트
- * [PART B - 상단 필터 독립화] 이 3개 필터(소유자/자산군/계좌)는 이제 상단 도넛 차트 3개(renderCharts)
- * 와 아래 자산 세부현황 목록(renderTable) 양쪽에 함께 영향을 준다 - 둘 다 filteredAssets()를 쓴다.
+ * [v256 · PM 결정] 이 3개 필터(소유자/자산군/계좌)는 상단 도넛 차트 3개(renderCharts)에만 적용된다 -
+ * 아래 자산 세부현황 목록(renderTable)은 tableAssets()로 항상 전체를 보여준다.
  * ---------------------------------------------------------------------- */
-// [필터 범위 통일] 예전에는 renderCharts()만 다시 그려서, 필터를 골라도 아래 자산 세부현황은
-// 그대로였다("필터가 안 먹는다"로 읽혔다). 이제 renderTable()도 함께 다시 그려 통계와 목록이 같은
-// 선택 범위를 본다 - 두 함수 모두 filteredAssets()를 쓰므로 새 필터 SoT를 만들지 않았다.
+// renderTable()도 함께 호출하는 이유는 목록의 표시 상태(그룹 펼침 · 보기 버튼)를 최신 데이터로 다시
+// 그리기 위함이며, 목록이 보여주는 자산 범위 자체는 필터와 무관하다(js/07 renderTable 주석 참고).
 document.getElementById('filterOwner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderCharts(); renderTable(); });
 document.getElementById('filterCategory').addEventListener('change', (e) => { state.filters.category = e.target.value; renderCharts(); renderTable(); });
 document.getElementById('filterAccount').addEventListener('change', (e) => { state.filters.account = e.target.value; renderCharts(); renderTable(); });

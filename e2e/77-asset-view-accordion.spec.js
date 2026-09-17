@@ -1,8 +1,8 @@
 // E2E-77 [자산 현황 정보구조] 필터 → 통계 → 자산군 요약 → 필요한 자산군만 펼침.
 //
 // 고친 것 두 가지.
-//   ① 필터 범위 통일 - 예전에는 상단 그래프만 filteredAssets()를 쓰고 자산 세부현황은 tableAssets()를
-//      써서, 필터를 골라도 목록이 그대로였다("필터가 안 먹는다"로 읽혔다). 이제 둘 다 filteredAssets().
+//   ① 필터 범위 - v230에서 상단 그래프와 자산 세부현황을 모두 filteredAssets()로 묶었으나, [v256 · PM 결정]
+//      목록은 다시 tableAssets()(전체)로 되돌렸다. 그래프만 상단 필터를 따른다(D 참고).
 //   ② 자산 세부현황 아코디언 - 어떤 보기 방식이든 자산군(또는 소유자/국내외) 요약 행만 먼저 보여주고,
 //      누른 그룹의 개별 자산만 펼친다. '전체'도 예외가 아니다.
 //
@@ -59,6 +59,9 @@ const READ = () => {
     countLabel: doc.getElementById('tableCountLabel').textContent,
     filteredCount: rows.length,
     filteredSum: rows.reduce((s, r) => s + r.curAmount, 0),
+    // [v256] 목록은 상단 필터를 따르지 않는다 - 전체(tableAssets) 기준 값도 함께 본다.
+    allCount: tableAssets().length,
+    allSum: tableAssets().map((x) => ({ ...x, ...calcRow(x) })).reduce((s, r) => s + r.curAmount, 0),
     chartLabels: chart.labels,
     chartTotal: chart.values.reduce((s, v) => s + v, 0),
   };
@@ -118,47 +121,67 @@ test('C. 보기 방식을 바꾸면 그 방식의 그룹으로 다시 접힌 상
   }
 });
 
-test('D. 필터를 고르면 상단 그래프와 자산 세부현황이 같은 범위로 함께 바뀐다', async ({ page }) => {
+test('D. [v256] 필터는 상단 그래프에만 적용되고, 자산 세부현황 목록은 항상 전체를 보여준다', async ({ page }) => {
   await open(page);
   const all = await seedAndRead(page);
+  const won = (v) => new Intl.NumberFormat('ko-KR').format(Math.round(v)) + '원';
   expect(all.chartTotal).toBe(all.filteredSum);
-  expect(all.listTotal).toBe(new Intl.NumberFormat('ko-KR').format(Math.round(all.filteredSum)) + '원');
+  expect(all.listTotal).toBe(won(all.allSum));
 
-  // 소유자 필터
+  // 소유자 필터 - 그래프만 줄고 목록은 그대로다.
   await page.selectOption('#filterOwner', '신랑');
   const byOwner = await read(page);
   expect(byOwner.filteredCount, '필터가 실제로 걸린다').toBeLessThan(all.filteredCount);
   expect(byOwner.chartTotal, '그래프 분모 = 필터 결과 합계').toBe(byOwner.filteredSum);
-  expect(byOwner.listTotal, '목록 총액 = 필터 결과 합계')
-    .toBe(new Intl.NumberFormat('ko-KR').format(Math.round(byOwner.filteredSum)) + '원');
-  expect(byOwner.countLabel).toContain(`총 ${byOwner.filteredCount}건`);
+  expect(byOwner.listTotal, '목록 총액 = 전체 합계(필터 무관)').toBe(won(all.allSum));
+  expect(byOwner.countLabel, '보유 자산 수도 전체 기준').toContain(`총 ${all.allCount}건`);
+  expect(byOwner.groupKeys, '목록 그룹도 그대로').toEqual(all.groupKeys);
 
-  // 자산군 필터 - 그래프도 목록도 그 자산군 하나만 남는다
+  // 자산군 필터 - 그래프만 그 자산군 하나로 좁혀진다.
   await page.selectOption('#filterOwner', 'ALL');
   await page.selectOption('#filterCategory', 'ETF');
   const byCat = await read(page);
   expect(byCat.chartLabels).toEqual(['ETF']);
-  expect(byCat.groupKeys).toEqual(['ETF']);
   expect(byCat.chartTotal).toBe(byCat.filteredSum);
+  expect(byCat.groupKeys, '목록은 모든 자산군을 그대로 보여준다').toEqual(all.groupKeys);
+  expect(byCat.listTotal).toBe(won(all.allSum));
 
-  // 해제하면 원래대로
+  // 해제하면 그래프도 원래대로.
   await page.selectOption('#filterCategory', 'ALL');
   const back = await read(page);
   expect(back.filteredCount).toBe(all.filteredCount);
   expect(back.listTotal).toBe(all.listTotal);
+  expect(back.chartTotal).toBe(all.chartTotal);
 });
 
-test('E. 필터 결과가 없으면 그 사실을 알리고, 자산이 없는 경우와 구분한다', async ({ page }) => {
+test('E. [v256] 필터가 목록을 비우지 않는다 - 빈 안내는 자산이 하나도 없을 때만 나온다', async ({ page }) => {
   await open(page);
-  await seedAndRead(page);
-  const msg = await page.locator('body').evaluate((el) => {
+  const all = await seedAndRead(page);
+  // 어떤 자산도 해당하지 않는 필터를 걸어도 목록은 전체를 그대로 보여준다.
+  const withFilter = await page.locator('body').evaluate((el) => {
     state.filters = { owner: '신랑', category: '부동산', account: 'ALL' };
+    renderCharts();
+    renderTable();
+    const m = el.ownerDocument.getElementById('emptyTableMsg');
+    return {
+      emptyHidden: m.classList.contains('hidden'),
+      groupKeys: [...el.ownerDocument.querySelectorAll('#assetTableBody [data-group-toggle]')].map((e) => e.dataset.groupKey),
+      countLabel: el.ownerDocument.getElementById('tableCountLabel').textContent
+    };
+  });
+  expect(withFilter.emptyHidden, '목록은 비지 않는다').toBe(true);
+  expect(withFilter.groupKeys).toEqual(all.groupKeys);
+  expect(withFilter.countLabel).toContain(`총 ${all.allCount}건`);
+
+  // 자산이 하나도 없을 때만 등록 안내가 나온다.
+  const noAssets = await page.locator('body').evaluate((el) => {
+    state.assets = [];
     renderTable();
     const m = el.ownerDocument.getElementById('emptyTableMsg');
     return { text: m.textContent, hidden: m.classList.contains('hidden') };
   });
-  expect(msg.hidden).toBe(false);
-  expect(msg.text).toContain('필터');
+  expect(noAssets.hidden).toBe(false);
+  expect(noAssets.text).toContain('등록된 자산이 없습니다');
 });
 
 test('F. 검색은 예전 그대로 팝업이며, 목록을 자동으로 펼치지 않는다', async ({ page }) => {
