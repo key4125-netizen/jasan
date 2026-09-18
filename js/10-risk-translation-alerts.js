@@ -321,7 +321,22 @@ function setAccordionOpen(bodyEl, chevronEl, isOpen) {
 // 이상으로 유지한다(작은 화면에서도 잘 읽히도록).
 // [가독성] 라벨(이모지 포함)이 길어질 수 있어 라벨/점수를 한 줄에, 막대를 그 아래 별도 줄에 꽉 차게
 // 배치한다 - 좁은 화면에서 라벨이 단어 중간에 어색하게 줄바꿈되는 것을 원천적으로 막는다.
-function buildFactorBarRow(label, score, tooltip) {
+function buildFactorBarRow(label, score, tooltip, unavailableText) {
+  // [Phase 2-1 · R-01/R-09] 계산하지 못한 요인은 막대를 그리지 않는다 - 0%나 50%로 그리면
+  // "위험이 없다/보통이다"로 읽힌다. 대신 왜 못 구했는지를 그 자리에 적는다.
+  if (typeof score !== 'number' || !Number.isFinite(score)) {
+    return `
+  <div>
+    <div class="flex items-center justify-between gap-2 mb-1">
+      <span class="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-1">
+        ${escapeHtml(label)}
+        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      </span>
+      <span class="text-sm font-semibold text-amber-600 dark:text-amber-400 shrink-0">점수 없음</span>
+    </div>
+    <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">${escapeHtml(unavailableText || '데이터 부족')} — 이 항목은 점수에 넣지 않았습니다.</p>
+  </div>`;
+  }
   const level = riskLevelFromScore(score);
   const widthPct = Math.max(4, Math.min(100, score));
   return `
@@ -353,8 +368,58 @@ function buildMetricItem(label, valueHtml, tooltip) {
 
 // [Risk 정책 P-2 · v252] 공통 거래일 수익률이 120개 미만인 결과는 위험점수 · 등급 · 진단 대신 이 안내만 보여준다.
 // dataSufficiency가 없는 예전 형태의 결과는 정상 결과로 본다(명시적으로 INSUFFICIENT일 때만 분기).
+/* [Phase 2-1 · R-09/R-10] 예전에는 공통 거래일이 모자라면 화면 전체를 "계산 불가"로 덮었다.
+ * 이제는 계산할 수 있는 요인으로 점수를 만들고, 못 만든 지표만 사유와 함께 보여준다.
+ * 따라서 "전체 불가"는 오직 "점수를 만들 요인이 하나도 없을 때"뿐이다.
+ */
 function isRiskDataInsufficient(m) {
-  return !!(m && m.dataSufficiency && m.dataSufficiency.status === 'INSUFFICIENT');
+  return !!(m && (m.riskScore === null || m.riskScore === undefined));
+}
+// 내부 상태 코드를 그대로 화면에 내보내지 않는다 - 초보자가 읽을 수 있는 말로 바꾼다.
+const RISK_DATA_STATUS_TEXT = Object.freeze({
+  FETCH_FAILED: '시세를 불러오지 못했습니다',
+  TICKER_INVALID: '종목 코드를 확인할 수 없습니다',
+  NO_HISTORY: '가격 기록이 없습니다',
+  INSUFFICIENT_HISTORY: '가격 기록이 짧습니다',
+  BENCHMARK_UNRESOLVED: '기준 지수를 확인할 수 없습니다',
+  INSUFFICIENT_COMMON_DATES: '가격 기록이 함께 있는 거래일이 부족합니다',
+  DATA_STALE: '최근 거래 기록이 오래됐습니다',
+  DATA_QUALITY_FAILED: '가격 기록에 이상이 있습니다',
+  SOURCE_UNAVAILABLE: '비교할 자료가 없습니다'
+});
+function riskStatusText(code) {
+  return RISK_DATA_STATUS_TEXT[code] || '데이터 부족';
+}
+// 값이 들어갈 좁은 자리(지표 한 줄)에는 짧은 말을 쓴다 - 긴 문장을 넣으면 375px에서 라벨이
+// 세로로 뭉개진다(글자 크기를 줄이지 않고 문구를 줄이는 쪽으로 해결한다).
+const RISK_DATA_STATUS_SHORT = Object.freeze({
+  FETCH_FAILED: '시세 없음',
+  TICKER_INVALID: '종목코드 확인',
+  NO_HISTORY: '기록 없음',
+  INSUFFICIENT_HISTORY: '기록 짧음',
+  BENCHMARK_UNRESOLVED: '기준 지수 확인 필요',
+  INSUFFICIENT_COMMON_DATES: '거래일 부족',
+  DATA_STALE: '기록 오래됨',
+  DATA_QUALITY_FAILED: '기록 이상',
+  SOURCE_UNAVAILABLE: '비교 자료 없음'
+});
+function riskMetricUnavailableShortText(m, key) {
+  const st = m && m.metricStatus ? m.metricStatus[key] : null;
+  if (!st || st.status === 'AVAILABLE') return '데이터 부족';
+  return RISK_DATA_STATUS_SHORT[st.reason] || '데이터 부족';
+}
+// 지표 하나가 왜 비었는지 - 화면에 그대로 쓰는 짧은 문구.
+function riskMetricUnavailableText(m, key) {
+  const st = m && m.metricStatus ? m.metricStatus[key] : null;
+  if (!st || st.status === 'AVAILABLE') return '데이터 부족';
+  return riskStatusText(st.reason);
+}
+// [R-01] 점수에 반영되지 못한 요인 안내. "데이터 부족 = 위험 없음"으로 읽히지 않게 한다.
+function riskExcludedFactorsNote(m) {
+  const list = (m && Array.isArray(m.excludedFactors)) ? m.excludedFactors : [];
+  if (!list.length) return '';
+  const names = list.map((f) => escapeHtml(f.label)).join(' · ');
+  return `<p class="text-sm text-amber-700 dark:text-amber-400 mt-2 leading-relaxed break-keep">⚠️ 데이터가 부족해 점수에 넣지 못한 항목: ${names}. 이 항목들이 안전하다는 뜻이 아니라, 아직 판단할 수 없다는 뜻입니다.</p>`;
 }
 const RISK_INSUFFICIENT_TITLE = '종합 위험점수 계산 불가 (데이터 부족)';
 function riskInsufficientMessage(m) {
@@ -422,6 +487,9 @@ function renderRiskDiagnosisSummary() {
       <button type="button" id="riskDetailBtn" class="detail-btn ml-auto">🔍 세부내용 <i data-lucide="chevron-right" class="w-3 h-3"></i></button>
     </div>
     <p class="text-base font-medium text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">${diagnosisLine}</p>
+    <!-- [Phase 2-1 · R-01] 점수에 반영되지 못한 위험 요인을 숨기지 않는다. 결측을 50점(보통)으로
+         채우던 방식을 없앴으므로, 무엇이 빠졌는지 알려 주지 않으면 사용자가 점수를 과신하게 된다. -->
+    ${riskExcludedFactorsNote(m)}
     <!-- [F2 - 메인 카드 간소화] 우선순위 지침은 최대 2개까지만 보여준다 - 나머지(있다면)는 세부내용
          모달에 전부 나열되므로 "🔍 세부내용" 버튼으로 유도한다. 6대 위험요인 막대그래프/섹터 노출
          상세는 원래도 메인 카드에 없고 세부내용 모달 전용이었다(역할 분리가 이미 되어 있던 부분). -->
@@ -482,14 +550,15 @@ function renderRiskDetailModal() {
   }
 
   const sortinoGrade = sortinoToGrade(m.sortino) || '-';
+  const excludedNote = riskExcludedFactorsNote(m);
   const s = m.subScores;
   const barsHtml = [
     buildFactorBarRow('🎯 집중도', s.concentration, '100점에 가까울수록 위험해요. 한 종목/업종에 돈이 쏠려 있으면 그 종목이 흔들릴 때 계좌 전체가 같이 흔들립니다.'),
-    buildFactorBarRow('🌊 변동성', s.volatility, '100점에 가까울수록 위험해요. 내 계좌 가격이 평소에 얼마나 위아래로 크게 출렁이는지를 나타냅니다.'),
-    buildFactorBarRow('📉 손실위험', s.drawdown, '100점에 가까울수록 위험해요. 최근 1년 최대낙폭(MDD)과 하락이 컸던 날들의 하루 하락폭(VaR·CVaR)을 합쳐 본 점수입니다.'),
-    buildFactorBarRow('⚡ 시장위험', s.market, '100점에 가까울수록 위험해요. 기준 지수가 1% 움직일 때 내 주식·ETF가 평균 몇 % 움직였는지(시장 민감도)가 클수록 점수가 높습니다.'),
-    buildFactorBarRow('🔗 상관관계', s.correlation, '100점에 가까울수록 위험해요. 종목은 여러 개인데 실제로는 다 같이 오르고 같이 빠지면 분산 효과가 없다는 뜻입니다.'),
-    buildFactorBarRow('🔥 단기 과열·거래량(추정)', s.technical, '100점에 가까울수록 위험해요. 보유 종목의 단기 과열 지표(RSI), 이동평균 하락 배열, 거래량 기반 추정 신호를 합친 점수입니다.')
+    buildFactorBarRow('🌊 변동성', s.volatility, '100점에 가까울수록 위험해요. 내 계좌 가격이 평소에 얼마나 위아래로 크게 출렁이는지를 나타냅니다.', riskMetricUnavailableText(m, 'volatility')),
+    buildFactorBarRow('📉 손실위험', s.drawdown, '100점에 가까울수록 위험해요. 최근 1년 최대낙폭(MDD)과 하락이 컸던 날들의 하루 하락폭(VaR·CVaR)을 합쳐 본 점수입니다.', riskMetricUnavailableText(m, 'mdd')),
+    buildFactorBarRow('⚡ 시장위험', s.market, '100점에 가까울수록 위험해요. 기준 지수가 1% 움직일 때 내 주식·ETF가 평균 몇 % 움직였는지(시장 민감도)가 클수록 점수가 높습니다.', riskMetricUnavailableText(m, 'beta')),
+    buildFactorBarRow('🔗 상관관계', s.correlation, '100점에 가까울수록 위험해요. 종목은 여러 개인데 실제로는 다 같이 오르고 같이 빠지면 분산 효과가 없다는 뜻입니다.', riskMetricUnavailableText(m, 'correlation')),
+    buildFactorBarRow('🔥 단기 과열·거래량(추정)', s.technical, '100점에 가까울수록 위험해요. 보유 종목의 단기 과열 지표(RSI), 이동평균 하락 배열, 거래량 기반 추정 신호를 합친 점수입니다.', '단기 지표를 만들 가격 기록이 부족합니다')
   ].join('');
 
   // [F2 - 세부내용 모달로 이관] 메인 카드는 우선순위 지침 최대 2개만 보여주므로, 전체 목록은 여기서
@@ -501,18 +570,19 @@ function renderRiskDetailModal() {
     </div>` : '';
 
   body.innerHTML = `
+    ${excludedNote ? `<div class="mb-3">${excludedNote}</div>` : ''}
     ${actionItemsHtml}
     <!-- [6대 위험요인 분해] -->
     <div class="space-y-3">${barsHtml}</div>
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : '데이터 부족', '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다.')}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
-      ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : '데이터 부족', '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
-      ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : '데이터 부족', '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}
+      ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
+      ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : riskMetricUnavailableShortText(m, 'cvar'), '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoGrade + '등급', SORTINO_GUIDE_TEXT)}
-      ${buildMetricItem('🔗 보유 종목 간 동조성 (상관)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : '데이터 부족', '보유 종목들의 가격이 같은 방향으로 움직인 정도를 비중을 반영해 평균낸 값입니다(최근 1년). 높을수록 여러 종목을 담아도 함께 오르내린 경우가 많았다는 뜻입니다.')}
+      ${buildMetricItem('🔗 보유 종목 간 동조성 (상관)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : riskMetricUnavailableShortText(m, 'correlation'), '보유 종목들의 가격이 같은 방향으로 움직인 정도를 비중을 반영해 평균낸 값입니다(최근 1년). 높을수록 여러 종목을 담아도 함께 오르내린 경우가 많았다는 뜻입니다.')}
     </div>
     ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
 
@@ -603,7 +673,9 @@ document.addEventListener('click', (e) => {
   if (!btn) return;
   const box = document.getElementById('whatIfSimBox');
   const m = state.advancedRiskMetrics;
-  if (!box || !m || !m.topHolding || isRiskDataInsufficient(m)) return; // [Risk 정책 P-2 · v252] 데이터 부족이면 What-If 없음
+  // [Risk 정책 P-2 · v252 → Phase 2-1] 판정 기준을 엔진과 공유한다(canComputeScenarioRisk) -
+  // 화면이 따로 데이터 부족을 판단하지 않게 해 두 곳의 기준이 어긋나는 일을 막는다.
+  if (!box || !m || !m.topHolding || !canComputeScenarioRisk(m)) return;
   const targetPct = parseFloat(btn.dataset.targetPct);
   const scenario = computeScenarioRiskMetrics(m, { [box.dataset.topTicker]: targetPct / 100 });
   if (!scenario) return;

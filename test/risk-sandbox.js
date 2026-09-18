@@ -89,7 +89,10 @@ function loadRiskSandbox() {
     'COVID_CRASH_BENCHMARK_DROP_PCT', 'RATE_HIKE_2022_BENCHMARK_DROP_PCT',
     'CORE_MACRO_LABELS', 'MACRO_TREND_THRESHOLDS', 'TAX_ADVANTAGED_ACCOUNT_TYPES',
     'NON_TRADABLE_CATEGORIES', 'REBALANCE_OWNERS', 'MIN_COMMON_RISK_RETURNS',
-    'RISK_BENCHMARK_BY_ETF_INDEX_LABEL', 'RISK_BENCHMARK_BY_LISTING_EXCHANGE'
+    'RISK_BENCHMARK_BY_ETF_INDEX_LABEL', 'RISK_BENCHMARK_BY_LISTING_EXCHANGE',
+    // [Phase 2-1] 데이터 품질 상태 · 요인 가중치 · 지표 목표 관측 수(진단 테스트가 직접 읽는다).
+    'RISK_DATA_STATUS', 'RISK_STALE_MAX_GAP_DAYS', 'RISK_TARGET_OBSERVATIONS',
+    'RISK_FACTOR_WEIGHTS', 'RISK_FACTOR_LABELS', 'CONFIDENCE_OBSERVATION_PENALTY_MAX'
   ];
   vm.runInContext(BRIDGED.map((n) => `try{globalThis[${JSON.stringify(n)}]=${n};}catch(e){}`).join('\n'), sandbox, { filename: 'bridge' });
   // 임의 표현식 평가 - 브리지 목록에 없는 값을 테스트에서 직접 꺼내야 할 때 쓴다.
@@ -99,9 +102,18 @@ function loadRiskSandbox() {
   // 하루 1회 캐시 + Yahoo 조회라 테스트에서 쓸 수 없다). 등록되지 않은 티커는 null을 돌려주므로
   // "가격 이력 없음" 경로도 그대로 재현된다.
   const closesByTicker = new Map();
+  const statusByTicker = new Map();
   sandbox.getCachedDailyCloses = async (yahooTicker) => closesByTicker.get(yahooTicker) || null;
+  // [Phase 2-1 · R-06] 엔진이 상태까지 함께 받는 경로(getCachedDailyClosesWithStatus)로 바뀌었으므로
+  // 주입 지점도 같이 맞춘다. 상태를 따로 정하지 않은 티커는 "조회 실패"로 본다 - 예전 null 반환과
+  // 같은 의미이고, 테스트가 원하면 setDataStatus로 이력 없음/오래됨 등을 구체적으로 지정할 수 있다.
+  sandbox.getCachedDailyClosesWithStatus = async (yahooTicker) => {
+    const data = closesByTicker.get(yahooTicker) || null;
+    return { data, status: data ? 'OK' : (statusByTicker.get(yahooTicker) || 'FETCH_FAILED') };
+  };
   sandbox.setDailyCloses = (yahooTicker, data) => { closesByTicker.set(yahooTicker, data); };
-  sandbox.clearDailyCloses = () => { closesByTicker.clear(); };
+  sandbox.setDataStatus = (yahooTicker, status) => { statusByTicker.set(yahooTicker, status); };
+  sandbox.clearDailyCloses = () => { closesByTicker.clear(); statusByTicker.clear(); };
   // [Risk 정책 P-4 · v252] 종목 마스터(상장 거래소) 주입 - js/09의 tickerMasterByTicker(let)를 통째로 바꾼다.
   sandbox.setTickerMaster = (map) => { vm.runInContext(`tickerMasterByTicker = ${JSON.stringify(map || {})};`, sandbox, { filename: 'ticker-master' }); };
 

@@ -317,7 +317,11 @@ test('Rule → 점수 연결 - RSI 과열이 기술요인을 통해 종합 위�
   assert.strictEqual(calm.rsi, 50);
   assert.strictEqual(hot.technical, 100, 'RSI 100 → 70 + (100-70)*1.5 = 115 → 100으로 클램프');
   assert.strictEqual(calm.technical, 30, 'RSI 30~70 구간은 30점');
-  assert.strictEqual(hot.riskScore - calm.riskScore, 7, '기술요인 가중치 10% × (100-30) = 7점 차이');
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측 요인을 50으로 채우지 않고 점수에서 빼므로,
+  // 기술요인의 실효 가중치가 커진다. 이 fixture에서는 시장(베타)·상관관계를 구할 수 없어
+  // 유효 가중치 합이 0.75(집중 0.25 + 변동성 0.20 + 손실 0.20 + 기술 0.10)이고,
+  // 차이는 (100-30) × 0.10 / 0.75 ≒ 9.3 → 9점이다.
+  assert.strictEqual(hot.riskScore - calm.riskScore, 9, '기술요인 실효 가중치(0.10/0.75) × (100-30)');
 });
 
 test('Rule → 점수 연결 - 거래량 급증 자체는 종합 점수를 바꾸지 않는다(flowSignal만 반영된다)', () => {

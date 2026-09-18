@@ -219,7 +219,11 @@ test('14. 위험점수 계산은 이번 변경의 영향을 받지 않는다(문
   expect(r.after).toEqual(r.before);
   // 기존 밴드 그대로인지 값으로 고정한다(계산식이 바뀌면 여기서 잡힌다).
   expect(r.before).toEqual({ concentration: 73, volatility: 60, drawdown: 60, market: 75, correlation: 80 });
-  expect(r.composite).toBe(67);
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측 요인을 50점으로 채우던 방식을 PM 결정으로 폐지했다.
+  // 이 fixture에는 technical 요인이 없으므로(가중치 0.10), 예전에는 50점이 섞여 67점이 나왔다.
+  // 이제는 남은 다섯 요인(가중치 합 0.90)으로 재정규화한다: 61.5 / 0.90 ≒ 68.3 → 68.
+  // 각 요인의 경계값(73 · 60 · 60 · 75 · 80)은 한 칸도 바뀌지 않았다.
+  expect(r.composite).toBe(68);
 });
 
 test('15. 환율 기준값이 없으면 "보합"이 아니라 결측으로 다룬다', async ({ page }) => {

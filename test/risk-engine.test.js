@@ -169,7 +169,10 @@ test('subScore ① 집중 - [Phase 39-B] 결측 폴백이 0이 아니라 중립(
   assert.strictEqual(missing, 50);
 });
 
-test('subScore ② 변동성 - 15/20/25/30 경계, 결측이면 50', () => {
+test('subScore ② 변동성 - 15/20/25/30 경계, 결측이면 null', () => {
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] PM 결정으로 기존 P-8의 "결측 요인 → 50점 대체"를
+  // 폐지했다. 결측은 이제 null로 남고 종합 점수에서 그 요인을 빼고 재정규화한다("모름"을 "보통"으로
+  // 표시하지 않는다). 경계값 자체는 한 칸도 바뀌지 않았다.
   const s = freshSandbox();
   const v = (x) => s.computeVolatilityRiskScore({ portfolioVolatilityPct: x });
   assert.strictEqual(v(15), 20);
@@ -179,7 +182,8 @@ test('subScore ② 변동성 - 15/20/25/30 경계, 결측이면 50', () => {
   assert.strictEqual(v(25), 60);
   assert.strictEqual(v(30), 80);
   assert.strictEqual(v(30.01), 100);
-  assert.strictEqual(v(null), 50);
+  assert.strictEqual(v(null), null);
+  assert.strictEqual(v(undefined), null);
 });
 
 test('subScore ③ 손실 - MDD40% + VaR30% + CVaR30%', () => {
@@ -194,24 +198,27 @@ test('subScore ③ 손실 - MDD40% + VaR30% + CVaR30%', () => {
   assert.strictEqual(d(30, 3.5, 6), d(-30, -3.5, -6));
 });
 
-test('subScore ③ 손실 - [Phase 39-B] 결측은 어떤 표현이든 중립(50)으로 수렴한다', () => {
+test('subScore ③ 손실 - 결측은 어떤 표현이든 같은 "모름"으로 취급된다', () => {
   const s = freshSandbox();
   const d = (mdd, v, c) => s.computeDrawdownTailRiskScore({ portfolioMDDPct: mdd, var95Pct: v, cvarPct: c });
-  // 예전엔 Math.abs(null)=0 때문에 최저 위험(20)이 나왔다. 이제 null/undefined/NaN이 전부 같은
-  // "모름"으로 취급되어 기존 `?? 50` 정책에 도달한다 - 결측이 표현 방식에 따라 20/38/50으로
-  // 갈리던 문제도 함께 사라진다.
-  assert.strictEqual(d(null, null, null), 50);
-  assert.strictEqual(d(undefined, undefined, undefined), 50);
-  assert.strictEqual(d(NaN, NaN, NaN), 50);
-  // 일부만 결측이면 그 항목만 50으로 대체되고 나머지는 실제 값을 쓴다.
-  assert.strictEqual(d(null, -2.5, -4), 50 * 0.4 + 40 * 0.3 + 40 * 0.3);      // 44
-  assert.strictEqual(d(-20, null, -4), 40 * 0.4 + 50 * 0.3 + 40 * 0.3);      // 43
-  assert.strictEqual(d(-20, -2.5, null), 40 * 0.4 + 40 * 0.3 + 50 * 0.3);    // 43
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] 예전엔 Math.abs(null)=0으로 최저 위험(20)이
+  // 나왔고, 그 뒤 중립(50) 대체로 바뀌었다. 이제는 셋 다 없으면 이 요인 자체를 만들지 않고(null),
+  // 일부만 있으면 있는 것들끼리 가중치를 다시 정규화한다 - 없는 값을 50으로 채우지 않는다.
+  assert.strictEqual(d(null, null, null), null);
+  assert.strictEqual(d(undefined, undefined, undefined), null);
+  assert.strictEqual(d(NaN, NaN, NaN), null);
+  // 일부만 결측이면 남은 항목의 가중치를 재정규화한다(0.4/0.3/0.3 중 있는 것만).
+  assert.strictEqual(d(null, -2.5, -4), 40);                                  // (40*0.3+40*0.3)/0.6
+  assert.strictEqual(d(-20, null, -4), Math.round((40 * 0.4 + 40 * 0.3) / 0.7));
+  assert.strictEqual(d(-20, -2.5, null), Math.round((40 * 0.4 + 40 * 0.3) / 0.7));
   // 정상 데이터는 예전과 완전히 같다.
   assert.strictEqual(d(-20, -2.5, -4), 40);
 });
 
-test('subScore ④ 시장(beta) - 0.8/1.0/1.2/1.4 경계, 결측이면 50', () => {
+test('subScore ④ 시장(beta) - 0.8/1.0/1.2/1.4 경계, 결측이면 null', () => {
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] PM 결정으로 기존 P-8의 "결측 요인 → 50점 대체"를
+  // 폐지했다. 결측은 이제 null로 남고 종합 점수에서 그 요인을 빼고 재정규화한다("모름"을 "보통"으로
+  // 표시하지 않는다). 경계값 자체는 한 칸도 바뀌지 않았다.
   const s = freshSandbox();
   const m = (b) => s.computeMarketRiskScore({ portfolioBeta: b });
   assert.strictEqual(m(0.8), 20);
@@ -221,10 +228,13 @@ test('subScore ④ 시장(beta) - 0.8/1.0/1.2/1.4 경계, 결측이면 50', () =
   assert.strictEqual(m(1.2), 55);
   assert.strictEqual(m(1.4), 75);
   assert.strictEqual(m(1.41), 95);
-  assert.strictEqual(m(null), 50);
+  assert.strictEqual(m(null), null, '기준 지수를 확인하지 못한 상태를 "보통"으로 바꾸지 않는다');
 });
 
-test('subScore ⑤ 상관관계 - 0.3/0.5/0.7/0.85 경계, [Phase 39-B] 결측이면 50', () => {
+test('subScore ⑤ 상관관계 - 0.3/0.5/0.7/0.85 경계, 결측이면 null', () => {
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] PM 결정으로 기존 P-8의 "결측 요인 → 50점 대체"를
+  // 폐지했다. 결측은 이제 null로 남고 종합 점수에서 그 요인을 빼고 재정규화한다("모름"을 "보통"으로
+  // 표시하지 않는다). 경계값 자체는 한 칸도 바뀌지 않았다.
   const s = freshSandbox();
   const c = (x) => s.computeCorrelationRiskScore({ weightedAvgCorrelation: x });
   assert.strictEqual(c(0.3), 20);
@@ -233,10 +243,10 @@ test('subScore ⑤ 상관관계 - 0.3/0.5/0.7/0.85 경계, [Phase 39-B] 결측�
   assert.strictEqual(c(0.7), 60);
   assert.strictEqual(c(0.85), 80);
   assert.strictEqual(c(0.86), 100);
-  // [Phase 39-B] 40은 "상관 0.3~0.5 = 어느 정도 분산됨"이라는 긍정 판정이었다 - 계산조차 못 한
-  // 상태를 그렇게 읽으면 안 되므로 다른 요인과 같은 중립(50)으로 통일했다.
-  assert.strictEqual(c(null), 50);
-  assert.strictEqual(c(undefined), 50);
+  // [Phase 39-B → Phase 2-1] 40(긍정) → 50(중립) → null(반영하지 않음)로 이어진 이력이다.
+  // 계산하지 못한 상관관계는 어떤 점수로도 대체하지 않는다.
+  assert.strictEqual(c(null), null);
+  assert.strictEqual(c(undefined), null);
 });
 
 test('subScore ⑥ 기술/수급 - RSI 구간 + 역배열/수급 가산이 현재 값 그대로다', () => {
@@ -247,15 +257,21 @@ test('subScore ⑥ 기술/수급 - RSI 구간 + 역배열/수급 가산이 현�
   assert.strictEqual(tf({ rsi14: 74 }), 76);
   assert.strictEqual(tf({ rsi14: 50 }), 30);   // 30~70 사이는 30점
   assert.strictEqual(tf({ rsi14: 30 }), 55);   // 30 이하는 55점(과매도)
-  assert.strictEqual(tf({}), 50);              // RSI 없으면 기본 50
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] 신호가 하나도 없는 종목은 이제 이 요인에서 빠진다 -
+  // 예전에는 기본 50점으로 세어 "모름"이 중립값으로 섞였다.
+  assert.strictEqual(tf({}), null);          // RSI · 추세 · 수급 신호가 모두 없으면 산출하지 않는다
   // 가산/감산 (이번 Phase에서 수정하지 않는다 - Phase 42 검토 대상)
   assert.strictEqual(tf({ rsi14: 50, trendLabel: '역배열(하락추세)' }), 45);  // +15
   assert.strictEqual(tf({ rsi14: 50, flowSignal: 'outflow' }), 45);           // +15
   assert.strictEqual(tf({ rsi14: 50, flowSignal: 'inflow' }), 25);            // -5
   // 0~100 클램프
   assert.strictEqual(tf({ rsi14: 100, trendLabel: '역배열(하락추세)', flowSignal: 'outflow' }), 100);
-  // 비중 합이 0이면 기본 50
-  assert.strictEqual(s.computeTechnicalFlowRiskScore([]), 50);
+  // 대상이 없으면(또는 신호 있는 비중이 0이면) 점수를 만들지 않는다.
+  assert.strictEqual(s.computeTechnicalFlowRiskScore([]), null);
+  // 일부만 신호가 있으면 그 종목들의 비중으로만 평균한다(없는 종목을 50으로 채우지 않는다).
+  assert.strictEqual(s.computeTechnicalFlowRiskScore([
+    { weight: 0.5, rsi14: 50 }, { weight: 0.5 }
+  ]), 30);
 });
 
 /* ==========================================================================
@@ -288,10 +304,17 @@ test('Composite - 극단위험 가산 경계(90 → +5, 95 → +8)와 0~100 클�
   assert.strictEqual(s.computeCompositeRiskScore({ concentration: 100, volatility: 100, drawdown: 100, market: 100, correlation: 100, technical: 100 }), 100);
 });
 
-test('Composite - subScore가 빠지면 그 요인은 50점으로 대체된다', () => {
+test('Composite - subScore가 빠지면 그 요인을 빼고 남은 가중치로 재정규화한다', () => {
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] PM 결정으로 기존 P-8의 "결측 요인 → 50점 대체"를 폐지했다.
   const s = freshSandbox();
   // technical 누락 → 50 × 0.10 = 5
-  assert.strictEqual(s.computeCompositeRiskScore({ concentration: 0, volatility: 0, drawdown: 0, market: 0, correlation: 0 }), 5);
+  // technical이 빠지면 남은 5개(합 0.90)로 재정규화한다 - 전부 0이므로 0점.
+  assert.strictEqual(s.computeCompositeRiskScore({ concentration: 0, volatility: 0, drawdown: 0, market: 0, correlation: 0 }), 0);
+  // 한 요인만 남아도 그 값이 그대로 점수가 된다(가중치 재정규화).
+  assert.strictEqual(s.computeCompositeRiskScore({ concentration: 60 }), 60);
+  assert.strictEqual(s.computeCompositeRiskScore({ market: 60 }), 60);
+  // 요인이 하나도 없으면 점수를 만들지 않는다.
+  assert.strictEqual(s.computeCompositeRiskScore({}), null);
 });
 
 test('Risk Level - 0~40 양호 / 41~60 주의 / 61~100 위험', () => {
@@ -459,13 +482,26 @@ test('Edge - [Risk 정책 P-2] 가격 이력이 전혀 없으면 정상 위험�
   s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
 
-  assert.deepStrictEqual(plain(m.dataSufficiency), { status: 'INSUFFICIENT', commonReturnCount: 0, required: 120 });
-  // [Phase 39-B 이력] 예전엔 결측을 중립(50)으로 채워 71점을 만들었다 - 이제 점수 자체를 만들지 않는다.
-  assert.strictEqual(m.riskScore, null);
-  assert.strictEqual(m.subScores, null);
-  assert.strictEqual(m.dataConfidence, null);
+  assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
+  assert.strictEqual(m.dataSufficiency.commonReturnCount, 0);
+  // [Phase 39-B 이력] 예전엔 결측을 중립(50)으로 채워 71점을 만들었고, v252에서는 화면 전체를 숨겼다.
+  // [기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 이제는 가격 이력이 없어도 구할 수 있는 것(집중도 · 섹터)은
+  // 계산해 보여주고, 가격이 필요한 지표만 사유와 함께 산출 불가로 둔다.
+  assert.strictEqual(typeof m.riskScore, 'number');
+  assert.strictEqual(typeof m.subScores.concentration, 'number');
+  assert.strictEqual(m.subScores.volatility, null);
+  assert.strictEqual(m.subScores.market, null);
+  assert.strictEqual(m.subScores.technical, null, '기술 신호도 없으면 그 요인은 빠진다');
+  assert.strictEqual(m.riskScore, m.subScores.concentration, '남은 요인 하나가 그대로 점수가 된다');
+  assert.deepStrictEqual(m.excludedFactors.map((f) => f.key).sort(),
+    ['correlation', 'drawdown', 'market', 'technical', 'volatility']);
+  assert.strictEqual(m.metricStatus.beta.status, 'UNAVAILABLE');
+  assert.strictEqual(typeof m.dataConfidence.score, 'number', '신뢰도는 계산하되 낮게 나온다');
+  assert.ok(m.dataConfidence.score < 70, '가격 이력이 없으면 신뢰도가 크게 깎인다');
   for (const k of ['portfolioBeta', 'portfolioVolatilityPct', 'portfolioMDDPct', 'var95Pct', 'cvarPct', 'var95KRW', 'cvarKRW',
-    'sortino', 'weightedAvgCorrelation', 'correlationMatrix', 'topCorrelation', 'topCorrelationPair',
+    // correlationMatrix는 이제 빈 행렬(쌍이 하나도 없는 상태)로 남는다 - 값을 지어내지 않는다는 뜻은
+    // weightedAvgCorrelation이 null이라는 것으로 이미 고정돼 있다.
+    'sortino', 'weightedAvgCorrelation', 'topCorrelation', 'topCorrelationPair',
     'stressLossKRW', 'stressLossPct', 'stressLossKRW2022', 'stressLossPct2022', 'portfolioVolatilityShortPct']) {
     assert.strictEqual(m[k], null, k);
   }
@@ -494,7 +530,8 @@ test('Edge - [Phase 39-B] benchmark만 없으면 beta는 null이 되고 신뢰�
   assert.strictEqual(m.holdings[0].beta, null, '종목 beta는 계산 불가');
   // [Phase 39-B] 예전엔 1.0으로 채워 넣어 시장위험이 35점(중립보다 안전)으로 찍혔다.
   assert.strictEqual(m.portfolioBeta, null, '관측된 beta가 하나도 없으면 null이다');
-  assert.strictEqual(m.subScores.market, 50, '기존 missing -> 50 정책이 작동한다');
+  assert.strictEqual(m.subScores.market, null, '[기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측은 50이 아니라 null이다');
+  assert.ok(m.excludedFactors.some((f) => f.key === 'market'), '점수에 반영되지 않은 요인으로 표시된다');
   assert.strictEqual(m.dataConfidence.score, 77, 'benchmark 결측 100% -> 100 - 15 - 8');
   assert.ok(m.dataConfidence.reasons.some((r) => r.includes('벤치마크')), '사유가 사용자에게 노출된다');
 });
@@ -516,14 +553,15 @@ test('Edge - [Risk 정책 P-2] 일부 종목만 beta가 있으면 재정규화�
   assert.strictEqual(m.holdings.find((h) => h.ticker === 'QQQM').beta, null);
   // [Phase 39-B 이력] 예전엔 관측된 beta만 100%로 재정규화했다(1.157895). 이제 비중을 다시 나누지 않는다.
   assert.strictEqual(m.portfolioBeta, null);
-  assert.strictEqual(m.subScores.market, 50, '기존 결측 요인 처리(50)');
+  assert.strictEqual(m.subScores.market, null, '[기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측 요인은 점수에서 제외한다');
   assert.strictEqual(m.dataConfidence.score, 85, '결측 비중 50% -> 100 - 7.5 - 8');
   // beta가 없는 종목이 있으면 벤치마크 기반 스트레스도 만들지 않는다.
   assert.strictEqual(m.stressLossPct, null);
   assert.strictEqual(m.stressLossPct2022, null);
 });
 
-test('Edge - 종목이 1개면 상관관계는 null이 되고 [Phase 39-B] 중립(50)이 된다', async () => {
+test('Edge - 종목이 1개면 상관관계는 null이고 점수 요인에서 빠진다', async () => {
+  // [기대값 갱신 사유 · Phase 2-1 · §44 44-13] 중립(50) 대체 폐지.
   const s = freshSandbox();
   // 섹터가 매핑된 티커를 써서 미분류 감점(-20)이 섞이지 않게 한다 - 여기서 보려는 건 상관관계뿐이다.
   s.state.assets = [makeTestAsset({ name: 'A', ticker: '005930.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
@@ -535,7 +573,7 @@ test('Edge - 종목이 1개면 상관관계는 null이 되고 [Phase 39-B] 중�
   assert.strictEqual(m.weightedAvgCorrelation, null);
   assert.strictEqual(m.topCorrelation, null);
   assert.strictEqual(m.topCorrelationPair, null);
-  assert.strictEqual(m.subScores.correlation, 50);
+  assert.strictEqual(m.subScores.correlation, null);
   // 자산이 1개면 상관관계는 "계산 실패"가 아니라 성립하지 않는 개념이므로 신뢰도는 깎지 않는다(PM 확정).
   assert.strictEqual(m.dataConfidence.score, 92);
 });
@@ -554,7 +592,7 @@ test('Edge - [Phase 39-B] 2종목인데 상관관계를 못 구하면 신뢰도�
   const m = await s.computeAdvancedRiskMetrics();
 
   assert.strictEqual(m.weightedAvgCorrelation, null);
-  assert.strictEqual(m.subScores.correlation, 50);
+  assert.strictEqual(m.subScores.correlation, null);
   assert.strictEqual(m.dataConfidence.score, 82, '92 - 10(상관 계산 불가)');
   assert.ok(m.dataConfidence.reasons.some((r) => r.includes('상관관계를 계산할 수 없어')));
 });
@@ -570,11 +608,13 @@ test('Edge - [Phase 39-B · Risk 정책 P-2] 수익률 10개 미만이면 hasDat
   assert.strictEqual(m.holdings[0].returns.length, 9);
   assert.strictEqual(m.holdings[0].hasData, false);
   assert.strictEqual(m.missingCount, 1);
-  // 날짜가 없는 시계열이라 공통 거래일도 만들 수 없다 - 점수 · 신뢰도를 만들지 않는다.
+  // 공통 거래일이 부족해 통계 지표는 만들 수 없다.
+  // [기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 그래도 집중도 등 계산 가능한 요인으로 점수를 만들고,
+  // 못 만든 지표는 사유와 함께 남긴다.
   assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
-  assert.strictEqual(m.dataConfidence, null);
-  assert.strictEqual(m.subScores, null);
-  assert.strictEqual(m.riskScore, null);
+  assert.strictEqual(m.subScores.volatility, null);
+  assert.strictEqual(m.metricStatus.var.status, 'UNAVAILABLE');
+  assert.strictEqual(typeof m.riskScore, 'number');
 });
 
 test('Edge - [Phase 39-B] hasData 경계는 수익률 10개(= 종가 11개)다', async () => {
@@ -647,7 +687,8 @@ test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에
 test('Edge - 계산 중 예외가 나면 null을 반환하고 앱을 멈추지 않는다', async () => {
   const s = freshSandbox();
   s.state.assets = [makeTestAsset({ name: 'A', ticker: 'A.KS', quantity: 50, buyPrice: 100000, currentPrice: 100000 })];
-  s.getCachedDailyCloses = async () => { throw new Error('강제 실패'); };
+  // [Phase 2-1] 엔진이 상태까지 받는 조회 경로를 쓰므로 그 지점에서 실패를 만든다.
+  s.getCachedDailyClosesWithStatus = async () => { throw new Error('강제 실패'); };
   assert.strictEqual(await s.computeAdvancedRiskMetrics(), null);
 });
 
@@ -692,7 +733,7 @@ test('날짜 정렬 - 양쪽에 날짜가 있으면 공통 거래일로만 beta�
   assert.strictEqual(shortBench.aligned, true);
   assert.strictEqual(shortBench.obs, 30);
   assert.strictEqual(shortBench.beta, null);
-  assert.strictEqual(shortBench.market, 50);
+  assert.strictEqual(shortBench.market, null, '[기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측 요인은 50으로 채우지 않는다');
 });
 
 test('날짜 정렬 - 기간이 겹치지 않으면 beta를 만들어내지 않는다', async () => {
@@ -701,7 +742,7 @@ test('날짜 정렬 - 기간이 겹치지 않으면 beta를 만들어내지 않�
   assert.strictEqual(noOverlap.aligned, true);
   assert.strictEqual(noOverlap.obs, 0);
   assert.strictEqual(noOverlap.beta, null, '겹치는 날이 없으면 beta는 null이어야 한다');
-  assert.strictEqual(noOverlap.market, 50, '모르면 중립(50) - 35(안전)가 아니다');
+  assert.strictEqual(noOverlap.market, null, '[기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 모르면 점수에서 제외 - 35(안전)도 50(중립)도 아니다');
 });
 
 test('날짜 정렬 - 부분적으로 겹치면 겹친 만큼만 관측치로 센다', async () => {
@@ -736,10 +777,13 @@ test('날짜 정렬 - 종목 간 상관계수도 공통 거래일 기준으로 �
 
   // 예전엔 최근 259개를 나란히 놓아 상관계수 1.0(운명공동체)이 나왔다.
   // [Risk 정책 P-1 · P-2] 두 종목의 공통 거래일이 없으므로 포트폴리오 위험 자체를 계산하지 않는다.
-  assert.deepStrictEqual(plain(m.dataSufficiency), { status: 'INSUFFICIENT', commonReturnCount: 0, required: 120 });
+  assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
+  assert.strictEqual(m.dataSufficiency.commonReturnCount, 0);
   assert.strictEqual(m.weightedAvgCorrelation, null);
-  assert.strictEqual(m.riskScore, null);
-  assert.strictEqual(m.subScores, null);
+  // [기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 상관계수를 지어내지 않는다는 결론은 그대로이고,
+  // 화면 전체를 숨기는 대신 그 지표만 산출 불가로 둔다.
+  assert.strictEqual(m.subScores.correlation, null);
+  assert.strictEqual(m.metricStatus.correlation.status, 'UNAVAILABLE');
 });
 
 /* ==========================================================================
@@ -900,7 +944,17 @@ test('P-2 - 공통 수익률 120개는 정상, 119개는 데이터 부족(경계
   const short = await at(120);
   assert.strictEqual(short.dataSufficiency.status, 'INSUFFICIENT');
   assert.strictEqual(short.dataSufficiency.commonReturnCount, 119);
-  assert.strictEqual(short.riskScore, null);
+  // [기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 예전에는 여기서 위험점수 · 등급 · 모든 지표를 통째로
+  // 숨겼다. 이제는 공통 거래일이 필요한 지표만 "산출 불가(사유 포함)"가 되고, 가격 이력과 무관한
+  // 집중도 · 기술 신호는 그대로 계산돼 점수에 반영된다.
+  assert.strictEqual(typeof short.riskScore, 'number', '계산 가능한 요인만으로 점수를 만든다');
+  assert.strictEqual(short.subScores.volatility, null);
+  assert.strictEqual(short.subScores.drawdown, null);
+  assert.strictEqual(short.metricStatus.volatility.status, 'UNAVAILABLE');
+  assert.strictEqual(short.metricStatus.volatility.reason, 'INSUFFICIENT_COMMON_DATES');
+  assert.strictEqual(short.metricStatus.var.reason, 'INSUFFICIENT_COMMON_DATES');
+  assert.ok(short.excludedFactors.some((f) => f.key === 'volatility'));
+  assert.strictEqual(short.portfolioVolatilityPct, null, '없는 값을 지어내지는 않는다');
   assert.strictEqual(short.holdings[0].hasData, true, '종목 단위 최소 관측(10)은 그대로다');
 });
 
@@ -918,7 +972,10 @@ test('P-2 - 짧은 종목이 있으면 빼거나 비중을 다시 나누지 않�
 
   assert.strictEqual(m.dataSufficiency.status, 'INSUFFICIENT');
   assert.strictEqual(m.dataSufficiency.commonReturnCount, 59);
-  assert.strictEqual(m.riskScore, null);
+  // [기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 짧은 종목을 빼거나 비중을 다시 나누지 않는다는 원칙은 그대로다.
+  // 달라진 것은 "그래서 화면 전체를 숨긴다"가 아니라 "공통 거래일이 필요한 지표만 산출 불가"라는 점이다.
+  assert.strictEqual(m.portfolioVolatilityPct, null);
+  assert.strictEqual(m.metricStatus.mdd.reason, 'INSUFFICIENT_COMMON_DATES');
   assert.deepStrictEqual(plain(m.holdings.map((h) => [h.ticker, round(h.weight * 100, 4)])), [['005930.KS', 75], ['000660.KS', 25]]);
   assert.strictEqual(m.missingCount, 0, '두 종목 모두 종목 단위 이력은 있다');
 });
@@ -1042,7 +1099,7 @@ test('P-4 · P-5 - 벤치마크가 없는 채권 ETF는 beta · 스트레스를 
   // 채권 ETF 모델은 만들지 않는다 - 나머지 계산 구조는 그대로(비중에 포함, 점수는 기존 공식).
   assert.strictEqual(m.dataSufficiency.status, 'SUFFICIENT');
   assert.strictEqual(typeof m.riskScore, 'number');
-  assert.strictEqual(m.subScores.market, 50);
+  assert.strictEqual(m.subScores.market, null, '[기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 결측 요인은 점수에서 제외');
 });
 
 test('What-If - 같은 비중이면 기준 결과와 같고, 데이터 부족이면 계산하지 않는다', async () => {
