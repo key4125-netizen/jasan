@@ -61,7 +61,17 @@
   - 식별자는 **티커 기준 공통 사실**이며 소유자·계좌를 섞지 않는다. 중복 식별자는 어느 쪽도 채택하지 않는다.
   - 유형 추정(`suggestExposureAssetType`)은 참고용이며 국내상장 ETF의 기초자산·환헤지 여부는 **null**을 돌려준다(근거 없는 자동 확정 금지 — 확정은 1B에서 사람이).
   - 검증: 단위 433/433 · E2E 989/989 · ESLint · Data Guard · Release Guard 전부 PASS. 커밋 `7051542`.
-- **다음 단계(Phase 1B)**: Exposure Master 데이터 구축(실제 보유자산 + 앱 기본 자산, 근거 기록 필수) → index.html 로드 → 플래그 활성화. 그 뒤 Risk 개선 · 장기 패널 · Backtest 하네스. 코드는 아직 v256이며 화면 동작은 바뀌지 않았다.
+- **[Phase 1B 완료] Exposure Master 데이터 구축 · 활성화 (v256 → v257)**
+  - 저장소에는 실제 사용자 보유자산 데이터가 없다(Data Guard 정책). 그래서 대상은 **앱이 코드로 이미 아는 종목**이다 — js/09 `SECTOR_MAP`(국내 16 · 미국 20) + `ETF_HOLDINGS_MAP`(13) → **49종 등록: RESOLVED 32 · UNRESOLVED 17 · BLOCKED 0**.
+  - 근거는 전부 저장소 안에서 재확인 가능한 것만 썼다: `data/ticker-master.json`(KIS 공식 종목마스터 2026-09-08)의 상장 거래소 + js/09 ETF 구성표 label. **외부 로그인 · API Key · 유료 데이터 없음.**
+  - **UNRESOLVED 17건은 전부 "앱에 대응 지수가 없음"이 사유**(missing=benchmark 하나뿐): KODEX200/TIGER200(앱에 KOSPI200 없음 · KOSPI로 대신하지 않음) · TQQQ/SOXX/SMH/SCHD/TLT/IEF · NYSE·AMEX 상장 미국주 9종. TSM(ADR)은 기초 기업의 통화·자산군 근거가 없어 **등록 자체를 하지 않았다**.
+  - **Risk 연결**: js/09 `resolveRiskBenchmark`가 원장을 먼저 본다. 단 ① RESOLVED 항목만 ② 앱 기록 이름이 다른 상품(펀드)을 가리키면 쓰지 않는다(기존 `looksLikeFundName` 방어 유지) ③ 나머지는 기존 판정 그대로. **결과 키는 전부 기존과 동일**하고 바뀐 것은 진단용 `source` 라벨뿐이다(화면·계산 미사용).
+  - **MC 연결**: `resolveExposureAssetClass()` 연결점만 제공하고 **js/15·16은 손대지 않았다**(자산군 이관은 Phase 1B 범위 밖 · §44 EM-3은 이후 단계). Return Key(js/05)도 무변경 — 테스트가 js/05·15·16에 `resolveExposure` 참조가 없음을 고정한다.
+  - FX 3필드를 분리해 채웠다: 국내주식은 priceCcy=KRW만(환 필드 없음), 미국 상장은 priceCcy=USD·underlyingCcy=USD·fxExposure=EXPOSED·conversionMethod=FX_MULTIPLY, 해외 ETF는 hedgeStatus=UNHEDGED까지. **원화 가격계열에는 환산을 걸지 않는다**(이중계상 방지).
+  - 검증: 단위 **449/449** · E2E **989/989** · ESLint · Data Guard · Release Guard(v257) 전부 PASS. 브라우저 실측으로 js/28 로드 · 원장 49건 · QQQ→NASDAQ100 · 삼성전자→KOSPI · 미등록 종목 UNRESOLVED 확인.
+  - 기대값 갱신 2건(사유 주석 포함): `test/risk-engine.test.js` P-4의 source 라벨, `test/exposure-master.test.js`의 1A 비활성 전제 → 1B 활성 전제. **테스트를 삭제하거나 약화시키지 않았다.**
+  - 커밋 `7d61d79`. Push·배포 안 함.
+- **다음 단계(§44 제45조 ⑥)**: Risk 데이터 · 진단 · 관측기간 개선(제7~12조). 3년 관측기간의 실제 적용은 제41조(Yahoo 사용조건 · 429) 확인 이후다. 장기 패널(제14조)은 제40조 라이선스 선행조건이 남아 있다.
 - 남은 선행조건: 장기 패널 소스 라이선스(제40조, FRED는 계열별 확인) · 패널 저장/배포 위치 · Yahoo 사용조건(제41조) · 환헤지 비용(한·미 단기금리차) 데이터. 확보 실패 시 0으로 채우지 않고 UNRESOLVED 차단.
 - 알아둘 점: 제14조 패널이 구축되면 DEV_EX_US · CASH · FX가 새로 해소되지만 **REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND는 계속 미지원**이다(현재 CMA 매핑은 KR/US/EM 3종뿐). 개선 후에도 지원되지 않는 자산군이 있다는 점을 제품 고지·릴리스 노트에 명시해야 한다(제14조).
 
