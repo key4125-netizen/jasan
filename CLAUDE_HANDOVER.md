@@ -81,7 +81,18 @@
   - **화면**: 요인 막대가 0%·50%가 아니라 **「점수 없음 + 사유」**로 표시되고, 요약·상세 상단에 "점수에 넣지 못한 항목"을 명시한다. 내부 코드(BENCHMARK_UNRESOLVED 등)는 한글 문구로만 노출한다(좁은 값 칸은 짧은 문구). What-If 판정은 엔진·화면 공용 `canComputeScenarioRisk`로 통일.
   - 검증: 단위 **464/464** · E2E **989/989** · ESLint · Data Guard · Release Guard(v258) PASS. 375px 실측(14px 미만 0건 · 가로 넘침 없음). 기대값 갱신은 전부 사유 주석과 함께: risk-engine(결측 50 → null · 전체 숨김 → 부분 표시), risk-rules(기술요인 실효 가중치), e2e/39(67 → 68 재정규화).
   - 커밋 `10bfaa5`(정책) · `5e4c942`(구현). Push·배포 안 함.
-- **남은 Phase 2 항목**: R-02(지표별 1Y/2Y/3Y 실제 조회 — 제41조 Yahoo 확인 선행) · R-03/R-04(조정주가와 기술지표 가격 분리) · R-05(Risk FX, 일별 환율 필요) · R-07(스트레스 실측화, 장기 패널·라이선스 선행). 이번 단계에서는 손대지 않았다.
+- **[Phase 2-2 완료] R-03/R-04 조정주가·원주가 분리 (버전 그대로 v258 — PM 지시로 중간 버전업 없음)**
+  - `parseYahooDailySeries`가 `indicators.adjclose`를 함께 읽어 **`{closes(원주가), closesAdj(조정주가), volumes, dates}`** 를 돌려준다. adjclose가 없으면 `closesAdj = null`(원주가로 대체하지 않음), 그날만 비면 그 자리만 null.
+  - `datedClosesFromSeries(data, basis)` — basis(`'adjusted'`/`'raw'`)를 **반드시 골라야** 한다(기본값 없음). `hasAdjustedCloses()` 추가.
+  - **통계 경로(조정주가)**: 종목 `datedCloses`·`returns`·`mdd`, 지수 시계열, 공통 거래일 → 변동성·베타·상관·VaR·CVaR·MDD·Sortino. **기술 경로(원주가)**: `closesRaw` → RSI·MA20/60/120·52주·거래량 급증·수급 신호. 종목 분석 모달도 같은 기준으로 분리.
+  - **조용한 fallback 금지**: 조정주가가 없으면 통계 지표를 만들지 않고 기존 9종 중 **SOURCE_UNAVAILABLE**로 표시한다(새 상태 추가 0건). 상태 우선순위는 품질불량 → 조정주가 없음 → 오래됨.
+  - 계산식·임계값·가중치·등급은 한 줄도 바꾸지 않았다. 배당·분할이 없어 두 가격이 같으면 **결과도 예전과 동일**(테스트로 고정).
+  - 테스트: 신규 `test/risk-price-basis.test.js` 10건 — 원주가와 조정주가를 **의도적으로 다르게** 만든 fixture로 "어느 배열이 실제로 쓰였는지"를 값으로 증명. 샌드박스 `setDailyCloses`가 `closesAdj` 미지정 시 원주가와 같게 채운다(무배당 종목의 실제 응답과 동일). `withAdjusted()` 헬퍼 추가.
+  - 검증: 단위 **474/474** · 위험 관련 E2E **111/111** · ESLint · Data Guard PASS.
+  - **Release Guard는 FAIL**이다 — "APP_SHELL(js/09)이 바뀌었는데 CACHE_NAME이 v258 그대로"라는 경고이며, **PM이 중간 버전업을 금지**했기 때문에 의도된 상태다. **최종 통합 검증에서 한 번에 버전업하면 해소된다. 그 전에는 릴리스·Push 금지.**
+  - 커밋 `6a98953`.
+- **남은 Phase 2 항목**: R-02(지표별 1Y/2Y/3Y 실제 조회 — 제41조 Yahoo 확인 선행) · R-05(Risk FX, 일별 환율 필요) · R-07(스트레스 실측화, 장기 패널·라이선스 선행). R-03/R-04는 완료.
+- **참고(범위 밖·미해결)**: js/05의 상관 계산 경로(`dailyReturnsFromCloses(data.closes)`)는 여전히 원주가를 쓴다. MC 도메인이라 이번 범위에서 제외했다(§44 제13조 이후 CMA 경로가 주 경로).
 - 남은 선행조건: 장기 패널 소스 라이선스(제40조, FRED는 계열별 확인) · 패널 저장/배포 위치 · Yahoo 사용조건(제41조) · 환헤지 비용(한·미 단기금리차) 데이터. 확보 실패 시 0으로 채우지 않고 UNRESOLVED 차단.
 - 알아둘 점: 제14조 패널이 구축되면 DEV_EX_US · CASH · FX가 새로 해소되지만 **REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND는 계속 미지원**이다(현재 CMA 매핑은 KR/US/EM 3종뿐). 개선 후에도 지원되지 않는 자산군이 있다는 점을 제품 고지·릴리스 노트에 명시해야 한다(제14조).
 
