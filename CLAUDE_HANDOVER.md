@@ -32,6 +32,26 @@
 
 ---
 
+## 최근 세션 요약 (2026-09-18 오후) — 📋 **Risk · MC 전면 개선 정책 확정 (RM-MC-POLICY v1.1)** (버전 변경 없음 · v256 유지)
+
+- **코드 변경 없음.** `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`에 **§44**(제1조~제49조)만 추가했다. js/ · index.html · sw.js · test/ · e2e/ 전부 무변경, 버전도 v256 그대로다. 화면에서 달라지는 것은 없다.
+- 경위: Risk/MC 전면 재감사(READ-ONLY) 2회 + PM 검토 5라운드 → PM 최종 승인(2026-09-18). **조사 단계 종료**(반복 조사 금지). 이후는 Phase별 구현 1회 + 검토 1회.
+- 핵심 정책(자세한 내용은 §44 조문):
+  - **제2조**: §40 **P-7**(환율 미반영) → §44 제6조로, §40 **P-2**(공통 120일 미만이면 전체 INSUFFICIENT) → §44 제7·12조로 **시행 시점부터 대체**. 그 전까지 기존 조항 유효.
+  - **제5조 Exposure Master**: Risk 벤치마크와 MC 자산군이 같은 사실원장 하나를 본다. 현재 js/16 `resolveMcAppAssetClass`가 Return Key에서 자산군을 추론하는 구조를 **사실 판정 축으로 이관**한다. 자산유형별 필수 필드만 강제(전 필드 강제 아님).
+  - **제6조 FX**: **Risk = 가격통화 기준 측정 / MC = 경제적 환노출 기준 생성.** 원화상장 해외ETF에 환율을 다시 곱하지 않는다(이중계상). 미확인 FX·헤지비용을 0으로 두는 것 금지.
+  - **확인된 사실**: js/15·16·18에 환율 계산이 아예 없다(js/19에 안내 문구만) → 현재 MC는 전 해외자산에 FX=0·헤지비용=0을 암묵 적용 중. 이 조는 MC 해외자산 FX 모델 전체가 대상이다.
+  - **제7·12조 Risk**: 지표별 기간(1Y/2Y/3Y) + **Metric-level Partial Display**(일부 지표 부족으로 전체를 막지 않음). **3년 적용 시점은 제41조 Yahoo 확인 이후**(정책 확정 ≠ 시행).
+  - **제13·17·19조 MC**: GBM은 Baseline 유지. 후보 = CMA + 월간 TR 패널 + Joint Stationary Block Bootstrap + CMA Re-centering. **Block Length는 Calibration에서 1개 선정 → 고정 → Evaluation에서 Gate 1회**(사후 선택 금지). Gate 실패 시 GBM 유지.
+  - **제21~37조 Backtest Gate**: 결과 보기 전 A층 확정 / Horizon 1M·3M·6M·1Y 각각 필수 관문 / 3계층(필수검정·절대밴드+최소표본·보조진단) / 계층 배정 사전 고정 / 구간 내부만 Holm / **최소 표본 미달은 PASS가 아니라 NOT_EVALUABLE_DATA** / 중첩 구간은 bootstrap null 분포 / 보조진단은 **미채택만 가능, 채택 근거 불가** / 상태 PASS·FAILED_BACKTEST·NOT_EVALUABLE_DATA·REPRODUCIBILITY_FAILED 구분 / 사후 변경 금지.
+  - **제33조**: 20년·30년 결과는 out-of-sample 검증 결과가 아니라 장기 구조적 시뮬레이션 — 화면에도 그렇게 표기.
+  - **제38조**: MC 결과에 Model/Policy/Data Version·Seed·Input Signature. 모델 변경 시 기존 결과를 새 모델 결과로 재해석·덮어쓰기 금지.
+  - **제46조**: Phase 1A는 Exposure Master를 **비활성**으로 도입(기존 경로 유지), 1B에서 데이터가 채워진 뒤 활성화 — 빈 원장이 Risk·MC를 일시에 차단하는 사고 방지.
+  - **제47조 STOP-1~6**: 정책 의미 변경 · 선행조건 미확보 · 사용자 입력 의미 변경 · 데이터 손실 가능성 · 의도치 않은 사용자 가시 동작 · 사전 확정되지 않은 판단 필요 → 즉시 중단·보고.
+- **다음 단계(제45조 ②)**: **Backtest Gate v1.0 A층**(검정별 계층·유의수준·절대밴드·최소표본·Calibration/Evaluation 분할·L 선정규칙·보조진단 거부조건)의 구체 수치 확정. 이것이 끝나야 Phase 1A 착수.
+- 남은 선행조건: 장기 패널 소스 라이선스(제40조, FRED는 계열별 확인) · 패널 저장/배포 위치 · Yahoo 사용조건(제41조) · 환헤지 비용(한·미 단기금리차) 데이터. 확보 실패 시 0으로 채우지 않고 UNRESOLVED 차단.
+- 알아둘 점: 제14조 패널이 구축되면 DEV_EX_US · CASH · FX가 새로 해소되지만 **REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND는 계속 미지원**이다(현재 CMA 매핑은 KR/US/EM 3종뿐). 개선 후에도 지원되지 않는 자산군이 있다는 점을 제품 고지·릴리스 노트에 명시해야 한다(제14조).
+
 ## 최근 세션 요약 (2026-09-18 오전) — 🔀 **v256 소유자 카드 순서 · 실현손익 배지 문구** (v255 → **v256**)
 
 **로컬 변경(커밋 전) · push/배포 안 함.** 체크리스트 **§43**. v255(`b083092`)까지는 origin/main 반영 완료.

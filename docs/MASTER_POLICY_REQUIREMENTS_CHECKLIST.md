@@ -2102,3 +2102,209 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **UI-256-5** RISK ⓘ 버튼 삭제 | 대시보드 「⚠️ RISK 관리」 제목 옆 ⓘ 버튼을 화면에서 제거 | 전수 점검(클릭 요소 187개)에서 유일하게 확인된 No-Op - `data-info-tip` 없이 `title`만 있어 모바일에서 눌러도 아무 동작이 없었다. index.html에서 그 `<button>`만 삭제했다(제목 · 범위 고지 · 진단 카드 · 리스크 감지 · RISK 계산 전부 무변경. 전용 핸들러가 없어 함께 지울 코드도 없다) |
 
 **43-1. 검증** — 신규 `e2e/101-owner-card-order-realized-label.spec.js`(4: A 두 소유자의 그래프 · 목록 순서와 소유자별 내용 분리 / B 배지 문구 · 금액 불변 · 오늘 실현손익 문구 유지 / C 상단 필터를 바꿔도 총자산 · 보유 자산 수 · 목록 불변, 그래프만 변경 / D RISK 제목 옆 ⓘ 부재와 나머지 RISK 영역 유지). 기대값 갱신: `e2e/77` D(그래프만 필터 적용) · E(필터가 목록을 비우지 않음 - 빈 안내는 자산 0건일 때만) · `e2e/40` 13(삭제된 ⓘ title 대신 RISK 영역의 보이는 안내 · 툴팁 전체에 「거래량 급증」이 없음을 확인 - 태그 판정은 11 · 12가 그대로 지킨다). 375px 화면으로도 순서 · 문구 확인.
+
+## 44. Risk · MC 전면 개선 정책 — RM-MC-POLICY v1.1 (PM 최종 승인 2026-09-18 · 정책 문서 · 코드 변경 없음)
+
+> **이 절은 정책만 확정한다. 코드 · 데이터 · 테스트 · 버전(`sw.js` CACHE_NAME · `#appVersionLabel`)은 이 절로 바뀌지 않는다 — v256 동작 그대로다.**
+> 배경: Risk / MC 전면 재감사(READ-ONLY) 2회와 PM 검토 5라운드를 거쳐 확정했다. **조사 단계는 이 절로 종료한다 — 같은 주제의 반복 조사 금지.** 이후는 Phase별로 구현 1회 + 검토 1회로 진행한다.
+> 조 번호(제1조~제49조)는 PM 승인 정책서 RM-MC-POLICY v1.1의 번호를 그대로 쓴다. 인용 시 `§44 제N조`로 참조한다.
+
+**문서 분리 원칙** — 정책과 검증 결과를 섞지 않는다.
+
+| 문서 | 성격 | 시점 |
+|---|---|---|
+| **RM-MC-POLICY v1.1** (= 본 절) | 사전 확정 정책 | Backtest 이전 확정 · 결과를 본 뒤 수정하지 않는다 |
+| **Backtest Gate v1.0** | 사전 확정 검증 기준 · 판정식(A층) | Backtest 이전 확정 · **아직 미작성(다음 단계)** |
+| **Backtest Gate Result v1.0** | 실제 실행 결과 기록 | Backtest 이후 산출 |
+
+---
+
+**44-0. 목적과 기존 정책과의 관계 (제1조 · 제2조)**
+
+**제1조 목적** — ① 실제 시장 관측자료 기반 위험 측정의 신뢰성 향상 ② 자산의 경제적 특성·통화 노출 반영 ③ 단순 확률모형의 시장 재현 한계 개선 ④ 장기 자본시장 가정(CMA)과 역사적 데이터 결합 ⑤ 데이터·가정·모델·검증 결과의 추적성 ⑥ 결과가 좋아 보인다는 이유로 신규 모델을 임의 채택하지 않음 ⑦ 사전 확정된 Backtest Gate를 통과한 모델만 제품 적용 대상.
+목표는 완벽한 미래 예측이 아니라 **현실적 시장 특성 반영 · 데이터/가정/모델 추적성 · 재현 가능하고 사전 검증 가능한 체계** 세 가지의 동시 확보다.
+
+**제2조 기존 정책과의 관계** — 기존 확정 정책은 임의 변경하지 않는다. 본 절에서 **명시적으로 대체한다고 규정한 것만** 정식 정책 변경으로 간주하며, 대체는 **시행 시점부터**다(그 전까지 기존 조항이 유효).
+
+| 기존 정책 | 내용 | 대체 |
+|---|---|---|
+| **§40 P-7** | "위험 계산에 환율 요인을 넣지 않는다" | → §44 **제6조**(Risk FX) 시행 시점부터 대체 |
+| **§40 P-2** | "공통 거래일 120개 미만이면 전체 INSUFFICIENT" | → §44 **제7조 · 제12조**(지표별 기간 · Metric-level Partial Display) 시행 시점부터 대체 |
+
+그 외 기존 정책(§37 CMA · §40 P-1 · P-3~P-6 · P-8 · P-9 · Risk Score 구조 등)은 본 절에서 명시 변경하지 않는 한 계속 유효하다. 기존 사용자 데이터와 사용자 입력의 의미는 보존한다.
+
+---
+
+**44-1. 계층 분리 — Return Key · Risk/MC 역할 · Exposure Master (제3조~제5조)**
+
+| 조 | 정책 |
+|---|---|
+| **제3조** Return Key | Return Key는 **유지**한다(일반 미래 수익률 추정 · 보수/일반/낙관 · 대표 수익률 연동 · 사용자 지정 가정 · MC 장기 기대수익률 Anchor). Return Key(= 장기 기대수익률·일반 수익률 가정의 권위)와 MC 확률모형(= 미래 경로의 확률적 생성 방식)은 **서로 다른 계층**으로 분리한다. MC 모델 개선을 위해 Return Key를 제거하지 않는다 |
+| **제4조** 역할 분리 | Risk = 보유자산의 **실제 시장 데이터에서 관측되는 위험 측정**. MC = 장기 자본시장 가정과 역사적 시장 움직임으로 **미래 경로 분포 생성**. 목적이 다르므로 동일한 데이터 처리 규칙을 기계적으로 공유하지 않는다. 단 **자산의 기본 사실관계는 Exposure Master를 공통 Source of Truth로** 사용한다 |
+| **제5조** Exposure Master | Risk·MC가 자산 성격을 일관되게 판단하기 위한 공통 사실원장. 관리 항목: `AssetClass · MarketExposure · Benchmark · PriceCcy · UnderlyingCcy · FXExp · HedgeStatus · ConversionMethod · Evidence · Version`. **모든 자산에 모든 필드를 강제하지 않는다** — 자산 유형별로 필요한 필드만 필수. 판정에 필요한 정보가 확인되지 않으면 **임의의 값으로 보정하지 않는다** |
+
+*자산유형별 필수 필드 (제5조 운영 기준)*
+
+| 자산 유형 | AssetClass | MarketExp | Benchmark | PriceCcy | UnderlyingCcy | FXExp | HedgeStatus |
+|---|---|---|---|---|---|---|---|
+| 원화 현금성 | 필수 | N/A | N/A | 필수(KRW) | N/A | N/A | N/A |
+| 외화 현금성 | 필수 | N/A | N/A | 필수 | = PriceCcy | 필수 | N/A |
+| 국내 개별주 | 필수 | 필수 | 필수 | 필수(KRW) | N/A | N/A | N/A |
+| 해외상장 개별주 | 필수 | 필수 | 필수 | 필수 | = PriceCcy | 필수 | N/A |
+| 국내상장 국내ETF | 필수 | 필수 | 필수 | 필수(KRW) | N/A | N/A | N/A |
+| **국내상장 해외ETF** | 필수 | 필수 | 필수 | 필수(KRW) | **필수** | **필수** | **필수** |
+| 해외상장 ETF | 필수 | 필수 | 필수 | 필수 | 필수 | 필수 | 필수 |
+| 채권 · 기타 | 필수 | 필수 | 조건부 | 필수 | 조건부 | 조건부 | 조건부 |
+
+해당 유형의 필수 칸이 하나라도 비면 UNRESOLVED. N/A 칸이 비어 있는 것은 정상이며 오류로 보지 않는다.
+
+> 현재 `data/ticker-master.json`은 code · nameKr · nameEn · market · exchange · naverTicker · yahooTicker 만 갖는다 — UnderlyingCcy · FXExp · HedgeStatus를 채울 근거가 앱 안에 없다. Exposure Master는 신규 구축이 불가피하다. 또한 현재 MC 자산군 판정(js/16 `resolveMcAppAssetClass`)은 사용자가 고른 Return Key에서 자산군을 추론하므로, 제4조·제5조에 따라 **사실 판정 축으로 이관**한다.
+
+---
+
+**44-2. FX 정책 (제6조)**
+
+| 항 | 정책 |
+|---|---|
+| **6-1 Risk** | Risk의 FX 처리는 **실제 가격 시계열의 통화(가격통화)** 를 기준으로 한다. 한국에 상장된 해외자산 ETF처럼 가격 시계열 자체가 KRW 기준인 경우 동일 FX 효과를 다시 곱해 **이중 반영하지 않는다** |
+| **6-2 MC** | MC는 **실제 경제적 FX 노출**을 기준으로 한다. 필요한 경우 Exposure Master에서 PriceCcy · UnderlyingCcy · FXExp · HedgeStatus · ConversionMethod를 구분한다. 필수 FX 정보가 확인되지 않으면 **임의로 FX=0으로 가정하지 않고** UNRESOLVED(또는 해당 데이터 부족 상태)로 처리한다 |
+| **6-3 금지** | 다음 조용한 가정을 금지한다 — 미확인 FX = 0 / 미확인 Hedge Cost = 0 / 미확인 환노출 = 0 / 미확인 자산의 임의 환노출 / 기타 경제적 의미를 가진 값을 임의의 0으로 대체 |
+
+> **확인된 현황**: js/15(엔진) · js/16(어댑터) · js/18(컨트롤러) 어디에도 환율 계산이 없고 js/19(UI)에 안내 문구만 있다. 즉 현재 MC는 모든 해외자산에 **FX=0 · 헤지비용=0**을 암묵 적용 중이다. 따라서 이 조는 환헤지형만의 문제가 아니라 **MC 해외자산 FX 모델 전체**를 대상으로 하며, "현행 유지"가 더 보수적인 선택이 아니다. FX는 Exposure Master 활성화와 함께 도입하고(부분 도입 금지), 미해결 자산은 사유를 표시하고 차단한다(제20조).
+
+---
+
+**44-3. Risk — 기간 · 가격 · 품질 · 벤치마크 · 스트레스 · 부분표시 (제7조~제12조)**
+
+| 조 | 정책 |
+|---|---|
+| **제7조** 데이터 기간 | 지표 목적별 차등: RSI / MA / 52주 **1년** · Volatility **2년** · Beta **2년** · Correlation **2년** · VaR **3년** · CVaR **3년** · MDD **3년** · Historical Stress **별도 장기 역사 데이터**. 데이터가 부족해도 전체 Risk를 일괄 실패시키지 않고 **지표별로** 산출 가능 여부를 판단한다. **단, 3년 관측기간의 실제 적용 시점은 제41조(Yahoo 확인)가 끝난 뒤 결정한다 — 정책 확정과 시행 시점은 분리한다** |
+| **제8조** 가격 데이터 | 8-1 통계적 위험지표(Volatility · VaR · CVaR · Beta · Correlation · Sortino · MDD)는 가능한 경우 **조정주가 기반 수익률**. 8-2 기술적 지표(RSI · MA · 52주 고저 · 거래량 신호)는 **실제 가격 시계열**. 두 기준을 혼용하지 않는다 |
+| **제9조** 데이터 품질 | 단일 DATA SHORTAGE를 세분화한다 — `FETCH_FAILED · TICKER_INVALID · NO_HISTORY · INSUFFICIENT_HISTORY · BENCHMARK_UNRESOLVED · INSUFFICIENT_COMMON_DATES · DATA_STALE · DATA_QUALITY_FAILED · SOURCE_UNAVAILABLE`. 품질검사 항목: 중복 날짜 · 날짜 순서 · 누락 · 비정상 급등락 · 동일가격 반복 · 장기 stale · 통화 · 빈도 · Price/Total Return 구분 · 출처 · 데이터 버전. **신뢰할 수 없는 데이터를 0 또는 임의 fallback으로 대체하지 않는다** |
+| **제10조** Benchmark | 단순 거래소 기준으로 결정하지 않는다. 판단 구조 `Asset → Classification → Economic Exposure → Benchmark`. ETF도 실제 경제적 노출 기준. 확인되지 않으면 `BENCHMARK_UNRESOLVED`이며 임의 Benchmark를 지정하지 않는다 |
+| **제11조** Stress | 하드코딩 fallback 수치를 쓰지 않는다. 역사적으로 실제 발생한 Benchmark 최악 하락 구간 · 주요 위기 국면 · 2020 COVID · 2022 금리상승을 활용하되, **2020/2022도 임의 숫자가 아니라 역사적 데이터에서 산출**한다 |
+| **제12조** Partial Display | **Metric-level Partial Display가 원칙.** 예: Volatility 산출 가능 · Beta 데이터 부족 · MDD 산출 가능 → Volatility·MDD는 표시하고 Beta는 산출 불가임을 명확히 표시. 일부 지표의 데이터 부족으로 전체 Risk 화면을 무조건 실패시키지 않는다 |
+
+---
+
+**44-4. MC — 모델 · 패널 · 부트스트랩 · 채택 (제13조~제20조)**
+
+| 조 | 정책 |
+|---|---|
+| **제13조** 기본정책 | 현재 GBM을 **Baseline Model로 유지**한다. 개선 후보 모델은 `CMA / Return Key + Historical Monthly Total Return Panel + Stationary Block Bootstrap + CMA Re-centering`. 후보 모델은 **사전 Backtest Gate 통과 시에만** 제품 적용 검토 대상이다 |
+| **제14조** 데이터 패널 | 가능한 경우 포함: KR Equity · US Equity · Developed ex-US · Emerging Markets · Gold · Cash/Short Rate · USD/KRW. **다음은 본 패널로 자동 해결된다고 보지 않는다 — REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND.** 해당 자산군은 필요한 역사 데이터와 정책이 확보되기 전까지 MC에서 UNRESOLVED / NOT_EVALUABLE_DATA 사유를 표시하고 계산을 차단할 수 있으며, **개선 이후에도 지원되지 않는 자산군이 존재할 수 있음을 제품 고지·릴리스 노트에 명시**한다. 자산군 추가는 ① 경제적 의미 명확 ② 데이터 품질 확보 ③ 사용·재배포 조건 확인 ④ 모델 검증 활용 가능 — 4개를 모두 충족할 때만 |
+| **제15조** Total Return | 가능한 경우 MC 역사 표본은 **Total Return 기준**으로 구성하고 배당·분배금을 반영한다. Price Return과 Total Return을 혼용하지 않으며, 각 데이터의 Return Basis를 메타데이터에 기록한다 |
+| **제16조** Joint Bootstrap | 자산군별 월별 수익률을 **독립적으로 추출하지 않는다.** 동일 월의 자산군 수익률 **벡터**를 하나의 관측 단위로 보고 Block 단위로 resampling한다(KR · US · DevExUS · EM · Gold · Cash · FX). 이를 통해 시장 동시 하락 · 자산 간 의존관계 · 위기기간 연속성 · 변동성 군집을 가능한 범위에서 보존한다 |
+| **제17조** Block Length | 후보 **6 · 12 · 24 · 36개월**. 결과가 가장 좋은 것을 사후 선택해 Gate를 통과시키는 방식을 **금지**한다. 절차: ① **Calibration Dataset**에서 사전 정의된 선정규칙으로 **단 하나의 L을 선정** → ② **Evaluation Dataset**에서 그 L을 **고정**(재선택·변경 금지) → ③ 고정된 L에 대해 Backtest Gate를 **단 한 번** 적용. Evaluation 결과를 본 후 L을 다시 선택하지 않는다. **Calibration/Evaluation 분할 방법 자체도 Gate A층에서 사전 확정한다** |
+| **제18조** CMA Re-centering | 역사 표본의 장기 기대수익률이 현재 CMA / Return Key와 다를 수 있으므로 역사 표본을 CMA / Return Key의 geometric return 기준에 맞춰 재조정한다. **P50이 기존 GBM과 동일하거나 거의 같다고 사전에 가정하지 않는다** — P50 변화 여부는 실제 Backtest 및 제품 시뮬레이션 결과로 측정한다 |
+| **제19조** 채택 원칙 | 순서: ① 현재 GBM Backtest → ② Bootstrap 후보 Calibration → ③ Block Length 선정·고정 → ④ Bootstrap Evaluation → ⑤ 사전 확정 Gate 적용 → ⑥ 최종 판정. Gate 통과 → Bootstrap 제품 적용 / Gate 실패 → **기존 GBM 유지** / NOT_EVALUABLE_DATA → 검증 불가로 기록하고 데이터 확보 후 재평가 가능. **더 현대적이거나 현실적으로 보인다는 이유만으로 채택하지 않는다** |
+| **제20조** 데이터 불확실성 | 필수 데이터가 없을 때 임의의 0값을 쓰지 않는다. 금지: 수익률 0% 자동 대체 · FX 0 자동 대체 · Hedge Cost 0 자동 대체 · 미확인 자산의 임의 자산군 분류. 확인되지 않으면 UNRESOLVED 또는 NOT_EVALUABLE_DATA. **해결되지 않은 자산은 사유를 사용자에게 표시하고 계산을 차단할 수 있다** |
+
+---
+
+**44-5. Backtest Gate (제21조~제37조)**
+
+| 조 | 정책 |
+|---|---|
+| **제21조** 사전등록 | Gate는 **결과를 보기 전에** 확정한다. 결과를 본 후 변경하지 않는 항목: 검정방법 · 유의수준 · 평가 Horizon · 절대 허용밴드 · 최소 표본요건 · 필수/보조 계층 · 다중검정 방법 · Calibration/Evaluation 분할방법 · Block Length 선정방법 · PASS/FAIL 규칙 · 보조진단 거부조건 · 결과 재현성 조건. A층 항목은 결과에 따라 완화하지 않는다 |
+| **제22조** Horizon | 필수 평가 Horizon은 **1M · 3M · 6M · 1Y**. 각 Horizon은 독립적인 **필수 관문**이며, 최종 채택에는 4개 모두 통과가 필요하다. 하나라도 통과하지 못하면 Bootstrap을 채택하지 않고 기존 GBM을 유지한다 |
+| **제23조** 3계층 | Gate는 ① 필수 통계적 적합성 ② 절대 허용밴드 및 최소 표본 ③ 보조 진단 및 GBM 비교 — 3계층. **각 검정·지표의 계층 배정은 실행 전 A층에서 사전 확정**하며, 결과를 본 뒤 필수↔보조 재분류를 금지한다 |
+| **제24조** 필수 통계검정 | PIT / Density Forecast Evaluation · Kupiec Unconditional Coverage · Christoffersen Independence · Berkowitz 계열 Density Evaluation. 추가 평가: Forecast vs Realized Volatility · Beta Regression Fit · MDD Distribution · Quantile Stability. 검정별 계층과 판정식은 A층에서 사전 확정 |
+| **제25조** 해석 원칙 | **"귀무가설이 기각되지 않았다는 것은 모델의 정확성을 증명하지 않는다."** p-value > α라는 이유만으로 PASS시키지 않는다. 통계검정은 부적합 발견 장치이지 진실성 증명 장치가 아니다 |
+| **제26조** 다중검정 | 보정은 **각 Horizon 내부에서만** 적용(기본: Holm Sequential Correction). 1M·3M·6M·1Y 전체를 하나의 family로 묶어 보정하지 않는다. **Block Length 후보 선택으로 인한 다중선택 문제는 제17조의 Calibration/Evaluation 분리로 처리**한다 |
+| **제27조** 검정력·최소표본 | 표본 부족으로 모델을 기각하지 못하는 문제를 방지한다 — ① 통계검정 + ② 절대 허용밴드 + ③ 최소 표본요건을 **함께** 적용. 유효 표본수가 사전 정의 최소요건보다 작으면 **PASS가 아니라 NOT_EVALUABLE_DATA**. 판정 기록에 표본 수 · 유효 표본 수 · 최소 요구 표본 수 · 검정 결과 · 검정력 관련 정보를 남긴다 |
+| **제28조** 절대 허용밴드 | 통계검정과 **별도로** 절대 허용밴드를 적용한다(예: VaR 예측 위반율 vs 명목 위반율 vs 사전 정의 허용범위). **통계검정 PASS + 절대 밴드 PASS 모두** 충족해야 해당 필수 Gate 통과. 수치·계산식은 Gate v1.0 A층에서 사전 확정 |
+| **제29조** 중첩 Window | 1Y 등 장기 Horizon의 rolling-origin 평가에서 중첩 표본이 생기면 일반적인 독립성 가정을 그대로 적용하지 않는다. 중첩 표본을 쓰는 경우 **bootstrap 기반 empirical null distribution**으로 검정하며, 반복횟수·seed·절차를 사전 고정한다 |
+| **제30조** 부분통과 | 채택 조건 = `1M PASS AND 3M PASS AND 6M PASS AND 1Y PASS`. 하나라도 필수 Gate FAIL → 최종 FAIL → 기존 GBM 유지. 표본·데이터 부족 → NOT_EVALUABLE_DATA |
+| **제31조** 비대칭 거부권 | ③ 보조 진단·GBM 비교는 **채택의 근거가 될 수 없다.** 그러나 A층에 사전 정의된 명백한 모델 이상이 발견되면 **미채택을 결정할 수 있다.** 미채택 사유는 Gate Result에 기록하며, 거부 조건도 실행 전 A층에서 사전 확정한다 |
+| **제32조** GBM 비교 | GBM 대비 성능 개선은 단독 채택 조건이 아니다. 동일 조건에서 PIT · VaR Coverage · Volatility · MDD · P10 · P25 · P50 · P75 · P90 · Goal Probability를 비교·기록한다. **절대 Gate 통과가 우선이다** |
+| **제33조** 20년·30년 결과 | 20년·30년 MC 결과는 **직접적인 out-of-sample 예측 검증 결과가 아니다.** 장기 구조적 시뮬레이션·시나리오 분석의 성격으로 취급하며, 실제 미래 예측 정확도처럼 표현하지 않는다(사용자 화면 「20년 후 자산 참고값」 영역 포함) |
+| **제34조** 재현성 | Backtest는 **명령 하나로 재실행 가능**해야 한다. Data Version · Model Version · Policy Version · Seed · Input Signature · **Runtime Version(Node)** 이 같으면 동일 결과가 재현되어야 하며, 재현되지 않으면 `REPRODUCIBILITY_FAILED` |
+| **제35조** 결과 상태 | `PASS`(검증 가능 + Gate 통과) · `FAILED_BACKTEST`(검증 가능 + Gate 불통과) · `NOT_EVALUABLE_DATA`(데이터·표본·조건 부족으로 검증 자체 불가). **세 상태를 서로 대체해 기록하지 않는다.** 실행 재현성 문제는 `REPRODUCIBILITY_FAILED`로 별도 기록 |
+| **제36조** 사후 변경 금지 | 실행 후 결과에 유리하도록 변경 금지: 유의수준 α · 허용밴드 · 최소 표본수 · 평가 Horizon · 검정방법 · 필수/보조 계층 · PASS/FAIL 규칙 · Block Length 선정규칙 · Calibration/Evaluation 분할규칙 · 보조진단 거부조건. 새 정책이 필요하면 기존 결과를 소급 변경하지 않고 **별도 정책 버전**으로 관리한다 |
+| **제37조** 결과 산출물 | 문서명 **Backtest Gate Result v1.0**. 최소 기록: Run ID · Data/Model/Policy Version · Node Runtime Version · Seed · Input Signature · Calibration Period · Evaluation Period · Evaluation Horizon · Sample Size · Effective Sample Size · Minimum Sample Requirement · Selected Block Length · Block Length Candidates · Bootstrap Iterations · PIT · Kupiec · Christoffersen · Volatility · Quantile · MDD · Absolute Band · Statistical Test · 보조진단 · Horizon별 Gate · Overall Gate · 최종 상태 |
+
+---
+
+**44-6. 모델 버전 · 파이프라인 · 데이터 출처 (제38조~제41조)**
+
+| 조 | 정책 |
+|---|---|
+| **제38조** 모델 버전 | MC 모델은 **Model Version**을 갖는다. MC 결과는 Model Version · Policy Version · Data Version · Seed · Input Signature를 메타데이터로 갖는다. 모델이 바뀌면 이전 모델의 결과를 새 모델 결과와 **동일하게 취급하지 않는다.** GBM → Bootstrap 전환 시 모델 버전을 명확히 표시하고, 기존 결과를 자동 재해석하거나 덮어쓰지 않는다 |
+| **제39조** Pipeline | 장기 데이터 수집은 **App Runtime에서 수행하지 않는다.** 구조: External Source → Build-time / GitHub Actions → Raw Data → Normalization → Quality Gate → Market Panel / Parameter Dataset → Versioning → Static JSON → Application. 앱 실행 중 외부 데이터 의존성을 최소화한다 |
+| **제40조** 출처·라이선스 | 모든 장기 데이터에 Source · URL · 취득일 · 기간 · 통화 · Return Basis · License Status · Data Version을 기록한다. **라이선스가 확인되지 않은 데이터는 제품 데이터셋으로 사용하지 않는다.** 별도 확인 대상: Kenneth French · **FRED 개별 Series**(계열별 저작권 표기가 다르므로 일괄 적용 금지) · Samsung Asset Management / KODEX · 장기 Gold TR · 기타 제3자 데이터 |
+| **제41조** Yahoo | 현재 Yahoo 기반 Risk 데이터를 **즉시 제거하지 않는다.** 확인 항목: 장기 데이터 제공 안정성 · Rate Limit / 429 · 사용 조건 · 라이선스 · 대체 데이터 확보 가능성. **3년 Risk 조회의 실제 적용은 위 확인 완료 이후**로 하며, 정책상 3년 기준 확정과 실제 요청 범위 확대는 별개 단계로 관리한다 |
+
+> 참고(실측): 현재 Risk는 `range=1y`로 조회하고 캐시가 메모리에만 있어 새로고침마다 재요청한다. 3년이면 종목당 응답량이 약 3배 × 보유 종목 수이며, 과거 429 응답이 관측된 적이 있다.
+
+---
+
+**44-7. 범위 제한 (제42조~제44조)**
+
+| 조 | 정책 |
+|---|---|
+| **제42조** 모델 복잡도 | 이번 개선에서 추가하지 않는다 — AI 기반 수익률 예측 · GARCH · 복잡한 Regime Switching · 별도 서버 기반 예측 모델 · 실시간 시장예측 시스템. 목적은 복잡도 상승이 아니라 **검증 가능한 모델 구축** |
+| **제43조** Bond | Bond 신규 모델은 본 개선 범위에 포함하지 않는다. 기존 Bond 정책(§40 P-5 포함) 및 Backlog를 유지하며, PM 승인 없는 Bond 모델 확장을 금지한다 |
+| **제44조** Macro | 본 개선으로 변경하지 않는다 — Macro Indicator 추가 · Macro 구조 변경 · Macro → Risk 정량 연결 · Macro Score Redesign. Macro와 Risk의 역할은 계속 분리한다 |
+
+---
+
+**44-8. 진행 · 전환 · 중단 · 최종원칙 (제45조~제49조)**
+
+**제45조 Phase별 진행원칙** — 각 Phase는 **구현 1회 + 검토 1회**. 불필요한 반복 연구·반복 구현을 하지 않는다.
+
+| 순서 | 내용 | 상태 |
+|---|---|---|
+| ① | 운영원칙 최종 확정 | 완료(PM 승인 2026-09-18) |
+| ② | **Backtest Gate A층 확정** | **다음 단계 · 미착수** |
+| ③ | RM-MC-POLICY v1.1 공식 문서화 | 본 절 |
+| ④ | Phase 1A — Exposure Master 구조 | 미착수 |
+| ⑤ | Phase 1B — Exposure Master 데이터 | 미착수 |
+| ⑥ | Risk 데이터·진단·기간 개선 | 미착수 |
+| ⑦ | 장기 Market Panel 구축 | 미착수(제40조 라이선스 확인 선행) |
+| ⑧ | 현재 GBM Backtest | 미착수 |
+| ⑨ | Bootstrap Calibration | 미착수 |
+| ⑩ | Block Length 고정 | 미착수 |
+| ⑪ | Bootstrap Evaluation | 미착수 |
+| ⑫ | Backtest Gate 판정 | 미착수 |
+| ⑬ | Backtest Gate Result 기록 | 미착수 |
+| ⑭ | 통과 시 Bootstrap 제품화 | 미착수 |
+| ⑮ | 최종 통합 검증 및 Release | 미착수 |
+
+**제46조 Phase 1A / 1B 전환 정책** — Phase 1A에서는 Exposure Master의 **구조와 판정 로직만** 도입하고 **비활성 상태**로 두며 기존 Risk·MC 경로를 유지한다. 실제 판정·강제 적용은 **Phase 1B에서 필수 데이터가 채워진 뒤 활성화**한다. Phase 1B의 최소 필수 범위는 **실제 사용자 보유자산 + 앱 기본 자산**이며, 그 외 자산은 UNRESOLVED로 남을 수 있다. 이를 통해 빈 Exposure Master가 전체 Risk·MC를 일시에 차단하는 문제를 방지한다.
+
+**제47조 PM STOP 조건** — 다음 상황에서는 구현을 중단하고 PM에 보고한다. 단순한 구현 난이도나 코드량 증가는 STOP 사유가 아니다.
+
+| ID | 조건 |
+|---|---|
+| **STOP-1** | 기존 정책 ID 또는 정책 의미를 변경해야 하는 경우 |
+| **STOP-2** | 필수 데이터 또는 라이선스 등 선행조건이 확보되지 않는 경우 |
+| **STOP-3** | 사용자 입력의 의미가 변경되는 경우 |
+| **STOP-4** | 기존 사용자 데이터가 손실될 가능성이 있는 경우 |
+| **STOP-5** | 의도하지 않은 사용자-visible behavior가 발생하는 경우 |
+| **STOP-6** | 정책에서 사전 확정하지 않은 판단이 필요한 경우 |
+
+**제48조 정책 및 결과의 분리** — RM-MC-POLICY v1.1(사전 확정 정책) · Backtest Gate v1.0(사전 확정 검증 기준) · Backtest Gate Result v1.0(실제 실행 결과)을 분리한다. 검증 결과를 이용해 정책이나 Gate를 유리하게 수정하지 않는다. **데이터 부족으로 검증할 수 없는 경우와 검증 결과가 실패한 경우를 반드시 구분한다.**
+
+**제49조 최종 원칙** — 본 프로젝트는 '더 복잡한 모델'을 목표로 하지 않는다. 채택 모델은 다음을 만족해야 한다.
+1. 실제 시장 특성을 가능한 범위에서 충실히 반영할 것
+2. 데이터와 가정의 근거를 추적할 수 있을 것
+3. 계산 과정이 재현 가능할 것
+4. 미래 관측자료로 검증할 수 있을 것
+5. 결과를 본 후 합격기준을 변경하지 않을 것
+6. 불확실한 데이터를 임의의 0값으로 숨기지 않을 것
+7. 검증을 통과하지 못한 신규 모델은 기존 모델을 유지할 것
+8. 보조 진단에서 명백한 이상이 발견되면 안전을 위해 신규 모델을 미채택할 수 있을 것
+9. Block Length 등 모델 선택변수를 검증 결과를 보고 사후적으로 선택하지 않을 것
+10. 모델 변경 시 이전 결과와 신규 결과를 명확히 구분할 것
+
+> **"좋아 보이는 모델이 아니라, 사전에 정한 기준을 통과하고, 데이터와 가정을 추적할 수 있으며, 결과를 본 뒤 기준을 바꾸지 않은 모델만 제품에 적용한다."**
+
+---
+
+**44-9. 이번 절에서 하지 않는 것 · 남은 선행조건**
+- 코드 · 데이터 파일 · 테스트 · 버전 변경 없음. **v256 동작 그대로**이며 이 절만으로 화면에서 달라지는 것은 없다.
+- **Backtest Gate v1.0 A층의 구체적 수치·판정식은 아직 없다**(다음 단계). 유의수준 · 허용밴드 · 최소 표본요건 · 분할 방법 등은 Gate v1.0 확정 시 별도 기록하며, 임의 수치를 이 절에 적지 않는다.
+- 표본 수에 의존하는 임계값(B층)은 A층에서 정한 **공식으로 기계적으로 산출**하며, 산출값은 정책 개정이 아니라 **Backtest Gate Result v1.0에 결과로 기록**한다(제48조).
+- 선행조건 미해소: 장기 패널 소스 라이선스(제40조) · 패널 저장/배포 위치 · Yahoo 사용조건(제41조) · Gate A층 수치 · 환헤지 비용(한·미 단기금리차) 데이터 확보. 환헤지 비용 데이터가 없으면 **0으로 채우지 않고**(제6조 6-3 · 제20조) 해당 자산을 UNRESOLVED로 차단한다.
+- 앱 현황 기준점(이 절 작성 시점): 자산 성격 10종(js/05 `ASSET_CHARACTERS`: KR_EQUITY · US_EQUITY · EM_EQUITY · DEV_EX_US_EQUITY · BOND · CASH · REAL_ESTATE · COMMODITY · CRYPTO · UNRESOLVED) 중 CMA 매핑은 KR/US/EM 3종뿐이다. 제14조 패널이 구축되면 DEV_EX_US · CASH · FX가 새로 해소되고, REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND는 계속 미지원으로 남는다.
