@@ -53,7 +53,15 @@
   - Claude 확정분: α=0.05(Horizon 내부 Holm, Horizon 간 비보정은 의도된 보수적 설계 — 독립 가정 시 단순 참고값 1−0.95²≈9.75%이며 이를 실제 상한으로 해석하지 않는다) · PIT-AD(최소표본은 사전등록 검정력 시뮬레이션으로 산정, **N=50 같은 관행값 금지**) · Christoffersen 1M만 필수 · 변동성 밴드 ln1.25(최소표본 91) · VaR 예외율 밴드 [1%,9%](추정정밀도 114, 검정력 기준과 **개념 분리**) · 분위수는 보조이며 `max(0.05,1.96SE)` 방식 **폐기**(소표본에서 밴드가 넓어지는 구멍) · 단조성 위반은 Veto · MDD는 보조 · Cal=max(120개월,40%)+embargo 12개월+Eval 나머지 · Block L은 Politis–White(Calibration 전용) → 최근접 후보 · MC-NULL B=10,000/seed 20260101 + **사전 size 검증 필수** · Veto V-1~V-5와 정책 tripwire T-1(P99/P50 20배, 통계 기준 아님) 구분 · 재현성 실패는 REPRODUCIBILITY_FAILED.
   - **제22조(4개 Horizon 전부 필수)는 제66조로 대체**. 원문은 44-5에 보존하고 대체 관계를 44-11에 기록(삭제하지 않음).
   - **3M 필수 유지(PM 확정 · 44-11-1에 사전 등록)**: 제61조 분할과 제60조 최소표본을 적용하면 1M은 평가 가능하나 **3M은 현재 어떤 분할·시나리오에서도 표본 미달**이다. 그래도 **3M을 1M으로 낮추지 않고, pooling으로 표본을 보충하지도 않는다.** 이 경우 판정은 **NOT_EVALUABLE_DATA**(= "현재 데이터로는 사전 등록된 검증을 수행할 정보량이 없다")이며 **FAILED_BACKTEST가 아니다**. 적법한 장기 데이터가 확보되면 동일 Gate를 그대로 재실행한다(제19조).
-- **다음 단계**: Exposure Master(Phase 1A 구조 → 1B 데이터) · Risk 개선 · 장기 패널 · Backtest 하네스 **구현**. 현재는 정책·기준 확정까지만 끝났고 코드는 v256 그대로다.
+- **[Phase 1A 완료] Exposure Master 구조 도입(비활성)** — 신규 파일 2개만 추가하고 **기존 파일은 한 줄도 바꾸지 않았다**(js/28-exposure-master.js, test/exposure-master.test.js).
+  - `EXPOSURE_MASTER_ENABLED = false`. 원장(`EXPOSURE_MASTER_ENTRIES`)은 **비어 있고**, `resolveExposure()`는 비활성 상태에서 항상 `UNRESOLVED / MASTER_INACTIVE`를 돌려준다 → 기존 Risk·MC·Return Key 경로가 그대로 실행된다(§44 제46조).
+  - **index.html에 아직 로드하지 않았다.** index.html은 APP_SHELL이라 손대면 Release Guard가 버전 bump를 요구하는데, Phase 1A는 화면·계산 무변경이 원칙이라 로드와 활성화를 Phase 1B로 함께 미뤘다.
+  - 구조: assetClass · marketExposure · benchmark · **priceCcy / underlyingCcy / fxExposure(3개 독립 필드)** · hedgeStatus · conversionMethod · evidence · version. 자산유형 8종(§44 44-1 매트릭스)별 **필수 필드만** 요구하고, 판정은 RESOLVED / UNRESOLVED / BLOCKED.
+  - FX 규칙을 검증으로 고정: 환헤지형은 fxExposure=NONE + conversionMethod=HEDGE_COST, 환노출형은 EXPOSED + FX_MULTIPLY, KRW/KRW인데 EXPOSED는 모순 → 전부 BLOCKED. **미확인을 UNHEDGED·FX=0으로 가정하지 않는다.**
+  - 식별자는 **티커 기준 공통 사실**이며 소유자·계좌를 섞지 않는다. 중복 식별자는 어느 쪽도 채택하지 않는다.
+  - 유형 추정(`suggestExposureAssetType`)은 참고용이며 국내상장 ETF의 기초자산·환헤지 여부는 **null**을 돌려준다(근거 없는 자동 확정 금지 — 확정은 1B에서 사람이).
+  - 검증: 단위 433/433 · E2E 989/989 · ESLint · Data Guard · Release Guard 전부 PASS. 커밋 `7051542`.
+- **다음 단계(Phase 1B)**: Exposure Master 데이터 구축(실제 보유자산 + 앱 기본 자산, 근거 기록 필수) → index.html 로드 → 플래그 활성화. 그 뒤 Risk 개선 · 장기 패널 · Backtest 하네스. 코드는 아직 v256이며 화면 동작은 바뀌지 않았다.
 - 남은 선행조건: 장기 패널 소스 라이선스(제40조, FRED는 계열별 확인) · 패널 저장/배포 위치 · Yahoo 사용조건(제41조) · 환헤지 비용(한·미 단기금리차) 데이터. 확보 실패 시 0으로 채우지 않고 UNRESOLVED 차단.
 - 알아둘 점: 제14조 패널이 구축되면 DEV_EX_US · CASH · FX가 새로 해소되지만 **REAL_ESTATE · CRYPTO · Gold 이외 원자재 · BOND는 계속 미지원**이다(현재 CMA 매핑은 KR/US/EM 3종뿐). 개선 후에도 지원되지 않는 자산군이 있다는 점을 제품 고지·릴리스 노트에 명시해야 한다(제14조).
 
