@@ -1005,7 +1005,10 @@ test('P-3 - 거래량 결측은 null, 실제 0은 0으로 파싱된다', () => {
   assert.deepStrictEqual(parsed.closes, [100, 101, 103, 104], '종가 없는 날은 예전처럼 통째로 빠진다');
   assert.deepStrictEqual(parsed.volumes, [500, null, 0, null]);
   assert.deepStrictEqual(parsed.dates, ['2025-01-02', '2025-01-03', '2025-01-05', '2025-01-06']);
-  assert.deepStrictEqual(plain(s.parseYahooDailySeries(null)), { closes: [], volumes: [], dates: [] });
+  // [기대값 갱신 사유 · Phase 2-2 · R-03] 파싱 결과에 조정주가(closesAdj)가 추가됐다.
+  // 응답에 adjclose가 없으면 null이다 - 원주가로 대신 채우지 않는다는 뜻이다.
+  assert.strictEqual(parsed.closesAdj, null, 'adjclose가 없는 응답은 null');
+  assert.deepStrictEqual(plain(s.parseYahooDailySeries(null)), { closes: [], closesAdj: null, volumes: [], dates: [] });
 });
 
 test('P-3 - 거래량 이동평균은 결측을 빼고 실제 0은 포함한다', () => {

@@ -690,7 +690,14 @@ function parseYahooDailySeries(data) {
   const rawCloses = quote.close || [];
   const rawVolumes = quote.volume || [];
   const rawTimestamps = result && result.timestamp || [];
+  // [R-03 · §44 제8조] 조정주가(배당 · 액면분할 반영)를 원주가와 **따로** 읽는다.
+  //   · 통계 위험지표(변동성 · 베타 · 상관 · VaR · CVaR · MDD · Sortino) → 조정주가
+  //   · 기술 지표(RSI · 이동평균 · 52주 · 거래량 신호)               → 원주가
+  // 응답에 adjclose가 아예 없으면 closesAdj를 null로 둔다 - 원주가로 조용히 대신하지 않는다.
+  const adjBlock = (result && result.indicators && result.indicators.adjclose && result.indicators.adjclose[0]) || null;
+  const rawAdjCloses = adjBlock && Array.isArray(adjBlock.adjclose) ? adjBlock.adjclose : null;
   const closes = [], volumes = [], dates = [];
+  const closesAdj = rawAdjCloses ? [] : null;
   // [Monte Carlo Engine v2 어댑터 지원 - 날짜 추가] 예전엔 종가/거래량만 남기고 날짜(timestamp)는
   // 버렸다 - 그 결과 한국/미국처럼 거래일이 다른 시장을 섞으면 상관계수 계산이 "실제 같은 날짜끼리"가
   // 아니라 "최근 N개를 그냥 나란히"로 계산돼(js/15 date-aligned correlation 도입 배경) 부정확했다.
@@ -701,8 +708,13 @@ function parseYahooDailySeries(data) {
     const v = rawVolumes[i];
     volumes.push(typeof v === 'number' && Number.isFinite(v) ? v : null);
     dates.push(typeof rawTimestamps[i] === 'number' ? new Date(rawTimestamps[i] * 1000).toISOString().slice(0, 10) : null);
+    if (closesAdj) {
+      // 조정주가가 그날만 비어 있으면 null로 남긴다(거래량 결측과 같은 원칙 · §44 제10조).
+      const a = rawAdjCloses[i];
+      closesAdj.push(typeof a === 'number' && Number.isFinite(a) ? a : null);
+    }
   });
-  return { closes, volumes, dates };
+  return { closes, closesAdj, volumes, dates };
 }
 
 async function fetchDailyClosesWithStatus(yahooTicker, range = '1y') {
@@ -823,12 +835,23 @@ function assessSeriesQuality(series, todayISO) {
   return { issues: [...new Set(issues)], stale, lastDate, observationCount: series.closes.length };
 }
 
-function datedClosesFromSeries(data) {
-  if (!data || !Array.isArray(data.dates) || !Array.isArray(data.closes)) return null;
+/* [R-03/R-04] 어떤 가격으로 만든 시계열인지 호출부가 반드시 고르게 한다.
+ *   basis 'adjusted' - 통계 위험지표용(조정주가). 조정주가가 없으면 null을 돌려준다(대체 금지).
+ *   basis 'raw'      - 기술 지표 · 화면 표시용(원주가).
+ * 기본값을 두지 않는 이유: "무엇을 쓰는지 모르고 쓰는" 호출부를 만들지 않기 위해서다.
+ */
+function datedClosesFromSeries(data, basis) {
+  if (!data || !Array.isArray(data.dates)) return null;
+  const source = basis === 'adjusted' ? data.closesAdj : data.closes;
+  if (!Array.isArray(source)) return null;
   const out = data.dates
-    .map((d, i) => ({ date: d, close: data.closes[i] }))
-    .filter((x) => x.date && typeof x.close === 'number');
+    .map((d, i) => ({ date: d, close: source[i] }))
+    .filter((x) => x.date && typeof x.close === 'number' && Number.isFinite(x.close));
   return out.length ? out : null;
+}
+// 조정주가를 실제로 쓸 수 있는 시계열인가 - 통계 지표의 선행 조건이다.
+function hasAdjustedCloses(data) {
+  return !!(data && Array.isArray(data.closesAdj) && data.closesAdj.some((c) => typeof c === 'number' && Number.isFinite(c)));
 }
 // 두 시계열의 "공통 거래일" 수익률 쌍을 만든다. 양쪽 모두 날짜가 있을 때만 정렬하고, 하나라도 날짜가
 // 없으면(구 캐시/테스트 fixture 등) 기존 방식 그대로 최근 구간을 맞춰 쓴다 - 날짜가 없다고 계산을
@@ -1233,8 +1256,10 @@ function computePortfolioMDDFromReturns(portfolioReturns) {
 // 양봉 대량거래(2배 이상 & +2% 이상 상승) → 매수 유입(inflow)
 // 거래량이 20일 평균의 40% 이하로 급감 → 관망세 지속(quiet), 그 외에는 안정(neutral).
 function computeFlowSignal(h) {
-  if (!h.closes || h.closes.length < 2 || !h.volMA20 || typeof h.lastVolume !== 'number') return null;
-  const lastChangePct = ((h.closes[h.closes.length - 1] - h.closes[h.closes.length - 2]) / h.closes[h.closes.length - 2]) * 100;
+  // [R-04] 수급 대체 지표도 기술 지표다 - 원주가 기준 당일 등락률을 쓴다.
+  const closesRaw = h.closesRaw || h.closes;
+  if (!closesRaw || closesRaw.length < 2 || !h.volMA20 || typeof h.lastVolume !== 'number') return null;
+  const lastChangePct = ((closesRaw[closesRaw.length - 1] - closesRaw[closesRaw.length - 2]) / closesRaw[closesRaw.length - 2]) * 100;
   if (h.lastVolume >= h.volMA20 * 2 && lastChangePct <= -2) return 'outflow';
   if (h.lastVolume >= h.volMA20 * 2 && lastChangePct >= 2) return 'inflow';
   if (h.lastVolume <= h.volMA20 * 0.4) return 'quiet';
@@ -1638,9 +1663,12 @@ async function computeAdvancedRiskMetrics() {
     await Promise.all(neededBenchmarks.map(async (key) => {
       const got = await getCachedDailyClosesWithStatus(INDEX_TICKERS[key]);
       const data = got.data;
-      benchmarkStatusByKey[key] = data ? RISK_DATA_STATUS.OK : got.status;
-      benchmarkCloses[key] = data ? data.closes : null;
-      benchmarkDated[key] = datedClosesFromSeries(data);
+      // [R-03] 베타 · 상관은 통계 지표이므로 지수도 조정주가로 맞춘다. 조정주가가 없으면
+      // 원주가로 대신하지 않고 "이 출처로는 통계 비교를 할 수 없다"(SOURCE_UNAVAILABLE)로 둔다.
+      const adjusted = data && hasAdjustedCloses(data) ? datedClosesFromSeries(data, 'adjusted') : null;
+      benchmarkStatusByKey[key] = !data ? got.status : (adjusted ? RISK_DATA_STATUS.OK : RISK_DATA_STATUS.SOURCE_UNAVAILABLE);
+      benchmarkDated[key] = adjusted;
+      benchmarkCloses[key] = adjusted ? adjusted.map((d) => d.close) : null;
     }));
     const benchmarkReturns = {};
     neededBenchmarks.forEach((key) => { benchmarkReturns[key] = benchmarkCloses[key] ? dailyReturnsFromCloses(benchmarkCloses[key]) : null; });
@@ -1656,16 +1684,30 @@ async function computeAdvancedRiskMetrics() {
       // [R-06 · §44 제9조] 조회 실패 · 이력 없음 · 이력 짧음 · 오래된 데이터 · 품질 불량을 구분해 둔다.
       const quality = assessSeriesQuality(data, todayISO);
       h.dataQuality = quality;
+      // 여러 문제가 겹치면 "계산을 막는 쪽"을 먼저 알린다: 품질 불량 → 조정주가 없음(통계 불가)
+      // → 오래된 데이터(진단용) 순. 상태는 §44 제9조의 9종 안에서만 고른다.
       h.dataStatus = !data
         ? got.status
         : quality.issues.length ? RISK_DATA_STATUS.DATA_QUALITY_FAILED
-          : quality.stale ? RISK_DATA_STATUS.DATA_STALE
-            : RISK_DATA_STATUS.OK;
-      h.closes = data ? data.closes : null;
+          : !hasAdjustedCloses(data) ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE
+            : quality.stale ? RISK_DATA_STATUS.DATA_STALE
+              : RISK_DATA_STATUS.OK;
+      // [R-03/R-04 · §44 제8조] 가격을 두 갈래로 나눠 보관한다.
+      //   closesRaw - 기술 지표(RSI · 이동평균 · 52주 · 거래량 신호)와 화면 표시
+      //   datedCloses / returns - 통계 지표(변동성 · 베타 · 상관 · VaR · CVaR · MDD · Sortino)
+      // 조정주가가 없으면 통계 쪽은 만들지 않는다 - 원주가로 조용히 대신하지 않는다.
+      h.closesRaw = data ? data.closes : null;
+      h.closes = h.closesRaw;            // 기존 호출부 호환(원주가라는 뜻은 그대로다)
       h.volumes = data ? data.volumes : null;
-      h.returns = h.closes ? dailyReturnsFromCloses(h.closes) : null;
-      // [Phase 39-B] 날짜를 버리지 않고 보존한다 - beta/상관계수를 공통 거래일 기준으로 계산하기 위함.
-      h.datedCloses = datedClosesFromSeries(data);
+      h.adjustedAvailable = hasAdjustedCloses(data);
+      // 날짜가 필요한 계산(공통 거래일 · 베타 · 상관)은 날짜가 붙은 조정주가 시계열을 쓰고,
+      // 한 종목 안에서 끝나는 계산(수익률 · MDD · Sortino)은 조정주가 배열만 있으면 된다.
+      // 그날만 조정주가가 비어 있으면 그 날을 빼고 쓴다(종가 결측과 같은 처리 · 채우지 않는다).
+      h.datedCloses = h.adjustedAvailable ? datedClosesFromSeries(data, 'adjusted') : null;
+      h.closesAdj = h.adjustedAvailable
+        ? data.closesAdj.filter((c) => typeof c === 'number' && Number.isFinite(c))
+        : null;
+      h.returns = h.closesAdj ? dailyReturnsFromCloses(h.closesAdj) : null;
       const bmReturns = h.benchmarkKey ? benchmarkReturns[h.benchmarkKey] : null;
       const bmDated = h.benchmarkKey ? benchmarkDated[h.benchmarkKey] : null;
       if (h.returns && bmReturns) {
@@ -1689,16 +1731,18 @@ async function computeAdvancedRiskMetrics() {
       h.hasData = !!h.returns && h.returns.length >= MIN_RETURNS_FOR_STATS;
       h.sortino = h.returns ? computeSortinoFromReturns(h.returns) : null;
 
-      if (h.closes) {
-        h.rsi14 = computeRSI14(h.closes);
+      // [R-04] 아래 블록은 전부 기술 지표다 - 원주가(closesRaw)만 쓴다(§44 제8조 8-2).
+      // 배당락 · 액면분할이 반영된 조정주가를 쓰면 사용자가 차트에서 보는 값과 어긋난다.
+      if (h.closesRaw) {
+        h.rsi14 = computeRSI14(h.closesRaw);
         h.rsiState = rsiStateLabel(h.rsi14);
-        h.ma20 = computeSMA(h.closes, 20);
-        h.ma60 = computeSMA(h.closes, 60);
+        h.ma20 = computeSMA(h.closesRaw, 20);
+        h.ma60 = computeSMA(h.closesRaw, 60);
         // [버그 수정 - 추세 판정 기준 통일] 리스크 카드와 종목 분석 리포트가 같은 maTrendLabel()을 쓴다.
-        h.ma120 = computeSMA(h.closes, 120);
+        h.ma120 = computeSMA(h.closesRaw, 120);
         h.trendLabel = maTrendLabel(h.ma20, h.ma60, h.ma120);
-        const latestPrice = typeof h.currentPrice === 'number' ? h.currentPrice : h.closes[h.closes.length - 1];
-        h.week52High = Math.max(...h.closes, latestPrice || 0);
+        const latestPrice = typeof h.currentPrice === 'number' ? h.currentPrice : h.closesRaw[h.closesRaw.length - 1];
+        h.week52High = Math.max(...h.closesRaw, latestPrice || 0);
         h.week52DrawdownPct = h.week52High > 0 ? ((latestPrice - h.week52High) / h.week52High) * 100 : null;
       } else {
         h.rsi14 = null; h.rsiState = null; h.ma20 = null; h.ma60 = null; h.ma120 = null; h.trendLabel = null;
@@ -1714,7 +1758,8 @@ async function computeAdvancedRiskMetrics() {
         h.volMA20 = null; h.lastVolume = null; h.volumeSpike = false;
       }
       // [정밀 리스크 엔진] 종목 단위 MDD(최대낙폭) + 수급 대체 지표(거래량/가격 기반 추정).
-      h.mdd = h.closes ? computeMDDFromCloses(h.closes) : null;
+      // [R-03] MDD는 통계 위험지표다 - 조정주가로 계산하고, 조정주가가 없으면 만들지 않는다.
+      h.mdd = h.closesAdj ? computeMDDFromCloses(h.closesAdj) : null;
       h.flowSignal = computeFlowSignal(h);
     }));
 
@@ -1819,7 +1864,11 @@ async function computeAdvancedRiskMetrics() {
     });
 
     // [R-09] 지표별 산출 상태. 공통 거래일이 모자라면 그 사유를, 기준 지수가 없으면 그 사유를 남긴다.
-    const commonShortReason = hasCommonReturns ? null : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES;
+    // [R-03] 공통 거래일을 못 만든 이유가 "조정주가가 없어서"일 수도 있다 - 원인을 구분해 남긴다.
+    const adjustedMissing = holdings.some((h) => h.closesRaw && !h.adjustedAvailable);
+    const commonShortReason = hasCommonReturns
+      ? null
+      : (adjustedMissing ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
     const betaReason = holdings.some((h) => h.betaStatus && h.betaStatus !== RISK_DATA_STATUS.OK)
       ? (holdings.find((h) => h.betaStatus && h.betaStatus !== RISK_DATA_STATUS.OK) || {}).betaStatus
       : commonShortReason;
@@ -1998,11 +2047,14 @@ async function analyzeTickerForModal(rawInput) {
     return { error: `'${trimmedRaw}'의 가격 이력을 찾을 수 없습니다 - 티커를 확인해 주세요 (예: 해외는 AAPL, 국내는 005930).` };
   }
 
-  const closes = data.closes;
-  const returns = dailyReturnsFromCloses(closes);
+  // [R-03/R-04] 이 화면도 같은 기준을 따른다 - 기술 지표는 원주가, 통계 지표는 조정주가.
+  const closes = data.closes;                       // 원주가(RSI · 이동평균 · 52주 · 볼린저 · 최근 고저)
+  const closesAdj = hasAdjustedCloses(data) ? (datedClosesFromSeries(data, 'adjusted') || []).map((d) => d.close) : null;
+  const returns = closesAdj ? dailyReturnsFromCloses(closesAdj) : null;
   const benchmarkKey = getBenchmarkKeyForTicker(yahooTicker);
   const benchmarkData = await getCachedDailyCloses(INDEX_TICKERS[benchmarkKey]);
-  const benchmarkReturns = benchmarkData ? dailyReturnsFromCloses(benchmarkData.closes) : null;
+  const benchmarkAdj = hasAdjustedCloses(benchmarkData) ? (datedClosesFromSeries(benchmarkData, 'adjusted') || []).map((d) => d.close) : null;
+  const benchmarkReturns = benchmarkAdj ? dailyReturnsFromCloses(benchmarkAdj) : null;
 
   const currentPrice = (priceInfo && Number.isFinite(priceInfo.price)) ? priceInfo.price : closes[closes.length - 1];
   const ma20 = computeSMA(closes, 20);
@@ -2039,7 +2091,7 @@ async function analyzeTickerForModal(rawInput) {
     ma20, ma60, ma120, trendLabel: maTrendLabel(ma20, ma60, ma120),
     rsi14, rsiState: rsiStateLabel(rsi14),
     bollinger: computeBollingerBands(closes, 20, 2),
-    mdd: computeMDDFromCloses(closes),
+    mdd: closesAdj ? computeMDDFromCloses(closesAdj) : null,
     beta: (returns && benchmarkReturns) ? computeBetaFromReturns(returns, benchmarkReturns) : null,
     benchmarkKey,
     week52High,

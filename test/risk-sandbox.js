@@ -111,7 +111,15 @@ function loadRiskSandbox() {
     const data = closesByTicker.get(yahooTicker) || null;
     return { data, status: data ? 'OK' : (statusByTicker.get(yahooTicker) || 'FETCH_FAILED') };
   };
-  sandbox.setDailyCloses = (yahooTicker, data) => { closesByTicker.set(yahooTicker, data); };
+  // [Phase 2-2 · R-03] 실제 응답은 원주가와 조정주가를 함께 준다. fixture가 조정주가를 따로
+  // 주지 않으면 "배당 · 분할이 없어 둘이 같은 종목"과 같은 상태로 채운다. 조정주가가 아예 없는
+  // 상황을 재현하려면 closesAdj: null을 명시한다.
+  sandbox.setDailyCloses = (yahooTicker, data) => {
+    const filled = (data && typeof data === 'object' && !('closesAdj' in data) && Array.isArray(data.closes))
+      ? Object.assign({}, data, { closesAdj: data.closes.slice() })
+      : data;
+    closesByTicker.set(yahooTicker, filled);
+  };
   sandbox.setDataStatus = (yahooTicker, status) => { statusByTicker.set(yahooTicker, status); };
   sandbox.clearDailyCloses = () => { closesByTicker.clear(); statusByTicker.clear(); };
   // [Risk 정책 P-4 · v252] 종목 마스터(상장 거래소) 주입 - js/09의 tickerMasterByTicker(let)를 통째로 바꾼다.
@@ -206,11 +214,24 @@ function drawdownCloses(n, high, targetPct) {
 
 // [Risk 정책 P-1 · v252] 날짜가 없는 시계열 fixture에 연속 날짜를 붙인다 - 모든 시계열에 같은 시작일을 주면
 // 공통 거래일 결합 결과가 예전 인덱스 결합과 같아진다(같은 달력이므로).
+/* [Phase 2-2 · R-03] 실제 Yahoo 응답은 원주가(closes)와 조정주가(closesAdj)를 함께 준다.
+ * fixture도 같은 모양이어야 엔진의 실제 경로를 타므로, 따로 주지 않으면 조정주가 = 원주가로 둔다
+ * (배당 · 분할이 없는 종목의 실제 응답과 같은 상태다). 두 값이 달라야 하는 테스트는
+ * closesAdj를 명시하거나 withAdjusted()를 쓴다. 조정주가가 아예 없는 상황은 closesAdj: null.
+ */
 function withDates(series, startDate = '2025-01-01') {
-  return Object.assign({}, series, { dates: datesFrom(series.closes.length, startDate) });
+  const out = Object.assign({}, series, { dates: datesFrom(series.closes.length, startDate) });
+  if (!('closesAdj' in out)) out.closesAdj = out.closes.slice();
+  return out;
+}
+// 원주가와 조정주가를 의도적으로 다르게 만든다(비율 factor를 곱한다) - 어느 배열이 실제로
+// 계산에 쓰였는지 결과로 구분하기 위한 fixture다.
+function withAdjusted(series, factor, startDate = '2025-01-01') {
+  const base = withDates(series, startDate);
+  return Object.assign({}, base, { closesAdj: base.closes.map((c, i) => c * (1 + factor * (i + 1) / base.closes.length)) });
 }
 
 module.exports = {
-  loadRiskSandbox, stubEl, makeTestAsset, datesFrom, withDates,
+  loadRiskSandbox, stubEl, makeTestAsset, datesFrom, withDates, withAdjusted,
   trendCloses, flatCloses, zigzagCloses, rsiCloses, volumes, drawdownCloses
 };
