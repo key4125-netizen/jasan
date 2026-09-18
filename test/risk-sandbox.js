@@ -41,7 +41,9 @@ const JS_DIR = path.join(__dirname, '..', 'js');
 // index.html의 실제 로드 순서(09 → 10 → 15)를 그대로 따른다 - 함수 선언이라 호출 시점에는
 // 이미 전역에 있으므로 브라우저와 동일하게 동작한다.
 const LOAD_ORDER = [
-  '01-core-state.js', '07-table-render-modals.js',
+  // [Phase 1B] js/28(Exposure Master)은 js/09의 벤치마크 판정이 참조하므로 09보다 먼저 올린다 -
+  // 브라우저 로드 순서(index.html)와 같게 맞춰, 테스트가 실제와 같은 경로를 타게 한다.
+  '01-core-state.js', '07-table-render-modals.js', '28-exposure-master.js',
   '09-price-fx-risk-engine.js', '10-risk-translation-alerts.js',
   '15-monte-carlo-engine.js'
 ];

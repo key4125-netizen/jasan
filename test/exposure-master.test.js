@@ -156,19 +156,26 @@ test('유형 추정은 확정 가능한 범위에서만 값을 주고 나머지�
   assert.strictEqual(EM.suggestExposureAssetType({ category: '부동산' }), null);
 });
 
-test('[Phase 1A] 비활성: 플래그가 꺼져 있고 어떤 자산도 해결해 주지 않는다', () => {
-  assert.strictEqual(EM.EXPOSURE_MASTER_ENABLED, false);
-  assert.strictEqual(EM.isExposureMasterActive(), false);
-  // 원장은 비어 있다(실제 데이터 입력은 Phase 1B).
-  assert.strictEqual(EM.EXPOSURE_MASTER_ENTRIES.length, 0);
-  assert.strictEqual(EM.EXPOSURE_MASTER.size, 0);
-  // 완전한 항목을 넣은 원장을 넘겨도 비활성 상태에서는 값을 내주지 않는다.
+// [기대값 갱신 사유 · Phase 1B] 1A에서는 플래그가 꺼져 있고 원장이 비어 있는 것이 합격이었다.
+// PM 승인으로 앱 기본 자산 데이터를 채우고 활성화했으므로(§44 제46조), 이 테스트는 이제
+// "켜져 있고 원장에 데이터가 있다"를 고정한다. 비활성 분기 자체가 사라진 것은 아니며,
+// 그 동작은 test/exposure-master-activation.test.js 14번이 소스 수준에서 확인한다.
+test('[Phase 1B] 활성: 플래그가 켜져 있고 원장에 근거 있는 데이터가 들어 있다', () => {
+  assert.strictEqual(EM.EXPOSURE_MASTER_ENABLED, true);
+  assert.strictEqual(EM.isExposureMasterActive(), true);
+  assert.ok(EM.EXPOSURE_MASTER_ENTRIES.length > 0);
+  assert.strictEqual(EM.EXPOSURE_MASTER.size, EM.EXPOSURE_MASTER_ENTRIES.length);
+  // 활성 상태에서도 원장에 없는 종목은 값을 만들어 주지 않는다.
+  const miss = EM.resolveExposure({ ticker: 'NOT_REGISTERED_XYZ' });
+  assert.strictEqual(miss.active, true);
+  assert.strictEqual(miss.status, 'UNRESOLVED');
+  assert.strictEqual(miss.reason, 'NOT_IN_MASTER');
+  assert.strictEqual(miss.entry, null);
+  // 호출자가 넘긴 별도 원장도 그대로 존중한다(전역 원장을 강제하지 않는다).
   const master = EM.buildExposureMaster([KR_STOCK_OK]);
-  const r = EM.resolveExposure(KR_STOCK_OK, master);
-  assert.strictEqual(r.active, false);
-  assert.strictEqual(r.status, 'UNRESOLVED');
-  assert.strictEqual(r.reason, 'MASTER_INACTIVE');
-  assert.strictEqual(r.entry, null);
+  const hit = EM.resolveExposure(KR_STOCK_OK, master);
+  assert.strictEqual(hit.status, 'RESOLVED');
+  assert.strictEqual(hit.entry.benchmark, 'KOSPI');
 });
 
 test('[Phase 1A] 기존 경로 무간섭: 이 모듈은 다른 전역을 만들거나 바꾸지 않는다', () => {

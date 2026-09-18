@@ -620,6 +620,20 @@ function resolveRiskBenchmark(a) {
   const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
   if (!yahoo) return unresolved('noTicker');
+  // [§44 제5조 EM-2 · Phase 1B] Exposure Master가 그 종목의 기준 지수를 근거와 함께
+  // 확정해 둔 경우에만 먼저 쓴다. 확정되지 않았으면(대부분) 아래 기존 판정이 그대로
+  // 실행된다 - 원장이 기존 경로를 조용히 대체하지 않는다.
+  // 단, 원장은 "티커의 사실"이라 앱에 적힌 이름이 다른 상품(펀드/ETF)을 가리키면 쓰지
+  // 않는다 - 잘못 적힌 기록이 개별주의 상장지수를 물려받는 것을 막던 기존 방어를 유지한다.
+  if (typeof resolveExposure === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    const em = resolveExposure(a);
+    const entry = em && em.status === 'RESOLVED' ? em.entry : null;
+    const stockLike = !!entry && (entry.assetType === 'KR_STOCK' || entry.assetType === 'FOREIGN_STOCK');
+    const contradicted = stockLike && looksLikeFundName(String((a && a.name) || ''));
+    if (entry && entry.benchmark && !contradicted) {
+      return { key: entry.benchmark, status: 'RESOLVED', source: 'exposureMaster' };
+    }
+  }
   const etf = ETF_HOLDINGS_MAP[yahoo];
   if (etf) {
     const key = RISK_BENCHMARK_BY_ETF_INDEX_LABEL[etf.label] || null;

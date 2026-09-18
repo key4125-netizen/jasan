@@ -1,11 +1,12 @@
 /* -------------------------------------------------------------------------
  * 28. Exposure Master - Risk · MC 공통 사실 원장 (체크리스트 §44 제5조)
  *
- * [Phase 1A · 비활성] 이 파일은 "구조와 판정 로직"만 담는다(§44 제46조).
- *   - EXPOSURE_MASTER_ENABLED = false 이며, 기존 Risk · MC 경로는 그대로 실행된다.
- *   - 실제 원장 데이터(EXPOSURE_MASTER_ENTRIES)는 비어 있다 - 채우는 것은 Phase 1B다.
- *   - 이 파일은 아직 index.html에 로드하지 않는다(화면 · 계산 · APP_SHELL 무변경).
- *     로드와 활성화는 데이터가 채워지는 Phase 1B에서 함께 한다.
+ * [Phase 1B · 활성] 구조(1A) 위에 앱 기본 자산의 사실 정보를 채우고 활성화했다(§44 제46조).
+ *   - EXPOSURE_MASTER_ENABLED = true. 다만 원장은 기존 판정을 "대체"하지 않고 "선행"한다 -
+ *     RESOLVED 항목만 값을 주고, 나머지는 기존 Risk · MC 경로가 그대로 실행된다.
+ *   - 담은 범위: 앱이 코드로 이미 알고 있는 종목뿐이다(js/09 SECTOR_MAP 개별주 ·
+ *     js/09 ETF_HOLDINGS_MAP ETF). 사용자 보유 수량 · 금액 · 거래내역은 담지 않는다.
+ *   - 근거 없는 값을 채우지 않는다. 앱에 대응 지수가 없으면 benchmark를 비워 UNRESOLVED로 둔다.
  *
  * [무엇을 담는가]
  *   "이 자산이 무엇에 노출되어 있는가"라는 사실만 담는다. 사용자의 기대수익률 가정
@@ -20,8 +21,8 @@
  *       Risk는 두 경우 모두 원화 가격계열을 그대로 쓰므로 환율을 다시 곱하지 않는다.
  * ---------------------------------------------------------------------- */
 
-// [§44 제46조] Phase 1A 비활성 플래그. Phase 1B에서 데이터가 채워진 뒤에만 켠다.
-const EXPOSURE_MASTER_ENABLED = false;
+// [§44 제46조] Phase 1B에서 앱 기본 자산 데이터가 채워져 활성화했다.
+const EXPOSURE_MASTER_ENABLED = true;
 const EXPOSURE_MASTER_SCHEMA_VERSION = 1;
 
 /* --- 1. Enum -------------------------------------------------------------
@@ -205,8 +206,75 @@ function buildExposureMaster(entries) {
   };
 }
 
-// [Phase 1A] 원장은 비어 있다. 실제 항목은 Phase 1B에서 근거(evidence)와 함께 채운다.
-const EXPOSURE_MASTER_ENTRIES = Object.freeze([]);
+/* [Phase 1B] 앱이 코드로 이미 알고 있는 종목의 사실 정보.
+ * 근거(evidence)는 전부 저장소 안에서 확인 가능한 것만 쓴다 - 외부 로그인 · API Key ·
+ * 유료 데이터 없이 재확인할 수 있어야 하기 때문이다.
+ *   · 상장 거래소 : data/ticker-master.json(KIS 공식 종목마스터, 매달 자동 생성)
+ *   · 추종 지수   : js/09 ETF_HOLDINGS_MAP의 label(앱이 이미 선언해 둔 사실)
+ *   · 앱 보유 지수: js/09 INDEX_TICKERS(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW)
+ * benchmark를 비워 둔 항목은 "모르는 것"이 아니라 "앱에 대응 지수가 없는 것"이다 -
+ * 비슷한 지수로 대신 채우지 않는다(§44 제10조).
+ * 제외한 것: TSM(미국 상장 ADR - 기초 기업의 경제적 통화 · 자산군을 확정할 근거가
+ * 저장소 안에 없다), Return Key 전용 키(NASDAQ · S&P500 · DEV_EX_US · EMERGING -
+ * 종목이 아니라 수익률 기준이므로 이 원장의 대상이 아니다 · §44 제3조).
+ */
+const EXPOSURE_MASTER_ENTRIES = Object.freeze([
+  // --- 국내 상장 개별주(js/09 SECTOR_MAP 등록 종목) ---------------------------
+  { ticker: "005930.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "000660.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "035420.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "035720.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "051910.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "006400.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "373220.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "005380.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "000270.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "105560.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "055550.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "086790.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "207940.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "068270.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "028260.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  { ticker: "015760.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
+  // --- 해외(미국) 상장 개별주 ------------------------------------------------
+  //   NYSE · AMEX 상장분은 앱에 해당 종합지수가 없어 benchmark를 비워 둔다(UNRESOLVED).
+  { ticker: "AAPL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "MSFT", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "GOOGL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "GOOG", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "AMZN", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "NVDA", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "AVGO", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "AMD", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "META", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "TSLA", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "NFLX", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
+  { ticker: "JPM", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "V", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "MA", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "JNJ", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "UNH", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "XOM", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "CVX", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "PG", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  { ticker: "KO", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NYSE · 미국 거래소 상장(USD 표시) · 앱에 NYSE 종합지수 없음", version: "EM-2026.1" },
+  // --- 해외(미국) 상장 ETF(js/09 ETF_HOLDINGS_MAP 등록분) --------------------
+  { ticker: "QQQM", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ100", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"나스닥100\"", version: "EM-2026.1" },
+  { ticker: "QQQ", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ100", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"나스닥100\"", version: "EM-2026.1" },
+  { ticker: "SPY", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "SP500", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 앱 ETF 구성표 label=\"S&P500\"", version: "EM-2026.1" },
+  { ticker: "SPYM", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "SP500", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 앱 ETF 구성표 label=\"S&P500\"", version: "EM-2026.1" },
+  { ticker: "VOO", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "SP500", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 앱 ETF 구성표 label=\"S&P500\"", version: "EM-2026.1" },
+  { ticker: "SOXX", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"반도체 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  { ticker: "SMH", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"반도체 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  { ticker: "TQQQ", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"나스닥100 3배 레버리지\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  { ticker: "SCHD", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 앱 ETF 구성표 label=\"미국 배당 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  { ticker: "TLT", assetType: "FOREIGN_LISTED_ETF", assetClass: "BOND", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"미국 장기국채\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  { ticker: "IEF", assetType: "FOREIGN_LISTED_ETF", assetClass: "BOND", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"미국 중기국채\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  // --- 국내 상장 ETF(기초자산 국내) -----------------------------------------
+  //   KOSPI200을 추종하지만 앱이 가진 지수는 KOSPI 종합뿐이라 benchmark를 비워 둔다.
+  { ticker: "069500.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 앱 ETF 구성표 label=\"KODEX 200\" · 앱에 KOSPI200 지수 없음", version: "EM-2026.1" },
+  { ticker: "102110.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 앱 ETF 구성표 label=\"TIGER 200\" · 앱에 KOSPI200 지수 없음", version: "EM-2026.1" },
+]);
 const EXPOSURE_MASTER = buildExposureMaster(EXPOSURE_MASTER_ENTRIES);
 
 /* --- 6. 조회 -------------------------------------------------------------
@@ -245,6 +313,21 @@ function resolveExposure(assetLike, master) {
   };
 }
 
+/* --- 6-1. Risk · MC 연결점 ----------------------------------------------
+ * 이 두 함수만이 원장을 바깥에 내보내는 통로다. RESOLVED가 아니면 null을 주고,
+ * 호출부는 기존 로직으로 그대로 넘어간다 - 원장이 기존 판정을 조용히 덮어쓰지 않는다.
+ */
+function resolveExposureBenchmark(assetLike, master) {
+  const r = resolveExposure(assetLike, master);
+  if (r.status !== EM_STATUS.RESOLVED || !r.entry) return null;
+  return r.entry.benchmark || null;
+}
+function resolveExposureAssetClass(assetLike, master) {
+  const r = resolveExposure(assetLike, master);
+  if (r.status !== EM_STATUS.RESOLVED || !r.entry) return null;
+  return r.entry.assetClass || null;
+}
+
 /* --- 7. 유형 추정(참고용) ------------------------------------------------
  * 기존 자산 레코드(js/01)의 category · isDomestic · currency 만으로 판정 가능한
  * 범위에서만 유형을 제안한다. ETF의 기초자산이 국내인지 해외인지, 환헤지형인지는
@@ -281,6 +364,7 @@ if (typeof module !== 'undefined' && module.exports) {
     EM_REQUIRED_FIELDS, EM_KRW_PRICED_TYPES,
     exposureIdentityOf, validateExposureEntry, buildExposureMaster,
     EXPOSURE_MASTER_ENTRIES, EXPOSURE_MASTER,
-    isExposureMasterActive, lookupExposure, resolveExposure, suggestExposureAssetType
+    isExposureMasterActive, lookupExposure, resolveExposure, suggestExposureAssetType,
+    resolveExposureBenchmark, resolveExposureAssetClass
   };
 }

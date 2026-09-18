@@ -995,7 +995,11 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
   });
   const bm = (o) => plain(s.resolveRiskBenchmark(Object.assign({ category: '주식', name: '' }, o)));
   // ① ETF 구성표에 추종 지수가 적힌 ETF
-  assert.deepStrictEqual(bm({ ticker: 'QQQM', category: 'ETF' }), { key: 'NASDAQ100', status: 'RESOLVED', source: 'etfIndex' });
+  // [Phase 1B · 기대값 갱신 사유] 같은 결론을 Exposure Master(js/28)가 먼저 돌려준다 -
+  // 기준 지수(key)와 상태(status)는 그대로이고 출처 표기만 etfIndex → exposureMaster로 바뀐다
+  // (source는 화면 · 계산 어디에도 쓰이지 않는 진단용 라벨이다). 원장에 없는 종목은 아래
+  // 단언들처럼 기존 판정이 그대로 실행된다.
+  assert.deepStrictEqual(bm({ ticker: 'QQQM', category: 'ETF' }), { key: 'NASDAQ100', status: 'RESOLVED', source: 'exposureMaster' });
   assert.strictEqual(bm({ ticker: 'SPY', category: 'ETF' }).key, 'SP500');
   // 추종 지수가 앱의 지수와 같지 않은 ETF(근사 금지)
   for (const tk of ['SCHD', 'SOXX', 'TQQQ', '069500.KS', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
