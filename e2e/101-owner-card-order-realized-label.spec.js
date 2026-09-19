@@ -111,12 +111,12 @@ test('C. 상단 필터를 바꿔도 총자산 카드의 금액 · 보유 자산 
   expect(byCat.chartLabels, '그래프는 필터를 따른다').toEqual(['주식']);
 });
 
-test('D. RISK 관리 제목 옆 ⓘ 버튼이 없고 제목과 주변 안내는 그대로다', async ({ page }) => {
+test('D. 위험 관리 제목 옆 ⓘ 버튼이 없고 제목과 주변 안내는 그대로다', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof state !== 'undefined');
   const r = await page.evaluate(() => {
     const section = document.getElementById('riskManagementSection');
-    const title = [...section.querySelectorAll('h3')].find((h) => h.textContent.includes('RISK 관리'));
+    const title = [...section.querySelectorAll('h3')].find((h) => h.textContent.includes('위험 관리'));
     const row = title.parentElement;
     return {
       titleText: title.textContent.trim(),
@@ -129,7 +129,8 @@ test('D. RISK 관리 제목 옆 ⓘ 버튼이 없고 제목과 주변 안내는 
   });
   expect(r.infoTitleButtons, 'ⓘ 버튼 없음').toBe(0);
   expect(r.buttonsInTitleRow, '제목 줄에 버튼 없음').toBe(0);
-  expect(r.titleText).toBe('RISK 관리');
+  // [§46 TXT-46-2] 제목 「RISK 관리」 → 「위험 관리」(기능 · id 무변경).
+  expect(r.titleText).toBe('위험 관리');
   expect(r.scopeNote).toContain('진단 대상');
   expect(r.hasSummary).toBe(true);
   expect(r.hasRiskyAccordion).toBe(true);

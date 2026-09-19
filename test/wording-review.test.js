@@ -52,6 +52,40 @@ test('P1 - 화면 문구에 영문 라벨 · 내부 코드가 남지 않는다',
   assert.ok(read('js/08-detail-modal-fx.js').includes("msgEl.textContent = '차트를 불러오지 못했습니다. 잠시 후 다시 열어 보세요.'"));
 });
 
+test('§46 TXT-46-1 - 환율 실패 안내는 내부 구현(API) 대신 지금 쓰는 값과 할 수 있는 일을 말한다', () => {
+  const src = read('js/11-refresh-history.js');
+  assert.ok(!src.includes('환율 API 연결 실패'));
+  assert.ok(src.includes('환율을 불러오지 못해 기존 환율(${fmtNum(prevRate, 1)}원)을 그대로 사용합니다. 상단 환율 입력란에서 직접 수정할 수 있습니다.'));
+});
+
+test('§46 TXT-46-2 - 화면 명칭 4개(오늘/전체 평가손익 · 위험 관리 · 위험 세부내용)', () => {
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
+  ['금융자산 오늘 평가손익', '금융자산 전체 평가손익', '>위험 관리</h3>', '📊 위험 세부내용', '📊 위험 관리로 이동'].forEach((w) => assert.ok(html.includes(w), w));
+  ['일간금융평가손익', '총금융자산평가손익', 'RISK 관리', 'RISK 세부내용'].forEach((w) => assert.ok(!html.includes(w), w));
+  assert.ok(!read('js/10-risk-translation-alerts.js').includes('(RISK 세부내용'));
+});
+
+test('§46 TXT-46-3 - 수익률 근거 설명은 쉬운 말로 쓰되 불확실성은 그대로 말한다', () => {
+  const src = read('js/05-future-projection.js');
+  const notes = [...src.matchAll(/(?:uncertaintyNote|methodologyNote): ('[^'\n]*'(?:\s*\+\s*'[^'\n]*')*)/g)].map((m) => m[1]);
+  assert.ok(notes.length >= 10, String(notes.length));
+  const shown = notes.join(' ');
+  ['horizon mismatch', '출처 불명', 'forward-looking'].forEach((w) => assert.ok(!shown.includes(w), w));
+  assert.ok(shown.includes('기준 기간이 달라 비교에 주의가 필요합니다'));
+  assert.ok(shown.includes('출처를 확인할 수 없습니다'));
+  assert.ok(shown.includes('미래 수익률을 보장하지 않'));
+});
+
+test('§46 CLN-46-1 - 옛 문구 · 참조 없는 상수를 정리했고, 테스트 계약 함수는 남겨 둔다', () => {
+  assert.ok(!read('js/03-filters-charts-tabs.js').includes("setText('monteCarloDesc'"));
+  assert.ok(!read('js/09-price-fx-risk-engine.js').includes('RISK_METRIC_LABELS'));
+  assert.ok(!read('js/09-price-fx-risk-engine.js').includes('기존 결측 처리(50)'));
+  assert.ok(!/AI 최적/.test(read('js/04-rebalancing.js')));
+  assert.ok(!/AI 최적/.test(read('index.html')));
+  const safety = read('js/21-safety-layer.js');
+  assert.ok(safety.includes('function assessDataSufficiency(') && safety.includes('function assessCorrelationPair('));
+});
+
 test('P1 - 운용보수 값 오류는 한국어 제목으로 나온다(판정 코드 · 등급은 그대로)', () => {
   const safety = require('../js/21-safety-layer.js');
   const neg = safety.assessFee(-1, '테스트ETF', true);

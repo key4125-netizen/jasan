@@ -1518,10 +1518,6 @@ function computeTechnicalFlowRiskScore(holdings) {
  * 지표마다 "구했는가 / 못 구했다면 왜인가 / 관측이 몇 개이고 정책 목표는 몇 개인가"를 남긴다.
  * reason은 §44 제9조의 상태 코드를 그대로 쓰고, 사용자 문구로의 번역은 화면(js/10)이 맡는다.
  */
-const RISK_METRIC_LABELS = Object.freeze({
-  volatility: '변동성', beta: '시장 민감도(베타)', correlation: '분산 효과(상관관계)',
-  var: '하루 하락 기준선(VaR 95%)', cvar: '더 나쁜 날 평균 손실(CVaR)', mdd: '최대 낙폭(MDD)'
-});
 function riskMetricState(value, reason, observations, required, target) {
   const available = typeof value === 'number' && Number.isFinite(value);
   return {
@@ -1877,7 +1873,7 @@ async function computeAdvancedRiskMetrics() {
     holdings.forEach((h) => { h.commonReturns = hasCommonReturns ? common.returnsByKey.get(h.ticker) : null; });
 
     // 포트폴리오 베타 = 종목 베타의 비중 가중합. [Risk 정책 P-2 · v252] 베타가 없는 종목이 하나라도 있으면
-    // 남은 종목으로 비중을 다시 나누지 않고 null로 둔다 - computeMarketRiskScore의 기존 결측 처리(50)가 적용된다.
+    // 남은 종목으로 비중을 다시 나누지 않고 null로 둔다 - 시장 요인은 점수에서 빠지고 나머지 요인으로 재정규화된다(§44 44-13).
     const portfolioBeta = holdings.every((h) => typeof h.beta === 'number' && Number.isFinite(h.beta))
       ? holdings.reduce((s, h) => s + h.beta * h.weight, 0)
       : null;

@@ -45,9 +45,8 @@ function updateRealEstateGuidanceText() {
   // [v247 REQ-05] "종목별 실행 가이드" 카드와 함께 guideScopeNote도 삭제했다.
   // [v248-1 REQ-08] "성장률별 결과 보기" 안의 그래프 · 비교표 설명(scenarioCompareGeneralDesc · totalAssetGeneralDesc ·
   // totalAssetCompareDesc)은 그 카드와 함께 삭제되어 여기서도 뺐다.
-  setText('monteCarloDesc',
-    '일반계좌+절세계좌 금융자산(부동산 제외) 전체를 대상으로, 목표 비중 기준 실측 변동성 기반 확률 시뮬레이션(10,000회)으로 중앙값(P50)과 P25를 중심으로 자산가치 범위를 보여줍니다.',
-    '일반계좌+절세계좌 금융자산 전체를 대상으로, 목표 비중 기준 실측 변동성 기반 확률 시뮬레이션(10,000회)으로 중앙값(P50)과 P25를 중심으로 자산가치 범위를 보여줍니다.');
+  // [§46 CLN-46-1] monteCarloDesc 문구("실측 변동성 기반 … 10,000회")는 화면에 해당 요소가 없고 현재 MC(장기 CMA ·
+  // 5,000/10,000/50,000회)와도 달라 삭제했다.
 }
 
 function fillSelect(id, values, allLabel, current) {

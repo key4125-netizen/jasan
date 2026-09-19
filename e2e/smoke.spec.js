@@ -13,8 +13,9 @@ test('1. 애플리케이션 페이지가 정상적으로 로드된다', async ({
 test('2. 주요 UI(대시보드 핵심 카드)가 정상 렌더링된다', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Smart Asset Manager')).toBeVisible();
-  await expect(page.getByText('일간금융평가손익')).toBeVisible();
-  await expect(page.getByText('총금융자산평가손익')).toBeVisible();
+  // [§46 TXT-46-2] 카드 이름만 쉬운 말로 바꿨다(「일간금융평가손익」 · 「총금융자산평가손익」).
+  await expect(page.getByText('금융자산 오늘 평가손익')).toBeVisible();
+  await expect(page.getByText('금융자산 전체 평가손익')).toBeVisible();
 });
 
 test('3. 페이지 로드 중 JavaScript runtime error가 발생하지 않는다', async ({ page }) => {

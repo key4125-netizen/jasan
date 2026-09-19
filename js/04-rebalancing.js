@@ -1135,24 +1135,117 @@ function closeStockAllocationModal(viaBackButton) {
   stockAllocationCurrentIdx = null;
 }
 
-// [AI 최적 추천 비중] 선택된 종목들 사이에서 "베타(시장 민감도)가 낮은 종목일수록 더 크게, 높은
-// 종목일수록 더 작게" 나눠 담는 역베타 가중(inverse-beta weighting) 방식이다 - 정밀 리스크 엔진이
-// 이미 계산해 둔 state.advancedRiskMetrics.holdings의 beta를 그대로 재사용하므로 별도 계산·API 호출이
-// 없다. 카테고리 전체 비중(totalPct)은 그대로 유지한 채 "같은 총 비중을 더 안전하게 나누는" 참고용
-// 배분만 제안한다 - 실제 매매 지시가 아니며, 베타 데이터가 없는 종목(신규상장 등)은 1.0(시장 평균)으로
-// 근사하고, 아무 데이터도 없으면 안전하게 균등 배분으로 폴백한다.
-function computeAiOptimalStockWeights(selectedStocks, totalPct) {
-  if (selectedStocks.length === 0) return [];
-  const m = state.advancedRiskMetrics;
-  const betas = selectedStocks.map((s) => {
-    const yahoo = sanitizeTicker(s.ticker).yahooTicker;
-    const h = m && m.holdings.find((hh) => hh.ticker === yahoo);
-    return (h && typeof h.beta === 'number' && h.beta > 0) ? h.beta : 1.0;
+/* -------------------------------------------------------------------------
+ * [베타 기준 참고 비중 · checklist §46 REF-01~11] 선택한 주식 종목들 사이에서 시장 민감도(베타)에
+ *    반비례(1/β)해 나눈 참고용 주식 내부 배분값이다. Risk 엔진이 이미 계산해 둔
+ *    state.advancedRiskMetrics.holdings의 beta를 읽기만 한다(Risk · 포트폴리오 베타 · MC 무영향).
+ *    - 사용 가능한 베타는 유한한 양수뿐이다. 없거나 0 이하이면 "계산 불가"이고 1.0 등으로 채우지 않는다.
+ *    - 계산 불가 종목은 현재 비중을 그대로 두고, 남은 비중만 베타를 확인한 종목끼리 나눈다.
+ *    - [적용] · [전체 적용] 모두 '주식' 항목 목표 비중 합계를 바꾸지 않는다(0.1% 최대 잔여법).
+ *    v260까지는 미확정 · 0 이하 · 미보유 · Risk 결과 없음을 전부 베타 1.0으로 계산했다(§46 REF-11).
+ * ---------------------------------------------------------------------- */
+function isUsableReferenceBeta(beta) {
+  return typeof beta === 'number' && Number.isFinite(beta) && beta > 0;
+}
+
+// 종목 하나의 베타와 계산 불가 사유. 사유 코드는 화면 문장으로만 바꿔 보여 준다(코드 자체는 노출하지 않는다).
+function lookupReferenceBeta(stock, metrics) {
+  if (!metrics || !Array.isArray(metrics.holdings)) return { beta: null, reason: 'NO_RISK_DATA' };
+  const yahoo = sanitizeTicker(stock.ticker).yahooTicker;
+  const h = metrics.holdings.find((hh) => hh.ticker === yahoo);
+  if (!h) return { beta: null, reason: 'NOT_HELD' };
+  if (isUsableReferenceBeta(h.beta)) return { beta: h.beta, reason: null };
+  if (typeof h.beta === 'number' && Number.isFinite(h.beta)) return { beta: null, reason: 'NON_POSITIVE' };
+  return { beta: null, reason: h.betaStatus === 'BENCHMARK_UNRESOLVED' ? 'BENCHMARK_UNRESOLVED' : 'BETA_UNAVAILABLE' };
+}
+
+// 정확한 비중(exacts, 합계 = totalPct)을 0.1% 단위로 나누되 합계를 totalPct 그대로 맞춘다(최대 잔여법).
+// 버린 소수점이 큰 항목부터 0.1%씩 보정하고, 동률이면 priorities가 큰 항목 · 그다음 목록 순서로 정한다.
+function roundPctsByLargestRemainder(exacts, totalPct, priorities) {
+  const targetUnits = Math.round(totalPct * 10);
+  const units = exacts.map((x) => x * 10);
+  const base = units.map((u) => Math.floor(u + 1e-9));
+  let missing = targetUnits - base.reduce((a, b) => a + b, 0);
+  const order = units.map((u, i) => i).sort((a, b) => {
+    const ra = units[a] - base[a];
+    const rb = units[b] - base[b];
+    if (Math.abs(ra - rb) > 1e-9) return rb - ra;
+    const pa = priorities ? priorities[a] : 0;
+    const pb = priorities ? priorities[b] : 0;
+    if (Math.abs(pa - pb) > 1e-12) return pb - pa;
+    return a - b;
   });
-  const inverseBetas = betas.map((b) => 1 / b);
-  const sumInverse = inverseBetas.reduce((a, b) => a + b, 0);
-  if (sumInverse <= 0) return selectedStocks.map(() => totalPct / selectedStocks.length);
-  return inverseBetas.map((ib) => (ib / sumInverse) * totalPct);
+  for (let k = 0; missing > 0 && order.length; k = (k + 1) % order.length) { base[order[k]] += 1; missing -= 1; }
+  for (let k = order.length - 1; missing < 0 && k >= 0; k -= 1) {
+    if (base[order[k]] > 0) { base[order[k]] -= 1; missing += 1; }
+  }
+  return base.map((b) => b / 10);
+}
+
+// 참고 비중 계획. ok=false면 reason('NO_RISK_DATA' | 'FEWER_THAN_TWO' | 'NO_POOL')과 함께 아무 숫자도 만들지 않는다.
+// exact/rounded는 확인 종목만 숫자이고 미확정 종목은 null이다(현재 비중 유지).
+function computeBetaReferencePlan(selectedStocks, totalPct, metrics) {
+  const rows = selectedStocks.map((s) => lookupReferenceBeta(s, metrics));
+  const confirmed = rows.map((r) => r.beta !== null);
+  const confirmedCount = confirmed.filter(Boolean).length;
+  const empty = selectedStocks.map(() => null);
+  const plan = { ok: false, reason: null, rows, confirmed, confirmedCount, pool: null, exact: empty, rounded: empty };
+  if (!metrics || !Array.isArray(metrics.holdings)) return { ...plan, reason: 'NO_RISK_DATA' };
+  if (confirmedCount < 2) return { ...plan, reason: 'FEWER_THAN_TWO' };
+  const unconfirmedSum = selectedStocks.reduce((s, x, i) => (confirmed[i] ? s : s + num(x.pct)), 0);
+  const pool = num(totalPct) - unconfirmedSum;
+  if (!(pool > 1e-9)) return { ...plan, reason: 'NO_POOL', pool };
+  const inverse = rows.map((r) => (r.beta !== null ? 1 / r.beta : 0));
+  const sumInverse = inverse.reduce((a, b) => a + b, 0);
+  const exact = confirmed.map((c, i) => (c ? (inverse[i] / sumInverse) * pool : null));
+  const idx = confirmed.map((c, i) => (c ? i : -1)).filter((i) => i >= 0);
+  const roundedConfirmed = roundPctsByLargestRemainder(idx.map((i) => exact[i]), pool, idx.map((i) => exact[i]));
+  const rounded = selectedStocks.map(() => null);
+  idx.forEach((i, k) => { rounded[i] = roundedConfirmed[k]; });
+  return { ...plan, ok: true, pool, exact, rounded };
+}
+
+// [전체 적용] 새 비중 배열 - 확인 종목은 참고 비중, 미확정 종목은 현재 비중 그대로.
+function computeBetaReferenceApplyAll(selectedStocks, plan) {
+  if (!plan || !plan.ok) return null;
+  return selectedStocks.map((s, i) => (plan.confirmed[i] ? plan.rounded[i] : num(s.pct)));
+}
+
+// [적용] 종목 idx 하나에 참고 비중(배지 값)을 넣고, 차이는 다른 확인 종목이 나눠 흡수한다 - 그들의 현재
+// 비중 합이 0보다 크면 현재 비중 비례, 0이면 참고 비중 비례. 미확정 종목은 건드리지 않는다.
+// 배지 값은 확인 종목 배분 비중(pool) 안에서 나온 값이라 남는 비중이 음수가 되지 않는다.
+function computeBetaReferenceApplyOne(selectedStocks, plan, idx) {
+  if (!plan || !plan.ok || !plan.confirmed[idx]) return null;
+  const others = plan.confirmed.map((c, i) => (c && i !== idx ? i : -1)).filter((i) => i >= 0);
+  const remaining = Math.max(0, Math.round(plan.pool * 10) - Math.round(plan.rounded[idx] * 10)) / 10;
+  const curSum = others.reduce((s, i) => s + num(selectedStocks[i].pct), 0);
+  const weights = others.map((i) => (curSum > 1e-9 ? num(selectedStocks[i].pct) : plan.exact[i]));
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  const exacts = weights.map((w) => (weightSum > 0 ? (w / weightSum) * remaining : remaining / others.length));
+  const roundedOthers = roundPctsByLargestRemainder(exacts, remaining, others.map((i) => plan.exact[i]));
+  const out = selectedStocks.map((s) => num(s.pct));
+  out[idx] = plan.rounded[idx];
+  others.forEach((i, k) => { out[i] = roundedOthers[k]; });
+  return out;
+}
+
+const BETA_REFERENCE_STOCK_REASON_TEXT = {
+  NOT_HELD: '보유하지 않은 종목이라 시장 민감도(베타)를 계산하지 않았습니다',
+  BENCHMARK_UNRESOLVED: '비교할 기준 지수가 정해지지 않아 시장 민감도(베타)를 계산하지 못했습니다',
+  NON_POSITIVE: '시장 민감도(베타)가 0 이하로 계산되어 이 방식에 쓸 수 없습니다',
+  BETA_UNAVAILABLE: '함께 비교할 가격 기록이 부족하거나 불러오지 못해 시장 민감도(베타)를 계산하지 못했습니다'
+};
+
+// 계산 불가일 때 모달 상단에 보여 줄 문장(ok면 미확정 종목 안내 또는 null).
+function betaReferenceNoteText(plan) {
+  if (!plan) return null;
+  if (plan.reason === 'NO_RISK_DATA') return '베타 기준 참고 비중을 계산할 수 없습니다. 시장 민감도 자료가 아직 준비되지 않았습니다(시세 갱신이 끝난 뒤 다시 열어 보세요).';
+  if (plan.reason === 'FEWER_THAN_TWO') return `베타 기준 참고 비중을 계산할 수 없습니다. 시장 민감도(베타)를 확인한 종목이 ${plan.confirmedCount}개뿐이라 비교할 수 없습니다(2개 이상 필요).`;
+  if (plan.reason === 'NO_POOL') return '베타 기준 참고 비중을 계산할 수 없습니다. 시장 민감도(베타)를 확인하지 못한 종목의 현재 비중이 주식 목표 비중 전체를 차지해, 나눌 비중이 없습니다.';
+  const unconfirmed = plan.confirmed.filter((c) => !c).length;
+  return unconfirmed > 0
+    ? `시장 민감도(베타)를 확인하지 못한 ${unconfirmed}개 종목은 현재 비중을 그대로 두고, 나머지 ${fmtNum(plan.pool, 1)}%만 베타를 확인한 종목끼리 나눕니다.`
+    : null;
 }
 
 function renderStockAllocationSelectedList() {
@@ -1162,25 +1255,44 @@ function renderStockAllocationSelectedList() {
   if (!t) return;
   sumHint.textContent = `합계 ${fmtNum(t.pct, 1)}%`;
 
+  // [베타 기준 참고 비중 · §46] 종목이 2개 이상일 때만 이 영역을 둔다(1개면 나눌 대상이 없다 - 기존과 같음).
+  // 계산할 수 없으면 배지를 만들지 않고 [전체 적용]을 비활성화한 채 사유 문장만 보여 준다.
+  const plan = t.selectedStocks.length >= 2 ? computeBetaReferencePlan(t.selectedStocks, t.pct, state.advancedRiskMetrics) : null;
   const applyAllBtn = document.getElementById('stockAllocationApplyAiAllBtn');
-  if (applyAllBtn) applyAllBtn.classList.toggle('hidden', t.selectedStocks.length < 2);
+  if (applyAllBtn) {
+    applyAllBtn.classList.toggle('hidden', !plan);
+    applyAllBtn.disabled = !(plan && plan.ok);
+    applyAllBtn.classList.toggle('opacity-50', !(plan && plan.ok));
+    applyAllBtn.classList.toggle('cursor-not-allowed', !(plan && plan.ok));
+  }
+  const noteEl = document.getElementById('stockAllocationBetaNote');
+  if (noteEl) {
+    const note = betaReferenceNoteText(plan);
+    noteEl.textContent = note || '';
+    noteEl.classList.toggle('hidden', !note);
+  }
 
   if (t.selectedStocks.length === 0) {
     container.innerHTML = '<p class="text-sm text-slate-400">아직 선택된 종목이 없습니다. 아래에서 검색해 추가하세요.</p>';
     return;
   }
-  // [AI 최적 추천 비중] 현재 카테고리 총 비중(t.pct)을 그대로 유지한 채, 선택된 종목들 사이에서만
-  // 역베타 가중으로 재배분한 값이다 - 종목이 1개뿐이면 재배분할 대상이 없으므로 계산하지 않는다.
-  const aiWeights = t.selectedStocks.length >= 2 ? computeAiOptimalStockWeights(t.selectedStocks, t.pct) : null;
 
   container.innerHTML = t.selectedStocks.map((s, i) => {
-    const aiPct = aiWeights ? aiWeights[i] : null;
-    const diff = aiPct !== null ? aiPct - num(s.pct) : null;
-    const badgeHtml = aiPct !== null ? `
+    let badgeHtml = '';
+    if (plan && plan.ok && plan.confirmed[i]) {
+      const refPct = plan.rounded[i];
+      const diff = refPct - num(s.pct);
+      const diffText = Math.abs(diff) < 0.05 ? '현재와 같음' : `${diff > 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p`;
+      badgeHtml = `
       <div class="flex items-center gap-1 mt-1.5 flex-wrap">
-        <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 베타 기준 참고: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
+        <span data-beta-ref-badge class="text-sm font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 베타 기준 참고: ${fmtNum(refPct, 1)}% (${diffText})</span>
         <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-sm font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
-      </div>` : '';
+      </div>`;
+    } else if (plan && plan.reason !== 'NO_RISK_DATA' && !plan.confirmed[i]) {
+      // 미확정 종목 - 임의 숫자 없이 계산 불가와 쉬운 사유만 보여 주고, 현재 비중은 그대로 둔다.
+      badgeHtml = `
+      <p data-beta-ref-unavailable class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">참고 비중 계산 불가 · ${escapeHtml(BETA_REFERENCE_STOCK_REASON_TEXT[plan.rows[i].reason] || BETA_REFERENCE_STOCK_REASON_TEXT.BETA_UNAVAILABLE)}. 현재 비중을 그대로 둡니다.</p>`;
+    }
     const isHeld = getHeldStockCandidates(stockAllocationCurrentRegion).some((a) => a.ticker === s.ticker);
     const roleOptionsHtml = assetRoleSelectOptionsHtml(s.role, '역할 미지정');
     return `
@@ -1215,6 +1327,9 @@ function renderStockAllocationSelectedList() {
       recalcStockCategoryPct();
       document.getElementById('stockAllocationSumHint').textContent = `합계 ${fmtNum(tt.pct, 1)}%`;
     });
+    // [§46 REF-09] 참고 비중은 현재 비중(미확정 종목 몫 · 합계)에 따라 달라진다 - 입력을 마치면(change)
+    // 배지를 다시 계산해, 화면의 배지 값과 [적용]이 넣는 값이 항상 같게 한다(입력 중에는 다시 그리지 않는다).
+    input.addEventListener('change', () => renderStockAllocationSelectedList());
   });
   container.querySelectorAll('select[data-stock-alloc-role]').forEach((select) => {
     select.addEventListener('change', (e) => {
@@ -1233,26 +1348,29 @@ function renderStockAllocationSelectedList() {
       renderStockAllocationSearchResults(document.getElementById('stockAllocationSearchInput').value);
     });
   });
-  // [AI 최적 추천 - 종목별 적용] 그 종목 하나만 추천값으로 바꾸고 나머지는 손대지 않는다(기존 수동
-  // 입력과 동일하게 카테고리 합계는 recalcStockCategoryPct()가 그때그때 합산해 다시 계산한다).
+  // [베타 기준 참고 비중 - 종목별 적용 · §46 REF-09] 그 종목을 배지 값으로 바꾸고, 차이는 다른 확인 종목이
+  // 나눠 흡수한다 - '주식' 항목 합계는 바뀌지 않는다(v260까지는 한 종목만 바꿔 합계가 달라졌다).
   container.querySelectorAll('button[data-stock-alloc-apply-ai]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const i = Number(btn.dataset.i);
       const tt = getStockAllocationTarget();
-      const weights = computeAiOptimalStockWeights(tt.selectedStocks, tt.pct);
-      tt.selectedStocks[i].pct = Math.round(weights[i] * 10) / 10;
+      const next = computeBetaReferenceApplyOne(tt.selectedStocks, computeBetaReferencePlan(tt.selectedStocks, tt.pct, state.advancedRiskMetrics), i);
+      if (!next) { renderStockAllocationSelectedList(); return; }
+      tt.selectedStocks.forEach((s, k) => { s.pct = next[k]; });
       recalcStockCategoryPct();
       renderStockAllocationSelectedList();
     });
   });
 }
 
-// [⚡ AI 최적 추천 비중 전체 적용] 선택된 모든 종목을 한 번에 역베타 가중 추천값으로 맞춘다.
+// [베타 기준 참고 비중 - 전체 적용 · §46 REF-08] 확인 종목은 참고 비중으로, 미확정 종목은 현재 비중 그대로 -
+// '주식' 항목 합계는 바뀌지 않는다. 계산할 수 없는 상태면 버튼이 비활성이고, 여기서도 아무것도 바꾸지 않는다.
 document.getElementById('stockAllocationApplyAiAllBtn').addEventListener('click', () => {
   const t = getStockAllocationTarget();
   if (!t || t.selectedStocks.length < 2) return;
-  const weights = computeAiOptimalStockWeights(t.selectedStocks, t.pct);
-  t.selectedStocks.forEach((s, i) => { s.pct = Math.round(weights[i] * 10) / 10; });
+  const next = computeBetaReferenceApplyAll(t.selectedStocks, computeBetaReferencePlan(t.selectedStocks, t.pct, state.advancedRiskMetrics));
+  if (!next) { renderStockAllocationSelectedList(); return; }
+  t.selectedStocks.forEach((s, i) => { s.pct = next[i]; });
   recalcStockCategoryPct();
   renderStockAllocationSelectedList();
 });

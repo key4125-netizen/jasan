@@ -215,7 +215,7 @@ async function refreshPricesAndRates() {
     if (rateOk) {
       showToast(`최신 환율(${fmtNum(state.exchangeRate, 1)}원) 적용 완료`, 'success');
     } else {
-      showToast(`환율 API 연결 실패 - 기존 환율(${fmtNum(prevRate, 1)}원) 유지. 상단 환율 입력란에서 직접 수정할 수 있습니다.`, 'warn', 8000);
+      showToast(`환율을 불러오지 못해 기존 환율(${fmtNum(prevRate, 1)}원)을 그대로 사용합니다. 상단 환율 입력란에서 직접 수정할 수 있습니다.`, 'warn', 8000);
     }
 
     if (targetCount > 0) {

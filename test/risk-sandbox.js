@@ -48,7 +48,8 @@ const LOAD_ORDER = [
   '15-monte-carlo-engine.js'
 ];
 
-function loadRiskSandbox() {
+// extraFiles: 기본 순서 뒤에 더 올릴 js 파일(예: 베타 기준 참고 비중 테스트의 js/04). 기본 호출은 예전과 같다.
+function loadRiskSandbox(options) {
   const sandbox = {
     console, Math, Date, JSON, Intl, Number, String, Boolean, Object, Array, Set, Map, WeakMap,
     RegExp, Error, TypeError, Promise, Symbol, isNaN, isFinite, parseFloat, parseInt, encodeURIComponent,
@@ -74,7 +75,7 @@ function loadRiskSandbox() {
   sandbox.self = sandbox;
   vm.createContext(sandbox);
 
-  LOAD_ORDER.forEach((file) => {
+  LOAD_ORDER.concat((options && options.extraFiles) || []).forEach((file) => {
     const src = fs.readFileSync(path.join(JS_DIR, file), 'utf8');
     vm.runInContext(src, sandbox, { filename: file });
   });

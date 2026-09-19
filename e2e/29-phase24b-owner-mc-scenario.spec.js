@@ -222,6 +222,9 @@ test('12. MC 안내 팝업의 열기/닫기 컨트롤이 모바일 375px에서 4
   expect((await infoBtn.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await infoBtn.click();
   await expect(page.locator('#mcInfoModal')).toBeVisible();
+  // [§46 1차 검증] 팝업은 열릴 때 확대 애니메이션(modal-anim)이 있어, 끝나기 전에 재면 43.99px처럼 작게 나온다
+  // (간헐 실패). 애니메이션이 끝난 뒤의 실제 크기를 잰다 - 기준(44px)은 그대로다.
+  await page.locator('#mcInfoModal .modal-anim').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   const x = await page.locator('#closeMcInfoModalBtn').boundingBox();
   expect(x.width).toBeGreaterThanOrEqual(44);
   expect(x.height).toBeGreaterThanOrEqual(44);

@@ -271,7 +271,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v260</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v261</p>
           </div>
         </div>
 
@@ -427,7 +427,7 @@
   <section class="grid grid-cols-1 gap-4 mb-4">
     <div id="kpiDailyProfitCard" class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-2 gap-1">
-        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">일간금융평가손익</span>
+        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">금융자산 오늘 평가손익</span>
         <!-- [오늘 실현손익 배지] 메인 숫자(kpiDailyProfit)는 순수 미실현(평가) 손익 계산을 그대로 유지하고,
              오늘 매도해서 발생한 실현손익은 세부내용 버튼 바로 밑에 별도 배지로만 덧붙인다
              (getTodayRealizedPnL, renderKPIs() 참고) - 오늘 매도 건이 없으면 숨긴다.
@@ -467,7 +467,7 @@
 
     <div class="kpi-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-4 shadow-sm min-w-0">
       <div class="flex items-center justify-between mb-1.5 sm:mb-2 gap-1">
-        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">총금융자산평가손익</span>
+        <span class="text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">금융자산 전체 평가손익</span>
         <!-- [세부내용 버튼/팝업 제거] 이 카드가 보여주는 숫자(현재가-매입원가, 부동산 제외)와 팝업이
              보여주던 누적 추이(dailySnapshots 기반, 부동산 포함)는 기준이 서로 달라 같은 카드 안에서
              "그 숫자의 내역"으로 오해되기 쉬웠다 - 차이를 설명하는 문구까지 덧붙이는 대신 진입 자체를
@@ -565,7 +565,7 @@
     <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
       <div class="flex items-center gap-1.5">
         <span class="text-base leading-none">⚠️</span>
-        <h3 class="text-base font-bold text-red-600 dark:text-red-400">RISK 관리</h3>
+        <h3 class="text-base font-bold text-red-600 dark:text-red-400">위험 관리</h3>
       </div>
     </div>
     <p class="text-sm text-slate-400 leading-relaxed break-keep mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
@@ -2197,7 +2197,7 @@
          함께 제거했다). -->
     <div class="flex items-center gap-2 px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
       <button type="button" id="riskAlertRebalanceBtn" class="flex-1 touch-target text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">⚙ 포트폴리오 설정으로 이동</button>
-      <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 RISK 관리로 이동</button>
+      <button type="button" id="riskAlertDetailBtn" class="flex-1 touch-target text-sm font-semibold px-2 sm:px-3 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 whitespace-nowrap">📊 위험 관리로 이동</button>
     </div>
   </div>
 </div>
@@ -2304,10 +2304,12 @@
           <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400">선택된 종목</h4>
           <span id="stockAllocationSumHint" class="text-sm font-semibold">합계 0%</span>
         </div>
-        <!-- [AI 최적 추천 비중 - 전체 적용] 종목이 2개 이상일 때만 의미가 있어 renderStockAllocationSelectedList()에서
-             그 조건일 때만 보여준다(hidden 토글) - 베타(시장 민감도)가 낮은 종목에 더 크게 배분하는
-             역베타 가중 추천을 선택된 종목 전체에 한 번에 적용한다. -->
+        <!-- [베타 기준 참고 비중 - 전체 적용 · checklist §46] 종목이 2개 이상일 때만 보이고(hidden 토글),
+             계산할 수 없으면 비활성화되며 아래 stockAllocationBetaNote에 사유를 보여 준다
+             (renderStockAllocationSelectedList). 베타를 확인한 종목끼리 1/β로 나누고, 확인하지 못한
+             종목은 현재 비중을 그대로 둔다 - '주식' 항목 합계는 바뀌지 않는다. -->
         <button type="button" id="stockAllocationApplyAiAllBtn" class="hidden w-full mb-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">⚡ 시장 민감도(베타) 기준 참고 비중 전체 적용</button>
+        <p id="stockAllocationBetaNote" class="hidden mb-1.5 text-sm text-slate-500 dark:text-slate-400"></p>
         <div id="stockAllocationSelectedList" class="space-y-1.5"></div>
       </div>
       <div class="border-t border-slate-100 dark:border-slate-800 pt-2.5">
@@ -2522,7 +2524,7 @@
 <div id="riskDetailModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
     <div id="riskDetailModalHeader" class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 cursor-pointer">
-      <h3 class="text-base font-bold">📊 RISK 세부내용</h3>
+      <h3 class="text-base font-bold">📊 위험 세부내용</h3>
       <button type="button" id="closeRiskDetailModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>

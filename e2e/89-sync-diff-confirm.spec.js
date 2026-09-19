@@ -128,6 +128,12 @@ async function cloudView(page, kv) {
 }
 
 const summaryText = (page) => page.locator('#syncDiffSummary').innerText();
+// [§46 · F-01] E2E는 외부 호출이 막혀 있어 부팅 때마다 시세 · 환율 실패 토스트(8~9초)가 화면 아래에 쌓인다.
+// 토스트 문구가 길어지면 쌓인 높이가 늘어 [클라우드 데이터 받기] 버튼을 덮고, Playwright는 토스트가 사라질
+// 때까지 클릭을 미룬다 - 그 사이 자동 동기화가 먼저 돌아 S-10이 확인하려는 순간이 지나가 버렸다(v260 이후
+// 환율 안내 문구를 바꿨을 때 실제로 재현). 이 테스트가 보는 것은 동기화 판단이지 토스트 배치가 아니므로,
+// 버튼을 누르기 직전에 이미 떠 있는 무관한 토스트만 지운다(앱 동작 무변경).
+const clearToasts = (page) => page.locator('#toastContainer').evaluate((el) => el.replaceChildren());
 
 /* ══ 차이 없음 ═══════════════════════════════════════════════════════ */
 
@@ -428,6 +434,7 @@ test('S-10 확인하는 사이 차이가 달라지면 반영하지 않고 다시
   // 내용 변화 없는 새 버전 → 받기 그대로 진행
   await edit(phone.page, () => { renderAll(); });
   await push(phone.page);
+  await clearToasts(pc.page);
   await pc.page.locator('#syncDirectionPullBtn').click();
   await expect(pc.page.locator('#syncSettingsModal')).toBeHidden();
   expect((await localView(pc.page)).qty).toBe(140);
@@ -439,6 +446,7 @@ test('S-10 확인하는 사이 차이가 달라지면 반영하지 않고 다시
   await expect(pc.page.locator('#syncDirectionBox')).toBeVisible();
   await edit(phone.page, (el, t) => { state.transactions.push(t); persistTransactions(); }, { ...BASE_TX, id: 'e89-tx-late', quantity: 2, createdAt: 4000, updatedAt: 4000 });
   await push(phone.page);
+  await clearToasts(pc.page);
   await pc.page.locator('#syncDirectionPullBtn').click();
   await expect(pc.page.getByText('확인하는 사이 데이터가 바뀌었습니다. 달라진 내용을 다시 확인해 주세요.').first()).toBeVisible();
   await expect(pc.page.locator('#syncDirectionBox')).toBeVisible();

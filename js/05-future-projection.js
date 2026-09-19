@@ -910,9 +910,10 @@ const CMA_SOURCE_METADATA = Object.freeze({
       '원문은 이 range가 어떤 백분위수(percentile)를 의미하는지 명시하지 않음(Phase 7-C 경고사항대로, ' +
       '25th/75th 등으로 임의 해석하지 않았음). BlackRock(~5%, geometric 명시)·J.P.Morgan(6.7%, 10-15y, ' +
       'return definition 미확인)은 교차검증 참고자료로만 사용했고 수치 산정에 기계적으로 반영하지 않았다.',
-    uncertaintyNote: '10년 기관 전망을 20년 앱 horizon에 그대로 적용하는 horizon mismatch를 내포함. ' +
-      '개별종목(MSFT/GOOGL/AAPL/AMZN/META/NVDA)과 NASDAQ/SCHD는 이 Anchor를 무조정 상속하며, ' +
-      '이 값은 미래 수익률을 보장하지 않는다. VCMM은 분기마다 갱신되므로 이 값도 정적 스냅샷일 뿐이다.',
+    // [§46 TXT-46-3] 수익률 관리 ⓘ 근거 설명에 그대로 나오는 문장이라 쉬운 말로 쓴다(의미 · 불확실성은 그대로).
+    uncertaintyNote: '10년 기관 전망을 앱의 20년 계산에 그대로 쓰므로 기준 기간이 달라 비교에 주의가 필요합니다. ' +
+      '개별종목(MSFT/GOOGL/AAPL/AMZN/META/NVDA)과 NASDAQ/SCHD는 이 기준을 조정 없이 그대로 씁니다. ' +
+      '미래 수익률을 보장하지 않으며, VCMM은 분기마다 갱신되므로 이 값은 특정 시점의 값일 뿐입니다.',
     version: 2,
     // [Phase 29-A - 검증된 추천 후보] "지금 활성 기준(위 SCENARIO_RATE_PRESETS)"과 완전히 분리된
     // 별도 필드다 - 여기 값은 사용자가 "수익률 관리"에서 [적용]을 누르기 전까지 어떤 계산에도 영향을
@@ -934,9 +935,10 @@ const CMA_SOURCE_METADATA = Object.freeze({
     // 국내 주식 전체(삼성전자 포함)를 덮는다 - 종목별 프리미엄을 시스템이 임의로 부여하지 않는다.
     appliesTo: ['indexRates.domestic(KOSPI - 삼성전자를 포함한 국내 주식 전체가 이 앵커를 상속)'],
     source: null, sourceUrl: null, asOfDate: null,
-    methodologyNote: '신뢰할 수 있는 forward-looking CMA를 확보하지 못함(Phase 7-D/7-E 감사) - ' +
-      '기존 하드코딩 근사치를 그대로 유지, 임의 숫자를 생성하지 않음.',
-    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않으며, 특정 근거에 기반한 값이 아니다.',
+    // [§46 TXT-46-3] legacy 앵커는 methodologyNote + uncertaintyNote가 ⓘ 근거 설명에 그대로 나온다.
+    methodologyNote: '믿을 수 있는 기관 장기 전망(CMA)을 확보하지 못해(Phase 7-D/7-E 감사) ' +
+      '기존 근사치를 그대로 씁니다. 임의 숫자를 새로 만들지 않았습니다.',
+    uncertaintyNote: '출처를 확인할 수 없습니다. 실제 수익률을 보장하지 않으며, 특정 근거에 기반한 값이 아닙니다.',
     version: 0,
     // [Phase 29-A] 출처(source)가 없는 legacy_approximation 앵커에는 recommended를 만들지 않는다
     // (PM 지시 12) - 신뢰 가능한 forward CMA가 확보되기 전까지 이 값은 계속 null로 남는다.
@@ -946,9 +948,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
   KR_BOND: {
     status: 'legacy_approximation', appliesTo: ['categories.채권'],
     source: null, sourceUrl: null, asOfDate: null,
-    methodologyNote: '한국 국고채 10년물 시장금리(약 4%대)를 방법론적으로 검토했으나 이는 기관 CMA가 ' +
-      '아니라 시장 관측치라 US_EQUITY와 같은 기준으로 채택하지 않음(Phase 7-D/7-E) - 기존 값 유지.',
-    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
+    methodologyNote: '한국 국고채 10년물 시장금리(약 4%대)를 검토했지만 기관 장기 전망(CMA)이 아니라 ' +
+      '시장 금리라서 미국 주식과 같은 기준으로 채택하지 않았습니다(Phase 7-D/7-E). 기존 값을 그대로 씁니다.',
+    uncertaintyNote: '출처를 확인할 수 없습니다. 실제 수익률을 보장하지 않습니다.',
     version: 0,
     recommended: null,
     appliesToKeys: ['BOND']
@@ -956,9 +958,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
   REAL_ESTATE: {
     status: 'legacy_approximation', appliesTo: ['categories.부동산'],
     source: null, sourceUrl: null, asOfDate: null,
-    methodologyNote: '과거 실현수익률만 확인되고 forward-looking CMA는 확보하지 못함(Phase 7-D) - ' +
-      '과거 수익률을 미래 기대수익률로 사용하지 않는다는 원칙에 따라 기존 값 유지.',
-    uncertaintyNote: '출처 불명. 실제 수익률을 보장하지 않는다.',
+    methodologyNote: '과거에 실제로 낸 수익률만 확인되고 기관 장기 전망(CMA)은 확보하지 못했습니다(Phase 7-D). ' +
+      '과거 수익률을 미래 기대수익률로 쓰지 않는다는 원칙에 따라 기존 값을 그대로 씁니다.',
+    uncertaintyNote: '출처를 확인할 수 없습니다. 실제 수익률을 보장하지 않습니다.',
     version: 0,
     recommended: null,
     appliesToKeys: ['부동산']
@@ -980,9 +982,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
       'Conservative=하단 4.5%, Normal=range 중간값 5.5%, Optimistic=상단 6.5% - US_EQUITY와 동일한 방식이며 ' +
       '다른 기관과의 평균이 아니라 Vanguard 단일 출처의 자체 range다. 앱 저장값은 cmaGeometricToAppRate()로 ' +
       '변환한 결과(연 명목 APR, 월복리)이며 임의 조정하지 않았다. 원문은 이 range가 어떤 백분위수인지 명시하지 않는다.',
-    uncertaintyNote: 'FTSE 기준 분류라 이 바스켓에는 한국도 포함된다 - 특정 단일 국가의 기대수익률이 아니라 ' +
-      '미국 외 선진국 전체의 가정이다. 10년 전망을 20년 앱 horizon에 적용하는 horizon mismatch를 내포하며, ' +
-      'USD 기준이라 원화 투자자의 실현 수익률과는 환율만큼 달라질 수 있다. 미래 수익률을 보장하지 않는다.',
+    uncertaintyNote: 'FTSE 기준 분류라 이 묶음에는 한국도 포함됩니다. 특정 한 나라의 기대수익률이 아니라 ' +
+      '미국 외 선진국 전체의 가정입니다. 10년 전망을 앱의 20년 계산에 쓰므로 기준 기간이 달라 비교에 주의가 필요하고, ' +
+      '달러(USD) 기준이라 원화로 투자한 실제 수익률과는 환율만큼 달라질 수 있습니다. 미래 수익률을 보장하지 않습니다.',
     version: 1,
     recommended: null,
     appliesToKeys: ['DEV_EX_US']
@@ -1001,9 +1003,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
     methodologyNote: 'Vanguard 원문 range 2%~4%(직전 2026-03-31 실행분 3.6%~5.6%에서 하향). ' +
       'Conservative=하단 2%, Normal=range 중간값 3%, Optimistic=상단 4% - US_EQUITY와 동일한 방식. ' +
       '앱 저장값은 cmaGeometricToAppRate() 변환 결과이며 임의 조정하지 않았다.',
-    uncertaintyNote: 'FTSE 기준 분류라 이 바스켓에서 한국은 제외된다(FTSE는 2009년부터 한국을 선진국으로 분류). ' +
-      '따라서 이 가정을 국내 주식에 적용해서는 안 된다. 10년 전망을 20년 horizon에 적용하는 mismatch를 ' +
-      '내포하고 USD 기준이다. 미래 수익률을 보장하지 않는다.',
+    uncertaintyNote: 'FTSE 기준 분류라 이 묶음에서 한국은 빠집니다(FTSE는 2009년부터 한국을 선진국으로 분류). ' +
+      '따라서 이 가정을 국내 주식에 쓰면 안 됩니다. 10년 전망을 앱의 20년 계산에 쓰므로 기준 기간이 달라 비교에 ' +
+      '주의가 필요하고, 달러(USD) 기준입니다. 미래 수익률을 보장하지 않습니다.',
     version: 1,
     recommended: null,
     appliesToKeys: ['EMERGING']
@@ -1011,9 +1013,9 @@ const CMA_SOURCE_METADATA = Object.freeze({
   CASH: {
     status: 'legacy_approximation', appliesTo: ['현금(항상 0% 고정, getTargetProjectionRate)'],
     source: null, sourceUrl: null, asOfDate: null,
-    methodologyNote: '정책금리(한국은행 기준금리)만 확인되고 실제 단기시장금리는 확보하지 못함(Phase ' +
-      '7-D/7-E) - 정의가 불명확한 상태에서 임의 숫자를 넣지 않고 기존 값(0%) 유지.',
-    uncertaintyNote: '명목/실질 여부 불명확. 실제 수익률을 보장하지 않는다.',
+    methodologyNote: '한국은행 기준금리만 확인되고 실제 단기 시장금리는 확보하지 못했습니다(Phase 7-D/7-E). ' +
+      '정의가 분명하지 않은 상태라 임의 숫자를 넣지 않고 기존 값(0%)을 그대로 씁니다.',
+    uncertaintyNote: '명목 수익률인지 실질 수익률인지 확인되지 않았습니다. 실제 수익률을 보장하지 않습니다.',
     version: 0,
     recommended: null,
     appliesToKeys: ['CASH', 'CASH.USD']
@@ -2767,7 +2769,8 @@ function getReturnAssumptionSourceInfo(key) {
     const bits = [meta.source];
     if (meta.asOfDate) bits.push('기준일 ' + meta.asOfDate);
     if (meta.forecastHorizonYears) bits.push('전망기간 ' + meta.forecastHorizonYears + '년');
-    if (meta.returnType) bits.push('수익률 정의 ' + meta.returnType);
+    // [§46 TXT-46-3] 원문 확인 메모(영문 인용)는 화면에 옮기지 않고 뜻만 쓴다 - 저장된 메타데이터는 그대로다.
+    if (meta.returnType) bits.push('수익률 정의 ' + (String(meta.returnType).startsWith('total') ? '총수익(배당 포함)' : meta.returnType));
     if (meta.nominalReal) bits.push(meta.nominalReal === 'nominal' ? '명목' : '실질');
     if (meta.currency) bits.push('통화 ' + meta.currency);
     if (meta.uncertaintyNote) bits.push(meta.uncertaintyNote);

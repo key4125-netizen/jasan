@@ -152,11 +152,11 @@ test('D. 지수는 진입 직후부터 보이고, 해석만 따로 접힌다', a
   expect(r.diagnosisVisibleH).toBe(0);
 });
 
-test('E. 그 아래 RISK 관리 카드는 그대로 있다', async ({ page }) => {
+test('E. 그 아래 위험 관리 카드는 그대로 있다', async ({ page }) => {
   await open(page);
   await seed(page);
   await expect(page.locator('#macroBriefingSection')).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'RISK 관리' })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: '위험 관리' })).toHaveCount(1);
 });
 
 /* ── 반응형 ───────────────────────────────────────────────────────────── */

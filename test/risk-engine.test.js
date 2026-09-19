@@ -126,7 +126,9 @@ test('Benchmark - 국내는 접미사로, 미국은 하드코딩 집합으로 �
   assert.strictEqual(s.getBenchmarkKeyForTicker('UNKNOWNX'), 'SP500');
 });
 
-test('Benchmark - [알려진 mismatch, Phase 40 정비 예정] 채권·금 ETF가 주식 지수에 매핑된다', () => {
+// [§46 CLN-46-1] Risk 벤치마크는 §40 P-4(v252)에서 resolveRiskBenchmark로 바뀌어 이 매핑을 쓰지 않는다 - 옛 getBenchmarkKeyForTicker는
+// 종목 분석 팝업의 화면에 나오지 않는 참고값 경로에만 남아 있고, 이 테스트는 그 옛 매핑을 그대로 고정한다.
+test('Benchmark - [옛 참고 경로 · Risk 벤치마크 아님] 채권·금 ETF가 주식 지수에 매핑된다', () => {
   const s = freshSandbox();
   // 미국 장기국채 ETF가 S&P500 벤치마크를 받는다.
   assert.strictEqual(s.getBenchmarkKeyForTicker('TLT'), 'SP500');

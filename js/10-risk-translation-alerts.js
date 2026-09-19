@@ -299,7 +299,7 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
     <div>
       ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 지수는 추종 지수나 상장 시장 지수(코스피·코스닥·나스닥 종합·나스닥100·S&P500)가 확인될 때만 정하고, 확인되지 않거나 함께 있는 거래일이 120일보다 적으면 \'데이터 부족\'으로 표시합니다.')}
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoText, SORTINO_GUIDE_TEXT)}
-      ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(RISK 세부내용 모달, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
+      ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(위험 세부내용 팝업, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('52주 고점 대비 현재 하락률', drawdownText, '지금 가격이 최근 1년 최고가보다 얼마나 낮은지(현재 위치)입니다. 1년 중 가장 크게 떨어졌던 폭인 최대낙폭(MDD)과는 다른 값입니다.')}
       ${buildMetricItem('위험 기여도', contribText, '포트폴리오 전체 흔들림 중 이 종목이 차지하는 비율 추정입니다. 비중보다 크면 비중에 비해 계좌 등락에 더 크게 반영되고 있다는 뜻이며, 전체와 반대로 움직인 종목은 0%로 표시됩니다.')}
     </div>
@@ -1116,6 +1116,20 @@ const MACRO_KEY_TICKERS = {
   kospi: INDEX_TICKERS.KOSPI, kosdaq: INDEX_TICKERS.KOSDAQ,
   sp500: INDEX_TICKERS.SP500, nasdaq: INDEX_TICKERS.NASDAQ, dow: '^DJI'
 };
+// [§46 MAC-DS-01] 매크로 타일 이름 - 브리핑 타일과 종목 분석 검색창 직접 입력(→ 같은 지표 팝업)이 함께 쓴다.
+const MACRO_KEY_NAMES = {
+  vix: 'VIX(변동성)', usdkrw: '원/달러', us10y: '美 10년물 금리', gold: '금 시세', usdx: '달러인덱스',
+  kospi: '코스피', kosdaq: '코스닥', sp500: 'S&P 500', nasdaq: '나스닥', dow: '다우'
+};
+// [§46 MAC-UNIT-01] 지표 팝업 차트(이동평균 범례 · 세로축)의 값 단위 - 값 자체는 바꾸지 않고 표시만 정한다.
+// 금리는 %, 원/달러는 원, 금 시세는 달러 가격, 나머지(지수 · VIX · 달러인덱스)는 단위 없는 지수값이다.
+const MACRO_VALUE_UNITS = {
+  us10y: 'pct', usdkrw: 'krw', gold: 'usd',
+  vix: 'point', usdx: 'point', kospi: 'point', kosdaq: 'point', sp500: 'point', nasdaq: 'point', dow: 'point'
+};
+function getMacroValueUnit(macroKey) {
+  return MACRO_VALUE_UNITS[macroKey] || 'point';
+}
 // [박스권 판정 임계값] 지표마다 평소 변동폭이 크게 달라(VIX는 일상적으로 수십% 출렁이지만 환율은
 // 1%만 움직여도 큰 변화) 5일/20일 등락률이 몇 %부터 "추세"로 볼지 지표군별로 다르게 잡는다 - 정밀한
 // 통계적 기준이 아니라 초보자 설명용 근사치다.
@@ -1378,22 +1392,22 @@ function renderMacroBriefing() {
   // [1행 5개 · 2행 5개] 금 시세는 실제 달러 가격이라 '$' 단위를 그대로 쓴다(macroTileHtml 자체는
   // 단위 표기를 몰라도 되게, 값 문자열을 여기서 미리 만들어 넘긴다 - indexTile과 동일 패턴). 달러인덱스는
   // 통화 바스켓 대비 상대값을 지수화한 숫자라 통화 기호 없이 소수 둘째 자리까지 표시한다.
-  const goldTile = macroTileHtml('gold', '금 시세', typeof gold === 'number' ? '$' + fmtNum(gold, 0) : '-', typeof goldChangePct === 'number' ? `${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%` : '조회 전', trendArrowIcon(goldChangePct));
-  const usdxTile = macroTileHtml('usdx', '달러인덱스', typeof usdx === 'number' ? fmtNum(usdx, 2) : '-', typeof usdxChangePct === 'number' ? `${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%` : '조회 전', trendArrowIcon(usdxChangePct));
+  const goldTile = macroTileHtml('gold', MACRO_KEY_NAMES.gold, typeof gold === 'number' ? '$' + fmtNum(gold, 0) : '-', typeof goldChangePct === 'number' ? `${goldChangePct >= 0 ? '+' : ''}${fmtNum(goldChangePct, 2)}%` : '조회 전', trendArrowIcon(goldChangePct));
+  const usdxTile = macroTileHtml('usdx', MACRO_KEY_NAMES.usdx, typeof usdx === 'number' ? fmtNum(usdx, 2) : '-', typeof usdxChangePct === 'number' ? `${usdxChangePct >= 0 ? '+' : ''}${fmtNum(usdxChangePct, 2)}%` : '조회 전', trendArrowIcon(usdxChangePct));
   gridEl.innerHTML = `
     <div class="grid grid-cols-5 gap-1 sm:gap-2">
-      ${macroTileHtml('vix', 'VIX(변동성)', typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
-      ${macroTileHtml('usdkrw', '원/달러', typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', typeof fxChangePct === 'number' ? `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%` : '조회 전', trendArrowIcon(fxChangePct))}
-      ${macroTileHtml('us10y', '美 10년물 금리', typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
+      ${macroTileHtml('vix', MACRO_KEY_NAMES.vix, typeof vix === 'number' ? fmtNum(vix, 1) : '-', vixWeather.label, vixWeather.icon)}
+      ${macroTileHtml('usdkrw', MACRO_KEY_NAMES.usdkrw, typeof state.exchangeRate === 'number' ? `${fmtNum(state.exchangeRate, 0)}원` : '-', typeof fxChangePct === 'number' ? `${fxChangePct >= 0 ? '+' : ''}${fmtNum(fxChangePct, 2)}%` : '조회 전', trendArrowIcon(fxChangePct))}
+      ${macroTileHtml('us10y', MACRO_KEY_NAMES.us10y, typeof ust10y === 'number' ? fmtNum(ust10y, 2) + '%' : '-', '국채 수익률', trendArrowIcon(ust10yChangePct))}
       ${goldTile}
       ${usdxTile}
     </div>
     <div class="grid grid-cols-5 gap-1 sm:gap-2">
-      ${indexTile('kospi', '코스피', kospiInfo)}
-      ${indexTile('kosdaq', '코스닥', kosdaqInfo)}
-      ${indexTile('sp500', 'S&P 500', sp500Info)}
-      ${indexTile('nasdaq', '나스닥', nasdaqInfo)}
-      ${indexTile('dow', '다우', dowInfo)}
+      ${indexTile('kospi', MACRO_KEY_NAMES.kospi, kospiInfo)}
+      ${indexTile('kosdaq', MACRO_KEY_NAMES.kosdaq, kosdaqInfo)}
+      ${indexTile('sp500', MACRO_KEY_NAMES.sp500, sp500Info)}
+      ${indexTile('nasdaq', MACRO_KEY_NAMES.nasdaq, nasdaqInfo)}
+      ${indexTile('dow', MACRO_KEY_NAMES.dow, dowInfo)}
     </div>`;
 
   // [지표 상세 팝업용 스냅샷] 타일을 클릭했을 때(종목 상세 모달의 매크로 분기,
@@ -1900,6 +1914,16 @@ async function runStockAnalysis() {
     tickerInput.value = raw;
   } else {
     hideStockAnalysisSuggestions();
+    // [§46 MAC-DS-01] 매크로 지표 티커(^TNX · KRW=X · ^KS11 · ^VIX · GC=F · DX-Y.NYB 등)를 직접 입력하면
+    // 종목 분석(주가 위치 · 최고가 등 종목용 표현)을 실행하지 않고, 매크로 타일과 같은 지표 팝업을 연다.
+    // 한글 이름 · 자연어 검색은 지원하지 않는다(티커 직접 입력만). 지표 팝업(z-70)은 이 검색 팝업(z-65) 위에
+    // 겹쳐 열린다 - 닫거나 뒤로가기를 누르면 검색 팝업으로 돌아온다(두 팝업을 한 번에 닫고 열면
+    // history.back()이 비동기라 방금 연 팝업까지 닫힐 수 있다).
+    const macroKey = getMacroKeyForTicker(sanitizeTicker(raw).yahooTicker);
+    if (macroKey) {
+      openStockDetailModal(MACRO_KEY_TICKERS[macroKey], MACRO_KEY_NAMES[macroKey]);
+      return;
+    }
   }
 
   loadingEl.classList.remove('hidden');
