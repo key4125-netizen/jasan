@@ -32,7 +32,31 @@
 
 ---
 
-## ✅ 운영 v262 확정 · 자산 계산체계 통합(Risk Benchmark / Index / Exposure Master / MC) (2026-09-19 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+## 📌 기준문서 등록 — v262 → 전체 미결사항 종결 통합작업계획서 FINAL (2026-09-20 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+
+> **PM이 `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`를 이 프로젝트의 실행 기준문서로 확정했다(FINAL · PM APPROVED · 55개 절).**
+> 이 세션에서 한 일은 **문서 등록뿐이다. 코드 · 데이터 · 정책 · 버전 · 브랜치 · 워크플로 변경 없음.**
+
+- **등록 시점 상태**: Production **v262**(release `b9ff90e`) · main `d4459a7` · 작업트리는 `.claude/launch.json`(사용자 로컬 변경)만 존재 · 버전 변경 없음.
+- **등록 변경 파일**: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`(신규) · `CLAUDE.md`(CURRENT PRIORITY 포인터) · `CLAUDE_HANDOVER.md`(이 절).
+- **문서 위계**: 정책 원문 SoT = `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` (변함없음) / 실행 기준문서 = 위 계획서.
+- **핵심 실행 규칙(계획서 요약 — 원문 우선)**
+  - 종결 상태는 COMPLETED · RETAINED · NOT_AVAILABLE · PM DECISION RESOLVED 4가지뿐. HOLD/BACKLOG/FUTURE/TBD를 남기지 않는다(§0 · §51).
+  - "데이터가 없다"를 먼저 결론으로 쓰지 않는다. 동시에 **없는 값을 만들어내지 않는다**(§0-1 · §0-2 · §54).
+  - 작업 브랜치 `integration/v262-closeout`(origin push 허용) · main 갱신·버전업·배포는 **최종 릴리스 1회**(§4).
+  - 종목마스터 자동 workflow는 **2026-10-01 00:00 UTC 이전**에 DRY-RUN/integration 방식으로 전환(§5).
+  - 매 세션 종료 시 종결 대장·진행 상태를 integration branch에 보존(§6).
+  - 외부 수집 준수·원문 미보관·연락처 secret 주입·대상 범위 제한(§7~§10).
+  - 회귀는 Frozen baseline(v262 고정)과 Current data를 분리(§14~§16 · §42).
+  - 중간 Release Guard FAIL은 예상 상태, 최종 릴리스 직전 PASS 필수(§44). 롤백은 버전 번호를 올려서 수행(§45).
+  - 최종 릴리스 산출물에 사용자 영향 고지 포함(§46).
+  - PM 결정 대기 시 해당 항목·의존 항목만 STOP, 독립 작업은 계속(§41).
+- **실행 순서**: PHASE 0(재감사·브랜치·workflow 통제·frozen baseline·회귀 하네스·종결 대장) → PHASE 1~12(§50).
+- **다음 착수 지점**: **PHASE 0. 단, PM의 착수 지시가 있을 때 시작한다(현재 미착수).**
+
+---
+
+## ✅ 운영 v262 확정 · 자산 계산체계 통합(Risk Benchmark / Index / Exposure Master / MC) (2026-09-19 · 직전 릴리스 기록)
 
 > **현재 production = v262**(release 커밋 **b9ff90e**). v261 이후 "자산관리 계산체계 통합 프로젝트"(PM 지시: 1차 통합 구현 → 2차 통합 보완 → v262 Release)의 결과다. 정책 원문은 checklist **§44 44-16 · 44-16-2**(D-01 · D-05 · D-06 · D-16 · Index Master · Evidence Grade · 공유표 · 0052D0). 새 작업은 PM 지시로만 시작한다.
 
