@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "snapshotVersion": "v262-frozen-1",
+  "project": "v262 → 전체 미결사항 종결 통합 프로젝트",
+  "plan": "docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md",
+  "purpose": "코드 · 정책 변경의 효과를 데이터 변화와 분리해 측정하기 위한 고정 기준선(계획서 §14 · §15)",
+  "createdAt": "2026-09-19T23:16:01.426Z",
+  "releaseCommit": "b9ff90e78ad09f70d2a688fb4d664bcdb40ba746",
+  "baselineCommit": "4ac65bd6e5067a86164021545ac6a7e1a760cfae",
+  "note": "기준선은 v262 Production 상태다. PHASE 0의 문서 등록 커밋은 앱 코드 · 데이터를 바꾸지 않았다(b9ff90e..HEAD 의 코드 · 데이터 diff 없음).",
+  "version": {
+    "cacheName": "smart-asset-manager-v262",
+    "versionLabel": "v262"
+  },
+  "files": [
+    {
+      "path": "sw.js",
+      "role": "app",
+      "bytes": 80410,
+      "sha256": "e11b97cc9dda9c968e8a57f0db2446fbb8b0977b4e66c8718fca22077aded896",
+      "gitBlob": "e297ca5720d1db4f4c2a2ec58ca46c32e94cf641",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "index.html",
+      "role": "app",
+      "bytes": 247473,
+      "sha256": "68594fb1b9eb3bfd2014a493cf89e15c7669bb377dc7208db223a33c7f98bc41",
+      "gitBlob": "26feba1f763c12971907697af29c71933974cba0",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "manifest.json",
+      "role": "app",
+      "bytes": 1286,
+      "sha256": "6585ce4e63e48e106e59bee699f68bd029c2be1d85d9c9ad910dd6331b1e5a86",
+      "gitBlob": "1d79dcb18906b57183ffc9470857d7c729f9b0ff",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/01-core-state.js",
+      "role": "app",
+      "bytes": 126319,
+      "sha256": "af20cb3b282c5a4bced02120aa1ac01dd0087f7c9cbab531dd8f753b3ae92385",
+      "gitBlob": "ab7162eacc09e5bbd5322fadd431db1ff59060b5",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/02-dashboard-kpi.js",
+      "role": "app",
+      "bytes": 55507,
+      "sha256": "80609f6eb54e69c7c1c9640160c114bca4938ff17b52b11d78a79048ab9085c2",
+      "gitBlob": "aaf2a0b23e9ae027e5c4bd1fea9104b7f6051af5",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/03-filters-charts-tabs.js",
+      "role": "app",
+      "bytes": 34771,
+      "sha256": "880f7ea9d113251b7f8658b4fb49ff4cc4d16099c8dd381bef1212d76f82f644",
+      "gitBlob": "0388fd6a1db8cf23910194bf3b406ddef8fe29f4",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/04-rebalancing.js",
+      "role": "app",
+      "bytes": 134612,
+      "sha256": "d77be4157a45f4349a4d20c0c379b76c915b3d262d0ade100a8153f9c0aacaf1",
+      "gitBlob": "6762845249f1b448cbddaabdfb637fd11465c70f",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/05-future-projection.js",
+      "role": "app",
+      "bytes": 337730,
+      "sha256": "c4073f54f58a3bd891c06437e18816ce7da42922ddb196d9cf6983c0f977dbf7",
+      "gitBlob": "09e52795a30bf4281dfcd4f06546d883ee5ceb69",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/06-transactions.js",
+      "role": "app",
+      "bytes": 105242,
+      "sha256": "0512151afcc8792a6ec0e0c46a42eca0fd3036b0c202375bb1bff3567e4893a2",
+      "gitBlob": "65758349b5647cdf73a265cafba5db52e24124d6",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/07-table-render-modals.js",
+      "role": "app",
+      "bytes": 64708,
+      "sha256": "9dddacf235bc579c4343f3a9b08a1b31271b987594e45caef223481a64634d1b",
+      "gitBlob": "f80f8bcb037d415055e749b731e048248aa4070c",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/08-detail-modal-fx.js",
+      "role": "app",
+      "bytes": 80146,
+      "sha256": "4526bd0b938ce390106268c25e339319b3cabcba6efe0dc22e212bd6dd311ab0",
+      "gitBlob": "f7968541e44e09690a9f86320cb061016357f7ec",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/09-price-fx-risk-engine.js",
+      "role": "app",
+      "bytes": 176040,
+      "sha256": "c383768d2ab4bf5191c9d68eb232473fc6cdce9c89a35cb148fbc7ab954cc2d3",
+      "gitBlob": "44abffc2dd878349ee091dcb98b861446c8284d2",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/10-risk-translation-alerts.js",
+      "role": "app",
+      "bytes": 158531,
+      "sha256": "46e6c1bc00e240395d6abd1311a9a3d7ae4be36dad3a3567f4f4ece8899b84f8",
+      "gitBlob": "2cba619b10a17350654f7638e4e433df3d793569",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/11-refresh-history.js",
+      "role": "app",
+      "bytes": 73647,
+      "sha256": "cd87d663cb64ac914e6a8f1f4e611d3cd8d1909009fff623e0d1fbeba03ca2e5",
+      "gitBlob": "6a58f202ce7af5057e91f42a2a1199e2842eac19",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/12-import-export-sync.js",
+      "role": "app",
+      "bytes": 165992,
+      "sha256": "5a4c4bc14b7093a1c8256e2a627a9cbee7ce40603778d36401e1b530b8ea7271",
+      "gitBlob": "298289b613914377a69b87b1f859b985c99ff8f1",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/13-fundamental-data.js",
+      "role": "app",
+      "bytes": 14052,
+      "sha256": "a1e44947499be18d594cf7faa50970d1fe2aab3659060365531ab23fb3f4ef49",
+      "gitBlob": "ed539dc1fb4ffc1d1e1c6dd9defb3c4002afa3ff",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/14-settings-boot.js",
+      "role": "app",
+      "bytes": 21941,
+      "sha256": "af2a599baccf85f3f2749c43d974fdb5392bfafbea806009e30f70ec8e8ea2a2",
+      "gitBlob": "1e0663417c5b8feb7a4f6dc2054ef6f6d922ef58",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/15-monte-carlo-engine.js",
+      "role": "app",
+      "bytes": 44553,
+      "sha256": "10977a24376904a0fdc2ec0f7465d0d1bb181521d3308db90fa6c54e103d1fd5",
+      "gitBlob": "462622f354ae150fee67255759fd3d12fa4d7945",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/16-monte-carlo-adapter.js",
+      "role": "app",
+      "bytes": 27118,
+      "sha256": "85df665138d904f8985fad0ee76e77ab6d0c39cee42abbd63bc3204e19f8a196",
+      "gitBlob": "60f8424652ec4be675acb1f0a49f10b3856e7cb1",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/17-monte-carlo-worker.js",
+      "role": "app",
+      "bytes": 5726,
+      "sha256": "d3b52ecccc651a183d5b6cbccc258f370513020d599ee2c74835994482714c2a",
+      "gitBlob": "72ed82af37054497e31478c27a119fdbdc5449ea",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/18-monte-carlo-controller.js",
+      "role": "app",
+      "bytes": 13581,
+      "sha256": "bf2feb5c5632993bfdfad48bb6a109b2d1567591338a64488c936cd67b9717ea",
+      "gitBlob": "0d184b82158e449533e38ae1fbca5b0e926b2464",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/19-monte-carlo-ui.js",
+      "role": "app",
+      "bytes": 65839,
+      "sha256": "9967921161f3a15e764b5e194f36b18128b06d7c4636bffb9dac765754b3d578",
+      "gitBlob": "74c2350877c1877f81a496c821e70007d8f269d1",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/20-inflation-transform.js",
+      "role": "app",
+      "bytes": 5443,
+      "sha256": "9137db3dc2ff7f1ca800e9df9787556f047f39df7d9703afcb3342f21b3a33d5",
+      "gitBlob": "ad3655025d5fc9dabab41abd72535e93fcc3c079",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/21-safety-layer.js",
+      "role": "app",
+      "bytes": 34106,
+      "sha256": "030c1d5ce44996d9dad11e4a771733347de7a96a0fb4bc73b5c39577e57e6ec5",
+      "gitBlob": "7bd137c7ec8309a1e6fb1058e004452143f6e06a",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/22-safety-ui.js",
+      "role": "app",
+      "bytes": 12402,
+      "sha256": "dfc7fc7e97199b6e6aaa28c5bd161bd2d8774eae86c00a44d21017b6cbe8264f",
+      "gitBlob": "9721592e589c1e6270df6bd64cfc437ea830a31c",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/23-daily-valuation.js",
+      "role": "app",
+      "bytes": 31281,
+      "sha256": "7c5e75be10a9dadaaedf4fd634e0b4f720080ad7c7f2259ddec0e8a764fa9be9",
+      "gitBlob": "b58cc9acf0b0b7e6943162be33f253369d568d2e",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/24-daily-valuation-data.js",
+      "role": "app",
+      "bytes": 8111,
+      "sha256": "e36f5830bbe5e7830a5ce8d6c60e1ca9c1840b80caa15d32e4a7178516a60577",
+      "gitBlob": "68a3b3cf0f5d219a0a4627ec2e2e419e2b6ee837",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/25-sync-diff.js",
+      "role": "app",
+      "bytes": 16025,
+      "sha256": "855f6adbbaeabcb7704c8a1070cbcdbf1c1e17fbf4d188ccb21a7fe71a745f0c",
+      "gitBlob": "d854c6b7f465d86fa34222266756b84ad15f31b9",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/26-cma-data.js",
+      "role": "app",
+      "bytes": 7674,
+      "sha256": "04fff9c071c4d6fec3f8158418622f64e8ceea8266f284c6caa8734f0b4dbed1",
+      "gitBlob": "09c76b21589f481403e048547293173df7976c3e",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/27-cma-runtime.js",
+      "role": "app",
+      "bytes": 10297,
+      "sha256": "009e9b7e6f90427d9f18a58b4d7c180b0ef4ca710a2d5b6efddc626abeb84d04",
+      "gitBlob": "9dad0b9a005f07b76e37471682b9a21778243cf9",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "js/28-exposure-master.js",
+      "role": "app",
+      "bytes": 51926,
+      "sha256": "ac68a94d33e43e92456d0fd08890de1ca7a56c819bd4c03b027b6a6fb11c3a39",
+      "gitBlob": "a00bed73c65a0c5cd201c1f35b75d46bbb17098c",
+      "dataAsOf": null,
+      "snapshotCopy": null
+    },
+    {
+      "path": "data/fx/usdkrw-h10.json",
+      "role": "data",
+      "bytes": 148197,
+      "sha256": "c3c318e394c652e216eba28897c5e2f3873322e367dd0d951515f24f8d8a4a21",
+      "gitBlob": "c93097f27dd0d8077e6ee1ad2abf5b3525907665",
+      "dataAsOf": {
+        "endDate": "2026-09-11",
+        "startDate": "2000-01-03",
+        "rowCount": 6965,
+        "fetchedAt": "2026-09-18T22:41:53.648Z"
+      },
+      "snapshotCopy": "data/usdkrw-h10.json"
+    },
+    {
+      "path": "data/ticker-master.json",
+      "role": "data",
+      "bytes": 2847857,
+      "sha256": "27d25408ed128db40036aae4a0ce6fb11edac7c9279e6de7cfc685f11d7b9ef2",
+      "gitBlob": "5e563ccd42508d7c644243adbe77022b9afa490b",
+      "dataAsOf": {
+        "generatedAt": "2026-09-19T11:46:55.229Z",
+        "counts": {
+          "failedMarkets": 0,
+          "items": 16731
+        }
+      },
+      "snapshotCopy": null
+    },
+    {
+      "path": "data/cma/active.json",
+      "role": "data",
+      "bytes": 826,
+      "sha256": "4dfbe7e7ba7b6454adb2d9354c8a0542f2ff8be20cf32b03e79d5036ef4f8944",
+      "gitBlob": "cb2a12202107e6ea463b899506713d78f2a19537",
+      "dataAsOf": {
+        "setVersion": "CMA-2026.1",
+        "primaryDatasetId": "AGI-LTCMA-2026Q1-USD",
+        "benchmarkDatasetIds": [
+          "JPM-LTCMA-2026-KRW"
+        ],
+        "activatedAt": "2026-09-16T15:09:25.238Z"
+      },
+      "snapshotCopy": null
+    },
+    {
+      "path": "data/cma/registry.json",
+      "role": "data",
+      "bytes": 10136,
+      "sha256": "960ab61baae859858a597e95d4578a9eed7327a7d05a1d724b38c122b84c8182",
+      "gitBlob": "8a6653538d52090a6a836acc952dafe03992354f",
+      "dataAsOf": {
+        "schemaVersion": 1,
+        "sourceIds": [],
+        "keys": 4
+      },
+      "snapshotCopy": null
+    },
+    {
+      "path": "data/cma/app-asset-class-map.json",
+      "role": "data",
+      "bytes": 3290,
+      "sha256": "b9a92b732ca1a667f2c1daf65dc71ae94298b61b471eb5aef77ce1c44931928f",
+      "gitBlob": "f60bfa95d894e84d3a84822708917b8a8fff4ba5",
+      "dataAsOf": {
+        "schemaVersion": 1,
+        "sourceIds": null,
+        "keys": 6
+      },
+      "snapshotCopy": null
+    }
+  ]
+}

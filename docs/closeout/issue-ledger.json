@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 1,
+  "title": "v262 → 전체 미결사항 종결 프로젝트 · 종결 대장",
+  "plan": "docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md",
+  "sot": "docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md",
+  "edition": "PHASE 0 초판",
+  "baseline": { "version": "v262", "releaseCommit": "b9ff90e", "mainAtStart": "d4459a7", "integrationBranch": "integration/v262-closeout" },
+  "statusEnum": {
+    "interim": ["OPEN", "COMPLETED", "RETAINED", "NOT_AVAILABLE_CANDIDATE", "PM_DECISION_REQUIRED"],
+    "final": ["COMPLETED", "RETAINED", "NOT_AVAILABLE", "PM_DECISION_RESOLVED"]
+  },
+  "note": "현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.",
+  "items": [
+    {
+      "id": "CL-01", "category": "이미 종결", "phase": "PHASE 0", "title": "v262 운영 릴리스",
+      "currentStatus": "COMPLETED", "finalStatus": "COMPLETED",
+      "sot": "§44 44-16 · 44-16-2", "currentImpl": "sw.js CACHE_NAME=smart-asset-manager-v262 · index.html #appVersionLabel=v262 · release commit b9ff90e",
+      "problem": "없음 - 재확인 대상", "neededFact": "운영 버전 표식과 저장소 상태 일치",
+      "verification": "PHASE 0에서 sw.js · index.html · git 로그로 재확인(2026-09-20)",
+      "evidence": "baseline/v262/MANIFEST.json version 필드", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-02", "category": "이미 종결", "phase": "PHASE 0", "title": "0052D0 국내/해외 · 통화 표시",
+      "currentStatus": "COMPLETED", "finalStatus": "COMPLETED",
+      "sot": "§44 44-16-2", "currentImpl": "js/01 isKrxShortCode() · 거래 입력 통화 · 엑셀 분류",
+      "problem": "없음 - 사용자 확인 완료(엑셀에서 국내로 분류됨)", "neededFact": "영문 혼합 코드의 국내 판정",
+      "verification": "test/krx-alnum-ticker.test.js 5건 · 사용자 엑셀 확인", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-03", "category": "이미 종결", "phase": "PHASE 0", "title": "KRX 영문 혼합 종목코드 정규화 · 마스터 생성기",
+      "currentStatus": "COMPLETED", "finalStatus": "COMPLETED",
+      "sot": "§44 44-16-2", "currentImpl": "js/01 KRX_SHORT_CODE_PATTERN · scripts/update-ticker-master.js · data/ticker-master.json(16,731건 · 영문 367건)",
+      "problem": "없음", "neededFact": "생성기 · 앱 양쪽 인식",
+      "verification": "PHASE 0 master suite: tickerMaster.items=16731 · alphanumericKrCodes 집계", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-04", "category": "이미 종결", "phase": "PHASE 0", "title": "국내 우선주 처리 - 현행 유지(PM 결정 ④)",
+      "currentStatus": "RETAINED", "finalStatus": "RETAINED",
+      "sot": "§44 44-16 D-06 단서", "currentImpl": "국내 상장 개별주는 상장시장 지수(js/09 RISK_BENCHMARK_BY_LISTING_EXCHANGE)",
+      "problem": "없음 - 주식 종류(보통주/우선주) 마스터를 만들지 않기로 PM이 결정", "neededFact": "정책 유지 근거",
+      "verification": "PM 결정 ④(2026-09-19) · 코드 경로 무변경", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-05", "category": "이미 종결", "phase": "PHASE 0", "title": "jsDelivr 캐시 - purge 하지 않고 자연 만료(PM 결정)",
+      "currentStatus": "RETAINED", "finalStatus": null,
+      "sot": "인계장 v262 절", "currentImpl": "js/09 TICKER_MASTER_CDN_URL(@main) · TICKER_MASTER_REFRESH_DAYS=20",
+      "problem": "PM이 '조치 없이 기다린다'로 결정. 다만 Q-5(캐시/버전 전략 점검)는 별도 항목으로 살아 있다",
+      "neededFact": "CDN 12시간 · 기기 20일 경과 후 반영", "verification": "PHASE 7 Q-5에서 동작 점검", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-06", "category": "이미 종결", "phase": "PHASE 0", "title": ".claude/launch.json 사용자 로컬 변경 보존",
+      "currentStatus": "RETAINED", "finalStatus": null,
+      "sot": "PM 지시(상시)", "currentImpl": "추적 파일이지만 이 프로젝트에서 stage·commit·복구하지 않는다",
+      "problem": "없음", "neededFact": "시작 diff 해시 = 종료 diff 해시",
+      "verification": "PHASE 0 시작 216cbb7b12fed0a2 - 매 세션 종료 시 재확인", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-07", "category": "이미 종결", "phase": "PHASE 0", "title": "원장 49건 MC 불변(자산군 · 입력 · 고정 seed 결과)",
+      "currentStatus": "COMPLETED", "finalStatus": null,
+      "sot": "§44 44-16 D-16", "currentImpl": "js/16 resolveMcAppAssetClass · CHARACTER_SOURCES_FOR_AUTO_RATE_KEY",
+      "problem": "없음 - 다만 이 프로젝트의 모든 변경에서 계속 지켜야 하는 불변조건이다",
+      "neededFact": "49/49 자산군 · MC 입력 · seed 20260101 결과 동일",
+      "verification": "test/mc-exposure-invariant.test.js 8건 + 회귀 하네스 mc suite", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-08", "category": "이미 종결", "phase": "PHASE 0", "title": "기존 PM 결정 ①~⑤(2026-09-19) 반영 상태",
+      "currentStatus": "COMPLETED", "finalStatus": "COMPLETED",
+      "sot": "§44 44-16", "currentImpl": "① 신규 원장 자산의 MC 영향 허용 ② 중간 버전업 없음 ③ 미국 개별주 자동 인정 금지 ④ 우선주 현행 ⑤ 0052D0 수정",
+      "problem": "없음", "verification": "v262 릴리스 보고 · 단위/E2E 통과", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-09", "category": "이미 종결", "phase": "PHASE 0", "title": "릴리스 게이트 구성(Unit · E2E · ESLint · Data Guard · Release Guard)",
+      "currentStatus": "COMPLETED", "finalStatus": null,
+      "sot": "CLAUDE.md RELEASE GATE", "currentImpl": "npm test · npx playwright test · npm run lint · data-guard · release-guard",
+      "problem": "없음 - 최종 릴리스에서 전부 PASS 필요(계획서 §44)",
+      "verification": "PHASE 0 시작 시점 Unit 566/566 · ESLint 0 · Data Guard PASS · Release Guard PASS", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "CL-10", "category": "이미 종결", "phase": "PHASE 0", "title": "문서 상태 정정(CLAUDE.md · 체크리스트 §44 로드맵)",
+      "currentStatus": "COMPLETED", "finalStatus": "COMPLETED",
+      "sot": "§44 44-8 · 44-16", "currentImpl": "커밋 d4459a7",
+      "problem": "없음", "verification": "git show d4459a7", "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "D-1", "category": "데이터 · Benchmark", "phase": "PHASE 3", "title": "미국 개별주 본국 보통주(HOME_COMMON) 근거",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 D-06 · 계획서 §19",
+      "currentImpl": "js/09 resolveRiskBenchmark - 해외 개별주는 원장 equityListing=HOME_COMMON(A등급)일 때만 Benchmark. 현재 기재 0건 → 미국 개별주 전부 UNRESOLVED(베타 · 포트폴리오 베타 null)",
+      "problem": "거래소 상장 사실만으로는 본국 보통주를 단정할 수 없다(ADR · 외국 설립 10-K 제출사 존재). 근거가 없어 v261에서 NASDAQ이던 11종목이 UNRESOLVED가 됐다",
+      "neededFact": "종목별 발행사 설립지 · 제출 서식(10-K vs 20-F/40-F) · 증권 종류(보통주 vs ADR)",
+      "investigationPaths": ["SEC EDGAR company_tickers.json + submissions(stateOfIncorporation · forms)", "발행사 공식 IR", "거래소 공식 상장정보"],
+      "alternatives": ["발행사 연차보고서 표지", "거래소 상장 증권 종류 표기"],
+      "impact": { "policy": "D-06 판정 규칙 구체화", "risk": "개별 베타 · 포트폴리오 베타 · 위험점수", "mc": "없음(Return Key 불변)", "ui": "F-1 사유 표시" },
+      "implementationNeeded": "원장 equityListing 채움 + 자동 재검증 파이프라인(N-2)",
+      "test": "회귀 하네스 risk suite(AAPL 경로) · 신규 단위테스트",
+      "ruleVersion": "HOME_COMMON_RULE_V1(예정)",
+      "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-2", "category": "데이터 · Benchmark", "phase": "PHASE 3", "title": "NYSE 상장 종목의 기준 지수(NYSE Composite) 부재",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §20",
+      "currentImpl": "Index Master에 NYSE 계열 지수가 없다(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW만 AVAILABLE)",
+      "problem": "D-1이 풀려도 NYSE 상장 본국 보통주는 비교할 지수가 없다",
+      "neededFact": "NYSE Composite(또는 대체 기준 지수)의 공식 정의 · 수신 가능한 역사 시계열 · 이용조건",
+      "investigationPaths": ["Yahoo ^NYA 역사 데이터", "ICE/NYSE 공식 지수 문서", "대체: S&P 500 사용 여부는 정책 결정 필요"],
+      "impact": { "policy": "상장시장 → 지수 매핑 규칙", "risk": "NYSE 상장 개별주 베타", "mc": "없음", "ui": "F-1" },
+      "implementationNeeded": "Index Master 항목 추가 + resolver 매핑",
+      "test": "risk suite 확장", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-3", "category": "데이터 · Benchmark", "phase": "PHASE 3", "title": "ETF 기초지수 · PR/TR 전수 확인",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 · 계획서 §21 · §25",
+      "currentImpl": "원장 EM-2026.2에 기초지수는 기재됐으나 360750 · SCHD는 PR/TR 구분 미확인(UNCONFIRMED)",
+      "problem": "PR과 TR은 서로 다른 값이다. 임의로 같다고 보면 베타 · 정의 일치 판정이 틀린다",
+      "neededFact": "종목별 기초지수의 공식 수익 유형(PR/TR)",
+      "investigationPaths": ["운용사 투자설명서 · 집합투자규약", "금융투자협회 전자공시", "지수 제공기관 methodology", "미국: SEC filings · 공식 fact sheet"],
+      "impact": { "policy": "정의 일치(MATCH/DEFINITION_MISMATCH) 판정", "risk": "베타 · 정의 불일치 표시", "mc": "없음", "ui": "F-5" },
+      "implementationNeeded": "원장 underlyingReturnType 채움",
+      "test": "test/integrated-benchmark-index.test.js 확장", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-4", "category": "데이터 · Benchmark", "phase": "PHASE 3", "title": "ETF 환헤지 여부 A등급 근거(368590 · 360200)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 D-05 · 계획서 §25",
+      "currentImpl": "헤지 필드를 비워 HOLD - 두 종목은 Benchmark UNRESOLVED(hedgeUnconfirmed)",
+      "problem": "헤지 여부를 추정하면 원화 환산 베타가 통째로 틀린다(6-3 금지)",
+      "neededFact": "공식 자료의 환헤지 정책(전량/부분/없음)",
+      "investigationPaths": ["운용사 투자설명서", "집합투자규약", "금융투자협회", "운용사 공식 상품 페이지"],
+      "impact": { "policy": "hedgeStatus", "risk": "비동기 베타 산출 가능 여부", "mc": "없음", "ui": "F-1" },
+      "implementationNeeded": "원장 hedgeStatus · conversionMethod 채움",
+      "test": "risk suite(HOLD → 계산) 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-5", "category": "데이터 · 지수 원천", "phase": "PHASE 3", "title": "코스피200 PR · TR 시계열 원천",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §22 · §23",
+      "currentImpl": "069500 · 102110은 원장 benchmark 없음(ETF 라벨 경로) · 278530은 KOSPI200_TR(원천 없음 → 베타 불가)",
+      "problem": "코스피200 PR/TR 수준 시계열을 앱이 받을 수 있는 경로가 확정되지 않았다",
+      "neededFact": "PR · TR 각각의 공식 정의 · 수신 가능한 일별 수준값 · 이용조건",
+      "investigationPaths": ["네이버 금융 KPI200(PHASE 0 예비 확인: 일별 257행 수신)", "KRX 공식 데이터 경로", "운용사 · 지수 제공기관(KRX 지수)", "KIS(이용조건 확인 선행 · B-2)"],
+      "preliminary": "KPI200 수신 확인 · KPI200TR/KOSPI200TR은 0행(예비 결과 · 최종 사실 아님)",
+      "impact": { "policy": "Index Master availability", "risk": "국내 ETF 베타", "mc": "없음", "ui": "F-1 · F-5" },
+      "implementationNeeded": "Index Master 원천 등록 + 수집 경로",
+      "test": "risk suite · Index Master 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-6", "category": "데이터 · 지수 원천", "phase": "PHASE 3", "title": "Index Master 원천 없음 4종 재조사",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 · 계획서 §23",
+      "currentImpl": "KOSPI200_TR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR · DJ_US_DIV100_PR = UNAVAILABLE(Benchmark는 RESOLVED, 베타만 불가)",
+      "problem": "현재 API에 없다는 이유로 멈춰 있다. 계획서 §0-1에 따라 전 경로를 다시 조사해야 한다",
+      "neededFact": "각 지수의 공개 역사 시계열 수신 가능성 · 정의 · 이용조건",
+      "investigationPaths": ["지수 제공기관(S&P DJI · NH아문디 iSelect 등) 공식 페이지", "운용사 공시 · fact sheet 내 지수값", "KRX", "합법적 대체 시계열"],
+      "impact": { "policy": "availability", "risk": "해당 종목 베타", "mc": "없음", "ui": "F-1" },
+      "implementationNeeded": "Index Master availability 갱신 + 수집 경로",
+      "test": "integrated-benchmark-index 회귀", "resumeCondition": "공식 시계열 공개 또는 라이선스 확보", "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-7", "category": "데이터 · 스트레스", "phase": "PHASE 4", "title": "나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§40 P-4 · P-5 · 계획서 §24",
+      "currentImpl": "COVID_CRASH_BENCHMARK_DROP_PCT · RATE_HIKE_2022_BENCHMARK_DROP_PCT 상수 · 해당 지수가 없으면 스트레스 null",
+      "problem": "임의 숫자를 넣지 않기로 했고, 지금은 일부 지수에서 추정 자체를 하지 않는다",
+      "neededFact": "지수별 2020 · 2022 · 전체 기간 최대 낙폭(고점 · 저점 · 계산식 · 기준일)",
+      "investigationPaths": ["Yahoo ^IXIC · ^GSPC · ^NDX · ^DJI · ^KS11 · ^KQ11 장기 이력에서 직접 계산", "산출 결과를 데이터로 고정(해시 기록)"],
+      "impact": { "policy": "§40 P-5", "risk": "스트레스 손실 추정", "mc": "없음", "ui": "스트레스 표시" },
+      "implementationNeeded": "계산 스크립트 + 산출값 데이터화(출처 · 기간 · 해시 기록)",
+      "test": "risk suite stress 필드 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-8", "category": "데이터 · 구조", "phase": "PHASE 6", "title": "혼합 상품 1:N 노출(237370 · 472170)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 · 계획서 §39",
+      "currentImpl": "exposureStructure=MIXED → Benchmark 강제하지 않음(UNRESOLVED · mixedExposure)",
+      "problem": "단일 Benchmark로 강제하면 잘못된 비교가 된다. 구성비를 공식 자료로 확인해야 한다",
+      "neededFact": "공식 구성비(자산군별 비중) · 기초지수 조합",
+      "investigationPaths": ["운용사 투자설명서 · 집합투자규약", "금융투자협회", "지수 제공기관"],
+      "impact": { "policy": "1:N 노출 모델", "risk": "베타 산출 방식", "mc": "자산군 배분", "ui": "F-1" },
+      "implementationNeeded": "원장 구조 확장(1:N) - 범위는 PM 결정 필요",
+      "test": "risk · mc 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "D-9", "category": "데이터 · 스트레스", "phase": "PHASE 4", "title": "원화 기준 역사적 낙폭(환율 포함) 미구현",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-15 · 인계장 장기 BACKLOG",
+      "currentImpl": "원화 환산 베타가 있는 종목이 있으면 스트레스는 null",
+      "problem": "달러 지수 낙폭을 원화 투자자 관점으로 환산하지 않아 스트레스가 비게 된다",
+      "neededFact": "지수 수준 × H.10 원화 환산 시계열의 낙폭",
+      "investigationPaths": ["보유 중인 H.10 + 지수 장기 이력으로 직접 계산(D-7과 동일 방법)"],
+      "impact": { "policy": "§40 P-5", "risk": "스트레스", "mc": "없음", "ui": "스트레스 안내" },
+      "implementationNeeded": "D-7과 함께 처리", "test": "risk suite", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "B-1", "category": "보안", "phase": "PHASE 2", "title": "KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포",
+      "currentStatus": "PM_DECISION_REQUIRED", "finalStatus": null,
+      "sot": "인계장 v262 절(KIS 보안) · 계획서 §26",
+      "currentImpl": "공개 저장소에 클라이언트 공유 비밀값이 존재했던 이력 - 사용자(운영자) 조치 필요 영역",
+      "problem": "Claude Code는 Worker 배포 · secret 교체 권한이 없다(PM 지시상 금지). 조치 주체와 시점을 PM이 정해야 한다",
+      "neededFact": "현재 Worker 설정 상태 · 교체 계획",
+      "investigationPaths": ["Cloudflare Worker 설정 확인(사용자)", "저장소 내 참조 코드 점검(Claude)"],
+      "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "저장소 측 점검 + 사용자 조치 절차 문서화(실제 비밀값은 어디에도 기록하지 않는다)",
+      "test": "네트워크 격리 스모크", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "B-2", "category": "보안 · 이용조건", "phase": "PHASE 1", "title": "KIS 지수 API 이용조건 · 데이터 재배포 조건",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §26 · §7",
+      "currentImpl": "코스피200 TR 등은 'KIS 약관 대기' 상태로 남아 있다",
+      "problem": "이용조건이 확인되지 않은 데이터를 저장 · 재배포하면 안 된다",
+      "neededFact": "KIS 오픈API 이용약관의 저장 · 재배포 · 2차 이용 조건",
+      "investigationPaths": ["KIS 공식 약관 · 개발자 포털 문서"],
+      "impact": { "policy": "D-5 · D-6 원천 선택", "risk": "간접", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "조건 기록 후 사용 가능 여부 판정", "test": "해당 없음", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "B-3", "category": "보안", "phase": "PHASE 2", "title": "자산 프록시 Worker CORS 설정 점검",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §26",
+      "currentImpl": "가격 조회 프록시 Worker 사용", "problem": "허용 Origin이 넓으면 제3자가 이용할 수 있다",
+      "neededFact": "현재 CORS 허용 목록", "investigationPaths": ["저장소 내 호출 코드", "Worker 설정(사용자)"],
+      "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "점검 결과에 따른 최소 변경(사용자 조치 가능성)", "test": "네트워크 격리 스모크", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "B-4", "category": "보안", "phase": "PHASE 2", "title": "동기화 Worker CORS · rate limit",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §26",
+      "currentImpl": "클라우드 동기화 Worker", "problem": "요청 제한이 없으면 남용 가능",
+      "neededFact": "현재 설정", "investigationPaths": ["저장소 내 호출 코드", "Worker 설정(사용자)"],
+      "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "점검 + 사용자 조치 절차", "test": "동기화 E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "C-1", "category": "MC · CMA", "phase": "PHASE 5", "title": "CMA 2026 Q2 검토 · 활성화 결정",
+      "currentStatus": "PM_DECISION_REQUIRED", "finalStatus": null,
+      "sot": "§37 CMA-AUTO-02 · 계획서 §28",
+      "currentImpl": "ACTIVE=CMA-2026.1(AGI 2026Q1 + JPM 2026 KRW) · AGI-LTCMA-2026Q2-USD는 VERIFIED(검토 대기)",
+      "problem": "자동 ACTIVE 금지 정책상 PM 승인 없이는 바꿀 수 없다. 이번 프로젝트에서 결정해야 OPEN이 남지 않는다",
+      "neededFact": "2026Q2 데이터셋의 자산군 · 수익률 · 변동성 · 상관 · 방법론 · 기준일",
+      "investigationPaths": ["data/cma/datasets/AGI-LTCMA-2026Q2-USD.json(이미 확보)", "AllianzGI 공식 문서"],
+      "impact": { "policy": "CMA 세트", "risk": "없음", "mc": "σ · 상관(μ는 Return Key)", "ui": "MC 안내" },
+      "implementationNeeded": "결정 패키지 제출 → 승인 시 activate + 동일 seed before/after",
+      "test": "mc suite 회귀(전/후 비교)", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "C-2", "category": "MC · 환율", "phase": "PHASE 5", "title": "MC 환율 · 헤지비용 처리 정책",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 제6조 6-2 · 6-3 · 계획서 §29",
+      "currentImpl": "미확인 FX · 헤지비용을 0으로 두지 않는다는 금지 규정만 있고, 장기 MC의 환율 모델은 없다",
+      "problem": "해외 자산의 원화 기준 장기 결과에 환율이 반영되지 않는다",
+      "neededFact": "한·미 단기금리 시계열 · 환율 장기 시계열 · 헤지비용 산식의 공식 근거",
+      "investigationPaths": ["H.10(보유)", "FRED(단기금리 · 이용조건 확인)", "한국은행 공개 통계"],
+      "impact": { "policy": "6-2 신설 여부", "risk": "없음", "mc": "해외 자산 결과", "ui": "MC 가정 안내" },
+      "implementationNeeded": "정책 확정 시 구현(PM 승인 필수)", "test": "mc suite before/after", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "C-3", "category": "Risk · 관측기간", "phase": "PHASE 4", "title": "지표별 관측기간(변동성 1년 · 베타 · VaR · MDD 2~3년)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 제7조 · 44-8 로드맵 ⑥ · 계획서 §30",
+      "currentImpl": "모든 지표가 1년 창 · 최소 공통 관측 수 기준 사용",
+      "problem": "지표 성격상 필요한 기간이 다르다. 선행조건은 제41조(Yahoo 장기 데이터 안정성) 확인",
+      "neededFact": "Yahoo 장기 이력의 안정성 · 조정주가 일관성 · 각 지표의 통계적 적합 기간",
+      "investigationPaths": ["Yahoo 장기 이력 실측", "기존 데이터 품질 진단 결과 재사용"],
+      "impact": { "policy": "제7조", "risk": "모든 지표 값", "mc": "없음", "ui": "관측 수 표시" },
+      "implementationNeeded": "기간 정책 변경(PM 승인) + before/after 회귀", "test": "risk suite", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "C-4", "category": "MC · Backtest", "phase": "PHASE 5", "title": "Backtest Gate · 장기 Market Panel(로드맵 ⑦~⑮)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 제40조 · 44-8 로드맵 · 계획서 §32",
+      "currentImpl": "미착수. 장기 패널 라이선스 확인이 선행조건",
+      "problem": "GBM 대 Bootstrap 판정 체계가 없다. 범위가 크므로 이번 프로젝트에서 '어디까지'를 PM이 정해야 한다",
+      "neededFact": "장기 패널 데이터의 출처 · 라이선스 · 저장 조건 · 이력 길이 · 재현성",
+      "investigationPaths": ["Kenneth French Data Library", "FRED", "기타 공개 시계열"],
+      "impact": { "policy": "MC 모델 선택", "risk": "없음", "mc": "모델 자체", "ui": "MC 설명" },
+      "implementationNeeded": "범위 결정 후 단계 구현 또는 근거 있는 NOT_AVAILABLE/RETAINED",
+      "test": "mc 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "F-1", "category": "UI", "phase": "PHASE 7", "title": "베타 산출 불가 사유 구분 표시",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 제9조 · 계획서 §27 · §40",
+      "currentImpl": "js/10 - 개별 종목 베타가 사유와 무관하게 '데이터 부족'류로 보인다",
+      "problem": "Benchmark 미확정 · 원천 없음 · 공통 거래일 부족 · 혼합 · 헤지 미확인이 구분되지 않는다",
+      "neededFact": "표시 문구(사용자 언어) - 이미 엔진은 사유 코드를 갖고 있다(betaStatus · benchmarkPriceSource)",
+      "impact": { "policy": "없음(표시 정책)", "risk": "없음", "mc": "없음", "ui": "베타 · 진단" },
+      "implementationNeeded": "표시 계층만 변경(계산 무변경)", "test": "wording/E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "F-2", "category": "UI", "phase": "PHASE 7", "title": "비동기 Dimson 베타 정의 안내",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 D-05 · 계획서 §27 F-2",
+      "currentImpl": "betaMethod · betaComponents가 데이터에는 있으나 화면 설명이 없다",
+      "problem": "사용자가 왜 시차 0+1 합인지 알 수 없다",
+      "neededFact": "설명 문구", "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "베타 설명" },
+      "implementationNeeded": "표시 계층", "test": "wording", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "F-3", "category": "UI", "phase": "PHASE 7", "title": "고정 토스트가 팝업 버튼을 가리는 문제",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§46 · e2e/89 S-10 기록",
+      "currentImpl": "E2E에서 토스트가 [클라우드 데이터 받기] 버튼을 덮어 클릭이 지연됐다(테스트 쪽에서 우회)",
+      "problem": "실제 사용자 화면에서도 같은 겹침이 발생할 수 있다",
+      "neededFact": "재현 조건 · 뷰포트별 영향", "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "토스트 레이아웃" },
+      "implementationNeeded": "최소 UI 수정", "test": "E2E 375/768/1280", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "F-4", "category": "UI · 채권", "phase": "PHASE 6", "title": "직접 입력 채권 currentPrice 자동 갱신 안 됨 안내(BOND-DEF-02)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§9-2 BOND-DEF-02 · 계획서 §31-9 · §40 F-4",
+      "currentImpl": "안내 없음(과거 P1 승격 금지로 BACKLOG 유지)",
+      "problem": "사용자가 값이 갱신된다고 오해할 수 있다",
+      "neededFact": "Bond 정책 확정(N-1) 후 문구", "impact": { "policy": "Bond", "risk": "없음", "mc": "없음", "ui": "채권 입력 안내" },
+      "implementationNeeded": "N-1 결과에 따름", "test": "E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "F-5", "category": "UI", "phase": "PHASE 7", "title": "정의 불일치 · PR/TR 미확인 상태 표시",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 D-01 · 계획서 §40 F-5",
+      "currentImpl": "benchmarkDefinitionStatus는 계산되지만 현재 해당 종목 0건이라 화면 경로가 없다",
+      "problem": "D-3 결과에 따라 실제 발생할 수 있다",
+      "neededFact": "표시 문구 · 발생 조건", "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "베타 · 진단" },
+      "implementationNeeded": "필요한 상태만 최소 구현", "test": "risk suite · wording", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "G-1", "category": "코드 정리", "phase": "PHASE 7", "title": "구형 Benchmark 근사 경로(getBenchmarkKeyForTicker · analyzeTickerForModal)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§44 44-16 · 계획서 §36 G-1",
+      "currentImpl": "js/09:590 정의 · js/09:2358 종목 분석 모달에서 호출(현재 화면 표시는 하지 않음)",
+      "problem": "새 정책(원장 + Index Master)과 다른 규칙이 남아 있다",
+      "neededFact": "이 경로의 결과가 실제로 사용자에게 보이는지", "verification": "PHASE 0에서 호출 지점 2곳 확인(2026-09-20)",
+      "impact": { "policy": "일관성", "risk": "간접", "mc": "없음", "ui": "종목 분석 모달" },
+      "implementationNeeded": "정책 일치 또는 제거(최소 변경)", "test": "단위 · E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "G-2", "category": "코드 · 오프라인", "phase": "PHASE 7", "title": "APP_SHELL 외 13개 js의 런타임 캐싱 의존",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §36 G-2",
+      "currentImpl": "Release Guard 출력으로 확인: js/15~27 13개가 APP_SHELL에 없음(첫 요청 시 network-then-cache)",
+      "problem": "완전 오프라인 최초 실행에서 MC · 안전장치 · 일별평가 기능이 빠질 수 있다",
+      "neededFact": "실제 영향 범위(오프라인 시나리오)", "verification": "PHASE 0 Release Guard 출력(2026-09-20)",
+      "impact": { "policy": "없음", "risk": "없음", "mc": "오프라인 실행", "ui": "오프라인" },
+      "implementationNeeded": "APP_SHELL 편입 여부 결정(캐시 용량 · 배포 영향 고려)", "test": "오프라인 E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "G-3", "category": "코드 · 데이터", "phase": "PHASE 7", "title": "N-02 엑셀 무수정 왕복 시 categorySource system → user 승격",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "체크리스트 N-02(OPEN ISSUE 유지) · 계획서 §36 G-3",
+      "currentImpl": "수정 · migration 없음",
+      "problem": "사용자가 고치지 않은 값이 '사용자 확정'으로 바뀌어 이후 자동 판정이 막힌다",
+      "neededFact": "현재 동작 재확인 · 사용자 의미 변경 여부",
+      "impact": { "policy": "categorySource 의미", "risk": "없음", "mc": "간접(자산군)", "ui": "분류 표시" },
+      "implementationNeeded": "정책 확인 후 결정(사용자 입력 의미 변경이면 PM STOP)", "test": "category-source.test.js", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "G-4", "category": "UI · 차트", "phase": "PHASE 7", "title": "FIX-3-FULL 기록 없는 과거 구간의 차트 표현",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§21-8 · 계획서 §36 G-4",
+      "currentImpl": "기록 없는 구간이 0원으로 그려진다(BACKLOG로 유지돼 옴)",
+      "problem": "없는 값을 0으로 보여 주는 것은 §20 금지와 같은 성격이다",
+      "neededFact": "표현 방식(끊어 그리기 등)", "impact": { "policy": "표시 원칙", "risk": "없음", "mc": "없음", "ui": "차트" },
+      "implementationNeeded": "최소 UI 변경", "test": "E2E · 시각 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "G-5", "category": "코드", "phase": "PHASE 7", "title": "KIS 재무 조회가 숫자 코드만 지원",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §36 G-5",
+      "currentImpl": "영문 혼합 코드(0052D0 등)에서 재무 조회 경로 동작 미확인",
+      "problem": "CL-03에서 정규화는 고쳤지만 재무 조회 경로는 별도 확인이 필요하다",
+      "neededFact": "해당 경로의 실제 동작", "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "종목 분석" },
+      "implementationNeeded": "확인 후 최소 수정", "test": "단위 · 수동 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "G-6", "category": "개발 환경", "phase": "PHASE 7", "title": "포트 8644의 정체 확인",
+      "currentStatus": "RETAINED", "finalStatus": null,
+      "sot": "계획서 §36 G-6",
+      "currentImpl": "playwright.config.js baseURL · webServer url = http://localhost:8644 · scripts/dev-static-server.js 기본 포트",
+      "problem": "없음 - 로컬 테스트 전용이며 Production과 무관함을 PHASE 0에서 확인했다",
+      "verification": "playwright.config.js:17,51 · scripts/dev-static-server.js:11 확인(2026-09-20)",
+      "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "없음", "test": "해당 없음", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "N-1", "category": "채권 도메인", "phase": "PHASE 6", "title": "채권 관리 프로세스 전체 구축",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§9 Bond Domain · §44 제43조 · 계획서 §31",
+      "currentImpl": "식별 · 분류 · 지수 계층만 재사용 가능. 계산 계층에 채권 자리가 없다(개별채권 σ=0 · 채권 ETF 1개만 있어도 포트폴리오 베타 null)",
+      "problem": "채권 경제 정의(만기보유 vs 시가평가)부터 정해야 하며 주식 베타 모델을 복사할 수 없다",
+      "neededFact": "만기 · 쿠폰 · 쿠폰형태 · 듀레이션 · 신용등급 · 통화 · 평가가격 · 수익률 시계열",
+      "investigationPaths": ["금융투자협회 채권정보센터", "한국자산평가 등 채권평가사", "KRX", "발행기관 공시"],
+      "subItems": ["31-1 경제적 정의", "31-2 Bond Fact Ledger", "31-3 데이터 원천", "31-4 Risk 모델", "31-5 점수 편입 여부", "31-6 MC", "31-7 혼합 1:N", "31-8 NOT_AVAILABLE 조건", "31-9 UI"],
+      "impact": { "policy": "§9 · §40 P-8", "risk": "채권 위험 · 포트폴리오 베타", "mc": "채권 σ · 상관 · 해외채권", "ui": "채권 입력 · 안내" },
+      "implementationNeeded": "범위는 조사 후 PM 결정", "test": "신규 단위 + 회귀", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "N-2", "category": "자동화", "phase": "PHASE 8", "title": "Risk · MC 기초데이터 자동 업데이트 · 재검증 파이프라인",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §18 · §19 · §49",
+      "currentImpl": "Exposure Master · Index Master는 코드 고정(자동 갱신 없음). 데이터 파이프라인은 종목마스터 · H.10 · CMA 3종뿐",
+      "problem": "사실이 바뀌어도 사람이 발견하지 않으면 원장이 낡는다. 반대로 자동 적용이 과하면 정책을 조용히 바꾼다",
+      "neededFact": "자동 ACTIVE 가능 조건 · REVIEW 조건 · 대량 이상 변경 임계(실측 분포 필요)",
+      "impact": { "policy": "자동화 규칙", "risk": "간접", "mc": "간접", "ui": "확인일 표시 가능" },
+      "implementationNeeded": "수집/판정 분리 구조 + ruleVersion + 실행 예산", "test": "파이프라인 dry-run", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "Q-1", "category": "저장소", "phase": "PHASE 7", "title": "종목 마스터 localStorage 압력 · QuotaExceeded",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §33",
+      "currentImpl": "종목 마스터(2.8MB)를 기기에 캐시(20일) · persistAssets 등 다수 setItem 경로",
+      "problem": "iOS Safari 등에서 용량 초과 시 저장 실패가 사용자 데이터 저장에까지 영향을 줄 수 있다",
+      "neededFact": "실제 브라우저별 한도 · 현재 사용량 · 실패 시 동작",
+      "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "저장 실패 안내" },
+      "implementationNeeded": "실측 후 최소 변경(의미 변경 시 PM STOP)", "test": "E2E · 수동", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "Q-2", "category": "저장소", "phase": "PHASE 7", "title": "일별 스냅샷(sam_daily_snapshot_v1) 누적",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §34",
+      "currentImpl": "js/01 LS_DAILY_SNAPSHOTS - 보관 기간 정책 없음",
+      "problem": "계속 쌓이면 Q-1을 악화시킨다. 다만 사용자 기록을 지우면 의미 훼손",
+      "neededFact": "실제 증가 속도 · 사용처(일별 손익)",
+      "impact": { "policy": "보관 정책", "risk": "없음", "mc": "없음", "ui": "일별 손익" },
+      "implementationNeeded": "필요 시 최소 retention", "test": "daily-valuation 테스트", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "Q-3", "category": "코드 정리", "phase": "PHASE 7", "title": "위험 알림 팝업 연결 상태 점검",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §35 Q-3",
+      "currentImpl": "riskAlertModal 렌더 · 열기/닫기 경로 존재(js/10 · js/03)",
+      "problem": "현재 정책에서 실제로 쓰이는지, 죽은 경로인지 확인되지 않았다",
+      "neededFact": "진입점 존재 여부", "impact": { "policy": "없음", "risk": "없음", "mc": "없음", "ui": "알림" },
+      "implementationNeeded": "필요 없으면 최소 정리", "test": "E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "Q-4", "category": "UI", "phase": "PHASE 7", "title": "숨겨진 스트레스/What-If · 계획 확인 노트",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §35 Q-4",
+      "currentImpl": "일부 기능이 화면에 노출되지 않은 상태로 남아 있다",
+      "problem": "정책상 필요한지, 껐어야 하는지 확인 필요(불필요한 기능 활성화 금지)",
+      "neededFact": "현행 정책과의 대조", "impact": { "policy": "표시 범위", "risk": "없음", "mc": "없음", "ui": "카드" },
+      "implementationNeeded": "정리 또는 유지 결정", "test": "E2E", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "Q-5", "category": "배포 · CDN", "phase": "PHASE 7", "title": "jsDelivr 캐시 · 버전 전략",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §35 Q-5",
+      "currentImpl": "js/09 TICKER_MASTER_CDN_URL=@main(s-maxage 약 12h) · TICKER_MASTER_REFRESH_DAYS=20",
+      "problem": "마스터를 갱신해도 최대 20일까지 기기에 반영되지 않는다",
+      "neededFact": "실제 캐시 동작 · 사용자 영향", "verification": "PHASE 0에서 상수 2개 확인(2026-09-20)",
+      "impact": { "policy": "없음", "risk": "간접(종목 인식)", "mc": "없음", "ui": "종목 검색" },
+      "implementationNeeded": "필요 시 최소 캐시/버전 전략", "test": "단위 · 수동", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "M-1", "category": "동기화", "phase": "PHASE 7", "title": "같은 id가 기기마다 다른 positionSource를 가질 수 있는가(이론적)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "체크리스트 §(동기화 절) 잔여 미결",
+      "currentImpl": "별도 미결 이슈로 유지 중 - 실제 발생 가능성 미확정",
+      "problem": "발생하면 병합 결과가 기기마다 달라질 수 있다",
+      "neededFact": "실제 발생 경로 존재 여부", "impact": { "policy": "병합", "risk": "없음", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "재현되면 최소 수정, 아니면 근거 있는 RETAINED", "test": "merge/sync 테스트", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "M-2", "category": "잔여 관찰 항목", "phase": "PHASE 7", "title": "§39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§39-3",
+      "currentImpl": "'이번 절로 결정하지 않음'으로 남아 있다",
+      "problem": "이번 프로젝트는 보류 상태를 남기지 않으므로 각각 판정해야 한다",
+      "neededFact": "각 항목의 현재 재현 여부",
+      "impact": { "policy": "표시", "risk": "F-7은 위험 기여도 표시", "mc": "없음", "ui": "여러 화면" },
+      "implementationNeeded": "항목별 최소 조치 또는 RETAINED", "test": "E2E · wording", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "M-3", "category": "문구", "phase": "PHASE 7", "title": "36-2 남은 옛 명칭(포트폴리오 구성 관련 문구)",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§36-2",
+      "currentImpl": "대시보드 RISK 카드 버튼 · Safety Layer 안내에 옛 명칭이 남아 있다(PM 판단 대기로 표기)",
+      "problem": "명칭 통일 여부를 결정해야 OPEN이 사라진다",
+      "neededFact": "현재 화면 명칭 정책", "impact": { "policy": "명칭", "risk": "없음", "mc": "없음", "ui": "버튼 · 안내" },
+      "implementationNeeded": "문구 변경 또는 RETAINED", "test": "wording-review.test.js", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "M-4", "category": "채권", "phase": "PHASE 6", "title": "BOND-DEF-01 · 03 · 04 · 05 정의 backlog",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "§9-2 · §9-3",
+      "currentImpl": "BACKLOG 유지(01) · POLICY/MODEL BACKLOG(03 개별채권 σ=0) · 04 · 05 현행 유지",
+      "problem": "N-1과 함께 판정해야 한다", "neededFact": "N-1 조사 결과",
+      "impact": { "policy": "Bond", "risk": "채권", "mc": "채권 σ", "ui": "채권" },
+      "implementationNeeded": "N-1에 통합", "test": "N-1과 동일", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "M-5", "category": "Risk", "phase": "PHASE 4", "title": "채권 ETF 1개만 보유해도 포트폴리오 베타 null",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "인계장 v262 절 · §44 제10조",
+      "currentImpl": "베타를 못 구하는 종목이 하나라도 있으면 포트폴리오 베타를 내지 않는다(정직성 원칙)",
+      "problem": "정직하지만 사용자에게는 거의 항상 베타가 비어 보인다. 부분 표시 정책과의 정합성을 판정해야 한다",
+      "neededFact": "부분 집계 허용 여부(정책)", "impact": { "policy": "제10조", "risk": "포트폴리오 베타 · 점수", "mc": "없음", "ui": "베타 표시" },
+      "implementationNeeded": "PM 결정 후 구현 또는 RETAINED", "test": "risk suite", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+
+    {
+      "id": "P-1", "category": "프로젝트 통제", "phase": "PHASE 0", "title": "자동 workflow 3종의 프로젝트 기간 통제",
+      "currentStatus": "PM_DECISION_REQUIRED", "finalStatus": null,
+      "sot": "계획서 §5 · §10",
+      "currentImpl": "3개 workflow 모두 active · 전부 main에 자동 commit + push한다. H.10은 매주 화 00:00 UTC(다음 실행 2026-09-22), 종목마스터 매월 1일 00:00 UTC(2026-10-01), CMA 매월 3일 01:00 UTC(2026-10-03)",
+      "problem": "스케줄 workflow는 기본 브랜치(main)의 정의로 실행되므로 integration branch 수정으로는 멈출 수 없고, main 직접 커밋은 금지돼 있다. 저장소 설정에서 비활성화하는 방법만 남는데 현재 실행 권한이 차단됐다",
+      "neededFact": "PM의 통제 방식 승인",
+      "options": ["(가) gh workflow disable 3건 실행 허용(복구: gh workflow enable)", "(나) 사용자가 GitHub Actions 탭에서 직접 Disable", "(다) 통제하지 않고 진행(그 경우 프로젝트 중 main 데이터가 갱신됨을 감수)"],
+      "impact": { "policy": "없음", "risk": "기준선 오염 가능", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "승인 후 즉시 적용 + 복구 방법 기록", "test": "workflow 목록 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-2", "category": "프로젝트 통제", "phase": "PHASE 8", "title": "프로젝트 종료 후 자동화 복귀 · 미실행분 재실행",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §5 · §49",
+      "currentImpl": "없음", "problem": "통제 기간 동안 건너뛴 데이터 갱신을 종료 후 반드시 되돌려야 한다",
+      "neededFact": "통제 시작 · 종료 시각 · 건너뛴 실행 목록",
+      "implementationNeeded": "복귀 절차 + 수동 실행(workflow_dispatch)", "test": "실행 결과 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-3", "category": "릴리스", "phase": "PHASE 12", "title": "사용자 영향 고지",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §46",
+      "currentImpl": "없음", "problem": "위험점수 · 베타 · MC 숫자가 바뀌는데 이유를 사용자가 알 수 없다",
+      "neededFact": "최종 변경 목록과 수치 영향", "implementationNeeded": "릴리스 노트 또는 기존 안내 방식", "test": "문구 검토", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-4", "category": "릴리스", "phase": "PHASE 12", "title": "롤백 계획 문서화",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §45",
+      "currentImpl": "없음", "problem": "최종 릴리스가 1회뿐이므로 실패 시 절차가 사전에 있어야 한다(버전 번호는 내리지 않는다)",
+      "neededFact": "롤백 기준 · 절차", "implementationNeeded": "문서 + 최종 릴리스 전 확인", "test": "해당 없음", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-5", "category": "자동화 구조", "phase": "PHASE 2", "title": "판정 규칙 ruleVersion · 소급 재평가 구조",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §12 · §20",
+      "currentImpl": "없음(현재 판정 규칙은 코드에 고정)", "problem": "규칙이 바뀌었을 때 과거 판정을 어떻게 다룰지 정의돼 있지 않다",
+      "neededFact": "규칙 식별자 체계", "implementationNeeded": "원장에 ruleVersion 기록 + 재평가 비교", "test": "단위", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-6", "category": "외부 데이터", "phase": "PHASE 1", "title": "외부 source 이용조건 기록 구조",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §7 · §8 · §21",
+      "currentImpl": "H.10만 license 필드를 갖고 있다", "problem": "새 source를 쓰기 전에 약관 · robots · 속도 제한 · 재배포 조건을 기록해야 한다",
+      "neededFact": "source별 최신 이용조건", "implementationNeeded": "조사표에 필드 포함(이미 PHASE 0에서 마련)", "test": "해당 없음", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-7", "category": "보안", "phase": "PHASE 2", "title": "SEC 등 요구 연락처의 secret 주입 방식",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §9",
+      "currentImpl": "없음", "problem": "SEC는 식별 가능한 User-Agent를 요구하는데 개인정보를 코드에 넣을 수 없다",
+      "neededFact": "GitHub Actions Secret 이름 규칙", "implementationNeeded": "환경변수 주입 + 미설정 시 수집 중단", "test": "스크립트 단위", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-8", "category": "자동화 구조", "phase": "PHASE 8", "title": "자동 조사 실행량 예산 · 대상 범위 제한",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §10 · §22",
+      "currentImpl": "없음", "problem": "대상을 정하지 않으면 종목 마스터 16,731건으로 번진다",
+      "neededFact": "대상 = 원장 + 보유 + 목표", "implementationNeeded": "수집기 공통 예산 · 계측", "test": "스크립트 단위", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-9", "category": "릴리스", "phase": "PHASE 12", "title": "최종 Production Baseline 재생성 · v262 기준선 영구 보존",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §48",
+      "currentImpl": "v262 Frozen Baseline은 PHASE 0에서 생성 완료", "problem": "최종 릴리스 후 현재 데이터 기준 새 기준선이 필요하다",
+      "neededFact": "최종 데이터 기준일 · 해시 · 결과", "implementationNeeded": "freeze 스크립트 재사용", "test": "회귀 하네스", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-10", "category": "프로젝트 통제", "phase": "PHASE 10", "title": "종결 대장 자동 정합성 검사",
+      "currentStatus": "OPEN", "finalStatus": null,
+      "sot": "계획서 §43",
+      "currentImpl": "PHASE 0에서 scripts/closeout/ledger.js(검증 + 렌더)를 만들었다. 최종 감사에서 근거 · 최종 상태까지 검사하도록 확장한다",
+      "neededFact": "각 항목의 SoT · 구현 · 테스트 · 근거 참조", "implementationNeeded": "검사 규칙 확장", "test": "스크립트 자체 실행", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+    },
+    {
+      "id": "P-11", "category": "프로젝트 통제", "phase": "PHASE 0", "title": "세션 · PC 간 인계 구조",
+      "currentStatus": "COMPLETED", "finalStatus": null,
+      "sot": "계획서 §6 · §23",
+      "currentImpl": "integration/v262-closeout 원격 보존 + CLAUDE_HANDOVER.md 최상단 절 + 종결 대장 · 조사표 · 기준선 파일",
+      "problem": "없음 - 매 세션 종료 시 갱신 필요", "verification": "PHASE 0 커밋 · push", "lastCheckedAt": "2026-09-20"
+    }
+  ]
+}

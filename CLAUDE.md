@@ -65,7 +65,7 @@ This checklist is the project's official governance Source of Truth.
 
 ## CURRENT PRIORITY
 
-> **2026-09-20 — 기준문서 등록**: PM이 **`docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`**(v262 → 전체 미결사항 종결 통합작업계획서 FINAL)를 이 프로젝트의 **실행 기준문서**로 확정했다. 정책 원문 SoT는 계속 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`이며, 위 계획서는 "무엇을 어떤 순서·규칙으로 종결할 것인가"를 규정한다. 작업 브랜치는 `integration/v262-closeout`(원격 보존 허용), main 갱신·버전업·배포는 최종 릴리스 1회뿐이다. **등록만 완료된 상태이며, PHASE 0을 포함한 어떤 실행도 PM 지시 전에는 시작하지 않는다.**
+> **2026-09-20 — 기준문서 등록**: PM이 **`docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`**(v262 → 전체 미결사항 종결 통합작업계획서 FINAL)를 이 프로젝트의 **실행 기준문서**로 확정했다. 정책 원문 SoT는 계속 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`이며, 위 계획서는 "무엇을 어떤 순서·규칙으로 종결할 것인가"를 규정한다. 작업 브랜치는 `integration/v262-closeout`(원격 보존 허용), main 갱신·버전업·배포는 최종 릴리스 1회뿐이다. **2026-09-20 PHASE 0 착수**(PM 지시) — 기준선 고정 · 회귀 하네스 · 종결 대장은 `docs/closeout/`에 있다. 모든 작업은 integration branch에서만 한다.
 
 > 2026-09-19 update (status corrected 2026-09-20): the **asset-calculation integration project** — Risk Benchmark / Index Master / Exposure Master / MC Asset Class (checklist §44 44-16 · 44-16-2: D-01 · D-05 · D-06 · D-16) — was implemented in two passes and **released as v262 (production, commit b9ff90e)**. Current step: **no active implementation. Follow-up items are listed in `CLAUDE_HANDOVER.md` (v262 section) and are not to be started without a PM instruction** — US-stock HOME_COMMON evidence, Risk UI status wording, periodic re-verification of Master facts, legacy `analyzeTickerForModal` benchmark path, plus the PM's new workstreams (bond management process, automatic updates for Risk/MC base data). Exposure Master must not become an automatic Return Key source without a separate PM decision. The V1.2-B text below is kept as history.
 

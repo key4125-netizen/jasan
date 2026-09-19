@@ -32,7 +32,35 @@
 
 ---
 
-## 📌 기준문서 등록 — v262 → 전체 미결사항 종결 통합작업계획서 FINAL (2026-09-20 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+## 🚧 PHASE 0 완료 — v262 → 전체 미결사항 종결 프로젝트 (2026-09-20 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+
+> **현재 단계: PHASE 0 종료 · PHASE 1(데이터 경로 전수 조사 · 결정 패키지) 대기.**
+> 작업은 전부 **`integration/v262-closeout`** 에서 한다. main(`d4459a7`)은 건드리지 않았고 Production은 v262 그대로다(버전 변경 없음).
+
+**이번 세션 완료**
+- integration branch 생성 · origin push(base `d4459a7` · 문서 등록 커밋 `4ac65bd`)
+- 시작점 Snapshot · 기준문서 무결성 · 문서 diff 검증 → `docs/closeout/PHASE0_SNAPSHOT.md`
+- v262 Frozen Baseline(`baseline/v262/MANIFEST.json` · 36파일 해시 · H.10 사본) — `node scripts/closeout/freeze-baseline.js --verify`
+- Risk/MC/Master 회귀 하네스(`scripts/closeout/regression-harness.js`) + 기준선 `baseline/v262/regression/*.json`
+- 종결 대장 초판 61건 · 데이터 경로 조사 착수표 16건(`docs/closeout/` · 원본은 JSON · `node scripts/closeout/ledger.js render`로 .md 생성)
+- 게이트 시작 상태: Unit 566/566 · **E2E 1032/1032** · ESLint 0 · Data Guard PASS · Release Guard PASS
+
+**다음 착수 지점(PHASE 1)** — 조사표 우선순위 1·2부터: DP-01(SEC EDGAR 본국 보통주) · DP-10(지수 역사 낙폭 직접 계산) · DP-03/04(코스피200 PR·TR) · DP-07/08/09(ETF 지수·PR/TR·헤지) · DP-11(CMA 2026Q2 결정 패키지)
+
+**PM 결정 대기(대장 P-1 · B-1 · C-1)**
+1. **P-1 자동 workflow 통제** — H.10은 **매주 화 00:00 UTC(다음 2026-09-22)**, 종목마스터 10-01, CMA 10-03에 **main으로 자동 commit·push** 한다. 스케줄은 main 정의로 돌아서 integration branch 수정으로는 못 막고, main 직접 커밋은 금지다. `gh workflow disable` 실행 권한이 이 세션에서 차단됐다 → PM이 ①실행 허용 ②GitHub 화면에서 직접 Disable ③통제 없이 진행 중 택일. (기준선 자체는 Frozen 스냅샷으로 이미 보호됨)
+2. **B-1 KIS/Worker 보안** — 저장소 밖 조치(사용자 권한)
+3. **C-1 CMA 2026Q2** — 활성화 여부
+
+**규칙(계속 적용)**
+- 최종 상태는 COMPLETED · RETAINED · NOT_AVAILABLE · PM DECISION RESOLVED 4개뿐. "데이터 없음"으로 미루지 않되 **없는 값은 만들지 않는다**.
+- 중간 version bump 금지 · main push 금지 · force push/reset/rebase 금지 · `.claude/launch.json` 무접촉(diff 해시 `216cbb7b12fed0a2`).
+- 중간 단계 Release Guard FAIL은 예상 상태, 최종 릴리스 직전만 PASS 필수.
+- 매 세션 종료 시 이 절과 종결 대장을 갱신해 integration branch에 push한다.
+
+---
+
+## 📌 기준문서 등록 — v262 → 전체 미결사항 종결 통합작업계획서 FINAL (2026-09-20 · PHASE 0 직전 기록)
 
 > **PM이 `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`를 이 프로젝트의 실행 기준문서로 확정했다(FINAL · PM APPROVED · 55개 절).**
 > 이 세션에서 한 일은 **문서 등록뿐이다. 코드 · 데이터 · 정책 · 버전 · 브랜치 · 워크플로 변경 없음.**
@@ -52,7 +80,7 @@
   - 최종 릴리스 산출물에 사용자 영향 고지 포함(§46).
   - PM 결정 대기 시 해당 항목·의존 항목만 STOP, 독립 작업은 계속(§41).
 - **실행 순서**: PHASE 0(재감사·브랜치·workflow 통제·frozen baseline·회귀 하네스·종결 대장) → PHASE 1~12(§50).
-- **다음 착수 지점**: **PHASE 0. 단, PM의 착수 지시가 있을 때 시작한다(현재 미착수).**
+- **다음 착수 지점**: PHASE 0 → **2026-09-20 PM 지시로 착수 · 완료(위 절 참조)**
 
 ---
 
