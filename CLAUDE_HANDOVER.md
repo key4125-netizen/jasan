@@ -32,6 +32,36 @@
 
 ---
 
+## 📍 현재 상태 (2026-09-19 기준 · 가장 최신 — 다음 세션은 이 절부터 읽는다) — **v259 RC GO · 커밋 대기**
+
+> 아래 "⛔ 종료(2026-09-18)" 절과 "▶ 재개(2026-09-19)" 절은 **당시 시점의 역사 기록**이다. 종료 결정은 재개 결정으로 번복되었고, 현재 상태는 이 절이 기준이다.
+
+**버전 · 배포**
+- **현재 production: v256** (origin/main 7d2af02 · GitHub Pages). **"운영 v259"가 아니다** - v259는 아직 push/deploy 전이다.
+- 기존 로컬 커밋 13개(v257 · v258 누적 작업 12개 + 종료 기록 1개, ~ab606e5)는 **이번 v259 릴리스에 함께 포함**된다.
+- **v259 릴리스 커밋: `67a915f`** (Phase 2-4 · T6 · T6 후속 · B-1 + v259 버전 표시: sw.js `CACHE_NAME = 'smart-asset-manager-v259'` · index.html `#appVersionLabel` v259) + 이 인계장 커밋. **push · deploy 전**(PM 별도 승인 대기)
+- **v259 RC 판정: GO** (PM, 2026-09-19)
+
+**완료 상태**
+- Phase 2-4(T1~T4 Risk 정직성 · 진단): 완료 · PASS
+- T6(Risk 원화 기준 환율 반영, §44 44-15): 완료 · PASS
+- T6 후속 Issue 1(환율만 오래됨 표시) · 2(환율 기준일 줄바꿈) · 3(데이터 워크플로 동시 실행 그룹) · 11-1(375px 종목명 말줄임): 완료 · PASS
+- **OP-4 = 21일**(환율 자료 오래됨 진단 · 계산은 계속): PM 확정 · 유지
+- **B-1**(RC 검토에서 발견): 같은 출처 data/fx/usdkrw-h10.json이 서비스워커 캐시 우선 규칙에 걸려 주간 H.10 갱신이 설치 사용자에게 전달되지 않던 문제 → sw.js에 **같은 출처 `/data/fx/` 경로만 네트워크 우선**(성공 시 캐시 저장, 실패 시 캐시, 둘 다 없으면 실패 → 앱이 `SOURCE_UNAVAILABLE`) 추가로 해결. 기존 NETWORK_FIRST_HOSTS 13개 · 캐시 우선 규칙은 무변경. §44 44-15 데이터 행에 한 문장으로 기록
+
+**검증 결과(v259 RC)**
+- Unit **510/510** · 전체 E2E **1009/1009** · ESLint **PASS** · Data Guard **PASS** · Release Guard **PASS**(CACHE_NAME · 표시 v259 일치)
+- 기준 fixture 불변: 환율 기준일 2026-09-11 · 관측 254 · 변동성 19.6615 · VaR -1.7207 · CVaR -2.1546 · MDD -10.1092 · Sortino 1.2130 · 상관 0.8662 · 베타 1.1117 · 점수 69
+- MC/CMA(js/15 · 16 · 26 · 27 · data/cma): origin/main 대비 변경 없음
+- **H.10 데이터**: `data/fx/usdkrw-h10.json` 2000-01-03 ~ **2026-09-11**(현재 기준일) · 6,965행 · 유효 6,693 · ND 272 · SHA-256 `c3c318e394c652e216eba28897c5e2f3873322e367dd0d951515f24f8d8a4a21`
+
+**다음 단계**
+1. ~~최종 release commit~~ 완료(`67a915f`) → 2. ~~인계장 커밋~~ 완료 → 3. **PM 승인 후 push/deploy**(GitHub Pages 자동 배포) → 배포 확인 후에야 "운영 v259"로 기록한다.
+- `.claude/launch.json`은 사용자 변경 - 커밋 · 수정 · 복구 금지(계속 유효)
+- 범위 밖 참고: cma-update-check.yml은 별도 동시 실행 그룹 사용(겹칠 가능성 낮음) · 이후 계획 단계 2-6(T7) · 2-7(T8)은 별도 PM 지시 전 착수하지 않는다
+
+---
+
 ## ⛔ Risk / MC 개선 프로젝트 종료 (2026-09-18 · PM 최종 결정 C. 보류) — **운영 기준은 v256**
 
 > **다음 세션은 이 절을 먼저 읽는다.** 아래 "최근 세션 요약(2026-09-18 오후)" 이하의 Phase 1A · 1B · 2-1 · 2-2 기록(v257 · v258)은 **로컬에만 있는 미배포 작업의 이력**이며, 운영 상태가 아니다.
@@ -71,6 +101,39 @@
 
 **작업 트리**
 - `.claude/launch.json`의 사용자 변경사항 보존(수정 · 복구 · 커밋 금지). 그 외 현재 상태를 임의 변경하지 않는다.
+
+---
+
+## ▶ Risk / MC 개선 프로젝트 재개 (2026-09-19 · PM 결정) — 위 종료 기록은 역사적 사실로 보존
+
+- 운영 기준: **v256 / 7d2af02** (변동 없음) · 로컬 개발 기준: v258 / ab606e5 · 운영 대비 13커밋 미배포
+- 종료 기록 이후 PM 결정에 따라 개선 프로젝트 재개. 순서: Phase 2-4(T1~T4) → 2-5(T6 USD/KRW 원화 Risk) → 2-6(T7 Exposure Master→MC 자산군) → 2-7(T8 JPM KRW CMA)
+- 이번 단계: **Phase 2-4 T1~T4만.** T5/T6/T7/T8 제외. 1회 조사 → 1회 구현 → 1회 검증 원칙
+- **v258 유지 · 커밋/Push/Deploy 금지** · 버전업은 전 단계 완료 후 최종 통합 때 PM 승인 시 1회만
+
+### Phase 2-4 구현 내용 (미커밋 · 작업 트리에만 있음)
+- **T1 종목별 가격 기록 상태** — js/10 `holdingDataStatusForDisplay` · `holdingDataStatusShortText` · `riskHoldingStatusNoteHtml`. 엔진의 `h.dataStatus`를 그대로 쓰고 새 enum 없음. 조회는 OK인데 조정주가 하루 변동이 120개 미만이면 기존 `INSUFFICIENT_HISTORY` 문구로 표시(표시만, 엔진 값 불변). Risk 세부 모달 정밀 수치 아래 + 종목 상세 모달 리스크 영역에 한 줄.
+- **T2 관측 수 · VaR 꼬리 수** — js/09 결과에 `varTailObservationCount`(= 실제 VaR/CVaR 계산에 쓴 `tailReturns.length`) 추가. js/10 `riskObservationBasisNote`가 `metricStatus.var.observations`와 함께 표시. 값이 없으면 문구 없음.
+- **T3 환율 미포함 고지** — js/09 `resolveRiskPriceCcy(a)`(Exposure Master RESOLVED면 원장 priceCcy, 아니면 `a.currency`)로 holding에 `priceCcy` 부여(표시용 · 계산 미사용). priceCcy≠KRW 종목이 있을 때만 js/10 `riskFxNotIncludedNote` 표시. 국내 상장 해외 ETF는 KRW라 대상 아님.
+- **T4 스트레스 대체 낙폭 제거** — js/09 `computeStressScenario`에서 `?? fallbackDrop`(2020 -34 · 2022 -28) 삭제. 낙폭 표에 없는 벤치마크(현재 NASDAQ 종합)가 있으면 null + `stressStatus.{covid2020,rateHike2022}='SOURCE_UNAVAILABLE'`. 스트레스 카드는 v253부터 화면 미표시 · 점수 미사용이라 사용자 화면 변화 없음.
+- 테스트: `test/risk-honesty.test.js`(신규) · `e2e/102-risk-honesty-phase24.spec.js`(신규)
+- Phase 2-4 마무리(2026-09-19): PM 승인에 따라 e2e/102의 전역 선언 주석 1줄 삭제 → ESLint PASS.
+
+### Phase 2-5 T6 구현 — Risk 원화 기준 환율 반영 (2026-09-19 · 미커밋 · 검증 단계 대기)
+- 정책: checklist **§44 44-15**(제6조 6-1 시행 · §40 P-7 대체 기록, 원문 보존) + OP-4(환율 자료 21일 초과 = 오래됨, 진단용)
+- 규칙: **가격통화 USD만** 통계용 조정주가 × H.10 USD/KRW. KRW 가격(국내 상장 해외 ETF 포함)은 미적용. **베타는 환산 전 현지통화**, 기술 지표는 원주가 그대로. 가격과 환율이 **함께 있는 날짜만**(채우기 · 보간 · 다른 출처 혼합 금지). 환율 기준일 = 달러 종목이 모두 환율과 함께 있는 마지막 날
+- 데이터: `data/fx/usdkrw-h10.json`(2000-01-03~2026-09-11 · 6,965행 · 유효 6,693 · ND 272) ← `scripts/fx/update-usdkrw-h10.js`(검증 후 임시 파일 → rename, 기존보다 짧아지면 거부) ← `.github/workflows/update-fx-h10.yml`(매주 화 00:00 UTC, 아직 실행 안 함)
+- js/09: `getRiskUsdKrwRates` · `parseUsdKrwDataset` · `convertDatedClosesToKrw`, holding에 `datedClosesLocal` · `fxStatus` · `fxLastDate`, 결과에 `fxBasis`. 환율을 못 쓰면 달러 종목의 통계 시계열을 만들지 않음(SOURCE_UNAVAILABLE / DATA_QUALITY_FAILED)
+- js/10: `riskFxNotIncludedNote` → `riskFxBasisNote`(원화 환산 정의 + 환율 기준일), 종목 상세 문구 교체
+- 기타: Data Guard 허용 목록에 data/fx 추가, test/risk-sandbox.js에 환율 주입(기본 = 일정 환율 → 기존 골든 무변경)
+- 테스트: `test/risk-fx-krw.test.js` · `test/fx-h10-pipeline.test.js` · `e2e/103-risk-fx-krw-t6.spec.js`(신규), risk-honesty · e2e/102 문구 갱신
+
+### T6 이후 기록 (2026-09-19 · 위 T6 절의 "검증 단계 대기"는 당시 시점 기록)
+- **T6 1회 검증**: CONDITIONAL PASS(정책 · 계산 · 데이터 일치, BLOCKER 없음) → OP-4 적정성은 PM 결정 사항으로 분리 → **PM이 21일 유지로 확정**
+- **T6 후속 Issue 1~3**(js/10 · 워크플로 2개): ① 가격은 최신이고 환율만 오래된 DATA_STALE이면 "환율 자료 오래됨 (환율 기준일 …)"(가격 날짜를 쓰지 않음) ② "환율 기준일: 날짜"를 `whitespace-nowrap`으로 묶음 ③ update-fx-h10.yml · update-ticker-master.yml에 `concurrency: data-update-main-push`(취소 없음, cron · 스크립트 무변경) → PASS
+- **Issue 11-1**(js/10 `riskHoldingStatusNoteHtml`): 상태 목록 줄을 `flex flex-wrap`으로 바꿔 375px에서 긴 상태 문구가 다음 줄로 내려가고 종목명은 말줄임하지 않음(1440px는 한 줄 유지) → PASS
+- **최종 RC 검토**: NO-GO(B-1) → **B-1 해결**(sw.js `/data/fx/` 네트워크 우선 + v259 버전 표시 1회 적용, `e2e/104-sw-h10-network-first.spec.js`로 실제 서비스워커 A 최신 반영 · B 오프라인 캐시 · C 둘 다 없음 SOURCE_UNAVAILABLE · D 다른 자산 캐시 우선 유지 확인) → **GO**
+- 이 절의 코드 변경은 기록 시점에 미커밋이었고, 이후 릴리스 커밋 `67a915f`에 포함되었다. 현재 상태는 맨 위 "📍 현재 상태" 절을 따른다.
 
 ---
 
