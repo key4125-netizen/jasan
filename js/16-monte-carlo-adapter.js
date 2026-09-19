@@ -22,7 +22,7 @@
 // ownerFilter 생략 시 기존과 완전히 동일(bit-identical).
 // [§37 CMA-01] MC 항목 하나의 "앱 자산 성격" - 장기 CMA 자산군을 고르는 근거다.
 //   1) 수익률 기준(Return Key)이 시스템 키면 그 키의 성격(RETURN_KEY_CHARACTER - 수익률 해석과 같은 표)
-//   2) 사용자 정의 키 · 기준 없음이면 종목 자체의 성격 판정(자동 수익률 추천과 같은 근거 목록만 인정)
+//   2) 사용자 정의 키 · 기준 없음이면 종목 자체의 성격 판정(자동 수익률 추천과 같은 근거 목록 + Exposure Master · D-16)
 //   성격을 확인하지 못하면 UNRESOLVED - 지역만 보고 주식으로 단정하지 않는다(Phase 47-A 원칙 그대로).
 function resolveMcAppAssetClass(rateDetail) {
   const key = rateDetail ? canonicalRateKey(rateDetail.key) : null;
@@ -34,9 +34,12 @@ function resolveMcAppAssetClass(rateDetail) {
     const ch = resolveAssetCharacter(subject);
     // 위험 자산군 판정에는 "확정 자산군 '주식' + 상장 지역"(individualStock)도 인정한다 - 사용자가 정한 수익률 키를 쓰는 개별 주식의
     // 변동성 근거다. 수익률 자동 추천(CHARACTER_SOURCES_FOR_AUTO_RATE_KEY)에는 여전히 쓰지 않는다.
-    const trusted = CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(ch.source) || ch.source === 'individualStock';
+    // [1차 통합 구현 · D-16] Exposure Master(근거 있는 상품 사실)가 준 자산군도 인정한다 - MC 자산군(σ · 상관)만의 근거이며
+    // Return Key(μ)에는 쓰지 않는다(js/05 resolveRateKeyFromAssetCharacter는 원장을 보지 않는다).
+    const trusted = CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(ch.source) || ch.source === 'individualStock' || ch.source === 'exposureMaster';
     if (trusted && ch.character !== ASSET_CHARACTERS.UNRESOLVED) {
-      return { appClass: ch.character, basis: ch.source === 'individualStock' ? 'listedStock' : 'instrumentCharacter' };
+      const basis = ch.source === 'individualStock' ? 'listedStock' : (ch.source === 'exposureMaster' ? 'exposureMaster' : 'instrumentCharacter');
+      return { appClass: ch.character, basis };
     }
   }
   return { appClass: ASSET_CHARACTERS.UNRESOLVED, basis: 'none' };

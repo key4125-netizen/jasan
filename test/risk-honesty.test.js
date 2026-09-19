@@ -37,6 +37,8 @@ function nasdaqCompositePortfolio(s) {
   s.setDailyCloses('^KS11', series(260, 2500, 1.0, 0.9));
   s.setDailyCloses('^IXIC', series(260, 15000, 0.95, 0.85));
   s.setTickerMaster(LISTED);
+  // [2차 통합 보완 · PM 결정 ③] 나스닥 종합 Benchmark를 받는 해외 개별주를 만들려면 본국 보통주 근거가 필요하다(시험용).
+  s.markHomeCommonListing(['AAPL']);
   return s;
 }
 function kospiOnlyPortfolio(s) {

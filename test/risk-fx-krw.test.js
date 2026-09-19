@@ -47,6 +47,8 @@ function mixedPortfolio(s) {
   s.setDailyCloses('^KS11', series(N, 2500, 1.0, 0.9));
   s.setDailyCloses('^IXIC', series(N, 15000, 0.95, 0.85));
   s.setTickerMaster(LISTED);
+  // [2차 통합 보완 · PM 결정 ③] 달러 종목의 베타(현지통화) 경로를 검사하려면 Benchmark가 있어야 한다 - 본국 보통주 근거를 시험용으로 붙인다.
+  s.markHomeCommonListing(['AAPL']);
   return s;
 }
 const byTicker = (m, t) => m.holdings.find((h) => h.ticker === t);

@@ -136,6 +136,18 @@ function loadRiskSandbox(options) {
     return { status: 'OK', rates, endDate: dates.length ? dates[dates.length - 1] : null };
   };
   sandbox.setUsdKrwRates = (result) => { usdKrwOverride = result; };
+  // [2차 통합 보완 · D-06 · PM 결정 ③] 해외 개별주는 원장에 본국 보통주 근거(equityListing HOME_COMMON · A등급)가 있어야
+  // Risk Benchmark를 받는다. 실제 원장 항목에는 아직 그 근거가 없으므로, "근거가 있는 경우"의 계산 경로(환산 · 베타 ·
+  // 스트레스)를 검사하는 테스트만 이 도우미로 시험용 근거를 붙인다(SYNTHETIC_TEST_DATA - 실제 사실 주장이 아니다).
+  sandbox.markHomeCommonListing = (tickers) => {
+    const want = new Set(tickers);
+    const entries = vm.runInContext('EXPOSURE_MASTER_ENTRIES', sandbox).map((e) => (want.has(e.ticker)
+      ? Object.assign({}, e, { equityListing: 'HOME_COMMON', evidenceGrade: 'A', evidence: `${e.evidence} · SYNTHETIC_TEST_DATA 본국 보통주 근거(시험용)` })
+      : e));
+    const master = sandbox.buildExposureMaster(entries);
+    const original = sandbox.lookupExposureRecord;
+    sandbox.lookupExposureRecord = (a) => original(a, master);
+  };
   // [Risk 정책 P-4 · v252] 종목 마스터(상장 거래소) 주입 - js/09의 tickerMasterByTicker(let)를 통째로 바꾼다.
   sandbox.setTickerMaster = (map) => { vm.runInContext(`tickerMasterByTicker = ${JSON.stringify(map || {})};`, sandbox, { filename: 'ticker-master' }); };
 

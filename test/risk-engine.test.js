@@ -677,6 +677,8 @@ test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에
   s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
   s.setDailyCloses('^IXIC', withDates({ closes: zigzagCloses(260, 15000, 1, 1), volumes: volumes(260, 1, 1) }));
   s.setTickerMaster(LISTED);
+  // [기대값 유지 방법 · 2차 통합 보완 · PM 결정 ③] 해외 개별주 Benchmark는 본국 보통주 근거가 있을 때만 정해진다 - 시험용 근거를 붙인다.
+  s.markHomeCommonListing(['AAPL']);
   const m = await s.computeAdvancedRiskMetrics();
 
   // $1,000 × 1,300 = 130만, 국내 130만 → 정확히 50:50
@@ -1053,7 +1055,10 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
     'NVDA': { exchange: 'NASDAQ', nameEn: 'NVIDIA CORP' },
     'JPM': { exchange: 'NYSE', nameEn: 'JPMORGAN CHASE & CO.' },
     '360750.KS': { exchange: 'KOSPI', nameKr: 'TIGER 미국S&P500' },
-    'IBIT': { exchange: 'NASDAQ', nameEn: 'ISHARES BITCOIN TRUST ETF' }
+    'IBIT': { exchange: 'NASDAQ', nameEn: 'ISHARES BITCOIN TRUST ETF' },
+    // [1차 통합 구현] 원장에 없는 가상의 종목들(SYNTHETIC) - 기존 판정 경로만 타게 한다.
+    '999990.KS': { exchange: 'KOSPI', nameKr: 'ZZ 미국지수 ETF' },
+    'ZZNQ': { exchange: 'NASDAQ', nameEn: 'ZZ SYNTHETIC CORP' }
   });
   const bm = (o) => plain(s.resolveRiskBenchmark(Object.assign({ category: '주식', name: '' }, o)));
   // ① ETF 구성표에 추종 지수가 적힌 ETF
@@ -1064,19 +1069,32 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
   assert.deepStrictEqual(bm({ ticker: 'QQQM', category: 'ETF' }), { key: 'NASDAQ100', status: 'RESOLVED', source: 'exposureMaster' });
   assert.strictEqual(bm({ ticker: 'SPY', category: 'ETF' }).key, 'SP500');
   // 추종 지수가 앱의 지수와 같지 않은 ETF(근사 금지)
-  for (const tk of ['SCHD', 'SOXX', 'TQQQ', '069500.KS', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
+  for (const tk of ['SOXX', 'TQQQ', '069500.KS', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
+  // [기대값 갱신 사유 · 1 · 2차 통합 구현] SCHD는 공식 기초지수가 원장에 확인됐지만 그 지수 가격 원천이 없다 -
+  // Benchmark는 확인됨(RESOLVED), 원천은 UNAVAILABLE로 따로 표시한다(계산 가능으로 처리하지 않는다 · 근사 대체 없음).
+  assert.deepStrictEqual(bm({ ticker: 'SCHD', category: 'ETF' }), { key: 'DJ_US_DIV100_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'SOURCE_INSUFFICIENT_HISTORY' });
   // ② 개별 주식 - 실제 상장 거래소 종합지수
   assert.strictEqual(bm({ ticker: '005930.KS' }).key, 'KOSPI');
   assert.strictEqual(bm({ ticker: '247540.KQ' }).key, 'KOSDAQ');
-  assert.strictEqual(bm({ ticker: 'NVDA' }).key, 'NASDAQ', '예전 근사(NASDAQ100 스타일)를 쓰지 않는다');
+  // [기대값 갱신 사유 · 2차 통합 보완 · PM 결정 ③] NVDA의 원장 근거는 "거래소 상장"뿐이라 본국 보통주로 자동 인정하지 않는다 -
+  // UNRESOLVED(거래소 지수 fallback 없음). 본국 보통주 근거가 원장에 있으면 원장의 NASDAQ을 쓴다(예전 NASDAQ100 근사는 여전히 쓰지 않는다).
+  assert.deepStrictEqual(bm({ ticker: 'NVDA' }), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
   assert.strictEqual(bm({ ticker: 'JPM' }).key, null, 'NYSE 종합지수는 앱에 없다(예전 근사 DOW를 쓰지 않는다)');
+  // [기대값 추가 · 1차 통합 구현 · D-06] 원장에 없는 미국 상장 주식은 ADR 여부 · 본국 보통주 여부를 확인할 수 없어
+  // 상장 거래소 지수(NASDAQ)로 보내지 않는다(v252에는 NASDAQ 상장이면 NASDAQ 종합을 줬다).
+  assert.deepStrictEqual(bm({ ticker: 'ZZNQ' }), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
+  s.markHomeCommonListing(['NVDA']);
+  assert.strictEqual(bm({ ticker: 'NVDA' }).key, 'NASDAQ', '본국 보통주 근거가 있으면 원장 Benchmark(예전 근사 NASDAQ100 아님)');
   // 접미사만으로 정하지 않는다 - 마스터에 없는 종목, ETF, 펀드 이름
   assert.strictEqual(bm({ ticker: '123456.KS' }).status, 'UNRESOLVED');
-  assert.strictEqual(bm({ ticker: '360750.KS', category: 'ETF' }).key, null);
+  // [기대값 갱신 사유 · 1차 통합 구현] 예전 예시(실존 국내 상장 해외 ETF)는 공식 기초지수가 원장에 등록돼 이제 확정된다
+  // (D-05 · test/integrated-benchmark-index.test.js). "원장에 없는 ETF는 접미사만으로 정하지 않는다"는 원래 의도는
+  // 가상의 종목으로 그대로 검사한다.
+  assert.strictEqual(bm({ ticker: '999990.KS', category: 'ETF' }).key, null);
   assert.strictEqual(bm({ ticker: 'IBIT' }).key, null, '이름이 ETF면 개별 주식으로 보지 않는다');
   assert.strictEqual(bm({ ticker: 'NVDA', name: 'KODEX 엔비디아' }).key, null);
   // Return Key(대표매칭)는 근거가 아니다
-  assert.strictEqual(bm({ ticker: '360750.KS', category: 'ETF', rateMatchOverride: 'S&P500', role: 'S&P500' }).key, null);
+  assert.strictEqual(bm({ ticker: '999990.KS', category: 'ETF', rateMatchOverride: 'S&P500', role: 'S&P500' }).key, null);
   assert.strictEqual(bm({ ticker: '' }).status, 'UNRESOLVED');
 });
 

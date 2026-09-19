@@ -4,8 +4,11 @@
  * [Phase 1B · 활성] 구조(1A) 위에 앱 기본 자산의 사실 정보를 채우고 활성화했다(§44 제46조).
  *   - EXPOSURE_MASTER_ENABLED = true. 다만 원장은 기존 판정을 "대체"하지 않고 "선행"한다 -
  *     RESOLVED 항목만 값을 주고, 나머지는 기존 Risk · MC 경로가 그대로 실행된다.
- *   - 담은 범위: 앱이 코드로 이미 알고 있는 종목뿐이다(js/09 SECTOR_MAP 개별주 ·
- *     js/09 ETF_HOLDINGS_MAP ETF). 사용자 보유 수량 · 금액 · 거래내역은 담지 않는다.
+ *   - 담은 범위: 앱이 코드로 이미 알고 있는 종목(js/09 SECTOR_MAP 개별주 · js/09 ETF_HOLDINGS_MAP ETF ·
+ *     EM-2026.1)과 PM이 공식 기초지수를 확인한 상품(EM-2026.2 · 근거 등급 A).
+ *     사용자 보유 수량 · 금액 · 거래내역은 담지 않는다(상품의 사실만 담는다).
+ *   - [1차 통합 구현 · D-16] 자산 성격(Asset Character) · MC 자산군의 우선 근거다(js/05 resolveAssetCharacter).
+ *     단 Return Key 자동 판정에는 쓰지 않는다 - 원장 추가가 MC 기대수익률(μ)을 조용히 바꾸지 않게 한다.
  *   - 근거 없는 값을 채우지 않는다. 앱에 대응 지수가 없으면 benchmark를 비워 UNRESOLVED로 둔다.
  *
  * [무엇을 담는가]
@@ -60,6 +63,19 @@ const EM_ASSET_TYPE = Object.freeze({
 // 판정 상태. §44 제20조의 UNRESOLVED를 그대로 쓰고, "값은 있는데 규칙을 어긴" 경우를
 // BLOCKED로 따로 구분한다(정보 부족과 정의 위반은 원인이 다르다).
 const EM_STATUS = Object.freeze({ RESOLVED: 'RESOLVED', UNRESOLVED: 'UNRESOLVED', BLOCKED: 'BLOCKED' });
+// [1차 통합 구현 · §44 44-16 Evidence Grade] 근거 등급. 자동 연결(Benchmark · 환헤지 판정)은 A만 쓴다.
+//   A - 공식 1차 자료(운용사 상품정보 · 투자설명서 · 규제기관 공시 · 지수산출기관 · 거래소/KIS 종목마스터)
+//   B - 공식 자료의 2차 요약(데이터 벤더 · 포털) - 기록만 하고 자동 연결 근거로 쓰지 않는다
+//   C - 확인 불가 · 추정 - 원장 값으로 넣지 않는다(해당 필드를 비워 UNRESOLVED/HOLD로 둔다)
+// 기존 49건(EM-2026.1)은 이 필드 없이 저장소 안 근거(종목마스터 · ETF 구성표)만 쓴다 - 소급해 채우지 않는다.
+const EM_EVIDENCE_GRADE = Object.freeze({ A: 'A', B: 'B', C: 'C' });
+// [1차 통합 구현 · §44 44-16] 한 상품이 여러 자산군을 함께 담는 구조(주식 + 채권 혼합 등).
+// 1:N 노출 구조는 아직 만들지 않는다 - 이 표시가 있으면 단일 자산군 · 단일 Benchmark를 주지 않고
+// UNRESOLVED(MIXED_EXPOSURE)로 둔다(혼합 ETF를 단일 Benchmark로 강제하지 않는다).
+const EM_EXPOSURE_STRUCTURE = Object.freeze({ MIXED: 'MIXED' });
+// [2차 통합 보완 · D-06 · PM 결정 ③] 해외 상장 개별주의 상장 형태. 거래소 상장 사실만으로는 정하지 않는다 -
+// 공식 1차 자료(근거 등급 A)로 확인된 경우에만 적는다. HOME_COMMON(본국 보통주)만 원장 Benchmark를 쓴다.
+const EM_EQUITY_LISTING = Object.freeze({ HOME_COMMON: 'HOME_COMMON', ADR: 'ADR' });
 
 /* --- 2. 자산유형별 필수 필드 (§44 44-1 매트릭스) ------------------------
  * "모든 자산에 모든 필드를 강제하지 않는다"(§44 제5조 EM-4). N/A 칸이 비어 있는 것은
@@ -123,7 +139,9 @@ function validateExposureEntry(entry) {
     ['assetClass', EM_ASSET_CLASS], ['marketExposure', EM_MARKET_EXPOSURE],
     ['priceCcy', EM_CURRENCY], ['underlyingCcy', EM_CURRENCY],
     ['fxExposure', EM_FX_EXPOSURE], ['hedgeStatus', EM_HEDGE_STATUS],
-    ['conversionMethod', EM_CONVERSION_METHOD]
+    ['conversionMethod', EM_CONVERSION_METHOD],
+    ['evidenceGrade', EM_EVIDENCE_GRADE], ['exposureStructure', EM_EXPOSURE_STRUCTURE],
+    ['equityListing', EM_EQUITY_LISTING]
   ];
   enumChecks.forEach(([field, enumObj]) => {
     if (e[field] === undefined || e[field] === null || e[field] === '') return;
@@ -166,8 +184,20 @@ function validateExposureEntry(entry) {
   if (assetType === EM_ASSET_TYPE.FX_CASH && e.underlyingCcy && e.priceCcy && e.underlyingCcy !== e.priceCcy) {
     violations.push('underlyingCcy:cashMustMatchPriceCcy');
   }
+  // [§44 44-16] 근거 등급이 A가 아니면 자동 연결에 쓰는 사실(Benchmark · 환헤지)을 담지 않는다.
+  if (e.evidenceGrade && e.evidenceGrade !== EM_EVIDENCE_GRADE.A && (e.benchmark || e.hedgeStatus)) {
+    violations.push('evidenceGrade:notAForAutoLink');
+  }
+  // [D-06 · PM 결정 ③] 상장 형태(본국 보통주 · ADR)는 A등급 근거로만 적고, 개별주에만 쓴다.
+  if (e.equityListing && e.evidenceGrade !== EM_EVIDENCE_GRADE.A) violations.push('equityListing:notGradeA');
+  if (e.equityListing && assetType !== EM_ASSET_TYPE.FOREIGN_STOCK) violations.push('equityListing:notForeignStock');
+  // [§44 44-16] 혼합 노출 상품에는 단일 자산군 · 단일 Benchmark를 적지 않는다.
+  const mixed = e.exposureStructure === EM_EXPOSURE_STRUCTURE.MIXED;
+  if (mixed && (e.assetClass || e.benchmark)) violations.push('exposureStructure:mixedButSingleClass');
 
   if (violations.length) return { status: EM_STATUS.BLOCKED, assetType, missing, violations };
+  // 혼합 노출은 "정보가 모자란 것"이 아니라 "단일 값으로 표현하면 왜곡되는 것"이다 - 사유를 따로 남긴다.
+  if (mixed) return { status: EM_STATUS.UNRESOLVED, assetType, missing, violations, mixedExposure: true };
   if (missing.length) return { status: EM_STATUS.UNRESOLVED, assetType, missing, violations };
   return { status: EM_STATUS.RESOLVED, assetType, missing, violations };
 }
@@ -207,8 +237,8 @@ function buildExposureMaster(entries) {
 }
 
 /* [Phase 1B] 앱이 코드로 이미 알고 있는 종목의 사실 정보.
- * 근거(evidence)는 전부 저장소 안에서 확인 가능한 것만 쓴다 - 외부 로그인 · API Key ·
- * 유료 데이터 없이 재확인할 수 있어야 하기 때문이다.
+ * 근거(evidence)는 외부 로그인 · API Key · 유료 데이터 없이 재확인할 수 있는 것만 쓴다.
+ * EM-2026.1은 저장소 안 근거만, EM-2026.2는 운용사 공식 공개자료(근거 등급 A · evidenceGrade)를 쓴다.
  *   · 상장 거래소 : data/ticker-master.json(KIS 공식 종목마스터, 매달 자동 생성)
  *   · 추종 지수   : js/09 ETF_HOLDINGS_MAP의 label(앱이 이미 선언해 둔 사실)
  *   · 앱 보유 지수: js/09 INDEX_TICKERS(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW)
@@ -238,6 +268,8 @@ const EXPOSURE_MASTER_ENTRIES = Object.freeze([
   { ticker: "015760.KS", assetType: "KR_STOCK", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 원화 상장 개별주", version: "EM-2026.1" },
   // --- 해외(미국) 상장 개별주 ------------------------------------------------
   //   NYSE · AMEX 상장분은 앱에 해당 종합지수가 없어 benchmark를 비워 둔다(UNRESOLVED).
+  //   [2차 통합 보완 · PM 결정 ③] 아래 NASDAQ 상장분의 benchmark는 "거래소 상장" 근거뿐이라 본국 보통주 여부
+  //   (equityListing)가 확인되지 않았다 - Risk는 이 값을 쓰지 않는다(js/09 · UNRESOLVED). 자산군 사실은 그대로 쓴다.
   { ticker: "AAPL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
   { ticker: "MSFT", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
   { ticker: "GOOGL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시)", version: "EM-2026.1" },
@@ -267,13 +299,31 @@ const EXPOSURE_MASTER_ENTRIES = Object.freeze([
   { ticker: "SOXX", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"반도체 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
   { ticker: "SMH", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"반도체 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
   { ticker: "TQQQ", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"나스닥100 3배 레버리지\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
-  { ticker: "SCHD", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 앱 ETF 구성표 label=\"미국 배당 ETF\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
+  // [EM-2026.2] 공식 기초지수(Dow Jones U.S. Dividend 100) 확인 - 지수 가격 원천이 없어(Index Master UNAVAILABLE)
+  // Benchmark는 기록하되 계산 가능으로 처리하지 않는다. PR/TR 구분은 A등급으로 확인하지 못해 비워 둔다.
+  { ticker: "SCHD", assetType: "FOREIGN_LISTED_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "DJ_US_DIV100_PR", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=AMEX · 운용사 공시(SEC 497K) 기초지수 Dow Jones U.S. Dividend 100 Index · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
   { ticker: "TLT", assetType: "FOREIGN_LISTED_ETF", assetClass: "BOND", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"미국 장기국채\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
   { ticker: "IEF", assetType: "FOREIGN_LISTED_ETF", assetClass: "BOND", marketExposure: "US", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 앱 ETF 구성표 label=\"미국 중기국채\" · 앱에 대응 지수 없음", version: "EM-2026.1" },
   // --- 국내 상장 ETF(기초자산 국내) -----------------------------------------
   //   KOSPI200을 추종하지만 앱이 가진 지수는 KOSPI 종합뿐이라 benchmark를 비워 둔다.
   { ticker: "069500.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 앱 ETF 구성표 label=\"KODEX 200\" · 앱에 KOSPI200 지수 없음", version: "EM-2026.1" },
   { ticker: "102110.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", priceCcy: "KRW", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=KOSPI · 앱 ETF 구성표 label=\"TIGER 200\" · 앱에 KOSPI200 지수 없음", version: "EM-2026.1" },
+  // --- [EM-2026.2 · 1차 통합 구현] 공식 기초지수 확인분(운용사 공식 상품정보 · 2026-09-19 확인 · 근거 등급 A) ----
+  //   Benchmark는 공식 기초지수 그 자체를 Index Master 키로 적는다. 그 지수의 가격 원천이 앱에 없으면
+  //   (Index Master UNAVAILABLE) Risk는 UNRESOLVED로 두고 다른 지수로 대신하지 않는다(§44 제10조 · D-01).
+  //   underlyingReturnType은 공식 자료로 PR/TR이 확인된 경우에만 적는다(모르면 비운다 - PR을 TR이라 쓰지 않는다).
+  { ticker: "278530.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "KOSPI200_TR", underlyingReturnType: "TR", priceCcy: "KRW", evidence: "운용사 공식 상품정보(KODEX 200TR) 기초지수 코스피 200 TR(Total Return) · 분배금 재투자형 · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "0052D0.KS", assetType: "KR_LISTED_DOMESTIC_ETF", assetClass: "KR_EQUITY", marketExposure: "KR", benchmark: "DJ_KOREA_DIV30_PR", underlyingReturnType: "PR", priceCcy: "KRW", evidence: "운용사 공식 상품정보(TIGER 코리아배당다우존스) 기초지수 Dow Jones Korea Dividend 30 Index(Price Return) · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "487230.KS", assetType: "KR_LISTED_FOREIGN_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "ISELECT_US_AI_POWER_PR", underlyingReturnType: "PR", priceCcy: "KRW", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "운용사 공식 상품정보(KODEX 미국AI전력핵심인프라) 기초지수 iSelect 미국AI전력핵심인프라 지수(Price Return) · 환노출(환헤지 안 함) · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "360750.KS", assetType: "KR_LISTED_FOREIGN_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "SP500", priceCcy: "KRW", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "운용사 공식 상품정보(TIGER 미국S&P500) 기초지수 S&P 500 Index(원화환산) · 환헤지 안 함 · 2026-09-19 확인(PR/TR 구분 미확인)", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "458730.KS", assetType: "KR_LISTED_FOREIGN_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "DJ_US_DIV100_PR", underlyingReturnType: "PR", priceCcy: "KRW", underlyingCcy: "USD", fxExposure: "EXPOSED", hedgeStatus: "UNHEDGED", conversionMethod: "FX_MULTIPLY", evidence: "운용사 공식 상품정보(TIGER 미국배당다우존스) 기초지수 Dow Jones U.S. Dividend 100 Index(Price Return) · 환헤지 안 함 · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  //   환헤지 여부를 A등급으로 확인하지 못한 상품 - hedgeStatus · fxExposure · conversionMethod를 비워 둔다
+  //   (비헤지로 간주하지 않는다 · §44 제6조 6-3). 필수 칸이 비어 UNRESOLVED(HOLD)이며 Risk Benchmark를 주지 않는다.
+  { ticker: "368590.KS", assetType: "KR_LISTED_FOREIGN_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ100", priceCcy: "KRW", underlyingCcy: "USD", evidence: "운용사 공식 상품정보(RISE 미국나스닥100) 기초지수 NASDAQ 100 Index(KRW)(T-1) · 환헤지 여부 A등급 미확인 → 연결 보류 · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "360200.KS", assetType: "KR_LISTED_FOREIGN_ETF", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "SP500", priceCcy: "KRW", underlyingCcy: "USD", evidence: "운용사 공식 상품정보(ACE 미국S&P500) 기초지수 S&P 500 지수 · 환헤지 여부 A등급 미확인 → 연결 보류 · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  //   혼합 노출(주식 + 채권) - 단일 자산군 · 단일 Benchmark를 적지 않는다(1:N 구조는 이번 범위 밖).
+  { ticker: "237370.KS", assetType: "KR_LISTED_DOMESTIC_ETF", exposureStructure: "MIXED", marketExposure: "KR", priceCcy: "KRW", evidence: "운용사 공식 상품정보(KODEX 배당성장채권혼합) 기초지수 KRX 배당성장 채권혼합지수(코스피 배당성장50 30% + 국고채 70%) · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
+  { ticker: "472170.KS", assetType: "KR_LISTED_FOREIGN_ETF", exposureStructure: "MIXED", marketExposure: "GLOBAL", priceCcy: "KRW", evidence: "운용사 공식 상품정보(TIGER 미국테크TOP10채권혼합) 기초지수 FnGuide 미국테크TOP10 채권혼합지수(미국 기술주 50% + 국내 국고채 50%) · 2026-09-19 확인", evidenceGrade: "A", version: "EM-2026.2" },
 ]);
 const EXPOSURE_MASTER = buildExposureMaster(EXPOSURE_MASTER_ENTRIES);
 
@@ -305,12 +355,19 @@ function resolveExposure(assetLike, master) {
   return {
     active: true,
     status: hit.verdict.status,
-    reason: hit.verdict.status === EM_STATUS.RESOLVED ? 'OK' : 'INCOMPLETE_ENTRY',
+    reason: hit.verdict.status === EM_STATUS.RESOLVED ? 'OK' : (hit.verdict.mixedExposure ? 'MIXED_EXPOSURE' : 'INCOMPLETE_ENTRY'),
     identity,
     entry: hit.verdict.status === EM_STATUS.RESOLVED ? hit.entry : null,
     missing: hit.verdict.missing,
     violations: hit.verdict.violations
   };
+}
+// [1차 통합 구현] 원장에 "등록은 돼 있지만 확정되지 않은" 항목의 사실 - 연결을 보류할 사유를 판단하는 데만 쓴다
+// (값을 대신 채우는 데 쓰지 않는다). 등록되지 않았거나 규칙 위반(BLOCKED)이면 null.
+function lookupExposureRecord(assetLike, master) {
+  if (!isExposureMasterActive()) return null;
+  const hit = lookupExposure(assetLike, master);
+  return hit ? { entry: hit.entry, verdict: hit.verdict } : null;
 }
 
 /* --- 6-1. Risk · MC 연결점 ----------------------------------------------
@@ -326,6 +383,70 @@ function resolveExposureAssetClass(assetLike, master) {
   const r = resolveExposure(assetLike, master);
   if (r.status !== EM_STATUS.RESOLVED || !r.entry) return null;
   return r.entry.assetClass || null;
+}
+/* [1차 통합 구현 · D-16 · §44 제5조 시행 경계] 자산 성격(Asset Character) · MC 자산군 판정용 사실.
+ *   - 자산군(assetClass)은 Benchmark · 환헤지와 무관한 사실이라, 그 항목이 Benchmark 미확정(UNRESOLVED)이어도
+ *     assetClass 자체가 규칙을 통과했으면 쓴다(BLOCKED는 원장에 들어오지 않는다).
+ *   - 혼합 노출(MIXED)은 { mixed: true } - 단일 자산군으로 판정하지 않는다.
+ *   - 이 값은 Return Key 자동 판정에 쓰지 않는다(js/05 resolveRateKeyFromAssetCharacter가 명시적으로 제외).
+ * 반환: null(원장에 없음) | { assetClass, mixed:false } | { assetClass:null, mixed:true }
+ */
+function resolveExposureCharacter(assetLike, master) {
+  const rec = lookupExposureRecord(assetLike, master);
+  if (!rec) return null;
+  if (rec.verdict.mixedExposure) return { assetClass: null, mixed: true };
+  const cls = rec.entry.assetClass;
+  if (!isEnumValue(EM_ASSET_CLASS, cls) || (rec.verdict.missing || []).includes('assetClass')) return null;
+  return { assetClass: cls, mixed: false };
+}
+
+/* --- 6-2. Index Master (§44 44-16 · 1차 통합 구현) --------------------------
+ * Risk Benchmark 키 → 실제 지수 정의와 가격 원천. Benchmark(무엇과 비교할지)와 Price Source(그 값을 어디서
+ * 받는지)를 분리한다. 공식 근거가 없는 칸은 null로 둔다(추정 금지).
+ *   returnType      : PR(가격지수) | TR(총수익지수) | null(미확인)
+ *   priceDefinition : INDEX_LEVEL - 지수 수준(종가)을 통계용 가격으로 쓴다(D-01 ① · 지수에는 조정주가 개념을 적용하지 않는다)
+ *   market          : 산출 시장(세션 마감 순서 판단용 · 비동기 쌍 판정) - KR | US | null
+ *   availability    : AVAILABLE(앱이 지금 받을 수 있고 1년 이력이 있음) | UNAVAILABLE(사유를 unavailableReason에)
+ * sourceId는 앱이 이미 쓰는 공개 시세 경로(Yahoo chart)의 기호다. 새 공급자 · KIS 지수 API는 쓰지 않는다
+ * (KIS 약관 확인 전 KIS 지수코드 2035 등 신규 연결 금지 - D-01 ⑤).
+ */
+const INDEX_RETURN_TYPE = Object.freeze({ PR: 'PR', TR: 'TR' });
+const INDEX_AVAILABILITY = Object.freeze({ AVAILABLE: 'AVAILABLE', UNAVAILABLE: 'UNAVAILABLE' });
+const INDEX_MASTER_ENTRIES = Object.freeze([
+  { key: 'KOSPI', officialName: '코스피 지수(KOSPI)', provider: 'KRX', sourceId: '^KS11', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  { key: 'KOSDAQ', officialName: '코스닥 지수(KOSDAQ)', provider: 'KRX', sourceId: '^KQ11', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  { key: 'NASDAQ', officialName: 'NASDAQ Composite Index', provider: 'Nasdaq', sourceId: '^IXIC', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  { key: 'SP500', officialName: 'S&P 500 Index', provider: 'S&P Dow Jones Indices', sourceId: '^GSPC', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  { key: 'NASDAQ100', officialName: 'Nasdaq-100 Index', provider: 'Nasdaq', sourceId: '^NDX', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  { key: 'DOW', officialName: 'Dow Jones Industrial Average', provider: 'S&P Dow Jones Indices', sourceId: '^DJI', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'AVAILABLE', unavailableReason: null },
+  // 공식 기초지수로 확인됐지만 앱이 지금 가격을 받을 수 없는 지수 - 기록만 하고 계산 가능으로 처리하지 않는다.
+  { key: 'KOSPI200_TR', officialName: '코스피 200 TR', provider: 'KRX', sourceId: null, returnType: 'TR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PERMITTED_SOURCE' },
+  { key: 'DJ_KOREA_DIV30_PR', officialName: 'Dow Jones Korea Dividend 30 Index (Price Return)', provider: 'S&P Dow Jones Indices', sourceId: null, returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PUBLIC_SOURCE' },
+  { key: 'ISELECT_US_AI_POWER_PR', officialName: 'iSelect 미국AI전력핵심인프라 지수 (Price Return)', provider: null, sourceId: null, returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: null, market: null, source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PUBLIC_SOURCE' },
+  // Yahoo에 기호는 있으나 1년 조회 시 관측이 1개뿐이다(2026-09-19 확인) - 최소 관측 120을 만족할 수 없다.
+  { key: 'DJ_US_DIV100_PR', officialName: 'Dow Jones U.S. Dividend 100 Index (Price Return)', provider: 'S&P Dow Jones Indices', sourceId: '^DJUSDIV', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'SOURCE_INSUFFICIENT_HISTORY' }
+]);
+const INDEX_MASTER_BY_KEY = Object.freeze(INDEX_MASTER_ENTRIES.reduce((acc, e) => { acc[e.key] = e; return acc; }, {}));
+function resolveIndexMasterEntry(key) {
+  return (typeof key === 'string' && Object.prototype.hasOwnProperty.call(INDEX_MASTER_BY_KEY, key)) ? INDEX_MASTER_BY_KEY[key] : null;
+}
+// 앱이 지금 그 지수의 가격을 받을 수 있는가 - AVAILABLE이고 원천 기호가 있을 때만 true.
+function isIndexPriceSourceAvailable(key) {
+  const e = resolveIndexMasterEntry(key);
+  return !!(e && e.availability === INDEX_AVAILABILITY.AVAILABLE && e.sourceId);
+}
+function indexPriceSourceTicker(key) {
+  return isIndexPriceSourceAvailable(key) ? resolveIndexMasterEntry(key).sourceId : null;
+}
+// [D-01 ② ③] 상품의 공식 기초지수 수익 정의와 Benchmark 지수의 정의를 비교한다.
+//   MATCH                - 둘 다 확인됐고 같다
+//   DEFINITION_MISMATCH  - 둘 다 확인됐고 다르다(같은 것으로 취급하지 않고 상태를 남긴다)
+//   UNCONFIRMED          - 상품 쪽 정의가 공식 자료로 확인되지 않았다(일치한다고도 다르다고도 말하지 않는다)
+function resolveBenchmarkDefinitionStatus(exposureEntry, indexEntry) {
+  const want = exposureEntry && exposureEntry.underlyingReturnType;
+  const have = indexEntry && indexEntry.returnType;
+  if (!want || !have) return 'UNCONFIRMED';
+  return want === have ? 'MATCH' : 'DEFINITION_MISMATCH';
 }
 
 /* --- 7. 유형 추정(참고용) ------------------------------------------------
@@ -365,6 +486,9 @@ if (typeof module !== 'undefined' && module.exports) {
     exposureIdentityOf, validateExposureEntry, buildExposureMaster,
     EXPOSURE_MASTER_ENTRIES, EXPOSURE_MASTER,
     isExposureMasterActive, lookupExposure, resolveExposure, suggestExposureAssetType,
-    resolveExposureBenchmark, resolveExposureAssetClass
+    resolveExposureBenchmark, resolveExposureAssetClass,
+    EM_EVIDENCE_GRADE, EM_EXPOSURE_STRUCTURE, EM_EQUITY_LISTING, lookupExposureRecord, resolveExposureCharacter,
+    INDEX_RETURN_TYPE, INDEX_AVAILABILITY, INDEX_MASTER_ENTRIES, INDEX_MASTER_BY_KEY,
+    resolveIndexMasterEntry, isIndexPriceSourceAvailable, indexPriceSourceTicker, resolveBenchmarkDefinitionStatus
   };
 }

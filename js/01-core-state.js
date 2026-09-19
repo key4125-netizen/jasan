@@ -431,6 +431,12 @@ function classifyCategory(ticker, name) {
  *    Yahoo Finance 조회 시에만 표준 포맷(######.KS / .KQ)으로 변환해 사용한다.
  *    판별 우선순위: ① .KS/.KQ 명시 ② 'A'+숫자6자리 ③ 숫자6자리 ④ 그 외 해외 티커
  * ---------------------------------------------------------------------- */
+// [2차 통합 보완 · 0052D0] 국내 단축 종목코드 형식 - 숫자 6자리(005930)와 KRX 영문 혼합 신규 코드(숫자 4 + 영문 1 +
+// 숫자 1, 예: 0052D0). 영문 혼합 코드는 숫자 4자리로 시작하므로 미국 티커(영문으로 시작)와 겹치지 않는다.
+const KRX_SHORT_CODE_PATTERN = /^(?:\d{6}|\d{4}[A-Z]\d)$/;
+function isKrxShortCode(code) {
+  return KRX_SHORT_CODE_PATTERN.test(String(code ?? '').trim().toUpperCase());
+}
 function sanitizeTicker(rawTicker) {
   // 숫자 티커(예: 5930)나 null/undefined가 들어와도 안전하게 문자열로 강제 변환한다.
   const original = String(rawTicker ?? '').trim();
@@ -452,12 +458,12 @@ function sanitizeTicker(rawTicker) {
     return { original, yahooTicker: upper, isDomestic: '국내' };
   }
   // ② 'A' + 숫자 6자리 (예: A005930, A005380)
-  const aPrefixMatch = upper.match(/^A(\d{6})$/);
+  const aPrefixMatch = upper.match(/^A(\d{6}|\d{4}[A-Z]\d)$/);
   if (aPrefixMatch) {
     return { original, yahooTicker: aPrefixMatch[1] + '.KS', isDomestic: '국내' };
   }
-  // ③ 순수 숫자 6자리 (예: 005930, 005380)
-  if (/^\d{6}$/.test(upper)) {
+  // ③ 국내 단축코드 - 순수 숫자 6자리(예: 005930) 또는 영문 혼합 신규 코드(예: 0052D0). 해외 판정(④)보다 먼저 본다.
+  if (isKrxShortCode(upper)) {
     return { original, yahooTicker: upper + '.KS', isDomestic: '국내' };
   }
   // ④ 위 한국 종목코드 규격에 해당하지 않으면 해외 티커로 간주 (GOOGL, MSFT, QQQM 등)

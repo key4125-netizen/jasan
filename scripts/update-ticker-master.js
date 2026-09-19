@@ -113,7 +113,8 @@ function parseDomesticMst(text, exchange) {
     const front = line.slice(0, line.length - width);
     const code = front.slice(0, 9).trim();
     const nameKr = front.slice(21).trim();
-    if (!/^\d{6}$/.test(code) || !nameKr) continue; // 헤더/빈 줄/형식 이상 행은 조용히 건너뜀
+    // [2차 통합 보완] KRX 영문 혼합 신규 코드(예: 0052D0)도 받는다 - js/01 KRX_SHORT_CODE_PATTERN과 같은 형식.
+    if (!/^(?:\d{6}|\d{4}[A-Z]\d)$/.test(code) || !nameKr) continue; // 헤더/빈 줄/형식 이상 행은 조용히 건너뜀
     items.push({
       code,
       nameKr,

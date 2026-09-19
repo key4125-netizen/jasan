@@ -135,7 +135,11 @@ function getConfirmedCategoryForCalc(asset) {
 
 // 지역만 아는 상태를 성격으로 착각하지 않기 위해 region은 character와 별도로 돌려준다.
 // confidence: 'high'(등록된 구성정보/명시적 카테고리) | 'medium'(이름 키워드/개별종목표) | 'none'
-function resolveAssetCharacter(asset) {
+// [1차 통합 구현 · D-16 · §44 제5조 시행 경계] options.exposureMaster === false이면 Exposure Master 단계를 건너뛴다.
+//   - 기본(생략): 원장 우선 - 자산 성격 · MC 자산군(js/16)이 이 경로를 쓴다.
+//   - false     : Return Key 계층(자동 판정 · 추천 · 상태 점검)이 쓴다. 원장은 자동 Return Key의 근거가 아니다
+//                 (원장 추가가 μ를 조용히 바꾸지 않게 - PM 결정 D-16 금지 사항).
+function resolveAssetCharacter(asset, options) {
   const name = String((asset && asset.name) ?? '');
   const rawTicker = String((asset && asset.ticker) ?? '').trim();
   const sanitized = sanitizeTicker(rawTicker);
@@ -165,6 +169,15 @@ function resolveAssetCharacter(asset) {
   const confirmedCategory = getConfirmedCategoryForCalc(asset);
   const byCategory = CATEGORY_TO_CHARACTER[confirmedCategory];
   if (byCategory) return out(byCategory, 'category', 'high');
+
+  // 1-1) [D-16] Exposure Master - 근거 있는 상품 사실(자산군)이 공유표(ETF_HOLDINGS_MAP · SECTOR_MAP)보다 먼저다.
+  //      사용자 확정 자산군(1)과 이름이 스스로 혼합이라고 밝힌 경우(0)는 그대로 원장보다 우선한다.
+  //      원장이 혼합 노출(MIXED)이라고 하면 단일 성격으로 판정하지 않는다.
+  if (!(options && options.exposureMaster === false) && typeof resolveExposureCharacter === 'function') {
+    const em = resolveExposureCharacter(asset);
+    if (em && em.mixed) return out(ASSET_CHARACTERS.UNRESOLVED, 'exposureMasterMixed', 'none');
+    if (em && em.assetClass && ASSET_CHARACTERS[em.assetClass]) return out(em.assetClass, 'exposureMaster', 'high');
+  }
 
   // 2) 이미 등록된 ETF 구성정보 - Risk 엔진이 쓰는 바로 그 표를 재사용한다.
   //    채권 100%로 등록된 ETF(TLT/IEF)는 이름이나 지역과 무관하게 채권형이다.
@@ -281,7 +294,8 @@ const UNRESOLVED_RATE_KEY = 'UNRESOLVED';
 // 자산(또는 자산 모양의 객체) 하나에 대해 "성격으로부터 정당화되는 Return Key"를 찾는다.
 // 찾지 못하면 null - 지역만 보고 아무 주식 지수나 붙이지 않는다.
 function resolveRateKeyFromAssetCharacter(assetLike) {
-  const char = resolveAssetCharacter(assetLike);
+  // [D-16] Return Key 자동 판정은 Exposure Master를 보지 않는다(기존 판정 경로 그대로 · μ 불변).
+  const char = resolveAssetCharacter(assetLike, { exposureMaster: false });
   if (!CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(char.source)) return null;
   const candidates = returnKeyCandidatesForCharacter(char.character, char.ticker);
   if (candidates.length === 0) return null; // 그 성격에 맞는 Key가 아직 없다(원자재/암호화폐 등)
@@ -578,9 +592,20 @@ function normalizeNameKey(name) {
 }
 
 // 모달에서 사용자가 입력한 종목코드/티커(선택)와 종목명으로 저장 키를 만든다.
+// [2차 통합 보완 · 0052D0] 예전 정규화는 영문 혼합 국내 코드(예: 0052D0)를 해외 티커로 보고 접미사 없이 키를 만들었다.
+// 그 키로 이미 저장된 사용자 설정(포지션 · 종목 수익률 · 운용보수)이 있으면 그 키를 계속 쓴다 - 저장값을 바꾸거나
+// 옮기지 않고(읽기 · 쓰기 모두 같은 키), 새로 만드는 설정만 국내 형식(0052D0.KS)을 쓴다.
+function legacyKrxAlphaStoredKey(yahooTicker) {
+  const m = /^(\d{4}[A-Z]\d)\.KS$/.exec(String(yahooTicker || ''));
+  if (!m || typeof state === 'undefined' || !state) return null;
+  const bare = m[1];
+  const projection = state.projection || {};
+  return [state.tickerRoles, projection.customScenarioRates, projection.customFeeRates]
+    .some((map) => map && typeof map === 'object' && Object.prototype.hasOwnProperty.call(map, bare)) ? bare : null;
+}
 function buildCustomRateKey(codeOrTicker, name) {
   const sanitized = sanitizeTicker(codeOrTicker);
-  if (sanitized.yahooTicker) return sanitized.yahooTicker;
+  if (sanitized.yahooTicker) return legacyKrxAlphaStoredKey(sanitized.yahooTicker) || sanitized.yahooTicker;
   const normalized = normalizeNameKey(name);
   return normalized ? 'NAME:' + normalized : null;
 }
@@ -592,6 +617,9 @@ function findCustomRateKeyForAsset(ticker, name) {
   const customRates = state.projection.customScenarioRates || {};
   const sanitized = sanitizeTicker(ticker);
   if (sanitized.yahooTicker && customRates[sanitized.yahooTicker]) return sanitized.yahooTicker;
+  // [2차 통합 보완 · 0052D0] 예전 정규화로 저장된 키(접미사 없는 영문 혼합 국내 코드)도 그대로 찾는다.
+  const legacyKey = legacyKrxAlphaStoredKey(sanitized.yahooTicker);
+  if (legacyKey && customRates[legacyKey]) return legacyKey;
   const nameKey = 'NAME:' + normalizeNameKey(name);
   if (name && customRates[nameKey]) return nameKey;
   return null;
@@ -1091,7 +1119,8 @@ function recommendReturnAssumptionKey(input) {
 
   // 실제로 저장될 자산과 같은 방식으로 만든다(카테고리/국내해외 자동판별 포함).
   const probe = makeAsset({ ticker, name, currency: input && input.currency, category: input && input.category });
-  const char = resolveAssetCharacter(probe);
+  // [D-16] 수익률 가정 추천은 Return Key 계층이다 - Exposure Master를 근거로 쓰지 않는다.
+  const char = resolveAssetCharacter(probe, { exposureMaster: false });
   const base = { character: char.character, characterLabel: getAssetCharacterLabel(char.character), characterSource: char.source, evidence: [] };
 
   // Step 1 - 사용자가 이미 명시한 값이 있으면 최우선으로 존중한다(덮어쓰지 않는다).
@@ -1207,7 +1236,8 @@ function recommendReturnAssumptionKey(input) {
 function assessReturnAssumptionStatus(asset) {
   const detail = resolveAssetGroupKeyDetail(asset);
   const appliedKey = detail.key;
-  const char = resolveAssetCharacter(asset);
+  // [D-16] Return Key 적용 상태 점검도 Return Key 계층이다 - 판정 근거를 자동 판정과 같게 둔다.
+  const char = resolveAssetCharacter(asset, { exposureMaster: false });
   const keyChar = getReturnKeyCharacter(appliedKey);
   // [통합 수정 · F-01] 키만 있고 수익률 · 키워드를 정하지 않은 사전 항목은 "사용자가 정한 기준"으로 보지 않는다.
   const customEntry = (state.projection.customScenarioRates || {})[appliedKey];

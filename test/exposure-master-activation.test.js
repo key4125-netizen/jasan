@@ -57,9 +57,16 @@ test('3. RESOLVED 항목은 전부 근거와 버전을 갖는다(추정값 없�
   assert.ok(resolved.length > 0);
   resolved.forEach(({ e }) => {
     assert.ok(String(e.evidence || '').length >= 20, `${e.ticker} evidence가 너무 짧다`);
-    // 근거는 저장소 안에서 재확인 가능한 것만 쓴다(외부 로그인 · API Key 없이).
-    assert.ok(/ticker-master\.json|ETF 구성표/.test(e.evidence), `${e.ticker} evidence 출처가 불명확하다`);
-    assert.strictEqual(e.version, 'EM-2026.1');
+    // [기대값 갱신 사유 · 1차 통합 구현 · §44 44-16 Evidence Grade] EM-2026.1은 저장소 안 근거만, EM-2026.2는
+    // 운용사 공식 공개자료(근거 등급 A)를 쓴다. 어느 쪽도 외부 로그인 · API Key 없이 재확인할 수 있다.
+    assert.ok(['EM-2026.1', 'EM-2026.2'].includes(e.version), `${e.ticker} 버전`);
+    if (e.version === 'EM-2026.1') {
+      assert.ok(/ticker-master\.json|ETF 구성표/.test(e.evidence), `${e.ticker} evidence 출처가 불명확하다`);
+      assert.strictEqual(e.evidenceGrade, undefined, 'EM-2026.1 항목에 등급을 소급해 채우지 않는다');
+    } else {
+      assert.strictEqual(e.evidenceGrade, 'A', `${e.ticker}: 자동 연결 사실은 A등급만`);
+      assert.ok(/공식|공시/.test(e.evidence) && /2026-09-19 확인/.test(e.evidence), `${e.ticker} 공식 근거 · 확인일이 없다`);
+    }
   });
 });
 
@@ -67,9 +74,21 @@ test('4. UNRESOLVED는 "앱에 대응 지수가 없다"는 사실 때문이며 �
   const unresolved = byStatus('UNRESOLVED');
   assert.ok(unresolved.length > 0);
   unresolved.forEach(({ e, v }) => {
-    // 이번 데이터에서 빠진 필수 항목은 benchmark 하나뿐이다(나머지 사실은 전부 채워져 있다).
-    assert.deepStrictEqual(v.missing, ['benchmark'], `${e.ticker}의 미해결 사유가 benchmark 외에도 있다: ${v.missing}`);
-    assert.ok(/지수 없음|대응 지수/.test(e.evidence), `${e.ticker} 사유가 evidence에 없다`);
+    if (e.version === 'EM-2026.1') {
+      // 이번 데이터에서 빠진 필수 항목은 benchmark 하나뿐이다(나머지 사실은 전부 채워져 있다).
+      assert.deepStrictEqual(v.missing, ['benchmark'], `${e.ticker}의 미해결 사유가 benchmark 외에도 있다: ${v.missing}`);
+      assert.ok(/지수 없음|대응 지수/.test(e.evidence), `${e.ticker} 사유가 evidence에 없다`);
+      return;
+    }
+    // [1차 통합 구현] EM-2026.2의 미확정은 두 가지뿐이다 - 혼합 노출(MIXED) 또는 환헤지 A등급 미확인(HOLD).
+    if (v.mixedExposure) {
+      assert.strictEqual(e.exposureStructure, 'MIXED');
+      assert.strictEqual(e.assetClass, undefined, `${e.ticker}: 혼합 상품에 단일 자산군을 적지 않는다`);
+      assert.strictEqual(e.benchmark, undefined, `${e.ticker}: 혼합 상품에 단일 Benchmark를 적지 않는다`);
+      return;
+    }
+    assert.deepStrictEqual(v.missing.slice().sort(), ['conversionMethod', 'fxExposure', 'hedgeStatus'], `${e.ticker}: ${v.missing}`);
+    assert.ok(/연결 보류/.test(e.evidence), `${e.ticker} 보류 사유가 evidence에 없다`);
   });
 });
 
@@ -80,16 +99,22 @@ test('5. BLOCKED · 중복 식별자는 없다', () => {
   assert.strictEqual(EM.EXPOSURE_MASTER.size, entries.length);
 });
 
-test('6. Benchmark는 앱이 실제로 가진 지수만 쓰고, 근사 대체가 없다', () => {
+test('6. Benchmark는 Index Master에 등록된 지수만 쓰고, 근사 대체가 없다', () => {
+  // [기대값 갱신 사유 · 1차 통합 구현 · §44 44-16 Index Master] Benchmark 키는 이제 "앱이 가진 6개 지수"가 아니라
+  // Index Master에 공식 정의와 함께 등록된 지수다. 가격 원천이 없는 지수(UNAVAILABLE)도 등록될 수 있으며,
+  // 그 경우 Risk는 계산 가능으로 처리하지 않는다(test/integrated-benchmark-index.test.js).
   const APP_INDEXES = ['KOSPI', 'KOSDAQ', 'NASDAQ', 'SP500', 'NASDAQ100', 'DOW'];
   entries.forEach((e) => {
     if (!e.benchmark) return;
-    assert.ok(APP_INDEXES.includes(e.benchmark), `${e.ticker}: 앱에 없는 지수 ${e.benchmark}`);
+    assert.ok(EM.resolveIndexMasterEntry(e.benchmark), `${e.ticker}: Index Master에 없는 지수 ${e.benchmark}`);
+    if (e.version === 'EM-2026.1') assert.ok(APP_INDEXES.includes(e.benchmark), `${e.ticker}: 기존 항목의 Benchmark가 바뀌었다 ${e.benchmark}`);
   });
-  // 국내 상장 국내ETF(KOSPI200 추종)는 앱에 KOSPI200이 없어 비워 둔다 - KOSPI로 대신하지 않는다.
+  // 국내 상장 국내ETF(KOSPI200 추종)는 KOSPI200 지수가 Index Master에 없어 비워 둔다 - KOSPI로 대신하지 않는다.
   ['069500.KS', '102110.KS'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}에 근사 지수를 넣으면 안 된다`));
-  // 3배 레버리지 · 섹터 · 배당 · 국채 ETF도 대응 지수가 없으면 비운다.
-  ['TQQQ', 'SOXX', 'SMH', 'SCHD', 'TLT', 'IEF'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}`));
+  // 3배 레버리지 · 섹터 · 국채 ETF도 대응 지수가 없으면 비운다.
+  ['TQQQ', 'SOXX', 'SMH', 'TLT', 'IEF'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}`));
+  // SCHD는 공식 기초지수(DJ U.S. Dividend 100)를 적었지만 그 지수의 가격 원천이 없다 - 계산 가능으로 보지 않는다.
+  assert.strictEqual(EM.isIndexPriceSourceAvailable(find('SCHD').benchmark), false);
   // NYSE · AMEX 상장 개별주는 앱에 종합지수가 없다(예전 DOW 근사를 되살리지 않는다).
   ['JPM', 'V', 'MA', 'JNJ', 'UNH', 'XOM', 'CVX', 'PG', 'KO'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}`));
   // 추종 지수가 앱 지수와 정확히 같은 ETF만 확정된다.
@@ -112,8 +137,15 @@ test('8. Hedge · Conversion: 이중 환산이 생길 수 있는 조합이 없�
   entries.forEach((e) => {
     if (e.priceCcy === 'KRW') {
       // 원화 가격계열에는 환산을 걸지 않는다(Risk 이중계상 방지 · §44 제6조 6-1).
-      assert.ok(!e.conversionMethod || e.conversionMethod === 'NONE', `${e.ticker}: 원화 가격인데 환산방법이 있다`);
-      assert.ok(!e.fxExposure || e.fxExposure === 'NONE', `${e.ticker}: 원화 가격인데 환노출이 있다`);
+      // [기대값 갱신 사유 · 1차 통합 구현] 국내 상장 해외 ETF(KR_LISTED_FOREIGN_ETF)는 §44 44-1 매트릭스상
+      // fxExposure · hedgeStatus · conversionMethod가 필수다 - 이 값은 MC의 경제적 환노출(6-2)과 D-05의 "지수" 환산에
+      // 쓰이며, 종목 자신의 원화 가격계열에는 곱하지 않는다(Risk priceCcy = KRW · 아래 단언).
+      if (e.assetType === 'KR_LISTED_FOREIGN_ETF' && e.underlyingCcy && e.underlyingCcy !== 'KRW') {
+        assert.ok(!e.conversionMethod || e.conversionMethod === 'FX_MULTIPLY', `${e.ticker}`);
+      } else {
+        assert.ok(!e.conversionMethod || e.conversionMethod === 'NONE', `${e.ticker}: 원화 가격인데 환산방법이 있다`);
+        assert.ok(!e.fxExposure || e.fxExposure === 'NONE', `${e.ticker}: 원화 가격인데 환노출이 있다`);
+      }
     }
     if (e.assetType === 'FOREIGN_LISTED_ETF') {
       assert.strictEqual(e.hedgeStatus, 'UNHEDGED', `${e.ticker}`);
@@ -128,9 +160,13 @@ test('8. Hedge · Conversion: 이중 환산이 생길 수 있는 조합이 없�
 test('9. Return Key는 원장 대상이 아니며 서로 덮어쓰지 않는다', () => {
   // 수익률 기준 전용 키는 종목이 아니므로 등록하지 않는다(§44 제3조).
   ['NASDAQ', 'S&P500', 'DEV_EX_US', 'EMERGING'].forEach((k) => assert.strictEqual(find(k), undefined, `${k}`));
-  // Return Key를 다루는 js/05와 MC 어댑터 js/16은 아직 원장을 참조하지 않는다(Phase 1B 범위 밖).
-  assert.ok(!readJs('05-future-projection.js').includes('resolveExposure'), 'js/05가 원장을 참조하면 Return Key 의미가 바뀐다');
-  assert.ok(!readJs('16-monte-carlo-adapter.js').includes('resolveExposure'), 'MC 자산군 이관은 Phase 1B 범위가 아니다');
+  // [기대값 갱신 사유 · 1차 통합 구현 · D-16] js/05는 이제 "자산 성격" 판정에서만 원장을 읽는다(resolveExposureCharacter).
+  // Return Key 자동 판정 · 추천 · 상태 점검은 원장 단계를 명시적으로 건너뛴다(exposureMaster: false) - Return Key 의미 불변.
+  const js05 = readJs('05-future-projection.js');
+  const emRefs = js05.match(/resolveExposure\w*/g) || [];
+  assert.deepStrictEqual([...new Set(emRefs)], ['resolveExposureCharacter'], 'js/05는 성격 판정용 함수 하나만 참조한다');
+  assert.strictEqual((js05.match(/resolveAssetCharacter\([^)]*\{ exposureMaster: false \}\)/g) || []).length, 3, 'Return Key 계층 3곳은 원장을 보지 않는다');
+  assert.ok(!readJs('16-monte-carlo-adapter.js').includes('resolveExposure'), 'MC 어댑터는 js/05 성격 판정을 거쳐서만 원장을 본다');
   assert.ok(!readJs('15-monte-carlo-engine.js').includes('resolveExposure'), 'MC 엔진은 그대로다');
 });
 
@@ -152,7 +188,8 @@ test('11. Risk 벤치마크: 원장이 주는 값이 기존 판정과 같다(키
   });
   const key = (o) => s.resolveRiskBenchmark(Object.assign({ category: '주식', name: '' }, o)).key;
   assert.strictEqual(key({ ticker: '005930.KS' }), 'KOSPI');
-  assert.strictEqual(key({ ticker: 'NVDA' }), 'NASDAQ');
+  // [기대값 갱신 사유 · 2차 통합 보완 · PM 결정 ③] 원장의 미국 개별주 근거는 거래소 상장뿐이라 본국 보통주로 자동 인정하지 않는다.
+  assert.strictEqual(key({ ticker: 'NVDA' }), null);
   assert.strictEqual(key({ ticker: 'QQQ', category: 'ETF' }), 'NASDAQ100');
   assert.strictEqual(key({ ticker: 'SPY', category: 'ETF' }), 'SP500');
   // 원장이 비워 둔 종목은 기존 판정 그대로 UNRESOLVED다(임의 대체 없음).
@@ -201,18 +238,24 @@ test('14. feature flag: 꺼져 있으면 어떤 값도 주지 않는다(연결�
 
 test('15. 조용한 대체가 없다: 미등록 · 미확정 종목은 null을 주고 끝난다', () => {
   assert.strictEqual(EM.resolveExposureBenchmark({ ticker: 'NOT_IN_MASTER' }), null);
-  assert.strictEqual(EM.resolveExposureBenchmark({ ticker: 'SCHD' }), null, '대응 지수가 없으면 비슷한 지수로 대신하지 않는다');
-  const r = EM.resolveExposure({ ticker: 'SCHD' });
+  // [기대값 갱신 사유 · 1차 통합 구현] SCHD는 공식 기초지수가 확인돼 확정됐다(가격 원천 없음은 Index Master가 판정).
+  // 미확정 예시는 대응 지수가 없는 TQQQ로 바꿔 같은 규칙을 검사한다.
+  assert.strictEqual(EM.resolveExposureBenchmark({ ticker: 'TQQQ' }), null, '대응 지수가 없으면 비슷한 지수로 대신하지 않는다');
+  const r = EM.resolveExposure({ ticker: 'TQQQ' });
   assert.strictEqual(r.status, 'UNRESOLVED');
   assert.strictEqual(r.reason, 'INCOMPLETE_ENTRY');
   assert.strictEqual(r.entry, null, '미확정 항목의 값은 밖으로 나가지 않는다');
 });
 
 test('16. 원장 규모와 상태 분포가 기록한 것과 같다', () => {
-  assert.strictEqual(entries.length, 49);
-  assert.strictEqual(byStatus('RESOLVED').length, 32);
-  assert.strictEqual(byStatus('UNRESOLVED').length, 17);
+  // [기대값 갱신 사유 · 1차 통합 구현] 기존 49건은 그대로 있고(그중 SCHD 1건은 공식 기초지수가 확인돼 EM-2026.2로 갱신 ·
+  // UNRESOLVED → RESOLVED · 자산군 무변경), PM 확정 공식 매핑 9건(EM-2026.2)이 추가됐다.
+  assert.strictEqual(entries.length, 58);
+  assert.strictEqual(entries.filter((e) => e.version === 'EM-2026.1').length, 48);
+  assert.strictEqual(entries.filter((e) => e.version === 'EM-2026.2').length, 10);
+  assert.strictEqual(byStatus('RESOLVED').length, 38);
+  assert.strictEqual(byStatus('UNRESOLVED').length, 20);
   const types = {};
   entries.forEach((e) => { types[e.assetType] = (types[e.assetType] || 0) + 1; });
-  assert.deepStrictEqual(types, { KR_STOCK: 16, FOREIGN_STOCK: 20, FOREIGN_LISTED_ETF: 11, KR_LISTED_DOMESTIC_ETF: 2 });
+  assert.deepStrictEqual(types, { KR_STOCK: 16, FOREIGN_STOCK: 20, FOREIGN_LISTED_ETF: 11, KR_LISTED_DOMESTIC_ETF: 5, KR_LISTED_FOREIGN_ETF: 6 });
 });

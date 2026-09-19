@@ -65,7 +65,9 @@ This checklist is the project's official governance Source of Truth.
 
 ## CURRENT PRIORITY
 
-The current project phase is **V1.2-B**.
+> 2026-09-19 update: after v261 (production), the active phase is the **asset-calculation integration project** — Risk Benchmark / Index Master / Exposure Master / MC Asset Class (checklist §44 44-16: D-01 · D-05 · D-06 · D-16). Current step: **1st integrated implementation in the local working tree — not committed, not released, awaiting PM review.** Exposure Master must not become an automatic Return Key source without a separate PM decision. The V1.2-B text below is kept as history.
+
+Previous phase (history): **V1.2-B**.
 
 Primary scope:
 1. BL-17 — category confirmation policy

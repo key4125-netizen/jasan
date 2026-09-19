@@ -349,7 +349,9 @@ test('16. Golden 자산 유형별로 성격 판정이 안정적이다', async ({
     // KODEX 200TR은 ETF_HOLDINGS_MAP/지수 키워드 어디에도 등록돼 있지 않아 성격이 확인되지 않는다.
     // (같은 KOSPI200 추종인 'KODEX 200'(069500)은 등록돼 있어 KR_EQUITY로 판정된다 - 등록 여부의 차이일 뿐이다.)
     // 실사용자에게는 rateMatchOverride='KOSPI'가 이미 붙어 있어 계산에는 영향이 없다. backlog 항목.
-    'KODEX 200TR': 'UNRESOLVED',
+    // [기대값 갱신 사유 · 1차 통합 구현 · D-16] 공식 기초지수가 Exposure Master(EM-2026.2)에 등록돼 자산 성격은
+    // KR_EQUITY로 확인된다. Return Key 자동 판정은 원장을 보지 않으므로 수익률 가정은 그대로다(test/mc-exposure-invariant).
+    'KODEX 200TR': 'KR_EQUITY',
     'TIGER 미국S&P500': 'US_EQUITY', 'RISE 미국나스닥100': 'US_EQUITY',
     'TIGER 코리아배당다우존스': 'KR_EQUITY', 'Schwab US Dividend Equity ETF': 'US_EQUITY',
     'Invesco NASDAQ 100 ETF': 'US_EQUITY', '파크시스템스': 'KR_EQUITY',

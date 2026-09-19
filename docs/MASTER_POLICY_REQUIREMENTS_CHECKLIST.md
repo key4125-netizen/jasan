@@ -2040,8 +2040,8 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **P-2** 최소 표본 | 공통 거래일 수익률 **120개 이상**일 때만 계산. 미만이면 `dataSufficiency.status = 'INSUFFICIENT'` — 위험점수 · 등급 · 하위 점수 · 진단 · 신뢰도 · 변동성/MDD/VaR/CVaR/Sortino/베타/상관/스트레스 모두 null(50점 대체 없음). 종목 단위 최소 관측 `MIN_RETURNS_FOR_STATS = 10`은 유지 | `MIN_COMMON_RISK_RETURNS = 120`. 경계: 수익률 119개 → INSUFFICIENT · 120개 → SUFFICIENT. 비중 · 집중도 · 섹터 정보와 종목 단위 필드는 남긴다 |
 | **P-2 Beta** | 종목↔벤치마크 공통 수익률 120개 미만이면 종목 베타 null(기존 10개 경로 삭제). 베타가 없는 종목을 빼거나 비중을 다시 나누지 않는다 — 포트폴리오 베타는 모든 종목에 베타가 있을 때만 계산 | 시장위험 요인은 기존 결측 처리(50) 그대로 |
 | **P-3** 거래량 | 거래량 결측 → null, 실제 0 → 0. 거래량 이동평균은 null을 빼고 계산. 새 신뢰도 감점 없음 | `parseYahooDailySeries` · `computeVolumeMA`. 마지막 거래량이 없으면 거래량 급증 · 거래량 신호를 만들지 않는다 |
-| **P-4** 벤치마크 | 앱 정보로 **실제 추종 지수 또는 상장 시장 지수**가 확인될 때만 정한다. 나머지는 UNRESOLVED(null). 티커 접미사 · ETF라는 사실 · 섹터 유사성 · 예전 근사 집합만으로는 정하지 않는다. Return Key는 근거가 아니다 | `resolveRiskBenchmark`: ① ETF 구성표 라벨이 앱 지수와 정확히 같을 때(나스닥100 → NASDAQ100, S&P500 → SP500) ② 개별 주식(분류 '주식')은 종목 마스터의 상장 거래소 종합지수(KOSPI · KOSDAQ · NASDAQ 종합). NYSE · AMEX · 마스터에 없는 종목 · 이름이 ETF/ETN/채권/현금 성격인 종목 → UNRESOLVED |
-| **P-5** 채권 ETF | 채권 모델을 만들지 않는다. 벤치마크가 확인되지 않으면 베타 null, 벤치마크 기반 스트레스 null. 주식 대체 낙폭을 쓰지 않는다 | 스트레스 손실은 모든 종목에 벤치마크와 베타가 있을 때만 계산(가정 베타 1.0 삭제). 확인된 지수가 낙폭 표에 없으면 기존 대체 낙폭 유지(기존 스트레스 계산). 화면: "계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)" |
+| **P-4** 벤치마크 | 앱 정보로 **실제 추종 지수 또는 상장 시장 지수**가 확인될 때만 정한다. 나머지는 UNRESOLVED(null). 티커 접미사 · ETF라는 사실 · 섹터 유사성 · 예전 근사 집합만으로는 정하지 않는다. Return Key는 근거가 아니다 | `resolveRiskBenchmark`: ① ETF 구성표 라벨이 앱 지수와 정확히 같을 때(나스닥100 → NASDAQ100, S&P500 → SP500) ② 개별 주식(분류 '주식')은 종목 마스터의 상장 거래소 종합지수(KOSPI · KOSDAQ · NASDAQ 종합). NYSE · AMEX · 마스터에 없는 종목 · 이름이 ETF/ETN/채권/현금 성격인 종목 → UNRESOLVED. **[1차 통합 구현 갱신 · 2026-09-19 → §44 44-16]** 결정 순서가 ⓪ Exposure Master(원장 등록 종목은 원장 판정으로 종료) → ① ETF 구성표 라벨(동결) → ② 국내 상장 개별주만 상장 시장 지수(KOSPI · KOSDAQ)로 바뀌었다. 원장에 없는 미국 상장 주식은 NASDAQ 상장이어도 거래소 지수로 보내지 않는다(D-06 · `listingDomicileUnconfirmed`). **[2차 통합 보완 · PM 결정 ③]** 원장에 등록된 해외 개별주도 본국 보통주 근거(`equityListing: HOME_COMMON` · 근거 등급 A)가 없으면 UNRESOLVED다(거래소 상장 근거만으로 추정하지 않음). 정해진 지수의 가격 원천이 없으면 Benchmark는 RESOLVED로 두고 원천만 UNAVAILABLE(`priceSource`)로 표시하며 베타는 null이다 |
+| **P-5** 채권 ETF | 채권 모델을 만들지 않는다. 벤치마크가 확인되지 않으면 베타 null, 벤치마크 기반 스트레스 null. 주식 대체 낙폭을 쓰지 않는다 | 스트레스 손실은 모든 종목에 벤치마크와 베타가 있을 때만 계산(가정 베타 1.0 삭제). ~~확인된 지수가 낙폭 표에 없으면 기존 대체 낙폭 유지(기존 스트레스 계산).~~ **[정정 2026-09-19 · 실제 구현과 일치]** 대체 낙폭(−34% / −28%)은 v259(Phase 2-4 T4)에서 삭제됐다 - 확인된 지수가 낙폭 표에 없으면(예: 나스닥 종합) 그 시나리오는 만들지 않는다(null · `SOURCE_UNAVAILABLE`). 대체 낙폭을 되살리지 않으며 새 역사적 낙폭 산출체계도 만들지 않는다(1차 통합 구현 PM 결정). 원화 환산 지수에 대한 베타(D-05)가 있는 포트폴리오도 같은 사유로 null이다. 화면: "계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)" |
 | **P-6** 섹터 | 변경 없음(섹터 매핑 확대 없음) | — |
 | **P-7** 환율 | 위험 계산에 환율 요인을 넣지 않는다 | — |
 | **P-8** 점수 구조 | 가중치 25/20/20/15/10/10 · 구간 임계값 · 결측 요인 50 · 등급 40/60 · 극단위험 가산 · 신뢰도 · 진단/점검 임계값 무변경 | — |
@@ -2058,7 +2058,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 **40-3. 남은 위험(이번 절로 해결하지 않음)**
 - 브랜드 키워드가 없는 국내 ETF가 분류 '주식'으로 저장돼 있으면 상장 시장 지수(KOSPI)를 받는다(분류 확정 정책 BL-17 영역).
 - NYSE · AMEX 상장 미국 주식은 앱에 해당 종합지수가 없어 베타 · 스트레스가 null이다.
-- 나스닥 종합(NASDAQ)은 스트레스 낙폭 표에 없어 기존 대체 낙폭(−34% / −28%)을 쓴다.
+- ~~나스닥 종합(NASDAQ)은 스트레스 낙폭 표에 없어 기존 대체 낙폭(−34% / −28%)을 쓴다.~~ **[정정 2026-09-19]** v259에서 대체 낙폭을 삭제했다 - 나스닥 종합이 벤치마크인 종목이 있으면 스트레스는 null(`SOURCE_UNAVAILABLE`)이다(스트레스는 화면 미표시 · 점수 미반영 · UI-253-1).
 - 종목 마스터 캐시가 없는 첫 실행에서는 개별 주식 벤치마크가 다음 갱신까지 UNRESOLVED다.
 - 기존 사용자는 보유 종목 중 하나라도 이력이 120 거래일 미만이면 종합 위험점수 대신 데이터 부족 안내를 본다(의도된 동작).
 
@@ -2142,7 +2142,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 |---|---|
 | **제3조** Return Key | Return Key는 **유지**한다(일반 미래 수익률 추정 · 보수/일반/낙관 · 대표 수익률 연동 · 사용자 지정 가정 · MC 장기 기대수익률 Anchor). Return Key(= 장기 기대수익률·일반 수익률 가정의 권위)와 MC 확률모형(= 미래 경로의 확률적 생성 방식)은 **서로 다른 계층**으로 분리한다. MC 모델 개선을 위해 Return Key를 제거하지 않는다 |
 | **제4조** 역할 분리 | Risk = 보유자산의 **실제 시장 데이터에서 관측되는 위험 측정**. MC = 장기 자본시장 가정과 역사적 시장 움직임으로 **미래 경로 분포 생성**. 목적이 다르므로 동일한 데이터 처리 규칙을 기계적으로 공유하지 않는다. 단 **자산의 기본 사실관계는 Exposure Master를 공통 Source of Truth로** 사용한다 |
-| **제5조** Exposure Master | Risk·MC가 자산 성격을 일관되게 판단하기 위한 공통 사실원장. 관리 항목: `AssetClass · MarketExposure · Benchmark · PriceCcy · UnderlyingCcy · FXExp · HedgeStatus · ConversionMethod · Evidence · Version`. **모든 자산에 모든 필드를 강제하지 않는다** — 자산 유형별로 필요한 필드만 필수. 판정에 필요한 정보가 확인되지 않으면 **임의의 값으로 보정하지 않는다** |
+| **제5조** Exposure Master | Risk·MC가 자산 성격을 일관되게 판단하기 위한 공통 사실원장. 관리 항목: `AssetClass · MarketExposure · Benchmark · PriceCcy · UnderlyingCcy · FXExp · HedgeStatus · ConversionMethod · Evidence · Version`. **모든 자산에 모든 필드를 강제하지 않는다** — 자산 유형별로 필요한 필드만 필수. 판정에 필요한 정보가 확인되지 않으면 **임의의 값으로 보정하지 않는다**. **[D-16 시행 경계 · 1차 통합 구현 · 2026-09-19 → 44-16]** 원장 → 자산 성격(Asset Character) · MC 자산군은 **시행**(js/05 `resolveAssetCharacter` 1-1단계 · js/16). 원장 → 자동 Return Key(μ)는 **금지**(별도 PM 결정 사항) - Return Key 자동 판정 · 추천 · 상태 점검은 원장을 보지 않는다 |
 
 *자산유형별 필수 필드 (제5조 운영 기준)*
 
@@ -2180,9 +2180,9 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | 조 | 정책 |
 |---|---|
 | **제7조** 데이터 기간 | 지표 목적별 차등: RSI / MA / 52주 **1년** · Volatility **2년** · Beta **2년** · Correlation **2년** · VaR **3년** · CVaR **3년** · MDD **3년** · Historical Stress **별도 장기 역사 데이터**. 데이터가 부족해도 전체 Risk를 일괄 실패시키지 않고 **지표별로** 산출 가능 여부를 판단한다. **단, 3년 관측기간의 실제 적용 시점은 제41조(Yahoo 확인)가 끝난 뒤 결정한다 — 정책 확정과 시행 시점은 분리한다** |
-| **제8조** 가격 데이터 | 8-1 통계적 위험지표(Volatility · VaR · CVaR · Beta · Correlation · Sortino · MDD)는 가능한 경우 **조정주가 기반 수익률**. 8-2 기술적 지표(RSI · MA · 52주 고저 · 거래량 신호)는 **실제 가격 시계열**. 두 기준을 혼용하지 않는다 |
+| **제8조** 가격 데이터 | 8-1 통계적 위험지표(Volatility · VaR · CVaR · Beta · Correlation · Sortino · MDD)는 가능한 경우 **조정주가 기반 수익률**. 8-2 기술적 지표(RSI · MA · 52주 고저 · 거래량 신호)는 **실제 가격 시계열**. 두 기준을 혼용하지 않는다. **[8-1 단서 · D-01 · 2026-09-19 → 44-16]** 지수(Benchmark)에는 ETF의 조정주가 개념을 적용하지 않는다 - **지수 수준(Index Level/Close)을 통계용 가격으로 인정**한다. 상품의 공식 기초지수와 같은 수익 정의(PR/TR)를 우선하고, 다른 정의를 쓰게 되면 `DEFINITION_MISMATCH`를 남긴다(PR을 TR로 표시하지 않는다) |
 | **제9조** 데이터 품질 | 단일 DATA SHORTAGE를 세분화한다 — `FETCH_FAILED · TICKER_INVALID · NO_HISTORY · INSUFFICIENT_HISTORY · BENCHMARK_UNRESOLVED · INSUFFICIENT_COMMON_DATES · DATA_STALE · DATA_QUALITY_FAILED · SOURCE_UNAVAILABLE`. 품질검사 항목: 중복 날짜 · 날짜 순서 · 누락 · 비정상 급등락 · 동일가격 반복 · 장기 stale · 통화 · 빈도 · Price/Total Return 구분 · 출처 · 데이터 버전. **신뢰할 수 없는 데이터를 0 또는 임의 fallback으로 대체하지 않는다** |
-| **제10조** Benchmark | 단순 거래소 기준으로 결정하지 않는다. 판단 구조 `Asset → Classification → Economic Exposure → Benchmark`. ETF도 실제 경제적 노출 기준. 확인되지 않으면 `BENCHMARK_UNRESOLVED`이며 임의 Benchmark를 지정하지 않는다 |
+| **제10조** Benchmark | 단순 거래소 기준으로 결정하지 않는다. 판단 구조 `Asset → Classification → Economic Exposure → Benchmark`. ETF도 실제 경제적 노출 기준. 확인되지 않으면 `BENCHMARK_UNRESOLVED`이며 임의 Benchmark를 지정하지 않는다. **[D-06 · 2026-09-19 → 44-16]** 개별주 우선순위: ① 원장의 근거 있는 경제적 노출(해외 개별주는 본국 보통주 A등급 근거가 있을 때만 · PM 결정 ③ 2026-09-19) ② 원장 근거가 없는 국내 상장 개별주 → 상장 시장 지수(국내 우선주도 현행 유지 · PM 결정 ④) ③ 미국 상장주 등 ADR 여부 · 본국 보통주 여부를 원장으로 확정하지 못하면 거래소 지수로 보내지 않는다(NYSE · AMEX 포함 무조건 fallback 없음) ④ 그 외 UNRESOLVED. 이 조의 "단순 거래소 기준으로 결정하지 않는다"를 ②의 국내 상장 개별주에 한해 예외로 둔다(상장 시장 지수 = 그 시장 보통주를 담는 지수) |
 | **제11조** Stress | 하드코딩 fallback 수치를 쓰지 않는다. 역사적으로 실제 발생한 Benchmark 최악 하락 구간 · 주요 위기 국면 · 2020 COVID · 2022 금리상승을 활용하되, **2020/2022도 임의 숫자가 아니라 역사적 데이터에서 산출**한다 |
 | **제12조** Partial Display | **Metric-level Partial Display가 원칙.** 예: Volatility 산출 가능 · Beta 데이터 부족 · MDD 산출 가능 → Volatility·MDD는 표시하고 Beta는 산출 불가임을 명확히 표시. 일부 지표의 데이터 부족으로 전체 Risk 화면을 무조건 실패시키지 않는다 |
 
@@ -2537,6 +2537,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **데이터 품질** | 환율 파일을 읽지 못함 → `SOURCE_UNAVAILABLE`, 형식 · 값 검사 실패 → `DATA_QUALITY_FAILED`: 해당 달러 종목의 원화 통계 시계열을 만들지 않는다(달러 수익률로 조용히 대신하지 않음). 공통 거래일 부족은 기존 `INSUFFICIENT_COMMON_DATES` · metricStatus로 처리 |
 | **사용자 영향** | 가격통화 USD 종목이 있는 포트폴리오는 변동성 · 손실 지표 · 상관과 그에 따른 **종합 위험점수가 바뀔 수 있다**. 원화 종목만 있으면 결과 무변경. 기존 과거 저장값은 소급 변경하지 않는다(Risk 결과는 저장하지 않고 매번 계산한다) |
 | **화면** | Phase 2-4 T3의 "환율 변동 미포함" 문구를 계산 정의 문구로 교체: "달러로 거래되는 종목 N개는 달러 가격과 원/달러 환율을 함께 반영한 원화 가치 변동으로 Risk를 계산했습니다" + 환율 기준일. 평가성 표현(정확도 개선 등)은 쓰지 않는다 |
+| **비동기 · 지수 원화 환산 (D-05 · 2026-09-19 → 44-16)** | 국내 상장 해외 ETF처럼 종목 가격(원화 · 한국 달력)과 기초지수(달러 · 미국 달력)가 서로 다른 시장이면 **같은 날짜 정렬을 쓰지 않는다**. 베타는 Dimson 방식(시차 0 + 시차 1 기울기 합 · 최소 관측 120 · 조회 1년 유지)으로 계산한다. 환헤지 여부가 A등급으로 확인된 비헤지 상품만 지수 수준 × 같은 날짜의 H.10 → 원화 지수(= 달러 수익률 + 환율 수익률 + 교차항)와 비교한다. 종목 자신의 원화 가격에는 환율을 곱하지 않는다(6-1 이중 반영 금지 유지). 환헤지 미확인 → UNRESOLVED(HOLD), 환헤지형 → 헤지비용 자료가 없어 UNRESOLVED(0으로 두지 않음). 새 환율 공급자 없음(H.10만) |
 | **범위 밖** | 스트레스 시나리오(현지통화 지수 낙폭 · 화면 미표시) · MC FX(제6조 6-2) · 환율 확률 모형 · 종목 분석 리포트(analyzeTickerForModal) |
 | **승인 주체 · 변경일** | PM · 2026-09-19 (로컬 v258, 버전업은 최종 통합 때) |
 
@@ -2545,6 +2546,38 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **OP-4** 환율 자료 오래됨 | H.10 마지막 날짜가 오늘보다 **21일** 초과 | H.10은 주 1회 전주 금요일까지 게시돼 정상 지연이 최대 약 10일이다. 게시가 두 번 이상 끊긴 경우만 `DATA_STALE`로 진단하며(OP-1과 같이 진단용), 이 상태만으로 계산에서 제외하지 않는다 |
 
 > §40 P-7의 원문은 §40 표에 **그대로 보존**한다. 이 절은 삭제가 아니라 대체 시행 기록이다.
+
+**44-16. 1차 통합 구현 — Index Master · Evidence Grade · 공유표 원칙 · D-01 / D-05 / D-06 / D-16 (PM 결정 2026-09-19 · 로컬 작업트리 · 커밋 · 버전업 · 배포 전)**
+
+> 연결 구조: Instrument → Classification → Exposure(Exposure Master) → Risk Benchmark → **Index Master** → Price Source → Risk(베타 · 포트폴리오 베타), 그리고 Exposure Master → 자산 성격 / MC 자산군 → MC 입력. Exposure → Return Key(μ) 연결은 이번에 만들지 않는다.
+
+| ID | 결정 | 구현 |
+|---|---|---|
+| **IM-1** Index Master | Risk Benchmark(무엇과 비교할지)와 가격 원천(어디서 받는지)을 분리한다. 최소 필드: `key · officialName · provider · sourceId · returnType(PR/TR) · priceDefinition(INDEX_LEVEL) · currency · market · source · evidenceGrade · availability(+unavailableReason)`. 공식 근거가 없는 칸은 null(추정 금지) | js/28 `INDEX_MASTER_ENTRIES` · `resolveIndexMasterEntry` · `isIndexPriceSourceAvailable` · `indexPriceSourceTicker`. 기존 6개 지수(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW)는 AVAILABLE(Yahoo · 기호는 `INDEX_TICKERS`와 같음). 공식 기초지수로 확인됐지만 원천이 없는 지수는 UNAVAILABLE로 기록만 한다: 코스피 200 TR(`NO_PERMITTED_SOURCE` - KRX 로그인 필요 · Yahoo 이력 없음 · KIS 지수코드는 약관 확인 전 연결 금지), Dow Jones Korea Dividend 30 PR · iSelect 미국AI전력핵심인프라 PR(`NO_PUBLIC_SOURCE`), Dow Jones U.S. Dividend 100 PR(`SOURCE_INSUFFICIENT_HISTORY` - Yahoo 1년 조회 관측 1개 · 2026-09-19 확인) |
+| **IM-2** 원천 없음 | 정해진 지수의 가격 원천이 없으면 Benchmark를 "계산 가능"으로 처리하지 않는다. **[2차 통합 보완 · 세 상태 분리]** Benchmark 확인(RESOLVED) ≠ 지수 가격 원천(`priceSource: UNAVAILABLE`) ≠ 베타(null · `SOURCE_UNAVAILABLE`) - 세 상태를 하나로 합치지 않는다(1차의 `UNRESOLVED(indexSourceUnavailable)` 표기를 대체). 원천 없는 지수는 조회하지 않고, 다른 정의 · 비슷한 지수로 대신하지 않는다 | js/09 `finalizeRiskBenchmark` · 종목 `benchmarkPriceSource` |
+| **D-01** 지수 가격 · PR/TR | ① 지수 수준을 통계 가격으로 인정(§44 제8조 8-1 단서) ② 공식 기초지수와 같은 수익 정의 우선 ③ 다른 정의를 쓰게 되면 `DEFINITION_MISMATCH` 보존 ④ 278530 목표 = 코스피 200 TR(현재 원천 없음 → UNRESOLVED) ⑤ KIS 2035 등 KIS 지수 API는 약관 확인 전 연결 · 호출하지 않는다 | js/09 지수 시계열은 `datedClosesFromSeries(data, 'raw')`(수준값). 원장 `underlyingReturnType`(공식 확인분만) ↔ Index Master `returnType` 비교(`resolveBenchmarkDefinitionStatus` - MATCH / DEFINITION_MISMATCH / UNCONFIRMED). 현재 원장에 불일치 항목 없음 |
+| **D-05** 비동기 쌍 | 같은 날짜 정렬 금지. 일반 엔진(Dimson 시차 0 + 1) · 원화 상품이면 H.10 원화 환산 지수. 공식 A등급 환헤지 사실이 있는 상품만 연결(비헤지 A: 360750 · 458730). 환헤지 A등급 미확인(368590 · 360200)은 HOLD. 특정 상품 하드코딩 없음 · 최소 관측 120 · 1년 조회 유지 | js/09 `riskSeriesMarketOf` · `RISK_MARKET_CLOSE_ORDER`(같은 날짜면 한국이 먼저 마감) · `buildAsyncDimsonRows` · `computeAsyncDimsonBeta`(절편 + 두 설명변수 최소제곱 · 기울기 합). 판정은 "종목 시계열 시장 ≠ 지수 시장"이라는 성질로만 한다. 458730은 기초지수 원천이 없어(IM-1) 현재 UNRESOLVED |
+| **D-06** 개별주 | §44 제10조 갱신 문구 그대로. 종목 마스터에 설립국 · ADR 필드가 없으므로 미국 상장주를 "본국 보통주"로 추정하지 않는다 | js/09 `RISK_BENCHMARK_BY_LISTING_EXCHANGE = { KOSPI, KOSDAQ }`. 원장에 없는 NASDAQ · NYSE · AMEX 상장 주식 → `listingDomicileUnconfirmed`. **[2차 통합 보완 · PM 결정 ③]** 원장의 해외 개별주는 `equityListing`(HOME_COMMON · ADR · 근거 등급 A만 기록 가능)이 HOME_COMMON일 때만 원장 Benchmark를 쓴다. 원장 미국 개별주 20건은 근거가 거래소 상장뿐이라 전부 UNRESOLVED(v261에서 NASDAQ이던 11건 포함 · 자산군 US_EQUITY는 그대로). ADR → `adrListing`. **PM 결정 ④** 국내 우선주는 종목유형 Master를 추가하지 않고 국내 상장시장 지수 정책을 유지 |
+| **D-16** MC 자산군 | 원장 → 자산 성격 / MC 자산군 시행. 원장 → 자동 Return Key 금지. 불변: v261 원장 49건의 자산군 · MC 입력 · 같은 seed MC 결과 | js/05 `resolveAssetCharacter(asset, options)` 1-1단계(사용자 확정 자산군 · 이름 혼합 표시 다음, 공유표보다 먼저). Return Key 계층 3곳(`resolveRateKeyFromAssetCharacter` · `recommendReturnAssumptionKey` · `assessReturnAssumptionStatus`)은 `{ exposureMaster: false }`. `CHARACTER_SOURCES_FOR_AUTO_RATE_KEY`에 원장 없음. js/16 `resolveMcAppAssetClass`가 원장 성격을 신뢰 근거로 인정(basis `exposureMaster`). 신규 원장 항목의 MC 영향은 별도 판단 대상이다(사용자 정의 수익률 키를 쓴 경우의 자산군만 바뀔 수 있음). **[PM 결정 ① · 2026-09-19]** 신규 원장 항목이 MC 자산군에 연결돼 실제 MC 계산이 바뀌는 것(특히 사용자 정의 Return Key가 있는 신규 자산의 MC가 실행 가능해지는 것)을 허용한다 - EXPECTED CHANGE로 명시하고, v261 원장 49건의 MC 결과 불변 · 자동 Return Key 금지는 유지한다 |
+| **EG** Evidence Grade | A = 공식 1차 자료(운용사 상품정보 · 투자설명서 · 규제기관 공시 · 지수산출기관 · 거래소/KIS 종목마스터) · B = 공식 자료의 2차 요약(기록만 · 자동 연결 근거 아님) · C = 확인 불가/추정(원장 값으로 넣지 않음). 자동 연결(Benchmark · 환헤지)은 A만 | js/28 `EM_EVIDENCE_GRADE` · `evidenceGrade` 필드(EM-2026.2부터). A가 아닌데 Benchmark · 환헤지를 적으면 BLOCKED. 기존 49건(EM-2026.1)은 저장소 안 근거만 쓰며 소급 등급 부여 없음 |
+| **MX** 혼합 노출 | 주식 + 채권 혼합 상품(237370 · 472170)은 단일 Benchmark · 단일 자산군으로 강제하지 않는다 - UNRESOLVED(`MIXED_EXPOSURE`). 1:N 노출 구조는 이번 범위 밖 | js/28 `exposureStructure: 'MIXED'` → 검증 결과 UNRESOLVED · `mixedExposure`. Risk `mixedExposure` · 성격 `exposureMasterMixed` |
+| **ST** 공유표 원칙 | js/09 `ETF_HOLDINGS_MAP` · `SECTOR_MAP` 신규 항목 추가 동결(삭제 없음). 역할 분리: 섹터 노출(sectorWeights)은 공유표 고유 역할 · 자산 성격은 원장 우선(공유표는 원장에 없는 종목의 대체 근거와 Return Key 경로에만) · Risk Benchmark는 원장 + Index Master. 새 상품의 사실은 원장에 근거와 함께 넣는다 | 키 목록을 `test/integrated-benchmark-index.test.js`가 고정 |
+| **NS** 나스닥 스트레스 | 대체 낙폭을 되살리지 않는다 · 새 역사적 낙폭 산출체계를 만들지 않는다 · SoT 문구를 실제 구현(null)에 맞게 정정 | §40 P-5 · 40-3 정정 |
+| **FX** | H.10만 사용 · 새 환율 공급자 없음 · 환헤지 미확인 → UNRESOLVED/HOLD | 44-15 비동기 행 |
+
+**원장 EM-2026.2 (공식 기초지수 확인분 · 근거 등급 A · 2026-09-19)** — 278530 → 코스피 200 TR(TR · 원천 없음) · 0052D0 → Dow Jones Korea Dividend 30 PR(원천 없음) · 487230 → iSelect 미국AI전력핵심인프라 PR(비헤지 · 원천 없음) · 360750 → S&P 500(비헤지 · 비동기 · 원화 환산 · PR/TR 구분 미확인 → UNCONFIRMED) · 458730 → Dow Jones U.S. Dividend 100 PR(비헤지 · 원천 부족) · 368590 · 360200 → 환헤지 A등급 미확인 HOLD · 237370 · 472170 → 혼합 노출 · SCHD → Dow Jones U.S. Dividend 100(Benchmark 확인 · 원천 부족 → 베타 계산 불가 · 2차 보완에서 세 상태 분리) · SPYM → S&P 500(원천 있음 · 기존 RESOLVED 유지). 상품의 사실만 담고 사용자 보유 수량 · 금액은 담지 않는다.
+
+**44-16-1. 남은 과제(이번 절로 해결하지 않음)** — KIS 약관 확인(코스피 200 TR 원천) · 368590 · 360200 환헤지 A등급 확인 · ~~영문이 섞인 새 국내 종목코드(예: 0052D0) 식별 문제~~ → **해결(2차 통합 보완 · PM 결정 ⑤ · 44-16-2)** · ~~국내 우선주의 상장 시장 지수 편입 여부~~ → **PM 결정 ④로 현행 유지(종목유형 Master 추가 없음)** · 혼합 노출 1:N 구조 · 원화 기준 역사적 낙폭(스트레스) · Release(버전업)는 PM 승인 후.
+
+**44-16-2. 영문 혼합 국내 종목코드 입력 · 정규화 (2차 통합 보완 · PM 결정 ⑤ · 2026-09-19)**
+
+| 항목 | 내용 |
+|---|---|
+| **결함** | js/01 `sanitizeTicker`가 숫자 6자리만 국내 코드로 보아, KRX 영문 혼합 신규 코드(숫자 4 + 영문 1 + 숫자 1, 예: 0052D0)를 접미사 없이 입력하면 해외 티커로 해석했다 - Yahoo 조회 실패(0052D0은 404 · 0052D0.KS는 정상), 네이버 조회 거절(형식 검사), 원장 · 종목 마스터 식별 불일치. 월간 종목 마스터 생성기(scripts/update-ticker-master.js)도 같은 형식 검사로 이 코드를 버렸다 |
+| **수정** | js/01 `KRX_SHORT_CODE_PATTERN`(숫자 6자리 또는 숫자 4 + 영문 1 + 숫자 1) · `isKrxShortCode`를 국내 판정(해외 판정보다 먼저)에 쓴다(A 접두사 포함). 같은 도우미를 가격 조회(접미사 없는 코드의 코스피/코스닥 동시 시도 · 네이버 형식 검사 · 종목 분석 코스닥 재시도)와 거래 입력의 통화 추정에 쓴다. 생성기도 같은 형식을 받는다. 숫자 코드 · 해외 티커 · 지수 기호 동작은 그대로다 |
+| **저장값 보존** | 예전 정규화 키(접미사 없는 코드)로 이미 저장된 포지션 · 종목 수익률 · 운용보수가 있으면 그 키를 계속 쓴다(js/05 `legacyKrxAlphaStoredKey` - 저장값을 옮기거나 바꾸지 않음). 종목 기준(Instrument Return Key)은 비교 시 정규화하므로 그대로 연결된다 |
+| **세 상태** | 0052D0: 원장 확인(RESOLVED · DJ Korea Dividend 30 PR) · 지수 원천 없음(UNAVAILABLE) · 베타 null |
+| **범위 밖** | KIS 재무 조회(js/13 `extractKisDomesticCode`)는 숫자 코드만 - KIS 변경 금지 범위라 그대로 둔다. `data/ticker-master.json` 재생성은 다음 월간 자동 실행(또는 Release 전 PM 승인 시) |
 
 ## 45. UI 마무리 — 매크로 용어 · 베타 설명 · 줄바꿈 · 소유자 칩 · MC 안내 (PM 지시 2026-09-19 · 표시 계층 한정 · 버전업 전)
 

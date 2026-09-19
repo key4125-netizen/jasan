@@ -288,7 +288,7 @@ function parseNaverNum(s) {
 // 종가만 표시되는 문제가 있었다.
 async function fetchNaverKrPrice(yahooTicker, proxy, name) {
   const code = yahooTicker.replace(/\.(KS|KQ)$/i, '');
-  if (!/^\d{6}$/.test(code)) throw new Error('국내 종목 코드 형식이 아님');
+  if (!isKrxShortCode(code)) throw new Error('국내 종목 코드 형식이 아님');
   const target = `https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`;
   // [지연 문제 수정] 8초 -> 5초. 정상 응답은 보통 1초 이내라 5초면 충분하고, 국내 티커는 이 함수가
   // 먼저 실패해야(구조 변경 후에는 Yahoo/Stooq와 동시에 시작하므로 "먼저"라는 의미는 약해졌지만) 값을
@@ -492,7 +492,8 @@ async function raceFetchPrice(yahooTicker, name) {
 async function fetchPriceWithFallback(rawTicker, name) {
   const yahooTicker = sanitizeTicker(rawTicker).yahooTicker;
   const trimmedRaw = String(rawTicker ?? '').trim();
-  const isAmbiguousKrxCode = /^\d{6}$/.test(trimmedRaw);
+  // [2차 통합 보완] 영문 혼합 신규 코드(예: 0052D0)도 접미사가 없으면 코스피/코스닥을 입력만으로 알 수 없다 - 숫자 코드와 같게 둘 다 시도한다.
+  const isAmbiguousKrxCode = isKrxShortCode(trimmedRaw);
 
   if (!isAmbiguousKrxCode) {
     try {
@@ -509,7 +510,7 @@ async function fetchPriceWithFallback(rawTicker, name) {
   // 이런 종목이 하나만 있어도 v151에서 줄여둔 지연 상한(약 7초)이 무색하게 다시 14초 이상으로
   // 늘어났다. .KS/.KQ를 처음부터 동시에 시작해두고, 결과 채택 우선순위(.KS 우선, 실패 시에만 .KQ +
   // 오매칭 검증)는 그대로 유지하되 추가 대기 없이 상한을 한 번의 raceFetchPrice 사이클로 되돌린다.
-  const kqTicker = trimmedRaw + '.KQ';
+  const kqTicker = trimmedRaw.toUpperCase() + '.KQ';
   const ksPromise = raceFetchPrice(yahooTicker, name);
   const kqPromise = raceFetchPrice(kqTicker, name);
   ksPromise.catch(() => {}); // 아래서 각각 개별적으로 await하므로 unhandledrejection 방지용
@@ -594,15 +595,29 @@ function getBenchmarkKeyForTicker(yahooTicker) {
   if (DOW_STYLE_TICKERS.has(upper)) return 'DOW';
   return 'SP500';
 }
-// [Risk 정책 P-4 · v252] Risk 벤치마크는 "실제로 추종하거나 포함된 지수가 앱 안의 정보로 확인될 때만" 정한다.
-//   ① ETF_HOLDINGS_MAP에 추종 지수 이름이 적힌 ETF → 그 지수(앱에 있는 지수와 이름이 정확히 같을 때만)
-//   ② 개별 주식(category '주식') → 종목 마스터(data/ticker-master.json)의 실제 상장 거래소 종합지수
-//      (KOSPI·KOSDAQ·NASDAQ 종합은 그 시장 상장 주식을 담는 지수다). NYSE·AMEX는 앱에 종합지수가 없다.
-//   ③ 그 외 → UNRESOLVED(null). 티커 접미사 · ETF라는 사실 · 섹터 유사성 · 예전 근사 집합(NASDAQ100/DOW
-//      스타일) · Return Key는 근거로 쓰지 않는다. 채권 ETF처럼 맞는 지수가 앱에 없으면 억지로 붙이지 않는다.
+// [Risk 정책 P-4 · v252 → 1차 통합 구현 · D-01 · D-05 · D-06 · §44 제10조] Risk 벤치마크 결정 순서.
+//   ① Exposure Master(근거 있는 경제적 노출) - 원장에 등록된 종목은 원장 판정으로 끝낸다.
+//      · 확정(RESOLVED) + benchmark → 그 지수가 Benchmark(RESOLVED). Index Master에 가격 원천이 없으면 원천만
+//        UNAVAILABLE(priceSource)로 표시하고 베타는 만들지 않는다 - 수익 정의(PR/TR)가 다른 지수나 비슷한 지수로 대신하지 않는다.
+//      · 혼합 노출(MIXED) → UNRESOLVED(mixedExposure). 단일 Benchmark를 강제하지 않는다.
+//      · 등록됐지만 필수 사실이 비어 있음(환헤지 미확인 = HOLD 등) → UNRESOLVED. 아래 ②·③으로 넘기지 않는다.
+//      · 개별주 원장 항목인데 앱에 적힌 이름이 펀드를 가리키면 원장을 쓰지 않는다(잘못 적힌 기록 방어 · 기존 유지).
+//   ② ETF_HOLDINGS_MAP 라벨이 앱 지수와 정확히 같을 때(공유표 동결 - 현재 등록 ETF는 전부 ①에서 끝난다).
+//   ③ 개별 주식(category '주식') → 종목 마스터(data/ticker-master.json)의 상장 거래소가 국내(KOSPI · KOSDAQ)일 때만
+//      그 시장 지수. [D-06] 미국 상장 주식은 ADR 여부 · 본국 보통주 여부를 원장으로 확인하지 못하면 거래소 지수로
+//      보내지 않는다(NASDAQ · NYSE · AMEX 공통 · 거래소 fallback 없음). 원장(①)에 본국 보통주(equityListing HOME_COMMON ·
+//      근거 등급 A)로 명시된 해외 개별주만 확정된다(PM 결정 ③ - 거래소 상장 근거만 있는 원장 항목도 UNRESOLVED).
+//   ④ 그 외 → UNRESOLVED(null). 티커 접미사 · ETF라는 사실 · 섹터 유사성 · 예전 근사 집합(NASDAQ100/DOW
+//      스타일) · Return Key는 근거로 쓰지 않는다.
+//   [D-05] 정해진 지수와 종목 가격 시계열의 거래 시장이 다르면(국내 상장 해외 ETF ↔ 미국 지수) 같은 날짜 정렬을
+//   쓰지 않고 비동기 정렬(Dimson 시차 0 + 1 · computeAsyncDimsonBeta)로 계산한다. 이때 환헤지 사실이 원장에
+//   있어야 하고(미확인 → HOLD), 비헤지 + 가격통화(KRW) ≠ 지수통화(USD)이면 지수를 H.10으로 원화 환산해 비교한다.
+//   환헤지형은 헤지비용 자료가 없어 UNRESOLVED다(0으로 두지 않는다 · §44 제6조 6-3).
 //   getBenchmarkKeyForTicker(위)는 화면에 쓰이지 않는 종목 분석 모달의 참고값 경로에만 남아 있다.
 const RISK_BENCHMARK_BY_ETF_INDEX_LABEL = Object.freeze({ '나스닥100': 'NASDAQ100', 'S&P500': 'SP500' });
-const RISK_BENCHMARK_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ', NASDAQ: 'NASDAQ' });
+// [D-06] 상장 거래소 지수를 그대로 쓰는 것은 국내 상장 개별주뿐이다(NASDAQ은 v252에 있었으나 D-06으로 뺐다).
+const RISK_BENCHMARK_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ' });
+const RISK_US_LISTING_EXCHANGES = Object.freeze(['NASDAQ', 'NYSE', 'AMEX']);
 // 개별 주식으로 보지 않을 이름 - js/01의 기존 목록(ETF · 채권 · 현금 키워드)만 쓴다. 억지 배정을 막는 방향으로만 작동한다.
 const RISK_FUND_NAME_PATTERN = /\b(ETF|ETN)\b/i;
 function looksLikeFundName(text) {
@@ -627,35 +642,86 @@ function resolveRiskPriceCcy(a) {
   }
   return a && a.currency === 'USD' ? 'USD' : 'KRW';
 }
+// 가격 시계열이 찍힌 거래 시장(달력). 국내 거래소 Yahoo 기호(.KS/.KQ)는 국내, 접미사 없는 기호는 미국 거래소
+// 시계열이다(앱의 종목 마스터는 KOSPI · KOSDAQ · NASDAQ · NYSE · AMEX만 담는다). 그 밖의 기호는 모른다(null).
+// 이 값은 "어느 달력으로 정렬할지"에만 쓴다 - Benchmark를 고르는 근거로는 쓰지 않는다(P-4).
+function riskSeriesMarketOf(yahooTicker) {
+  const t = String(yahooTicker || '').toUpperCase();
+  if (!t) return null;
+  if (/\.(KS|KQ)$/.test(t)) return 'KR';
+  if (/^[A-Z][A-Z0-9-]*$/.test(t)) return 'US';
+  return null;
+}
+// 정해진 Benchmark 키를 Index Master · 거래 시장 · 환헤지 사실과 맞춰 최종 판정한다(D-01 · D-05).
+// 같은 시장(동기) 결과의 모양은 예전과 같다({ key, status, source }) - 비동기 · 정의 불일치일 때만 필드가 붙는다.
+function finalizeRiskBenchmark(yahoo, key, source, entry) {
+  const unresolved = (why, extra) => Object.assign({ key: null, status: 'UNRESOLVED', source: why }, extra || {});
+  if (!key) return unresolved('noBenchmark');
+  const idx = typeof resolveIndexMasterEntry === 'function' ? resolveIndexMasterEntry(key) : null;
+  if (!idx) return unresolved('indexNotInMaster', { indexKey: key });
+  const out = { key, status: 'RESOLVED', source };
+  // [D-01 ③] 수익 정의가 다른 지수를 쓰게 되면 같은 것으로 취급하지 않고 상태를 남긴다.
+  if (resolveBenchmarkDefinitionStatus(entry, idx) === 'DEFINITION_MISMATCH') out.definitionStatus = 'DEFINITION_MISMATCH';
+  // [2차 통합 보완 · 세 상태 분리] "Benchmark 확인됨" ≠ "지수 가격 원천 있음" ≠ "베타 계산됨". 기준 지수는 확인됐지만
+  // 앱이 그 지수 가격을 받을 수 없으면 Benchmark는 RESOLVED로 두고 원천만 UNAVAILABLE로 표시한다 - 베타는 만들지 않는다
+  // (지수를 조회하지 않고, 비슷한 지수로 대신하지 않는다). 같은 시장 · 원천 있음 결과의 모양은 예전 그대로다.
+  if (!isIndexPriceSourceAvailable(key)) return Object.assign(out, { priceSource: 'UNAVAILABLE', indexUnavailableReason: idx.unavailableReason });
+  const assetMarket = riskSeriesMarketOf(yahoo);
+  if (!assetMarket || !idx.market) return unresolved('seriesMarketUnknown', { indexKey: key });
+  if (assetMarket === idx.market) return out;
+  // [D-05] 비동기 쌍 - 환헤지 사실이 원장에 있어야 한다(미확인을 비헤지로 간주하지 않는다).
+  if (!entry || !entry.hedgeStatus) return unresolved('hedgeUnconfirmed', { indexKey: key });
+  if (entry.hedgeStatus === 'HEDGED') return unresolved('hedgeCostUnavailable', { indexKey: key });
+  const priceCcy = entry.priceCcy || null;
+  const indexCcy = idx.currency || null;
+  if (!priceCcy || !indexCcy) return unresolved('currencyUnconfirmed', { indexKey: key });
+  let benchmarkFx = null;
+  if (priceCcy !== indexCcy) {
+    // 비헤지(환노출) 원화 상품 ↔ 달러 지수만 H.10으로 환산한다(새 환율 공급자 · 다른 통화쌍 없음).
+    const krwFromUsd = priceCcy === 'KRW' && indexCcy === 'USD';
+    if (!(krwFromUsd && entry.hedgeStatus === 'UNHEDGED' && entry.fxExposure === 'EXPOSED')) return unresolved('fxConversionUnsupported', { indexKey: key });
+    benchmarkFx = 'USD_TO_KRW_H10';
+  }
+  return Object.assign(out, { alignment: 'ASYNC_DIMSON', benchmarkFx, assetMarket, benchmarkMarket: idx.market });
+}
 function resolveRiskBenchmark(a) {
   const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
   if (!yahoo) return unresolved('noTicker');
-  // [§44 제5조 EM-2 · Phase 1B] Exposure Master가 그 종목의 기준 지수를 근거와 함께
-  // 확정해 둔 경우에만 먼저 쓴다. 확정되지 않았으면(대부분) 아래 기존 판정이 그대로
-  // 실행된다 - 원장이 기존 경로를 조용히 대체하지 않는다.
-  // 단, 원장은 "티커의 사실"이라 앱에 적힌 이름이 다른 상품(펀드/ETF)을 가리키면 쓰지
-  // 않는다 - 잘못 적힌 기록이 개별주의 상장지수를 물려받는 것을 막던 기존 방어를 유지한다.
-  if (typeof resolveExposure === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
-    const em = resolveExposure(a);
-    const entry = em && em.status === 'RESOLVED' ? em.entry : null;
+  // ① Exposure Master - 등록된 종목은 원장 판정으로 끝낸다(확정되지 않았으면 기존 경로로 넘기지 않는다).
+  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    const rec = lookupExposureRecord(a);
+    const entry = rec ? rec.entry : null;
     const stockLike = !!entry && (entry.assetType === 'KR_STOCK' || entry.assetType === 'FOREIGN_STOCK');
     const contradicted = stockLike && looksLikeFundName(String((a && a.name) || ''));
-    if (entry && entry.benchmark && !contradicted) {
-      return { key: entry.benchmark, status: 'RESOLVED', source: 'exposureMaster' };
+    if (rec && !contradicted) {
+      if (rec.verdict.mixedExposure) return unresolved('mixedExposure');
+      if (rec.verdict.status !== 'RESOLVED') {
+        const hedgeMissing = (rec.verdict.missing || []).some((f) => f === 'hedgeStatus' || f === 'fxExposure' || f === 'conversionMethod');
+        return unresolved(hedgeMissing ? 'hedgeUnconfirmed' : 'exposureIncomplete');
+      }
+      // [D-06 · PM 결정 ③] 해외 상장 개별주는 본국 보통주임이 원장에 A등급 근거로 명시된 경우에만 원장 Benchmark를 쓴다.
+      // 거래소 상장 사실만으로 ADR 여부 · 본국 보통주 여부를 추정하지 않는다(거래소 지수 fallback도 없다).
+      if (entry.assetType === 'FOREIGN_STOCK' && entry.equityListing !== 'HOME_COMMON') {
+        return unresolved(entry.equityListing === 'ADR' ? 'adrListing' : 'listingDomicileUnconfirmed');
+      }
+      return finalizeRiskBenchmark(yahoo, entry.benchmark, 'exposureMaster', entry);
     }
   }
+  // ② 동결된 ETF 구성표 라벨(앱 지수와 이름이 정확히 같을 때만).
   const etf = ETF_HOLDINGS_MAP[yahoo];
   if (etf) {
     const key = RISK_BENCHMARK_BY_ETF_INDEX_LABEL[etf.label] || null;
-    return key ? { key, status: 'RESOLVED', source: 'etfIndex' } : unresolved('etfIndexNotAvailable');
+    return key ? finalizeRiskBenchmark(yahoo, key, 'etfIndex', null) : unresolved('etfIndexNotAvailable');
   }
+  // ③ 개별 주식 - 국내 상장만 상장 시장 지수(D-06).
   if (a.category === '주식') {
     const rec = (typeof tickerMasterByTicker !== 'undefined' && tickerMasterByTicker) ? tickerMasterByTicker[yahoo] : null;
     if (!rec) return unresolved('noListingInfo');
     if (looksLikeFundName(`${a.name || ''} ${rec.nameKr || ''} ${rec.nameEn || ''}`)) return unresolved('fundLikeName');
     const key = RISK_BENCHMARK_BY_LISTING_EXCHANGE[rec.exchange] || null;
-    return key ? { key, status: 'RESOLVED', source: 'listingExchange' } : unresolved('exchangeIndexNotAvailable');
+    if (key) return finalizeRiskBenchmark(yahoo, key, 'listingExchange', null);
+    return unresolved(RISK_US_LISTING_EXCHANGES.includes(rec.exchange) ? 'listingDomicileUnconfirmed' : 'exchangeIndexNotAvailable');
   }
   return unresolved('noUnderlyingInfo');
 }
@@ -938,6 +1004,84 @@ function alignedReturnPair(aDated, aReturns, bDated, bReturns) {
   return { a: [], b: [], aligned: false, observationCount: 0 };
 }
 
+/* [D-05 · 1차 통합 구현] 비동기 쌍 베타 - Dimson 방식(시차 0 + 시차 1). 특정 상품에 묶이지 않는 일반 엔진이다.
+ * 서로 다른 시장(예: 국내 상장 해외 ETF ↔ 미국 지수)은 같은 날짜라도 마감 시각이 다르다. 같은 날짜끼리 짝지으면
+ * (dateAlignedReturns) 실제로는 서로 다른 시간 구간의 수익률이 짝지어져 베타가 0 근처로 무너진다(실측 상관 0.03~0.08).
+ * 그래서 "종목 종가 시각" 기준으로 지수 구간을 나눈다.
+ *   m(d)     : 종목 날짜 d의 종가보다 먼저 마감한 마지막 지수 날짜(마감 순서표 RISK_MARKET_CLOSE_ORDER)
+ *   시차 1   : 지수 m(d_{k-1}) → m(d_k) - 종목 구간 안에서 이미 마감한 지수 움직임
+ *   시차 0   : 지수 m(d_k) → 그다음 지수 날짜 - 종목 거래시간과 겹쳐 진행 중인 지수 세션
+ *   종목 수익률 r_k = close(d_k)/close(d_{k-1}) − 1 을 두 지수 수익률에 동시에 회귀(절편 포함)하고, 두 기울기의 합을 베타로 쓴다.
+ * 지수가 쉬어 m(d_{k-1}) = m(d_k)인 구간과 다음 지수 날짜가 아직 없는 마지막 구간은 쓰지 않는다 - 0% 채움 · 보간 없음.
+ * 관측 수(행 수) 기준 최소 요건은 호출부가 MIN_COMMON_RISK_RETURNS(120)로 판정한다.
+ */
+// 같은 날짜 안에서 거래 시장이 마감하는 순서(작을수록 먼저). 한국 정규장(15:30 KST = 06:30 UTC)은
+// 같은 날짜의 미국 정규장(16:00 ET = 20:00~21:00 UTC)보다 먼저 끝난다.
+const RISK_MARKET_CLOSE_ORDER = Object.freeze({ KR: 0, US: 1 });
+function riskCloseBefore(benchDate, benchMarket, assetDate, assetMarket) {
+  if (benchDate !== assetDate) return benchDate < assetDate;
+  return RISK_MARKET_CLOSE_ORDER[benchMarket] < RISK_MARKET_CLOSE_ORDER[assetMarket];
+}
+function cleanDatedSeries(dated) {
+  if (!Array.isArray(dated)) return [];
+  const m = new Map();
+  dated.forEach((d) => { if (d && d.date && typeof d.close === 'number' && Number.isFinite(d.close) && d.close > 0) m.set(d.date, d.close); });
+  return [...m.keys()].sort().map((date) => ({ date, close: m.get(date) }));
+}
+function buildAsyncDimsonRows(assetDated, benchDated, assetMarket, benchMarket) {
+  const A = cleanDatedSeries(assetDated);
+  const B = cleanDatedSeries(benchDated);
+  const rows = [];
+  if (A.length < 2 || B.length < 2 || !(assetMarket in RISK_MARKET_CLOSE_ORDER) || !(benchMarket in RISK_MARKET_CLOSE_ORDER)) return rows;
+  // 각 종목 날짜의 m(d) - 두 시계열 모두 날짜순이므로 한 번 훑는다.
+  const mIdx = [];
+  let j = -1;
+  A.forEach((a) => {
+    while (j + 1 < B.length && riskCloseBefore(B[j + 1].date, benchMarket, a.date, assetMarket)) j++;
+    mIdx.push(j);
+  });
+  for (let k = 1; k < A.length; k++) {
+    const i0 = mIdx[k - 1], i1 = mIdx[k];
+    if (i0 < 0 || i1 <= i0) continue;      // 지수가 쉬었다 - 구간을 만들지 않는다
+    if (i1 + 1 >= B.length) continue;      // 시차 0 구간이 아직 관측되지 않았다
+    rows.push({
+      date: A[k].date,
+      asset: A[k].close / A[k - 1].close - 1,
+      previous: B[i1].close / B[i0].close - 1,     // 시차 1
+      concurrent: B[i1 + 1].close / B[i1].close - 1 // 시차 0
+    });
+  }
+  return rows;
+}
+// 절편 + 두 설명변수 최소제곱(정규방정식 3×3). 설명변수가 서로 완전히 겹치거나 분산이 없으면 null.
+function solveTwoFactorOls(y, x1, x2) {
+  const n = y.length;
+  if (n < 3) return null;
+  const mean = (v) => v.reduce((s, x) => s + x, 0) / n;
+  const my = mean(y), m1 = mean(x1), m2 = mean(x2);
+  let s11 = 0, s22 = 0, s12 = 0, s1y = 0, s2y = 0;
+  for (let i = 0; i < n; i++) {
+    const d1 = x1[i] - m1, d2 = x2[i] - m2, dy = y[i] - my;
+    s11 += d1 * d1; s22 += d2 * d2; s12 += d1 * d2; s1y += d1 * dy; s2y += d2 * dy;
+  }
+  const det = s11 * s22 - s12 * s12;
+  if (!(Math.abs(det) > 1e-18)) return null;
+  return { b1: (s1y * s22 - s2y * s12) / det, b2: (s2y * s11 - s1y * s12) / det };
+}
+function computeAsyncDimsonBeta(assetDated, benchDated, assetMarket, benchMarket) {
+  const rows = buildAsyncDimsonRows(assetDated, benchDated, assetMarket, benchMarket);
+  const fit = solveTwoFactorOls(rows.map((r) => r.asset), rows.map((r) => r.concurrent), rows.map((r) => r.previous));
+  const ok = !!fit && Number.isFinite(fit.b1) && Number.isFinite(fit.b2);
+  return {
+    beta: ok ? fit.b1 + fit.b2 : null,
+    betaConcurrent: ok ? fit.b1 : null,
+    betaPrevious: ok ? fit.b2 : null,
+    observationCount: rows.length,
+    startDate: rows.length ? rows[0].date : null,
+    endDate: rows.length ? rows[rows.length - 1].date : null
+  };
+}
+
 // [Risk 정책 P-1 · P-2 · v252] 포트폴리오 위험 계산의 공통 거래일.
 //   D = 대상 종목 모두의 (날짜, 유효 종가)에 들어 있는 날짜의 교집합(오름차순)
 //   r_i(k) = close_i(D[k]) / close_i(D[k-1]) - 1
@@ -1122,6 +1266,12 @@ const RATE_HIKE_2022_BENCHMARK_DROP_PCT = { KOSPI: -28.6, KOSDAQ: -35.3, SP500: 
  *      쓴다 - 화면과 데이터 신뢰도 점수에 항상 "추정치"임을 명시한다.
  * ---------------------------------------------------------------------- */
 // 국내 대형주/미국 대형주 섹터 매핑 - 보유 가능성이 높은 종목 위주로만 커버하며, 없는 종목은 "미분류".
+// [1차 통합 구현 · 공유표 원칙 · §44 44-16] SECTOR_MAP · ETF_HOLDINGS_MAP은 신규 항목 추가를 동결한다(삭제하지 않는다).
+//   역할 분리: ① 섹터 노출(sectorWeights · 섹터 집중도 · 룩스루) - 이 표의 고유 역할로 계속 쓴다.
+//              ② 자산 성격 판정 - Exposure Master가 우선한다(js/05 resolveAssetCharacter 1-1단계). 이 표는
+//                 원장에 없는 종목의 대체 근거, 그리고 Return Key 자동 판정 경로(원장을 보지 않는 기존 경로)에만 남는다.
+//              ③ Risk Benchmark - Exposure Master · Index Master가 정한다(ETF 라벨 경로는 동결된 대체 경로).
+//   새 상품의 성격 · Benchmark 사실은 이 표가 아니라 Exposure Master에 근거와 함께 넣는다.
 const SECTOR_MAP = {
   '005930.KS': '반도체', '000660.KS': '반도체', '035420.KS': 'IT/인터넷', '035720.KS': 'IT/인터넷',
   '051910.KS': '화학/배터리', '006400.KS': '배터리', '373220.KS': '배터리', '005380.KS': '자동차',
@@ -1245,6 +1395,7 @@ async function loadTickerMaster() {
 
 // ETF는 "섹터 비중맵"(합계 약 1.0)으로 등록해 실질 룩스루 노출 계산에 쓴다 - 운용사 팩트시트 기준
 // 대략적인 값이며 실시간 구성종목 API가 아니므로 실제 비중과 차이가 있을 수 있다(화면에 항상 명시).
+// [1차 통합 구현] 신규 항목 추가 동결 · 역할 분리는 위 SECTOR_MAP 주석과 같다(test/integrated-benchmark-index.test.js가 키 목록을 고정).
 const ETF_HOLDINGS_MAP = {
   'QQQM': { label: '나스닥100', sectorWeights: { 'IT/소프트웨어': 0.30, '반도체': 0.25, 'IT/인터넷': 0.20, '유통/인터넷': 0.10, '헬스케어': 0.05, '기타': 0.10 } },
   'QQQ': { label: '나스닥100', sectorWeights: { 'IT/소프트웨어': 0.30, '반도체': 0.25, 'IT/인터넷': 0.20, '유통/인터넷': 0.10, '헬스케어': 0.05, '기타': 0.10 } },
@@ -1717,26 +1868,35 @@ async function computeAdvancedRiskMetrics() {
       const r = calcRow(a);
       if (!byTicker.has(yahoo)) {
         const bm = resolveRiskBenchmark(a);
-        byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a) });
+        byTicker.set(yahoo, {
+          ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a),
+          // [1차 통합 구현] 판정 근거 · 정렬 방식 · 지수 환산(진단용). 같은 시장이면 SAME_DATE(기존 계산 그대로).
+          benchmarkSource: bm.source, benchmarkIndexKey: bm.key || bm.indexKey || null,
+          benchmarkPriceSource: bm.key ? (bm.priceSource || 'AVAILABLE') : null,
+          benchmarkAlignment: bm.key ? (bm.alignment || 'SAME_DATE') : null, benchmarkFx: bm.benchmarkFx || null,
+          benchmarkMarket: bm.benchmarkMarket || null, benchmarkDefinitionStatus: bm.definitionStatus || null
+        });
       }
       byTicker.get(yahoo).curAmount += r.curAmount;
     });
     const holdings = [...byTicker.values()].map((h) => ({ ...h, weight: h.curAmount / totalCur }));
 
     // 필요한 벤치마크 지수만 모아서 한 번씩만 조회한다(확인되지 않은 벤치마크는 조회하지 않는다).
-    const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey).filter((k) => k && INDEX_TICKERS[k]))];
+    // [1차 통합 구현] 지수 가격 원천은 Index Master가 정한다(AVAILABLE인 지수만 · 기존 6개 지수의 원천 기호는 INDEX_TICKERS와 같다).
+    const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey).filter((k) => k && isIndexPriceSourceAvailable(k)))];
     const benchmarkCloses = {};
     const benchmarkDated = {};   // [Phase 39-B] 지수 쪽 날짜도 보존한다(공통 거래일 정렬용).
     const benchmarkStatusByKey = {};
     await Promise.all(neededBenchmarks.map(async (key) => {
-      const got = await getCachedDailyClosesWithStatus(INDEX_TICKERS[key]);
+      const got = await getCachedDailyClosesWithStatus(indexPriceSourceTicker(key));
       const data = got.data;
-      // [R-03] 베타 · 상관은 통계 지표이므로 지수도 조정주가로 맞춘다. 조정주가가 없으면
-      // 원주가로 대신하지 않고 "이 출처로는 통계 비교를 할 수 없다"(SOURCE_UNAVAILABLE)로 둔다.
-      const adjusted = data && hasAdjustedCloses(data) ? datedClosesFromSeries(data, 'adjusted') : null;
-      benchmarkStatusByKey[key] = !data ? got.status : (adjusted ? RISK_DATA_STATUS.OK : RISK_DATA_STATUS.SOURCE_UNAVAILABLE);
-      benchmarkDated[key] = adjusted;
-      benchmarkCloses[key] = adjusted ? adjusted.map((d) => d.close) : null;
+      // [D-01 ① · §44 제8조 8-1 단서] 지수에는 ETF의 조정주가(배당 · 분할 조정) 개념을 적용하지 않는다 -
+      // 지수 수준(Index Level/Close)을 통계용 가격으로 쓴다(Index Master priceDefinition = INDEX_LEVEL).
+      // 수준값 자체가 없으면 "이 출처로는 통계 비교를 할 수 없다"(SOURCE_UNAVAILABLE)로 둔다.
+      const level = data ? datedClosesFromSeries(data, 'raw') : null;
+      benchmarkStatusByKey[key] = !data ? got.status : (level ? RISK_DATA_STATUS.OK : RISK_DATA_STATUS.SOURCE_UNAVAILABLE);
+      benchmarkDated[key] = level;
+      benchmarkCloses[key] = level ? level.map((d) => d.close) : null;
     }));
     const benchmarkReturns = {};
     neededBenchmarks.forEach((key) => { benchmarkReturns[key] = benchmarkCloses[key] ? dailyReturnsFromCloses(benchmarkCloses[key]) : null; });
@@ -1748,7 +1908,9 @@ async function computeAdvancedRiskMetrics() {
     const todayISO = new Date().toISOString().slice(0, 10);
     // [T6 · §44 44-15] 가격통화가 USD인 종목이 있을 때만 H.10 환율을 읽는다(원화 종목만 있으면 읽지 않는다).
     const usdHoldingCount = holdings.filter((h) => h.priceCcy === 'USD').length;
-    const usdKrw = usdHoldingCount > 0 ? await getRiskUsdKrwRates() : null;
+    // [D-05] 비헤지 국내 상장 해외 ETF의 지수 원화 환산도 같은 H.10만 쓴다(새 환율 공급자 없음).
+    const needsBenchmarkFx = holdings.some((h) => h.benchmarkFx === 'USD_TO_KRW_H10');
+    const usdKrw = (usdHoldingCount > 0 || needsBenchmarkFx) ? await getRiskUsdKrwRates() : null;
     await Promise.all(holdings.map(async (h) => {
       const got = await getCachedDailyClosesWithStatus(h.ticker);
       const data = got.data;
@@ -1781,7 +1943,28 @@ async function computeAdvancedRiskMetrics() {
       h.returns = h.closesAdj ? dailyReturnsFromCloses(h.closesAdj) : null;
       const bmReturns = h.benchmarkKey ? benchmarkReturns[h.benchmarkKey] : null;
       const bmDated = h.benchmarkKey ? benchmarkDated[h.benchmarkKey] : null;
-      if (h.returns && bmReturns) {
+      h.betaMethod = null;
+      h.betaComponents = null;
+      if (h.returns && bmReturns && h.benchmarkAlignment === 'ASYNC_DIMSON') {
+        // [D-05] 비동기 쌍 - 같은 날짜 정렬(alignedReturnPair)을 쓰지 않는다. 종목 쪽은 현지 가격(원화) 조정주가,
+        // 지수 쪽은 지수 수준(비헤지 원화 상품이면 같은 날짜의 H.10으로 원화 환산한 수준 - USD 수익률 + 환율 수익률 + 교차항).
+        let benchLevels = bmDated;
+        let fxBlock = null;
+        if (h.benchmarkFx === 'USD_TO_KRW_H10') {
+          const fxUsable = usdKrw && usdKrw.rates;
+          benchLevels = fxUsable ? convertDatedClosesToKrw(bmDated, usdKrw.rates) : null;
+          if (!fxUsable) fxBlock = (usdKrw && usdKrw.status) || RISK_DATA_STATUS.SOURCE_UNAVAILABLE;
+        }
+        const dim = benchLevels ? computeAsyncDimsonBeta(h.datedCloses, benchLevels, riskSeriesMarketOf(h.ticker), h.benchmarkMarket) : null;
+        // 최소 관측 120(행 수)과 1년 조회 범위는 같은 날짜 경로와 같다 - 부족하면 베타를 만들지 않는다.
+        h.beta = dim && dim.observationCount >= MIN_COMMON_RISK_RETURNS && typeof dim.beta === 'number' && Number.isFinite(dim.beta) ? dim.beta : null;
+        h.betaStatus = typeof h.beta === 'number' ? RISK_DATA_STATUS.OK : (fxBlock || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
+        h.betaAligned = !!dim;
+        h.betaObservationCount = dim ? dim.observationCount : null;
+        h.betaMethod = 'DIMSON_LAG0_LAG1';
+        h.betaComponents = dim && typeof h.beta === 'number' ? { concurrent: dim.betaConcurrent, previous: dim.betaPrevious } : null;
+      } else if (h.returns && bmReturns) {
+        h.betaMethod = 'SAME_DATE';
         const pair = alignedReturnPair(h.datedCloses, h.returns, bmDated, bmReturns);
         // [Risk 정책 P-2 · v252] 종목-벤치마크 공통 수익률이 120개 미만이면 베타를 만들지 않는다(공식은 그대로).
         h.beta = pair.a.length >= MIN_COMMON_RISK_RETURNS ? computeBetaFromReturns(pair.a, pair.b) : null;
@@ -1794,6 +1977,7 @@ async function computeAdvancedRiskMetrics() {
         h.beta = null;
         h.betaAligned = false;
         h.betaObservationCount = null;
+        // 기준 지수는 정해졌지만 그 지수의 가격 원천이 앱에 없으면(Index Master UNAVAILABLE) "비교할 자료 없음"이다(아래 benchmarkStatusByKey 없음).
         h.betaStatus = !h.benchmarkKey
           ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED
           : (!h.returns ? h.dataStatus : (benchmarkStatusByKey[h.benchmarkKey] || RISK_DATA_STATUS.SOURCE_UNAVAILABLE));
@@ -1917,6 +2101,11 @@ async function computeAdvancedRiskMetrics() {
         return { lossKRW: null, lossPct: null, reason: !missingInput.benchmarkKey ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED : (missingInput.betaStatus || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES) };
       }
       if (holdings.some((h) => typeof dropPctMap[h.benchmarkKey] !== 'number')) {
+        return { lossKRW: null, lossPct: null, reason: RISK_DATA_STATUS.SOURCE_UNAVAILABLE };
+      }
+      // [D-05] 원화 환산 지수에 대한 베타에 현지통화 지수 낙폭을 곱하면 정의가 섞인다 - 원화 기준 낙폭 자료가
+      // 없으므로 만들지 않는다(새 역사적 낙폭 산출체계는 이번 범위 밖 · 대체 낙폭 없음).
+      if (holdings.some((h) => h.benchmarkFx)) {
         return { lossKRW: null, lossPct: null, reason: RISK_DATA_STATUS.SOURCE_UNAVAILABLE };
       }
       let lossKRW = 0;
@@ -2153,8 +2342,8 @@ async function analyzeTickerForModal(rawInput) {
   let data = await getCachedDailyCloses(yahooTicker);
   // [코스닥 구제] 접미사 없는 6자리 국내코드가 코스피(.KS) 조회로 실패하면 코스닥(.KQ)으로 한 번 더
   // 시도한다 - fetchPriceWithFallback의 동일한 구제 로직을 여기서도 재현.
-  if ((!data || !data.closes || data.closes.length < 20) && /^\d{6}$/.test(searchTicker)) {
-    const kqTicker = searchTicker + '.KQ';
+  if ((!data || !data.closes || data.closes.length < 20) && isKrxShortCode(searchTicker)) {
+    const kqTicker = String(searchTicker).toUpperCase() + '.KQ';
     const kqData = await getCachedDailyCloses(kqTicker);
     if (kqData && kqData.closes && kqData.closes.length >= 20) { yahooTicker = kqTicker; data = kqData; }
   }

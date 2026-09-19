@@ -664,7 +664,7 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
   document.getElementById('tx_name').value = name;
   document.getElementById('tx_ticker').value = ticker;
   if (ticker) {
-    const isKr = /\.(KS|KQ)$/i.test(ticker) || /^\d{6}$/.test(ticker);
+    const isKr = /\.(KS|KQ)$/i.test(ticker) || isKrxShortCode(ticker);
     document.getElementById('tx_currency').value = isKr ? 'KRW' : 'USD';
     document.getElementById('tx_tickerHint').textContent = `선택된 티커: ${ticker}`;
   } else {

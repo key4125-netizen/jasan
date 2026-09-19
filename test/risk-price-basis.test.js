@@ -84,18 +84,22 @@ test('R-03 - 통계 지표(변동성 · VaR · CVaR · MDD)가 조정주가로 �
   assert.notStrictEqual(round(m.holdings[0].mdd, 6), round(s.computeMDDFromCloses(series.closes), 6));
 });
 
-test('R-03 - 베타도 조정주가(종목 · 지수 모두)로 계산된다', async () => {
+test('R-03 · D-01 - 베타는 종목 조정주가 × 지수 수준(Index Level)으로 계산된다', async () => {
+  // [기대값 갱신 사유 · 1차 통합 구현 · D-01 ① · §44 제8조 8-1 단서] 지수에는 ETF의 조정주가(배당 · 분할 조정) 개념을
+  // 적용하지 않는다 - 지수 수준(종가)을 통계용 가격으로 쓴다. 종목 쪽은 예전처럼 조정주가다.
+  // (실제 Yahoo 지수 응답은 adjclose = close라 운영 결과는 같다. 이 fixture는 둘을 일부러 다르게 만든 것이다.)
   const series = splitSeries();
   const bench = withDates({ closes: zigzagCloses(260, 2500, 1.0, 1.0), volumes: volumes(260, 1, 1) });
-  bench.closesAdj = zigzagCloses(260, 2500, 1.7, 1.0); // 지수도 원주가와 조정주가가 다르다
+  bench.closesAdj = zigzagCloses(260, 2500, 1.7, 1.0); // 지수 응답에 원주가와 다른 조정값이 섞여 온 경우
   const s = sandboxWith(series, bench);
   const m = await s.computeAdvancedRiskMetrics();
 
-  const betaAdj = s.computeBetaFromReturns(s.dailyReturnsFromCloses(series.closesAdj), s.dailyReturnsFromCloses(bench.closesAdj));
-  const betaRaw = s.computeBetaFromReturns(s.dailyReturnsFromCloses(series.closes), s.dailyReturnsFromCloses(bench.closes));
-  assert.ok(Math.abs(betaAdj - betaRaw) > 0.05, '두 기준의 베타가 충분히 달라야 한다');
-  assert.strictEqual(round(m.holdings[0].beta, 6), round(betaAdj, 6));
-  assert.notStrictEqual(round(m.holdings[0].beta, 6), round(betaRaw, 6));
+  const betaLevel = s.computeBetaFromReturns(s.dailyReturnsFromCloses(series.closesAdj), s.dailyReturnsFromCloses(bench.closes));
+  const betaIndexAdj = s.computeBetaFromReturns(s.dailyReturnsFromCloses(series.closesAdj), s.dailyReturnsFromCloses(bench.closesAdj));
+  const betaStockRaw = s.computeBetaFromReturns(s.dailyReturnsFromCloses(series.closes), s.dailyReturnsFromCloses(bench.closes));
+  assert.ok(Math.abs(betaLevel - betaIndexAdj) > 0.05 && Math.abs(betaLevel - betaStockRaw) > 0.05, '기준별 베타가 충분히 달라야 한다');
+  assert.strictEqual(round(m.holdings[0].beta, 6), round(betaLevel, 6));
+  assert.notStrictEqual(round(m.holdings[0].beta, 6), round(betaStockRaw, 6), '종목 쪽은 여전히 조정주가다');
 });
 
 /* ---------- [3] 기술 경로가 원주가를 쓰는가 ---------- */
@@ -150,15 +154,23 @@ test('R-03 - 조정주가가 없으면 통계 지표를 만들지 않고 사유�
   assert.strictEqual(typeof m.riskScore, 'number', '계산 가능한 요인으로 점수는 계속 만든다');
 });
 
-test('R-03 - 지수(벤치마크)에 조정주가가 없으면 베타를 만들지 않는다', async () => {
+test('R-03 · D-01 - 지수 수준값이 없으면 베타를 만들지 않는다(지수 조정주가 부재는 사유가 아니다)', async () => {
+  // [기대값 갱신 사유 · 1차 통합 구현 · D-01 ①] 예전에는 지수 응답에 조정주가가 없으면 베타를 만들지 않았다. 이제 지수는
+  // 수준값(Index Level)을 쓰므로 조정주가가 없어도 베타를 계산한다. 수준값 자체가 없을 때만 SOURCE_UNAVAILABLE이다.
   const series = splitSeries();
-  const bench = withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
-  bench.closesAdj = null;
-  const s = sandboxWith(series, bench);
-  const m = await s.computeAdvancedRiskMetrics();
-  assert.strictEqual(m.holdings[0].beta, null);
-  assert.strictEqual(m.holdings[0].betaStatus, 'SOURCE_UNAVAILABLE');
-  assert.strictEqual(m.subScores.market, null, '결측 요인은 50으로 채우지 않는다(R-01 유지)');
+  const noAdj = withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) });
+  noAdj.closesAdj = null;
+  const s1 = sandboxWith(series, noAdj);
+  const m1 = await s1.computeAdvancedRiskMetrics();
+  assert.strictEqual(typeof m1.holdings[0].beta, 'number', '지수 조정주가가 없어도 수준값으로 계산한다');
+
+  const empty = withDates({ closes: [], volumes: [] });
+  empty.closesAdj = null;
+  const s2 = sandboxWith(series, empty);
+  const m2 = await s2.computeAdvancedRiskMetrics();
+  assert.strictEqual(m2.holdings[0].beta, null);
+  assert.strictEqual(m2.holdings[0].betaStatus, 'SOURCE_UNAVAILABLE');
+  assert.strictEqual(m2.subScores.market, null, '결측 요인은 50으로 채우지 않는다(R-01 유지)');
 });
 
 /* ---------- [5] 기존 동작 보존 ---------- */
