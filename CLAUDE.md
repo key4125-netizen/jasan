@@ -65,7 +65,7 @@ This checklist is the project's official governance Source of Truth.
 
 ## CURRENT PRIORITY
 
-> 2026-09-19 update: after v261 (production), the active phase is the **asset-calculation integration project** — Risk Benchmark / Index Master / Exposure Master / MC Asset Class (checklist §44 44-16: D-01 · D-05 · D-06 · D-16). Current step: **1st integrated implementation in the local working tree — not committed, not released, awaiting PM review.** Exposure Master must not become an automatic Return Key source without a separate PM decision. The V1.2-B text below is kept as history.
+> 2026-09-19 update (status corrected 2026-09-20): the **asset-calculation integration project** — Risk Benchmark / Index Master / Exposure Master / MC Asset Class (checklist §44 44-16 · 44-16-2: D-01 · D-05 · D-06 · D-16) — was implemented in two passes and **released as v262 (production, commit b9ff90e)**. Current step: **no active implementation. Follow-up items are listed in `CLAUDE_HANDOVER.md` (v262 section) and are not to be started without a PM instruction** — US-stock HOME_COMMON evidence, Risk UI status wording, periodic re-verification of Master facts, legacy `analyzeTickerForModal` benchmark path, plus the PM's new workstreams (bond management process, automatic updates for Risk/MC base data). Exposure Master must not become an automatic Return Key source without a separate PM decision. The V1.2-B text below is kept as history.
 
 Previous phase (history): **V1.2-B**.
 

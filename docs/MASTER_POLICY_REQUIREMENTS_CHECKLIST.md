@@ -2107,6 +2107,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 ## 44. Risk · MC 전면 개선 정책 — RM-MC-POLICY v1.1 (PM 최종 승인 2026-09-18 · 정책 문서 · 코드 변경 없음)
 
 > **이 절은 정책만 확정한다. 코드 · 데이터 · 테스트 · 버전(`sw.js` CACHE_NAME · `#appVersionLabel`)은 이 절로 바뀌지 않는다 — v256 동작 그대로다.**
+> **[상태 주석 2026-09-20]** 위 문장은 이 절을 작성한 시점(2026-09-18 · v256)의 서술이다. 이후 44-13(v258) · 44-15(v259) · 44-16 · 44-16-2(v262)는 **시행 기록**을 담고 있으며, 해당 절에 적힌 대로 코드 · 데이터 · 테스트 · 버전이 실제로 바뀌었다.
 > 배경: Risk / MC 전면 재감사(READ-ONLY) 2회와 PM 검토 5라운드를 거쳐 확정했다. **조사 단계는 이 절로 종료한다 — 같은 주제의 반복 조사 금지.** 이후는 Phase별로 구현 1회 + 검토 1회로 진행한다.
 > 조 번호(제1조~제49조)는 PM 승인 정책서 RM-MC-POLICY v1.1의 번호를 그대로 쓴다. 인용 시 `§44 제N조`로 참조한다.
 
@@ -2257,11 +2258,11 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | 순서 | 내용 | 상태 |
 |---|---|---|
 | ① | 운영원칙 최종 확정 | 완료(PM 승인 2026-09-18) |
-| ② | **Backtest Gate A층 확정** | **다음 단계 · 미착수** |
+| ② | **Backtest Gate A층 확정** | **완료**(2026-09-18 · 본 절 44-10 제50조~제66조) |
 | ③ | RM-MC-POLICY v1.1 공식 문서화 | 본 절 |
-| ④ | Phase 1A — Exposure Master 구조 | 미착수 |
-| ⑤ | Phase 1B — Exposure Master 데이터 | 미착수 |
-| ⑥ | Risk 데이터·진단·기간 개선 | 미착수 |
+| ④ | Phase 1A — Exposure Master 구조 | **완료**(v257 · 비활성 도입) |
+| ⑤ | Phase 1B — Exposure Master 데이터 | **완료**(v257 활성화 · v262에서 EM-2026.2 확장 · 44-16) |
+| ⑥ | Risk 데이터·진단·기간 개선 | **부분 완료** — 데이터 품질 · 부분 표시 · 결측 요인 재정규화(v258 · 44-13) · 원화 기준 환율(v259 · 44-15) · Benchmark · Index Master · 비동기 베타(v262 · 44-16). **지표별 관측기간(제7조 2년 · 3년)은 미착수**(선행: 제41조 Yahoo 확인) |
 | ⑦ | 장기 Market Panel 구축 | 미착수(제40조 라이선스 확인 선행) |
 | ⑧ | 현재 GBM Backtest | 미착수 |
 | ⑨ | Bootstrap Calibration | 미착수 |
@@ -2547,7 +2548,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 
 > §40 P-7의 원문은 §40 표에 **그대로 보존**한다. 이 절은 삭제가 아니라 대체 시행 기록이다.
 
-**44-16. 1차 통합 구현 — Index Master · Evidence Grade · 공유표 원칙 · D-01 / D-05 / D-06 / D-16 (PM 결정 2026-09-19 · 로컬 작업트리 · 커밋 · 버전업 · 배포 전)**
+**44-16. 1차 통합 구현 — Index Master · Evidence Grade · 공유표 원칙 · D-01 / D-05 / D-06 / D-16 (PM 결정 2026-09-19 · v262 시행 · 2026-09-19 운영 배포 · 커밋 b9ff90e)**
 
 > 연결 구조: Instrument → Classification → Exposure(Exposure Master) → Risk Benchmark → **Index Master** → Price Source → Risk(베타 · 포트폴리오 베타), 그리고 Exposure Master → 자산 성격 / MC 자산군 → MC 입력. Exposure → Return Key(μ) 연결은 이번에 만들지 않는다.
 
@@ -2569,7 +2570,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 
 **44-16-1. 남은 과제(이번 절로 해결하지 않음)** — KIS 약관 확인(코스피 200 TR 원천) · 368590 · 360200 환헤지 A등급 확인 · ~~영문이 섞인 새 국내 종목코드(예: 0052D0) 식별 문제~~ → **해결(2차 통합 보완 · PM 결정 ⑤ · 44-16-2)** · ~~국내 우선주의 상장 시장 지수 편입 여부~~ → **PM 결정 ④로 현행 유지(종목유형 Master 추가 없음)** · 혼합 노출 1:N 구조 · 원화 기준 역사적 낙폭(스트레스) · Release(버전업)는 PM 승인 후.
 
-**44-16-2. 영문 혼합 국내 종목코드 입력 · 정규화 (2차 통합 보완 · PM 결정 ⑤ · 2026-09-19)**
+**44-16-2. 영문 혼합 국내 종목코드 입력 · 정규화 (2차 통합 보완 · PM 결정 ⑤ · 2026-09-19 · v262 시행)**
 
 | 항목 | 내용 |
 |---|---|
@@ -2577,7 +2578,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **수정** | js/01 `KRX_SHORT_CODE_PATTERN`(숫자 6자리 또는 숫자 4 + 영문 1 + 숫자 1) · `isKrxShortCode`를 국내 판정(해외 판정보다 먼저)에 쓴다(A 접두사 포함). 같은 도우미를 가격 조회(접미사 없는 코드의 코스피/코스닥 동시 시도 · 네이버 형식 검사 · 종목 분석 코스닥 재시도)와 거래 입력의 통화 추정에 쓴다. 생성기도 같은 형식을 받는다. 숫자 코드 · 해외 티커 · 지수 기호 동작은 그대로다 |
 | **저장값 보존** | 예전 정규화 키(접미사 없는 코드)로 이미 저장된 포지션 · 종목 수익률 · 운용보수가 있으면 그 키를 계속 쓴다(js/05 `legacyKrxAlphaStoredKey` - 저장값을 옮기거나 바꾸지 않음). 종목 기준(Instrument Return Key)은 비교 시 정규화하므로 그대로 연결된다 |
 | **세 상태** | 0052D0: 원장 확인(RESOLVED · DJ Korea Dividend 30 PR) · 지수 원천 없음(UNAVAILABLE) · 베타 null |
-| **범위 밖** | KIS 재무 조회(js/13 `extractKisDomesticCode`)는 숫자 코드만 - KIS 변경 금지 범위라 그대로 둔다. `data/ticker-master.json` 재생성은 다음 월간 자동 실행(또는 Release 전 PM 승인 시) |
+| **범위 밖** | KIS 재무 조회(js/13 `extractKisDomesticCode`)는 숫자 코드만 - KIS 변경 금지 범위라 그대로 둔다. `data/ticker-master.json` 재생성은 v262 릴리스 때 PM 승인으로 실행 완료(2026-09-19 · 16,731건 · 영문 코드 367건 포함) |
 
 ## 45. UI 마무리 — 매크로 용어 · 베타 설명 · 줄바꿈 · 소유자 칩 · MC 안내 (PM 지시 2026-09-19 · 표시 계층 한정 · 버전업 전)
 
