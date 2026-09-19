@@ -32,7 +32,51 @@
 
 ---
 
-## ✅ 운영 v261 확정 · 최종 개편 완료 (2026-09-19 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+## ✅ 운영 v262 확정 · 자산 계산체계 통합(Risk Benchmark / Index / Exposure Master / MC) (2026-09-19 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+
+> **현재 production = v262**(release 커밋 **b9ff90e**). v261 이후 "자산관리 계산체계 통합 프로젝트"(PM 지시: 1차 통합 구현 → 2차 통합 보완 → v262 Release)의 결과다. 정책 원문은 checklist **§44 44-16 · 44-16-2**(D-01 · D-05 · D-06 · D-16 · Index Master · Evidence Grade · 공유표 · 0052D0). 새 작업은 PM 지시로만 시작한다.
+
+**주요 변경**
+- **Index Master**(js/28 `INDEX_MASTER_ENTRIES`): Benchmark(무엇과 비교) ≠ 지수 가격 원천(어디서 받나). 10개 지수(기존 6 + 코스피200 TR · DJ Korea Div30 PR · iSelect AI전력 PR · DJ US Div100 PR - 뒤 4개는 원천 없음 UNAVAILABLE). 지수는 수준값(INDEX_LEVEL)을 통계 가격으로 쓴다(D-01).
+- **Exposure Master 58건**(EM-2026.1 48 + EM-2026.2 10): 공식 기초지수 매핑(278530 · 0052D0 · 487230 · 360750 · 458730 · SCHD 갱신), 환헤지 A등급 미확인 HOLD(368590 · 360200), 혼합 MIXED(237370 · 472170). 새 필드: `evidenceGrade`(A만 자동 연결) · `exposureStructure: MIXED` · `underlyingReturnType` · `equityListing`(HOME_COMMON/ADR).
+- **Risk Benchmark**(js/09 `resolveRiskBenchmark` · `finalizeRiskBenchmark`): 원장 → (동결) ETF 라벨 → 국내 상장 개별주만 상장시장 지수 → UNRESOLVED. **세 상태 분리**: Benchmark RESOLVED / `priceSource: UNAVAILABLE` / 베타 null(SOURCE_UNAVAILABLE). 종목에 `benchmarkPriceSource · benchmarkAlignment · benchmarkFx · betaMethod · betaComponents` 진단 필드.
+- **D-05 비동기**(js/09 `computeAsyncDimsonBeta` · `buildAsyncDimsonRows` · `RISK_MARKET_CLOSE_ORDER`): 국내 상장 해외 ETF ↔ 미국 지수는 같은 날짜 정렬 금지, Dimson 시차 0 + 1(기울기 합), 비헤지 원화 상품은 지수를 H.10으로 원화 환산. 최소 120 · 1년. 헤지 미확인 → HOLD, 헤지형 → 헤지비용 없음 UNRESOLVED. 원화 환산 베타가 있으면 스트레스 null. 실데이터 360750 β 0.889(n 228).
+- **D-06**: 해외 개별주는 원장에 본국 보통주 근거(`equityListing: HOME_COMMON` · A등급)가 있을 때만 원장 Benchmark. **현재 기재 0건** → 미국 개별주 전부 UNRESOLVED(v261에서 NASDAQ이던 11종목 포함). 거래소 지수 fallback 없음. 국내 우선주는 현행(상장시장 지수) 유지(PM ④).
+- **D-16**: 원장 → 자산 성격(js/05 `resolveAssetCharacter` 1-1단계) → MC 자산군(js/16 basis `exposureMaster`). Return Key 계층 3곳은 `{ exposureMaster: false }` - 원장은 자동 Return Key 근거가 아니다(μ 불변).
+- **0052D0 · KRX 영문 혼합 코드**(js/01 `KRX_SHORT_CODE_PATTERN` · `isKrxShortCode`): 정규화 · 가격조회(코스피/코스닥 동시) · 네이버 · 종목분석 · 거래 입력 통화. 예전 키로 저장된 포지션 · 수익률 · 운용보수는 js/05 `legacyKrxAlphaStoredKey`로 그대로 사용(저장값 무변경). 생성기(scripts/update-ticker-master.js)도 받음, `data/ticker-master.json` 재생성(16,731건 · 영문 코드 +367).
+- 공유표(`ETF_HOLDINGS_MAP` · `SECTOR_MAP`) 신규 추가 동결 · 역할 분리(섹터 노출 고유 / 성격은 원장 우선 / Benchmark는 원장 + Index Master).
+- SoT: §40 P-4 · P-5(나스닥 대체 낙폭 문구를 실제 구현 null로 정정) · 40-3 · §44 제5·8·10조 · 44-15 · 44-16 · 44-16-2. CLAUDE.md CURRENT PRIORITY 갱신.
+
+**MC 영향 · 불변**
+- v261 원장 49건: 자산군 49/49 · MC 입력 · 고정 seed 결과 동일(단위 `test/mc-exposure-invariant.test.js` + 브라우저 v261 트리 vs v262 4케이스 결과 전문 동일, P50 19.45억 / 19.67억 / 19.05억 / 19.24억).
+- 신규 원장 자산 + 사용자 정의 Return Key: v261 "자산군 없음" 차단 → 원장 자산군으로 실행(PM ① 허용 · EXPECTED). 가정 없음이면 σ = 0 그대로. Return Key · μ는 58건 전체 불변.
+
+**Risk fixture(p25 · 005930 + AAPL · 실제 H.10)**: 2026-09-11 · 254 · 19.6615 · -1.7207 · -2.1546 · -10.1092 · 1.2130 · 0.8662 모두 v261과 동일, **포트폴리오 베타 1.1117 → null · Score 69 → 70** - 원인은 D-06(AAPL 본국 보통주 근거 없음) 하나(시험용 근거를 붙이면 v261과 완전 동일).
+
+**검증**: Unit 566/566 · 전체 E2E 1032/1032(v262 버전업 후 처음부터) · ESLint · Data Guard · Release Guard PASS · 배포 전 운영 동등 스모크(v261 → v262 캐시 교체 · 0052D0 전 경로 · Risk · MC · 네트워크 차단 · 375px) PASS · 운영 URL 스모크는 이 커밋 push 후 수행(결과는 PM 보고).
+
+**알려진 OPEN**
+- 앱은 종목 마스터를 jsDelivr(`@main`)에서 받는다 - push 후 CDN 캐시(약 12시간) · 기기 캐시(20일) 뒤에 새 마스터가 반영된다(0052D0의 정규화 · 원장 · 가격 · Risk 경로는 마스터와 무관하게 동작). CDN purge는 PM 결정 사항.
+- 지수 원천 없음으로 베타 불가: 278530(코스피200 TR - KIS 약관 대기) · 0052D0 · 487230 · 458730 · SCHD. HOLD: 368590 · 360200. 혼합: 237370 · 472170. PR/TR 미확인: 360750 · SCHD.
+- 채권 ETF 1개만 보유해도 포트폴리오 베타 null(v252 이후 동작, Bond Domain BACKLOG).
+- KIS 보안(사용자 조치): 공개 저장소 클라이언트 shared secret 교체 · Origin 허용목록 · rate limit · fail-closed · Worker 재배포 · KIS Terms 확인.
+- `.claude/launch.json`은 사용자 로컬 변경 - 커밋 · 복원 · stage 금지(diff hash 216cbb7b12fed0a2).
+
+**v262 이후 후속 과제(구현 안 함 · PM 지시 대기)**
+1. 미국 개별주 HOME_COMMON 근거 조사 - SEC EDGAR(company_tickers.json → submissions: 설립지 미국 주 + 10-K = 본국 기업, 20-F/40-F · 외국 설립 = 아님. SHOP처럼 외국 설립 10-K 사례 주의). 빌드 단계 · 검토 대기 방식 제안. NYSE 종목은 Index Master에 NYSE 지수가 없어 별도 결정 필요.
+2. Risk UI 상태 설명 개선 - 개별 종목 베타가 사유와 무관하게 "데이터 부족"으로 나온다(HOLD · 혼합 · 원천 없음 · 본국 근거 없음 구분 필요), 비동기 베타 정의 안내, 베타 참고 비중의 미확정 사유 문구.
+3. Master 사실 데이터 주기적 재검증 - Exposure Master · Index Master는 코드 고정(자동 갱신 없음). Index 가용성 월간 재확인 · 원장 확인일 경과 표시 등(검토 대기 방식) 제안.
+4. 구형 `analyzeTickerForModal` Benchmark 경로(js/09 `getBenchmarkKeyForTicker` 근사 규칙) 정리 - 현재 화면에 표시하지 않지만 새 정책과 다른 규칙이 남아 있다.
+- 그 밖의 장기 BACKLOG: MC 환율 모델(§44 제6조 6-2) · 지표별 기간(제7조) · Backtest Gate · Bond Domain(§9) · 혼합 노출 1:N · 원화 기준 역사적 낙폭.
+
+**주의(다음 세션)**
+- 이 저장소의 릴리스 브랜치는 `main`이다(CLAUDE.md 문구의 origin/master는 옛 표기).
+- scratch 비교 실험은 route로 파일을 제공한다(8644 서버는 저장소 파일을 서빙 - v261 절 참고).
+- 테스트에서 "근거가 있는 경우" 계산 경로를 볼 때는 `test/risk-sandbox.js` `markHomeCommonListing(tickers)`(시험용 근거) · 가상 원장 주입(`lookupExposureRecord` 교체)을 쓴다 - 실제 보유 종목을 fixture에 넣지 않는다.
+
+---
+
+## ✅ 운영 v261 확정 · 최종 개편 완료 (2026-09-19 · 이후 v262가 이어짐 — 위 절 참고)
 
 > 아래 "운영 v259 확정" 절 이후 v260 · v261이 이어서 배포됐다. **현재 production = v261**(origin/main **0377ac3**). 이 프로젝트는 PM 최종 정책 결정서 v1.0에 따른 **마지막 개편**으로 마무리됐다 - 임의로 다음 과제를 만들지 않는다. 새 작업은 PM 지시로만 시작한다.
 
