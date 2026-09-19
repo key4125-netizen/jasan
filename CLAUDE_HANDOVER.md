@@ -34,7 +34,7 @@
 
 ## 🚧 PHASE 0 완료 — v262 → 전체 미결사항 종결 프로젝트 (2026-09-20 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
 
-> **현재 단계: PHASE 0 종료 · PHASE 1(데이터 경로 전수 조사 · 결정 패키지) 대기.**
+> **현재 단계: PHASE 0 완료(STATUS = PASS · PM 최종 게이트 2026-09-20) · PHASE 1(데이터 경로 전수 조사 · 결정 패키지) 대기.**
 > 작업은 전부 **`integration/v262-closeout`** 에서 한다. main(`d4459a7`)은 건드리지 않았고 Production은 v262 그대로다(버전 변경 없음).
 
 **이번 세션 완료**
@@ -45,12 +45,19 @@
 - 종결 대장 초판 61건 · 데이터 경로 조사 착수표 16건(`docs/closeout/` · 원본은 JSON · `node scripts/closeout/ledger.js render`로 .md 생성)
 - 게이트 시작 상태: Unit 566/566 · **E2E 1032/1032** · ESLint 0 · Data Guard PASS · Release Guard PASS
 
+**단계 체계** — 계획서 §50이 정의한 **PHASE 0~12**가 유일한 체계다(PHASE 5 = CMA + MC FX + MC policy). `ledger.js`가 계획서에서 직접 읽어 대장 표기를 자동 검사한다.
+
 **다음 착수 지점(PHASE 1)** — 조사표 우선순위 1·2부터: DP-01(SEC EDGAR 본국 보통주) · DP-10(지수 역사 낙폭 직접 계산) · DP-03/04(코스피200 PR·TR) · DP-07/08/09(ETF 지수·PR/TR·헤지) · DP-11(CMA 2026Q2 결정 패키지)
 
-**PM 결정 대기(대장 P-1 · B-1 · C-1)**
-1. **P-1 자동 workflow 통제** — H.10은 **매주 화 00:00 UTC(다음 2026-09-22)**, 종목마스터 10-01, CMA 10-03에 **main으로 자동 commit·push** 한다. 스케줄은 main 정의로 돌아서 integration branch 수정으로는 못 막고, main 직접 커밋은 금지다. `gh workflow disable` 실행 권한이 이 세션에서 차단됐다 → PM이 ①실행 허용 ②GitHub 화면에서 직접 Disable ③통제 없이 진행 중 택일. (기준선 자체는 Frozen 스냅샷으로 이미 보호됨)
-2. **B-1 KIS/Worker 보안** — 저장소 밖 조치(사용자 권한)
-3. **C-1 CMA 2026Q2** — 활성화 여부
+**⚠️ 자동 workflow 3종 비활성화 상태(2026-09-20 · PM 결정 · 대장 P-1 완료)**
+- `Update USD/KRW (Fed H.10)` 361810246 · `Update ticker master` 343557860 · `CMA update check` 359962356 = **disabled_manually**
+- `pages-build-deployment` 320103714 = **active 유지**(최종 릴리스에 필요)
+- `.github/workflows/*.yml` 파일은 **무변경**. 프로젝트 종료 후 `gh workflow enable <id>` + `gh workflow run <id>`로 복귀하고 건너뛴 갱신을 수동 실행한다(대장 **P-2**).
+- **이 기간 동안 H.10 · 종목마스터 · CMA는 자동 갱신되지 않는다.** 데이터가 오래된 것처럼 보이면 이 통제 때문이다.
+
+**PM 결정 대기(대장 B-1 · C-1)**
+1. **B-1 KIS/Worker 보안** — 저장소 밖 조치(사용자 권한)
+2. **C-1 CMA 2026Q2** — 활성화 여부(PHASE 5에서 결정 패키지 제출)
 
 **규칙(계속 적용)**
 - 최종 상태는 COMPLETED · RETAINED · NOT_AVAILABLE · PM DECISION RESOLVED 4개뿐. "데이터 없음"으로 미루지 않되 **없는 값은 만들지 않는다**.

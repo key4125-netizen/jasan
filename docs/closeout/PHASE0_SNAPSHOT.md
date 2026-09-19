@@ -86,10 +86,12 @@
 
 | workflow | 파일 | 일정 (UTC) | 다음 실행 | main 자동 commit | main 자동 push | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Update USD/KRW (Fed H.10) | `.github/workflows/update-fx-h10.yml` | 매주 화 `0 0 * * 2` | **2026-09-22 00:00** | 있음(`data/fx/usdkrw-h10.json`) | 있음 | **active** |
-| Update ticker master | `.github/workflows/update-ticker-master.yml` | 매월 1일 `0 0 1 * *` | 2026-10-01 00:00 | 있음(`data/ticker-master.json`) | 있음 | **active** |
-| CMA update check | `.github/workflows/cma-update-check.yml` | 매월 3일 `0 1 3 * *` | 2026-10-03 01:00 | 있음(`data/cma/*`) | 있음 | **active** |
-| pages-build-deployment | (GitHub 기본) | main push 시 | — | — | — | active (유지 필요) |
+| Update USD/KRW (Fed H.10) | `.github/workflows/update-fx-h10.yml` | 매주 화 `0 0 * * 2` | **2026-09-22 00:00** | 있음(`data/fx/usdkrw-h10.json`) | 있음 | **disabled_manually** (2026-09-20 적용) |
+| Update ticker master | `.github/workflows/update-ticker-master.yml` | 매월 1일 `0 0 1 * *` | 2026-10-01 00:00 | 있음(`data/ticker-master.json`) | 있음 | **disabled_manually** (2026-09-20 적용) |
+| CMA update check | `.github/workflows/cma-update-check.yml` | 매월 3일 `0 1 3 * *` | 2026-10-03 01:00 | 있음(`data/cma/*`) | 있음 | **disabled_manually** (2026-09-20 적용) |
+| pages-build-deployment | (GitHub 기본 · `dynamic/pages/pages-build-deployment`) | main push 시 | — | — | — | **active 유지**(최종 릴리스에 필요) |
+
+workflow ID: H.10 `361810246` · 종목마스터 `343557860` · CMA `359962356` · pages `320103714`
 
 > 계획서 §5는 종목마스터 기한을 2026-10-01로 적었지만, **실제로 가장 먼저 도는 것은 H.10(2026-09-22)**이다. 통제 기한은 그쪽이 먼저다.
 
@@ -114,9 +116,11 @@ gh workflow run 343557860
 gh workflow run 359962356
 ```
 
-- **현재 상태: 미적용.** 위 명령 실행이 이 세션의 실행 권한 정책에서 차단되었다(원격 저장소 설정 변경에 해당).
-- 따라서 이 항목은 종결 대장 **P-1(PM 결정 필요)** 로 등록했다. 선택지는 ①실행 허용 ②사용자가 GitHub Actions 화면에서 직접 Disable ③통제하지 않고 진행(그 경우 프로젝트 중 main 데이터가 자동 갱신됨을 감수).
-- 다만 **회귀 기준선은 이미 보호돼 있다** — Frozen Baseline이 H.10 · 종목마스터 · CMA의 스냅샷과 해시를 별도로 갖고 있어(§6) 자동 갱신이 일어나도 비교 기준은 흔들리지 않는다. 통제가 없으면 영향받는 것은 "현재 데이터(CURRENT) 측정값"과 "프로젝트 중 main이 조용히 바뀐다는 사실"이다.
+- **현재 상태: 적용 완료(2026-09-20 · PM 결정).** 3종 모두 `disabled_manually`, `pages-build-deployment`는 `active`.
+- 확인 방법 2가지로 재확인했다 — `gh workflow list --all`, 그리고 GitHub Actions API(`repos/key4125-netizen/jasan/actions/workflows`)의 `state` 필드.
+- 저장소 파일(`.github/workflows/*.yml`)은 **한 줄도 고치지 않았다.** 비활성화는 저장소 설정 상태이므로 그대로 되돌릴 수 있다(영구 삭제 아님).
+- 복구는 종결 대장 **P-2**(프로젝트 종료 후 자동화 복귀 · 건너뛴 갱신 수동 실행)에서 처리한다. 건너뛰게 되는 실행: H.10 2026-09-22부터 매주 화, 종목마스터 2026-10-01, CMA 2026-10-03(이후 매월).
+- 참고: 회귀 기준선은 통제와 무관하게 이미 보호돼 있다 — Frozen Baseline이 H.10 · 종목마스터 · CMA 스냅샷과 해시를 별도로 갖고 있다(§6).
 
 ---
 
@@ -190,7 +194,58 @@ node scripts/closeout/regression-harness.js run --data=current # 현재 운영 �
 
 ---
 
-## 9. PHASE 0에서 하지 않은 것
+## 9. 단계(PHASE) 표기 점검 (2026-09-20 · PM 지시)
+
+**확인 결과: 잘못된 참조가 아니다. "PHASE 5"는 실행 기준문서가 정의한 단계다.**
+
+실행 기준문서 `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md` **§50 프로젝트 실행 순서**는 **PHASE 0 ~ PHASE 12, 13개 단계**를 정의한다(본문 1401~1425행).
+
+| 단계 | 정의(§50 원문) |
+| --- | --- |
+| PHASE 0 | 전체 OPEN 재감사 + integration branch + workflow 통제 + v262 frozen baseline + regression harness + 종결 대장 |
+| PHASE 1 | 데이터 경로 전수 조사 + 결정 패키지 |
+| PHASE 2 | Master / evidence / automation infrastructure |
+| PHASE 3 | US individual stocks + NYSE Composite + ETF + Index + PR/TR + Hedge |
+| PHASE 4 | Risk + Stress + Observation period + Beta diagnostics |
+| **PHASE 5** | **CMA + MC FX + MC policy** |
+| PHASE 6 | Bond + Mixed Product |
+| PHASE 7 | Storage + UI + Code hygiene + CDN |
+| PHASE 8 | Automatic revalidation |
+| PHASE 9 | 전체 regression |
+| PHASE 10 | 전체 issue ledger final audit |
+| PHASE 11 | SoT / CLAUDE / documentation |
+| PHASE 12 | Final Production Release |
+
+- 대장 **C-1(CMA 2026 Q2)** 의 `PHASE 5` 표기는 §50의 "PHASE 5 = CMA + MC FX + MC policy"를 그대로 가리킨 것이다. **수정 대상이 아니며, 계획서 원문도 건드리지 않았다.**
+- "PHASE 0~3 체계"는 이 프로젝트 어디에도 없다. 저장소 전체를 검색해도 PHASE 13 이상이나 다른 체계의 표기는 나오지 않는다.
+- 대장이 실제로 쓰는 단계: PHASE 0 · 1 · 2 · 3 · 4 · 5 · 6 · 7 · 8 · 10 · 12 (모두 §50 정의 안에 있음. 9 · 11은 아직 배정된 항목이 없을 뿐이다).
+- 다른 문서(`CLAUDE.md` · `CLAUDE_HANDOVER.md` · 조사표)의 단계 표기도 §50과 일치한다.
+- **자동 검사로 고정했다** — `scripts/closeout/ledger.js`가 이제 계획서 §50에서 단계 정의를 직접 읽어, 대장의 모든 항목 단계가 그 안에 있는지 검사한다(없는 단계를 쓰면 검사 실패). 앞으로 단계 표기가 어긋나면 자동으로 잡힌다.
+
+---
+
+## 10. PHASE 0 완료조건 재확인 (2026-09-20 · 최종 게이트)
+
+| 완료조건(계획서 §26) | 결과 |
+| --- | --- |
+| 시작점 Snapshot | 완료(§1) |
+| 기준문서 무결성 | 완료 · SHA-256 `10149b77…` 변동 없음(§2) |
+| Git: integration branch + origin push | `integration/v262-closeout` = `2b123b5` → 본 세션 추가 커밋 반영 |
+| 문서: 기준문서 등록 변경 보존 | 완료(`4ac65bd`) |
+| main 직접 commit/push 없음 | `origin/main` = `d4459a7` 유지 |
+| Workflow 통제 | **적용 완료** — 3종 `disabled_manually` · pages `active`(§5) |
+| Frozen Baseline + hash | `--verify` 36건 동일 PASS |
+| Regression harness | `compare` 차이 0건(risk · mc · master) |
+| Issue Ledger 전수 재감사 · 중복 통합 · 재판정 | 61건(§8) |
+| Data Path 착수표 | 16건(§8) |
+| Security(secret · PII · 이용조건) | 완료(§보고서 10항) |
+| Handover 복구 가능 | integration branch + `CLAUDE_HANDOVER.md` 최상단 절 |
+| `.claude/launch.json` 시작=종료 해시 | `216cbb7b12fed0a2` 동일 |
+| 문서 diff 불필요 변경 없음 | 확인(§3) |
+
+---
+
+## 11. PHASE 0에서 하지 않은 것
 
 - Risk · MC · Bond 정책 변경 없음
 - 앱 코드(`js/*.js` · `index.html` · `sw.js`) 변경 없음 — 추가된 것은 `scripts/closeout/*` · `baseline/*` · `docs/closeout/*` 뿐

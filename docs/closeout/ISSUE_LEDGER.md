@@ -14,10 +14,10 @@
 | 현재 판정 | 건수 |
 | --- | ---: |
 | OPEN | 46 |
-| COMPLETED | 8 |
+| COMPLETED | 9 |
 | RETAINED | 4 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| PM_DECISION_REQUIRED | 3 |
+| PM_DECISION_REQUIRED | 2 |
 | **합계** | **61** |
 
 ## 전체 목록
@@ -74,7 +74,7 @@
 | M-3 | 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구) | 문구 | PHASE 7 | OPEN | - |
 | M-4 | BOND-DEF-01 · 03 · 04 · 05 정의 backlog | 채권 | PHASE 6 | OPEN | - |
 | M-5 | 채권 ETF 1개만 보유해도 포트폴리오 베타 null | Risk | PHASE 4 | OPEN | - |
-| P-1 | 자동 workflow 3종의 프로젝트 기간 통제 | 프로젝트 통제 | PHASE 0 | PM_DECISION_REQUIRED | - |
+| P-1 | 자동 workflow 3종의 프로젝트 기간 통제 | 프로젝트 통제 | PHASE 0 | COMPLETED | - |
 | P-2 | 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행 | 프로젝트 통제 | PHASE 8 | OPEN | - |
 | P-3 | 사용자 영향 고지 | 릴리스 | PHASE 12 | OPEN | - |
 | P-4 | 롤백 계획 문서화 | 릴리스 | PHASE 12 | OPEN | - |
@@ -763,26 +763,27 @@
 
 #### P-1 — 자동 workflow 3종의 프로젝트 기간 통제
 
-- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 0
+- **현재 판정**: COMPLETED · **단계**: PHASE 0
 - **SoT**: 계획서 §5 · §10
-- **현재 구현**: 3개 workflow 모두 active · 전부 main에 자동 commit + push한다. H.10은 매주 화 00:00 UTC(다음 실행 2026-09-22), 종목마스터 매월 1일 00:00 UTC(2026-10-01), CMA 매월 3일 01:00 UTC(2026-10-03)
-- **문제**: 스케줄 workflow는 기본 브랜치(main)의 정의로 실행되므로 integration branch 수정으로는 멈출 수 없고, main 직접 커밋은 금지돼 있다. 저장소 설정에서 비활성화하는 방법만 남는데 현재 실행 권한이 차단됐다
-- **필요한 사실**: PM의 통제 방식 승인
-- **선택지**: (가) gh workflow disable 3건 실행 허용(복구: gh workflow enable) · (나) 사용자가 GitHub Actions 탭에서 직접 Disable · (다) 통제하지 않고 진행(그 경우 프로젝트 중 main 데이터가 갱신됨을 감수)
-- **영향**: 정책 없음 / Risk 기준선 오염 가능 / MC 없음 / UI 없음
-- **구현 필요**: 승인 후 즉시 적용 + 복구 방법 기록
-- **테스트**: workflow 목록 확인
+- **현재 구현**: PM 결정(2026-09-20)으로 3종을 비활성화했다 - Update USD/KRW (Fed H.10) 361810246 · Update ticker master 343557860 · CMA update check 359962356 모두 disabled_manually. pages-build-deployment(320103714)는 active 유지(최종 릴리스에 필요)
+- **문제**: 해결됨. 스케줄 workflow는 기본 브랜치(main) 정의로 실행되므로 integration branch 수정으로는 멈출 수 없고 main 직접 커밋은 금지돼 있어, 저장소 설정 비활성화가 유일한 수단이었다
+- **필요한 사실**: 통제 적용과 복구 방법
+- **영향**: 정책 없음 / Risk 기준선 오염 방지 / MC 없음 / UI 없음
+- **구현 필요**: 완료 - 복구는 P-2
+- **테스트**: workflow 상태 확인
+- **검증**: gh workflow list --all · GitHub Actions API의 state 필드로 4개 workflow 상태 재확인(2026-09-20)
+- **근거**: docs/closeout/PHASE0_SNAPSHOT.md §5 통제 기록
 - **마지막 확인일**: 2026-09-20
 
 #### P-2 — 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행
 
 - **현재 판정**: OPEN · **단계**: PHASE 8
 - **SoT**: 계획서 §5 · §49
-- **현재 구현**: 없음
+- **현재 구현**: 통제 시작 2026-09-20(P-1). 복구 명령은 PHASE0_SNAPSHOT.md §5에 기록했다
 - **문제**: 통제 기간 동안 건너뛴 데이터 갱신을 종료 후 반드시 되돌려야 한다
-- **필요한 사실**: 통제 시작 · 종료 시각 · 건너뛴 실행 목록
-- **구현 필요**: 복귀 절차 + 수동 실행(workflow_dispatch)
-- **테스트**: 실행 결과 확인
+- **필요한 사실**: 건너뛴 실행 목록 - H.10 매주 화 00:00 UTC(2026-09-22부터) · 종목마스터 2026-10-01 · CMA 2026-10-03 이후 매월
+- **구현 필요**: gh workflow enable 3건 + gh workflow run 3건(건너뛴 갱신 수동 실행) + 결과 확인
+- **테스트**: 실행 결과 · 데이터 파일 갱신 확인
 - **마지막 확인일**: 2026-09-20
 
 #### P-10 — 종결 대장 자동 정합성 검사

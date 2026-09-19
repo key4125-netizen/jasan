@@ -27,11 +27,25 @@ const NOT_AVAILABLE_REQUIRED = ['investigationPaths', 'terms', 'quality', 'alter
 
 const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 
+// 단계 표기는 실행 기준문서 §50이 정의한 것만 쓴다(PHASE 0 ~ PHASE 12). 대장 · 문서가 서로 다른
+// 단계 체계를 쓰기 시작하면 추적이 깨지므로, 계획서 본문에서 직접 읽어 대조한다.
+function planPhases() {
+  const planPath = path.join(ROOT, 'docs', 'PROJECT_V262_CLOSEOUT_FINAL_PLAN.md');
+  const src = fs.readFileSync(planPath, 'utf8');
+  const found = new Map();
+  const re = /^\*\*PHASE (\d+)\*\*\s*(.*)$/gm;
+  let m;
+  while ((m = re.exec(src)) !== null) found.set(`PHASE ${m[1]}`, m[2].trim());
+  return found;
+}
+
 function check() {
   const problems = [];
   const ledger = read(LEDGER_JSON);
   const survey = read(SURVEY_JSON);
   const ids = new Set();
+  const phases = planPhases();
+  if (phases.size === 0) problems.push('실행 기준문서 §50에서 단계 정의를 읽지 못했다');
 
   ledger.items.forEach((it, i) => {
     const where = it.id || `#${i}`;
@@ -41,6 +55,7 @@ function check() {
     ['title', 'category', 'phase', 'currentStatus', 'sot', 'currentImpl'].forEach((k) => {
       if (!it[k]) problems.push(`${where}: 필수 항목 누락(${k})`);
     });
+    if (it.phase && phases.size > 0 && !phases.has(it.phase)) problems.push(`${where}: 계획서 §50에 없는 단계(${it.phase})`);
     if (it.currentStatus && !INTERIM.includes(it.currentStatus)) problems.push(`${where}: 현재 판정 값이 규칙 밖(${it.currentStatus})`);
     if (it.finalStatus && !FINAL.includes(it.finalStatus)) problems.push(`${where}: 최종 상태 값이 규칙 밖(${it.finalStatus})`);
     if (it.finalStatus && !it.verification && !it.evidence) problems.push(`${where}: 최종 상태를 적었으면 검증 · 근거가 있어야 한다`);
@@ -63,8 +78,11 @@ function check() {
   const pm = ledger.items.filter((it) => it.currentStatus === 'PM_DECISION_REQUIRED').length;
   const done = ledger.items.filter((it) => ['COMPLETED', 'RETAINED'].includes(it.currentStatus)).length;
 
+  const usedPhases = [...new Set(ledger.items.map((it) => it.phase))]
+    .sort((a, b) => Number(a.replace(/\D/g, '')) - Number(b.replace(/\D/g, '')));
   problems.forEach((p) => console.log(`✗ ${p}`));
   console.log(problems.length === 0 ? '✓ 대장 · 조사표 정합성 검사 통과' : `✗ 문제 ${problems.length}건`);
+  console.log(`  단계 정의(계획서 §50) ${phases.size}개 · 대장이 쓰는 단계: ${usedPhases.join(', ')}`);
   console.log(`  항목 ${ledger.items.length}건 - OPEN ${open} · PM 결정 필요 ${pm} · 확인 완료 ${done} · 조사 대상 ${survey.targets.length}건`);
   return problems.length;
 }

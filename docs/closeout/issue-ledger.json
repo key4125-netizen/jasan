@@ -510,22 +510,25 @@
 
     {
       "id": "P-1", "category": "프로젝트 통제", "phase": "PHASE 0", "title": "자동 workflow 3종의 프로젝트 기간 통제",
-      "currentStatus": "PM_DECISION_REQUIRED", "finalStatus": null,
+      "currentStatus": "COMPLETED", "finalStatus": null,
       "sot": "계획서 §5 · §10",
-      "currentImpl": "3개 workflow 모두 active · 전부 main에 자동 commit + push한다. H.10은 매주 화 00:00 UTC(다음 실행 2026-09-22), 종목마스터 매월 1일 00:00 UTC(2026-10-01), CMA 매월 3일 01:00 UTC(2026-10-03)",
-      "problem": "스케줄 workflow는 기본 브랜치(main)의 정의로 실행되므로 integration branch 수정으로는 멈출 수 없고, main 직접 커밋은 금지돼 있다. 저장소 설정에서 비활성화하는 방법만 남는데 현재 실행 권한이 차단됐다",
-      "neededFact": "PM의 통제 방식 승인",
-      "options": ["(가) gh workflow disable 3건 실행 허용(복구: gh workflow enable)", "(나) 사용자가 GitHub Actions 탭에서 직접 Disable", "(다) 통제하지 않고 진행(그 경우 프로젝트 중 main 데이터가 갱신됨을 감수)"],
-      "impact": { "policy": "없음", "risk": "기준선 오염 가능", "mc": "없음", "ui": "없음" },
-      "implementationNeeded": "승인 후 즉시 적용 + 복구 방법 기록", "test": "workflow 목록 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+      "currentImpl": "PM 결정(2026-09-20)으로 3종을 비활성화했다 - Update USD/KRW (Fed H.10) 361810246 · Update ticker master 343557860 · CMA update check 359962356 모두 disabled_manually. pages-build-deployment(320103714)는 active 유지(최종 릴리스에 필요)",
+      "problem": "해결됨. 스케줄 workflow는 기본 브랜치(main) 정의로 실행되므로 integration branch 수정으로는 멈출 수 없고 main 직접 커밋은 금지돼 있어, 저장소 설정 비활성화가 유일한 수단이었다",
+      "neededFact": "통제 적용과 복구 방법",
+      "verification": "gh workflow list --all · GitHub Actions API의 state 필드로 4개 workflow 상태 재확인(2026-09-20)",
+      "evidence": "docs/closeout/PHASE0_SNAPSHOT.md §5 통제 기록",
+      "impact": { "policy": "없음", "risk": "기준선 오염 방지", "mc": "없음", "ui": "없음" },
+      "implementationNeeded": "완료 - 복구는 P-2", "test": "workflow 상태 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
     },
     {
       "id": "P-2", "category": "프로젝트 통제", "phase": "PHASE 8", "title": "프로젝트 종료 후 자동화 복귀 · 미실행분 재실행",
       "currentStatus": "OPEN", "finalStatus": null,
       "sot": "계획서 §5 · §49",
-      "currentImpl": "없음", "problem": "통제 기간 동안 건너뛴 데이터 갱신을 종료 후 반드시 되돌려야 한다",
-      "neededFact": "통제 시작 · 종료 시각 · 건너뛴 실행 목록",
-      "implementationNeeded": "복귀 절차 + 수동 실행(workflow_dispatch)", "test": "실행 결과 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
+      "currentImpl": "통제 시작 2026-09-20(P-1). 복구 명령은 PHASE0_SNAPSHOT.md §5에 기록했다",
+      "problem": "통제 기간 동안 건너뛴 데이터 갱신을 종료 후 반드시 되돌려야 한다",
+      "neededFact": "건너뛴 실행 목록 - H.10 매주 화 00:00 UTC(2026-09-22부터) · 종목마스터 2026-10-01 · CMA 2026-10-03 이후 매월",
+      "implementationNeeded": "gh workflow enable 3건 + gh workflow run 3건(건너뛴 갱신 수동 실행) + 결과 확인",
+      "test": "실행 결과 · 데이터 파일 갱신 확인", "resumeCondition": null, "lastCheckedAt": "2026-09-20"
     },
     {
       "id": "P-3", "category": "릴리스", "phase": "PHASE 12", "title": "사용자 영향 고지",
