@@ -41,7 +41,9 @@ const BLOCKED_NAME_PATTERNS = [
 // "이 파일에 실제 사용자 데이터가 없다"를 확인하고 넣는다.
 const ALLOWLIST = [
   'package.json', 'package-lock.json', 'manifest.json',
-  'data/ticker-master.json'
+  'data/ticker-master.json',
+  // [T6 · §44 44-15] 연준 H.10 공개 환율(달러당 원화) - 사용자 데이터 없음, public domain.
+  'data/fx/usdkrw-h10.json'
 ];
 
 let hasError = false;

@@ -2,7 +2,8 @@
 // index.html(자산관리.html)과 반드시 같은 폴더에 있어야 하며, HTTPS(또는 localhost)로 호스팅되어야
 // 브라우저가 등록을 허용한다(file:// 로컬 실행에서는 등록 자체가 불가능 - 웹 표준 보안 정책).
 
-const CACHE_NAME = 'smart-asset-manager-v258'; // [Risk 데이터 진단 · Phase 2-1] 결측 위험 요인을 50점으로 채우지 않고 점수에서 빼고 재정규화한다(§44 44-13) · 데이터 품질 상태 9종 구분 · 지표별 부분 표시 · 신뢰도에 관측기간 반영 - 위험점수와 화면 표시가 실제로 바뀐다.
+const CACHE_NAME = 'smart-asset-manager-v259'; // [Risk 원화 기준 환율 반영 · T6 · §44 44-15] 가격통화 USD 종목의 통계용 조정주가를 연준 H.10 USD/KRW로 원화 환산(베타 · 기술 지표는 현지통화 그대로) · 환율 기준일 표시 · 종목별 가격 기록 상태 · 관측 일수 · VaR 꼬리 수 · 스트레스 대체 낙폭 제거(Phase 2-4) · data/fx/는 네트워크 우선(B-1) - 달러 종목이 있으면 위험 지표와 점수가 실제로 바뀐다.
+// v258: [Risk 데이터 진단 · Phase 2-1] 결측 위험 요인을 50점으로 채우지 않고 점수에서 빼고 재정규화한다(§44 44-13) · 데이터 품질 상태 9종 구분 · 지표별 부분 표시 · 신뢰도에 관측기간 반영 - 위험점수와 화면 표시가 실제로 바뀐다.
 // v257: [Exposure Master Phase 1B] Risk · MC 공통 사실 원장(js/28)을 앱에 로드하고 활성화했다(계산 결과 무변경).
 // v256: [UI 표시만] 신랑 · 와이프 목표 비중 카드에서 포지션 목표비중 그래프를 종목 목록 위로 올리고, 총 실현손익 배지 문구를 정리했다.
 // v255: [UI 상태 · 표시만] 탭 전환 시 남아 있던 펼침 상태(자산 세부현황 그룹 · 목표 비중 종목 행 · 기간별 실현손익 행 · 상세 현황 보기 · MC 결과 묶음/장기 가정 출처) 닫기 · 새로 연 팝업은 맨 위부터 · MC ⓘ 팝업 주의사항 묶음 첫 클릭 · 「20년 후 자산 참고값 (일반적 수익률 적용)」(계산 · 선택값 · 저장 데이터 무변경, checklist §42)
@@ -638,6 +639,9 @@ const NETWORK_FIRST_HOSTS = [
   // 데이터를 원해도 계속 옛 응답만 받게 될 수 있다 - 항상 네트워크를 먼저 시도하게 한다.
   'cdn.jsdelivr.net'
 ];
+// [B-1 · §44 44-15] 같은 출처(GitHub Pages)에서 주 1회 갱신되는 H.10 환율 정적 파일 경로. 아래 캐시 우선
+// 규칙을 타면 처음 받은 파일이 다음 버전업 전까지 고정돼 주간 갱신이 설치 사용자에게 닿지 않는다.
+const NETWORK_FIRST_SAME_ORIGIN_PATH = '/data/fx/';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -662,11 +666,32 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   let isNetworkFirst = false;
+  let isFxData = false;
   try {
-    const host = new URL(req.url).hostname;
+    const url = new URL(req.url);
+    const host = url.hostname;
     isNetworkFirst = NETWORK_FIRST_HOSTS.some((h) => host.includes(h));
+    isFxData = url.origin === self.location.origin && url.pathname.includes(NETWORK_FIRST_SAME_ORIGIN_PATH);
   } catch (e) {
     return; // chrome-extension:// 등 파싱 불가한 요청은 그대로 통과
+  }
+
+  // [B-1 · §44 44-15] H.10 환율(data/fx/)은 매주 갱신되므로 네트워크를 먼저 받는다. 성공하면 그 응답을
+  // 캐시에 넣어 두고(다음 오프라인 대비), 네트워크가 실패하면 캐시를 쓴다. 둘 다 없으면 실패 그대로 -
+  // 앱(js/09 getRiskUsdKrwRates)이 SOURCE_UNAVAILABLE로 처리한다(임의 환율을 만들지 않는다).
+  if (isFxData) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const resClone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
   }
 
   if (isNetworkFirst) {

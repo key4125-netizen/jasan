@@ -1,0 +1,50 @@
+name: Update USD/KRW (Fed H.10)
+
+# [T6 · §44 44-15] 연준 H.10 일별 USD/KRW(달러당 원화, 뉴욕 정오)를 주 1회 받아 data/fx/usdkrw-h10.json을
+# 갱신하고 커밋한다. 앱(js/09 getRiskUsdKrwRates)은 이 정적 파일만 읽는다 - H.10 원문을 실행 중에 조회하지 않는다.
+# update-ticker-master.yml과 같은 구조다. API 키 · secret이 필요 없다(public domain 공개 자료).
+# 스크립트는 검증을 통과한 새 데이터만 기존 파일과 교체하고, 실패하면 파일을 건드리지 않은 채 실패로 끝난다.
+on:
+  schedule:
+    # 매주 화요일 00:00 UTC(=한국시간 오전 9시). H.10은 보통 월요일에 전주 금요일까지 게시된다.
+    - cron: '0 0 * * 2'
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [update-fx-h10]
+
+permissions:
+  contents: write
+
+# [T6 후속 · Issue 3] 종목 마스터 갱신(매월 1일 00:00 UTC)과 같은 시각에 겹칠 수 있다(1일이 화요일인 달).
+# 둘 다 main에 push하므로 같은 그룹으로 묶어 차례대로 실행한다 - 뒤 작업은 앞 작업이 끝난 뒤 최신 main을
+# checkout한다. 진행 중인 작업은 취소하지 않는다.
+concurrency:
+  group: data-update-main-push
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download, validate and write H.10 USD/KRW
+        run: node scripts/fx/update-usdkrw-h10.js
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/fx/usdkrw-h10.json; then
+            echo "변경 없음 - 커밋을 건너뜁니다."
+            exit 0
+          fi
+          git add data/fx/usdkrw-h10.json
+          git commit -m "chore: update USD/KRW H.10 data ($(date -u +%Y-%m-%d))"
+          git push

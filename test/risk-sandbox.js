@@ -122,6 +122,19 @@ function loadRiskSandbox() {
   };
   sandbox.setDataStatus = (yahooTicker, status) => { statusByTicker.set(yahooTicker, status); };
   sandbox.clearDailyCloses = () => { closesByTicker.clear(); statusByTicker.clear(); };
+  // [T6 · §44 44-15] H.10 환율 주입 - js/09의 getRiskUsdKrwRates()(정적 JSON 조회)를 바꿔치기한다.
+  // 기본값은 "fixture에 나오는 모든 날짜에 같은 환율(1,300)"이다. 환율이 일정하면 원화 환산 수익률이
+  // 달러 수익률과 정확히 같으므로, 환율과 무관한 기존 골든 테스트가 예전 값 그대로 검증된다.
+  // 환율 변동 · 결측 · 실패를 재현하려면 setUsdKrwRates()로 결과 객체를 직접 준다.
+  let usdKrwOverride;
+  sandbox.getRiskUsdKrwRates = async () => {
+    if (usdKrwOverride !== undefined) return usdKrwOverride;
+    const rates = new Map();
+    closesByTicker.forEach((d) => { (d && Array.isArray(d.dates) ? d.dates : []).forEach((dt) => { if (dt) rates.set(dt, 1300); }); });
+    const dates = [...rates.keys()].sort();
+    return { status: 'OK', rates, endDate: dates.length ? dates[dates.length - 1] : null };
+  };
+  sandbox.setUsdKrwRates = (result) => { usdKrwOverride = result; };
   // [Risk 정책 P-4 · v252] 종목 마스터(상장 거래소) 주입 - js/09의 tickerMasterByTicker(let)를 통째로 바꾼다.
   sandbox.setTickerMaster = (map) => { vm.runInContext(`tickerMasterByTicker = ${JSON.stringify(map || {})};`, sandbox, { filename: 'ticker-master' }); };
 

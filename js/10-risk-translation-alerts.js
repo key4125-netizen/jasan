@@ -288,6 +288,10 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
     <div>
       <p class="text-sm font-semibold text-slate-400 mb-1">📊 주가 및 리스크 정밀 진단</p>
       <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5">${buildIndividualDiagnosisLine(h)}</p>
+      ${h && holdingDataStatusForDisplay(h) !== 'OK' ? `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed mb-2.5 break-keep" data-holding-data-status>📋 가격 기록 상태: ${escapeHtml(holdingDataStatusShortText(h))}</p>` : ''}
+      ${h && h.priceCcy === 'USD' && (h.fxLastDate || h.fxStatus) ? `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-2.5 break-keep" data-holding-fx-note>${h.fxLastDate
+        ? `💱 변동성·손실 지표는 달러 가격과 원/달러 환율을 함께 반영한 원화 기준입니다(시장 민감도(베타)는 달러 가격 기준). <span class="whitespace-nowrap">환율 기준일: ${escapeHtml(h.fxLastDate)}</span>`
+        : '💱 원/달러 환율 자료가 없어 원화 기준 변동성·손실 지표를 계산하지 않았습니다.'}</p>` : ''}
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
@@ -421,6 +425,74 @@ function riskExcludedFactorsNote(m) {
   const names = list.map((f) => escapeHtml(f.label)).join(' · ');
   return `<p class="text-sm text-amber-700 dark:text-amber-400 mt-2 leading-relaxed break-keep">⚠️ 데이터가 부족해 점수에 넣지 못한 항목: ${names}. 이 항목들이 안전하다는 뜻이 아니라, 아직 판단할 수 없다는 뜻입니다.</p>`;
 }
+/* [Phase 2-4 · T1] 종목 하나의 가격 기록 상태(표시용). 엔진이 정한 h.dataStatus를 그대로 쓰고,
+ * 새 상태를 만들지 않는다. 단 조회는 정상(OK)이어도 조정주가 하루 변동이 통계 최소 관측 수
+ * (MIN_COMMON_RISK_RETURNS)보다 적으면 기존 상태 INSUFFICIENT_HISTORY("그 지표에 필요한 관측 수보다
+ * 적음")로 보여준다 - 계산에는 영향이 없다.
+ */
+function holdingDataStatusForDisplay(h) {
+  if (!h) return null;
+  const code = h.dataStatus || 'OK';
+  if (code !== 'OK') return code;
+  const n = Array.isArray(h.returns) ? h.returns.length : null;
+  if (typeof n === 'number' && n < MIN_COMMON_RISK_RETURNS) return 'INSUFFICIENT_HISTORY';
+  return 'OK';
+}
+function holdingDataStatusShortText(h) {
+  const code = holdingDataStatusForDisplay(h);
+  if (!code || code === 'OK') return '정상';
+  let text = RISK_DATA_STATUS_SHORT[code] || '데이터 부족';
+  if (code === 'INSUFFICIENT_HISTORY' && Array.isArray(h.returns)) text += ` (${fmtNum(h.returns.length, 0)}거래일)`;
+  // [T6 후속 · Issue 1] 가격은 최신인데 H.10 환율 자료만 오래돼(OP-4) DATA_STALE이 된 경우 - 가격의 마지막
+  // 날짜가 아니라 실제로 오래된 환율의 기준일을 보여준다(판정은 그대로, 표시만 구분).
+  if (code === 'DATA_STALE' && h.fxStatus === 'DATA_STALE' && !(h.dataQuality && h.dataQuality.stale)) {
+    return h.fxLastDate ? `환율 자료 오래됨 (환율 기준일 ${h.fxLastDate})` : '환율 자료 오래됨';
+  }
+  if (code === 'DATA_STALE' && h.dataQuality && h.dataQuality.lastDate) text += ` (마지막 ${h.dataQuality.lastDate})`;
+  return text;
+}
+// 세부내용 모달: 종목별 가격 기록 상태. 문제가 있는 종목만 한 줄씩 적고, 모두 정상이면 한 줄로 끝낸다.
+function riskHoldingStatusNoteHtml(m) {
+  const list = (m && Array.isArray(m.holdings)) ? m.holdings : [];
+  if (!list.length) return '';
+  const flagged = list.filter((h) => holdingDataStatusForDisplay(h) !== 'OK');
+  if (!flagged.length) {
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-holding-status="ok">📋 보유 주식·ETF ${fmtNum(list.length, 0)}개 모두 가격 기록을 정상적으로 받았습니다.</p>`;
+  }
+  // [T6 후속 · Issue 11-1] 종목명과 상태가 한 줄에 다 들어가지 않으면(375px + 긴 "환율 자료 오래됨 …")
+  // 상태를 다음 줄로 내린다(flex-wrap) - 종목명을 말줄임으로 줄이지 않는다. 넓은 화면은 예전처럼 한 줄이다.
+  const rows = flagged.map((h) => `<li class="flex flex-wrap justify-between gap-x-2" data-holding-status-row><span class="break-keep">${escapeHtml(h.name || h.ticker)}</span><span class="text-amber-700 dark:text-amber-400 break-keep">${escapeHtml(holdingDataStatusShortText(h))}</span></li>`).join('');
+  return `<div data-risk-holding-status="flagged">
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">📋 가격 기록 확인이 필요한 종목 ${fmtNum(flagged.length, 0)}개 (전체 ${fmtNum(list.length, 0)}개 중)</p>
+      <ul class="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">${rows}</ul>
+    </div>`;
+}
+// [Phase 2-4 · T2] 통계 지표가 실제로 몇 개의 관측으로 계산됐는지. 숫자는 엔진 결과(metricStatus ·
+// varTailObservationCount)를 그대로 쓰고, 값이 없으면 지어내지 않는다.
+function riskObservationBasisNote(m) {
+  const st = m && m.metricStatus ? m.metricStatus.var : null;
+  const obs = st && typeof st.observations === 'number' ? st.observations : null;
+  if (obs === null) return '';
+  const tail = typeof m.varTailObservationCount === 'number' ? m.varTailObservationCount : null;
+  if (st.status === 'AVAILABLE' && tail !== null) {
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 변동성·최대낙폭·VaR·CVaR·상관은 보유 종목이 함께 거래된 최근 ${fmtNum(obs, 0)}거래일의 하루 변동으로 계산했습니다. VaR·CVaR는 그중 하락이 가장 컸던 ${fmtNum(tail, 0)}일을 기준으로 합니다.</p>`;
+  }
+  const required = typeof st.required === 'number' ? st.required : null;
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 보유 종목이 함께 거래된 날이 ${fmtNum(obs, 0)}거래일이라${required !== null ? `, 통계 지표에 필요한 ${fmtNum(required, 0)}거래일보다 적어` : ''} 해당 지표를 계산하지 않았습니다.</p>`;
+}
+// [T6 · §44 44-15 · Phase 2-4 T3 문구 대체] 가격통화가 USD인 종목이 있을 때만 알린다. 국내 상장 해외
+// ETF는 원화 가격이므로 대상이 아니다. 실제 계산 정의와 환율 기준일(엔진 결과 값)만 말한다.
+function riskFxBasisNote(m) {
+  const fx = m && m.fxBasis;
+  if (!fx || !(fx.usdHoldingCount > 0)) return '';
+  const n = fmtNum(fx.usdHoldingCount, 0);
+  if (!fx.applied) {
+    return `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed break-keep" data-risk-fx-note>💱 원/달러 환율 자료를 불러오지 못해, 달러로 거래되는 종목 ${n}개의 원화 기준 변동성·손실 지표를 계산하지 않았습니다.</p>`;
+  }
+  // [T6 후속 · Issue 2] "환율 기준일: 날짜"를 한 덩어리로 묶어 좁은 화면에서 날짜가 "2026-" / "09-11"로 갈라지지 않게 한다.
+  const basis = fx.basisDate ? ` <span class="whitespace-nowrap">환율 기준일: ${escapeHtml(fx.basisDate)}</span> (미국 연방준비제도 H.10)` : '';
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-fx-note>💱 달러로 거래되는 종목 ${n}개는 달러 가격과 원/달러 환율을 함께 반영한 원화 가치 변동으로 Risk를 계산했습니다(시장 민감도(베타)는 달러 가격 기준).${basis}</p>`;
+}
 const RISK_INSUFFICIENT_TITLE = '종합 위험점수 계산 불가 (데이터 부족)';
 function riskInsufficientMessage(m) {
   const ds = (m && m.dataSufficiency) || {};
@@ -429,8 +501,10 @@ function riskInsufficientMessage(m) {
   return `보유 주식·ETF의 가격 기록이 함께 있는 거래일이 ${fmtNum(n, 0)}일이라, 계산에 필요한 ${fmtNum(required, 0)}일보다 적습니다. 최근 상장했거나 가격 기록을 받지 못한 종목이 있으면 이렇게 표시됩니다.`;
 }
 // [Risk 정책 P-4 · P-5 · v252] 스트레스 손실 추정이 없으면(벤치마크나 시장 민감도를 확인할 수 없는 종목 포함) 0원으로 보이지 않게 한다.
-function stressLossValueText(lossKRW, lossPct) {
+// [Phase 2-4 · T4] 기준 지수의 과거 하락폭 자료가 없어 못 만든 경우(SOURCE_UNAVAILABLE)는 사유를 따로 말한다.
+function stressLossValueText(lossKRW, lossPct, reason) {
   if (typeof lossKRW !== 'number' || !Number.isFinite(lossKRW) || typeof lossPct !== 'number' || !Number.isFinite(lossPct)) {
+    if (reason === 'SOURCE_UNAVAILABLE') return '계산할 수 없음 (기준 지수의 과거 하락폭 자료가 없는 종목 포함)';
     return '계산할 수 없음 (기준 지수나 시장 민감도를 확인할 수 없는 종목 포함)';
   }
   return `약 ${fmtKRWShort(Math.abs(lossKRW))} (${fmtNum(lossPct, 1)}%) 손실 예상`;
@@ -584,6 +658,13 @@ function renderRiskDetailModal() {
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoGrade + '등급', SORTINO_GUIDE_TEXT)}
       ${buildMetricItem('🔗 보유 종목 간 동조성 (상관)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : riskMetricUnavailableShortText(m, 'correlation'), '보유 종목들의 가격이 같은 방향으로 움직인 정도를 비중을 반영해 평균낸 값입니다(최근 1년). 높을수록 여러 종목을 담아도 함께 오르내린 경우가 많았다는 뜻입니다.')}
     </div>
+    <!-- [Phase 2-4 · T1~T3] 계산 기준과 한계 - 관측 수 · 종목별 가격 기록 상태 · 환율 미포함.
+         새 카드가 아니라 정밀 수치 바로 아래에 같은 글자 크기의 설명 문단으로만 붙인다. -->
+    <div class="mt-2.5 space-y-2" data-risk-basis-notes>
+      ${riskObservationBasisNote(m)}
+      ${riskHoldingStatusNoteHtml(m)}
+      ${riskFxBasisNote(m)}
+    </div>
     ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
 
     <!-- [역사적 하락장 체험하기] 2020 코로나(짧고 강한 급락) + 2022 고금리(길게 이어진 약세장) 두 시나리오
@@ -593,12 +674,12 @@ function renderRiskDetailModal() {
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020년 초 급락 가정 시 (추정)</p>
-        <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW, m.stressLossPct))}</p>
+        <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW, m.stressLossPct, m.stressStatus && m.stressStatus.covid2020))}</p>
         <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2020년 2~3월 기준 지수 하락폭(코스피 -35.7%·S&P500 -33.9% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다. 그 사건이 다시 일어난다는 뜻이 아니며, 하루 하락 지표(VaR·CVaR)와는 다른 가정 계산입니다.</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022년 금리 인상기 하락 가정 시 (추정)</p>
-        <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW2022, m.stressLossPct2022))}</p>
+        <p class="text-lg sm:text-xl font-bold text-orange-500 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW2022, m.stressLossPct2022, m.stressStatus && m.stressStatus.rateHike2022))}</p>
         <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2022년 고점→저점 기준 지수 하락폭(코스피 -28.6%·나스닥100 -35.1% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다.</p>
       </div>
     </div>` : ''}

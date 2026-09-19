@@ -616,6 +616,17 @@ function looksLikeFundName(text) {
     return hay.includes(kw);
   });
 }
+// [Phase 2-4 · T3 · §44 제6조] Risk가 실제로 측정하는 가격계열의 통화(priceCcy).
+// Exposure Master에 확정된 항목이 있으면 그 값을, 없으면 자산의 거래통화(a.currency - calcRow가
+// 현재가를 원화로 환산할 때 쓰는 바로 그 값)를 쓴다. 국내 상장 해외 ETF는 priceCcy=KRW이다
+// (기초자산 통화 underlyingCcy와 섞지 않는다). 표시용 사실 정보이며 계산에는 쓰지 않는다.
+function resolveRiskPriceCcy(a) {
+  if (typeof resolveExposure === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    const em = resolveExposure(a);
+    if (em && em.status === 'RESOLVED' && em.entry && em.entry.priceCcy) return em.entry.priceCcy;
+  }
+  return a && a.currency === 'USD' ? 'USD' : 'KRW';
+}
 function resolveRiskBenchmark(a) {
   const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
@@ -766,6 +777,67 @@ async function getCachedDailyClosesWithStatus(yahooTicker) {
 }
 async function getCachedDailyCloses(yahooTicker) {
   return (await getCachedDailyClosesWithStatus(yahooTicker)).data;
+}
+
+/* [T6 · §44 44-15] Risk 원화 기준 환율 - 연준 H.10 일별 USD/KRW(달러당 원화, 뉴욕 정오 관측).
+ * scripts/fx/update-usdkrw-h10.js가 빌드 단계에서 만든 정적 JSON(data/fx/usdkrw-h10.json)만 읽는다 -
+ * H.10 원문이나 다른 환율 출처(ECB · Yahoo KRW=X)를 앱 실행 중에 조회하지 않는다.
+ * 가격통화(priceCcy)가 USD인 종목의 "통계용" 조정주가에만 곱한다. 베타 · 기술 지표는 건드리지 않는다.
+ */
+const RISK_USDKRW_DATA_URL = 'data/fx/usdkrw-h10.json';
+// H.10은 주 1회(보통 월요일) 전주 금요일까지 게시된다 - 정상 지연이 최대 약 10일이다. 게시가 두 번
+// 이상 끊겨 마지막 환율이 이보다 오래되면 "오래된 데이터"로 진단한다(계산에서 빼지는 않는다 · OP-4).
+const RISK_USDKRW_STALE_MAX_GAP_DAYS = 21;
+let riskUsdKrwCache = null; // { date, result } - 성공한 조회만 하루 동안 기억한다
+// 정적 JSON의 형식 · 값을 검사해 날짜→환율 Map으로 바꾼다. 하나라도 어긋나면 쓰지 않는다(부분 사용 없음).
+function parseUsdKrwDataset(json, todayISO) {
+  const bad = { status: RISK_DATA_STATUS.DATA_QUALITY_FAILED, rates: null, endDate: null };
+  const rows = json && Array.isArray(json.rates) ? json.rates : null;
+  if (!rows || rows.length === 0) return bad;
+  const rates = new Map();
+  let prev = null;
+  for (const row of rows) {
+    const date = Array.isArray(row) ? row[0] : null;
+    const rate = Array.isArray(row) ? row[1] : null;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad;
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return bad;
+    if (prev !== null && date <= prev) return bad; // 중복 · 역순
+    if (todayISO && date > todayISO) return bad;    // 미래 날짜
+    rates.set(date, rate);
+    prev = date;
+  }
+  if (json.endDate && json.endDate !== prev) return bad;
+  const gapDays = todayISO ? Math.round((Date.parse(todayISO) - Date.parse(prev)) / 86400000) : 0;
+  return {
+    status: gapDays > RISK_USDKRW_STALE_MAX_GAP_DAYS ? RISK_DATA_STATUS.DATA_STALE : RISK_DATA_STATUS.OK,
+    rates, endDate: prev, source: json.source || null
+  };
+}
+async function getRiskUsdKrwRates() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (riskUsdKrwCache && riskUsdKrwCache.date === today) return riskUsdKrwCache.result;
+  let json;
+  try {
+    const res = await fetchWithTimeout(RISK_USDKRW_DATA_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    json = await res.json();
+  } catch {
+    return { status: RISK_DATA_STATUS.SOURCE_UNAVAILABLE, rates: null, endDate: null };
+  }
+  const result = parseUsdKrwDataset(json, today);
+  if (result.rates) riskUsdKrwCache = { date: today, result };
+  return result;
+}
+// 날짜가 붙은 USD 가격 × 같은 날의 USD/KRW → 원화 가격. 환율이 없는 날은 뺀다 - 앞 값 채우기 ·
+// 보간 · 가까운 날짜 대체를 하지 않는다. 그래서 마지막 날짜는 "가격과 환율이 함께 있는 마지막 날"이다.
+function convertDatedClosesToKrw(datedCloses, rates) {
+  if (!Array.isArray(datedCloses) || !rates) return null;
+  const out = [];
+  datedCloses.forEach((d) => {
+    const rate = d && d.date ? rates.get(d.date) : undefined;
+    if (typeof rate === 'number' && typeof d.close === 'number' && Number.isFinite(d.close)) out.push({ date: d.date, close: d.close * rate });
+  });
+  return out;
 }
 
 // [Phase 39-B - 날짜 정렬] fetchDailyCloses()는 이미 dates를 함께 돌려주는데(위 주석 참고 - js/15의
@@ -1649,7 +1721,7 @@ async function computeAdvancedRiskMetrics() {
       const r = calcRow(a);
       if (!byTicker.has(yahoo)) {
         const bm = resolveRiskBenchmark(a);
-        byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice });
+        byTicker.set(yahoo, { ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a) });
       }
       byTicker.get(yahoo).curAmount += r.curAmount;
     });
@@ -1678,6 +1750,9 @@ async function computeAdvancedRiskMetrics() {
     // 붙여둔다 - RISK 관리 카드(computeRiskClassifiedAssets)와 리스크 진단 보기 상세 카드가 재계산
     // 없이 이 값을 그대로 재사용한다(중복 계산 제거).
     const todayISO = new Date().toISOString().slice(0, 10);
+    // [T6 · §44 44-15] 가격통화가 USD인 종목이 있을 때만 H.10 환율을 읽는다(원화 종목만 있으면 읽지 않는다).
+    const usdHoldingCount = holdings.filter((h) => h.priceCcy === 'USD').length;
+    const usdKrw = usdHoldingCount > 0 ? await getRiskUsdKrwRates() : null;
     await Promise.all(holdings.map(async (h) => {
       const got = await getCachedDailyClosesWithStatus(h.ticker);
       const data = got.data;
@@ -1726,6 +1801,24 @@ async function computeAdvancedRiskMetrics() {
         h.betaStatus = !h.benchmarkKey
           ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED
           : (!h.returns ? h.dataStatus : (benchmarkStatusByKey[h.benchmarkKey] || RISK_DATA_STATUS.SOURCE_UNAVAILABLE));
+      }
+      // [T6 · §44 44-15] 베타는 위에서 현지통화(환산 전) 조정주가로 이미 계산했다(의미 유지).
+      // 여기서부터의 통계(종목 Sortino · MDD · 공통 거래일 → 변동성 · VaR · CVaR · 상관 · 포트폴리오)는
+      // 가격통화가 USD이면 원화로 환산한 조정주가를 쓴다. 원화 가격 종목(국내 상장 해외 ETF 포함)은 그대로다.
+      h.datedClosesLocal = h.datedCloses;
+      h.fxStatus = null;
+      h.fxLastDate = null;
+      if (h.priceCcy === 'USD' && h.datedCloses) {
+        const fxUsable = usdKrw && usdKrw.rates;
+        h.fxStatus = fxUsable ? usdKrw.status : ((usdKrw && usdKrw.status) || RISK_DATA_STATUS.SOURCE_UNAVAILABLE);
+        // 환율을 쓸 수 없으면 달러 수익률로 조용히 대신하지 않는다 - 통계용 시계열을 만들지 않는다.
+        h.datedCloses = fxUsable ? convertDatedClosesToKrw(h.datedCloses, usdKrw.rates) : null;
+        h.closesAdj = h.datedCloses ? h.datedCloses.map((d) => d.close) : null;
+        h.returns = h.closesAdj && h.closesAdj.length ? dailyReturnsFromCloses(h.closesAdj) : null;
+        h.fxLastDate = h.datedCloses && h.datedCloses.length ? h.datedCloses[h.datedCloses.length - 1].date : null;
+        // 상태 우선순위는 기존과 같다 - 계산을 막는 쪽(환율 없음)이 진단용 "오래됨"보다 먼저다.
+        if (!fxUsable && (h.dataStatus === RISK_DATA_STATUS.OK || h.dataStatus === RISK_DATA_STATUS.DATA_STALE)) h.dataStatus = h.fxStatus;
+        else if (fxUsable && usdKrw.status === RISK_DATA_STATUS.DATA_STALE && h.dataStatus === RISK_DATA_STATUS.OK) h.dataStatus = RISK_DATA_STATUS.DATA_STALE;
       }
       // [Phase 39-B] 종목 단위 통계의 최소 관측치(10)는 그대로 둔다 - 종목 상세의 기술 지표용이다.
       h.hasData = !!h.returns && h.returns.length >= MIN_RETURNS_FOR_STATS;
@@ -1818,20 +1911,27 @@ async function computeAdvancedRiskMetrics() {
     // [역사적 하락장 스트레스 테스트] 종목별 베타 × 그 종목 벤치마크의 실제 낙폭.
     // [Risk 정책 P-4 · P-5 · v252] 벤치마크가 확인되지 않았거나 베타를 계산하지 못한 종목이 하나라도 있으면
     // 그 시나리오의 손실 추정을 만들지 않는다(null) - 예전처럼 베타 1.0 · 주식시장 대체 낙폭을 가정해 채우지 않는다.
-    // 확인된 벤치마크의 낙폭 상수가 표에 없을 때 쓰던 기존 대체 낙폭(fallbackDrop)은 그대로 둔다.
-    function computeStressScenario(dropPctMap, fallbackDrop) {
-      const computable = holdings.every((h) => h.benchmarkKey && typeof h.beta === 'number' && Number.isFinite(h.beta));
-      if (!computable) return { lossKRW: null, lossPct: null };
+    // [Phase 2-4 · T4] 예전에는 확인된 벤치마크의 낙폭이 표에 없으면(예: 나스닥 종합) 대체 낙폭
+    // (2020 -34 · 2022 -28)을 넣어 계산했다. 실측이 아닌 근사값이 실측처럼 보이므로 없앴다 -
+    // 표에 없는 벤치마크가 하나라도 있으면 그 시나리오는 만들지 않고 사유(SOURCE_UNAVAILABLE)를 남긴다.
+    // 시나리오 정의(상수표) · 계산식(베타 × 실측 낙폭)은 그대로다.
+    function computeStressScenario(dropPctMap) {
+      const missingInput = holdings.find((h) => !h.benchmarkKey || typeof h.beta !== 'number' || !Number.isFinite(h.beta));
+      if (missingInput) {
+        return { lossKRW: null, lossPct: null, reason: !missingInput.benchmarkKey ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED : (missingInput.betaStatus || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES) };
+      }
+      if (holdings.some((h) => typeof dropPctMap[h.benchmarkKey] !== 'number')) {
+        return { lossKRW: null, lossPct: null, reason: RISK_DATA_STATUS.SOURCE_UNAVAILABLE };
+      }
       let lossKRW = 0;
       holdings.forEach((h) => {
-        const benchmarkDrop = dropPctMap[h.benchmarkKey] ?? fallbackDrop;
-        lossKRW += h.curAmount * (h.beta * benchmarkDrop / 100);
+        lossKRW += h.curAmount * (h.beta * dropPctMap[h.benchmarkKey] / 100);
       });
       const lossPct = totalCur !== 0 ? (lossKRW / totalCur) * 100 : 0;
-      return { lossKRW, lossPct };
+      return { lossKRW, lossPct, reason: null };
     }
-    const covidStress = computeStressScenario(COVID_CRASH_BENCHMARK_DROP_PCT, -34);
-    const rateHike2022Stress = computeStressScenario(RATE_HIKE_2022_BENCHMARK_DROP_PCT, -28);
+    const covidStress = computeStressScenario(COVID_CRASH_BENCHMARK_DROP_PCT);
+    const rateHike2022Stress = computeStressScenario(RATE_HIKE_2022_BENCHMARK_DROP_PCT);
 
     // [정밀 포트폴리오 리스크 엔진] 연환산 변동성/MDD/위험기여도 → 6대 위험요인 → 종합 위험점수 → 데이터 신뢰도.
     const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
@@ -1866,9 +1966,12 @@ async function computeAdvancedRiskMetrics() {
     // [R-09] 지표별 산출 상태. 공통 거래일이 모자라면 그 사유를, 기준 지수가 없으면 그 사유를 남긴다.
     // [R-03] 공통 거래일을 못 만든 이유가 "조정주가가 없어서"일 수도 있다 - 원인을 구분해 남긴다.
     const adjustedMissing = holdings.some((h) => h.closesRaw && !h.adjustedAvailable);
+    // [T6] 환율 자료를 쓸 수 없어 원화 통계 시계열을 못 만든 달러 종목도 "출처 없음"으로 구분한다.
+    const fxMissing = holdings.some((h) => h.priceCcy === 'USD' && h.closesRaw && h.adjustedAvailable && !h.datedCloses);
     const commonShortReason = hasCommonReturns
       ? null
-      : (adjustedMissing ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
+      : (fxMissing ? (holdings.find((h) => h.priceCcy === 'USD' && h.adjustedAvailable && !h.datedCloses).fxStatus || RISK_DATA_STATUS.SOURCE_UNAVAILABLE)
+        : adjustedMissing ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
     const betaReason = holdings.some((h) => h.betaStatus && h.betaStatus !== RISK_DATA_STATUS.OK)
       ? (holdings.find((h) => h.betaStatus && h.betaStatus !== RISK_DATA_STATUS.OK) || {}).betaStatus
       : commonShortReason;
@@ -1890,10 +1993,26 @@ async function computeAdvancedRiskMetrics() {
       topWeight, top3Weight, topHolding, topCorrelation, topCorrelationPair,
       stressLossKRW: covidStress.lossKRW, stressLossPct: covidStress.lossPct,
       stressLossKRW2022: rateHike2022Stress.lossKRW, stressLossPct2022: rateHike2022Stress.lossPct,
+      // [Phase 2-4 · T4] 스트레스 추정을 만들지 못한 사유(만들었으면 null).
+      stressStatus: { covid2020: covidStress.reason, rateHike2022: rateHike2022Stress.reason },
+      // [Phase 2-4 · T2] VaR · CVaR가 실제로 쓴 꼬리(하위 5%) 관측 수 - 위 tailReturns 그대로다.
+      varTailObservationCount: var95Pct === null ? null : tailReturns.length,
       hhi, sectorExposure, portfolioVolatilityPct, portfolioVolatilityShortPct, volatilitySpike, portfolioMDDPct,
       weightedAvgCorrelation, correlationMatrix, subScores, riskScore, dataConfidence,
       // [R-09] 지표별 상태와 "점수에 반영되지 못한 요인" - 화면이 숨기지 않고 사실대로 보여준다.
       metricStatus, excludedFactors, commonDates: common.dates,
+      // [T6 · §44 44-15] 원화 기준 환율 반영 정보. basisDate = 달러 종목이 모두 환율과 함께 있는 마지막 날
+      // (가격과 H.10이 함께 있는 마지막 날 · 이후 가격은 통계에 쓰지 않았다).
+      fxBasis: usdHoldingCount > 0 ? {
+        source: 'FRB_H10', usdHoldingCount,
+        status: usdKrw ? usdKrw.status : RISK_DATA_STATUS.SOURCE_UNAVAILABLE,
+        applied: !!(usdKrw && usdKrw.rates),
+        fxEndDate: usdKrw ? usdKrw.endDate : null,
+        basisDate: (() => {
+          const lasts = holdings.filter((h) => h.priceCcy === 'USD' && h.fxLastDate).map((h) => h.fxLastDate).sort();
+          return lasts.length ? lasts[0] : null;
+        })()
+      } : null,
       dataSufficiency: {
         // [R-09] status는 이제 "전부 숨김" 스위치가 아니라 공통 거래일 충족 여부 자체를 뜻한다.
         status: hasCommonReturns ? 'SUFFICIENT' : 'INSUFFICIENT',
