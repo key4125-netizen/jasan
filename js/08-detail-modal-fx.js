@@ -70,7 +70,7 @@ async function attachStockAnalysisReportToDetailModal(ticker) {
     if (token !== assetDetailAnalysisToken || document.getElementById('assetDetailModal').classList.contains('hidden')) return;
     const s = macroDetailSnapshot[macroKey];
     if (s) { s.change5d = trend ? trend.change5d : null; s.change20d = trend ? trend.change20d : null; }
-    body.innerHTML = buildMacroDetailBodyHtml(macroKey) + buildIndexPriceLevelsHtml(a) + macroIndexFooterCaptionHtml();
+    body.innerHTML = buildMacroDetailBodyHtml(macroKey) + buildIndexPriceLevelsHtml(a, macroKey) + macroIndexFooterCaptionHtml();
     lucide.createIcons();
     return;
   }
@@ -929,7 +929,8 @@ async function renderAssetDetailChart(asset, avgPriceOverride, byOwnerAvgPriceOv
     points = await fetchDailyHistory(sanitized.yahooTicker);
   } catch (e) {
     // 모달이 그 사이 닫혔거나 다른 종목으로 다시 열렸으면 이 실패 메시지는 무시한다.
-    if (myToken === assetDetailChartToken) msgEl.textContent = '주가 차트를 불러오지 못했습니다.';
+    // [UI 마무리 ①] 이 차트는 금리 · 환율 · 지수 같은 매크로 지표 팝업에도 쓰인다 - "주가"라고 하지 않는다.
+    if (myToken === assetDetailChartToken) msgEl.textContent = '차트를 불러오지 못했습니다. 잠시 후 다시 열어 보세요.';
     return;
   }
   if (myToken !== assetDetailChartToken) return; // 응답 도착 전 모달이 닫혔거나 다른 종목으로 전환됨

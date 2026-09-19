@@ -49,7 +49,8 @@ const SEED = () => {
 const READ = () => {
   const doc = globalThis.document;
   const txt = (id) => doc.getElementById(id).textContent;
-  const tags = (id) => [...doc.getElementById(id).querySelectorAll('span')].map((s) => s.textContent.trim());
+  // [UI 마무리 ④] 소유자 칩 안에 색 점 · 이름 span이 들어가므로 칩(직계 자식)만 센다.
+  const tags = (id) => [...doc.getElementById(id).querySelectorAll(':scope > span')].map((s) => s.textContent.trim());
   let totalCur = 0, finCur = 0, reCur = 0, krwFin = 0, usdFin = 0;
   const byOwn = {}, byCat = {};
   state.assets.forEach((a) => {

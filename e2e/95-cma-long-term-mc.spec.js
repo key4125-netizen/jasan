@@ -1,4 +1,4 @@
-/* global window, document, getComputedStyle */
+/* global window, document */
 // E2E-95 장기 MC CMA 체계(체크리스트 §37) - 화면에서 확인하는 것:
 //   A. 가격 이력 없이(시세 캐시 주입 없음) Monte Carlo가 CMA 변동성 · 상관으로 끝까지 계산된다.
 //   B. 결과 아래 "장기 가정 출처"(v250부터 기본 접힘 드롭다운)에 기관 · 기준일 · 기간 · 통화 · 세트 버전 · 상관 출처 유형 개수가 보이고,
@@ -62,9 +62,12 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await runMc(page);
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 30000 });
   expect(await page.locator('#mcP50Text').innerText()).not.toMatch(/NaN|undefined|Infinity|^$/);
-  const area = page.locator('#mcCmaSourceArea');
-  await expect(area).toBeVisible();
-  const summary = page.locator('#mcCmaSourceSummary');
+  // [UI 마무리 ⑤] 장기 가정 출처는 결과 아래 드롭다운이 아니라 상단 「실제 미래는 여러 경로로 달라질 수 있습니다」 ⓘ 팝업 한 곳에 있다.
+  await expect(page.locator('#mcCmaSourceArea')).toHaveCount(0);
+  await expect(page.locator('#mcCmaInfoBtn')).toHaveCount(0);
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModal')).toBeVisible();
+  const summary = page.locator('#mcInfoModalBody [data-mc-cma-summary]');
   await expect(summary).toContainText('Allianz Global Investors 장기 CMA');
   await expect(summary).toContainText('기준일 2025-12-31');
   await expect(summary).toContainText('10년 전망');
@@ -73,23 +76,19 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(summary).toContainText('Benchmark 참고값 1쌍');
   await expect(summary).toContainText('J.P. Morgan Asset Management(기준일 2025-09-30)');
   await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)');
-  // [v250] 출처 요약은 기본 접힘 드롭다운 - 펼치면 보인다. 자산군 변동성 · Benchmark 쌍 상세는 옆 ⓘ 팝업(mcInfoModal).
-  const body = page.locator('#mcCmaSourceBody');
-  await expect(body).toHaveAttribute('style', /max-height:\s*0px/);
-  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'false');
-  await page.locator('#mcCmaSourceToggleBtn').click();
-  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'true');
-  await expect(summary).toBeVisible();
-  await page.locator('#mcCmaInfoBtn').click();
-  await expect(page.locator('#mcInfoModal')).toBeVisible();
-  const detail = page.locator('#mcInfoModalBody');
+  const detail = page.locator('#mcInfoModalBody [data-mc-cma-detail]');
   await expect(detail).toContainText('국내 주식 → Korea Equities · 변동성 27.9%');
   await expect(detail).toContainText('미국 주식 → North America Equities · 변동성 16.5%');
   await expect(detail).toContainText('국내 주식 ↔ 미국 주식: 0.41');
-  await expect(detail).toContainText('Benchmark 참고값(BENCHMARK_REFERENCE)');
+  await expect(detail).toContainText('Benchmark 참고값 · J.P. Morgan Asset Management');
+  await expect(detail).not.toContainText('BENCHMARK_REFERENCE');
   await expect(detail).toContainText('2026 Long-Term Capital Market Assumptions - Korean won (KRW) assumptions matrix');
   await expect(detail).toContainText('기준일 2025-09-30');
   await expect(detail).toContainText('Korean Equity ↔ U.S. Large Cap');
+  // 같은 팝업에 MC 설명 · 주의사항도 함께 있다(한 곳에서 이해).
+  await expect(page.locator('#mcInfoModalBody')).toContainText('공식 모델: Monthly Precision Monte Carlo');
+  // 팝업 어디에도 내부 코드(대문자_밑줄 형식, 예: BENCHMARK_REFERENCE · SAFETY_*)가 사용자 문구로 나오지 않는다.
+  expect(await page.locator('#mcInfoModalBody').innerText()).not.toMatch(/\b[A-Z]{2,}(?:_[A-Z0-9]+)+\b/);
   await page.locator('#closeMcInfoModalBtn').click();
   await expect(page.locator('#mcInfoModal')).toBeHidden();
   expect(priceRequests).toEqual([]);
@@ -106,8 +105,10 @@ test('C. 입력 서명에 CMA 세트 버전이 들어가고, 세트가 바뀌면
   await page.evaluate(() => { window.getActiveCmaSetVersion = () => 'CMA-2027.1'; refreshMonteCarloResultValidity(); });
   await expect(page.locator('#mcStaleNotice')).toBeVisible();
   await expect(page.locator('#mcP50ScopeNote')).toContainText('이전 설정 기준');
-  await expect(page.locator('#mcCmaSourceSummary')).toContainText('세트 CMA-2026.1');
-  await expect(page.locator('#mcCmaSourceSummary')).not.toContainText('CMA-2027.1');
+  await page.locator('#mcIntroInfoBtn').click();
+  await expect(page.locator('#mcInfoModalBody [data-mc-cma-summary]')).toContainText('세트 CMA-2026.1');
+  await expect(page.locator('#mcInfoModalBody [data-mc-cma-summary]')).not.toContainText('CMA-2027.1');
+  await page.locator('#closeMcInfoModalBtn').click();
 });
 
 test('D. 수익률 가정은 있는데 장기 CMA 자산군이 없는 위험자산이 있으면 실행하지 않고 어떤 자산인지 알려 준다', async ({ page }) => {
@@ -126,33 +127,22 @@ for (const scheme of ['dark', 'light']) {
     await seedCmaPortfolio(page);
     await page.evaluate((s) => { document.documentElement.classList.toggle('dark', s === 'dark'); }, scheme);
     await runMc(page);
-    await expect(page.locator('#mcCmaSourceArea')).toBeVisible({ timeout: 30000 });
-    await page.locator('#mcCmaSourceToggleBtn').click();
-    await expect(page.locator('#mcCmaSourceSummary')).toBeVisible();
-    const m = await page.evaluate(() => {
-      const area = document.getElementById('mcCmaSourceArea');
-      const texts = [...area.querySelectorAll('p, li, span, button')].filter((el) => el.offsetParent !== null && el.textContent.trim());
-      const minFont = Math.min(...texts.map((el) => parseFloat(getComputedStyle(el).fontSize)));
-      const btn = document.getElementById('mcCmaSourceToggleBtn').getBoundingClientRect();
-      const info = document.getElementById('mcCmaInfoBtn').getBoundingClientRect();
-      const rect = area.getBoundingClientRect();
-      return { minFont, btnH: btn.height, infoW: info.width, infoH: info.height, right: rect.right, scrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
-    });
-    expect(m.minFont).toBeGreaterThanOrEqual(14);
-    expect(m.btnH).toBeGreaterThanOrEqual(44);
-    expect(m.infoW).toBeGreaterThanOrEqual(44);
-    expect(m.infoH).toBeGreaterThanOrEqual(44);
-    // ⓘ 팝업(상세)도 14px 이상 · 가로 넘침 없음
-    await page.locator('#mcCmaInfoBtn').click();
-    await expect(page.locator('#mcInfoModalBody')).toContainText('BENCHMARK_REFERENCE');
-    const pm = await page.evaluate(() => {
-      const body = document.getElementById('mcInfoModalBody');
-      const texts = [...body.querySelectorAll('p, li, span')].filter((el) => el.offsetParent !== null && el.textContent.trim());
-      return { minFont: Math.min(...texts.map((el) => parseFloat(getComputedStyle(el).fontSize))), scrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
+    await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 30000 });
+    // [UI 마무리 ⑤] 출처는 상단 ⓘ 팝업의 "장기 가정 출처" 절 - 여는 버튼 44px 이상, 절 안 글자 14px 이상, 가로 넘침 없음.
+    const introH = await page.locator('#mcIntroInfoBtn').evaluate((el) => el.getBoundingClientRect().height);
+    expect(introH).toBeGreaterThanOrEqual(44);
+    await page.locator('#mcIntroInfoBtn').click();
+    const section = page.locator('#mcInfoModalBody [data-mc-cma-source]');
+    await expect(section).toContainText('장기 가정 출처');
+    await expect(section).toContainText('Benchmark 참고값');
+    await expect(section).not.toContainText('BENCHMARK_REFERENCE');
+    const pm = await section.evaluate((el) => {
+      const texts = [...el.querySelectorAll('p, li, span')].filter((n) => n.offsetParent !== null && n.textContent.trim());
+      const win = el.ownerDocument.defaultView;
+      return { minFont: Math.min(...texts.map((n) => parseFloat(win.getComputedStyle(n).fontSize))), right: el.getBoundingClientRect().right, scrollW: el.ownerDocument.documentElement.scrollWidth, vw: win.innerWidth };
     });
     expect(pm.minFont).toBeGreaterThanOrEqual(14);
+    expect(pm.right).toBeLessThanOrEqual(pm.vw);
     expect(pm.scrollW).toBeLessThanOrEqual(pm.vw);
-    expect(m.right).toBeLessThanOrEqual(m.vw);
-    expect(m.scrollW).toBeLessThanOrEqual(m.vw);
   });
 }

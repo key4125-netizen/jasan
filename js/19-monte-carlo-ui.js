@@ -88,11 +88,6 @@ function collapseMonteCarloResultAccordions() {
       if (chevron && typeof setAccordionOpen === 'function') setAccordionOpen(body, chevron, false);
     });
   }
-  if (mcCmaSourceOpen) {
-    mcCmaSourceOpen = false;
-    if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaSourceBody'), mcUiEl('mcCmaSourceChevron'), false);
-    mcUiEl('mcCmaSourceToggleBtn').setAttribute('aria-expanded', 'false');
-  }
 }
 
 document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
@@ -107,6 +102,7 @@ document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
       <p class="font-semibold text-slate-700 dark:text-slate-200">공식 모델: Monthly Precision Monte Carlo</p>
       <p class="mt-1">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>
     </div>
+    ${mcCmaSourceSectionHtml()}
     ${mcSafetyDetailStore.innerHTML ? `<div class="space-y-1.5"><p class="font-semibold text-slate-700 dark:text-slate-200">주의사항 및 계산 방법</p>${mcSafetyDetailStore.innerHTML}</div>` : ''}
   `);
   // [v250] 옮겨 온 주의사항 카드의 아이콘 · 접기 상태를 팝업 안에서 다시 그린다(카드 HTML · 판정 결과는 그대로).
@@ -340,7 +336,7 @@ function resetMonteCarloUiToReady() {
   if (mcUiEl('mcSafetyCritical')) { mcUiEl('mcSafetyCritical').classList.add('hidden'); mcUiEl('mcSafetyCritical').innerHTML = ''; }
   mcSafetyDetailStore.innerHTML = '';
   if (mcUiEl('mcStaleNotice')) mcUiEl('mcStaleNotice').classList.add('hidden');
-  if (mcUiEl('mcCmaSourceArea')) mcUiEl('mcCmaSourceArea').classList.add('hidden');
+  mcCmaSummaryHtml = '';
   mcCmaDetailHtml = '';
 }
 
@@ -654,7 +650,7 @@ const MC_CMA_SOURCE_TYPE_LABEL = Object.freeze({
   OFFICIAL_CMA_MAPPING: '공식 CMA 연결',
   BENCHMARK_REFERENCE: 'Benchmark 참고값'
 });
-let mcCmaSourceOpen = false;
+let mcCmaSummaryHtml = '';
 let mcCmaDetailHtml = '';
 function mcCmaHorizonText(h) {
   if (h && typeof h === 'object') return `${h.min}~${h.max}년 전망`;
@@ -666,9 +662,7 @@ function mcCmaCurrencyText(c) {
   return c ? `${c} 기준` : '';
 }
 function renderMonteCarloCmaSource(cma, setVersion) {
-  const area = mcUiEl('mcCmaSourceArea');
-  if (!area) return;
-  if (!cma || !cma.primary) { area.classList.add('hidden'); return; }
+  if (!cma || !cma.primary) { mcCmaSummaryHtml = ''; mcCmaDetailHtml = ''; return; }
   const p = cma.primary;
   const summary = typeof summarizeCmaCorrelationPairs === 'function' ? summarizeCmaCorrelationPairs(cma.pairs) : { rows: [], counts: {}, benchmarkUsed: false };
   const usedBenchmarks = (cma.benchmarks || []).filter((b) => summary.rows.some((r) => r.sourceType === 'BENCHMARK_REFERENCE' && r.dataset && r.dataset.datasetId === b.datasetId));
@@ -689,7 +683,7 @@ function renderMonteCarloCmaSource(cma, setVersion) {
   if (allReturnKey) {
     lines.push('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다).');
   }
-  mcUiEl('mcCmaSourceSummary').innerHTML = lines.map((l) => escapeHtml(l)).join('<br>');
+  mcCmaSummaryHtml = lines.map((l) => escapeHtml(l)).join('<br>');
 
   const labelOf = (c) => (typeof getAssetCharacterLabel === 'function' ? getAssetCharacterLabel(c) : c);
   const risky = (cma.instruments || []).filter((i) => !i.riskFree);
@@ -703,7 +697,7 @@ function renderMonteCarloCmaSource(cma, setVersion) {
   const pairRows = summary.rows.map((r) => {
     const d = r.dataset || {};
     return `<li>${escapeHtml(labelOf(r.appClassA))} ↔ ${escapeHtml(labelOf(r.appClassB))}: <span class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(fmtNum(r.value, 2))}</span>`
-      + `<br>${escapeHtml(MC_CMA_SOURCE_TYPE_LABEL[r.sourceType] || r.sourceType)}(${escapeHtml(r.sourceType)}) · ${escapeHtml(d.provider || '-')}`
+      + `<br>${escapeHtml(MC_CMA_SOURCE_TYPE_LABEL[r.sourceType] || r.sourceType)} · ${escapeHtml(d.provider || '-')}`
       + ` · ${escapeHtml(d.sourceTitle || '-')} · 기준일 ${escapeHtml(d.asOfDate || '-')} · ${escapeHtml(mcCmaCurrencyText(d.currency))}`
       + `<br>${escapeHtml(r.classA || '-')} ↔ ${escapeHtml(r.classB || '-')}</li>`;
   });
@@ -711,10 +705,15 @@ function renderMonteCarloCmaSource(cma, setVersion) {
     `<div><p class="font-semibold text-slate-600 dark:text-slate-300">자산군 변동성(${escapeHtml(p.provider)})</p><ul class="list-disc pl-5 space-y-1">${volRows.join('') || '<li>위험자산 없음</li>'}</ul></div>`
     + `<div><p class="font-semibold text-slate-600 dark:text-slate-300">상관계수 출처</p><ul class="list-disc pl-5 space-y-1">${pairRows.join('') || '<li>해당 없음</li>'}</ul></div>`
     + `<p>자료: ${escapeHtml(p.sourceTitle)} (${escapeHtml(p.version)})</p>`;
-  mcCmaSourceOpen = false;
-  area.classList.remove('hidden');
-  if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaSourceBody'), mcUiEl('mcCmaSourceChevron'), false);
-  mcUiEl('mcCmaSourceToggleBtn').setAttribute('aria-expanded', 'false');
+}
+// [UI 마무리 ⑤ · §37 CMA-UI-01] 장기 가정 출처를 결과 아래 드롭다운 + 별도 ⓘ에서 상단 "실제 미래는 여러 경로로 달라질 수
+// 있습니다" ⓘ 팝업 한 곳으로 모았다. 요약(기관 · 기준일 · 기간 · 통화 · 세트 · 상관 출처 유형 · Benchmark · 수익률 기준)과
+// 상세(자산군 변동성 · 상관계수 쌍별 출처 · 자료)는 그 실행 당시 결과(result.cma)에서 만든 그대로다.
+function mcCmaSourceSectionHtml() {
+  const body = mcCmaSummaryHtml
+    ? `<p class="break-keep" data-mc-cma-summary>${mcCmaSummaryHtml}</p><div class="space-y-2 break-keep" data-mc-cma-detail>${mcCmaDetailHtml}</div>`
+    : '<p data-mc-cma-summary>Monte Carlo를 실행하면 이번 계산에 쓴 장기 가정 출처(기관 · 기준일 · 자산군 변동성 · 상관계수 출처)가 여기에 표시됩니다.</p>';
+  return `<div class="space-y-1.5" data-mc-cma-source><p class="font-semibold text-slate-700 dark:text-slate-200">장기 가정 출처</p>${body}</div>`;
 }
 
 /* 계좌 범위 / 기간 / 장기 가정 출처 - 전부 이미 계산된 결과를 다시 그릴 뿐이라 Monte Carlo를 다시
@@ -730,18 +729,6 @@ document.addEventListener('click', (e) => {
   if (msBtn) {
     mcSelectedMilestoneIdx = Number(msBtn.dataset.milestoneIdx);
     renderMonteCarloScopedResult();
-    return;
-  }
-  if (e.target.closest('#mcCmaSourceToggleBtn')) {
-    mcCmaSourceOpen = !mcCmaSourceOpen;
-    mcUiEl('mcCmaSourceToggleBtn').setAttribute('aria-expanded', String(mcCmaSourceOpen));
-    if (typeof setAccordionOpen === 'function') setAccordionOpen(mcUiEl('mcCmaSourceBody'), mcUiEl('mcCmaSourceChevron'), mcCmaSourceOpen);
-    return;
-  }
-  if (e.target.closest('#mcCmaInfoBtn')) {
-    openMcInfoModal('장기 가정 출처 · 자산군 변동성 · 상관계수', mcCmaDetailHtml
-      ? `<div class="space-y-2 break-keep">${mcCmaDetailHtml}</div>`
-      : '<p>Monte Carlo를 실행하면 이번 계산에 쓴 자산군 변동성과 상관계수 출처가 여기에 표시됩니다.</p>');
     return;
   }
 });

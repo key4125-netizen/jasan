@@ -708,9 +708,9 @@ document.getElementById('tx_name').addEventListener('click', () => {
 function populateRateMatchOverrideOptions(currentValue) {
   const select = document.getElementById('tx_rateMatchOverride');
   const rows = getScenarioRateDisplayRows().slice().sort((a, b) => a.label.localeCompare(b.label, 'ko'));
-  const options = ['<option value="">자동판별 (비워두면 종목 기준 → 시스템 자동 매칭 순으로 적용)</option>'];
+  const options = ['<option value="">자동 (비워두면 종목에 지정한 기준, 없으면 앱이 고른 기준을 씁니다)</option>'];
   if (currentValue && !rows.some((r) => r.key === currentValue)) {
-    options.push(`<option value="${escapeHtml(currentValue)}">⚠ 현재값: ${escapeHtml(currentValue)} (등록되지 않은 키)</option>`);
+    options.push(`<option value="${escapeHtml(currentValue)}">⚠ 현재값: ${escapeHtml(currentValue)} (목록에 없는 기준)</option>`);
   }
   rows.forEach((r) => {
     options.push(`<option value="${escapeHtml(r.key)}">${escapeHtml(r.label)} (${escapeHtml(r.key)})</option>`);

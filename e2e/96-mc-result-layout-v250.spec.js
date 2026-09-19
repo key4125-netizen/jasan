@@ -73,14 +73,14 @@ test('C. 결과 순서 · 지정 문구 · 삭제된 요소', async ({ page }) =
   await run(page, 300000000);
   // 참고금액 라벨(PM 지정 문장)
   await expect(page.locator('#mcP25Label')).toHaveText('시뮬레이션 결과 20년 기준 보수적으로 볼 때의 참고금액');
-  // DOM 순서: 참고금액 카드 → 목표 박스 → 분포표 → 한 줄 안내 → 장기 가정 출처 → ※ 문구
+  // DOM 순서: 참고금액 카드 → 목표 박스 → 분포표 → 한 줄 안내 → ※ 문구([UI 마무리 ⑤] 장기 가정 출처는 상단 ⓘ 팝업으로 옮김)
   const order = await page.evaluate(() => {
-    const ids = ['mcP25Text', 'mcGoalBox', 'mcMilestoneTableBody', 'mcCmaSourceArea'];
+    const ids = ['mcP25Text', 'mcGoalBox', 'mcMilestoneTableBody'];
     const els = ids.map((id) => document.getElementById(id));
     const ps = [...document.querySelectorAll('#mcResultArea p')];
     const note = ps.find((p) => p.textContent.trim() === '각 칸의 아래쪽 회색 숫자는 현재가치 기준 금액');
     const star = ps.find((p) => p.textContent.trim().startsWith('※ 일반계좌는'));
-    const seq = [els[0], els[1], els[2], note, els[3], star];
+    const seq = [els[0], els[1], els[2], note, star];
     return { found: seq.every(Boolean), ordered: seq.every((el, i) => i === 0 || (seq[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) };
   });
   expect(order).toEqual({ found: true, ordered: true });
@@ -111,8 +111,8 @@ test('C. 결과 순서 · 지정 문구 · 삭제된 요소', async ({ page }) =
   await expect(page.locator('#mcP50RealLabel')).toContainText('물가상승률');
   await expect(page.locator('#mcP25RealText')).toContainText('현재가치 기준');
   await expect(page.locator('#mcSafetyCritical')).toHaveCount(1);
-  // 장기 가정 출처는 기본 접힘
-  await expect(page.locator('#mcCmaSourceBody')).toHaveAttribute('style', /max-height:\s*0px/);
+  // [UI 마무리 ⑤] 결과 아래 장기 가정 출처 드롭다운은 없다(상단 ⓘ 팝업으로 옮김 - e2e/95).
+  await expect(page.locator('#mcCmaSourceArea')).toHaveCount(0);
 });
 
 test('D. 주의사항 및 계산 방법은 맨 위 ⓘ 팝업에서 보인다 - 실행 전에는 기존 설명만', async ({ page }) => {
@@ -158,7 +158,6 @@ for (const [w, h] of [[375, 812], [1440, 900]]) {
       const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
       if (isDark !== dark) await page.locator('#darkModeBtn').click();
       await run(page, 300000000);
-      await page.locator('#mcCmaSourceToggleBtn').click();
       const m = await page.evaluate(() => {
         const tops = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().top));
         const heights = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().height));

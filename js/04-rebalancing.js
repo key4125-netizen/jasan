@@ -1178,7 +1178,7 @@ function renderStockAllocationSelectedList() {
     const diff = aiPct !== null ? aiPct - num(s.pct) : null;
     const badgeHtml = aiPct !== null ? `
       <div class="flex items-center gap-1 mt-1.5 flex-wrap">
-        <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 AI 최적 추천: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
+        <span class="text-sm font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 whitespace-nowrap">💡 베타 기준 참고: ${fmtNum(aiPct, 1)}% (${diff >= 0 ? '▲' : '▼'}${fmtNum(Math.abs(diff), 1)}%p)</span>
         <button type="button" data-stock-alloc-apply-ai data-i="${i}" class="text-sm font-semibold px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 whitespace-nowrap">적용</button>
       </div>` : '';
     const isHeld = getHeldStockCandidates(stockAllocationCurrentRegion).some((a) => a.ticker === s.ticker);

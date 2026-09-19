@@ -290,11 +290,11 @@ function assessFee(feePct, fieldLabel, isExplicitlySet) {
   }
   if (feePct === undefined || feePct === null || !Number.isFinite(feePct)) return [];
   if (feePct < 0) {
-    return [makeIssue('SAFETY_INVALID_FEE', SAFETY_LEVEL.BLOCK, fieldLabel, 'Fee 값 오류',
+    return [makeIssue('SAFETY_INVALID_FEE', SAFETY_LEVEL.BLOCK, fieldLabel, '운용보수 값 오류',
       `${fieldLabel}의 운용보수가 ${feePct}%로, 음수는 허용되지 않습니다.`, '0 이상의 값으로 입력해주세요.')];
   }
   if (feePct >= 100) {
-    return [makeIssue('SAFETY_INVALID_FEE', SAFETY_LEVEL.BLOCK, fieldLabel, 'Fee 값 오류',
+    return [makeIssue('SAFETY_INVALID_FEE', SAFETY_LEVEL.BLOCK, fieldLabel, '운용보수 값 오류',
       `${fieldLabel}의 운용보수가 ${feePct}%로, 100% 이상은 허용되지 않습니다.`, '100% 미만의 값으로 입력해주세요.')];
   }
   if (feePct >= SAFETY_THRESHOLDS.FEE_STRONG_WARNING_HIGH) {

@@ -26,7 +26,8 @@ const cacheName = (page) => page.evaluate(async () => (await caches.keys()).find
 test('A. 캐시에 오래된 H.10이 있어도 네트워크가 되면 서버의 최신 파일을 쓰고 캐시도 갱신한다', async ({ page }) => {
   await bootWithServiceWorker(page);
   const name = await cacheName(page);
-  expect(name).toBe('smart-asset-manager-v259');
+  expect(name).toMatch(/^smart-asset-manager-v\d+$/);
+  expect(Number(name.split('-v')[1])).toBeGreaterThanOrEqual(259);
   const r = await page.evaluate(async (name) => {
     const url = new URL('data/fx/usdkrw-h10.json', location.href).href;
     const cache = await caches.open(name);

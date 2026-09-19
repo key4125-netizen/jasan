@@ -155,7 +155,7 @@ async function buildMonteCarloInputFromState(config) {
 
   const cmaSet = getActiveCmaSet();
   if (!cmaSet) {
-    errors.push('장기 CMA 가정(ACTIVE 세트)이 없어 Monte Carlo를 실행할 수 없습니다.');
+    errors.push('장기 자산군 전망(CMA)을 불러오지 못해 Monte Carlo를 실행할 수 없습니다.');
     return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };
   }
   const cmaRisk = buildCmaRiskInputs(cmaEntries);
@@ -164,9 +164,9 @@ async function buildMonteCarloInputFromState(config) {
       const label = getAssetCharacterLabel(e.appClass || ASSET_CHARACTERS.UNRESOLVED);
       errors.push(`"${e.label}"(${label})에 연결된 장기 CMA 자산군이 없어 변동성을 정할 수 없습니다 - 수익률 관리에서 기준을 지정하거나 목표 비중에서 조정해 주세요.`);
     } else if (e.code === 'CORRELATION_SOURCE_MISSING') {
-      errors.push(`"${e.label}" 사이의 장기 상관계수가 공식 CMA · 등록된 Benchmark 어디에도 없어 계산할 수 없습니다.`);
+      errors.push(`"${e.label}" 사이의 장기 상관계수가 공식 장기 전망(CMA)과 참고 자료(Benchmark) 어디에도 없어 계산할 수 없습니다.`);
     } else {
-      errors.push(`"${e.label}"의 장기 CMA 가정을 불러오지 못했습니다(${e.code}).`);
+      errors.push(`"${e.label}"의 장기 자산군 전망(CMA) 값을 찾지 못해 계산할 수 없습니다.`);
     }
   });
   if (errors.length > 0) return { instruments: null, correlationMatrix: null, assetOrder: null, errors, warnings };

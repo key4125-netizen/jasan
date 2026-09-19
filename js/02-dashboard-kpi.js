@@ -247,10 +247,23 @@ function renderKpiBreakdown(containerId, byCategory, valueFn, formatFn, colored,
   container.classList.remove('hidden');
   container.classList.add('flex');
   container.innerHTML = entries.map(e => {
+    // [UI 마무리 ④] 소유자 금액(손익 색이 아닌 평가금액)은 두 칩이 같은 회색이라 구분이 어려웠다 - 차트 소유자 평단 점선과
+    // 같은 소유자 색(OWNER_AVG_LINE_COLORS, js/08)으로 점 · 테두리를 넣고 글자는 진하게 둔다. 이름 텍스트는 그대로라
+    // 색만으로 구분하지 않는다. 손익 색(빨강/파랑)과 겹치지 않는 파랑-청록 · 주황 계열이다.
+    if (ownerOrder && !colored) {
+      const tone = KPI_OWNER_CHIP_TONES[ownerRank(e.cat)] || KPI_OWNER_CHIP_TONES.other;
+      return `<span class="${textSizeClass} inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${tone.border} bg-white dark:bg-slate-900 max-w-full whitespace-normal sm:whitespace-nowrap break-keep"><span class="inline-block w-2 h-2 rounded-full shrink-0 ${tone.dot}" aria-hidden="true"></span><span class="font-semibold text-slate-700 dark:text-slate-100">${escapeHtml(kpiBreakdownLabel(e.cat))} ${formatFn(e.val)}</span></span>`;
+    }
     const colorClass = colored ? profitColor(e.val) : 'text-slate-500 dark:text-slate-300';
     return `<span class="${textSizeClass} px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/60 max-w-full whitespace-normal sm:whitespace-nowrap break-keep ${colorClass}">${escapeHtml(kpiBreakdownLabel(e.cat))} ${formatFn(e.val)}</span>`;
   }).join('');
 }
+// 소유자 칩 색 - ownerRank 순서(신랑 0 · 와이프 1)가 js/08 OWNER_AVG_LINE_COLORS_LIGHT/DARK의 순서와 같다.
+const KPI_OWNER_CHIP_TONES = Object.freeze({
+  0: { dot: 'bg-[#0077B6] dark:bg-[#64D2FF]', border: 'border-[#0077B6] dark:border-[#64D2FF]' },
+  1: { dot: 'bg-[#CC7A00] dark:bg-[#FF9F0A]', border: 'border-[#CC7A00] dark:border-[#FF9F0A]' },
+  other: { dot: 'bg-slate-400', border: 'border-slate-300 dark:border-slate-600' }
+});
 
 // [총 평가손익 카드 전용] 소유자별 세부 손익 - 다른 태그(renderKpiBreakdown)는 값 하나만 보여주지만,
 // 이건 "+850만원 (+18.2%)"처럼 금액과 수익률을 함께 한 줄에 보여준다. 양수=빨강/음수=파랑/0=기본색은

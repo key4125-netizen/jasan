@@ -2460,7 +2460,7 @@ function updateTaxAdvantagedAllocationSumHint(owner, accountType) {
   if (!el) return;
   const allocation = (taxPlanSource().allocationByOwner[owner] || []).filter((it) => it.accountType === accountType);
   const sumPct = allocation.reduce((s, it) => s + num(it.pct), 0);
-  el.textContent = `이 계좌 배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 위험:안전 70:30으로 계산`;
+  el.textContent = `이 계좌 배분 합계 ${fmtNum(sumPct, 1)}% · 나머지 ${fmtNum(Math.max(0, 100 - sumPct), 1)}%는 국내 주식(코스피) 70% · 채권 30% 비율로 계산`;
 }
 // [이벤트 위임] 카드를 매번 다시 그릴 때마다 리스너를 새로 붙일 필요가 없도록, 절대 다시 그려지지 않는
 // 모달 자체에 하나만 걸어둔다. 입력할 때마다 카드 전체를 다시 그리면 포커스가 끊겨 타이핑이 불편해지므로,

@@ -92,7 +92,9 @@ function buildRiskDiagnosisLine(m) {
   if (maxKey === 'technical' && m.topHolding) {
     return '보유 종목 중 일부가 단기 과열권(RSI 70 이상)이거나 이동평균이 하락 배열이어서, 단기 과열·추세 점수가 가장 높습니다.';
   }
-  return '포트폴리오가 비교적 안정적으로 분산되어 있습니다.';
+  // [문구 점검 P0] 예전에는 여기서 "포트폴리오가 비교적 안정적으로 분산되어 있습니다"라고 했다. 이 줄에 오는 것은
+  // 점수가 가장 높은 요인을 설명할 자료가 없을 때(예: 종목이 1개라 상관 쌍이 없음)이므로 안정하다는 근거가 아니다.
+  return '가장 높은 위험 요인을 한 문장으로 설명할 자료가 부족합니다. 요인별 점수는 🔍 세부내용에서 확인할 수 있습니다.';
 }
 
 // [Phase 35 - 점검 항목] 감지된 신호별로 규칙 기반 문장을 쌓는다(여러 개면 전부 보여준다).
@@ -410,13 +412,29 @@ const RISK_DATA_STATUS_SHORT = Object.freeze({
 function riskMetricUnavailableShortText(m, key) {
   const st = m && m.metricStatus ? m.metricStatus[key] : null;
   if (!st || st.status === 'AVAILABLE') return '데이터 부족';
+  // [UI 마무리 ②] 포트폴리오 베타는 "포트폴리오의 기준 지수"가 아니라 종목마다 베타를 구해 합친 값이다.
+  // 일부 종목의 베타를 못 구해서 비었다는 사실을 짧게 말한다(계산 · 판정은 그대로).
+  if (key === 'beta' && riskBetaMissingHoldings(m).length > 0) return '일부 종목 계산 불가';
   return RISK_DATA_STATUS_SHORT[st.reason] || '데이터 부족';
 }
 // 지표 하나가 왜 비었는지 - 화면에 그대로 쓰는 짧은 문구.
 function riskMetricUnavailableText(m, key) {
   const st = m && m.metricStatus ? m.metricStatus[key] : null;
   if (!st || st.status === 'AVAILABLE') return '데이터 부족';
+  if (key === 'beta') {
+    const missing = riskBetaMissingHoldings(m);
+    if (missing.length > 0) {
+      const total = (m.holdings || []).length;
+      const allUnresolved = missing.every((h) => h.betaStatus === 'BENCHMARK_UNRESOLVED');
+      const why = allUnresolved ? '비교할 기준 지수가 정해지지 않아' : '비교할 기준 지수가 없거나 함께 비교할 가격 기록이 부족해';
+      return `보유 주식·ETF ${fmtNum(total, 0)}개 중 ${fmtNum(missing.length, 0)}개는 ${why} 시장 민감도를 계산하지 못했습니다. 그래서 포트폴리오 전체 값도 만들지 않았습니다.`;
+    }
+  }
   return riskStatusText(st.reason);
+}
+// 베타를 구하지 못한 종목(엔진 결과 h.beta · h.betaStatus를 그대로 읽는다).
+function riskBetaMissingHoldings(m) {
+  return ((m && m.holdings) || []).filter((h) => !(typeof h.beta === 'number' && Number.isFinite(h.beta)));
 }
 // [R-01] 점수에 반영되지 못한 요인 안내. "데이터 부족 = 위험 없음"으로 읽히지 않게 한다.
 function riskExcludedFactorsNote(m) {
@@ -651,7 +669,7 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합치므로, 한 종목이라도 계산할 수 없으면 전체 값을 추정으로 채우지 않고 비워 둡니다.')}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
       ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : riskMetricUnavailableShortText(m, 'cvar'), '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}
@@ -1285,21 +1303,29 @@ function buildMacroDetailBodyHtml(key) {
     </div>`;
 }
 
-// [지수 모달 - 주가 위치 참고 카드] analyzeTickerForModal()(js/09, 종목/지수 공용 계산)이 뽑아 둔
-// recentHigh/recentLow/mdd를 지수 상세 콘텐츠 하단에 덧붙인다 - stockAnalysisStatTile을 그대로
-// 재사용해 종목 6섹션 리포트의 "주가 위치 & 기술적 참고" 카드와 같은 모양을 쓰되, "단기 벽"/"1차
-// 버팀목"처럼 매수/매도를 전제한 종목 용어 대신 지수에 맞는 "3개월 최고가"/"3개월 최저가"로 바꿔
-// 부른다.
-function buildIndexPriceLevelsHtml(a) {
+// [지수 모달 - 최근 수준 참고 카드] analyzeTickerForModal()(js/09, 종목/지수 공용 계산)이 뽑아 둔
+// recentHigh/recentLow/mdd를 지표 상세 콘텐츠 하단에 덧붙인다 - stockAnalysisStatTile을 그대로 재사용한다.
+// [UI 마무리 ①] 금리 · 환율 · VIX · 달러인덱스까지 이 카드를 같이 쓰는데 "주가 위치 · 최고가"는 주식 종목 말이라
+// 지표 성격에 맞는 이름으로 부른다(값 · 계산은 그대로). 금 시세는 실제 가격이라 "최고가/최저가"를 유지한다.
+const MACRO_LEVEL_WORDING = Object.freeze({
+  us10y: { title: '📊 최근 금리 수준 참고', high: '최근 3개월 최고 금리', low: '최근 3개월 최저 금리', what: '금리 수준' },
+  usdkrw: { title: '📊 최근 환율 수준 참고', high: '최근 3개월 최고 환율', low: '최근 3개월 최저 환율', what: '환율' },
+  gold: { title: '📊 최근 가격 수준 참고', high: '최근 3개월 최고가', low: '최근 3개월 최저가', what: '금 가격' },
+  vix: { title: '📊 최근 지수 수준 참고', high: '최근 3개월 최고치', low: '최근 3개월 최저치', what: 'VIX 값' },
+  usdx: { title: '📊 최근 지수 수준 참고', high: '최근 3개월 최고치', low: '최근 3개월 최저치', what: '달러인덱스 값' }
+});
+const MACRO_LEVEL_WORDING_INDEX = Object.freeze({ title: '📊 최근 지수 수준 참고', high: '최근 3개월 최고치', low: '최근 3개월 최저치', what: '지수 값' });
+function buildIndexPriceLevelsHtml(a, macroKey) {
   if (!a || a.error) return '';
+  const w = MACRO_LEVEL_WORDING[macroKey] || MACRO_LEVEL_WORDING_INDEX;
   const priceDecimals = typeof a.currentPrice === 'number' && a.currentPrice < 100 ? 2 : 0;
   return `
   <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">📊 주가 위치 참고</p>
+    <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">${w.title}</p>
     <div class="grid grid-cols-2 gap-2">
-      ${stockAnalysisStatTile('3개월 최고가', typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 높았던 지수 값이에요.')}
-      ${stockAnalysisStatTile('3개월 최저가', typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', '최근 3개월 동안 가장 낮았던 지수 값이에요.')}
-      <div class="col-span-2">${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', MDD_GUIDE_TEXT)}</div>
+      ${stockAnalysisStatTile(w.high, typeof a.recentHigh === 'number' ? fmtNum(a.recentHigh, priceDecimals) : '데이터 부족', `최근 3개월 동안 가장 높았던 ${w.what}이에요.`)}
+      ${stockAnalysisStatTile(w.low, typeof a.recentLow === 'number' ? fmtNum(a.recentLow, priceDecimals) : '데이터 부족', `최근 3개월 동안 가장 낮았던 ${w.what}이에요.`)}
+      <div class="col-span-2">${stockAnalysisStatTile('최대낙폭(MDD, 1년)', typeof a.mdd === 'number' ? `${fmtNum(a.mdd, 1)}%` : '데이터 부족', `최근 1년 중 고점에서 가장 크게 떨어졌던 폭이에요(이미 지나간 최대 하락). 지금 ${w.what}이 고점보다 얼마나 낮은지와는 다른 값이에요.`)}</div>
     </div>
   </div>`;
 }
@@ -1307,7 +1333,7 @@ function buildIndexPriceLevelsHtml(a) {
 // [지수 모달 - 하단 캡션] "개별 매수/보유 대상이 아닙니다" 안내를 모달 상단이 아니라 콘텐츠 맨 끝에
 // 옅은 텍스트로 배치해, 열자마자 보이는 상단은 차트+지표 설명으로 바로 채워지도록 한다.
 function macroIndexFooterCaptionHtml() {
-  return '<p class="text-sm text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표(지수)입니다.</p>';
+  return '<p class="text-sm text-slate-400 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">개별 매수/보유 대상이 아닌 시장 지표입니다.</p>';
 }
 
 // [전용 팝업 제거됨] renderMacroDetailModal/openMacroDetailModal/closeMacroDetailModal과 #macroDetailModal
@@ -1469,7 +1495,7 @@ function renderRiskSection() {
   // [안정적인 종목 목록 제거] 리스크가 감지된 종목만 노출한다는 요청에 따라 safe 목록은 더 이상 화면에
   // 그리지 않는다 - computeRiskClassifiedAssets()가 여전히 safe를 함께 반환하지만(다른 곳에서 쓸 수도
   // 있어 반환값 자체는 그대로 둠), 여기서는 risky만 사용한다.
-  const { risky: riskyRaw } = computeRiskClassifiedAssets();
+  const { risky: riskyRaw, safe } = computeRiskClassifiedAssets();
   // 정렬 기준: 해외 자산을 먼저, 그 다음 평가금액이 큰 순서로 보여준다.
   const regionThenAmount = (x, y) => {
     const regionRank = (b) => (b.asset.isDomestic === '해외' ? 0 : 1);
@@ -1480,8 +1506,14 @@ function renderRiskSection() {
 
   riskyBadge.textContent = `${risky.length}건`;
 
+  // [문구 점검 P0] 감지 목록이 비어 있다는 것은 "감지 조건에 걸린 종목이 없다"는 뜻일 뿐 포트폴리오가 안정하다는
+  // 근거가 아니다. 가격 기록이 없거나 아직 계산 전인 종목은 조건을 판단하지 못해 목록에 오지 않으므로 그 사실도 함께 말한다.
+  const noDataCount = state.advancedRiskMetrics ? safe.filter((x) => !x.holding || !x.holding.hasData).length : 0;
+  const emptyRiskText = !state.advancedRiskMetrics && riskEligibleAssets().length > 0
+    ? '종목별 위험 신호를 아직 계산하지 않았습니다(시세를 불러온 뒤 계산됩니다).'
+    : `현재 리스크 감지 조건(단기 과열 · 이동평균 하락 배열 · 52주 고점 대비 30% 이상 하락)에 해당하는 종목이 없습니다.${noDataCount > 0 ? ` 가격 기록이 부족한 ${noDataCount}개 종목은 판단하지 않았습니다.` : ''}`;
   riskyContainer.innerHTML = risky.length === 0
-    ? '<p class="text-sm text-slate-400 py-1">현재 리스크 감지 종목이 없습니다. (포트폴리오 안정)</p>'
+    ? `<p class="text-sm text-slate-400 py-1 break-keep">${escapeHtml(emptyRiskText)}</p>`
     : risky.map(({ key, asset: a, row: r, tags, owners, curAmount }) => {
       const p = derivePresentation(r);
       const weightPct = totalPortfolioCur !== 0 ? (curAmount / totalPortfolioCur) * 100 : 0;

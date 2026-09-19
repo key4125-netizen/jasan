@@ -121,5 +121,7 @@ test('[B-1 · v259] sw.js: data/fx/만 같은 출처 네트워크 우선으로 �
     'corsproxy.io', 'api.codetabs.com', 'r.jina.ai', 'polling.finance.naver.com', 'asset-manager-proxy.key4125.workers.dev',
     'steep-haze-01f0.key4125.workers.dev', 'keymaster.key4125.workers.dev', 'cdn.jsdelivr.net'
   ]);
-  assert.match(sw, /const CACHE_NAME = 'smart-asset-manager-v259';/);
+  // B-1은 v259에서 들어왔다 - 이후 릴리스에서도 유지되는지만 본다(버전 번호는 Release Guard가 확인).
+  const ver = Number((sw.match(/const CACHE_NAME = 'smart-asset-manager-v(\d+)';/) || [])[1]);
+  assert.ok(ver >= 259, String(ver));
 });

@@ -129,20 +129,19 @@ async function seedAndRunMc(page) {
   await goToProjectionTab(page);
   await page.locator('#mcIterationsSelect').selectOption('5000');
   await page.locator('#mcRunBtn').click();
-  await expect(page.locator('#mcCmaSourceArea')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 30000 });
 }
 
-test('B-3. Monte Carlo 장기 가정 출처는 탭을 옮겼다 오면 접혀 있고, ⓘ 팝업의 주의사항 묶음은 다시 열면 접힌 채 한 번에 열린다', async ({ page }) => {
+test('B-3. Monte Carlo 결과 · 선택값은 탭을 옮겼다 와도 그대로이고, ⓘ 팝업의 주의사항 묶음은 다시 열면 접힌 채 한 번에 열린다', async ({ page }) => {
   await boot(page);
   await seedAndRunMc(page);
   const iterations = await page.locator('#mcIterationsSelect').inputValue();
-  await page.locator('#mcCmaSourceToggleBtn').click();
-  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'true');
+  // [UI 마무리 ⑤] 결과 아래 장기 가정 출처 드롭다운은 상단 ⓘ 팝업으로 옮겨 없어졌다 - 탭을 옮겼다 와도 결과 · 선택값은 그대로다.
+  await expect(page.locator('#mcCmaSourceArea')).toHaveCount(0);
   await tab(page, 'dashboard');
   await tab(page, 'rebalance');
   await page.locator('[data-subtab="projection"]').click();
-  await expect(page.locator('#mcCmaSourceToggleBtn')).toHaveAttribute('aria-expanded', 'false');
-  expect(await bodyHeight(page, '#mcCmaSourceBody')).toBe(0);
+  await expect(page.locator('#mcInfoModal')).toBeHidden();
   await expect(page.locator('#mcIterationsSelect')).toHaveValue(iterations);
 
   // ⓘ 팝업 - 주의사항 묶음 열기 → 닫기 → 다시 열기 → 접혀 있음 → 한 번 누르면 열림.

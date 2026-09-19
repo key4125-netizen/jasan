@@ -656,7 +656,7 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
   reader.onload = async (evt) => {
     try {
       const parsed = JSON.parse(evt.target.result);
-      if (!parsed || !Array.isArray(parsed.assets)) throw new Error('올바른 백업 파일 형식이 아닙니다(assets 배열 없음)');
+      if (!parsed || !Array.isArray(parsed.assets)) throw new Error('올바른 백업 파일 형식이 아닙니다(자산 목록이 없음)');
 
       // [P1 데이터 보존 - FIX-6] 이 가져오기 동작 전체가 공유하는 "복원 시각" - 핸들러에서 한 번만
       // 계산한다(applyRemoteState의 restoredAt과 같은 의미).
