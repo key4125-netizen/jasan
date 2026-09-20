@@ -59,8 +59,9 @@ const RESPONSE_CACHE_TTL_SECONDS = 20 * 60; // 20분
  * ========================================================================= */
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://key4125-netizen.github.io', // 운영(GitHub Pages)
-  'http://localhost:8644',             // 로컬 개발 · E2E
-  'http://127.0.0.1:8644'
+  'http://localhost:8644',             // E2E(playwright.config.js baseURL)
+  'http://127.0.0.1:8644',
+  'http://localhost:8643'              // 로컬 개발 서버(.claude/launch.json 기본 포트) - 다른 두 Worker와 목록을 맞춘다
 ];
 // 분 · 일 상한 - 개인 가정용 Worker라 정상 사용은 이 값에 한참 못 미친다(종목 상세 한 번에 3~4회).
 const RATE_LIMIT_PER_MINUTE = 30;
