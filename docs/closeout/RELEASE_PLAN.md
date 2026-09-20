@@ -109,3 +109,68 @@ PHASE 0에서 정지시킨 workflow 3종을 프로젝트 종료 후 되돌리고
 | 12 | Data Guard | PASS | PASS |
 
 **EXTERNAL ACTION REQUIRED** — 3번(KIS 키 회전)과 Worker 3종 재배포는 Cloudflare 대시보드 작업이다. 절차는 `docs/closeout/research/PM_SOLUTION_CLOSURE.md` §9.
+
+---
+
+## 8. 최종 릴리스 실행 순서 (FINAL RELEASE CLOSURE DIRECTIVE)
+
+> 순서를 지킨다. 앞 단계가 PASS가 아니면 다음 단계로 가지 않는다.
+> **0단계(B-1)가 끝나기 전에는 1단계 이후를 시작하지 않는다** — 버전을 올리면 되돌릴 수 없다.
+
+### 0단계 · B-1 외부 조치 (사용자 · Cloudflare Dashboard) — **현재 여기서 막혀 있다**
+
+| # | 작업 | 확인 |
+|---|---|---|
+| 1 | Workers & Pages → 해당 Worker → Settings → Variables에서 `KIS_APP_KEY` · `KIS_APP_SECRET`을 **재발급 값**으로 교체 | KIS 포털에서 먼저 재발급 |
+| 2 | `CLIENT_SHARED_SECRET`을 새 임의 문자열로 교체 | 값은 어디에도 기록하지 않는다 |
+| 3 | KV 네임스페이스 바인딩 `KIS_KV` 확인 | 요청 수 제한이 이 KV를 쓴다 |
+| 4 | Worker 3종 재배포 — `cloudflare-worker-kis-proxy.js` · `cloudflare-worker-asset-proxy.js` · `cloudflare-worker-sync.js` | 저장소의 현재 파일 내용을 그대로 붙여넣는다 |
+| 5 | 프론트엔드 공유값을 2번 값으로 교체 | |
+
+**배포 후 검증(비밀값을 출력하지 않는 방법)** — 각 항목은 응답 상태코드와 헤더만 본다.
+
+| 확인 | 방법 | 기대 |
+|---|---|---|
+| 허용 Origin | `curl -sI -H "Origin: https://key4125-netizen.github.io" "<worker>/api/kis/price?ticker=005930"` | `access-control-allow-origin`이 **그 Origin으로 반사** · `vary: Origin` |
+| 허용 목록 밖 Origin | 같은 요청에 `Origin: https://evil.example.com` | `access-control-allow-origin` **헤더 없음** |
+| 비밀값 없이 호출 | `X-App-Secret` 헤더 없이 호출 | **401** `{"error":"unauthorized"}` |
+| 변수 미등록 상태 | `CLIENT_SHARED_SECRET`을 비운 상태에서 호출(테스트 후 되돌린다) | **503** `{"error":"not_configured"}` |
+| 요청 수 제한 | 같은 IP로 1분에 31회 호출 | 31번째부터 **429** + `Retry-After: 60` |
+| 오류 노출 | 상류 실패를 유발하는 호출 | `{"error":"upstream_error"}`만 — 상류 본문 · 헤더 없음 |
+
+**현재 운영 상태(2026-09-20 실측 · 비밀값 없이 상태코드만 확인)**
+| Worker | 허용 Origin 응답 | 목록 밖 Origin 응답 | 판정 |
+|---|---|---|---|
+| kis-proxy | 401 · `ACAO: *` | 401 · `ACAO: *` | **옛 코드** (비밀키 검사는 동작 · CORS 허용 목록 미적용) |
+| asset-proxy | 200 · `ACAO: *` | **200 · `ACAO: *`** | **옛 코드** (아무 사이트나 이 프록시를 쓸 수 있다) |
+| sync | 404 · `ACAO: *` | 404 · `ACAO: *` | **옛 코드** |
+
+### 1단계 · 최종 기준선 (P-9)
+```
+node scripts/closeout/freeze-baseline.js
+node scripts/closeout/regression-harness.js baseline
+node scripts/closeout/measure-mc.js --save final
+```
+`baseline/v262/`는 **지우지 않는다**(출발점 고정).
+
+### 2단계 · 전체 검증
+`npm test` · `npx playwright test` · `npm run lint` · `npm run data-guard` 전부 PASS.
+
+### 3단계 · 버전 1회 상향
+sw.js `CACHE_NAME`과 index.html `#appVersionLabel`을 **함께** 올린다(v262 → v263).
+그 다음 `npm run release-guard` → PASS여야 한다(지금은 버전 미상향이라 FAIL이 정상).
+
+### 4단계 · Production deploy
+main 병합 → GitHub Pages(`pages-build-deployment`) 배포.
+
+### 5단계 · 자동화 복귀 (P-2)
+`gh workflow enable` + `run` 3종(위 §3). 첫 실행 결과를 대장 P-2에 기록.
+
+### 6단계 · Production smoke (14항목)
+앱 로딩 · 버전 표시 · 채권 기능 · ISIN 조회 · Risk · 포트폴리오 베타 · MC · CMA ·
+HOME_COMMON · D-5 benchmark 처리 · 네트워크 실패 · 콘솔/pageerror · 375px · Service Worker 갱신.
+**계산 오류 · 데이터 오류 · 보안 오류는 release blocker**다. 그 외는 비차단으로 기록만 한다.
+
+### 7단계 · 수기 Risk fixture 재측정
+§46-4의 고정값(19.6615 · 1.2130 등)은 C-3(관측기간 2년/3년)로 **반드시 바뀐다**.
+실제 보유 데이터로 다시 재서 새 기준값을 §46-4에 기록한다 — 과거 값과 다르다는 이유로 실패로 보지 않는다(EXPECTED CHANGE).

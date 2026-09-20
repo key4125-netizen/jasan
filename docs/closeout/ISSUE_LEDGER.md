@@ -15,9 +15,9 @@
 
 | 종결 판정 | 건수 | 뜻 |
 | --- | ---: | --- |
-| SOLVED | 48 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
+| SOLVED | 49 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
 | SOLVED_WITH_CONSTRAINT | 11 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
-| EXTERNAL_ACTION_REQUIRED | 6 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
+| EXTERNAL_ACTION_REQUIRED | 5 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
 | NOT_AVAILABLE | 4 | 현재 이용조건 · 원천 · 근거로는 불가 - 조사 경로 · 확인된 사실 · 재활성화 조건을 적는다 |
 | PM_DECISION_REQUIRED | 0 | 구현은 가능하나 계산 모델 · 사용자 화면 · 데이터 의미를 바꾸므로 PM 승인이 선행돼야 함 |
 | (미판정) | 0 | 종결 판정이 아직 없는 항목 - 0이어야 프로젝트가 닫힌다 |
@@ -31,9 +31,9 @@
 | COMPLETED | 15 |
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| SOLVED | 33 |
+| SOLVED | 34 |
 | SOLVED_WITH_CONSTRAINT | 6 |
-| EXTERNAL_ACTION_REQUIRED | 6 |
+| EXTERNAL_ACTION_REQUIRED | 5 |
 | NOT_AVAILABLE | 4 |
 | PM_DECISION_REQUIRED | 0 |
 | **합계** | **69** |
@@ -62,7 +62,7 @@
 | D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | COMPLETED | SOLVED |
 | D-9 | 원화 기준 역사적 낙폭(환율 포함) 미구현 | 데이터 · 스트레스 | PHASE 4 | SOLVED | SOLVED |
 | B-1 | KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포 | 보안 | PHASE 2 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
-| B-2 | KIS 지수 API 이용조건 · 데이터 재배포 조건 | 보안 · 이용조건 | PHASE 1 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
+| B-2 | KIS 지수 API 이용조건 · 데이터 재배포 조건 | 보안 · 이용조건 | PHASE 1 | SOLVED | SOLVED |
 | B-3 | 자산 프록시 Worker CORS 설정 점검 | 보안 | PHASE 2 | SOLVED | SOLVED |
 | B-4 | 동기화 Worker CORS · rate limit | 보안 | PHASE 2 | SOLVED | SOLVED |
 | C-1 | CMA 2026 Q2 검토 · 활성화 결정 | MC · CMA | PHASE 5 | SOLVED | SOLVED |
@@ -433,14 +433,14 @@
 
 - **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 2
 - **SoT**: 인계장 v262 절(KIS 보안) · 계획서 §26
-- **현재 구현**: Worker 코드 수정 완료 - CORS 허용 목록 · fail-closed(미등록 시 503) · KV 요청 제한(분 30 · 일 300) · 상류 오류 본문 미전달. test/kis-worker-security.test.js 8건이 동작을 고정한다(§47-8).
-- **문제**: 코드는 해결됐고 남은 것은 사용자 작업이다. 공개 PWA의 X-App-Secret은 원리상 공개값이므로 실질 방어선은 Origin 허용 목록 + 요청 제한임을 문서에 명시했다.
+- **현재 구현**: Worker 코드 수정 완료 - CORS 허용 목록 · fail-closed(미등록 시 503) · KV 요청 제한(분 30 · 일 300) · 상류 오류 본문 미전달. test/kis-worker-security.test.js 8건이 동작을 고정한다(§47-8). [운영 상태 실측 2026-09-20] 배포된 Worker 3종은 아직 **옛 코드**다 - 세 엔드포인트 모두 Access-Control-Allow-Origin이 "*"로 응답한다(허용 목록 미적용). kis-proxy는 비밀값 없이 호출 시 401이므로 CLIENT_SHARED_SECRET 자체는 등록돼 있으나, fail-closed(503) · Origin 허용 목록 · 요청 수 제한은 반영되지 않았다. asset-proxy는 허용 목록 밖 Origin(evil.example.com)에도 200을 돌려준다.
+- **문제**: 코드 · 테스트는 완료됐고 남은 것은 사용자의 Cloudflare 작업이다. 배포 전까지 운영에는 예전 CORS 개방 상태가 그대로 남아 있으므로 Security Final Gate의 CORS · rate limit · fail-closed 항목을 운영 기준 PASS로 표시하지 않는다.
 - **필요한 사실**: 현재 Worker 설정 상태 · 교체 계획
 - **조사 경로**: Cloudflare Worker 설정 확인(사용자) · 저장소 내 참조 코드 점검(Claude)
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 없음
-- **구현 필요**: Cloudflare Dashboard: ① KIS_APP_KEY · KIS_APP_SECRET 재발급 값으로 교체 · CLIENT_SHARED_SECRET 신규 등록 ② KIS_KV 바인딩 확인 ③ Worker 3종 재배포 ④ 프론트 공유값 교체 ⑤ 확인(목록 밖 Origin 차단 · 비밀값 없이 호출 거절 · 과다 호출 429).
+- **구현 필요**: Cloudflare Dashboard(사용자 작업): ① KIS_APP_KEY · KIS_APP_SECRET 재발급 값으로 교체 ② CLIENT_SHARED_SECRET 새 값으로 교체 ③ KIS_KV 바인딩 확인 ④ Worker 3종 재배포(kis-proxy · asset-proxy · sync) ⑤ 프론트 공유값 교체. 배포 후 검증(비밀값 출력 없이): 허용 Origin → ACAO가 그 Origin으로 반사 / 허용 목록 밖 Origin → ACAO 없음 / 비밀값 없이 호출 → 401 / CLIENT_SHARED_SECRET 미등록 → 503 / 분 30회 초과 → 429 / 상류 오류 시 본문 미노출.
 - **테스트**: 네트워크 격리 스모크
-- **검증**: kis-worker-security 8건(fail-closed 503 · 401 · CORS 반사/차단 · 429 · 오류 최소화 · 읽기 전용 · 하드코딩 비밀값 0)
+- **검증**: 코드: test/kis-worker-security.test.js 9건 PASS. 운영: 미배포(2026-09-20 실측 - ACAO "*" 확인).
 - **근거**: cloudflare-worker-kis-proxy.js · test/kis-worker-security.test.js(8건) · PM_SOLUTION_CLOSURE.md §9 · §47-8
 - **마지막 확인일**: 2026-09-20
 
@@ -478,11 +478,11 @@
 
 - **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 2
 - **SoT**: 계획서 §9
-- **현재 구현**: SEC EDGAR는 요청 헤더에 연락처를 요구한다. 코드는 환경변수 SEC_CONTACT_EMAIL의 "존재 여부"만 확인하고 값은 출력하지 않는다(scripts/closeout/research/us-home-common.js --verify-sec).
-- **문제**: 사용자 개인 이메일을 외부 서비스에 보내는 것은 명시적 허가 없이 하지 않는다. 이번 조사는 이미 확보한 근거로 끝냈고, 추가 자동 재검증을 켤 때만 필요하다.
+- **현재 구현**: SEC EDGAR는 요청 헤더에 연락처를 요구한다. 코드는 환경변수 SEC_CONTACT_EMAIL의 "존재 여부"만 확인하고 값은 출력하지 않는다(scripts/closeout/research/us-home-common.js --verify-sec). [확인 2026-09-20] 저장소 전체에서 이메일 리터럴 0건을 확인했고, 코드는 환경변수 SEC_CONTACT_EMAIL의 존재 여부만 본다(값은 출력하지 않는다).
+- **문제**: 구조는 완료됐다. 실제 연락처 등록은 사용자 작업이며, SEC 직접 재검증(N-2 자동화 범위)을 켤 때만 필요하다 - **릴리스 차단 사항이 아니다**.
 - **필요한 사실**: GitHub Actions Secret 이름 규칙
 - **선택지**: (가) PM이 지정한 이메일을 환경변수 SEC_CONTACT / Actions Secret으로 주입(코드 · 커밋 · 보고서에 기록하지 않음) · (나) 다른 공식 경로로 본국 보통주 근거를 확보(거래소 · 발행사 IR - 종목별 수작업 · 느림)
-- **구현 필요**: 사용자가 이 용도로 쓸 연락처를 정해 환경변수 · GitHub Secret으로 등록한다(저장소에 값을 쓰지 않는다).
+- **구현 필요**: 사용자 작업(선택): 이 용도로 쓸 연락처를 환경변수 · GitHub Secret으로 등록. 등록 전에는 기록된 1차 자료로만 판정한다(현재 동작).
 - **테스트**: 스크립트 단위
 - **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
 - **근거**: scripts/closeout/research/us-home-common.js --verify-sec(이름만 확인 · 값 미출력)
@@ -492,17 +492,17 @@
 
 #### B-2 — KIS 지수 API 이용조건 · 데이터 재배포 조건
 
-- **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 1
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 1
 - **SoT**: 계획서 §26 · §7
-- **현재 구현**: KIS 지수 API는 연결하지 않았다(D-01 ⑤ 유지). 현재 Worker는 국내주식 시세 · 재무 · 수급 조회만 한다.
-- **문제**: 이용조건 원문을 확인하지 못했다 - 확인 전에는 지수 데이터를 저장하거나 재배포하지 않는다는 현행 정책을 유지한다.
+- **현재 구현**: KIS Developers 「오픈 API 서비스 이용 약관(고객)」(제정 2022. 8. 8. · apiportal.koreainvestment.com 이용약관 팝업) 원문을 읽어 source-terms.json에 SRC-KIS-OPENAPI로 기록했다. 핵심은 제5조 ③ - "회사에서 제공하는 시세(국내주식 · 해외주식 · 국내선물/옵션 등)정보를 고객이 직접 개발한 프로그램 등 개인의 업무에 한하여 이용해야 하며, 제3자에게 제공해서는 아니 된다."
+- **문제**: 해결됨. 저장 · 파생계산을 금지하는 조항은 없고 허용 범위가 "개인의 업무"로 한정된다. **제3자 제공(재배포)은 명시적으로 금지**다. 따라서 KIS 시세 · 지수를 저장소 · 번들 · CDN에 싣지 않는 현행 정책이 약관과 일치하고, D-01 ⑤(KIS 지수 API 미연결)에 약관 근거가 생겼다. 제12조(유량 제어)는 이번에 넣은 요청 수 제한과 같은 방향이다.
 - **필요한 사실**: KIS 오픈API 이용약관의 저장 · 재배포 · 2차 이용 조건
 - **조사 경로**: KIS 공식 약관 · 개발자 포털 문서
 - **영향**: 정책 D-5 · D-6 원천 선택 / Risk 간접 / MC 없음 / UI 없음
-- **구현 필요**: 한국투자증권 개발자센터 이용약관에서 "조회 데이터의 저장 · 재배포" 조항을 확인해 source-terms.json에 기록한다.
+- **구현 필요**: 없음(현행 정책 유지가 곧 준수다). 향후 KIS 데이터를 새 경로에 쓰려면 제5조 ③의 "개인의 업무" 범위를 먼저 확인한다.
 - **테스트**: 해당 없음
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/source-terms.json · BOND_DATA_SOURCE_MATRIX.md
+- **검증**: 공개 약관 팝업 원문 직접 확인 · 인증 호출 없음 · 비밀값 미취급
+- **근거**: docs/closeout/research/source-terms.json SRC-KIS-OPENAPI(약관 원문 인용 · 2026-09-20 확인)
 - **마지막 확인일**: 2026-09-20
 
 ### MC · CMA
@@ -745,14 +745,14 @@
 
 - **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 7
 - **SoT**: 계획서 §36 G-5
-- **현재 구현**: Worker가 영문 혼합 코드를 ticker_format_unsupported로 구분해 답한다(사실과 다른 "코드 오류" 안내 제거). 허용 범위는 넓히지 않았다.
-- **문제**: KIS가 이 형식을 받는지 확인되지 않았다 - 확인 없이 정규식을 넓히면 상류 오류만 늘어난다.
+- **현재 구현**: Worker가 영문 혼합 코드를 ticker_format_unsupported로 구분해 답한다(사실과 다른 "코드 오류" 안내 제거). 허용 범위는 넓히지 않았다. [공식 문서 확인 2026-09-20] 주식 현재가 시세(FHKST01010100) 문서의 FID_INPUT_ISCD는 String · 필수 · **Length 12**이고, 예시는 "005930 삼성전자" · "ETN은 종목코드 6자리 앞에 Q 입력 필수"뿐이다. 즉 길이 제약은 KIS가 아니라 우리 Worker 정규식(6자리 숫자)에 있다. 다만 영문 혼합 KRX 신규 코드(0052D0)를 수용한다는 명시는 문서 어디에도 없다.
+- **문제**: 문서에 없는 수용을 추정하지 않는다(확인 전 개방 금지). 현행(미지원 형식을 ticker_format_unsupported로 분리)을 유지한다. 릴리스 차단 사항은 아니다. 부수 확인: 현재 Worker는 6자리 숫자만 받으므로 ETN(Q+6자리)도 거부한다 - 이번 범위에서 고치지 않고 사실만 기록한다(신규 기능 금지).
 - **필요한 사실**: 해당 경로의 실제 동작
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 종목 분석
-- **구현 필요**: 사용자 작업: KIS 개발자센터 문서에서 종목코드 형식 확인 → 수용되면 Worker 정규식 확장 후 B-1 배포와 함께 반영.
+- **구현 필요**: 사용자 작업: KIS 종목코드 마스터파일(공식 GitHub koreainvestment/open-trading-api/stocks_info) 확인 또는 1:1 문의로 영문 혼합 코드 수용 여부 확정 → 수용되면 Worker 정규식 확장 후 B-1 배포와 함께 반영.
 - **테스트**: 단위 · 수동 확인
 - **검증**: test/kis-worker-security.test.js의 G-5 테스트
-- **근거**: §47-12
+- **근거**: docs/closeout/research/source-terms.json SRC-KIS-OPENAPI.tickerFormat
 - **마지막 확인일**: 2026-09-20
 
 ### 개발 환경
@@ -954,7 +954,7 @@
 - **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 8
 - **SoT**: 계획서 §5 · §49
 - **현재 구현**: docs/closeout/RELEASE_PLAN.md §3에 workflow 3종의 복귀 명령과 건너뛴 갱신 수동 실행 절차를 확정했다.
-- **문제**: 절차는 확정됐고 실행 시점이 "프로젝트 종료 후"라 아직 하지 않았다. .github/workflows 파일은 무변경이다.
+- **문제**: 절차는 확정됐고 실행 시점이 "프로젝트 종료 후"라 아직 하지 않았다. .github/workflows 파일은 무변경이다. [2026-09-20] B-1(외부 조치) 미완료로 최종 릴리스가 막혀 있어 아직 실행하지 않았다 - 이 항목은 릴리스 직전에만 수행한다(조기 실행하면 다시 해야 한다).
 - **필요한 사실**: 건너뛴 실행 목록 - H.10 매주 화 00:00 UTC(2026-09-22부터) · 종목마스터 2026-10-01 · CMA 2026-10-03 이후 매월
 - **구현 필요**: gh workflow enable/run 361810246 · 343557860 · 359962356 후 첫 실행 결과를 이 항목에 기록한다.
 - **테스트**: 실행 결과 · 데이터 파일 갱신 확인
@@ -1018,7 +1018,7 @@
 - **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 12
 - **SoT**: 계획서 §48
 - **현재 구현**: docs/closeout/RELEASE_PLAN.md §4에 최종 기준선 재생성 절차를 확정했다(freeze-baseline + regression-harness · baseline/v262는 영구 보존).
-- **문제**: 절차는 확정됐고 실행 시점이 릴리스 직전이다.
+- **문제**: 절차는 확정됐고 실행 시점이 릴리스 직전이다. [2026-09-20] B-1(외부 조치) 미완료로 최종 릴리스가 막혀 있어 아직 실행하지 않았다 - 이 항목은 릴리스 직전에만 수행한다(조기 실행하면 다시 해야 한다).
 - **필요한 사실**: 최종 데이터 기준일 · 해시 · 결과
 - **구현 필요**: 릴리스 직전 node scripts/closeout/freeze-baseline.js · regression-harness.js baseline 실행.
 - **테스트**: 회귀 하네스

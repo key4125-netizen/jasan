@@ -260,6 +260,56 @@
       },
       "state": "ACCESS_VERIFIED",
       "note": "운영기관은 확정됐으나 개별 지수(^NYA)의 수익유형 대응은 두 문서에 없다. ICE Index Platform(indices.ice.com) Index Finder가 다음 후보."
+    },
+    {
+      "id": "SRC-KIS-OPENAPI",
+      "name": "한국투자증권 KIS Developers 오픈 API",
+      "for": [
+        "B-2 조회 데이터 저장 · 재배포 조건",
+        "G-5 국내 종목코드 형식",
+        "D-01 ⑤ 지수 데이터 연결 여부"
+      ],
+      "endpoints": [
+        "https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price",
+        "https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/finance/*"
+      ],
+      "termsUrl": "https://apiportal.koreainvestment.com (푸터 \"이용약관\" 팝업)",
+      "termsTitle": "오픈 API 서비스 이용 약관(고객) · 제정 2022. 8. 8.",
+      "termsRetrievedAt": "2026-09-20",
+      "terms": {
+        "scope": "제3조(적용범위) - 고객이 오픈 API 서비스를 이용해 처리하는 조회(시세정보 · 계좌정보 등)에 적용된다.",
+        "secretHandling": "제5조 ② - 보안코드(앱키 · 시크릿키)를 유출 · 도용되지 않게 관리해야 하고, 제3자에게 대여 · 위임 · 양도하거나 누설해서는 안 된다.",
+        "dataUse": "제5조 ③ - \"회사에서 제공하는 시세(국내주식 · 해외주식 · 국내선물/옵션 등)정보를 고객이 직접 개발한 프로그램 등 개인의 업무에 한하여 이용해야 하며, 제3자에게 제공해서는 아니 된다.\" (원문 그대로)",
+        "fee": "제11조 - 오픈 API 서비스 제공 대가로 수수료를 받을 수 있다.",
+        "rateLimit": "제12조(유량 제어) - 회사가 유량 제어 정책에 따라 고객의 호출을 제한할 수 있다.",
+        "recordRetention": "제14조 - 회사가 거래기록을 보존한다(고객 측 보관 의무 조항은 아니다)."
+      },
+      "judgement": {
+        "저장": "ALLOWED_WITHIN_PERSONAL_USE - 저장을 금지하는 조항은 없다. 다만 허용 범위가 \"개인의 업무\"로 한정돼 있으므로 개인 사용을 벗어나는 보관은 근거가 없다.",
+        "파생계산": "ALLOWED_WITHIN_PERSONAL_USE - 가공 · 파생계산을 금지하는 조항은 없으나, 그 결과를 제3자에게 제공하면 제5조 ③에 걸린다.",
+        "재배포": "PROHIBITED - 제3자 제공 금지가 명시돼 있다(제5조 ③). 저장소 · 앱 번들 · CDN에 시세를 실어 배포하지 않는다.",
+        "지수데이터": "PROHIBITED_TO_REDISTRIBUTE - 지수 시세도 같은 \"시세정보\"이므로 제3자 제공 금지가 그대로 적용된다. 앱이 KIS 지수 API를 연결하지 않는 현행 정책(D-01 ⑤)이 약관과 일치한다.",
+        "비밀값": "현 구조와 정합 - 앱키 · 시크릿키는 Cloudflare Worker 환경변수에만 두고 브라우저 · 저장소 어디에도 두지 않는다(§47-8)."
+      },
+      "appliedPolicy": [
+        "KIS 시세를 저장소 · 번들 · CDN에 싣지 않는다(현행 유지).",
+        "KIS 지수 API를 연결하지 않는다(D-01 ⑤ 유지 - 이제 약관 근거가 있다).",
+        "가족 동기화 대상에 KIS 시세를 넣지 않는다(현재도 자산 · 거래만 동기화한다).",
+        "Worker의 요청 수 제한은 제12조(유량 제어)와 같은 방향이다."
+      ],
+      "tickerFormat": {
+        "field": "FID_INPUT_ISCD(입력 종목코드) · String · 필수 · Length 12",
+        "documented": "문서 예시는 \"005930 삼성전자\"이고, ETN은 종목코드 6자리 앞에 Q를 붙이는 것이 필수라고 적혀 있다.",
+        "finding": "필드 길이가 12자라 형식 제약은 KIS가 아니라 우리 Worker의 정규식(6자리 숫자)이다. 다만 **영문 혼합 KRX 신규 코드(예: 0052D0)를 수용한다는 명시는 문서에 없다.**",
+        "conclusion": "G-5는 여전히 미확정 - 문서에 없는 수용을 추정하지 않는다. 현행(미지원 형식 분리)을 유지한다.",
+        "sideNote": "현재 Worker는 6자리 숫자만 받으므로 ETN(Q+6자리)도 거부한다. 이번 범위에서 고치지 않는다(신규 기능 금지) - 사실만 기록한다.",
+        "resumeCondition": "KIS 종목코드 마스터파일(공식 GitHub: koreainvestment/open-trading-api/stocks_info) 또는 1:1 문의로 영문 혼합 코드 수용이 확인되면 Worker 정규식을 확장한다."
+      },
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "TERMS_READ",
+        "note": "포털 공개 약관 팝업과 공개 API 문서를 읽었다. 인증이 필요한 호출은 하지 않았고 비밀값도 다루지 않았다."
+      }
     }
   ],
   "toolLimitation": {
