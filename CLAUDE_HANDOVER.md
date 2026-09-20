@@ -32,7 +32,104 @@
 
 ---
 
-## 🚦 릴리스 대기 — B-1 외부 조치만 남음 (2026-09-20 · 가장 최신)
+## 🏁 v263 릴리스 완료 — 데이터 업데이트 거버넌스 · 프로젝트 종료 (2026-09-20 · 가장 최신)
+
+> **APPLICATION VERSION: v263 / RELEASED · production 배포 완료 · smoke 완료**
+> main `c800a21`(릴리스 `56f0437` + 자동화 커밋 2건) · production `https://key4125-netizen.github.io/jasan/` v263
+> **다음 세션은 여기서 시작한다.** 새 기능·새 정책·새 자동화를 시작하지 않는다.
+
+### 무엇이 배포됐나 — 두 겹이다(중요)
+
+이번 push는 v263의 §48 변경만 나간 것이 아니다. **main이 v262(`d4459a7`)에 멈춰 있었기 때문에,
+`integration/v262-closeout` 브랜치에 쌓인 28커밋 전체가 이번에 처음 운영에 도달했다.**
+
+1. **v262 종결 프로젝트 본체**(이번에 처음 운영 반영) — Index Master · Exposure Master EM-2026.2 ·
+   D-11 HOME_COMMON v2 · D-06 · C-1 CMA-2026.2 · C-3 지표별 관측기간(250/500/750) ·
+   D-7/D-9 스트레스 실측 낙폭(원화 표 포함) · BOND-1~5 Bond Domain V1 · F-7 · Q-1 저장 복원력 ·
+   B-1~B-4 Worker 보안 · G-1~G-4.
+   → **운영 계산 결과가 의도대로 바뀐다**(회귀 하네스 기준 779건 · 전부 승인된 변경).
+   대표 예: 삼성전자 Benchmark가 `exposureMaster → KOSPI`로 확정되고, AAPL·GOOG도
+   HOME_COMMON 근거로 `NASDAQ` 확정된다(배포 전 운영 v262에서는 `listingDomicileUnconfirmed`였다).
+2. **v263 §48 데이터 업데이트 거버넌스**(이번 신규) — 아래.
+
+### v263에서 새로 생긴 것 — 종목 마스터 Diff Gate (체크리스트 §48)
+
+`data/ticker-master.json`은 매달 자동 갱신되는데, 이 파일이 **Risk Benchmark 판정**을 바꾼다
+(js/09:725-730 — 상장 거래소 + `looksLikeFundName(자산명 + 마스터 nameKr + nameEn)`).
+즉 앱 버전을 올리지 않아도 사용자의 베타 · 위험등급 · 스트레스 손실이 달라질 수 있었다.
+
+- `scripts/update-ticker-master.js`는 `TICKER_MASTER_OUT`가 있으면 그 경로에 쓴다(수집·파싱 로직 무변경).
+- 워크플로가 **임시 파일**에 먼저 만들고 `scripts/ticker-master-diff-gate.js`가 변경량을 본다.
+- 임계값(PM 확정): 신규 1000 · 삭제 500 · 거래소 10 · 이름 1000 / 신규·삭제 5% · 이름 10% /
+  **무조건 STOP**: 국내 KOSPI↔KOSDAQ 이동 · 핵심 58종목(Exposure Master) 판정 영향 ·
+  국내 종목 `looksLikeFundName` 판정 뒤집힘.
+- STOP이면 **마스터를 교체하지 않고** 감사만 커밋한 뒤 작업을 실패로 끝낸다.
+  **강제 통과 플래그는 없다** — 사람이 감사를 확인하고 원인이 해소되면 `workflow_dispatch`로 재실행한다.
+- 감사 원장: `docs/closeout/ticker-master-audit.json`(`auditId` = `TMG-<UTC>-<지문>`, 커밋 메시지에 포함).
+- 판정 함수는 앱 코드를 그대로 빌려 쓴다(`test/risk-sandbox.js` 경유) — 키워드 목록을 복사하지 않았다.
+- rollback은 Git revert. **클라이언트 localStorage 20일 캐시 제약은 그대로다**(캐시 무효화 미구현 · PM 확정).
+
+### P-2 자동화 복귀 · 최초 실행 (전부 success)
+
+| 워크플로 | run | 결과 |
+|---|---|---|
+| Update ticker master | 35511133269 | Diff Gate 첫 가동 · 16,731→16,731(전 항목 0) · **APPLY** · `TMG-20260920T123722Z-d22150` · 커밋 `574bef4` |
+| Update USD/KRW (H.10) | 35511194823 | **사상 첫 자동 실행** · 2000-01-03~2026-09-11 · 6,965행/유효 6,693 · 회귀가드 3항목 PASS · 커밋 `c800a21` |
+| CMA update check | 35511219990 | **사상 첫 자동 실행** · 원천 6곳 확인 주기 전이라 건너뜀 · Guard 통과 · **자동 ACTIVE 없음**(CMA-2026.2 유지) |
+
+⚠ CMA는 fetch·parse·validate 경로가 아직 한 번도 돌지 않았다(주기 때문). **다음 정기 실행(매월 3일)이 그 경로의 첫 가동**이다.
+
+### 확정된 정책 4건(§48)
+
+- **§48-1** 종목 마스터 Diff Gate(위)
+- **§48-2** 거래 엑셀 가져오기 · 거래 직접 저장/삭제는 **원장 기준으로 legacy 자산을 재계산한다**(확정).
+  자동 경로(부팅 `js/14` · 클라우드 병합 `js/12`)는 예전대로 legacy를 보호하고,
+  `positionSource==='manual'`은 **모든 경로에서** 보호된다. §17-2 B-7의 "가능성" 표현은 종결됐다.
+- **§48-3** Q-2 일별 스냅샷 = **SOLVED_WITH_CONSTRAINT**. 보존 상한 기능은 없다(연 약 140KB · Q-1이 저장 실패를 흡수).
+- **§48-4** FX-P1 · UX-P1 = **정의되지 않은 로드맵 단계로 종결**. 과거 범위를 추정해 복원하지 않는다.
+
+### 검증 결과 (배포 후 재실행)
+
+Unit **620/620** · E2E **1032/1032** · ESLint 0 · Data Guard PASS · Secret Scan 0 ·
+Release Guard PASS(v263) · Ledger 69건 OPEN 0 · PM 결정 필요 0 ·
+MC invariant 4지표 **0.00%** · μ지문 동일 · σ 변경 0 ·
+Risk 회귀 **779건**(778 + 1) — 늘어난 1건은 `tickerMaster.generatedAt` 타임스탬프뿐이다(계산 변화 아님) ·
+freeze-baseline `--verify` 18건 CHANGED(16 + 자동화가 갱신한 FX·ticker 2건) · **baseline/v262는 덮어쓰지 않았다**.
+
+Production smoke: v263 표시 · 캐시 `smart-asset-manager-v263` 단독(v262 삭제됨) · SW 갱신 정상 ·
+CMA-2026.2 · 원장 58 · Index Master 11 · 관측창 250/500/750 · 스트레스 표 6/4/6/4(KOSPI 2020 −35.71) ·
+Benchmark 삼성전자 KOSPI(exposureMaster) · AAPL·GOOG NASDAQ(HOME_COMMON) ·
+Return Key 삼성전자 KOSPI 7% · BOND.STOCK 0% + 가정없음 경고 · Bond 도메인 함수 적재 ·
+CDN 9종 전부 로드 · Worker 3종 실호출(KIS 200 · asset-proxy 200 · sync 404 not_found) · H.10 200.
+
+### 대장 최종 상태 — 69건
+
+SOLVED 49 · SOLVED_WITH_CONSTRAINT 13 · NOT_AVAILABLE 4 · EXTERNAL_ACTION_REQUIRED 3
+**OPEN 0 · HOLD 0 · BACKLOG 0 · PM_DECISION_REQUIRED 0 · 미판정 0**
+
+남은 EXTERNAL 3건(전부 릴리스 비차단)
+- **G-5** KIS 영문 혼합 종목코드(0052D0) 수용 여부 — KIS 문의/마스터파일 확인 필요
+- **P-7** 보안 연락처 환경변수 등록(선택) — 구조는 완료
+- **P-9** 최종 Production Baseline — **v262 기준선은 보존했다.** v263 기준선을 새로 뜰지는 PM 결정 사항이며,
+  `freeze-baseline.js`를 인자 없이 실행하면 v262 기준선을 덮어쓴다(779건 분류 근거가 사라진다) — **하지 말 것**
+
+### 다음 세션이 알아야 할 것 / 손대면 안 되는 것
+
+- `.claude/launch.json`은 이번에도 **손대지 않았다**(기존 사용자 변경 그대로 · blob `2a39711674f3af2df32a46825454020b34599670`).
+- `baseline/v262`를 덮어쓰지 않는다. `freeze-baseline.js`는 `--verify`로만 쓴다.
+- Diff Gate에 **bypass 플래그를 추가하지 않는다**. STOP은 사람이 확인하고 재실행으로 푼다.
+- 임계값 6개는 PM 확정값이다 — 코드에서 조정하지 않는다(`test/ticker-master-diff-gate.test.js`가 고정).
+- CMA 자동 ACTIVE 전환을 만들지 않는다. 워크플로 Guard가 `active.json` · `js/26` 변경을 막는다.
+- 착수 금지 유지: AI · 새 Risk Score · Macro→Risk 정량 결합 · FX stochastic · 복잡한 Bond 모델 ·
+  새 자산군 · Expert 설정 · 대규모 sector map 확장 · 새 Macro 지표 · 새 자동화 영역.
+- 기존 OBSERVE 유지: `e2e/78` T-03 간헐 실패(v235부터 · 오늘 2회 중 1회 재현) · 터치타깃 24/20/25px ·
+  OBS-2/3/4 · 구 키 `sam_daily_backfill_done_ids_v1` 잔존 · asset-proxy 요청 수 제한 부재(B-3 범위 밖 · 비차단).
+- §46-4 수기 Risk fixture 고정값은 C-3(관측기간 변경)으로 **반드시 달라진다**. 실제 보유 데이터로
+  다시 재서 새 기준값을 기록해야 한다 — 과거 값과 다르다는 이유로 실패로 보지 않는다(EXPECTED CHANGE).
+
+---
+
+## 🚦 (이전 기록) 릴리스 대기 — B-1 외부 조치만 남음 (2026-09-20 · 위 절이 더 최신)
 
 > 상태: **[EXTERNAL ACTION PENDING]** · 버전 v262 유지 · 배포 없음 · main `d4459a7` 무변경
 > 내부 구현 · 검증은 전부 끝났다. **릴리스를 막고 있는 것은 Cloudflare 작업 하나뿐이다.**

@@ -16,8 +16,8 @@
 | 종결 판정 | 건수 | 뜻 |
 | --- | ---: | --- |
 | SOLVED | 49 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
-| SOLVED_WITH_CONSTRAINT | 12 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
-| EXTERNAL_ACTION_REQUIRED | 4 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
+| SOLVED_WITH_CONSTRAINT | 13 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
+| EXTERNAL_ACTION_REQUIRED | 3 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
 | NOT_AVAILABLE | 4 | 현재 이용조건 · 원천 · 근거로는 불가 - 조사 경로 · 확인된 사실 · 재활성화 조건을 적는다 |
 | PM_DECISION_REQUIRED | 0 | 구현은 가능하나 계산 모델 · 사용자 화면 · 데이터 의미를 바꾸므로 PM 승인이 선행돼야 함 |
 | (미판정) | 0 | 종결 판정이 아직 없는 항목 - 0이어야 프로젝트가 닫힌다 |
@@ -32,8 +32,8 @@
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
 | SOLVED | 34 |
-| SOLVED_WITH_CONSTRAINT | 7 |
-| EXTERNAL_ACTION_REQUIRED | 4 |
+| SOLVED_WITH_CONSTRAINT | 8 |
+| EXTERNAL_ACTION_REQUIRED | 3 |
 | NOT_AVAILABLE | 4 |
 | PM_DECISION_REQUIRED | 0 |
 | **합계** | **69** |
@@ -83,7 +83,7 @@
 | N-1 | 채권 관리 프로세스 전체 구축 | 채권 도메인 | PHASE 6 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | N-2 | Risk · MC 기초데이터 자동 업데이트 · 재검증 파이프라인 | 자동화 | PHASE 8 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | Q-1 | 종목 마스터 localStorage 압력 · QuotaExceeded | 저장소 | PHASE 7 | SOLVED | SOLVED |
-| Q-2 | 일별 스냅샷(sam_daily_snapshot_v1) 누적 | 저장소 | PHASE 7 | SOLVED | SOLVED |
+| Q-2 | 일별 스냅샷(sam_daily_snapshot_v1) 누적 | 저장소 | PHASE 7 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | Q-3 | 위험 알림 팝업 연결 상태 점검 | 코드 정리 | PHASE 7 | SOLVED | SOLVED |
 | Q-4 | 숨겨진 스트레스/What-If · 계획 확인 노트 | UI | PHASE 7 | SOLVED | SOLVED |
 | Q-5 | jsDelivr 캐시 · 버전 전략 | 배포 · CDN | PHASE 7 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
@@ -93,7 +93,7 @@
 | M-4 | BOND-DEF-01 · 03 · 04 · 05 정의 backlog | 채권 | PHASE 6 | SOLVED | SOLVED |
 | M-5 | 채권 ETF 1개만 보유해도 포트폴리오 베타 null | Risk | PHASE 4 | SOLVED | SOLVED |
 | P-1 | 자동 workflow 3종의 프로젝트 기간 통제 | 프로젝트 통제 | PHASE 0 | COMPLETED | SOLVED |
-| P-2 | 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행 | 프로젝트 통제 | PHASE 8 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
+| P-2 | 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행 | 프로젝트 통제 | PHASE 8 | SOLVED | SOLVED |
 | P-3 | 사용자 영향 고지 | 릴리스 | PHASE 12 | SOLVED | SOLVED |
 | P-4 | 롤백 계획 문서화 | 릴리스 | PHASE 12 | SOLVED | SOLVED |
 | P-5 | 판정 규칙 ruleVersion · 소급 재평가 구조 | 자동화 구조 | PHASE 2 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
@@ -824,15 +824,15 @@
 
 #### Q-2 — 일별 스냅샷(sam_daily_snapshot_v1) 누적
 
-- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 7
 - **SoT**: 계획서 §34
 - **현재 구현**: 변경 없음(보존 유지).
-- **문제**: 해결됨. 실측: 스냅샷 1건 393B · 연 140KB · 10년 1.4MB로 압력의 주범이 아니었고(마스터 캐시 2.6MB), 사용자 기록이라 보존이 기본이다. 저장 실패 위험은 Q-1의 복원력이 흡수한다.
+- **문제**: 제약과 함께 종결. 실측: 스냅샷 1건 393B · 연 140KB · 10년 1.4MB로 압력의 주범이 아니었고(마스터 캐시 2.6MB), 사용자 기록이라 보존이 기본이다. **남는 제약: 보존 상한이 코드에 없다** - 저장소 전체를 검색해도 오래된 스냅샷을 자동으로 지우는 경로는 없고, 삭제는 js/11의 사용자 조작 한 곳뿐이다. 따라서 장기 누적은 구조적으로 계속된다. 저장 실패 위험은 Q-1의 복원력(setLocalStorageItemSafely)이 흡수한다. [PM 결정 D-3 · 2026-09-20] 자동 retention · 삭제 기능을 추가하지 않고 이 제약을 명시한 채 종결한다.
 - **필요한 사실**: 실제 증가 속도 · 사용처(일별 손익)
 - **영향**: 정책 보관 정책 / Risk 없음 / MC 없음 / UI 일별 손익
-- **구현 필요**: 없음(종결)
+- **구현 필요**: 없음(자동 retention 기능을 만들지 않기로 PM이 결정했다). 상한이 필요해지면 별도 PM 결정으로 연다.
 - **테스트**: daily-valuation 테스트
-- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **검증**: 실측 스냅샷 크기 · 저장소 전수 검색으로 자동 삭제 경로 0건 확인(2026-09-20)
 - **근거**: §47-12 · 브라우저 실측 2026-09-20
 - **마지막 확인일**: 2026-09-20
 
@@ -951,15 +951,15 @@
 
 #### P-2 — 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행
 
-- **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 8
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 8
 - **SoT**: 계획서 §5 · §49
-- **현재 구현**: docs/closeout/RELEASE_PLAN.md §3에 workflow 3종의 복귀 명령과 건너뛴 갱신 수동 실행 절차를 확정했다.
-- **문제**: 절차는 확정됐고 실행 시점이 "프로젝트 종료 후"라 아직 하지 않았다. .github/workflows 파일은 무변경이다. [2026-09-20] B-1(외부 조치) 미완료로 최종 릴리스가 막혀 있어 아직 실행하지 않았다 - 이 항목은 릴리스 직전에만 수행한다(조기 실행하면 다시 해야 한다).
+- **현재 구현**: docs/closeout/RELEASE_PLAN.md §3에 workflow 3종의 복귀 명령과 건너뛴 갱신 수동 실행 절차를 확정했다. [복귀 · 최초 실행 완료 2026-09-20] v263 릴리스(main 56f0437) 직후 3종을 gh workflow enable로 되살리고 workflow_dispatch로 각각 최초 실행했다. 세 실행 모두 conclusion=success. ① Update ticker master - run 35511133269 · Diff Gate 첫 가동 · 16,731 → 16,731건(신규 0 · 삭제 0 · 거래소 0 · 이름 0 · 국내 시장 이동 0 · 펀드형 판정 변화 0 · 핵심 58종목 영향 0) · 임계값 히트 없음 → APPLY · auditId TMG-20260920T123722Z-d22150 · 커밋 574bef4(감사 ID가 커밋 메시지에 포함). ② Update USD/KRW (Fed H.10) - run 35511194823 · **사상 첫 자동 실행**(이전까지 자동 커밋 0건) · 2000-01-03 ~ 2026-09-11 · 전체 6,965행 · 유효 6,693 · ND 272 → 커밋 c800a21. 회귀 가드 실증: 시작일 불변 PASS · 끝일 역행 없음 PASS · 유효 행 감소 없음 PASS. ③ CMA update check - run 35511219990 · **사상 첫 자동 실행** · 등록 원천 6곳이 확인 주기 전이라 전부 건너뜀 · Guard 스텝(active.json · js/26 변경 감시) 통과 · 변경 없음으로 커밋 생략 · **자동 ACTIVE 전환 없음**(ACTIVE 세트는 CMA-2026.2 그대로).
+- **문제**: 해결됨. 세 워크플로가 다시 살아 있고 최초 실행 결과가 기록됐다. 남는 관찰 사항 하나: CMA 최초 실행은 원천 확인 주기가 남아 있어 fetch · parse · validate 경로까지는 실행되지 않았다(워크플로 · Guard · 커밋 판정 경로는 전부 실행됨). 다음 정기 실행(매월 3일)에서 그 경로가 처음 돌게 된다.
 - **필요한 사실**: 건너뛴 실행 목록 - H.10 매주 화 00:00 UTC(2026-09-22부터) · 종목마스터 2026-10-01 · CMA 2026-10-03 이후 매월
-- **구현 필요**: gh workflow enable/run 361810246 · 343557860 · 359962356 후 첫 실행 결과를 이 항목에 기록한다.
+- **구현 필요**: 없음.
 - **테스트**: 실행 결과 · 데이터 파일 갱신 확인
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/RELEASE_PLAN.md §3
+- **검증**: gh run view 3종 conclusion=success · 감사 원장 1건 기록 · FX 회귀 가드 3항목 실측 PASS · CMA ACTIVE 세트 무변경 확인
+- **근거**: Actions run 35511133269(ticker) · 35511194823(FX) · 35511219990(CMA) · 커밋 574bef4 · c800a21 · docs/closeout/ticker-master-audit.json
 - **마지막 확인일**: 2026-09-20
 
 #### P-10 — 종결 대장 자동 정합성 검사
