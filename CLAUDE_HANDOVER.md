@@ -32,7 +32,45 @@
 
 ---
 
-## 🧷 PM FINAL DECISION & CLOSURE — PM 결정 19건 전수 종결 (2026-09-20 · 가장 최신)
+## 🚦 릴리스 대기 — B-1 외부 조치만 남음 (2026-09-20 · 가장 최신)
+
+> 상태: **[EXTERNAL ACTION PENDING]** · 버전 v262 유지 · 배포 없음 · main `d4459a7` 무변경
+> 내부 구현 · 검증은 전부 끝났다. **릴리스를 막고 있는 것은 Cloudflare 작업 하나뿐이다.**
+
+**지금 막혀 있는 것 — B-1(사용자 작업)**
+운영 Worker 3종이 아직 **옛 코드**다. 비밀값 없이 상태코드만 확인한 실측(2026-09-20):
+
+| Worker | 허용 Origin | 목록 밖 Origin | 판정 |
+|---|---|---|---|
+| kis-proxy | 401 · `ACAO: *` | 401 · `ACAO: *` | 비밀키 검사는 동작 · **CORS 허용 목록 미적용** |
+| asset-proxy | 200 · `ACAO: *` | **200 · `ACAO: *`** | 아무 사이트나 이 프록시를 쓸 수 있다 |
+| sync | 404 · `ACAO: *` | 404 · `ACAO: *` | 미적용 |
+
+→ 저장소 코드와 테스트는 완료됐지만 **운영에는 반영되지 않았다.** 그래서 Security Final Gate의
+CORS · rate limit · fail-closed는 "코드 PASS · 운영 미적용"으로 적었다(운영 PASS로 표시하지 않는다).
+실행 순서와 검증 명령은 `docs/closeout/RELEASE_PLAN.md` §8 0단계에 있다.
+
+**이번에 새로 확정한 것**
+- **B-2 종결(SOLVED)** — KIS 「오픈 API 서비스 이용 약관(고객)」(제정 2022-08-08) 원문 확인.
+  제5조 ③: *"시세정보를 고객이 직접 개발한 프로그램 등 **개인의 업무에 한하여** 이용해야 하며,
+  **제3자에게 제공해서는 아니 된다**"*. → 저장 · 파생계산은 개인 범위에서 가능, **재배포 금지**.
+  KIS 지수를 앱에 싣지 않는 현행 정책(D-01 ⑤)에 약관 근거가 생겼다. 기록: source-terms.json `SRC-KIS-OPENAPI`.
+- **G-5 판단 유지(EXTERNAL)** — 공식 문서상 `FID_INPUT_ISCD`는 **Length 12**라 길이 제약은 우리
+  Worker 정규식 쪽이다. 다만 영문 혼합 코드(0052D0) 수용은 문서에 없다 → 추정하지 않고 현행 유지.
+  부수 발견: 현재 Worker는 ETN(Q+6자리)도 거부한다(이번 범위 밖 · 기록만).
+- **P-7** — 저장소 이메일 리터럴 0건 확인. 구조 완료 · 릴리스 차단 아님.
+- **P-2 · P-9** — 릴리스 직전 단계라 아직 실행하지 않았다(조기 실행하면 다시 해야 한다).
+- **NOT_AVAILABLE 4건(D-2 · D-3 · D-4 · D-6)** 근거 재확인 — 새 원천이 없어 그대로 유효.
+
+**종결 대장 69건** — OPEN 0 · HOLD 0 · BACKLOG 0 · PM_DECISION_REQUIRED 0 · 미판정 0
+SOLVED 49 · SOLVED_WITH_CONSTRAINT 11 · NOT_AVAILABLE 4 · **EXTERNAL_ACTION_REQUIRED 5**(B-1 · G-5 · P-2 · P-7 · P-9)
+
+**다음 세션이 할 일** — 사용자가 Cloudflare 작업을 마쳤다고 알려 주면 RELEASE_PLAN §8을
+0단계 검증부터 순서대로 실행한다. 그 전까지 **버전을 올리지 않는다**(Release Guard FAIL이 정상 상태다).
+
+---
+
+## 🧷 PM FINAL DECISION & CLOSURE — PM 결정 19건 전수 종결 (2026-09-20 · 위 절이 더 최신)
 
 > 브랜치 `integration/v262-closeout` · main(`d4459a7`) 무변경 · **버전 미변경(v262) · 배포 없음**
 > 종결 대장 69건 · **OPEN 0 · PM_DECISION_REQUIRED 0** · SOLVED 48 · WITH_CONSTRAINT 11 · NOT_AVAILABLE 4 · EXTERNAL 6
