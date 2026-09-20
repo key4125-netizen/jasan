@@ -16,8 +16,8 @@
 | 종결 판정 | 건수 | 뜻 |
 | --- | ---: | --- |
 | SOLVED | 49 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
-| SOLVED_WITH_CONSTRAINT | 11 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
-| EXTERNAL_ACTION_REQUIRED | 5 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
+| SOLVED_WITH_CONSTRAINT | 12 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
+| EXTERNAL_ACTION_REQUIRED | 4 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
 | NOT_AVAILABLE | 4 | 현재 이용조건 · 원천 · 근거로는 불가 - 조사 경로 · 확인된 사실 · 재활성화 조건을 적는다 |
 | PM_DECISION_REQUIRED | 0 | 구현은 가능하나 계산 모델 · 사용자 화면 · 데이터 의미를 바꾸므로 PM 승인이 선행돼야 함 |
 | (미판정) | 0 | 종결 판정이 아직 없는 항목 - 0이어야 프로젝트가 닫힌다 |
@@ -32,8 +32,8 @@
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
 | SOLVED | 34 |
-| SOLVED_WITH_CONSTRAINT | 6 |
-| EXTERNAL_ACTION_REQUIRED | 5 |
+| SOLVED_WITH_CONSTRAINT | 7 |
+| EXTERNAL_ACTION_REQUIRED | 4 |
 | NOT_AVAILABLE | 4 |
 | PM_DECISION_REQUIRED | 0 |
 | **합계** | **69** |
@@ -61,7 +61,7 @@
 | D-7 | 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산 | 데이터 · 스트레스 | PHASE 4 | SOLVED | SOLVED |
 | D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | COMPLETED | SOLVED |
 | D-9 | 원화 기준 역사적 낙폭(환율 포함) 미구현 | 데이터 · 스트레스 | PHASE 4 | SOLVED | SOLVED |
-| B-1 | KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포 | 보안 | PHASE 2 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
+| B-1 | KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포 | 보안 | PHASE 2 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | B-2 | KIS 지수 API 이용조건 · 데이터 재배포 조건 | 보안 · 이용조건 | PHASE 1 | SOLVED | SOLVED |
 | B-3 | 자산 프록시 Worker CORS 설정 점검 | 보안 | PHASE 2 | SOLVED | SOLVED |
 | B-4 | 동기화 Worker CORS · rate limit | 보안 | PHASE 2 | SOLVED | SOLVED |
@@ -431,17 +431,17 @@
 
 #### B-1 — KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포
 
-- **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 2
+- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 2
 - **SoT**: 인계장 v262 절(KIS 보안) · 계획서 §26
-- **현재 구현**: Worker 코드 수정 완료 - CORS 허용 목록 · fail-closed(미등록 시 503) · KV 요청 제한(분 30 · 일 300) · 상류 오류 본문 미전달. test/kis-worker-security.test.js 8건이 동작을 고정한다(§47-8). [운영 상태 실측 2026-09-20] 배포된 Worker 3종은 아직 **옛 코드**다 - 세 엔드포인트 모두 Access-Control-Allow-Origin이 "*"로 응답한다(허용 목록 미적용). kis-proxy는 비밀값 없이 호출 시 401이므로 CLIENT_SHARED_SECRET 자체는 등록돼 있으나, fail-closed(503) · Origin 허용 목록 · 요청 수 제한은 반영되지 않았다. asset-proxy는 허용 목록 밖 Origin(evil.example.com)에도 200을 돌려준다.
-- **문제**: 코드 · 테스트는 완료됐고 남은 것은 사용자의 Cloudflare 작업이다. 배포 전까지 운영에는 예전 CORS 개방 상태가 그대로 남아 있으므로 Security Final Gate의 CORS · rate limit · fail-closed 항목을 운영 기준 PASS로 표시하지 않는다.
+- **현재 구현**: Worker 코드 수정 완료 - CORS 허용 목록 · fail-closed(미등록 시 503) · KV 요청 제한(분 30 · 일 300) · 상류 오류 본문 미전달. test/kis-worker-security.test.js 8건이 동작을 고정한다(§47-8). [운영 상태 실측 2026-09-20] 배포된 Worker 3종은 아직 **옛 코드**다 - 세 엔드포인트 모두 Access-Control-Allow-Origin이 "*"로 응답한다(허용 목록 미적용). kis-proxy는 비밀값 없이 호출 시 401이므로 CLIENT_SHARED_SECRET 자체는 등록돼 있으나, fail-closed(503) · Origin 허용 목록 · 요청 수 제한은 반영되지 않았다. asset-proxy는 허용 목록 밖 Origin(evil.example.com)에도 200을 돌려준다. [운영 배포 완료 · 실측 2026-09-20 두 번째] 사용자가 Cloudflare Dashboard에서 Worker 3종을 직접 재배포했다. 재측정 결과 세 Worker 모두 신규 코드가 반영됐다 - 허용 Origin(https://key4125-netizen.github.io)에는 ACAO가 그 Origin으로 반사되고 Vary: Origin이 붙으며, 허용 목록 밖 Origin(evil.example.com)에는 ACAO 헤더가 아예 없다(이전의 ACAO "*" 완전 제거). kis-proxy: 인증 없음/오인증 401, 운영 앱 v262 공유값으로는 200(실데이터) - 공유값 미변경이라 v262와 계속 일치한다. 분당 30회 제한 실측 - 31번째 요청부터 429 + Retry-After. G-5 분기 응답(ticker_format_unsupported)이 살아 있어 최신 코드임이 확정된다. asset-proxy: GET /?url= 계약 유지(Yahoo · Naver · er-api · stooq 실데이터 수신), 허용목록 밖 host 403 host_not_allowed, http(비https) 403, url 누락 400, 잘못된 url 400, POST 405. sync: GET/POST 계약 유지, bad_key 400, 없는 슬롯 404(SYNC_KV 조회 도달), POST 필수 5필드(ciphertext · iv · salt · version · updatedAt) 전수 검증 시 각각 bad_body 400, version 문자열도 400, 깨진 JSON bad_json 400, PUT 405. GET 분당 60회 제한 실측 - 61번째부터 429. 운영 앱(v262 · GitHub Pages)을 실제 브라우저로 열어 세 Worker를 호출한 결과 전부 정상(KIS 200 · asset-proxy 200 · sync 404 not_found)이라 회귀 없음.
+- **문제**: 운영 배포가 끝나 CORS 허용목록 · 인증 · 요청 수 제한 · host 허용목록이 실제로 동작한다. 다만 다음 세 가지는 **운영환경에서 직접 확인할 수 없었다**(확인하려면 이번 단계에서 금지된 설정 변경 · 데이터 쓰기가 필요하다): ① fail-closed(503) - CLIENT_SHARED_SECRET을 비워야 재현되는데 비밀값 변경 금지 · 운영 앱이 즉시 깨진다. ② upstream_error(502, kis) / upstream_fetch_failed(502, asset) - 상류 실패를 임의로 유발할 수 없다(존재하지 않는 종목코드는 KIS가 0값으로 200을 돌려준다). ③ sync 쓰기 일 200회 제한과 정상 POST 쓰기 - 실제 PUT을 넣으면 KV에 지울 수 없는 테스트 슬롯이 남고(삭제 라우트 없음) 무료 티어 쓰기 한도(일 1,000건)를 소비한다. 세 항목 모두 코드 · 단위테스트(test/kis-worker-security.test.js 9건)로는 PASS다. 그리고 §47-8에 이미 기록된 구조적 제약이 남는다 - 공개 정적 페이지라 X-App-Secret은 원리상 공개값이고, 실질 방어선은 Origin 허용목록 + 요청 수 제한이다.
 - **필요한 사실**: 현재 Worker 설정 상태 · 교체 계획
 - **조사 경로**: Cloudflare Worker 설정 확인(사용자) · 저장소 내 참조 코드 점검(Claude)
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 없음
-- **구현 필요**: Cloudflare Dashboard(사용자 작업): ① KIS_APP_KEY · KIS_APP_SECRET 재발급 값으로 교체 ② CLIENT_SHARED_SECRET 새 값으로 교체 ③ KIS_KV 바인딩 확인 ④ Worker 3종 재배포(kis-proxy · asset-proxy · sync) ⑤ 프론트 공유값 교체. 배포 후 검증(비밀값 출력 없이): 허용 Origin → ACAO가 그 Origin으로 반사 / 허용 목록 밖 Origin → ACAO 없음 / 비밀값 없이 호출 → 401 / CLIENT_SHARED_SECRET 미등록 → 503 / 분 30회 초과 → 429 / 상류 오류 시 본문 미노출.
+- **구현 필요**: 없음(운영 배포 완료). 남는 것은 선택 사항이다 - 공유값을 새 값으로 바꾸고 싶다면 js/01-core-state.js 상수와 Cloudflare Secret을 **앱 릴리스와 동시에** 교체해야 한다(지금 따로 바꾸면 v262가 401로 깨진다).
 - **테스트**: 네트워크 격리 스모크
-- **검증**: 코드: test/kis-worker-security.test.js 9건 PASS. 운영: 미배포(2026-09-20 실측 - ACAO "*" 확인).
-- **근거**: cloudflare-worker-kis-proxy.js · test/kis-worker-security.test.js(8건) · PM_SOLUTION_CLOSURE.md §9 · §47-8
+- **검증**: 코드: test/kis-worker-security.test.js 9건 PASS. 운영: CORS 허용/차단 · Vary 3종 PASS, kis 401/200 PASS, kis 분당 30 PASS(31번째 429), asset host 허용목록 PASS, sync 계약 · bad_key · 분당 60 PASS(61번째 429), v262 회귀 없음. 미검증(운영환경 직접 확인 불가): fail-closed 503, upstream 502 2종, sync 쓰기 일 200 · 정상 POST 쓰기.
+- **근거**: HTTP 실측 2026-09-20(상태코드 · CORS 헤더만 · 비밀값 미출력) + 운영 앱(v262) 브라우저 실행 검증
 - **마지막 확인일**: 2026-09-20
 
 #### B-3 — 자산 프록시 Worker CORS 설정 점검
