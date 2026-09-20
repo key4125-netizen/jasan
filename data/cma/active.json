@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "setVersion": "CMA-2026.1",
-  "primaryDatasetId": "AGI-LTCMA-2026Q1-USD",
+  "setVersion": "CMA-2026.2",
+  "primaryDatasetId": "AGI-LTCMA-2026Q2-USD",
   "benchmarkDatasetIds": [
     "JPM-LTCMA-2026-KRW"
   ],
-  "activatedAt": "2026-09-16T15:09:25.238Z",
-  "activatedBy": "PM (directive 2026-09-16)",
-  "note": "초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)",
+  "activatedAt": "2026-09-20T03:48:03.116Z",
+  "activatedBy": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+  "note": "C-1 승인 - AllianzGI 2026 Q2(기준일 2026-03-31) PRIMARY 활성화 + JPM 2026 LTCMA KRW Benchmark 유지(§47-4).",
   "history": [
     {
       "setVersion": "CMA-2026.1",
@@ -17,7 +17,18 @@
       ],
       "activatedAt": "2026-09-16T15:09:25.238Z",
       "activatedBy": "PM (directive 2026-09-16)",
-      "note": "초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)"
+      "note": "초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)",
+      "supersededAt": "2026-09-20T03:48:03.116Z"
+    },
+    {
+      "setVersion": "CMA-2026.2",
+      "primaryDatasetId": "AGI-LTCMA-2026Q2-USD",
+      "benchmarkDatasetIds": [
+        "JPM-LTCMA-2026-KRW"
+      ],
+      "activatedAt": "2026-09-20T03:48:03.116Z",
+      "activatedBy": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+      "note": "C-1 승인 - AllianzGI 2026 Q2(기준일 2026-03-31) PRIMARY 활성화 + JPM 2026 LTCMA KRW Benchmark 유지(§47-4)."
     }
   ]
 }

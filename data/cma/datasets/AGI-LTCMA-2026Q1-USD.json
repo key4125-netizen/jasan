@@ -355,7 +355,7 @@
       }
     ]
   },
-  "status": "ACTIVE",
+  "status": "SUPERSEDED",
   "statusHistory": [
     {
       "status": "VERIFIED",
@@ -374,6 +374,12 @@
       "at": "2026-09-16T15:09:25.238Z",
       "by": "PM (directive 2026-09-16)",
       "note": "CMA-2026.1 활성화: 초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)"
+    },
+    {
+      "status": "SUPERSEDED",
+      "at": "2026-09-20T03:48:03.116Z",
+      "by": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+      "note": "CMA-2026.2으로 교체됨"
     }
   ],
   "approval": {

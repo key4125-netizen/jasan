@@ -18,6 +18,9 @@ const LS_DARKMODE = 'sam_dark_mode_v5';
 const LS_REBALANCE = 'sam_rebalance_v1';
 const LS_PROJECTION = 'sam_projection_v1';
 const LS_TRANSACTIONS = 'sam_transactions_v1';
+// [Bond Domain V1 · §47-7] 채권 레코드는 기존 자산 저장 키(sam_assets_v5)를 건드리지 않고 새 키에 따로 둔다 -
+// 기존 데이터 마이그레이션 0건. 자산과는 bondPositions[].assetId로 1:1 연결한다.
+const LS_BOND_POSITIONS = 'sam_bond_positions_v1';
 const LS_LEARNED_TICKER_NAMES = 'sam_learned_ticker_names_v1';
 // [티커별 역할(포지션) 단일 소스 - 요청 반영] 예전엔 role이 state.assets[].role, 리밸런싱 목표
 // (targets[].role/selectedStocks[].role), 월적립금 배분(allocation[].role)에 각자 독립적으로
@@ -588,6 +591,8 @@ function normalizeCurrency(raw, fallback) {
  * ---------------------------------------------------------------------- */
 const state = {
   assets: [],
+  // [Bond Domain V1 · §47-7] 직접보유 채권의 공식 발행조건 + 사용자 보유정보(js/29가 만들고 읽는다).
+  bondPositions: [],
   exchangeRate: 1450,
   // [V1.2-A C1] 원/달러 환율이 마지막으로 실제 조회에 성공한 시각(ms epoch) - fetchExchangeRate가
   // 성공했을 때만 채워진다(js/09). 실패 시에는 건드리지 않아 이전 성공 시각이 그대로 남는다 - 매크로
@@ -1423,6 +1428,13 @@ function loadState() {
     state.transactions = txRaw ? JSON.parse(txRaw) : [];
     if (!Array.isArray(state.transactions)) state.transactions = [];
   } catch (e) { state.transactions = []; }
+
+  // [Bond Domain V1 · §47-7] 채권 레코드. 형식이 깨졌으면 빈 배열로 두되, 사용자 입력을 임의로 고치지 않는다.
+  try {
+    const bondRaw = localStorage.getItem(LS_BOND_POSITIONS);
+    state.bondPositions = bondRaw ? JSON.parse(bondRaw) : [];
+    if (!Array.isArray(state.bondPositions)) state.bondPositions = [];
+  } catch (e) { state.bondPositions = []; }
   // [가족 동기화 - 스마트 머지 마이그레이션] 자산과 동일한 이유 - updatedAt이 없는 기존 거래는
   // createdAt(그마저 없으면 지금)으로 채운다.
   state.transactions.forEach((t) => { if (!t.updatedAt) t.updatedAt = t.createdAt || Date.now(); });
@@ -1512,6 +1524,8 @@ function persistRebalance(skipStamp) { if (!skipStamp) state.rebalance.updatedAt
 function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.stringify(state.tickerRoles)); schedulePush(); }
 // skipStamp: persistRebalance와 동일한 이유(위 주석 참고).
 function persistProjection(skipStamp) { if (!skipStamp) state.projection.updatedAt = Date.now(); localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
+// [Bond Domain V1 · §47-7] 채권 레코드 저장. 기존 persist*()와 같은 규칙으로 schedulePush()를 부른다.
+function persistBondPositions() { localStorage.setItem(LS_BOND_POSITIONS, JSON.stringify(state.bondPositions || [])); schedulePush(); }
 function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
 // [일별 이력 복구 제거] 복구 경로만 쓰던 skipPush 옵션을 없앴다 - 모든 호출부가 "저장 + 클라우드 push 예약"으로 같다.
 function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
@@ -1601,6 +1615,6 @@ function searchAssetsByQuery(query) {
 // localStorage 왕복(persistAssets가 쓰고 loadState가 그대로 JSON.parse해 읽는 것)에서 실제로
 // 살아남는지를 그 저장 함수 자체로 검증하기 위함이다.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, state };
+  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, persistBondPositions, LS_BOND_POSITIONS, state };
 }
 

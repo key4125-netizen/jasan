@@ -670,13 +670,30 @@
       }
     ]
   },
-  "status": "VERIFIED",
+  "status": "ACTIVE",
   "statusHistory": [
     {
       "status": "VERIFIED",
       "at": "2026-09-16T15:08:01.786Z",
       "by": "cma-pipeline",
       "note": "자동 검증 통과 - PM 검토 대기"
+    },
+    {
+      "status": "APPROVED",
+      "at": "2026-09-20T03:47:57.130Z",
+      "by": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+      "note": "PM Solution Closure C-1 승인 - 2026Q2(기준일 2026-03-31) 활성화. mu는 Return Key에서 오므로 불변, sigma/상관만 반영된다(§47-4)."
+    },
+    {
+      "status": "ACTIVE",
+      "at": "2026-09-20T03:48:03.116Z",
+      "by": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+      "note": "CMA-2026.2 활성화: C-1 승인 - AllianzGI 2026 Q2(기준일 2026-03-31) PRIMARY 활성화 + JPM 2026 LTCMA KRW Benchmark 유지(§47-4)."
     }
-  ]
+  ],
+  "approval": {
+    "approvedBy": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+    "approvedAt": "2026-09-20T03:47:57.130Z",
+    "note": "PM Solution Closure C-1 승인 - 2026Q2(기준일 2026-03-31) 활성화. mu는 Return Key에서 오므로 불변, sigma/상관만 반영된다(§47-4)."
+  }
 }

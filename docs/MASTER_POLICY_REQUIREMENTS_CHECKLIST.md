@@ -2635,3 +2635,101 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 - `e2e/89` S-10: E2E는 외부 호출이 막혀 부팅 때마다 시세 · 환율 실패 토스트(8~9초)가 쌓인다. TXT-46-1로 환율 안내가 길어지자 토스트 높이가 [클라우드 데이터 받기] 버튼을 덮어 클릭이 미뤄졌고, 그 사이 자동 동기화가 먼저 돌아 검증 순간이 지나갔다(v260 문구 점검 때 "원인 미확인"으로 보류했던 의존성의 실제 원인). 테스트가 누르기 직전 무관한 토스트만 지우도록 고쳤다 - 동기화 판단 검증은 그대로.
 - `e2e/29` #12: 팝업 열림 애니메이션 도중 크기를 재 43.99px로 간헐 실패 - 애니메이션이 끝난 뒤 재도록 고쳤다(기준 44px 그대로).
 - 추가 발견(범위 밖 · 미구현): 화면 아래 고정 토스트(z-9999)가 열린 팝업의 아래쪽 버튼을 최대 8~9초 가릴 수 있다(기존 배치). 별도 PM 판단 대상.
+
+
+## 47. v262 Closeout — PM Solution Closure 승인 반영 (PM EXECUTION DIRECTIVE 2026-09-20 · 승인 7건)
+
+> PM이 `docs/closeout/research/PM_SOLUTION_CLOSURE.md`의 해결안을 검토해 **BOND-1 · BOND-2 · BOND-4 · BOND-5 · C-1 · D-11 = APPROVED**,
+> **D-5 = APPROVED WITH CONSTRAINT** 로 확정했다. 이 절은 그 결정으로 바뀌는 SoT를 기록한다.
+> 기존 §7 · §9 · §37 · §44의 원문은 삭제하지 않는다 — 이 절이 해당 조항을 **개정**한다(개정 전 문구는 역사로 보존).
+
+### 47-1. §7-1 Risk 대상 — Equity Risk와 Bond Risk 분리 (BOND-2 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **CURRENT** | 위험 진단 대상 = `RISK_ELIGIBLE_CATEGORIES = ['주식','ETF']`(js/09). 직접채권(카테고리 '채권')은 진단 자체에서 빠져 금리위험이 보이지 않았다 |
+| **PROBLEM** | 채권 보유자는 자기 포트폴리오의 가장 큰 위험(금리)을 앱에서 볼 수 없다 |
+| **DECISION** | Bond Risk를 **기존 주식 Risk Score와 분리된 별도 층**으로 제공한다. 6-factor 위험점수의 산식 · 가중치 · 대상(주식 · ETF)은 **변경하지 않는다**. 직접채권과 채권 ETF를 같은 Beta 모델로 처리하지 않는다 — 직접채권은 듀레이션/금리민감도, 채권 ETF는 기존 가격시계열 Risk |
+| **IMPLEMENTATION** | `RISK_ELIGIBLE_CATEGORIES` 는 그대로 둔다(주식 점수 보존). 별도 함수 `computeBondRiskSummary()`가 카테고리 '채권' 보유를 읽어 채권 위험 카드를 만든다 |
+| **IMPACT** | 위험 화면에 채권 카드 추가. 기존 위험점수 · 등급 · 지표 무변경 |
+| **REGRESSION** | Risk fixture 전후 동일(§46-4 고정값) · 채권 카드 신규 테스트 |
+| **ROLLBACK** | 채권 카드 호출부 제거(기존 경로 무변경이므로 즉시 복귀) |
+
+### 47-2. §44 제10조 개정 — Portfolio Beta는 주식 노출만 집계 + Coverage 표시 (BOND-5 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **CURRENT** | 대상 종목 중 하나라도 베타가 없으면 `portfolioBeta = null`(전부-또는-무) |
+| **PROBLEM** | 베타를 못 구하는 종목이 하나만 있어도 시장위험 지표 전체가 사라진다. 채권을 진단에 넣으면 이 문제가 상시화된다 |
+| **DECISION** | ① Portfolio Beta는 **주식 노출(주식 · ETF)만** 집계한다 — 채권은 분자 · 분모 어디에도 넣지 않는다(0 대입 금지). ② 베타를 구한 종목만으로 가중평균하고 **Equity Beta Coverage(%)** 를 함께 표시한다. ③ Coverage가 `BETA_COVERAGE_MIN`(50%) 미만이면 값을 표시하지 않고 사유를 쓴다. ④ 전부-또는-무 정책은 **주식 베타 집계 영역에 한정**해 폐지하고, 다른 지표에는 적용하지 않는다 |
+| **IMPLEMENTATION** | js/09 `computeBetaAggregate(holdings)` 신설 — `{ beta, coverage, missingCount }`. 본 엔진 · 시나리오 엔진이 같은 함수를 쓴다. js/10이 "베타 92% · 채권 18% 제외"를 함께 표시 |
+| **IMPACT** | 기존에 null이던 포트폴리오 베타가 값으로 나타난다 → 6-factor 중 **market 요인이 다시 점수에 참여**한다(산식은 무변경, 입력이 생긴 것). 위험점수가 변할 수 있다 |
+| **REGRESSION** | Risk 전후 측정 필수(§46-4 fixture 값 갱신 사유를 기록) |
+| **ROLLBACK** | `computeBetaAggregate`의 임계값을 101%로 두면 기존 동작(사실상 전부-또는-무)으로 복귀 |
+
+### 47-3. §7 채권 σ=0 · §37 개정 — Bond MC 자산군 연결 (BOND-4 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **CURRENT** | js/16 `riskFree = … || appClass === BOND || appClass === CASH` → 채권 σ=0. `app-asset-class-map.json`의 BOND는 unmapped("Bond Domain은 BACKLOG") |
+| **PROBLEM** | σ=0은 "위험이 없다"는 뜻이 되어 사실과 다르다. 원인은 데이터 부재가 아니라 **매핑 부재**였다 — `data/cma/datasets/JPM-LTCMA-2026-KRW.json`(이미 저장소에 있음)에 Korean Government Bonds(ER 3.0 / σ 5.357) · Korean Corporate Bonds(3.5 / 2.540) 등이 있다 |
+| **DECISION** | ① 채권 자산 성격을 `KR_GOV_BOND` · `KR_CORP_BOND` · `FOREIGN_BOND_HEDGED` · `FOREIGN_BOND_UNHEDGED` 로 세분하고, 매핑 가능한 성격은 **JPM-LTCMA-2026-KRW를 μ/σ 근거(risk provider)로** 쓴다. ② **현금(CASH)은 채권으로 취급하지 않는다** — 기존 σ=0 정책 유지. ③ 매핑되지 않는 채권은 **σ=0으로 계산하지 않고 MC 대상에서 제외**하고 그 사실을 사용자에게 표시한다. ④ 외화채는 hedged / unhedged 를 분리해 관리하고, **환헤지가 A등급으로 확인되지 않으면 헤지 자산군을 쓰지 않는다**(비헤지로도 단정하지 않고 미연결 → MC 제외). ⑤ FX 모델이 없는 상태에서 외화채를 원화 채권과 동일 취급하지 않는다 |
+| **IMPLEMENTATION** | `app-asset-class-map.json` appClasses에 4종 추가(각 항목에 `riskProvider: "J.P. Morgan Asset Management"` 명시) · js/27 `resolveCmaRiskForAppClass`가 appClass별 riskProvider를 우선 조회 · js/16이 BOND 계열을 riskFree에서 빼고, 미매핑 채권은 `excludedFromMc` 로 분리 · MC_CMA_RETURN_POLICY(μ = Return Key)는 **변경 없음** |
+| **IMPACT** | 채권을 보유한 포트폴리오의 MC 분포가 바뀐다(σ>0). μ는 바뀌지 않는다 |
+| **REGRESSION** | 동일 seed 3단계 측정(BASE → CMA Q2 → Bond 매핑) · 원장 49건 MC invariant 별도 검증 |
+| **ROLLBACK** | app-asset-class-map.json의 4개 appClass를 unmapped로 되돌리면 즉시 복귀(데이터 파일만) |
+
+### 47-4. §37 CMA — 2026Q2 활성화 (C-1 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **CURRENT** | ACTIVE primary = AGI-LTCMA-2026Q1-USD(기준일 2025-12-31) |
+| **PROBLEM** | 더 최신 공식 발행물(2026Q2 · 기준일 2026-03-31)이 VERIFIED 상태로 대기 중이었다 |
+| **DECISION** | AGI-LTCMA-2026Q2-USD 를 PRIMARY로 활성화한다. **μ는 Return Key에서 오므로 CMA 교체로 변하지 않는다**(§37-5 유지) — 반영되는 것은 σ와 상관이다 |
+| **IMPLEMENTATION** | `node scripts/cma-update.js approve` → `activate --primary AGI-LTCMA-2026Q2-USD --benchmark JPM-LTCMA-2026-KRW` (js/26-cma-data.js 재생성) |
+| **IMPACT** | 측정값(동일 seed 20260101 · 2,000회 · 20년 · 원장 49건): P10 −1.97% · P50 +1.52% · P90 +4.77% · mean +3.84% · μ 불변 |
+| **REGRESSION** | BOND-4와 **같은 단계에서 섞지 않는다** — STEP 1(Q2)과 STEP 2(Bond 매핑)를 각각 측정한다 |
+| **ROLLBACK** | `activate --primary AGI-LTCMA-2026Q1-USD` 로 되돌린다(이력은 active.json history에 남는다) |
+
+### 47-5. §44 제10조 · D-06 개정 — HOME_COMMON_RULE v2 (D-11 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **CURRENT (v1)** | 증권 종류 표기가 "common stock"인 경우만 HOME_COMMON |
+| **PROBLEM** | 같은 발행인이 의결권만 다르게 발행한 지분증권(예: Alphabet Class C Capital Stock)이 명칭 때문에 보류됐다. 규칙의 목적은 "외국 발행인 · 예탁증권을 국내 대표지수와 비교하지 않는 것"이지 명칭 대조가 아니다 |
+| **DECISION (v2)** | ① 발행인이 미국 주에 설립되고 ② 연차보고서가 10-K이며 ③ 해당 종목이 그 발행인의 **본국 발행 지분증권**(보통주 및 의결권만 다른 동일 지분권)이고 ④ **ADR/ADS · 우선주 · ETF가 아니면** HOME_COMMON. **거래소 상장 사실만으로는 절대 추론하지 않는다.** 불명확 · 충돌은 REVIEW/UNRESOLVED |
+| **IMPLEMENTATION** | js/28 GOOG에 `equityListing: 'HOME_COMMON' · evidenceGrade: 'A'` + 근거 기록, `HOME_COMMON_RULE_VERSION = 'v2'` |
+| **IMPACT** | 원장 영향 1건(GOOG). Benchmark 상태 분포 RESOLVED 33→34 · UNRESOLVED 15→14. 대장 검증 위반 0건 |
+| **REGRESSION** | `test/integrated-benchmark-index.test.js` 상태표 갱신 · `exposure-master-activation.test.js` |
+| **ROLLBACK** | GOOG 항목의 equityListing 제거(v1 동작) |
+
+### 47-6. §44 제10조 — KOSPI200 계열 Benchmark (D-5 APPROVED WITH CONSTRAINT)
+
+| 구분 | 내용 |
+|---|---|
+| **DECISION** | ① **ETF 자기 자신을 proxy benchmark로 쓰지 않는다**(self-proxy beta=1 방식 폐기 · 금지 규칙으로 고정). ② 사용자가 Benchmark · Return Key를 명시 지정하면 그 기준을 쓴다. ③ 공식 KOSPI200 PR/TR 시계열이 확보되면 Index Master의 공식 benchmark로 연결할 수 있도록 **구조를 유지**한다. ④ 공식 원천이 없는 현재는 069500 · 102110 · 278530을 **"Benchmark 정의는 확인 · 가격원천 없음(SOURCE_UNAVAILABLE)"** 상태로 정확히 유지한다 |
+| **상태** | **SOLVED WITH CONSTRAINT** — 공식 데이터 원천 확보 전까지 베타 계산 불가. 추가 조사는 하지 않는다 |
+| **REGRESSION** | self-proxy 금지 테스트 신설(Index Master 어떤 항목도 sourceId가 자기 ETF 티커가 아님) |
+
+### 47-7. Bond Domain V1 구현 범위 (BOND-1 APPROVED)
+
+| 구분 | 내용 |
+|---|---|
+| **DECISION (BOND-1)** | 채권 성과는 **확정 계층(기본)** 과 **평가 계층(보조)** 으로 나눈다. 기본 표시 · 관리의 중심은 확정 계층이다. 평가 계층은 시장가치가 확보된 경우에만 별도로 표시하고, **시장가격이 없다는 이유로 확정값을 평가값으로 대체하지 않는다** |
+| **확정 계층** | 매입금액 · 수령/예정 쿠폰 · 만기 상환금액 · 매입 시 YTM · 잔존기간 · 다음 이자일 (시세 불필요) |
+| **평가 계층** | 평가금액 · 평가손익 · Current Yield · 현재가 YTM (그 날 시세가 있을 때만) |
+| **구현 범위 V1** | ① Bond Ledger(공식 Terms / 사용자 보유 분리 · 기존 자산 migration 없음) ② ISIN 조회 어댑터(6상태) ③ 현금흐름 · 경과이자 · 수익률 8종 ④ 기존 자산 입력 폼 확장(신규 화면 없음 · 375px) ⑤ 듀레이션 모형(표시는 "모형값") |
+| **금지** | 신용 스프레드 데이터가 없는 상태에서 credit risk 수치를 만들지 않는다 · 사용자 매입가/수량/매입일을 API 결과로 덮어쓰지 않는다 · 서비스키를 소스 · 로그에 남기지 않는다 |
+| **라이선스 (BOND-6)** | 제2유형(기본정보 · 권리일정 · 발행정보) = 저장 · 가공 가능(출처표시 · 비상업). 제4유형(시세) = 저장 · 재배포 없이 화면 표시에만 사용 |
+
+### 47-8. B-1 KIS Proxy Worker 보안 (SOLVED · EXTERNAL ACTION 포함)
+
+| 항목 | 개정 전 | 개정 후 |
+|---|---|---|
+| CORS | `Access-Control-Allow-Origin: '*'` | Origin 허용목록만 반사 + `Vary: Origin` |
+| 인증 | `CLIENT_SHARED_SECRET` 미등록 시 검사 생략(fail-open) | **fail-closed** — 미등록이면 503, 불일치면 401 |
+| 요청 제한 | 없음 | KV 카운터(분 30 · 일 300 초과 시 429) |
+| 오류 | 상류 본문 전달 가능 | 상태코드 · 일반 메시지만 |
+| 제약 | — | 공개 PWA의 `X-App-Secret`은 본질적으로 공개값 → 실질 방어선은 **Origin 허용목록 + rate limit** |
+
+**EXTERNAL ACTION REQUIRED** — Cloudflare Dashboard에서 변수 등록 · 비밀값 회전 · 재배포는 사용자 작업이다(절차는 PM_SOLUTION_CLOSURE.md §9). 이 저장소는 코드만 수정한다.

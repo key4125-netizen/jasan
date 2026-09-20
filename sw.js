@@ -612,7 +612,9 @@ const APP_SHELL = [
   './js/14-settings-boot.js',
   // [Phase 1B] js/09(APP_SHELL)가 벤치마크 판정에서 참조하므로 함께 미리 캐시한다 -
   // 완전 오프라인 최초 실행에서 원장만 빠져 판정이 조용히 달라지는 일을 막는다.
-  './js/28-exposure-master.js'
+  './js/28-exposure-master.js',
+  // [Bond Domain V1 · §47-7] js/05 · js/09 · js/16이 참조하므로 같은 이유로 미리 캐시한다.
+  './js/29-bond-domain.js'
 ];
 
 // 외부 시세/환율 API 및 CORS 프록시는 항상 최신 데이터가 우선이므로 네트워크를 먼저 시도하고,

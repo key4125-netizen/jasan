@@ -5,23 +5,23 @@
  *    - 숫자는 원문 값 그대로이며, 앱이 연결하는 자산군만 담는다(체크리스트 §37).
  * ---------------------------------------------------------------------- */
 const CMA_ACTIVE_SET = {
-  "setVersion": "CMA-2026.1",
-  "activatedAt": "2026-09-16T15:09:25.238Z",
-  "activatedBy": "PM (directive 2026-09-16)",
-  "activationNote": "초기 장기 MC CMA 세트 - AllianzGI 2026 Q1(수익률 · 변동성 · DW 상관) + J.P. Morgan 2026 LTCMA KRW(상관 Benchmark)",
+  "setVersion": "CMA-2026.2",
+  "activatedAt": "2026-09-20T03:48:03.116Z",
+  "activatedBy": "PM (EXECUTION DIRECTIVE 2026-09-20 · C-1 APPROVED)",
+  "activationNote": "C-1 승인 - AllianzGI 2026 Q2(기준일 2026-03-31) PRIMARY 활성화 + JPM 2026 LTCMA KRW Benchmark 유지(§47-4).",
   "primary": {
-    "datasetId": "AGI-LTCMA-2026Q1-USD",
-    "version": "AGI-2026.1",
+    "datasetId": "AGI-LTCMA-2026Q2-USD",
+    "version": "AGI-2026.2",
     "provider": "Allianz Global Investors",
-    "sourceTitle": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD) (Released in Q1 2026)",
-    "sourceUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+    "sourceTitle": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD) (Released in Q2 2026)",
+    "sourceUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q2-allianzgi-ap.pdf",
     "sourceType": "OFFICIAL_PDF",
     "role": "PRIMARY",
     "numberKind": "OFFICIAL_DATA",
-    "edition": "2026Q1",
-    "publishedAt": "2026-02",
-    "asOfDate": "2025-12-31",
-    "effectiveDate": "2025-12-31",
+    "edition": "2026Q2",
+    "publishedAt": "2026-05",
+    "asOfDate": "2026-03-31",
+    "effectiveDate": "2026-03-31",
     "horizonYears": 10,
     "currency": "USD",
     "returnDefinition": "NOT_STATED_IN_SOURCE",
@@ -29,24 +29,24 @@ const CMA_ACTIVE_SET = {
     "methodologyUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
     "retrievedAt": "2026-09-16T15:08:01.786Z",
     "verifiedAt": "2026-09-16T15:08:01.786Z",
-    "fileSha256": "689512607c87830b3f1fd2b0e21ba1f4da45bb8a571ef93e8cc5adc6b0a96da0",
+    "fileSha256": "7881c82e31f52e0465024c6614223c2a80a985558d220b53cce2b724d591e502",
     "returnUsableForMc": false,
     "classes": {
       "Developed World Equities": {
-        "expectedReturn": 6.5,
-        "volatility": 17.4
+        "expectedReturn": 7,
+        "volatility": 17.5
       },
       "North America Equities": {
-        "expectedReturn": 6.1,
-        "volatility": 16.5
+        "expectedReturn": 6.7,
+        "volatility": 16.6
       },
       "Korea Equities": {
-        "expectedReturn": 6.8,
-        "volatility": 27.9
+        "expectedReturn": 7.3,
+        "volatility": 29.4
       },
       "Emerging Markets Equities": {
-        "expectedReturn": 6.7,
-        "volatility": 24.1
+        "expectedReturn": 6.9,
+        "volatility": 24.4
       }
     },
     "correlation": {
@@ -56,7 +56,7 @@ const CMA_ACTIVE_SET = {
         "Developed World Equities": 1,
         "North America Equities": 0.99,
         "Korea Equities": 0.84,
-        "Emerging Markets Equities": 0.89
+        "Emerging Markets Equities": 0.88
       }
     }
   },

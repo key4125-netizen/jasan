@@ -76,6 +76,17 @@ const EM_EXPOSURE_STRUCTURE = Object.freeze({ MIXED: 'MIXED' });
 // [2차 통합 보완 · D-06 · PM 결정 ③] 해외 상장 개별주의 상장 형태. 거래소 상장 사실만으로는 정하지 않는다 -
 // 공식 1차 자료(근거 등급 A)로 확인된 경우에만 적는다. HOME_COMMON(본국 보통주)만 원장 Benchmark를 쓴다.
 const EM_EQUITY_LISTING = Object.freeze({ HOME_COMMON: 'HOME_COMMON', ADR: 'ADR' });
+/* [D-11 · §47-5 · PM APPROVED 2026-09-20] 본국 보통주 판정 규칙 v2.
+ * v1은 등록증권의 "명칭"이 보통주(common stock)인지를 봤다. 그러나 이 규칙의 목적은 "외국 발행인 ·
+ * 예탁증권을 국내 대표지수와 비교하지 않는 것"이지 명칭 대조가 아니다 - 같은 발행인이 의결권만 다르게
+ * 발행한 지분증권(예: Alphabet Class C Capital Stock)까지 보류시키면 목적과 무관하게 정보만 잃는다.
+ * v2 판정 조건(네 가지를 모두 만족해야 HOME_COMMON):
+ *   ① 발행인이 미국 주에 설립됐다(SEC EDGAR 설립지)
+ *   ② 연차보고서가 10-K다(외국 발행인 20-F · 40-F가 아니다)
+ *   ③ 해당 종목이 그 발행인의 본국 발행 지분증권이다(보통주 및 의결권만 다른 동일 지분권)
+ *   ④ 예탁증권(ADR/ADS) · 우선주 · ETF가 아니다
+ * 거래소 상장 사실만으로는 절대 판정하지 않는다(그 금지는 v1과 동일). 불명확 · 충돌은 REVIEW로 남긴다. */
+const HOME_COMMON_RULE_VERSION = 'v2';
 
 /* --- 2. 자산유형별 필수 필드 (§44 44-1 매트릭스) ------------------------
  * "모든 자산에 모든 필드를 강제하지 않는다"(§44 제5조 EM-4). N/A 칸이 비어 있는 것은
@@ -270,13 +281,14 @@ const EXPOSURE_MASTER_ENTRIES = Object.freeze([
   //   NYSE · AMEX 상장분은 앱에 해당 종합지수가 없어 benchmark를 비워 둔다(UNRESOLVED).
   //   [실행 묶음 B · 2026-09-20] 본국 보통주 여부(equityListing)를 1차 자료로 확인해 채웠다 - SEC EDGAR 설립지 ·
   //   연차보고서 서식(10-K) · 거래소 종목 디렉터리/10-K 표지의 증권 종류 세 가지를 모두 만족한 19건만 HOME_COMMON이다
-  //   (판정 규칙 HOME_COMMON_RULE_V1 · 기록 docs/closeout/research/us-home-common.json). 거래소 상장 사실만으로는 판정하지 않는다.
-  //   GOOG는 등록증권이 "Class C Capital Stock"이라 보통주 표기가 아니어서 REVIEW로 남겼다(근거 없음 → Risk는 UNRESOLVED).
+  //   (판정 규칙 · 기록 docs/closeout/research/us-home-common.json). 거래소 상장 사실만으로는 판정하지 않는다.
+  //   [D-11 · 2026-09-20] 규칙 v2(위 HOME_COMMON_RULE_VERSION 주석) 채택으로 GOOG도 HOME_COMMON이 됐다 - 같은 발행인의
+  //   본국 발행 지분증권이고 ADR이 아니며, Class C는 의결권만 다르다(10-K 표지 12(b) 등록증권으로 확인). 20건이 됐다.
   //   NYSE 상장분은 본국 보통주가 확인돼도 앱에 NYSE 종합지수가 없어 benchmark가 비어 있다(여전히 UNRESOLVED · 대장 D-2).
   { ticker: "AAPL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 CA · 연차보고서 10-K(2025-10-31) · 증권 종류 \"Apple Inc. - Common Stock\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
   { ticker: "MSFT", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 WA · 연차보고서 10-K(2026-07-29) · 증권 종류 \"Microsoft Corporation - Common Stock\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
   { ticker: "GOOGL", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 DE · 연차보고서 10-K(2026-02-05) · 증권 종류 \"Class A Common Stock, $0.001 par value\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
-  { ticker: "GOOG", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 판정 REVIEW: SEC 설립지 DE · 10-K(2026-02-05)는 확인됐으나 등록증권이 \"Class C Capital Stock\"으로 보통주 표기가 아니다(HOME_COMMON_RULE_V1 · 정책 판단 대기)", version: "EM-2026.1" },
+  { ticker: "GOOG", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 DE · 연차보고서 10-K(2026-02-05) · 10-K 표지 12(b) 등록증권에 Class A Common Stock(GOOGL)과 Class C Capital Stock(GOOG)이 함께 등록 · 예탁증권(ADR/ADS) 아님 · 같은 발행인의 본국 발행 지분증권으로 의결권만 다르다 · HOME_COMMON_RULE_V2 판정 2026-09-20(§47-5 PM 승인)", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
   { ticker: "AMZN", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 DE · 연차보고서 10-K(2026-02-06) · 증권 종류 \"Amazon.com, Inc. - Common Stock\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
   { ticker: "NVDA", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 DE · 연차보고서 10-K(2026-02-25) · 증권 종류 \"NVIDIA Corporation - Common Stock\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
   { ticker: "AVGO", assetType: "FOREIGN_STOCK", assetClass: "US_EQUITY", marketExposure: "US", benchmark: "NASDAQ", priceCcy: "USD", underlyingCcy: "USD", fxExposure: "EXPOSED", conversionMethod: "FX_MULTIPLY", evidence: "KIS 공식 종목마스터(data/ticker-master.json 2026-09-08) exchange=NASDAQ · 미국 거래소 상장(USD 표시) · 본국 보통주 근거: SEC EDGAR 설립지 DE · 연차보고서 10-K(2025-12-18) · 증권 종류 \"Common Stock, $0.001 par value\"(nasdaqlisted) · HOME_COMMON_RULE_V1 판정 2026-09-20", equityListing: "HOME_COMMON", evidenceGrade: "A", version: "EM-2026.1" },
@@ -498,6 +510,6 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveExposureBenchmark, resolveExposureAssetClass,
     EM_EVIDENCE_GRADE, EM_EXPOSURE_STRUCTURE, EM_EQUITY_LISTING, lookupExposureRecord, resolveExposureCharacter,
     INDEX_RETURN_TYPE, INDEX_AVAILABILITY, INDEX_MASTER_ENTRIES, INDEX_MASTER_BY_KEY,
-    resolveIndexMasterEntry, isIndexPriceSourceAvailable, indexPriceSourceTicker, resolveBenchmarkDefinitionStatus
-  };
+    resolveIndexMasterEntry, isIndexPriceSourceAvailable, indexPriceSourceTicker, resolveBenchmarkDefinitionStatus, HOME_COMMON_RULE_VERSION
+};
 }

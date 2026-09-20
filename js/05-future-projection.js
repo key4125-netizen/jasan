@@ -83,6 +83,12 @@ const ASSET_CHARACTERS = Object.freeze({
   KR_EQUITY: 'KR_EQUITY', US_EQUITY: 'US_EQUITY',
   EM_EQUITY: 'EM_EQUITY', DEV_EX_US_EQUITY: 'DEV_EX_US_EQUITY',
   BOND: 'BOND', CASH: 'CASH', REAL_ESTATE: 'REAL_ESTATE',
+  // [BOND-4 · §47-3] 채권을 MC 자산군에 연결하려면 "채권"만으로는 부족하다 - 국채와 회사채는 공식
+  // 장기가정(JPM LTCMA KRW)에서 서로 다른 자산군이고, 외화채는 환헤지 여부로 변동성이 3배 넘게
+  // 달라진다. 그래서 채권 레코드(js/29)가 발행인 유형 · 통화 · 환헤지를 알려 줄 때만 아래 네 성격으로
+  // 세분한다. 근거가 없으면 세분하지 않고 기존 BOND로 남는다(추정 금지 · MC에서는 제외된다).
+  KR_GOV_BOND: 'KR_GOV_BOND', KR_CORP_BOND: 'KR_CORP_BOND',
+  FOREIGN_BOND_HEDGED: 'FOREIGN_BOND_HEDGED', FOREIGN_BOND_UNHEDGED: 'FOREIGN_BOND_UNHEDGED',
   COMMODITY: 'COMMODITY', CRYPTO: 'CRYPTO',
   UNRESOLVED: 'UNRESOLVED'
 });
@@ -168,6 +174,13 @@ function resolveAssetCharacter(asset, options) {
   //    등 나머지 근거로 판정한다. 사용자 확정(user)과 표식 없는 legacy는 기존 그대로다(6단계 개별 주식도 같다).
   const confirmedCategory = getConfirmedCategoryForCalc(asset);
   const byCategory = CATEGORY_TO_CHARACTER[confirmedCategory];
+  // 1-0) [BOND-4 · §47-3] 채권으로 확정된 자산에 채권 레코드(js/29)가 연결돼 있으면 발행인 유형 ·
+  //      통화 · 환헤지로 성격을 세분한다. 레코드가 없거나 분류 근거가 없으면 기존 BOND 그대로다 -
+  //      "모르면 세분하지 않는다"가 원칙이고, 세분되지 않은 채권은 MC에서 제외된다(σ=0으로 만들지 않는다).
+  if (byCategory === ASSET_CHARACTERS.BOND && typeof resolveBondAssetCharacter === 'function') {
+    const bond = resolveBondAssetCharacter(asset);
+    if (bond && bond.character && ASSET_CHARACTERS[bond.character]) return out(bond.character, 'bondLedger', 'high');
+  }
   if (byCategory) return out(byCategory, 'category', 'high');
 
   // 1-1) [D-16] Exposure Master - 근거 있는 상품 사실(자산군)이 공유표(ETF_HOLDINGS_MAP · SECTOR_MAP)보다 먼저다.
@@ -302,7 +315,7 @@ function resolveRateKeyFromAssetCharacter(assetLike) {
   const primary = candidates[0];
   // 통화·시장이 다른 채권에 국내 'BOND' 기준을 그대로 붙이지 않는다 - recommendReturnAssumptionKey가
   // 쓰는 것과 정확히 같은 규칙이라, 추천 화면과 실제 계산이 어긋날 수 없다.
-  if (char.character === ASSET_CHARACTERS.BOND
+  if (isBondCharacter(char.character)
       && RETURN_KEY_REGION[primary] && char.region && RETURN_KEY_REGION[primary] !== char.region) return null;
   return primary;
 }
@@ -1093,7 +1106,9 @@ function returnKeyCandidatesForCharacter(character, region) {
   if (character === ASSET_CHARACTERS.EM_EQUITY) return ['EMERGING'];
   if (character === ASSET_CHARACTERS.CASH) return ['CASH', 'CASH.USD'];
   if (character === ASSET_CHARACTERS.REAL_ESTATE) return ['부동산'];
-  if (character === ASSET_CHARACTERS.BOND) return ['BOND'];
+  // [BOND-4 · §47-3] 세분된 채권 성격도 Return Key는 기존 'BOND' 하나뿐이다 - 자산군(σ)만 나뉘고
+  // 수익률 가정 체계는 건드리지 않는다(MC_CMA_RETURN_POLICY · RET-03 정책 유지).
+  if (isBondCharacter(character)) return ['BOND'];
   return [];
 }
 
@@ -1101,9 +1116,18 @@ function returnKeyCandidatesForCharacter(character, region) {
 const ASSET_CHARACTER_LABELS = Object.freeze({
   KR_EQUITY: '국내 주식', US_EQUITY: '미국 주식', EM_EQUITY: '신흥국 주식',
   DEV_EX_US_EQUITY: '미국 외 선진국 주식', BOND: '채권', CASH: '현금성',
+  KR_GOV_BOND: '국내 국공채', KR_CORP_BOND: '국내 회사채',
+  FOREIGN_BOND_HEDGED: '외화채권(환헤지)', FOREIGN_BOND_UNHEDGED: '외화채권(환노출)',
   REAL_ESTATE: '부동산', COMMODITY: '금·원자재', CRYPTO: '가상자산', UNRESOLVED: '확인 필요'
 });
 function getAssetCharacterLabel(character) { return ASSET_CHARACTER_LABELS[character] || character; }
+// [BOND-4 · §47-3] "채권 계열인가"를 한 곳에서 판단한다 - 세분 성격이 늘어도 기존 채권 규칙
+// (국내 'BOND' Return Key를 통화가 다른 채권에 붙이지 않는다 등)이 빠짐없이 함께 적용된다.
+const BOND_CHARACTER_SET = Object.freeze([
+  ASSET_CHARACTERS.BOND, ASSET_CHARACTERS.KR_GOV_BOND, ASSET_CHARACTERS.KR_CORP_BOND,
+  ASSET_CHARACTERS.FOREIGN_BOND_HEDGED, ASSET_CHARACTERS.FOREIGN_BOND_UNHEDGED
+]);
+function isBondCharacter(character) { return BOND_CHARACTER_SET.includes(character); }
 
 /**
  * 신규/보유 자산에 어떤 장기 수익률 가정을 붙일지 추천한다.
@@ -1203,7 +1227,7 @@ function recommendReturnAssumptionKey(input) {
   // 주식에는 이 검사를 적용하지 않는다 - 국내 상장 미국지수 ETF처럼 "상장 시장 ≠ 기초지수"인 상품이
   // 정상적으로 존재하고, 그 경우 위 성격 판정이 이미 기초지수를 보고 결정했기 때문이다.
   const primary = candidates[0];
-  const regionMismatch = char.character === ASSET_CHARACTERS.BOND
+  const regionMismatch = isBondCharacter(char.character)
     && RETURN_KEY_REGION[primary] && char.region && RETURN_KEY_REGION[primary] !== char.region;
   if (regionMismatch) {
     return Object.assign(base, {

@@ -111,8 +111,9 @@ test('① 원장 49건(v261)의 Risk Benchmark 키가 그대로다', () => {
   // 거래소 상장 근거만으로 Benchmark를 주지 않는다.
   // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 그 근거를 1차 자료로 확인해 19건에 채웠다(SEC EDGAR 설립지 · 10-K ·
   // 거래소 증권 종류 · HOME_COMMON_RULE_V1). 그래서 v261에서 NASDAQ이던 11종목 중 10종목이 v261 값으로 돌아왔고,
-  // 남은 1종목은 GOOG다 - 등록증권이 "Class C Capital Stock"이라 보통주 표기가 아니어서 REVIEW로 두었다.
-  // 결과적으로 v261과 다른 항목은 GOOG 하나뿐이다(EXPECTED CHANGE).
+  // [기대값 갱신 사유 · D-11 · §47-5 · 2026-09-20] 규칙 v2(본국 발행 지분증권 기준 · ADR/우선주/ETF 제외) 채택으로
+  // GOOG도 근거가 성립했다 - Alphabet 10-K 표지 12(b)에 Class A Common(GOOGL)과 Class C Capital(GOOG)이 함께
+  // 등록돼 있고 예탁증권이 아니다. 따라서 v261과 다른 항목은 0건이 됐다(NASDAQ 상장 11종목 전부 v261 값 복귀).
   let changed = 0;
   Object.entries(V261).forEach(([t, v261Key]) => {
     const e = EM.EXPOSURE_MASTER_ENTRIES.find((x) => x.ticker === t);
@@ -129,7 +130,7 @@ test('① 원장 49건(v261)의 Risk Benchmark 키가 그대로다', () => {
     // 기존 49건은 전부 같은 시장 지수다 - 비동기 정렬 · 환산이 붙지 않는다(계산 경로 무변경).
     assert.strictEqual(bm.alignment, undefined, `${t}`);
   });
-  assert.strictEqual(changed, 1, 'v261과 다른 것은 본국 보통주 근거가 아직 없는 GOOG 하나뿐이다(나머지 NASDAQ 상장주 10종목은 근거 확인으로 v261 값 복귀)');
+  assert.strictEqual(changed, 0, '규칙 v2 채택으로 NASDAQ 상장 11종목이 모두 v261 Benchmark로 돌아왔다(D-11 · §47-5)');
 });
 
 /* ── ② Index Master ─────────────────────────────────────────────────────── */
@@ -423,8 +424,10 @@ test('⑤ D-06: 국내 상장 개별주만 상장 시장 지수, 원장에 없�
   // [2차 통합 보완 · PM 결정 ③] 원장 항목이어도 근거가 거래소 상장뿐이면 본국 보통주로 추정하지 않는다.
   // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] AAPL은 본국 보통주가 1차 자료로 확인돼 원장 Benchmark를 쓴다.
   assert.deepStrictEqual(bm('AAPL'), { key: 'NASDAQ', status: 'RESOLVED', source: 'exposureMaster' });
-  // 근거가 아직 없는 종목(GOOG - 보통주 표기가 아닌 Class C Capital Stock)은 그대로 UNRESOLVED다.
-  assert.deepStrictEqual(bm('GOOG'), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
+  // [기대값 갱신 사유 · D-11 · §47-5] GOOG도 규칙 v2로 본국 발행 지분증권임이 확인돼 원장 Benchmark를 쓴다.
+  assert.deepStrictEqual(bm('GOOG'), { key: 'NASDAQ', status: 'RESOLVED', source: 'exposureMaster' });
+  // 규칙 v2를 써도 "거래소 상장만으로는 판정하지 않는다"는 금지는 그대로다(아래 합성 원장 ZZUL · ZZADR로 고정).
+  assert.strictEqual(EM.HOME_COMMON_RULE_VERSION, 'v2');
   // 원장에 본국 보통주(A등급)로 명시된 경우만 원장 Benchmark · ADR은 거래소 지수로 보내지 않는다 · 근거 부족도 UNRESOLVED.
   const syn = withSyntheticLedger(loadRiskSandbox());
   const sb = (t) => plain(syn.resolveRiskBenchmark({ ticker: t, category: '주식', name: '' }));
@@ -484,5 +487,6 @@ test('상태 표(실제 원장): 확인·원천있음 / 확인·원천없음 / �
   // [기대값 갱신 사유 · 실행 묶음 B 3차 · 2026-09-20] 공식 자료 확인으로 세 건이 이동했다.
   //   069500 · 102110: 기초지수 코스피 200 확인 → 미해결에서 "확인 · 원천 없음"으로
   //   368590: 환노출(비헤지) 확정 → 헤지 미확인에서 "확인 · 원천 있음"(비동기 · 원화환산)으로
-  assert.deepStrictEqual(buckets, { RESOLVED: 33, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 1, mixedExposure: 2, UNRESOLVED: 15 });
+  // [기대값 갱신 사유 · D-11 · §47-5 · 2026-09-20] HOME_COMMON 규칙 v2로 GOOG 1건이 미해결 → 확인·원천있음으로 옮겨갔다.
+  assert.deepStrictEqual(buckets, { RESOLVED: 34, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 1, mixedExposure: 2, UNRESOLVED: 14 });
 });

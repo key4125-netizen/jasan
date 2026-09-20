@@ -109,32 +109,35 @@ test('R-6. buildCmaRiskInputs - 변동성 · 대칭 상관행렬 · 무위험 �
 
 /* ── O. 실제 ACTIVE 세트 (원문 값) ─────────────────────────────────────────── */
 
-test('O-1. ACTIVE 세트 CMA-2026.1 = AllianzGI 2026 Q1(PRIMARY) + J.P. Morgan 2026 LTCMA KRW(BENCHMARK), active.json · Dataset 상태와 일치', () => {
+// [기대값 갱신 사유 · C-1 · §47-4 · 2026-09-20] PM 승인으로 PRIMARY가 AllianzGI 2026 Q1 → 2026 Q2로
+// 바뀌었다(기준일 2025-12-31 → 2026-03-31). μ는 Return Key에서 오므로 그대로이고, σ와 상관만 움직인다.
+test('O-1. ACTIVE 세트 CMA-2026.2 = AllianzGI 2026 Q2(PRIMARY) + J.P. Morgan 2026 LTCMA KRW(BENCHMARK), active.json · Dataset 상태와 일치', () => {
   const active = readJson(path.join(DATA, 'active.json'));
   assert.strictEqual(CMA_ACTIVE_SET.setVersion, active.setVersion);
-  assert.strictEqual(CMA_ACTIVE_SET.setVersion, 'CMA-2026.1');
-  assert.strictEqual(CMA_ACTIVE_SET.primary.datasetId, 'AGI-LTCMA-2026Q1-USD');
+  assert.strictEqual(CMA_ACTIVE_SET.setVersion, 'CMA-2026.2');
+  assert.strictEqual(CMA_ACTIVE_SET.primary.datasetId, 'AGI-LTCMA-2026Q2-USD');
   assert.deepStrictEqual(CMA_ACTIVE_SET.benchmarks.map((b) => b.datasetId), ['JPM-LTCMA-2026-KRW']);
   const statuses = Object.fromEntries(fs.readdirSync(path.join(DATA, 'datasets')).map((f) => { const d = readJson(path.join(DATA, 'datasets', f)); return [d.datasetId, d.status]; }));
-  assert.strictEqual(statuses['AGI-LTCMA-2026Q1-USD'], 'ACTIVE');
+  assert.strictEqual(statuses['AGI-LTCMA-2026Q2-USD'], 'ACTIVE');
+  // 이전 세트는 사라지지 않고 SUPERSEDED로 남는다 - 되돌릴 수 있어야 한다(§47-4 ROLLBACK).
+  assert.strictEqual(statuses['AGI-LTCMA-2026Q1-USD'], 'SUPERSEDED');
   assert.strictEqual(statuses['JPM-LTCMA-2026-KRW'], 'ACTIVE');
-  assert.strictEqual(statuses['AGI-LTCMA-2026Q2-USD'], 'VERIFIED'); // 자동 발견 · PM 검토 대기 - 계산에 쓰이지 않는다
   assert.ok(Object.values(statuses).every((s) => ['VERIFIED', 'ACTIVE', 'APPROVED', 'SUPERSEDED', 'DISCOVERED', 'FAILED'].includes(s)));
 });
 
-test('O-2. AllianzGI 2026 Q1 원문 값 - Korea 6.8% · 27.9% · Developed World 상관 0.84, 기준일 2025-12-31 · USD · 10년 · 수익률 정의 미표기', () => {
+test('O-2. AllianzGI 2026 Q2 원문 값 - Korea 7.3% · 29.4% · Developed World 상관 0.84, 기준일 2026-03-31 · USD · 10년 · 수익률 정의 미표기', () => {
   const p = CMA_ACTIVE_SET.primary;
-  assert.deepStrictEqual([p.provider, p.asOfDate, p.currency, p.horizonYears, p.publishedAt, p.numberKind], ['Allianz Global Investors', '2025-12-31', 'USD', 10, '2026-02', 'OFFICIAL_DATA']);
-  assert.deepStrictEqual(p.classes['Korea Equities'], { expectedReturn: 6.8, volatility: 27.9 });
-  assert.deepStrictEqual(p.classes['North America Equities'], { expectedReturn: 6.1, volatility: 16.5 });
-  assert.deepStrictEqual(p.classes['Emerging Markets Equities'], { expectedReturn: 6.7, volatility: 24.1 });
+  assert.deepStrictEqual([p.provider, p.asOfDate, p.currency, p.horizonYears, p.publishedAt, p.numberKind], ['Allianz Global Investors', '2026-03-31', 'USD', 10, '2026-05', 'OFFICIAL_DATA']);
+  assert.deepStrictEqual(p.classes['Korea Equities'], { expectedReturn: 7.3, volatility: 29.4 });
+  assert.deepStrictEqual(p.classes['North America Equities'], { expectedReturn: 6.7, volatility: 16.6 });
+  assert.deepStrictEqual(p.classes['Emerging Markets Equities'], { expectedReturn: 6.9, volatility: 24.4 });
   assert.strictEqual(p.correlation.kind, 'VERSUS_REFERENCE');
   assert.strictEqual(p.correlation.referenceClass, 'Developed World Equities');
   assert.strictEqual(p.correlation.values['Korea Equities'], 0.84);
   assert.strictEqual(p.returnDefinition, 'NOT_STATED_IN_SOURCE');
   assert.strictEqual(p.returnUsableForMc, false);
-  assert.strictEqual(p.fileSha256, '689512607c87830b3f1fd2b0e21ba1f4da45bb8a571ef93e8cc5adc6b0a96da0');
-  assert.match(p.sourceUrl, /^https:\/\/ap\.allianzgi\.com\/.+2026q1.+\.pdf$/);
+  assert.strictEqual(p.fileSha256, '7881c82e31f52e0465024c6614223c2a80a985558d220b53cce2b724d591e502');
+  assert.match(p.sourceUrl, /^https:\/\/ap\.allianzgi\.com\/.+2026q2.+\.pdf$/);
 });
 
 test('O-3. 런타임 파일의 모든 값은 저장된 Dataset 원문 값과 같다(변형 없음) · 근거 필드가 있다', () => {
@@ -207,20 +210,20 @@ async function build(sb, preset = 'normal') {
   return sb.buildMonteCarloInputFromState({ presetKey: preset, ownerFilter: '신랑', includeTaxAdvantaged: true, years: 20 });
 }
 
-test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(27.9% · 16.5%), 상관은 Benchmark 원문 값, μ는 기존 Return Key(7.0% · 5.1%)', async () => {
+test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(29.4% · 16.6%), 상관은 Benchmark 원문 값, μ는 기존 Return Key(7.0% · 5.1%)', async () => {
   const sb = sandbox();
   sb.state.assets = [sb.asset({ ticker: '069500', name: 'KODEX 200' }), sb.asset({ ticker: 'QQQM', name: 'QQQM', currency: 'USD', isDomestic: '해외', currentPrice: 200, buyPrice: 200 })];
   sb.state.rebalance['신랑'].targets = { '국내': [{ type: 'ticker', ticker: '069500', label: 'KODEX 200', pct: 100 }], '해외': [{ type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 100 }] };
   const r = await build(sb);
   assert.deepStrictEqual(Array.from(r.errors), []);
   const kr = r.instruments[r.assetOrder.indexOf('T:069500.KS')], us = r.instruments[r.assetOrder.indexOf('T:QQQM')];
-  assert.strictEqual(kr.sigmaAnnual, 27.9 / 100); // 원문 % 값을 100으로 나눈 값 그대로
-  assert.strictEqual(us.sigmaAnnual, 16.5 / 100);
+  assert.strictEqual(kr.sigmaAnnual, 29.4 / 100); // 원문 % 값을 100으로 나눈 값 그대로
+  assert.strictEqual(us.sigmaAnnual, 16.6 / 100);
   assert.strictEqual(kr.muAnnual, 0.07);
   assert.strictEqual(us.muAnnual, 0.051);
   const rho = r.correlationMatrix[r.assetOrder.indexOf('T:069500.KS')][r.assetOrder.indexOf('T:QQQM')];
   assert.strictEqual(rho, rt.resolveCmaCorrelation('KR_EQUITY', 'US_EQUITY', CMA_ACTIVE_SET).value);
-  assert.strictEqual(r.cma.setVersion, 'CMA-2026.1');
+  assert.strictEqual(r.cma.setVersion, 'CMA-2026.2');
   assert.strictEqual(r.cma.inputModelVersion, 'CMA-ASSET-CLASS-1');
   assert.strictEqual(r.cma.pairs.length, 1);
   assert.strictEqual(r.cma.pairs[0].sourceType, 'BENCHMARK_REFERENCE');
@@ -256,7 +259,7 @@ test('M-3. 사용자 키 개별주는 사용자 수익률을 그대로 쓰고, �
   const r = await build(sb);
   assert.deepStrictEqual(Array.from(r.errors), []);
   assert.strictEqual(r.instruments[0].muAnnual, 0.12);
-  assert.strictEqual(r.instruments[0].sigmaAnnual, 27.9 / 100);
+  assert.strictEqual(r.instruments[0].sigmaAnnual, 29.4 / 100);
   assert.strictEqual(r.cma.instruments[0].appClassBasis, 'listedStock');
 });
 
@@ -272,7 +275,7 @@ test('M-4. [§37-5 PM 확정] 수익률 정의가 확인된 세트여도 CMA 기
   const kr = r.instruments[r.assetOrder.indexOf('T:069500.KS')], us = r.instruments[r.assetOrder.indexOf('T:QQQM')];
   assert.strictEqual(kr.muAnnual, 0.07); // KOSPI Return Key(일반적) - CMA 6.8%가 아니다
   assert.strictEqual(us.muAnnual, 0.09); // 사용자 값 보호(RET-02-05)
-  assert.strictEqual(kr.sigmaAnnual, 27.9 / 100); // 변동성은 CMA
+  assert.strictEqual(kr.sigmaAnnual, 29.4 / 100); // 변동성은 CMA
   assert.deepStrictEqual(Array.from(r.cma.instruments, (i) => i.returnSource), ['RETURN_KEY', 'RETURN_KEY']);
 });
 
