@@ -1,5 +1,105 @@
 {
   "schemaVersion": 1,
   "description": "종목 마스터 Diff Gate 실행 기록(PM 결정 D-1 · 체크리스트 §48-1). 최신 항목이 배열 끝에 붙는다. 워크플로가 자동으로 추가하며 사람이 손으로 지우지 않는다.",
-  "entries": []
+  "entries": [
+    {
+      "auditId": "TMG-20260920T123722Z-d22150",
+      "ranAt": "2026-09-20T12:37:22.928Z",
+      "runUrl": "https://github.com/key4125-netizen/jasan/actions/runs/35511133269",
+      "current": {
+        "generatedAt": "2026-09-19T11:46:55.229Z",
+        "count": 16731
+      },
+      "next": {
+        "generatedAt": "2026-09-20T12:37:22.757Z",
+        "count": 16731
+      },
+      "coreTickerCount": 58,
+      "thresholds": {
+        "addedCount": 1000,
+        "removedCount": 500,
+        "exchangeChangedCount": 10,
+        "nameChangedCount": 1000,
+        "addedOrRemovedPct": 5,
+        "nameChangedPct": 10
+      },
+      "diff": {
+        "added": 0,
+        "removed": 0,
+        "exchangeChanged": 0,
+        "nameChanged": 0,
+        "domesticNameChanged": 0,
+        "domesticExchangeMoves": 0,
+        "fundJudgementFlips": 0,
+        "coreImpacts": 0,
+        "addedPct": 0,
+        "removedPct": 0,
+        "nameChangedPct": 0
+      },
+      "thresholdResults": [
+        {
+          "id": "ADDED_COUNT",
+          "hit": false,
+          "detail": "신규 0 >= 1000"
+        },
+        {
+          "id": "REMOVED_COUNT",
+          "hit": false,
+          "detail": "삭제 0 >= 500"
+        },
+        {
+          "id": "EXCHANGE_COUNT",
+          "hit": false,
+          "detail": "거래소 변경 0 >= 10"
+        },
+        {
+          "id": "NAME_COUNT",
+          "hit": false,
+          "detail": "이름 변경 0 >= 1000"
+        },
+        {
+          "id": "ADDED_PCT",
+          "hit": false,
+          "detail": "신규 0% >= 5%"
+        },
+        {
+          "id": "REMOVED_PCT",
+          "hit": false,
+          "detail": "삭제 0% >= 5%"
+        },
+        {
+          "id": "NAME_PCT",
+          "hit": false,
+          "detail": "이름 변경 0% >= 10%"
+        },
+        {
+          "id": "DOMESTIC_EXCHANGE_MOVE",
+          "hit": false,
+          "detail": "국내 시장 이동 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "CORE_IMPACT",
+          "hit": false,
+          "detail": "핵심 종목 영향 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "FUND_JUDGEMENT_FLIP",
+          "hit": false,
+          "detail": "펀드형 판정 변화 0건(1건이라도 STOP)"
+        }
+      ],
+      "decision": "APPLY",
+      "triggered": [],
+      "samples": {
+        "added": [],
+        "removed": [],
+        "exchangeChanged": [],
+        "nameChanged": [],
+        "domesticExchangeMoves": [],
+        "fundJudgementFlips": [],
+        "coreImpacts": []
+      },
+      "applied": true
+    }
+  ]
 }
