@@ -55,6 +55,15 @@
 - `.github/workflows/*.yml` 파일은 **무변경**. 프로젝트 종료 후 `gh workflow enable <id>` + `gh workflow run <id>`로 복귀하고 건너뛴 갱신을 수동 실행한다(대장 **P-2**).
 - **이 기간 동안 H.10 · 종목마스터 · CMA는 자동 갱신되지 않는다.** 데이터가 오래된 것처럼 보이면 이 통제 때문이다.
 
+**실행 묶음 B 4차 — OpenDART 검증 · Bond N-1 착수 (2026-09-20 · 조사만 · 코드 변경 없음)**
+- **OpenDART 기술검증 완료**(`docs/closeout/research/opendart-feasibility.json`): 필요한 문서(투자설명서(집합투자증권))가 DART에 **실재**함을 공시검색으로 확인 · `list.json`(검색) + `document.xml`(원문) 경로 확인 · 무료 · 한도 약 2만건/일 · **CORS 미지원 → 앱에 못 넣음(조사 전용)** · robots 금지 경로(웹 뷰어)는 사용하지 않음.
+- **인증키 상태**: 사용자가 신청했다고 했으나 **이 실행 환경에는 없음**(셸·Windows 사용자/시스템 환경변수·저장소 .env·GitHub Secret 모두 없음). 필요한 이름은 **`OPENDART_API_KEY`** 하나. 값은 요구/출력/기록하지 않음. 확인: `node scripts/closeout/research/opendart-etf-docs.js`
+- **호출 준비 완료**: 운용사 고유번호 확보(삼성 00260453 · 미래에셋 00259776 · KB 00104500 · 한국투자 00324548) → 키만 들어오면 360200 환헤지 · PR/TR 4건을 원문으로 확정 가능.
+- **Bond N-1 1차 조사 완료**(`docs/closeout/research/BOND_N1_SURVEY.md`): 현재 구조(직접채권은 Risk 제외·σ=0) · 자산유형별 필요 사실 · 경제적 정의 3후보 비교 · Risk 모델 5후보 · MC 입력 후보 · 결정 후보 BOND-1~6.
+  · **핵심 발견: KRX 공식 지수 사이트가 채권지수 일별 시계열(총수익·순가격·시장가격)을 로그인 없이 제공**(주가지수는 현재값만) → 채권 쪽 데이터 접근성이 오히려 낫다. 이용조건은 미확인.
+- **D-13 = RETAINED**(PM 지시): 혼합형 2종은 단일 혼합지수를 쓰므로 **1:N 엔진 만들지 않고 현행 MIXED 유지**. Bond 모델 확정 시 재검토.
+- Fact 상태 표기를 **필드 단위**로 바꿨다(상품 단위 ACTIVE 표기 폐지 · `etf-facts.json` fieldStatus).
+
 **실행 묶음 B 3차 — ETF · 지수 기준정보 전수 확인 (2026-09-20 · 원장/Index Master 변경)**
 - 조사 경로 정리: **발행사 공식 페이지를 브라우저로 직접 열어 본문을 읽었다**(WebFetch는 KB·삼성·한국투자 페이지에서 본문이 비어 실패). 삼성은 `m.samsungfund.com/api/v1/kodex/product.do` 상품 데이터로 `currencyRisk`(환노출 여부)까지 확인 가능.
 - **PR/TR 확정 6건**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR
@@ -82,8 +91,8 @@
 - 확보: 360750 TIGER 미국S&P500 — 발행사 원문으로 기초지수·**환헤지 없음** 확인(원장과 일치). **PR/TR은 상품 페이지에 없음 → 여전히 UNCONFIRMED**(투자설명서·지수 methodology로 이동).
 - 이용조건 조사 기록: `docs/closeout/research/source-terms.json`
 
-**🚫 PM 결정 대기 6건**
-0. **D-13 혼합형 구조**(신규) — 237370 · 472170은 운용사가 **단일 혼합지수**를 쓴다. (가)현행 MIXED 유지 (나)혼합지수를 Index Master에 등록 (다)1:N 구조 신설 중 선택.
+**🚫 PM 결정 / 사용자 조치 대기 6건**
+0. **P-14 OpenDART 인증키**(신규 · 가장 큰 잠금 해제) — `OPENDART_API_KEY` 환경변수(로컬) 또는 동명 GitHub Actions Secret만 있으면 360200 환헤지 + PR/TR 4건을 원문으로 끝낼 수 있다. 값은 알려주지 않아도 되고 등록만 하면 된다.
 1. **D-5 코스피200 PR/TR 경로** — 공공데이터포털 API는 **CORS 허용(브라우저 직접 호출 가능 · 프록시 불필요)**, 인증키 필요, 공공누리 4유형(제3자 재배포 금지). (가)사용자 키 입력 방식 (나)KRX 유료 라이선스 (다)NOT_AVAILABLE. UI는 결정 전 만들지 않는다.
 2. **D-11 GOOG Class C** — 무의결권 capital stock을 본국 보통주로 볼지(규칙 확장 여부).
 3. **P-7 SEC 연락처** — 1회 조사는 완료됐고, **주기적 자동 재검증**에 필요. `SEC_CONTACT_EMAIL` 환경변수/Actions Secret만 등록하면 된다(값은 코드·커밋·보고서에 남기지 않음. `node scripts/closeout/research/us-home-common.js --verify-sec`로 설정 여부만 확인).

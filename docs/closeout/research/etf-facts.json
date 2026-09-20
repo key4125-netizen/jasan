@@ -45,7 +45,13 @@
           "note": "국내 상장 · 원화 거래"
         }
       },
-      "ledgerImpact": "환헤지 근거 보강(변경 없음). PR/TR은 여전히 UNCONFIRMED → Benchmark 정의 일치 판정은 그대로 UNCONFIRMED."
+      "ledgerImpact": "환헤지 근거 보강(변경 없음). PR/TR은 여전히 UNCONFIRMED → Benchmark 정의 일치 판정은 그대로 UNCONFIRMED.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED",
+        "hedgeStatus": "CONFIRMED",
+        "priceCcy": "CONFIRMED"
+      }
     },
     {
       "ticker": "368590.KS",
@@ -79,7 +85,14 @@
         "DART 전자공시 투자설명서 · 집합투자규약",
         "금융투자협회 전자공시"
       ],
-      "ledgerImpact": "현행 HOLD 유지(변경 없음)."
+      "ledgerImpact": "현행 HOLD 유지(변경 없음).",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED",
+        "hedgeStatus": "CONFIRMED",
+        "fxExposure": "CONFIRMED",
+        "indexChangeHistory": "REVIEW"
+      }
     },
     {
       "ticker": "458730.KS",
@@ -116,7 +129,13 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "변경 없음(기존 기재와 일치). 근거 문구를 1차 자료로 보강. 부수 효과: Dow Jones U.S. Dividend 100의 **PR 버전이 공식적으로 존재하고 그 정식 명칭이 확인**됐다 → Index Master 키 DJ_US_DIV100_PR의 PR 표기가 뒷받침된다(대장 D-12 일부 해소)."
+      "ledgerImpact": "변경 없음(기존 기재와 일치). 근거 문구를 1차 자료로 보강. 부수 효과: Dow Jones U.S. Dividend 100의 **PR 버전이 공식적으로 존재하고 그 정식 명칭이 확인**됐다 → Index Master 키 DJ_US_DIV100_PR의 PR 표기가 뒷받침된다(대장 D-12 일부 해소).",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "CONFIRMED",
+        "hedgeStatus": "CONFIRMED",
+        "priceCcy": "CONFIRMED"
+      }
     },
     {
       "ticker": "SCHD",
@@ -147,7 +166,12 @@
           "note": "원장 기존 기재 유지(미국 상장 · 달러 표시 · 환헤지 없음)."
         }
       },
-      "ledgerImpact": "변경 없음. 원장 benchmark 키(DJ_US_DIV100_PR)는 지수 식별자이고, SCHD 자신의 underlyingReturnType은 계속 미기재(UNCONFIRMED)다 - 정의 일치 판정은 UNCONFIRMED로 남는다."
+      "ledgerImpact": "변경 없음. 원장 benchmark 키(DJ_US_DIV100_PR)는 지수 식별자이고, SCHD 자신의 underlyingReturnType은 계속 미기재(UNCONFIRMED)다 - 정의 일치 판정은 UNCONFIRMED로 남는다.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED",
+        "hedgeStatus": "CONFIRMED"
+      }
     },
     {
       "ticker": "278530.KS",
@@ -181,7 +205,12 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "변경 없음(기존 TR 기재와 일치). 근거 보강."
+      "ledgerImpact": "변경 없음(기존 TR 기재와 일치). 근거 보강.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "CONFIRMED",
+        "hedgeStatus": "NOT_APPLICABLE"
+      }
     },
     {
       "ticker": "069500.KS",
@@ -204,7 +233,12 @@
           "note": "KRX 공식 정의상 총수익지수(TR)가 원지수에 배당을 더한 것이므로 원지수 코스피 200은 배당 미반영(PR)이다."
         }
       },
-      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재(기존 공란). 가격 원천은 없어 베타는 여전히 산출하지 않는다."
+      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재(기존 공란). 가격 원천은 없어 베타는 여전히 산출하지 않는다.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "CONFIRMED",
+        "hedgeStatus": "NOT_APPLICABLE"
+      }
     },
     {
       "ticker": "102110.KS",
@@ -231,7 +265,12 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재."
+      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "CONFIRMED",
+        "hedgeStatus": "NOT_APPLICABLE"
+      }
     },
     {
       "ticker": "487230.KS",
@@ -262,7 +301,12 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "기존 기재(PR · UNHEDGED)와 일치. 근거 보강."
+      "ledgerImpact": "기존 기재(PR · UNHEDGED)와 일치. 근거 보강.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "CONFIRMED",
+        "hedgeStatus": "CONFIRMED"
+      }
     },
     {
       "ticker": "368590.KS",
@@ -294,7 +338,14 @@
         "note": "공지 \"RISE 미국나스닥100 기초지수 변경 공지(368590)\"의 제목은 확인했으나 본문은 열리지 않았다(riseetf.co.kr → kbam.co.kr 리다이렉트). 현재 상품 페이지가 표시하는 기초지수는 NASDAQ 100 Index(KRW)(T-1)이며, 추종 지수 자체가 다른 지수로 바뀌었다는 근거는 확보하지 못했다. 사실로 확정하지 않는다.",
         "state": "UNCONFIRMED"
       },
-      "ledgerImpact": "환헤지 UNHEDGED 확정 → HOLD 해제. benchmark NASDAQ100 유지. Risk는 비동기 Dimson + H.10 원화환산 경로로 산출된다."
+      "ledgerImpact": "환헤지 UNHEDGED 확정 → HOLD 해제. benchmark NASDAQ100 유지. Risk는 비동기 Dimson + H.10 원화환산 경로로 산출된다.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED",
+        "hedgeStatus": "CONFIRMED",
+        "fxExposure": "CONFIRMED",
+        "indexChangeHistory": "REVIEW"
+      }
     },
     {
       "ticker": "360200.KS",
@@ -325,7 +376,34 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "변경 없음 - 환헤지 미확인이므로 HOLD 유지."
+      "ledgerImpact": "변경 없음 - 환헤지 미확인이므로 HOLD 유지.",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED",
+        "hedgeStatus": "UNCONFIRMED"
+      },
+      "additionalRoutesTried": [
+        {
+          "route": "한국투자신탁운용 ACE 상품 페이지(aceetf.co.kr)",
+          "result": "기초지수는 확인 · 환헤지 문구 없음"
+        },
+        {
+          "route": "한국투자신탁운용 본사 사이트(kim.koreainvestment.com/fund/K55101D78195)",
+          "result": "같은 내용 · 환헤지 문구 없음"
+        },
+        {
+          "route": "상품 페이지의 투자설명서 버튼",
+          "result": "클릭해도 새 문서가 열리지 않음(스크립트 처리) · PDF 요청 관측 안 됨"
+        },
+        {
+          "route": "DART 웹 뷰어",
+          "result": "robots Disallow - 사용하지 않음"
+        },
+        {
+          "route": "OpenDART API",
+          "result": "인증키가 환경에 없어 미실행 · 호출 준비는 완료(corp_code 00324548)"
+        }
+      ]
     },
     {
       "ticker": "237370.KS",
@@ -355,7 +433,12 @@
           "grade": "A"
         }
       },
-      "ledgerImpact": "MIXED 유지. 구성비가 공식 확인됐다(30/70). 단일 지수(KRX 배당성장 채권혼합지수)가 이미 존재한다는 점이 새 사실이다 - 1:N 구조 도입 여부는 별도 결정(대장 D-13)."
+      "ledgerImpact": "MIXED 유지. 구성비가 공식 확인됐다(30/70). 단일 지수(KRX 배당성장 채권혼합지수)가 이미 존재한다는 점이 새 사실이다 - 1:N 구조 도입 여부는 별도 결정(대장 D-13).",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "mixedComposition": "CONFIRMED",
+        "hedgeStatus": "NOT_APPLICABLE"
+      }
     },
     {
       "ticker": "472170.KS",
@@ -395,7 +478,14 @@
         "effectiveDate": "2025-10-31",
         "grade": "A"
       },
-      "ledgerImpact": "MIXED 유지. 구성비(5:5) · 변경 이력(2025-10-31 4:6→5:5) · 환헤지 없음 확인. 1:N 구조는 별도 결정(D-13)."
+      "ledgerImpact": "MIXED 유지. 구성비(5:5) · 변경 이력(2025-10-31 4:6→5:5) · 환헤지 없음 확인. 1:N 구조는 별도 결정(D-13).",
+      "fieldStatus": {
+        "underlyingIndex": "CONFIRMED",
+        "mixedComposition": "CONFIRMED",
+        "hedgeStatus": "CONFIRMED",
+        "indexChangeHistory": "CONFIRMED",
+        "underlyingReturnType": "UNCONFIRMED"
+      }
     }
   ],
   "pending": [
@@ -481,5 +571,15 @@
       "historicalSource": "Yahoo ^NYA(1980~ · 11,774행)",
       "retrievedAt": "2026-09-20"
     }
-  ]
+  ],
+  "statusModel": {
+    "note": "확정상태는 **상품 단위가 아니라 사실(필드) 단위**로 부여한다. 한 상품 안에서 어떤 필드는 CONFIRMED이고 다른 필드는 UNCONFIRMED일 수 있다.",
+    "values": {
+      "CONFIRMED": "공식 1차 자료에 명시됨",
+      "UNCONFIRMED": "필요한 사실이 공식 자료에서 확인되지 않음",
+      "REVIEW": "자료 충돌 또는 원문 미확인으로 판단 보류",
+      "NOT_APPLICABLE": "해당 없음(예: 국내 자산의 환헤지)"
+    },
+    "separateFrom": "Fact 확정(FACT) ≠ 자동 재검증 가능(REVALIDATION) ≠ Benchmark RESOLVED ≠ 가격 원천 AVAILABLE"
+  }
 }

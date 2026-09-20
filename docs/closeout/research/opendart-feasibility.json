@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "title": "OpenDART 경로 기술검증 (실행 묶음 B 4차 · PM 지시 §2)",
+  "checkedAt": "2026-09-20",
+  "question": "DART robots가 문서 뷰어 · 다운로드 경로를 막고 있어 확인하지 못한 ETF 투자설명서 · 집합투자규약을, 공식 API인 OpenDART로 확인할 수 있는가?",
+  "robotsConstraint": {
+    "source": "https://dart.fss.or.kr/robots.txt",
+    "disallowed": [
+      "/dsaf001/main.do",
+      "/report/viewer.do",
+      "/report/download.do",
+      "/pdf/download/",
+      "/dsae001/selectPopup.ax",
+      "/html/search/SearchCompany_M2.html"
+    ],
+    "allowed": "공시검색(/dsab007/detailSearch.ax)은 Disallow 목록에 없다 - 문서 목록(메타데이터) 확인은 가능하다.",
+    "policy": "우회하지 않는다. 문서 본문은 OpenDART API(공식 제공 채널)로만 받는다."
+  },
+  "findings": {
+    "documentsExist": {
+      "verified": true,
+      "how": "DART 공시검색으로 삼성자산운용 제출 목록을 조회하니 \"투자설명서(집합투자증권)\"가 다수 확인됐다(2026-09-16 · 2026-09-18 등). 즉 필요한 문서 유형이 DART에 실제로 존재한다.",
+      "note": "본문은 열지 않았다(robots 금지 경로). 목록 메타데이터만 확인했다."
+    },
+    "api": {
+      "group": "DS001 공시정보",
+      "operations": [
+        {
+          "name": "공시검색",
+          "endpoint": "https://opendart.fss.or.kr/api/list.json",
+          "purpose": "공시 유형 · 회사 · 날짜 조건으로 보고서 검색",
+          "keyParams": [
+            "crtfc_key(필수 · 40자)",
+            "corp_code(8자리)",
+            "bgn_de",
+            "end_de",
+            "pblntf_ty(A~J · G=펀드)",
+            "corp_cls",
+            "page_no",
+            "page_count(1~100)"
+          ]
+        },
+        {
+          "name": "공시서류원본파일",
+          "endpoint": "https://opendart.fss.or.kr/api/document.xml",
+          "purpose": "공시보고서 **원본파일** 제공",
+          "keyParams": [
+            "crtfc_key",
+            "rcept_no(접수번호)"
+          ]
+        },
+        {
+          "name": "기업개황",
+          "endpoint": "https://opendart.fss.or.kr/api/company.json",
+          "purpose": "기업 개황"
+        },
+        {
+          "name": "고유번호",
+          "endpoint": "https://opendart.fss.or.kr/api/corpCode.xml",
+          "purpose": "공시대상회사 고유번호 파일"
+        }
+      ],
+      "originalDocumentAccess": "가능 - 공시검색 응답의 rcept_no(접수번호)가 원문 접근 식별자이고, document.xml이 그 원본파일을 돌려준다.",
+      "liveProbe": {
+        "list.json(키 없음)": "{\"status\":\"010\",\"message\":\"등록되지 않은 인증키입니다.\"} - 엔드포인트 정상, 인증키만 없음",
+        "document.xml(키 없음)": "HTTP 200 · application/xml · 150 bytes(오류 응답) - 엔드포인트 정상",
+        "CORS preflight": "OPTIONS 요청이 302로 error1.html로 보내진다 → **CORS 미지원**"
+      }
+    },
+    "authentication": {
+      "required": true,
+      "form": "crtfc_key 40자",
+      "issuance": "홈페이지 가입 후 이메일로 발급(개인정보 입력 필요)",
+      "cost": "무료 - \"금융감독원이 제공하는 서비스는 원칙적으로 무료입니다\"",
+      "who": "\"활용을 원하시는 누구든지(개인, 기업, 기관 등) 이용하실 수 있습니다\"",
+      "callLimit": "개발가이드 유의사항: 약 20,000건 이상 요청 시 한도 초과 오류 · 한 번에 최대 100건 조회"
+    },
+    "appIntegration": {
+      "browserDirectCall": "불가 - CORS 미지원. 앱(공개 PWA)에서 직접 호출할 수 없다.",
+      "keyExposure": "앱에 넣으면 인증키가 공개 노출된다 → 앱 통합은 검토 대상이 아니다.",
+      "intendedUse": "**조사 · 검증용(로컬 또는 CI)**으로만 쓴다. 앱 런타임과 무관하다.",
+      "storage": "원문 문서를 저장소에 커밋하지 않는다(계획서 §8). URL · 접수번호 · 취득일 · 해시 · 최소 인용만 기록한다.",
+      "redistribution": "우리가 재배포하지 않으므로 P-12 원칙과 충돌하지 않는다. 다만 원문 저장 · 재배포 조건은 사용 전 이용약관에서 다시 확인한다."
+    }
+  },
+  "verdict": {
+    "technicallyFeasible": true,
+    "blocker": "무료 인증키 발급(사용자 가입 · 개인정보 입력 필요). 값은 SEC 연락처와 같은 방식으로 환경변수/Secret으로만 주입하고 코드 · 로그 · 문서에 남기지 않는다.",
+    "whatItUnblocks": [
+      "360200 환헤지",
+      "360750 · 368590 · SCHD 관련 국내 ETF의 기초지수 정식 명칭(PR/TR)",
+      "368590 기초지수 변경 경위(정정신고 · 규약 변경 공시가 있으면)"
+    ],
+    "notUnblocked": [
+      "지수 일별 시계열(투자설명서에는 없다)",
+      "미국 ETF(SCHD)의 지수 PR/TR - SEC 문서에 표기 자체가 없다"
+    ]
+  },
+  "keyStatus": {
+    "checkedAt": "2026-09-20",
+    "envName": "OPENDART_API_KEY",
+    "presentInShellEnv": false,
+    "presentInWindowsUserOrMachineEnv": false,
+    "repoEnvFile": "없음",
+    "githubActionsSecrets": "등록된 저장소 Secret 없음(gh secret list 결과 비어 있음)",
+    "note": "PM에 따르면 사용자는 DART Open API 서비스를 이미 신청했다. 다만 **이 실행 환경에서는 키가 보이지 않는다** - 발급된 키가 아직 환경변수/Secret에 들어오지 않은 상태로 본다. 키 값을 요구하거나 출력하지 않는다.",
+    "howToProvide": [
+      "로컬 조사용: 환경변수 OPENDART_API_KEY 설정 후 셸 재시작",
+      "자동 재검증용: 같은 이름의 GitHub Actions Secret 등록"
+    ],
+    "verify": "node scripts/closeout/research/opendart-etf-docs.js (설정 여부만 출력 · 값 미출력)"
+  },
+  "readyToRun": {
+    "script": "scripts/closeout/research/opendart-etf-docs.js",
+    "corpCodes": {
+      "삼성자산운용": "00260453",
+      "미래에셋자산운용": "00259776",
+      "KB자산운용": "00104500",
+      "한국투자신탁운용": "00324548"
+    },
+    "corpCodeSource": "DART 공시검색 결과 페이지(robots 허용 경로)에서 확인 · 2026-09-20 · 공개 정보",
+    "plannedQuery": "list.json(corp_code · pblntf_ty=G 펀드공시 · 2025-01-01~2026-12-31 · page_count=100) → 보고서명에 투자설명서 · 집합투자규약 · 증권신고서 · 정정이 포함된 건의 rcept_no 수집 → document.xml로 원문 확인",
+    "knownLimitation": "공시검색 응답의 보고서명은 \"투자설명서(집합투자증권)\"처럼 펀드명을 담지 않는 경우가 많다. 특정 ETF를 특정하려면 원문(document.xml)을 열어 확인해야 할 수 있다 - 호출 수가 늘어나므로 대상 기간을 좁혀 실행한다."
+  }
+}

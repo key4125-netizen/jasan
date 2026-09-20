@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "title": "OpenDART ETF 공시 조회 (실행 묶음 B 4차)",
+  "checkedAt": "2026-09-20",
+  "keyEnvName": "OPENDART_API_KEY",
+  "keyPresent": false,
+  "targets": [
+    {
+      "issuer": "삼성자산운용",
+      "tickers": [
+        "069500",
+        "278530",
+        "487230",
+        "237370"
+      ]
+    },
+    {
+      "issuer": "미래에셋자산운용",
+      "tickers": [
+        "102110",
+        "360750",
+        "458730",
+        "472170",
+        "0052D0"
+      ]
+    },
+    {
+      "issuer": "KB자산운용",
+      "tickers": [
+        "368590"
+      ]
+    },
+    {
+      "issuer": "한국투자신탁운용",
+      "tickers": [
+        "360200"
+      ]
+    }
+  ],
+  "wantedDocumentTypes": [
+    "투자설명서",
+    "집합투자규약",
+    "증권신고서",
+    "정정"
+  ],
+  "plannedCalls": [
+    {
+      "purpose": "삼성자산운용 공시 목록(최근 1년 · 펀드 공시)",
+      "endpoint": "https://opendart.fss.or.kr/api/list.json?crtfc_key=<secret>&corp_code=00260453&bgn_de=20250101&end_de=20261231&pblntf_ty=G&page_count=100",
+      "note": "pblntf_ty=G(펀드공시). 고유번호가 없으면 corpCode.xml(ZIP)에서 운용사 고유번호를 먼저 찾아야 한다."
+    },
+    {
+      "purpose": "삼성자산운용 문서 원문(각 접수번호별)",
+      "endpoint": "https://opendart.fss.or.kr/api/document.xml?crtfc_key=<secret>&rcept_no=%3C%EA%B3%B5%EC%8B%9C%EA%B2%80%EC%83%89+%EC%9D%91%EB%8B%B5%EC%9D%98+rcept_no%3E",
+      "note": "응답은 원본파일(ZIP). 원문은 저장하지 않고 필요한 문장만 인용한다."
+    },
+    {
+      "purpose": "미래에셋자산운용 공시 목록(최근 1년 · 펀드 공시)",
+      "endpoint": "https://opendart.fss.or.kr/api/list.json?crtfc_key=<secret>&corp_code=00259776&bgn_de=20250101&end_de=20261231&pblntf_ty=G&page_count=100",
+      "note": "pblntf_ty=G(펀드공시). 고유번호가 없으면 corpCode.xml(ZIP)에서 운용사 고유번호를 먼저 찾아야 한다."
+    },
+    {
+      "purpose": "미래에셋자산운용 문서 원문(각 접수번호별)",
+      "endpoint": "https://opendart.fss.or.kr/api/document.xml?crtfc_key=<secret>&rcept_no=%3C%EA%B3%B5%EC%8B%9C%EA%B2%80%EC%83%89+%EC%9D%91%EB%8B%B5%EC%9D%98+rcept_no%3E",
+      "note": "응답은 원본파일(ZIP). 원문은 저장하지 않고 필요한 문장만 인용한다."
+    },
+    {
+      "purpose": "KB자산운용 공시 목록(최근 1년 · 펀드 공시)",
+      "endpoint": "https://opendart.fss.or.kr/api/list.json?crtfc_key=<secret>&corp_code=00104500&bgn_de=20250101&end_de=20261231&pblntf_ty=G&page_count=100",
+      "note": "pblntf_ty=G(펀드공시). 고유번호가 없으면 corpCode.xml(ZIP)에서 운용사 고유번호를 먼저 찾아야 한다."
+    },
+    {
+      "purpose": "KB자산운용 문서 원문(각 접수번호별)",
+      "endpoint": "https://opendart.fss.or.kr/api/document.xml?crtfc_key=<secret>&rcept_no=%3C%EA%B3%B5%EC%8B%9C%EA%B2%80%EC%83%89+%EC%9D%91%EB%8B%B5%EC%9D%98+rcept_no%3E",
+      "note": "응답은 원본파일(ZIP). 원문은 저장하지 않고 필요한 문장만 인용한다."
+    },
+    {
+      "purpose": "한국투자신탁운용 공시 목록(최근 1년 · 펀드 공시)",
+      "endpoint": "https://opendart.fss.or.kr/api/list.json?crtfc_key=<secret>&corp_code=00324548&bgn_de=20250101&end_de=20261231&pblntf_ty=G&page_count=100",
+      "note": "pblntf_ty=G(펀드공시). 고유번호가 없으면 corpCode.xml(ZIP)에서 운용사 고유번호를 먼저 찾아야 한다."
+    },
+    {
+      "purpose": "한국투자신탁운용 문서 원문(각 접수번호별)",
+      "endpoint": "https://opendart.fss.or.kr/api/document.xml?crtfc_key=<secret>&rcept_no=%3C%EA%B3%B5%EC%8B%9C%EA%B2%80%EC%83%89+%EC%9D%91%EB%8B%B5%EC%9D%98+rcept_no%3E",
+      "note": "응답은 원본파일(ZIP). 원문은 저장하지 않고 필요한 문장만 인용한다."
+    }
+  ],
+  "results": [],
+  "limits": {
+    "dailyCalls": "약 20,000건(가이드 유의사항)",
+    "perPage": 100,
+    "gapMs": 400,
+    "maxRetry": 3
+  },
+  "storagePolicy": "원문 미보관 · URL/접수번호/취득일/최소 인용만 기록(계획서 §8)"
+}
