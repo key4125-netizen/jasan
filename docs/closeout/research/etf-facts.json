@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "title": "ETF 기준정보 조사 기록 (DP-05 ~ DP-09 · DP-15 · 대장 D-3 · D-4 · D-6 · D-8)",
+  "rule": "공식 자료에 적혀 있는 문장만 사실로 기록한다. 이름 규칙(예: 상품명에 (H)가 없다)이나 업계 관행은 근거로 쓰지 않는다. 확인되지 않은 항목은 UNCONFIRMED로 남긴다 - 추정으로 채우지 않는다.",
+  "evidenceGrade": { "A": "발행사 · 지수 제공기관 · 규제기관의 공식 자료에 명시", "B": "공식 자료에서 간접적으로 도출", "C": "그 밖의 자료" },
+  "checkedAt": "2026-09-20",
+  "products": [
+    {
+      "ticker": "360750.KS",
+      "name": "TIGER 미국S&P500",
+      "issuer": "미래에셋자산운용",
+      "source": { "type": "발행사 공식 상품 페이지", "url": "https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR7360750004", "retrievedAt": "2026-09-20" },
+      "facts": {
+        "underlyingIndex": {
+          "value": "S&P 500 지수 (S&P Dow Jones Indices 발표)",
+          "quote": "S&P Dow Jones Indices에서 발표하는 \"S&P 500 지수\"를 기초지수로 하는 상장지수투자신탁으로서, 미국에 상장된 주식에 투자신탁 자산총액의 60% 이상 투자합니다.",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "UNHEDGED",
+          "quote": "다만, 이 투자신탁은 해외 주식에 투자하면서도 환헤지를 하지 않으므로 1좌당 순자산가치는 기초지수의 원화환산 수익률에 연동하게 됩니다.",
+          "grade": "A",
+          "note": "원장 기존 기재(UNHEDGED · A등급)와 일치. 이번에 발행사 원문 인용으로 근거를 보강했다."
+        },
+        "underlyingReturnType": {
+          "value": "UNCONFIRMED",
+          "checked": "상품 페이지 전문에서 배당 · 재투자 · 총수익 · TR · PR · 가격지수를 검색했다. 나온 문장은 \"수익률 표는 투자분배금 재투자를 가정한 세전 수익률 기준입니다.\" 하나뿐이며 이는 **펀드 수익률 표시 방법**에 대한 설명이지 기초지수의 PR/TR 구분이 아니다.",
+          "grade": null,
+          "nextSource": ["투자설명서 · 집합투자규약(금융투자협회 전자공시)", "S&P Dow Jones Indices의 S&P 500 methodology"]
+        },
+        "priceCcy": { "value": "KRW", "grade": "A", "note": "국내 상장 · 원화 거래" }
+      },
+      "ledgerImpact": "환헤지 근거 보강(변경 없음). PR/TR은 여전히 UNCONFIRMED → Benchmark 정의 일치 판정은 그대로 UNCONFIRMED."
+    },
+    {
+      "ticker": "368590.KS",
+      "name": "RISE 미국나스닥100",
+      "issuer": "KB자산운용",
+      "source": { "type": "발행사 공식 상품 페이지", "url": "https://kbam.co.kr/prod/finderDetail/44A9", "retrievedAt": "2026-09-20" },
+      "facts": {
+        "underlyingIndex": { "value": "UNCONFIRMED", "checked": "페이지 본문에서 기초지수명을 찾지 못했다(값을 스크립트로 채우는 화면).", "grade": null },
+        "hedgeStatus": { "value": "UNCONFIRMED", "checked": "환헤지 · 헤지 · 원화환산 문구가 페이지 본문에 없다.", "grade": null, "note": "상품명에 (H)가 없다는 사실은 근거로 쓰지 않는다." },
+        "underlyingReturnType": { "value": "UNCONFIRMED", "grade": null }
+      },
+      "openQuestion": "검색 결과에 '기초지수 변경 공지(368590)'가 있었다. 기초지수가 바뀐 적이 있다면 과거 구간 비교에 영향을 주므로 공지 원문을 확인해야 한다.",
+      "nextSource": ["발행사 공지사항 원문", "금융투자협회 전자공시 투자설명서 · 집합투자규약", "KRX 상품정보"],
+      "ledgerImpact": "현행 HOLD 유지(변경 없음)."
+    }
+  ],
+  "pending": [
+    { "ticker": "360200.KS", "name": "ACE 미국S&P500", "issuer": "한국투자신탁운용", "need": ["환헤지", "기초지수", "PR/TR"] },
+    { "ticker": "278530.KS", "name": "KODEX 200TR", "issuer": "삼성자산운용", "need": ["기초지수 TR 정의 확인", "지수 시계열 원천"] },
+    { "ticker": "0052D0.KS", "name": "TIGER 코리아배당다우존스", "issuer": "미래에셋자산운용", "need": ["기초지수 PR 확인", "지수 시계열 원천"] },
+    { "ticker": "487230.KS", "name": "KODEX 미국AI전력핵심인프라", "issuer": "삼성자산운용", "need": ["기초지수 산출기관", "PR/TR", "환헤지", "지수 시계열 원천"] },
+    { "ticker": "458730.KS", "name": "TIGER 미국배당다우존스", "issuer": "미래에셋자산운용", "need": ["기초지수 PR 확인", "환헤지", "지수 시계열 원천"] },
+    { "ticker": "237370.KS", "name": "KODEX 코리아배당성장채권혼합", "issuer": "삼성자산운용", "need": ["주식/채권 구성비", "각 기초지수", "1:N 구조"] },
+    { "ticker": "472170.KS", "name": "TIGER 미국테크TOP10채권혼합", "issuer": "미래에셋자산운용", "need": ["주식/채권 구성비", "각 기초지수", "환헤지", "1:N 구조"] },
+    { "ticker": "069500.KS", "name": "KODEX 200", "issuer": "삼성자산운용", "need": ["기초지수 코스피200 PR 확인", "지수 시계열 원천"] },
+    { "ticker": "102110.KS", "name": "TIGER 200", "issuer": "미래에셋자산운용", "need": ["기초지수 코스피200 PR 확인"] },
+    { "ticker": "SCHD", "name": "Schwab U.S. Dividend Equity ETF", "issuer": "Charles Schwab Investment Management", "need": ["기초지수 Dow Jones U.S. Dividend 100의 PR/TR 구분", "지수 시계열 원천"] }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "title": "외부 데이터 원천 이용조건 · 접근성 확인 기록 (계획서 §7 · §8 · §11)",
+  "rule": "각 원천은 ① 실제 접근 ② 이용조건 ③ 품질 ④ 운영 적용 가능성을 모두 확인해야 ACTIVE가 된다. 원문 문서는 저장하지 않고 URL · 취득일 · 최소 인용만 남긴다.",
+  "checkedAt": "2026-09-20",
+  "sources": [
+    {
+      "id": "SRC-SEC",
+      "name": "SEC EDGAR (미국 증권거래위원회)",
+      "for": ["DP-01 미국 개별주 본국 보통주 근거"],
+      "endpoints": ["https://www.sec.gov/files/company_tickers.json", "https://data.sec.gov/submissions/CIK##########.json"],
+      "termsUrl": "https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data",
+      "termsRetrievedAt": "2026-09-20",
+      "terms": {
+        "userAgent": "요청 헤더에 user agent를 밝혀야 한다. 공식 문서가 제시하는 형식은 \"Sample Company Name AdminContact@<sample company domain>.com\" - 즉 연락 가능한 이메일을 포함한다.",
+        "rateLimit": "Current max request rate: 10 requests/second.",
+        "other": ["Download only what you need and please moderate requests to minimize server load.", "SEC는 봇넷 · 자동화 도구의 사이트 크롤링을 허용하지 않는다고 명시한다."]
+      },
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "BLOCKED",
+        "detail": "연락처 없는 설명형 User-Agent로 요청 → www.sec.gov 403(Request Rate Threshold Exceeded 페이지), data.sec.gov 403(Your Request Originates from an Undeclared Automated Tool 페이지). 요청 2회로 발생했으므로 속도 문제가 아니라 UA 형식 문제로 본다.",
+        "requests": 2
+      },
+      "blocker": "SEC가 요구하는 연락처(이메일)를 정할 수 없다. 사용자 개인 이메일을 외부 서비스 요청 헤더에 넣는 것은 사용자의 명시적 허가 없이 하지 않는다(계획서 §9 · 대장 P-7).",
+      "state": "DISCOVERED",
+      "nextAction": "PM이 SEC 요청에 쓸 연락처를 정하면 환경변수 SEC_CONTACT / Actions Secret으로 주입해 수집한다. 값은 코드 · 커밋 · 보고서에 기록하지 않는다."
+    },
+    {
+      "id": "SRC-YAHOO",
+      "name": "Yahoo Finance chart API",
+      "for": ["DP-10 지수 역사 낙폭", "DP-02 NYSE Composite", "현재 운영 가격 원천(js/09)"],
+      "endpoints": ["https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"],
+      "robotsUrl": "https://query1.finance.yahoo.com/robots.txt",
+      "robotsRetrievedAt": "2026-09-20",
+      "robots": "User-agent: * / Disallow: /",
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "OK",
+        "detail": "지수 7종(^IXIC ^GSPC ^NDX ^DJI ^KS11 ^KQ11 ^NYA) 일별 이력 수신. range=max&interval=1d는 솎인 시계열(월/분기)을 주므로 period1/period2 5년 분할로 받아야 진짜 일별이 온다.",
+        "requests": 90
+      },
+      "quality": "일별 · 중앙 간격 1~3일 · 중복 없음 · 음수 없음(index-drawdowns.json의 quality 필드 참조)",
+      "issue": "robots.txt가 전면 Disallow다. 이 앱의 운영 사용은 사용자의 브라우저가 사용자의 요청으로 호출하는 것이라 크롤러 트래픽과 성격이 다르지만, **서버 측 자동 수집(GitHub Actions 파이프라인)을 새로 만드는 것은 이 정책과 충돌한다.**",
+      "state": "ACCESS_VERIFIED",
+      "nextAction": "① 이번 낙폭 산출은 1회성 조사로 처리한다(상시 수집 아님) ② 지수 낙폭을 상시 자동 갱신하는 파이프라인은 만들지 않는다 ③ 운영 가격 조회(기존 동작)는 현행 유지 - 변경은 PM 결정 사항"
+    },
+    {
+      "id": "SRC-NAVER",
+      "name": "네이버 금융",
+      "for": ["DP-03 코스피200 PR(이전 세션 예비 확인 경로)"],
+      "endpoints": ["https://finance.naver.com/sise/sise_index_day.naver"],
+      "robotsUrl": "https://finance.naver.com/robots.txt",
+      "robotsRetrievedAt": "2026-09-20",
+      "robots": "User-agent: * / Disallow: /",
+      "accessAttempt": { "date": "2026-09-20", "result": "410 Gone", "detail": "이전 세션에서 쓰던 경로가 더 이상 응답하지 않는다.", "requests": 1 },
+      "state": "NOT_AVAILABLE",
+      "reason": "robots.txt가 전면 Disallow이므로 자동 수집 대상에서 제외한다. 접근 가능 여부와 무관하게 이용조건에서 막힌다.",
+      "note": "이전 세션의 'KPI200 257행 수신' 예비 결과는 이 판정으로 폐기한다 - 사실로 승격하지 않는다."
+    },
+    {
+      "id": "SRC-KRX-DATA",
+      "name": "KRX 정보데이터시스템 (data.krx.co.kr)",
+      "for": ["DP-03 코스피200 PR", "DP-04 코스피200 TR", "지수 낙폭 교차검증"],
+      "endpoints": ["https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd"],
+      "robots": "robots.txt 없음(404)",
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "BLOCKED",
+        "detail": "세션 쿠키 발급 후 표준 헤더(Referer · X-Requested-With · Origin)로 POST했으나 응답 본문이 'LOGOUT'. 로그인/계정 없이 자동 조회가 되지 않는다.",
+        "requests": 4
+      },
+      "state": "DISCOVERED",
+      "nextAction": "KRX Data Marketplace 계정 · 이용조건(상업/비상업 · 재배포) 확인이 선행. 사용자 계정이 필요하므로 PM 결정 사항으로 둔다."
+    },
+    {
+      "id": "SRC-DATAGOKR-INDEX",
+      "name": "공공데이터포털 · 금융위원회 지수시세정보 (원자료 제공: 한국거래소)",
+      "for": ["DP-03 코스피200 PR", "DP-04 코스피200 TR"],
+      "endpoints": ["https://apis.data.go.kr/1160100/service/GetMarketIndexInfoService/getStockMarketIndex"],
+      "docUrl": "https://www.data.go.kr/tcs/dss/selectApiDataDetailView.do?publicDataPk=15094807",
+      "docRetrievedAt": "2026-09-20",
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "ENDPOINT_ALIVE_KEY_REQUIRED",
+        "detail": "서비스키 없이 호출 → {\"errMsg\":\"SERVICE_KEY_IS_NOT_REGISTERED_ERROR\",\"returnAuthMsg\":\"등록되지 않은 서비스키\"}. 엔드포인트는 살아 있고 인증키만 있으면 된다.",
+        "requests": 1
+      },
+      "terms": {
+        "licence": "공공누리 제4유형 - 출처표시 + 상업적 이용금지 + 변경금지",
+        "redistribution": "제3자 재배포 금지(상업적 이용은 KRX Data Marketplace 유료 이용)",
+        "updateCycle": "기준일자 다음 영업일 13시 이후",
+        "serviceKey": "공공데이터포털 회원가입 후 발급(개발계정 자동승인)"
+      },
+      "architectureConflict": "이 앱의 데이터 파이프라인은 받은 데이터를 **공개 GitHub 저장소에 커밋하고 jsDelivr로 배포**한다. 그것은 제3자 재배포에 해당하므로 이 라이선스로는 할 수 없다. 사용자 브라우저가 사용자 자신의 인증키로 직접 조회하는 방식이면 재배포가 발생하지 않지만, 그것은 새 기능(키 입력 UI)이므로 PM 결정이 필요하다.",
+      "state": "POLICY_BLOCKED",
+      "nextAction": "PM 결정 패키지: (가) 사용자 키 방식 도입 (나) KRX 유료 라이선스 (다) 지수 원천 없음으로 종결(NOT_AVAILABLE) 중 선택"
+    },
+    {
+      "id": "SRC-MIRAE-TIGER",
+      "name": "미래에셋자산운용 TIGER ETF 공식 상품 페이지",
+      "for": ["DP-08 ETF PR/TR", "DP-09 환헤지", "DP-05 · DP-07 기초지수"],
+      "endpoints": ["https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR7360750004"],
+      "accessAttempt": { "date": "2026-09-20", "result": "OK", "detail": "상품 개요 · 환헤지 문구 확인", "requests": 2 },
+      "state": "ACCESS_VERIFIED",
+      "note": "상품 페이지에는 기초지수명과 환헤지 여부가 있으나 **지수의 PR/TR 구분은 적혀 있지 않다.** PR/TR은 투자설명서 · 집합투자규약 또는 지수 제공기관 methodology에서 확인해야 한다."
+    },
+    {
+      "id": "SRC-KBAM-RISE",
+      "name": "KB자산운용 RISE ETF 공식 상품 페이지",
+      "for": ["DP-09 환헤지(368590)"],
+      "endpoints": ["https://kbam.co.kr/prod/finderDetail/44A9"],
+      "accessAttempt": { "date": "2026-09-20", "result": "PARTIAL", "detail": "페이지가 스크립트로 값을 채워 본문 텍스트에 기초지수 · 환헤지 문구가 나타나지 않는다(수익률 표 주석만 확인).", "requests": 1 },
+      "state": "DISCOVERED",
+      "nextAction": "금융투자협회 전자공시(투자설명서 · 집합투자규약) 또는 KRX 상품정보로 전환해 확인한다."
+    }
+  ]
+}
