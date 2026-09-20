@@ -32,7 +32,49 @@
 
 ---
 
-## 🧩 PM Solution Closure — 미결 10건 해결안 확정 (2026-09-20 · 가장 최신 · 커밋 `9270b11` · 문서만 · 코드/데이터/정책 변경 0)
+## 🏁 PM EXECUTION DIRECTIVE 실행 완료 — 승인 7건 구현 · 대장 전수 종결 (2026-09-20 · 가장 최신)
+
+> 브랜치 `integration/v262-closeout` · main(`d4459a7`) 무변경 · **버전 미변경(v262 유지) · 배포 없음**
+> 커밋 4개: `cb232f2`(SoT §47 · D-11 · C-1 · Bond 모듈) → `696edd2`(BOND-4 · BOND-5) →
+> `3944161`(Bond UI · 채권 위험 카드 · B-1 보안 · D-5) → `da86a82`(대장 전수 종결 · B-3/B-4 · G-2 · 릴리스 계획)
+
+**다음 세션이 반드시 알아야 할 것**
+
+1. **CMA ACTIVE 세트가 CMA-2026.2로 바뀌었다**(AllianzGI 2026 Q2 · 기준일 2026-03-31).
+   Korea σ 27.9→29.4 · NA 16.5→16.6. μ는 Return Key에서 오므로 불변. 되돌리려면
+   `node scripts/cma-update.js activate --primary AGI-LTCMA-2026Q1-USD --benchmark JPM-LTCMA-2026-KRW`.
+2. **채권 σ=0 정책이 끝났다**(§47-3). 분류된 채권은 JPM LTCMA KRW에서 σ를 받고(국공채 5.357% ·
+   회사채 2.540%), 분류 근거가 없는 채권은 변동성을 만들지 않되 WARNING으로 명시한다.
+   **원금은 그대로 굴러간다** — universe에서 빼면 채권 원금이 미래예측에서 사라지는 것을 실측해서
+   그렇게 하지 않았다(PM_DECISION_LOG.md의 BOND-4 "실행 중 확인한 사실" 참고).
+3. **포트폴리오 베타의 "전부 또는 무"가 폐지됐다**(§47-2). `computeBetaAggregate`가 구한 종목만
+   가중평균하고 coverage를 함께 준다(하한 50%). 되돌리려면 `BETA_COVERAGE_MIN`을 1.01로 두면 된다.
+4. **js/29-bond-domain.js가 새로 생겼다**(Bond Domain V1). 자산 폼에 채권 11개 항목이 붙고
+   `state.bondPositions`(`sam_bond_positions_v1`)에 저장된다 — 기존 자산 저장 키는 무변경.
+   값이 없으면 0이 아니라 `{status:'UNAVAILABLE', reason}`을 돌려주는 것이 이 모듈의 계약이다.
+5. **Worker 3종이 전부 바뀌었다**(§47-8) — CORS 허용 목록 · fail-closed · 요청 제한. **아직 배포
+   안 했다.** Cloudflare 대시보드 작업(키 회전 + 재배포)은 EXTERNAL ACTION으로 남아 있다.
+6. **Release Guard는 지금 FAIL이 정상이다** — APP_SHELL 파일이 바뀌었는데 버전을 올리지 않았기
+   때문이다. 최종 릴리스 때 `CACHE_NAME`과 `#appVersionLabel`을 한 번만 올린다(현재 v262).
+
+**종결 대장 68건 · OPEN 0건**
+SOLVED 29 · SOLVED_WITH_CONSTRAINT 10 · EXTERNAL_ACTION_REQUIRED 5 · NOT_AVAILABLE 4 ·
+PM_DECISION_REQUIRED 20. 마지막 20건은 "구현은 가능하지만 계산 모델 · 사용자 화면 · 데이터 의미를
+바꾸므로 PM 승인이 선행돼야 하는" 항목이다 — 각 항목에 결정 질문과 다음 실행이 적혀 있다.
+
+**새로 생긴 문서 · 도구**
+- `docs/closeout/PM_DECISION_LOG.md` — 승인 7건의 판단 근거 · SoT 관계 · 영향 · 다음 실행
+- `docs/closeout/RELEASE_PLAN.md` — 사용자 영향 고지 · 롤백 · 자동화 복귀 · 기준선 · Security Gate 12항목
+- `scripts/closeout/measure-mc.js` — 동일 seed 3단계 MC 측정기(`--save` · `--compare`)
+- `docs/closeout/measurements/mc-{base,step1-cma-q2,step2-bond-cma}.json`
+
+**게이트** — Unit 595/595 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS ·
+E2E 1032/1032(11.7분 · CMA 기대값 3건 갱신 후 전체 통과) · Unit에 bond-domain 14 + bond-mc-mapping 6 + kis-worker-security 8 신규 ·
+`.claude/launch.json` 무변경(diff 해시 `216cbb7b12fed0a2` · 절대 stage 금지).
+
+---
+
+## 🧩 PM Solution Closure — 미결 10건 해결안 확정 (2026-09-20 · 위 절이 더 최신 · 커밋 `9270b11` · 문서만 · 코드/데이터/정책 변경 0)
 
 > 브랜치 `integration/v262-closeout` · main(`d4459a7`) 무변경 · Production v262 유지 · **버전 변경 없음**.
 > 산출물: `docs/closeout/research/PM_SOLUTION_CLOSURE.md`(신규) + Bond 문서 3종 추가 절 + 대장 갱신.
