@@ -85,25 +85,25 @@
   },
   "verdict": {
     "technicallyFeasible": true,
-    "blocker": "무료 인증키 발급(사용자 가입 · 개인정보 입력 필요). 값은 SEC 연락처와 같은 방식으로 환경변수/Secret으로만 주입하고 코드 · 로그 · 문서에 남기지 않는다.",
+    "blocker": "해결됨(인증키 등록 · 호출 성공). 다만 **원하던 본문은 API로 오지 않는다** - 아래 actualRun 참조.",
     "whatItUnblocks": [
       "360200 환헤지",
       "360750 · 368590 · SCHD 관련 국내 ETF의 기초지수 정식 명칭(PR/TR)",
       "368590 기초지수 변경 경위(정정신고 · 규약 변경 공시가 있으면)"
     ],
     "notUnblocked": [
-      "지수 일별 시계열(투자설명서에는 없다)",
-      "미국 ETF(SCHD)의 지수 PR/TR - SEC 문서에 표기 자체가 없다"
+      "투자설명서 본문(첨부문서) - OpenDART document.xml 범위 밖",
+      "지수 일별 시계열"
     ]
   },
   "keyStatus": {
     "checkedAt": "2026-09-20",
     "envName": "OPENDART_API_KEY",
-    "presentInShellEnv": false,
+    "presentInShellEnv": true,
     "presentInWindowsUserOrMachineEnv": false,
     "repoEnvFile": "없음",
     "githubActionsSecrets": "등록된 저장소 Secret 없음(gh secret list 결과 비어 있음)",
-    "note": "PM에 따르면 사용자는 DART Open API 서비스를 이미 신청했다. 다만 **이 실행 환경에서는 키가 보이지 않는다** - 발급된 키가 아직 환경변수/Secret에 들어오지 않은 상태로 본다. 키 값을 요구하거나 출력하지 않는다.",
+    "note": "2026-09-20 사용자가 OPENDART_API_KEY를 환경에 등록했고 실제 호출이 성공했다(status 000 · 정상). 값은 확인 · 출력 · 기록하지 않았다.",
     "howToProvide": [
       "로컬 조사용: 환경변수 OPENDART_API_KEY 설정 후 셸 재시작",
       "자동 재검증용: 같은 이름의 GitHub Actions Secret 등록"
@@ -121,5 +121,55 @@
     "corpCodeSource": "DART 공시검색 결과 페이지(robots 허용 경로)에서 확인 · 2026-09-20 · 공개 정보",
     "plannedQuery": "list.json(corp_code · pblntf_ty=G 펀드공시 · 2025-01-01~2026-12-31 · page_count=100) → 보고서명에 투자설명서 · 집합투자규약 · 증권신고서 · 정정이 포함된 건의 rcept_no 수집 → document.xml로 원문 확인",
     "knownLimitation": "공시검색 응답의 보고서명은 \"투자설명서(집합투자증권)\"처럼 펀드명을 담지 않는 경우가 많다. 특정 ETF를 특정하려면 원문(document.xml)을 열어 확인해야 할 수 있다 - 호출 수가 늘어나므로 대상 기간을 좁혀 실행한다."
+  },
+  "actualRun": {
+    "ranAt": "2026-09-20",
+    "script": "scripts/closeout/research/opendart-fetch-facts.js",
+    "requests": 61,
+    "documentsFetched": 9,
+    "failures": 0,
+    "listSearch": {
+      "result": "성공 - 운용사 4곳 모두 status 000 · 각 1,200여 건 조회",
+      "keyFinding": "보고서명에 **펀드명이 그대로 들어 있다**(예: \"[기재정정]투자설명서(집합투자증권)(한국투자ACE미국S&P500증권상장지수투자신탁(주식))\") → 대상 ETF를 정확히 특정할 수 있다.",
+      "identified": [
+        "360200",
+        "360750",
+        "368590",
+        "458730",
+        "0052D0",
+        "487230",
+        "069500",
+        "237370",
+        "472170"
+      ],
+      "notFoundInWindow": [
+        "102110",
+        "278530"
+      ]
+    },
+    "documentFetch": {
+      "result": "**본문 미제공** - 9건 모두 COVER_ONLY",
+      "detail": "document.xml은 주 문서 XML만 돌려준다. 집합투자증권 공시에서 그 주 문서는 표지(정정건은 정정 요약 표)뿐이고, **기초지수 · 환헤지가 적힌 투자설명서 본문은 첨부문서**라 API 응답에 들어오지 않는다.",
+      "evidence": [
+        "360200 정정투자설명서(20260213001628): ZIP 1개 · 본문 텍스트 2,255자 · 기초지수/환헤지 문구 없음. 표지에는 \"정정대상 공시서류의 최초제출일: 2020년 7월 23일\", VaR 34.26%→31.18%, 위험등급 2등급 등이 있다.",
+        "정정이 아닌 원본 투자설명서로도 같은 결과(미래에셋 20260910 제출건 · 텍스트 1,301자 · 기초지수/환헤지 없음) → 정정 여부와 무관한 구조적 한계다.",
+        "일괄신고서(집합투자증권-신탁형)도 동일(텍스트 1,482자)"
+      ]
+    },
+    "whatItDidUnblock": [
+      "각 ETF의 공시 존재 · 접수번호 · 제출일 · 효력발생일 확인",
+      "펀드 정식 명칭 확인(예: 한국투자 ACE 미국 S&P500 증권 상장지수투자신탁(주식) · 펀드코드 D7819)",
+      "정정 이력과 정정 사유 확인(360200: 재무제표 확정 · VaR 변경 · 채권평가회사 추가)"
+    ],
+    "whatItDidNotUnblock": [
+      "360200 환헤지",
+      "360750 · 368590 PR/TR",
+      "기초지수 정식 명칭(본문 소재)"
+    ],
+    "nextRoute": [
+      "금융투자협회 전자공시(dis.kofia.or.kr) 펀드 투자설명서 - robots 제한 없음(robots.txt 없음)",
+      "판매사 · 운용사가 직접 게시하는 투자설명서 PDF",
+      "DART 첨부문서는 robots 금지 경로이므로 사용하지 않는다"
+    ]
   }
 }

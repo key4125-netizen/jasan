@@ -1,0 +1,361 @@
+{
+  "schemaVersion": 1,
+  "title": "OpenDART 공시 원문 기반 ETF 기준정보 확인 (실행 묶음 B 4차)",
+  "method": "list.json(공시검색 · pblntf_ty=G·C) → 보고서명으로 펀드 특정 → document.xml(원본 ZIP) → 본문에서 해당 문장만 인용",
+  "storagePolicy": "원문 미보관 · 접수번호 · 취득일 · 원문 SHA-256 · 최소 인용만 기록(계획서 §8)",
+  "keyEnvName": "OPENDART_API_KEY",
+  "since": "20240101",
+  "execution": {
+    "requests": 61,
+    "documents": 9,
+    "failures": 0,
+    "startedAt": "2026-09-20T02:31:17.937Z",
+    "finishedAt": "2026-09-20T02:32:04.575Z"
+  },
+  "results": [
+    {
+      "ticker": "360200",
+      "name": "ACE 미국S&P500",
+      "issuer": "한국투자신탁운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(한국투자ACE미국S&P500증권상장지수투자신탁(주식))",
+          "rcept_no": "20260213001628",
+          "rcept_dt": "20260213"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(한국투자ACE미국S&P500증권상장지수투자신탁(주식))",
+          "rcept_no": "20260206001356",
+          "rcept_dt": "20260206"
+        },
+        {
+          "report_nm": "증권발행실적보고서(집합투자증권)(한국투자ACE미국S&P500증권상장지수투자신탁(주식))",
+          "rcept_no": "20260122000540",
+          "rcept_dt": "20260122"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(한국투자ACE미국S&P500증권상장지수투자신탁(주식))",
+        "rcept_no": "20260213001628",
+        "rcept_dt": "20260213"
+      },
+      "documentSha256": "6c2cd0fa03496fd93aac7c4cd8b541190d38fad09426a486d660049ea1dd58e3",
+      "documentBytes": 4219,
+      "quotes": {},
+      "textLength": 2255,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260213001628",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "360750",
+      "name": "TIGER 미국S&P500",
+      "issuer": "미래에셋자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국S&P500증권상장지수투자신탁(주식))",
+          "rcept_no": "20260528000055",
+          "rcept_dt": "20260528"
+        },
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국S&P500증권상장지수투자신탁(주식-파생형)(H))",
+          "rcept_no": "20260528000190",
+          "rcept_dt": "20260528"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(미래에셋TIGER미국S&P500증권상장지수투자신탁(주식-파생형)(H))",
+          "rcept_no": "20260521000362",
+          "rcept_dt": "20260521"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(미래에셋TIGER미국S&P500증권상장지수투자신탁(주식))",
+          "rcept_no": "20260521000467",
+          "rcept_dt": "20260521"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국S&P500증권상장지수투자신탁(주식))",
+        "rcept_no": "20260528000055",
+        "rcept_dt": "20260528"
+      },
+      "documentSha256": "cbc22bbb161be41ab592449c7f4b0ef8ef8a9c062abcf2c59a95f4076f2e721b",
+      "documentBytes": 5305,
+      "quotes": {
+        "returnType": [
+          "법 제234조에 따른 상장지수집합투자기구로서 증권시장에서 거래되는 주식의 가격만을 기반으로 하는 지수의 변화를 그대로 추적하는 것을 목적으로 하는 집합투자기구 중 지수의 변화를 그대로 추적하기 위해 배당이익을 구성종목의 비중에 따라 재투자하는 집합투자기구에서 발생한 이자수입 및 배당이익 투자위험등급 2등급[ 높은 위험 ] 미래에셋자산운용(주)는 이 집합투자기구의 실 제 수익률 변동성 을 감안하여 2등급으로 분류 하였습니다"
+        ]
+      },
+      "textLength": 4618,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260528000055",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "368590",
+      "name": "RISE 미국나스닥100",
+      "issuer": "KB자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(KBRISE미국나스닥100증권상장지수투자신탁(주식))",
+          "rcept_no": "20260807000191",
+          "rcept_dt": "20260807"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(KBRISE미국나스닥100증권상장지수투자신탁(주식))",
+          "rcept_no": "20260731000542",
+          "rcept_dt": "20260731"
+        },
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(KBRISE미국나스닥100증권상장지수투자신탁(주식))",
+          "rcept_no": "20260515000442",
+          "rcept_dt": "20260515"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(KBRISE미국나스닥100증권상장지수투자신탁(주식))",
+          "rcept_no": "20260508000637",
+          "rcept_dt": "20260508"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(KBRISE미국나스닥100증권상장지수투자신탁(주식))",
+        "rcept_no": "20260807000191",
+        "rcept_dt": "20260807"
+      },
+      "documentSha256": "a6b70b91f78f9a54be7fd08663d1d81b5cece0c0b1bbfc7e41d62d3908fafe0c",
+      "documentBytes": 3427,
+      "quotes": {},
+      "textLength": 1458,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260807000191",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "458730",
+      "name": "TIGER 미국배당다우존스",
+      "issuer": "미래에셋자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국배당다우존스증권상장지수투자신탁(주식))",
+          "rcept_no": "20260528000263",
+          "rcept_dt": "20260528"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(미래에셋TIGER미국배당다우존스증권상장지수투자신탁(주식))",
+          "rcept_no": "20260521000432",
+          "rcept_dt": "20260521"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국배당다우존스증권상장지수투자신탁(주식))",
+        "rcept_no": "20260528000263",
+        "rcept_dt": "20260528"
+      },
+      "documentSha256": "d5d52020b2383a5cb43fefe2c893288a6f224db4253884f5cfaaeb9124c2b445",
+      "documentBytes": 5196,
+      "quotes": {
+        "returnType": [
+          "법 제234조에 따른 상장지수집합투자기구로서 증권시장에서 거래되는 주식의 가격만을 기반으로 하는 지수의 변화를 그대로 추적하는 것을 목적으로 하는 집합투자기구 중 지수의 변화를 그대로 추적하기 위해 배당이익을 구성종목의 비중에 따라 재투자하는 집합투자기구에서 발생한 이자수입 및 배당이익 투자위험등급 2등급[ 높은 위험 ] 미래에셋자산운용㈜는 이 투자신탁의 투자대상 자산의 종류 및 위험도 등 을 감안하여 2등급으로 분류 하였습니다"
+        ]
+      },
+      "textLength": 4494,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260528000263",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "0052D0",
+      "name": "TIGER 코리아배당다우존스",
+      "issuer": "미래에셋자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER코리아배당다우존스증권상장지수투자신탁(주식))",
+          "rcept_no": "20260528000462",
+          "rcept_dt": "20260528"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(미래에셋TIGER코리아배당다우존스증권상장지수투자신탁(주식))",
+          "rcept_no": "20260521000512",
+          "rcept_dt": "20260521"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER코리아배당다우존스증권상장지수투자신탁(주식))",
+        "rcept_no": "20260528000462",
+        "rcept_dt": "20260528"
+      },
+      "documentSha256": "f7854829edb8cb8997d2dc9bc93e28a5615d0e4156593a15d3dd8636ce1ad7fe",
+      "documentBytes": 5304,
+      "quotes": {
+        "returnType": [
+          "법 제234조에 따른 상장지수집합투자기구로서 증권시장에서 거래되는 주식의 가격만을 기반으로 하는 지수의 변화를 그대로 추적하는 것을 목적으로 하는 집합투자기구 중 지수의 변화를 그대로 추적하기 위해 배당이익을 구성종목의 비중에 따라 재투자하는 집합투자기구에서 발생한 이자수입 및 배당이익 투자위험등급 2등급[ 높은 위험 ] 미래에셋자산운용(주)는 이 집합투자기구의 투자대상 자산의 종류 및 위험도 를 감안하여 2등급으로 분류 하였습니다"
+        ]
+      },
+      "textLength": 4770,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260528000462",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "487230",
+      "name": "KODEX 미국AI전력핵심인프라",
+      "issuer": "삼성자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+          "rcept_no": "20260908000040",
+          "rcept_dt": "20260908"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+          "rcept_no": "20260907000036",
+          "rcept_dt": "20260907"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+          "rcept_no": "20260828000459",
+          "rcept_dt": "20260828"
+        },
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+          "rcept_no": "20260722000234",
+          "rcept_dt": "20260722"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+          "rcept_no": "20260715000389",
+          "rcept_dt": "20260715"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX미국AI전력핵심인프라증권상장지수투자신탁[주식])",
+        "rcept_no": "20260908000040",
+        "rcept_dt": "20260908"
+      },
+      "documentSha256": "1cdce40a0994e8cfdf4ed60f5a9f2795e18ec827e0593686c14d9505aa5c0f6f",
+      "documentBytes": 3712,
+      "quotes": {},
+      "textLength": 1711,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260908000040",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "069500",
+      "name": "KODEX 200",
+      "issuer": "삼성자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX200증권상장지수투자신탁[주식])",
+          "rcept_no": "20260916000100",
+          "rcept_dt": "20260916"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX200증권상장지수투자신탁[주식])",
+          "rcept_no": "20260914000413",
+          "rcept_dt": "20260914"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX200증권상장지수투자신탁[주식])",
+          "rcept_no": "20260914000067",
+          "rcept_dt": "20260914"
+        },
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX200증권상장지수투자신탁[주식])",
+          "rcept_no": "20260716000161",
+          "rcept_dt": "20260716"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX200증권상장지수투자신탁[주식])",
+          "rcept_no": "20260709000208",
+          "rcept_dt": "20260709"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX200증권상장지수투자신탁[주식])",
+        "rcept_no": "20260916000100",
+        "rcept_dt": "20260916"
+      },
+      "documentSha256": "aedc8bed5f922223ca6b2eb93d45a4afe12b54925c41249e4b5d1f7b2f9f99df",
+      "documentBytes": 3405,
+      "quotes": {},
+      "textLength": 1541,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260916000100",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "102110",
+      "name": "TIGER 200",
+      "issuer": "미래에셋자산운용",
+      "candidates": [],
+      "chosen": null,
+      "status": "NO_MATCHING_DISCLOSURE"
+    },
+    {
+      "ticker": "278530",
+      "name": "KODEX 200TR",
+      "issuer": "삼성자산운용",
+      "candidates": [],
+      "chosen": null,
+      "status": "NO_MATCHING_DISCLOSURE"
+    },
+    {
+      "ticker": "237370",
+      "name": "KODEX 코리아배당성장채권혼합",
+      "issuer": "삼성자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX코리아배당성장채권혼합증권상장지수투자신탁[채권혼합])",
+          "rcept_no": "20260813000039",
+          "rcept_dt": "20260813"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(삼성KODEX코리아배당성장채권혼합증권상장지수투자신탁[채권혼합])",
+          "rcept_no": "20260806000032",
+          "rcept_dt": "20260806"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(삼성KODEX코리아배당성장채권혼합증권상장지수투자신탁[채권혼합])",
+        "rcept_no": "20260813000039",
+        "rcept_dt": "20260813"
+      },
+      "documentSha256": "a64cf4923d428d8d3efedb350a6a2af6a9aaeae9a702170b248bebe41a4dd69e",
+      "documentBytes": 4502,
+      "quotes": {},
+      "textLength": 3244,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260813000039",
+      "status": "COVER_ONLY"
+    },
+    {
+      "ticker": "472170",
+      "name": "TIGER 미국테크TOP10채권혼합",
+      "issuer": "미래에셋자산운용",
+      "candidates": [
+        {
+          "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국테크TOP10채권혼합증권상장지수투자신탁(채권혼합))",
+          "rcept_no": "20260515000134",
+          "rcept_dt": "20260515"
+        },
+        {
+          "report_nm": "[기재정정]일괄신고서(집합투자증권-신탁형)(미래에셋TIGER미국테크TOP10채권혼합증권상장지수투자신탁(채권혼합))",
+          "rcept_no": "20260508000739",
+          "rcept_dt": "20260508"
+        }
+      ],
+      "chosen": {
+        "report_nm": "[기재정정]투자설명서(집합투자증권)(미래에셋TIGER미국테크TOP10채권혼합증권상장지수투자신탁(채권혼합))",
+        "rcept_no": "20260515000134",
+        "rcept_dt": "20260515"
+      },
+      "documentSha256": "22cab10681324b8126f88ceccc611122b60f16b7b7574d6a85b918d20545af69",
+      "documentBytes": 3573,
+      "quotes": {},
+      "textLength": 1615,
+      "bodyServed": false,
+      "viewerUrl": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260515000134",
+      "status": "COVER_ONLY"
+    }
+  ]
+}

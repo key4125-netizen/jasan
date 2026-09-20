@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1~4차 반영(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~4차 반영(2026-09-20 · OpenDART 실행 결과 포함)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -14,10 +14,10 @@
 | 현재 판정 | 건수 |
 | --- | ---: |
 | OPEN | 42 |
-| COMPLETED | 13 |
+| COMPLETED | 14 |
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| PM_DECISION_REQUIRED | 6 |
+| PM_DECISION_REQUIRED | 5 |
 | **합계** | **66** |
 
 ## 전체 목록
@@ -89,7 +89,7 @@
 | D-11 | GOOG 무의결권 Class C 주식을 본국 보통주로 볼 것인가 | 데이터 · Benchmark | PHASE 3 | PM_DECISION_REQUIRED | - |
 | D-12 | 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR) | 데이터 · Benchmark | PHASE 3 | COMPLETED | COMPLETED |
 | D-13 | 혼합형 ETF를 1:N 노출 구조로 표현할지 여부 | 데이터 · 구조 | PHASE 6 | RETAINED | - |
-| P-14 | OpenDART 인증키를 실행 환경에 등록 | 외부 데이터 | PHASE 1 | PM_DECISION_REQUIRED | - |
+| P-14 | OpenDART 인증키를 실행 환경에 등록 | 외부 데이터 | PHASE 1 | COMPLETED | COMPLETED |
 
 ## 항목 상세
 
@@ -230,7 +230,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §21 · §25
-- **현재 구현**: 12개 상품 전수 조사 완료(docs/closeout/research/etf-facts.json). **PR/TR 확정**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR. **미확정**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수의 PR/TR 표기가 없음 - 다만 해당 지수(S&P 500 · DJ US Div100 · NASDAQ 100)의 제공기관 대표값은 Price Return임을 확인). [B-4] OpenDART 경로를 기술검증했다 - 투자설명서(집합투자증권)가 DART에 실제 존재하고 공시검색 · 공시서류원본파일 API로 접근 가능하다. 운용사 고유번호 4곳을 확보해 호출 준비를 마쳤다(scripts/closeout/research/opendart-etf-docs.js).
+- **현재 구현**: 12개 상품 전수 조사 완료(docs/closeout/research/etf-facts.json). **PR/TR 확정**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR. **미확정**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수의 PR/TR 표기가 없음 - 다만 해당 지수(S&P 500 · DJ US Div100 · NASDAQ 100)의 제공기관 대표값은 Price Return임을 확인). [B-4] OpenDART 경로를 기술검증했다 - 투자설명서(집합투자증권)가 DART에 실제 존재하고 공시검색 · 공시서류원본파일 API로 접근 가능하다. 운용사 고유번호 4곳을 확보해 호출 준비를 마쳤다(scripts/closeout/research/opendart-etf-docs.js). [B-4 실행] OpenDART로 9개 ETF의 투자설명서 공시를 특정했으나(접수번호 · 제출일 확보) **본문은 첨부문서라 API로 오지 않는다**(9건 모두 표지만 · 정정/원본 무관). PR/TR 미확정 4건은 그대로다.
 - **문제**: 남은 4건은 "지수 제공기관은 PR을 대표값으로 쓰는데 상품 자료가 그 구분을 적지 않은" 경우다. 상품이 PR 버전을 쓴다고 단정하지 않는다.
 - **필요한 사실**: 종목별 기초지수의 공식 수익 유형(PR/TR)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 전자공시 · 지수 제공기관 methodology · 미국: SEC filings · 공식 fact sheet
@@ -243,7 +243,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 D-05 · 계획서 §25
-- **현재 구현**: **368590 해결** - 발행사 공식 페이지 "미국 나스닥100 지수를 추종하는 환노출형 ETF" → UNHEDGED 확정(A등급), 원장 반영 완료. **360200 미해결** - 한국투자신탁운용 상품 페이지 전체에서 환헤지 문구를 찾지 못했다(일반 위험고지만 존재). [B-4] 360200을 추가 조사했다 - 운용사 두 사이트(ACE · 본사) 모두 환헤지 문구 없음, 투자설명서 버튼은 동작하지 않았다. OpenDART 호출 준비 완료.
+- **현재 구현**: **368590 해결** - 발행사 공식 페이지 "미국 나스닥100 지수를 추종하는 환노출형 ETF" → UNHEDGED 확정(A등급), 원장 반영 완료. **360200 미해결** - 한국투자신탁운용 상품 페이지 전체에서 환헤지 문구를 찾지 못했다(일반 위험고지만 존재). [B-4] 360200을 추가 조사했다 - 운용사 두 사이트(ACE · 본사) 모두 환헤지 문구 없음, 투자설명서 버튼은 동작하지 않았다. OpenDART 호출 준비 완료. [B-4 실행] 360200의 정정투자설명서(접수번호 20260213001628 · 최초제출 2020-07-23)를 OpenDART로 확인했지만 표지만 제공돼 환헤지 조항을 읽지 못했다.
 - **문제**: 360200 한 건만 남았다. 상품명에 (H)가 없다는 사실은 근거로 쓰지 않는다.
 - **필요한 사실**: 공식 자료의 환헤지 정책(전량/부분/없음)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 · 운용사 공식 상품 페이지
@@ -954,14 +954,16 @@
 
 #### P-14 — OpenDART 인증키를 실행 환경에 등록
 
-- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 1
+- **현재 판정**: COMPLETED → **최종 COMPLETED** · **단계**: PHASE 1
 - **SoT**: 계획서 §9 · PM 지시(B-4)
-- **현재 구현**: 사용자가 DART Open API를 신청했다고 보고받았으나, 이 실행 환경에서는 키가 확인되지 않는다(셸 · Windows 사용자/시스템 환경변수 · 저장소 .env · GitHub Actions Secret 모두 없음).
-- **문제**: OpenDART는 CORS를 지원하지 않아 앱에 넣을 수 없고, 조사 · 자동 재검증 용도로만 쓴다. 키가 없으면 360200 환헤지와 PR/TR 4건을 원문으로 확정할 수 없다.
+- **현재 구현**: 사용자가 OPENDART_API_KEY를 등록했고 실제 호출이 성공했다(운용사 4곳 · status 000 · 요청 61건 · 문서 9건 · 실패 0). 값은 확인 · 출력 · 기록하지 않았다.
+- **문제**: 해결됨. 다만 이 키로 열리는 범위가 기대와 달랐다 - 공시 **식별**은 되지만 투자설명서 **본문**은 API가 주지 않는다(첨부문서). 그 한계는 D-3 · D-4에서 다른 경로로 잇는다.
 - **필요한 사실**: 키 자체가 아니라 **키가 환경에 존재하는지**만 필요하다(값은 요구 · 출력 · 기록하지 않는다).
 - **선택지**: (가) 로컬 조사용으로 환경변수 OPENDART_API_KEY 설정 · (나) 자동 재검증까지 하려면 같은 이름의 GitHub Actions Secret 등록 · (다) 두 가지 모두
 - **영향**: 정책 없음 / Risk 간접(확정되면 일부 Benchmark 상태가 바뀔 수 있음) / MC 없음 / UI 없음
 - **구현 필요**: 없음 - 스크립트는 이미 준비됐다(scripts/closeout/research/opendart-etf-docs.js · 운용사 고유번호 4곳 기록 완료)
 - **테스트**: node scripts/closeout/research/opendart-etf-docs.js(설정 여부만 출력)
+- **검증**: node scripts/closeout/research/opendart-fetch-facts.js · 기록 docs/closeout/research/opendart-etf-facts.json
+- **근거**: docs/closeout/research/opendart-feasibility.json actualRun
 - **마지막 확인일**: 2026-09-20
 
