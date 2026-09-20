@@ -349,8 +349,13 @@ test('④ H.10 원화 환산: 원화 지수 수익률 = 달러 수익률 + 환�
   // 원화 가격 종목 자신에는 환율을 곱하지 않는다(§44 44-15 · 이중 반영 금지).
   assert.strictEqual(h.priceCcy, 'KRW');
   assert.strictEqual(h.fxStatus, null);
-  // 스트레스(현지통화 지수 낙폭)와 원화 기준 베타를 섞지 않는다.
-  assert.strictEqual(m.stressLossKRW, null);
+  /* [기대값 갱신 사유 · D-9 · PM 승인 2026-09-20] 정의를 섞지 않는다는 원칙은 그대로이고, 이제
+   * 원화 기준 낙폭 표가 생겨 **맞는 짝**을 곱할 수 있게 됐다 - 원화 환산 베타 × 원화 기준 낙폭.
+   * 예전에는 원화 낙폭 자료가 없어 만들지 않았던 것이지, 만들면 안 되는 것이 아니었다. */
+  assert.ok(typeof m.stressLossKRW === 'number' && m.stressLossKRW < 0, String(m.stressLossKRW));
+  // 곱한 값이 현지통화 낙폭이 아니라 원화 낙폭인지 확인한다(S&P500 2020: USD -33.92 vs KRW -29.86).
+  const expectedKrw = m.totalCur * (h.beta * -29.86) / 100;
+  assert.ok(Math.abs(m.stressLossKRW - expectedKrw) < Math.abs(expectedKrw) * 1e-6, `${m.stressLossKRW} vs ${expectedKrw}`);
 });
 
 test('④ H.10을 쓸 수 없으면 달러 지수로 대신하지 않고 베타를 만들지 않는다', async () => {

@@ -88,12 +88,16 @@ function loadRiskSandbox(options) {
     'state', 'INDEX_TICKERS', 'MACRO_TICKERS', 'RISK_ELIGIBLE_CATEGORIES',
     'NASDAQ100_STYLE_TICKERS', 'DOW_STYLE_TICKERS', 'SECTOR_MAP', 'ETF_HOLDINGS_MAP',
     'COVID_CRASH_BENCHMARK_DROP_PCT', 'RATE_HIKE_2022_BENCHMARK_DROP_PCT',
+    // [D-9] 원화 기준 낙폭 표 - 원화 환산 지수로 구한 베타에 곱하는 값이다.
+    'COVID_CRASH_BENCHMARK_DROP_PCT_KRW', 'RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW',
     'CORE_MACRO_LABELS', 'MACRO_TREND_THRESHOLDS', 'TAX_ADVANTAGED_ACCOUNT_TYPES',
     'NON_TRADABLE_CATEGORIES', 'REBALANCE_OWNERS', 'MIN_COMMON_RISK_RETURNS',
     'RISK_BENCHMARK_BY_ETF_INDEX_LABEL', 'RISK_BENCHMARK_BY_LISTING_EXCHANGE',
     // [Phase 2-1] 데이터 품질 상태 · 요인 가중치 · 지표 목표 관측 수(진단 테스트가 직접 읽는다).
     'RISK_DATA_STATUS', 'RISK_STALE_MAX_GAP_DAYS', 'RISK_TARGET_OBSERVATIONS',
-    'RISK_FACTOR_WEIGHTS', 'RISK_FACTOR_LABELS', 'CONFIDENCE_OBSERVATION_PENALTY_MAX'
+    'RISK_FACTOR_WEIGHTS', 'RISK_FACTOR_LABELS', 'CONFIDENCE_OBSERVATION_PENALTY_MAX',
+    // [C-3] 지표별 관측 창과 자르기 도우미 - 창 규칙 자체를 테스트가 직접 고정한다.
+    'RISK_OBSERVATION_WINDOWS', 'sliceRecentObservations'
   ];
   vm.runInContext(BRIDGED.map((n) => `try{globalThis[${JSON.stringify(n)}]=${n};}catch(e){}`).join('\n'), sandbox, { filename: 'bridge' });
   // 임의 표현식 평가 - 브리지 목록에 없는 값을 테스트에서 직접 꺼내야 할 때 쓴다.

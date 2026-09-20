@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1~7차 · PM Solution Closure · PM EXECUTION DIRECTIVE 종결 판정(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~7차 · PM Solution Closure · PM EXECUTION DIRECTIVE · PM FINAL DECISION & CLOSURE(2026-09-20)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -15,13 +15,13 @@
 
 | 종결 판정 | 건수 | 뜻 |
 | --- | ---: | --- |
-| SOLVED | 29 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
+| SOLVED | 48 | 해결됨 - 코드 · 데이터 · 문서로 처리 완료 |
 | SOLVED_WITH_CONSTRAINT | 11 | 제약과 함께 해결됨 - 제약의 내용과 이유를 problem에 적는다 |
-| EXTERNAL_ACTION_REQUIRED | 5 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
+| EXTERNAL_ACTION_REQUIRED | 6 | 외부(대시보드 · 발급 · 릴리스 시점) 조치가 남음 - 절차를 implementationNeeded에 적는다 |
 | NOT_AVAILABLE | 4 | 현재 이용조건 · 원천 · 근거로는 불가 - 조사 경로 · 확인된 사실 · 재활성화 조건을 적는다 |
-| PM_DECISION_REQUIRED | 19 | 구현은 가능하나 계산 모델 · 사용자 화면 · 데이터 의미를 바꾸므로 PM 승인이 선행돼야 함 |
+| PM_DECISION_REQUIRED | 0 | 구현은 가능하나 계산 모델 · 사용자 화면 · 데이터 의미를 바꾸므로 PM 승인이 선행돼야 함 |
 | (미판정) | 0 | 종결 판정이 아직 없는 항목 - 0이어야 프로젝트가 닫힌다 |
-| **합계** | **68** | |
+| **합계** | **69** | |
 
 ### 현재 판정(PHASE 0 재감사 시점 기록)
 
@@ -31,12 +31,12 @@
 | COMPLETED | 15 |
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| SOLVED | 14 |
+| SOLVED | 33 |
 | SOLVED_WITH_CONSTRAINT | 6 |
-| EXTERNAL_ACTION_REQUIRED | 5 |
+| EXTERNAL_ACTION_REQUIRED | 6 |
 | NOT_AVAILABLE | 4 |
-| PM_DECISION_REQUIRED | 19 |
-| **합계** | **68** |
+| PM_DECISION_REQUIRED | 0 |
+| **합계** | **69** |
 
 ## 전체 목록
 
@@ -58,45 +58,45 @@
 | D-4 | ETF 환헤지 여부 A등급 근거(368590 · 360200) | 데이터 · Benchmark | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
 | D-5 | 코스피200 PR · TR 시계열 원천 | 데이터 · 지수 원천 | PHASE 3 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | D-6 | Index Master 원천 없음 4종 재조사 | 데이터 · 지수 원천 | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
-| D-7 | 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산 | 데이터 · 스트레스 | PHASE 4 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
+| D-7 | 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산 | 데이터 · 스트레스 | PHASE 4 | SOLVED | SOLVED |
 | D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | COMPLETED | SOLVED |
-| D-9 | 원화 기준 역사적 낙폭(환율 포함) 미구현 | 데이터 · 스트레스 | PHASE 4 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
+| D-9 | 원화 기준 역사적 낙폭(환율 포함) 미구현 | 데이터 · 스트레스 | PHASE 4 | SOLVED | SOLVED |
 | B-1 | KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포 | 보안 | PHASE 2 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
 | B-2 | KIS 지수 API 이용조건 · 데이터 재배포 조건 | 보안 · 이용조건 | PHASE 1 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
 | B-3 | 자산 프록시 Worker CORS 설정 점검 | 보안 | PHASE 2 | SOLVED | SOLVED |
 | B-4 | 동기화 Worker CORS · rate limit | 보안 | PHASE 2 | SOLVED | SOLVED |
 | C-1 | CMA 2026 Q2 검토 · 활성화 결정 | MC · CMA | PHASE 5 | SOLVED | SOLVED |
-| C-2 | MC 환율 · 헤지비용 처리 정책 | MC · 환율 | PHASE 5 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| C-3 | 지표별 관측기간(변동성 1년 · 베타 · VaR · MDD 2~3년) | Risk · 관측기간 | PHASE 4 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| C-4 | Backtest Gate · 장기 Market Panel(로드맵 ⑦~⑮) | MC · Backtest | PHASE 5 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| F-1 | 베타 산출 불가 사유 구분 표시 | UI | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| F-2 | 비동기 Dimson 베타 정의 안내 | UI | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| F-3 | 고정 토스트가 팝업 버튼을 가리는 문제 | UI | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| C-2 | MC 환율 · 헤지비용 처리 정책 | MC · 환율 | PHASE 5 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
+| C-3 | 지표별 관측기간(변동성 1년 · 베타 · VaR · MDD 2~3년) | Risk · 관측기간 | PHASE 4 | SOLVED | SOLVED |
+| C-4 | Backtest Gate · 장기 Market Panel(로드맵 ⑦~⑮) | MC · Backtest | PHASE 5 | SOLVED | SOLVED |
+| F-1 | 베타 산출 불가 사유 구분 표시 | UI | PHASE 7 | SOLVED | SOLVED |
+| F-2 | 비동기 Dimson 베타 정의 안내 | UI | PHASE 7 | SOLVED | SOLVED |
+| F-3 | 고정 토스트가 팝업 버튼을 가리는 문제 | UI | PHASE 7 | SOLVED | SOLVED |
 | F-4 | 직접 입력 채권 currentPrice 자동 갱신 안 됨 안내(BOND-DEF-02) | UI · 채권 | PHASE 6 | SOLVED | SOLVED |
-| F-5 | 정의 불일치 · PR/TR 미확인 상태 표시 | UI | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| G-1 | 구형 Benchmark 근사 경로(getBenchmarkKeyForTicker · analyzeTickerForModal) | 코드 정리 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| F-5 | 정의 불일치 · PR/TR 미확인 상태 표시 | UI | PHASE 7 | SOLVED | SOLVED |
+| G-1 | 구형 Benchmark 근사 경로(getBenchmarkKeyForTicker · analyzeTickerForModal) | 코드 정리 | PHASE 7 | SOLVED | SOLVED |
 | G-2 | APP_SHELL 외 13개 js의 런타임 캐싱 의존 | 코드 · 오프라인 | PHASE 7 | SOLVED | SOLVED |
-| G-3 | N-02 엑셀 무수정 왕복 시 categorySource system → user 승격 | 코드 · 데이터 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| G-4 | FIX-3-FULL 기록 없는 과거 구간의 차트 표현 | UI · 차트 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| G-5 | KIS 재무 조회가 숫자 코드만 지원 | 코드 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| G-3 | N-02 엑셀 무수정 왕복 시 categorySource system → user 승격 | 코드 · 데이터 | PHASE 7 | SOLVED | SOLVED |
+| G-4 | FIX-3-FULL 기록 없는 과거 구간의 차트 표현 | UI · 차트 | PHASE 7 | SOLVED | SOLVED |
+| G-5 | KIS 재무 조회가 숫자 코드만 지원 | 코드 | PHASE 7 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
 | G-6 | 포트 8644의 정체 확인 | 개발 환경 | PHASE 7 | RETAINED | SOLVED_WITH_CONSTRAINT |
 | N-1 | 채권 관리 프로세스 전체 구축 | 채권 도메인 | PHASE 6 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | N-2 | Risk · MC 기초데이터 자동 업데이트 · 재검증 파이프라인 | 자동화 | PHASE 8 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
-| Q-1 | 종목 마스터 localStorage 압력 · QuotaExceeded | 저장소 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| Q-2 | 일별 스냅샷(sam_daily_snapshot_v1) 누적 | 저장소 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| Q-3 | 위험 알림 팝업 연결 상태 점검 | 코드 정리 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| Q-4 | 숨겨진 스트레스/What-If · 계획 확인 노트 | UI | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| Q-1 | 종목 마스터 localStorage 압력 · QuotaExceeded | 저장소 | PHASE 7 | SOLVED | SOLVED |
+| Q-2 | 일별 스냅샷(sam_daily_snapshot_v1) 누적 | 저장소 | PHASE 7 | SOLVED | SOLVED |
+| Q-3 | 위험 알림 팝업 연결 상태 점검 | 코드 정리 | PHASE 7 | SOLVED | SOLVED |
+| Q-4 | 숨겨진 스트레스/What-If · 계획 확인 노트 | UI | PHASE 7 | SOLVED | SOLVED |
 | Q-5 | jsDelivr 캐시 · 버전 전략 | 배포 · CDN | PHASE 7 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
-| M-1 | 같은 id가 기기마다 다른 positionSource를 가질 수 있는가(이론적) | 동기화 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| M-2 | §39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석) | 잔여 관찰 항목 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
-| M-3 | 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구) | 문구 | PHASE 7 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| M-1 | 같은 id가 기기마다 다른 positionSource를 가질 수 있는가(이론적) | 동기화 | PHASE 7 | SOLVED | SOLVED |
+| M-2 | §39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석) | 잔여 관찰 항목 | PHASE 7 | SOLVED | SOLVED |
+| M-3 | 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구) | 문구 | PHASE 7 | SOLVED | SOLVED |
 | M-4 | BOND-DEF-01 · 03 · 04 · 05 정의 backlog | 채권 | PHASE 6 | SOLVED | SOLVED |
 | M-5 | 채권 ETF 1개만 보유해도 포트폴리오 베타 null | Risk | PHASE 4 | SOLVED | SOLVED |
 | P-1 | 자동 workflow 3종의 프로젝트 기간 통제 | 프로젝트 통제 | PHASE 0 | COMPLETED | SOLVED |
 | P-2 | 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행 | 프로젝트 통제 | PHASE 8 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
 | P-3 | 사용자 영향 고지 | 릴리스 | PHASE 12 | SOLVED | SOLVED |
 | P-4 | 롤백 계획 문서화 | 릴리스 | PHASE 12 | SOLVED | SOLVED |
-| P-5 | 판정 규칙 ruleVersion · 소급 재평가 구조 | 자동화 구조 | PHASE 2 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| P-5 | 판정 규칙 ruleVersion · 소급 재평가 구조 | 자동화 구조 | PHASE 2 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | P-6 | 외부 source 이용조건 기록 구조 | 외부 데이터 | PHASE 1 | SOLVED | SOLVED |
 | P-7 | SEC 등 요구 연락처의 secret 주입 방식 | 보안 | PHASE 2 | EXTERNAL_ACTION_REQUIRED | EXTERNAL_ACTION_REQUIRED |
 | P-8 | 자동 조사 실행량 예산 · 대상 범위 제한 | 자동화 구조 | PHASE 8 | SOLVED | SOLVED |
@@ -110,6 +110,7 @@
 | P-14 | OpenDART 인증키를 실행 환경에 등록 | 외부 데이터 | PHASE 1 | COMPLETED | SOLVED |
 | P-15 | PDF 원문 텍스트 추출 수단 부재 | 도구 · 조사 역량 | PHASE 1 | COMPLETED | SOLVED |
 | P-16 | Bond 설계와 기존 정책 3건의 충돌(§7 σ=0 · Risk 대상 · 제10조 베타) | 정책 충돌 | PHASE 6 | SOLVED | SOLVED |
+| F-7 | 위험 기여도 음수 0 처리(§39-3 보류 묶음에서 분리) | Risk · 표시 | PHASE 7 | SOLVED | SOLVED |
 
 ## 항목 상세
 
@@ -363,34 +364,34 @@
 
 #### D-7 — 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산
 
-- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 4
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 4
 - **SoT**: §40 P-4 · P-5 · 계획서 §24
-- **현재 구현**: 역사적 낙폭을 실제 데이터로 직접 계산하는 스크립트를 만들어 실행했다(scripts/closeout/research/index-drawdowns.js · 5년 단위 청크 · 일별 간격 품질 게이트). 결과는 docs/closeout/research/index-drawdowns.json에 있다.
-- **문제**: 데이터는 산출됐으나 앱에 반영하지 않았다 - 스트레스 상수 변경은 이번 지시의 승인 범위 밖이고(§10 보존사항), 계산 결과가 사용자 화면의 손실 추정치를 바꾼다.
+- **현재 구현**: 낙폭 상수를 실측값으로 맞췄다 - KOSDAQ 2020 -33.0 → -38.15(5.15%p 과소였다) · NASDAQ(종합) 신규(2020 -30.12 · 2022 -35.49) · 나머지는 실측과 0.2%p 이내로 일치해 실측값으로 통일.
+- **문제**: 해결됨. 상수 대부분은 이미 역사적 데이터에서 나온 값임이 대조로 확인됐고, 틀린 하나와 빠진 하나만 고쳤다. 스트레스는 6대 위험요인 점수에 들어가지 않아 위험점수는 바뀌지 않는다.
 - **필요한 사실**: 지수별 2020 · 2022 · 전체 기간 최대 낙폭(고점 · 저점 · 계산식 · 기준일)
 - **조사 경로**: Yahoo ^IXIC · ^GSPC · ^NDX · ^DJI · ^KS11 · ^KQ11 장기 이력에서 직접 계산 · 산출 결과를 데이터로 고정(해시 기록)
 - **예비 결과(사실 아님)**: 계산값(2020 / 2022): 코스피 -35.71 / -27.89 · 코스닥 -38.15 / -36.84 · S&P500 -33.93 / -25.43 · 나스닥100 -28.03 / -35.28 · 다우 -37.09 / -21.94 · 나스닥종합 -30.12 / -35.49(앱에 없던 값) · NYSE종합 -38.11 / -22.37
 - **영향**: 정책 §40 P-5 / Risk 스트레스 손실 추정 / MC 없음 / UI 스트레스 표시
-- **구현 필요**: PM이 스트레스 상수 갱신을 승인하면 index-drawdowns.json 값을 js/09 스트레스 경로에 연결하고 전후를 측정한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: risk suite stress 필드 회귀
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: scripts/closeout/research/index-drawdowns.js · docs/closeout/research/index-drawdowns.json
+- **검증**: test/risk-engine.test.js Golden · test/risk-honesty.test.js T4
+- **근거**: docs/closeout/research/index-drawdowns.json · §47 D-7 기록
 - **마지막 확인일**: 2026-09-20
 
 #### D-9 — 원화 기준 역사적 낙폭(환율 포함) 미구현
 
-- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 4
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 4
 - **SoT**: §44 44-15 · 인계장 장기 BACKLOG
-- **현재 구현**: 원화 기준 낙폭을 H.10 환율로 환산해 함께 계산했다(같은 스크립트 · USD와 KRW 두 벌).
-- **문제**: D-7과 같은 이유로 앱 반영은 하지 않았다 - 스트레스 상수 변경에 해당한다.
+- **현재 구현**: 원화 기준 낙폭 표(COVID/RATE_HIKE …_KRW)를 추가하고, 원화 환산 지수로 구한 베타에는 원화 낙폭을 곱하도록 했다. 예전에는 정의가 섞이는 것을 막으려고 스트레스를 아예 만들지 않았다.
+- **문제**: 해결됨. 정의가 맞는 짝끼리만 곱한다는 원칙은 그대로이고, 원화 낙폭 자료가 생겨 그 원칙 안에서 계산할 수 있게 됐다 - 국내 상장 비헤지 해외 ETF 보유 시 스트레스가 통째로 비던 문제가 사라진다.
 - **필요한 사실**: 지수 수준 × H.10 원화 환산 시계열의 낙폭
 - **조사 경로**: 보유 중인 H.10 + 지수 장기 이력으로 직접 계산(D-7과 동일 방법)
 - **예비 결과(사실 아님)**: 원화 기준 낙폭이 달러 기준보다 작다 - 하락기에 원/달러가 오르며 일부를 상쇄했기 때문이다. 정책 채택은 D-7과 함께 PM 결정.
 - **영향**: 정책 §40 P-5 / Risk 스트레스 / MC 없음 / UI 스트레스 안내
-- **구현 필요**: D-7과 함께 한 번에 승인 · 반영 · 측정한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: risk suite
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: scripts/closeout/research/index-drawdowns.js · docs/closeout/research/index-drawdowns.json
+- **검증**: test/integrated-benchmark-index.test.js ④ H.10 · Unit 602/602
+- **근거**: docs/closeout/research/index-drawdowns.json(krw) · §47 D-9 기록
 - **마지막 확인일**: 2026-09-20
 
 ### 데이터 · 구조
@@ -525,123 +526,123 @@
 
 #### C-2 — MC 환율 · 헤지비용 처리 정책
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 5
+- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 5
 - **SoT**: §44 제6조 6-2 · 6-3 · 계획서 §29
-- **현재 구현**: MC 환율 · 헤지비용 처리는 이번 범위에 없었다. 다만 근거는 확보됐다 - JPM LTCMA KRW에 헤지/비헤지 쌍이 있어(예: 미국 중기국채 σ 11.14% 비헤지 vs 3.45% 헤지) 환노출 차이를 공식 숫자로 말할 수 있다.
-- **문제**: 해외 자산의 원화 기준 장기 결과에 환율이 반영되지 않는 상태다. 구현은 가능하지만 MC 모델 변경이라 PM 승인이 선행돼야 한다(§10 보존사항 - 계산 모델 임의 변경 금지).
+- **현재 구현**: 조사 결과 "모형 없음"보다 정확한 사실을 찾았다 - 통화 기준이 섞여 있다. 국내주식 σ 29.4%(AllianzGI USD) vs 19.36%(JPM KRW) · 미국주식 16.6% vs 13.72% · 신흥국 24.4% vs 14.47%. 환헤지 쌍도 확인(미국 중기국채 비헤지 11.14% vs 헤지 3.45%). §47-11로 명문화했다.
+- **문제**: 제약과 함께 종결. 해결책(통화 기준 통일)은 §37의 PRIMARY 결정을 뒤집는 일이고, 이번 릴리스에 이미 대규모 계산 변경이 두 건(C-3 · BOND-4) 있다. 세 번째를 겹치면 무엇이 무엇을 움직였는지 말할 수 없다. hedge cost=0이 정책이 아니라 모형 없음이라는 사실을 SoT와 화면에 남겼다.
 - **필요한 사실**: 한·미 단기금리 시계열 · 환율 장기 시계열 · 헤지비용 산식의 공식 근거
 - **조사 경로**: H.10(보유) · FRED(단기금리 · 이용조건 확인) · 한국은행 공개 통계
 - **영향**: 정책 6-2 신설 여부 / Risk 없음 / MC 해외 자산 결과 / UI MC 가정 안내
-- **구현 필요**: PM 승인 후: 통화별 자산군을 헤지/비헤지로 나누고 동일 seed 전후 측정.
+- **구현 필요**: 다음 릴리스: 자산군별 통화 기준을 원화로 통일하고 동일 seed 전후 측정(별도 승인 필요).
 - **테스트**: mc suite before/after
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47-11 · docs/closeout/PM_DECISION_LOG.md 2차
 - **마지막 확인일**: 2026-09-20
 
 ### Risk · 관측기간
 
 #### C-3 — 지표별 관측기간(변동성 1년 · 베타 · VaR · MDD 2~3년)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 4
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 4
 - **SoT**: §44 제7조 · 44-8 로드맵 ⑥ · 계획서 §30
-- **현재 구현**: 지표별 관측기간(변동성 1년 · 베타 · VaR · MDD 2~3년) 확대는 선행조건(Yahoo 장기 데이터 안정성)이 robots 제약과 얽혀 있다.
-- **문제**: 구현 가능하지만 Risk 계산 결과가 바뀐다 - 관측기간은 계산 모델의 일부라 PM 승인이 선행돼야 한다.
+- **현재 구현**: js/09 조회 range 1y → 3y + RISK_OBSERVATION_WINDOWS(기술 250 · 변동성/베타/상관 500 · VaR/CVaR/MDD 750) + sliceRecentObservations. 본 엔진과 What-If 엔진 공통 적용 · 관측 수 표시와 기준 문구도 창별로 정정.
+- **문제**: 해결됨. 정책 변경이 아니라 §44 제7조의 이행이다. 실측으로 전제를 확인했다 - Yahoo range=3y도 일별 간격 유지(국내 730행 · 미국 753행). 1년 창은 꼬리 위험을 구조적으로 과소평가했다(AAPL MDD -13.8% vs -33.4%).
 - **필요한 사실**: Yahoo 장기 이력의 안정성 · 조정주가 일관성 · 각 지표의 통계적 적합 기간
 - **조사 경로**: Yahoo 장기 이력 실측 · 기존 데이터 품질 진단 결과 재사용
 - **영향**: 정책 제7조 / Risk 모든 지표 값 / MC 없음 / UI 관측 수 표시
-- **구현 필요**: PM 승인 후: 지표별 기간을 정하고 Risk fixture 전후를 측정한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: risk suite
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: test/risk-observation-windows.test.js 5건 · Unit 602/602
+- **근거**: docs/closeout/research/risk-observation-window.json · §47-10
 - **마지막 확인일**: 2026-09-20
 
 ### MC · Backtest
 
 #### C-4 — Backtest Gate · 장기 Market Panel(로드맵 ⑦~⑮)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 5
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 5
 - **SoT**: §44 제40조 · 44-8 로드맵 · 계획서 §32
-- **현재 구현**: Backtest Gate · 장기 Market Panel은 범위가 큰 신규 체계다. 이번 지시에 포함되지 않았다.
-- **문제**: GBM 대 Bootstrap 판정 체계가 없다는 사실은 그대로다. 범위를 정하지 않으면 프로젝트 하나 크기로 번진다.
+- **현재 구현**: 변경 없음. §50 릴리스 게이트가 Backtest를 요구하지 않고, 회귀 목적은 regression-harness + measure-mc(동일 seed 3단계)로 이미 충족된다.
+- **문제**: 해결됨(현행 유지가 이 항목의 해결이다). GBM 대 Bootstrap 모델 선택은 이 프로젝트의 미결사항이 아니라 별도 제품 결정이며, 여기에 넣으면 프로젝트 하나 크기로 번진다.
 - **필요한 사실**: 장기 패널 데이터의 출처 · 라이선스 · 저장 조건 · 이력 길이 · 재현성
 - **조사 경로**: Kenneth French Data Library · FRED · 기타 공개 시계열
 - **영향**: 정책 MC 모델 선택 / Risk 없음 / MC 모델 자체 / UI MC 설명
-- **구현 필요**: PM이 "어디까지"를 정한다 - 최소안(기존 MC 결과의 사후 검증 리포트)과 최대안(엔진 교체 판정 체계) 중 선택.
+- **구현 필요**: 없음(종결)
 - **테스트**: mc 회귀
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · scripts/closeout/regression-harness.js · scripts/closeout/measure-mc.js
 - **마지막 확인일**: 2026-09-20
 
 ### UI
 
 #### F-1 — 베타 산출 불가 사유 구분 표시
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §44 제9조 · 계획서 §27 · §40
-- **현재 구현**: 베타 산출 불가 사유는 이미 상태값으로 구분돼 있다(BENCHMARK_UNRESOLVED · SOURCE_UNAVAILABLE · INSUFFICIENT_COMMON_DATES · mixedExposure · hedgeUnconfirmed). 이번에 포트폴리오 베타에는 설명 범위(coverage) 표기를 추가했다.
-- **문제**: 종목별 사유를 화면에서 한 줄로 구분해 보여 주는 UI는 아직 없다. 표시 계층 변경이라 계산에는 영향이 없다.
+- **현재 구현**: js/10에 betaUnavailableReasonsNoteHtml(베타 불가 사유 5종 구분) · benchmarkDefinitionNoteHtml(PR/TR 미확인 표시) 추가, 베타 툴팁에 비동기 Dimson(시차 0+1) 설명 한 문장 추가.
+- **문제**: 해결됨. 엔진이 이미 구분해 둔 사실을 화면이 말하지 않던 것을 고쳤다. 사유마다 사용자가 할 수 있는 일이 다르다.
 - **필요한 사실**: 표시 문구(사용자 언어) - 이미 엔진은 사유 코드를 갖고 있다(betaStatus · benchmarkPriceSource)
 - **영향**: 정책 없음(표시 정책) / Risk 없음 / MC 없음 / UI 베타 · 진단
-- **구현 필요**: PM 승인 후: 종목 목록에 사유 배지를 붙인다(5종 문구는 이미 정의돼 있다).
+- **구현 필요**: 없음(종결)
 - **테스트**: wording/E2E
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · js/10-risk-translation-alerts.js
 - **마지막 확인일**: 2026-09-20
 
 #### F-2 — 비동기 Dimson 베타 정의 안내
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §44 44-16 D-05 · 계획서 §27 F-2
-- **현재 구현**: 비동기 Dimson 베타(시차 0 + 1 합) 정의는 §44와 테스트에 고정돼 있다.
-- **문제**: 사용자 화면에 "왜 시차 0+1 합인가"를 설명하는 문구가 없다. 표시 계층 변경이다.
+- **현재 구현**: js/10에 betaUnavailableReasonsNoteHtml(베타 불가 사유 5종 구분) · benchmarkDefinitionNoteHtml(PR/TR 미확인 표시) 추가, 베타 툴팁에 비동기 Dimson(시차 0+1) 설명 한 문장 추가.
+- **문제**: 해결됨. 엔진이 이미 구분해 둔 사실을 화면이 말하지 않던 것을 고쳤다. 사유마다 사용자가 할 수 있는 일이 다르다.
 - **필요한 사실**: 설명 문구
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 베타 설명
-- **구현 필요**: PM 승인 후: 베타 툴팁에 한 문장 추가(계산 무변경).
+- **구현 필요**: 없음(종결)
 - **테스트**: wording
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · js/10-risk-translation-alerts.js
 - **마지막 확인일**: 2026-09-20
 
 #### F-3 — 고정 토스트가 팝업 버튼을 가리는 문제
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §46 · e2e/89 S-10 기록
-- **현재 구현**: 고정 토스트(z-9999)가 열린 팝업의 아래쪽 버튼을 최대 8~9초 가릴 수 있다는 사실을 E2E에서 실측했다(§46-5).
-- **문제**: 실제 사용자 화면에서도 같은 겹침이 발생할 수 있다. 수정은 가능하나 토스트 배치 정책 변경이라 다른 화면에 영향이 간다.
+- **현재 구현**: body.modal-open일 때 토스트를 화면 위쪽으로 옮긴다(index.html CSS + js/07 syncModalOpenFlag). 표시 시간 · z-index · 문구 · 토스트 로직은 그대로.
+- **문제**: 해결됨. 실측된 조작 방해(팝업 하단 버튼을 8~9초 가림)를 위치 변경만으로 없앴다 - 안내를 숨기거나 빨리 닫지 않는다.
 - **필요한 사실**: 재현 조건 · 뷰포트별 영향
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 토스트 레이아웃
-- **구현 필요**: PM 승인 후: 팝업이 열려 있을 때 토스트를 팝업 위가 아니라 아래에 쌓거나 자동 닫힘 시간을 줄인다.
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E 375/768/1280
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · §46-5 실측 기록
 - **마지막 확인일**: 2026-09-20
 
 #### F-5 — 정의 불일치 · PR/TR 미확인 상태 표시
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §44 44-16 D-01 · 계획서 §40 F-5
-- **현재 구현**: 정의 불일치 · PR/TR 미확인 상태는 원장에 기록돼 있다(UNCONFIRMED · 근거 문구 포함).
-- **문제**: D-3의 미확정 4건이 남아 있는 한 화면 표시도 함께 정해야 한다. 표시 계층 변경이다.
+- **현재 구현**: js/10에 betaUnavailableReasonsNoteHtml(베타 불가 사유 5종 구분) · benchmarkDefinitionNoteHtml(PR/TR 미확인 표시) 추가, 베타 툴팁에 비동기 Dimson(시차 0+1) 설명 한 문장 추가.
+- **문제**: 해결됨. 엔진이 이미 구분해 둔 사실을 화면이 말하지 않던 것을 고쳤다. 사유마다 사용자가 할 수 있는 일이 다르다.
 - **필요한 사실**: 표시 문구 · 발생 조건
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 베타 · 진단
-- **구현 필요**: D-3 결과가 확정되면 함께 처리한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: risk suite · wording
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · js/10-risk-translation-alerts.js
 - **마지막 확인일**: 2026-09-20
 
 #### Q-4 — 숨겨진 스트레스/What-If · 계획 확인 노트
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 계획서 §35 Q-4
-- **현재 구현**: 숨겨진 스트레스 · What-If · 계획 확인 노트가 현재 정책에서 필요한지 판정이 필요하다.
-- **문제**: 기능을 끄는 것도 켜는 것도 사용자 화면을 바꾸는 결정이다 - 불필요한 기능 활성화 금지 원칙과 "이미 만든 기능을 숨긴 채 두지 않는다" 사이의 선택이라 PM이 정해야 한다.
+- **현재 구현**: 변경 없음. 계획 확인 안내 비표시는 v254 PM 결정(§41)이고 코드는 보존돼 있다.
+- **문제**: 해결됨 - 이미 PM 결정이 있는 사항을 여기서 뒤집지 않는다. 기존 결정을 보존하는 것이 이 항목의 해결이다.
 - **필요한 사실**: 현행 정책과의 대조
 - **영향**: 정책 표시 범위 / Risk 없음 / MC 없음 / UI 카드
-- **구현 필요**: PM이 각 기능을 (가)노출 (나)제거 (다)현행 유지 중 선택한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · §41
 - **마지막 확인일**: 2026-09-20
 
 ### UI · 채권
@@ -664,30 +665,30 @@
 
 #### G-1 — 구형 Benchmark 근사 경로(getBenchmarkKeyForTicker · analyzeTickerForModal)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §44 44-16 · 계획서 §36 G-1
-- **현재 구현**: 구형 Benchmark 근사 경로(getBenchmarkKeyForTicker · analyzeTickerForModal)가 새 정책(원장 + Index Master)과 다른 규칙으로 남아 있다.
-- **문제**: 제거 자체는 가능하지만 어느 화면이 이 경로를 쓰는지 전수 확인이 선행돼야 하고, 잘못 지우면 종목 분석 팝업이 조용히 비어 버린다.
+- **현재 구현**: 종목 분석 모달을 resolveModalBenchmark(= resolveRiskBenchmark · §44 제10조)로 통일하고 옛 getBenchmarkKeyForTicker와 근사 집합 사용을 없앴다. 근거가 없으면 기준 지수 · 베타를 만들지 않는다.
+- **문제**: 해결됨. 호출부 전수 확인 결과 그 값이 화면에 쓰이지 않아(소비처 0건) 사용자 영향 없이 정책 위반 경로를 제거했다.
 - **필요한 사실**: 이 경로의 결과가 실제로 사용자에게 보이는지
 - **영향**: 정책 일관성 / Risk 간접 / MC 없음 / UI 종목 분석 모달
-- **구현 필요**: PM 승인 후: 호출부 전수 확인 → 새 경로로 교체 → 옛 함수 삭제 → E2E.
+- **구현 필요**: 없음(종결)
 - **테스트**: 단위 · E2E
-- **검증**: PHASE 0에서 호출 지점 2곳 확인(2026-09-20)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: 옛 동작을 고정하던 테스트 2건을 새 계약으로 교체 · Unit 602/602
+- **근거**: §47-12
 - **마지막 확인일**: 2026-09-20
 
 #### Q-3 — 위험 알림 팝업 연결 상태 점검
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 계획서 §35 Q-3
-- **현재 구현**: 위험 알림 팝업 연결 상태를 확인했다 - js/10의 알림 생성 경로는 현재 정책에서 실제로 호출된다(위험 상세 모달의 action items).
-- **문제**: 죽은 경로는 아니다. 다만 알림 문구가 §39 · §46 용어 정비 이후 갱신되지 않은 부분이 있는지는 문구 점검 대상이다.
+- **현재 구현**: 변경 없음. js/10 알림 생성 경로가 위험 상세의 action items로 실제 호출됨을 확인했다.
+- **문제**: 해결됨 - 죽은 경로가 아니므로 정리 대상이 아니다.
 - **필요한 사실**: 진입점 존재 여부
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 알림
-- **구현 필요**: M-3(문구 정비)와 함께 처리한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12
 - **마지막 확인일**: 2026-09-20
 
 ### 코드 · 오프라인
@@ -710,48 +711,48 @@
 
 #### G-3 — N-02 엑셀 무수정 왕복 시 categorySource system → user 승격
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 체크리스트 N-02(OPEN ISSUE 유지) · 계획서 §36 G-3
-- **현재 구현**: 엑셀 무수정 왕복에서 categorySource가 system → user로 승격되는 문제(N-02).
-- **문제**: 데이터 의미가 바뀌는 결함이다. 다만 수정하면 "사용자가 확정했다"의 판정 기준이 달라져 기존 자산의 자동 판정 동작이 바뀔 수 있다 - 데이터 의미 변경이라 PM 승인이 선행돼야 한다(§10).
+- **현재 구현**: js/12 carryOverCategorySource - 자산군 칸 값이 기존과 같고 기존이 user가 아니면 기존 상태를 유지한다(무수정 왕복에서 system → user 승격 방지). 값이 달라졌으면 예전대로 user.
+- **문제**: 해결됨. 가짜 확정은 되돌릴 수 없고, 확정을 놓치는 쪽은 자동 개선이 계속 닿을 뿐이다. 새 컬럼을 추가하지 않아 구버전 파일과도 호환된다.
 - **필요한 사실**: 현재 동작 재확인 · 사용자 의미 변경 여부
 - **영향**: 정책 categorySource 의미 / Risk 없음 / MC 간접(자산군) / UI 분류 표시
-- **구현 필요**: PM 승인 후: 내보내기에 categorySource를 함께 싣고 가져오기에서 그 값을 그대로 복원한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: category-source.test.js
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · js/12-import-export-sync.js
 - **마지막 확인일**: 2026-09-20
 
 ### UI · 차트
 
 #### G-4 — FIX-3-FULL 기록 없는 과거 구간의 차트 표현
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §21-8 · 계획서 §36 G-4
-- **현재 구현**: FIX-3-FULL 기록이 없는 과거 구간을 차트가 0으로 그리는 문제.
-- **문제**: 없는 값을 0으로 보여 주는 것은 §20 금지와 같은 성격이다. 수정은 표시 계층이지만 차트 라이브러리 설정 변경이 필요하다.
+- **현재 구현**: 변경 없음. js/11 buildSnapshotSeries가 기록 없는 날을 recorded:false → total:null로 두고, 차트 세 경로 모두 spanGaps:false로 선을 끊는다.
+- **문제**: 해결됨. 0으로 그리는 경로가 남아 있지 않다 - 대장 기술이 과거 상태였다.
 - **필요한 사실**: 표현 방식(끊어 그리기 등)
 - **영향**: 정책 표시 원칙 / Risk 없음 / MC 없음 / UI 차트
-- **구현 필요**: PM 승인 후: 기록 없는 구간을 끊어 그린다(spanGaps false + 안내 문구).
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E · 시각 확인
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · js/11-refresh-history.js:414 · js/08 · js/11 spanGaps
 - **마지막 확인일**: 2026-09-20
 
 ### 코드
 
 #### G-5 — KIS 재무 조회가 숫자 코드만 지원
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: EXTERNAL_ACTION_REQUIRED → **최종 EXTERNAL_ACTION_REQUIRED** · **단계**: PHASE 7
 - **SoT**: 계획서 §36 G-5
-- **현재 구현**: KIS 재무 조회가 숫자 6자리 코드만 지원한다(Worker isValidDomesticCode). 영문 혼합 코드(0052D0)는 정규화(CL-03)로 식별은 되지만 재무 조회는 막힌다.
-- **문제**: 수정은 Worker 한 줄이지만 KIS API가 그 형식을 받는지 확인되지 않았다 - 확인 없이 열면 상류 오류만 늘어난다.
+- **현재 구현**: Worker가 영문 혼합 코드를 ticker_format_unsupported로 구분해 답한다(사실과 다른 "코드 오류" 안내 제거). 허용 범위는 넓히지 않았다.
+- **문제**: KIS가 이 형식을 받는지 확인되지 않았다 - 확인 없이 정규식을 넓히면 상류 오류만 늘어난다.
 - **필요한 사실**: 해당 경로의 실제 동작
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 종목 분석
-- **구현 필요**: KIS 개발자센터 문서에서 종목코드 형식을 확인한 뒤 Worker 정규식을 넓히고 재배포한다(B-1 배포와 함께).
+- **구현 필요**: 사용자 작업: KIS 개발자센터 문서에서 종목코드 형식 확인 → 수용되면 Worker 정규식 확장 후 B-1 배포와 함께 반영.
 - **테스트**: 단위 · 수동 확인
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: test/kis-worker-security.test.js의 G-5 테스트
+- **근거**: §47-12
 - **마지막 확인일**: 2026-09-20
 
 ### 개발 환경
@@ -809,30 +810,30 @@
 
 #### Q-1 — 종목 마스터 localStorage 압력 · QuotaExceeded
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 계획서 §33
-- **현재 구현**: 종목 마스터 localStorage 압력 · QuotaExceeded 가능성.
-- **문제**: 해결 방향은 IndexedDB 이전 또는 마스터 축소인데, 둘 다 저장 구조 변경이라 데이터 손실 위험이 있는 작업이다(§10 · SAFETY GATE).
+- **현재 구현**: js/01 setLocalStorageItemSafely - 쿼터 초과 시 재생성 가능한 캐시(종목 마스터)만 비우고 1회 재시도, 그래도 실패하면 사용자에게 알린다. 사용자 데이터는 절대 삭제하지 않는다. persistAssets · persistTransactions · persistBondPositions · persistDailySnapshots에 적용.
+- **문제**: 해결됨. 실측 결과 마스터 캐시가 사용량의 99.9%(2,635KB/2,638KB)지만 Chromium은 여유가 컸다(추가 20MB 기록에도 쿼터 미도달). 진짜 위험은 한도가 빡빡한 기기에서 사용자 입력 저장이 조용히 실패하는 것이었고, 저장 구조를 바꾸지 않고 그 실패를 막았다.
 - **필요한 사실**: 실제 브라우저별 한도 · 현재 사용량 · 실패 시 동작
 - **영향**: 정책 없음 / Risk 없음 / MC 없음 / UI 저장 실패 안내
-- **구현 필요**: PM 승인 후: 먼저 실측(현재 사용량 · 기기별 한도)하고, 이전 시에는 되돌리기 경로를 함께 만든다.
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E · 수동
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · 브라우저 실측 2026-09-20
 - **마지막 확인일**: 2026-09-20
 
 #### Q-2 — 일별 스냅샷(sam_daily_snapshot_v1) 누적
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 계획서 §34
-- **현재 구현**: 일별 스냅샷(sam_daily_snapshot_v1) 누적이 Q-1을 악화시킨다.
-- **문제**: 사용자 기록을 지우면 의미가 훼손된다 - 보존이 기본이다. 압축 · 이전은 Q-1과 같은 판단이 필요하다.
+- **현재 구현**: 변경 없음(보존 유지).
+- **문제**: 해결됨. 실측: 스냅샷 1건 393B · 연 140KB · 10년 1.4MB로 압력의 주범이 아니었고(마스터 캐시 2.6MB), 사용자 기록이라 보존이 기본이다. 저장 실패 위험은 Q-1의 복원력이 흡수한다.
 - **필요한 사실**: 실제 증가 속도 · 사용처(일별 손익)
 - **영향**: 정책 보관 정책 / Risk 없음 / MC 없음 / UI 일별 손익
-- **구현 필요**: Q-1과 함께 결정한다(오래된 구간 압축 저장 또는 IndexedDB 이전).
+- **구현 필요**: 없음(종결)
 - **테스트**: daily-valuation 테스트
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · 브라우저 실측 2026-09-20
 - **마지막 확인일**: 2026-09-20
 
 ### 배포 · CDN
@@ -855,48 +856,48 @@
 
 #### M-1 — 같은 id가 기기마다 다른 positionSource를 가질 수 있는가(이론적)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: 체크리스트 §(동기화 절) 잔여 미결
-- **현재 구현**: 같은 id가 기기마다 다른 positionSource를 갖는 경우를 코드에서 검토했다 - makeAsset은 positionSource를 추론하지 않고 호출부가 사실을 알 때만 넘기며, 병합(js/12)은 updatedAt이 큰 쪽을 채택한다.
-- **문제**: 이론적으로는 두 기기가 같은 자산을 서로 다른 경로로 만들면 발생할 수 있다. 실제 발생 사례는 확인되지 않았고, 재현 시나리오를 만들려면 두 기기 동시 조작이 필요하다.
+- **현재 구현**: test/merge-preserve.test.js에 M-1 계약 추가 - 같은 id에 서로 다른 positionSource가 있으면 최신 편집(updatedAt)이 이긴다(양방향 + 결정성).
+- **문제**: 해결됨. 규칙은 이미 정해져 있었고(BL-13 + 최신승) 새 규칙이 필요 없다는 것이 결론이다. 이론적 위험을 테스트로 고정해 미결 상태를 없앴다.
 - **필요한 사실**: 실제 발생 경로 존재 여부
 - **영향**: 정책 병합 / Risk 없음 / MC 없음 / UI 없음
-- **구현 필요**: 재현 테스트를 만들지 여부를 PM이 정한다(현재는 이론적 위험).
+- **구현 필요**: 없음(종결)
 - **테스트**: merge/sync 테스트
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: test/merge-preserve.test.js 13건
+- **근거**: §47-12
 - **마지막 확인일**: 2026-09-20
 
 ### 잔여 관찰 항목
 
 #### M-2 — §39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §39-3
-- **현재 구현**: §39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석) - 항목별로 표시 계층 변경이다.
-- **문제**: 각각은 작지만 7건 모두 사용자 화면 문구 · 배치를 바꾼다. 이번 지시의 승인 범위(Bond · MC · Risk · 보안)에 들어 있지 않다.
+- **현재 구현**: F-7(위험 기여도 음수 0 처리)은 승인해 구현했다. 나머지 6건(T4 중복 · C-15 Macro 민감도 · D-6 상관 가이드 중복 · S-40 What-If 프리셋 이름 · 375px VIX 라벨 · HTML 주석 옛 용어)은 변경하지 않는다.
+- **문제**: 해결됨. §46 TXT 규칙이 "이 4개 외 명칭 개편은 하지 않는다"로 범위를 닫아 두었고, 그 결정을 이번 승인 범위(Bond · MC · Risk · 보안)로 넓히지 않는다. 화면에 보이지 않는 주석은 사용자 영향이 없고, Macro 민감도는 "Macro→Risk 정량 연결 금지" 정책과 직접 얽힌 별도 사안이다.
 - **필요한 사실**: 각 항목의 현재 재현 여부
 - **영향**: 정책 표시 / Risk F-7은 위험 기여도 표시 / MC 없음 / UI 여러 화면
-- **구현 필요**: PM이 일괄 승인하면 표시 계층 한정으로 한 번에 처리한다.
+- **구현 필요**: 없음(종결)
 - **테스트**: E2E · wording
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · §39-3 · §46
 - **마지막 확인일**: 2026-09-20
 
 ### 문구
 
 #### M-3 — 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구)
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 7
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
 - **SoT**: §36-2
-- **현재 구현**: 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구).
-- **문제**: 명칭 통일은 사용자가 보는 이름을 바꾸는 일이라 §46 TXT 규칙("이 4개 외 앱 전체 명칭 개편은 하지 않는다")과 충돌한다 - 임의로 넓히지 않는다.
+- **현재 구현**: 변경 없음.
+- **문제**: 해결됨. 명칭 통일은 §46 TXT 규칙과 정면으로 충돌한다 - 기존 결정을 보존하는 것이 이 항목의 해결이다.
 - **필요한 사실**: 현재 화면 명칭 정책
 - **영향**: 정책 명칭 / Risk 없음 / MC 없음 / UI 버튼 · 안내
-- **구현 필요**: PM이 대상 문구를 지정하면 그 범위만 바꾼다.
+- **구현 필요**: 없음(종결)
 - **테스트**: wording-review.test.js
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS
+- **근거**: §47-12 · §46 TXT-46-2
 - **마지막 확인일**: 2026-09-20
 
 ### 채권
@@ -1029,15 +1030,15 @@
 
 #### P-5 — 판정 규칙 ruleVersion · 소급 재평가 구조
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 2
+- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 2
 - **SoT**: 계획서 §12 · §20
-- **현재 구현**: 규칙 버전 구조를 실제로 도입했다 - js/28 HOME_COMMON_RULE_VERSION(v1 → v2)과 원장 항목의 근거 문구에 판정 규칙 이름을 함께 적는다.
-- **문제**: 구조는 생겼지만 "규칙이 바뀌었을 때 과거 판정을 자동으로 재평가하는 장치"는 없다(이번에는 20건을 수동 재평가해 GOOG 1건 변경을 확인했다).
+- **현재 구현**: js/28 equityListingRuleVersionOf · listEntriesJudgedUnderOlderRule 추가(근거 문구의 규칙 버전을 읽어 옛 버전 판정 항목을 골라낸다). v1로 판정했던 19건을 v2 기준으로 재확인해 현재 옛 규칙 항목 0건.
+- **문제**: 제약과 함께 해결됨 → 구조와 현재 상태는 확정됐고, "규칙이 바뀌면 자동으로 다시 판정하는" 자동 재적용은 N-2(자동화) 범위로 남는다.
 - **필요한 사실**: 규칙 식별자 체계
-- **구현 필요**: 자동 재평가는 N-2(자동화) 범위에서 함께 만든다.
+- **구현 필요**: 없음(종결)
 - **테스트**: 단위
-- **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
-- **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md
+- **검증**: listEntriesJudgedUnderOlderRule() === 0건 · Unit 602/602
+- **근거**: §47-12 · js/28-exposure-master.js
 - **마지막 확인일**: 2026-09-20
 
 #### P-8 — 자동 조사 실행량 예산 · 대상 범위 제한
@@ -1131,5 +1132,20 @@
 - **테스트**: risk · mc 회귀 전후 측정
 - **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
 - **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md §12
+- **마지막 확인일**: 2026-09-20
+
+### Risk · 표시
+
+#### F-7 — 위험 기여도 음수 0 처리(§39-3 보류 묶음에서 분리)
+
+- **현재 판정**: SOLVED → **최종 SOLVED** · **단계**: PHASE 7
+- **SoT**: §39-3 · §44 위험 기여도
+- **현재 구현**: js/09 computeRiskContributions에서 Math.max(0, …) 제거. 합이 0 근처면 만들지 않는다(0으로 나누기 방지).
+- **문제**: 해결됨. 음수 기여도는 "값이 없는 것"이 아니라 "위험을 낮췄다"는 사실이다. 자르지 않아야 합이 100%로 맞는다(정의상 포트폴리오 베타=1).
+- **영향**: 정책 표시 / Risk 기여도 값 / MC 없음 / UI 위험 상세
+- **구현 필요**: 없음(종결)
+- **테스트**: test/risk-observation-windows.test.js
+- **검증**: test/risk-observation-windows.test.js의 F-7 테스트(음수 표시 · 합 100%)
+- **근거**: §47-12
 - **마지막 확인일**: 2026-09-20
 

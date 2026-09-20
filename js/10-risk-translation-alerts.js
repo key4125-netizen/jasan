@@ -536,13 +536,64 @@ function riskHoldingStatusNoteHtml(m) {
 }
 // [Phase 2-4 · T2] 통계 지표가 실제로 몇 개의 관측으로 계산됐는지. 숫자는 엔진 결과(metricStatus ·
 // varTailObservationCount)를 그대로 쓰고, 값이 없으면 지어내지 않는다.
+/* [F-1 · PM 승인 2026-09-20] 베타를 구하지 못한 이유는 종목마다 다르다.
+ * 엔진은 이미 사유를 구분해 두었는데(기준 지수 미확정 · 지수 가격 원천 없음 · 공통 거래일 부족 ·
+ * 혼합 노출 · 환헤지 미확인) 화면에는 "데이터 부족"으로 뭉뚱그려 나왔다. 사용자가 무엇을 하면
+ * 해결되는지가 사유마다 다르므로(원장 보완 vs 기다리기 vs 해결 불가) 그대로 구분해 적는다.
+ * 계산은 건드리지 않는다 - 이미 있는 betaStatus를 읽어 표시만 한다. */
+const BETA_UNAVAILABLE_TEXT = Object.freeze({
+  BENCHMARK_UNRESOLVED: '비교할 기준 지수가 확정되지 않았습니다',
+  SOURCE_UNAVAILABLE: '기준 지수는 확인됐지만 그 지수의 가격 자료가 없습니다',
+  INSUFFICIENT_COMMON_DATES: '기준 지수와 함께 거래된 날이 부족합니다',
+  DATA_STALE: '가격 자료가 오래돼 비교하지 않았습니다',
+  FETCH_FAILED: '가격 자료를 불러오지 못했습니다',
+  TICKER_INVALID: '종목코드를 확인하지 못했습니다',
+  DATA_QUALITY_FAILED: '가격 자료의 품질 검사를 통과하지 못했습니다'
+});
+function betaUnavailableReasonsNoteHtml(m) {
+  const list = (m && Array.isArray(m.holdings)) ? m.holdings : [];
+  const flagged = list.filter((h) => h && h.betaStatus && h.betaStatus !== 'OK');
+  if (!flagged.length) return '';
+  const rows = flagged.map((h) => {
+    const text = BETA_UNAVAILABLE_TEXT[h.betaStatus] || '시장 민감도를 계산하지 못했습니다';
+    return `<li class="flex flex-wrap justify-between gap-x-2" data-beta-reason-row><span class="break-keep">${escapeHtml(h.name || h.ticker)}</span><span class="text-slate-500 dark:text-slate-400 break-keep">${escapeHtml(text)}</span></li>`;
+  }).join('');
+  return `<div data-risk-beta-reasons>
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">⚡ 시장 민감도(베타)를 계산하지 못한 종목 ${fmtNum(flagged.length, 0)}개 - 이유가 서로 다릅니다.</p>
+      <ul class="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">${rows}</ul>
+    </div>`;
+}
+
+/* [F-5 · PM 승인 2026-09-20] 기준 지수의 수익 정의(PR/TR)가 확인되지 않은 종목을 밝힌다.
+ * 원장에는 UNCONFIRMED로 기록돼 있는데 화면은 아무 말도 하지 않았다 - 가격지수(PR)와 총수익지수(TR)는
+ * 배당만큼 다르므로, 확인되지 않았다는 사실 자체가 사용자가 알아야 할 정보다. */
+function benchmarkDefinitionNoteHtml(m) {
+  if (typeof resolveBenchmarkDefinitionStatus !== 'function') return '';
+  const list = (m && Array.isArray(m.holdings)) ? m.holdings : [];
+  const rows = [];
+  list.forEach((h) => {
+    if (!h || !h.benchmarkKey) return;
+    let st;
+    try { st = resolveBenchmarkDefinitionStatus(h.ticker); } catch (e) { st = null; }
+    if (st && st.returnTypeStatus === 'UNCONFIRMED') rows.push(h.name || h.ticker);
+  });
+  if (!rows.length) return '';
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-benchmark-definition>📐 ${escapeHtml(rows.join(' · '))}은(는) 기준 지수가 배당을 포함하는지(총수익지수) 여부가 공식 자료에서 확인되지 않았습니다 - 비교 결과에 그만큼 차이가 있을 수 있습니다.</p>`;
+}
+
 function riskObservationBasisNote(m) {
   const st = m && m.metricStatus ? m.metricStatus.var : null;
   const obs = st && typeof st.observations === 'number' ? st.observations : null;
   if (obs === null) return '';
   const tail = typeof m.varTailObservationCount === 'number' ? m.varTailObservationCount : null;
   if (st.status === 'AVAILABLE' && tail !== null) {
-    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 변동성·최대낙폭·VaR·CVaR·상관은 보유 종목이 함께 거래된 최근 ${fmtNum(obs, 0)}거래일의 하루 변동으로 계산했습니다. VaR·CVaR는 그중 하락이 가장 컸던 ${fmtNum(tail, 0)}일을 기준으로 합니다.</p>`;
+    /* [C-3 · §44 제7조] 이제 지표마다 보는 기간이 다르다 - 문구도 그대로 말한다.
+     * 예전 문구("변동성·최대낙폭·VaR·CVaR·상관은 최근 N거래일")는 한 기간을 전제로 했는데,
+     * 그 전제가 바뀌었는데도 문구를 그대로 두면 화면이 사실과 다른 말을 하게 된다. */
+    const volSt = m.metricStatus.volatility;
+    const volObs = volSt && typeof volSt.observations === 'number' ? volSt.observations : null;
+    const volPart = volObs !== null ? `변동성·시장 민감도(베타)·상관은 최근 ${fmtNum(volObs, 0)}거래일` : '변동성·시장 민감도(베타)·상관';
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 ${volPart}, 최대낙폭·VaR·CVaR는 최근 ${fmtNum(obs, 0)}거래일의 하루 변동으로 계산했습니다(지표마다 필요한 기간이 다릅니다). VaR·CVaR는 그중 하락이 가장 컸던 ${fmtNum(tail, 0)}일을 기준으로 합니다.</p>`;
   }
   const required = typeof st.required === 'number' ? st.required : null;
   return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 보유 종목이 함께 거래된 날이 ${fmtNum(obs, 0)}거래일이라${required !== null ? `, 통계 지표에 필요한 ${fmtNum(required, 0)}거래일보다 적어` : ''} 해당 지표를 계산하지 않았습니다.</p>`;
@@ -718,7 +769,7 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합칩니다 - 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권은 주식 베타의 대상이 아니라 아예 집계에서 제외됩니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다. 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합칩니다 - 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권은 주식 베타의 대상이 아니라 아예 집계에서 제외됩니다. 국내에 상장된 해외 지수 ETF처럼 우리 시장이 닫힌 뒤에 기준 지수가 움직이는 경우에는, 같은 날짜만 비교하면 민감도가 실제보다 작게 나옵니다 - 그래서 같은 날과 그 다음 날의 반응을 함께 더해(시차 0 + 1) 계산합니다.')}
       ${betaCoverageNoteHtml(m)}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
@@ -732,6 +783,8 @@ function renderRiskDetailModal() {
     <div class="mt-2.5 space-y-2" data-risk-basis-notes>
       ${riskObservationBasisNote(m)}
       ${riskHoldingStatusNoteHtml(m)}
+      ${betaUnavailableReasonsNoteHtml(m)}
+      ${benchmarkDefinitionNoteHtml(m)}
       ${riskFxBasisNote(m)}
     </div>
     ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}

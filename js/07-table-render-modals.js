@@ -585,7 +585,19 @@ function escapeHtml(str) {
  *      버튼을 가리지 않도록 #toastContainer 위치를 하단으로 옮김 - CSS 쪽 참고).
  *    - 상세 원인은 console.error/warn에 남기고, 토스트에는 요약만 표시한다.
  * ---------------------------------------------------------------------- */
+/* [F-3] 지금 화면에 열려 있는 팝업이 있는지 - body 표식 하나로 CSS가 토스트 위치를 정한다.
+ * 모달마다 여는 함수가 제각각이라(자산 · 상세 · 종목분석 · MC 안내 …) 열고 닫는 곳마다 고치는 대신,
+ * "hidden이 아닌 .fixed 모달이 하나라도 있는가"를 보고 표식을 갱신한다 - 새 팝업이 생겨도 그대로 동작한다. */
+function syncModalOpenFlag() {
+  try {
+    const open = Array.from(document.querySelectorAll('div.fixed[id$="Modal"], div.fixed[id$="modal"]'))
+      .some((el) => !el.classList.contains('hidden'));
+    document.body.classList.toggle('modal-open', open);
+  } catch (e) { /* 표시 보조 기능이라 실패해도 앱 동작에는 영향이 없다 */ }
+}
+
 function showToast(message, type = 'info', duration = 6000) {
+  syncModalOpenFlag();
   const colors = {
     info: 'bg-slate-800 dark:bg-slate-700 text-white',
     warn: 'bg-amber-500 text-white',
@@ -939,8 +951,8 @@ function openModal(mode, id) {
   updateBondFieldsUI();
 }
 
-function showModal() { modal.classList.remove('hidden'); pushModalHistoryState(); }
-function closeModal(viaBackButton) { modal.classList.add('hidden'); if (!viaBackButton) popModalHistoryIfNeeded(); }
+function showModal() { modal.classList.remove('hidden'); syncModalOpenFlag(); pushModalHistoryState(); }
+function closeModal(viaBackButton) { modal.classList.add('hidden'); syncModalOpenFlag(); if (!viaBackButton) popModalHistoryIfNeeded(); }
 
 // 매수단가/현재가의 단위 표시는 '통화' 필드를 기준으로 한다 (국내/해외와는 독립적).
 function updatePriceUnitLabels() {

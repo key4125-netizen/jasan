@@ -1,0 +1,237 @@
+{
+  "measuredAt": "2026-09-20",
+  "note": "가격 시계열은 저장하지 않는다 - 지표 값과 관측 수만 남긴다(이용조건상 재배포 금지).",
+  "targets": {
+    "technical": 250,
+    "volatility": 500,
+    "beta": 500,
+    "correlation": 500,
+    "var": 750,
+    "cvar": 750,
+    "mdd": 750
+  },
+  "results": [
+    {
+      "ticker": "005930.KS",
+      "label": "국내 대형주",
+      "benchmark": "^KS11",
+      "availableRows": 729,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 75.28,
+          "beta": 1.3074,
+          "var95Pct": -7.82,
+          "cvar95Pct": -9.99,
+          "mddPct": -42.9
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 58,
+          "beta": 1.2863,
+          "var95Pct": -5.8,
+          "cvar95Pct": -8.24,
+          "mddPct": -42.9
+        },
+        "3y": {
+          "observations": 728,
+          "목표충족": false,
+          "volatilityPct": 50.42,
+          "beta": 1.2636,
+          "var95Pct": -4.31,
+          "cvar95Pct": -7.33,
+          "mddPct": -43.17
+        }
+      }
+    },
+    {
+      "ticker": "000660.KS",
+      "label": "국내 반도체",
+      "benchmark": "^KS11",
+      "availableRows": 729,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 91.38,
+          "beta": 1.5505,
+          "var95Pct": -9.52,
+          "cvar95Pct": -11.57,
+          "mddPct": -54.71
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 73.92,
+          "beta": 1.574,
+          "var95Pct": -7.66,
+          "cvar95Pct": -10.08,
+          "mddPct": -54.71
+        },
+        "3y": {
+          "observations": 728,
+          "목표충족": false,
+          "volatilityPct": 65.99,
+          "beta": 1.5657,
+          "var95Pct": -6.23,
+          "cvar95Pct": -9.25,
+          "mddPct": -54.71
+        }
+      }
+    },
+    {
+      "ticker": "069500.KS",
+      "label": "국내 지수 ETF",
+      "benchmark": "^KS11",
+      "availableRows": 726,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 59.89,
+          "beta": 1.1027,
+          "var95Pct": -6.34,
+          "cvar95Pct": -8.62,
+          "mddPct": -40.93
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 44.64,
+          "beta": 1.0913,
+          "var95Pct": -4.84,
+          "cvar95Pct": -7.09,
+          "mddPct": -40.93
+        },
+        "3y": {
+          "observations": 725,
+          "목표충족": false,
+          "volatilityPct": 38.82,
+          "beta": 1.0834,
+          "var95Pct": -3.48,
+          "cvar95Pct": -6.22,
+          "mddPct": -40.93
+        }
+      }
+    },
+    {
+      "ticker": "AAPL",
+      "label": "미국 대형주",
+      "benchmark": "^GSPC",
+      "availableRows": 753,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 24.61,
+          "beta": 0.6943,
+          "var95Pct": -2.14,
+          "cvar95Pct": -3.66,
+          "mddPct": -13.82
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 28.84,
+          "beta": 1.1044,
+          "var95Pct": -2.91,
+          "cvar95Pct": -4.31,
+          "mddPct": -33.43
+        },
+        "3y": {
+          "observations": 749,
+          "목표충족": true,
+          "volatilityPct": 26.84,
+          "beta": 1.0771,
+          "var95Pct": -2.52,
+          "cvar95Pct": -3.85,
+          "mddPct": -33.43
+        }
+      }
+    },
+    {
+      "ticker": "TSLA",
+      "label": "미국 고변동주",
+      "benchmark": "^GSPC",
+      "availableRows": 753,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 46.5,
+          "beta": 2.2156,
+          "var95Pct": -4.64,
+          "cvar95Pct": -6.42,
+          "mddPct": -39.1
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 59.93,
+          "beta": 2.3407,
+          "var95Pct": -5.42,
+          "cvar95Pct": -7.79,
+          "mddPct": -53.77
+        },
+        "3y": {
+          "observations": 749,
+          "목표충족": true,
+          "volatilityPct": 58.17,
+          "beta": 2.3003,
+          "var95Pct": -5.34,
+          "cvar95Pct": -7.68,
+          "mddPct": -53.77
+        }
+      }
+    },
+    {
+      "ticker": "SPYM",
+      "label": "미국 지수 ETF",
+      "benchmark": "^GSPC",
+      "availableRows": 753,
+      "windows": {
+        "1y": {
+          "observations": 249,
+          "목표충족": true,
+          "volatilityPct": 12.88,
+          "beta": 0.9905,
+          "var95Pct": -1.44,
+          "cvar95Pct": -1.79,
+          "mddPct": -9.13
+        },
+        "2y": {
+          "observations": 499,
+          "목표충족": true,
+          "volatilityPct": 16.04,
+          "beta": 0.9945,
+          "var95Pct": -1.55,
+          "cvar95Pct": -2.32,
+          "mddPct": -18.99
+        },
+        "3y": {
+          "observations": 749,
+          "목표충족": true,
+          "volatilityPct": 14.96,
+          "beta": 0.9929,
+          "var95Pct": -1.45,
+          "cvar95Pct": -2.12,
+          "mddPct": -18.99
+        }
+      }
+    }
+  ],
+  "summaryAbsDiffMedian": {
+    "volatilityPct_2y": 15.25,
+    "volatilityPct_3y": 21.07,
+    "beta_2y": 0.0235,
+    "beta_3y": 0.0438,
+    "var95Pct_2y": 1.5,
+    "var95Pct_3y": 2.86,
+    "cvar95Pct_2y": 1.49,
+    "cvar95Pct_3y": 2.32,
+    "mddPct_2y": 9.86,
+    "mddPct_3y": 9.86
+  }
+}

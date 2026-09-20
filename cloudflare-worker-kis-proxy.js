@@ -117,10 +117,18 @@ async function checkRateLimit(env, request) {
   return { ok: true };
 }
 
-// 6자리 국내 종목코드만 허용한다(예: '005930') - 이 Worker는 국내주식 전용이라 그 외 형식은 애초에
+// 6자리 숫자 국내 종목코드만 허용한다(예: '005930') - 이 Worker는 국내주식 전용이라 그 외 형식은 애초에
 // KIS 쪽에서도 정상 조회가 안 되므로 여기서 미리 걸러 불필요한 상위 API 호출을 막는다.
 function isValidDomesticCode(code) {
   return /^\d{6}$/.test(code);
+}
+/* [G-5 · 2026-09-20] KRX 영문 혼합 신규 코드(숫자4 + 영문1 + 숫자1, 예: 0052D0)는 앱에서는 정상
+ * 식별되지만(js/01 KRX_SHORT_CODE_PATTERN · CL-03) 이 Worker는 받지 않는다. 그런데 응답이
+ * 'bad_ticker'라서 화면에서는 "코드를 잘못 입력했다"로 읽힌다 - 실제로는 "이 코드 형식은 아직
+ * 재무 조회를 지원하지 않는다"가 사실이다. 사실과 다른 안내를 하지 않도록 코드를 분리한다.
+ * KIS API가 이 형식을 받는지는 확인되지 않았으므로 **허용 범위는 넓히지 않는다**(확인 전 개방 금지). */
+function isKrxAlnumCode(code) {
+  return /^\d{4}[A-Z]\d$/i.test(code);
 }
 
 // [토큰 발급/캐시] KV에 캐시된 토큰이 있고 만료 10분 이상 남았으면 그대로 재사용, 아니면 새로 발급받아
@@ -355,7 +363,8 @@ export default {
     const url = new URL(request.url);
     const code = (url.searchParams.get('ticker') || '').trim();
     if (!isValidDomesticCode(code)) {
-      return jsonResponse({ error: 'bad_ticker' }, 400, cors);
+      // 형식이 "틀린" 것과 "아직 지원하지 않는" 것을 구분해서 알린다.
+      return jsonResponse({ error: isKrxAlnumCode(code) ? 'ticker_format_unsupported' : 'bad_ticker' }, 400, cors);
     }
 
     try {

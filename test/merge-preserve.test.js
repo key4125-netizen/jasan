@@ -146,3 +146,29 @@ test('한쪽에만 있는 id의 기존 삭제 판정(lastSyncedIds)은 그대로
   assert.strictEqual(mergeCollectionById([], [{ id: 'B', updatedAt: 1 }], SEEN('B')).length, 0);
   assert.strictEqual(mergeCollectionById([], [{ id: 'B', updatedAt: 1 }], SEEN()).length, 1);
 });
+
+/* ── M-1 : 같은 id가 기기마다 다른 positionSource를 가진 경우의 동작을 고정한다 ──────────
+ * 이론적 위험으로만 남아 있던 항목이다(PM 결정 2026-09-20: 동작을 테스트로 확정해 종결).
+ * 결론은 "규칙이 이미 정해져 있다"이다 - 병합은 updatedAt이 큰 쪽을 채택하되, 승자에게 표식이
+ * 없을 때만 패자의 표식을 이어받는다(BL-13). 두 기기가 서로 다른 표식을 들고 있으면 최신 편집이
+ * 이긴다. 이것은 "누가 먼저 만들었는가"가 아니라 "누가 마지막으로 고쳤는가"를 따르는 기존 원칙과
+ * 같고, 추가 규칙을 만들 필요가 없다는 것이 이 테스트의 내용이다. */
+test('M-1. 같은 id에 서로 다른 positionSource가 있으면 최신 편집(updatedAt)이 이긴다', () => {
+  // 기기 A: 자산 화면에서 직접 만든 자산(manual) · 기기 B: 거래원장에서 태어난 같은 자산(ledger)
+  const localManualNewer = [{ id: 'X', quantity: 10, positionSource: 'manual', updatedAt: 300 }];
+  const remoteLedgerOlder = [{ id: 'X', quantity: 20, positionSource: 'ledger', updatedAt: 200 }];
+  const a = mergeCollectionById(localManualNewer, remoteLedgerOlder, SEEN('X'));
+  assert.strictEqual(a[0].positionSource, 'manual');
+  assert.strictEqual(a[0].quantity, 10);
+
+  // 반대 방향도 같은 규칙이다 - 표식만 특별 취급하지 않는다.
+  const localManualOlder = [{ id: 'X', quantity: 10, positionSource: 'manual', updatedAt: 100 }];
+  const remoteLedgerNewer = [{ id: 'X', quantity: 20, positionSource: 'ledger', updatedAt: 400 }];
+  const b = mergeCollectionById(localManualOlder, remoteLedgerNewer, SEEN('X'));
+  assert.strictEqual(b[0].positionSource, 'ledger');
+  assert.strictEqual(b[0].quantity, 20);
+
+  // 같은 입력이면 어느 기기에서 돌려도 같은 결과가 나온다(병합이 기기에 따라 갈리지 않는다).
+  const again = mergeCollectionById(localManualOlder, remoteLedgerNewer, SEEN('X'));
+  assert.deepStrictEqual(again, b);
+});

@@ -201,9 +201,27 @@ function carryOverCategorySource(incoming, index) {
   const cellRaw = incoming.categoryCellRaw;
   const clean = { ...incoming };
   delete clean.categoryCellRaw;
-  if (cellRaw !== '') return clean; // 이번 파일이 이 칸에 뭐라도 적어 뒀다 - 유효/오염 불문 그 결과를 그대로 채택
   const kept = index.byId.get(clean.id) || index.byKey.get(assetMergeKey(clean));
-  return kept === undefined ? clean : { ...clean, category: kept.category, categorySource: kept.categorySource };
+  if (cellRaw === '') {
+    // 칸이 비었다 - 기존 값을 종류 불문 그대로 이어받는다(기존 규칙 그대로).
+    return kept === undefined ? clean : { ...clean, category: kept.category, categorySource: kept.categorySource };
+  }
+  /* [G-3 · N-02 · PM 승인 2026-09-20] 내보낸 파일을 **고치지 않고 그대로 다시 올린 경우**에는
+   * 사용자가 그 값을 확인했다고 보지 않는다.
+   *
+   * 예전에는 "칸에 뭐라도 적혀 있으면 사용자 확정(user)"이었다. 그 규칙은 자산 입력 폼에서는 맞다 -
+   * 사용자가 화면에서 값을 보고 저장을 눌렀기 때문이다. 그런데 엑셀 왕복에서는 내보내기가 그 칸을
+   * 이미 채워서 내보내므로, 사용자가 파일을 열어 보기만 해도 system → user로 승격됐다. 그러면
+   * 그 뒤부터 앱의 자동 분류 개선이 그 자산에 닿지 않는다(사용자가 확정한 값은 건드리지 않으므로).
+   *
+   * 그래서 "값이 기존과 완전히 같고, 기존이 사용자 확정이 아니었다면" 기존 상태를 유지한다.
+   * 잃는 것: 사용자가 엑셀에서 같은 값을 다시 타이핑해 "확인"한 경우를 못 알아본다.
+   * 얻는 것: 확인한 적 없는 값이 확정으로 굳는 일이 없다. 둘 중 후자가 데이터 의미에 더 안전하다
+   * (확정을 놓치면 자동 개선이 계속 닿을 뿐이고, 가짜 확정은 되돌릴 방법이 없다). */
+  if (kept !== undefined && kept.categorySource !== 'user' && String(cellRaw).trim() === String(kept.category ?? '').trim()) {
+    return { ...clean, category: kept.category, categorySource: kept.categorySource };
+  }
+  return clean; // 값이 달라졌다 = 사용자가 실제로 고쳤다 - makeAsset의 판단(user)을 그대로 쓴다
 }
 
 /* [P1 데이터 보존 - FIX-4/FIX-5] 엑셀 시트의 빈 칸(또는 아예 없는 열)이 기존 값을 지우지 않게 한다.

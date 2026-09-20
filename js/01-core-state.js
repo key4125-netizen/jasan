@@ -1470,6 +1470,42 @@ function loadState() {
 }
 
 // 자산 스키마에 정의된 필드만 저장 (dayChangeMap 등 휘발성 데이터는 제외)
+/* [Q-1 · PM 승인 2026-09-20] 저장소가 가득 찼을 때 사용자 데이터를 잃지 않는다.
+ *
+ * 실측(Chromium · 2026-09-20): localStorage 사용량 2,638KB 중 종목 마스터 캐시가 2,635KB로 99.9%다.
+ * 이 환경에서는 20MB를 더 써도 쿼터에 걸리지 않았지만, 한도가 훨씬 빡빡한 기기(iOS Safari 계열)에서는
+ * 재생성 가능한 캐시 하나 때문에 **사용자가 입력한 자산 · 거래 · 채권 기록 저장이 실패**할 수 있다.
+ * 그때 조용히 예외로 끝나면 사용자는 저장된 줄 알고 앱을 닫는다.
+ *
+ * 그래서 저장 실패를 세 단계로 처리한다.
+ *   ① 재생성 가능한 캐시(종목 마스터)를 비우고 한 번만 다시 시도한다 - 다시 받으면 되는 데이터다.
+ *   ② 그래도 실패하면 사용자에게 분명히 알린다(조용한 실패 금지).
+ *   ③ 사용자 데이터는 어떤 경우에도 지우지 않는다.
+ * 저장 구조 · 저장 키 · 데이터 의미는 전혀 바꾸지 않는다(§10 보존사항). */
+const LS_REGENERABLE_CACHE_KEYS = Object.freeze(['sam_ticker_master_cache_v1']);
+let storageFullNotified = false;
+function isQuotaExceededError(e) {
+  if (!e) return false;
+  return e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014;
+}
+function setLocalStorageItemSafely(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) {
+    if (!isQuotaExceededError(e)) throw e;
+    let freed = false;
+    LS_REGENERABLE_CACHE_KEYS.forEach((k) => {
+      try { if (localStorage.getItem(k) !== null) { localStorage.removeItem(k); freed = true; } } catch (e2) { /* 지우기 실패는 무시 */ }
+    });
+    if (freed) {
+      try { localStorage.setItem(key, value); return true; } catch (e3) { if (!isQuotaExceededError(e3)) throw e3; }
+    }
+    if (!storageFullNotified && typeof showToast === 'function') {
+      storageFullNotified = true;
+      showToast('기기 저장 공간이 가득 차 방금 입력한 내용을 저장하지 못했습니다. 브라우저 저장소를 비우거나 엑셀로 내보낸 뒤 다시 시도해 주세요.', 'error', 12000);
+    }
+    return false;
+  }
+}
+
 function persistAssets(skipPush) {
   const clean = state.assets.map(a => ({
     id: a.id, ticker: String(a.ticker ?? '').trim(), owner: a.owner, accountType: a.accountType,
@@ -1501,7 +1537,7 @@ function persistAssets(skipPush) {
     // [Phase 49] 저장하지 않으면 새로고침 한 번에 사라져 표시 자체가 무의미해진다.
     positionSource: a.positionSource
   }));
-  localStorage.setItem(LS_ASSETS, JSON.stringify(clean));
+  setLocalStorageItemSafely(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();
 }
 // [가족 동기화 - 자동 push 훅] 이 7개 persist*() 함수가 LS_ASSETS 등 각 localStorage 키를 쓰는 유일한
@@ -1525,10 +1561,10 @@ function persistTickerRoles() { localStorage.setItem(LS_TICKER_ROLES, JSON.strin
 // skipStamp: persistRebalance와 동일한 이유(위 주석 참고).
 function persistProjection(skipStamp) { if (!skipStamp) state.projection.updatedAt = Date.now(); localStorage.setItem(LS_PROJECTION, JSON.stringify(state.projection)); schedulePush(); }
 // [Bond Domain V1 · §47-7] 채권 레코드 저장. 기존 persist*()와 같은 규칙으로 schedulePush()를 부른다.
-function persistBondPositions() { localStorage.setItem(LS_BOND_POSITIONS, JSON.stringify(state.bondPositions || [])); schedulePush(); }
-function persistTransactions() { localStorage.setItem(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
+function persistBondPositions() { setLocalStorageItemSafely(LS_BOND_POSITIONS, JSON.stringify(state.bondPositions || [])); schedulePush(); }
+function persistTransactions() { setLocalStorageItemSafely(LS_TRANSACTIONS, JSON.stringify(state.transactions)); schedulePush(); }
 // [일별 이력 복구 제거] 복구 경로만 쓰던 skipPush 옵션을 없앴다 - 모든 호출부가 "저장 + 클라우드 push 예약"으로 같다.
-function persistDailySnapshots() { localStorage.setItem(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
+function persistDailySnapshots() { setLocalStorageItemSafely(LS_DAILY_SNAPSHOTS, JSON.stringify(state.dailySnapshots)); schedulePush(); }
 function persistLearnedTickerNames() { localStorage.setItem(LS_LEARNED_TICKER_NAMES, JSON.stringify(state.learnedTickerNames)); schedulePush(); }
 // [종목 분석 모달] 조회에 성공해 실제 종목명을 확인한 티커를 캐시에 기록한다 - trimmedRaw(사용자가
 // 입력한 원문 그대로)와 다를 때만 저장한다(같으면 "이름을 못 찾아서 입력값을 그대로 돌려준 것"뿐이라
@@ -1615,6 +1651,7 @@ function searchAssetsByQuery(query) {
 // localStorage 왕복(persistAssets가 쓰고 loadState가 그대로 JSON.parse해 읽는 것)에서 실제로
 // 살아남는지를 그 저장 함수 자체로 검증하기 위함이다.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, persistBondPositions, LS_BOND_POSITIONS, state };
+  module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, persistBondPositions, LS_BOND_POSITIONS,
+    setLocalStorageItemSafely, isQuotaExceededError, LS_REGENERABLE_CACHE_KEYS, state };
 }
 

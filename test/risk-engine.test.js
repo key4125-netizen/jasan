@@ -115,28 +115,40 @@ test('Universe - owner 필터가 없다(진단은 항상 가구 전체 기준)',
  *    무엇을 바꾸는지 diff로 정확히 드러나게 한다.
  * ======================================================================= */
 
-test('Benchmark - 국내는 접미사로, 미국은 하드코딩 집합으로 결정된다', () => {
+// [기대값 갱신 사유 · G-1 · §44 제10조 · PM 승인 2026-09-20] 종목 분석 모달의 옛 근사 경로
+// (getBenchmarkKeyForTicker - 티커 접미사 + 손으로 고른 집합 + S&P500 fallback)를 없앴다.
+// 이제 모달도 보유 화면과 같은 resolveRiskBenchmark를 쓴다 - 근거가 없으면 기준 지수를 만들지 않는다.
+test('Benchmark - 종목 분석 모달도 §44 제10조 경로를 쓴다(옛 근사 집합 제거)', () => {
   const s = freshSandbox();
-  assert.strictEqual(s.getBenchmarkKeyForTicker('005930.KS'), 'KOSPI');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('247540.KQ'), 'KOSDAQ');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('QQQM'), 'NASDAQ100');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('NVDA'), 'NASDAQ100');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('SCHD'), 'DOW');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('KO'), 'DOW');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('UNKNOWNX'), 'SP500');
+  assert.strictEqual(typeof s.getBenchmarkKeyForTicker, 'undefined', '옛 근사 함수가 남아 있으면 안 된다');
+  assert.strictEqual(typeof s.resolveModalBenchmark, 'function');
+  s.setTickerMaster({ '005930.KS': { exchange: 'KOSPI', nameKr: 'ZZ 국내주식' }, '247540.KQ': { exchange: 'KOSDAQ', nameKr: 'ZZ 코스닥주' } });
+  // 국내 상장 개별주는 상장 시장 지수를 쓴다(제10조 ②가 명시적으로 허용한 유일한 예외).
+  assert.strictEqual(s.resolveModalBenchmark('005930.KS').key, 'KOSPI');
+  assert.strictEqual(s.resolveModalBenchmark('247540.KQ').key, 'KOSDAQ');
+  // 원장 · 공유표에 근거가 있는 ETF는 그 근거로 확정된다(제10조 ① · ②) - 접미사나 손으로 고른 집합이 아니다.
+  const qqqm = s.resolveModalBenchmark('QQQM');
+  assert.strictEqual(qqqm.status, 'RESOLVED');
+  assert.ok(['exposureMaster', 'etfIndexLabel'].includes(qqqm.source), qqqm.source);
+  // 근거가 없는 미국 상장 종목은 거래소 지수로 보내지 않는다 - 예전에는 전부 S&P500으로 갔다.
+  ['UNKNOWNX', 'ZZNOEVIDENCE'].forEach((t) => {
+    const bm = s.resolveModalBenchmark(t);
+    assert.strictEqual(bm.key, null, t);
+    assert.strictEqual(bm.status, 'UNRESOLVED', t);
+  });
 });
 
-// [§46 CLN-46-1] Risk 벤치마크는 §40 P-4(v252)에서 resolveRiskBenchmark로 바뀌어 이 매핑을 쓰지 않는다 - 옛 getBenchmarkKeyForTicker는
-// 종목 분석 팝업의 화면에 나오지 않는 참고값 경로에만 남아 있고, 이 테스트는 그 옛 매핑을 그대로 고정한다.
-test('Benchmark - [옛 참고 경로 · Risk 벤치마크 아님] 채권·금 ETF가 주식 지수에 매핑된다', () => {
+// [기대값 갱신 사유 · G-1] 옛 경로에서는 채권 · 금 ETF가 주식 지수(S&P500)에 매핑됐다 - 그 자체가
+// 제10조 위반이었고, 이 테스트는 그 사실을 "고정"하고 있었다. 이제는 근거가 없으면 만들지 않는다.
+test('Benchmark - 채권 · 금 ETF를 주식 지수에 매핑하지 않는다(옛 근사 경로 제거 확인)', () => {
   const s = freshSandbox();
-  // 미국 장기국채 ETF가 S&P500 벤치마크를 받는다.
-  assert.strictEqual(s.getBenchmarkKeyForTicker('TLT'), 'SP500');
-  assert.strictEqual(s.getBenchmarkKeyForTicker('IEF'), 'SP500');
+  // 미국 장기국채 ETF는 기준 지수를 받지 못한다(주식 지수와 비교하지 않는다).
+  assert.strictEqual(s.resolveModalBenchmark('TLT').key, null);
+  assert.strictEqual(s.resolveModalBenchmark('IEF').key, null);
   // 금 ETF도 마찬가지.
-  assert.strictEqual(s.getBenchmarkKeyForTicker('GLD'), 'SP500');
-  // 국내 국고채 ETF는 .KS 접미사 때문에 코스피를 받는다.
-  assert.strictEqual(s.getBenchmarkKeyForTicker('148070.KS'), 'KOSPI');
+  assert.strictEqual(s.resolveModalBenchmark('GLD').key, null);
+  // 국내 상장 ETF도 ".KS라서 코스피"로 보내지 않는다 - ETF는 개별주와 달리 상장 시장 예외 대상이 아니다.
+  assert.strictEqual(s.resolveModalBenchmark('148070.KS').key, null);
   // 지수 티커 상수도 함께 고정한다(Phase 40에서 항목이 늘어나는지 diff로 보인다).
   assert.deepStrictEqual(plain(Object.keys(s.INDEX_TICKERS).sort()), ['DOW', 'KOSDAQ', 'KOSPI', 'NASDAQ', 'NASDAQ100', 'SP500']);
 });
@@ -851,15 +863,21 @@ test('Golden - 스트레스 시나리오 상수와 손실 추정(beta × 실측 
   const s = buildStandardPortfolio(freshSandbox());
   const m = await s.computeAdvancedRiskMetrics();
 
-  // 하드코딩된 역사적 낙폭 상수 자체를 고정한다(Phase 36 미결 #8 - 출처 문서화는 backlog).
-  assert.deepStrictEqual(plain(s.COVID_CRASH_BENCHMARK_DROP_PCT), { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9, NASDAQ100: -28.0, DOW: -37.1 });
-  assert.deepStrictEqual(plain(s.RATE_HIKE_2022_BENCHMARK_DROP_PCT), { KOSPI: -28.6, KOSDAQ: -35.3, SP500: -25.4, NASDAQ100: -35.1, DOW: -21.2 });
+  /* [기대값 갱신 사유 · D-7 · D-9 · PM 승인 2026-09-20] 낙폭 상수를 실측으로 다시 맞췄다.
+   * 지수 일별 종가를 직접 받아 계산한 결과(docs/closeout/research/index-drawdowns.json) 대부분은
+   * 기존 값과 0.2%p 이내로 일치했고, 두 가지가 달랐다 - KOSDAQ 2020이 5.15%p 과소(-33.0 → -38.15)였고,
+   * NASDAQ(종합)은 상수가 아예 없어 그 지수를 쓰는 종목이 있으면 스트레스가 통째로 null이었다.
+   * 원화 기준 표(…_KRW)도 함께 생겼다 - 원화 환산 지수로 구한 베타에는 원화 낙폭을 곱한다(D-9). */
+  assert.deepStrictEqual(plain(s.COVID_CRASH_BENCHMARK_DROP_PCT), { KOSPI: -35.71, KOSDAQ: -38.15, SP500: -33.92, NASDAQ: -30.12, NASDAQ100: -28.03, DOW: -37.09 });
+  assert.deepStrictEqual(plain(s.RATE_HIKE_2022_BENCHMARK_DROP_PCT), { KOSPI: -27.89, KOSDAQ: -36.84, SP500: -25.43, NASDAQ: -35.49, NASDAQ100: -35.28, DOW: -21.94 });
+  assert.deepStrictEqual(plain(s.COVID_CRASH_BENCHMARK_DROP_PCT_KRW), { SP500: -29.86, NASDAQ: -27.65, NASDAQ100: -25.69, DOW: -32.72 });
+  assert.deepStrictEqual(plain(s.RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW), { SP500: -17.55, NASDAQ: -31.37, NASDAQ100: -31.15, DOW: -12.41 });
 
-  // 손실률 = Σ(비중 × beta × 그 종목 벤치마크의 실측 낙폭)
-  //   2020: 0.793651×1.157895×(-35.7) + 0.206349×0.882353×(-28.0) = -37.905057
-  //   2022: 0.793651×1.157895×(-28.6) + 0.206349×0.882353×(-35.1) = -32.673129
-  assert.strictEqual(round(m.stressLossPct, 6), -37.905057);
-  assert.strictEqual(round(m.stressLossPct2022, 6), -32.673129);
+  // 손실률 = Σ(비중 × beta × 그 종목 벤치마크의 실측 낙폭) - 계산식은 그대로이고 상수만 바뀌었다.
+  //   2020: 0.793651×1.157895×(-35.71) + 0.206349×0.882353×(-28.03) = -37.919709
+  //   2022: 0.793651×1.157895×(-27.89) + 0.206349×0.882353×(-35.28) = -32.053438
+  assert.strictEqual(round(m.stressLossPct, 6), -37.919709);
+  assert.strictEqual(round(m.stressLossPct2022, 6), -32.053438);
   assert.strictEqual(Math.round(m.stressLossKRW), Math.round(m.totalCur * m.stressLossPct / 100));
 });
 

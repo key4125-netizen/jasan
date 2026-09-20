@@ -53,20 +53,20 @@ function kospiOnlyPortfolio(s) {
 
 /* ---------------------------------------------------------------- T4 */
 
-test('T4 - 낙폭 표에 없는 벤치마크(NASDAQ 종합)가 있으면 스트레스 추정을 만들지 않고 사유를 남긴다', async () => {
+/* [기대값 갱신 사유 · D-7 · PM 승인 2026-09-20] NASDAQ(종합)의 낙폭을 실제로 산출해 표에 넣었다
+ * (2020 -30.12 · 2022 -35.49 · docs/closeout/research/index-drawdowns.json). 예전에는 표에 값이
+ * 없어 이 지수를 쓰는 종목이 하나라도 있으면 스트레스 전체가 null이었다 - "자료가 없으면 만들지
+ * 않는다"는 원칙은 그대로이고, 이제 자료가 생겼으므로 계산된다. */
+test('T4 - NASDAQ 종합도 실측 낙폭이 있으므로 스트레스를 계산한다(자료 없는 경우의 거부 규칙은 그대로)', async () => {
   const s = nasdaqCompositePortfolio(freshSandbox());
   const m = await s.computeAdvancedRiskMetrics();
   assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'NASDAQ');
-  // 베타는 그대로 계산된다 - 스트레스만 만들지 않는다.
   assert.ok(m.holdings.every((h) => typeof h.beta === 'number'));
-  assert.strictEqual(m.stressLossKRW, null);
-  assert.strictEqual(m.stressLossPct, null);
-  assert.strictEqual(m.stressLossKRW2022, null);
-  assert.strictEqual(m.stressLossPct2022, null);
-  assert.strictEqual(m.stressStatus.covid2020, 'SOURCE_UNAVAILABLE');
-  assert.strictEqual(m.stressStatus.rateHike2022, 'SOURCE_UNAVAILABLE');
-  assert.strictEqual(s.stressLossValueText(m.stressLossKRW, m.stressLossPct, m.stressStatus.covid2020),
-    '계산할 수 없음 (기준 지수의 과거 하락폭 자료가 없는 종목 포함)');
+  assert.strictEqual(m.stressStatus.covid2020, null);
+  assert.strictEqual(m.stressStatus.rateHike2022, null);
+  assert.ok(typeof m.stressLossPct === 'number' && m.stressLossPct < 0);
+  assert.ok(typeof m.stressLossPct2022 === 'number' && m.stressLossPct2022 < 0);
+  // 표에 없는 지수를 쓰는 종목이 있으면 여전히 만들지 않는다(원칙 유지) - 아래 BENCHMARK_UNRESOLVED 테스트가 고정한다.
 });
 
 test('T4 - 낙폭 표에 있는 벤치마크만 있으면 기존 계산(베타 × 실측 낙폭)이 그대로다', async () => {
@@ -75,8 +75,9 @@ test('T4 - 낙폭 표에 있는 벤치마크만 있으면 기존 계산(베타 �
   const h = m.holdings[0];
   assert.strictEqual(m.stressStatus.covid2020, null);
   assert.strictEqual(m.stressStatus.rateHike2022, null);
-  assert.strictEqual(Number(m.stressLossPct.toFixed(9)), Number((h.beta * -35.7).toFixed(9)));
-  assert.strictEqual(Number(m.stressLossPct2022.toFixed(9)), Number((h.beta * -28.6).toFixed(9)));
+  // [기대값 갱신 사유 · D-7] KOSPI 상수를 실측값으로 맞췄다(-35.7 → -35.71 · -28.6 → -27.89). 계산식은 그대로다.
+  assert.strictEqual(Number(m.stressLossPct.toFixed(9)), Number((h.beta * -35.71).toFixed(9)));
+  assert.strictEqual(Number(m.stressLossPct2022.toFixed(9)), Number((h.beta * -27.89).toFixed(9)));
 });
 
 test('T4 - 기준 지수를 확인할 수 없으면 사유는 BENCHMARK_UNRESOLVED(기존 null 처리 유지)', async () => {

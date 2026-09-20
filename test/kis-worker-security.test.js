@@ -128,3 +128,18 @@ test('소스에 비밀값이 하드코딩돼 있지 않다(이름만 존재)', (
   assert.ok(!/v1\/trading\//i.test(code), '주문 · 계좌 라우트가 생기면 안 된다');
   assert.ok(!/order-cash|inquire-balance|inquire-psbl/i.test(code), '주문 · 잔고 조회 라우트가 생기면 안 된다');
 });
+
+test('G-5: 영문 혼합 국내 종목코드는 "잘못된 코드"가 아니라 "미지원 형식"으로 구분한다', async () => {
+  const w = loadWorker();
+  const env = { KIS_KV: kvStub(), CLIENT_SHARED_SECRET: DUMMY_SECRET };
+  const headers = { Origin: ORIGIN_OK, 'X-App-Secret': DUMMY_SECRET, 'CF-Connecting-IP': '203.0.113.10' };
+  // KRX 신규 코드 형식(숫자4+영문1+숫자1) - 앱은 식별하지만 이 Worker는 아직 지원하지 않는다.
+  const unsupported = await w.fetch(req('https://worker.test/api/kis/price?ticker=0052D0', headers), env);
+  assert.strictEqual(unsupported.status, 400);
+  assert.deepStrictEqual(await unsupported.json(), { error: 'ticker_format_unsupported' });
+  // 그냥 형식이 틀린 입력은 예전처럼 bad_ticker다.
+  const bad = await w.fetch(req('https://worker.test/api/kis/price?ticker=ZZZZ', headers), env);
+  assert.deepStrictEqual(await bad.json(), { error: 'bad_ticker' });
+  // 허용 범위 자체는 넓히지 않았다 - KIS가 이 형식을 받는지 확인되지 않았기 때문이다(확인 전 개방 금지).
+  assert.ok(SRC.includes(String.raw`/^\d{6}$/.test(code)`), 'isValidDomesticCode가 6자리 숫자 검사를 유지해야 한다');
+});

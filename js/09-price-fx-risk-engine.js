@@ -585,15 +585,21 @@ const DOW_STYLE_TICKERS = new Set([
   'DIA', 'SCHD', 'VYM', 'HDV', 'VIG', 'NOBL', 'DVY', 'SPYD', 'SDY', 'JPM', 'V', 'MA', 'JNJ', 'UNH', 'XOM',
   'CVX', 'PG', 'KO'
 ]);
-// [종목 분석 모달 재사용] 보유자산(a) 대신 야후 티커 문자열만으로도 벤치마크를 고를 수 있도록 분리했다
-// - 미보유 관심종목(analyzeTickerForModal)은 애초에 자산 객체가 없어 이 함수가 필요하다.
-function getBenchmarkKeyForTicker(yahooTicker) {
-  if (/\.KQ$/i.test(yahooTicker)) return 'KOSDAQ';
-  if (/\.KS$/i.test(yahooTicker)) return 'KOSPI';
-  const upper = (yahooTicker || '').toUpperCase();
-  if (NASDAQ100_STYLE_TICKERS.has(upper)) return 'NASDAQ100';
-  if (DOW_STYLE_TICKERS.has(upper)) return 'DOW';
-  return 'SP500';
+/* [G-1 · §44 제10조 · PM 승인 2026-09-20] 구형 근사 경로를 없앴다.
+ *
+ * 예전 getBenchmarkKeyForTicker()는 티커 접미사와 손으로 고른 종목 집합(NASDAQ100_STYLE_TICKERS ·
+ * DOW_STYLE_TICKERS)으로 기준 지수를 정하고, 아무 데도 걸리지 않으면 S&P500으로 보냈다. 이것은
+ * 제10조가 금지한 방식 그대로다("거래소 · 티커 접미사 · 섹터 유사성으로 Benchmark를 정하지 않는다").
+ * 보유자산 경로는 이미 resolveRiskBenchmark로 통일돼 있었는데, 미보유 종목을 보는 종목 분석 모달만
+ * 옛 규칙 위에 남아 같은 종목이 화면에 따라 다른 기준으로 비교되고 있었다.
+ *
+ * 이제 모달도 같은 함수를 쓴다. 근거가 없으면 기준 지수를 만들지 않고(UNRESOLVED) 베타도 만들지
+ * 않는다 - 임의의 지수와 비교한 숫자를 보여 주느니 "확정되지 않았다"고 말하는 편이 정직하다. */
+function resolveModalBenchmark(yahooTicker, displayName) {
+  // 이 모달은 개별 종목(보유 여부 무관)만 다룬다 - 자산 객체가 없으므로 카테고리는 '주식'으로 넘긴다.
+  // 원장에 등록된 종목이면 resolveRiskBenchmark가 원장 판정을 먼저 쓴다(보유 화면과 같은 순서).
+  const bm = resolveRiskBenchmark({ ticker: yahooTicker, category: '주식', name: displayName || '' });
+  return bm || { key: null, status: 'UNRESOLVED', source: null, priceSource: null };
 }
 // [Risk 정책 P-4 · v252 → 1차 통합 구현 · D-01 · D-05 · D-06 · §44 제10조] Risk 벤치마크 결정 순서.
 //   ① Exposure Master(근거 있는 경제적 노출) - 원장에 등록된 종목은 원장 판정으로 끝낸다.
@@ -755,10 +761,13 @@ function riskEligibleAssets() {
 // 1년 - 52주 최고가/거래량 이동평균까지 한 번의 조회로 함께 커버하기 위해 6개월에서 1년으로 늘렸다).
 // [Phase 6-B/6-C 감사 - 데이터 기준 문서화] quote.close는 Yahoo Finance의 비수정(non-adjusted)
 // 종가다 - 배당 재투자를 반영한 Adjusted Close가 아니라 순수 Price Return 기준이며, 이 값이 Monte
-// Carlo 엔진(js/15/16)의 변동성·상관관계 계산의 유일한 원천이다. 기본 range='1y'가 사실상 모든
-// 호출부에서 그대로 쓰이므로(range를 명시적으로 override하는 호출부 없음), 변동성·상관관계는
-// 최근 약 1년치 일별 데이터로만 추정된다 - js/05 SCENARIO_RATE_PRESETS 주석의 Price/Total Return
-// 문서화와 함께 참고할 것.
+// Carlo 엔진(js/15/16)의 변동성·상관관계 계산의 유일한 원천이다.
+// [C-3 · §44 제7조 · PM 승인 2026-09-20] 기본 range를 '1y' → '3y'로 바꿨다. 제7조가 정해 둔 지표별
+// 목표 관측 수(기술 250 · 변동성/베타/상관 500 · VaR/CVaR/MDD 750)를 1년 조회로는 구조적으로 채울 수
+// 없었기 때문이다. 실측(scripts/closeout/research/risk-observation-window.js): Yahoo는 range=3y에서도
+// 일별 간격을 유지하며 국내 730행 · 미국 753행을 준다(range=max처럼 월별로 솎이지 않는다).
+// 받아 온 3년치는 **지표마다 필요한 만큼만 잘라 쓴다**(RISK_OBSERVATION_WINDOWS) - 전 지표를 3년으로
+// 일괄 변경하지 않는다. 가격 이력은 메모리 캐시(state.riskHistoryCache)에만 있어 저장소 사용량과 무관하다.
 // [Risk 정책 P-3 · v252] Yahoo 일봉 응답 파싱을 순수 함수로 분리했다(동작은 예전과 같고 거래량 결측만 다르다).
 // 거래량: 유한한 숫자면 그 값(실제 거래량 0은 0), 없거나 숫자가 아니면 null - 결측과 실제 0을 구분한다.
 function parseYahooDailySeries(data) {
@@ -794,7 +803,7 @@ function parseYahooDailySeries(data) {
   return { closes, closesAdj, volumes, dates };
 }
 
-async function fetchDailyClosesWithStatus(yahooTicker, range = '1y') {
+async function fetchDailyClosesWithStatus(yahooTicker, range = '3y') {
   if (!yahooTicker) return { data: null, status: RISK_DATA_STATUS.TICKER_INVALID };
   const target = YAHOO_CHART_API + encodeURIComponent(yahooTicker) + '?interval=1d&range=' + range;
   // [v152 수정 되돌림] 여기도 7초로 줄였다가 fetchYahooViaProxy와 같은 이유로 되돌린다 - 이 함수 역시
@@ -826,7 +835,7 @@ async function fetchDailyClosesWithStatus(yahooTicker, range = '1y') {
   }
 }
 // 기존 호출부(시세 배열만 쓰는 곳)를 그대로 두기 위한 얇은 래퍼 - 반환 형태 무변경.
-async function fetchDailyCloses(yahooTicker, range = '1y') {
+async function fetchDailyCloses(yahooTicker, range = '3y') {
   return (await fetchDailyClosesWithStatus(yahooTicker, range)).data;
 }
 
@@ -947,6 +956,20 @@ const RISK_STALE_MAX_GAP_DAYS = 10;
 const RISK_TARGET_OBSERVATIONS = Object.freeze({
   technical: 250, volatility: 500, beta: 500, correlation: 500, var: 750, cvar: 750, mdd: 750
 });
+/* [C-3 · §44 제7조 · PM 승인 2026-09-20] 지표별로 실제로 쓰는 관측 창(거래일).
+ * 목표 관측 수(위)와 같은 값이다 - 이제 조회가 3년이라 "목표대로 자른다"가 그대로 구현된다.
+ * 왜 지표마다 다른가:
+ *   · 변동성 · 베타 · 상관(2년) - 1년 창은 직전 국면 하나에 과적합된다. 실측에서 같은 종목의 σ가
+ *     1년 창과 3년 창 사이에서 중앙값 21%p 움직였다.
+ *   · VaR · CVaR · MDD(3년) - 꼬리 위험은 드물게 일어난 일을 봐야 한다. 1년 창은 직전 1년에 큰 하락이
+ *     없으면 최대 낙폭을 구조적으로 과소평가한다(실측: AAPL 1년 -13.8% vs 3년 -33.4%, SPYM -9.1% vs -19.0%).
+ *   · 기술 신호(1년) - 이동평균 · 52주 고저는 정의상 1년이면 충분하다(늘리면 의미가 달라진다).
+ * 자료가 창보다 짧으면 있는 만큼 쓴다(없는 값을 만들지 않는다). */
+const RISK_OBSERVATION_WINDOWS = RISK_TARGET_OBSERVATIONS;
+function sliceRecentObservations(arr, windowSize) {
+  if (!Array.isArray(arr)) return arr;
+  return arr.length > windowSize ? arr.slice(-windowSize) : arr;
+}
 // 시계열 품질 검사 - 날짜 중복 · 역순 · 결측을 찾아낸다. 값을 고치지 않고 사실만 돌려준다.
 function assessSeriesQuality(series, todayISO) {
   const issues = [];
@@ -1277,13 +1300,31 @@ function maTrendLabel(ma20, ma60, ma120) {
 // 실제 2020년 당시 가격을 개별 재조회하는 대신(당시 미상장 종목이 많아 무의미), 지금 계산한 베타를 이
 // 실측 낙폭에 곱해 "시장이 그때처럼 다시 급락하면 내 포트폴리오는 베타만큼 상대적으로 더/덜 흔들린다"는
 // 근사치를 추정한다 - 화면에 항상 "추정치"임을 명시한다.
-const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.7, KOSDAQ: -33.0, SP500: -33.9, NASDAQ100: -28.0, DOW: -37.1 };
+/* [D-7 · PM 승인 2026-09-20] 값을 실측으로 다시 맞췄다.
+ * scripts/closeout/research/index-drawdowns.js가 지수 일별 종가를 직접 받아 연도 구간의 고점~저점
+ * 낙폭을 계산했고(기록: docs/closeout/research/index-drawdowns.json), 기존 상수와 대조한 결과
+ * 8개 중 6개는 실측과 0.2%p 이내로 일치했다(즉 §44 제11조대로 역사적 데이터에서 나온 값이었다).
+ * 두 가지만 달랐다.
+ *   · KOSDAQ 2020: -33.0 → 실측 -38.15 (5.15%p 과소) - 사용자가 보는 손실 추정이 그만큼 작았다.
+ *   · NASDAQ(종합): 상수가 아예 없어, 이 지수를 기준으로 삼는 종목이 하나라도 있으면 스트레스
+ *     시나리오 전체가 null이었다. 이제 실측값이 있다.
+ * 나머지 차이(<1%p)는 구간 정의 차이라 실측값으로 통일했다. 스트레스는 6대 위험요인 점수에
+ * 들어가지 않으므로(별도 표시) 위험점수는 이 변경으로 바뀌지 않는다. */
+const COVID_CRASH_BENCHMARK_DROP_PCT = { KOSPI: -35.71, KOSDAQ: -38.15, SP500: -33.92, NASDAQ: -30.12, NASDAQ100: -28.03, DOW: -37.09 };
+/* [D-9 · PM 승인 2026-09-20] 원화 기준 낙폭.
+ * 국내 상장 비헤지 해외 ETF는 지수를 H.10으로 원화 환산해 베타를 구한다(§44 44-15 · D-05).
+ * 그 베타에 현지통화 낙폭을 곱하면 정의가 섞이므로 예전에는 스트레스를 아예 만들지 않았다.
+ * 이제 같은 조사에서 원화 환산 낙폭도 함께 산출했으므로(H.10 기준 · v262 고정 스냅샷),
+ * 원화 베타에는 원화 낙폭을 곱한다 - 정의가 맞는 짝끼리만 곱한다는 원칙은 그대로다.
+ * 국내 지수(KOSPI · KOSDAQ)는 애초에 원화라 환산 대상이 아니다. */
+const COVID_CRASH_BENCHMARK_DROP_PCT_KRW = { SP500: -29.86, NASDAQ: -27.65, NASDAQ100: -25.69, DOW: -32.72 };
 // [2022 고금리 기술주 폭락 재현] 2022년 한 해 동안(고점~저점) 실제 벤치마크 지수 낙폭(%, 공개된 역사적
 // 수치) - 미 연준의 급격한 금리 인상으로 특히 기술/성장주가 크게 빠졌던 구간이다. 2020 코로나 폭락과
 // 같은 방식(베타 × 실측 낙폭)으로 근사한다 - "급락"이 아니라 "장기간에 걸친 약세장"이라는 점에서 2020
 // 시나리오와 성격이 달라, 두 시나리오를 함께 보여주면 "짧고 강한 충격" vs "길게 이어지는 하락"을
 // 비교해서 감을 잡을 수 있다.
-const RATE_HIKE_2022_BENCHMARK_DROP_PCT = { KOSPI: -28.6, KOSDAQ: -35.3, SP500: -25.4, NASDAQ100: -35.1, DOW: -21.2 };
+const RATE_HIKE_2022_BENCHMARK_DROP_PCT = { KOSPI: -27.89, KOSDAQ: -36.84, SP500: -25.43, NASDAQ: -35.49, NASDAQ100: -35.28, DOW: -21.94 };
+const RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW = { SP500: -17.55, NASDAQ: -31.37, NASDAQ100: -31.15, DOW: -12.41 };
 
 /* -------------------------------------------------------------------------
  * 18-1b. [정밀 포트폴리오 리스크 엔진] 섹터/ETF 룩스루 매핑 + 수급 대체 지표 + 6대 위험요인 계산
@@ -1566,16 +1607,23 @@ function computeRiskContributions(withData, portfolioReturns) {
     withData.forEach((h) => { byTicker[h.ticker] = null; });
     return byTicker;
   }
+  /* [F-7 · §39-3 · PM 승인 2026-09-20] 음수 기여도를 0으로 깎지 않는다.
+   * 포트폴리오와 반대로 움직인 종목의 기여도는 실제로 음수이고(분산 효과), 그것이 사실이다.
+   * 예전에는 Math.max(0, …)로 눌러 "기여도 0%"로 보여 줬는데, 그러면 ① 실제로 위험을 낮춘
+   * 종목이 아무것도 안 한 것처럼 보이고 ② 나머지 종목의 몫이 그만큼 부풀려졌다.
+   * 기여도의 합은 정의상 포트폴리오 베타(=1)이므로, 자르지 않아야 합이 100%로 맞는다. */
   const raw = withData.map((h) => {
     const betaToPortfolio = Array.isArray(h.commonReturns) ? computeBetaFromReturns(h.commonReturns, portfolioReturns) : null;
     return {
       ticker: h.ticker,
       contribution: typeof betaToPortfolio === 'number' && Number.isFinite(betaToPortfolio)
-        ? Math.max(0, betaToPortfolio * h.weight) : null
+        ? betaToPortfolio * h.weight : null
     };
   });
   const total = raw.reduce((s, r) => s + (r.contribution ?? 0), 0);
-  raw.forEach((r) => { byTicker[r.ticker] = r.contribution === null || total <= 0 ? null : (r.contribution / total) * 100; });
+  // 합이 0 근처면 비율 자체가 의미를 잃는다(0으로 나누는 것과 같다) - 그때는 만들지 않는다.
+  const totalUsable = Number.isFinite(total) && Math.abs(total) > 1e-9;
+  raw.forEach((r) => { byTicker[r.ticker] = (r.contribution === null || !totalUsable) ? null : (r.contribution / total) * 100; });
   return byTicker;
 }
 // 임계 구간표를 이용해 실수값을 0~100 위험 점수로 변환하는 공용 헬퍼 - bands는 max 오름차순 배열이며
@@ -1846,14 +1894,17 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
   // [BOND-5 · §47-2] 본 엔진과 같은 함수를 쓴다 - 비중을 바꿔 보는 화면과 실제 지표가 다른 규칙을 쓰면 안 된다.
   const portfolioBeta = computeBetaAggregate(newHoldings).beta;
   const portfolioReturns = buildPortfolioCommonReturns(newHoldings, m.commonDates);
-  const sorted = [...portfolioReturns].sort((a, b) => a - b);
+  // [C-3] 본 엔진과 같은 창 규칙 - 비중만 바꿔 보는 화면이 다른 기간을 쓰면 비교가 성립하지 않는다.
+  const tailWindowReturns = sliceRecentObservations(portfolioReturns, RISK_OBSERVATION_WINDOWS.var);
+  const volWindowReturns = sliceRecentObservations(portfolioReturns, RISK_OBSERVATION_WINDOWS.volatility);
+  const sorted = [...tailWindowReturns].sort((a, b) => a - b);
   const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
   // [Phase 39-B] 결측을 0(=손실 없음)으로 만들지 않는다 - 본 엔진과 동일.
   const var95Pct = sorted.length ? sorted[varIdx] * 100 : null;
   const tailReturns = sorted.slice(0, varIdx + 1);
   const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
-  const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
-  const portfolioMDDPct = computePortfolioMDDFromReturns(portfolioReturns);
+  const portfolioVolatilityPct = computeAnnualizedVolatilityPct(volWindowReturns);
+  const portfolioMDDPct = computePortfolioMDDFromReturns(tailWindowReturns);
 
   const hhi = computeHHI(newHoldings);
   const sortedByWeight = [...newHoldings].sort((a, b) => b.weight - a.weight);
@@ -1981,8 +2032,11 @@ async function computeAdvancedRiskMetrics() {
           benchLevels = fxUsable ? convertDatedClosesToKrw(bmDated, usdKrw.rates) : null;
           if (!fxUsable) fxBlock = (usdKrw && usdKrw.status) || RISK_DATA_STATUS.SOURCE_UNAVAILABLE;
         }
-        const dim = benchLevels ? computeAsyncDimsonBeta(h.datedCloses, benchLevels, riskSeriesMarketOf(h.ticker), h.benchmarkMarket) : null;
-        // 최소 관측 120(행 수)과 1년 조회 범위는 같은 날짜 경로와 같다 - 부족하면 베타를 만들지 않는다.
+        // [C-3] 베타 창은 2년이다 - 조회는 3년이지만 그중 최근 2년만 쓴다(§44 제7조).
+        const dimAsset = sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta);
+        const dimBench = sliceRecentObservations(benchLevels, RISK_OBSERVATION_WINDOWS.beta);
+        const dim = benchLevels ? computeAsyncDimsonBeta(dimAsset, dimBench, riskSeriesMarketOf(h.ticker), h.benchmarkMarket) : null;
+        // 최소 관측 120(행 수)은 같은 날짜 경로와 같다 - 부족하면 베타를 만들지 않는다.
         h.beta = dim && dim.observationCount >= MIN_COMMON_RISK_RETURNS && typeof dim.beta === 'number' && Number.isFinite(dim.beta) ? dim.beta : null;
         h.betaStatus = typeof h.beta === 'number' ? RISK_DATA_STATUS.OK : (fxBlock || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
         h.betaAligned = !!dim;
@@ -1991,7 +2045,13 @@ async function computeAdvancedRiskMetrics() {
         h.betaComponents = dim && typeof h.beta === 'number' ? { concurrent: dim.betaConcurrent, previous: dim.betaPrevious } : null;
       } else if (h.returns && bmReturns) {
         h.betaMethod = 'SAME_DATE';
-        const pair = alignedReturnPair(h.datedCloses, h.returns, bmDated, bmReturns);
+        // [C-3] 같은 날짜 정렬도 최근 2년만 본다(§44 제7조 · 조회는 3년).
+        const pair = alignedReturnPair(
+          sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta + 1),
+          sliceRecentObservations(h.returns, RISK_OBSERVATION_WINDOWS.beta),
+          sliceRecentObservations(bmDated, RISK_OBSERVATION_WINDOWS.beta + 1),
+          sliceRecentObservations(bmReturns, RISK_OBSERVATION_WINDOWS.beta)
+        );
         // [Risk 정책 P-2 · v252] 종목-벤치마크 공통 수익률이 120개 미만이면 베타를 만들지 않는다(공식은 그대로).
         h.beta = pair.a.length >= MIN_COMMON_RISK_RETURNS ? computeBetaFromReturns(pair.a, pair.b) : null;
         // [R-06] 베타를 못 구한 이유를 남긴다 - 공통 거래일 부족과 기준 지수 미확인은 원인이 다르다.
@@ -2091,28 +2151,37 @@ async function computeAdvancedRiskMetrics() {
     // 포트폴리오 일간 수익률 = 공통 거래일 수익률의 비중 가중합(모든 종목 포함, 비중 그대로).
     // [R-11] 날짜 축(common.dates)을 함께 넘겨 "같은 날짜끼리" 합쳐지는 것을 구조적으로 보장한다.
     const portfolioReturns = hasCommonReturns ? buildPortfolioCommonReturns(holdings, common.dates) : [];
+    /* [C-3 · §44 제7조] 같은 수익률 배열을 지표마다 다른 길이로 잘라 쓴다.
+     * 꼬리 지표(VaR · CVaR · MDD · Sortino)는 3년, 분포 지표(변동성 · 상관 · 위험기여도)는 2년이다. */
+    const tailWindowReturns = sliceRecentObservations(portfolioReturns, RISK_OBSERVATION_WINDOWS.var);
+    const volWindowReturns = sliceRecentObservations(portfolioReturns, RISK_OBSERVATION_WINDOWS.volatility);
 
     // VaR95/CVaR: 일간 수익률 분포의 하위 5% 지점(과거 실측 분포 기반 - parametric 가정 없음).
-    const sorted = [...portfolioReturns].sort((a, b) => a - b);
+    const sorted = [...tailWindowReturns].sort((a, b) => a - b);
     const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
     const var95Pct = sorted.length ? sorted[varIdx] * 100 : null; // 퍼센트 단위, 음수
     const tailReturns = sorted.slice(0, varIdx + 1);
     const cvarPct = tailReturns.length ? statMean(tailReturns) * 100 : var95Pct;
 
-    // Sortino: 연율화한 평균수익률을 연율화한 하방편차로 나눈다(개별 종목과 같은 함수).
-    const sortino = computeSortinoFromReturns(portfolioReturns);
+    // Sortino: 연율화한 평균수익률을 연율화한 하방편차로 나눈다(개별 종목과 같은 함수 · 꼬리 창 3년).
+    const sortino = computeSortinoFromReturns(tailWindowReturns);
 
     // 상관관계(운명 공동체): 비중 상위 2종목(화면 표시용) + 전체 종목 간 행렬과 비중가중 평균(위험점수용).
     // [Risk 정책 P-1 · v252] 둘 다 공통 거래일 수익률로 계산한다.
     let topCorrelation = null, topCorrelationPair = null;
-    if (sortedByWeight.length >= 2) {
-      topCorrelation = (Array.isArray(sortedByWeight[0].commonReturns) && Array.isArray(sortedByWeight[1].commonReturns))
-        ? computeCorrelationFromReturns(sortedByWeight[0].commonReturns, sortedByWeight[1].commonReturns)
+    // [C-3] 상관은 2년 창이다 - 원본 holdings는 건드리지 않고 자른 사본으로만 계산한다.
+    const corrHoldings = holdings.map((h) => (Array.isArray(h.commonReturns)
+      ? Object.assign(Object.create(Object.getPrototypeOf(h) || Object.prototype), h, { commonReturns: sliceRecentObservations(h.commonReturns, RISK_OBSERVATION_WINDOWS.correlation) })
+      : h));
+    const corrByWeight = [...corrHoldings].sort((a, b) => b.weight - a.weight);
+    if (corrByWeight.length >= 2) {
+      topCorrelation = (Array.isArray(corrByWeight[0].commonReturns) && Array.isArray(corrByWeight[1].commonReturns))
+        ? computeCorrelationFromReturns(corrByWeight[0].commonReturns, corrByWeight[1].commonReturns)
         : null;
-      topCorrelationPair = [sortedByWeight[0].name, sortedByWeight[1].name];
+      topCorrelationPair = [corrByWeight[0].name, corrByWeight[1].name];
     }
-    const correlationMatrix = computeFullCorrelationMatrix(holdings);
-    const weightedAvgCorrelation = holdings.length >= 2 ? computeWeightedAvgCorrelation(holdings, correlationMatrix) : null;
+    const correlationMatrix = computeFullCorrelationMatrix(corrHoldings);
+    const weightedAvgCorrelation = corrHoldings.length >= 2 ? computeWeightedAvgCorrelation(corrHoldings, correlationMatrix) : null;
 
     // [역사적 하락장 스트레스 테스트] 종목별 베타 × 그 종목 벤치마크의 실제 낙폭.
     // [Risk 정책 P-4 · P-5 · v252] 벤치마크가 확인되지 않았거나 베타를 계산하지 못한 종목이 하나라도 있으면
@@ -2121,33 +2190,37 @@ async function computeAdvancedRiskMetrics() {
     // (2020 -34 · 2022 -28)을 넣어 계산했다. 실측이 아닌 근사값이 실측처럼 보이므로 없앴다 -
     // 표에 없는 벤치마크가 하나라도 있으면 그 시나리오는 만들지 않고 사유(SOURCE_UNAVAILABLE)를 남긴다.
     // 시나리오 정의(상수표) · 계산식(베타 × 실측 낙폭)은 그대로다.
-    function computeStressScenario(dropPctMap) {
+    /* [D-9] 종목마다 "그 베타가 어느 통화 기준인가"에 맞는 낙폭을 고른다.
+     * 원화 환산 지수로 구한 베타(benchmarkFx)에는 원화 기준 낙폭을, 현지통화 베타에는 현지통화
+     * 낙폭을 쓴다. 맞는 짝이 없으면 그 시나리오는 만들지 않는다(대체 낙폭을 쓰지 않는다). */
+    function stressDropFor(h, dropPctMap, dropPctMapKrw) {
+      const map = h.benchmarkFx ? dropPctMapKrw : dropPctMap;
+      const v = map ? map[h.benchmarkKey] : undefined;
+      return typeof v === 'number' ? v : null;
+    }
+    function computeStressScenario(dropPctMap, dropPctMapKrw) {
       const missingInput = holdings.find((h) => !h.benchmarkKey || typeof h.beta !== 'number' || !Number.isFinite(h.beta));
       if (missingInput) {
         return { lossKRW: null, lossPct: null, reason: !missingInput.benchmarkKey ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED : (missingInput.betaStatus || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES) };
       }
-      if (holdings.some((h) => typeof dropPctMap[h.benchmarkKey] !== 'number')) {
-        return { lossKRW: null, lossPct: null, reason: RISK_DATA_STATUS.SOURCE_UNAVAILABLE };
-      }
-      // [D-05] 원화 환산 지수에 대한 베타에 현지통화 지수 낙폭을 곱하면 정의가 섞인다 - 원화 기준 낙폭 자료가
-      // 없으므로 만들지 않는다(새 역사적 낙폭 산출체계는 이번 범위 밖 · 대체 낙폭 없음).
-      if (holdings.some((h) => h.benchmarkFx)) {
+      if (holdings.some((h) => stressDropFor(h, dropPctMap, dropPctMapKrw) === null)) {
         return { lossKRW: null, lossPct: null, reason: RISK_DATA_STATUS.SOURCE_UNAVAILABLE };
       }
       let lossKRW = 0;
       holdings.forEach((h) => {
-        lossKRW += h.curAmount * (h.beta * dropPctMap[h.benchmarkKey] / 100);
+        lossKRW += h.curAmount * (h.beta * stressDropFor(h, dropPctMap, dropPctMapKrw) / 100);
       });
       const lossPct = totalCur !== 0 ? (lossKRW / totalCur) * 100 : 0;
       return { lossKRW, lossPct, reason: null };
     }
-    const covidStress = computeStressScenario(COVID_CRASH_BENCHMARK_DROP_PCT);
-    const rateHike2022Stress = computeStressScenario(RATE_HIKE_2022_BENCHMARK_DROP_PCT);
+    const covidStress = computeStressScenario(COVID_CRASH_BENCHMARK_DROP_PCT, COVID_CRASH_BENCHMARK_DROP_PCT_KRW);
+    const rateHike2022Stress = computeStressScenario(RATE_HIKE_2022_BENCHMARK_DROP_PCT, RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW);
 
     // [정밀 포트폴리오 리스크 엔진] 연환산 변동성/MDD/위험기여도 → 6대 위험요인 → 종합 위험점수 → 데이터 신뢰도.
-    const portfolioVolatilityPct = computeAnnualizedVolatilityPct(portfolioReturns);
-    const portfolioMDDPct = computePortfolioMDDFromReturns(portfolioReturns);
-    const riskContributions = computeRiskContributions(holdings, portfolioReturns);
+    // [C-3] 변동성은 2년 창 · 최대 낙폭은 3년 창 · 위험 기여도는 베타 성격이라 2년 창이다.
+    const portfolioVolatilityPct = computeAnnualizedVolatilityPct(volWindowReturns);
+    const portfolioMDDPct = computePortfolioMDDFromReturns(tailWindowReturns);
+    const riskContributions = computeRiskContributions(corrHoldings, volWindowReturns);
     holdings.forEach((h) => { h.riskContributionPct = riskContributions[h.ticker] ?? null; });
 
     // [단기 vs 장기 변동성 이중 추적 - Risk Spike 감지] 최근 20개 공통 거래일 수익률의 연환산 변동성이
@@ -2187,13 +2260,18 @@ async function computeAdvancedRiskMetrics() {
       ? (holdings.find((h) => h.betaStatus && h.betaStatus !== RISK_DATA_STATUS.OK) || {}).betaStatus
       : commonShortReason;
     const obs = common.commonReturnCount;
+    // [C-3] "몇 개로 계산했는가"는 지표마다 다르다 - 그 창의 실제 관측 수를 그대로 보여 준다.
+    // 계산이 아예 안 된 경우(공통 거래일 부족으로 배열이 비어 있음)에는 "몇 개가 있었는가"를
+    // 그대로 보여 준다 - 0으로 적으면 "자료가 하나도 없다"는 다른 뜻이 된다.
+    const obsVol = volWindowReturns.length || obs;
+    const obsTail = tailWindowReturns.length || obs;
     const metricStatus = {
-      volatility: riskMetricState(portfolioVolatilityPct, commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.volatility),
-      beta: riskMetricState(portfolioBeta, betaReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.beta),
-      correlation: riskMetricState(weightedAvgCorrelation, holdings.length < 2 ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE : commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.correlation),
-      var: riskMetricState(var95Pct, commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.var),
-      cvar: riskMetricState(cvarPct, commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.cvar),
-      mdd: riskMetricState(portfolioMDDPct, commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.mdd)
+      volatility: riskMetricState(portfolioVolatilityPct, commonShortReason, obsVol, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.volatility),
+      beta: riskMetricState(portfolioBeta, betaReason, obsVol, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.beta),
+      correlation: riskMetricState(weightedAvgCorrelation, holdings.length < 2 ? RISK_DATA_STATUS.SOURCE_UNAVAILABLE : commonShortReason, obsVol, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.correlation),
+      var: riskMetricState(var95Pct, commonShortReason, obsTail, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.var),
+      cvar: riskMetricState(cvarPct, commonShortReason, obsTail, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.cvar),
+      mdd: riskMetricState(portfolioMDDPct, commonShortReason, obsTail, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.mdd)
     };
 
     /* [BOND-5 · §47-2] 베타가 "무엇을 설명한 값인지"를 화면이 말할 수 있게 함께 돌려준다.
@@ -2394,8 +2472,11 @@ async function analyzeTickerForModal(rawInput) {
   const closes = data.closes;                       // 원주가(RSI · 이동평균 · 52주 · 볼린저 · 최근 고저)
   const closesAdj = hasAdjustedCloses(data) ? (datedClosesFromSeries(data, 'adjusted') || []).map((d) => d.close) : null;
   const returns = closesAdj ? dailyReturnsFromCloses(closesAdj) : null;
-  const benchmarkKey = getBenchmarkKeyForTicker(yahooTicker);
-  const benchmarkData = await getCachedDailyCloses(INDEX_TICKERS[benchmarkKey]);
+  // [G-1] 보유 화면과 같은 규칙(§44 제10조)으로 기준 지수를 정한다 - 확정되지 않으면 비교하지 않는다.
+  const modalBenchmark = resolveModalBenchmark(yahooTicker, resolvedName);
+  const benchmarkKey = modalBenchmark.status === 'RESOLVED' && modalBenchmark.priceSource !== 'UNAVAILABLE'
+    ? modalBenchmark.key : null;
+  const benchmarkData = benchmarkKey ? await getCachedDailyCloses(INDEX_TICKERS[benchmarkKey]) : null;
   const benchmarkAdj = hasAdjustedCloses(benchmarkData) ? (datedClosesFromSeries(benchmarkData, 'adjusted') || []).map((d) => d.close) : null;
   const benchmarkReturns = benchmarkAdj ? dailyReturnsFromCloses(benchmarkAdj) : null;
 
@@ -2437,6 +2518,9 @@ async function analyzeTickerForModal(rawInput) {
     mdd: closesAdj ? computeMDDFromCloses(closesAdj) : null,
     beta: (returns && benchmarkReturns) ? computeBetaFromReturns(returns, benchmarkReturns) : null,
     benchmarkKey,
+    // [G-1] 기준 지수를 정하지 못한 이유를 함께 넘긴다 - 화면이 "왜 비교값이 없는지"를 말할 수 있어야 한다.
+    benchmarkStatus: modalBenchmark.status,
+    benchmarkSource: modalBenchmark.source || null,
     week52High,
     week52DrawdownPct: week52High > 0 ? ((currentPrice - week52High) / week52High) * 100 : null,
     recentHigh, recentLow

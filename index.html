@@ -106,6 +106,11 @@
      고정에서 화면 하단 중앙 고정으로 변경 - safe-area-inset-bottom을 더해 노치/제스처바가 있는
      기기에서도 하단 24px보다 더 깊이 안 잘리게 한다. */
   #toastContainer { bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem)); }
+  /* [F-3 · PM 승인 2026-09-20] 팝업이 열려 있는 동안에는 토스트를 위쪽으로 올린다.
+     실측(e2e/89 S-10): 하단 고정 토스트가 열린 팝업의 아래쪽 버튼([클라우드 데이터 받기] 등)을
+     최대 8~9초 덮어 클릭이 막혔다. 토스트를 숨기거나 더 빨리 닫으면 안내를 놓치므로, 위치만 옮겨
+     둘 다 보이게 한다(z-index · 표시 시간 · 문구는 그대로). 팝업의 액션 버튼은 아래쪽에 있다. */
+  body.modal-open #toastContainer { bottom: auto; top: max(1.5rem, calc(env(safe-area-inset-top) + 1rem)); }
 
   /* 모바일 터치 영역 확대: 44px는 iOS/Android 공통 권장 최소 터치 타깃 크기 */
   @media (max-width: 639px) {
