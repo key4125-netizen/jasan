@@ -55,16 +55,26 @@
 - `.github/workflows/*.yml` 파일은 **무변경**. 프로젝트 종료 후 `gh workflow enable <id>` + `gh workflow run <id>`로 복귀하고 건너뛴 갱신을 수동 실행한다(대장 **P-2**).
 - **이 기간 동안 H.10 · 종목마스터 · CMA는 자동 갱신되지 않는다.** 데이터가 오래된 것처럼 보이면 이 통제 때문이다.
 
+**실행 묶음 B 2차 — 미국 개별주 본국 보통주 반영 (2026-09-20 · 코드 변경 있음)**
+- **D-1 종결**: 원장 미국 개별주 20건 중 **19건에 `equityListing: HOME_COMMON` · `evidenceGrade: A`** 기재(js/28). 판정 규칙 **HOME_COMMON_RULE_V1** = ①SEC EDGAR 설립지(미국 주) ②연차보고서 10-K ③거래소 디렉터리·10-K 표지의 보통주 표기. 거래소 상장만으로는 판정하지 않음.
+  · GOOG 1건은 등록증권이 "Class C Capital Stock"이라 REVIEW → **신규 D-11(PM 결정)**
+  · 판정기: `node scripts/closeout/research/us-home-common.js` · 근거: `docs/closeout/research/{sec-filer-facts,us-home-common}.json`
+- **측정**(`docs/closeout/measurements/CHANGE-B1-001-us-home-common.md`): Risk 차이 10건(AAPL benchmark 복원·β 1.2353·신뢰도 78→81) · **MC 차이 0건**(D-16 경계 유지) · Benchmark 상태 분포 확인22→32 / 미해결27→17
+- **Unit 566/566**(기대값 갱신 6건 · 사유 주석 포함) · ESLint 0 · Data Guard PASS
+- NYSE 상장 9종목은 본국 보통주가 확인돼도 **앱에 NYSE 종합지수가 없어 여전히 미해결**(D-2). `^NYA` 수신은 확인했으나 정의·PR/TR 미확인이라 ACTIVE 안 함(PM 지시).
+- ETF: **458730** 기초지수 "Dow Jones U.S. Dividend 100 **Price Return** Index"·환헤지 없음 A등급 확인 → Index Master의 `DJ_US_DIV100_PR` PR 표기 근거 확보(D-12 일부 해소). **SCHD**는 지수의 PR/TR 표기가 자료에 없음(NOT STATED).
+- **P-12 재배포 원칙 PM 확정** → COMPLETED(재배포 허용 자료만 저장소 커밋·CDN 배포).
+
 **실행 묶음 B(Risk 기준정보) 1차 조사 — 2026-09-20**
 - 확보: 지수 7종(^IXIC ^GSPC ^NDX ^DJI ^KS11 ^KQ11 ^NYA) **일별 전체 이력 → 낙폭 직접 계산 완료**(달러·원화 양쪽) → `docs/closeout/research/index-drawdowns.json`. 앱 상수와 비교 가능(코스닥 2020은 앱 -33.0 vs 실측 -38.15로 차이 큼).
   · 주의: Yahoo `range=max&interval=1d`는 **솎인 월/분기 시계열**을 준다. period1/period2 5년 분할로 받아야 진짜 일별이다(스크립트에 품질 검사 내장).
 - 확보: 360750 TIGER 미국S&P500 — 발행사 원문으로 기초지수·**환헤지 없음** 확인(원장과 일치). **PR/TR은 상품 페이지에 없음 → 여전히 UNCONFIRMED**(투자설명서·지수 methodology로 이동).
 - 이용조건 조사 기록: `docs/closeout/research/source-terms.json`
 
-**🚫 PM 결정 대기 5건 — 이 중 3건이 실행 묶음 B를 막고 있다**
-1. **P-7 SEC 연락처** (D-1 차단) — SEC는 User-Agent에 연락 이메일을 요구하고, 없으면 403이다(실측). 사용자 개인 이메일을 외부 서비스 헤더에 넣는 것은 허가 없이 하지 않는다. → 쓸 주소를 정해 주면 환경변수/Secret으로 주입(코드·커밋·보고서에 기록 안 함).
-2. **P-12 재배포·robots 원칙**(신규) — Yahoo·네이버 robots가 전면 Disallow, 공공데이터 KRX 자료는 공공누리 4유형(제3자 재배포 금지)인데 **이 앱은 받은 데이터를 공개 저장소에 커밋·CDN 배포**한다. 어떤 방식까지 허용할지 원칙이 필요하다.
-3. **D-5 코스피200 PR/TR 경로** — 네이버 사용 불가(robots+410), KRX 직접 조회 계정 필요, 공공데이터포털은 키만 있으면 되나 재배포 금지. (가)사용자 키로 브라우저 직접 조회 (나)KRX 유료 라이선스 (다)NOT_AVAILABLE 중 선택.
+**🚫 PM 결정 대기 5건**
+1. **D-5 코스피200 PR/TR 경로** — 공공데이터포털 API는 **CORS 허용(브라우저 직접 호출 가능 · 프록시 불필요)**, 인증키 필요, 공공누리 4유형(제3자 재배포 금지). (가)사용자 키 입력 방식 (나)KRX 유료 라이선스 (다)NOT_AVAILABLE. UI는 결정 전 만들지 않는다.
+2. **D-11 GOOG Class C** — 무의결권 capital stock을 본국 보통주로 볼지(규칙 확장 여부).
+3. **P-7 SEC 연락처** — 1회 조사는 완료됐고, **주기적 자동 재검증**에 필요. `SEC_CONTACT_EMAIL` 환경변수/Actions Secret만 등록하면 된다(값은 코드·커밋·보고서에 남기지 않음. `node scripts/closeout/research/us-home-common.js --verify-sec`로 설정 여부만 확인).
 4. **B-1 KIS/Worker 보안** — 저장소 밖 조치(사용자 권한)
 5. **C-1 CMA 2026Q2** — 활성화 여부(PHASE 5 결정 패키지)
 

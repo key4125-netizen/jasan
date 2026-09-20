@@ -24,3 +24,6 @@ playwright-report/
 포트폴리오구성_*
 *백업*
 *backup*
+
+# 종결 프로젝트 회귀 하네스가 매 실행마다 새로 쓰는 차이 파일 - 내용은 측정 기록(docs/closeout/measurements/)에 남긴다.
+baseline/v262/regression/*.diff.json

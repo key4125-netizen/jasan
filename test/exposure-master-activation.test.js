@@ -62,7 +62,16 @@ test('3. RESOLVED 항목은 전부 근거와 버전을 갖는다(추정값 없�
     assert.ok(['EM-2026.1', 'EM-2026.2'].includes(e.version), `${e.ticker} 버전`);
     if (e.version === 'EM-2026.1') {
       assert.ok(/ticker-master\.json|ETF 구성표/.test(e.evidence), `${e.ticker} evidence 출처가 불명확하다`);
-      assert.strictEqual(e.evidenceGrade, undefined, 'EM-2026.1 항목에 등급을 소급해 채우지 않는다');
+      // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] EM-2026.1은 원래 저장소 안 근거(종목 마스터 · ETF 구성표)만 갖고
+      // 등급이 없었다. 미국 개별주 19건은 이번에 1차 자료(SEC EDGAR 설립지 · 10-K · 거래소 증권 종류)로 본국 보통주를
+      // 확인해 equityListing과 A등급을 함께 채웠다 - 등급을 "소급해 만들어 넣은" 것이 아니라 새 근거가 생긴 것이다.
+      // 규칙: 등급이 있으면 그 근거(판정 규칙 이름)가 evidence에 적혀 있어야 하고, 없으면 등급도 없어야 한다.
+      if (e.evidenceGrade === undefined) {
+        assert.strictEqual(e.equityListing, undefined, `${e.ticker}: 등급 없이 상장 형태만 적을 수 없다`);
+      } else {
+        assert.strictEqual(e.evidenceGrade, 'A', `${e.ticker}: 자동 연결 사실은 A등급만`);
+        assert.ok(/HOME_COMMON_RULE_V1/.test(e.evidence), `${e.ticker}: 등급의 판정 근거가 evidence에 없다`);
+      }
     } else {
       assert.strictEqual(e.evidenceGrade, 'A', `${e.ticker}: 자동 연결 사실은 A등급만`);
       assert.ok(/공식|공시/.test(e.evidence) && /2026-09-19 확인/.test(e.evidence), `${e.ticker} 공식 근거 · 확인일이 없다`);
@@ -188,8 +197,9 @@ test('11. Risk 벤치마크: 원장이 주는 값이 기존 판정과 같다(키
   });
   const key = (o) => s.resolveRiskBenchmark(Object.assign({ category: '주식', name: '' }, o)).key;
   assert.strictEqual(key({ ticker: '005930.KS' }), 'KOSPI');
-  // [기대값 갱신 사유 · 2차 통합 보완 · PM 결정 ③] 원장의 미국 개별주 근거는 거래소 상장뿐이라 본국 보통주로 자동 인정하지 않는다.
-  assert.strictEqual(key({ ticker: 'NVDA' }), null);
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] NVDA는 SEC EDGAR(설립지 DE · 10-K)와 거래소 종목 디렉터리(Common Stock)로
+  // 본국 보통주가 확인돼 원장에 A등급 근거가 들어갔다 - 이제 원장의 NASDAQ을 쓴다(거래소 상장 사실만으로 준 것이 아니다).
+  assert.strictEqual(key({ ticker: 'NVDA' }), 'NASDAQ');
   assert.strictEqual(key({ ticker: 'QQQ', category: 'ETF' }), 'NASDAQ100');
   assert.strictEqual(key({ ticker: 'SPY', category: 'ETF' }), 'SP500');
   // 원장이 비워 둔 종목은 기존 판정 그대로 UNRESOLVED다(임의 대체 없음).

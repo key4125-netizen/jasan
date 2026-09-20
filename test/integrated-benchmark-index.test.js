@@ -108,8 +108,11 @@ test('① 원장 49건(v261)의 Risk Benchmark 키가 그대로다', () => {
   master.items.forEach((r) => { if (V261[r.yahooTicker] !== undefined) tm[r.yahooTicker] = { exchange: r.exchange, nameKr: r.nameKr, nameEn: r.nameEn }; });
   s.setTickerMaster(tm);
   // [2차 통합 보완 · PM 결정 ③] 원장의 해외 개별주 중 본국 보통주 근거(equityListing HOME_COMMON · A등급)가 없는 항목은
-  // 거래소 상장 근거만으로 Benchmark를 주지 않는다 - v261에서 NASDAQ이던 11종목이 UNRESOLVED로 바뀐다(EXPECTED CHANGE).
-  // 그 외(국내 개별주 · ETF · 이미 null이던 항목) 38건은 v261과 같아야 한다.
+  // 거래소 상장 근거만으로 Benchmark를 주지 않는다.
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 그 근거를 1차 자료로 확인해 19건에 채웠다(SEC EDGAR 설립지 · 10-K ·
+  // 거래소 증권 종류 · HOME_COMMON_RULE_V1). 그래서 v261에서 NASDAQ이던 11종목 중 10종목이 v261 값으로 돌아왔고,
+  // 남은 1종목은 GOOG다 - 등록증권이 "Class C Capital Stock"이라 보통주 표기가 아니어서 REVIEW로 두었다.
+  // 결과적으로 v261과 다른 항목은 GOOG 하나뿐이다(EXPECTED CHANGE).
   let changed = 0;
   Object.entries(V261).forEach(([t, v261Key]) => {
     const e = EM.EXPOSURE_MASTER_ENTRIES.find((x) => x.ticker === t);
@@ -126,7 +129,7 @@ test('① 원장 49건(v261)의 Risk Benchmark 키가 그대로다', () => {
     // 기존 49건은 전부 같은 시장 지수다 - 비동기 정렬 · 환산이 붙지 않는다(계산 경로 무변경).
     assert.strictEqual(bm.alignment, undefined, `${t}`);
   });
-  assert.strictEqual(changed, 11, 'PM 결정 ③으로 바뀌는 것은 거래소 근거만 있던 NASDAQ 상장 개별주 11종목뿐이다');
+  assert.strictEqual(changed, 1, 'v261과 다른 것은 본국 보통주 근거가 아직 없는 GOOG 하나뿐이다(나머지 NASDAQ 상장주 10종목은 근거 확인으로 v261 값 복귀)');
 });
 
 /* ── ② Index Master ─────────────────────────────────────────────────────── */
@@ -418,7 +421,10 @@ test('⑤ D-06: 국내 상장 개별주만 상장 시장 지수, 원장에 없�
   ['ZZN', 'ZZY', 'ZZA'].forEach((t) => assert.deepStrictEqual(bm(t), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' }, t));
   assert.deepStrictEqual(plain(s.RISK_BENCHMARK_BY_LISTING_EXCHANGE), { KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ' });
   // [2차 통합 보완 · PM 결정 ③] 원장 항목이어도 근거가 거래소 상장뿐이면 본국 보통주로 추정하지 않는다.
-  assert.deepStrictEqual(bm('AAPL'), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] AAPL은 본국 보통주가 1차 자료로 확인돼 원장 Benchmark를 쓴다.
+  assert.deepStrictEqual(bm('AAPL'), { key: 'NASDAQ', status: 'RESOLVED', source: 'exposureMaster' });
+  // 근거가 아직 없는 종목(GOOG - 보통주 표기가 아닌 Class C Capital Stock)은 그대로 UNRESOLVED다.
+  assert.deepStrictEqual(bm('GOOG'), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
   // 원장에 본국 보통주(A등급)로 명시된 경우만 원장 Benchmark · ADR은 거래소 지수로 보내지 않는다 · 근거 부족도 UNRESOLVED.
   const syn = withSyntheticLedger(loadRiskSandbox());
   const sb = (t) => plain(syn.resolveRiskBenchmark({ ticker: t, category: '주식', name: '' }));
@@ -470,7 +476,10 @@ test('상태 표(실제 원장): 확인·원천있음 / 확인·원천없음 / �
     if (e.exposureStructure === 'MIXED') assert.strictEqual(bucket, 'mixedExposure', e.ticker);
     if (e.assetType === 'KR_LISTED_FOREIGN_ETF' && !e.exposureStructure && !e.hedgeStatus) assert.strictEqual(bucket, 'hedgeUnconfirmed', e.ticker);
   });
-  // 원장 58건 분포: 확인·원천있음 22(국내 개별주 16 + 미국 지수 ETF 5 + 비동기 비헤지 ETF 1) · 확인·원천없음 5 · 헤지 미확인 2 ·
-  // 혼합 2 · 미해결 27(본국 보통주 근거 없는 미국 개별주 20 + 대응 지수 없는 ETF 7).
-  assert.deepStrictEqual(buckets, { RESOLVED: 22, SOURCE_UNAVAILABLE: 5, hedgeUnconfirmed: 2, mixedExposure: 2, UNRESOLVED: 27 });
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 미국 개별주 19건에 본국 보통주 근거가 들어갔다.
+  // 그중 NASDAQ 상장 10건은 원장 Benchmark(NASDAQ)를 받아 "확인·원천있음"으로 옮겨갔고,
+  // NYSE 상장 9건은 본국 보통주가 확인돼도 앱에 NYSE 종합지수가 없어 여전히 미해결이다(대장 D-2).
+  // 원장 58건 분포: 확인·원천있음 32(국내 개별주 16 + 미국 개별주 10 + 미국 지수 ETF 5 + 비동기 비헤지 ETF 1) ·
+  // 확인·원천없음 5 · 헤지 미확인 2 · 혼합 2 · 미해결 17(NYSE 상장 미국 개별주 9 + GOOG 1 + 대응 지수 없는 ETF 7).
+  assert.deepStrictEqual(buckets, { RESOLVED: 32, SOURCE_UNAVAILABLE: 5, hedgeUnconfirmed: 2, mixedExposure: 2, UNRESOLVED: 17 });
 });

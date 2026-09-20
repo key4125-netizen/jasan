@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1차 조사 반영(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~2차 반영(2026-09-20)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -14,11 +14,11 @@
 | 현재 판정 | 건수 |
 | --- | ---: |
 | OPEN | 44 |
-| COMPLETED | 9 |
+| COMPLETED | 11 |
 | RETAINED | 4 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
 | PM_DECISION_REQUIRED | 5 |
-| **합계** | **62** |
+| **합계** | **64** |
 
 ## 전체 목록
 
@@ -34,7 +34,7 @@
 | CL-08 | 기존 PM 결정 ①~⑤(2026-09-19) 반영 상태 | 이미 종결 | PHASE 0 | COMPLETED | COMPLETED |
 | CL-09 | 릴리스 게이트 구성(Unit · E2E · ESLint · Data Guard · Release Guard) | 이미 종결 | PHASE 0 | COMPLETED | - |
 | CL-10 | 문서 상태 정정(CLAUDE.md · 체크리스트 §44 로드맵) | 이미 종결 | PHASE 0 | COMPLETED | COMPLETED |
-| D-1 | 미국 개별주 본국 보통주(HOME_COMMON) 근거 | 데이터 · Benchmark | PHASE 3 | OPEN | - |
+| D-1 | 미국 개별주 본국 보통주(HOME_COMMON) 근거 | 데이터 · Benchmark | PHASE 3 | COMPLETED | - |
 | D-2 | NYSE 상장 종목의 기준 지수(NYSE Composite) 부재 | 데이터 · Benchmark | PHASE 3 | OPEN | - |
 | D-3 | ETF 기초지수 · PR/TR 전수 확인 | 데이터 · Benchmark | PHASE 3 | OPEN | - |
 | D-4 | ETF 환헤지 여부 A등급 근거(368590 · 360200) | 데이터 · Benchmark | PHASE 3 | OPEN | - |
@@ -85,7 +85,9 @@
 | P-9 | 최종 Production Baseline 재생성 · v262 기준선 영구 보존 | 릴리스 | PHASE 12 | OPEN | - |
 | P-10 | 종결 대장 자동 정합성 검사 | 프로젝트 통제 | PHASE 10 | OPEN | - |
 | P-11 | 세션 · PC 간 인계 구조 | 프로젝트 통제 | PHASE 0 | COMPLETED | - |
-| P-12 | 공개 저장소 재배포 · robots 제약과 데이터 원천 선택 원칙 | 외부 데이터 | PHASE 1 | PM_DECISION_REQUIRED | - |
+| P-12 | 공개 저장소 재배포 · robots 제약과 데이터 원천 선택 원칙 | 외부 데이터 | PHASE 1 | COMPLETED | PM_DECISION_RESOLVED |
+| D-11 | GOOG 무의결권 Class C 주식을 본국 보통주로 볼 것인가 | 데이터 · Benchmark | PHASE 3 | PM_DECISION_REQUIRED | - |
+| D-12 | 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR) | 데이터 · Benchmark | PHASE 3 | OPEN | - |
 
 ## 항목 상세
 
@@ -193,24 +195,26 @@
 
 #### D-1 — 미국 개별주 본국 보통주(HOME_COMMON) 근거
 
-- **현재 판정**: OPEN · **단계**: PHASE 3
+- **현재 판정**: COMPLETED · **단계**: PHASE 3
 - **SoT**: §44 44-16 D-06 · 계획서 §19
-- **현재 구현**: js/09 resolveRiskBenchmark - 해외 개별주는 원장 equityListing=HOME_COMMON(A등급)일 때만 Benchmark. 현재 기재 0건 → 미국 개별주 전부 UNRESOLVED(베타 · 포트폴리오 베타 null)
-- **문제**: 거래소 상장 사실만으로는 본국 보통주를 단정할 수 없다(ADR · 외국 설립 10-K 제출사 존재). 근거가 없어 v261에서 NASDAQ이던 11종목이 UNRESOLVED가 됐다
+- **현재 구현**: 원장 20건 중 19건에 본국 보통주 근거(equityListing HOME_COMMON · A등급)를 채웠다. 판정 규칙 HOME_COMMON_RULE_V1 - ① SEC EDGAR 설립지(미국 주) ② 연차보고서 10-K ③ 거래소 종목 디렉터리 · 10-K 표지의 보통주 표기. GOOG 1건은 등록증권이 Class C Capital Stock이라 REVIEW(대장 D-11).
+- **문제**: 해결됨. 남은 제약은 두 가지다 - NYSE 상장 9종목은 비교할 지수가 없어 여전히 미해결이고(D-2), 주기적 재검증에는 SEC 연락처가 필요하다(P-7).
 - **필요한 사실**: 종목별 발행사 설립지 · 제출 서식(10-K vs 20-F/40-F) · 증권 종류(보통주 vs ADR)
 - **조사 경로**: SEC EDGAR company_tickers.json + submissions(stateOfIncorporation · forms) · 발행사 공식 IR · 거래소 공식 상장정보
 - **대체 경로**: 발행사 연차보고서 표지 · 거래소 상장 증권 종류 표기
 - **영향**: 정책 D-06 판정 규칙 구체화 / Risk 개별 베타 · 포트폴리오 베타 · 위험점수 / MC 없음(Return Key 불변) / UI F-1 사유 표시
 - **구현 필요**: 원장 equityListing 채움 + 자동 재검증 파이프라인(N-2)
 - **테스트**: 회귀 하네스 risk suite(AAPL 경로) · 신규 단위테스트
-- **ruleVersion**: HOME_COMMON_RULE_V1(예정)
+- **검증**: Unit 566/566 · 회귀 하네스 risk 차이 10건(AAPL Benchmark · 베타 복원 · 데이터 신뢰도 78→81) · mc 차이 0건 · 측정 기록 docs/closeout/measurements/CHANGE-B1-001-us-home-common.md
+- **근거**: docs/closeout/research/sec-filer-facts.json · docs/closeout/research/us-home-common.json
+- **ruleVersion**: HOME_COMMON_RULE_V1
 - **마지막 확인일**: 2026-09-20
 
 #### D-2 — NYSE 상장 종목의 기준 지수(NYSE Composite) 부재
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: 계획서 §20
-- **현재 구현**: Index Master에 NYSE 계열 지수가 없다. 조사 결과 Yahoo ^NYA로 1980년부터의 일별 수준 시계열을 받을 수 있음을 확인했다(11,774행).
+- **현재 구현**: Index Master에 NYSE 계열 지수가 없다. ^NYA 일별 이력(1980~ · 11,774행) 수신은 확인했으나 PM 지시에 따라 **공식 정의 · PR/TR이 미확인이므로 Benchmark로 ACTIVE 적용하지 않는다.** 본국 보통주가 확인된 NYSE 상장 9종목(JPM V MA JNJ UNH XOM CVX PG KO)이 이 항목에 걸려 있다.
 - **문제**: D-1이 풀려도 NYSE 상장 본국 보통주는 비교할 지수가 없다
 - **필요한 사실**: NYSE Composite(또는 대체 기준 지수)의 공식 정의 · 수신 가능한 역사 시계열 · 이용조건
 - **조사 경로**: Yahoo ^NYA 역사 데이터 · ICE/NYSE 공식 지수 문서 · 대체: S&P 500 사용 여부는 정책 결정 필요
@@ -224,8 +228,8 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §21 · §25
-- **현재 구현**: 원장 EM-2026.2에 기초지수는 기재됐으나 360750 · SCHD는 PR/TR 구분 미확인(UNCONFIRMED)
-- **문제**: PR과 TR은 서로 다른 값이다. 임의로 같다고 보면 베타 · 정의 일치 판정이 틀린다
+- **현재 구현**: 확인 완료: 458730 기초지수 "Dow Jones U.S. Dividend 100 Price Return Index"(PR · A등급) · 환헤지 없음(A등급) / 360750 기초지수 "S&P 500 지수"(A등급) · 환헤지 없음(A등급) · PR/TR 미확인 / SCHD 기초지수 "Dow Jones U.S. Dividend 100 Index"(SEC 497K · A등급) · 지수 자체의 PR/TR 표기 없음. 미확인: 368590 · 360200 · 278530 · 069500 · 102110 · 0052D0 · 487230.
+- **문제**: PR과 TR은 서로 다른 값이다. 특히 원장의 Benchmark 키가 DJ_US_DIV100_PR로 "PR"을 단정하고 있는데, 지금까지 확보한 1차 자료는 그 PR 표기를 뒷받침하지 않는다 - 지수 제공기관 methodology 확인이 필요하다(신규 D-12).
 - **필요한 사실**: 종목별 기초지수의 공식 수익 유형(PR/TR)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 전자공시 · 지수 제공기관 methodology · 미국: SEC filings · 공식 fact sheet
 - **영향**: 정책 정의 일치(MATCH/DEFINITION_MISMATCH) 판정 / Risk 베타 · 정의 불일치 표시 / MC 없음 / UI F-5
@@ -244,6 +248,32 @@
 - **영향**: 정책 hedgeStatus / Risk 비동기 베타 산출 가능 여부 / MC 없음 / UI F-1
 - **구현 필요**: 원장 hedgeStatus · conversionMethod 채움
 - **테스트**: risk suite(HOLD → 계산) 회귀
+- **마지막 확인일**: 2026-09-20
+
+#### D-11 — GOOG 무의결권 Class C 주식을 본국 보통주로 볼 것인가
+
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 3
+- **SoT**: §44 44-16 D-06 · 계획서 §19
+- **현재 구현**: GOOG는 설립지 DE · 연차보고서 10-K가 확인됐으나 12(b) 등록증권이 "Class C Capital Stock, $0.001 par value"다. 보통주(common stock) 표기가 아니어서 HOME_COMMON_RULE_V1이 REVIEW로 판정했고, 원장에 근거를 넣지 않았다(Risk는 UNRESOLVED).
+- **문제**: 같은 발행인의 Class A(GOOGL)는 "Class A Common Stock"이라 HOME_COMMON이다. 경제적으로는 같은 기업에 대한 지분이지만 표기가 다르다. 규칙을 "보통주 표기"로 둘지, "본국 발행 지분증권(ADR · 우선주 제외)"으로 넓힐지는 정책 판단이다.
+- **필요한 사실**: 없음(사실은 모두 확인됨) - 정의의 문제다
+- **선택지**: (가) 현행 유지 - 보통주 표기만 인정(GOOG는 계속 UNRESOLVED) · (나) 규칙을 "본국 발행 지분증권(의결권 차등 포함 · ADR · 우선주 제외)"으로 확장하고 ruleVersion을 올린다(GOOG → HOME_COMMON)
+- **영향**: 정책 HOME_COMMON_RULE 정의 / Risk GOOG 베타 · 해당 종목 보유 시 포트폴리오 베타 / MC 없음 / UI 없음
+- **구현 필요**: (나)를 택하면 규칙 버전 v2 + 전 종목 재평가 + 회귀
+- **테스트**: integrated-benchmark-index · us-home-common.js
+- **마지막 확인일**: 2026-09-20
+
+#### D-12 — 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR)
+
+- **현재 판정**: OPEN · **단계**: PHASE 3
+- **SoT**: §44 44-16 D-01 · 계획서 §21
+- **현재 구현**: Index Master 키 이름과 returnType이 PR로 적혀 있다. 2026-09-20 조사에서 **DJ_US_DIV100_PR은 근거가 확인됐다** - 미래에셋 공식 상품 페이지가 458730의 기초지수를 "Dow Jones U.S. Dividend 100 Price Return Index"로 명시한다(A등급). 남은 것은 DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR 두 개다.
+- **문제**: 확인되지 않은 PR/TR을 확정해 두면 정의 일치 판정이 잘못될 수 있다. 남은 두 지수의 PR 표기 근거를 확인해야 한다.
+- **필요한 사실**: 각 지수의 공식 methodology에서 PR · TR 구분
+- **조사 경로**: S&P Dow Jones Indices 지수 methodology · 지수 제공기관 공식 factsheet · 운용사 투자설명서의 기초지수 정식 명칭
+- **영향**: 정책 Index Master returnType · 키 이름 / Risk 정의 일치 판정 / MC 없음 / UI F-5
+- **구현 필요**: 확인 결과에 따라 Index Master 수정 또는 UNCONFIRMED로 되돌림
+- **테스트**: integrated-benchmark-index PR/TR 테스트
 - **마지막 확인일**: 2026-09-20
 
 ### 데이터 · 지수 원천
@@ -283,7 +313,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 4
 - **SoT**: §40 P-4 · P-5 · 계획서 §24
-- **현재 구현**: 지수 7종의 실제 일별 이력에서 낙폭을 직접 계산해 기록했다(docs/closeout/research/index-drawdowns.json). 현재 앱 상수와 비교 가능한 상태다.
+- **현재 구현**: 지수 7종의 실제 일별 이력에서 낙폭을 직접 계산해 기록했다(docs/closeout/research/index-drawdowns.json · 달러 · 원화). PM 지시(2026-09-20)에 따라 **이번 결과를 앱 상수로 즉시 반영하지 않는다** - §40 정책과 대조한 별도 결정 패키지로 처리하고, 나스닥 종합과 NYSE 종합을 분리한다.
 - **문제**: 임의 숫자를 넣지 않기로 했고, 지금은 일부 지수에서 추정 자체를 하지 않는다
 - **필요한 사실**: 지수별 2020 · 2022 · 전체 기간 최대 낙폭(고점 · 저점 · 계산식 · 기준일)
 - **조사 경로**: Yahoo ^IXIC · ^GSPC · ^NDX · ^DJI · ^KS11 · ^KQ11 장기 이력에서 직접 계산 · 산출 결과를 데이터로 고정(해시 기록)
@@ -885,15 +915,17 @@
 
 #### P-12 — 공개 저장소 재배포 · robots 제약과 데이터 원천 선택 원칙
 
-- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 1
+- **현재 판정**: COMPLETED → **최종 PM_DECISION_RESOLVED** · **단계**: PHASE 1
 - **SoT**: 계획서 §7 · §8 · §10
-- **현재 구현**: 현재 파이프라인은 받은 데이터를 공개 GitHub 저장소에 커밋하고 jsDelivr로 배포한다(종목 마스터 · H.10). H.10은 public domain이라 문제가 없지만, 다른 원천은 대부분 그렇지 않다.
-- **문제**: 2026-09-20 조사에서 두 가지 제약이 실제로 확인됐다. ① Yahoo · 네이버의 robots.txt가 전면 Disallow다 - 서버 자동 수집은 이 정책과 충돌한다(운영 중 사용자 브라우저 조회는 성격이 다르다). ② 공공데이터포털 KRX 지수 자료는 공공누리 4유형으로 제3자 재배포가 금지된다 - 공개 저장소 커밋이 곧 재배포다.
+- **현재 구현**: PM 결정(2026-09-20): "공개 저장소 commit 및 jsDelivr 배포는 재배포가 허용된 자료만 사용한다." 재배포가 허용되지 않는 자료는 공개 저장소의 정적 데이터로 저장하지 않는다. robots · 이용조건을 우회하지 않는다. 이 원칙 때문에 막힌 자료는 즉시 NOT_AVAILABLE로 닫지 않고 대체 경로를 먼저 조사한다.
+- **문제**: 해결됨(원칙 확정). 개별 자료의 적용은 각 항목에서 판단한다.
 - **필요한 사실**: 앱이 외부 데이터를 쓰는 세 가지 방식(① 사용자 브라우저 실시간 조회 ② 저장소에 커밋해 배포 ③ 일회성 조사)에 대해 각각 허용 범위를 정하는 원칙
 - **조사 경로**: 각 원천 robots · 약관 확인(source-terms.json) · 공공누리 유형별 조건 · 기존 H.10 · 종목마스터의 근거 재확인
 - **선택지**: (가) "저장소 커밋 · 배포는 재배포가 허용된 자료만" 원칙을 명문화하고, 나머지는 사용자 브라우저 직접 조회로만 사용 · (나) 필요한 자료는 라이선스를 확보 · (다) 해당 자료를 쓰지 않는다
 - **영향**: 정책 데이터 원천 선택 전반 / Risk 지수 원천 확보 가능 범위 / MC CMA · 금리 자료 수집 방식 / UI 사용자 키 입력 UI가 필요해질 수 있음
 - **구현 필요**: 원칙 확정 후 파이프라인 · 조사표에 반영
 - **테스트**: 해당 없음(정책)
+- **검증**: PM 지시 2026-09-20 · 적용 현황: H.10(public domain) 유지 · 종목 마스터 유지 · 공공데이터포털 KRX 지수는 저장소 저장 불가로 판정(D-5에서 대체 경로 조사 중) · Yahoo 지수 낙폭은 1회성 조사로만 사용(상시 수집 파이프라인 없음)
+- **근거**: docs/closeout/research/source-terms.json
 - **마지막 확인일**: 2026-09-20
 

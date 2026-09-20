@@ -1076,9 +1076,9 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
   // ② 개별 주식 - 실제 상장 거래소 종합지수
   assert.strictEqual(bm({ ticker: '005930.KS' }).key, 'KOSPI');
   assert.strictEqual(bm({ ticker: '247540.KQ' }).key, 'KOSDAQ');
-  // [기대값 갱신 사유 · 2차 통합 보완 · PM 결정 ③] NVDA의 원장 근거는 "거래소 상장"뿐이라 본국 보통주로 자동 인정하지 않는다 -
-  // UNRESOLVED(거래소 지수 fallback 없음). 본국 보통주 근거가 원장에 있으면 원장의 NASDAQ을 쓴다(예전 NASDAQ100 근사는 여전히 쓰지 않는다).
-  assert.deepStrictEqual(bm({ ticker: 'NVDA' }), { key: null, status: 'UNRESOLVED', source: 'listingDomicileUnconfirmed' });
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] NVDA의 본국 보통주 근거를 1차 자료로 확인해 원장에 넣었다(A등급) -
+  // 이제 원장의 NASDAQ을 쓴다. 거래소 상장 사실만으로 주는 경로(③)는 그대로 막혀 있다(아래 ZZNQ 참고).
+  assert.deepStrictEqual(bm({ ticker: 'NVDA' }), { key: 'NASDAQ', status: 'RESOLVED', source: 'exposureMaster' });
   assert.strictEqual(bm({ ticker: 'JPM' }).key, null, 'NYSE 종합지수는 앱에 없다(예전 근사 DOW를 쓰지 않는다)');
   // [기대값 추가 · 1차 통합 구현 · D-06] 원장에 없는 미국 상장 주식은 ADR 여부 · 본국 보통주 여부를 확인할 수 없어
   // 상장 거래소 지수(NASDAQ)로 보내지 않는다(v252에는 NASDAQ 상장이면 NASDAQ 종합을 줬다).

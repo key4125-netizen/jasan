@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "title": "미국 개별주 본국 보통주 판정 (DP-01 · 대장 D-1)",
+  "ruleVersion": "HOME_COMMON_RULE_V1",
+  "rule": {
+    "homeCommon": [
+      "① 미국 주 설립(SEC 회사기록 또는 10-K 표지)",
+      "② 연차보고서 10-K",
+      "③ 보통주(거래소 디렉터리 또는 10-K 표지 12(b))",
+      "④ ETF 아님"
+    ],
+    "notHomeCommon": [
+      "예탁증권(ADR/ADS) 표기",
+      "연차보고서가 20-F 또는 40-F"
+    ],
+    "review": [
+      "위 사실 중 확인되지 않은 것이 있음",
+      "자료 간 표기가 어긋남",
+      "보통주로 표기되지 않은 주식 종류(예: 무의결권 capital stock)"
+    ],
+    "forbidden": [
+      "거래소 상장 사실만으로 판정",
+      "이름 규칙으로 추정"
+    ]
+  },
+  "generatedAt": "2026-09-20T00:40:51.092Z",
+  "secFactsSource": "docs/closeout/research/sec-filer-facts.json",
+  "directories": [
+    {
+      "id": "nasdaqlisted",
+      "url": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+      "header": "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares",
+      "rows": 5623,
+      "retrievedAt": "2026-09-20T00:40:50.662Z"
+    },
+    {
+      "id": "otherlisted",
+      "url": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
+      "header": "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol",
+      "rows": 7635,
+      "retrievedAt": "2026-09-20T00:40:51.092Z"
+    }
+  ],
+  "summary": {
+    "HOME_COMMON": 19,
+    "REVIEW": 1
+  },
+  "results": [
+    {
+      "ticker": "AAPL",
+      "issuer": "Apple Inc.",
+      "cik": "0000320193",
+      "stateOfIncorporation": "CA",
+      "stateNormalised": "CA",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2025-10-31",
+      "exchangeDirectory": {
+        "securityName": "Apple Inc. - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "MSFT",
+      "issuer": "MICROSOFT CORP",
+      "cik": "0000789019",
+      "stateOfIncorporation": "WA",
+      "stateNormalised": "WA",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-07-29",
+      "exchangeDirectory": {
+        "securityName": "Microsoft Corporation - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "GOOGL",
+      "issuer": "Alphabet Inc.",
+      "cik": "0001652044",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp. / 10-K 표지 \"Delaware\"",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-05",
+      "exchangeDirectory": {
+        "securityName": "Alphabet Inc. - Class A Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": "Class A Common Stock, $0.001 par value (GOOGL · Nasdaq Global Select Market)",
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "GOOG",
+      "issuer": "Alphabet Inc.",
+      "cik": "0001652044",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "10-K 표지 \"Delaware\"",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-05",
+      "exchangeDirectory": {
+        "securityName": "Alphabet Inc. - Class C Capital Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": "Class C Capital Stock, $0.001 par value (GOOG · Nasdaq Global Select Market)",
+      "securityKind": "CAPITAL_STOCK",
+      "verdict": "REVIEW",
+      "reasons": [
+        "증권 종류가 보통주로 확인되지 않음(CAPITAL_STOCK) - 보통주(common stock)로 표기되지 않은 주식 종류다. 의결권 없는 자본주식을 본국 보통주로 볼지는 정책 판단이 필요하다."
+      ],
+      "evidenceGrade": null,
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "AMZN",
+      "issuer": "AMAZON COM INC",
+      "cik": "0001018724",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-06",
+      "exchangeDirectory": {
+        "securityName": "Amazon.com, Inc. - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "NVDA",
+      "issuer": "NVIDIA CORP",
+      "cik": "0001045810",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-25",
+      "exchangeDirectory": {
+        "securityName": "NVIDIA Corporation - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "AVGO",
+      "issuer": "Broadcom Inc.",
+      "cik": "0001730168",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 페이지에는 설립지 항목이 없어 10-K 표지에서 확인 \"Delaware\" · https://www.sec.gov/Archives/edgar/data/1730168/000173016825000121/avgo-20251102.htm",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2025-12-18",
+      "exchangeDirectory": {
+        "securityName": "Broadcom Inc. - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": "Common Stock, $0.001 par value (AVGO · The NASDAQ Global Select Market)",
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "AMD",
+      "issuer": "Advanced Micro Devices Inc",
+      "cik": "0000002488",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-04",
+      "exchangeDirectory": {
+        "securityName": "Advanced Micro Devices, Inc. - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "META",
+      "issuer": "Meta Platforms, Inc.",
+      "cik": "0001326801",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-01-29",
+      "exchangeDirectory": {
+        "securityName": "Meta Platforms, Inc. - Class A Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "TSLA",
+      "issuer": "Tesla, Inc.",
+      "cik": "0001318605",
+      "stateOfIncorporation": "TX",
+      "stateNormalised": "TX",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-01-29",
+      "exchangeDirectory": {
+        "securityName": "Tesla, Inc.  - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "NFLX",
+      "issuer": "NETFLIX INC",
+      "cik": "0001065280",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-01-23",
+      "exchangeDirectory": {
+        "securityName": "Netflix, Inc. - Common Stock",
+        "etf": "N",
+        "directory": "nasdaqlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "JPM",
+      "issuer": "JPMORGAN CHASE & CO",
+      "cik": "0000019617",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-13",
+      "exchangeDirectory": {
+        "securityName": "JP Morgan Chase & Co. Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "V",
+      "issuer": "VISA INC.",
+      "cik": "0001403161",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp. / 10-K 표지 \"Delaware\"",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2025-11-06",
+      "exchangeDirectory": {
+        "securityName": "Visa Inc.",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": "Class A Common Stock, par value $0.0001 per share (V · New York Stock Exchange)",
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "MA",
+      "issuer": "Mastercard Inc",
+      "cik": "0001141391",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-11",
+      "exchangeDirectory": {
+        "securityName": "Mastercard Incorporated Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "JNJ",
+      "issuer": "JOHNSON & JOHNSON",
+      "cik": "0000200406",
+      "stateOfIncorporation": "NJ",
+      "stateNormalised": "NJ",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-11",
+      "exchangeDirectory": {
+        "securityName": "Johnson & Johnson Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "UNH",
+      "issuer": "UNITEDHEALTH GROUP INC",
+      "cik": "0000731766",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-03-02",
+      "exchangeDirectory": {
+        "securityName": "UnitedHealth Group Incorporated Common Stock (DE)",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "XOM",
+      "issuer": "Exxon Mobil Corporation",
+      "cik": "0000034088",
+      "stateOfIncorporation": "NJ",
+      "stateNormalised": "NJ",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp. / 10-K 표지 \"New Jersey\"",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-18",
+      "exchangeDirectory": {
+        "securityName": "ExxonMobil Holdings Corporation Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": "Common Stock, without par value (XOM · New York Stock Exchange)",
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": "거래소 종목 디렉터리의 표기(ExxonMobil Holdings Corporation Common Stock)와 10-K 표지의 등록인 명칭(Exxon Mobil Corporation)이 다르다. 1차 자료(10-K 표지)를 따르고 차이를 기록한다."
+    },
+    {
+      "ticker": "CVX",
+      "issuer": "Chevron Corp",
+      "cik": "0000093410",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-24",
+      "exchangeDirectory": {
+        "securityName": "Chevron Corporation Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "PG",
+      "issuer": "PROCTER & GAMBLE Co",
+      "cik": "0000080424",
+      "stateOfIncorporation": "OH",
+      "stateNormalised": "OH",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-08-04",
+      "exchangeDirectory": {
+        "securityName": "Procter & Gamble Company (The) Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    },
+    {
+      "ticker": "KO",
+      "issuer": "COCA COLA CO",
+      "cik": "0000021344",
+      "stateOfIncorporation": "DE",
+      "stateNormalised": "DE",
+      "stateSource": "EDGAR 회사 조회 · State of Incorp.",
+      "annualReportForm": "10-K",
+      "latestAnnualReport": "2026-02-20",
+      "exchangeDirectory": {
+        "securityName": "Coca-Cola Company (The) Common Stock",
+        "etf": "N",
+        "directory": "otherlisted"
+      },
+      "registeredSecurity": null,
+      "securityKind": "COMMON",
+      "verdict": "HOME_COMMON",
+      "reasons": [],
+      "evidenceGrade": "A",
+      "ruleVersion": "HOME_COMMON_RULE_V1",
+      "note": null
+    }
+  ]
+}
