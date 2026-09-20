@@ -109,7 +109,18 @@ function renderLedger() {
   out.push(`> ${l.note}`, '');
 
   const count = (s) => l.items.filter((it) => it.currentStatus === s).length;
+  const finalCount = (s) => l.items.filter((it) => it.finalStatus === s).length;
   out.push('## 현황', '');
+  // [PM EXECUTION DIRECTIVE 2026-09-20 §8] 종결 판정이 먼저다 - 프로젝트가 끝났는지를 말해 주는 표는 이쪽이다.
+  // 아래 "현재 판정"은 PHASE 0 재감사 시점의 기록이라 옛 값(COMPLETED · RETAINED)이 그대로 남아 있다.
+  out.push('### 종결 판정(최종 상태)', '');
+  out.push('| 종결 판정 | 건수 | 뜻 |', '| --- | ---: | --- |');
+  const legend = l.closureLegend || {};
+  CLOSURE.forEach((s) => out.push(`| ${s} | ${finalCount(s)} | ${mdEscape(legend[s] || '')} |`));
+  const unclosed = l.items.filter((it) => !it.finalStatus).length;
+  out.push(`| (미판정) | ${unclosed} | 종결 판정이 아직 없는 항목 - 0이어야 프로젝트가 닫힌다 |`);
+  out.push(`| **합계** | **${l.items.length}** | |`, '');
+  out.push('### 현재 판정(PHASE 0 재감사 시점 기록)', '');
   out.push('| 현재 판정 | 건수 |', '| --- | ---: |');
   INTERIM.forEach((s) => out.push(`| ${s} | ${count(s)} |`));
   out.push(`| **합계** | **${l.items.length}** |`, '');
