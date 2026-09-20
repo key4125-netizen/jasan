@@ -364,6 +364,41 @@ function buildFactorBarRow(label, score, tooltip, unavailableText) {
 /* [BOND-5 · §47-2] 베타가 "무엇을 설명한 값인지" 한 줄로 밝힌다.
  * 숫자만 보여 주면 사용자는 그 값이 전체 자산을 설명한다고 믿게 된다 - 실제로는 주식 노출 중
  * 베타를 구한 부분만의 평균이고, 채권은 애초에 대상이 아니다. 값을 감추는 대신 범위를 적는다. */
+/* [BOND-2 · BOND-3 · §47-1] 채권 위험 카드
+ *
+ * 주식 위험점수(6요인)와 **합치지 않는다**. 점수화도 하지 않는다 - 주식 점수와 섞이면 두 값 모두
+ * 의미를 잃는다. 채권에서 실제로 계산할 수 있는 것은 금리민감도(듀레이션 모형)이고, 신용위험은
+ * 스프레드 자료가 없어 수치로 만들지 않는다(등급 · 순위 · 발행인 유형만 사실 그대로 보여 준다).
+ * 듀레이션은 가격이 아니라 현금흐름 구조에서 나오므로 시장가격이 없어도 계산된다. */
+function bondRiskCardHtml() {
+  if (typeof computeBondRiskSummary !== 'function') return '';
+  const positions = (typeof state !== 'undefined' && Array.isArray(state.bondPositions)) ? state.bondPositions : [];
+  if (!positions.length) return '';
+  const s = computeBondRiskSummary(positions);
+  if (!s || s.status !== 'OK') return '';
+  const ratings = Object.entries(s.creditRatingDistribution || {}).map(([k, v]) => `${escapeHtml(k)} ${v}건`).join(' · ');
+  const currencies = Object.keys(s.currencyExposure || {}).join(' · ');
+  const durationLine = typeof s.weightedModifiedDuration === 'number'
+    ? `평균 수정듀레이션 <b>${fmtNum(s.weightedModifiedDuration, 2)}년</b> · 시장금리가 +1.00%p(100bp) 오르면 평가금액은 약 <b>${fmtNum(s.primaryImpactPct, 1)}%</b> 움직입니다`
+    : '만기일 · 표면이율이 채워진 채권이 없어 금리 민감도를 계산하지 못했습니다';
+  const unavailable = (s.unavailable || []).length
+    ? `<p class="text-sm text-slate-400 mt-1">계산하지 못한 채권 ${s.unavailable.length}건: ${escapeHtml(s.unavailable.map((u) => (u.name || '이름 없음') + '(' + (u.reason || '') + ')').join(' · '))}</p>`
+    : '';
+  return `
+    <div class="mt-3.5 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+      <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">🧾 채권 위험 (직접보유 ${s.count}건)</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">${durationLine}</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+        신용등급 ${ratings || '미확인'}${currencies ? ' · 통화 ' + escapeHtml(currencies) : ''} · 듀레이션 계산 범위 ${fmtNum(s.durationCoveragePct, 0)}%
+      </p>
+      ${unavailable}
+      <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">
+        이 값은 시장에서 실제로 관측한 가격 변동이 아니라 <b>현금흐름 구조로 계산한 모형값</b>입니다(일수 계산 ${escapeHtml(s.dayCount)}).
+        ${escapeHtml(s.creditRiskNote)} 주식 위험점수와는 다른 축이라 하나의 점수로 합치지 않습니다.
+      </p>
+    </div>`;
+}
+
 function betaCoverageNoteHtml(m) {
   if (!m || typeof m.betaCoveragePct !== 'number') return '';
   const parts = [];
@@ -691,6 +726,7 @@ function renderRiskDetailModal() {
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoGrade + '등급', SORTINO_GUIDE_TEXT)}
       ${buildMetricItem('🔗 보유 종목 간 동조성 (상관)', typeof m.weightedAvgCorrelation === 'number' ? (m.weightedAvgCorrelation >= 0.7 ? '매우 높음' : m.weightedAvgCorrelation >= 0.5 ? '높음' : m.weightedAvgCorrelation >= 0.3 ? '보통' : '낮음') : riskMetricUnavailableShortText(m, 'correlation'), '보유 종목들의 가격이 같은 방향으로 움직인 정도를 비중을 반영해 평균낸 값입니다(최근 1년). 높을수록 여러 종목을 담아도 함께 오르내린 경우가 많았다는 뜻입니다.')}
     </div>
+    ${bondRiskCardHtml()}
     <!-- [Phase 2-4 · T1~T3] 계산 기준과 한계 - 관측 수 · 종목별 가격 기록 상태 · 환율 미포함.
          새 카드가 아니라 정밀 수치 바로 아래에 같은 글자 크기의 설명 문단으로만 붙인다. -->
     <div class="mt-2.5 space-y-2" data-risk-basis-notes>

@@ -498,3 +498,30 @@ test('상태 표(실제 원장): 확인·원천있음 / 확인·원천없음 / �
   // [기대값 갱신 사유 · D-11 · §47-5 · 2026-09-20] HOME_COMMON 규칙 v2로 GOOG 1건이 미해결 → 확인·원천있음으로 옮겨갔다.
   assert.deepStrictEqual(buckets, { RESOLVED: 34, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 1, mixedExposure: 2, UNRESOLVED: 14 });
 });
+
+/* ── ⑥ D-5 KOSPI200 원천 정책 (§47-6 · PM APPROVED WITH CONSTRAINT 2026-09-20) ───────────── */
+
+test('⑥ D-5: ETF를 자기 기준지수의 대용(proxy)으로 쓰지 않는다 · 정의는 확인 · 원천은 없음을 그대로 유지한다', () => {
+  // 왜 금지인가: 베타를 구하려는 대상이 069500 · 102110 · 278530인데 그 대용 후보가 바로 그 ETF
+  // 자신이다. 자기 자신에 대한 베타는 정의상 1이 되어 정보량이 0이고, 원장에 코스피200을 기준으로
+  // 삼는 다른 종목도 없다. 그래서 "대용을 만들지 않는다"가 이 항목의 결론이다(PM Solution Closure §7).
+  const tickers = new Set(EM.EXPOSURE_MASTER_ENTRIES.map((e) => String(e.ticker || '').replace(/\.K[SQ]$/, '')));
+  EM.INDEX_MASTER_ENTRIES.forEach((e) => {
+    if (!e.sourceId) return;
+    const bare = String(e.sourceId).replace(/^\^/, '').replace(/\.K[SQ]$/, '');
+    assert.ok(!tickers.has(bare), `${e.key}의 가격 원천이 보유 종목(${e.sourceId})이다 - self-proxy 금지`);
+  });
+  // 코스피200 계열은 "정의는 확인 · 가격 원천 없음" 상태를 정확히 유지한다(임의 대용을 만들지 않는다).
+  ['KOSPI200_PR', 'KOSPI200_TR'].forEach((key) => {
+    const idx = EM.INDEX_MASTER_BY_KEY[key];
+    assert.ok(idx, key);
+    assert.strictEqual(idx.sourceId, null, `${key}에 원천이 생겼다면 공식 라이선스 확보 여부를 먼저 확인해야 한다`);
+    assert.strictEqual(idx.availability, 'UNAVAILABLE');
+    assert.strictEqual(EM.isIndexPriceSourceAvailable(key), false);
+  });
+  // Benchmark 자체는 확인된 상태로 남는다 - "정의 확인"과 "가격 원천"은 다른 축이다(세 상태 분리).
+  ['069500.KS', '102110.KS', '278530.KS'].forEach((t) => {
+    const e = EM.EXPOSURE_MASTER_ENTRIES.find((x) => x.ticker === t);
+    assert.ok(e && /^KOSPI200_(PR|TR)$/.test(e.benchmark), t);
+  });
+});

@@ -25,6 +25,10 @@
 //        엔드가 매 요청마다 X-App-Secret 헤더로 이 값을 함께 보내야 응답을 받을 수 있다. CORS는
 //        브라우저에서만 지켜지는 규칙이라 Worker 주소를 알아낸 제3자가 curl 등으로 직접 두드리는
 //        것까지는 막지 못하는데, 이 공유 비밀키가 그 마지막 방어선 역할을 한다.
+// 4-1. [B-1 · 2026-09-20] CLIENT_SHARED_SECRET을 등록하지 않으면 이 Worker는 모든 요청에 503을
+//    돌려준다(fail-closed) - 예전에는 등록하지 않으면 인증 없이 열려 있었다.
+// 4-2. (선택) Variables에 ALLOWED_ORIGINS를 등록하면 코드 수정 없이 허용 Origin 목록을 바꿀 수 있다
+//    (쉼표로 구분). 등록하지 않으면 DEFAULT_ALLOWED_ORIGINS(운영 GitHub Pages · localhost:8644)를 쓴다.
 // 5. 배포 후 발급되는 https://<임의이름>.<계정>.workers.dev 주소와, 4번에서 정한
 //    CLIENT_SHARED_SECRET 값을 프론트엔드 설정(다음 단계에서 안내)에 반영한다.
 //
@@ -39,17 +43,78 @@ const TOKEN_KV_KEY = 'kis_access_token';
 // 데이터가 아니라 20분 정도 지연되어 보여도 실사용에 문제가 없다.
 const RESPONSE_CACHE_TTL_SECONDS = 20 * 60; // 20분
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-App-Secret'
-};
+/* ============================================================================
+ * [B-1 보안 보완 · 체크리스트 §47-8 · PM 승인 2026-09-20]
+ *
+ * 이 Worker에서 실제로 확인된 결함 세 가지를 고친다.
+ *   (1) CORS가 Access-Control-Allow-Origin: * 로 전면 개방돼 있었다 → 허용 목록만 반사한다.
+ *   (2) 공유 비밀키 검사가 "변수가 등록돼 있을 때만" 도는 형태라, 등록하지 않으면 검사 자체가
+ *       건너뛰어졌다(fail-open) → 등록돼 있지 않으면 아예 서비스하지 않는다(fail-closed).
+ *   (3) 요청 수 제한이 없었다 → KV 카운터로 분 · 일 상한을 둔다.
+ * 그리고 상류(KIS) 오류 본문을 그대로 돌려주던 것을 상태 코드와 일반 메시지로 줄인다.
+ *
+ * [남는 제약을 분명히 해 둔다] 이 앱은 공개된 정적 페이지이므로 프론트엔드에 들어가는
+ * X-App-Secret은 원리상 공개값이다. 즉 공유 비밀키만으로는 접근을 통제할 수 없다 -
+ * 실질적인 방어선은 Origin 허용 목록 + 요청 수 제한이고, 공유 비밀키는 보조 수단이다.
+ * ========================================================================= */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://key4125-netizen.github.io', // 운영(GitHub Pages)
+  'http://localhost:8644',             // 로컬 개발 · E2E
+  'http://127.0.0.1:8644'
+];
+// 분 · 일 상한 - 개인 가정용 Worker라 정상 사용은 이 값에 한참 못 미친다(종목 상세 한 번에 3~4회).
+const RATE_LIMIT_PER_MINUTE = 30;
+const RATE_LIMIT_PER_DAY = 300;
 
-function jsonResponse(obj, status = 200) {
+function allowedOrigins(env) {
+  const raw = String((env && env.ALLOWED_ORIGINS) || '').trim();
+  if (!raw) return DEFAULT_ALLOWED_ORIGINS;
+  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+}
+
+// 허용 목록에 있는 Origin만 그대로 반사한다. 목록 밖이면 CORS 헤더를 붙이지 않아 브라우저가 막는다.
+function corsHeadersFor(request, env) {
+  const origin = request.headers.get('Origin');
+  const base = {
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-App-Secret',
+    'Access-Control-Max-Age': '86400',
+    // 같은 URL이라도 Origin에 따라 응답 헤더가 달라진다는 사실을 캐시에 알린다.
+    Vary: 'Origin'
+  };
+  if (origin && allowedOrigins(env).includes(origin)) base['Access-Control-Allow-Origin'] = origin;
+  return base;
+}
+
+function jsonResponse(obj, status = 200, cors = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+    headers: { 'Content-Type': 'application/json', ...cors }
   });
+}
+
+/* [요청 수 제한] KV 카운터 두 개(분 · 일)를 쓴다. KV는 결과적 일관성이라 정확한 카운터는 아니지만,
+ * 여기서 막으려는 것은 정밀한 과금 통제가 아니라 자동화된 남용이므로 이 정도로 충분하다.
+ * KV가 실패하면 요청을 막지 않는다 - 가용성 우선이며, 이 경로는 비밀값을 다루지 않는다. */
+async function checkRateLimit(env, request) {
+  if (!env.KIS_KV) return { ok: true };
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const now = new Date();
+  const minuteKey = 'rl:min:' + ip + ':' + now.toISOString().slice(0, 16);
+  const dayKey = 'rl:day:' + ip + ':' + now.toISOString().slice(0, 10);
+  try {
+    const [m, d] = await Promise.all([env.KIS_KV.get(minuteKey), env.KIS_KV.get(dayKey)]);
+    const mCount = Number(m || 0) + 1;
+    const dCount = Number(d || 0) + 1;
+    if (mCount > RATE_LIMIT_PER_MINUTE || dCount > RATE_LIMIT_PER_DAY) {
+      return { ok: false, retryAfter: mCount > RATE_LIMIT_PER_MINUTE ? 60 : 3600 };
+    }
+    await Promise.all([
+      env.KIS_KV.put(minuteKey, String(mCount), { expirationTtl: 120 }),
+      env.KIS_KV.put(dayKey, String(dCount), { expirationTtl: 86400 })
+    ]);
+  } catch (e) { /* KV 장애 시 제한을 적용하지 않는다(가용성 우선) */ }
+  return { ok: true };
 }
 
 // 6자리 국내 종목코드만 허용한다(예: '005930') - 이 Worker는 국내주식 전용이라 그 외 형식은 애초에
@@ -260,42 +325,58 @@ async function getCachedOrFetch(env, cacheKey, fetchFn) {
 
 export default {
   async fetch(request, env) {
+    const cors = corsHeadersFor(request, env);
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: cors });
     }
     if (request.method !== 'GET') {
-      return jsonResponse({ error: 'method_not_allowed' }, 405);
+      return jsonResponse({ error: 'method_not_allowed' }, 405, cors);
     }
 
-    // [공유 비밀키 검증] CLIENT_SHARED_SECRET을 등록하지 않은 상태(로컬 테스트 등)면 검사를
-    // 건너뛴다 - 실제 배포 시에는 반드시 등록해서 이 분기가 항상 검증하도록 할 것.
-    if (env.CLIENT_SHARED_SECRET && request.headers.get('X-App-Secret') !== env.CLIENT_SHARED_SECRET) {
-      return jsonResponse({ error: 'unauthorized' }, 401);
+    // [B-1 (2)] fail-closed. 공유 비밀키가 등록돼 있지 않으면 "검사를 건너뛴다"가 아니라
+    // "서비스하지 않는다"로 동작한다 - 설정을 잊은 배포가 곧 무인증 공개 프록시가 되는 것을
+    // 구조적으로 막는다.
+    if (!env.CLIENT_SHARED_SECRET) {
+      return jsonResponse({ error: 'not_configured' }, 503, cors);
+    }
+    if (request.headers.get('X-App-Secret') !== env.CLIENT_SHARED_SECRET) {
+      return jsonResponse({ error: 'unauthorized' }, 401, cors);
+    }
+
+    // [B-1 (3)] 요청 수 제한.
+    const rate = await checkRateLimit(env, request);
+    if (!rate.ok) {
+      return new Response(JSON.stringify({ error: 'rate_limited' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': String(rate.retryAfter), ...cors }
+      });
     }
 
     const url = new URL(request.url);
     const code = (url.searchParams.get('ticker') || '').trim();
     if (!isValidDomesticCode(code)) {
-      return jsonResponse({ error: 'bad_ticker' }, 400);
+      return jsonResponse({ error: 'bad_ticker' }, 400, cors);
     }
 
     try {
       if (url.pathname === '/api/kis/price') {
         const data = await getCachedOrFetch(env, `kis_cache:price:${code}`, () => handlePrice(env, code));
-        return jsonResponse(data);
+        return jsonResponse(data, 200, cors);
       }
       if (url.pathname === '/api/kis/fundamentals') {
         const divCode = url.searchParams.get('period') === 'quarter' ? '1' : '0';
         const data = await getCachedOrFetch(env, `kis_cache:fundamentals:${code}:${divCode}`, () => handleFundamentals(env, code, divCode));
-        return jsonResponse(data);
+        return jsonResponse(data, 200, cors);
       }
       if (url.pathname === '/api/kis/investor-flow') {
         const data = await getCachedOrFetch(env, `kis_cache:investor-flow:${code}`, () => handleInvestorFlow(env, code));
-        return jsonResponse(data);
+        return jsonResponse(data, 200, cors);
       }
-      return jsonResponse({ error: 'not_found' }, 404);
+      return jsonResponse({ error: 'not_found' }, 404, cors);
     } catch (e) {
-      return jsonResponse({ error: 'upstream_error', message: String((e && e.message) || e) }, 502);
+      // [B-1 (4)] 상류 오류 본문 · 헤더를 그대로 전달하지 않는다 - 내부 경로 · 토큰 상태 · 계정
+      // 정보가 오류 메시지에 섞여 나갈 수 있다. 클라이언트에는 "상류 조회 실패"만 알린다.
+      return jsonResponse({ error: 'upstream_error' }, 502, cors);
     }
   }
 };

@@ -732,6 +732,165 @@ function updateAssetAmountModeUI() {
   document.getElementById('f_currentPrice').value = 1;
 }
 
+
+/* =========================================================================
+ * [Bond Domain V1 · §47-7] 채권 입력 - 기존 자산 폼 확장
+ *
+ * 새 화면을 만들지 않는다. 자산군이 '채권'일 때만 채권 칸이 펼쳐지고, 저장하면 자산(state.assets)과
+ * 1:1로 연결된 채권 레코드(state.bondPositions)가 함께 저장된다. 기존 자산 구조는 그대로다.
+ *
+ * 공식 값과 사용자 값을 섞지 않는다: 조회로 채운 발행조건은 terms에, 사용자가 그 값을 고치면
+ * userOverride에 따로 적는다(js/29). 매입일 · 액면 · 매입금액은 어떤 자동 경로도 건드리지 않는다.
+ * ====================================================================== */
+const BOND_FIELD_IDS = ['f_bondIsin', 'f_bondType', 'f_bondHedge', 'f_bondIssueDate', 'f_bondMaturityDate',
+  'f_bondCouponRate', 'f_bondCouponType', 'f_bondPayFreq', 'f_bondRating', 'f_bondFaceAmount', 'f_bondPurchaseDate'];
+// 폼에서 마지막으로 불러온(또는 조회로 채운) 레코드 - 저장할 때 출처 · userOverride를 이어받는다.
+let bondFormBase = null;
+
+function bondEl(id) { return document.getElementById(id); }
+function setBondFieldValue(id, v) { const el = bondEl(id); if (el) el.value = (v === null || v === undefined) ? '' : String(v); }
+
+function updateBondFieldsUI() {
+  const wrap = bondEl('bondFieldsWrap');
+  if (!wrap) return;
+  const isBond = (bondEl('f_category') || {}).value === '채권';
+  wrap.classList.toggle('hidden', !isBond);
+  // 환헤지는 외화채에만 의미가 있다 - 원화 채권에서는 고르지 못하게 둔다(값도 비운다).
+  const hedge = bondEl('f_bondHedge');
+  if (hedge) {
+    const foreign = (bondEl('f_currency') || {}).value !== 'KRW';
+    hedge.disabled = !foreign;
+    if (!foreign) hedge.value = '';
+  }
+}
+
+function fillBondFormFromPosition(p) {
+  bondFormBase = p || null;
+  if (!p) { BOND_FIELD_IDS.forEach((id) => setBondFieldValue(id, '')); bondEl('bondSourceNote').textContent = ''; return; }
+  const eff = bondEffectiveTerms(p);
+  setBondFieldValue('f_bondIsin', p.identity.isin);
+  setBondFieldValue('f_bondType', eff.identity.bondType);
+  setBondFieldValue('f_bondHedge', eff.identity.hedgeStatus);
+  setBondFieldValue('f_bondRating', eff.identity.creditRating);
+  setBondFieldValue('f_bondIssueDate', eff.terms.issueDate);
+  setBondFieldValue('f_bondMaturityDate', eff.terms.maturityDate);
+  setBondFieldValue('f_bondCouponRate', eff.terms.couponRate);
+  setBondFieldValue('f_bondCouponType', eff.terms.couponType);
+  setBondFieldValue('f_bondPayFreq', eff.terms.paymentFrequency);
+  setBondFieldValue('f_bondFaceAmount', p.holding.faceAmount);
+  setBondFieldValue('f_bondPurchaseDate', p.holding.purchaseDate);
+  bondEl('bondSourceNote').textContent = p.source && p.source.provider
+    ? `출처: ${p.source.provider}${p.source.sourceDate ? ' · 기준일 ' + p.source.sourceDate : ''}${eff.overridden.length ? ' · 직접 고친 항목 ' + eff.overridden.length + '개' : ''}`
+    : '';
+}
+
+// 자산 하나에 연결된 채권 레코드(없으면 null).
+function findBondPositionByAssetId(assetId) {
+  return (state.bondPositions || []).find((p) => p && p.assetId === assetId) || null;
+}
+
+/* 폼 값을 읽어 채권 레코드를 만든다.
+ * 조회로 받아 둔 공식 값과 화면 값이 다르면 그 항목만 userOverride에 적는다 - 공식 원본은 지우지 않는다. */
+function buildBondPositionFromForm(assetId) {
+  const val = (id) => String((bondEl(id) || {}).value || '').trim();
+  const numOrNull = (id) => { const v = val(id); return v === '' ? null : Number(v); };
+  const base = bondFormBase;
+  const terms = {
+    issueDate: val('f_bondIssueDate') || null,
+    maturityDate: val('f_bondMaturityDate') || null,
+    couponRate: numOrNull('f_bondCouponRate'),
+    couponType: val('f_bondCouponType') || null,
+    paymentFrequency: numOrNull('f_bondPayFreq'),
+    paymentDates: base ? base.terms.paymentDates : []
+  };
+  const identity = {
+    isin: val('f_bondIsin') || null,
+    instrumentName: String((bondEl('f_name') || {}).value || '').trim() || null,
+    issuer: base ? base.identity.issuer : null,
+    currency: String((bondEl('f_currency') || {}).value || 'KRW'),
+    bondType: val('f_bondType') || null,
+    creditRating: val('f_bondRating') || null,
+    hedgeStatus: val('f_bondHedge') || null
+  };
+  const userOverride = base ? Object.assign({}, base.userOverride) : {};
+  if (base) {
+    // 공식 값과 다르게 고친 항목만 기록한다(원본 terms · identity는 base에서 그대로 이어받는다).
+    ['maturityDate', 'issueDate', 'couponRate', 'couponType', 'paymentFrequency'].forEach((k) => {
+      if (terms[k] !== null && base.terms[k] !== null && terms[k] !== base.terms[k]) userOverride[k] = terms[k];
+      else if (base.terms[k] !== null && terms[k] === base.terms[k]) delete userOverride[k];
+    });
+  }
+  return makeBondPosition({
+    id: base ? base.id : undefined,
+    assetId,
+    identity: base ? Object.assign({}, base.identity, { bondType: identity.bondType, creditRating: identity.creditRating, hedgeStatus: identity.hedgeStatus, currency: identity.currency, isin: identity.isin || base.identity.isin, instrumentName: identity.instrumentName || base.identity.instrumentName }) : identity,
+    terms: base ? base.terms : terms,
+    source: base ? base.source : null,
+    userOverride: base ? userOverride : {},
+    holding: {
+      owner: String((bondEl('f_owner') || {}).value || '') || null,
+      account: String((bondEl('f_accountType') || {}).value || '') || null,
+      purchaseDate: val('f_bondPurchaseDate') || null,
+      faceAmount: numOrNull('f_bondFaceAmount'),
+      purchaseAmount: num((bondEl('f_quantity') || {}).value) * num((bondEl('f_buyPrice') || {}).value) || null,
+      taxType: base ? base.holding.taxType : null
+    }
+  });
+}
+
+/* 저장 시점에 자산과 채권 레코드를 맞춘다. 자산군이 채권이 아니게 되면 레코드를 지운다
+ * (사용자가 직접 자산군을 바꾼 경우이므로 조용히 남겨 두면 계산에만 남는 유령이 된다). */
+function persistBondPositionForAsset(assetId, category) {
+  if (!Array.isArray(state.bondPositions)) state.bondPositions = [];
+  const idx = state.bondPositions.findIndex((p) => p && p.assetId === assetId);
+  if (category !== '채권') {
+    if (idx >= 0) { state.bondPositions.splice(idx, 1); persistBondPositions(); }
+    return;
+  }
+  const next = buildBondPositionFromForm(assetId);
+  // 아무 항목도 채우지 않았으면 빈 레코드를 만들지 않는다.
+  const hasAny = next.identity.isin || next.terms.maturityDate || next.terms.couponRate !== null || next.holding.faceAmount !== null;
+  if (!hasAny) { if (idx >= 0) { state.bondPositions.splice(idx, 1); persistBondPositions(); } return; }
+  if (idx >= 0) state.bondPositions[idx] = next; else state.bondPositions.push(next);
+  persistBondPositions();
+}
+
+/* [ISIN 조회] 공공데이터 채권기본정보. 인증키는 소스에 넣지 않는다 - 사용자가 자기 키를 브라우저에
+ * 저장해 둔 경우에만 호출하고, 없으면 "원천에 닿지 못함(SOURCE_UNAVAILABLE)"으로 안내한다.
+ * 응답 파싱은 js/29 mapBondSourceResponse가 하고, 이 함수는 네트워크와 화면만 담당한다. */
+const BOND_API_KEY_STORAGE = 'sam_data_go_kr_key';
+const BOND_API_BASE = 'https://apis.data.go.kr/1160100/service/GetBondIssuInfoService/getBondBasiInfo';
+async function lookupBondByIsin() {
+  const statusEl = bondEl('bondLookupStatus');
+  const isin = String((bondEl('f_bondIsin') || {}).value || '').trim().toUpperCase();
+  if (!isin) { statusEl.textContent = '표준코드(ISIN)를 먼저 입력해 주세요.'; return; }
+  let key;
+  try { key = localStorage.getItem(BOND_API_KEY_STORAGE); } catch (e) { key = null; }
+  if (!key) {
+    statusEl.textContent = '공공데이터 인증키가 등록돼 있지 않아 조회할 수 없습니다(SOURCE_UNAVAILABLE). 아래 항목을 직접 입력해 주세요.';
+    return;
+  }
+  statusEl.textContent = '조회 중...';
+  try {
+    const url = `${BOND_API_BASE}?serviceKey=${encodeURIComponent(key)}&resultType=json&numOfRows=5&isinCd=${encodeURIComponent(isin)}`;
+    const res = await fetch(url);
+    if (!res.ok) { statusEl.textContent = `원천에 닿지 못했습니다(SOURCE_UNAVAILABLE · ${res.status}). 직접 입력해 주세요.`; return; }
+    const json = await res.json();
+    const items = (((json || {}).response || {}).body || {}).items;
+    const rows = items ? [].concat(items.item || []) : [];
+    const mapped = mapBondSourceResponse(rows, { retrievedAt: new Date().toISOString() });
+    if (mapped.status === BOND_SOURCE_STATUS.NOT_FOUND) { statusEl.textContent = '해당 표준코드를 원천에서 찾지 못했습니다(NOT_FOUND). 직접 입력해 주세요.'; return; }
+    if (mapped.status === BOND_SOURCE_STATUS.MULTIPLE_MATCH) { statusEl.textContent = `같은 코드로 ${mapped.candidates.length}건이 조회됐습니다(MULTIPLE_MATCH). 발행일 · 만기일을 직접 확인해 입력해 주세요.`; return; }
+    const merged = bondFormBase ? mergeBondSourceIntoPosition(bondFormBase, mapped.position) : mapped.position;
+    fillBondFormFromPosition(merged);
+    statusEl.textContent = mapped.status === BOND_SOURCE_STATUS.SOURCE_DATA_INCOMPLETE
+      ? `일부 항목이 원천에 없습니다(SOURCE_DATA_INCOMPLETE: ${mapped.missingFields.join(' · ')}). 나머지는 직접 채워 주세요.`
+      : '공식 발행조건을 불러왔습니다. 매입일 · 액면 · 매입금액은 조회로 바뀌지 않습니다.';
+  } catch (e) {
+    statusEl.textContent = '조회에 실패했습니다(SOURCE_UNAVAILABLE). 직접 입력해 주세요.';
+  }
+}
+
 function openModal(mode, id) {
   document.getElementById('assetForm').reset();
   document.getElementById('modalTitle').textContent = mode === 'edit' ? '자산 수정' : '최초등록';
@@ -763,6 +922,7 @@ function openModal(mode, id) {
     // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다.
     document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml(a.role, '미지정');
     document.getElementById('f_role').value = a.role || '';
+    fillBondFormFromPosition(findBondPositionByAssetId(a.id)); // [Bond V1] 연결된 채권 레코드가 있으면 채운다
   } else {
     document.getElementById('f_manualEntryToggleWrap').classList.remove('hidden');
     setAssetFormSearchMode(false); // 신규 추가는 항상 "검색" 모드로 시작한다.
@@ -772,9 +932,11 @@ function openModal(mode, id) {
     document.getElementById('f_category').value = '주식';
     document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml('', '미지정');
     document.getElementById('f_role').value = '';
+    fillBondFormFromPosition(null);
   }
   updatePriceUnitLabels();
   updateAssetAmountModeUI();
+  updateBondFieldsUI();
 }
 
 function showModal() { modal.classList.remove('hidden'); pushModalHistoryState(); }
@@ -798,6 +960,7 @@ function autoClassifyModal() {
   document.getElementById('f_isDomestic').value = isDomestic;
   document.getElementById('f_currency').value = isDomestic === '해외' ? 'USD' : 'KRW';
   updatePriceUnitLabels();
+  updateBondFieldsUI();
 }
 
 // 국내/해외를 수동으로 바꾸면 통화 기본값도 함께 맞춰준다 (필요하면 통화만 다시 바꿔 최종 override 가능).
@@ -839,7 +1002,11 @@ document.getElementById('closeModalBtn').addEventListener('click', () => closeMo
 document.getElementById('cancelModalBtn').addEventListener('click', () => closeModal());
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyWithDomestic);
-document.getElementById('f_currency').addEventListener('change', () => { updatePriceUnitLabels(); updateAssetAmountModeUI(); });
+document.getElementById('f_currency').addEventListener('change', () => { updatePriceUnitLabels(); updateAssetAmountModeUI(); updateBondFieldsUI(); });
+// [Bond Domain V1 · §47-7] 자산군을 채권으로 바꾸면 채권 칸이 펼쳐진다(다른 자산군에서는 보이지 않는다).
+document.getElementById('f_category').addEventListener('input', updateBondFieldsUI);
+document.getElementById('f_category').addEventListener('change', updateBondFieldsUI);
+document.getElementById('bondLookupBtn').addEventListener('click', lookupBondByIsin);
 document.getElementById('f_ticker').addEventListener('input', autoClassifyModal);
 document.getElementById('f_name').addEventListener('input', autoClassifyModal);
 document.getElementById('f_manualEntryToggle').addEventListener('change', (e) => setAssetFormSearchMode(e.target.checked));
@@ -917,6 +1084,9 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
   // role을 다른 화면(목표 비중 등)에서도 같은 종목을 추가할 때 그대로 이어받도록 레지스트리에도
   // 반영한다. 채권/현금처럼 티커가 없는 자산은 이름으로 대신 키를 만든다(setTickerRole 세 번째 인자).
   if (payload.ticker || payload.name) setTickerRole(payload.ticker, payload.role, payload.name);
+  // [Bond Domain V1 · §47-7] 자산을 저장한 뒤 채권 레코드도 같은 순간에 맞춘다 - 자산군이 채권이
+  // 아니게 되면 레코드를 지운다(계산에만 남는 유령을 만들지 않는다).
+  persistBondPositionForAsset(id || state.assets[state.assets.length - 1].id, payload.category);
   persistAssets();
   closeModal();
   renderAll();

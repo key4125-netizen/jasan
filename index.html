@@ -1616,6 +1616,101 @@
         </select>
       </label>
 
+
+      <!-- ============ [Bond Domain V1 · §47-7] 채권 정보 ============================
+           새 화면을 만들지 않고 기존 자산 입력 폼을 확장한다. 자산군이 '채권'일 때만 보인다
+           (updateBondFieldsUI). 공식 발행조건(만기 · 표면이율 · 지급주기)과 사용자 보유정보를
+           나눠 두고, 값이 없으면 비워 둔 채로 저장한다 - 빈칸을 0으로 채우지 않는다.
+           375px에서도 한 줄에 두 칸이 들어가도록 기존 grid(2열)를 그대로 쓴다. -->
+      <div id="bondFieldsWrap" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+        <p class="col-span-2 text-sm text-slate-500 dark:text-slate-400 -mb-1">
+          <b class="text-slate-600 dark:text-slate-300">채권 정보</b> - 만기 · 표면이율 · 지급주기를 채우면 이자 일정과 만기보유 수익률(YTM), 금리 민감도를 계산합니다. 모르는 값은 비워 두세요(임의로 채우지 않습니다).
+        </p>
+
+        <label class="col-span-2 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">표준코드(ISIN) <span class="text-slate-400">- 공공데이터에서 발행조건을 불러올 때 씁니다</span></span>
+          <span class="flex gap-2 mt-1">
+            <input id="f_bondIsin" type="text" autocomplete="off" placeholder="예: KR103502GE71" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none mt-0 flex-1">
+            <button type="button" id="bondLookupBtn" class="shrink-0 text-sm font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">조회</button>
+          </span>
+          <span id="bondLookupStatus" class="block text-sm text-slate-400 mt-1"></span>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">발행인 유형</span>
+          <select id="f_bondType" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함(모름)</option>
+            <option value="국채">국채</option>
+            <option value="지방채">지방채</option>
+            <option value="특수채">특수채</option>
+            <option value="회사채">회사채</option>
+            <option value="금융채">금융채</option>
+          </select>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">환헤지 <span class="text-slate-400">- 외화채만</span></span>
+          <select id="f_bondHedge" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">확인 안 됨</option>
+            <option value="HEDGED">환헤지</option>
+            <option value="UNHEDGED">환노출</option>
+          </select>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">발행일</span>
+          <input id="f_bondIssueDate" type="date" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">만기일</span>
+          <input id="f_bondMaturityDate" type="date" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">표면이율(연 %)</span>
+          <input id="f_bondCouponRate" type="number" step="any" min="0" placeholder="예: 3.5" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">이자 지급 방식</span>
+          <select id="f_bondCouponType" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함(모름)</option>
+            <option value="COUPON">이표채(정기 지급)</option>
+            <option value="DISCOUNT">할인채(중간 지급 없음)</option>
+            <option value="COMPOUND">복리채(만기 일시)</option>
+          </select>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">연 지급 횟수</span>
+          <select id="f_bondPayFreq" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함</option>
+            <option value="1">연 1회</option>
+            <option value="2">연 2회(반기)</option>
+            <option value="4">연 4회(분기)</option>
+            <option value="12">연 12회(매월)</option>
+          </select>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">신용등급 <span class="text-slate-400">- 표시용</span></span>
+          <input id="f_bondRating" type="text" autocomplete="off" placeholder="예: AA-" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">보유 액면총액</span>
+          <input id="f_bondFaceAmount" type="number" step="any" min="0" placeholder="0" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">매입일</span>
+          <input id="f_bondPurchaseDate" type="date" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+
+        <p id="bondSourceNote" class="col-span-2 text-sm text-slate-400"></p>
+      </div>
+
       <div class="col-span-2 flex justify-end gap-2 mt-2">
         <button type="button" id="cancelModalBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
         <button type="submit" id="assetFormSubmitBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">추가</button>
