@@ -614,7 +614,24 @@ const APP_SHELL = [
   // 완전 오프라인 최초 실행에서 원장만 빠져 판정이 조용히 달라지는 일을 막는다.
   './js/28-exposure-master.js',
   // [Bond Domain V1 · §47-7] js/05 · js/09 · js/16이 참조하므로 같은 이유로 미리 캐시한다.
-  './js/29-bond-domain.js'
+  './js/29-bond-domain.js',
+  /* [G-2 · 2026-09-20] 나머지 15~27번도 설치 시점에 함께 받아 둔다.
+   * 예전에는 이 파일들이 런타임 캐싱에만 의존해서, 완전 오프라인 최초 실행(설치 직후 비행기 모드 등)에서
+   * Monte Carlo · 안전장치 · 일별평가 · CMA가 통째로 빠진 화면이 떴다. 목록은 index.html의 script 태그와
+   * 같아야 한다 - 하나라도 빠지면 그 기능만 조용히 사라진다. */
+  './js/15-monte-carlo-engine.js',
+  './js/16-monte-carlo-adapter.js',
+  './js/17-monte-carlo-worker.js',
+  './js/18-monte-carlo-controller.js',
+  './js/19-monte-carlo-ui.js',
+  './js/20-inflation-transform.js',
+  './js/21-safety-layer.js',
+  './js/22-safety-ui.js',
+  './js/23-daily-valuation.js',
+  './js/24-daily-valuation-data.js',
+  './js/25-sync-diff.js',
+  './js/26-cma-data.js',
+  './js/27-cma-runtime.js'
 ];
 
 // 외부 시세/환율 API 및 CORS 프록시는 항상 최신 데이터가 우선이므로 네트워크를 먼저 시도하고,

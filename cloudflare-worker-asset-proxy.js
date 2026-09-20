@@ -58,40 +58,61 @@ const ALLOWED_TARGET_HOSTS = [
   // stooq.com 5천여 건이 전부 4xx로 잡히는 것으로 확인됨).
 ];
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
-};
+/* [B-3 · B-4 · §47-8 · 2026-09-20] CORS 허용 목록 + 요청 수 제한
+ * KIS Worker와 같은 이유다 - Access-Control-Allow-Origin: * 는 "브라우저에서 누구나 부를 수 있다"는
+ * 뜻이고, 이 Worker들은 무료 티어 한도를 공유한다. 허용 Origin만 반사하고 IP별 상한을 둔다.
+ * (CORS는 브라우저에서만 지켜지므로 curl 직접 호출까지 막지는 못한다 - 그래서 요청 수 제한을 함께 둔다.) */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://key4125-netizen.github.io',
+  'http://localhost:8644',
+  'http://127.0.0.1:8644',
+  'http://localhost:8643'
+];
+function allowedOrigins(env) {
+  const raw = String((env && env.ALLOWED_ORIGINS) || '').trim();
+  return raw ? raw.split(',').map((o) => o.trim()).filter(Boolean) : DEFAULT_ALLOWED_ORIGINS;
+}
+function corsHeadersFor(request, env) {
+  const origin = request.headers.get('Origin');
+  const base = {
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin'
+  };
+  if (origin && allowedOrigins(env).includes(origin)) base['Access-Control-Allow-Origin'] = origin;
+  return base;
+}
 
-function errorResponse(errorCode, status) {
+function errorResponse(errorCode, status, cors = {}) {
   return new Response(JSON.stringify({ error: errorCode }), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+    headers: { 'Content-Type': 'application/json', ...cors }
   });
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
+    const cors = corsHeadersFor(request, env);
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: cors });
     }
     if (request.method !== 'GET') {
-      return errorResponse('method_not_allowed', 405);
+      return errorResponse('method_not_allowed', 405, cors);
     }
 
     const reqUrl = new URL(request.url);
     const target = reqUrl.searchParams.get('url');
-    if (!target) return errorResponse('missing_url_param', 400);
+    if (!target) return errorResponse('missing_url_param', 400, cors);
 
     let targetUrl;
     try {
       targetUrl = new URL(target);
     } catch (e) {
-      return errorResponse('invalid_url', 400);
+      return errorResponse('invalid_url', 400, cors);
     }
     if (targetUrl.protocol !== 'https:' || !ALLOWED_TARGET_HOSTS.includes(targetUrl.hostname)) {
-      return errorResponse('host_not_allowed', 403);
+      return errorResponse('host_not_allowed', 403, cors);
     }
 
     try {
@@ -104,13 +125,13 @@ export default {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
       });
       const body = await upstream.arrayBuffer();
-      const headers = new Headers(CORS_HEADERS);
+      const headers = new Headers(cors);
       const contentType = upstream.headers.get('Content-Type');
       if (contentType) headers.set('Content-Type', contentType);
       headers.set('Cache-Control', 'no-store'); // 원본에 있던 헤더 - 중간 캐시로 오래된 시세가 나가는 것 방지
       return new Response(body, { status: upstream.status, headers });
     } catch (e) {
-      return errorResponse('upstream_fetch_failed', 502);
+      return errorResponse('upstream_fetch_failed', 502, cors);
     }
   }
 };

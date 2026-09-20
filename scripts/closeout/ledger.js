@@ -20,8 +20,12 @@ const SURVEY_JSON = path.join(DIR, 'data-path-survey.json');
 const LEDGER_MD = path.join(DIR, 'ISSUE_LEDGER.md');
 const SURVEY_MD = path.join(DIR, 'DATA_PATH_SURVEY.md');
 
-const INTERIM = ['OPEN', 'COMPLETED', 'RETAINED', 'NOT_AVAILABLE_CANDIDATE', 'PM_DECISION_REQUIRED'];
-const FINAL = ['COMPLETED', 'RETAINED', 'NOT_AVAILABLE', 'PM_DECISION_RESOLVED'];
+// [PM EXECUTION DIRECTIVE 2026-09-20 §8] 종결 어휘 확장.
+// 모든 항목은 아래 종결 판정 중 하나로 끝나야 한다 - "추후 검토 · 백로그 · 추가 조사 필요"는 종결이 아니다.
+// 옛 값(COMPLETED · RETAINED 등)은 기록으로 남아 있으므로 함께 허용한다.
+const CLOSURE = ['SOLVED', 'SOLVED_WITH_CONSTRAINT', 'EXTERNAL_ACTION_REQUIRED', 'NOT_AVAILABLE', 'PM_DECISION_REQUIRED'];
+const INTERIM = ['OPEN', 'COMPLETED', 'RETAINED', 'NOT_AVAILABLE_CANDIDATE'].concat(CLOSURE);
+const FINAL = ['COMPLETED', 'RETAINED', 'PM_DECISION_RESOLVED'].concat(CLOSURE);
 // NOT_AVAILABLE을 최종 상태로 쓰려면 계획서 §51이 요구하는 근거가 모두 있어야 한다.
 const NOT_AVAILABLE_REQUIRED = ['investigationPaths', 'terms', 'quality', 'alternatives', 'evidence', 'resumeCondition'];
 

@@ -269,6 +269,13 @@ function renderAssetDetailPositionNotice(assets) {
     issues.unshift({ status: 'OWNER_UNASSIGNED',
       message: '소유자가 지정되지 않았습니다. 신랑 또는 와이프로 지정해 주세요. 지정 전에는 미래 예측과 몬테카를로가 이 자산을 다르게 계산합니다.' });
   }
+  /* [F-4 · BOND-DEF-02 · §47-7] 직접 입력한 채권의 현재가는 자동으로 갱신되지 않는다.
+   * 시세 조회 대상(NON_TRADABLE_CATEGORIES)에서 빠져 있기 때문인데, 화면에는 '현재가'라고만 적혀 있어
+   * 사용자가 값이 최신이라고 오해할 수 있다. 사실을 그대로 한 줄 알린다(계산은 건드리지 않는다). */
+  if (list.some((a) => a && a.category === '채권')) {
+    issues.push({ status: 'BOND_PRICE_MANUAL',
+      message: '채권의 현재가는 자동으로 갱신되지 않습니다 - 직접 입력한 값이 그대로 표시됩니다(채권 시세는 저장하지 않습니다). 만기보유 기준 수익률과 금리 민감도는 발행조건만으로 계산되므로 현재가가 없어도 볼 수 있습니다.' });
+  }
   const shown = [];
   issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });
   if (shown.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }

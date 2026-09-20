@@ -54,6 +54,7 @@ async function runMc(page) {
   await page.locator('#mcRunBtn').click();
 }
 
+// [기대값 갱신 사유 · C-1 · §47-4 · 2026-09-20] CMA PRIMARY가 2026 Q1 → 2026 Q2로 활성화됐다(기준일 · σ · 세트 버전).
 test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 기준일 · 세트 · Benchmark)가 결과 아래에 보인다', async ({ page }) => {
   await seedCmaPortfolio(page);
   // 부팅 시세 갱신이 끝난 뒤(seedCmaPortfolio)부터 수집한다 - 탭 이동 · MC 실행 · 결과 확인 구간의 요청만 담긴다.
@@ -69,16 +70,16 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(page.locator('#mcInfoModal')).toBeVisible();
   const summary = page.locator('#mcInfoModalBody [data-mc-cma-summary]');
   await expect(summary).toContainText('Allianz Global Investors 장기 CMA');
-  await expect(summary).toContainText('기준일 2025-12-31');
+  await expect(summary).toContainText('기준일 2026-03-31');
   await expect(summary).toContainText('10년 전망');
   await expect(summary).toContainText('달러(USD) 기준');
-  await expect(summary).toContainText('세트 CMA-2026.1');
+  await expect(summary).toContainText('세트 CMA-2026.2');
   await expect(summary).toContainText('Benchmark 참고값 1쌍');
   await expect(summary).toContainText('J.P. Morgan Asset Management(기준일 2025-09-30)');
   await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)');
   const detail = page.locator('#mcInfoModalBody [data-mc-cma-detail]');
-  await expect(detail).toContainText('국내 주식 → Korea Equities · 변동성 27.9%');
-  await expect(detail).toContainText('미국 주식 → North America Equities · 변동성 16.5%');
+  await expect(detail).toContainText('국내 주식 → Korea Equities · 변동성 29.4%');
+  await expect(detail).toContainText('미국 주식 → North America Equities · 변동성 16.6%');
   await expect(detail).toContainText('국내 주식 ↔ 미국 주식: 0.41');
   await expect(detail).toContainText('Benchmark 참고값 · J.P. Morgan Asset Management');
   await expect(detail).not.toContainText('BENCHMARK_REFERENCE');
@@ -99,14 +100,14 @@ test('C. 입력 서명에 CMA 세트 버전이 들어가고, 세트가 바뀌면
   await runMc(page);
   await expect(page.locator('#mcResultArea')).toBeVisible({ timeout: 30000 });
   const sig = await page.evaluate(() => computeMonteCarloInputSignature());
-  expect(sig).toContain('"cma":"CMA-2026.1"');
+  expect(sig).toContain('"cma":"CMA-2026.2"');
   await expect(page.locator('#mcStaleNotice')).toBeHidden();
   // 새 CMA 세트가 배포된 상황을 흉내 낸다(세트 버전만 바꾼다 - 계산은 다시 하지 않는다).
   await page.evaluate(() => { window.getActiveCmaSetVersion = () => 'CMA-2027.1'; refreshMonteCarloResultValidity(); });
   await expect(page.locator('#mcStaleNotice')).toBeVisible();
   await expect(page.locator('#mcP50ScopeNote')).toContainText('이전 설정 기준');
   await page.locator('#mcIntroInfoBtn').click();
-  await expect(page.locator('#mcInfoModalBody [data-mc-cma-summary]')).toContainText('세트 CMA-2026.1');
+  await expect(page.locator('#mcInfoModalBody [data-mc-cma-summary]')).toContainText('세트 CMA-2026.2');
   await expect(page.locator('#mcInfoModalBody [data-mc-cma-summary]')).not.toContainText('CMA-2027.1');
   await page.locator('#closeMcInfoModalBtn').click();
 });
