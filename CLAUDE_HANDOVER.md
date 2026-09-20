@@ -32,7 +32,28 @@
 
 ---
 
-## 🚧 PHASE 0 완료 — v262 → 전체 미결사항 종결 프로젝트 (2026-09-20 · 가장 최신 — 다음 세션은 이 절부터 읽는다)
+## 🧩 PM Solution Closure — 미결 10건 해결안 확정 (2026-09-20 · 가장 최신 · 커밋 `9270b11` · 문서만 · 코드/데이터/정책 변경 0)
+
+> 브랜치 `integration/v262-closeout` · main(`d4459a7`) 무변경 · Production v262 유지 · **버전 변경 없음**.
+> 산출물: `docs/closeout/research/PM_SOLUTION_CLOSURE.md`(신규) + Bond 문서 3종 추가 절 + 대장 갱신.
+
+**핵심 결론(다음 세션이 알아야 할 것)**
+- **BOND-4 해소** — "국내채권 CMA가 없다"는 제약은 실제로 없다. `data/cma/datasets/JPM-LTCMA-2026-KRW.json`에 **Korean Government Bonds 3.0/5.357 · Korean Corporate Bonds 3.5/2.540 · Korean Cash 2.2/0.476** 과 외화채 hedged/unhedged 쌍이 이미 있다. 필요한 것은 데이터가 아니라 **§37 역할 승격(BENCHMARK → μ·σ 근거) PM 승인**이다.
+- **BOND-3 해소** — 듀레이션은 가격이 아니라 현금흐름 구조에서 나오므로 **시세 없이 계산된다**(산식은 BOND_DOMAIN_DESIGN.md §14-2). 신용위험은 수치화하지 않고 등급 표시까지만.
+- **D-5** — "ETF를 KOSPI200 proxy로 쓰자"는 안은 **무의미함을 확인**했다(proxy 후보가 베타를 구하려는 ETF 자신 → 베타 정의상 1). 실효 경로는 사용자 공공데이터 키 직접조회(지수 API는 CORS 허용 실측 확인) 또는 KRX 라이선스뿐.
+- **D-11** — HOME_COMMON_RULE_V2("본국 발행 지분증권, ADR·우선주·ETF 제외") 적용 시 GOOG = RESOLVED/NASDAQ. **측정 완료: RESOLVED 33→34 · UNRESOLVED 15→14 · 검증 위반 0.**
+- **B-1** — 저장소 `cloudflare-worker-kis-proxy.js`에 실제 결함 2건: ① `Access-Control-Allow-Origin: '*'` ② `CLIENT_SHARED_SECRET` **미등록 시 인증 통째로 생략(fail-open)**. 수정안 + Cloudflare 대시보드 절차는 PM_SOLUTION_CLOSURE.md §9. **비밀값은 문서 어디에도 기록하지 않았다.**
+- **C-1** — CMA Q1→Q2 영향 측정(동일 seed 20260101 · 2,000회 · 20년 · 원장 49건): **P10 −1.97% · P50 +1.52% · P90 +4.77% · mean +3.84% · μ 불변**(Return Key에서 오므로 CMA 무관 — 정책 경계 정상 작동). 권고는 Q2 활성화이나 **BOND-4와 동시 적용 금지**(순차 + 각각 전후 측정).
+
+**PM 결정 대기 6건** — BOND-1(표시 계층) · BOND-2(Risk 편입) · BOND-5(포트폴리오 베타) · BOND-4 역할 승격 · C-1(Q2 활성화) · D-11(규칙 v2) · D-5(경로 선택).
+**SoT 변경안 4건** — §7-1 Risk 대상 · §7-2 제10조 베타 · §7-3 MC 채권 자산군 · §7-4 HOME_COMMON v2 (전부 PM_SOLUTION_CLOSURE.md §12에 CURRENT/PROBLEM/PROPOSED/WHY/IMPACT/REGRESSION/ROLLBACK 형식).
+**즉시 착수 가능(결정 불필요)** — Bond Ledger 스키마 · ISIN 조회 어댑터 · 현금흐름/매입 시 YTM 엔진 · 입력 UI(기존 폼 확장).
+
+**게이트** — Unit 566/566 · ESLint 0 · Data Guard PASS · secret 문자열 0건 · `.claude/launch.json` 무변경(diff 해시 `216cbb7b12fed0a2` 유지 · 절대 stage 금지).
+
+---
+
+## 🚧 PHASE 0 완료 — v262 → 전체 미결사항 종결 프로젝트 (2026-09-20 · 위 절이 더 최신)
 
 > **현재 단계: PHASE 0 완료(STATUS = PASS · PM 최종 게이트 2026-09-20) · PHASE 1(데이터 경로 전수 조사 · 결정 패키지) 대기.**
 > 작업은 전부 **`integration/v262-closeout`** 에서 한다. main(`d4459a7`)은 건드리지 않았고 Production은 v262 그대로다(버전 변경 없음).
