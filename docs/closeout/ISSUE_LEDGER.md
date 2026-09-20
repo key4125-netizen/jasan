@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1~6차 반영(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~7차 반영(2026-09-20)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -13,12 +13,12 @@
 
 | 현재 판정 | 건수 |
 | --- | ---: |
-| OPEN | 42 |
+| OPEN | 39 |
 | COMPLETED | 15 |
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| PM_DECISION_REQUIRED | 5 |
-| **합계** | **67** |
+| PM_DECISION_REQUIRED | 9 |
+| **합계** | **68** |
 
 ## 전체 목록
 
@@ -62,7 +62,7 @@
 | G-4 | FIX-3-FULL 기록 없는 과거 구간의 차트 표현 | UI · 차트 | PHASE 7 | OPEN | - |
 | G-5 | KIS 재무 조회가 숫자 코드만 지원 | 코드 | PHASE 7 | OPEN | - |
 | G-6 | 포트 8644의 정체 확인 | 개발 환경 | PHASE 7 | RETAINED | - |
-| N-1 | 채권 관리 프로세스 전체 구축 | 채권 도메인 | PHASE 6 | OPEN | - |
+| N-1 | 채권 관리 프로세스 전체 구축 | 채권 도메인 | PHASE 6 | PM_DECISION_REQUIRED | - |
 | N-2 | Risk · MC 기초데이터 자동 업데이트 · 재검증 파이프라인 | 자동화 | PHASE 8 | OPEN | - |
 | Q-1 | 종목 마스터 localStorage 압력 · QuotaExceeded | 저장소 | PHASE 7 | OPEN | - |
 | Q-2 | 일별 스냅샷(sam_daily_snapshot_v1) 누적 | 저장소 | PHASE 7 | OPEN | - |
@@ -72,8 +72,8 @@
 | M-1 | 같은 id가 기기마다 다른 positionSource를 가질 수 있는가(이론적) | 동기화 | PHASE 7 | OPEN | - |
 | M-2 | §39-3 보류 묶음(T4 · F-7 · C-15 · 상관 가이드 중복 · S-40 · 375px VIX 라벨 · 옛 용어 주석) | 잔여 관찰 항목 | PHASE 7 | OPEN | - |
 | M-3 | 36-2 남은 옛 명칭(포트폴리오 구성 관련 문구) | 문구 | PHASE 7 | OPEN | - |
-| M-4 | BOND-DEF-01 · 03 · 04 · 05 정의 backlog | 채권 | PHASE 6 | OPEN | - |
-| M-5 | 채권 ETF 1개만 보유해도 포트폴리오 베타 null | Risk | PHASE 4 | OPEN | - |
+| M-4 | BOND-DEF-01 · 03 · 04 · 05 정의 backlog | 채권 | PHASE 6 | PM_DECISION_REQUIRED | - |
+| M-5 | 채권 ETF 1개만 보유해도 포트폴리오 베타 null | Risk | PHASE 4 | PM_DECISION_REQUIRED | - |
 | P-1 | 자동 workflow 3종의 프로젝트 기간 통제 | 프로젝트 통제 | PHASE 0 | COMPLETED | - |
 | P-2 | 프로젝트 종료 후 자동화 복귀 · 미실행분 재실행 | 프로젝트 통제 | PHASE 8 | OPEN | - |
 | P-3 | 사용자 영향 고지 | 릴리스 | PHASE 12 | OPEN | - |
@@ -91,6 +91,7 @@
 | D-13 | 혼합형 ETF를 1:N 노출 구조로 표현할지 여부 | 데이터 · 구조 | PHASE 6 | RETAINED | - |
 | P-14 | OpenDART 인증키를 실행 환경에 등록 | 외부 데이터 | PHASE 1 | COMPLETED | COMPLETED |
 | P-15 | PDF 원문 텍스트 추출 수단 부재 | 도구 · 조사 역량 | PHASE 1 | COMPLETED | COMPLETED |
+| P-16 | Bond 설계와 기존 정책 3건의 충돌(§7 σ=0 · Risk 대상 · 제10조 베타) | 정책 충돌 | PHASE 6 | PM_DECISION_REQUIRED | - |
 
 ## 항목 상세
 
@@ -681,17 +682,20 @@
 
 #### N-1 — 채권 관리 프로세스 전체 구축
 
-- **현재 판정**: OPEN · **단계**: PHASE 6
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 6
 - **SoT**: §9 Bond Domain · §44 제43조 · 계획서 §31
-- **현재 구현**: 식별 · 분류 · 지수 계층만 재사용 가능. 계산 계층에 채권 자리가 없다(개별채권 σ=0 · 채권 ETF 1개만 있어도 포트폴리오 베타 null) [B-4] 1차 조사 완료 - docs/closeout/research/BOND_N1_SURVEY.md(현재 구조 · 자산 유형별 필요 사실 · 경제적 정의 3후보 비교 · Risk 모델 5후보 · MC 입력 후보 · 데이터 원천 실측 · 결정 후보 BOND-1~6). [B-5] 결정 패키지 초안 작성(docs/closeout/research/BOND_DECISION_PACKAGE.md · BOND-1~6 각 8개 축). 데이터 원천 이용조건 확인 완료 - 채권기본정보(공공누리 2유형)로 만기 · 표면이율 · 이자유형 · 지급주기 · 통화 등 **개별채권 등록 사실 대부분을 공식 경로로 채울 수 있다**(조회키 ISIN). 채권시세정보는 4유형(변경금지). KRX 채권지수는 라이선스 대상. [B-6] 채권 공공데이터 전수표 완성(5종 · 라이선스 유형별). **채권기본정보만 ISIN 조회를 지원**하며 개별채권 등록 사실 대부분을 담는다(제2유형 · 비상업 · 출처표시). 시세 · 수익률은 제4유형(변경금지). CMA 채권 자산군은 **숫자까지 실재**하지만(미국 국채 4.7% / σ 6.5% 등) 앱은 BOND를 unmapped로 두고 riskFree(σ=0) 처리한다 - 즉 BOND-4는 데이터 문제가 아니라 정책 문제다.
-- **문제**: 채권 경제 정의(만기보유 vs 시가평가)부터 정해야 하며 주식 베타 모델을 복사할 수 없다
-- **필요한 사실**: 만기 · 쿠폰 · 쿠폰형태 · 듀레이션 · 신용등급 · 통화 · 평가가격 · 수익률 시계열
+- **현재 구현**: 조사 · 설계 완료. 산출물 3종 - BOND_DECISION_PACKAGE.md(BOND-1~6 결정표 + 권고) · BOND_DOMAIN_DESIGN.md(4계층 분리 · 스키마 · 가격 의미 · ISIN 조회 UX · 현금흐름 · 수익률 · Risk · MC · 외화 · 보안 · 충돌 점검 · 구현 순서) · BOND_DATA_SOURCE_MATRIX.md(원천 8종 · 라이선스 · 자동화 판정).
+- **문제**: 사실과 설계는 닫혔다. 남은 것은 정책 선택 6건(BOND-1~6)이며, 그중 3건은 기존 정책과 충돌해 PM 개정 결정이 필요하다(§7 채권 σ=0 · RISK_ELIGIBLE_CATEGORIES · 제10조 포트폴리오 베타).
+- **필요한 사실**: 없음 - 구현에 필요한 사실은 확보됐다(ISIN 조회 가능 필드 · 라이선스 · CMA 숫자 · 기존 코드 경로).
 - **조사 경로**: 금융투자협회 채권정보센터 · 한국자산평가 등 채권평가사 · KRX · 발행기관 공시
 - **예비 결과(사실 아님)**: 데이터 측면의 핵심 발견: **KRX 공식 지수 사이트가 채권지수 일별 시계열(총수익 · 순가격 · 시장가격)을 로그인 없이 제공**한다(KTB 10년 등 · 2026-09-18 값 확인). 주가지수는 현재값만 제공하는 것과 대조된다. 이용조건은 미확인.
 - **세부 항목**: 31-1 경제적 정의 · 31-2 Bond Fact Ledger · 31-3 데이터 원천 · 31-4 Risk 모델 · 31-5 점수 편입 여부 · 31-6 MC · 31-7 혼합 1:N · 31-8 NOT_AVAILABLE 조건 · 31-9 UI
+- **선택지**: PM이 BOND-1~6을 결정하면 설계대로 구현 착수 · 결정 전에는 구현하지 않는다
 - **영향**: 정책 §9 · §40 P-8 / Risk 채권 위험 · 포트폴리오 베타 / MC 채권 σ · 상관 · 해외채권 / UI 채권 입력 · 안내
-- **구현 필요**: 범위는 조사 후 PM 결정
+- **구현 필요**: 결정 후: Bond Ledger 스키마 → ISIN 조회 어댑터 → 입력 UI(기존 폼 확장) → 현금흐름/수익률 → Bond Risk → (승인 시) MC 매핑 → 회귀
 - **테스트**: 신규 단위 + 회귀
+- **검증**: Unit 566/566 · ESLint 0 · Data Guard PASS(이번 pass 코드 변경 없음)
+- **근거**: docs/closeout/research/BOND_DOMAIN_DESIGN.md · BOND_DATA_SOURCE_MATRIX.md · BOND_DECISION_PACKAGE.md
 - **마지막 확인일**: 2026-09-20
 
 ### 자동화
@@ -795,10 +799,10 @@
 
 #### M-4 — BOND-DEF-01 · 03 · 04 · 05 정의 backlog
 
-- **현재 판정**: OPEN · **단계**: PHASE 6
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 6
 - **SoT**: §9-2 · §9-3
-- **현재 구현**: BACKLOG 유지(01) · POLICY/MODEL BACKLOG(03 개별채권 σ=0) · 04 · 05 현행 유지
-- **문제**: N-1과 함께 판정해야 한다
+- **현재 구현**: BOND-DEF-01(현행 구조 유지) · 03(개별채권 σ=0) · 04 · 05. 이번 설계에서 03은 BOND-4로, 02(가격 자동갱신 안내)는 F-4로, 01은 BOND-1로 각각 흡수됐다.
+- **문제**: Bond 결정 패키지(BOND-1~6)에 모두 대응된다. 별도 결정 항목으로 남기지 않는다.
 - **필요한 사실**: N-1 조사 결과
 - **영향**: 정책 Bond / Risk 채권 / MC 채권 σ / UI 채권
 - **구현 필요**: N-1에 통합
@@ -809,11 +813,12 @@
 
 #### M-5 — 채권 ETF 1개만 보유해도 포트폴리오 베타 null
 
-- **현재 판정**: OPEN · **단계**: PHASE 4
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 4
 - **SoT**: 인계장 v262 절 · §44 제10조
-- **현재 구현**: 베타를 못 구하는 종목이 하나라도 있으면 포트폴리오 베타를 내지 않는다(정직성 원칙)
-- **문제**: 정직하지만 사용자에게는 거의 항상 베타가 비어 보인다. 부분 표시 정책과의 정합성을 판정해야 한다
+- **현재 구현**: 베타를 못 구하는 종목이 하나라도 있으면 포트폴리오 베타 null(§44 제10조). Bond 설계에서 같은 사안이 BOND-5로 정리됐다 - 채권을 주식 베타 집계에서 제외하고 제외 비중을 표시하는 안이 권고다.
+- **문제**: BOND-5와 같은 결정이다. 따로 결정하지 않고 BOND-5로 함께 처리한다.
 - **필요한 사실**: 부분 집계 허용 여부(정책)
+- **선택지**: (가) 현행 유지 · (나) 산출 가능분만 집계 + 제외 비중 표시(BOND-5 C안과 동일)
 - **영향**: 정책 제10조 / Risk 포트폴리오 베타 · 점수 / MC 없음 / UI 베타 표시
 - **구현 필요**: PM 결정 후 구현 또는 RETAINED
 - **테스트**: risk suite
@@ -983,5 +988,20 @@
 - **테스트**: 해당 없음
 - **검증**: ICE Benchmark Statement(17p) · 삼성 투자설명서 3건(66~75p) · 미래에셋 투자설명서(57p) 텍스트 추출 성공
 - **근거**: docs/closeout/research/etf-facts.json prospectus 필드
+- **마지막 확인일**: 2026-09-20
+
+### 정책 충돌
+
+#### P-16 — Bond 설계와 기존 정책 3건의 충돌(§7 σ=0 · Risk 대상 · 제10조 베타)
+
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 6
+- **SoT**: §7 · §9-2 BOND-DEF-03 · §44 제10조 · js/09 RISK_ELIGIBLE_CATEGORIES
+- **현재 구현**: Bond Domain 설계가 기존 정책 3곳과 정면으로 만난다. ① §7: 채권 · 현금 σ=0 ↔ BOND-4 CMA σ 사용 ② RISK_ELIGIBLE_CATEGORIES=[주식,ETF] ↔ BOND-2 직접채권 편입 ③ §44 제10조 포트폴리오 베타 전부-또는-무 ↔ BOND-5 부분 집계.
+- **문제**: 임의로 해결하지 않는다. 각 충돌은 SoT 개정을 수반하므로 PM 결정과 체크리스트 반영이 함께 필요하다.
+- **필요한 사실**: 없음
+- **선택지**: 각 충돌을 BOND-2 · BOND-4 · BOND-5 결정과 함께 처리하고, 채택 시 체크리스트 해당 절을 개정한다 · 현행 정책 유지(그 경우 Bond 구현 범위가 축소된다)
+- **영향**: 정책 §7 · §44 제10조 · Risk 대상 정의 / Risk 채권 편입 · 포트폴리오 베타 / MC 채권 σ / UI 위험 카드 · 베타 표시
+- **구현 필요**: 결정 후 SoT 개정 + 구현
+- **테스트**: risk · mc 회귀 전후 측정
 - **마지막 확인일**: 2026-09-20
 

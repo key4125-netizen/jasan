@@ -3,7 +3,7 @@
   "title": "v262 → 전체 미결사항 종결 프로젝트 · 종결 대장",
   "plan": "docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md",
   "sot": "docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md",
-  "edition": "PHASE 0 초판 · 실행 묶음 B 1~6차 반영(2026-09-20)",
+  "edition": "PHASE 0 초판 · 실행 묶음 B 1~7차 반영(2026-09-20)",
   "baseline": {
     "version": "v262",
     "releaseCommit": "b9ff90e",
@@ -889,12 +889,12 @@
       "category": "채권 도메인",
       "phase": "PHASE 6",
       "title": "채권 관리 프로세스 전체 구축",
-      "currentStatus": "OPEN",
+      "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§9 Bond Domain · §44 제43조 · 계획서 §31",
-      "currentImpl": "식별 · 분류 · 지수 계층만 재사용 가능. 계산 계층에 채권 자리가 없다(개별채권 σ=0 · 채권 ETF 1개만 있어도 포트폴리오 베타 null) [B-4] 1차 조사 완료 - docs/closeout/research/BOND_N1_SURVEY.md(현재 구조 · 자산 유형별 필요 사실 · 경제적 정의 3후보 비교 · Risk 모델 5후보 · MC 입력 후보 · 데이터 원천 실측 · 결정 후보 BOND-1~6). [B-5] 결정 패키지 초안 작성(docs/closeout/research/BOND_DECISION_PACKAGE.md · BOND-1~6 각 8개 축). 데이터 원천 이용조건 확인 완료 - 채권기본정보(공공누리 2유형)로 만기 · 표면이율 · 이자유형 · 지급주기 · 통화 등 **개별채권 등록 사실 대부분을 공식 경로로 채울 수 있다**(조회키 ISIN). 채권시세정보는 4유형(변경금지). KRX 채권지수는 라이선스 대상. [B-6] 채권 공공데이터 전수표 완성(5종 · 라이선스 유형별). **채권기본정보만 ISIN 조회를 지원**하며 개별채권 등록 사실 대부분을 담는다(제2유형 · 비상업 · 출처표시). 시세 · 수익률은 제4유형(변경금지). CMA 채권 자산군은 **숫자까지 실재**하지만(미국 국채 4.7% / σ 6.5% 등) 앱은 BOND를 unmapped로 두고 riskFree(σ=0) 처리한다 - 즉 BOND-4는 데이터 문제가 아니라 정책 문제다.",
-      "problem": "채권 경제 정의(만기보유 vs 시가평가)부터 정해야 하며 주식 베타 모델을 복사할 수 없다",
-      "neededFact": "만기 · 쿠폰 · 쿠폰형태 · 듀레이션 · 신용등급 · 통화 · 평가가격 · 수익률 시계열",
+      "currentImpl": "조사 · 설계 완료. 산출물 3종 - BOND_DECISION_PACKAGE.md(BOND-1~6 결정표 + 권고) · BOND_DOMAIN_DESIGN.md(4계층 분리 · 스키마 · 가격 의미 · ISIN 조회 UX · 현금흐름 · 수익률 · Risk · MC · 외화 · 보안 · 충돌 점검 · 구현 순서) · BOND_DATA_SOURCE_MATRIX.md(원천 8종 · 라이선스 · 자동화 판정).",
+      "problem": "사실과 설계는 닫혔다. 남은 것은 정책 선택 6건(BOND-1~6)이며, 그중 3건은 기존 정책과 충돌해 PM 개정 결정이 필요하다(§7 채권 σ=0 · RISK_ELIGIBLE_CATEGORIES · 제10조 포트폴리오 베타).",
+      "neededFact": "없음 - 구현에 필요한 사실은 확보됐다(ISIN 조회 가능 필드 · 라이선스 · CMA 숫자 · 기존 코드 경로).",
       "investigationPaths": [
         "금융투자협회 채권정보센터",
         "한국자산평가 등 채권평가사",
@@ -918,12 +918,18 @@
         "mc": "채권 σ · 상관 · 해외채권",
         "ui": "채권 입력 · 안내"
       },
-      "implementationNeeded": "범위는 조사 후 PM 결정",
+      "implementationNeeded": "결정 후: Bond Ledger 스키마 → ISIN 조회 어댑터 → 입력 UI(기존 폼 확장) → 현금흐름/수익률 → Bond Risk → (승인 시) MC 매핑 → 회귀",
       "test": "신규 단위 + 회귀",
       "resumeCondition": null,
       "lastCheckedAt": "2026-09-20",
       "preliminary": "데이터 측면의 핵심 발견: **KRX 공식 지수 사이트가 채권지수 일별 시계열(총수익 · 순가격 · 시장가격)을 로그인 없이 제공**한다(KTB 10년 등 · 2026-09-18 값 확인). 주가지수는 현재값만 제공하는 것과 대조된다. 이용조건은 미확인.",
-      "nextAction": "PM의 BOND-1~6 결정. 그 전 남은 조사: 금투협 채권정보센터 조회 범위 · 채권대차정보 라이선스 · 사용자 ISIN 입력 수단."
+      "nextAction": "PM의 BOND-1~6 결정. 그 전 남은 조사: 금투협 채권정보센터 조회 범위 · 채권대차정보 라이선스 · 사용자 ISIN 입력 수단.",
+      "options": [
+        "PM이 BOND-1~6을 결정하면 설계대로 구현 착수",
+        "결정 전에는 구현하지 않는다"
+      ],
+      "verification": "Unit 566/566 · ESLint 0 · Data Guard PASS(이번 pass 코드 변경 없음)",
+      "evidence": "docs/closeout/research/BOND_DOMAIN_DESIGN.md · BOND_DATA_SOURCE_MATRIX.md · BOND_DECISION_PACKAGE.md"
     },
     {
       "id": "N-2",
@@ -1129,11 +1135,11 @@
       "category": "채권",
       "phase": "PHASE 6",
       "title": "BOND-DEF-01 · 03 · 04 · 05 정의 backlog",
-      "currentStatus": "OPEN",
+      "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§9-2 · §9-3",
-      "currentImpl": "BACKLOG 유지(01) · POLICY/MODEL BACKLOG(03 개별채권 σ=0) · 04 · 05 현행 유지",
-      "problem": "N-1과 함께 판정해야 한다",
+      "currentImpl": "BOND-DEF-01(현행 구조 유지) · 03(개별채권 σ=0) · 04 · 05. 이번 설계에서 03은 BOND-4로, 02(가격 자동갱신 안내)는 F-4로, 01은 BOND-1로 각각 흡수됐다.",
+      "problem": "Bond 결정 패키지(BOND-1~6)에 모두 대응된다. 별도 결정 항목으로 남기지 않는다.",
       "neededFact": "N-1 조사 결과",
       "impact": {
         "policy": "Bond",
@@ -1151,11 +1157,11 @@
       "category": "Risk",
       "phase": "PHASE 4",
       "title": "채권 ETF 1개만 보유해도 포트폴리오 베타 null",
-      "currentStatus": "OPEN",
+      "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "인계장 v262 절 · §44 제10조",
-      "currentImpl": "베타를 못 구하는 종목이 하나라도 있으면 포트폴리오 베타를 내지 않는다(정직성 원칙)",
-      "problem": "정직하지만 사용자에게는 거의 항상 베타가 비어 보인다. 부분 표시 정책과의 정합성을 판정해야 한다",
+      "currentImpl": "베타를 못 구하는 종목이 하나라도 있으면 포트폴리오 베타 null(§44 제10조). Bond 설계에서 같은 사안이 BOND-5로 정리됐다 - 채권을 주식 베타 집계에서 제외하고 제외 비중을 표시하는 안이 권고다.",
+      "problem": "BOND-5와 같은 결정이다. 따로 결정하지 않고 BOND-5로 함께 처리한다.",
       "neededFact": "부분 집계 허용 여부(정책)",
       "impact": {
         "policy": "제10조",
@@ -1166,7 +1172,11 @@
       "implementationNeeded": "PM 결정 후 구현 또는 RETAINED",
       "test": "risk suite",
       "resumeCondition": null,
-      "lastCheckedAt": "2026-09-20"
+      "lastCheckedAt": "2026-09-20",
+      "options": [
+        "(가) 현행 유지",
+        "(나) 산출 가능분만 집계 + 제외 비중 표시(BOND-5 C안과 동일)"
+      ]
     },
     {
       "id": "P-1",
@@ -1527,6 +1537,32 @@
       "lastCheckedAt": "2026-09-20",
       "verification": "ICE Benchmark Statement(17p) · 삼성 투자설명서 3건(66~75p) · 미래에셋 투자설명서(57p) 텍스트 추출 성공",
       "evidence": "docs/closeout/research/etf-facts.json prospectus 필드"
+    },
+    {
+      "id": "P-16",
+      "category": "정책 충돌",
+      "phase": "PHASE 6",
+      "title": "Bond 설계와 기존 정책 3건의 충돌(§7 σ=0 · Risk 대상 · 제10조 베타)",
+      "currentStatus": "PM_DECISION_REQUIRED",
+      "finalStatus": null,
+      "sot": "§7 · §9-2 BOND-DEF-03 · §44 제10조 · js/09 RISK_ELIGIBLE_CATEGORIES",
+      "currentImpl": "Bond Domain 설계가 기존 정책 3곳과 정면으로 만난다. ① §7: 채권 · 현금 σ=0 ↔ BOND-4 CMA σ 사용 ② RISK_ELIGIBLE_CATEGORIES=[주식,ETF] ↔ BOND-2 직접채권 편입 ③ §44 제10조 포트폴리오 베타 전부-또는-무 ↔ BOND-5 부분 집계.",
+      "problem": "임의로 해결하지 않는다. 각 충돌은 SoT 개정을 수반하므로 PM 결정과 체크리스트 반영이 함께 필요하다.",
+      "neededFact": "없음",
+      "options": [
+        "각 충돌을 BOND-2 · BOND-4 · BOND-5 결정과 함께 처리하고, 채택 시 체크리스트 해당 절을 개정한다",
+        "현행 정책 유지(그 경우 Bond 구현 범위가 축소된다)"
+      ],
+      "impact": {
+        "policy": "§7 · §44 제10조 · Risk 대상 정의",
+        "risk": "채권 편입 · 포트폴리오 베타",
+        "mc": "채권 σ",
+        "ui": "위험 카드 · 베타 표시"
+      },
+      "implementationNeeded": "결정 후 SoT 개정 + 구현",
+      "test": "risk · mc 회귀 전후 측정",
+      "resumeCondition": null,
+      "lastCheckedAt": "2026-09-20"
     }
   ]
 }

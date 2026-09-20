@@ -55,6 +55,16 @@
 - `.github/workflows/*.yml` 파일은 **무변경**. 프로젝트 종료 후 `gh workflow enable <id>` + `gh workflow run <id>`로 복귀하고 건너뛴 갱신을 수동 실행한다(대장 **P-2**).
 - **이 기간 동안 H.10 · 종목마스터 · CMA는 자동 갱신되지 않는다.** 데이터가 오래된 것처럼 보이면 이 통제 때문이다.
 
+**실행 묶음 B 7차 — Bond Domain 최종 설계 · PM Decision Table (2026-09-20 · 문서만 · 코드 변경 0)**
+- 산출물 3종: `BOND_DECISION_PACKAGE.md`(**PM Decision Table** BOND-1~6 + D-5·D-11·B-1·C-1) ·
+  `BOND_DOMAIN_DESIGN.md`(4계층 분리 · 스키마 · 가격 의미 · ISIN 조회 UX 6상태 · 현금흐름 · 수익률 8종 · Risk · MC · 외화 · 보안 · 구현 순서) ·
+  `BOND_DATA_SOURCE_MATRIX.md`(원천 8종 · 라이선스 · 자동화 판정 · 제4유형 변경금지 해석표)
+- 핵심 설계 원칙: **A 공식 상품사실 / B 사용자 보유사실 / C 시장사실 / D 파생** 4계층을 절대 섞지 않는다.
+  **자동 갱신은 A에만** 적용하고 B(매입일·수량·매입단가)는 어떤 자동 경로도 건드리지 않는다.
+  기존 `sam_assets_v5` 무변경 · 새 키(`sam_bond_positions_v1`)로 1:1 연결 · 마이그레이션 없음.
+- **기존 정책 충돌 3건을 신규 P-16으로 등록**(임의 해결 금지): §7 채권 σ=0 ↔ BOND-4 / RISK_ELIGIBLE_CATEGORIES ↔ BOND-2 / §44 제10조 포트폴리오 베타 ↔ BOND-5
+- N-1 · M-4 · M-5 → **PM_DECISION_REQUIRED**(사실·설계는 닫힘, 정책 선택만 남음)
+
 **실행 묶음 B 5차 — OpenDART 실조회 · Bond 원천 이용조건 · 결정 패키지 (2026-09-20 · 조사만)**
 - **OpenDART 키 등록됨 · 실호출 성공**(운용사 4곳 status 000). 다만 **document.xml은 표지만** 준다 — 투자설명서 본문은 첨부문서라 API 범위 밖(9건 전부 COVER_ONLY · 정정/원본 무관).
 - **368590 지수 변경**: DART 전체 공시유형 2020-10~2026 검색 → 관련 공시 4건뿐이고 **기초지수를 바꾼 기록 없음**(2022 매매회전율 · 2026 운용인력/작성기준일). 상품명만 KBSTAR→RISE. 발행사 웹 공지 원문은 여전히 못 읽음 → **REVIEW 유지**.
