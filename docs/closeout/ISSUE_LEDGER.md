@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1~5차 반영(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~6차 반영(2026-09-20)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -14,10 +14,10 @@
 | 현재 판정 | 건수 |
 | --- | ---: |
 | OPEN | 42 |
-| COMPLETED | 14 |
+| COMPLETED | 15 |
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| PM_DECISION_REQUIRED | 6 |
+| PM_DECISION_REQUIRED | 5 |
 | **합계** | **67** |
 
 ## 전체 목록
@@ -90,7 +90,7 @@
 | D-12 | 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR) | 데이터 · Benchmark | PHASE 3 | COMPLETED | COMPLETED |
 | D-13 | 혼합형 ETF를 1:N 노출 구조로 표현할지 여부 | 데이터 · 구조 | PHASE 6 | RETAINED | - |
 | P-14 | OpenDART 인증키를 실행 환경에 등록 | 외부 데이터 | PHASE 1 | COMPLETED | COMPLETED |
-| P-15 | PDF 원문 텍스트 추출 수단 부재 | 도구 · 조사 역량 | PHASE 1 | PM_DECISION_REQUIRED | - |
+| P-15 | PDF 원문 텍스트 추출 수단 부재 | 도구 · 조사 역량 | PHASE 1 | COMPLETED | COMPLETED |
 
 ## 항목 상세
 
@@ -217,8 +217,8 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: 계획서 §20
-- **현재 구현**: Index Master에 NYSE 계열 지수가 없다. ^NYA 일별 이력(1980~ · 11,774행) 수신은 확인했으나 PM 지시에 따라 **공식 정의 · PR/TR이 미확인이므로 Benchmark로 ACTIVE 적용하지 않는다.** 본국 보통주가 확인된 NYSE 상장 9종목(JPM V MA JNJ UNH XOM CVX PG KO)이 이 항목에 걸려 있다. [B-4] nyse.com의 NYA 페이지는 본문이 비어 정의를 확인하지 못했다. 정의 미확인이므로 Benchmark ACTIVE 하지 않는다(PM 지시 §7). [B-5] ICE 공식 지수 페이지에 NYSE Composite(NYA)가 목록으로만 있고 정의 · 수익유형 서술이 없다. 방법론 PDF는 도구 한계로 텍스트 추출 실패.
-- **문제**: 정의 · PR/TR 미확인 상태가 유지된다. 검색 요약에는 ICE Data Indices가 관리자이고 Price Return · Gross Total Return 기준으로 산출한다는 서술이 있으나 **공식 원문을 확인하지 못했으므로 사실로 올리지 않는다.**
+- **현재 구현**: Index Master에 NYSE 계열 지수가 없다. ^NYA 일별 이력(1980~ · 11,774행) 수신은 확인했으나 PM 지시에 따라 **공식 정의 · PR/TR이 미확인이므로 Benchmark로 ACTIVE 적용하지 않는다.** 본국 보통주가 확인된 NYSE 상장 9종목(JPM V MA JNJ UNH XOM CVX PG KO)이 이 항목에 걸려 있다. [B-4] nyse.com의 NYA 페이지는 본문이 비어 정의를 확인하지 못했다. 정의 미확인이므로 Benchmark ACTIVE 하지 않는다(PM 지시 §7). [B-5] ICE 공식 지수 페이지에 NYSE Composite(NYA)가 목록으로만 있고 정의 · 수익유형 서술이 없다. 방법론 PDF는 도구 한계로 텍스트 추출 실패. [B-6] **운영기관 확정: ICE Data Indices, LLC**(ICE 공식 Benchmark Statement — NYSE® Composite Index Family v1.1 · 2023-11 원문). 다만 같은 기관 문서가 PR · Gross TR · Net TR 세 버전을 정의하므로 **^NYA가 어느 버전인지**는 미확인이다.
+- **문제**: 운영기관은 확정됐고 남은 것은 ^NYA의 수익유형 대응이다. 확인 전까지 Benchmark ACTIVE 하지 않는다.
 - **필요한 사실**: NYSE Composite(또는 대체 기준 지수)의 공식 정의 · 수신 가능한 역사 시계열 · 이용조건
 - **조사 경로**: Yahoo ^NYA 역사 데이터 · ICE/NYSE 공식 지수 문서 · 대체: S&P 500 사용 여부는 정책 결정 필요
 - **예비 결과(사실 아님)**: NYSE Composite 일별 이력 수신 확인 · 낙폭 산출 가능(2020 -38.11% · 2022 -22.37%). 공식 정의 · PR/TR · 이용조건은 미확인.
@@ -231,7 +231,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §21 · §25
-- **현재 구현**: 12개 상품 전수 조사 완료(docs/closeout/research/etf-facts.json). **PR/TR 확정**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR. **미확정**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수의 PR/TR 표기가 없음 - 다만 해당 지수(S&P 500 · DJ US Div100 · NASDAQ 100)의 제공기관 대표값은 Price Return임을 확인). [B-4] OpenDART 경로를 기술검증했다 - 투자설명서(집합투자증권)가 DART에 실제 존재하고 공시검색 · 공시서류원본파일 API로 접근 가능하다. 운용사 고유번호 4곳을 확보해 호출 준비를 마쳤다(scripts/closeout/research/opendart-etf-docs.js). [B-4 실행] OpenDART로 9개 ETF의 투자설명서 공시를 특정했으나(접수번호 · 제출일 확보) **본문은 첨부문서라 API로 오지 않는다**(9건 모두 표지만 · 정정/원본 무관). PR/TR 미확정 4건은 그대로다.
+- **현재 구현**: 12개 상품 전수 조사 완료(docs/closeout/research/etf-facts.json). **PR/TR 확정**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR. **미확정**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수의 PR/TR 표기가 없음 - 다만 해당 지수(S&P 500 · DJ US Div100 · NASDAQ 100)의 제공기관 대표값은 Price Return임을 확인). [B-4] OpenDART 경로를 기술검증했다 - 투자설명서(집합투자증권)가 DART에 실제 존재하고 공시검색 · 공시서류원본파일 API로 접근 가능하다. 운용사 고유번호 4곳을 확보해 호출 준비를 마쳤다(scripts/closeout/research/opendart-etf-docs.js). [B-4 실행] OpenDART로 9개 ETF의 투자설명서 공시를 특정했으나(접수번호 · 제출일 확보) **본문은 첨부문서라 API로 오지 않는다**(9건 모두 표지만 · 정정/원본 무관). PR/TR 미확정 4건은 그대로다. [B-6] 투자설명서 원문 확인: 360750 "S&P 500 Index(원화환산)" · PR/TR 표기 없음 / 278530 "KOSPI200 TR 지수" · 총수익률 문구 확인 / 069500 "한국종합주가지수200 · KOSPI200 x 100%" / 487230 "iSelect …(KRW)" · 산출 NH투자증권.
 - **문제**: 남은 4건은 "지수 제공기관은 PR을 대표값으로 쓰는데 상품 자료가 그 구분을 적지 않은" 경우다. 상품이 PR 버전을 쓴다고 단정하지 않는다.
 - **필요한 사실**: 종목별 기초지수의 공식 수익 유형(PR/TR)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 전자공시 · 지수 제공기관 methodology · 미국: SEC filings · 공식 fact sheet
@@ -302,7 +302,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §23
-- **현재 구현**: 4종 모두 **정의는 A등급으로 확정**됐다(D-12). 남은 것은 일별 시계열 원천이다 - DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR(S&P DJI 라이선스) · ISELECT_US_AI_POWER_PR(산출기관 확인 필요) · KOSPI200_TR(KRX). [B-5] iSelect 산출기관은 공식 원문으로 확정하지 못했다(발행사 fact sheet가 PDF라 추출 불가). 검색 요약의 "NH투자증권" 서술은 근거로 쓰지 않는다.
+- **현재 구현**: 4종 모두 **정의는 A등급으로 확정**됐다(D-12). 남은 것은 일별 시계열 원천이다 - DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR(S&P DJI 라이선스) · ISELECT_US_AI_POWER_PR(산출기관 확인 필요) · KOSPI200_TR(KRX). [B-6] **iSelect 산출기관 확정: NH투자증권**(삼성자산운용 투자설명서 원문 "NH투자증권에서 산출·발표하는" · A등급). 487230 환헤지도 원문으로 확정(환헤지전략 미실시).
 - **문제**: 현재 API에 없다는 이유로 멈춰 있다. 계획서 §0-1에 따라 전 경로를 다시 조사해야 한다
 - **필요한 사실**: 각 지수의 공개 역사 시계열 수신 가능성 · 정의 · 이용조건
 - **조사 경로**: 지수 제공기관(S&P DJI · NH아문디 iSelect 등) 공식 페이지 · 운용사 공시 · fact sheet 내 지수값 · KRX · 합법적 대체 시계열
@@ -348,7 +348,7 @@
 
 - **현재 판정**: COMPLETED · **단계**: PHASE 6
 - **SoT**: §44 44-16 · 계획서 §39
-- **현재 구현**: 혼합형 2종의 공식 구성이 확인됐다. 237370: KRX 배당성장 채권혼합지수 = 코스피 배당성장 50 30% + KTB 70%. 472170: FnGuide 미국테크TOP10 채권혼합지수 = Indxx US Tech Top10 + KIS 국채 3-10년(총수익) 5:5(2025-10-31부터 4:6에서 변경) · 환헤지 없음.
+- **현재 구현**: 혼합형 2종의 공식 구성이 확인됐다. 237370: KRX 배당성장 채권혼합지수 = 코스피 배당성장 50 30% + KTB 70%. 472170: FnGuide 미국테크TOP10 채권혼합지수 = Indxx US Tech Top10 + KIS 국채 3-10년(총수익) 5:5(2025-10-31부터 4:6에서 변경) · 환헤지 없음. [B-6] 237370 투자설명서 원문: "코스피 배당성장50 지수와 **KRX Korea Treasury Bond Index**의 변화를 **3:7**의 비율로 반영하여 산출" - 채권지수 정식명과 비율이 원문으로 확정됐다.
 - **문제**: 사실 조사는 끝났다. 두 상품 모두 **단일 혼합지수**를 기초지수로 쓰므로 반드시 1:N 구조가 필요한 것은 아니다 - 구조 도입 여부는 별도 결정(D-13).
 - **필요한 사실**: 공식 구성비(자산군별 비중) · 기초지수 조합
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 · 지수 제공기관
@@ -683,7 +683,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 6
 - **SoT**: §9 Bond Domain · §44 제43조 · 계획서 §31
-- **현재 구현**: 식별 · 분류 · 지수 계층만 재사용 가능. 계산 계층에 채권 자리가 없다(개별채권 σ=0 · 채권 ETF 1개만 있어도 포트폴리오 베타 null) [B-4] 1차 조사 완료 - docs/closeout/research/BOND_N1_SURVEY.md(현재 구조 · 자산 유형별 필요 사실 · 경제적 정의 3후보 비교 · Risk 모델 5후보 · MC 입력 후보 · 데이터 원천 실측 · 결정 후보 BOND-1~6). [B-5] 결정 패키지 초안 작성(docs/closeout/research/BOND_DECISION_PACKAGE.md · BOND-1~6 각 8개 축). 데이터 원천 이용조건 확인 완료 - 채권기본정보(공공누리 2유형)로 만기 · 표면이율 · 이자유형 · 지급주기 · 통화 등 **개별채권 등록 사실 대부분을 공식 경로로 채울 수 있다**(조회키 ISIN). 채권시세정보는 4유형(변경금지). KRX 채권지수는 라이선스 대상.
+- **현재 구현**: 식별 · 분류 · 지수 계층만 재사용 가능. 계산 계층에 채권 자리가 없다(개별채권 σ=0 · 채권 ETF 1개만 있어도 포트폴리오 베타 null) [B-4] 1차 조사 완료 - docs/closeout/research/BOND_N1_SURVEY.md(현재 구조 · 자산 유형별 필요 사실 · 경제적 정의 3후보 비교 · Risk 모델 5후보 · MC 입력 후보 · 데이터 원천 실측 · 결정 후보 BOND-1~6). [B-5] 결정 패키지 초안 작성(docs/closeout/research/BOND_DECISION_PACKAGE.md · BOND-1~6 각 8개 축). 데이터 원천 이용조건 확인 완료 - 채권기본정보(공공누리 2유형)로 만기 · 표면이율 · 이자유형 · 지급주기 · 통화 등 **개별채권 등록 사실 대부분을 공식 경로로 채울 수 있다**(조회키 ISIN). 채권시세정보는 4유형(변경금지). KRX 채권지수는 라이선스 대상. [B-6] 채권 공공데이터 전수표 완성(5종 · 라이선스 유형별). **채권기본정보만 ISIN 조회를 지원**하며 개별채권 등록 사실 대부분을 담는다(제2유형 · 비상업 · 출처표시). 시세 · 수익률은 제4유형(변경금지). CMA 채권 자산군은 **숫자까지 실재**하지만(미국 국채 4.7% / σ 6.5% 등) 앱은 BOND를 unmapped로 두고 riskFree(σ=0) 처리한다 - 즉 BOND-4는 데이터 문제가 아니라 정책 문제다.
 - **문제**: 채권 경제 정의(만기보유 vs 시가평가)부터 정해야 하며 주식 베타 모델을 복사할 수 없다
 - **필요한 사실**: 만기 · 쿠폰 · 쿠폰형태 · 듀레이션 · 신용등급 · 통화 · 평가가격 · 수익률 시계열
 - **조사 경로**: 금융투자협회 채권정보센터 · 한국자산평가 등 채권평가사 · KRX · 발행기관 공시
@@ -972,14 +972,16 @@
 
 #### P-15 — PDF 원문 텍스트 추출 수단 부재
 
-- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 1
+- **현재 판정**: COMPLETED → **최종 COMPLETED** · **단계**: PHASE 1
 - **SoT**: 계획서 §0-1(가능한 경로를 끝까지 조사)
-- **현재 구현**: 현재 환경에서 PDF 텍스트 추출이 되지 않는다(PDF 렌더러 미설치). 이번 pass에서 ICE 지수 방법론 · 삼성 fact sheet · 운용사 간이투자설명서가 모두 PDF라 읽지 못했다.
-- **문제**: 남은 미확정 Fact(NYSE Composite 정의 · iSelect 산출기관 · 일부 ETF PR/TR · 360200 환헤지)의 공식 자료가 상당수 PDF로만 제공된다. 이 수단이 없으면 "자료가 없다"가 아니라 "읽을 수 없다"로 막힌다.
+- **현재 구현**: 조사 전용 임시 폴더(저장소 밖)에 PDF 파서를 설치해 해소했다. package.json · 앱 번들 · CI · production 무변경. 이 수단으로 ICE Benchmark Statement와 운용사 투자설명서 PDF를 실제로 읽어 여러 Fact를 확정했다.
+- **문제**: 해결됨.
 - **필요한 사실**: 없음(도구 문제)
 - **선택지**: (가) poppler-utils 설치(사용자 승인 필요 · 시스템 변경) · (나) 조사용 임시 폴더에 PDF 파서 npm 패키지 설치(저장소 의존성 추가 없음) · (다) HTML로 제공되는 공식 경로만 사용하고 PDF 전용 사실은 NOT_AVAILABLE 후보로 처리
 - **영향**: 정책 없음 / Risk 간접(미확정 Fact가 남는다) / MC 없음 / UI 없음
 - **구현 필요**: (나)는 저장소를 건드리지 않고 가능하다
 - **테스트**: 해당 없음
+- **검증**: ICE Benchmark Statement(17p) · 삼성 투자설명서 3건(66~75p) · 미래에셋 투자설명서(57p) 텍스트 추출 성공
+- **근거**: docs/closeout/research/etf-facts.json prospectus 필드
 - **마지막 확인일**: 2026-09-20
 

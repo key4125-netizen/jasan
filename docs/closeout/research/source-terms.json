@@ -221,10 +221,50 @@
       },
       "state": "POLICY_BLOCKED",
       "nextAction": "지수 정보상품 조건 · 비용 확인(문의처 공개). 확인 전에는 저장 · 배포 · 상시 수집하지 않는다."
+    },
+    {
+      "id": "SRC-ISSUER-PDF",
+      "name": "운용사 공식 투자설명서 PDF(삼성 · 미래에셋)",
+      "for": [
+        "DP-08 PR/TR",
+        "DP-09 환헤지",
+        "DP-06 iSelect",
+        "DP-15 혼합 구성비"
+      ],
+      "endpoints": [
+        "https://m.samsungfund.com/upload/invest/<fId>-A.pdf",
+        "https://investments.miraeasset.com/tigeretf/upload/etf/<yyyymmddhhmmssxxxxxx>.pdf (상품 페이지의 문서 링크)"
+      ],
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "OK",
+        "detail": "삼성은 상품 ID로 URL이 정해지고, 미래에셋은 상품 페이지 안의 링크로 얻는다. 두 곳 모두 본문(투자목적 · 투자전략 · 환헤지 조항)이 들어 있다."
+      },
+      "state": "ACCESS_VERIFIED",
+      "note": "원문은 저장하지 않는다. 필요한 문장만 인용하고 URL · 쪽수 · 취득일을 남긴다(계획서 §8)."
+    },
+    {
+      "id": "SRC-ICE-INDICES",
+      "name": "ICE Data Indices 공개 문서",
+      "for": [
+        "DP-02 NYSE Composite"
+      ],
+      "endpoints": [
+        "https://www.ice.com/publicdocs/data/ICE_Data_Indices_Benchmark_Statement_NYSE_Composite_Index_Family.pdf",
+        "https://www.ice.com/publicdocs/data/NYSE_Indices_Guide_to_Index_Mathematics.pdf"
+      ],
+      "accessAttempt": {
+        "date": "2026-09-20",
+        "result": "OK",
+        "detail": "Benchmark Statement(17p) · Guide to Index Mathematics(15p) 텍스트 확인"
+      },
+      "state": "ACCESS_VERIFIED",
+      "note": "운영기관은 확정됐으나 개별 지수(^NYA)의 수익유형 대응은 두 문서에 없다. ICE Index Platform(indices.ice.com) Index Finder가 다음 후보."
     }
   ],
   "toolLimitation": {
-    "note": "이번 pass에서 확인한 도구 한계 - **PDF 원문의 텍스트 추출이 불가능하다**(PDF 렌더러 미설치). 발행사 fact sheet · 간이투자설명서 등 PDF로만 제공되는 자료는 현재 읽을 수 없다. HTML로 제공되는 공시(예: KRX KIND)는 읽을 수 있음을 확인했다.",
+    "note": "해소됨(2026-09-20). 저장소 밖 임시 폴더에 PDF 파서를 설치해 조사용으로만 쓴다(package.json · 앱 번들 · CI 무변경). 이 수단으로 ICE Benchmark Statement · 발행사 투자설명서 PDF를 실제로 읽었다.",
+    "tool": "scratchpad 전용 pdf 파서 + grep 스크립트(저장소에 포함하지 않음)",
     "checkedAt": "2026-09-20"
   }
 }

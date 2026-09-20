@@ -51,6 +51,19 @@
         "underlyingReturnType": "UNCONFIRMED",
         "hedgeStatus": "CONFIRMED",
         "priceCcy": "CONFIRMED"
+      },
+      "prospectus": {
+        "source": "발행사 공식 투자설명서 PDF",
+        "url": "https://investments.miraeasset.com/tigeretf/upload/etf/20260528111135002757.pdf",
+        "pages": 57,
+        "retrievedAt": "2026-09-20",
+        "documentDate": "2026-05-28",
+        "quotes": {
+          "index": "주식을 주된 투자대상자산으로 하며, \"S&P 500 Index(원화환산)\"를 기초지수로 하여 1좌당 순자산가치의 변동률을 기초지…",
+          "strategy": "S&P Dow Jones Indices에서 발표하는 \"S&P 500 지수\"를 기초지수로 하는 상장지수투자신탁",
+          "hedge": "이 투자신탁은 환헤지를 실행하지 않을 계획입니다. 하지만, 환헤지를 통한 위험 축소가 필요하다고 판단되는 경우 등에는 환헤지 전략을 실행할 수 있습니다."
+        },
+        "returnTypeCheck": "문서 전문에서 \"Price Return\" · \"Total Return\" 표기를 찾지 못했다 → 기초지수의 PR/TR은 여전히 UNCONFIRMED."
       }
     },
     {
@@ -222,6 +235,16 @@
         "underlyingIndex": "CONFIRMED",
         "underlyingReturnType": "CONFIRMED",
         "hedgeStatus": "NOT_APPLICABLE"
+      },
+      "prospectus": {
+        "source": "발행사 공식 투자설명서 PDF",
+        "url": "https://m.samsungfund.com/upload/invest/2ETF92-A.pdf",
+        "pages": 66,
+        "retrievedAt": "2026-09-20",
+        "quotes": {
+          "index": "이 투자신탁은 KOSPI200 TR 지수(이하 \"기초지수\")를 기초지수로 하여 1좌당 순자산가치의 변동률을…",
+          "returnType": "…당수익률이 가산된 총수익률을 반영하여 산출하는 지수입니다."
+        }
       }
     },
     {
@@ -250,6 +273,17 @@
         "underlyingIndex": "CONFIRMED",
         "underlyingReturnType": "CONFIRMED",
         "hedgeStatus": "NOT_APPLICABLE"
+      },
+      "prospectus": {
+        "source": "발행사 공식 투자설명서 PDF",
+        "url": "https://m.samsungfund.com/upload/invest/2ETF01-A.pdf",
+        "pages": 67,
+        "retrievedAt": "2026-09-20",
+        "quotes": {
+          "index": "이 투자신탁은 한국종합주가지수200(이하 \"추적대상지수\"라 한다)를 추적대상 지수로 하여…",
+          "weight": "추적대상지수 : KOSPI200 x 100%"
+        },
+        "note": "문서에 \"2020. 6.12 기초지수 산출기준 변경\" 이력 표기가 있다(지수 자체 교체가 아니라 산출기준 변경). PR/TR 표기는 없다 - KRX 정의(TR은 원지수+배당)로 PR을 판단한 기존 근거를 유지한다."
       }
     },
     {
@@ -305,11 +339,16 @@
         },
         "hedgeStatus": {
           "value": "UNHEDGED",
-          "quote": "환노출(발행사 상품 데이터 currencyRisk)",
+          "quote": "환헤지전략을 실시하지 않을 계획이므로 환율변동위험에 노출됩니다.",
           "grade": "A"
         },
         "listingDate": {
           "value": "2024-07-09",
+          "grade": "A"
+        },
+        "underlyingIndexProvider": {
+          "value": "NH투자증권",
+          "quote": "NH투자증권에서 산출·발표하는",
           "grade": "A"
         }
       },
@@ -317,8 +356,21 @@
       "fieldStatus": {
         "underlyingIndex": "CONFIRMED",
         "underlyingReturnType": "CONFIRMED",
-        "hedgeStatus": "CONFIRMED"
-      }
+        "hedgeStatus": "CONFIRMED",
+        "underlyingIndexProvider": "CONFIRMED"
+      },
+      "prospectus": {
+        "source": "발행사 공식 투자설명서 PDF",
+        "url": "https://m.samsungfund.com/upload/invest/2ETFN6-A.pdf",
+        "pages": 75,
+        "retrievedAt": "2026-09-20",
+        "quotes": {
+          "provider": "이 투자신탁은 해외주식을 주된 투자대상으로 신탁재산의 60% 이상을 투자하며, NH투자증권에서 산출·발표하는 …",
+          "hedge": "환헤지전략을 실시하지 않을 계획이므로 환율변동위험에 노출됩니다.",
+          "index": "\"iSelect 미국AI전력핵심인프라 지수(KRW)를 기초지수로 하여 1좌당 순자산가치의 변동률을 기초지수의 변동률…\""
+        }
+      },
+      "note": "투자설명서는 기초지수를 \"iSelect 미국AI전력핵심인프라 지수(KRW)\"로, 월간 fact sheet은 \"(Price Return)\"으로 적는다 - 원화환산 표기와 수익유형 표기가 문서마다 다르다는 점을 기록해 둔다."
     },
     {
       "ticker": "368590.KS",
@@ -450,7 +502,9 @@
           "bondPct": 70,
           "equityIndex": "코스피 배당성장 50 지수",
           "bondIndex": "KTB지수",
-          "grade": "A"
+          "grade": "A",
+          "bondIndexOfficialName": "KRX Korea Treasury Bond Index",
+          "ratioQuote": "3:7의 비율로 반영하여 산출"
         },
         "priceCcy": {
           "value": "KRW",
@@ -462,6 +516,16 @@
         "underlyingIndex": "CONFIRMED",
         "mixedComposition": "CONFIRMED",
         "hedgeStatus": "NOT_APPLICABLE"
+      },
+      "prospectus": {
+        "source": "발행사 공식 투자설명서 PDF",
+        "url": "https://m.samsungfund.com/upload/invest/2ETF58-A.pdf",
+        "pages": 69,
+        "retrievedAt": "2026-09-20",
+        "quotes": {
+          "index": "이 투자신탁은 KRX배당성장채권혼합지수를 기초지수로 하여…",
+          "composition": "코스피 배당성장50 지수와 KRX Korea Treasury Bond Index의 변화를 3:7의 비율로 반영하여 산출되는"
+        }
       }
     },
     {
@@ -558,12 +622,14 @@
     {
       "key": "ISELECT_US_AI_POWER_PR",
       "name": "iSelect 미국AI전력핵심인프라 지수(Price Return)",
-      "provider": "iSelect(확인 필요)",
+      "provider": "NH투자증권",
       "returnType": "PR",
       "evidence": "487230 발행사 공식 상품 페이지의 기초지수 명칭",
       "grade": "A",
       "historicalSource": "없음",
-      "retrievedAt": "2026-09-20"
+      "retrievedAt": "2026-09-20",
+      "providerEvidence": "삼성자산운용 투자설명서(2ETFN6-A.pdf) \"NH투자증권에서 산출·발표하는\"",
+      "providerGrade": "A"
     },
     {
       "key": "KOSPI200_PR",
@@ -593,6 +659,17 @@
       "evidence": "Yahoo ^NYA 일별 이력 수신은 확인. 제공기관 공식 정의 · PR/TR은 미확인",
       "grade": null,
       "historicalSource": "Yahoo ^NYA(1980~ · 11,774행)",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "NYSE_COMPOSITE",
+      "name": "NYSE Composite Index",
+      "provider": "ICE Data Indices, LLC (IDI)",
+      "providerEvidence": "ICE Data Indices, LLC Benchmark Statement — NYSE® Composite Index Family v1.1(2023-11) 원문: \"ICE Data Indices, LLC (\"IDI\") is a U.S. subsidiary of Intercontinental Exchange, Inc. (\"ICE\"), and is the administrator for the indices in the NYSE® Composite Index [Family]\"",
+      "providerGrade": "A",
+      "returnType": "UNCONFIRMED",
+      "returnTypeNote": "Benchmark Statement에 개별 지수의 PR/TR 표기가 없다. 같은 기관의 \"NYSE Indices - Guide to Index Mathematics\"(15p)는 IDI가 Price Return · Gross Total Return · Net Total Return 세 버전을 산출한다고 정의한다 → **^NYA가 그중 어느 버전인지는 별도 확인이 필요하다.**",
+      "historicalSource": "Yahoo ^NYA(1980~ · 11,774행) — 지수 버전 대응이 확인되기 전에는 Benchmark로 쓰지 않는다",
       "retrievedAt": "2026-09-20"
     }
   ],
