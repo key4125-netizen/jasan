@@ -18,10 +18,10 @@
 | RETAINED | 5 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
 | SOLVED | 14 |
-| SOLVED_WITH_CONSTRAINT | 5 |
+| SOLVED_WITH_CONSTRAINT | 6 |
 | EXTERNAL_ACTION_REQUIRED | 5 |
 | NOT_AVAILABLE | 4 |
-| PM_DECISION_REQUIRED | 20 |
+| PM_DECISION_REQUIRED | 19 |
 | **합계** | **68** |
 
 ## 전체 목록
@@ -42,7 +42,7 @@
 | D-2 | NYSE 상장 종목의 기준 지수(NYSE Composite) 부재 | 데이터 · Benchmark | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
 | D-3 | ETF 기초지수 · PR/TR 전수 확인 | 데이터 · Benchmark | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
 | D-4 | ETF 환헤지 여부 A등급 근거(368590 · 360200) | 데이터 · Benchmark | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
-| D-5 | 코스피200 PR · TR 시계열 원천 | 데이터 · 지수 원천 | PHASE 3 | PM_DECISION_REQUIRED | PM_DECISION_REQUIRED |
+| D-5 | 코스피200 PR · TR 시계열 원천 | 데이터 · 지수 원천 | PHASE 3 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | D-6 | Index Master 원천 없음 4종 재조사 | 데이터 · 지수 원천 | PHASE 3 | NOT_AVAILABLE | NOT_AVAILABLE |
 | D-7 | 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산 | 데이터 · 스트레스 | PHASE 4 | SOLVED_WITH_CONSTRAINT | SOLVED_WITH_CONSTRAINT |
 | D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | COMPLETED | SOLVED |
@@ -313,16 +313,16 @@
 
 #### D-5 — 코스피200 PR · TR 시계열 원천
 
-- **현재 판정**: PM_DECISION_REQUIRED → **최종 PM_DECISION_REQUIRED** · **단계**: PHASE 3
+- **현재 판정**: SOLVED_WITH_CONSTRAINT → **최종 SOLVED_WITH_CONSTRAINT** · **단계**: PHASE 3
 - **SoT**: 계획서 §22 · §23
 - **현재 구현**: §47-6으로 self-proxy 금지를 확정하고 테스트로 고정했다. 코스피200은 "정의 확인 · 원천 없음"을 정확히 유지한다.
-- **문제**: ETF를 자기 기준지수의 대용으로 쓰는 안은 실증적으로 무의미하다(대용 후보가 베타를 구하려는 ETF 자신 → 베타 정의상 1). 남은 선택은 (가) 사용자 공공데이터 인증키 직접조회 UI 신설 (나) KRX 지수 라이선스 (다) 현행 유지뿐이다.
+- **문제**: PM이 APPROVED WITH CONSTRAINT로 결정했다 - ETF self-proxy는 폐기하고(실증적으로 정보량 0), 공식 원천이 없는 현재는 "Benchmark 정의는 확인 · 가격 원천 없음(UNAVAILABLE)" 상태를 정확히 유지한다. 추가 조사는 하지 않는다.
 - **필요한 사실**: PR · TR 각각의 공식 정의 · 수신 가능한 일별 수준값 · 이용조건
 - **조사 경로**: 네이버 금융 KPI200(PHASE 0 예비 확인: 일별 257행 수신) · KRX 공식 데이터 경로 · 운용사 · 지수 제공기관(KRX 지수) · KIS(이용조건 확인 선행 · B-2)
 - **예비 결과(사실 아님)**: KPI200 수신 확인 · KPI200TR/KOSPI200TR은 0행(예비 결과 · 최종 사실 아님)
 - **선택지**: (가) 사용자 공공데이터 인증키 직접조회 - 지수 API는 CORS 허용 실측 확인됨(프록시 불필요). 키 입력 UI는 신규 기능이므로 PM 승인 필요 · (나) KRX 지수 정보상품 라이선스 · (다) 현행 유지 - 정의 확정 + 원천 없음 표시(현재 상태이며 정직한 표시)
 - **영향**: 정책 Index Master availability / Risk 국내 ETF 베타 / MC 없음 / UI F-1 · F-5
-- **구현 필요**: PM이 (가)~(다) 중 선택. (가)를 고르면 인증키 입력 UI가 신규 기능이므로 별도 승인이 필요하다.
+- **구현 필요**: 공식 KOSPI200 PR/TR 시계열이 확보되면 Index Master에 원천만 등록하면 된다(구조는 이미 유지돼 있다). 사용자 인증키 직접조회 경로를 택하려면 인증키 입력 UI가 신규 기능이라 별도 승인이 필요하다.
 - **테스트**: risk suite · Index Master 회귀
 - **검증**: Unit 589/589 · E2E 1029/1032(잔여 3건은 이번 변경의 기대값 갱신 대상) · ESLint 0 · Data Guard PASS · Release Guard는 버전 미변경이라 의도적으로 FAIL(최종 릴리스 때 1회 상향)
 - **근거**: docs/closeout/research/PM_SOLUTION_CLOSURE.md · docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md §47 · docs/closeout/RELEASE_PLAN.md

@@ -329,11 +329,11 @@
       "category": "데이터 · 지수 원천",
       "phase": "PHASE 3",
       "title": "코스피200 PR · TR 시계열 원천",
-      "currentStatus": "PM_DECISION_REQUIRED",
-      "finalStatus": "PM_DECISION_REQUIRED",
+      "currentStatus": "SOLVED_WITH_CONSTRAINT",
+      "finalStatus": "SOLVED_WITH_CONSTRAINT",
       "sot": "계획서 §22 · §23",
       "currentImpl": "§47-6으로 self-proxy 금지를 확정하고 테스트로 고정했다. 코스피200은 \"정의 확인 · 원천 없음\"을 정확히 유지한다.",
-      "problem": "ETF를 자기 기준지수의 대용으로 쓰는 안은 실증적으로 무의미하다(대용 후보가 베타를 구하려는 ETF 자신 → 베타 정의상 1). 남은 선택은 (가) 사용자 공공데이터 인증키 직접조회 UI 신설 (나) KRX 지수 라이선스 (다) 현행 유지뿐이다.",
+      "problem": "PM이 APPROVED WITH CONSTRAINT로 결정했다 - ETF self-proxy는 폐기하고(실증적으로 정보량 0), 공식 원천이 없는 현재는 \"Benchmark 정의는 확인 · 가격 원천 없음(UNAVAILABLE)\" 상태를 정확히 유지한다. 추가 조사는 하지 않는다.",
       "neededFact": "PR · TR 각각의 공식 정의 · 수신 가능한 일별 수준값 · 이용조건",
       "investigationPaths": [
         "네이버 금융 KPI200(PHASE 0 예비 확인: 일별 257행 수신)",
@@ -348,7 +348,7 @@
         "mc": "없음",
         "ui": "F-1 · F-5"
       },
-      "implementationNeeded": "PM이 (가)~(다) 중 선택. (가)를 고르면 인증키 입력 UI가 신규 기능이므로 별도 승인이 필요하다.",
+      "implementationNeeded": "공식 KOSPI200 PR/TR 시계열이 확보되면 Index Master에 원천만 등록하면 된다(구조는 이미 유지돼 있다). 사용자 인증키 직접조회 경로를 택하려면 인증키 입력 UI가 신규 기능이라 별도 승인이 필요하다.",
       "test": "risk suite · Index Master 회귀",
       "resumeCondition": null,
       "lastCheckedAt": "2026-09-20",
