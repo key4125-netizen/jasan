@@ -553,9 +553,13 @@ test('Edge - [Risk 정책 P-2] 일부 종목만 beta가 있으면 재정규화�
 
   assert.strictEqual(round(m.holdings.find((h) => h.ticker === '005930.KS').beta, 4), 1.1579);
   assert.strictEqual(m.holdings.find((h) => h.ticker === 'QQQM').beta, null);
-  // [Phase 39-B 이력] 예전엔 관측된 beta만 100%로 재정규화했다(1.157895). 이제 비중을 다시 나누지 않는다.
-  assert.strictEqual(m.portfolioBeta, null);
-  assert.strictEqual(m.subScores.market, null, '[기대값 갱신 사유 · Phase 2-1 · §44 44-13] 결측 요인은 점수에서 제외한다');
+  // [기대값 갱신 사유 · BOND-5 · §47-2 · 2026-09-20] 설명 범위(coverage)를 밝히는 방식으로 바뀌었다.
+  // 50:50이라 범위는 50%(하한과 같음) - 값이 나오고, 그 값은 베타를 구한 종목의 베타 그대로다
+  // (빠진 종목 몫을 남은 종목에 얹지 않는다는 Phase 39-B의 취지는 그대로 유지된다).
+  assert.strictEqual(round(m.portfolioBeta, 4), 1.1579);
+  assert.ok(Math.abs(m.betaCoveragePct - 50) < 1e-9);
+  assert.strictEqual(m.betaMissingCount, 1);
+  assert.ok(typeof m.subScores.market === 'number', '베타가 생겼으므로 시장 요인이 점수에 다시 참여한다');
   assert.strictEqual(m.dataConfidence.score, 85, '결측 비중 50% -> 100 - 7.5 - 8');
   // beta가 없는 종목이 있으면 벤치마크 기반 스트레스도 만들지 않는다.
   assert.strictEqual(m.stressLossPct, null);
@@ -1121,11 +1125,17 @@ test('P-4 · P-5 - 벤치마크가 없는 채권 ETF는 beta · 스트레스를 
   assert.strictEqual(m.stressLossPct, null);
   assert.strictEqual(m.stressLossKRW2022, null);
   assert.strictEqual(m.stressLossPct2022, null);
-  assert.strictEqual(m.portfolioBeta, null);
+  // [기대값 갱신 사유 · BOND-5 · §47-2] 벤치마크가 없는 채권 ETF의 베타는 여전히 null이지만,
+  // 포트폴리오 베타는 "나머지 주식이 설명하는 범위"로 표시된다(스트레스는 그대로 만들지 않는다).
+  assert.ok(typeof m.portfolioBeta === 'number');
+  assert.ok(m.betaCoveragePct > 0 && m.betaCoveragePct < 100);
+  assert.strictEqual(m.betaMissingCount, 1);
   // 채권 ETF 모델은 만들지 않는다 - 나머지 계산 구조는 그대로(비중에 포함, 점수는 기존 공식).
   assert.strictEqual(m.dataSufficiency.status, 'SUFFICIENT');
   assert.strictEqual(typeof m.riskScore, 'number');
-  assert.strictEqual(m.subScores.market, null, '[기대값 갱신 사유 · Phase 2-1 · R-09 · §44 제12조] 결측 요인은 점수에서 제외');
+  // [기대값 갱신 사유 · BOND-5 · §47-2 · 2026-09-20] 포트폴리오 베타가 설명 범위와 함께 표시되므로
+  // 시장 요인이 다시 점수에 참여한다(요인 자체를 빼던 §44 제12조의 재정규화는 베타가 없을 때 그대로다).
+  assert.ok(typeof m.subScores.market === 'number');
 });
 
 test('What-If - 같은 비중이면 기준 결과와 같고, 데이터 부족이면 계산하지 않는다', async () => {

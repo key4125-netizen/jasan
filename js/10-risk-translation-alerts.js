@@ -361,6 +361,20 @@ function buildFactorBarRow(label, score, tooltip, unavailableText) {
 }
 
 // [정밀 수치 한 항목] 쉬운 한글 라벨 + (i) 툴팁 + 실제 계산된 숫자값.
+/* [BOND-5 · §47-2] 베타가 "무엇을 설명한 값인지" 한 줄로 밝힌다.
+ * 숫자만 보여 주면 사용자는 그 값이 전체 자산을 설명한다고 믿게 된다 - 실제로는 주식 노출 중
+ * 베타를 구한 부분만의 평균이고, 채권은 애초에 대상이 아니다. 값을 감추는 대신 범위를 적는다. */
+function betaCoverageNoteHtml(m) {
+  if (!m || typeof m.betaCoveragePct !== 'number') return '';
+  const parts = [];
+  if (typeof m.portfolioBeta === 'number') parts.push(`주식 노출의 ${fmtNum(m.betaCoveragePct, 0)}%를 설명합니다`);
+  else if (m.betaCoveragePct > 0) parts.push(`베타를 구한 범위가 ${fmtNum(m.betaCoveragePct, 0)}%뿐이라(기준 ${fmtNum(m.betaCoverageMinPct, 0)}% 이상) 값을 표시하지 않습니다`);
+  if (m.betaMissingCount > 0) parts.push(`베타를 구하지 못한 종목 ${m.betaMissingCount}개는 제외했습니다`);
+  if (typeof m.bondWeightPct === 'number' && m.bondWeightPct > 0) parts.push(`채권 비중 ${fmtNum(m.bondWeightPct, 0)}%는 베타 집계 대상이 아닙니다`);
+  if (!parts.length) return '';
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-2 leading-relaxed">↳ ${escapeHtml(parts.join(' · '))}</p>`;
+}
+
 function buildMetricItem(label, valueHtml, tooltip) {
   return `
   <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
@@ -669,7 +683,8 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합치므로, 한 종목이라도 계산할 수 없으면 전체 값을 추정으로 채우지 않고 비워 둡니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다(최근 1년). 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합칩니다 - 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권은 주식 베타의 대상이 아니라 아예 집계에서 제외됩니다.')}
+      ${betaCoverageNoteHtml(m)}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
       ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : riskMetricUnavailableShortText(m, 'cvar'), '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}

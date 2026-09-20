@@ -87,6 +87,26 @@ const CMA_ACTIVE_SET = {
       "fileSha256": "b59143b645ac4538b52193043f93b1fc559691d2997477d5ccb9e571b81f96de",
       "returnUsableForMc": false,
       "classes": {
+        "Korean Government Bonds": {
+          "expectedReturn": 3,
+          "volatility": 5.357291318235813
+        },
+        "Korean Corporate Bonds": {
+          "expectedReturn": 3.5000000000000004,
+          "volatility": 2.539956328818818
+        },
+        "Global Credit hedged": {
+          "expectedReturn": 4.1000000000000005,
+          "volatility": 5.556221501342378
+        },
+        "World Government Bonds": {
+          "expectedReturn": 2.3,
+          "volatility": 9.69232747192174
+        },
+        "World Government Bonds hedged": {
+          "expectedReturn": 3.5000000000000004,
+          "volatility": 3.985382018102107
+        },
         "Korean Equity": {
           "expectedReturn": 5.2,
           "volatility": 19.362401823368693
@@ -103,22 +123,92 @@ const CMA_ACTIVE_SET = {
       "correlation": {
         "kind": "FULL",
         "classes": [
+          "Korean Government Bonds",
+          "Korean Corporate Bonds",
+          "Global Credit hedged",
+          "World Government Bonds",
+          "World Government Bonds hedged",
           "Korean Equity",
           "U.S. Large Cap",
           "Emerging Markets Equity"
         ],
         "matrix": [
           [
+            1.0000000000000002,
+            0.851681808033078,
+            0.5923763332327315,
+            0.12321832941844892,
+            0.6933710393845445,
+            0.15880356073907428,
+            -0.013600222151413276,
+            -0.037934006936419906
+          ],
+          [
+            0.851681808033078,
+            0.9999999999999998,
+            0.5041198252985389,
+            0.17328967088553088,
+            0.61309022948334,
+            0.09256821710065198,
+            -0.0754399540844658,
+            -0.08995315831250561
+          ],
+          [
+            0.5923763332327315,
+            0.5041198252985389,
+            1,
+            -0.027230703075454124,
+            0.7373964259936657,
+            0.4235167435878428,
+            0.2688422244953301,
+            0.37736893812002026
+          ],
+          [
+            0.12321832941844892,
+            0.17328967088553088,
+            -0.027230703075454124,
+            1,
+            0.32587874642400655,
+            -0.39363415929700274,
+            0.1655820143486541,
+            -0.16270566147351306
+          ],
+          [
+            0.6933710393845445,
+            0.61309022948334,
+            0.7373964259936657,
+            0.32587874642400655,
+            1,
+            0.08655686891410166,
+            0.04682511723961898,
+            -0.03126133334397982
+          ],
+          [
+            0.15880356073907428,
+            0.09256821710065198,
+            0.4235167435878428,
+            -0.39363415929700274,
+            0.08655686891410166,
             1,
             0.4124456921608721,
             0.6772476909891292
           ],
           [
+            -0.013600222151413276,
+            -0.0754399540844658,
+            0.2688422244953301,
+            0.1655820143486541,
+            0.04682511723961898,
             0.4124456921608721,
             1.0000000000000002,
             0.5007268458463904
           ],
           [
+            -0.037934006936419906,
+            -0.08995315831250561,
+            0.37736893812002026,
+            -0.16270566147351306,
+            -0.03126133334397982,
             0.6772476909891292,
             0.5007268458463904,
             1
@@ -166,6 +256,56 @@ const CMA_ACTIVE_SET = {
           "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Emerging Markets Equity\""
         }
       }
+    },
+    "KR_GOV_BOND": {
+      "label": "국내 국공채",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Korean Government Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Korean Government Bonds\"(기대수익률 3.0% · 변동성 5.357%). 국채 · 지방채 · 특수채는 발행인 유형으로 이 자산군에 연결한다."
+        }
+      }
+    },
+    "KR_CORP_BOND": {
+      "label": "국내 회사채",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Korean Corporate Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Korean Corporate Bonds\"(3.5% · 2.540%). 회사채 · 금융채는 발행인 유형으로 이 자산군에 연결한다."
+        }
+      }
+    },
+    "FOREIGN_GOV_BOND_HEDGED": {
+      "label": "해외 국공채(환헤지)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "World Government Bonds hedged",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"World Government Bonds hedged\"(3.5% · 3.985%). 환헤지가 A등급 근거로 확인된 해외 국공채만 연결한다."
+        }
+      }
+    },
+    "FOREIGN_GOV_BOND_UNHEDGED": {
+      "label": "해외 국공채(환노출)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "World Government Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"World Government Bonds\"(2.3% · 9.692%) - 원화 기준 · 환헤지 없음. 환노출이 확인된 해외 국공채만 연결한다."
+        }
+      }
+    },
+    "FOREIGN_CORP_BOND_HEDGED": {
+      "label": "해외 회사채(환헤지)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Global Credit hedged",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Global Credit hedged\"(4.1% · 5.556%). 환헤지가 A등급 근거로 확인된 해외 회사채만 연결한다."
+        }
+      }
     }
   },
   "officialMappings": [],
@@ -174,9 +314,10 @@ const CMA_ACTIVE_SET = {
     "COMMODITY": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
     "CRYPTO": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
     "REAL_ESTATE": "부동산은 Monte Carlo 범위 밖이다(RET-03-04).",
-    "BOND": "채권은 기존 §7 정책대로 변동성 0으로 둔다(Bond Domain은 BACKLOG) - 이번 작업에서 바꾸지 않는다.",
-    "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다.",
-    "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다."
+    "BOND": "발행인 유형 · 통화 · 환헤지 중 하나라도 확인되지 않은 채권은 자산군을 정하지 않는다(§47-3). 예전처럼 변동성 0으로 두지 않고 장기 MC에서 제외하며, 그 사실을 화면에 표시한다.",
+    "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다(채권으로 취급하지 않는다 · §47-3 ②).",
+    "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다.",
+    "FOREIGN_CORP_BOND_UNHEDGED": "J.P. Morgan 원문에 환헤지하지 않은 글로벌 크레딧 자산군이 없다(\"Global Credit\"은 hedged만 있다). 가까운 다른 자산군으로 옮겨 쓰지 않고 연결하지 않는다 - 장기 MC에서 제외한다."
   }
 };
 

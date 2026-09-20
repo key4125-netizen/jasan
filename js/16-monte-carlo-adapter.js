@@ -26,6 +26,15 @@
 //   성격을 확인하지 못하면 UNRESOLVED - 지역만 보고 주식으로 단정하지 않는다(Phase 47-A 원칙 그대로).
 function resolveMcAppAssetClass(rateDetail) {
   const key = rateDetail ? canonicalRateKey(rateDetail.key) : null;
+  // [BOND-4 · §47-3] 'BOND' Return Key는 "채권이다"까지만 말해 준다. 채권 레코드(js/29)가 발행인 유형 ·
+  // 통화 · 환헤지를 알려 주면 그쪽이 자산군(σ · 상관)의 더 정확한 근거다. Return Key 자체는 'BOND' 그대로라
+  // 수익률(μ) 경로는 전혀 바뀌지 않는다 - 자산군만 세분된다.
+  if (key && RETURN_KEY_CHARACTER[key] === ASSET_CHARACTERS.BOND && rateDetail && rateDetail.subject) {
+    const bondCh = resolveAssetCharacter(rateDetail.subject);
+    if (bondCh && bondCh.source === 'bondLedger' && bondCh.character !== ASSET_CHARACTERS.BOND) {
+      return { appClass: bondCh.character, basis: 'bondLedger' };
+    }
+  }
   if (key && RETURN_KEY_CHARACTER[key]) return { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey' };
   if (key === '현금') return { appClass: ASSET_CHARACTERS.CASH, basis: 'returnKey' };
   if (key && /\.KQ$/i.test(key)) return { appClass: ASSET_CHARACTERS.KR_EQUITY, basis: 'returnKey' };
@@ -104,6 +113,13 @@ async function buildMonteCarloInputFromState(config) {
    * [§37-5 PM 확정] CMA 기대수익률은 MC 직접 입력으로 쓰지 않는다(MC_CMA_RETURN_POLICY.useCmaExpectedReturn = false).
    * 아래 CMA 수익률 분기는 그 정책이 PM 결정으로 바뀔 때만 동작하며, Dataset의 수익률 정의(returnUsableForMc)만으로는 켜지지 않는다. */
   const cmaEntries = []; // assetOrder 순서
+  /* [BOND-4 · §47-3] 장기 자산군을 정할 근거가 없는 채권을 모은다.
+   * "MC 대상에서 제외"가 무엇을 뜻하는지 분명히 해 둔다 - 제외되는 것은 **위험 시뮬레이션**이지
+   * 사용자의 돈이 아니다. universe에서 아예 빼면 그 채권의 원금이 미래예측에서 사라져 결정론 경로와
+   * 총액이 달라진다(절세계좌 채권 원금이 통째로 없어지는 것을 실측으로 확인했다). 그래서 잔고 · 납입 ·
+   * 리밸런싱에는 그대로 참여시키되, 변동성 가정을 적용하지 않고 "위험을 반영하지 못했다"는 사실을
+   * 결과와 화면에 명시한다. 예전처럼 조용히 σ=0으로 두고 아무 말도 하지 않는 것과 다른 점이 이것이다. */
+  const bondsWithoutRiskAssumption = [];
   const addEntry = (key, weight, rateDetail, feeRatePctRaw, feeExplicit, label, riskFreeFlag) => {
     const { appClass, basis } = resolveMcAppAssetClass(rateDetail);
     // [§7 · Bond BACKLOG] 채권 · 현금은 기존 정책대로 σ=0이다 - 티커가 있는 채권형 · 현금성 상품도 가격 이력 대신 같은 정책을 쓴다.
@@ -111,7 +127,16 @@ async function buildMonteCarloInputFromState(config) {
     // 성장 가정과 마찬가지로 변동성 가정도 적용하지 않는다(MC는 경고와 함께 계속 실행된다). 수익률 가정이 있는데 CMA 자산군이
     // 없는 위험자산만 오류로 막는다(임의 변동성을 만들지 않는다).
     const noAssumption = !riskFreeFlag && rateDetail.assumptionMissing === true;
-    const riskFree = riskFreeFlag || noAssumption || appClass === ASSET_CHARACTERS.BOND || appClass === ASSET_CHARACTERS.CASH;
+    // [BOND-4 · §47-3] 채권은 더 이상 무조건 σ=0이 아니다.
+    //   · 분류된 채권(국공채 · 회사채 · 해외채 헤지/비헤지)은 CMA 자산군에서 변동성을 받는다.
+    //   · 분류 근거가 없는 채권(성격 BOND)은 σ=0으로 두지 않고 MC에서 제외한다(아래 excludedFromMc).
+    //   · 현금성(CASH)은 기존 §7 정책 그대로 σ=0이다 - 채권으로 취급하지 않는다.
+    const bondish = typeof isBondCharacter === 'function' && isBondCharacter(appClass);
+    const bondUnclassified = appClass === ASSET_CHARACTERS.BOND;
+    if (bondUnclassified) bondsWithoutRiskAssumption.push({ key, label, weight, appClass, reason: 'BOND_CLASS_UNRESOLVED' });
+    // 분류된 채권만 CMA에서 변동성을 받는다. 분류되지 않은 채권은 변동성을 만들지 않되(위 목록으로 알린다)
+    // 원금은 그대로 굴러간다. 현금성은 기존 §7 정책 그대로다.
+    const riskFree = appClass === ASSET_CHARACTERS.CASH || noAssumption || bondUnclassified || (riskFreeFlag && !bondish);
     let muAnnualPct = rateDetail.rate;
     let returnSource = 'RETURN_KEY';
     if (!riskFree) {
@@ -202,6 +227,18 @@ async function buildMonteCarloInputFromState(config) {
   const inflationIssue = assessInflation(num(state.projection.inflationRate));
   if (inflationIssue) safetyIssues.push(inflationIssue);
 
+  // [BOND-4 · §47-3] 위험을 반영하지 못한 채권을 명시한다 - 조용히 0으로 두지 않는다.
+  if (bondsWithoutRiskAssumption.length) {
+    const names = bondsWithoutRiskAssumption.map((e) => e.label).join(' · ');
+    const pct = bondsWithoutRiskAssumption.reduce((sum, e) => sum + (e.weight || 0), 0) * 100;
+    dataQualityIssues.push(makeIssue('BOND_RISK_ASSUMPTION_UNRESOLVED', SAFETY_LEVEL.WARNING, 'bondPositions',
+      '이 채권은 위험 시뮬레이션에서 빠졌습니다(원금은 그대로 반영됩니다)',
+      `${names}(합계 비중 약 ${pct.toFixed(1)}%)은 발행인 유형 · 통화 · 환헤지가 확인되지 않아 장기 자산군을 정할 수 없습니다. `
+      + '원금과 적립은 그대로 계산하지만 이 자산의 가격 변동은 시뮬레이션에 들어가지 않았습니다 - '
+      + '"이 채권에 위험이 없다"는 뜻이 아니라 "위험을 계산할 근거가 아직 없다"는 뜻입니다.',
+      '채권 정보(발행인 유형 · 통화 · 환헤지)를 채우면 다음 계산부터 변동성까지 함께 반영됩니다.'));
+  }
+
   const safety = buildSafetyResult(safetyIssues, dataQualityIssues, []);
 
   /* [FUTURE-P1] taxScope 조립 - 엔진이 쓰는 배열은 전부 assetOrder와 같은 순서여야 한다.
@@ -246,7 +283,7 @@ async function buildMonteCarloInputFromState(config) {
     pairs: cmaRisk.pairs
   };
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, ...(taxScope ? { taxScope } : {}) };
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, bondsWithoutRiskAssumption, ...(taxScope ? { taxScope } : {}) };
 }
 function cmaDatasetMetaForResult(ds) {
   if (!ds) return null;

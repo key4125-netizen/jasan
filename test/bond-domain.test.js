@@ -37,7 +37,12 @@ test('채권 구분: 발행인 유형으로 정하고, 근거가 없으면 UNCLA
   const usd = B.makeBondPosition({ identity: { bondType: '국채', currency: 'USD' } });
   assert.strictEqual(B.resolveBondClass(usd), B.BOND_CLASS.UNCLASSIFIED);
   const usdH = B.makeBondPosition({ identity: { bondType: '국채', currency: 'USD', hedgeStatus: 'HEDGED' } });
-  assert.strictEqual(B.resolveBondClass(usdH), B.BOND_CLASS.FOREIGN_HEDGED);
+  assert.strictEqual(B.resolveBondClass(usdH), B.BOND_CLASS.FOREIGN_GOV_HEDGED);
+  const usdCorp = B.makeBondPosition({ identity: { bondType: '회사채', currency: 'USD', hedgeStatus: 'UNHEDGED' } });
+  assert.strictEqual(B.resolveBondClass(usdCorp), B.BOND_CLASS.FOREIGN_CORP_UNHEDGED);
+  // 발행인 유형을 모르면 환헤지를 알아도 분류하지 않는다.
+  const usdNoType = B.makeBondPosition({ identity: { currency: 'USD', hedgeStatus: 'HEDGED' } });
+  assert.strictEqual(B.resolveBondClass(usdNoType), B.BOND_CLASS.UNCLASSIFIED);
 });
 
 test('현금흐름: 지급일정이 없으면 만기에서 역산하되 "생성값"임을 남긴다', () => {

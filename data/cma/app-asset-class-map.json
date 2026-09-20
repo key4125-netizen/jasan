@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "앱 자산 성격(js/05 ASSET_CHARACTERS) → 기관별 CMA 자산군 연결표. 원문에 해당 자산군이 명시돼 있을 때만 연결한다. 연결이 없는 성격은 장기 MC에서 변동성을 정할 수 없다(임의 숫자 금지).",
+  "description": "앱 자산 성격(js/05 ASSET_CHARACTERS) → 기관별 CMA 자산군 연결표. 원문에 해당 자산군이 명시돼 있을 때만 연결한다. 연결이 없는 성격은 장기 MC에서 변동성을 정할 수 없다(임의 숫자 금지). riskProvider가 있는 성격은 변동성 · 기대수익률을 그 기관 Dataset에서 읽는다(§47-3).",
   "appClasses": {
     "KR_EQUITY": {
       "label": "국내 주식",
@@ -40,6 +40,56 @@
           "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Emerging Markets Equity\""
         }
       }
+    },
+    "KR_GOV_BOND": {
+      "label": "국내 국공채",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Korean Government Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Korean Government Bonds\"(기대수익률 3.0% · 변동성 5.357%). 국채 · 지방채 · 특수채는 발행인 유형으로 이 자산군에 연결한다."
+        }
+      }
+    },
+    "KR_CORP_BOND": {
+      "label": "국내 회사채",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Korean Corporate Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Korean Corporate Bonds\"(3.5% · 2.540%). 회사채 · 금융채는 발행인 유형으로 이 자산군에 연결한다."
+        }
+      }
+    },
+    "FOREIGN_GOV_BOND_HEDGED": {
+      "label": "해외 국공채(환헤지)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "World Government Bonds hedged",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"World Government Bonds hedged\"(3.5% · 3.985%). 환헤지가 A등급 근거로 확인된 해외 국공채만 연결한다."
+        }
+      }
+    },
+    "FOREIGN_GOV_BOND_UNHEDGED": {
+      "label": "해외 국공채(환노출)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "World Government Bonds",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"World Government Bonds\"(2.3% · 9.692%) - 원화 기준 · 환헤지 없음. 환노출이 확인된 해외 국공채만 연결한다."
+        }
+      }
+    },
+    "FOREIGN_CORP_BOND_HEDGED": {
+      "label": "해외 회사채(환헤지)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "Global Credit hedged",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"Global Credit hedged\"(4.1% · 5.556%). 환헤지가 A등급 근거로 확인된 해외 회사채만 연결한다."
+        }
+      }
     }
   },
   "officialMappings": [],
@@ -49,8 +99,9 @@
     "COMMODITY": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
     "CRYPTO": "앱에 이 성격의 Return Key가 없다(기존 정책) - 연결하지 않는다.",
     "REAL_ESTATE": "부동산은 Monte Carlo 범위 밖이다(RET-03-04).",
-    "BOND": "채권은 기존 §7 정책대로 변동성 0으로 둔다(Bond Domain은 BACKLOG) - 이번 작업에서 바꾸지 않는다.",
-    "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다.",
-    "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다."
+    "BOND": "발행인 유형 · 통화 · 환헤지 중 하나라도 확인되지 않은 채권은 자산군을 정하지 않는다(§47-3). 예전처럼 변동성 0으로 두지 않고 장기 MC에서 제외하며, 그 사실을 화면에 표시한다.",
+    "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다(채권으로 취급하지 않는다 · §47-3 ②).",
+    "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다.",
+    "FOREIGN_CORP_BOND_UNHEDGED": "J.P. Morgan 원문에 환헤지하지 않은 글로벌 크레딧 자산군이 없다(\"Global Credit\"은 hedged만 있다). 가까운 다른 자산군으로 옮겨 쓰지 않고 연결하지 않는다 - 장기 MC에서 제외한다."
   }
 }

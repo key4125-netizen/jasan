@@ -35,11 +35,16 @@ const BOND_SOURCE_STATUS = Object.freeze({
 
 // MC 자산군 연결용 채권 구분(§47-3). 원천의 발행인 유형에서 정하며, 모르면 UNCLASSIFIED로 둔다.
 const BOND_CLASS = Object.freeze({
-  KR_GOV: 'KR_GOV',                     // 국채 · 지방채 · 특수채
-  KR_CORP: 'KR_CORP',                   // 회사채 · 금융채
-  FOREIGN_HEDGED: 'FOREIGN_HEDGED',     // 외화채 - 환헤지가 A등급으로 확인된 경우만
-  FOREIGN_UNHEDGED: 'FOREIGN_UNHEDGED', // 외화채 - 환노출 확인
-  UNCLASSIFIED: 'UNCLASSIFIED'          // 분류 근거 없음 → MC에서 제외(σ=0으로 만들지 않는다)
+  KR_GOV: 'KR_GOV',                                   // 국채 · 지방채 · 특수채
+  KR_CORP: 'KR_CORP',                                 // 회사채 · 금융채
+  // 외화채는 발행인 유형과 환헤지 여부가 **둘 다** 확인돼야 분류한다 - 같은 만기라도 헤지 여부에
+  // 따라 원화 기준 변동성이 3배 넘게 달라지고(JPM 원문: 미국 중기국채 11.14% vs 3.45%),
+  // 국채와 크레딧도 서로 다른 자산군이기 때문이다. 하나라도 모르면 UNCLASSIFIED다.
+  FOREIGN_GOV_HEDGED: 'FOREIGN_GOV_HEDGED',
+  FOREIGN_GOV_UNHEDGED: 'FOREIGN_GOV_UNHEDGED',
+  FOREIGN_CORP_HEDGED: 'FOREIGN_CORP_HEDGED',
+  FOREIGN_CORP_UNHEDGED: 'FOREIGN_CORP_UNHEDGED',
+  UNCLASSIFIED: 'UNCLASSIFIED'                        // 분류 근거 없음 → MC에서 제외(σ=0으로 만들지 않는다)
 });
 
 // 원천(채권기본정보)의 발행인 유형 표기 → BOND_CLASS. 표기가 목록에 없으면 분류하지 않는다.
@@ -177,12 +182,14 @@ function bondEffectiveTerms(position) {
 function resolveBondClass(position) {
   const { identity } = bondEffectiveTerms(position);
   const ccy = String(identity.currency || 'KRW').toUpperCase();
-  if (ccy !== 'KRW') {
-    if (identity.hedgeStatus === 'HEDGED') return BOND_CLASS.FOREIGN_HEDGED;
-    if (identity.hedgeStatus === 'UNHEDGED') return BOND_CLASS.FOREIGN_UNHEDGED;
-    return BOND_CLASS.UNCLASSIFIED; // 환헤지 미확인 - 헤지로도 비헤지로도 단정하지 않는다
-  }
   const byType = BOND_TYPE_TO_CLASS[String(identity.bondType || '').trim()];
+  if (ccy !== 'KRW') {
+    // 환헤지 미확인이면 헤지로도 비헤지로도 단정하지 않는다 - 발행인 유형을 몰라도 마찬가지다.
+    if (!identity.hedgeStatus || !byType) return BOND_CLASS.UNCLASSIFIED;
+    const gov = byType === BOND_CLASS.KR_GOV;
+    if (identity.hedgeStatus === 'HEDGED') return gov ? BOND_CLASS.FOREIGN_GOV_HEDGED : BOND_CLASS.FOREIGN_CORP_HEDGED;
+    return gov ? BOND_CLASS.FOREIGN_GOV_UNHEDGED : BOND_CLASS.FOREIGN_CORP_UNHEDGED;
+  }
   return byType || BOND_CLASS.UNCLASSIFIED;
 }
 
@@ -495,7 +502,8 @@ function computeBondRiskSummary(positions, options) {
 // BOND_CLASS → 앱 자산 성격(js/05 ASSET_CHARACTERS). UNCLASSIFIED는 연결하지 않는다.
 const BOND_CLASS_TO_CHARACTER = Object.freeze({
   KR_GOV: 'KR_GOV_BOND', KR_CORP: 'KR_CORP_BOND',
-  FOREIGN_HEDGED: 'FOREIGN_BOND_HEDGED', FOREIGN_UNHEDGED: 'FOREIGN_BOND_UNHEDGED'
+  FOREIGN_GOV_HEDGED: 'FOREIGN_GOV_BOND_HEDGED', FOREIGN_GOV_UNHEDGED: 'FOREIGN_GOV_BOND_UNHEDGED',
+  FOREIGN_CORP_HEDGED: 'FOREIGN_CORP_BOND_HEDGED', FOREIGN_CORP_UNHEDGED: 'FOREIGN_CORP_BOND_UNHEDGED'
 });
 
 /**

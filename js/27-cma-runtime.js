@@ -54,20 +54,34 @@ function resolveCmaRiskForAppClass(appClass, setOverride) {
   const set = getActiveCmaSet(setOverride);
   if (!set || !set.primary) return { status: 'NO_ACTIVE_SET', appClass };
   const primary = set.primary;
-  const link = appClass ? cmaProviderClass(set, appClass, primary.provider) : null;
+  // [BOND-4 · §47-3] 자산 성격이 riskProvider를 지정하면 그 기관 Dataset에서 변동성을 읽는다.
+  // PRIMARY(AllianzGI)에 한국 채권 자산군이 아예 없기 때문이며, 같은 ACTIVE 세트 안에 등록된
+  // 공식 Dataset(J.P. Morgan LTCMA KRW)만 대상이다 - 세트 밖의 숫자를 끌어오지 않는다.
+  const acDef = (set.appClasses && appClass) ? set.appClasses[appClass] : null;
+  const riskProvider = (acDef && acDef.riskProvider) || primary.provider;
+  const dataset = riskProvider === primary.provider
+    ? primary
+    : (set.benchmarks || []).find((b) => b.provider === riskProvider) || null;
+  if (!dataset) {
+    return { status: 'UNMAPPED', appClass, reason: `이 자산 성격이 지정한 기관("${riskProvider}")의 Dataset이 ACTIVE 세트에 없습니다.` };
+  }
+  const link = appClass ? cmaProviderClass(set, appClass, dataset.provider) : null;
   if (!link) {
     const reason = (set.unmapped && set.unmapped[appClass]) || '이 자산 성격에 연결된 장기 CMA 자산군이 없습니다.';
     return { status: 'UNMAPPED', appClass, reason };
   }
-  const row = primary.classes ? primary.classes[link.class] : null;
+  const row = dataset.classes ? dataset.classes[link.class] : null;
   if (!row || typeof row.volatility !== 'number' || !Number.isFinite(row.volatility)) {
     return { status: 'UNMAPPED', appClass, reason: `ACTIVE Dataset에 "${link.class}" 값이 없습니다.` };
   }
   return {
     status: 'MAPPED', appClass, cmaClass: link.class,
     volatilityPct: row.volatility, expectedReturnPct: row.expectedReturn,
-    returnUsableForMc: primary.returnUsableForMc === true,
-    evidence: link.evidence, dataset: cmaDatasetMeta(primary)
+    // 기대수익률을 MC에 쓸 수 있는가는 PRIMARY Dataset에만 해당한다(§37-5) - Benchmark 숫자는
+    // 상관 · 변동성 참조용이고, 여기서 수익률 경로를 열지 않는다.
+    returnUsableForMc: dataset.role === 'PRIMARY' && dataset.returnUsableForMc === true,
+    riskProvider: dataset.provider,
+    evidence: link.evidence, dataset: cmaDatasetMeta(dataset)
   };
 }
 
@@ -97,9 +111,16 @@ function resolveCmaCorrelation(appClassA, appClassB, setOverride) {
   const pa = cmaProviderClass(set, appClassA, primary.provider);
   const pb = cmaProviderClass(set, appClassB, primary.provider);
   // 같은 성격 = 같은 CMA 자산군 - 자산군 자신과의 상관(대각 원소 1)이다.
-  if (appClassA === appClassB && pa) {
-    return { value: 1, sourceType: CMA_CORRELATION_SOURCE.OFFICIAL_CMA_DIRECT, dataset: cmaDatasetMeta(primary), classA: pa.class, classB: pa.class,
-      evidence: '같은 CMA 자산군(상관행렬 대각 원소)' };
+  // [BOND-4 · §47-3] PRIMARY에 없고 Benchmark에만 있는 성격(채권)도 같은 규칙을 탄다. 원문 행렬의
+  // 대각 원소는 부동소수점 때문에 1.0000000000000002처럼 나올 수 있는데, 그 값을 그대로 쓰면 상관행렬이
+  // 양의 준정부호를 벗어나 분해가 깨진다 - 같은 자산군끼리는 정의상 1이므로 여기서 확정한다.
+  if (appClassA === appClassB) {
+    const self = pa || (set.benchmarks || []).map((b2) => cmaProviderClass(set, appClassA, b2.provider)).find(Boolean);
+    if (self) {
+      const ds = pa ? primary : ((set.benchmarks || []).find((b2) => cmaProviderClass(set, appClassA, b2.provider)) || primary);
+      return { value: 1, sourceType: CMA_CORRELATION_SOURCE.OFFICIAL_CMA_DIRECT, dataset: cmaDatasetMeta(ds), classA: self.class, classB: self.class,
+        evidence: '같은 CMA 자산군(상관행렬 대각 원소)' };
+    }
   }
   // 1) PRIMARY 원문에 이 쌍의 값이 있다.
   if (pa && pb) {

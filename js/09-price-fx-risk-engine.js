@@ -1089,6 +1089,33 @@ function computeAsyncDimsonBeta(assetDated, benchDated, assetMarket, benchMarket
 // 휴장일을 0%로 만들거나, 가격을 앞 값으로 채우거나, 보간하지 않는다. 날짜가 없는 종목이 하나라도 있으면
 // 공통 거래일을 만들 수 없다(그 종목을 빼고 계산하지 않는다).
 const MIN_COMMON_RISK_RETURNS = 120;
+
+/* [BOND-5 · §47-2 · PM 승인 2026-09-20] 포트폴리오 베타 집계
+ *
+ * 예전 규칙: 대상 종목 중 하나라도 베타가 없으면 포트폴리오 베타를 통째로 null로 뒀다("전부 또는 무").
+ * 그 취지는 "모르는 것을 아는 척하지 않는다"였는데, 종목 하나가 빠졌다는 이유로 시장위험 지표 전체가
+ * 사라져 버렸다. 채권까지 진단에 들어오면 이 상태가 상시화된다.
+ *
+ * 새 규칙: 베타를 구한 종목만으로 가중평균하되 **그 종목들이 주식 노출의 몇 %인지(coverage)를 함께**
+ * 돌려준다. 값을 숨기는 대신 "어디까지를 설명한 값인지"를 밝히는 것이다. 설명 범위가 너무 좁으면
+ * (BETA_COVERAGE_MIN 미만) 여전히 값을 내지 않는다 - 그때는 평균이 포트폴리오를 대표하지 못한다.
+ * 채권은 애초에 이 집계의 대상이 아니다(분자에도 분모에도 넣지 않는다 - 0으로 대입하지 않는다).
+ */
+const BETA_COVERAGE_MIN = 0.5;
+function computeBetaAggregate(holdings) {
+  const list = Array.isArray(holdings) ? holdings : [];
+  const totalWeight = list.reduce((sum, h) => sum + (Number.isFinite(h.weight) ? h.weight : 0), 0);
+  const withBeta = list.filter((h) => typeof h.beta === 'number' && Number.isFinite(h.beta));
+  const covered = withBeta.reduce((sum, h) => sum + (Number.isFinite(h.weight) ? h.weight : 0), 0);
+  const coverage = totalWeight > 0 ? covered / totalWeight : 0;
+  const missingCount = list.length - withBeta.length;
+  if (!list.length || covered <= 0 || coverage < BETA_COVERAGE_MIN) {
+    return { beta: null, coverage, missingCount, covered, totalWeight, enough: false };
+  }
+  // 구한 종목들 안에서의 비중으로 가중평균한다 - 빠진 종목 몫을 남은 종목에 얹어 총량을 부풀리지 않는다.
+  const beta = withBeta.reduce((sum, h) => sum + h.beta * h.weight, 0) / covered;
+  return { beta, coverage, missingCount, covered, totalWeight, enough: true };
+}
 function buildCommonDateReturns(seriesList) {
   const empty = { dates: [], returnsByKey: new Map(), commonReturnCount: 0, startDate: null, endDate: null };
   if (!Array.isArray(seriesList) || seriesList.length === 0) return empty;
@@ -1816,9 +1843,8 @@ function computeScenarioRiskMetrics(m, newWeightsOverride) {
 
   // [Risk 정책 P-1 · P-2 · v252] 본 엔진과 같은 규칙 - 공통 거래일 수익률을 새 비중 그대로 합치고(재정규화 없음),
   // 포트폴리오 베타는 모든 종목의 베타가 있을 때만 계산한다.
-  const portfolioBeta = newHoldings.length > 0 && newHoldings.every((h) => typeof h.beta === 'number' && Number.isFinite(h.beta))
-    ? newHoldings.reduce((s, h) => s + h.beta * h.weight, 0)
-    : null;
+  // [BOND-5 · §47-2] 본 엔진과 같은 함수를 쓴다 - 비중을 바꿔 보는 화면과 실제 지표가 다른 규칙을 쓰면 안 된다.
+  const portfolioBeta = computeBetaAggregate(newHoldings).beta;
   const portfolioReturns = buildPortfolioCommonReturns(newHoldings, m.commonDates);
   const sorted = [...portfolioReturns].sort((a, b) => a - b);
   const varIdx = Math.max(0, Math.floor(sorted.length * 0.05) - 1);
@@ -2056,11 +2082,11 @@ async function computeAdvancedRiskMetrics() {
     const hasCommonReturns = common.commonReturnCount >= MIN_COMMON_RISK_RETURNS;
     holdings.forEach((h) => { h.commonReturns = hasCommonReturns ? common.returnsByKey.get(h.ticker) : null; });
 
-    // 포트폴리오 베타 = 종목 베타의 비중 가중합. [Risk 정책 P-2 · v252] 베타가 없는 종목이 하나라도 있으면
-    // 남은 종목으로 비중을 다시 나누지 않고 null로 둔다 - 시장 요인은 점수에서 빠지고 나머지 요인으로 재정규화된다(§44 44-13).
-    const portfolioBeta = holdings.every((h) => typeof h.beta === 'number' && Number.isFinite(h.beta))
-      ? holdings.reduce((s, h) => s + h.beta * h.weight, 0)
-      : null;
+    // 포트폴리오 베타 = 베타를 구한 주식 · ETF의 비중 가중평균 + 설명 범위(coverage).
+    // [BOND-5 · §47-2] 예전의 "전부 또는 무"를 대체한다(computeBetaAggregate 주석 참고). 설명 범위가
+    // 기준 미만이면 여전히 null이고, 그때 시장 요인은 점수에서 빠져 나머지 요인으로 재정규화된다(§44 44-13).
+    const betaAggregate = computeBetaAggregate(holdings);
+    const portfolioBeta = betaAggregate.beta;
 
     // 포트폴리오 일간 수익률 = 공통 거래일 수익률의 비중 가중합(모든 종목 포함, 비중 그대로).
     // [R-11] 날짜 축(common.dates)을 함께 넘겨 "같은 날짜끼리" 합쳐지는 것을 구조적으로 보장한다.
@@ -2170,8 +2196,21 @@ async function computeAdvancedRiskMetrics() {
       mdd: riskMetricState(portfolioMDDPct, commonShortReason, obs, MIN_COMMON_RISK_RETURNS, RISK_TARGET_OBSERVATIONS.mdd)
     };
 
+    /* [BOND-5 · §47-2] 베타가 "무엇을 설명한 값인지"를 화면이 말할 수 있게 함께 돌려준다.
+     * betaCoveragePct = 베타를 구한 주식 · ETF가 주식 노출에서 차지하는 비중.
+     * bondWeightPct   = 전체 자산 중 채권 비중(베타 집계 대상이 아니라는 사실을 그대로 보여주기 위함).
+     * 두 값은 표시 전용이다 - 위험점수 6요인 산식에는 들어가지 않는다. */
+    const bondCur = (state.assets || [])
+      .filter((a) => a.category === '채권')
+      .reduce((sum, a) => sum + (calcRow(a).curKRW || 0), 0);
+    const householdCur = totalCur + bondCur;
     return {
       totalCur, holdings: sortedByWeight, missingCount, portfolioBeta, var95Pct, cvarPct, sortino,
+      betaCoveragePct: betaAggregate.enough || betaAggregate.coverage > 0 ? betaAggregate.coverage * 100 : 0,
+      betaMissingCount: betaAggregate.missingCount,
+      betaCoverageEnough: betaAggregate.enough,
+      betaCoverageMinPct: BETA_COVERAGE_MIN * 100,
+      bondWeightPct: householdCur > 0 ? (bondCur / householdCur) * 100 : 0,
       // [Phase 39-B] var95Pct가 null이면 금액도 null이어야 한다.
       var95KRW: var95Pct === null ? null : totalCur * var95Pct / 100,
       cvarKRW: cvarPct === null ? null : totalCur * cvarPct / 100,

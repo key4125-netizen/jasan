@@ -390,7 +390,9 @@ test('④ 최소 관측 120: Dimson 행 119개면 베타 없음, 120개면 계�
   assert.strictEqual(typeof h120.beta, 'number');
 });
 
-test('④ 포트폴리오 베타: 하나라도 베타가 없으면(HOLD 종목 포함) null, 모두 있으면 비중 가중합', async () => {
+// [기대값 갱신 사유 · BOND-5 · §47-2 · 2026-09-20] "전부 또는 무"를 폐지했다. 베타를 구한 종목만으로
+// 가중평균하고 설명 범위(coverage)를 함께 돌려주되, 설명 범위가 50% 미만이면 여전히 값을 내지 않는다.
+test('④ 포트폴리오 베타: 구한 종목만으로 집계하고 설명 범위를 함께 돌려준다(범위 미달이면 null)', async () => {
   const build = async (withHold) => {
     const s = withSyntheticLedger(loadRiskSandbox());
     const mk = asyncMarket({ fxVol: 0.003, seed: 9 });
@@ -403,9 +405,15 @@ test('④ 포트폴리오 베타: 하나라도 베타가 없으면(HOLD 종목 �
   };
   const withHold = await build(true);
   assert.strictEqual(withHold.holdings.find((h) => h.ticker === 'ZZ0002.KS').betaStatus, 'BENCHMARK_UNRESOLVED');
-  assert.strictEqual(withHold.portfolioBeta, null, '베타 없는 종목을 빼고 다시 나누지 않는다');
+  // 두 종목이 50:50이므로 설명 범위는 정확히 50% - 하한과 같아 값이 나오고, 그 값은 베타를 구한 종목의 베타다.
+  const covered = withHold.holdings.find((h) => h.ticker === 'ZZ0001.KS');
+  assert.ok(Math.abs(withHold.portfolioBeta - covered.beta) < 1e-12, '빠진 종목 몫을 남은 종목에 얹지 않는다');
+  assert.ok(Math.abs(withHold.betaCoveragePct - 50) < 1e-9);
+  assert.strictEqual(withHold.betaMissingCount, 1);
   const only = await build(false);
   assert.ok(Math.abs(only.portfolioBeta - only.holdings[0].beta) < 1e-12);
+  assert.ok(Math.abs(only.betaCoveragePct - 100) < 1e-9);
+  assert.strictEqual(only.betaMissingCount, 0);
 });
 
 /* ── ⑤ D-06 개별주 ─────────────────────────────────────────────────────── */

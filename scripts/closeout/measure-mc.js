@@ -124,7 +124,7 @@ async function runOnce(options) {
     instrumentCount: instruments.length,
     muHash: hashOf(instruments.map((i) => `${i.key}:${i.mu}`)),
     sigmaByKey: Object.fromEntries(instruments.map((i) => [i.key, i.sigma])),
-    excluded: input.excludedFromMc || [],
+    excluded: input.bondsWithoutRiskAssumption || [],
     warnings: (input.warnings || []).slice(0, 5)
   };
 }
@@ -153,7 +153,7 @@ function printReport(m) {
     const fv = r.finalValue;
     console.log(`\n[${label}] instrument ${r.instrumentCount}개 · μ지문 ${r.muHash}`);
     console.log(`  P10 ${fmt(fv.p10)} · P50 ${fmt(fv.p50)} · P90 ${fmt(fv.p90)} · 평균 ${fmt(fv.mean)}`);
-    if (r.excluded && r.excluded.length) console.log(`  MC 제외: ${r.excluded.map((e) => e.label || e.key).join(', ')}`);
+    if (r.excluded && r.excluded.length) console.log(`  위험 미반영 채권: ${r.excluded.map((e) => e.label || e.key).join(', ')}`);
   });
 }
 
