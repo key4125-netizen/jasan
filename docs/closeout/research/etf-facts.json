@@ -92,6 +92,18 @@
         "hedgeStatus": "CONFIRMED",
         "fxExposure": "CONFIRMED",
         "indexChangeHistory": "REVIEW"
+      },
+      "indexChangeHistory": {
+        "status": "REVIEW",
+        "investigated": [
+          "OpenDART 전체 공시유형(A~J) · 2020-10 ~ 2026-12 검색 → 이 펀드 관련 공시는 4건뿐이다",
+          "2022-10-20 [기재정정]투자설명서: 정정사유 \"매매회전율 반영\" · 작성기준일 변경뿐",
+          "2026-08-07 [기재정정]투자설명서: 정정사유 \"운용인력변경\" · 작성기준일 변경뿐(최초제출 2020-10-21 · 펀드코드 DB490)",
+          "2026-07-31 일괄신고서 정정: document.xml이 status 014(파일 없음) 반환",
+          "발행사 공지 원문: riseetf.co.kr 경로가 kbam.co.kr로 이동하며 404 · 신 사이트 공지 목록/검색 API 4종 탐색 실패"
+        ],
+        "finding": "**DART 공시에는 기초지수를 다른 지수로 바꾼 기록이 없다.** 확인된 변경은 상품 브랜드명(KBSTAR → RISE)과 운용인력 · 작성기준일뿐이다. 다만 발행사 웹 공지 원문을 읽지 못했으므로 \"지수 산출방법론 변경\"이었는지 여부는 확정하지 않는다.",
+        "conclusion": "indexChangeHistory = REVIEW 유지(사실 승격 없음). 추종 지수 자체가 바뀌었다는 근거는 어디에서도 나오지 않았다."
       }
     },
     {
@@ -402,6 +414,18 @@
         {
           "route": "OpenDART API",
           "result": "인증키가 환경에 없어 미실행 · 호출 준비는 완료(corp_code 00324548)"
+        },
+        {
+          "route": "OpenDART 공시검색 + document.xml",
+          "result": "공시는 특정됨(정정투자설명서 20260213001628 · 최초제출 2020-07-23 · 펀드코드 D7819 · VaR 31.18% · 위험등급 2) 그러나 본문은 표지만 제공 → 환헤지 조항 없음"
+        },
+        {
+          "route": "발행사 fact sheet · 간이투자설명서 PDF",
+          "result": "현재 도구로 PDF 텍스트 추출 불가(렌더러 미설치)"
+        },
+        {
+          "route": "KRX KIND",
+          "result": "ETF 관련 공시(시장안내 · 집합투자규약 변경 등)는 HTML로 제공됨을 확인. 360200의 투자설명서 본문 수록 여부는 미확인"
         }
       ]
     },

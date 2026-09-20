@@ -57,7 +57,7 @@
       ],
       "officialSource": "ICE/NYSE",
       "accessVerified": true,
-      "preliminary": "Yahoo ^NYA 일별 이력 수신 확인(1980-01-02~2026-09-18 · 11,774행 · 중복 0 · 음수 0). 2020 낙폭 -38.11% · 2022 -22.37% · 전체 -59.01%(종가 기준 직접 계산).",
+      "preliminary": "Yahoo ^NYA 일별 이력 수신 확인(1980-01-02~2026-09-18 · 11,774행 · 중복 0 · 음수 0). 2020 낙폭 -38.11% · 2022 -22.37% · 전체 -59.01%(종가 기준 직접 계산). [B-5] ICE 공식 페이지는 NYA를 목록으로만 싣고 정의를 서술하지 않는다. 방법론 PDF는 도구 한계로 추출 실패 → 정의 미확인 유지.",
       "definitionMatch": "수신한 것은 지수 수준값(Index Level)이다. PR/TR 구분과 공식 정의는 지수 제공기관(ICE/NYSE) 문서로 확인해야 한다 - 미확인.",
       "terms": "Yahoo robots.txt는 전면 Disallow. 운영 중 사용자 브라우저 조회와 서버 자동 수집은 성격이 다르다 - 정책 판단 필요(대장 P-12).",
       "quality": "일별 · 중앙 간격 1일 · 결측 없음(index-drawdowns.json quality)",
@@ -163,7 +163,7 @@
       ],
       "officialSource": "지수 산출기관(확인 필요)",
       "accessVerified": true,
-      "preliminary": "487230 발행사 페이지에서 \"iSelect 미국AI전력핵심인프라 지수(Price Return)\" 확인. 산출기관 공식 페이지 · 시계열은 미확보.",
+      "preliminary": "487230 발행사 페이지에서 \"iSelect 미국AI전력핵심인프라 지수(Price Return)\" 확인. 산출기관 공식 페이지 · 시계열은 미확보. [B-5] 산출기관 공식 확인 실패(발행사 fact sheet PDF 추출 불가). 검색 요약은 근거로 쓰지 않는다.",
       "definitionMatch": "PR 확정(A등급)",
       "terms": "미확인",
       "quality": "미확인",
@@ -340,15 +340,15 @@
       "accessVerified": true,
       "preliminary": "KRX 공식 지수 사이트에서 **채권지수 일별 시계열**(KTB 10년 등 · 총수익/순가격/시장가격 · Excel·CSV 제공)을 로그인 없이 확인했다. 금융투자협회 채권정보센터 접속 확인(조회 범위 미확인). 공공데이터포털 채권 API는 내가 추정한 서비스명이 없어(폐기 또는 오류) 정확한 서비스명 확인이 필요하다.",
       "definitionMatch": "채권지수 3종(총수익 · 순가격 · 시장가격)의 정의 구분이 그대로 제공된다 - 주식의 PR/TR 구분과 같은 성격이다.",
-      "terms": "KRX 데이터 이용약관 미확인 - 확인 전까지 저장 · 재배포하지 않는다(P-12).",
-      "quality": "미확인",
+      "terms": "확인 완료 - 채권기본정보 공공누리 제2유형(출처표시+상업적이용금지) · 채권시세정보 제4유형(+변경금지 · 상업이용은 KRX 유료) · KRX 지수 데이터는 정보상품 신청 대상",
+      "quality": "갱신 주기: 기준일 다음 영업일 13시 이후(실시간 아님)",
       "alternatives": [
         "공시 기반 최소 사실만 사용",
         "개별 채권은 사용자 입력 유지 + 계산 범위 제한"
       ],
       "directComputable": false,
-      "nextAction": "KRX 채권지수 이용조건 확인 → Index Master 등록 후보 정리 → Bond 결정 패키지(BOND-1~6)",
-      "state": "DISCOVERED"
+      "nextAction": "사용자 ISIN 입력 가능성 확인이 선결(채권기본정보 조회키). 금투협 채권정보센터 · 나머지 API 라이선스 유형은 조사 계속.",
+      "state": "POLICY_VERIFIED"
     },
     {
       "id": "DP-14",
