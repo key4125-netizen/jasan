@@ -481,5 +481,8 @@ test('상태 표(실제 원장): 확인·원천있음 / 확인·원천없음 / �
   // NYSE 상장 9건은 본국 보통주가 확인돼도 앱에 NYSE 종합지수가 없어 여전히 미해결이다(대장 D-2).
   // 원장 58건 분포: 확인·원천있음 32(국내 개별주 16 + 미국 개별주 10 + 미국 지수 ETF 5 + 비동기 비헤지 ETF 1) ·
   // 확인·원천없음 5 · 헤지 미확인 2 · 혼합 2 · 미해결 17(NYSE 상장 미국 개별주 9 + GOOG 1 + 대응 지수 없는 ETF 7).
-  assert.deepStrictEqual(buckets, { RESOLVED: 32, SOURCE_UNAVAILABLE: 5, hedgeUnconfirmed: 2, mixedExposure: 2, UNRESOLVED: 17 });
+  // [기대값 갱신 사유 · 실행 묶음 B 3차 · 2026-09-20] 공식 자료 확인으로 세 건이 이동했다.
+  //   069500 · 102110: 기초지수 코스피 200 확인 → 미해결에서 "확인 · 원천 없음"으로
+  //   368590: 환노출(비헤지) 확정 → 헤지 미확인에서 "확인 · 원천 있음"(비동기 · 원화환산)으로
+  assert.deepStrictEqual(buckets, { RESOLVED: 33, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 1, mixedExposure: 2, UNRESOLVED: 15 });
 });

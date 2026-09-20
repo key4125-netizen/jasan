@@ -1069,7 +1069,10 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
   assert.deepStrictEqual(bm({ ticker: 'QQQM', category: 'ETF' }), { key: 'NASDAQ100', status: 'RESOLVED', source: 'exposureMaster' });
   assert.strictEqual(bm({ ticker: 'SPY', category: 'ETF' }).key, 'SP500');
   // 추종 지수가 앱의 지수와 같지 않은 ETF(근사 금지)
-  for (const tk of ['SOXX', 'TQQQ', '069500.KS', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
+  for (const tk of ['SOXX', 'TQQQ', 'TLT', 'IEF']) assert.strictEqual(bm({ ticker: tk, category: 'ETF' }).key, null, tk);
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 069500의 기초지수(코스피 200)를 공식 자료로 확인했다 -
+  // Benchmark는 확인됨, 다만 그 지수의 가격 원천이 없어 베타는 만들지 않는다(세 상태 분리 그대로).
+  assert.deepStrictEqual(bm({ ticker: '069500.KS', category: 'ETF' }), { key: 'KOSPI200_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'NO_PERMITTED_SOURCE' });
   // [기대값 갱신 사유 · 1 · 2차 통합 구현] SCHD는 공식 기초지수가 원장에 확인됐지만 그 지수 가격 원천이 없다 -
   // Benchmark는 확인됨(RESOLVED), 원천은 UNAVAILABLE로 따로 표시한다(계산 가능으로 처리하지 않는다 · 근사 대체 없음).
   assert.deepStrictEqual(bm({ ticker: 'SCHD', category: 'ETF' }), { key: 'DJ_US_DIV100_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'SOURCE_INSUFFICIENT_HISTORY' });

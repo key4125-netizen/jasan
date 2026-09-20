@@ -148,30 +148,257 @@
         }
       },
       "ledgerImpact": "변경 없음. 원장 benchmark 키(DJ_US_DIV100_PR)는 지수 식별자이고, SCHD 자신의 underlyingReturnType은 계속 미기재(UNCONFIRMED)다 - 정의 일치 판정은 UNCONFIRMED로 남는다."
-    }
-  ],
-  "pending": [
-    {
-      "ticker": "360200.KS",
-      "name": "ACE 미국S&P500",
-      "issuer": "한국투자신탁운용",
-      "need": [
-        "환헤지",
-        "기초지수",
-        "PR/TR"
-      ],
-      "note": "한국투자신탁운용 ACE 상품 페이지도 값을 스크립트로 채워 본문에서 읽지 못했다(2026-09-20)."
     },
     {
       "ticker": "278530.KS",
       "name": "KODEX 200TR",
       "issuer": "삼성자산운용",
-      "need": [
-        "기초지수 TR 정의 확인",
-        "지수 시계열 원천"
-      ],
-      "note": "삼성자산운용 상품 페이지는 값을 스크립트로 채워 본문에서 기초지수 문구를 읽지 못했다(2026-09-20). 투자설명서 · 집합투자규약 경로로 전환 필요."
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://www.samsungfund.com/etf/product/view.do?id=2ETF92",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "코스피 200 TR",
+          "quote": "코스피200 지수 구성종목의 세전 현금배당이 재투자되는 것을 가정하여, 배당수익률이 가산된 총수익률을 반영한 지수입니다.",
+          "grade": "A"
+        },
+        "underlyingReturnType": {
+          "value": "TR",
+          "grade": "A"
+        },
+        "provider": {
+          "value": "KRX",
+          "grade": "A"
+        },
+        "priceCcy": {
+          "value": "KRW",
+          "grade": "A"
+        },
+        "listingDate": {
+          "value": "2017-11-21",
+          "grade": "A"
+        }
+      },
+      "ledgerImpact": "변경 없음(기존 TR 기재와 일치). 근거 보강."
     },
+    {
+      "ticker": "069500.KS",
+      "name": "KODEX 200",
+      "issuer": "삼성자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://www.samsungfund.com/etf/product/view.do?id=2ETF01",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "KOSPI 200",
+          "quote": "KOSPI200지수는 유가증권시장에 상장된 전체 종목 중에서 시장대표성,업종대표성, 유동성 등을 감안하여 선정된 200개 종목을 시가총액 가중방식으로 산출한 지수 (지수산출 : 한국거래소)",
+          "grade": "A"
+        },
+        "underlyingReturnType": {
+          "value": "PR",
+          "grade": "A",
+          "note": "KRX 공식 정의상 총수익지수(TR)가 원지수에 배당을 더한 것이므로 원지수 코스피 200은 배당 미반영(PR)이다."
+        }
+      },
+      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재(기존 공란). 가격 원천은 없어 베타는 여전히 산출하지 않는다."
+    },
+    {
+      "ticker": "102110.KS",
+      "name": "TIGER 200",
+      "issuer": "미래에셋자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR7102110004",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "코스피 200",
+          "quote": "한국거래소가 발표하는 코스피 200 지수를 추적대상지수로하여",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "해당없음(국내자산)",
+          "quote": "해당없음",
+          "grade": "A"
+        },
+        "listingDate": {
+          "value": "2008-04-03",
+          "grade": "A"
+        }
+      },
+      "ledgerImpact": "benchmark KOSPI200_PR 신규 기재."
+    },
+    {
+      "ticker": "487230.KS",
+      "name": "KODEX 미국AI전력핵심인프라",
+      "issuer": "삼성자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지 · 상품 데이터",
+        "url": "https://www.samsungfund.com/etf/product/view.do?id=2ETFN6",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "iSelect 미국AI전력핵심인프라 지수(Price Return)",
+          "quote": "iSelect 미국AI전력핵심인프라 지수(Price Return)는 AI전력 인프라와 관련된 미국 주식으로 구성된 지수입니다.",
+          "grade": "A"
+        },
+        "underlyingReturnType": {
+          "value": "PR",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "UNHEDGED",
+          "quote": "환노출(발행사 상품 데이터 currencyRisk)",
+          "grade": "A"
+        },
+        "listingDate": {
+          "value": "2024-07-09",
+          "grade": "A"
+        }
+      },
+      "ledgerImpact": "기존 기재(PR · UNHEDGED)와 일치. 근거 보강."
+    },
+    {
+      "ticker": "368590.KS",
+      "name": "RISE 미국나스닥100",
+      "issuer": "KB자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://kbam.co.kr/products/44A9",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "NASDAQ 100 Index(KRW)(T-1)",
+          "quote": "NASDAQ 100 Index는 NASDAQ OMX Group에서 산출 및 발표하는 지수로 나스닥(NASDAQ)시장에 상장된 기업 중 거래량과 시가총액을 기준으로 상위 100개 우량 종목(금융주 제외)을 수정시가총액가중방식으로 산출한 지수입니다.",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "UNHEDGED",
+          "quote": "미국 나스닥100 지수를 추종하는 환노출형 ETF",
+          "grade": "A"
+        },
+        "underlyingReturnType": {
+          "value": "UNCONFIRMED",
+          "checked": "지수 설명에 PR/TR 표기가 없다. 기초지수는 원화환산 · 1일 시차(T-1) 버전이다.",
+          "grade": null
+        }
+      },
+      "indexChangeHistory": {
+        "note": "공지 \"RISE 미국나스닥100 기초지수 변경 공지(368590)\"의 제목은 확인했으나 본문은 열리지 않았다(riseetf.co.kr → kbam.co.kr 리다이렉트). 현재 상품 페이지가 표시하는 기초지수는 NASDAQ 100 Index(KRW)(T-1)이며, 추종 지수 자체가 다른 지수로 바뀌었다는 근거는 확보하지 못했다. 사실로 확정하지 않는다.",
+        "state": "UNCONFIRMED"
+      },
+      "ledgerImpact": "환헤지 UNHEDGED 확정 → HOLD 해제. benchmark NASDAQ100 유지. Risk는 비동기 Dimson + H.10 원화환산 경로로 산출된다."
+    },
+    {
+      "ticker": "360200.KS",
+      "name": "ACE 미국S&P500",
+      "issuer": "한국투자신탁운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://www.aceetf.co.kr/fund/K55101D78195",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "S&P 500 지수",
+          "quote": "미국의 대형주 대표지수로, 미국에 상장된 전체 주식 중 유동시가총액 상위 500종목으로 구성된 지수로 S&P Dow Jones Indices LLC.에서 산출.",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "UNCONFIRMED",
+          "checked": "페이지 전체에서 환헤지 · 헤지 · 원화환산 문구를 찾지 못했다(일반 위험고지 문장만 있다). 상품명에 (H)가 없다는 사실은 근거로 쓰지 않는다.",
+          "grade": null
+        },
+        "underlyingReturnType": {
+          "value": "UNCONFIRMED",
+          "grade": null
+        },
+        "listingDate": {
+          "value": "2020-08-07",
+          "grade": "A"
+        }
+      },
+      "ledgerImpact": "변경 없음 - 환헤지 미확인이므로 HOLD 유지."
+    },
+    {
+      "ticker": "237370.KS",
+      "name": "KODEX 코리아배당성장채권혼합",
+      "issuer": "삼성자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://www.samsungfund.com/etf/product/view.do?id=2ETF58",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "KRX 배당성장 채권혼합지수",
+          "quote": "코스피 배당성장 50 지수에 30%를 투자하고, 안정적인 이자수익을 추구할 수 있는 KTB지수에 70%를 투자하는 혼합형 지수로서, 2010년 1월 4일 종가를 1000.00포인트로 하여 산출되고 있습니다.",
+          "grade": "A"
+        },
+        "mixed": {
+          "value": true,
+          "equityPct": 30,
+          "bondPct": 70,
+          "equityIndex": "코스피 배당성장 50 지수",
+          "bondIndex": "KTB지수",
+          "grade": "A"
+        },
+        "priceCcy": {
+          "value": "KRW",
+          "grade": "A"
+        }
+      },
+      "ledgerImpact": "MIXED 유지. 구성비가 공식 확인됐다(30/70). 단일 지수(KRX 배당성장 채권혼합지수)가 이미 존재한다는 점이 새 사실이다 - 1:N 구조 도입 여부는 별도 결정(대장 D-13)."
+    },
+    {
+      "ticker": "472170.KS",
+      "name": "TIGER 미국테크TOP10채권혼합",
+      "issuer": "미래에셋자산운용",
+      "source": {
+        "type": "발행사 공식 상품 페이지",
+        "url": "https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR7472170000",
+        "retrievedAt": "2026-09-20"
+      },
+      "facts": {
+        "underlyingIndex": {
+          "value": "FnGuide 미국테크TOP10 채권혼합지수",
+          "quote": "Indxx가 발표하는 \"Indxx US Tech Top10 지수\" 및 채권 지수인 \"KIS 국채 3-10년(총수익 지수) 지수\"의 비중을 정기변경일이나 수시변경일에 5:5로 조정하여 산출",
+          "grade": "A"
+        },
+        "mixed": {
+          "value": true,
+          "equityPct": 50,
+          "bondPct": 50,
+          "equityIndex": "Indxx US Tech Top10 지수",
+          "bondIndex": "KIS 국채 3-10년(총수익 지수) 지수",
+          "grade": "A"
+        },
+        "hedgeStatus": {
+          "value": "UNHEDGED",
+          "quote": "환헤지를 하지 아니함",
+          "grade": "A"
+        },
+        "listingDate": {
+          "value": "2023-12-05",
+          "grade": "A"
+        }
+      },
+      "indexChangeHistory": {
+        "quote": "이 투자신탁은 기초지수의 산출방식을 변경함에 따라(2025년 10월 31일 부터 적용), 기존 \"Indxx US Tech Top10지수\" 및 채권 지수인 \"KIS 국채 3-10년 지수(총수익지수)\"의 비중을 4:6에서 5:5로 조정합니다.",
+        "effectiveDate": "2025-10-31",
+        "grade": "A"
+      },
+      "ledgerImpact": "MIXED 유지. 구성비(5:5) · 변경 이력(2025-10-31 4:6→5:5) · 환헤지 없음 확인. 1:N 구조는 별도 결정(D-13)."
+    }
+  ],
+  "pending": [
     {
       "ticker": "0052D0.KS",
       "name": "TIGER 코리아배당다우존스",
@@ -180,56 +407,79 @@
         "기초지수 PR 확인",
         "지수 시계열 원천"
       ]
-    },
-    {
-      "ticker": "487230.KS",
-      "name": "KODEX 미국AI전력핵심인프라",
-      "issuer": "삼성자산운용",
-      "need": [
-        "기초지수 산출기관",
-        "PR/TR",
-        "환헤지",
-        "지수 시계열 원천"
-      ]
-    },
-    {
-      "ticker": "237370.KS",
-      "name": "KODEX 코리아배당성장채권혼합",
-      "issuer": "삼성자산운용",
-      "need": [
-        "주식/채권 구성비",
-        "각 기초지수",
-        "1:N 구조"
-      ]
-    },
-    {
-      "ticker": "472170.KS",
-      "name": "TIGER 미국테크TOP10채권혼합",
-      "issuer": "미래에셋자산운용",
-      "need": [
-        "주식/채권 구성비",
-        "각 기초지수",
-        "환헤지",
-        "1:N 구조"
-      ]
-    },
-    {
-      "ticker": "069500.KS",
-      "name": "KODEX 200",
-      "issuer": "삼성자산운용",
-      "need": [
-        "기초지수 코스피200 PR 확인",
-        "지수 시계열 원천"
-      ]
-    },
-    {
-      "ticker": "102110.KS",
-      "name": "TIGER 200",
-      "issuer": "미래에셋자산운용",
-      "need": [
-        "기초지수 코스피200 PR 확인"
-      ]
     }
   ],
-  "sourceAccessNote": "발행사 상품 페이지는 운용사마다 다르다. 미래에셋(TIGER)은 본문에 기초지수 · 환헤지 문구가 들어 있어 원문 인용이 가능하다. KB(RISE) · 삼성(KODEX) · 한국투자(ACE)는 값을 스크립트로 채워 본문 텍스트에서 읽히지 않는다 → 다음 경로는 DART 전자공시(투자설명서 · 집합투자규약)다."
+  "sourceAccessNote": "발행사 상품 페이지는 운용사마다 다르다. 미래에셋(TIGER)은 본문에 기초지수 · 환헤지 문구가 들어 있어 원문 인용이 가능하다. KB(RISE) · 삼성(KODEX) · 한국투자(ACE)는 값을 스크립트로 채워 본문 텍스트에서 읽히지 않는다 → 다음 경로는 DART 전자공시(투자설명서 · 집합투자규약)다.",
+  "indexDefinitions": [
+    {
+      "key": "SP500",
+      "name": "S&P 500",
+      "provider": "S&P Dow Jones Indices",
+      "returnType": "PR",
+      "evidence": "제공기관 공식 지수 페이지가 대표값을 \"Price Return\"으로 표시",
+      "grade": "A",
+      "historicalSource": "Yahoo ^GSPC(운영 중 사용)",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "DJ_US_DIV100_PR",
+      "name": "Dow Jones U.S. Dividend 100 Index",
+      "provider": "S&P Dow Jones Indices",
+      "returnType": "PR",
+      "evidence": "제공기관 공식 지수 페이지 대표값 \"Price Return\" · Launch Date 2011-08-31",
+      "grade": "A",
+      "historicalSource": "없음(원천 미확보)",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "DJ_KOREA_DIV30_PR",
+      "name": "Dow Jones Korea Dividend 30 지수 (Price Return)",
+      "provider": "S&P Dow Jones Indices",
+      "returnType": "PR",
+      "evidence": "0052D0 발행사 공식 상품 페이지의 기초지수 명칭",
+      "grade": "A",
+      "historicalSource": "없음",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "ISELECT_US_AI_POWER_PR",
+      "name": "iSelect 미국AI전력핵심인프라 지수(Price Return)",
+      "provider": "iSelect(확인 필요)",
+      "returnType": "PR",
+      "evidence": "487230 발행사 공식 상품 페이지의 기초지수 명칭",
+      "grade": "A",
+      "historicalSource": "없음",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "KOSPI200_PR",
+      "name": "코스피 200",
+      "provider": "KRX",
+      "returnType": "PR",
+      "evidence": "KRX 공식 지수 사이트 대표지수 표(기준일 1990.01.03 · 발표일 1994.06.15 · 기준지수 100) + 총수익지수 정의(\"원지수 구성종목의 현금배당이 재투자되는 것을 가정\")",
+      "grade": "A",
+      "historicalSource": "없음(data.krx 계정 필요 · 공공데이터포털은 재배포 금지)",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "KOSPI200_TR",
+      "name": "코스피 200 TR",
+      "provider": "KRX",
+      "returnType": "TR",
+      "evidence": "KRX 공식 총수익지수 목록에 코스피 200 TR 수록(기준일 2011.01.03 · 발표일 2016.01.11) · 현재 지수값 공개",
+      "grade": "A",
+      "historicalSource": "없음(현재값만 공개)",
+      "retrievedAt": "2026-09-20"
+    },
+    {
+      "key": "NYSE_COMPOSITE",
+      "name": "NYSE Composite",
+      "provider": "ICE/NYSE",
+      "returnType": "UNCONFIRMED",
+      "evidence": "Yahoo ^NYA 일별 이력 수신은 확인. 제공기관 공식 정의 · PR/TR은 미확인",
+      "grade": null,
+      "historicalSource": "Yahoo ^NYA(1980~ · 11,774행)",
+      "retrievedAt": "2026-09-20"
+    }
+  ]
 }

@@ -5,7 +5,7 @@
 - 실행 기준문서: `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`
 - 정책 원문 SoT: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`
 - 기준선: v262 (release `b9ff90e` · 시작 main `d4459a7` · 작업 브랜치 `integration/v262-closeout`)
-- 판: PHASE 0 초판 · 실행 묶음 B 1~2차 반영(2026-09-20)
+- 판: PHASE 0 초판 · 실행 묶음 B 1~3차 반영(2026-09-20)
 
 > 현재 판정(currentStatus)은 PHASE 0 시점의 재감사 결과다. 최종 상태(finalStatus)는 각 항목의 조사·구현·검증이 끝난 뒤에만 채운다. NOT_AVAILABLE은 계획서 §51의 필수 조건을 모두 채운 경우에만 쓴다.
 
@@ -13,12 +13,12 @@
 
 | 현재 판정 | 건수 |
 | --- | ---: |
-| OPEN | 44 |
-| COMPLETED | 11 |
+| OPEN | 42 |
+| COMPLETED | 13 |
 | RETAINED | 4 |
 | NOT_AVAILABLE_CANDIDATE | 0 |
-| PM_DECISION_REQUIRED | 5 |
-| **합계** | **64** |
+| PM_DECISION_REQUIRED | 6 |
+| **합계** | **65** |
 
 ## 전체 목록
 
@@ -41,7 +41,7 @@
 | D-5 | 코스피200 PR · TR 시계열 원천 | 데이터 · 지수 원천 | PHASE 3 | PM_DECISION_REQUIRED | - |
 | D-6 | Index Master 원천 없음 4종 재조사 | 데이터 · 지수 원천 | PHASE 3 | OPEN | - |
 | D-7 | 나스닥 종합 등 스트레스 낙폭을 실제 역사 데이터로 직접 계산 | 데이터 · 스트레스 | PHASE 4 | OPEN | - |
-| D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | OPEN | - |
+| D-8 | 혼합 상품 1:N 노출(237370 · 472170) | 데이터 · 구조 | PHASE 6 | COMPLETED | - |
 | D-9 | 원화 기준 역사적 낙폭(환율 포함) 미구현 | 데이터 · 스트레스 | PHASE 4 | OPEN | - |
 | B-1 | KIS Worker secret 교체 · Origin 허용목록 · rate limit · fail-closed · 재배포 | 보안 | PHASE 2 | PM_DECISION_REQUIRED | - |
 | B-2 | KIS 지수 API 이용조건 · 데이터 재배포 조건 | 보안 · 이용조건 | PHASE 1 | OPEN | - |
@@ -87,7 +87,8 @@
 | P-11 | 세션 · PC 간 인계 구조 | 프로젝트 통제 | PHASE 0 | COMPLETED | - |
 | P-12 | 공개 저장소 재배포 · robots 제약과 데이터 원천 선택 원칙 | 외부 데이터 | PHASE 1 | COMPLETED | PM_DECISION_RESOLVED |
 | D-11 | GOOG 무의결권 Class C 주식을 본국 보통주로 볼 것인가 | 데이터 · Benchmark | PHASE 3 | PM_DECISION_REQUIRED | - |
-| D-12 | 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR) | 데이터 · Benchmark | PHASE 3 | OPEN | - |
+| D-12 | 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR) | 데이터 · Benchmark | PHASE 3 | COMPLETED | COMPLETED |
+| D-13 | 혼합형 ETF를 1:N 노출 구조로 표현할지 여부 | 데이터 · 구조 | PHASE 6 | PM_DECISION_REQUIRED | - |
 
 ## 항목 상세
 
@@ -228,8 +229,8 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §21 · §25
-- **현재 구현**: 확인 완료: 458730 기초지수 "Dow Jones U.S. Dividend 100 Price Return Index"(PR · A등급) · 환헤지 없음(A등급) / 360750 기초지수 "S&P 500 지수"(A등급) · 환헤지 없음(A등급) · PR/TR 미확인 / SCHD 기초지수 "Dow Jones U.S. Dividend 100 Index"(SEC 497K · A등급) · 지수 자체의 PR/TR 표기 없음. 미확인: 368590 · 360200 · 278530 · 069500 · 102110 · 0052D0 · 487230.
-- **문제**: PR과 TR은 서로 다른 값이다. 특히 원장의 Benchmark 키가 DJ_US_DIV100_PR로 "PR"을 단정하고 있는데, 지금까지 확보한 1차 자료는 그 PR 표기를 뒷받침하지 않는다 - 지수 제공기관 methodology 확인이 필요하다(신규 D-12).
+- **현재 구현**: 12개 상품 전수 조사 완료(docs/closeout/research/etf-facts.json). **PR/TR 확정**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR. **미확정**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수의 PR/TR 표기가 없음 - 다만 해당 지수(S&P 500 · DJ US Div100 · NASDAQ 100)의 제공기관 대표값은 Price Return임을 확인).
+- **문제**: 남은 4건은 "지수 제공기관은 PR을 대표값으로 쓰는데 상품 자료가 그 구분을 적지 않은" 경우다. 상품이 PR 버전을 쓴다고 단정하지 않는다.
 - **필요한 사실**: 종목별 기초지수의 공식 수익 유형(PR/TR)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 전자공시 · 지수 제공기관 methodology · 미국: SEC filings · 공식 fact sheet
 - **영향**: 정책 정의 일치(MATCH/DEFINITION_MISMATCH) 판정 / Risk 베타 · 정의 불일치 표시 / MC 없음 / UI F-5
@@ -241,8 +242,8 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 D-05 · 계획서 §25
-- **현재 구현**: 헤지 필드를 비워 HOLD - 두 종목은 Benchmark UNRESOLVED(hedgeUnconfirmed)
-- **문제**: 헤지 여부를 추정하면 원화 환산 베타가 통째로 틀린다(6-3 금지)
+- **현재 구현**: **368590 해결** - 발행사 공식 페이지 "미국 나스닥100 지수를 추종하는 환노출형 ETF" → UNHEDGED 확정(A등급), 원장 반영 완료. **360200 미해결** - 한국투자신탁운용 상품 페이지 전체에서 환헤지 문구를 찾지 못했다(일반 위험고지만 존재).
+- **문제**: 360200 한 건만 남았다. 상품명에 (H)가 없다는 사실은 근거로 쓰지 않는다.
 - **필요한 사실**: 공식 자료의 환헤지 정책(전량/부분/없음)
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 · 운용사 공식 상품 페이지
 - **영향**: 정책 hedgeStatus / Risk 비동기 베타 산출 가능 여부 / MC 없음 / UI F-1
@@ -265,15 +266,17 @@
 
 #### D-12 — 원장 Benchmark 키의 PR 단정 재확인(DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR)
 
-- **현재 판정**: OPEN · **단계**: PHASE 3
+- **현재 판정**: COMPLETED → **최종 COMPLETED** · **단계**: PHASE 3
 - **SoT**: §44 44-16 D-01 · 계획서 §21
-- **현재 구현**: Index Master 키 이름과 returnType이 PR로 적혀 있다. 2026-09-20 조사에서 **DJ_US_DIV100_PR은 근거가 확인됐다** - 미래에셋 공식 상품 페이지가 458730의 기초지수를 "Dow Jones U.S. Dividend 100 Price Return Index"로 명시한다(A등급). 남은 것은 DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR 두 개다.
-- **문제**: 확인되지 않은 PR/TR을 확정해 두면 정의 일치 판정이 잘못될 수 있다. 남은 두 지수의 PR 표기 근거를 확인해야 한다.
+- **현재 구현**: Index Master의 PR/TR 표기를 전부 1차 자료로 검증했다 - DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR(발행사 · 제공기관 공식 명칭에 Price Return 포함) · KOSPI200_TR(KRX 총수익지수 정의) · 신규 KOSPI200_PR(KRX 원지수).
+- **문제**: 해결됨.
 - **필요한 사실**: 각 지수의 공식 methodology에서 PR · TR 구분
 - **조사 경로**: S&P Dow Jones Indices 지수 methodology · 지수 제공기관 공식 factsheet · 운용사 투자설명서의 기초지수 정식 명칭
 - **영향**: 정책 Index Master returnType · 키 이름 / Risk 정의 일치 판정 / MC 없음 / UI F-5
 - **구현 필요**: 확인 결과에 따라 Index Master 수정 또는 UNCONFIRMED로 되돌림
 - **테스트**: integrated-benchmark-index PR/TR 테스트
+- **검증**: docs/closeout/research/etf-facts.json indexDefinitions · Unit 566/566
+- **근거**: 발행사 상품 페이지 · S&P DJI 공식 지수 페이지 · KRX 공식 지수 사이트
 - **마지막 확인일**: 2026-09-20
 
 ### 데이터 · 지수 원천
@@ -282,8 +285,8 @@
 
 - **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 3
 - **SoT**: 계획서 §22 · §23
-- **현재 구현**: 조사 결과: ① 네이버 - robots 전면 Disallow + 경로 410(사용 불가) ② KRX 정보데이터시스템 - 계정 없이 차단 ③ 공공데이터포털(금융위원회 · 원자료 KRX) - 엔드포인트 정상 · 인증키 필요 · 공공누리 4유형(상업적 이용금지 · 변경금지 · 제3자 재배포 금지)
-- **문제**: "데이터가 없다"가 아니라 "현재 앱 구조에서는 이용조건이 막는다"가 실제 상태다. 이 앱은 받은 데이터를 공개 저장소에 커밋하고 CDN으로 배포하는데 그것이 제3자 재배포에 해당한다.
+- **현재 구현**: **정의 확정(A등급)**: KRX 공식 지수 사이트에서 코스피 200(기준일 1990.01.03 · 기준지수 100)과 코스피 200 TR(기준일 2011.01.03 · 발표 2016.01.11)의 정의 · 현재값을 확인했다. Index Master에 KOSPI200_PR을 등록하고 069500 · 102110에 기재했다. **원천은 여전히 없음**: KRX 공식 사이트는 현재값만 공개하고 일별 시계열은 data.krx(계정 필요) 또는 공공데이터포털(재배포 금지)뿐이다.
+- **문제**: 정의는 끝났고 남은 것은 일별 시계열 확보 방법이다(PM 결정 3택).
 - **필요한 사실**: PR · TR 각각의 공식 정의 · 수신 가능한 일별 수준값 · 이용조건
 - **조사 경로**: 네이버 금융 KPI200(PHASE 0 예비 확인: 일별 257행 수신) · KRX 공식 데이터 경로 · 운용사 · 지수 제공기관(KRX 지수) · KIS(이용조건 확인 선행 · B-2)
 - **예비 결과(사실 아님)**: KPI200 수신 확인 · KPI200TR/KOSPI200TR은 0행(예비 결과 · 최종 사실 아님)
@@ -297,7 +300,7 @@
 
 - **현재 판정**: OPEN · **단계**: PHASE 3
 - **SoT**: §44 44-16 · 계획서 §23
-- **현재 구현**: KOSPI200_TR · DJ_KOREA_DIV30_PR · ISELECT_US_AI_POWER_PR · DJ_US_DIV100_PR = UNAVAILABLE(Benchmark는 RESOLVED, 베타만 불가)
+- **현재 구현**: 4종 모두 **정의는 A등급으로 확정**됐다(D-12). 남은 것은 일별 시계열 원천이다 - DJ_US_DIV100_PR · DJ_KOREA_DIV30_PR(S&P DJI 라이선스) · ISELECT_US_AI_POWER_PR(산출기관 확인 필요) · KOSPI200_TR(KRX).
 - **문제**: 현재 API에 없다는 이유로 멈춰 있다. 계획서 §0-1에 따라 전 경로를 다시 조사해야 한다
 - **필요한 사실**: 각 지수의 공개 역사 시계열 수신 가능성 · 정의 · 이용조건
 - **조사 경로**: 지수 제공기관(S&P DJI · NH아문디 iSelect 등) 공식 페이지 · 운용사 공시 · fact sheet 내 지수값 · KRX · 합법적 대체 시계열
@@ -341,14 +344,29 @@
 
 #### D-8 — 혼합 상품 1:N 노출(237370 · 472170)
 
-- **현재 판정**: OPEN · **단계**: PHASE 6
+- **현재 판정**: COMPLETED · **단계**: PHASE 6
 - **SoT**: §44 44-16 · 계획서 §39
-- **현재 구현**: exposureStructure=MIXED → Benchmark 강제하지 않음(UNRESOLVED · mixedExposure)
-- **문제**: 단일 Benchmark로 강제하면 잘못된 비교가 된다. 구성비를 공식 자료로 확인해야 한다
+- **현재 구현**: 혼합형 2종의 공식 구성이 확인됐다. 237370: KRX 배당성장 채권혼합지수 = 코스피 배당성장 50 30% + KTB 70%. 472170: FnGuide 미국테크TOP10 채권혼합지수 = Indxx US Tech Top10 + KIS 국채 3-10년(총수익) 5:5(2025-10-31부터 4:6에서 변경) · 환헤지 없음.
+- **문제**: 사실 조사는 끝났다. 두 상품 모두 **단일 혼합지수**를 기초지수로 쓰므로 반드시 1:N 구조가 필요한 것은 아니다 - 구조 도입 여부는 별도 결정(D-13).
 - **필요한 사실**: 공식 구성비(자산군별 비중) · 기초지수 조합
 - **조사 경로**: 운용사 투자설명서 · 집합투자규약 · 금융투자협회 · 지수 제공기관
 - **영향**: 정책 1:N 노출 모델 / Risk 베타 산출 방식 / MC 자산군 배분 / UI F-1
 - **구현 필요**: 원장 구조 확장(1:N) - 범위는 PM 결정 필요
+- **테스트**: risk · mc 회귀
+- **검증**: docs/closeout/research/etf-facts.json · 원장 MIXED 유지(계산 무변경)
+- **근거**: 발행사 공식 상품 페이지(원문 인용 기록)
+- **마지막 확인일**: 2026-09-20
+
+#### D-13 — 혼합형 ETF를 1:N 노출 구조로 표현할지 여부
+
+- **현재 판정**: PM_DECISION_REQUIRED · **단계**: PHASE 6
+- **SoT**: 계획서 §39 · §44 44-16
+- **현재 구현**: 237370 · 472170은 exposureStructure MIXED로 두어 Benchmark를 강제하지 않는다(UNRESOLVED · mixedExposure). 공식 구성비는 이번에 확인됐다(30/70 · 50/50).
+- **문제**: 두 상품 모두 **운용사가 단일 혼합지수를 기초지수로 쓴다**(KRX 배당성장 채권혼합지수 · FnGuide 미국테크TOP10 채권혼합지수). 따라서 선택지는 ①그 혼합지수를 Index Master에 등록해 단일 Benchmark로 쓰기 ②주식/채권 두 지수로 나누는 1:N 구조 도입 ③현행 MIXED 유지 세 가지다. 어느 쪽이든 계산 구조에 영향을 주므로 정책 결정이 필요하다.
+- **필요한 사실**: 혼합지수의 일별 시계열 원천(①을 택할 경우)
+- **선택지**: (가) 현행 MIXED 유지(베타 산출 안 함) · (나) 혼합지수를 Index Master에 등록(원천 확보 필요) · (다) 1:N 노출 구조 신설(Risk · MC 구조 변경 · 범위 큼)
+- **영향**: 정책 노출 표현 방식 / Risk 두 상품의 베타 · 포트폴리오 베타 / MC 자산군 배분(혼합형) / UI 설명
+- **구현 필요**: 결정에 따름
 - **테스트**: risk · mc 회귀
 - **마지막 확인일**: 2026-09-20
 

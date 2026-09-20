@@ -55,6 +55,17 @@
 - `.github/workflows/*.yml` 파일은 **무변경**. 프로젝트 종료 후 `gh workflow enable <id>` + `gh workflow run <id>`로 복귀하고 건너뛴 갱신을 수동 실행한다(대장 **P-2**).
 - **이 기간 동안 H.10 · 종목마스터 · CMA는 자동 갱신되지 않는다.** 데이터가 오래된 것처럼 보이면 이 통제 때문이다.
 
+**실행 묶음 B 3차 — ETF · 지수 기준정보 전수 확인 (2026-09-20 · 원장/Index Master 변경)**
+- 조사 경로 정리: **발행사 공식 페이지를 브라우저로 직접 열어 본문을 읽었다**(WebFetch는 KB·삼성·한국투자 페이지에서 본문이 비어 실패). 삼성은 `m.samsungfund.com/api/v1/kodex/product.do` 상품 데이터로 `currencyRisk`(환노출 여부)까지 확인 가능.
+- **PR/TR 확정 6건**: 458730 PR · 487230 PR · 0052D0 PR · 278530 TR · 069500 PR · 102110 PR
+  · 지수 제공기관 확인: S&P 500 · DJ US Dividend 100 대표값이 **Price Return**(S&P DJI 공식) · 코스피 200/200 TR 정의(KRX 공식 index.krx.co.kr)
+  · **미확정 4건**: 360750 · 360200 · 368590 · SCHD(상품 자료에 지수 PR/TR 표기 없음)
+- **환헤지**: 368590 "환노출형 ETF" → **UNHEDGED 확정 · HOLD 해제**. 360200만 미확인(페이지에 문구 없음).
+- **혼합형 구성비 확정**: 237370 = 코스피 배당성장 50 **30%** + KTB **70%** / 472170 = Indxx US Tech Top10 + KIS 국채 3-10년(TR) **5:5**(2025-10-31 4:6→5:5). 둘 다 **단일 혼합지수**를 쓴다 → 1:N 구조 도입 여부는 신규 **D-13(PM 결정)**.
+- **Index Master**: `KOSPI200_PR` 신규 등록(KRX · PR · availability **UNAVAILABLE**). 069500 · 102110에 기재.
+- 측정: `docs/closeout/measurements/CHANGE-B3-001-etf-index-facts.md` — Risk 차이 누적 19건(값은 불변, **상태 코드만 정확해짐**: BENCHMARK_UNRESOLVED → SOURCE_UNAVAILABLE) · **MC 차이 0건** · 상태 분포 확인32→33 / 원천없음5→7 / 헤지미확인2→1 / 미해결17→15
+- Unit 566/566(기대값 7건 갱신) · ESLint 0 · Data Guard PASS
+
 **실행 묶음 B 2차 — 미국 개별주 본국 보통주 반영 (2026-09-20 · 코드 변경 있음)**
 - **D-1 종결**: 원장 미국 개별주 20건 중 **19건에 `equityListing: HOME_COMMON` · `evidenceGrade: A`** 기재(js/28). 판정 규칙 **HOME_COMMON_RULE_V1** = ①SEC EDGAR 설립지(미국 주) ②연차보고서 10-K ③거래소 디렉터리·10-K 표지의 보통주 표기. 거래소 상장만으로는 판정하지 않음.
   · GOOG 1건은 등록증권이 "Class C Capital Stock"이라 REVIEW → **신규 D-11(PM 결정)**
@@ -71,7 +82,8 @@
 - 확보: 360750 TIGER 미국S&P500 — 발행사 원문으로 기초지수·**환헤지 없음** 확인(원장과 일치). **PR/TR은 상품 페이지에 없음 → 여전히 UNCONFIRMED**(투자설명서·지수 methodology로 이동).
 - 이용조건 조사 기록: `docs/closeout/research/source-terms.json`
 
-**🚫 PM 결정 대기 5건**
+**🚫 PM 결정 대기 6건**
+0. **D-13 혼합형 구조**(신규) — 237370 · 472170은 운용사가 **단일 혼합지수**를 쓴다. (가)현행 MIXED 유지 (나)혼합지수를 Index Master에 등록 (다)1:N 구조 신설 중 선택.
 1. **D-5 코스피200 PR/TR 경로** — 공공데이터포털 API는 **CORS 허용(브라우저 직접 호출 가능 · 프록시 불필요)**, 인증키 필요, 공공누리 4유형(제3자 재배포 금지). (가)사용자 키 입력 방식 (나)KRX 유료 라이선스 (다)NOT_AVAILABLE. UI는 결정 전 만들지 않는다.
 2. **D-11 GOOG Class C** — 무의결권 capital stock을 본국 보통주로 볼지(규칙 확장 여부).
 3. **P-7 SEC 연락처** — 1회 조사는 완료됐고, **주기적 자동 재검증**에 필요. `SEC_CONTACT_EMAIL` 환경변수/Actions Secret만 등록하면 된다(값은 코드·커밋·보고서에 남기지 않음. `node scripts/closeout/research/us-home-common.js --verify-sec`로 설정 여부만 확인).

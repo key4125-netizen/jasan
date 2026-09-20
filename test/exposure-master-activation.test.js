@@ -70,11 +70,15 @@ test('3. RESOLVED 항목은 전부 근거와 버전을 갖는다(추정값 없�
         assert.strictEqual(e.equityListing, undefined, `${e.ticker}: 등급 없이 상장 형태만 적을 수 없다`);
       } else {
         assert.strictEqual(e.evidenceGrade, 'A', `${e.ticker}: 자동 연결 사실은 A등급만`);
-        assert.ok(/HOME_COMMON_RULE_V1/.test(e.evidence), `${e.ticker}: 등급의 판정 근거가 evidence에 없다`);
+        // 등급을 붙였으면 공식 자료 근거와 확인일이 evidence에 있어야 한다(판정 규칙 이름 또는 공식 출처 표기).
+        assert.ok(/HOME_COMMON_RULE_V1|공식|공시|SEC/.test(e.evidence), `${e.ticker}: 등급의 근거가 evidence에 없다`);
+        assert.ok(/20\d\d-\d\d-\d\d 확인|20\d\d-\d\d-\d\d 재확인|판정 20\d\d-\d\d-\d\d/.test(e.evidence), `${e.ticker}: 확인일이 없다`);
       }
     } else {
       assert.strictEqual(e.evidenceGrade, 'A', `${e.ticker}: 자동 연결 사실은 A등급만`);
-      assert.ok(/공식|공시/.test(e.evidence) && /2026-09-19 확인/.test(e.evidence), `${e.ticker} 공식 근거 · 확인일이 없다`);
+      // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 확인일을 2026-09-19 한 날짜로 고정하지 않는다 -
+      // 이번 조사에서 발행사 · 지수 제공기관 원문으로 다시 확인한 항목은 확인일이 2026-09-20이다.
+      assert.ok(/공식|공시/.test(e.evidence) && /20\d\d-\d\d-\d\d (확인|재확인)/.test(e.evidence), `${e.ticker} 공식 근거 · 확인일이 없다`);
     }
   });
 });
@@ -116,10 +120,18 @@ test('6. Benchmark는 Index Master에 등록된 지수만 쓰고, 근사 대체�
   entries.forEach((e) => {
     if (!e.benchmark) return;
     assert.ok(EM.resolveIndexMasterEntry(e.benchmark), `${e.ticker}: Index Master에 없는 지수 ${e.benchmark}`);
-    if (e.version === 'EM-2026.1') assert.ok(APP_INDEXES.includes(e.benchmark), `${e.ticker}: 기존 항목의 Benchmark가 바뀌었다 ${e.benchmark}`);
+    // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 069500 · 102110의 기초지수(코스피 200)를 운용사 · KRX 공식 자료로
+    // 확인해 기재했다. 코스피 200은 Index Master에 등록됐지만 일별 시계열 원천이 없어 availability는 UNAVAILABLE이다 -
+    // 즉 "Benchmark는 확인됨 · 가격 원천 없음"이며 KOSPI로 근사 대체하지 않는다.
+    const ALLOWED_2026_1 = APP_INDEXES.concat(['KOSPI200_PR']);
+    if (e.version === 'EM-2026.1') assert.ok(ALLOWED_2026_1.includes(e.benchmark), `${e.ticker}: 기존 항목의 Benchmark가 바뀌었다 ${e.benchmark}`);
   });
-  // 국내 상장 국내ETF(KOSPI200 추종)는 KOSPI200 지수가 Index Master에 없어 비워 둔다 - KOSPI로 대신하지 않는다.
-  ['069500.KS', '102110.KS'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}에 근사 지수를 넣으면 안 된다`));
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 두 ETF의 기초지수는 코스피 200으로 확인됐다(공식 자료).
+  // Index Master에 정의와 함께 등록하되 가격 원천은 없다 - 코스피(KOSPI)로 근사 대체하지 않는다는 원칙은 그대로다.
+  ['069500.KS', '102110.KS'].forEach((t) => {
+    assert.strictEqual(find(t).benchmark, 'KOSPI200_PR', `${t} 기초지수`);
+    assert.strictEqual(EM.isIndexPriceSourceAvailable('KOSPI200_PR'), false, '코스피 200은 아직 가격 원천이 없다');
+  });
   // 3배 레버리지 · 섹터 · 국채 ETF도 대응 지수가 없으면 비운다.
   ['TQQQ', 'SOXX', 'SMH', 'TLT', 'IEF'].forEach((t) => assert.strictEqual(find(t).benchmark, undefined, `${t}`));
   // SCHD는 공식 기초지수(DJ U.S. Dividend 100)를 적었지만 그 지수의 가격 원천이 없다 - 계산 가능으로 보지 않는다.
@@ -183,8 +195,10 @@ test('10. MC 연결점은 존재하되 값만 제공한다(엔진 미연결)', (
   assert.strictEqual(typeof EM.resolveExposureAssetClass, 'function');
   assert.strictEqual(EM.resolveExposureAssetClass({ ticker: 'AAPL' }), 'US_EQUITY');
   assert.strictEqual(EM.resolveExposureAssetClass({ ticker: '005930.KS' }), 'KR_EQUITY');
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 069500은 기초지수가 확인돼 RESOLVED가 됐으므로 자산군 값을 준다.
+  // MC 결과는 바뀌지 않는다 - 기존 판정 경로도 같은 국내주식 자산군을 주고 있었다(회귀 하네스 mc 차이 0건으로 확인).
+  assert.strictEqual(EM.resolveExposureAssetClass({ ticker: '069500.KS' }), 'KR_EQUITY');
   // 확정되지 않은 종목은 값을 주지 않는다 - 호출부가 기존 판정으로 넘어가게 한다.
-  assert.strictEqual(EM.resolveExposureAssetClass({ ticker: '069500.KS' }), null);
   assert.strictEqual(EM.resolveExposureAssetClass({ ticker: 'UNKNOWN999' }), null);
 });
 
@@ -204,7 +218,8 @@ test('11. Risk 벤치마크: 원장이 주는 값이 기존 판정과 같다(키
   assert.strictEqual(key({ ticker: 'SPY', category: 'ETF' }), 'SP500');
   // 원장이 비워 둔 종목은 기존 판정 그대로 UNRESOLVED다(임의 대체 없음).
   assert.strictEqual(key({ ticker: 'JPM' }), null);
-  assert.strictEqual(key({ ticker: '069500.KS', category: 'ETF' }), null);
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 기초지수(코스피 200)가 확인돼 키가 생겼다. 가격 원천은 없어 베타는 만들지 않는다.
+  assert.strictEqual(key({ ticker: '069500.KS', category: 'ETF' }), 'KOSPI200_PR');
   assert.strictEqual(key({ ticker: 'TQQQ', category: 'ETF' }), null);
   // 원장에 없는 종목도 기존 경로가 그대로 판정한다.
   s.setTickerMaster({ '247540.KQ': { exchange: 'KOSDAQ', nameKr: '에코프로비엠' } });
@@ -263,8 +278,10 @@ test('16. 원장 규모와 상태 분포가 기록한 것과 같다', () => {
   assert.strictEqual(entries.length, 58);
   assert.strictEqual(entries.filter((e) => e.version === 'EM-2026.1').length, 48);
   assert.strictEqual(entries.filter((e) => e.version === 'EM-2026.2').length, 10);
-  assert.strictEqual(byStatus('RESOLVED').length, 38);
-  assert.strictEqual(byStatus('UNRESOLVED').length, 20);
+  // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 공식 자료로 세 건이 추가 확정됐다 -
+  // 069500 · 102110(기초지수 코스피 200) · 368590(환노출 확정으로 환헤지 사실 완비).
+  assert.strictEqual(byStatus('RESOLVED').length, 41);
+  assert.strictEqual(byStatus('UNRESOLVED').length, 17);
   const types = {};
   entries.forEach((e) => { types[e.assetType] = (types[e.assetType] || 0) + 1; });
   assert.deepStrictEqual(types, { KR_STOCK: 16, FOREIGN_STOCK: 20, FOREIGN_LISTED_ETF: 11, KR_LISTED_DOMESTIC_ETF: 5, KR_LISTED_FOREIGN_ETF: 6 });
