@@ -3,7 +3,7 @@
   "title": "v262 → 전체 미결사항 종결 프로젝트 · 종결 대장",
   "plan": "docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md",
   "sot": "docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md",
-  "edition": "PHASE 0 초판 · 실행 묶음 B 1~7차 반영(2026-09-20)",
+  "edition": "PHASE 0 초판 · 실행 묶음 B 1~7차 + PM Solution Closure 반영(2026-09-20)",
   "baseline": {
     "version": "v262",
     "releaseCommit": "b9ff90e",
@@ -294,8 +294,8 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "계획서 §22 · §23",
-      "currentImpl": "**정의 확정(A등급)**: KRX 공식 지수 사이트에서 코스피 200(기준일 1990.01.03 · 기준지수 100)과 코스피 200 TR(기준일 2011.01.03 · 발표 2016.01.11)의 정의 · 현재값을 확인했다. Index Master에 KOSPI200_PR을 등록하고 069500 · 102110에 기재했다. **원천은 여전히 없음**: KRX 공식 사이트는 현재값만 공개하고 일별 시계열은 data.krx(계정 필요) 또는 공공데이터포털(재배포 금지)뿐이다. [B-5] **KRX 공식 문구 확보**: 지수 정보상품 페이지에 \"본 내용을 사용하시려면 한국거래소 지수 정보상품을 신청하셔야 합니다\"라고 명시 → 지수 데이터는 라이선스 대상이다.",
-      "problem": "정의는 끝났고 남은 것은 일별 시계열 확보 방법이다(PM 결정 3택).",
+      "currentImpl": "KOSPI200 PR/TR 정의는 A등급 확정, 일별 시계열만 없다. PM Solution Closure에서 \"ETF를 지수 proxy로 쓰는 안\"을 실제로 검토한 결과 **무의미함을 확인**했다 — proxy 후보가 베타를 구하려는 ETF 자신이라 베타가 정의상 1이 되고, 현재 원장에 KOSPI200을 기준으로 삼는 다른 종목이 없다.",
+      "problem": "proxy 대안은 권고하지 않는다(정보량 0). 실효 경로는 (가) 또는 (나)이며, 둘 다 외부 조치가 선행된다.",
       "neededFact": "PR · TR 각각의 공식 정의 · 수신 가능한 일별 수준값 · 이용조건",
       "investigationPaths": [
         "네이버 금융 KPI200(PHASE 0 예비 확인: 일별 257행 수신)",
@@ -315,9 +315,9 @@
       "resumeCondition": null,
       "lastCheckedAt": "2026-09-20",
       "options": [
-        "(가) 사용자 본인 인증키로 브라우저가 직접 조회(재배포 없음 · 새 설정 UI 필요)",
-        "(나) KRX Data Marketplace 유료 라이선스 확보",
-        "(다) 지수 원천 없음으로 종결(NOT_AVAILABLE · 근거 기록)"
+        "(가) 사용자 공공데이터 인증키 직접조회 - 지수 API는 CORS 허용 실측 확인됨(프록시 불필요). 키 입력 UI는 신규 기능이므로 PM 승인 필요",
+        "(나) KRX 지수 정보상품 라이선스",
+        "(다) 현행 유지 - 정의 확정 + 원천 없음 표시(현재 상태이며 정직한 표시)"
       ]
     },
     {
@@ -439,8 +439,8 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "인계장 v262 절(KIS 보안) · 계획서 §26",
-      "currentImpl": "공개 저장소에 클라이언트 공유 비밀값이 존재했던 이력 - 사용자(운영자) 조치 필요 영역",
-      "problem": "Claude Code는 Worker 배포 · secret 교체 권한이 없다(PM 지시상 금지). 조치 주체와 시점을 PM이 정해야 한다",
+      "currentImpl": "저장소 cloudflare-worker-kis-proxy.js 실측 - ① CORS가 Access-Control-Allow-Origin:* 로 전면 개방 ② CLIENT_SHARED_SECRET 미등록 시 인증 검사가 통째로 생략되는 fail-open ③ 요청 수 제한 없음. 수정안(Origin 허용목록 · fail-closed · KV rate limit · 오류 최소노출)과 Cloudflare Dashboard 작업 순서를 PM_SOLUTION_CLOSURE.md §9에 확정했다.",
+      "problem": "코드 수정 자체는 즉시 가능하나, 비밀값 회전과 Worker 재배포는 사용자(대시보드) 작업이다. 공개 PWA의 X-App-Secret은 본질적으로 공개값이므로 실질 방어선은 Origin 허용목록 + rate limit임을 문서화했다.",
       "neededFact": "현재 Worker 설정 상태 · 교체 계획",
       "investigationPaths": [
         "Cloudflare Worker 설정 확인(사용자)",
@@ -542,8 +542,8 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§37 CMA-AUTO-02 · 계획서 §28",
-      "currentImpl": "ACTIVE=CMA-2026.1(AGI 2026Q1 + JPM 2026 KRW) · AGI-LTCMA-2026Q2-USD는 VERIFIED(검토 대기)",
-      "problem": "자동 ACTIVE 금지 정책상 PM 승인 없이는 바꿀 수 없다. 이번 프로젝트에서 결정해야 OPEN이 남지 않는다",
+      "currentImpl": "CMA 2026Q2(VERIFIED · 기준일 2026-03-31)와 현행 Q1의 차이를 측정했다. 앱 사용 4개 자산군 ER 모두 상승 · σ 상승(한국주식 27.9→29.4가 최대). 동일 seed 20260101 · 2,000회 · 20년 · 원장 49건 MC: P10 -1.97% · P50 +1.52% · P90 +4.77% · mean +3.84% · μ는 변화 없음(Return Key에서 오므로 CMA와 무관 - 정책 경계 정상 작동 확인).",
+      "problem": "영향이 정량화됐다. 권고는 (나) Q2 활성화 - 기준일이 더 최신이고 μ에 영향이 없으며 변화가 σ·상관에 한정된다. BOND-4와 동시 적용 금지(순차 적용 + 각각 전후 측정).",
       "neededFact": "2026Q2 데이터셋의 자산군 · 수익률 · 변동성 · 상관 · 방법론 · 기준일",
       "investigationPaths": [
         "data/cma/datasets/AGI-LTCMA-2026Q2-USD.json(이미 확보)",
@@ -892,8 +892,8 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§9 Bond Domain · §44 제43조 · 계획서 §31",
-      "currentImpl": "조사 · 설계 완료. 산출물 3종 - BOND_DECISION_PACKAGE.md(BOND-1~6 결정표 + 권고) · BOND_DOMAIN_DESIGN.md(4계층 분리 · 스키마 · 가격 의미 · ISIN 조회 UX · 현금흐름 · 수익률 · Risk · MC · 외화 · 보안 · 충돌 점검 · 구현 순서) · BOND_DATA_SOURCE_MATRIX.md(원천 8종 · 라이선스 · 자동화 판정).",
-      "problem": "사실과 설계는 닫혔다. 남은 것은 정책 선택 6건(BOND-1~6)이며, 그중 3건은 기존 정책과 충돌해 PM 개정 결정이 필요하다(§7 채권 σ=0 · RISK_ELIGIBLE_CATEGORIES · 제10조 포트폴리오 베타).",
+      "currentImpl": "조사 · 설계 완료. 산출물 3종 - BOND_DECISION_PACKAGE.md(BOND-1~6 결정표 + 권고) · BOND_DOMAIN_DESIGN.md(4계층 분리 · 스키마 · 가격 의미 · ISIN 조회 UX · 현금흐름 · 수익률 · Risk · MC · 외화 · 보안 · 충돌 점검 · 구현 순서) · BOND_DATA_SOURCE_MATRIX.md(원천 8종 · 라이선스 · 자동화 판정). 2026-09-20 PM Solution Closure에서 BOND-1~6 전부에 채택 권고안을 확정했다(PM_SOLUTION_CLOSURE.md). BOND-3 · 4 · 6은 해법이 닫혔고(SOLVED WITH CONSTRAINT), 1 · 2 · 5는 PM 선택만 남았다.",
+      "problem": "BOND-4의 \"국내채권 CMA 없음\"은 해소됐다 — JPM-LTCMA-2026-KRW에 Korean Government/Corporate Bonds가 이미 있다. 남은 것은 해당 데이터셋의 역할 승격(§37) 승인이다.",
       "neededFact": "없음 - 구현에 필요한 사실은 확보됐다(ISIN 조회 가능 필드 · 라이선스 · CMA 숫자 · 기존 코드 경로).",
       "investigationPaths": [
         "금융투자협회 채권정보센터",
@@ -929,7 +929,7 @@
         "결정 전에는 구현하지 않는다"
       ],
       "verification": "Unit 566/566 · ESLint 0 · Data Guard PASS(이번 pass 코드 변경 없음)",
-      "evidence": "docs/closeout/research/BOND_DOMAIN_DESIGN.md · BOND_DATA_SOURCE_MATRIX.md · BOND_DECISION_PACKAGE.md"
+      "evidence": "docs/closeout/research/PM_SOLUTION_CLOSURE.md · BOND_DOMAIN_DESIGN.md §14 · BOND_DATA_SOURCE_MATRIX.md §5"
     },
     {
       "id": "N-2",
@@ -1404,8 +1404,8 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§44 44-16 D-06 · 계획서 §19",
-      "currentImpl": "GOOG는 설립지 DE · 연차보고서 10-K가 확인됐으나 12(b) 등록증권이 \"Class C Capital Stock, $0.001 par value\"다. 보통주(common stock) 표기가 아니어서 HOME_COMMON_RULE_V1이 REVIEW로 판정했고, 원장에 근거를 넣지 않았다(Risk는 UNRESOLVED).",
-      "problem": "같은 발행인의 Class A(GOOGL)는 \"Class A Common Stock\"이라 HOME_COMMON이다. 경제적으로는 같은 기업에 대한 지분이지만 표기가 다르다. 규칙을 \"보통주 표기\"로 둘지, \"본국 발행 지분증권(ADR · 우선주 제외)\"으로 넓힐지는 정책 판단이다.",
+      "currentImpl": "Alphabet 10-K 표지 실측 — Delaware 설립 · 10-K · 12(b)에 Class A Common Stock(GOOGL)과 Class C Capital Stock(GOOG) 동시 등록 · Nasdaq · ADR 아님. HOME_COMMON_RULE_V2(\"본국 발행 지분증권, ADR·우선주·ETF 제외\")를 적용하면 GOOG는 HOME_COMMON이다.",
+      "problem": "측정 완료 - GOOG 판정 {key: NASDAQ, status: RESOLVED}, 상태 분포 RESOLVED 33→34 · UNRESOLVED 15→14, 원장 검증 위반 0건. 규칙 버전 상향(v1→v2)에 대한 PM 승인만 남았다.",
       "neededFact": "없음(사실은 모두 확인됨) - 정의의 문제다",
       "options": [
         "(가) 현행 유지 - 보통주 표기만 인정(GOOG는 계속 UNRESOLVED)",
@@ -1546,7 +1546,7 @@
       "currentStatus": "PM_DECISION_REQUIRED",
       "finalStatus": null,
       "sot": "§7 · §9-2 BOND-DEF-03 · §44 제10조 · js/09 RISK_ELIGIBLE_CATEGORIES",
-      "currentImpl": "Bond Domain 설계가 기존 정책 3곳과 정면으로 만난다. ① §7: 채권 · 현금 σ=0 ↔ BOND-4 CMA σ 사용 ② RISK_ELIGIBLE_CATEGORIES=[주식,ETF] ↔ BOND-2 직접채권 편입 ③ §44 제10조 포트폴리오 베타 전부-또는-무 ↔ BOND-5 부분 집계.",
+      "currentImpl": "Bond Domain 설계가 기존 정책 3곳과 정면으로 만난다. ① §7: 채권 · 현금 σ=0 ↔ BOND-4 CMA σ 사용 ② RISK_ELIGIBLE_CATEGORIES=[주식,ETF] ↔ BOND-2 직접채권 편입 ③ §44 제10조 포트폴리오 베타 전부-또는-무 ↔ BOND-5 부분 집계. PM Solution Closure에서 3건 모두에 대해 SoT 변경안(§7-1 Risk 대상 · §7-2 제10조 베타 · §7-3 MC 채권 자산군)을 CURRENT/PROBLEM/PROPOSED/WHY/IMPACT/REGRESSION/ROLLBACK 형식으로 작성했다.",
       "problem": "임의로 해결하지 않는다. 각 충돌은 SoT 개정을 수반하므로 PM 결정과 체크리스트 반영이 함께 필요하다.",
       "neededFact": "없음",
       "options": [
@@ -1562,7 +1562,8 @@
       "implementationNeeded": "결정 후 SoT 개정 + 구현",
       "test": "risk · mc 회귀 전후 측정",
       "resumeCondition": null,
-      "lastCheckedAt": "2026-09-20"
+      "lastCheckedAt": "2026-09-20",
+      "evidence": "docs/closeout/research/PM_SOLUTION_CLOSURE.md §12"
     }
   ]
 }

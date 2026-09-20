@@ -67,3 +67,28 @@
 | 로그 · 오류 표시 | 키 · 개인정보가 오류 메시지에 노출되지 않게 한다 | 기존 정책 |
 | 실패 처리 | fail-closed — 조회 실패 시 **추정값을 만들지 않는다** | §20 · 계획서 §0-2 |
 | 내보내기 | 엑셀 · JSON 내보내기에 서비스키가 포함되지 않도록 한다 | Data Guard |
+
+---
+
+## 5. 채권 장기가정(CMA) 원천 — BOND-4 해결 (2026-09-20)
+
+| 원천 | 위치 | 통화 | 채권 자산군 | 현재 역할 | 제약 |
+| --- | --- | --- | --- | --- | --- |
+| AGI-LTCMA-2026Q1-USD | `data/cma/datasets/` | USD | US/Euro/Global/Asian/EM 채권 (**한국 채권 없음**) | PRIMARY | 국내채권 매핑 불가 |
+| **JPM-LTCMA-2026-KRW** | `data/cma/datasets/` | **KRW** | **Korean Government Bonds 3.0/5.357 · Korean Corporate Bonds 3.5/2.540 · Korean Cash 2.2/0.476 · 주요 외화채 hedged/unhedged 쌍** | BENCHMARK (상관 참조) | μ·σ 근거로 쓰려면 §37 역할 개정 |
+
+→ "국내채권 CMA 원천이 없다"는 제약은 **실제로는 존재하지 않는다.** 필요한 것은 역할 승격 승인이다.
+→ hedged/unhedged 쌍(예: U.S. Intermediate Treasuries σ 11.14 비헤지 vs 3.45 헤지)은 외화채 환헤지 처리의 공식 근거도 된다.
+
+## 6. 보안 — KIS Proxy Worker 실측 결함 (B-1 · 2026-09-20)
+
+저장소의 `cloudflare-worker-kis-proxy.js`에서 확인:
+
+| # | 결함 | 위치 | 수정안 |
+| --- | --- | --- | --- |
+| 1 | `Access-Control-Allow-Origin: '*'` — 전면 개방 | CORS 헤더 정의부 | Origin 허용목록(운영 GitHub Pages · 개발 localhost:8644)만 반사 + `Vary: Origin` |
+| 2 | `if (env.CLIENT_SHARED_SECRET && ...)` — **변수 미등록 시 인증 통째로 생략(fail-open)** | 요청 검증부 | fail-closed: 변수 없으면 503 |
+| 3 | 요청 수 제한 없음 | — | KV 카운터 IP·일 300 / 분 30 초과 시 429 |
+| 4 | 상류 오류 본문 전달 가능 | — | 상태코드만 반환 |
+
+**[CONSTRAINT]** 공개 PWA에 포함되는 `X-App-Secret`은 본질적으로 공개값이다. 실질 방어선은 **Origin 허용목록 + 요청 제한**이며, 공유 비밀값은 보조 수단이다.
