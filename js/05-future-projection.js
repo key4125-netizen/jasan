@@ -333,7 +333,8 @@ function resolveAssetGroupKeyDetail(asset, presetKey) {
   // [대표매칭 오버라이드 - 요청 반영] 자동판별보다 항상 우선한다 - 엑셀의 "대표매칭(수익률연동키)"
   // 컬럼을 직접 고쳐서 업로드하면 makeAsset()이 여기 저장하고(js/01), 이후 모든 계산이 그 값을 그대로
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
-  // 처리한다(못 알아보는 키는 지역 대표지수로 조용히 대체) - 여기서는 형식 검증을 하지 않는다.
+  // 처리한다 - 여기서는 형식 검증을 하지 않는다. [Phase 47-A] 예전에는 못 알아보는 키를 지역 대표지수로
+  // 조용히 대체했지만 그 폴백은 폐지됐다 - 지금은 0을 돌려주고 "가정 없음"으로 표시한다.
   if (asset.rateMatchOverride) return { key: asset.rateMatchOverride, source: 'override' };
   // [v246 · PMD-12] Instrument Return Key Master - 사용자 지정 다음, 기존 사전 매칭 · 자동 판별보다 먼저 본다.
   // 연결된 키에 그 시나리오 수익률이 없어도 다른 기준으로 넘기지 않는다(D-5: 0% + 가정 없음 경고).
@@ -406,7 +407,10 @@ function resolveProjectionRateForKey(key, presetKey, isForeign) {
   // BOND→categories.채권, classifyCategory('달러')==='현금'→0)을 그대로 따른다 - 새 수익률을 만들지 않으며,
   // customScenarioRates에 키가 있으면 여전히 그 값이 우선한다(getReferenceRate가 custom을 먼저 본다).
   // CASH와 CASH.USD는 서로 다른 키로 유지되어 사용자가 각각 다른 값을 등록할 수 있다 - 시트 미등록 시의
-  // 폴백만 둘 다 현금 0%로 맞춘다. BOND.STOCK은 앱 어디에도 기본 정책이 없어 여기서 다루지 않는다(정책 결정 필요).
+  // 폴백만 둘 다 현금 0%로 맞춘다. BOND.STOCK은 여기서 다루지 않는다 - 정책이 없어서가 아니라
+  // **정책이 "시스템 기본값을 두지 않는다"로 확정됐기 때문**이다(RET-03-08 · BOND-DEF-04 · 체크리스트 §458).
+  // user-defined 전용 키라 값을 등록하지 않으면 아래 마지막 return 0으로 떨어지고,
+  // isRateAssumptionMissingForKey가 true를 돌려 "가정 없음" 경고가 함께 나간다(지역 폴백 없음).
   if (key === 'BOND') return getReferenceRate(presetKey, 'BOND');
   if (key === 'CASH' || key === 'CASH.USD') { const custom = getCustomRate(key, presetKey); return custom !== undefined ? custom : 0; }
   if (key === 'KOSPI') return getEffectiveIndexRate(presetKey, 'domestic');

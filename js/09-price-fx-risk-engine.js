@@ -619,7 +619,8 @@ function resolveModalBenchmark(yahooTicker, displayName) {
 //   쓰지 않고 비동기 정렬(Dimson 시차 0 + 1 · computeAsyncDimsonBeta)로 계산한다. 이때 환헤지 사실이 원장에
 //   있어야 하고(미확인 → HOLD), 비헤지 + 가격통화(KRW) ≠ 지수통화(USD)이면 지수를 H.10으로 원화 환산해 비교한다.
 //   환헤지형은 헤지비용 자료가 없어 UNRESOLVED다(0으로 두지 않는다 · §44 제6조 6-3).
-//   getBenchmarkKeyForTicker(위)는 화면에 쓰이지 않는 종목 분석 모달의 참고값 경로에만 남아 있다.
+//   옛 근사 함수 getBenchmarkKeyForTicker는 G-1에서 완전히 삭제됐다 - 종목 분석 모달도
+//   resolveModalBenchmark를 거쳐 이 함수를 쓴다(test/risk-engine.test.js:123이 그 함수의 부재를 강제한다).
 const RISK_BENCHMARK_BY_ETF_INDEX_LABEL = Object.freeze({ '나스닥100': 'NASDAQ100', 'S&P500': 'SP500' });
 // [D-06] 상장 거래소 지수를 그대로 쓰는 것은 국내 상장 개별주뿐이다(NASDAQ은 v252에 있었으나 D-06으로 뺐다).
 const RISK_BENCHMARK_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ' });
@@ -1566,7 +1567,8 @@ function flowSignalLabel(signal) {
 }
 
 // 데이터가 있는 종목들 간 전체 상관계수 행렬 - { tickerA: { tickerB: 상관계수 } }.
-// [Phase 39-B] 종목 쌍도 공통 거래일 기준으로 비교한다(날짜가 없으면 기존 방식 폴백).
+// [Phase 39-B] 종목 쌍도 공통 거래일 기준으로 비교한다. 공통 거래일 수익률이 없으면 null이다 -
+// 길이만 맞춰 세는 옛 폴백은 쓰지 않는다(조용한 근사보다 "계산 불가"가 정직하다).
 // [Risk 정책 P-1 · v252] 포트폴리오와 같은 공통 거래일 수익률(commonReturns)로 계산한다.
 function computeFullCorrelationMatrix(list) {
   const matrix = {};
@@ -1751,7 +1753,8 @@ function riskMetricState(value, reason, observations, required, target) {
     reason: available ? null : reason,
     observations: typeof observations === 'number' ? observations : null,
     required: typeof required === 'number' ? required : null,
-    // 정책 목표 관측 수(§44 제7조). 지금 조회 기간은 1년이라 대부분 미달이며, 이 값은 "앞으로
+    // 정책 목표 관측 수(§44 제7조). 조회 기간은 C-3으로 3년(fetchDailyClosesWithStatus 기본 range='3y')이라
+    // 상장 기간이 짧은 종목에서만 미달한다. 이 값은 "앞으로
     // 얼마나 더 필요한가"를 보여주는 참고치다 - 이것 때문에 지표를 막지는 않는다.
     targetObservations: typeof target === 'number' ? target : null
   };

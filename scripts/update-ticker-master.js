@@ -35,7 +35,12 @@ const AdmZip = require('adm-zip');
 const iconv = require('iconv-lite');
 
 const MASTER_BASE_URL = 'https://new.real.download.dws.co.kr/common/master';
-const OUT_PATH = path.join(__dirname, '..', 'data', 'ticker-master.json');
+// [I-11 · Diff Gate] 기본은 예전 그대로 data/ticker-master.json이다. TICKER_MASTER_OUT이 있으면 그 경로에 쓴다 -
+// workflow가 새 마스터를 임시 파일로 먼저 만들고, scripts/ticker-master-diff-gate.js가 변경량을 본 뒤에만
+// 운영 파일 자리로 옮기게 하기 위함이다(이상 변경이 저장소에 먼저 반영되는 것을 막는다). 파싱 · 검증 로직은 무변경.
+const OUT_PATH = process.env.TICKER_MASTER_OUT
+  ? path.resolve(process.env.TICKER_MASTER_OUT)
+  : path.join(__dirname, '..', 'data', 'ticker-master.json');
 // 국내 전체(코스피+코스닥)만 정상 파싱되어도 수천 건이 나온다 - 이보다 훨씬 적으면 다운로드/파싱이
 // 조용히 실패했을 가능성이 높다고 보고 커밋을 막는다(잘못된 소량 데이터로 기존 ticker-master.json을
 // 덮어써서 검색 기능이 오히려 후퇴하는 사고를 예방).

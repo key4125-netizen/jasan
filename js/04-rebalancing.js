@@ -489,7 +489,7 @@ function renderPortfolioTargetSummary(owner) {
 }
 
 // [Phase 17 P1-2] 위임(delegated) 클릭 리스너 - 진단 Row는 renderPortfolioTargetSummary()가 호출될
-// 때마다 innerHTML로 통째로 다시 그려지므로, 다른 아코디언들(correlationGuideToggleBtn 등)과 동일하게
+// 때마다 innerHTML로 통째로 다시 그려지므로, 앱의 다른 아코디언들과 동일하게
 // document 레벨 위임 리스너 하나로 처리한다.
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.portfolio-diag-row-toggle');

@@ -58,10 +58,12 @@ const ALLOWED_TARGET_HOSTS = [
   // stooq.com 5천여 건이 전부 4xx로 잡히는 것으로 확인됨).
 ];
 
-/* [B-3 · B-4 · §47-8 · 2026-09-20] CORS 허용 목록 + 요청 수 제한
+/* [B-3 · §47-8 · 2026-09-20] CORS 허용 목록
  * KIS Worker와 같은 이유다 - Access-Control-Allow-Origin: * 는 "브라우저에서 누구나 부를 수 있다"는
- * 뜻이고, 이 Worker들은 무료 티어 한도를 공유한다. 허용 Origin만 반사하고 IP별 상한을 둔다.
- * (CORS는 브라우저에서만 지켜지므로 curl 직접 호출까지 막지는 못한다 - 그래서 요청 수 제한을 함께 둔다.) */
+ * 뜻이다. 허용 Origin만 반사한다.
+ * [이 Worker에는 요청 수 제한이 없다] B-3의 범위는 CORS 점검이었고 rate limit은 kis-proxy(B-1)와
+ * sync(B-4)에만 들어갔다. CORS는 브라우저에서만 지켜지므로 curl 직접 호출은 여전히 통과한다 -
+ * 실질 방어선은 아래 ALLOWED_TARGET_HOSTS(대상 호스트 화이트리스트)뿐이다. 비차단 관찰사항으로 기록돼 있다. */
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://key4125-netizen.github.io',
   'http://localhost:8644',

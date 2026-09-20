@@ -1115,11 +1115,11 @@
       "category": "저장소",
       "phase": "PHASE 7",
       "title": "일별 스냅샷(sam_daily_snapshot_v1) 누적",
-      "currentStatus": "SOLVED",
-      "finalStatus": "SOLVED",
+      "currentStatus": "SOLVED_WITH_CONSTRAINT",
+      "finalStatus": "SOLVED_WITH_CONSTRAINT",
       "sot": "계획서 §34",
       "currentImpl": "변경 없음(보존 유지).",
-      "problem": "해결됨. 실측: 스냅샷 1건 393B · 연 140KB · 10년 1.4MB로 압력의 주범이 아니었고(마스터 캐시 2.6MB), 사용자 기록이라 보존이 기본이다. 저장 실패 위험은 Q-1의 복원력이 흡수한다.",
+      "problem": "제약과 함께 종결. 실측: 스냅샷 1건 393B · 연 140KB · 10년 1.4MB로 압력의 주범이 아니었고(마스터 캐시 2.6MB), 사용자 기록이라 보존이 기본이다. **남는 제약: 보존 상한이 코드에 없다** - 저장소 전체를 검색해도 오래된 스냅샷을 자동으로 지우는 경로는 없고, 삭제는 js/11의 사용자 조작 한 곳뿐이다. 따라서 장기 누적은 구조적으로 계속된다. 저장 실패 위험은 Q-1의 복원력(setLocalStorageItemSafely)이 흡수한다. [PM 결정 D-3 · 2026-09-20] 자동 retention · 삭제 기능을 추가하지 않고 이 제약을 명시한 채 종결한다.",
       "neededFact": "실제 증가 속도 · 사용처(일별 손익)",
       "impact": {
         "policy": "보관 정책",
@@ -1127,14 +1127,14 @@
         "mc": "없음",
         "ui": "일별 손익"
       },
-      "implementationNeeded": "없음(종결)",
+      "implementationNeeded": "없음(자동 retention 기능을 만들지 않기로 PM이 결정했다). 상한이 필요해지면 별도 PM 결정으로 연다.",
       "test": "daily-valuation 테스트",
       "resumeCondition": null,
       "lastCheckedAt": "2026-09-20",
       "closedAt": "2026-09-20",
       "evidence": "§47-12 · 브라우저 실측 2026-09-20",
-      "verification": "Unit 602/602 · E2E 전체 · ESLint 0 · Data Guard PASS · 대장 정합성 PASS",
-      "pmVerdict": "NO_CHANGE"
+      "verification": "실측 스냅샷 크기 · 저장소 전수 검색으로 자동 삭제 경로 0건 확인(2026-09-20)",
+      "pmVerdict": "APPROVED WITH CONSTRAINT (PM 결정 D-3 · 2026-09-20)"
     },
     {
       "id": "Q-3",
