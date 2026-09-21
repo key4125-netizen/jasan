@@ -45,7 +45,8 @@ function bondB(extra) {
 // 거래원장(computePositionsAndRealizedPnL의 positions)과 같은 모양의 맵을 손으로 만든다.
 function ledger(entries) {
   const out = {};
-  entries.forEach((e) => { out[`${e.owner}__${e.account}__${e.isin}`] = { quantity: e.quantity, avgPrice: e.avgPrice }; });
+  entries.forEach((e) => { // [§50 · PD-02] 포지션 키에 통화가 포함된다(transactionIdentityKey · bondLedgerKey와 같은 규칙).
+    out[`${e.owner}__${e.account}__${e.isin}__${e.currency || 'KRW'}`] = { quantity: e.quantity, avgPrice: e.avgPrice }; });
   return out;
 }
 
@@ -77,8 +78,9 @@ test('TEST 02 - 분류: ISIN 형식 티커는 무조건 채권이다(없으면 �
 });
 
 test('TEST 03 - 원장 키: 소유자 · 계좌 · ISIN 셋이 다 있어야 만들어진다', () => {
-  assert.strictEqual(B.bondLedgerKey(bondA()), `${OWNER}__${ACC_A}__${ISIN_A}`);
-  assert.strictEqual(B.bondLedgerKey(bondB()), `${OWNER}__${ACC_B}__${ISIN_B}`);
+  // [§50 · PD-02 기대값 갱신] 통화가 identity에 포함된다 - 같은 종목이라도 통화가 다르면 다른 보유분이다.
+  assert.strictEqual(B.bondLedgerKey(bondA()), `${OWNER}__${ACC_A}__${ISIN_A}__KRW`);
+  assert.strictEqual(B.bondLedgerKey(bondB()), `${OWNER}__${ACC_B}__${ISIN_B}__KRW`);
   assert.strictEqual(B.bondLedgerKey(B.makeBondPosition({ identity: { isin: ISIN_A } })), null, '소유자 · 계좌가 없으면 원장과 이을 수 없다');
   assert.strictEqual(B.bondLedgerKey(B.makeBondPosition({ holding: { owner: OWNER, account: ACC_A } })), null, 'ISIN이 없으면 채권을 특정할 수 없다');
   assert.strictEqual(B.bondLedgerKey(null), null);

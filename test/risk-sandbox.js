@@ -97,7 +97,9 @@ function loadRiskSandbox(options) {
     'RISK_DATA_STATUS', 'RISK_STALE_MAX_GAP_DAYS', 'RISK_TARGET_OBSERVATIONS',
     'RISK_FACTOR_WEIGHTS', 'RISK_FACTOR_LABELS', 'CONFIDENCE_OBSERVATION_PENALTY_MAX',
     // [C-3] 지표별 관측 창과 자르기 도우미 - 창 규칙 자체를 테스트가 직접 고정한다.
-    'RISK_OBSERVATION_WINDOWS', 'sliceRecentObservations'
+    'RISK_OBSERVATION_WINDOWS', 'sliceRecentObservations',
+    // [§50] 식별자 분류 · Instrument metadata · 오염 탐지 · 시장 베타 매핑 상수(통합 회귀 테스트가 직접 읽는다).
+    'IDENTIFIER_KIND', 'INSTRUMENT_CONFIDENCE', 'INSTRUMENT_INTEGRITY', 'RISK_MARKET_INDEX_BY_LISTING_EXCHANGE'
   ];
   vm.runInContext(BRIDGED.map((n) => `try{globalThis[${JSON.stringify(n)}]=${n};}catch(e){}`).join('\n'), sandbox, { filename: 'bridge' });
   // 임의 표현식 평가 - 브리지 목록에 없는 값을 테스트에서 직접 꺼내야 할 때 쓴다.

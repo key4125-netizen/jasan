@@ -83,10 +83,14 @@ test('R-06 - 날짜가 중복되거나 역순이면 품질 불량으로 표시�
 test('R-06 - 베타를 못 구한 이유를 구분해 남긴다(기준 지수 미확인 vs 공통 거래일 부족)', async () => {
   // ① 기준 지수를 확인할 수 없는 종목 - 종목 마스터에도 Exposure Master에도 없는 티커를 쓴다
   //    (Phase 1B 이후 앱 기본 종목은 원장이 기준 지수를 확정해 주므로 UNRESOLVED가 되지 않는다).
+  /* [§50 · PD-15 fixture 갱신] 티커를 `.KS` 없는 미지의 코드로 바꿨다.
+   * Market Beta는 상장 시장으로 기준 지수를 정하는데, `.KS` 접미사는 그 자체가 "KOSPI 상장"이라는
+   * 사실이라 종목 마스터가 비어 있어도 기준이 정해진다(의도된 동작). "기준 지수를 확인할 수 없는
+   * 종목"을 만들려면 상장 시장을 알 수 없는 코드여야 한다 - 이 테스트의 주장은 그대로다. */
   const noBm = loadRiskSandbox();
   noBm.setTickerMaster({});
-  noBm.state.assets = [makeTestAsset({ name: 'A', ticker: 'ZZZ9999.KS', quantity: 10, buyPrice: 100000, currentPrice: 100000 })];
-  noBm.setDailyCloses('ZZZ9999.KS', long());
+  noBm.state.assets = [makeTestAsset({ name: 'A', ticker: 'ZZZ9999', quantity: 10, buyPrice: 100000, currentPrice: 100000 })];
+  noBm.setDailyCloses('ZZZ9999', long());
   let m = await noBm.computeAdvancedRiskMetrics();
   assert.strictEqual(m.holdings[0].benchmarkStatus, 'UNRESOLVED');
   assert.strictEqual(m.holdings[0].betaStatus, 'BENCHMARK_UNRESOLVED');

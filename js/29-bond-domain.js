@@ -574,7 +574,12 @@ function bondLedgerKey(position) {
   const owner = (p.holding && p.holding.owner) ? String(p.holding.owner) : '';
   const account = (p.holding && p.holding.account) ? String(p.holding.account) : '';
   if (!isin || !owner || !account) return null;
-  return `${owner}__${account}__${isin}`;
+  /* [§50 · PD-02] 거래/포지션 identity에 통화가 들어갔다(transactionIdentityKey, js/06).
+   * 이 키는 그 포지션 맵을 조회하는 용도이므로 **같은 규칙**이어야 한다 - 규칙이 갈라지면
+   * 거래가 멀쩡히 있는 채권이 "보유 없음(NONE)"으로 읽혀 Bond Risk와 자산 평가가 함께 빈다.
+   * 채권 원장의 발행통화를 쓰고, 비어 있으면 원화로 읽는다(js/06 ledgerCurrencyOf와 같은 기본값). */
+  const ccy = String((p.identity && p.identity.currency) || '').trim().toUpperCase() || 'KRW';
+  return `${owner}__${account}__${isin}__${ccy}`;
 }
 
 /**
@@ -896,6 +901,114 @@ function computeBondMarketValue(position, quote, options) {
   };
 }
 
+/* ══ [§50 · PD-07 · PD-08] 자산 화면 채권 평가 ═══════════════════════════
+ *
+ * 왜 여기에 있는가: 「채권 위험」 카드와 자산 화면이 **같은 함수**로 평가해야 두 화면의 숫자가
+ * 갈라지지 않는다(감사 A-02 · 실측 차이 162,518원). 평가 규칙은 computeBondRiskSummary의
+ * priceOf와 같은 2단이다 - VALID MARKET → PURCHASE(BOND-41 · BOND-45).
+ *
+ * 돌려주는 것은 **좌당 단가**다. 자산 화면의 평가금액은 예전과 같이 `수량 × 단가`로 만든다 -
+ * 수량의 출처를 둘로 만들지 않기 위해서다(자산 레코드의 수량 하나만 쓴다).
+ *   MARKET   단가 = 10,000 × (시세 / 가격기준액면)      ← 액면 1만원당 가격으로 환산
+ *   PURCHASE 단가 = 거래원장 가중평균 매입단가(asset.buyPrice)
+ *
+ * **시세는 저장하지 않는다(PD-08).** 이 함수는 메모리 캐시(js/13)만 읽고, 결과도 저장하지 않는다.
+ * 거래원장이 없는 수동 채권(legacy)은 사용자가 적어 둔 현재가를 그대로 둔다(PD-17 - 보존).
+ * ====================================================================== */
+let bondValuationCache = { signature: null, map: null };
+function bondValuationSignature() {
+  const st = (typeof state !== 'undefined') ? state : null;
+  const txs = st && Array.isArray(st.transactions) ? st.transactions : [];
+  const bps = st && Array.isArray(st.bondPositions) ? st.bondPositions : [];
+  let txStamp = 0; for (let i = 0; i < txs.length; i++) { const u = txs[i] && txs[i].updatedAt; if (u > txStamp) txStamp = u; }
+  let bpStamp = 0; for (let i = 0; i < bps.length; i++) { const u = bps[i] && bps[i].updatedAt; if (u > bpStamp) bpStamp = u; }
+  const qv = (typeof bondQuoteVersion === 'function') ? bondQuoteVersion() : 0;
+  return `${txs.length}|${txStamp}|${bps.length}|${bpStamp}|${qv}`;
+}
+/** 보유 중인 모든 채권 자산의 좌당 단가를 한 번에 만든다(자산 id → {unitPrice, source, ...}). */
+function buildBondAssetValuationMap() {
+  const st = (typeof state !== 'undefined') ? state : null;
+  const out = new Map();
+  if (!st || !Array.isArray(st.bondPositions) || !st.bondPositions.length) return out;
+  const ledger = (typeof computePositionsAndRealizedPnL === 'function') ? computePositionsAndRealizedPnL().positions : null;
+  const quotes = (typeof getCachedBondQuotes === 'function') ? getCachedBondQuotes() : null;
+  const assets = Array.isArray(st.assets) ? st.assets : [];
+  st.bondPositions.forEach((p) => {
+    if (!p) return;
+    const isin = String((p.identity && p.identity.isin) || '').trim().toUpperCase();
+    const asset = assets.find((a) => a && (String(a.id) === String(p.assetId || '')
+      || (isin && String(a.ticker || '').trim().toUpperCase() === isin)));
+    if (!asset) return;
+    const quote = (isin && quotes && Object.prototype.hasOwnProperty.call(quotes, isin)) ? quotes[isin] : null;
+    let entry = null;
+    if (quote) {
+      const basis = resolveBondPriceBasis(p, quote, { positions: ledger });
+      if (basis.status === 'OK') {
+        const unit = BOND_FACE_UNIT * (bondNum(quote.price) / basis.basisFace);
+        if (Number.isFinite(unit) && unit > 0) {
+          entry = { unitPrice: unit, source: 'MARKET', priceBasisFace: basis.basisFace, quotePrice: bondNum(quote.price) };
+        }
+      }
+      if (!entry) entry = { unitPrice: null, source: null, marketUnavailableReason: basis.reason || '시세를 평가에 쓸 수 없습니다.' };
+    }
+    out.set(asset.id, entry || { unitPrice: null, source: null });
+  });
+  return out;
+}
+/**
+ * 자산 하나의 채권 좌당 단가. 채권이 아니거나 근거가 없으면 null을 돌려주고,
+ * 호출부(calcRow)는 예전 그대로 asset.currentPrice를 쓴다.
+ * 반환: { unitPrice, source: 'MARKET'|'PURCHASE', marketUnavailableReason? } | null
+ */
+function resolveBondAssetUnitPrice(asset) {
+  if (!asset || asset.category !== '채권') return null;
+  const sig = bondValuationSignature();
+  if (bondValuationCache.signature !== sig) {
+    bondValuationCache = { signature: sig, map: buildBondAssetValuationMap() };
+  }
+  const hit = bondValuationCache.map ? bondValuationCache.map.get(asset.id) : null;
+  if (hit && hit.source === 'MARKET' && Number.isFinite(hit.unitPrice)) return hit;
+  /* [PD-07] MARKET을 쓸 수 없으면 거래원장 기반 매입원가로 되돌아간다.
+   * asset.buyPrice는 syncAssetsFromTransactions가 거래마다 갱신하는 가중평균 매입단가다 -
+   * "최초 거래가격 고정"(감사 A-01)이 사라지는 지점이 바로 여기다.
+   * 거래원장이 없는 수동 채권은 사용자가 관리하는 값이므로 건드리지 않는다(PD-17). */
+  const ledgerBacked = asset.positionSource === 'ledger'
+    || (typeof isTransactionTracked === 'function' && asset.positionSource !== 'manual' && isTransactionTracked(asset));
+  if (!ledgerBacked) return hit && hit.marketUnavailableReason ? { unitPrice: null, source: null, marketUnavailableReason: hit.marketUnavailableReason } : null;
+  const buy = bondNum(asset.buyPrice);
+  if (!Number.isFinite(buy) || buy <= 0) return null;
+  return { unitPrice: buy, source: 'PURCHASE', marketUnavailableReason: hit ? hit.marketUnavailableReason : undefined };
+}
+
+/* [§50 · PD-11 · 감사 J-02] 자산과 채권 레코드의 연결을 되살린다 - **지우지 않는다.**
+ *
+ * 엑셀 가져오기는 state.assets를 통째로 교체한다. 그때 자산 id가 새로 발급되면(사용자가 id 칸을
+ * 비웠거나 새 행을 직접 추가한 경우) 채권 레코드의 assetId가 가리키던 자산이 사라져 **고아**가 된다.
+ * 고아가 되면 세부 성격(국공채/회사채)이 끊기고, 그 ISIN의 시세를 계속 조회하게 된다.
+ *
+ * 채권의 진짜 신분증은 ISIN이다(BOND-05). 그래서 ISIN + 소유자 + 계좌로 자산을 다시 찾아 연결한다.
+ * 찾지 못하면 **그대로 둔다** - 사용자가 잠시 자산을 뺀 것일 수도 있으므로 발행조건을 삭제하지
+ * 않는다(PD-17 · 자동 대량 변환 금지). 남은 고아 수는 호출부가 보고용으로 쓴다.
+ */
+function relinkBondPositionsToAssets() {
+  const st = (typeof state !== 'undefined') ? state : null;
+  if (!st || !Array.isArray(st.bondPositions) || !st.bondPositions.length) return { relinked: 0, orphan: 0 };
+  const assets = Array.isArray(st.assets) ? st.assets : [];
+  let relinked = 0, orphan = 0;
+  st.bondPositions.forEach((p) => {
+    if (!p) return;
+    if (assets.some((a) => a && String(a.id) === String(p.assetId || ''))) return;
+    const isin = String((p.identity && p.identity.isin) || '').trim().toUpperCase();
+    const owner = (p.holding || {}).owner || null;
+    const account = (p.holding || {}).account || null;
+    const hit = isin ? assets.find((a) => a && String(a.ticker || '').trim().toUpperCase() === isin
+      && (!owner || a.owner === owner) && (!account || a.accountType === account)) : null;
+    if (hit) { p.assetId = hit.id; p.updatedAt = Date.now(); relinked++; } else { orphan++; }
+  });
+  if (relinked && typeof persistBondPositions === 'function') persistBondPositions();
+  return { relinked, orphan };
+}
+
 /* ── MC · 자산 성격 연계 (§47-3) ── */
 
 // BOND_CLASS → 앱 자산 성격(js/05 ASSET_CHARACTERS). UNCLASSIFIED는 연결하지 않는다.
@@ -1012,6 +1125,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveBondAssetCharacter, mapBondSourceResponse, mergeBondSourceIntoPosition,
     BOND_FACE_UNIT, bondLedgerKey, resolveBondHolding, bondFaceToQuantity, bondQuantityToFace,
     KIS_BOND_CLASS_TO_TYPE, BOND_PRICE_BASIS_CANDIDATES, mapKisBondInfo, mapKisBondQuote,
-    resolveBondPriceBasis, computeBondMarketValue, mergeKisBondInfoIntoPosition
+    resolveBondPriceBasis, computeBondMarketValue, mergeKisBondInfoIntoPosition,
+    // [§50 · PD-07] 자산 화면 · Bond Risk가 같은 규칙으로 평가하도록 공유하는 진입점
+    resolveBondAssetUnitPrice, buildBondAssetValuationMap, bondValuationSignature, relinkBondPositionsToAssets
   };
 }

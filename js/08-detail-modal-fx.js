@@ -257,6 +257,15 @@ function buildPositionNoticeDetailLines(x, asset) {
  * 통합 모달은 보유분이 여러 건이라 같은 종류의 안내가 반복될 수 있어 종류별로 한 번만 보여준다.
  * [V1.3 BL-19] 이미 계산된 ledgerQuantity/ledgerBuyPrice를 현재 자산값과 나란히 보여주고, 확인할
  * 화면(거래내역 탭)을 말로 안내한다 - 자동으로 고쳐주는 버튼/링크는 추가하지 않는다. */
+/* [§50 · PD-07] 채권만 "이 현재가가 무엇인지"를 라벨 옆에 한 단어로 붙인다.
+ * 주식 · ETF는 예전 그대로 시세이므로 아무것도 붙이지 않는다(화면을 어지럽히지 않는다). */
+function assetValuationSourceSuffix(asset, row) {
+  if (!asset || asset.category !== '채권') return '';
+  const s = row && row.valuationSource;
+  if (s === 'MARKET') return ' <span class="text-slate-400">(시장가)</span>';
+  if (s === 'PURCHASE') return ' <span class="text-slate-400">(매입원가)</span>';
+  return ' <span class="text-slate-400">(등록값)</span>';
+}
 function renderAssetDetailPositionNotice(assets) {
   const box = document.getElementById('assetDetailPositionNotice');
   const list = (assets || []).filter(Boolean);
@@ -272,10 +281,29 @@ function renderAssetDetailPositionNotice(assets) {
   /* [F-4 · BOND-DEF-02 · §47-7] 직접 입력한 채권의 현재가는 자동으로 갱신되지 않는다.
    * 시세 조회 대상(NON_TRADABLE_CATEGORIES)에서 빠져 있기 때문인데, 화면에는 '현재가'라고만 적혀 있어
    * 사용자가 값이 최신이라고 오해할 수 있다. 사실을 그대로 한 줄 알린다(계산은 건드리지 않는다). */
-  if (list.some((a) => a && a.category === '채권')) {
+  /* [§50 · PD-07 · 감사 B-04] 채권 평가 안내.
+   * 예전 문구("자동으로 갱신되지 않습니다 - 직접 입력한 값이 그대로 표시됩니다")는 두 군데가
+   * 사실과 달랐다. ① 그 값은 사용자가 입력한 값이 아니라 자산이 처음 만들어질 때의 거래단가가
+   * 굳은 것이었고, ② 거래내역으로 추적되는 채권은 [수정] 버튼이 숨겨져 애초에 입력할 수도 없었다.
+   * 이제 평가 자체가 런타임(MARKET → PURCHASE)이므로, **지금 무엇으로 계산했는지**를 그대로 적는다. */
+  const bondAssets = list.filter((a) => a && a.category === '채권');
+  if (bondAssets.length) {
+    const sources = bondAssets.map((a) => calcRow(a).valuationSource);
+    const hasMarket = sources.includes('MARKET');
+    const hasPurchase = sources.some((s) => s === 'PURCHASE' || s === 'ASSET');
+    const head = hasMarket && hasPurchase ? '일부는 조회한 시장가로, 일부는 매입원가로 계산했습니다'
+      : hasMarket ? '표준코드(ISIN)로 조회한 시장가로 계산했습니다'
+        : '시장가를 확인하지 못해 거래내역 기준 매입원가로 계산했습니다';
     issues.push({ status: 'BOND_PRICE_MANUAL',
-      message: '이 화면의 채권 현재가는 자동으로 갱신되지 않습니다 - 직접 입력한 값이 그대로 표시됩니다. 만기보유 기준 수익률과 금리 민감도는 발행조건만으로 계산되므로 현재가가 없어도 볼 수 있습니다. 「채권 위험」 카드는 표준코드(ISIN)로 조회한 시장가가 있으면 그 값으로 평가하며, 조회한 시세는 저장하지 않습니다.' });
+      message: `채권 평가금액은 ${head}. 매입원가로 계산할 때는 평가손익이 0에 가깝게 보이는 것이 정상입니다. 조회한 시세는 저장하지 않습니다. 만기보유 기준 수익률과 금리 민감도는 발행조건만으로 계산되므로 시장가가 없어도 볼 수 있습니다.` });
   }
+  /* [§50 · PD-17 · 지시 §15] 어긋난 데이터는 알리기만 한다 - 고치지도, 자동 변환하지도 않는다.
+   * 통화 오기입은 평가금액이 환율배로 부풀 수 있는 사안이라 사용자가 먼저 알아야 한다. */
+  list.forEach((a) => {
+    (typeof detectInstrumentIntegrityIssues === 'function' ? detectInstrumentIntegrityIssues(a) : []).forEach((i) => {
+      issues.unshift({ status: 'INTEGRITY_' + i.code, message: i.message, asset: a });
+    });
+  });
   const shown = [];
   issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });
   if (shown.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
@@ -304,7 +332,7 @@ function openAssetDetailModal(id) {
     : `
     <div><span class="text-slate-400 block mb-0.5">보유 수량</span><span class="font-medium whitespace-nowrap">${fmtNum(a.quantity, 4)}</span></div>
     <div><span class="text-slate-400 block mb-0.5">평균 매수단가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(a.buyPrice, 2)}</span></div>
-    <div><span class="text-slate-400 block mb-0.5">현재가</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(a.currentPrice, 2)}</span></div>
+    <div><span class="text-slate-400 block mb-0.5">현재가${assetValuationSourceSuffix(a, r)}</span><span class="font-medium whitespace-nowrap">${priceUnit}${fmtNum(r.unitPrice, 2)}</span></div>
     <div><span class="text-slate-400 block mb-0.5">평가금액</span><span class="font-medium whitespace-nowrap">${fmtKRW(r.curAmount)}</span></div>
     <div class="col-span-2 sm:col-span-4">
       <span class="text-slate-400 block mb-0.5">평가손익 (수익률)</span>
@@ -329,10 +357,26 @@ function openAssetDetailModal(id) {
   document.getElementById('assetDetailModal').classList.remove('hidden');
   resetAssetDetailModalScroll();
   pushModalHistoryState();
+  /* [§50 · PD-05 · 감사 B-03] 주식 전용 기능은 **주식 전용 진입점**으로만 들어간다.
+   *
+   * 예전에는 네 곳 모두 `a.ticker`를 그대로 넘겼고, 가드는 "티커가 비어 있지 않은가"뿐이었다.
+   * 채권은 ISIN이 ticker 자리에 들어가므로(BOND-05) 전부 통과했고, 두 곳이 실제로 오작동했다 -
+   * 종목 분석은 "'(그 채권의 ISIN)'의 가격 이력을 찾을 수 없습니다 - 티커를 확인해 주세요"를,
+   * 차트는 "잠시 후 다시 열어 보세요"를 냈다(채권은 영원히 불가하므로 둘 다 틀린 안내다).
+   * 나머지 둘은 조회가 우연히 실패해서 숨겨졌을 뿐 같은 원인이었다.
+   * 이제 자산의 **capability**로 판단한다(instrumentCapabilities, js/01). */
+  const canEquity = typeof assetSupportsEquityAnalysis === 'function' ? assetSupportsEquityAnalysis(a) : !!a.ticker;
   renderAssetDetailChart(a);
-  attachRiskDiagnosisToDetailModal(a.ticker);
-  attachFundamentalSection(a.ticker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
-  attachStockAnalysisReportToDetailModal(a.ticker);
+  if (canEquity) {
+    attachRiskDiagnosisToDetailModal(a.ticker);
+    attachFundamentalSection(a.ticker, 'assetDetailFundamentalSection', 'assetDetailFundamentalBody');
+    attachStockAnalysisReportToDetailModal(a.ticker);
+  } else {
+    ['assetDetailRiskSection', 'assetDetailFundamentalSection', 'assetDetailAnalysisSection'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+  }
 }
 
 // 소유자별 보유 세부 현황 한 줄 - 통합(그룹) 상세 모달 전용.
@@ -948,9 +992,16 @@ async function renderAssetDetailChart(asset, avgPriceOverride, byOwnerAvgPriceOv
   document.getElementById('assetDetailPeriodButtons').innerHTML = '';
 
   const sanitized = sanitizeTicker(asset.ticker);
-  if (!sanitized.yahooTicker) {
+  /* [§50 · PD-05] 시세 조회가 가능한 자산만 주가 차트를 그린다. 채권(ISIN) · 현금 · 부동산은
+   * 조회 대상이 아니므로 "잠시 후 다시 열어 보세요"(영원히 안 되는데 기다리라는 안내)를 내지 않는다. */
+  const canQuote = (typeof instrumentCapabilities === 'function')
+    ? instrumentCapabilities({ ticker: asset.ticker, category: asset.category }).marketPriceLookup
+    : !!sanitized.yahooTicker;
+  if (!canQuote) {
     canvas.classList.add('hidden');
-    msgEl.textContent = '티커가 없는 자산은 주가 차트를 제공할 수 없습니다.';
+    msgEl.textContent = asset.category === '채권'
+      ? '채권은 주가 차트 대상이 아닙니다 - 금리 민감도와 평가 기준은 「채권 위험」 카드에서 볼 수 있습니다.'
+      : '티커가 없는 자산은 주가 차트를 제공할 수 없습니다.';
     msgEl.classList.remove('hidden');
     return;
   }

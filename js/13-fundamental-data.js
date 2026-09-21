@@ -62,6 +62,11 @@ async function fetchKisInvestorFlowRaw(code) { return kisProxyFetch('/api/kis/in
 const BOND_QUOTE_TTL_MS = 20 * 60 * 1000; // Worker 캐시(20분)와 같은 주기
 const bondQuoteMemory = {};   // ISIN -> { quote, at }
 const bondQuoteInFlight = {}; // ISIN -> Promise
+/* [§50 · PD-07] 시세가 하나라도 새로 들어오면 올라가는 번호.
+ * 자산 화면의 채권 평가(js/29 resolveBondAssetUnitPrice)가 계산 결과를 잠깐 캐시하는데,
+ * 그 캐시가 언제 낡았는지 판단하는 신호로 쓴다. 값 자체를 저장하는 것이 아니다(PD-08 유지). */
+let bondQuoteVersionCounter = 0;
+function bondQuoteVersion() { return bondQuoteVersionCounter; }
 
 function normalizeIsinKey(isin) { return String(isin || '').trim().toUpperCase(); }
 
@@ -84,6 +89,7 @@ async function getBondQuote(isin) {
       const mapped = (raw && typeof mapKisBondQuote === 'function') ? mapKisBondQuote(raw, key) : null;
       const quote = (mapped && mapped.status === 'OK') ? mapped.quote : null;
       bondQuoteMemory[key] = { quote, at: Date.now() }; // 실패(null)도 기억해 곧바로 다시 두드리지 않는다
+      bondQuoteVersionCounter++;                        // [§50 · PD-07] 평가 캐시 무효화 신호
       return quote;
     } finally {
       delete bondQuoteInFlight[key];

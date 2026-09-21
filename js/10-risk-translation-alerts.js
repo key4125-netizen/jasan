@@ -84,7 +84,8 @@ function buildRiskDiagnosisLine(m) {
   }
   if (maxKey === 'market' && typeof m.portfolioBeta === 'number') {
     // [용어 정비] 베타가 1 미만이어도 참인 정의형 문장만 쓴다("더 크게" 단정 금지).
-    return `기준 지수가 1% 움직일 때 내 주식·ETF는 평균 약 ${fmtNum(m.portfolioBeta, 1)}% 움직였습니다(시장 민감도, 최근 1년).`;
+    // [§50 · PD-15] 이 값은 **상장 시장 지수** 대비 민감도다(기초지수 추적 베타와 다른 값이다).
+    return `상장된 시장의 대표지수가 1% 움직일 때 내 주식·ETF는 평균 약 ${fmtNum(m.portfolioBeta, 1)}% 움직였습니다(시장 민감도, 최근 1년).`;
   }
   if (maxKey === 'correlation' && m.topCorrelationPair) {
     return `비중이 큰 ${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}의 가격이 같은 방향으로 움직인 정도가 높아, 보유 종목 간 동조성(상관) 점수가 가장 높습니다.`;
@@ -297,7 +298,7 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
-      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 지수는 추종 지수나 상장 시장 지수(코스피·코스닥·나스닥 종합·나스닥100·S&P500)가 확인될 때만 정하고, 확인되지 않거나 함께 있는 거래일이 120일보다 적으면 \'데이터 부족\'으로 표시합니다.')}
+      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목이 상장된 시장의 대표지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 지수는 상장 시장으로 정합니다 - 코스피 상장은 코스피, 코스닥 상장은 코스닥, 나스닥 상장은 나스닥 종합입니다. 상장 시장의 종합지수가 앱에 없거나(뉴욕·아멕스) 함께 있는 거래일이 120일보다 적으면 \'데이터 부족\'으로 표시합니다. 종목이 추종하는 공식 기초지수와 비교한 값은 이것과 다른 지표입니다(위험 세부내용의 「기초지수 추적 민감도」).')}
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoText, SORTINO_GUIDE_TEXT)}
       ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(위험 세부내용 팝업, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('52주 고점 대비 현재 하락률', drawdownText, '지금 가격이 최근 1년 최고가보다 얼마나 낮은지(현재 위치)입니다. 1년 중 가장 크게 떨어졌던 폭인 최대낙폭(MDD)과는 다른 값입니다.')}
@@ -600,7 +601,10 @@ function benchmarkDefinitionNoteHtml(m) {
   const list = (m && Array.isArray(m.holdings)) ? m.holdings : [];
   const rows = [];
   list.forEach((h) => {
-    if (!h || !h.benchmarkKey) return;
+    /* [§50 · PD-15] PR/TR은 **공식 기초지수**의 성질이다 - 시장 지수(benchmarkKey)가 아니라
+     * 추적 기준(trackingBenchmarkKey)이 확정된 종목만 대상이다. 기준을 바꾸지 않으면
+     * 시장 지수만 확정된 종목까지 "배당 포함 여부 미확인"이라고 말하게 된다(없는 문제를 만든다). */
+    if (!h || !h.trackingBenchmarkKey) return;
     let st;
     try { st = resolveBenchmarkDefinitionStatus(h.ticker); } catch (e) { st = null; }
     if (st && st.returnTypeStatus === 'UNCONFIRMED') rows.push(h.name || h.ticker);
@@ -804,8 +808,9 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '기준 지수가 1% 움직일 때 내 주식·ETF 전체가 평균 약 몇 % 함께 움직였는지입니다. 1보다 크면 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 종목마다 자기 기준 지수와 비교한 값을 비중대로 합칩니다 - 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권은 주식 베타의 대상이 아니라 아예 집계에서 제외됩니다. 국내에 상장된 해외 지수 ETF처럼 우리 시장이 닫힌 뒤에 기준 지수가 움직이는 경우에는, 같은 날짜만 비교하면 민감도가 실제보다 작게 나옵니다 - 그래서 같은 날과 그 다음 날의 반응을 함께 더해(시차 0 + 1) 계산합니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '내 주식·ETF가 상장된 시장의 대표지수(국내는 코스피/코스닥, 미국 나스닥 상장은 나스닥 종합)가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다. 1보다 크면 그 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 위험점수의 「시장위험」은 이 값만 씁니다. 종목이 추종하는 공식 기초지수와 비교한 값은 아래 「기초지수 추적 민감도」에 따로 있습니다 - 지수를 그대로 따라가는 ETF는 그 값이 1 근처로 나오는 것이 정상이라, 시장위험과 같은 뜻이 아닙니다. 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권·현금·부동산은 집계 대상이 아닙니다.')}
       ${betaCoverageNoteHtml(m)}
+      ${buildMetricItem('🧭 기초지수 추적 민감도', typeof m.portfolioTrackingBeta === 'number' ? fmtNum(m.portfolioTrackingBeta, 2) + '배' : '자료 없음', '각 종목이 자기 공식 기초지수를 1% 움직임당 얼마나 따라갔는지를 비중대로 합친 값입니다(표시 전용 - 위험점수에는 들어가지 않습니다). 지수를 그대로 복제하는 ETF는 1에 가깝게 나오는 것이 정상이고, 1에서 멀어지면 환노출·시차·부분복제 같은 구조 차이를 살펴볼 신호입니다. 다만 이 값 하나로 추적 품질을 판정할 수는 없습니다 - 추적오차(잔차의 크기)는 별개의 지표입니다. 개별 주식은 공식 기초지수가 없어 이 값에 들어가지 않습니다. 국내에 상장된 해외 지수 ETF처럼 우리 시장이 닫힌 뒤에 기준 지수가 움직이는 경우에는 같은 날과 그 다음 날의 반응을 함께 더해(시차 0 + 1) 계산합니다.')}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
       ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : riskMetricUnavailableShortText(m, 'cvar'), '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}

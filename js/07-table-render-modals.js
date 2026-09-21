@@ -387,12 +387,20 @@ function changeInlineHtml(p) {
 // 애초에 환율 변환이 없으므로 평가금액 하나만 보여주면 충분하다). 부동산도 동일하게 적용되며, 소유자
 // 필터(전체/신랑/와이프)는 이 함수 호출 이전에 행 목록만 걸러낼 뿐이라 별도 분기 없이 모든 필터에
 // 동일하게 적용된다.
+/* [§50 · PD-05 · 감사 B-03] 판정 기준을 "티커가 없다"에서 **"시세 조회 대상이 아니다"**로 바꾼다.
+ * 거래내역으로 등록한 채권은 ISIN이 ticker 자리에 들어가므로(BOND-05) 예전 조건(`!r.ticker`)에
+ * 걸리지 않아, 목록에서 주식과 똑같이 "현재가 + 당일 봉차트"로 그려졌다. 채권은 당일 시세도
+ * 봉차트도 없는 자산이라 빈 칸과 굳은 숫자만 남았다. 자산군이 같으면 표시도 같아야 한다.
+ * 함수 이름은 호출부 · 테스트 호환을 위해 그대로 둔다. */
 function isCashOrBondNoTicker(r) {
-  return !r.ticker && (r.category === '현금' || r.category === '채권' || r.category === '부동산');
+  if (!NON_TRADABLE_CATEGORIES.includes(r.category)) return false;
+  return typeof instrumentCapabilities === 'function'
+    ? !instrumentCapabilities({ ticker: r.ticker, category: r.category }).marketPriceLookup
+    : !r.ticker;
 }
 function cashBondValueHtml(r) {
   if (r.isForeign) {
-    const usdTotal = num(r.quantity) * num(r.currentPrice);
+    const usdTotal = num(r.quantity) * num(Number.isFinite(r.unitPrice) ? r.unitPrice : r.currentPrice);
     return { headline: `$${fmtNum(usdTotal, 2)}`, sub: `<div class="text-sm text-slate-400 font-normal">${fmtKRWShort(r.curAmount)}</div>` };
   }
   return { headline: fmtNum(r.curAmount, 0), sub: '' };
@@ -1050,7 +1058,12 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     const formOwner = document.getElementById('f_owner').value;
     const formAccount = document.getElementById('f_accountType').value.trim() || '일반계좌';
     const ledger = computePositionsAndRealizedPnL().positions;
-    if (Object.prototype.hasOwnProperty.call(ledger, `${formOwner}__${formAccount}__${formBondIsin}`)) {
+    /* [§50 · PD-02] 손으로 만든 키를 쓰지 않는다 - 포지션 키에 통화가 들어갔으므로
+     * 같은 identity 함수로 찾아야 한다(규칙이 갈라지면 이 가드가 조용히 무력해진다 · 실측 재현). */
+    const formCcy = (document.getElementById('f_currency') || {}).value || 'KRW';
+    if (Object.prototype.hasOwnProperty.call(ledger, transactionIdentityKey({
+      owner: formOwner, accountType: formAccount, ticker: formBondIsin, name: '', currency: formCcy
+    }))) {
       showToast('이 채권은 이미 거래내역으로 관리되고 있습니다. 보유량은 거래내역 탭에서 매수 · 매도를 넣어 바꿔 주세요 - 여기서 또 만들면 같은 채권이 두 번 잡힙니다.', 'warn', 9000);
       return;
     }

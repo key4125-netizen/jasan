@@ -65,10 +65,14 @@ test('원장 · Risk Benchmark: 접미사 없이 입력해도 원장 항목으�
   assert.strictEqual(h.ticker, '0052D0.KS', '국내 가격 시계열로 조회한다');
   assert.strictEqual(h.priceCcy, 'KRW');
   assert.strictEqual(h.hasData, true, '종목 가격 이력은 있다(오래됨 진단은 fixture 날짜 때문 · 계산 제외 사유 아님)');
-  assert.strictEqual(h.benchmarkStatus, 'RESOLVED');
-  assert.strictEqual(h.benchmarkPriceSource, 'UNAVAILABLE');
-  assert.strictEqual(h.beta, null);
-  assert.strictEqual(h.betaStatus, 'SOURCE_UNAVAILABLE');
+  /* [§50 · PD-15 기대값 갱신] 공식 기초지수(추적) 경로의 주장은 그대로다 - 필드만 tracking*이다.
+   * benchmark*는 이제 상장 시장 지수를 가리키며, 0052D0는 KOSPI 상장이라 그쪽은 확인된다. */
+  assert.strictEqual(h.trackingBenchmarkStatus, 'RESOLVED');
+  assert.strictEqual(h.trackingBenchmarkKey, 'DJ_KOREA_DIV30_PR');
+  assert.strictEqual(h.trackingBenchmarkPriceSource, 'UNAVAILABLE');
+  assert.strictEqual(h.trackingBeta, null);
+  assert.strictEqual(h.trackingBetaStatus, 'SOURCE_UNAVAILABLE');
+  assert.strictEqual(h.benchmarkKey, 'KOSPI', '영문 혼합 국내 코드도 상장 시장으로 시장 베타 기준이 정해진다');
 });
 
 test('가격 조회 경로: 국내 코드는 네이버 대상이 되고, 접미사 없는 코드는 코스피/코스닥을 함께 시도한다(해외는 그대로)', async () => {

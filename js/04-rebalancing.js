@@ -553,14 +553,19 @@ function searchLocalHoldings(query, excludeTransactionKrwCash) {
     const key = a.ticker ? a.ticker.toUpperCase() : `NOTICKER:${a.owner}__${a.accountType}__${a.name}`;
     if (seen.has(key)) return;
     seen.add(key);
+    /* [§50 · PD-06 · 감사 C-02] 보유 자산에서 온 결과는 **확정 metadata**다 - 티커가 있든 없든
+     * 통화 · 소유자 · 계좌구분 · 자산군 · 국내외를 전부 실어 보낸다.
+     * 예전에는 티커가 있으면 이 값들을 하나도 넘기지 않아서, 받는 쪽(거래 폼)이 티커 문자열로
+     * 통화를 다시 추론했고 계좌구분은 빈 칸이 됐다(감사 실측). "이미 아는 사실"을 버리지 않는다. */
     results.push({
       symbol: a.ticker || '', name: a.name, exch: a.isDomestic === '국내' ? '국내' : '해외', type: a.category,
-      // [포지션 자동 연동 - 요청 반영] 티커 없는 결과에는 그 실제 자산의 role도 함께 실어 보낸다 -
-      // 이름검색으로 추가하는 팝업들이 자산관리 화면에 이미 등록된 포지션을 그대로 이어받을 수 있게.
-      role: a.ticker ? undefined : a.role,
-      owner: a.ticker ? undefined : a.owner,
-      accountType: a.ticker ? undefined : a.accountType,
-      currency: a.ticker ? undefined : a.currency
+      role: a.role,
+      owner: a.owner,
+      accountType: a.accountType,
+      currency: a.currency,
+      category: a.category,
+      isDomestic: a.isDomestic,
+      source: 'holding', confidence: 'CONFIRMED'
     });
   });
   return results;
@@ -688,6 +693,7 @@ function renderStockSearchResults(results, seq) {
     return `
     <button type="button" data-pick-symbol="${escapeHtml(r.symbol)}" data-pick-name="${escapeHtml(r.name)}"
       data-pick-owner="${escapeHtml(r.owner || '')}" data-pick-account-type="${escapeHtml(r.accountType || '')}" data-pick-currency="${escapeHtml(r.currency || '')}"
+      data-pick-category="${escapeHtml(r.category || '')}" data-pick-source="${escapeHtml(r.source || '')}"
       class="w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
       <span class="min-w-0">
         <span class="block text-sm font-medium truncate">${escapeHtml(r.name)}</span>
@@ -701,7 +707,8 @@ function renderStockSearchResults(results, seq) {
       if (stockSearchTargetMode === 'asset') {
         applyStockPickToAssetForm(btn.dataset.pickSymbol, btn.dataset.pickName);
       } else {
-        applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName, btn.dataset.pickOwner, btn.dataset.pickAccountType, btn.dataset.pickCurrency);
+        applyStockPickToTransactionForm(btn.dataset.pickSymbol, btn.dataset.pickName, btn.dataset.pickOwner, btn.dataset.pickAccountType, btn.dataset.pickCurrency,
+          { category: btn.dataset.pickCategory || '', source: btn.dataset.pickSource || '' });
       }
       closeStockSearchModal();
     });

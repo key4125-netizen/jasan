@@ -1321,7 +1321,19 @@ function assessReturnAssumptionStatus(asset) {
     return { appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
       status: RETURN_ASSUMPTION_STATUS.USER_DEFINED, message: '' };
   }
-  if (keyChar && keyChar !== char.character) {
+  /* [§50 · PD-10 · 감사 B-02] "성격 ↔ 기준이 어긋났다"는 판정을 **추천기와 같은 표로** 한다.
+   *
+   * 예전에는 RETURN_KEY_CHARACTER[appliedKey]와 자산 성격을 직접 비교했다. 그런데 이 표는
+   * 키 하나에 성격 하나만 담는다(BOND → BOND). 채권 세부 성격(KR_GOV_BOND · KR_CORP_BOND ·
+   * 해외채권 4종)이 생긴 뒤로는, 앱의 추천기가 **스스로 'BOND'를 추천해 놓고**(returnKey
+   * CandidatesForCharacter(KR_GOV_BOND) === ['BOND']) 검증기는 그 조합을 오류로 표시했다 -
+   * "이 자산은 국내 국공채인데 국채/채권형 기준이 적용되어 있습니다"가 그것이다(실측 재현).
+   *
+   * 문자열 예외를 추가하지 않는다. 판단 근거를 하나로 모은다 - 그 성격에 **쓸 수 있는 키 목록**에
+   * 지금 키가 들어 있으면 정상이다. 이러면 채권 세부 성격이 더 늘어나도 같은 규칙이 그대로 맞는다.
+   * Return Key의 수익률 계산 정책 자체는 전혀 건드리지 않는다(PD-10 단서). */
+  const allowedKeysForCharacter = returnKeyCandidatesForCharacter(char.character, char.ticker);
+  if (keyChar && keyChar !== char.character && !allowedKeysForCharacter.includes(appliedKey)) {
     return {
       appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
       status: RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW,

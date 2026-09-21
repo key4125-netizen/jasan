@@ -33,7 +33,9 @@ const LISTED = {
   '000660.KS': { exchange: 'KOSPI', nameKr: 'SK하이닉스', market: 'KR' },
   'A.KS': { exchange: 'KOSPI', nameKr: '테스트A', market: 'KR' },
   'ZZZZ.KS': { exchange: 'KOSPI', nameKr: '테스트Z', market: 'KR' },
-  'AAPL': { exchange: 'NASDAQ', nameEn: 'APPLE INC', market: 'US' }
+  'AAPL': { exchange: 'NASDAQ', nameEn: 'APPLE INC', market: 'US' },
+  // [§50 · PD-15] Market Beta는 상장 거래소로 기준 지수를 정한다 - 실제 종목 마스터에 있는 사실을 fixture에도 넣는다.
+  'QQQM': { exchange: 'NASDAQ', nameEn: 'INVESCO NASDAQ 100', market: 'US' }
 };
 
 function buildStandardPortfolio(s) {
@@ -48,6 +50,10 @@ function buildStandardPortfolio(s) {
   s.setDailyCloses('QQQM', withDates({ closes: zigzagCloses(260, 100, 0.8, 0.7), volumes: volumes(260, 500, 1.0) }));
   s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
   s.setDailyCloses('^NDX', withDates({ closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) }));
+  /* [§50 · PD-15] 시장 지수(나스닥 종합) 시계열. 기초지수(^NDX)와 **같은 시계열**을 넣는다 -
+   * 그래야 이번 구조 변경이 계산식을 건드리지 않았다는 사실이 Golden 숫자 그대로 드러난다
+   * (베타 값이 같으므로 portfolioBeta · 6대 요인 · riskScore가 v264와 동일해야 한다). */
+  s.setDailyCloses('^IXIC', withDates({ closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) }));
   s.setTickerMaster(LISTED);
   return s;
 }
@@ -819,7 +825,10 @@ test('Golden - 표준 2종목 포트폴리오의 전체 지표', async () => {
   assert.strictEqual(m.totalCur, 6300000);
   assert.deepStrictEqual(plain(m.holdings.map((h) => h.ticker)), ['005930.KS', 'QQQM']);
   assert.deepStrictEqual(plain(m.holdings.map((h) => h.curAmount)), [5000000, 1300000]);
-  assert.deepStrictEqual(plain(m.holdings.map((h) => h.benchmarkKey)), ['KOSPI', 'NASDAQ100']);
+  // [§50 · PD-15 기대값 갱신] benchmarkKey는 이제 **상장 시장 지수**다(QQQM은 NASDAQ 상장).
+  assert.deepStrictEqual(plain(m.holdings.map((h) => h.benchmarkKey)), ['KOSPI', 'NASDAQ']);
+  assert.deepStrictEqual(plain(m.holdings.map((h) => h.trackingBenchmarkKey)), ['KOSPI', 'NASDAQ100'], '공식 기초지수는 그대로 보존된다');
+  assert.strictEqual(m.betaDefinition, 'MARKET');
   assert.strictEqual(m.missingCount, 0);
 
   // 집중도/상관/섹터
@@ -873,11 +882,17 @@ test('Golden - 스트레스 시나리오 상수와 손실 추정(beta × 실측 
   assert.deepStrictEqual(plain(s.COVID_CRASH_BENCHMARK_DROP_PCT_KRW), { SP500: -29.86, NASDAQ: -27.65, NASDAQ100: -25.69, DOW: -32.72 });
   assert.deepStrictEqual(plain(s.RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW), { SP500: -17.55, NASDAQ: -31.37, NASDAQ100: -31.15, DOW: -12.41 });
 
-  // 손실률 = Σ(비중 × beta × 그 종목 벤치마크의 실측 낙폭) - 계산식은 그대로이고 상수만 바뀌었다.
-  //   2020: 0.793651×1.157895×(-35.71) + 0.206349×0.882353×(-28.03) = -37.919709
-  //   2022: 0.793651×1.157895×(-27.89) + 0.206349×0.882353×(-35.28) = -32.053438
-  assert.strictEqual(round(m.stressLossPct, 6), -37.919709);
-  assert.strictEqual(round(m.stressLossPct2022, 6), -32.053438);
+  /* 손실률 = Σ(비중 × beta × 그 종목 벤치마크의 실측 낙폭) - 계산식은 그대로다.
+   * [§50 · PD-15 기대값 갱신] 스트레스는 Portfolio Risk의 일부이므로 위험점수와 같은 베타(Market)를
+   * 쓴다. 그래서 곱하는 낙폭도 그 베타의 기준 지수 것으로 바뀐다 - QQQM은 NASDAQ100(-28.03/-35.28)이
+   * 아니라 상장 시장인 NASDAQ 종합(-30.12/-35.49)이다. 베타 값 자체는 변하지 않았다(이 fixture에서
+   * ^IXIC와 ^NDX가 같은 시계열이다) - 즉 이 차이는 낙폭 상수 하나에서만 나온다.
+   * 부수 효과: 시장 베타는 같은 시장 · 같은 통화끼리 비교하므로 원화 환산 낙폭표(_KRW)를 쓰는
+   * 경우가 사라졌다 - 정의가 맞는 짝끼리만 곱한다는 원칙이 구조적으로 보장된다.
+   *   2020: 0.793651×1.157895×(-35.71) + 0.206349×0.882353×(-30.12) = -38.300241
+   *   2022: 0.793651×1.157895×(-27.89) + 0.206349×0.882353×(-35.49) = -32.091673 */
+  assert.strictEqual(round(m.stressLossPct, 6), -38.300241);
+  assert.strictEqual(round(m.stressLossPct2022, 6), -32.091673);
   assert.strictEqual(Math.round(m.stressLossKRW), Math.round(m.totalCur * m.stressLossPct / 100));
 });
 
@@ -1097,7 +1112,7 @@ test('P-4 - 추종 지수나 상장 거래소 종합지수가 확인될 때만 �
   assert.deepStrictEqual(bm({ ticker: '069500.KS', category: 'ETF' }), { key: 'KOSPI200_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'NO_PERMITTED_SOURCE' });
   // [기대값 갱신 사유 · 1 · 2차 통합 구현] SCHD는 공식 기초지수가 원장에 확인됐지만 그 지수 가격 원천이 없다 -
   // Benchmark는 확인됨(RESOLVED), 원천은 UNAVAILABLE로 따로 표시한다(계산 가능으로 처리하지 않는다 · 근사 대체 없음).
-  assert.deepStrictEqual(bm({ ticker: 'SCHD', category: 'ETF' }), { key: 'DJ_US_DIV100_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'SOURCE_INSUFFICIENT_HISTORY' });
+  assert.deepStrictEqual(bm({ ticker: 'SCHD', category: 'ETF' }), { key: 'DJ_US_DIV100_PR', status: 'RESOLVED', source: 'exposureMaster', priceSource: 'UNAVAILABLE', indexUnavailableReason: 'NO_PUBLIC_SOURCE' });  // [§50 · PD-13] Yahoo가 과거 시계열을 아예 주지 않는다(실측 2026-09-21)
   // ② 개별 주식 - 실제 상장 거래소 종합지수
   assert.strictEqual(bm({ ticker: '005930.KS' }).key, 'KOSPI');
   assert.strictEqual(bm({ ticker: '247540.KQ' }).key, 'KOSDAQ');

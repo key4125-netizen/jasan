@@ -202,7 +202,45 @@ test('채권 라우트도 인증 · fail-closed 규칙을 똑같이 지킨다', 
 
 test('채권 발행정보는 시세보다 훨씬 긴 캐시를 쓴다(발행 후 바뀌지 않는 값이라 반복 조회하지 않는다)', () => {
   assert.match(SRC, /BOND_INFO_CACHE_TTL_SECONDS\s*=\s*30 \* 24 \* 60 \* 60/);
-  assert.match(SRC, /kis_cache:bond-info:\$\{isin\}`,\s*\n\s*\(\) => handleBondInfo\(env, isin\), BOND_INFO_CACHE_TTL_SECONDS\)/);
+  // [§50 · PD-12] 라우트 표 구조로 바뀌었다 - bond-info 항목이 긴 TTL을 갖는다는 사실은 그대로다.
+  assert.match(SRC, /kis_cache:bond-info:\$\{isin\}`[\s\S]{0,160}?ttl:\s*BOND_INFO_CACHE_TTL_SECONDS/);
+  // bond-price는 기본 TTL(20분)을 그대로 쓴다 - 긴 TTL을 시세에 잘못 붙이지 않았는지 함께 본다.
+  assert.ok(!/kis_cache:bond-price:\$\{isin\}`[\s\S]{0,160}?ttl:/.test(SRC));
+});
+
+/* [§50 · PD-12 · 감사 H-01] KV 쓰기 흐름 - 무료 한도(계정 전체 1,000 puts/day)를 지키기 위한 계약.
+ * 값이 아니라 **순서**가 핵심이다: 인증 → 입력검증 → 한도 판정(읽기) → 캐시 → (미스일 때만) 기록. */
+test('KV 쓰기: 인증 실패 · 형식 오류 · 캐시 적중은 KV에 쓰지 않는다(캐시 미스일 때만 카운터를 올린다)', async () => {
+  const w = loadWorker();
+  const writes = [];
+  const store = new Map();
+  const kv = {
+    get: async (k, t) => { const v = store.get(k); return v === undefined ? null : (t === 'json' ? JSON.parse(v) : v); },
+    put: async (k, v) => { writes.push(k); store.set(k, v); }
+  };
+  const env = () => ({ CLIENT_SHARED_SECRET: DUMMY_SECRET, KIS_APP_KEY: 'k', KIS_APP_SECRET: 's', KIS_KV: kv });
+
+  // ① 인증 실패 - KV 접근 0회
+  writes.length = 0;
+  await w.fetch(req(URL_BOND_INFO, { Origin: ORIGIN_OK, 'X-App-Secret': 'wrong' }), env());
+  assert.deepStrictEqual(writes, [], '인증 실패가 KV에 썼다');
+
+  // ② 형식 오류(ISIN 아님) - KV 쓰기 0회
+  writes.length = 0;
+  const badRes = await w.fetch(req('https://x/api/kis/bond-info?ticker=NOPE', { Origin: ORIGIN_OK, 'X-App-Secret': DUMMY_SECRET }), env());
+  assert.strictEqual(badRes.status, 400);
+  assert.deepStrictEqual(writes, [], '형식 오류가 KV에 썼다');
+
+  // ③ 캐시 적중 - KV 쓰기 0회(상류를 부르지 않으므로 카운터도 올리지 않는다)
+  store.set(`kis_cache:bond-info:${ISIN_OK}`, JSON.stringify({ rt_cd: '0', output: {} }));
+  writes.length = 0;
+  const hit = await w.fetch(req(URL_BOND_INFO, { Origin: ORIGIN_OK, 'X-App-Secret': DUMMY_SECRET }), env());
+  assert.strictEqual(hit.status, 200);
+  assert.deepStrictEqual(writes, [], '캐시 적중이 KV에 썼다');
+
+  // ④ 한도 값 자체는 그대로다(완화하지 않았다)
+  assert.match(SRC, /RATE_LIMIT_PER_MINUTE\s*=\s*30/);
+  assert.match(SRC, /RATE_LIMIT_PER_DAY\s*=\s*300/);
 });
 
 test('주문 · 계좌 · 잔고 라우트는 채권 추가 후에도 코드에 존재하지 않는다(읽기 전용 원칙)', () => {

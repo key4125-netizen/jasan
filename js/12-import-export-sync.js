@@ -427,6 +427,15 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
         resultMsg = `엑셀 데이터 ${imported.length}건을 불러왔습니다.`;
       }
       persistAssets();
+      /* [§50 · PD-11 · 감사 J-02] 자산을 갈아치운 직후 채권 레코드의 연결을 되살린다.
+       * 엑셀에는 채권 발행조건 시트가 없으므로 레코드 자체는 그대로 남는데, 자산 id가 새로 발급되면
+       * 연결이 끊겨 고아가 된다(세부 성격 소실 · 그 ISIN 시세를 계속 조회). ISIN으로 다시 잇는다. */
+      if (typeof relinkBondPositionsToAssets === 'function') {
+        const bondLink = relinkBondPositionsToAssets();
+        if (bondLink.orphan > 0) {
+          showToast(`채권 발행조건 ${bondLink.orphan}건이 연결된 자산을 찾지 못했습니다 - 발행조건은 그대로 보관했습니다. 해당 채권을 자산 목록에 다시 넣으면 자동으로 이어집니다.`, 'warn', 9000);
+        }
+      }
 
       // [v246 · D-9] 1시트 역할(포지션) → 종목 포지션 기준정보(tickerRoles). 같은 종목 행의 비어 있지 않은 역할이 모두 같을 때만
       // 반영한다. 빈 칸은 기존 값을 지우지 않고, 서로 다르면 어느 쪽도 고르지 않고 알린다. 저장은 모아서 한 번만 한다.
@@ -973,6 +982,8 @@ async function applyRemoteState(parsed) {
       state.bondPositions = (Array.isArray(parsed.bondPositions) ? parsed.bondPositions : [])
         .map((p) => makeBondPosition({ ...p, updatedAt: restoredAt }));
       persistBondPositions();
+      // [§50 · PD-11] 복원한 자산 id와 채권 레코드의 assetId가 어긋나면 ISIN으로 다시 잇는다(삭제 없음).
+      if (typeof relinkBondPositionsToAssets === 'function') relinkBondPositionsToAssets();
     }
     // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
     // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
@@ -1232,6 +1243,8 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
       getMergeBaseline(LS_SYNC_MERGED_BOND_IDS));
     localStorage.setItem(LS_SYNC_MERGED_BOND_IDS, JSON.stringify(state.bondPositions.map((p) => p.id)));
     persistBondPositions();
+    // [§50 · PD-11] 기기마다 자산 id가 다를 수 있다 - 병합 직후 ISIN으로 연결을 되살린다(삭제 없음).
+    if (typeof relinkBondPositionsToAssets === 'function') relinkBondPositionsToAssets();
   }
   // [V1.2-B BL-18] asset/transaction을 여기까지는 각자 독립적으로 병합했다 - id별로 승자만 통째로
   // 고르는 mergeCollectionById 특성상, 두 기기가 같은 시점에서 갈라져 서로 다른 거래를 추가하면

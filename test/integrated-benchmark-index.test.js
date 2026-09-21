@@ -205,13 +205,21 @@ test('② 세 상태 분리: Benchmark RESOLVED · 지수 가격 원천 UNAVAILA
   s.getCachedDailyClosesWithStatus = async (t) => { fetched.push(t); return orig(t); };
   const m = await s.computeAdvancedRiskMetrics();
   const h = m.holdings[0];
-  assert.strictEqual(h.benchmarkStatus, 'RESOLVED', '기준 지수는 확인됐다');
-  assert.strictEqual(h.benchmarkKey, 'KOSPI200_TR');
-  assert.strictEqual(h.benchmarkPriceSource, 'UNAVAILABLE', '지수 가격 원천은 없다');
-  assert.deepStrictEqual(fetched, ['ZZ0005.KS'], '원천 없는 지수는 조회하지 않는다(다른 지수로 대신하지 않는다)');
-  assert.strictEqual(h.beta, null);
-  assert.strictEqual(h.betaStatus, 'SOURCE_UNAVAILABLE');
+  /* [§50 · PD-15 기대값 갱신] 공식 기초지수(추적) 경로의 사실은 그대로이고 필드 이름만 tracking*으로
+   * 옮겨졌다 - benchmark*는 이제 **시장 지수**(위험점수가 쓰는 쪽)를 가리킨다. 세 상태 분리라는
+   * 이 테스트의 주장(기준 확인됨 ≠ 원천 있음 ≠ 베타 계산됨)은 추적 경로에서 그대로 검증된다. */
+  assert.strictEqual(h.trackingBenchmarkStatus, 'RESOLVED', '공식 기초지수는 확인됐다');
+  assert.strictEqual(h.trackingBenchmarkKey, 'KOSPI200_TR');
+  assert.strictEqual(h.trackingBenchmarkPriceSource, 'UNAVAILABLE', '지수 가격 원천은 없다');
+  assert.ok(!fetched.includes('KOSPI200_TR'), '원천 없는 지수는 조회하지 않는다(다른 지수로 대신하지 않는다)');
+  assert.strictEqual(h.trackingBeta, null);
+  assert.strictEqual(h.trackingBetaStatus, 'SOURCE_UNAVAILABLE');
+  assert.strictEqual(m.portfolioTrackingBeta, null);
+  // 시장 지수(상장 시장 = KOSPI)는 별개다 - 이 fixture에는 ^KS11 시계열이 없으므로 베타도 없다.
+  assert.strictEqual(h.benchmarkKey, 'KOSPI');
+  assert.strictEqual(h.benchmarkSource, 'listingMarket');
   assert.strictEqual(m.portfolioBeta, null);
+  assert.strictEqual(m.betaDefinition, 'MARKET', '위험점수가 쓰는 베타가 무엇인지 명시한다');
 });
 
 /* ── ③ 환헤지 미확인 · 혼합 노출 ─────────────────────────────────────────── */
@@ -240,8 +248,13 @@ test('③ 혼합 노출 → UNRESOLVED(MIXED_EXPOSURE) · 단일 자산군 · �
   s.state.assets = [krEtfAsset('ZZ0004.KS', 'ZZ 배당 30 국채 70')];
   s.setDailyCloses('ZZ0004.KS', withDates({ closes: zigzagCloses(260, 10000, 0.4, 0.3), volumes: volumes(260, 1000, 1) }));
   const m = await s.computeAdvancedRiskMetrics();
-  assert.strictEqual(m.holdings[0].beta, null);
-  assert.strictEqual(m.holdings[0].betaStatus, 'BENCHMARK_UNRESOLVED');
+  /* [§50 · PD-15 기대값 갱신] 혼합 노출이라 **공식 기초지수**를 하나로 정할 수 없다는 사실은 그대로다.
+   * 다만 Market Beta는 "무엇을 담고 있는가"가 아니라 "어느 시장에서 거래되는가"로 정하므로,
+   * 혼합 상품이어도 상장 시장(KOSPI)은 확정된다 - 두 지표가 서로 다른 질문에 답한다는 증거다. */
+  assert.strictEqual(m.holdings[0].trackingBeta, null);
+  assert.strictEqual(m.holdings[0].trackingBetaStatus, 'BENCHMARK_UNRESOLVED');
+  assert.strictEqual(m.holdings[0].trackingBenchmarkKey, null);
+  assert.strictEqual(m.holdings[0].benchmarkKey, 'KOSPI');
   // 실제 원장의 혼합 항목도 같은 결과다.
   const real = loadRiskSandbox();
   EM.EXPOSURE_MASTER_ENTRIES.filter((e) => e.exposureStructure === 'MIXED').forEach((e) => {
@@ -316,8 +329,9 @@ test('④ 같은 날짜 정렬 금지: 비동기 쌍은 alignedReturnPair를 쓰
   const m = await s.computeAdvancedRiskMetrics();
   const h = m.holdings[0];
   assert.strictEqual(calls.length, 0, '비동기 쌍에 같은 날짜 정렬이 쓰였다');
-  assert.strictEqual(h.betaMethod, 'DIMSON_LAG0_LAG1');
-  assert.ok(Math.abs(h.beta - 1) < 1e-9, `Dimson 베타 ${h.beta}`);
+  // [§50 · PD-15 기대값 갱신] 비동기 Dimson은 공식 기초지수(추적) 경로의 계산이다 - 필드 이름만 옮겨졌고 값은 같다.
+  assert.strictEqual(h.trackingBetaMethod, 'DIMSON_LAG0_LAG1');
+  assert.ok(Math.abs(h.trackingBeta - 1) < 1e-9, `Dimson 추적 베타 ${h.trackingBeta}`);
   // 참고: 같은 날짜끼리 짝지으면 실제로는 서로 다른 구간이 짝지어져 민감도가 사라진다(금지 사유).
   const krD = mk.kr; const usD = mk.us.map((d) => ({ date: d.date, close: d.close * mk.fx.get(d.date) }));
   const al = s.dateAlignedReturns(krD, usD);
@@ -341,8 +355,11 @@ test('④ H.10 원화 환산: 원화 지수 수익률 = 달러 수익률 + 환�
   s.state.assets = [krEtfAsset('ZZ0001.KS', 'ZZ 미국지수')];
   const m = await s.computeAdvancedRiskMetrics();
   const h = m.holdings[0];
-  assert.strictEqual(h.benchmarkFx, 'USD_TO_KRW_H10');
-  assert.ok(Math.abs(h.beta - 1) < 1e-9, `원화 환산 Dimson 베타 ${h.beta}`);
+  /* [§50 · PD-15 기대값 갱신] H.10 원화 환산이 필요한 쪽은 공식 기초지수(추적) 경로다.
+   * Market Beta는 같은 시장 · 같은 통화끼리 비교하므로 애초에 환산이 없다(정의가 섞일 여지가 사라졌다). */
+  assert.strictEqual(h.trackingBenchmarkFx, 'USD_TO_KRW_H10');
+  assert.strictEqual(h.benchmarkFx, null, '시장 베타는 환산하지 않는다');
+  assert.ok(Math.abs(h.trackingBeta - 1) < 1e-9, `원화 환산 Dimson 추적 베타 ${h.trackingBeta}`);
   const noFx = s.computeAsyncDimsonBeta(mk.kr, mk.us, 'KR', 'US');
   // 환율을 빼고 달러 지수에 맞추면 정확히 1이 되지 않는다(환율 변동이 잡음으로 남는다) - 위의 정확한 1은 환산을 실제로 쓴 결과다.
   assert.ok(Math.abs(noFx.beta - 1) > 1e-6, String(noFx.beta));
@@ -352,10 +369,12 @@ test('④ H.10 원화 환산: 원화 지수 수익률 = 달러 수익률 + 환�
   /* [기대값 갱신 사유 · D-9 · PM 승인 2026-09-20] 정의를 섞지 않는다는 원칙은 그대로이고, 이제
    * 원화 기준 낙폭 표가 생겨 **맞는 짝**을 곱할 수 있게 됐다 - 원화 환산 베타 × 원화 기준 낙폭.
    * 예전에는 원화 낙폭 자료가 없어 만들지 않았던 것이지, 만들면 안 되는 것이 아니었다. */
-  assert.ok(typeof m.stressLossKRW === 'number' && m.stressLossKRW < 0, String(m.stressLossKRW));
-  // 곱한 값이 현지통화 낙폭이 아니라 원화 낙폭인지 확인한다(S&P500 2020: USD -33.92 vs KRW -29.86).
-  const expectedKrw = m.totalCur * (h.beta * -29.86) / 100;
-  assert.ok(Math.abs(m.stressLossKRW - expectedKrw) < Math.abs(expectedKrw) * 1e-6, `${m.stressLossKRW} vs ${expectedKrw}`);
+  /* [§50 · PD-15 기대값 갱신] 스트레스는 Portfolio Risk의 일부이므로 위험점수와 같은 베타(Market)를 쓴다.
+   * 이 fixture에는 상장 시장 지수(^KS11) 시계열이 없어 시장 베타가 없고, 그래서 스트레스도 만들지 않는다 -
+   * 정의가 맞는 짝끼리만 곱한다는 원칙이 지켜진 결과다(없는 값을 지어내지 않는다).
+   * 시장 베타로 실제 계산되는 경우는 아래 Market Beta 스트레스 테스트에서 고정한다. */
+  assert.strictEqual(m.portfolioBeta, null);
+  assert.strictEqual(m.stressLossKRW, null);
 });
 
 test('④ H.10을 쓸 수 없으면 달러 지수로 대신하지 않고 베타를 만들지 않는다', async () => {
@@ -366,8 +385,9 @@ test('④ H.10을 쓸 수 없으면 달러 지수로 대신하지 않고 베타�
   s.setUsdKrwRates({ status: 'SOURCE_UNAVAILABLE', rates: null, endDate: null });
   s.state.assets = [krEtfAsset('ZZ0001.KS', 'ZZ 미국지수')];
   const m = await s.computeAdvancedRiskMetrics();
-  assert.strictEqual(m.holdings[0].beta, null);
-  assert.strictEqual(m.holdings[0].betaStatus, 'SOURCE_UNAVAILABLE');
+  // [§50 · PD-15 기대값 갱신] 환율이 필요한 쪽은 공식 기초지수(추적) 경로다.
+  assert.strictEqual(m.holdings[0].trackingBeta, null);
+  assert.strictEqual(m.holdings[0].trackingBetaStatus, 'SOURCE_UNAVAILABLE');
 });
 
 test('④ 최소 관측 120: Dimson 행 119개면 베타 없음, 120개면 계산', async () => {
@@ -386,13 +406,14 @@ test('④ 최소 관측 120: Dimson 행 119개면 베타 없음, 120개면 계�
     s.state.assets = [krEtfAsset('ZZ0001.KS', 'ZZ 미국지수')];
     return (await s.computeAdvancedRiskMetrics()).holdings[0];
   };
+  // [§50 · PD-15 기대값 갱신] Dimson 관측 하한은 공식 기초지수(추적) 경로의 계약이다(값 · 규칙 무변경).
   const h119 = await run(121);
-  assert.strictEqual(h119.betaObservationCount, 119);
-  assert.strictEqual(h119.beta, null);
-  assert.strictEqual(h119.betaStatus, 'INSUFFICIENT_COMMON_DATES');
+  assert.strictEqual(h119.trackingBetaObservationCount, 119);
+  assert.strictEqual(h119.trackingBeta, null);
+  assert.strictEqual(h119.trackingBetaStatus, 'INSUFFICIENT_COMMON_DATES');
   const h120 = await run(122);
-  assert.strictEqual(h120.betaObservationCount, 120);
-  assert.strictEqual(typeof h120.beta, 'number');
+  assert.strictEqual(h120.trackingBetaObservationCount, 120);
+  assert.strictEqual(typeof h120.trackingBeta, 'number');
 });
 
 // [기대값 갱신 사유 · BOND-5 · §47-2 · 2026-09-20] "전부 또는 무"를 폐지했다. 베타를 구한 종목만으로
@@ -403,13 +424,19 @@ test('④ 포트폴리오 베타: 구한 종목만으로 집계하고 설명 범
     const mk = asyncMarket({ fxVol: 0.003, seed: 9 });
     s.setDailyCloses('^GSPC', toSeries(mk.us));
     s.setDailyCloses('ZZ0001.KS', toSeries(mk.kr));
-    s.setDailyCloses('ZZ0002.KS', toSeries(mk.kr));
+    /* [§50 · PD-15 기대값 갱신] 집계에 쓰이는 값이 Market Beta로 바뀌었으므로 시장 지수 시계열을 준다.
+     * 같은 시계열을 넣어 ZZ0001의 시장 베타가 정확히 1이 되게 한다(집계 규칙만 보는 테스트다).
+     * ZZ0002는 가격 시계열을 주지 않아 베타를 구할 수 없는 종목 역할을 그대로 한다 -
+     * "빠진 종목 몫을 남은 종목에 얹지 않는다"는 이 테스트의 주장은 그대로다. */
+    s.setDailyCloses('^KS11', toSeries(mk.kr));
     s.setUsdKrwRates({ status: 'OK', rates: mk.fx, endDate: mk.us[mk.us.length - 1].date });
     s.state.assets = [krEtfAsset('ZZ0001.KS', 'ZZ 미국지수')].concat(withHold ? [krEtfAsset('ZZ0002.KS', 'ZZ 헤지 미확인')] : []);
     return s.computeAdvancedRiskMetrics();
   };
   const withHold = await build(true);
-  assert.strictEqual(withHold.holdings.find((h) => h.ticker === 'ZZ0002.KS').betaStatus, 'BENCHMARK_UNRESOLVED');
+  // 공식 기초지수(추적)는 환헤지 미확인이라 확정되지 않는다 - 예전 주장 그대로, 필드만 tracking*이다.
+  assert.strictEqual(withHold.holdings.find((h) => h.ticker === 'ZZ0002.KS').trackingBetaStatus, 'BENCHMARK_UNRESOLVED');
+  assert.strictEqual(withHold.holdings.find((h) => h.ticker === 'ZZ0002.KS').beta, null);
   // 두 종목이 50:50이므로 설명 범위는 정확히 50% - 하한과 같아 값이 나오고, 그 값은 베타를 구한 종목의 베타다.
   const covered = withHold.holdings.find((h) => h.ticker === 'ZZ0001.KS');
   assert.ok(Math.abs(withHold.portfolioBeta - covered.beta) < 1e-12, '빠진 종목 몫을 남은 종목에 얹지 않는다');

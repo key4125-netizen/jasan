@@ -117,25 +117,56 @@ function jsonResponse(obj, status = 200, cors = {}) {
 /* [요청 수 제한] KV 카운터 두 개(분 · 일)를 쓴다. KV는 결과적 일관성이라 정확한 카운터는 아니지만,
  * 여기서 막으려는 것은 정밀한 과금 통제가 아니라 자동화된 남용이므로 이 정도로 충분하다.
  * KV가 실패하면 요청을 막지 않는다 - 가용성 우선이며, 이 경로는 비밀값을 다루지 않는다. */
-async function checkRateLimit(env, request) {
-  if (!env.KIS_KV) return { ok: true };
+/* [§50 · PD-12 · 감사 H-01] 읽기(판정)와 쓰기(기록)를 분리한다.
+ *
+ * 왜 나누는가: 예전에는 인증을 통과한 모든 GET이 라우팅 · 입력검증 · 캐시 확인보다 **먼저**
+ * KV에 카운터 2건을 썼다. 그래서 캐시가 맞아떨어진 요청도, 형식이 틀려 400으로 거절될 요청도
+ * 똑같이 put 2회를 소비했다. Cloudflare 무료 한도는 **계정 전체 하루 1,000 puts**이므로
+ * 인증된 요청 약 500건이면 계정 전체(다른 Worker 포함)의 쓰기 한도가 소진된다 - 실제로 소진됐다.
+ *
+ * 무엇을 지키는가(제한을 약하게 만들지 않는다):
+ *   · 인증은 여전히 맨 앞이다. 무인증 요청은 KV를 한 번도 건드리지 않는다(예전과 같다).
+ *   · 분 30회 · 일 300회 **한도 값은 그대로다.**
+ *   · 한도 판정은 모든 요청에서 한다(readRateLimit - 읽기 전용). 이미 한도를 넘었으면
+ *     캐시 적중이라도 429다.
+ *   · 카운터 **증가**는 상류(KIS)를 실제로 부르는 요청에서만 한다 - 보호하려는 대상이 상류 호출과
+ *     상류 비용이기 때문이다. 캐시 적중은 상류를 부르지 않는다.
+ * 결과: 캐시 적중 0 puts · 400/401 0 puts · 캐시 미스 3 puts(카운터 2 + 캐시 1).
+ */
+function rateLimitKeysFor(request) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const now = new Date();
-  const minuteKey = 'rl:min:' + ip + ':' + now.toISOString().slice(0, 16);
-  const dayKey = 'rl:day:' + ip + ':' + now.toISOString().slice(0, 10);
+  return {
+    ip,
+    minuteKey: 'rl:min:' + ip + ':' + now.toISOString().slice(0, 16),
+    dayKey: 'rl:day:' + ip + ':' + now.toISOString().slice(0, 10)
+  };
+}
+/** 한도 판정만 한다(KV 읽기 2회 · 쓰기 0회). KV 장애 시 막지 않는다(가용성 우선 - 기존 정책 유지). */
+async function readRateLimit(env, request) {
+  if (!env.KIS_KV) return { ok: true, skip: true };
+  const keys = rateLimitKeysFor(request);
   try {
-    const [m, d] = await Promise.all([env.KIS_KV.get(minuteKey), env.KIS_KV.get(dayKey)]);
+    const [m, d] = await Promise.all([env.KIS_KV.get(keys.minuteKey), env.KIS_KV.get(keys.dayKey)]);
     const mCount = Number(m || 0) + 1;
     const dCount = Number(d || 0) + 1;
     if (mCount > RATE_LIMIT_PER_MINUTE || dCount > RATE_LIMIT_PER_DAY) {
       return { ok: false, retryAfter: mCount > RATE_LIMIT_PER_MINUTE ? 60 : 3600 };
     }
+    return { ok: true, keys, mCount, dCount };
+  } catch (e) {
+    return { ok: true, skip: true };
+  }
+}
+/** 상류를 실제로 부를 때만 카운터를 올린다(KV 쓰기 2회). */
+async function commitRateLimit(env, state) {
+  if (!env.KIS_KV || !state || state.skip || !state.keys) return;
+  try {
     await Promise.all([
-      env.KIS_KV.put(minuteKey, String(mCount), { expirationTtl: 120 }),
-      env.KIS_KV.put(dayKey, String(dCount), { expirationTtl: 86400 })
+      env.KIS_KV.put(state.keys.minuteKey, String(state.mCount), { expirationTtl: 120 }),
+      env.KIS_KV.put(state.keys.dayKey, String(state.dCount), { expirationTtl: 86400 })
     ]);
-  } catch (e) { /* KV 장애 시 제한을 적용하지 않는다(가용성 우선) */ }
-  return { ok: true };
+  } catch (e) { /* KV 장애 시 기록만 건너뛴다 - 응답은 정상이다 */ }
 }
 
 // 6자리 숫자 국내 종목코드만 허용한다(예: '005930') - 이 Worker는 국내주식 전용이라 그 외 형식은 애초에
@@ -382,16 +413,21 @@ async function handleBondPrice(env, isin) {
 // 다시 호출하지 않고 KV에 저장된 값을 그대로 돌려준다. KV 조회/저장이 실패해도(일시적 KV 장애 등)
 // 캐시는 어디까지나 최적화일 뿐이므로 무시하고 정상적으로 KIS를 호출해 응답한다 - 캐시 문제로 기능
 // 자체가 죽으면 안 된다.
-async function getCachedOrFetch(env, cacheKey, fetchFn, ttlSeconds) {
+/* [§50 · PD-12] 캐시 조회와 저장을 나눈다 - 호출부가 "캐시 적중이면 카운터를 올리지 않는다"를
+ * 판단할 수 있어야 하기 때문이다. 동작(TTL · 키 · 실패 시 무시)은 예전과 같다. */
+async function cacheGet(env, cacheKey) {
+  try { return (await env.KIS_KV.get(cacheKey, 'json')) || null; } catch (e) { return null; }
+}
+async function cachePut(env, cacheKey, value, ttlSeconds) {
   try {
-    const cached = await env.KIS_KV.get(cacheKey, 'json');
-    if (cached) return cached;
-  } catch (e) { /* KV 조회 실패 - 캐시 없이 진행 */ }
-
-  const fresh = await fetchFn();
-  try {
-    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: ttlSeconds || RESPONSE_CACHE_TTL_SECONDS });
+    await env.KIS_KV.put(cacheKey, JSON.stringify(value), { expirationTtl: ttlSeconds || RESPONSE_CACHE_TTL_SECONDS });
   } catch (e) { /* KV 저장 실패해도 응답 자체는 정상 반환 */ }
+}
+async function getCachedOrFetch(env, cacheKey, fetchFn, ttlSeconds) {
+  const cached = await cacheGet(env, cacheKey);
+  if (cached) return cached;
+  const fresh = await fetchFn();
+  await cachePut(env, cacheKey, fresh, ttlSeconds);
   return fresh;
 }
 
@@ -415,15 +451,6 @@ export default {
       return jsonResponse({ error: 'unauthorized' }, 401, cors);
     }
 
-    // [B-1 (3)] 요청 수 제한.
-    const rate = await checkRateLimit(env, request);
-    if (!rate.ok) {
-      return new Response(JSON.stringify({ error: 'rate_limited' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json', 'Retry-After': String(rate.retryAfter), ...cors }
-      });
-    }
-
     const url = new URL(request.url);
     const code = (url.searchParams.get('ticker') || '').trim();
     /* [Bond Stage 2] 입력 검증을 라우트별로 나눈다. 예전에는 라우팅 전에 6자리 종목코드 검사를 한 번
@@ -437,32 +464,40 @@ export default {
       return jsonResponse({ error: isKrxAlnumCode(code) ? 'ticker_format_unsupported' : 'bad_ticker' }, 400, cors);
     }
 
+    /* [§50 · PD-12] 라우트 → 캐시키 → (캐시 적중이면 그대로 응답) → 한도 기록 → 상류.
+     * 라우팅과 입력 검증이 끝난 뒤에야 KV를 만진다. 없는 경로(404)도 KV를 쓰지 않는다. */
+    const isin = code.toUpperCase();
+    const ROUTES = {
+      '/api/kis/price': { key: `kis_cache:price:${code}`, run: () => handlePrice(env, code) },
+      '/api/kis/fundamentals': null, // 아래에서 period 파라미터를 반영해 만든다
+      '/api/kis/investor-flow': { key: `kis_cache:investor-flow:${code}`, run: () => handleInvestorFlow(env, code) },
+      '/api/kis/bond-info': { key: `kis_cache:bond-info:${isin}`, run: () => handleBondInfo(env, isin), ttl: BOND_INFO_CACHE_TTL_SECONDS },
+      '/api/kis/bond-price': { key: `kis_cache:bond-price:${isin}`, run: () => handleBondPrice(env, isin) }
+    };
+    let route = ROUTES[url.pathname];
+    if (url.pathname === '/api/kis/fundamentals') {
+      const divCode = url.searchParams.get('period') === 'quarter' ? '1' : '0';
+      route = { key: `kis_cache:fundamentals:${code}:${divCode}`, run: () => handleFundamentals(env, code, divCode) };
+    }
+    if (!route) return jsonResponse({ error: 'not_found' }, 404, cors);
+
     try {
-      if (url.pathname === '/api/kis/price') {
-        const data = await getCachedOrFetch(env, `kis_cache:price:${code}`, () => handlePrice(env, code));
-        return jsonResponse(data, 200, cors);
+      // ① 캐시 적중 - 상류를 부르지 않으므로 카운터도 올리지 않는다(KV 쓰기 0회).
+      //    단, 이미 한도를 넘긴 IP는 캐시 적중이어도 막는다(제한의 의미를 유지한다).
+      const rate = await readRateLimit(env, request);
+      if (!rate.ok) {
+        return new Response(JSON.stringify({ error: 'rate_limited' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': String(rate.retryAfter), ...cors }
+        });
       }
-      if (url.pathname === '/api/kis/fundamentals') {
-        const divCode = url.searchParams.get('period') === 'quarter' ? '1' : '0';
-        const data = await getCachedOrFetch(env, `kis_cache:fundamentals:${code}:${divCode}`, () => handleFundamentals(env, code, divCode));
-        return jsonResponse(data, 200, cors);
-      }
-      if (url.pathname === '/api/kis/investor-flow') {
-        const data = await getCachedOrFetch(env, `kis_cache:investor-flow:${code}`, () => handleInvestorFlow(env, code));
-        return jsonResponse(data, 200, cors);
-      }
-      // [Bond Stage 2] 채권은 ISIN을 대문자로 맞춰 캐시 키를 하나로 모은다(같은 채권을 두 번 받지 않는다).
-      const isin = code.toUpperCase();
-      if (url.pathname === '/api/kis/bond-info') {
-        const data = await getCachedOrFetch(env, `kis_cache:bond-info:${isin}`,
-          () => handleBondInfo(env, isin), BOND_INFO_CACHE_TTL_SECONDS);
-        return jsonResponse(data, 200, cors);
-      }
-      if (url.pathname === '/api/kis/bond-price') {
-        const data = await getCachedOrFetch(env, `kis_cache:bond-price:${isin}`, () => handleBondPrice(env, isin));
-        return jsonResponse(data, 200, cors);
-      }
-      return jsonResponse({ error: 'not_found' }, 404, cors);
+      const cached = await cacheGet(env, route.key);
+      if (cached) return jsonResponse(cached, 200, cors);
+      // ② 캐시 미스 - 여기서만 상류를 부르고, 그때 카운터를 올린다.
+      await commitRateLimit(env, rate);
+      const fresh = await route.run();
+      await cachePut(env, route.key, fresh, route.ttl);
+      return jsonResponse(fresh, 200, cors);
     } catch (e) {
       // [B-1 (4)] 상류 오류 본문 · 헤더를 그대로 전달하지 않는다 - 내부 경로 · 토큰 상태 · 계정
       // 정보가 오류 메시지에 섞여 나갈 수 있다. 클라이언트에는 "상류 조회 실패"만 알린다.

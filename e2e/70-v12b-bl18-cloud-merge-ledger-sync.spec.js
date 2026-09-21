@@ -153,7 +153,7 @@ test('CASE 4/6. ledger 자산(USD) - quantity/buyPrice/buyRate가 병합된 전�
     mergeAssetsAndTransactionsWithRemote({ assets: [], transactions: remoteTx });
     persistAssets(); persistTransactions();
     const { positions } = computePositionsAndRealizedPnL();
-    const pos = positions['신랑__일반계좌__FFF'];
+    const pos = positions['신랑__일반계좌__FFF__USD']  /* [§50 · PD-02] 포지션 키에 통화 포함 */;
     const a = state.assets.find((x) => x.id === 'e70-ledger');
     return { quantity: a.quantity, buyPrice: a.buyPrice, buyRate: a.buyRate, posQuantity: pos.quantity, posAvgPrice: pos.avgPrice, posAvgRate: pos.avgRate };
   });

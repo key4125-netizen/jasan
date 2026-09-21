@@ -463,8 +463,17 @@ const INDEX_MASTER_ENTRIES = Object.freeze([
   { key: 'KOSPI200_TR', officialName: '코스피 200 TR', provider: 'KRX', sourceId: null, returnType: 'TR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PERMITTED_SOURCE' },
   { key: 'DJ_KOREA_DIV30_PR', officialName: 'Dow Jones Korea Dividend 30 Index (Price Return)', provider: 'S&P Dow Jones Indices', sourceId: null, returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'KRW', market: 'KR', source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PUBLIC_SOURCE' },
   { key: 'ISELECT_US_AI_POWER_PR', officialName: 'iSelect 미국AI전력핵심인프라 지수 (Price Return)', provider: null, sourceId: null, returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: null, market: null, source: null, evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PUBLIC_SOURCE' },
-  // Yahoo에 기호는 있으나 1년 조회 시 관측이 1개뿐이다(2026-09-19 확인) - 최소 관측 120을 만족할 수 없다.
-  { key: 'DJ_US_DIV100_PR', officialName: 'Dow Jones U.S. Dividend 100 Index (Price Return)', provider: 'S&P Dow Jones Indices', sourceId: '^DJUSDIV', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'SOURCE_INSUFFICIENT_HISTORY' }
+  /* [§50 · PD-13 · 감사 F-01] 사유 코드를 사실에 맞게 정정한다.
+   *
+   * 예전 값 SOURCE_INSUFFICIENT_HISTORY는 "이력이 아직 짧다 = 시간이 지나면 쌓인다"로 읽힌다.
+   * 실측(2026-09-21 · 400일 요청)은 정반대였다 - Yahoo는 이 기호들에 **과거 시계열을 아예 갖고
+   * 있지 않고** 당일 수준값 1건만 준다. 기간을 넓게 요청해도 1건이고, 1년 뒤에도 1건이다.
+   *   ^DJUSDIV 1건 · ^DJUSDV 1건 · ^DJDVY 1건 (대조군 ^GSPC 274건 · ^IXIC 274건 · ^KS11 268건)
+   *   DJUSDIV · ^SDY · ^DJUSDVP → 404(기호 없음)
+   * 따라서 상태는 DJ_KOREA_DIV30_PR · ISELECT와 같은 NO_PUBLIC_SOURCE다.
+   * sourceId는 지우지 않고 남긴다 - "무엇을 시도했고 왜 안 되는지"의 근거이며,
+   * availability가 UNAVAILABLE이라 조회에는 쓰이지 않는다(isIndexPriceSourceAvailable). */
+  { key: 'DJ_US_DIV100_PR', officialName: 'Dow Jones U.S. Dividend 100 Index (Price Return)', provider: 'S&P Dow Jones Indices', sourceId: '^DJUSDIV', returnType: 'PR', priceDefinition: 'INDEX_LEVEL', currency: 'USD', market: 'US', source: 'YAHOO', evidenceGrade: 'A', availability: 'UNAVAILABLE', unavailableReason: 'NO_PUBLIC_SOURCE' }
 ]);
 const INDEX_MASTER_BY_KEY = Object.freeze(INDEX_MASTER_ENTRIES.reduce((acc, e) => { acc[e.key] = e; return acc; }, {}));
 function resolveIndexMasterEntry(key) {

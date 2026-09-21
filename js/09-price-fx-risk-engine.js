@@ -736,6 +736,51 @@ function getBenchmarkKeyForAsset(a) {
   return resolveRiskBenchmark(a).key;
 }
 
+/* =========================================================================
+ * [§50 · PD-15] Market Beta 기준 지수 — 시장위험 전용
+ *
+ * 두 베타는 **서로 다른 통계량**이다.
+ *   Market Beta   : 그 종목이 **자기가 거래되는 시장**에 얼마나 민감한가 → 위험점수 · 포트폴리오 베타
+ *   Tracking Beta : 그 종목이 **자기 공식 기초지수**를 얼마나 따라가는가 → 표시 전용
+ * 지수추종 ETF의 Tracking Beta는 구조적으로 1.0 근방이라 시장위험 칸(밴드 <1.2 → 55점)에
+ * 넣으면 방어적 ETF와 고베타 테마 ETF가 같은 점수를 받는다 - 요인이 종목을 구분하지 못한다.
+ *
+ * 기준 지수 매핑은 **원장 · 코드에 이미 있는 사실만** 쓴다(새 지수 · 임의 대체 없음 · §31).
+ *   KOSPI 상장  → KOSPI(^KS11)   : 기존 RISK_BENCHMARK_BY_LISTING_EXCHANGE 그대로
+ *   KOSDAQ 상장 → KOSDAQ(^KQ11)  : 동일
+ *   NASDAQ 상장 → NASDAQ(^IXIC)  : Exposure Master가 미국 개별주에 이미 부여한 기준과 같다
+ *   NYSE · AMEX → **매핑 없음(UNRESOLVED)** : 앱에 그 시장의 종합지수가 없다(§44 D-02 유지).
+ *                 S&P500으로 대신하지 않는다 - 그것은 PM 결정 사항이다.
+ * 해외 상장 개별주는 본국 보통주(HOME_COMMON) 근거가 있을 때만 쓴다(D-06 게이트 유지).
+ * ====================================================================== */
+const RISK_MARKET_INDEX_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ', NASDAQ: 'NASDAQ' });
+function resolveMarketRiskBenchmark(a) {
+  const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
+  const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
+  if (!yahoo) return unresolved('noTicker');
+  // 주식 · ETF만 대상이다 - 채권 · 현금 · 부동산은 포트폴리오 베타에서 제외한다는 기존 정책 그대로(PD-15).
+  if (!RISK_ELIGIBLE_CATEGORIES.includes(a && a.category)) return unresolved('notEquityLike');
+  const rec = (typeof tickerMasterByTicker !== 'undefined' && tickerMasterByTicker) ? tickerMasterByTicker[yahoo] : null;
+  /* 종목 마스터에 없더라도 **접미사 자체가 상장 시장**인 경우가 있다 - `.KS`는 KOSPI, `.KQ`는
+   * KOSDAQ이다(sanitizeTicker · riskSeriesMarketOf가 이미 쓰는 같은 사실). 새 판정 규칙이 아니라
+   * 이미 코드에 있는 사실을 한 번 더 읽는 것이다. 접미사가 없는 해외 티커는 거래소를 알 수 없으므로
+   * (NASDAQ인지 NYSE인지) 여기서 추측하지 않는다 - 마스터에 없으면 미확정이다. */
+  const exchange = rec ? rec.exchange : (/\.KS$/.test(yahoo) ? 'KOSPI' : (/\.KQ$/.test(yahoo) ? 'KOSDAQ' : null));
+  if (!exchange) return unresolved('noListingInfo');
+  // [D-06] 해외 상장 개별주는 상장 사실만으로 본국 보통주라고 보지 않는다 - 원장 근거가 있어야 한다.
+  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    const em = lookupExposureRecord(a);
+    const entry = em ? em.entry : null;
+    if (entry && entry.assetType === 'FOREIGN_STOCK' && entry.equityListing !== 'HOME_COMMON') {
+      return unresolved(entry.equityListing === 'ADR' ? 'adrListing' : 'listingDomicileUnconfirmed');
+    }
+  }
+  const key = RISK_MARKET_INDEX_BY_LISTING_EXCHANGE[exchange] || null;
+  if (!key) return unresolved(RISK_US_LISTING_EXCHANGES.includes(exchange) ? 'marketIndexNotAvailable' : 'exchangeIndexNotAvailable');
+  // 상장 시장과 지수 시장이 같으므로 같은 달력 · 같은 통화다(비동기 · 환산 경로를 타지 않는다).
+  return finalizeRiskBenchmark(yahoo, key, 'listingMarket', null);
+}
+
 // [버그 수정 - 세제혜택계좌 종목 리스크 진단 누락] 원래 isRebalanceEligibleAccount(연금저축/IRP/ISA
 // 제외)까지 걸려 있었다 - 리밸런싱 대상 선정 기준(자유롭게 매도하기 어려운 계좌는 제외)을 그대로
 // 재사용한 것인데, 리스크 진단은 "이 종목이 얼마나 위험한가"를 보는 것이라 계좌의 세제 혜택 여부와
@@ -1947,14 +1992,27 @@ async function computeAdvancedRiskMetrics() {
       const yahoo = sanitizeTicker(a.ticker).yahooTicker;
       const r = calcRow(a);
       if (!byTicker.has(yahoo)) {
-        const bm = resolveRiskBenchmark(a);
+        /* [§50 · PD-15] 기준 지수를 두 벌 정한다.
+         *   benchmark*        = **시장 지수**(상장 시장) → h.beta → 위험점수 · 포트폴리오 베타
+         *   trackingBenchmark* = **공식 기초지수**(Exposure Master) → h.trackingBeta → 표시 전용
+         * 필드 이름을 바꾸지 않고 의미만 나눈 이유: benchmark*에 달린 상태 · 사유 · FX · 정렬
+         * 플러밍(기존 코드)이 그대로 "위험점수가 쓰는 베타"를 설명하게 하기 위해서다. */
+        const bm = resolveMarketRiskBenchmark(a);
+        const trk = resolveRiskBenchmark(a);
         byTicker.set(yahoo, {
           ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a),
           // [1차 통합 구현] 판정 근거 · 정렬 방식 · 지수 환산(진단용). 같은 시장이면 SAME_DATE(기존 계산 그대로).
           benchmarkSource: bm.source, benchmarkIndexKey: bm.key || bm.indexKey || null,
           benchmarkPriceSource: bm.key ? (bm.priceSource || 'AVAILABLE') : null,
           benchmarkAlignment: bm.key ? (bm.alignment || 'SAME_DATE') : null, benchmarkFx: bm.benchmarkFx || null,
-          benchmarkMarket: bm.benchmarkMarket || null, benchmarkDefinitionStatus: bm.definitionStatus || null
+          benchmarkMarket: bm.benchmarkMarket || null, benchmarkDefinitionStatus: bm.definitionStatus || null,
+          // 공식 기초지수(추적) - 기존 resolveRiskBenchmark 결과를 의미 그대로 보존한다.
+          trackingBenchmarkKey: trk.key, trackingBenchmarkStatus: trk.status, trackingBenchmarkSource: trk.source,
+          trackingBenchmarkIndexKey: trk.key || trk.indexKey || null,
+          trackingBenchmarkPriceSource: trk.key ? (trk.priceSource || 'AVAILABLE') : null,
+          trackingBenchmarkAlignment: trk.key ? (trk.alignment || 'SAME_DATE') : null,
+          trackingBenchmarkFx: trk.benchmarkFx || null, trackingBenchmarkMarket: trk.benchmarkMarket || null,
+          trackingBenchmarkDefinitionStatus: trk.definitionStatus || null
         });
       }
       byTicker.get(yahoo).curAmount += r.curAmount;
@@ -1963,7 +2021,10 @@ async function computeAdvancedRiskMetrics() {
 
     // 필요한 벤치마크 지수만 모아서 한 번씩만 조회한다(확인되지 않은 벤치마크는 조회하지 않는다).
     // [1차 통합 구현] 지수 가격 원천은 Index Master가 정한다(AVAILABLE인 지수만 · 기존 6개 지수의 원천 기호는 INDEX_TICKERS와 같다).
-    const neededBenchmarks = [...new Set(holdings.map((h) => h.benchmarkKey).filter((k) => k && isIndexPriceSourceAvailable(k)))];
+    // [§50 · PD-15] 시장 지수와 공식 기초지수 두 벌이 필요하다 - 중복은 Set이 걸러내므로 조회 수는 최소다.
+    const neededBenchmarks = [...new Set(
+      holdings.flatMap((h) => [h.benchmarkKey, h.trackingBenchmarkKey]).filter((k) => k && isIndexPriceSourceAvailable(k))
+    )];
     const benchmarkCloses = {};
     const benchmarkDated = {};   // [Phase 39-B] 지수 쪽 날짜도 보존한다(공통 거래일 정렬용).
     const benchmarkStatusByKey = {};
@@ -1989,7 +2050,7 @@ async function computeAdvancedRiskMetrics() {
     // [T6 · §44 44-15] 가격통화가 USD인 종목이 있을 때만 H.10 환율을 읽는다(원화 종목만 있으면 읽지 않는다).
     const usdHoldingCount = holdings.filter((h) => h.priceCcy === 'USD').length;
     // [D-05] 비헤지 국내 상장 해외 ETF의 지수 원화 환산도 같은 H.10만 쓴다(새 환율 공급자 없음).
-    const needsBenchmarkFx = holdings.some((h) => h.benchmarkFx === 'USD_TO_KRW_H10');
+    const needsBenchmarkFx = holdings.some((h) => h.benchmarkFx === 'USD_TO_KRW_H10' || h.trackingBenchmarkFx === 'USD_TO_KRW_H10');
     const usdKrw = (usdHoldingCount > 0 || needsBenchmarkFx) ? await getRiskUsdKrwRates() : null;
     await Promise.all(holdings.map(async (h) => {
       const got = await getCachedDailyClosesWithStatus(h.ticker);
@@ -2021,56 +2082,74 @@ async function computeAdvancedRiskMetrics() {
         ? data.closesAdj.filter((c) => typeof c === 'number' && Number.isFinite(c))
         : null;
       h.returns = h.closesAdj ? dailyReturnsFromCloses(h.closesAdj) : null;
-      const bmReturns = h.benchmarkKey ? benchmarkReturns[h.benchmarkKey] : null;
-      const bmDated = h.benchmarkKey ? benchmarkDated[h.benchmarkKey] : null;
-      h.betaMethod = null;
-      h.betaComponents = null;
-      if (h.returns && bmReturns && h.benchmarkAlignment === 'ASYNC_DIMSON') {
-        // [D-05] 비동기 쌍 - 같은 날짜 정렬(alignedReturnPair)을 쓰지 않는다. 종목 쪽은 현지 가격(원화) 조정주가,
-        // 지수 쪽은 지수 수준(비헤지 원화 상품이면 같은 날짜의 H.10으로 원화 환산한 수준 - USD 수익률 + 환율 수익률 + 교차항).
-        let benchLevels = bmDated;
-        let fxBlock = null;
-        if (h.benchmarkFx === 'USD_TO_KRW_H10') {
-          const fxUsable = usdKrw && usdKrw.rates;
-          benchLevels = fxUsable ? convertDatedClosesToKrw(bmDated, usdKrw.rates) : null;
-          if (!fxUsable) fxBlock = (usdKrw && usdKrw.status) || RISK_DATA_STATUS.SOURCE_UNAVAILABLE;
+      /* [§50 · PD-15] 베타를 **두 번** 계산한다 - 기준 지수만 다르고 계산식 · 관측 창 · 최소 관측은
+       * 완전히 같다(아래 본문은 기존 코드를 그대로 옮긴 것이다 · 공식 무변경).
+       *   Market Beta   = 상장 시장 대표지수 대비 → h.beta        → 위험점수 · 포트폴리오 베타
+       *   Tracking Beta = 공식 기초지수 대비      → h.trackingBeta → 표시 전용(추적 특성)
+       * 두 값을 하나의 숫자로 섞지 않는다 - 서로 다른 통계량이기 때문이다. */
+      const betaAgainst = (spec) => {
+        const out = { beta: null, status: null, aligned: false, observationCount: null, method: null, components: null };
+        const key = spec && spec.key;
+        const bmReturns = key ? benchmarkReturns[key] : null;
+        const bmDated = key ? benchmarkDated[key] : null;
+        if (h.returns && bmReturns && spec.alignment === 'ASYNC_DIMSON') {
+          // [D-05] 비동기 쌍 - 같은 날짜 정렬(alignedReturnPair)을 쓰지 않는다. 종목 쪽은 현지 가격(원화) 조정주가,
+          // 지수 쪽은 지수 수준(비헤지 원화 상품이면 같은 날짜의 H.10으로 원화 환산한 수준 - USD 수익률 + 환율 수익률 + 교차항).
+          let benchLevels = bmDated;
+          let fxBlock = null;
+          if (spec.fx === 'USD_TO_KRW_H10') {
+            const fxUsable = usdKrw && usdKrw.rates;
+            benchLevels = fxUsable ? convertDatedClosesToKrw(bmDated, usdKrw.rates) : null;
+            if (!fxUsable) fxBlock = (usdKrw && usdKrw.status) || RISK_DATA_STATUS.SOURCE_UNAVAILABLE;
+          }
+          // [C-3] 베타 창은 2년이다 - 조회는 3년이지만 그중 최근 2년만 쓴다(§44 제7조).
+          const dimAsset = sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta);
+          const dimBench = sliceRecentObservations(benchLevels, RISK_OBSERVATION_WINDOWS.beta);
+          const dim = benchLevels ? computeAsyncDimsonBeta(dimAsset, dimBench, riskSeriesMarketOf(h.ticker), spec.market) : null;
+          // 최소 관측 120(행 수)은 같은 날짜 경로와 같다 - 부족하면 베타를 만들지 않는다.
+          out.beta = dim && dim.observationCount >= MIN_COMMON_RISK_RETURNS && typeof dim.beta === 'number' && Number.isFinite(dim.beta) ? dim.beta : null;
+          out.status = typeof out.beta === 'number' ? RISK_DATA_STATUS.OK : (fxBlock || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
+          out.aligned = !!dim;
+          out.observationCount = dim ? dim.observationCount : null;
+          out.method = 'DIMSON_LAG0_LAG1';
+          out.components = dim && typeof out.beta === 'number' ? { concurrent: dim.betaConcurrent, previous: dim.betaPrevious } : null;
+        } else if (h.returns && bmReturns) {
+          out.method = 'SAME_DATE';
+          // [C-3] 같은 날짜 정렬도 최근 2년만 본다(§44 제7조 · 조회는 3년).
+          const pair = alignedReturnPair(
+            sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta + 1),
+            sliceRecentObservations(h.returns, RISK_OBSERVATION_WINDOWS.beta),
+            sliceRecentObservations(bmDated, RISK_OBSERVATION_WINDOWS.beta + 1),
+            sliceRecentObservations(bmReturns, RISK_OBSERVATION_WINDOWS.beta)
+          );
+          // [Risk 정책 P-2 · v252] 종목-벤치마크 공통 수익률이 120개 미만이면 베타를 만들지 않는다(공식은 그대로).
+          out.beta = pair.a.length >= MIN_COMMON_RISK_RETURNS ? computeBetaFromReturns(pair.a, pair.b) : null;
+          // [R-06] 베타를 못 구한 이유를 남긴다 - 공통 거래일 부족과 기준 지수 미확인은 원인이 다르다.
+          out.status = typeof out.beta === 'number' ? RISK_DATA_STATUS.OK : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES;
+          // 이 beta가 실제로 며칠의 공통 거래일로 계산됐는지 남긴다(날짜 정렬이 적용된 경우에만).
+          out.aligned = pair.aligned;
+          out.observationCount = pair.aligned ? pair.observationCount : null;
+        } else {
+          // 기준 지수는 정해졌지만 그 지수의 가격 원천이 앱에 없으면(Index Master UNAVAILABLE) "비교할 자료 없음"이다.
+          out.status = !key
+            ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED
+            : (!h.returns ? h.dataStatus : (benchmarkStatusByKey[key] || RISK_DATA_STATUS.SOURCE_UNAVAILABLE));
         }
-        // [C-3] 베타 창은 2년이다 - 조회는 3년이지만 그중 최근 2년만 쓴다(§44 제7조).
-        const dimAsset = sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta);
-        const dimBench = sliceRecentObservations(benchLevels, RISK_OBSERVATION_WINDOWS.beta);
-        const dim = benchLevels ? computeAsyncDimsonBeta(dimAsset, dimBench, riskSeriesMarketOf(h.ticker), h.benchmarkMarket) : null;
-        // 최소 관측 120(행 수)은 같은 날짜 경로와 같다 - 부족하면 베타를 만들지 않는다.
-        h.beta = dim && dim.observationCount >= MIN_COMMON_RISK_RETURNS && typeof dim.beta === 'number' && Number.isFinite(dim.beta) ? dim.beta : null;
-        h.betaStatus = typeof h.beta === 'number' ? RISK_DATA_STATUS.OK : (fxBlock || RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES);
-        h.betaAligned = !!dim;
-        h.betaObservationCount = dim ? dim.observationCount : null;
-        h.betaMethod = 'DIMSON_LAG0_LAG1';
-        h.betaComponents = dim && typeof h.beta === 'number' ? { concurrent: dim.betaConcurrent, previous: dim.betaPrevious } : null;
-      } else if (h.returns && bmReturns) {
-        h.betaMethod = 'SAME_DATE';
-        // [C-3] 같은 날짜 정렬도 최근 2년만 본다(§44 제7조 · 조회는 3년).
-        const pair = alignedReturnPair(
-          sliceRecentObservations(h.datedCloses, RISK_OBSERVATION_WINDOWS.beta + 1),
-          sliceRecentObservations(h.returns, RISK_OBSERVATION_WINDOWS.beta),
-          sliceRecentObservations(bmDated, RISK_OBSERVATION_WINDOWS.beta + 1),
-          sliceRecentObservations(bmReturns, RISK_OBSERVATION_WINDOWS.beta)
-        );
-        // [Risk 정책 P-2 · v252] 종목-벤치마크 공통 수익률이 120개 미만이면 베타를 만들지 않는다(공식은 그대로).
-        h.beta = pair.a.length >= MIN_COMMON_RISK_RETURNS ? computeBetaFromReturns(pair.a, pair.b) : null;
-        // [R-06] 베타를 못 구한 이유를 남긴다 - 공통 거래일 부족과 기준 지수 미확인은 원인이 다르다.
-        h.betaStatus = typeof h.beta === 'number' ? RISK_DATA_STATUS.OK : RISK_DATA_STATUS.INSUFFICIENT_COMMON_DATES;
-        // 이 beta가 실제로 며칠의 공통 거래일로 계산됐는지 남긴다(날짜 정렬이 적용된 경우에만).
-        h.betaAligned = pair.aligned;
-        h.betaObservationCount = pair.aligned ? pair.observationCount : null;
-      } else {
-        h.beta = null;
-        h.betaAligned = false;
-        h.betaObservationCount = null;
-        // 기준 지수는 정해졌지만 그 지수의 가격 원천이 앱에 없으면(Index Master UNAVAILABLE) "비교할 자료 없음"이다(아래 benchmarkStatusByKey 없음).
-        h.betaStatus = !h.benchmarkKey
-          ? RISK_DATA_STATUS.BENCHMARK_UNRESOLVED
-          : (!h.returns ? h.dataStatus : (benchmarkStatusByKey[h.benchmarkKey] || RISK_DATA_STATUS.SOURCE_UNAVAILABLE));
-      }
+        return out;
+      };
+      const mkt = betaAgainst({ key: h.benchmarkKey, alignment: h.benchmarkAlignment, fx: h.benchmarkFx, market: h.benchmarkMarket });
+      h.beta = mkt.beta;
+      h.betaStatus = mkt.status;
+      h.betaAligned = mkt.aligned;
+      h.betaObservationCount = mkt.observationCount;
+      h.betaMethod = mkt.method;
+      h.betaComponents = mkt.components;
+      const trk = betaAgainst({ key: h.trackingBenchmarkKey, alignment: h.trackingBenchmarkAlignment, fx: h.trackingBenchmarkFx, market: h.trackingBenchmarkMarket });
+      h.trackingBeta = trk.beta;
+      h.trackingBetaStatus = trk.status;
+      h.trackingBetaAligned = trk.aligned;
+      h.trackingBetaObservationCount = trk.observationCount;
+      h.trackingBetaMethod = trk.method;
       // [T6 · §44 44-15] 베타는 위에서 현지통화(환산 전) 조정주가로 이미 계산했다(의미 유지).
       // 여기서부터의 통계(종목 Sortino · MDD · 공통 거래일 → 변동성 · VaR · CVaR · 상관 · 포트폴리오)는
       // 가격통화가 USD이면 원화로 환산한 조정주가를 쓴다. 원화 가격 종목(국내 상장 해외 ETF 포함)은 그대로다.
@@ -2150,6 +2229,8 @@ async function computeAdvancedRiskMetrics() {
     // 기준 미만이면 여전히 null이고, 그때 시장 요인은 점수에서 빠져 나머지 요인으로 재정규화된다(§44 44-13).
     const betaAggregate = computeBetaAggregate(holdings);
     const portfolioBeta = betaAggregate.beta;
+    // [§50 · PD-15] 추적 베타는 같은 가중 규칙으로 따로 모은다 - 두 값을 한 숫자로 섞지 않는다.
+    const trackingAggregate = computeBetaAggregate(holdings.map((h) => ({ weight: h.weight, beta: h.trackingBeta })));
 
     // 포트폴리오 일간 수익률 = 공통 거래일 수익률의 비중 가중합(모든 종목 포함, 비중 그대로).
     // [R-11] 날짜 축(common.dates)을 함께 넘겨 "같은 날짜끼리" 합쳐지는 것을 구조적으로 보장한다.
@@ -2281,6 +2362,10 @@ async function computeAdvancedRiskMetrics() {
      * betaCoveragePct = 베타를 구한 주식 · ETF가 주식 노출에서 차지하는 비중.
      * bondWeightPct   = 전체 자산 중 채권 비중(베타 집계 대상이 아니라는 사실을 그대로 보여주기 위함).
      * 두 값은 표시 전용이다 - 위험점수 6요인 산식에는 들어가지 않는다. */
+    /* [§50 · PD-09 · 감사 A-03] calcRow가 curKRW를 실제로 돌려주게 되어 이 합계가 비로소 동작한다.
+     * 예전에는 calcRow에 curKRW 키가 없어 bondCur가 항상 0이었고, 그 결과 bondWeightPct가 늘 0이라
+     * "채권 비중 N%는 베타 집계 대상이 아닙니다" 안내가 한 번도 나오지 않았다.
+     * 포트폴리오 베타에서 채권을 제외하는 정책 자체는 그대로다(PD-09 단서). */
     const bondCur = (state.assets || [])
       .filter((a) => a.category === '채권')
       .reduce((sum, a) => sum + (calcRow(a).curKRW || 0), 0);
@@ -2291,6 +2376,13 @@ async function computeAdvancedRiskMetrics() {
       betaMissingCount: betaAggregate.missingCount,
       betaCoverageEnough: betaAggregate.enough,
       betaCoverageMinPct: BETA_COVERAGE_MIN * 100,
+      /* [§50 · PD-15] 위험점수가 쓰는 베타가 무엇인지 화면이 말할 수 있게 명시한다.
+       * portfolioBeta = Market Beta(상장 시장 지수 대비)의 비중 가중평균이다.
+       * trackingBeta 집계는 **표시 전용**이며 위험점수 · portfolioBeta에 들어가지 않는다. */
+      betaDefinition: 'MARKET',
+      portfolioTrackingBeta: trackingAggregate.beta,
+      trackingBetaCoveragePct: trackingAggregate.coverage * 100,
+      trackingBetaMissingCount: trackingAggregate.missingCount,
       bondWeightPct: householdCur > 0 ? (bondCur / householdCur) * 100 : 0,
       // [Phase 39-B] var95Pct가 null이면 금액도 null이어야 한다.
       var95KRW: var95Pct === null ? null : totalCur * var95Pct / 100,

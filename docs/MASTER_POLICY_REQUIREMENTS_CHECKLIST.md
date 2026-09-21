@@ -2554,7 +2554,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 
 | ID | 결정 | 구현 |
 |---|---|---|
-| **IM-1** Index Master | Risk Benchmark(무엇과 비교할지)와 가격 원천(어디서 받는지)을 분리한다. 최소 필드: `key · officialName · provider · sourceId · returnType(PR/TR) · priceDefinition(INDEX_LEVEL) · currency · market · source · evidenceGrade · availability(+unavailableReason)`. 공식 근거가 없는 칸은 null(추정 금지) | js/28 `INDEX_MASTER_ENTRIES` · `resolveIndexMasterEntry` · `isIndexPriceSourceAvailable` · `indexPriceSourceTicker`. 기존 6개 지수(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW)는 AVAILABLE(Yahoo · 기호는 `INDEX_TICKERS`와 같음). 공식 기초지수로 확인됐지만 원천이 없는 지수는 UNAVAILABLE로 기록만 한다: 코스피 200 TR(`NO_PERMITTED_SOURCE` - KRX 로그인 필요 · Yahoo 이력 없음 · KIS 지수코드는 약관 확인 전 연결 금지), Dow Jones Korea Dividend 30 PR · iSelect 미국AI전력핵심인프라 PR(`NO_PUBLIC_SOURCE`), Dow Jones U.S. Dividend 100 PR(`SOURCE_INSUFFICIENT_HISTORY` - Yahoo 1년 조회 관측 1개 · 2026-09-19 확인) |
+| **IM-1** Index Master | Risk Benchmark(무엇과 비교할지)와 가격 원천(어디서 받는지)을 분리한다. 최소 필드: `key · officialName · provider · sourceId · returnType(PR/TR) · priceDefinition(INDEX_LEVEL) · currency · market · source · evidenceGrade · availability(+unavailableReason)`. 공식 근거가 없는 칸은 null(추정 금지) | js/28 `INDEX_MASTER_ENTRIES` · `resolveIndexMasterEntry` · `isIndexPriceSourceAvailable` · `indexPriceSourceTicker`. 기존 6개 지수(KOSPI · KOSDAQ · NASDAQ · SP500 · NASDAQ100 · DOW)는 AVAILABLE(Yahoo · 기호는 `INDEX_TICKERS`와 같음). 공식 기초지수로 확인됐지만 원천이 없는 지수는 UNAVAILABLE로 기록만 한다: 코스피 200 TR(`NO_PERMITTED_SOURCE` - KRX 로그인 필요 · Yahoo 이력 없음 · KIS 지수코드는 약관 확인 전 연결 금지), Dow Jones Korea Dividend 30 PR · iSelect 미국AI전력핵심인프라 PR(`NO_PUBLIC_SOURCE`), Dow Jones U.S. Dividend 100 PR(`NO_PUBLIC_SOURCE` - §50 PD-13으로 정정 · Yahoo는 `^DJUSDIV` · `^DJUSDV` · `^DJDVY` 모두 과거 시계열을 제공하지 않고 당일 수준값 1건만 준다 · 400일 요청 실측 2026-09-21) |
 | **IM-2** 원천 없음 | 정해진 지수의 가격 원천이 없으면 Benchmark를 "계산 가능"으로 처리하지 않는다. **[2차 통합 보완 · 세 상태 분리]** Benchmark 확인(RESOLVED) ≠ 지수 가격 원천(`priceSource: UNAVAILABLE`) ≠ 베타(null · `SOURCE_UNAVAILABLE`) - 세 상태를 하나로 합치지 않는다(1차의 `UNRESOLVED(indexSourceUnavailable)` 표기를 대체). 원천 없는 지수는 조회하지 않고, 다른 정의 · 비슷한 지수로 대신하지 않는다 | js/09 `finalizeRiskBenchmark` · 종목 `benchmarkPriceSource` |
 | **D-01** 지수 가격 · PR/TR | ① 지수 수준을 통계 가격으로 인정(§44 제8조 8-1 단서) ② 공식 기초지수와 같은 수익 정의 우선 ③ 다른 정의를 쓰게 되면 `DEFINITION_MISMATCH` 보존 ④ 278530 목표 = 코스피 200 TR(현재 원천 없음 → UNRESOLVED) ⑤ KIS 2035 등 KIS 지수 API는 약관 확인 전 연결 · 호출하지 않는다 | js/09 지수 시계열은 `datedClosesFromSeries(data, 'raw')`(수준값). 원장 `underlyingReturnType`(공식 확인분만) ↔ Index Master `returnType` 비교(`resolveBenchmarkDefinitionStatus` - MATCH / DEFINITION_MISMATCH / UNCONFIRMED). 현재 원장에 불일치 항목 없음 |
 | **D-05** 비동기 쌍 | 같은 날짜 정렬 금지. 일반 엔진(Dimson 시차 0 + 1) · 원화 상품이면 H.10 원화 환산 지수. 공식 A등급 환헤지 사실이 있는 상품만 연결(비헤지 A: 360750 · 458730). 환헤지 A등급 미확인(368590 · 360200)은 HOLD. 특정 상품 하드코딩 없음 · 최소 관측 120 · 1년 조회 유지 | js/09 `riskSeriesMarketOf` · `RISK_MARKET_CLOSE_ORDER`(같은 날짜면 한국이 먼저 마감) · `buildAsyncDimsonRows` · `computeAsyncDimsonBeta`(절편 + 두 설명변수 최소제곱 · 기울기 합). 판정은 "종목 시계열 시장 ≠ 지수 시장"이라는 성질로만 한다. 458730은 기초지수 원천이 없어(IM-1) 현재 UNRESOLVED |
@@ -3187,3 +3187,277 @@ MC 모델/수식 · Return Key · Macro. 이번 변경은 **valuation source 선
 KIS raw response · 조회한 시장가격을 **영구 저장하지 않는다.** 시세는 메모리에만 두며
 localStorage · JSON 백업 · 기기 간 동기화 어디에도 들어가지 않는다. Worker 캐시(발행정보 30일 ·
 시세 20분)와 앱의 메모리 캐시(20분)로 같은 채권을 반복 호출하지 않는다.
+
+---
+
+## 50. Instrument Metadata · 통화 무결성 · 채권 평가 일원화 · Beta 분리 (PM FINAL INTEGRATED IMPLEMENTATION DIRECTIVE 2026-09-21 · PD-01 ~ PD-17)
+
+> **근거**: 2026-09-20~21 종합감사(READ-ONLY) 결과 24건. PM이 그중 17건을 결정(PD-01 ~ PD-17)하고
+> **한 번의 통합 구현**으로 처리하도록 지시했다. 개별 증상을 따로 막지 않고 **근본 원인**을 제거한다.
+> 이 절은 §49(채권 프로세스)를 대체하지 않는다 - BOND-01~46은 그대로 유효하고, 그중 BOND-46(valuation
+> source를 Bond Risk에 한정)만 PD-07로 개정된다(아래 50-7).
+
+### 50-0. 근본 원인 (감사 CAUSE-1 ~ CAUSE-6)
+
+| 원인 | 내용 | 파생 증상 |
+| --- | --- | --- |
+| **CAUSE-1** | **ticker 칸의 의미 과적재** - 한 필드가 ① 종목 identity ② 국내/해외 판정 ③ 통화 판정 ④ 주식분석 입력 ⑤ 시세 조회 심볼을 동시에 수행. BOND-05가 여기에 ISIN을 넣자 ②③④가 전부 오작동 | D-01 · D-02 · D-03 · B-01 · B-03 · C-02 |
+| **CAUSE-2** | 가격의 SoT가 자산군마다 다른데 화면은 전부 "현재가"로 부름 | A-01 · A-02 |
+| **CAUSE-3** | 세분 성격(채권 6종)은 추가했으나 그 위의 검증 · 집계는 옛 단일 BOND 전제 | B-02 · A-03 |
+| **CAUSE-4** | 식별 경로(검색/수동)에 따라 downstream 자격이 달라지는데 UI는 동등한 선택처럼 제시 | C-01 · C-02 |
+| **CAUSE-5** | "원천 없음"과 "일시 실패"를 구분하는 코드는 있으나 사유 판정이 실측과 어긋남 | F-01 |
+| **CAUSE-6** | 보호 장치(rate limit)가 캐시보다 먼저 실행 | H-01 |
+
+### 50-1. PD-01 Instrument Metadata 우선 · Identifier 분류 보조
+
+통화 · 국내외 · 자산군 · 분석 가능 여부를 **ticker 문자열만으로 추론하지 않는다.** 우선순위:
+
+1. **확정 metadata** - 저장된 Asset · 채권 원장(Bond Master)
+2. **승인된 Master** - Exposure Master(`priceCcy`) · 종목 마스터(상장 거래소)
+3. **Identifier classifier** - 형태에서 나온 힌트
+4. **명시적 사용자 입력**
+
+충돌하면 **자동으로 덮어쓰지 않는다** - `conflicts`에 담아 돌려주고 저장 경로가 차단하거나 REVIEW로 둔다.
+
+| 구현 | 위치 |
+| --- | --- |
+| `IDENTIFIER_KIND` · `classifyIdentifier()` - **형태만** 판정. ISIN은 `currencyHint` · `marketHint` 모두 null(국가코드로 통화를 단정하지 않는다) · `quoteSymbolSupported: false` | js/01 |
+| `resolveInstrumentMetadata()` · `INSTRUMENT_CONFIDENCE`(CONFIRMED / MASTER / CLASSIFIER / USER / UNRESOLVED) | js/01 |
+| `lookupBondMasterFacts()` · `lookupExposurePriceCcy()` | js/01 |
+
+### 50-2. PD-02 Position Identity에 Currency 포함
+
+`owner + account + ticker` → **`owner + account + ticker + currency`**.
+통화가 비어 있는 옛 거래는 원화로 읽는다(`ledgerCurrencyOf`).
+
+- **일괄 migration 하지 않는다.** 한 종목의 거래가 전부 같은 통화면 그룹 결과가 **완전히 동일**하다(테스트로 고정).
+  통화가 섞인 데이터만 갈라지며, 그것이 드러나야 하는 상태다.
+- **같은 규칙을 쓰는 곳 전수**: `transactionIdentityKey`(js/06) · `assetMatchesLedgerIdentity`(js/06) ·
+  `computeCurrentHoldingQuantity`(js/06) · `getSuggestedAppliedRate`(js/06) ·
+  `downloadHoldingsAsTxTemplate`(js/06) · **`bondLedgerKey`(js/29)**.
+  손으로 만든 키를 남기지 않는다 - 한 곳이라도 옛 규칙이면 보유가 사라진다(구현 중 실제로 재현됨).
+
+### 50-3. PD-03 확정 metadata ↔ 거래 통화 불일치 = 저장 차단
+
+`showToast` 경고 후 통과가 아니라 **`return`(저장 안 함)**이다. 근거 출처를 문구에 그대로 적는다
+(채권 원장 발행통화 / 이미 등록된 같은 보유분 / 종목 기준정보 / 국내 상장 종목코드).
+근거가 하나도 없으면 입력값을 그대로 쓰고 충돌로 보지 않는다(모르는 것을 틀렸다고 하지 않는다).
+
+### 50-4. PD-04 isDomestic을 ticker 형식에서 분리
+
+`classifyIsDomestic(ticker, currency)` 판정 순서:
+① 거래소 코드 체계로 **확정**되는 것(`.KS`/`.KQ` · 국내 단축코드 · 지수 심볼)이 통화보다 강하다
+② 확정 metadata인 통화 ③ 식별자 힌트.
+ISIN은 ①에 해당하지 않으므로 ②로 내려간다 - **원화 채권이 '해외'로 굳던 문제가 여기서 끝난다.**
+
+### 50-5. PD-05 채권의 주식 전용 기능 진입 차단
+
+`instrumentCapabilities(assetLike)` → `{ marketPriceLookup, equityAnalysis, equityBenchmark, bondValuation }`.
+판정 기준을 "티커가 비어 있지 않다"에서 **"이 자산으로 무엇을 할 수 있는가"**로 바꾼다.
+
+| 진입점 | 변경 |
+| --- | --- |
+| `attachStockAnalysisReportToDetailModal` · `attachFundamentalSection` · `attachRiskDiagnosisToDetailModal` | `assetSupportsEquityAnalysis()`가 true일 때만 호출(js/08) |
+| `renderAssetDetailChart` | `marketPriceLookup`으로 판정 · 채권 전용 안내 문구(js/08) |
+| `isCashOrBondNoTicker`(목록 표시) | `!r.ticker` → **시세 조회 대상이 아님**으로 판정(js/07) |
+| `resolveMarketRiskBenchmark` | 주식 · ETF만 대상(채권 제외 정책 유지 · js/09) |
+
+Bond Risk는 기존 별도 정책 그대로다(§49 · §47-1).
+
+### 50-6. PD-06 검색/수동 입력은 신뢰도 기반
+
+- 보유 자산에서 온 검색 결과는 **확정 metadata**다 - 티커 유무와 무관하게
+  `owner · accountType · currency · category · isDomestic · role · source · confidence`를 전부 전달한다(js/04).
+- `applyStockPickToTransactionForm`은 통화를 **재추론하지 않는다** - `resolveInstrumentMetadata`가 정한다(js/06).
+- 자산군이 확정돼 있으면 폼에 반영하고, 채권이면 ISIN 칸까지 채운다(축 A/B 분리는 유지).
+- "검색 가능하면 수동 입력 전면 금지"로 만들지 않는다. Master가 없거나 식별하지 못하는 자산은 수동 입력을 그대로 허용한다.
+- `txBondFormActive` 조건 개정: 자동으로 채워진 '채권'이라도 **ISIN이 실제로 있으면** 채권 입력으로 본다
+  (ISIN 없는 자동 채움은 예전 그대로 비활성 - E2E-59 회귀 방지).
+- `findConflictingManualBond` 판정 수정: `Number(null)`이 0이라 **빈 레코드도 "수동 보유분 있음"으로 읽히던 버그** 제거.
+
+### 50-7. PD-07 · PD-08 Bond Asset valuation (BOND-46 개정)
+
+```
+자산 화면 평가 = 수량 × resolveAssetUnitPrice(asset).unitPrice
+  MARKET   : 10,000 × (KIS 시세 / 가격기준액면)       ← BOND-41~45 검증을 통과한 시세만
+  PURCHASE : 거래원장 가중평균 매입단가(asset.buyPrice)
+```
+
+- **「채권 위험」 카드와 같은 함수**(`resolveBondAssetUnitPrice`, js/29)를 쓴다 - 두 화면이 갈라지지 않는다.
+- **"최초 거래가격을 currentPrice로 고정"하던 동작을 제거한다.** `syncAssetsFromTransactions`가
+  거래원장 기반 채권의 저장 현재가를 가중평균 매입단가와 함께 갱신한다.
+- **시장가격은 저장하지 않는다(PD-08)** - 메모리 캐시(js/13 `bondQuoteMemory`)만 읽고,
+  저장되는 값은 매입원가뿐이다. localStorage · JSON 백업 · 동기화 어디에도 시세가 들어가지 않는다.
+- 거래원장이 없는 **수동 채권(legacy)**은 사용자가 적어 둔 값을 그대로 둔다(PD-17 보존).
+- 평가 캐시는 `bondValuationSignature()`(거래 수 · 최신 updatedAt · 채권 레코드 · `bondQuoteVersion()`)로
+  무효화한다 - 렌더링마다 원장을 다시 계산하지 않기 위한 것이며 값을 저장하는 것이 아니다.
+
+**BOND-46 개정**: "이 변경은 valuation source 선택 한 곳뿐이다"의 적용 범위를 **Bond Risk + 자산 화면 평가**로
+넓힌다. Duration · Modified Duration · ±100bp · 신용위험 비수치화 · Portfolio Beta의 Bond 제외 ·
+MC 모델 · Return Key · Macro는 **그대로 무변경**이다.
+
+### 50-8. PD-09 Bond weight 연결
+
+`calcRow()`가 `curKRW`를 실제로 돌려준다(= `curAmount`). js/09의 `bondCur` → `bondWeightPct`가 비로소 동작한다.
+**Portfolio Beta에서 Bond를 제외하는 정책은 그대로 유지한다.**
+(예전에는 `calcRow(a).curKRW`가 코드 전체에서 생산처 0인 키라 `bondWeightPct`가 항상 0이었고,
+"채권 비중 N%는 베타 집계 대상이 아닙니다" 안내가 한 번도 출력되지 않았다.)
+
+### 50-9. PD-10 Bond Return Key validator 정합성
+
+`assessReturnAssumptionStatus`의 불일치 판정을 **추천기와 같은 표**로 한다 -
+`returnKeyCandidatesForCharacter(character)`에 지금 키가 들어 있으면 정상이다.
+문자열 예외를 추가하지 않는다. 채권 세부 성격이 더 늘어나도 같은 규칙이 그대로 맞는다.
+**Return Key의 수익률 계산 정책 자체는 변경하지 않는다.**
+
+| 적용키 | 성격 | 판정(변경 후) |
+| --- | --- | --- |
+| `채권`(자동) | 전 성격 | OK(변경 없음) |
+| `BOND` | `BOND` | OK(변경 없음) |
+| `BOND` | `KR_GOV_BOND` · `KR_CORP_BOND` · `FOREIGN_*_BOND_*` 4종 | **OK** (이전: NEEDS_REVIEW 오탐) |
+| `BOND` | 주식 등 비채권 성격 | NEEDS_REVIEW(변경 없음 - 검증기를 무력화하지 않았다) |
+
+### 50-10. PD-11 Excel · Sync에서 Bond identity 보존
+
+`relinkBondPositionsToAssets()`(js/29) - assetId가 끊어진 채권 레코드를 **ISIN + 소유자 + 계좌**로 다시 잇는다.
+찾지 못하면 **그대로 둔다**(발행조건을 삭제하지 않는다 · PD-17). 호출 지점: 엑셀 가져오기 직후 ·
+JSON 복원 직후 · 클라우드 병합 직후. 엑셀에서 거래원장을 생성하는 확장은 하지 않는다.
+
+### 50-11. PD-12 Cloudflare KV 사용구조
+
+처리 순서를 **인증 → 입력검증 → 라우팅 → 한도 판정(읽기) → 캐시 → (미스일 때만) 한도 기록 → 상류**로 바꾼다.
+
+| 요청 유형 | KV put (변경 전 → 후) |
+| --- | --- |
+| 인증 실패(401) | 0 → 0 |
+| 형식 오류(400) | **2 → 0** |
+| 캐시 적중 | **2 → 0** |
+| 캐시 미스 | 3 → 3 |
+| 없는 경로(404) | **2 → 0** |
+
+**제한을 약하게 만들지 않는다**: 인증은 여전히 맨 앞 · 분 30회 · 일 300회 **값 그대로** ·
+한도 판정은 모든 요청에서 수행(읽기 전용)하여 이미 한도를 넘긴 IP는 캐시 적중이어도 429다.
+카운터 **증가**만 상류를 실제로 부르는 요청으로 한정한다(보호 대상이 상류 호출이기 때문).
+
+### 50-12. PD-13 DJ US Dividend 100 사유 코드 정정
+
+`SOURCE_INSUFFICIENT_HISTORY` → **`NO_PUBLIC_SOURCE`**.
+실측(2026-09-21 · 400일 요청): `^DJUSDIV` · `^DJUSDV` · `^DJDVY` 모두 **관측 1건**(당일 수준값)만 오고,
+`DJUSDIV` · `^SDY` · `^DJUSDVP`는 404다. 대조군 `^GSPC` 274 · `^IXIC` 274 · `^KS11` 268 · `^KQ11` 268.
+`^KS200`도 관측 1건으로 같은 상태임을 함께 확인했다(KOSPI200_PR/TR의 `NO_PERMITTED_SOURCE` 기록과 일치).
+**시간이 지나면 해결된다고 표시하지 않는다.** `sourceId`는 "무엇을 시도했고 왜 안 되는지"의 근거로 남긴다.
+
+### 50-13. PD-14 ACE 미국S&P500 환헤지
+
+**공식 원문을 확보하지 못했다 → 기존 UNRESOLVED(`hedgeUnconfirmed`) 유지.** 추정하지 않는다.
+확인한 것(원문 아님): 운용사 상품 페이지에 환헤지 문구가 **없다**(2026-09-21 확인) ·
+금융투자협회 FunETF 분류 "해외주식 시장대표 환노출형" · DART 정식 펀드명이 `(주식)`이고 `(주식-파생형)(H)`가 아니다.
+남은 경로: 운용사 (간이)투자설명서 PDF **원문**(다운로드 승인 필요) 또는 DART 첨부문서(robots 금지 경로라 사용 안 함).
+
+### 50-14. PD-15 Market Beta / Tracking Beta 분리
+
+두 값은 **서로 다른 통계량**이다. 하나의 숫자로 섞지 않는다.
+
+| | Market Beta | Tracking Beta |
+| --- | --- | --- |
+| 기준 | **상장 시장 대표지수** | **공식 기초지수**(Exposure Master) |
+| 용도 | **위험점수 「시장위험」(가중치 15%) · Portfolio Beta · 스트레스** | 추적 특성 **표시 전용** |
+| 필드 | `benchmark*` · `beta` · `betaStatus` | `trackingBenchmark*` · `trackingBeta` · `trackingBetaStatus` |
+| 집계 | `portfolioBeta` · `betaCoveragePct` | `portfolioTrackingBeta` · `trackingBetaCoveragePct` |
+
+**기준 지수 매핑은 원장 · 코드에 이미 있는 사실만 쓴다**(`RISK_MARKET_INDEX_BY_LISTING_EXCHANGE`):
+KOSPI 상장 → `KOSPI`(^KS11) · KOSDAQ 상장 → `KOSDAQ`(^KQ11) · NASDAQ 상장 → `NASDAQ`(^IXIC).
+**NYSE · AMEX는 매핑하지 않는다(UNRESOLVED)** - 앱에 그 시장의 종합지수가 없다(§44 D-02 유지).
+S&P500으로 대신하지 않는다. 종목 마스터에 없어도 `.KS`/`.KQ` 접미사 자체가 상장 시장이므로 그대로 읽는다.
+해외 상장 개별주는 본국 보통주(HOME_COMMON) 근거가 있을 때만 쓴다(D-06 게이트 유지).
+
+**부수 효과(의도된 것)**: Market Beta는 항상 같은 시장 · 같은 통화끼리 비교하므로 **H.10 원화 환산과
+비동기 Dimson 경로를 타지 않는다.** 원화 낙폭표(`*_KRW`)를 쓰는 경우가 사라져 "정의가 맞는 짝끼리만
+곱한다"(D-9)가 구조적으로 보장된다. 비동기 · H.10 · Dimson 계산은 **Tracking Beta에 그대로 남아 있다**(무변경).
+
+`m.betaDefinition = 'MARKET'` - 위험점수가 어떤 베타를 쓰는지 화면이 말할 수 있게 명시한다.
+**Portfolio Beta의 Bond · Cash · Real Estate 제외 정책은 그대로 유지한다.**
+
+### 50-15. PD-16 KIS Index API
+
+**실제 응답 · 의미 · license 확인 전 구현 금지.** 이번 구현에서 **아무것도 하지 않았다.**
+Worker에 지수 라우트가 없고, 라우트를 추가하려면 재배포가 필요한데 그 전에 실제 응답 검증이 선행돼야 한다
+(§49-12와 같은 순서). KOSPI200 ≠ KOSPI200TR 대체 금지 · DJ · iSelect 임의 mapping 금지 그대로.
+
+### 50-16. PD-17 기존 오염 데이터 - 탐지만 한다
+
+`detectInstrumentIntegrityIssues(asset)` · `scanInstrumentIntegrity()`(js/01) - **아무것도 고치지 않는다.**
+
+| 코드 | 등급 | 조건 |
+| --- | --- | --- |
+| `BOND_CURRENCY_CONFLICT` | REVIEW | 채권 원장 발행통화 ≠ 자산 통화 |
+| `DOMESTIC_CODE_FOREIGN_CURRENCY` | REVIEW | 국내 상장 코드인데 통화가 USD |
+| `LEDGER_CURRENCY_CONFLICT` | REVIEW | 같은 소유자 · 계좌 · 종목에 통화가 섞인 거래 |
+| `BOND_POSITION_ORPHAN` | UNRESOLVED | 채권 발행조건이 가리키는 자산이 없다 |
+
+자산 상세의 기존 안내 영역(`assetDetailPositionNotice`)에 그대로 붙인다.
+**자동 대량 변환 금지** - 모든 ISIN 채권을 KRW로 덮어쓰는 식의 처리를 하지 않는다.
+실사용자 데이터에 대한 migration script를 별도로 실행하지 않는다.
+
+### 50-17. 계산 결과 변화 (의도된 것 · baseline 재승인 대상)
+
+| 항목 | 변경 전 | 변경 후 | 사유 |
+| --- | --- | --- | --- |
+| Golden 2종목 `portfolioBeta` · 6대 요인 · riskScore · 변동성 · MDD · VaR · CVaR · 신뢰도 | - | **전부 동일** | 계산식 무변경(기준 지수만 바뀌었고 fixture에서 두 지수가 같은 시계열) |
+| Golden `benchmarkKey` | `['KOSPI','NASDAQ100']` | `['KOSPI','NASDAQ']` | PD-15 - 상장 시장 지수 |
+| Golden `stressLossPct` (2020) | -37.919709 | **-38.300241** | 낙폭 상수가 NASDAQ100(-28.03) → NASDAQ(-30.12) |
+| Golden `stressLossPct2022` | -32.053438 | **-32.091673** | 낙폭 상수가 NASDAQ100(-35.28) → NASDAQ(-35.49) |
+| 채권 자산 평가금액 | 첫 거래 단가 고정 | MARKET → PURCHASE | PD-07 |
+| 총자산 · 비중 · 미래예측 초기자본 · MC `initialPrincipal` | 위 고정값 반영 | 위 평가 반영 | PD-07의 downstream |
+| `bondWeightPct` | 항상 0 | 실제 채권 비중 | PD-09 |
+| ISIN 채권 `isDomestic` | 해외 | **국내**(원화채) | PD-04 |
+| ISIN 채권 자동 Return Key | `채권` | `BOND` | isDomestic 정정의 부수 효과. **수익률 값은 동일**(둘 다 `getReferenceRate(preset,'BOND')`) |
+
+**의도하지 않은 변경 0** - MC 4지표 · μ/σ 지문 · Return Key 수익률 · Macro는 그대로다.
+
+### 50-18. 변경하지 않은 것
+
+§44 Risk 정책 구조 · 6대 요인 가중치(집중 25 / 변동성 20 / 손실 20 / **시장 15** / 상관 10 / 기술 10) ·
+밴드 · 등급 임계값 · 최소 관측 120 · 관측 창 · Dimson 공식 · H.10 단일 환율 공급자 ·
+§49 BOND-01~45 · Duration 계산 · MC 엔진/수식 · Return Key 수익률 · Macro ·
+`#riskScopeNote` 상시 노출(V1.3 P1-1) · Exposure Master 원장 내용(사유 코드 1건 제외) ·
+Worker 읽기 전용 원칙 · 한도 값(30/min · 300/day) · 시세 비저장 원칙.
+
+### 50-19. 측정 결과 (v264 → v265 · 2026-09-21)
+
+**회귀 하네스**(`node scripts/closeout/regression-harness.js compare` · FROZEN 데이터 · v262 기준선)
+
+| suite | v264 | v265 | 증감 |
+| --- | --- | --- | --- |
+| risk | 23 | **53** | **+30** (전부 PD-15 Beta 분리에서 나온 의도된 변화) |
+| mc | 683 | 683 | **0** |
+| master | 73 | 73 | **0** |
+| 합계 | 779 | 809 | +30 |
+
+v264 기준선은 `git worktree`로 태그 v264를 따로 펼쳐 같은 하네스를 돌려 얻었다(작업 트리 무접촉).
+
+**risk +30건의 내역**(합성 포트폴리오 7종목)
+
+| 구분 | 종목 | 변화 |
+| --- | --- | --- |
+| 커버리지 상승 | h2 (KOSPI200_PR · 원천 없음) | 베타 없음 → **KOSPI 대비 0.8947** |
+| 커버리지 상승 | h4 (혼합 노출) | 베타 없음 → **KOSPI 대비 0.5789** (상장 시장은 혼합 여부와 무관) |
+| 커버리지 상승 | h6 (KOSPI200_TR · 원천 없음) | 베타 없음 → **KOSPI 대비 0.7895** |
+| 의미 변경 | h3 (국내 상장 미국 ETF) | SP500 비동기 Dimson −0.0012 → **KOSPI 같은 날짜 1.0000** · H.10 환산 경로 해제 |
+| 사유 코드만 변경 | h5 (SCHD · AMEX 상장) | 베타 없음(SOURCE_UNAVAILABLE) → 베타 없음(**BENCHMARK_UNRESOLVED**) — 값 변화 없음 |
+| 포트폴리오 | — | `portfolioBeta` null → **1.0418** · `subScores.market` null → **55** · `riskScore` 45 → **48** · 신뢰도 78 → **86**(베타 미확인 비중 61% → 7%) |
+
+⇒ PD-15의 목적(시장위험 요인이 실제로 계산되는 것)이 수치로 확인된다. AMEX · NYSE 상장분은
+의도대로 미확정으로 남는다(임의 대체 금지).
+
+**Monte Carlo**(`node scripts/closeout/measure-mc.js` · seed 20260101 · 2,000회 · 20년)
+
+| 시나리오 | P10 | P50 | P90 | 평균 | μ지문 | σ 변경 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 주식만(원장 49건) | 0.00% | 0.00% | 0.00% | 0.00% | 동일 `af875582fc001dc2` | 0건 |
+| 주식 + 합성채권 3종 | 0.00% | 0.00% | 0.00% | 0.00% | 동일 `a36f5ba2112d4d44` | 0건 |
+
+기록: `docs/closeout/measurements/mc-v265-s50.json`
+
+**게이트**: Unit 695/695 · ESLint 0 · Data Guard PASS · Release Guard PASS(v265) ·
+Secret Scan(신규 하드코딩 0) · E2E는 아래 인계장 기록 참조.

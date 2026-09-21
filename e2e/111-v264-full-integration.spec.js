@@ -360,7 +360,7 @@ test('8. 거래내역 → Position → Asset → Bond Position → Bond Risk 전
 
   const trace = await page.evaluate((isin) => {
     const { positions } = computePositionsAndRealizedPnL();
-    const pos = positions[`신랑__일반계좌__${isin}`];
+    const pos = positions[`신랑__일반계좌__${isin}__KRW`]  /* [§50 · PD-02] 포지션 키에 통화 포함 */;
     const asset = state.assets.find((a) => a.ticker === isin);
     const rec = state.bondPositions.find((p) => p.identity.isin === isin);
     const held = resolveBondHolding(rec, positions);

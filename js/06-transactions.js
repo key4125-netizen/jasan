@@ -27,11 +27,27 @@
  *
  * 거래 레코드에는 currency가 이미 있다(폼·엑셀·JSON 전부 저장한다) - 새 필드를 만들지 않고 그것만
  * 쓴다. isDomestic은 거래 스키마에 없으므로 여기서 추론하지 않는다(최종 보고서의 dependency 참고). */
+/* [§50 · PD-02] 티커가 있는 경우에도 **통화를 identity에 포함**한다.
+ *
+ * 예전에는 "티커가 있으면 티커 하나가 통화도 결정한다"고 보고 티커 경로에서 통화를 뺐다.
+ * 그 전제가 깨지는 경우가 실제로 있다 - 같은 ISIN 채권에 원화 거래와 (오입력된) 달러 거래가
+ * 섞이면 두 거래가 한 포지션으로 합쳐지고 **마지막 거래의 통화가 포지션 전체를 지배**했다
+ * (감사 실측: 34,040,000원 포지션이 46,963,199,520원이 됐다). 통화가 다른 두 거래는 애초에
+ * 같은 보유분이 아니므로 identity에서 갈라 놓는다.
+ *
+ * 기존 데이터 영향(PD-02 단서 - 일괄 migration 금지): 한 종목의 거래가 전부 같은 통화이면
+ * 키 문자열만 길어질 뿐 그룹은 **완전히 동일**하다(실측으로 고정). 통화가 섞인 데이터만 갈라지며,
+ * 그것이 바로 드러나야 하는 상태다. 값을 자동으로 고치지 않는다(PD-17).
+ * 통화가 비어 있는 옛 거래는 원화로 읽는다 - 앱이 원화 외 통화를 비워 저장한 적이 없다. */
+function ledgerCurrencyOf(t) {
+  return String((t && t.currency) || '').trim().toUpperCase() || 'KRW';
+}
 function transactionIdentityKey(t) {
   const ticker = String(t.ticker ?? '').trim();
+  const ccy = ledgerCurrencyOf(t);
   return ticker
-    ? `${t.owner}__${t.accountType}__${ticker}`
-    : `${t.owner}__${t.accountType}__${t.name}__${t.currency}`;
+    ? `${t.owner}__${t.accountType}__${ticker}__${ccy}`
+    : `${t.owner}__${t.accountType}__${t.name}__${ccy}`;
 }
 
 /* [B-5] 자산 하나와 거래(또는 거래 포지션) 하나가 같은 대상을 가리키는지 판정한다.
@@ -46,9 +62,12 @@ function transactionIdentityKey(t) {
  * 화면은 문제없다고 말하는" 상태가 다시 생긴다. */
 function assetMatchesLedgerIdentity(asset, ledger) {
   if (asset.owner !== ledger.owner || asset.accountType !== ledger.accountType) return false;
+  /* [§50 · PD-02] 티커 경로에도 통화를 넣는다 - transactionIdentityKey와 **같은 규칙**이어야 한다.
+   * 규칙이 갈라지면 통화가 다른 포지션이 엉뚱한 자산의 수량을 덮어쓴다(감사 실측). */
+  if (ledgerCurrencyOf(asset) !== ledgerCurrencyOf(ledger)) return false;
   const ledgerTicker = String(ledger.ticker ?? '').trim();
   if (ledgerTicker) return asset.ticker === ledger.ticker;
-  return !String(asset.ticker ?? '').trim() && asset.name === ledger.name && asset.currency === ledger.currency;
+  return !String(asset.ticker ?? '').trim() && asset.name === ledger.name;
 }
 
 // [D-1 Daily Valuation · A2] 거래 배열을 넘길 수 있게 인자를 하나 받는다. 넘기지 않으면 예전과 똑같이 state.transactions를
@@ -274,6 +293,18 @@ function syncAssetsFromTransactions(opts) {
       asset.buyPrice = pos.avgPrice;
       asset.updatedAt = Date.now();
     }
+    /* [§50 · PD-07 · 감사 A-01] 채권의 저장된 현재가가 "처음 거래한 날의 단가"로 굳는 것을 없앤다.
+     *
+     * 채권은 시세 갱신 대상이 아니라(NON_TRADABLE_CATEGORIES) currentPrice를 갱신하는 경로가
+     * 한 곳도 없었다. 그래서 추가매수 · 거래수정 · 거래삭제 · 전량매도 · 부팅 재계산을 거쳐도
+     * 첫 거래 단가가 그대로 남았고(실측 7경로), 자산 화면 평가금액 · 총자산 · MC 초기자본이
+     * 전부 그 값으로 계산됐다. 거래원장이 관리하는 채권은 저장값도 원장을 따라가게 한다.
+     * **시장가격은 저장하지 않는다(PD-08)** - 여기에 들어가는 값은 매입원가(가중평균 매입단가)뿐이고,
+     * 시장가 평가는 calcRow가 메모리 시세로 그때그때 만든다. */
+    if (asset && asset.category === '채권' && asset.positionSource !== 'manual' && asset.currentPrice !== pos.avgPrice) {
+      asset.currentPrice = pos.avgPrice;
+      asset.updatedAt = Date.now();
+    }
     // [미실현 평가손익 환차 반영] 해외통화 포지션이면 거래내역에서 계산된 매수시점 가중평균 환율
     // (pos.avgRate)을 자산에 함께 저장해둔다 - calcRow()가 매입원가를 오늘 환율이 아니라 이 값으로
     // 환산해서, 보유 중인(아직 안 판) 포지션의 누적 평가손익에도 환차손익이 반영되게 한다.
@@ -393,11 +424,13 @@ function downloadHoldingsAsTxTemplate() {
   // 직접 수정하므로 양식에서 제외하지만(findMatchingCashAsset/syncAssetsFromTransactions과 동일 정책),
   // 달러(USD) 현금은 거래내역 기반 가중평균 환율 관리로 전환되었으므로(migrateUsdCashAssetsToTransactions
   // 참고) 다른 보유자산과 동일하게 양식 대상에 포함한다 - 소유자와 무관하게 이 기준을 동일 적용한다.
-  const existingKeys = new Set(state.transactions.map((t) => `${t.owner}__${t.accountType}__${t.ticker || t.name}`));
+  /* [§50 · PD-02] 손으로 만든 키를 쓰지 않는다 - 실제 포지션 계산과 **같은 identity 함수**를 쓴다.
+   * 규칙이 갈라지면 "거래가 이미 있는데 양식에 또 나오는" 조합이 생긴다(통화가 다르면 다른 보유분이다). */
+  const existingKeys = new Set(state.transactions.map((t) => transactionIdentityKey(t)));
   const targets = state.assets.filter((a) => {
     if (a.category === '현금' && a.currency !== 'USD') return false;
     if (num(a.quantity) <= 0) return false;
-    return !existingKeys.has(`${a.owner}__${a.accountType}__${a.ticker || a.name}`);
+    return !existingKeys.has(transactionIdentityKey(a));
   });
 
   if (targets.length === 0) {
@@ -630,7 +663,8 @@ function getSuggestedAppliedRate() {
     const accountType = document.getElementById('tx_accountType').value.trim() || '일반계좌';
     const name = document.getElementById('tx_name').value.trim();
     const { positions } = computePositionsAndRealizedPnL();
-    const pos = positions[`${owner}__${accountType}__${name}`];
+    // [§50 · PD-02] 손으로 만든 키를 쓰지 않는다 - 실제 계산과 같은 identity 함수를 그대로 쓴다.
+    const pos = positions[transactionIdentityKey({ owner, accountType, ticker: '', name, currency: 'USD' })];
     if (pos && pos.quantity > 0 && Number.isFinite(pos.avgRate) && pos.avgRate > 0) return pos.avgRate;
   }
   return state.exchangeRate;
@@ -660,19 +694,46 @@ document.getElementById('tx_accountType').addEventListener('blur', refreshApplie
 // 종목명이 정확히 일치해야만 기존 포지션과 연결된다(syncAssetsFromTransactions 참고) - owner/accountType/
 // currency는 검색 결과를 고를 때만 전달되며(renderStockSearchResults), 사용자가 직접 타이핑하다 생기는
 // 이름/계좌 불일치 사고를 막기 위해 그 값을 그대로 채워 넣는다.
-function applyStockPickToTransactionForm(ticker, name, owner, accountType, currency) {
+/* [§50 · PD-01 · PD-06 · 감사 D-01 · C-02] 검색 결과를 거래 폼에 반영한다.
+ *
+ * 예전 구현의 두 가지 문제를 함께 고친다.
+ *  ① 통화를 **티커 문자열**로 다시 추론했다 - `.KS/.KQ`도 국내 단축코드도 아니면 무조건 USD였다.
+ *     채권 ISIN이 정확히 여기에 걸려, 원화 국고채를 검색해 고르면 통화가 조용히 USD로 바뀌었다
+ *     (감사 실측: 적용환율 1,372.23까지 자동으로 채워졌다).
+ *  ② 티커가 있는 결과에는 소유자 · 계좌구분 · 자산군을 **하나도 전달하지 않았다** - 이미 가진
+ *     보유분을 골랐는데도 계좌구분이 빈 칸이 되어, 그대로 저장하면 다른 계좌의 새 포지션이 됐다.
+ *
+ * 이제 통화는 resolveInstrumentMetadata가 정한다(확정 metadata → Master → 식별자 힌트 → 입력).
+ * 검색 결과가 실려 보낸 값이 있으면 그것이 **확정 metadata**다(보유 자산에서 그대로 읽은 값).
+ */
+function applyStockPickToTransactionForm(ticker, name, owner, accountType, currency, extra) {
+  const meta = extra || {};
   document.getElementById('tx_name').value = name;
   document.getElementById('tx_ticker').value = ticker;
-  if (ticker) {
-    const isKr = /\.(KS|KQ)$/i.test(ticker) || isKrxShortCode(ticker);
-    document.getElementById('tx_currency').value = isKr ? 'KRW' : 'USD';
-    document.getElementById('tx_tickerHint').textContent = `선택된 티커: ${ticker}`;
-  } else {
-    document.getElementById('tx_currency').value = currency === 'USD' ? 'USD' : 'KRW';
-    if (owner) document.getElementById('tx_owner').value = owner;
-    if (accountType) document.getElementById('tx_accountType').value = accountType;
-    document.getElementById('tx_tickerHint').textContent = '티커 없는 자산 - 소유자/계좌구분이 자동으로 채워졌습니다(매도 시 기존 보유분과 정확히 연결됩니다).';
+  // 보유 자산에서 온 결과면 소유자 · 계좌구분을 그대로 이어받는다(티커 유무와 무관).
+  if (owner) document.getElementById('tx_owner').value = owner;
+  if (accountType) document.getElementById('tx_accountType').value = accountType;
+  const resolved = (typeof resolveInstrumentMetadata === 'function')
+    ? resolveInstrumentMetadata({ ticker, name, currency, owner, accountType, category: meta.category })
+    : null;
+  const nextCcy = (resolved && resolved.currency) || (currency === 'USD' ? 'USD' : 'KRW');
+  document.getElementById('tx_currency').value = nextCcy === 'USD' ? 'USD' : 'KRW';
+  // 자산군이 확정돼 있으면 폼에도 반영한다 - 채권이면 ISIN 칸이 열려야 하기 때문이다(축 A/B 분리).
+  const classEl = document.getElementById('tx_assetClass');
+  const resolvedCategory = meta.category || (resolved ? resolved.category : '');
+  if (classEl && resolvedCategory && !classEl.value) {
+    classEl.value = resolvedCategory;
+    classEl.dataset.autofilled = '1'; // 이번 입력에서 사용자가 고른 값이 아니다(BOND-33 구분 유지)
+    if (typeof updateTxBondFieldsUI === 'function') updateTxBondFieldsUI();
   }
+  // 채권이면 ISIN 칸도 채운다 - 종목 identity는 ISIN이고, 저장 가드가 자산군과의 일치를 본다.
+  if (resolvedCategory === '채권' && typeof isBondIsin === 'function' && isBondIsin(ticker)) {
+    const isinEl = document.getElementById('tx_bondIsin');
+    if (isinEl && !isinEl.value) { isinEl.value = String(ticker).toUpperCase(); if (typeof applyKnownBondMasterToTxForm === 'function') applyKnownBondMasterToTxForm(); }
+  }
+  document.getElementById('tx_tickerHint').textContent = ticker
+    ? `선택된 종목: ${ticker} · ${nextCcy}`
+    : '티커 없는 자산 - 소유자/계좌구분이 자동으로 채워졌습니다(매도 시 기존 보유분과 정확히 연결됩니다).';
   updateTxAppliedRateVisibility();
   refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 종목이 정해졌으니 안내/추천을 다시 계산한다.
 }
@@ -908,8 +969,14 @@ function findConflictingManualBond(isin, owner, account) {
   const key = (typeof bondLedgerKey === 'function') ? bondLedgerKey(rec) : null;
   const ledger = computePositionsAndRealizedPnL().positions;
   if (key && Object.prototype.hasOwnProperty.call(ledger, key)) return null; // 이미 거래로 관리 중
-  // 수동으로 적어 둔 보유분이 실제로 있을 때만 막는다(발행조건만 있는 빈 레코드는 막지 않는다).
-  const hasManualHolding = Number.isFinite(Number(h.faceAmount)) || Number.isFinite(Number(h.purchaseAmount));
+  /* 수동으로 적어 둔 보유분이 실제로 있을 때만 막는다(발행조건만 있는 빈 레코드는 막지 않는다).
+   * [§50 · 감사 후속] 예전 판정 `Number.isFinite(Number(h.faceAmount))`는 **빈 값도 통과시켰다** -
+   * `Number(null)`은 0이고 `Number.isFinite(0)`은 true라, 보유가 비어 있는 레코드(makeBondPosition이
+   * 채우는 기본값이 정확히 null이다)도 "수동 보유분이 있다"로 읽혔다. 그러면 거래내역으로 넣으려는
+   * 정상 입력이 "자산관리 화면에서 직접 관리 중"이라며 막힌다. 주석이 말하는 의도 그대로 고친다 -
+   * 값이 비어 있지 않고(null · undefined · 빈 문자열이 아니고) 숫자일 때만 수동 보유로 본다. */
+  const filled = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+  const hasManualHolding = filled(h.faceAmount) || filled(h.purchaseAmount);
   return hasManualHolding ? rec : null;
 }
 
@@ -1193,7 +1260,12 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
    * 수정하려 열기만 해도 자산군이 '채권'으로 채워져 ISIN을 요구받고, 예전 거래를 고칠 수 없게 된다
    * (E2E-59가 이 상황을 그대로 재현했다). 자동으로 채워진 값은 아래 자산 반영에서도 쓰지 않는다. */
   const classAutofilled = document.getElementById('tx_assetClass').dataset.autofilled === '1';
-  const txBondFormActive = txAssetClassVal === '채권' && !classAutofilled;
+  /* [§50 · PD-06] 자동으로 채워진 '채권'이라도 **ISIN이 실제로 있으면** 채권 입력으로 본다.
+   * 예전 규칙(자동 채움이면 무조건 비활성)은 표준코드가 없던 시절의 거래를 수정할 수 있게 하려는
+   * 것이었는데(E2E-59), 이제 검색으로 기존 채권을 고르면 자산군과 ISIN이 함께 자동으로 채워진다 -
+   * 그 경우까지 비활성으로 두면 정상 입력이 "ISIN은 채권에만 씁니다"로 막힌다. 조건을 사실에 맞춘다:
+   * ISIN이 없는 자동 채움은 예전 그대로 비활성이고, ISIN이 있으면 활성이다. */
+  const txBondFormActive = txAssetClassVal === '채권' && (!classAutofilled || !!txBondIsinVal);
   const txTickerVal = (txAssetClassVal === '채권' && txBondIsinVal)
     ? txBondIsinVal
     : document.getElementById('tx_ticker').value.trim();
@@ -1214,6 +1286,24 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   /* [BOND-09 · §49] 자산관리 화면에서 총액으로 직접 관리 중인 채권은 거래로 새로 넣지 못하게 막는다.
    * 조용히 병존시키면 거래 파생 보유분이 그 총액을 덮어써 사용자가 적어 둔 값이 사라진 것처럼 보인다.
    * 강제 전환은 하지 않는다(PM 정책 - 명시적 전환 기능은 별도 확정 전까지 만들지 않는다). */
+  /* [§50 · PD-03 · 감사 D-01] 확정된 종목 정보와 이번 거래의 통화가 다르면 **저장하지 않는다.**
+   *
+   * 경고만 띄우고 통과시키지 않는다 - 통화가 한 글자 틀리면 평가금액이 환율배(실측 1,372.23배)로
+   * 부풀고 총자산 · 비중 · 미래예측 · MC 초기자본까지 전부 오염된다. 되돌리기도 어렵다.
+   * 무엇이 근거인지(채권 원장 · 기존 자산 · 종목 마스터)를 문구에 그대로 적어, 사용자가
+   * "어느 쪽이 틀렸는지"를 판단할 수 있게 한다. 앱이 자동으로 한쪽을 고르지 않는다(PD-17). */
+  const instrumentMeta = (typeof resolveInstrumentMetadata === 'function')
+    ? resolveInstrumentMetadata({
+      ticker: txTickerVal, name, currency: txCurrencyVal, owner: txOwnerVal, accountType: txAccountTypeVal,
+      category: txBondFormActive ? '채권' : (txAssetClassVal || undefined)
+    })
+    : null;
+  const ccyConflict = instrumentMeta ? (instrumentMeta.conflicts || []).find((c) => c.field === 'currency') : null;
+  if (ccyConflict) {
+    const SOURCE_LABEL = { bondMaster: '채권 원장에 등록된 발행통화', asset: '이미 등록된 같은 보유분의 통화', exposureMaster: '종목 기준정보의 가격통화', identifier: '국내 상장 종목코드' };
+    showToast(`통화가 맞지 않아 저장하지 않았습니다 - ${SOURCE_LABEL[ccyConflict.source] || '확인된 종목 정보'}는 ${ccyConflict.expected}인데 이 거래는 ${ccyConflict.given}로 입력돼 있습니다. 통화를 ${ccyConflict.expected}로 고치거나, 정말 다른 종목이면 종목명을 구분해 주세요.`, 'warn', 10000);
+    return;
+  }
   if (txBondFormActive) {
     const conflictBond = findConflictingManualBond(txBondIsinVal, txOwnerVal, txAccountTypeVal);
     if (conflictBond) {

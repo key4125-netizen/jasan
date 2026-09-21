@@ -61,7 +61,8 @@ function bondFromInfo(raw) {
     holding: { owner: OWNER, account: ACC, purchaseDate: '2024-01-15' }
   });
 }
-const ledger = (quantity, avgPrice) => ({ [`${OWNER}__${ACC}__${ISIN}`]: { quantity, avgPrice } });
+// [§50 · PD-02] 포지션 키에 통화가 들어간다 - 합성 채권은 전부 KRW다(bondLedgerKey와 같은 규칙).
+const ledger = (quantity, avgPrice) => ({ [`${OWNER}__${ACC}__${ISIN}__KRW`]: { quantity, avgPrice } });
 const quoteOf = (raw) => B.mapKisBondQuote(raw || priceRaw(), ISIN).quote;
 
 /* ══ 1~6 · bondType 전체 매핑표 ═══════════════════════════════════════════ */
@@ -268,7 +269,7 @@ test('27~28. 요약에 MARKET · PURCHASE 건수가 따로 집계된다(섞이�
     terms: { maturityDate: '2029-01-15', couponRate: 4.2, couponType: 'COUPON', paymentFrequency: 2 },
     holding: { owner: OWNER, account: ACC, purchaseDate: '2025-01-15' }
   });
-  const led = Object.assign(ledger(1000, 9800), { [`${OWNER}__${ACC}__${bIsin}`]: { quantity: 500, avgPrice: 10100 } });
+  const led = Object.assign(ledger(1000, 9800), { [`${OWNER}__${ACC}__${bIsin}__KRW`]: { quantity: 500, avgPrice: 10100 } });
   const s = B.computeBondRiskSummary([a, b], { asOf: ASOF, positions: led, quotes: { [ISIN]: quoteOf() } });
   assert.strictEqual(s.valuationSource, 'MIXED');
   assert.strictEqual(s.marketCount, 1);
@@ -313,7 +314,7 @@ test('32-1. [측정 결과 고정] 여러 채권이면 가중평균 듀레이션
     terms: { maturityDate: '2029-01-15', couponRate: 4.2, couponType: 'COUPON', paymentFrequency: 2 },
     holding: { owner: OWNER, account: ACC, purchaseDate: '2025-01-15' }
   });
-  const led = Object.assign(ledger(1000, 9800), { [`${OWNER}__${ACC}__${bIsin}`]: { quantity: 500, avgPrice: 10100 } });
+  const led = Object.assign(ledger(1000, 9800), { [`${OWNER}__${ACC}__${bIsin}__KRW`]: { quantity: 500, avgPrice: 10100 } });
   const quotes = { [ISIN]: quoteOf(), [bIsin]: { isin: bIsin, price: 9950, yieldPct: 4.55 } };
   const m = B.computeBondRiskSummary([a2, b2], { asOf: ASOF, positions: led, quotes });
   const p = B.computeBondRiskSummary([a2, b2], { asOf: ASOF, positions: led });

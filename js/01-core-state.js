@@ -461,6 +461,57 @@ const KRX_SHORT_CODE_PATTERN = /^(?:\d{6}|\d{4}[A-Z]\d)$/;
 function isKrxShortCode(code) {
   return KRX_SHORT_CODE_PATTERN.test(String(code ?? '').trim().toUpperCase());
 }
+
+/* =========================================================================
+ * [§50 · PD-01 · PD-04] 식별자 분류기 (Identifier Classifier)
+ *
+ * 왜 필요한가: 지금까지 ticker 문자열 하나가 다섯 가지 일을 동시에 했다 -
+ *   ① 종목 identity ② 국내/해외 판정 ③ 통화 판정 ④ 주식분석 입력 ⑤ 시세 조회 심볼.
+ * BOND-05가 여기에 ISIN을 넣으면서 ②③④가 전부 오작동했다(감사 D-01 · B-01 · B-03).
+ * 원인은 ISIN이 아니라 "문자열 형태로 경제적 사실을 추론한다"는 구조 자체다.
+ *
+ * 이 함수는 **형태만 판정한다.** 통화 · 국내외를 여기서 확정하지 않는다 -
+ * 형태로 알 수 있는 것은 "이 코드가 어느 체계의 코드인가"뿐이고, 그것만 돌려준다.
+ * 경제적 사실은 resolveInstrumentMetadata()가 metadata 우선순위로 결정한다(PD-01).
+ *
+ * marketHint / currencyHint는 **힌트**다(우선순위 3). 확정 metadata가 있으면 언제나 그쪽이 이긴다.
+ * ISIN은 국가코드가 있어도 통화를 알려주지 않는다(KR 발행 외화표시채권이 존재한다) -
+ * 그래서 currencyHint를 null로 둔다. 모르는 것을 아는 척하지 않는다.
+ * ====================================================================== */
+const IDENTIFIER_KIND = Object.freeze({
+  NONE: 'NONE',                   // 티커 없음(부동산 · 현금 · 수기 등록 자산)
+  KRX_SUFFIXED: 'KRX_SUFFIXED',   // 005930.KS · 035720.KQ
+  KRX_SHORT: 'KRX_SHORT',         // 005930 · 0052D0 · A005930
+  ISIN: 'ISIN',                   // KR103502G990 - 채권 표준코드(BOND-05)
+  INDEX_SYMBOL: 'INDEX_SYMBOL',   // ^KS11 · ^GSPC
+  FOREIGN_TICKER: 'FOREIGN_TICKER' // AAPL · SCHD
+});
+/** 형태 판정 결과. capabilities는 "이 식별자로 무엇을 조회할 수 있는가"만 말한다. */
+function classifyIdentifier(rawTicker) {
+  const original = String(rawTicker ?? '').trim();
+  const upper = original.toUpperCase();
+  const out = (kind, normalized, marketHint, extra) => Object.assign({
+    kind, original, normalized, marketHint, currencyHint: null,
+    // 시세(주가) 조회 · 주식 분석에 쓸 수 있는 심볼인가. ISIN은 둘 다 아니다(PD-05).
+    quoteSymbolSupported: kind === IDENTIFIER_KIND.KRX_SUFFIXED || kind === IDENTIFIER_KIND.KRX_SHORT
+      || kind === IDENTIFIER_KIND.FOREIGN_TICKER || kind === IDENTIFIER_KIND.INDEX_SYMBOL
+  }, extra || {});
+  if (!original) return out(IDENTIFIER_KIND.NONE, '', null);
+  if (upper.startsWith('^')) {
+    return out(IDENTIFIER_KIND.INDEX_SYMBOL, upper, (upper === '^KS11' || upper === '^KQ11') ? 'KR' : 'US');
+  }
+  if (typeof isBondIsin === 'function' && isBondIsin(upper)) {
+    // 채권 표준코드. 발행국(앞 2자)은 통화도 시장도 결정하지 않는다 → 힌트를 만들지 않는다(PD-01 · PD-04).
+    return out(IDENTIFIER_KIND.ISIN, upper, null, { quoteSymbolSupported: false });
+  }
+  if (/\.(KS|KQ)$/.test(upper)) return out(IDENTIFIER_KIND.KRX_SUFFIXED, upper, 'KR', { currencyHint: 'KRW' });
+  const aPrefix = upper.match(/^A(\d{6}|\d{4}[A-Z]\d)$/);
+  if (aPrefix) return out(IDENTIFIER_KIND.KRX_SHORT, aPrefix[1] + '.KS', 'KR', { currencyHint: 'KRW' });
+  if (isKrxShortCode(upper)) return out(IDENTIFIER_KIND.KRX_SHORT, upper + '.KS', 'KR', { currencyHint: 'KRW' });
+  // 위 어느 체계에도 맞지 않는다 = 해외 티커로 **간주**한다. 확정이 아니라 힌트다 -
+  // 사용자가 임의로 적은 비표준 코드도 여기로 떨어지므로 통화를 단정하지 않는다(감사 D-03).
+  return out(IDENTIFIER_KIND.FOREIGN_TICKER, upper, 'US');
+}
 function sanitizeTicker(rawTicker) {
   // 숫자 티커(예: 5930)나 null/undefined가 들어와도 안전하게 문자열로 강제 변환한다.
   const original = String(rawTicker ?? '').trim();
@@ -502,13 +553,231 @@ function sanitizeTicker(rawTicker) {
 // 전혀 안 뜨고 국내 탭에서만 보이는 등 국내/해외 총액 분리가 필요한 모든 계산이 틀어졌다. 티커가
 // 있으면 기존처럼 티커로 판별하고(정확한 신호), 티커가 없을 때만 통화를 대신 참고한다(USD면 해외,
 // 그 외/미상이면 기존처럼 국내로 근사) - 티커가 있는 자산의 판별 결과는 전혀 안 바뀐다.
+/* [§50 · PD-04 · 감사 B-01] 국내/해외를 ticker **문자열 형태**로만 정하지 않는다.
+ *
+ * 예전 구현은 `sanitizeTicker(ticker).isDomestic` 하나였다. sanitizeTicker는 "한국 코드 규격이
+ * 아니면 해외"라는 ④ 폴백을 갖고 있어서, 채권 표준코드(ISIN)가 전부 **해외**로 떨어졌다 -
+ * 원화 국고채가 해외 자산으로 굳어 리밸런싱 지역 집계 · 도넛 · 목표비중이 어긋났다(감사 재현).
+ *
+ * 판정 우선순위(PD-01)
+ *   ① 거래소 코드 체계로 **확정**되는 것(.KS/.KQ · 국내 단축코드 · 지수 심볼) - 통화보다 강하다.
+ *      .KS 코드는 누가 통화를 잘못 적었든 한국 상장이다.
+ *   ② 확정 metadata인 통화(호출부가 실제로 아는 값일 때만 넘어온다)
+ *   ③ 식별자 힌트(해외 티커로 보이면 해외)
+ * ISIN은 ①에 해당하지 않고 국가코드로 통화를 단정하지도 않으므로 ②로 내려간다 - 이것이 PD-04다. */
 function classifyIsDomestic(ticker, currency) {
-  if (!String(ticker ?? '').trim()) return currency === 'USD' ? '해외' : '국내';
-  return sanitizeTicker(ticker).isDomestic;
+  const id = classifyIdentifier(ticker);
+  if (id.kind === IDENTIFIER_KIND.KRX_SUFFIXED || id.kind === IDENTIFIER_KIND.KRX_SHORT) return '국내';
+  if (id.kind === IDENTIFIER_KIND.INDEX_SYMBOL) return id.marketHint === 'KR' ? '국내' : '해외';
+  const ccy = String(currency ?? '').trim().toUpperCase();
+  if (ccy) return ccy === 'USD' ? '해외' : '국내';
+  if (id.kind === IDENTIFIER_KIND.FOREIGN_TICKER) return '해외';
+  return '국내'; // ISIN · 티커 없음 + 통화 미상 - 원화 자산으로 근사(기존 동작과 같다)
 }
 
 function deriveDefaults(ticker, name, currency) {
   return { category: classifyCategory(ticker, name), isDomestic: classifyIsDomestic(ticker, currency) };
+}
+
+/* =========================================================================
+ * [§50 · PD-01 · PD-03 · PD-05] Instrument Metadata Resolver
+ *
+ * "이 종목이 무엇인가"를 한 곳에서 답한다. 통화 · 국내외 · 자산군 · **무엇을 할 수 있는가**를
+ * 각 화면이 제각기 ticker 문자열로 다시 추론하지 않게 하는 것이 목적이다.
+ *
+ * 우선순위(PD-01) - 위쪽이 이긴다
+ *   1. 확정 metadata : 이미 저장된 Asset · 채권 원장(Bond Master)
+ *   2. 승인된 Master : Exposure Master(priceCcy) · 종목 마스터(상장 거래소)
+ *   3. 식별자 분류기 : classifyIdentifier()의 힌트
+ *   4. 명시적 사용자 입력 : 호출부가 넘긴 값(위 근거가 하나도 없을 때만 쓴다)
+ *
+ * 충돌하면 **자동으로 덮어쓰지 않는다** - conflicts에 담아 돌려주고, 저장 경로가 그걸 보고
+ * 차단하거나 REVIEW로 둔다(PD-03 · PD-17). 이 함수 자체는 아무것도 바꾸지 않는다.
+ * ====================================================================== */
+const INSTRUMENT_CONFIDENCE = Object.freeze({
+  CONFIRMED: 'CONFIRMED',   // 저장된 자산 · 채권 원장에서 나온 사실
+  MASTER: 'MASTER',         // 승인된 Master(Exposure Master · 종목 마스터)
+  CLASSIFIER: 'CLASSIFIER', // 식별자 형태에서 나온 힌트
+  USER: 'USER',             // 호출부(사용자 입력)가 준 값
+  UNRESOLVED: 'UNRESOLVED'  // 근거 없음 - 만들어내지 않는다
+});
+/** 이 자산에 대해 채권 원장(state.bondPositions)이 아는 사실. 없으면 null. */
+function lookupBondMasterFacts(ticker, assetId) {
+  if (typeof state === 'undefined' || !Array.isArray(state.bondPositions) || !state.bondPositions.length) return null;
+  const isin = String(ticker ?? '').trim().toUpperCase();
+  const id = String(assetId ?? '');
+  const rec = state.bondPositions.find((p) => {
+    if (!p) return false;
+    if (id && String(p.assetId || '') === id) return true;
+    const pIsin = String((p.identity && p.identity.isin) || '').trim().toUpperCase();
+    return !!isin && pIsin === isin;
+  });
+  if (!rec) return null;
+  const identity = (typeof bondEffectiveTerms === 'function' ? bondEffectiveTerms(rec).identity : rec.identity) || {};
+  const ccy = String(identity.currency || '').trim().toUpperCase();
+  return { record: rec, currency: ccy || null, instrumentName: identity.instrumentName || null };
+}
+/** Exposure Master가 아는 가격통화. 활성 상태가 아니거나 등록되지 않았으면 null. */
+function lookupExposurePriceCcy(assetLike) {
+  if (typeof lookupExposureRecord !== 'function' || typeof isExposureMasterActive !== 'function') return null;
+  if (!isExposureMasterActive()) return null;
+  const rec = lookupExposureRecord(assetLike);
+  const ccy = rec && rec.entry ? String(rec.entry.priceCcy || '').trim().toUpperCase() : '';
+  return ccy || null;
+}
+function resolveInstrumentMetadata(input) {
+  const src = input || {};
+  const ticker = String(src.ticker ?? '').trim();
+  const name = String(src.name ?? '').trim();
+  const givenCcy = String(src.currency ?? '').trim().toUpperCase() || null;
+  const identifier = classifyIdentifier(ticker);
+  const conflicts = [];
+
+  // --- 통화 ---------------------------------------------------------------
+  let currency = null, currencySource = null, currencyConfidence = INSTRUMENT_CONFIDENCE.UNRESOLVED;
+  const accept = (value, source, confidence) => {
+    const v = String(value ?? '').trim().toUpperCase();
+    if (!v || currency) return;
+    currency = v; currencySource = source; currencyConfidence = confidence;
+  };
+  // 1. 확정 - 채권 원장
+  const bond = lookupBondMasterFacts(ticker, src.assetId);
+  if (bond && bond.currency) accept(bond.currency, 'bondMaster', INSTRUMENT_CONFIDENCE.CONFIRMED);
+  // 1. 확정 - 이미 저장된 같은 자산(소유자 · 계좌까지 같을 때만 "같은 보유분"으로 본다)
+  let confirmedAsset = null;
+  if (typeof state !== 'undefined' && Array.isArray(state.assets)) {
+    confirmedAsset = state.assets.find((a) => {
+      if (src.assetId && a.id === src.assetId) return true;
+      if (!ticker) return false;
+      if (String(a.ticker ?? '').trim().toUpperCase() !== ticker.toUpperCase()) return false;
+      if (src.owner && a.owner !== src.owner) return false;
+      if (src.accountType && a.accountType !== src.accountType) return false;
+      return true;
+    }) || null;
+  }
+  if (confirmedAsset) accept(confirmedAsset.currency, 'asset', INSTRUMENT_CONFIDENCE.CONFIRMED);
+  // 2. 승인된 Master
+  accept(lookupExposurePriceCcy({ ticker, name, category: src.category }), 'exposureMaster', INSTRUMENT_CONFIDENCE.MASTER);
+  // 3. 식별자 힌트(.KS/.KQ · 국내 단축코드만 통화를 알려준다)
+  accept(identifier.currencyHint, 'identifier', INSTRUMENT_CONFIDENCE.CLASSIFIER);
+  // 4. 호출부가 준 값
+  accept(givenCcy, 'input', INSTRUMENT_CONFIDENCE.USER);
+
+  // 근거 있는 통화와 이번 입력이 다르면 조용히 맞추지 않는다 - 그대로 알린다(PD-03).
+  if (givenCcy && currency && givenCcy !== currency
+    && (currencyConfidence === INSTRUMENT_CONFIDENCE.CONFIRMED || currencyConfidence === INSTRUMENT_CONFIDENCE.MASTER
+      || currencyConfidence === INSTRUMENT_CONFIDENCE.CLASSIFIER)) {
+    conflicts.push({ field: 'currency', expected: currency, given: givenCcy, source: currencySource, confidence: currencyConfidence });
+  }
+
+  // --- 자산군 · 국내외 -----------------------------------------------------
+  const category = (typeof sanitizeAssetCategory === 'function' ? sanitizeAssetCategory(src.category) : null)
+    || (confirmedAsset ? confirmedAsset.category : null)
+    || classifyCategory(ticker, name);
+  const isDomestic = (confirmedAsset && confirmedAsset.isDomestic)
+    || classifyIsDomestic(ticker, currency || givenCcy);
+
+  return {
+    identifier, identifierKind: identifier.kind,
+    category, isDomestic,
+    currency, currencySource, currencyConfidence,
+    bondMaster: bond ? bond.record : null,
+    confirmedAsset,
+    conflicts,
+    capabilities: instrumentCapabilities({ ticker, category })
+  };
+}
+
+/* [§50 · PD-05] 이 자산으로 **무엇을 할 수 있는가**.
+ * 화면이 "티커가 비어 있지 않다"만 보고 주식 전용 기능을 붙이던 것을 대체한다.
+ * 채권 · 현금 · 부동산은 시세 조회 · 주식 분석 · 주식 벤치마크 대상이 아니다. */
+function instrumentCapabilities(assetLike) {
+  const a = assetLike || {};
+  const category = String(a.category ?? '').trim();
+  const id = classifyIdentifier(a.ticker);
+  const tradable = !NON_TRADABLE_CATEGORIES.includes(category);
+  const equityLike = category === '주식' || category === 'ETF';
+  const symbolOk = id.quoteSymbolSupported;
+  return Object.freeze({
+    identifierKind: id.kind,
+    marketPriceLookup: tradable && symbolOk,   // 일괄 시세 갱신 대상
+    equityAnalysis: equityLike && symbolOk,    // 종목 분석 리포트 · 주가 차트 · 재무
+    equityBenchmark: equityLike && symbolOk,   // Risk 베타 대상
+    bondValuation: category === '채권'         // 채권 전용 평가(MARKET/PURCHASE)
+  });
+}
+/** 주식 전용 기능(분석 리포트 · 차트 · 재무 · 리스크 진단) 진입 가능 여부. */
+function assetSupportsEquityAnalysis(assetLike) {
+  return instrumentCapabilities(assetLike).equityAnalysis;
+}
+
+/* =========================================================================
+ * [§50 · PD-17 · 지시 §15] 이미 저장돼 있을 수 있는 어긋난 데이터를 **탐지만** 한다.
+ *
+ * 고치지 않는다. 자동 변환도 하지 않는다. 어느 쪽이 맞는지는 사용자만 알기 때문이다
+ * (모든 ISIN 채권을 원화로 덮어쓰는 식의 일괄 처리는 명시적으로 금지돼 있다).
+ * 결과는 두 등급으로 나눈다.
+ *   REVIEW      - 근거 있는 사실끼리 어긋난다(예: 채권 원장은 KRW인데 자산은 USD)
+ *   UNRESOLVED  - 판정에 필요한 사실이 없어 어느 쪽이라고 말할 수 없다
+ * 정상인 자산은 결과에 나타나지 않는다(그대로 보존).
+ * ====================================================================== */
+const INSTRUMENT_INTEGRITY = Object.freeze({
+  BOND_CURRENCY_CONFLICT: 'BOND_CURRENCY_CONFLICT',   // 채권 원장 통화 ≠ 자산 통화
+  DOMESTIC_CODE_FOREIGN_CURRENCY: 'DOMESTIC_CODE_FOREIGN_CURRENCY', // 국내 상장 코드인데 USD
+  LEDGER_CURRENCY_CONFLICT: 'LEDGER_CURRENCY_CONFLICT', // 같은 종목 · 계좌에 통화가 섞인 거래가 있다
+  BOND_POSITION_ORPHAN: 'BOND_POSITION_ORPHAN'         // 채권 발행조건이 가리키는 자산이 없다
+});
+const INSTRUMENT_INTEGRITY_MESSAGES = Object.freeze({
+  BOND_CURRENCY_CONFLICT: '채권 발행통화와 이 자산의 통화가 다릅니다. 어느 쪽이 맞는지 확인해 주세요 - 앱이 자동으로 고치지 않습니다.',
+  DOMESTIC_CODE_FOREIGN_CURRENCY: '국내 상장 종목코드인데 통화가 달러로 되어 있습니다. 평가금액이 환율만큼 부풀어 보일 수 있습니다.',
+  LEDGER_CURRENCY_CONFLICT: '같은 종목 · 계좌에 통화가 서로 다른 거래가 섞여 있습니다. 보유분이 통화별로 나뉘어 계산됩니다.',
+  BOND_POSITION_ORPHAN: '채권 발행조건이 연결된 자산을 찾지 못했습니다. 발행조건은 그대로 보관돼 있습니다.'
+});
+/** 자산 하나에 대한 탐지 결과 배열(정상이면 빈 배열). */
+function detectInstrumentIntegrityIssues(asset) {
+  const out = [];
+  if (!asset) return out;
+  const push = (code, grade, extra) => out.push(Object.assign({
+    code, grade, message: INSTRUMENT_INTEGRITY_MESSAGES[code] || ''
+  }, extra || {}));
+  const ccy = String(asset.currency || '').trim().toUpperCase();
+  const id = classifyIdentifier(asset.ticker);
+
+  if (asset.category === '채권') {
+    const bond = lookupBondMasterFacts(asset.ticker, asset.id);
+    if (bond && bond.currency && ccy && bond.currency !== ccy) {
+      push(INSTRUMENT_INTEGRITY.BOND_CURRENCY_CONFLICT, 'REVIEW', { expected: bond.currency, given: ccy });
+    }
+  }
+  if ((id.kind === IDENTIFIER_KIND.KRX_SUFFIXED || id.kind === IDENTIFIER_KIND.KRX_SHORT) && ccy === 'USD') {
+    push(INSTRUMENT_INTEGRITY.DOMESTIC_CODE_FOREIGN_CURRENCY, 'REVIEW', { expected: 'KRW', given: ccy });
+  }
+  // 같은 소유자 · 계좌 · 종목에 통화가 섞인 거래가 있는가(PD-02로 포지션이 갈라지는 상태다).
+  if (typeof state !== 'undefined' && Array.isArray(state.transactions)) {
+    const tickerUpper = String(asset.ticker || '').trim().toUpperCase();
+    const same = state.transactions.filter((t) => t && t.owner === asset.owner && t.accountType === asset.accountType
+      && (tickerUpper ? String(t.ticker || '').trim().toUpperCase() === tickerUpper : (!String(t.ticker || '').trim() && t.name === asset.name)));
+    const ccys = [...new Set(same.map((t) => String(t.currency || 'KRW').toUpperCase()))];
+    if (ccys.length > 1) push(INSTRUMENT_INTEGRITY.LEDGER_CURRENCY_CONFLICT, 'REVIEW', { currencies: ccys });
+  }
+  return out;
+}
+/** 저장소 전체 훑기(보고 · 화면 안내용). 아무것도 바꾸지 않는다. */
+function scanInstrumentIntegrity() {
+  const assets = (typeof state !== 'undefined' && Array.isArray(state.assets)) ? state.assets : [];
+  const rows = [];
+  assets.forEach((a) => detectInstrumentIntegrityIssues(a).forEach((i) => rows.push(Object.assign({ assetId: a.id, name: a.name }, i))));
+  const bonds = (typeof state !== 'undefined' && Array.isArray(state.bondPositions)) ? state.bondPositions : [];
+  bonds.forEach((p) => {
+    if (!p) return;
+    if (assets.some((a) => a && String(a.id) === String(p.assetId || ''))) return;
+    rows.push({
+      assetId: null, name: (p.identity && p.identity.instrumentName) || (p.identity && p.identity.isin) || '(이름 없음)',
+      code: INSTRUMENT_INTEGRITY.BOND_POSITION_ORPHAN, grade: 'UNRESOLVED',
+      message: INSTRUMENT_INTEGRITY_MESSAGES.BOND_POSITION_ORPHAN
+    });
+  });
+  return rows;
 }
 
 // 엑셀 업로드 시 사용자가 '국내/해외' 컬럼을 직접 기재하면 자동판별보다 우선 적용한다.
@@ -1605,6 +1874,23 @@ function rememberTickerName(yahooTicker, name) {
  *      (국내 계좌로 보유한 달러 예수금처럼 국내/해외 표시와 통화가 다를 수 있기 때문)
  *    - 통화가 USD인 자산은 자산통화(USD) 매입금액과 KRW 환산 매입금액을 함께 반환해 테이블에서 병기한다.
  * ---------------------------------------------------------------------- */
+/* [§50 · PD-07 · 감사 A-01 · A-02] 이 자산을 지금 얼마로 평가하는가 - **단가 한 곳**.
+ *
+ * 주식 · ETF는 예전 그대로 currentPrice다(시세 갱신이 그 값을 관리한다).
+ * 채권은 currentPrice를 쓰지 않는다 - 그 값은 자산이 처음 만들어질 때의 거래단가가 그대로
+ * 굳은 값이었고(감사 실측: 7경로 전부 갱신되지 않음), 채권은 시세 갱신 대상도 아니다.
+ * 대신 「채권 위험」 카드와 **같은 함수**로 MARKET → PURCHASE를 정한다(js/29).
+ * source를 함께 돌려주므로 화면이 "이 값이 무엇인지"를 그대로 말할 수 있다. */
+function resolveAssetUnitPrice(a) {
+  if (a && a.category === '채권' && typeof resolveBondAssetUnitPrice === 'function') {
+    const v = resolveBondAssetUnitPrice(a);
+    if (v && Number.isFinite(v.unitPrice) && v.unitPrice > 0) {
+      return { unitPrice: v.unitPrice, source: v.source, marketUnavailableReason: v.marketUnavailableReason || null };
+    }
+    return { unitPrice: num(a.currentPrice), source: 'ASSET', marketUnavailableReason: (v && v.marketUnavailableReason) || null };
+  }
+  return { unitPrice: num(a && a.currentPrice), source: 'ASSET', marketUnavailableReason: null };
+}
 function calcRow(a) {
   const isForeign = a.currency === 'USD';
   const rate = isForeign ? state.exchangeRate : 1;
@@ -1616,10 +1902,18 @@ function calcRow(a) {
   const qty = num(a.quantity);
   const buyAmountOriginal = qty * num(a.buyPrice);       // 자산통화 기준 매입금액 (KRW 또는 USD)
   const buyAmountKRW = buyAmountOriginal * buyRate;       // 원화 환산 매입금액(매수 시점 환율 기준)
-  const curAmount = qty * num(a.currentPrice) * rate;
+  // [§50 · PD-07] 단가는 resolveAssetUnitPrice 한 곳에서만 정한다(채권은 MARKET → PURCHASE).
+  const priced = resolveAssetUnitPrice(a);
+  const curAmount = qty * priced.unitPrice * rate;
   const profit = curAmount - buyAmountKRW;
   const rateOfReturn = buyAmountKRW !== 0 ? (profit / buyAmountKRW) * 100 : 0;
-  return { isForeign, buyAmountOriginal, buyAmount: buyAmountKRW, curAmount, profit, rateOfReturn };
+  /* [§50 · PD-09 · 감사 A-03] curKRW를 실제로 돌려준다.
+   * js/09가 채권 비중을 구할 때 `calcRow(a).curKRW`를 읽고 있었는데 이 키가 **한 번도 존재한 적이
+   * 없어**(코드 전체에서 생산처 0) bondWeightPct가 항상 0이었고, "채권 비중 N%는 베타 집계 대상이
+   * 아닙니다" 안내가 단 한 번도 출력되지 않았다. 이름을 바꾸지 않고 값을 만들어 준다 -
+   * curAmount와 같은 원화 평가금액이며, 의미가 같으므로 둘을 따로 계산하지 않는다. */
+  return { isForeign, buyAmountOriginal, buyAmount: buyAmountKRW, curAmount, curKRW: curAmount, profit, rateOfReturn,
+    unitPrice: priced.unitPrice, valuationSource: priced.source, marketUnavailableReason: priced.marketUnavailableReason };
 }
 
 // 상단 FILTER BAR(전체 소유자/자산군/계좌)가 고른 "지금 보고 있는 자산 집합"이다 - 상단 도넛 차트
