@@ -32,11 +32,124 @@
 
 ---
 
-## 🧾 Bond Transaction Core — Stage 1 완료 · 커밋됨 (2026-09-21 · 가장 최신)
+## 🚀 v264 Release 준비 완료 — Bond Stage 2(KIS) · 포트폴리오 위험 안내 UI · 전체 통합검증 (2026-09-21 · 가장 최신)
+
+> **APPLICATION VERSION: v264 / RELEASE 준비 완료 · push 안 함 · deploy 안 함 · tag 없음**
+> 로컬 `main` 커밋 3건: Stage 1 `7600e17` · 인계장 `f829233` · v264 `46792ca`.
+> **다음 세션은 여기서 시작한다.** 남은 것은 PM의 최종 Release 승인과 push/deploy뿐이다.
+
+### 한 문장
+
+채권을 거래내역으로 관리하고(Stage 1), 그 위에 KIS 시장정보를 붙여 채권 위험을 시장가로 평가하며
+(Stage 2), 위험점수 안내를 정리했다. **Risk Score · Beta · MC · Return Key · Macro 계산은 바뀌지 않았다.**
+
+### Bond Stage 2 — PM 최종 승인 사항 (재설계 금지)
+
+- **Bond Risk valuation**: `VALID MARKET → MARKET`, `MARKET unavailable → PURCHASE`. (BOND-41)
+- **가중평균 Modified Duration 변화 승인**: PURCHASE **7.920540** → MARKET **7.148548**.
+  MARKET 도입으로 가중치가 시장가치 기준이 된 정상 결과다. **PURCHASE 기준으로 되돌려 고정하지 않는다.**
+  채권별 Duration · Modified Duration · ±100bp **계산식은 무변경**이고 값도 비트 단위로 동일하다.
+- **BOND-42** bond-price는 `rt_cd`만으로 판정하지 않는다. 실측: 없는 ISIN에도 `rt_cd "0"` ·
+  "정상처리"로 답하면서 값이 전부 0이고 `stnd_iscd`가 빠진다. stnd_iscd 존재 · 요청 ISIN 일치 ·
+  유효 가격 · 유효 가격기준액면을 모두 통과해야 MARKET이다.
+- **BOND-43** 거래 quantity는 액면 10,000원 단위 유지. 가격기준액면은 별도로 처리한다.
+- **BOND-44** 가격기준액면은 **종목마다 응답 자체로 확인**한다(가격 ↔ 수익률 ↔ 발행조건 대조).
+  후보는 1,000 · 10,000 · 100,000 · 1,000,000뿐이고 2배 이내일 때만 확정. 확인 안 되면 PURCHASE.
+  국고채에서 본 10,000을 **다른 채권에 일반화하지 않는다**.
+- **BOND-45** 유효하지 않은 시세를 0원 · 임의값으로 Bond Risk에 반영하지 않는다.
+- **BOND-46** 이 변경은 valuation source에 한정한다. Beta · MC · Return Key · Macro · Equity Risk 무변경.
+
+### KIS 실측으로 확정된 것 (2026-09-21 · 운영 Worker 직접 호출)
+
+- `/api/kis/bond-info` (search-bond-info · CTPF1114R · PDNO=ISIN · PRDT_TYPE_CD=302)
+- `/api/kis/bond-price` (inquire-price · FHKBJ773400C0 · FID_COND_MRKT_DIV_CODE='B')
+- **과거 코드(`70c49b3`)의 추정 필드명은 bond-info 8개 중 8개가 틀렸다** — 한 개도 가져오지 않았다.
+  실제: `ksd_rcvg_bond_srfc_inrt`(표면이율) · `rdpt_dt`(만기) · `issu_dt` · `int_caltm_mcnt` ·
+  `ksd_bond_item_name` · `bond_clsf_kor_name` · `pdno` / 시세는 `stnd_iscd` · `bond_prpr` · `ernn_rate`.
+- 날짜는 YYYYMMDD이고 **값 없음은 `"00000000"`**(null 아님).
+- `iso_crcy_cd`가 **빈 문자열로 오는 채권이 실제로 있다** → 그때는 기존 통화를 덮어쓰지 않는다.
+- **발행인명 필드가 없다** → issuer는 null. `padf_plac_hdof_name` · `krx_issu_istt_cd` ·
+  `bond_clsf_kor_name`을 issuer로 쓰지 않는다.
+- 가격 단위 = **액면 10,000원당 원화**(이론가 대조 편차 −0.53%, 100 기준이 아님).
+- 권한 오류 0건. 캐시 적중 확인(발행정보 30일 · 시세 20분) — 같은 ISIN을 반복 호출하지 않는다.
+- ⚠ **Worker는 사용자가 이미 배포했다. 임의로 다시 배포하지 않는다.**
+
+### 이번에 바뀐 화면
+
+- 점수 이름 → **「포트폴리오 종합 위험점수」**(표시 명칭만. 점수 · 등급 계산식 무변경).
+- 6대 요인 설명을 카드 위쪽에서 **점수 옆 (i) 팝업**(`#portfolioRiskInfoModal`)으로 옮겼다.
+- **`#riskScopeNote`는 옮기지 않았다.** V1.3 P1-1(v226 RELEASE)이 "진단 대상 고지는 숨김 · 툴팁이
+  아니라 상시 노출"로 확정했고 `e2e/40` "5" · `e2e/72` A-1이 고정하고 있다. 팝업에도 같은 내용을
+  넣되 화면의 한 줄은 남겼다. **다음 세션도 이 줄을 팝업으로 옮기지 않는다.**
+- (i) = "이 점수가 무엇인가" / [🔍 세부내용] = "실제로 계산된 수치". 역할을 합치지 않는다.
+- 채권 위험 카드에 **평가 기준 한 줄**(시장가 / 매입원가 / 혼합 + 사유)이 추가됐다.
+
+### 문구 정합성 감사에서 고친 것 (4건)
+
+1. 자산 상세의 채권 안내가 Stage 2 이전을 전제로 했다 → 이 화면 현재가는 여전히 자동 갱신되지
+   않지만 채권 위험 카드는 조회한 시장가로 평가한다는 사실을 함께 적었다.
+2. 채권 위험 카드의 "이 값은 … 모형값"이 바로 위 「평가 기준: 시장가」를 가리키는 것처럼 읽혔다
+   → "금리 민감도(듀레이션)는 …"으로 대상을 못박았다.
+3. 점수 계산 불가 안내만 옛 이름이었다 → 「포트폴리오 종합 위험점수 계산 불가」로 통일.
+4. 자산 폼 ISIN 안내가 공공데이터 조회를 단정했다(그 원천은 현재 닿지 않는다) → 닿지 않으면
+   직접 입력하라고 적었다. **동작은 바꾸지 않았다.**
+
+### 검증 결과 (v264 bump 이후 재실행)
+
+Unit **681/681** · E2E **1,077 중 1,076** · ESLint 0 · Data Guard PASS · Secret Scan 0 ·
+**Release Guard PASS(v264)** · MC baseline **P10 · P50 · P90 · Mean 전부 0.00% · μ지문 동일 · σ 0**
+(두 시나리오) · Risk 회귀 하네스 **779건 = v263 승인값과 동일(추가 차이 0)**.
+
+**E2E 실패 1건은 `e2e/78-p1-1-sync-direction.spec.js`다.** v235부터 존재하는 **알려진 간헐 실패**이며
+이번 변경과 무관하다. 이번 세션에서 두 번 관찰됐고(T-03 / T-06~T-08, 매번 다른 테스트)
+**두 번 모두 단독 재실행 16/16 PASS**로 확인했다. Release Blocker로 취급하지 않는다.
+테스트를 삭제 · skip하지 않았다.
+
+### 통합검증 (`e2e/111` 17건) — 가상 포트폴리오 하나로 끝에서 끝까지
+
+국내주식 2 · 해외주식 1 · 국내ETF 1 · 해외ETF 1 · 채권 1(거래기반) · 현금 KRW/USD · 부동산 1.
+거래내역 → Position → Asset Sync → Bond Position → Bond Risk → Portfolio Risk → Beta →
+Return Key → MC Input 전 구간이 같은 수를 가리키는 것을 고정했다.
+대표 실측: 거래 1건 → Position 1,000@9,800 → Asset(채권 · ledger) 1,000 →
+BondPosition(LEDGER · 액면 10,000,000 · 매입원가 9,800,000) →
+BondRisk(MARKET · 6,785,000 · 기준액면 10,000) · Equity Risk 대상 아님 · 중복 레코드 0.
+MC는 보유가 아니라 **목표비중**에서 instrument를 만든다(실측) — 채권 비중 0.3이 사라지지 않고
+σ가 NaN이 되지 않는 것을 고정했다.
+
+### 손대면 안 되는 것 (v263 · Stage 1 항목에 더해)
+
+- **`.claude/launch.json`** — 사용자 로컬 변경. 이번에도 수정 · 스테이징 · 커밋하지 않았다
+  (mtime 2026-09-08 22:35:15). working tree에 ` M` 그대로 둔다.
+- Bond Stage 2 구조를 재설계하지 않는다: MARKET/PURCHASE · price basis 로직 · 가중평균
+  Modified Duration 변화 · 개별 Duration · ±100bp.
+- KIS raw response · 조회한 시세를 저장소나 영구 저장소에 넣지 않는다.
+- Worker를 임의로 다시 배포하지 않는다(필요하면 PM 보고 후 중단).
+- `#riskScopeNote`를 팝업으로 옮기지 않는다(P1-1).
+- `baseline/v262`를 덮어쓰지 않는다.
+
+### 다음 단계
+
+**PM의 최종 Release 승인 → push → GitHub Pages deploy → production smoke.**
+승인 전까지 push · deploy · tag를 하지 않는다.
+
+### 남은 OBSERVE
+
+- `e2e/78` 간헐 실패(위).
+- 자산 폼의 채권 [조회]는 여전히 공공데이터를 쓰고 그 원천은 닿지 않는다. KIS 조회는 거래 입력
+  화면에만 연결돼 있다. 자산 폼까지 KIS로 바꾸는 것은 **기능 추가**라 이번 범위 밖으로 두고
+  문구만 정확히 고쳤다.
+- `computeBondYields`의 "오늘 시장가격이 없습니다(채권 시세는 저장하지 않습니다)" 문구는 현재
+  화면에서 호출되는 경로가 없다(UI 호출부 0건). 사실도 여전히 맞아 건드리지 않았다.
+- 채권 위험 팝업의 6대 요인 한 줄 설명과 [세부내용]의 요인별 점수 설명은 개념이 겹친다. PM 지시가
+  팝업에 6대 요인을 넣으라고 명시했고 두 글의 목적(정의 vs 계산결과)이 달라 그대로 두었다.
+
+---
+
+## 🧾 Bond Transaction Core — Stage 1 완료 · 커밋됨 (2026-09-21)
 
 > **APPLICATION VERSION: v263 유지 · RELEASE 안 함 · push 안 함 · deploy 안 함**
 > 로컬 `main` 커밋 2건만 있다: 구현 `7600e17` + 이 인계장.
-> **다음 세션은 여기서 시작한다.** 다음 단계는 PM이 Stage 2와 Release 중 하나를 고르는 것이다.
+> (Stage 1 시점의 기록이다. 그 뒤 Stage 2와 v264 준비가 끝났다 - 위 절을 본다.)
 
 ### 무엇이 바뀌었나 — 한 문장
 
