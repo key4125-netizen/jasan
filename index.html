@@ -276,7 +276,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v263</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v264</p>
           </div>
         </div>
 
@@ -573,7 +573,12 @@
         <h3 class="text-base font-bold text-red-600 dark:text-red-400">위험 관리</h3>
       </div>
     </div>
-    <p class="text-sm text-slate-400 leading-relaxed break-keep mb-1">💡 집중도·변동성·손실위험·시장위험·상관관계·기술/수급 6대 요인을 종합해 계좌 위험도를 진단합니다.</p>
+    <!-- [PM 지시 2026-09-21] 6대 요인 설명은 점수 옆 (i) 버튼의 「포트폴리오 위험 안내」 팝업으로 옮겼다
+         (#portfolioRiskInfoModal) - 카드 위쪽이 설명문으로 길어져 정작 점수가 밀려나 있었다.
+         [남겨 둔 이유] 아래 #riskScopeNote는 옮기지 않았다. V1.3 P1-1(체크리스트 §5 · v226 RELEASE)이
+         "진단 대상 고지는 숨김 · 툴팁이 아니라 점수가 보이는 자리에 **상시 노출**"로 확정했고
+         e2e/40 "5" · e2e/72 A-1이 그 사실을 고정하고 있다. 팝업 안에도 같은 내용을 넣되, 이 한 줄은
+         화면에 그대로 둔다. -->
     <!-- [보유 부동산 없으면 문구에서 제외 - 요청 반영] updateRealEstateGuidanceText()(js/03)가 보유 부동산
          유무에 따라 텍스트 전체를 교체한다. -->
     <p id="riskScopeNote" class="text-sm text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)</p>
@@ -1633,7 +1638,7 @@
         </p>
 
         <label class="col-span-2 text-sm">
-          <span class="text-slate-500 dark:text-slate-400">표준코드(ISIN) <span class="text-slate-400">- 공공데이터에서 발행조건을 불러올 때 씁니다</span></span>
+          <span class="text-slate-500 dark:text-slate-400">표준코드(ISIN) <span class="text-slate-400">- 이 화면의 [조회]는 공공데이터를 씁니다. 닿지 않으면 아래 항목을 직접 입력하세요</span></span>
           <span class="flex gap-2 mt-1">
             <input id="f_bondIsin" type="text" autocomplete="off" placeholder="예: KR103502GE71" class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none mt-0 flex-1">
             <button type="button" id="bondLookupBtn" class="shrink-0 text-sm font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">조회</button>
@@ -2573,8 +2578,13 @@
       <div id="tx_bondFieldsWrap" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
         <label class="col-span-2 text-sm">
           <span class="text-slate-500 dark:text-slate-400">표준코드(ISIN) <span class="text-slate-400">- 채권을 구분하는 12자리 코드</span></span>
-          <input id="tx_bondIsin" type="text" autocomplete="off" placeholder="예: KR103502G990"
-            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none font-mono uppercase">
+          <span class="flex gap-2 mt-1">
+            <input id="tx_bondIsin" type="text" autocomplete="off" placeholder="예: KR103502G990"
+              class="flex-1 min-w-0 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none font-mono uppercase">
+            <!-- [Bond Stage 2] 발행조건 자동 조회. 실패해도 아래 칸에 직접 입력해 그대로 저장할 수 있다. -->
+            <button type="button" id="txBondLookupBtn"
+              class="shrink-0 text-sm font-medium px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">조회</button>
+          </span>
           <span id="tx_bondMasterNote" class="block text-sm text-slate-400 mt-1"></span>
         </label>
 
@@ -2721,6 +2731,54 @@
       </button>
     </div>
     <div id="riskDetailModalBody" class="px-4 py-3 overflow-y-auto"></div>
+  </div>
+</div>
+
+<!-- ============================= 포트폴리오 위험 안내 팝업 =============================
+     메인 RISK 카드의 점수 옆 (i) 버튼으로 연다(openPortfolioRiskInfoModal, js/10).
+     [역할 분리] 이 팝업은 "이 점수가 무엇을 뜻하는가"만 설명한다. 실제로 계산된 수치는
+     [🔍 세부내용](#riskDetailModal)이 담당한다 - 두 기능을 합치지 않는다.
+     새 지표 · 새 조언을 넣지 않는다. 기존 카드에 있던 안내 문구를 그대로 옮겨 적은 것이다. -->
+<div id="portfolioRiskInfoModal" class="hidden fixed inset-0 z-[66] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <h3 class="text-base font-bold">⚠️ 포트폴리오 위험 안내</h3>
+      <button type="button" id="closePortfolioRiskInfoBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white" aria-label="닫기">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="px-4 py-3 overflow-y-auto">
+      <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep">
+        이 점수는 <b>종목 하나하나의 위험이 아니라 보유 전체(포트폴리오)의 위험</b>을 하나로 요약한 값입니다.
+        아래 6가지를 함께 보고 계산합니다.
+      </p>
+      <ul class="mt-2.5 space-y-1.5">
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>집중도</b> - 한 종목 · 한 업종에 얼마나 몰려 있는지</li>
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>변동성</b> - 값이 평소에 얼마나 크게 출렁이는지</li>
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>손실위험</b> - 나빴던 구간에서 얼마나 깊게 빠졌는지</li>
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>시장위험</b> - 시장이 움직일 때 함께 움직이는 정도(베타)</li>
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>상관관계</b> - 보유 종목들이 같이 오르내리는 정도</li>
+        <li class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep"><b>기술/수급</b> - 최근 가격 흐름과 수급 신호</li>
+      </ul>
+      <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep">
+          <b>누구 기준인가</b> - 소유자를 구분하지 않고 <b>가구 전체를 합산</b>해 계산합니다.
+          같은 종목을 나눠 보유하고 있으면 합친 비중으로 잡힙니다.
+        </p>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep mt-2">
+          <b>무엇이 대상인가</b> - <b>주식 · ETF</b>만 해당합니다. 가격이 매일 움직이는 자산의
+          변동성을 재는 점수이기 때문입니다.
+        </p>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-keep mt-2">
+          <b>현금 · 채권 · 부동산은 빠집니다</b> - 이 자산들은 기존 정책상 가격 변동성 진단 대상이
+          아닙니다. 빠졌다고 위험이 없다는 뜻은 아니며, <b>채권은 금리 민감도를 따로 계산해
+          「채권 위험」에서 보여 줍니다</b>.
+        </p>
+        <p class="text-sm text-slate-400 leading-relaxed break-keep mt-2.5">
+          실제로 계산된 수치(요인별 점수 · 베타 · 손실 시뮬레이션)는 점수 옆 <b>🔍 세부내용</b>에서 볼 수 있습니다.
+        </p>
+      </div>
+    </div>
   </div>
 </div>
 

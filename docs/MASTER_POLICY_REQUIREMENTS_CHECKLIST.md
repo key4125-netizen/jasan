@@ -3076,3 +3076,114 @@ Bond mapping을 baseline과 전후 비교해 기록한다(계산식 자체는 �
 `<datalist>`**(입력칸을 누르면 목록이 뜨고 직접 입력도 된다)로 구현했다. `<select>`로 바꾸면 목록에 없는
 **새 계좌를 만들 수 없게 되고**, 기존 E2E 4개 파일이 이 입력칸을 직접 채우고 있어 함께 고쳐야 한다.
 **PM이 이 `<datalist>` 구현을 승인했다 - 순수 `<select>`로 바꾸지 않는다.**
+
+### 49-12. Stage 2 — KIS 연동 · 시장가치 평가 (BOND-41 ~ BOND-46 · PM 확정 2026-09-21)
+
+> Stage 1(BOND-01~40)은 **변경하지 않는다.** 이 절은 거래원장 기반 구조 위에 KIS 조회와
+> 시장가치 평가를 얹는 것뿐이다. KIS는 Provider이고 거래내역은 여전히 보유의 유일한 원천이다.
+
+| ID | 확정 내용 |
+|---|---|
+| **BOND-41** | KIS Bond Price가 유효성 검증 및 가격기준액면 검증을 통과한 경우 Bond Risk valuation source로 **MARKET**을 사용한다. MARKET을 사용할 수 없는 경우 기존 거래 기반 **PURCHASE** valuation을 사용한다. |
+| **BOND-42** | KIS bond-price는 `rt_cd`만으로 유효성을 판정하지 않는다. `stnd_iscd` 존재 및 요청 ISIN 일치, 유효한 가격, 유효한 가격기준액면을 모두 확인한 경우에만 MARKET valuation에 사용한다. |
+| **BOND-43** | 거래 quantity는 기존 BOND-07에 따라 **액면 10,000원 단위**로 유지한다. KIS 시장가격의 가격기준액면은 거래 quantity와 **별도로** 처리한다. |
+| **BOND-44** | KIS 시장가격의 가격기준액면은 **실제 확인된 근거가 있는 경우에만** 사용한다. 확인되지 않은 가격기준액면을 임의 추정하지 않는다. |
+| **BOND-45** | MARKET valuation이 불가능하면 기존 PURCHASE valuation을 사용한다. 유효하지 않은 KIS 가격을 **0원 또는 임의값으로 Bond Risk에 반영하지 않는다.** |
+| **BOND-46** | Bond Risk MARKET valuation 연결은 **Bond Risk valuation source에 한정**하며, Portfolio Beta · MC · Return Key · Macro 및 Equity Risk 계산정책을 변경하지 않는다. |
+
+#### 49-12-1. 실측으로 확정된 KIS 응답 (2026-09-21 · 운영 Worker 직접 호출)
+
+**bond-info** (`search-bond-info` · CTPF1114R · PDNO=ISIN · PRDT_TYPE_CD=302)
+성공 시 HTTP 200 · `rt_cd "0"` · `msg_cd "KIOK0530"` · `output` 객체 1개 · `output2` null.
+없는 ISIN이면 `rt_cd "7"` · `msg_cd "APBN0024"` · `output` null.
+
+**bond-price** (`inquire-price` · FHKBJ773400C0 · FID_COND_MRKT_DIV_CODE='B')
+성공 시 HTTP 200 · `rt_cd "0"` · `msg_cd "MCA00000"` · `output` 객체 1개.
+**없는 ISIN에도 `rt_cd "0"`으로 답한다** — 값이 전부 0이고 `stnd_iscd` 필드가 빠진다.
+그래서 BOND-42가 `stnd_iscd` 존재·일치를 요구한다.
+
+2026-08 구현(`70c49b3`)의 추정 필드명은 실측 결과 bond-info 8개 중 8개가 틀렸다
+(`srfc_inrt` → 실제 `ksd_rcvg_bond_srfc_inrt`, `rdpt_date` → 실제 `rdpt_dt` 등).
+**과거 매핑을 한 개도 가져오지 않았다.**
+
+#### 49-12-2. Bond Master 매핑표 (PM 확정)
+
+| Bond Master | KIS bond-info | 비고 |
+|---|---|---|
+| `identity.isin` | `pdno` | 요청 ISIN과 일치할 때만 채택 |
+| `identity.instrumentName` | `ksd_bond_item_name` | |
+| `identity.currency` | `iso_crcy_cd` | **빈 문자열로 오는 사례 실측** → 그때는 기존값 유지 |
+| `identity.bondType` | `bond_clsf_kor_name` | 아래 변환표 |
+| `identity.issuer` | — | **자동 입력하지 않는다**(49-12-3) |
+| `identity.creditRating` · `seniority` | — | KIS가 주지 않는다 → 기존값 유지 |
+| `terms.issueDate` | `issu_dt` | YYYYMMDD · `"00000000"`은 없음 처리 |
+| `terms.maturityDate` | `rdpt_dt` | 〃 |
+| `terms.couponRate` | `ksd_rcvg_bond_srfc_inrt` | 문자열 → Number |
+| `terms.paymentFrequency` | `12 / int_caltm_mcnt` | 6개월 → 연 2회 |
+| `terms.couponType` | 파생 | 할인율>0 → DISCOUNT, 표면이율>0 + 주기 → COUPON, 그 외 null |
+| `source.provider` | `"KIS"` | |
+| `source.sourceDate` | `tlg_rcvg_dtl_dtime` 앞 8자리 | |
+
+**bondType 변환표** — 표에 없는 값은 비슷해 보여도 분류하지 않는다(null → UNCLASSIFIED).
+
+| KIS `bond_clsf_kor_name` | 앱 `bondType` |
+|---|---|
+| 국고채권 | 국채 |
+| 지방채권 | 지방채 |
+| 특수채권 | 특수채 |
+| 회사채권 | 회사채 |
+| 금융채권 | 금융채 |
+
+**덮어쓰기 범위**: KIS가 실제로 준 항목만 덮어쓴다. 주지 않은 항목 · 사용자가 고친 값
+(`userOverride`) · 보유(B 계층)는 조회가 건드리지 않는다.
+
+#### 49-12-3. issuer 처리 (PM 확정)
+
+KIS 응답에 **발행인명 필드가 없다.** 다음 셋은 발행인이 아니므로 issuer로 쓰지 않는다:
+`padf_plac_hdof_name`(원리금 지급장소) · `krx_issu_istt_cd`(기관 코드) · `bond_clsf_kor_name`(채권 분류).
+issuer는 **null을 허용**하고 추정하지 않으며, issuer가 없다는 이유로 Bond Master 저장을 막지 않는다.
+
+#### 49-12-4. 가격기준액면 결정 (BOND-44 구현 근거)
+
+**조사 결과**(PM 지시 §7 A~E)
+
+- **E. bond-info에 가격기준액면을 직접 의미하는 필드는 없다.** `uval_cut_*`(단가 절사 구분·자릿수) ·
+  `ksd_int_calc_unit_cd`(이자계산 단위) · `pnia_int_calc_unpr`은 기준액면이 아니다.
+- **C/D. KIS 응답 · 공개 문서에서 기준액면을 직접 명시한 필드/문구를 찾지 못했다.**
+  KRX 일반채권시장의 **매매수량단위가 액면 1만원**이라는 것은 확인되나(거래단위이지 호가 기준의
+  직접 근거는 아니다), 이것만으로 모든 채권에 일반화하지 않는다.
+- **A/B. 그래서 종목마다 응답 자체로 판정한다.** KIS는 같은 응답에 가격(`bond_prpr`)과
+  수익률(`ernn_rate`)을 함께 준다. 그 채권의 발행조건으로 수익률에서 이론가격을 계산하면
+  "액면 1만원당 얼마여야 하는가"가 나오고, 실제 가격을 그것으로 나누면 기준액면이 드러난다.
+  **국고채에서 확인한 값을 다른 채권에 일반화하지 않는다** — 채권마다 따로 확인한다.
+
+**결정 규칙** — 후보는 `[1,000 · 10,000 · 100,000 · 1,000,000]`뿐이고, 후보끼리 10배씩 떨어져 있으므로
+내재 기준액면이 어느 후보의 **2배 이내**일 때만 그 후보로 확정한다(경과이자 · 일수계산 차이 흡수).
+어느 후보와도 맞지 않거나, 만기 · 표면이율 · 수익률이 없어 대조할 수 없으면 **UNAVAILABLE**이고
+**PURCHASE로 되돌아간다**(BOND-45). 10,000 · 100,000 등을 근거 없이 넣지 않는다.
+
+**실측 결과**(국고채 2건): 내재 기준액면 9,947 → 후보 10,000 확정(편차 −0.53%).
+
+#### 49-12-5. 시장가치 계산
+
+```
+faceAmount  = quantity × 10,000                (BOND-07 · BOND-43 - 거래 단위는 그대로)
+marketValue = faceAmount × (bond_prpr / priceBasisFace)
+```
+
+가격기준액면이 확인되지 않으면 marketValue를 만들지 않는다. Bond Risk 가중은 그때
+`purchaseAmount`(거래원장 누적 매입원가)를 그대로 쓴다. **PURCHASE 계산 로직 자체는 무변경이다.**
+
+전량매도(보유 0)된 채권은 애초에 평가 대상이 아니다(BOND-23 · Stage 1 그대로).
+
+#### 49-12-6. 변경하지 않은 것 (BOND-46)
+
+Duration · Modified Duration · ±100bp 충격 · Bond Risk 별도 영역 유지 · 신용위험 수치화 금지 ·
+Portfolio Beta의 Bond 제외 · Bond Risk coverage 정책 · Equity Risk · Risk Score 구조 ·
+MC 모델/수식 · Return Key · Macro. 이번 변경은 **valuation source 선택 한 곳**뿐이다.
+
+#### 49-12-7. 저장하지 않는 것
+
+KIS raw response · 조회한 시장가격을 **영구 저장하지 않는다.** 시세는 메모리에만 두며
+localStorage · JSON 백업 · 기기 간 동기화 어디에도 들어가지 않는다. Worker 캐시(발행정보 30일 ·
+시세 20분)와 앱의 메모리 캐시(20분)로 같은 채권을 반복 호출하지 않는다.

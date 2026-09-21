@@ -468,10 +468,30 @@ function computeBondRiskSummary(positions, options) {
   const asOf = bondDate(opt.asOf) || new Date();
   const list = Array.isArray(positions) ? positions : [];
   if (!list.length) return { status: 'EMPTY', count: 0 };
-  /* [BOND-20 · §49] MARKET / PURCHASE 2단 규칙은 그대로다. 바뀐 것은 PURCHASE 금액의 원천뿐 -
-   * 등록 당시 고정값이 아니라 거래원장에서 계산한 누적 매입원가를 쓴다(거래가 없으면 legacy 값). */
+  /* [BOND-20 · BOND-41 · BOND-45 · §49] MARKET / PURCHASE 2단 규칙.
+   *   VALID MARKET   → MARKET   (KIS 시세가 BOND-42 검증과 가격기준액면 확인을 모두 통과한 경우)
+   *   MARKET 불가     → PURCHASE (거래원장에서 계산한 누적 매입원가 - 계산 로직 자체는 그대로다)
+   * 검증을 통과하지 못한 시세는 쓰지 않는다. 0원이나 임의값으로 평가하지 않는다(BOND-45).
+   * opt.quotes: { ISIN(대문자): mapKisBondQuote(...).quote } */
   const holdingOf = (p) => resolveBondHolding(p, opt.positions);
+  const quoteFor = (p) => {
+    const isin = (p.identity && p.identity.isin) ? String(p.identity.isin).toUpperCase() : '';
+    return (isin && opt.quotes && Object.prototype.hasOwnProperty.call(opt.quotes, isin)) ? opt.quotes[isin] : null;
+  };
   const priceOf = (p, held) => {
+    const quote = quoteFor(p);
+    if (quote) {
+      const mv = computeBondMarketValue(p, quote, { asOf, positions: opt.positions });
+      if (mv.status === 'OK') {
+        return { value: mv.marketValue, basis: 'MARKET', priceBasisFace: mv.priceBasisFace, unitPrice: mv.price };
+      }
+      // 통과하지 못하면 이유를 남기고 매입원가로 되돌아간다(조용히 0으로 만들지 않는다).
+      const pa0 = bondNum(held && held.purchaseAmount);
+      return Number.isFinite(pa0)
+        ? { value: pa0, basis: 'PURCHASE', marketUnavailableReason: mv.reason }
+        : { value: NaN, basis: null, marketUnavailableReason: mv.reason };
+    }
+    // [하위호환] 이미 계산된 평가금액을 직접 넘기는 경로(테스트 · 다른 Provider용)는 그대로 둔다.
     const mp = opt.marketPrices ? bondNum(opt.marketPrices[p.id]) : NaN;
     if (Number.isFinite(mp)) return { value: mp, basis: 'MARKET' };
     const pa = bondNum(held && held.purchaseAmount);
@@ -484,6 +504,8 @@ function computeBondRiskSummary(positions, options) {
     return {
       id: p.id, name: (p.identity && p.identity.instrumentName) || null,
       holdingSource: held.source, quantity: held.quantity, faceAmount: held.faceAmount, closed: held.closed,
+      valuationSource: w.basis, priceBasisFace: w.priceBasisFace ?? null,
+      marketUnitPrice: w.unitPrice ?? null, marketUnavailableReason: w.marketUnavailableReason ?? null,
       currency: (p.identity && p.identity.currency) || 'KRW',
       bondClass: resolveBondClass(p),
       creditRating: (p.identity && p.identity.creditRating) || null,
@@ -505,8 +527,14 @@ function computeBondRiskSummary(positions, options) {
   const ratings = {};
   open.forEach((r) => { const k = r.creditRating || '미확인'; ratings[k] = (ratings[k] || 0) + 1; });
   if (!open.length) return { status: 'EMPTY', count: 0, closedCount: rows.length };
+  /* [BOND-41 · 화면 표시용] 이 요약이 어떤 평가를 썼는지 한 줄로 알 수 있게 센다.
+   * 섞여 있으면 MIXED다 - "전부 시장가"라고 말하지 않는다. */
+  const marketCount = usable.filter((r) => r.valuationSource === 'MARKET').length;
+  const purchaseCount = usable.filter((r) => r.valuationSource === 'PURCHASE').length;
+  const valuationSource = marketCount && purchaseCount ? 'MIXED' : (marketCount ? 'MARKET' : (purchaseCount ? 'PURCHASE' : null));
   return {
     status: 'OK', count: open.length, closedCount: rows.length - open.length, rows: open, allRows: rows,
+    valuationSource, marketCount, purchaseCount,
     modelValue: true, dayCount: BOND_DAY_COUNT,
     durationCoveragePct: open.length ? (usable.length / open.length) * 100 : 0,
     weightedModifiedDuration: avgDuration,
@@ -600,7 +628,275 @@ function bondQuantityToFace(quantity) {
   return Number.isFinite(v) ? v * BOND_FACE_UNIT : null;
 }
 
-/* ── MC · 자산 성격 연계 (§47-3) ───────────────────────────────────────── */
+/* ══ KIS 채권 연동 (BOND-41 ~ BOND-46 · §49 · Stage 2) ═══════════════════
+ *
+ * 여기 있는 함수는 전부 순수 함수다 - 네트워크는 js/13이, 화면은 js/06 · js/10이 맡는다.
+ * 매핑은 2026-09-21에 **운영 Worker로 실제 응답을 받아 확인한 필드 이름만** 쓴다.
+ * 2026-08 구현(70c49b3)의 추정 필드명은 실측 결과 대부분 틀렸으므로 한 개도 가져오지 않았다.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* [BOND-16 · PM 확정 매핑표] KIS bond_clsf_kor_name → 앱 bondType.
+ * 표에 없는 값은 비슷해 보여도 분류하지 않는다(null → UNCLASSIFIED). */
+const KIS_BOND_CLASS_TO_TYPE = Object.freeze({
+  국고채권: '국채', 지방채권: '지방채', 특수채권: '특수채', 회사채권: '회사채', 금융채권: '금융채'
+});
+
+/* KIS 날짜는 YYYYMMDD 8자리 문자열이고, 값이 없으면 '00000000'으로 온다(null이 아니다). */
+function kisBondDate(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d{8}$/.test(s) || s === '00000000') return null;
+  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return bondIsoDate(bondDate(iso));
+}
+function kisNum(v) {
+  const s = String(v ?? '').trim();
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * [BOND-14 · BOND-17] KIS bond-info 응답 → Bond Master의 A 계층(발행조건).
+ * 보유(B 계층)는 절대 만들지 않는다 - 그건 거래원장이 원천이다(BOND-01 · BOND-08).
+ * requestedIsin과 응답 pdno가 다르면 채택하지 않는다(엉뚱한 채권의 조건을 심지 않는다).
+ */
+function mapKisBondInfo(raw, requestedIsin) {
+  const want = String(requestedIsin || '').trim().toUpperCase();
+  const r = raw || {};
+  if (String(r.rtCd ?? '') !== '0') {
+    return { status: BOND_SOURCE_STATUS.NOT_FOUND, position: null, reason: String(r.msg1 || '').trim() || '조회 결과가 없습니다.' };
+  }
+  const o = r.output || null;
+  if (!o || typeof o !== 'object') {
+    return { status: BOND_SOURCE_STATUS.NOT_FOUND, position: null, reason: String(r.msg1 || '').trim() || '조회된 데이터가 없습니다.' };
+  }
+  const got = String(o.pdno || '').trim().toUpperCase();
+  if (!got || (want && got !== want)) {
+    return { status: BOND_SOURCE_STATUS.NOT_FOUND, position: null, reason: '요청한 표준코드와 응답의 표준코드가 다릅니다.' };
+  }
+
+  const couponRate = kisNum(o.ksd_rcvg_bond_srfc_inrt);
+  const discountRate = kisNum(o.ksd_rcvg_bond_dsct_rt);
+  const payMonths = kisNum(o.int_caltm_mcnt);
+  const paymentFrequency = (Number.isFinite(payMonths) && payMonths > 0) ? 12 / payMonths : null;
+  /* 쿠폰 유형은 기존 Bond Domain 규칙(§47-7)을 그대로 쓴다 - 할인율이 잡혀 있으면 할인채,
+   * 표면이율과 지급주기가 있으면 이표채. 둘 다 아니면 단정하지 않는다(null). */
+  let couponType = null;
+  if (Number.isFinite(discountRate) && discountRate > 0) couponType = BOND_COUPON_TYPE.DISCOUNT;
+  else if (Number.isFinite(couponRate) && couponRate > 0 && Number.isFinite(paymentFrequency)) couponType = BOND_COUPON_TYPE.COUPON;
+
+  /* [BOND-15 · PM 확정] 발행인명은 KIS 응답에 없다. padf_plac_hdof_name(원리금 지급장소) ·
+   * krx_issu_istt_cd(기관 코드) · bond_clsf_kor_name(채권 분류)은 발행인이 아니므로 쓰지 않는다.
+   * 추정하지 않고 비워 둔다 - 그것 때문에 저장을 막지도 않는다. */
+  const position = makeBondPosition({
+    identity: {
+      isin: got,
+      instrumentName: String(o.ksd_bond_item_name || '').trim() || null,
+      issuer: null,
+      // 빈 문자열로 오는 사례가 실제로 있다(실측) - 그때는 통화를 단정하지 않는다.
+      currency: String(o.iso_crcy_cd || '').trim() || null,
+      bondType: KIS_BOND_CLASS_TO_TYPE[String(o.bond_clsf_kor_name || '').trim()] || null,
+      creditRating: null,
+      seniority: null
+    },
+    terms: {
+      issueDate: kisBondDate(o.issu_dt),
+      maturityDate: kisBondDate(o.rdpt_dt),
+      couponRate,
+      couponType,
+      paymentFrequency,
+      paymentDates: []
+    },
+    source: {
+      provider: 'KIS',
+      sourceDate: kisBondDate(String(o.tlg_rcvg_dtl_dtime || '').slice(0, 8)),
+      retrievedAt: new Date(bondNum(r.fetchedAt) || Date.now()).toISOString(),
+      evidenceGrade: 'A',
+      status: BOND_SOURCE_STATUS.FOUND
+    }
+  });
+  /* [PM 지시 §14] KIS가 실제로 준 항목만 적어 돌려준다. 호출부는 이 목록에 있는 항목만 덮어쓴다 -
+   * 예를 들어 iso_crcy_cd가 빈 문자열로 오는 채권이 실제로 있는데(실측), 그때 기존 통화를
+   * 스키마 기본값 'KRW'로 밀어버리면 외화채의 통화가 조용히 바뀐다. */
+  const provided = {
+    instrumentName: !!position.identity.instrumentName,
+    currency: String((o.iso_crcy_cd ?? '')).trim() !== '',
+    bondType: !!position.identity.bondType,
+    issueDate: position.terms.issueDate !== null,
+    maturityDate: position.terms.maturityDate !== null,
+    couponRate: position.terms.couponRate !== null,
+    couponType: position.terms.couponType !== null,
+    paymentFrequency: position.terms.paymentFrequency !== null
+  };
+  const missing = ['maturityDate', 'couponRate'].filter((k) => position.terms[k] === null);
+  if (missing.length) {
+    position.source.status = BOND_SOURCE_STATUS.SOURCE_DATA_INCOMPLETE;
+    return { status: BOND_SOURCE_STATUS.SOURCE_DATA_INCOMPLETE, position, provided, missingFields: missing };
+  }
+  return { status: BOND_SOURCE_STATUS.FOUND, position, provided, missingFields: [] };
+}
+
+/**
+ * [BOND-14 · BOND-27] 조회 결과를 기존 레코드에 얹는다.
+ * KIS가 준 항목만 덮어쓰고, 안 준 항목과 사용자가 고친 값(userOverride) · 보유(B 계층)는 그대로 둔다.
+ * 조회 실패가 이미 있던 정보를 지우는 일이 없어야 한다.
+ */
+function mergeKisBondInfoIntoPosition(existing, mapped) {
+  if (!mapped || !mapped.position) return existing;
+  const base = existing || makeBondPosition({});
+  const p = mapped.position;
+  const provided = mapped.provided || {};
+  const pick = (key, next, prev) => (provided[key] ? next : prev);
+  return makeBondPosition({
+    id: base.id,
+    assetId: base.assetId,
+    identity: Object.assign({}, base.identity, {
+      isin: p.identity.isin || base.identity.isin,
+      instrumentName: pick('instrumentName', p.identity.instrumentName, base.identity.instrumentName),
+      currency: pick('currency', p.identity.currency, base.identity.currency),
+      bondType: pick('bondType', p.identity.bondType, base.identity.bondType),
+      // 발행인 · 신용등급 · 채권순위는 KIS가 주지 않는다 - 기존 값을 그대로 둔다(추정 금지).
+      issuer: base.identity.issuer,
+      creditRating: base.identity.creditRating,
+      seniority: base.identity.seniority
+    }),
+    terms: Object.assign({}, base.terms, {
+      issueDate: pick('issueDate', p.terms.issueDate, base.terms.issueDate),
+      maturityDate: pick('maturityDate', p.terms.maturityDate, base.terms.maturityDate),
+      couponRate: pick('couponRate', p.terms.couponRate, base.terms.couponRate),
+      couponType: pick('couponType', p.terms.couponType, base.terms.couponType),
+      paymentFrequency: pick('paymentFrequency', p.terms.paymentFrequency, base.terms.paymentFrequency)
+    }),
+    source: p.source,
+    userOverride: base.userOverride, // 사용자가 고친 값은 조회가 지우지 않는다
+    holding: base.holding,           // B 계층은 자동 경로가 절대 건드리지 않는다
+    updatedAt: Date.now()
+  });
+}
+
+/**
+ * [BOND-42] KIS bond-price 응답 → 시세. **rt_cd만 믿지 않는다.**
+ * 실측(2026-09-21): 존재하지 않는 표준코드에도 rt_cd '0' · "정상처리 되었습니다"로 답하면서
+ * 값은 전부 0이고 stnd_iscd 필드 자체가 빠진 응답을 준다. 그 0을 시세로 쓰면 평가금액이 0이 된다.
+ * 그래서 표준코드가 응답에 있고 요청과 같을 때만 시세로 인정한다.
+ */
+function mapKisBondQuote(raw, requestedIsin) {
+  const want = String(requestedIsin || '').trim().toUpperCase();
+  const r = raw || {};
+  if (String(r.rtCd ?? '') !== '0') {
+    return { status: 'UNAVAILABLE', quote: null, reason: String(r.msg1 || '').trim() || '시세 조회에 실패했습니다.' };
+  }
+  const o = r.output || null;
+  if (!o || typeof o !== 'object') return { status: 'UNAVAILABLE', quote: null, reason: '시세 응답이 비어 있습니다.' };
+  const got = String(o.stnd_iscd || '').trim().toUpperCase();
+  if (!got) {
+    return { status: 'UNAVAILABLE', quote: null, reason: '응답에 표준코드가 없습니다 - 상장되지 않았거나 없는 채권입니다.' };
+  }
+  if (want && got !== want) {
+    return { status: 'UNAVAILABLE', quote: null, reason: '요청한 표준코드와 응답의 표준코드가 다릅니다.' };
+  }
+  const price = kisNum(o.bond_prpr);
+  if (!Number.isFinite(price) || price <= 0) {
+    return { status: 'UNAVAILABLE', quote: null, reason: '시세가 없습니다(거래가 없거나 값이 0입니다).' };
+  }
+  return {
+    status: 'OK',
+    quote: {
+      isin: got,
+      name: String(o.hts_kor_isnm || '').trim() || null,
+      price,
+      prevClose: kisNum(o.bond_prdy_clpr),
+      change: kisNum(o.bond_prdy_vrss),
+      changePct: kisNum(o.prdy_ctrt),
+      yieldPct: kisNum(o.ernn_rate),
+      fetchedAt: bondNum(r.fetchedAt) || null
+    }
+  };
+}
+
+/* [BOND-44] 가격 기준액면 후보. 이 목록에 없는 값은 만들지 않는다. */
+const BOND_PRICE_BASIS_CANDIDATES = Object.freeze([1000, 10000, 100000, 1000000]);
+/* 후보끼리 10배씩 떨어져 있으므로 2배 이내면 어느 후보인지 헷갈릴 수 없다.
+ * 경과이자 · 일수계산 차이(표면이율이 높은 채권일수록 커진다)를 넉넉히 흡수한다. */
+const BOND_PRICE_BASIS_TOLERANCE = 2;
+
+/**
+ * [BOND-44 · PM 지시 §7 · §8] 이 채권의 KIS 시세가 "액면 얼마를 기준으로 매긴 가격"인지 정한다.
+ *
+ * 추정하지 않는다. 판단 근거는 **응답 자체**다 - KIS는 같은 응답에 가격(bond_prpr)과
+ * 수익률(ernn_rate)을 함께 준다. 이 채권의 발행조건으로 그 수익률에서 이론가격을 직접 계산하면
+ * "액면 1만원당 얼마여야 하는가"가 나오고, 실제 가격을 그것으로 나누면 기준액면이 드러난다.
+ * 종목마다 따로 판정하므로 국고채에서 확인한 값을 다른 채권에 일반화하지 않는다(§7-A · §7-B).
+ *
+ * 근거가 부족하면(만기 · 표면이율 · 수익률이 없거나, 어느 후보와도 맞지 않으면) UNAVAILABLE이다.
+ * 그 경우 호출부는 PURCHASE로 되돌아간다(BOND-45) - 임의 기준액면을 넣지 않는다.
+ */
+function resolveBondPriceBasis(position, quote, options) {
+  const opt = options || {};
+  const asOf = bondDate(opt.asOf) || new Date();
+  const price = bondNum(quote && quote.price);
+  const y = bondNum(quote && quote.yieldPct);
+  if (!Number.isFinite(price) || price <= 0) return { status: 'UNAVAILABLE', reason: '시세가 없습니다.' };
+  if (!Number.isFinite(y) || y <= 0) {
+    return { status: 'UNAVAILABLE', reason: '수익률이 없어 이 가격이 어느 액면 기준인지 확인할 수 없습니다.' };
+  }
+  const cf = buildBondCashFlows(position, { asOf, positions: opt.positions });
+  if (cf.status !== 'OK') return { status: 'UNAVAILABLE', reason: cf.reason || '현금흐름을 만들 수 없어 가격 기준을 확인할 수 없습니다.' };
+  const future = cf.future || [];
+  if (!future.length) return { status: 'UNAVAILABLE', reason: '남은 현금흐름이 없습니다.' };
+
+  // 이 현금흐름이 깔린 액면(거래원장 또는 legacy 값)으로 나눠 "액면 1만원당 이론가격"을 만든다.
+  const held = resolveBondHolding(position, opt.positions);
+  const faceUsed = bondNum(held.faceAmount !== null ? held.faceAmount : (position.terms && position.terms.faceValue));
+  if (!Number.isFinite(faceUsed) || faceUsed <= 0) return { status: 'UNAVAILABLE', reason: '보유 액면을 알 수 없습니다.' };
+
+  const r = y / 100;
+  const pv = future.reduce((s, f) => s + f.amount / Math.pow(1 + r, bondYearFraction(asOf, bondDate(f.date))), 0);
+  if (!(pv > 0)) return { status: 'UNAVAILABLE', reason: '이론가격이 0 이하입니다.' };
+  const theoreticalPer10000 = pv / faceUsed * BOND_FACE_UNIT;
+  const impliedBasis = BOND_FACE_UNIT * (price / theoreticalPer10000);
+
+  let best = null;
+  BOND_PRICE_BASIS_CANDIDATES.forEach((c) => {
+    const ratio = impliedBasis > c ? impliedBasis / c : c / impliedBasis;
+    if (ratio <= BOND_PRICE_BASIS_TOLERANCE && (!best || ratio < best.ratio)) best = { basisFace: c, ratio };
+  });
+  if (!best) {
+    return { status: 'UNAVAILABLE', reason: '가격과 수익률이 서로 맞지 않아 가격 기준액면을 확인하지 못했습니다.' };
+  }
+  return {
+    status: 'OK',
+    basisFace: best.basisFace,
+    impliedBasis,
+    theoreticalPricePer10000: theoreticalPer10000,
+    deviationPct: (impliedBasis / best.basisFace - 1) * 100,
+    evidence: 'KIS 응답의 가격과 수익률을 이 채권의 발행조건으로 대조해 확인했습니다.'
+  };
+}
+
+/**
+ * [BOND-41 · BOND-43 · BOND-44] 시장가치.
+ *   marketValue = faceAmount × (가격 / 가격기준액면)
+ * 거래 quantity(액면 1만원 단위)는 그대로 두고, 가격 쪽 기준액면만 따로 맞춘다.
+ */
+function computeBondMarketValue(position, quote, options) {
+  const opt = options || {};
+  const held = resolveBondHolding(position, opt.positions);
+  if (held.closed) return { status: 'UNAVAILABLE', reason: '전량매도되어 보유분이 없습니다.' };
+  const face = bondNum(held.faceAmount);
+  if (!Number.isFinite(face) || face <= 0) return { status: 'UNAVAILABLE', reason: '보유 액면이 없습니다.' };
+  const basis = resolveBondPriceBasis(position, quote, opt);
+  if (basis.status !== 'OK') return { status: 'UNAVAILABLE', reason: basis.reason };
+  const price = bondNum(quote && quote.price);
+  const marketValue = face * (price / basis.basisFace);
+  if (!Number.isFinite(marketValue) || marketValue <= 0) return { status: 'UNAVAILABLE', reason: '시장가치를 계산하지 못했습니다.' };
+  return {
+    status: 'OK', marketValue, faceAmount: face, price,
+    priceBasisFace: basis.basisFace, priceBasisDeviationPct: basis.deviationPct
+  };
+}
+
+/* ── MC · 자산 성격 연계 (§47-3) ── */
 
 // BOND_CLASS → 앱 자산 성격(js/05 ASSET_CHARACTERS). UNCLASSIFIED는 연결하지 않는다.
 const BOND_CLASS_TO_CHARACTER = Object.freeze({
@@ -714,6 +1010,8 @@ if (typeof module !== 'undefined' && module.exports) {
     makeBondPosition, bondEffectiveTerms, resolveBondClass, bondCouponSchedule, buildBondCashFlows,
     computeAccruedInterest, solveBondYtm, computeBondYields, computeBondDuration, computeBondRiskSummary,
     resolveBondAssetCharacter, mapBondSourceResponse, mergeBondSourceIntoPosition,
-    BOND_FACE_UNIT, bondLedgerKey, resolveBondHolding, bondFaceToQuantity, bondQuantityToFace
+    BOND_FACE_UNIT, bondLedgerKey, resolveBondHolding, bondFaceToQuantity, bondQuantityToFace,
+    KIS_BOND_CLASS_TO_TYPE, BOND_PRICE_BASIS_CANDIDATES, mapKisBondInfo, mapKisBondQuote,
+    resolveBondPriceBasis, computeBondMarketValue, mergeKisBondInfoIntoPosition
   };
 }

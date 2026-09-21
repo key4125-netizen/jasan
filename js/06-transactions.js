@@ -987,6 +987,55 @@ function applyKnownBondMasterToTxForm() {
   note.textContent = '이미 등록된 채권입니다 - 아는 발행조건을 채웠습니다' + (eff.identity.instrumentName ? ' (' + eff.identity.instrumentName + ')' : '') + '.';
 }
 
+/* ══ [Bond Stage 2 · §49 BOND-41~46] ISIN으로 발행조건 자동 조회 ══════════════
+ *
+ * KIS는 **편의 기능**이다. 조회가 실패해도 거래 입력은 그대로 진행된다(BOND-27) - 아래 칸을
+ * 직접 채워 저장하면 된다. 다만 실패를 성공처럼 보이게 하지 않는다: 무엇이 안 됐는지 적는다.
+ * 사용자가 이미 적어 둔 값은 덮어쓰지 않는다(빈 칸만 채운다).
+ */
+async function lookupBondFromKis() {
+  const note = txBondEl('tx_bondMasterNote');
+  const btn = txBondEl('txBondLookupBtn');
+  const isin = String((txBondEl('tx_bondIsin') || {}).value || '').trim().toUpperCase();
+  if (!note) return;
+  if (!isBondIsin(isin)) {
+    note.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '조회 중'; }
+  note.textContent = '발행조건을 조회하는 중입니다...';
+  try {
+    const raw = await fetchKisBondInfoRaw(isin);
+    if (!raw) {
+      note.textContent = '조회에 실패했습니다(네트워크 또는 조회 서버). 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+      return;
+    }
+    const mapped = mapKisBondInfo(raw, isin);
+    if (!mapped.position) {
+      note.textContent = `조회되지 않았습니다: ${mapped.reason || '해당 표준코드의 채권을 찾지 못했습니다.'} 아래 발행조건을 직접 넣어 주세요.`;
+      return;
+    }
+    const eff = mapped.position;
+    const setIfEmpty = (id, v) => { const el = txBondEl(id); if (el && !el.value && v !== null && v !== undefined && v !== '') el.value = String(v); };
+    setIfEmpty('tx_bondMaturityDate', eff.terms.maturityDate);
+    setIfEmpty('tx_bondCouponRate', eff.terms.couponRate);
+    setIfEmpty('tx_bondCouponType', eff.terms.couponType);
+    setIfEmpty('tx_bondPayFreq', eff.terms.paymentFrequency);
+    if (mapped.provided && mapped.provided.bondType) setIfEmpty('tx_bondType', eff.identity.bondType);
+    const nameInput = txBondEl('tx_name');
+    if (nameInput && !nameInput.value && eff.identity.instrumentName) nameInput.value = eff.identity.instrumentName;
+    const incomplete = (mapped.missingFields || []).length
+      ? ` 다만 ${mapped.missingFields.join(' · ')}은(는) 받지 못했습니다 - 직접 넣어 주세요.`
+      : '';
+    note.textContent = `조회했습니다: ${eff.identity.instrumentName || isin}${incomplete}`;
+  } catch (e) {
+    note.textContent = '조회 중 문제가 생겼습니다. 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '조회'; }
+  }
+}
+document.getElementById('txBondLookupBtn').addEventListener('click', lookupBondFromKis);
+
 document.getElementById('tx_assetClass').addEventListener('change', (e) => {
   delete e.target.dataset.autofilled;
   if (!isTxBondForm()) clearTxBondFields();

@@ -6,10 +6,26 @@
 // 가족 동기화 Worker(steep-haze-01f0, cloudflare-worker-sync.js)와는 완전히 분리된 별도
 // Worker다(보안 격리 - 이 Worker가 뚫려도 다른 두 Worker의 데이터/기능에는 영향이 없다).
 //
-// [읽기 전용 원칙 - 반드시 지킬 것] 이 Worker는 국내주식 시세/재무 정보 "조회" 라우트만 코드로
-// 존재한다. KIS API가 제공하는 주문(매수/매도)/계좌잔고/입출금 같은 라우트는 이 사용자의 API 키
+// [읽기 전용 원칙 - 반드시 지킬 것] 이 Worker는 국내주식 · 국내채권 시세/기준정보 "조회" 라우트만
+// 코드로 존재한다. KIS API가 제공하는 주문(매수/매도)/계좌잔고/입출금 같은 라우트는 이 사용자의 API 키
 // 권한이 실전투자용이라 하더라도 이 Worker 코드에는 아예 만들지 않는다 - "권한이 있어도 코드가
 // 없으면 실행될 수 없다"가 이 프로젝트의 보안 원칙이다.
+//
+// [Bond Stage 2 · 체크리스트 §49 BOND-34 · 2026-09-21] 국내채권 라우트 2개를 추가했다.
+//   /api/kis/bond-info  (발행 기준정보) · /api/kis/bond-price (시세)
+// 주식 라우트와 두 가지가 다르다. 둘 다 의도한 것이고 이유가 있다.
+//   (1) 조회키가 6자리 종목코드가 아니라 12자리 표준코드(ISIN)다. 그래서 입력 검증을 라우트별로
+//       나눴다 - 주식 라우트는 예전 그대로 6자리만, 채권 라우트는 ISIN만 받는다. 어느 쪽도
+//       느슨해지지 않는다(한쪽 형식을 다른 쪽에 허용하지 않는다).
+//   (2) 주식 라우트는 필요한 필드만 화이트리스트로 추려 내려주는데, 채권 라우트는 KIS의 output을
+//       그대로 내려준다. 이 프로젝트는 아직 **KIS 채권 응답의 실제 필드 이름을 확인한 적이 없다**
+//       (2026-08 구현 70c49b3은 실제 호출 없이 추정으로 만들었다가 되돌려졌다). 추정한 이름으로
+//       화이트리스트를 만들면 그 추정이 그대로 굳는다. 실제 응답을 보고 앱 쪽에서 매핑하고,
+//       필드명이 틀려도 Worker를 다시 배포하지 않게 한다.
+//       ※ 이 두 라우트가 다루는 것은 채권 시세 · 발행조건(공개 시장정보)뿐이다. 계좌 · 잔고 ·
+//         주문 정보를 돌려주는 엔드포인트가 아니므로 output 통과가 계정 정보 노출로 이어지지 않는다.
+//   rt_cd · msg_cd · msg1을 함께 내려준다 - KIS는 없는 종목도 HTTP 200으로 답하고 rt_cd로만
+//   실패를 알리기 때문에, 이 값이 없으면 앱이 "조회 실패"와 "빈 응답"을 구분할 수 없다.
 //
 // [배포 절차]
 // 1. Cloudflare 대시보드 -> Workers & Pages -> Create -> "Create Worker"
@@ -42,6 +58,10 @@ const TOKEN_KV_KEY = 'kis_access_token';
 // 매번 다시 때리지 않고 KV에 저장된 값을 그대로 돌려준다 - 재무제표/수급 동향은 하루 중 자주 바뀌는
 // 데이터가 아니라 20분 정도 지연되어 보여도 실사용에 문제가 없다.
 const RESPONSE_CACHE_TTL_SECONDS = 20 * 60; // 20분
+/* [Bond Stage 2 · 호출량] 채권 발행조건(만기 · 표면이율 · 이자지급주기)은 발행된 뒤 바뀌지 않는다 -
+ * 20분마다 다시 받을 이유가 없어 훨씬 길게 잡는다. 새 캐싱 장치를 만들지 않고 아래 getCachedOrFetch를
+ * 그대로 쓰되 TTL만 라우트별로 다르게 준다(§12 - 최소한의 호출 제어). 시세는 20분 그대로다. */
+const BOND_INFO_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30일
 
 /* ============================================================================
  * [B-1 보안 보완 · 체크리스트 §47-8 · PM 승인 2026-09-20]
@@ -130,6 +150,13 @@ function isValidDomesticCode(code) {
  * KIS API가 이 형식을 받는지는 확인되지 않았으므로 **허용 범위는 넓히지 않는다**(확인 전 개방 금지). */
 function isKrxAlnumCode(code) {
   return /^\d{4}[A-Z]\d$/i.test(code);
+}
+
+/* [Bond Stage 2] 채권 표준코드(ISO 6166) - 국가코드 2자 + 영숫자 9자 + 검사숫자 1자 = 12자.
+ * 앱의 isBondIsin(js/01)과 같은 판정이다. 두 곳이 어긋나면 앱에서는 보내고 Worker에서는 막는
+ * 조합이 생기므로, 바꿀 때는 반드시 같이 바꾼다. */
+function isValidBondIsin(code) {
+  return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(code || '').toUpperCase());
 }
 
 // [토큰 발급/캐시] KV에 캐시된 토큰이 있고 만료 10분 이상 남았으면 그대로 재사용, 아니면 새로 발급받아
@@ -315,11 +342,47 @@ async function handleInvestorFlow(env, code) {
   };
 }
 
+/* [Bond Stage 2 · bond-info] 채권 발행 기준정보.
+ * 경로 · tr_id · 파라미터는 KIS 공식 문서/샘플에서 확인된 값이다(PDNO=ISIN, PRDT_TYPE_CD=302=채권).
+ * **응답 필드 이름은 이 프로젝트에서 아직 실제로 확인한 적이 없다** - 그래서 추려내지 않고 그대로
+ * 내려준다. 앱이 실제 응답을 보고 매핑한다(머리말 (2) 참고). */
+async function handleBondInfo(env, isin) {
+  const data = await callKis(env, '/uapi/domestic-bond/v1/quotations/search-bond-info', 'CTPF1114R', {
+    PDNO: isin,
+    PRDT_TYPE_CD: '302'
+  });
+  return {
+    rtCd: data.rt_cd ?? null,
+    msgCd: data.msg_cd ?? null,
+    msg1: data.msg1 ?? null,
+    output: data.output ?? data.output1 ?? null,
+    output2: data.output2 ?? null,
+    fetchedAt: Date.now()
+  };
+}
+
+/* [Bond Stage 2 · bond-price] 채권 시세. 시장구분코드는 'B'(채권)이고 ISIN을 FID_INPUT_ISCD에 넣는다.
+ * **가격 단위는 앱에서 추측하지 않는다** - 실제 응답을 보고 확정한다(§7 - 임의 배수 보정 금지). */
+async function handleBondPrice(env, isin) {
+  const data = await callKis(env, '/uapi/domestic-bond/v1/quotations/inquire-price', 'FHKBJ773400C0', {
+    FID_COND_MRKT_DIV_CODE: 'B',
+    FID_INPUT_ISCD: isin
+  });
+  return {
+    rtCd: data.rt_cd ?? null,
+    msgCd: data.msg_cd ?? null,
+    msg1: data.msg1 ?? null,
+    output: data.output ?? data.output1 ?? null,
+    output2: data.output2 ?? null,
+    fetchedAt: Date.now()
+  };
+}
+
 // [응답 KV 캐싱] 같은 종목/라우트를 짧은 시간 안에 다시 요청하면(같은 종목 상세를 재방문하는 등) KIS를
 // 다시 호출하지 않고 KV에 저장된 값을 그대로 돌려준다. KV 조회/저장이 실패해도(일시적 KV 장애 등)
 // 캐시는 어디까지나 최적화일 뿐이므로 무시하고 정상적으로 KIS를 호출해 응답한다 - 캐시 문제로 기능
 // 자체가 죽으면 안 된다.
-async function getCachedOrFetch(env, cacheKey, fetchFn) {
+async function getCachedOrFetch(env, cacheKey, fetchFn, ttlSeconds) {
   try {
     const cached = await env.KIS_KV.get(cacheKey, 'json');
     if (cached) return cached;
@@ -327,7 +390,7 @@ async function getCachedOrFetch(env, cacheKey, fetchFn) {
 
   const fresh = await fetchFn();
   try {
-    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: RESPONSE_CACHE_TTL_SECONDS });
+    await env.KIS_KV.put(cacheKey, JSON.stringify(fresh), { expirationTtl: ttlSeconds || RESPONSE_CACHE_TTL_SECONDS });
   } catch (e) { /* KV 저장 실패해도 응답 자체는 정상 반환 */ }
   return fresh;
 }
@@ -363,7 +426,13 @@ export default {
 
     const url = new URL(request.url);
     const code = (url.searchParams.get('ticker') || '').trim();
-    if (!isValidDomesticCode(code)) {
+    /* [Bond Stage 2] 입력 검증을 라우트별로 나눈다. 예전에는 라우팅 전에 6자리 종목코드 검사를 한 번
+     * 했기 때문에, 채권 라우트를 추가해도 ISIN이 그 검사에 먼저 걸려 400으로 막혔다(실측).
+     * 나눈다고 느슨해지지 않는다 - 주식 라우트는 예전 그대로 6자리만 받고, 채권 라우트는 ISIN만 받는다. */
+    const isBondRoute = url.pathname === '/api/kis/bond-info' || url.pathname === '/api/kis/bond-price';
+    if (isBondRoute) {
+      if (!isValidBondIsin(code)) return jsonResponse({ error: 'bad_isin' }, 400, cors);
+    } else if (!isValidDomesticCode(code)) {
       // 형식이 "틀린" 것과 "아직 지원하지 않는" 것을 구분해서 알린다.
       return jsonResponse({ error: isKrxAlnumCode(code) ? 'ticker_format_unsupported' : 'bad_ticker' }, 400, cors);
     }
@@ -380,6 +449,17 @@ export default {
       }
       if (url.pathname === '/api/kis/investor-flow') {
         const data = await getCachedOrFetch(env, `kis_cache:investor-flow:${code}`, () => handleInvestorFlow(env, code));
+        return jsonResponse(data, 200, cors);
+      }
+      // [Bond Stage 2] 채권은 ISIN을 대문자로 맞춰 캐시 키를 하나로 모은다(같은 채권을 두 번 받지 않는다).
+      const isin = code.toUpperCase();
+      if (url.pathname === '/api/kis/bond-info') {
+        const data = await getCachedOrFetch(env, `kis_cache:bond-info:${isin}`,
+          () => handleBondInfo(env, isin), BOND_INFO_CACHE_TTL_SECONDS);
+        return jsonResponse(data, 200, cors);
+      }
+      if (url.pathname === '/api/kis/bond-price') {
+        const data = await getCachedOrFetch(env, `kis_cache:bond-price:${isin}`, () => handleBondPrice(env, isin));
         return jsonResponse(data, 200, cors);
       }
       return jsonResponse({ error: 'not_found' }, 404, cors);

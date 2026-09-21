@@ -274,7 +274,7 @@ function renderAssetDetailPositionNotice(assets) {
    * 사용자가 값이 최신이라고 오해할 수 있다. 사실을 그대로 한 줄 알린다(계산은 건드리지 않는다). */
   if (list.some((a) => a && a.category === '채권')) {
     issues.push({ status: 'BOND_PRICE_MANUAL',
-      message: '채권의 현재가는 자동으로 갱신되지 않습니다 - 직접 입력한 값이 그대로 표시됩니다(채권 시세는 저장하지 않습니다). 만기보유 기준 수익률과 금리 민감도는 발행조건만으로 계산되므로 현재가가 없어도 볼 수 있습니다.' });
+      message: '이 화면의 채권 현재가는 자동으로 갱신되지 않습니다 - 직접 입력한 값이 그대로 표시됩니다. 만기보유 기준 수익률과 금리 민감도는 발행조건만으로 계산되므로 현재가가 없어도 볼 수 있습니다. 「채권 위험」 카드는 표준코드(ISIN)로 조회한 시장가가 있으면 그 값으로 평가하며, 조회한 시세는 저장하지 않습니다.' });
   }
   const shown = [];
   issues.forEach((x) => { if (!shown.some((y) => y.status === x.status)) shown.push(x); });

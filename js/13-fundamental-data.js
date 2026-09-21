@@ -49,6 +49,85 @@ async function fetchKisPriceSnapshot(code) { return kisProxyFetch('/api/kis/pric
 async function fetchKisFundamentalsRaw(code) { return kisProxyFetch('/api/kis/fundamentals', code); }
 async function fetchKisInvestorFlowRaw(code) { return kisProxyFetch('/api/kis/investor-flow', code); }
 
+/* ══ [Bond Stage 2 · §49 BOND-41~46] KIS 채권 조회 ══════════════════════════
+ *
+ * 주식 라우트와 같은 kisProxyFetch를 쓴다(타임아웃 10초 · 실패 시 null). 다른 점은 조회키가
+ * 6자리 종목코드가 아니라 12자리 표준코드(ISIN)라는 것뿐이다.
+ *
+ * [저장하지 않는다] 조회한 시세는 **메모리에만** 둔다. state에 넣지 않으므로 localStorage ·
+ * JSON 백업 · 기기 간 동기화 어디에도 들어가지 않는다(§24 - 시장가격을 영구 저장하지 않는다).
+ * 새로고침하면 사라지고 다시 조회한다.
+ * [호출량] Worker가 이미 캐시한다(발행정보 30일 · 시세 20분). 여기서는 같은 화면 안에서 같은
+ * 채권을 여러 번 부르지 않도록 진행 중인 Promise와 결과만 잠깐 붙들어 둔다(§23). */
+const BOND_QUOTE_TTL_MS = 20 * 60 * 1000; // Worker 캐시(20분)와 같은 주기
+const bondQuoteMemory = {};   // ISIN -> { quote, at }
+const bondQuoteInFlight = {}; // ISIN -> Promise
+
+function normalizeIsinKey(isin) { return String(isin || '').trim().toUpperCase(); }
+
+/** 발행 기준정보(A 계층) 원본. 실패하면 null - 호출부가 "직접 입력" 안내를 띄운다. */
+async function fetchKisBondInfoRaw(isin) { return kisProxyFetch('/api/kis/bond-info', normalizeIsinKey(isin)); }
+/** 시세 원본. 실패하면 null. */
+async function fetchKisBondPriceRaw(isin) { return kisProxyFetch('/api/kis/bond-price', normalizeIsinKey(isin)); }
+
+/** 검증까지 끝난 시세(없으면 null). 같은 ISIN을 잇달아 부르면 메모리 값을 그대로 쓴다. */
+async function getBondQuote(isin) {
+  const key = normalizeIsinKey(isin);
+  if (!key) return null;
+  const hit = bondQuoteMemory[key];
+  if (hit && Date.now() - hit.at < BOND_QUOTE_TTL_MS) return hit.quote;
+  if (bondQuoteInFlight[key]) return bondQuoteInFlight[key];
+
+  const promise = (async () => {
+    try {
+      const raw = await fetchKisBondPriceRaw(key);
+      const mapped = (raw && typeof mapKisBondQuote === 'function') ? mapKisBondQuote(raw, key) : null;
+      const quote = (mapped && mapped.status === 'OK') ? mapped.quote : null;
+      bondQuoteMemory[key] = { quote, at: Date.now() }; // 실패(null)도 기억해 곧바로 다시 두드리지 않는다
+      return quote;
+    } finally {
+      delete bondQuoteInFlight[key];
+    }
+  })();
+  bondQuoteInFlight[key] = promise;
+  return promise;
+}
+
+/** 지금까지 받아 둔 시세만 동기적으로 돌려준다(렌더링 중에는 네트워크를 기다리지 않는다). */
+function getCachedBondQuotes() {
+  const out = {};
+  Object.keys(bondQuoteMemory).forEach((k) => { if (bondQuoteMemory[k].quote) out[k] = bondQuoteMemory[k].quote; });
+  return out;
+}
+
+/* [화면 갱신] 보유 중인 채권의 시세를 한 번씩만 받아 두고, 하나라도 새로 들어오면 다시 그린다.
+ * 전량매도된 채권은 부르지 않는다(§20 - 평가 대상이 아니다). */
+let bondQuoteRefreshRunning = false;
+async function refreshBondQuotes() {
+  if (bondQuoteRefreshRunning) return;
+  if (typeof state === 'undefined' || !Array.isArray(state.bondPositions) || !state.bondPositions.length) return;
+  const ledger = (typeof computePositionsAndRealizedPnL === 'function') ? computePositionsAndRealizedPnL().positions : null;
+  const targets = [];
+  state.bondPositions.forEach((p) => {
+    const key = normalizeIsinKey(p && p.identity && p.identity.isin);
+    if (!key || targets.includes(key)) return;
+    const held = (typeof resolveBondHolding === 'function') ? resolveBondHolding(p, ledger) : null;
+    if (held && held.closed) return;
+    const hit = bondQuoteMemory[key];
+    if (hit && Date.now() - hit.at < BOND_QUOTE_TTL_MS) return;
+    targets.push(key);
+  });
+  if (!targets.length) return;
+  bondQuoteRefreshRunning = true;
+  try {
+    const before = Object.keys(getCachedBondQuotes()).length;
+    for (const key of targets) await getBondQuote(key); // 순차 - KIS 동시 호출 제한을 자극하지 않는다
+    if (Object.keys(getCachedBondQuotes()).length !== before && typeof renderAll === 'function') renderAll();
+  } finally {
+    bondQuoteRefreshRunning = false;
+  }
+}
+
 // [당일 캐시] getCachedDailyCloses(js/09)와 완전히 같은 패턴 - 하루 안에는 다시 조회하지 않는다.
 // 세 가지를 동시에 요청해 왕복 시간을 줄인다.
 // [동시 호출 중복 방지] 리스크 정밀 진단 카드(수급 신호등 갱신용)와 재무 펀더멘털 섹션이 같은 종목

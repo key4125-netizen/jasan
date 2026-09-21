@@ -143,3 +143,74 @@ test('G-5: 영문 혼합 국내 종목코드는 "잘못된 코드"가 아니라 
   // 허용 범위 자체는 넓히지 않았다 - KIS가 이 형식을 받는지 확인되지 않았기 때문이다(확인 전 개방 금지).
   assert.ok(SRC.includes(String.raw`/^\d{6}$/.test(code)`), 'isValidDomesticCode가 6자리 숫자 검사를 유지해야 한다');
 });
+
+/* ══ [Bond Stage 2 · §49 BOND-34] 채권 라우트의 입력 검증 · 인증 계약 ══════════
+ * 상류는 부르지 않는다(위 loadWorker의 fetch 스텁이 던진다) - "검증을 통과했는가"만 본다.
+ * 통과하면 상류 호출로 넘어가 502가 되고, 막히면 400이 된다. 그 차이로 판정한다. */
+
+const ISIN_OK = 'KRZZ00000001';   // 합성 코드 - 실제 보유 채권이 아니다
+const URL_BOND_INFO = `https://worker.test/api/kis/bond-info?ticker=${ISIN_OK}`;
+const URL_BOND_PRICE = `https://worker.test/api/kis/bond-price?ticker=${ISIN_OK}`;
+
+function bondEnv() { return { KIS_KV: kvStub(), CLIENT_SHARED_SECRET: DUMMY_SECRET }; }
+function authHeaders() { return { Origin: ORIGIN_OK, 'X-App-Secret': DUMMY_SECRET }; }
+
+test('채권 라우트: ISIN은 검증을 통과한다(주식 6자리 검사에 걸려 막히지 않는다)', async () => {
+  const w = loadWorker();
+  for (const url of [URL_BOND_INFO, URL_BOND_PRICE]) {
+    const res = await w.fetch(req(url, authHeaders()), bondEnv());
+    // 상류 스텁이 던지므로 502다 - 400이면 검증에서 막혔다는 뜻이다.
+    assert.strictEqual(res.status, 502, `${url} 가 검증 단계에서 막혔다`);
+    assert.deepStrictEqual(await res.json(), { error: 'upstream_error' });
+  }
+});
+
+test('채권 라우트: 소문자로 들어온 ISIN도 같은 코드로 본다', async () => {
+  const w = loadWorker();
+  const res = await w.fetch(req(`https://worker.test/api/kis/bond-info?ticker=${ISIN_OK.toLowerCase()}`, authHeaders()), bondEnv());
+  assert.strictEqual(res.status, 502);
+});
+
+test('채권 라우트: ISIN이 아니면 상류를 부르기 전에 400 bad_isin으로 막는다', async () => {
+  const w = loadWorker();
+  for (const bad of ['005930', 'KR1035', 'KRZZ0000000A', '', 'KRZZ000000012']) {
+    const res = await w.fetch(req(`https://worker.test/api/kis/bond-info?ticker=${bad}`, authHeaders()), bondEnv());
+    assert.strictEqual(res.status, 400, `"${bad}" 가 통과했다`);
+    assert.deepStrictEqual(await res.json(), { error: 'bad_isin' });
+  }
+});
+
+test('주식 라우트의 검증은 느슨해지지 않았다(ISIN을 주식 라우트에 넣으면 여전히 400)', async () => {
+  const w = loadWorker();
+  const res = await w.fetch(req(`https://worker.test/api/kis/price?ticker=${ISIN_OK}`, authHeaders()), bondEnv());
+  assert.strictEqual(res.status, 400);
+  assert.deepStrictEqual(await res.json(), { error: 'bad_ticker' });
+});
+
+test('채권 라우트도 인증 · fail-closed 규칙을 똑같이 지킨다', async () => {
+  const w = loadWorker();
+  // 공유 비밀키 미등록 -> 503
+  const noCfg = await w.fetch(req(URL_BOND_INFO, { Origin: ORIGIN_OK }), { KIS_KV: kvStub() });
+  assert.strictEqual(noCfg.status, 503);
+  // 비밀키 불일치 -> 401
+  const bad = await w.fetch(req(URL_BOND_INFO, { Origin: ORIGIN_OK, 'X-App-Secret': 'wrong' }), bondEnv());
+  assert.strictEqual(bad.status, 401);
+  // 허용 목록 밖 Origin에는 CORS 허용 헤더를 주지 않는다
+  const evil = await w.fetch(req(URL_BOND_INFO, { Origin: ORIGIN_BAD, 'X-App-Secret': DUMMY_SECRET }), bondEnv());
+  assert.strictEqual(evil.headers.get('Access-Control-Allow-Origin'), null);
+});
+
+test('채권 발행정보는 시세보다 훨씬 긴 캐시를 쓴다(발행 후 바뀌지 않는 값이라 반복 조회하지 않는다)', () => {
+  assert.match(SRC, /BOND_INFO_CACHE_TTL_SECONDS\s*=\s*30 \* 24 \* 60 \* 60/);
+  assert.match(SRC, /kis_cache:bond-info:\$\{isin\}`,\s*\n\s*\(\) => handleBondInfo\(env, isin\), BOND_INFO_CACHE_TTL_SECONDS\)/);
+});
+
+test('주문 · 계좌 · 잔고 라우트는 채권 추가 후에도 코드에 존재하지 않는다(읽기 전용 원칙)', () => {
+  // 경로만 본다 - 'balance-sheet'(재무제표)는 계좌 잔고가 아니다.
+  const paths = SRC.match(/'\/uapi\/[^']+'/g) || [];
+  assert.ok(paths.length > 0, 'KIS 경로를 하나도 찾지 못했다 - 이 검사가 무력해졌다');
+  paths.forEach((p) => {
+    assert.ok(!/(trading|order|inquire-balance|inquire-psbl|inquire-account)/i.test(p),
+      `주문 · 계좌 경로가 코드에 들어왔다: ${p}`);
+  });
+});

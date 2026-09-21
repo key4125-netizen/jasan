@@ -378,7 +378,12 @@ function bondRiskCardHtml() {
    * 가중치가 되고, 거래가 없는 legacy 수동 채권은 예전처럼 등록 당시 값을 쓴다. */
   const ledger = (typeof computePositionsAndRealizedPnL === 'function')
     ? computePositionsAndRealizedPnL().positions : null;
-  const s = computeBondRiskSummary(positions, { positions: ledger });
+  /* [BOND-41 · §49] 검증을 통과한 KIS 시세가 있으면 그 시장가치로, 없으면 예전처럼 거래 기반
+   * 매입원가로 가중한다. 조회는 비동기라 지금 화면에서는 이미 받아 둔 것만 쓴다 - 새로 들어오면
+   * refreshBondQuotes()가 다시 그린다(렌더링이 네트워크를 기다리지 않는다). */
+  const quotes = (typeof getCachedBondQuotes === 'function') ? getCachedBondQuotes() : null;
+  const s = computeBondRiskSummary(positions, { positions: ledger, quotes });
+  if (typeof refreshBondQuotes === 'function') refreshBondQuotes();
   if (!s || s.status !== 'OK') return '';
   const ratings = Object.entries(s.creditRatingDistribution || {}).map(([k, v]) => `${escapeHtml(k)} ${v}건`).join(' · ');
   const currencies = Object.keys(s.currencyExposure || {}).join(' · ');
@@ -395,12 +400,31 @@ function bondRiskCardHtml() {
       <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
         신용등급 ${ratings || '미확인'}${currencies ? ' · 통화 ' + escapeHtml(currencies) : ''} · 듀레이션 계산 범위 ${fmtNum(s.durationCoveragePct, 0)}%
       </p>
+      ${bondValuationSourceHtml(s)}
       ${unavailable}
       <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">
-        이 값은 시장에서 실제로 관측한 가격 변동이 아니라 <b>현금흐름 구조로 계산한 모형값</b>입니다(일수 계산 ${escapeHtml(s.dayCount)}).
+        위 <b>금리 민감도(듀레이션)</b>는 시장에서 실제로 관측한 가격 변동이 아니라 <b>현금흐름 구조로 계산한 모형값</b>입니다(일수 계산 ${escapeHtml(s.dayCount)}).
         ${escapeHtml(s.creditRiskNote)} 주식 위험점수와는 다른 축이라 하나의 점수로 합치지 않습니다.
       </p>
     </div>`;
+}
+
+/* [BOND-41 · PM 지시 §13] 이 카드가 무엇으로 평가했는지 한 줄로 밝힌다.
+ * 시장가로 쟀는지 매입원가로 쟀는지에 따라 같은 채권도 금액이 달라지므로, 숫자만 보여 주면
+ * 사용자는 그 차이를 알 수 없다. 기존 카드 안에 한 줄만 더한다(화면 구조는 그대로). */
+function bondValuationSourceHtml(s) {
+  if (!s || !s.valuationSource) return '';
+  const reasons = (s.rows || [])
+    .filter((r) => r.valuationSource === 'PURCHASE' && r.marketUnavailableReason)
+    .map((r) => r.marketUnavailableReason);
+  const uniqueReason = reasons.length ? [...new Set(reasons)][0] : '';
+  if (s.valuationSource === 'MARKET') {
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">평가 기준: <b>시장가</b> - 지금 시장에서 매겨진 가격으로 계산했습니다(${s.marketCount}건).</p>`;
+  }
+  if (s.valuationSource === 'MIXED') {
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">평가 기준: <b>시장가 ${s.marketCount}건 · 매입원가 ${s.purchaseCount}건</b> - 시세를 확인하지 못한 채권은 산 값으로 계산했습니다${uniqueReason ? '(' + escapeHtml(uniqueReason) + ')' : ''}.</p>`;
+  }
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">평가 기준: <b>매입원가</b> - 시세를 확인하지 못해 산 값으로 계산했습니다${uniqueReason ? '(' + escapeHtml(uniqueReason) + ')' : ''}.</p>`;
 }
 
 function betaCoverageNoteHtml(m) {
@@ -615,7 +639,7 @@ function riskFxBasisNote(m) {
   const basis = fx.basisDate ? ` <span class="whitespace-nowrap">환율 기준일: ${escapeHtml(fx.basisDate)}</span> (미국 연방준비제도 H.10)` : '';
   return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-fx-note>💱 달러로 거래되는 종목 ${n}개는 달러 가격과 원/달러 환율을 함께 반영한 원화 가치 변동으로 Risk를 계산했습니다(시장 민감도(베타)는 달러 가격 기준).${basis}</p>`;
 }
-const RISK_INSUFFICIENT_TITLE = '종합 위험점수 계산 불가 (데이터 부족)';
+const RISK_INSUFFICIENT_TITLE = '포트폴리오 종합 위험점수 계산 불가 (데이터 부족)';
 function riskInsufficientMessage(m) {
   const ds = (m && m.dataSufficiency) || {};
   const n = typeof ds.commonReturnCount === 'number' ? ds.commonReturnCount : 0;
@@ -672,7 +696,14 @@ function renderRiskDiagnosisSummary() {
   container.innerHTML = `
   <div class="rounded-xl border p-3.5 ${level.bgClass}">
     <div class="flex items-start justify-between gap-2 flex-wrap">
-      <p class="text-lg font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <!-- [PM 지시 2026-09-21] 이 점수가 포트폴리오 전체 기준임을 이름으로 분명히 하고, 바로 옆에
+           「포트폴리오 위험 안내」를 여는 (i)를 둔다. 표시 명칭과 버튼만 바뀐다 - 점수 · 등급 계산식은
+           건드리지 않았다. 모바일에서 점수가 줄바꿈으로 밀리지 않도록 점수 문구와 (i)를 한 덩어리로
+           묶고(whitespace-nowrap) 글자만 한 단계 줄인다(375px에서 한 줄에 들어간다). -->
+      <span class="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap min-w-0">
+        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap">${level.emoji} 포트폴리오 종합 위험점수</span>
+        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap flex items-center gap-1">${score}/100 [${level.label}]<button type="button" id="portfolioRiskInfoBtn" class="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="포트폴리오 위험 안내 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
+      </span>
       <span class="shrink-0 text-sm font-semibold ${confBand.colorClass} flex items-center gap-1 whitespace-nowrap">
         ${confBand.label}
         <button type="button" data-info-tip="${escapeHtml(confTip)}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
@@ -845,6 +876,28 @@ function refreshRiskDetailModalIfOpen() {
   const modal = document.getElementById('riskDetailModal');
   if (modal && !modal.classList.contains('hidden')) renderRiskDetailModal();
 }
+
+/* [PM 지시 2026-09-21] 「포트폴리오 위험 안내」 - 이 점수가 무엇을 뜻하는지만 설명한다.
+ * 실제 계산 수치는 openRiskDetailModal(🔍 세부내용)이 담당한다 - 역할을 합치지 않는다. */
+function openPortfolioRiskInfoModal() {
+  document.getElementById('portfolioRiskInfoModal').classList.remove('hidden');
+  pushModalHistoryState();
+}
+function closePortfolioRiskInfoModal(viaBackButton) {
+  document.getElementById('portfolioRiskInfoModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+// 점수 헤드라인은 매번 innerHTML로 다시 그려지므로 위임으로 받는다(버튼에 직접 걸면 사라진다).
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#portfolioRiskInfoBtn')) { e.stopPropagation(); openPortfolioRiskInfoModal(); }
+});
+document.getElementById('closePortfolioRiskInfoBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closePortfolioRiskInfoModal();
+});
+document.getElementById('portfolioRiskInfoModal').addEventListener('click', (e) => {
+  if (e.target.id === 'portfolioRiskInfoModal') closePortfolioRiskInfoModal();
+});
 
 function openRiskDetailModal() {
   renderRiskDetailModal();
@@ -1720,7 +1773,7 @@ function openRiskAlertModal() {
   // 아래)에 한 줄로만 덧붙인다 - 새 카드/새 점수/새 계산을 만들지 않는다.
   document.getElementById('riskAlertScoreBox').innerHTML = `
     <div class="rounded-xl border p-3 ${level.bgClass}">
-      <p class="text-base font-bold ${level.colorClass}">${level.emoji} 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <p class="text-base font-bold ${level.colorClass}">${level.emoji} 포트폴리오 종합 위험점수 ${score}/100 [${level.label}]</p>
       <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-keep">진단 대상: 주식·ETF 보유분만 해당(현금·채권·부동산 제외)</p>
       <p class="text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
     </div>`;
