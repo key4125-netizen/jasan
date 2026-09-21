@@ -235,11 +235,19 @@ function buildBondCashFlows(position, options) {
   const opt = options || {};
   const asOf = bondDate(opt.asOf) || new Date();
   const { terms } = bondEffectiveTerms(position);
-  const face = bondNum(terms.faceValue !== null ? (position.holding && position.holding.faceAmount) || terms.faceValue : NaN);
-  const faceAmount = Number.isFinite(bondNum(position.holding && position.holding.faceAmount))
-    ? bondNum(position.holding.faceAmount) : (Number.isFinite(face) ? face : NaN);
+  /* [BOND-01 · BOND-07 · BOND-08 · §49] 보유 액면은 거래원장이 있으면 거래에서(수량 × 10,000),
+   * 없으면 예전처럼 레코드의 B 계층에서 가져온다. 둘이 다르면 거래원장이 이긴다. */
+  const held = resolveBondHolding(position, opt.positions);
+  const face = bondNum(held.faceAmount !== null ? held.faceAmount : terms.faceValue);
+  const faceAmount = Number.isFinite(face) ? face : NaN;
   const maturity = bondDate(terms.maturityDate);
   if (!maturity) return { status: 'UNAVAILABLE', flows: [], reason: '만기일이 없어 현금흐름을 만들 수 없습니다.' };
+  /* [BOND-23 · BOND-24 · §49] 전량매도해 보유가 0이면 앞으로 받을 쿠폰이 없다 - 미래 현금흐름을
+   * 만들지 않는다. 거래원장이 넘어온 경우에만 판단하며, 레코드와 이미 지난 이력은 그대로 둔다.
+   * 쿠폰 수령을 거래로 기록하는 회계 기능은 이번 범위가 아니다(BOND-24). */
+  if (held.source === 'LEDGER' && held.closed) {
+    return { status: 'CLOSED', flows: [], reason: '전량매도되어 보유분이 없습니다 - 이후 현금흐름을 계산하지 않습니다.' };
+  }
   if (!Number.isFinite(faceAmount) || faceAmount <= 0) return { status: 'UNAVAILABLE', flows: [], reason: '보유 액면금액이 없어 현금흐름을 만들 수 없습니다.' };
   const couponRate = bondNum(terms.couponRate);
   const couponType = terms.couponType || (Number.isFinite(couponRate) && couponRate > 0 ? BOND_COUPON_TYPE.COUPON : null);
@@ -337,7 +345,10 @@ function computeBondYields(position, options) {
   const asOf = bondDate(opt.asOf) || new Date();
   const { terms } = bondEffectiveTerms(position);
   const h = position.holding || {};
-  const cf = buildBondCashFlows(position, { asOf });
+  /* [BOND-01 · BOND-08 · §49] 매입원가 · 보유 액면은 거래원장이 있으면 거래에서 나온다.
+   * 매입일 · 세금 구분처럼 거래에 없는 값만 레코드(h)에서 계속 읽는다. */
+  const held = resolveBondHolding(position, opt.positions);
+  const cf = buildBondCashFlows(position, { asOf, positions: opt.positions });
   const out = {
     asOf: bondIsoDate(asOf), dayCount: BOND_DAY_COUNT, layer: { confirmed: {}, valuation: {} },
     marketPriceAvailable: Number.isFinite(bondNum(opt.marketPrice))
@@ -346,8 +357,8 @@ function computeBondYields(position, options) {
   // ── 확정 계층(시세가 없어도 항상 계산된다)
   out.layer.confirmed.couponYield = Number.isFinite(bondNum(terms.couponRate))
     ? bondValue(bondNum(terms.couponRate)) : bondUnavailable('표면이율이 없습니다.');
-  out.layer.confirmed.purchaseAmount = Number.isFinite(bondNum(h.purchaseAmount))
-    ? bondValue(bondNum(h.purchaseAmount)) : bondUnavailable('매입금액이 없습니다.');
+  out.layer.confirmed.purchaseAmount = Number.isFinite(bondNum(held.purchaseAmount))
+    ? bondValue(bondNum(held.purchaseAmount)) : bondUnavailable('매입금액이 없습니다.');
 
   if (cf.status === 'OK') {
     const iso = bondIsoDate(asOf);
@@ -355,8 +366,8 @@ function computeBondYields(position, options) {
     out.layer.confirmed.realizedInterest = bondValue(realized.reduce((s, f) => s + f.amount, 0), { count: realized.length });
     const principal = cf.flows.find((f) => f.kind === 'PRINCIPAL' || f.kind === 'PRINCIPAL_COMPOUND');
     out.layer.confirmed.maturityRepayment = principal ? bondValue(principal.amount, { date: principal.date }) : bondUnavailable('만기 상환 현금흐름이 없습니다.');
-    out.layer.confirmed.maturityPL = (principal && Number.isFinite(bondNum(h.purchaseAmount)))
-      ? bondValue(principal.amount + cf.flows.filter((f) => f.kind === 'COUPON' && (!h.purchaseDate || f.date > h.purchaseDate)).reduce((s, f) => s + f.amount, 0) - bondNum(h.purchaseAmount))
+    out.layer.confirmed.maturityPL = (principal && Number.isFinite(bondNum(held.purchaseAmount)))
+      ? bondValue(principal.amount + cf.flows.filter((f) => f.kind === 'COUPON' && (!h.purchaseDate || f.date > h.purchaseDate)).reduce((s, f) => s + f.amount, 0) - bondNum(held.purchaseAmount))
       : bondUnavailable('만기 상환금액 또는 매입금액이 없습니다.');
     const maturity = bondDate(terms.maturityDate);
     out.layer.confirmed.remainingYears = maturity ? bondValue(Math.max(0, bondYearFraction(asOf, maturity))) : bondUnavailable('만기일이 없습니다.');
@@ -364,8 +375,8 @@ function computeBondYields(position, options) {
     out.layer.confirmed.nextCouponDate = nextFlow ? bondValue(nextFlow.date, { amount: nextFlow.amount }) : bondUnavailable('남은 쿠폰 지급일이 없습니다.');
     // 매입 시 YTM - 매입일 · 매입금액 기준(만기까지 보유 가정 수익률)
     const pDate = bondDate(h.purchaseDate);
-    out.layer.confirmed.purchaseYtm = (pDate && Number.isFinite(bondNum(h.purchaseAmount)))
-      ? solveBondYtm(cf.flows, pDate, bondNum(h.purchaseAmount))
+    out.layer.confirmed.purchaseYtm = (pDate && Number.isFinite(bondNum(held.purchaseAmount)))
+      ? solveBondYtm(cf.flows, pDate, bondNum(held.purchaseAmount))
       : bondUnavailable('매입일 또는 매입금액이 없어 매입 시 YTM을 계산할 수 없습니다.');
   } else {
     ['realizedInterest', 'maturityRepayment', 'maturityPL', 'remainingYears', 'nextCouponDate', 'purchaseYtm'].forEach((k) => {
@@ -384,10 +395,10 @@ function computeBondYields(position, options) {
       out.layer.valuation.holdingPeriodReturn = bondValue(ri.value / pa.value * 100, { partial: true, note: '쿠폰 수령분만 반영했습니다(평가손익 제외).' });
     }
   } else {
-    const pa = bondNum(h.purchaseAmount);
+    const pa = bondNum(held.purchaseAmount);
     out.layer.valuation.marketValue = bondValue(mp);
     out.layer.valuation.valuationPL = Number.isFinite(pa) ? bondValue(mp - pa) : bondUnavailable('매입금액이 없습니다.');
-    const couponRate = bondNum(terms.couponRate), faceAmount = bondNum(h.faceAmount);
+    const couponRate = bondNum(terms.couponRate), faceAmount = bondNum(held.faceAmount);
     out.layer.valuation.currentYield = (Number.isFinite(couponRate) && Number.isFinite(faceAmount) && mp > 0)
       ? bondValue(faceAmount * (couponRate / 100) / mp * 100) : bondUnavailable('표면이율 · 보유 액면 · 시장가격 중 빠진 값이 있습니다.');
     out.layer.valuation.currentYtm = cf.status === 'OK' ? solveBondYtm(cf.flows, asOf, mp) : bondUnavailable(cf.reason);
@@ -409,7 +420,9 @@ function computeBondDuration(position, options) {
   const opt = options || {};
   const asOf = bondDate(opt.asOf) || new Date();
   const { terms } = bondEffectiveTerms(position);
-  const cf = buildBondCashFlows(position, { asOf });
+  /* [BOND-20 · §49] 거래 기반 채권은 레코드에 액면 · 매입원가가 없다 - 원장을 함께 넘기지 않으면
+   * 현금흐름을 못 만들어 듀레이션이 통째로 "계산 불가"가 된다(그러면 금리 민감도 칸이 빈다). */
+  const cf = buildBondCashFlows(position, { asOf, positions: opt.positions });
   if (cf.status !== 'OK') return { status: 'UNAVAILABLE', reason: cf.reason, modelValue: true };
   const future = cf.future;
   if (!future.length) return { status: 'UNAVAILABLE', reason: '평가 시점 이후 남은 현금흐름이 없습니다(이미 만기).', modelValue: true };
@@ -418,8 +431,9 @@ function computeBondDuration(position, options) {
   let ySource = 'given';
   if (!Number.isFinite(y)) {
     const h = position.holding || {};
+    const held = resolveBondHolding(position, opt.positions);
     const pDate = bondDate(h.purchaseDate);
-    const solved = (pDate && Number.isFinite(bondNum(h.purchaseAmount))) ? solveBondYtm(cf.flows, pDate, bondNum(h.purchaseAmount)) : bondUnavailable('매입 정보가 없습니다.');
+    const solved = (pDate && Number.isFinite(bondNum(held.purchaseAmount))) ? solveBondYtm(cf.flows, pDate, bondNum(held.purchaseAmount)) : bondUnavailable('매입 정보가 없습니다.');
     if (solved.status === 'OK') { y = solved.value; ySource = 'purchaseYtm'; }
   }
   if (!Number.isFinite(y)) {
@@ -454,17 +468,22 @@ function computeBondRiskSummary(positions, options) {
   const asOf = bondDate(opt.asOf) || new Date();
   const list = Array.isArray(positions) ? positions : [];
   if (!list.length) return { status: 'EMPTY', count: 0 };
-  const priceOf = (p) => {
+  /* [BOND-20 · §49] MARKET / PURCHASE 2단 규칙은 그대로다. 바뀐 것은 PURCHASE 금액의 원천뿐 -
+   * 등록 당시 고정값이 아니라 거래원장에서 계산한 누적 매입원가를 쓴다(거래가 없으면 legacy 값). */
+  const holdingOf = (p) => resolveBondHolding(p, opt.positions);
+  const priceOf = (p, held) => {
     const mp = opt.marketPrices ? bondNum(opt.marketPrices[p.id]) : NaN;
     if (Number.isFinite(mp)) return { value: mp, basis: 'MARKET' };
-    const pa = bondNum(p.holding && p.holding.purchaseAmount);
+    const pa = bondNum(held && held.purchaseAmount);
     return Number.isFinite(pa) ? { value: pa, basis: 'PURCHASE' } : { value: NaN, basis: null };
   };
   const rows = list.map((p) => {
-    const d = computeBondDuration(p, { asOf });
-    const w = priceOf(p);
+    const held = holdingOf(p);
+    const d = computeBondDuration(p, { asOf, positions: opt.positions });
+    const w = priceOf(p, held);
     return {
       id: p.id, name: (p.identity && p.identity.instrumentName) || null,
+      holdingSource: held.source, quantity: held.quantity, faceAmount: held.faceAmount, closed: held.closed,
       currency: (p.identity && p.identity.currency) || 'KRW',
       bondClass: resolveBondClass(p),
       creditRating: (p.identity && p.identity.creditRating) || null,
@@ -474,18 +493,22 @@ function computeBondRiskSummary(positions, options) {
       duration: d
     };
   });
-  const usable = rows.filter((r) => r.duration.status === 'OK' && Number.isFinite(r.amount) && r.amount > 0);
+  /* [BOND-23 · §49] 전량매도로 보유가 0이 된 채권은 계산에서 뺀다 - 레코드와 거래이력은 지우지 않는다.
+   * 아래 집계 · 통화 · 등급 분포 · 계산 불가 목록 모두 같은 기준(open)을 쓴다. */
+  const open = rows.filter((r) => !r.closed);
+  const usable = open.filter((r) => r.duration.status === 'OK' && Number.isFinite(r.amount) && r.amount > 0);
   const totalAmount = usable.reduce((s, r) => s + r.amount, 0);
   const avgDuration = totalAmount > 0 ? usable.reduce((s, r) => s + r.duration.modifiedDuration * r.amount, 0) / totalAmount : null;
   const impact100 = avgDuration === null ? null : -avgDuration * (BOND_PRIMARY_SHOCK_BP / 10000) * 100;
   const byCurrency = {};
-  rows.forEach((r) => { byCurrency[r.currency] = (byCurrency[r.currency] || 0) + (Number.isFinite(r.amount) ? r.amount : 0); });
+  open.forEach((r) => { byCurrency[r.currency] = (byCurrency[r.currency] || 0) + (Number.isFinite(r.amount) ? r.amount : 0); });
   const ratings = {};
-  rows.forEach((r) => { const k = r.creditRating || '미확인'; ratings[k] = (ratings[k] || 0) + 1; });
+  open.forEach((r) => { const k = r.creditRating || '미확인'; ratings[k] = (ratings[k] || 0) + 1; });
+  if (!open.length) return { status: 'EMPTY', count: 0, closedCount: rows.length };
   return {
-    status: 'OK', count: rows.length, rows,
+    status: 'OK', count: open.length, closedCount: rows.length - open.length, rows: open, allRows: rows,
     modelValue: true, dayCount: BOND_DAY_COUNT,
-    durationCoveragePct: rows.length ? (usable.length / rows.length) * 100 : 0,
+    durationCoveragePct: open.length ? (usable.length / open.length) * 100 : 0,
     weightedModifiedDuration: avgDuration,
     primaryShockBp: BOND_PRIMARY_SHOCK_BP,
     primaryImpactPct: impact100,
@@ -493,8 +516,88 @@ function computeBondRiskSummary(positions, options) {
     creditRatingDistribution: ratings,
     // 신용위험은 수치화하지 않는다 - 화면이 이 사실을 그대로 말하게 한다.
     creditRiskNote: '신용 스프레드 자료가 없어 신용위험을 수치로 계산하지 않습니다. 등급 · 채권순위 · 발행인 유형만 표시합니다.',
-    unavailable: rows.filter((r) => r.duration.status !== 'OK').map((r) => ({ id: r.id, name: r.name, reason: r.duration.reason }))
+    unavailable: open.filter((r) => r.duration.status !== 'OK').map((r) => ({ id: r.id, name: r.name, reason: r.duration.reason }))
   };
+}
+
+/* ── 거래 기반 보유 해석 (BOND-01 · BOND-07 · BOND-08 · BOND-20 · §49) ──────
+ *
+ * 왜 필요한가
+ *   채권 레코드의 B 계층(holding.faceAmount · purchaseAmount)은 사용자가 자산 폼에 직접 적은
+ *   값이라 거래를 아무리 넣어도 움직이지 않았다 - 매수 · 추가매수 · 매도 뒤에도 Bond Risk 가중이
+ *   등록 당시 값에 고정됐다(실측). 이제 거래원장이 있는 채권은 원장에서 보유를 계산한다.
+ *
+ * 무엇을 원천으로 보는가(BOND-08)
+ *   거래 기반 채권 : 거래원장(Transaction)이 유일한 원천. B 계층 값은 쓰지 않는다.
+ *   legacy 수동 채권 : 예전 그대로 B 계층을 쓴다(BOND-03 - 자동 전환하지 않는다).
+ *   둘이 충돌하면 거래원장이 이긴다.
+ *
+ * 단위(BOND-07)
+ *   거래 수량은 **액면 1만원 단위**다. faceAmount = quantity × 10,000 이고
+ *   purchaseAmount = quantity × 평균단가다. 사용자에게 액면총액을 따로 입력받지 않는다.
+ *   KIS 채권 시세의 "1만원 액면 기준 매매단가"와 같은 체계다.
+ */
+const BOND_FACE_UNIT = 10000;
+
+/** 채권 레코드가 가리키는 원장 포지션 키. 거래는 ISIN을 ticker 필드에 담는다(BOND-05). */
+function bondLedgerKey(position) {
+  const p = position || {};
+  const isin = (p.identity && p.identity.isin) ? String(p.identity.isin).trim().toUpperCase() : '';
+  const owner = (p.holding && p.holding.owner) ? String(p.holding.owner) : '';
+  const account = (p.holding && p.holding.account) ? String(p.holding.account) : '';
+  if (!isin || !owner || !account) return null;
+  return `${owner}__${account}__${isin}`;
+}
+
+/**
+ * 이 채권의 "지금 보유"를 정한다.
+ *   positions: computePositionsAndRealizedPnL().positions (없으면 legacy 경로로 떨어진다)
+ * 반환 source: 'LEDGER'(거래 기반) | 'MANUAL'(legacy 수동) | 'NONE'(둘 다 없음)
+ * 거래원장에 그 키가 있으면 수량이 0이어도 LEDGER다 - 전량매도(0)는 "모름"이 아니라 사실이다.
+ */
+function resolveBondHolding(position, positions) {
+  const p = position || {};
+  const key = bondLedgerKey(p);
+  const pos = (key && positions && Object.prototype.hasOwnProperty.call(positions, key)) ? positions[key] : null;
+  if (pos) {
+    const qty = bondNum(pos.quantity);
+    const avg = bondNum(pos.avgPrice);
+    const quantity = Number.isFinite(qty) ? qty : 0;
+    const unitPrice = Number.isFinite(avg) ? avg : null;
+    return {
+      source: 'LEDGER',
+      quantity,
+      faceAmount: quantity * BOND_FACE_UNIT,
+      purchaseUnitPrice: unitPrice,
+      purchaseAmount: unitPrice === null ? null : quantity * unitPrice,
+      closed: quantity <= 0
+    };
+  }
+  const h = p.holding || {};
+  const face = bondNum(h.faceAmount);
+  const amount = bondNum(h.purchaseAmount);
+  if (!Number.isFinite(face) && !Number.isFinite(amount)) {
+    return { source: 'NONE', quantity: null, faceAmount: null, purchaseUnitPrice: null, purchaseAmount: null, closed: false };
+  }
+  return {
+    source: 'MANUAL',
+    quantity: Number.isFinite(face) ? face / BOND_FACE_UNIT : null,
+    faceAmount: Number.isFinite(face) ? face : null,
+    purchaseUnitPrice: Number.isFinite(bondNum(h.purchaseUnitPrice)) ? bondNum(h.purchaseUnitPrice) : null,
+    purchaseAmount: Number.isFinite(amount) ? amount : null,
+    closed: false
+  };
+}
+
+/** 액면총액 → 거래 수량(1만원 단위). UI가 액면으로 받을 때 내부 단위로 바꾼다. */
+function bondFaceToQuantity(faceAmount) {
+  const v = bondNum(faceAmount);
+  return Number.isFinite(v) ? v / BOND_FACE_UNIT : null;
+}
+/** 거래 수량(1만원 단위) → 액면총액. */
+function bondQuantityToFace(quantity) {
+  const v = bondNum(quantity);
+  return Number.isFinite(v) ? v * BOND_FACE_UNIT : null;
 }
 
 /* ── MC · 자산 성격 연계 (§47-3) ───────────────────────────────────────── */
@@ -610,6 +713,7 @@ if (typeof module !== 'undefined' && module.exports) {
     BOND_STORAGE_KEY, BOND_RATE_SHOCKS_BP, BOND_PRIMARY_SHOCK_BP, BOND_CLASS_TO_CHARACTER,
     makeBondPosition, bondEffectiveTerms, resolveBondClass, bondCouponSchedule, buildBondCashFlows,
     computeAccruedInterest, solveBondYtm, computeBondYields, computeBondDuration, computeBondRiskSummary,
-    resolveBondAssetCharacter, mapBondSourceResponse, mergeBondSourceIntoPosition
+    resolveBondAssetCharacter, mapBondSourceResponse, mergeBondSourceIntoPosition,
+    BOND_FACE_UNIT, bondLedgerKey, resolveBondHolding, bondFaceToQuantity, bondQuantityToFace
   };
 }

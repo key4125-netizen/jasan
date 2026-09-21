@@ -2936,3 +2936,143 @@ Q-2는 **SOLVED_WITH_CONSTRAINT**다. 스냅샷 보존 상한 기능은 **없다
 FX-P1과 UX-P1은 저장소 어디에도 **요구사항 · 범위 · 완료 조건이 기록돼 있지 않다**
 (작업 순서 목록과 DEFERRED 분류로만 등장한다). 과거 범위를 추정해 복원하지 않고
 **정의되지 않은 로드맵 단계로 종결**한다. 필요해지면 새 PM 지시로 범위를 정의한 뒤 시작한다.
+
+---
+
+## 49. 채권 프로세스 — 거래내역 기반 보유관리 (PM FINAL POLICY 2026-09-21 · BOND-01 ~ BOND-40)
+
+> **한 문장**: 채권을 자산관리 화면에서 총액을 직접 고치는 방식에서 벗어나 **실제 거래내역으로 보유상태를
+> 관리**한다. 구조는 `Bond Master → Transaction → Transaction 파생 Position → 자산관리 · Bond Risk · MC`다.
+> **KIS는 Position의 원천이 아니라 기본정보 · 가격 Provider일 뿐이다.**
+>
+> 이 절은 PM이 2026-09-21에 확정한 채권 정책 BOND-01~40을 이 체크리스트의 조항으로 편입한 것이다
+> (CLAUDE.md Governance §5 - 정책은 구현 전 또는 구현과 함께 SoT에 들어와야 한다). §47-7(Bond Domain V1)은
+> 폐기되지 않는다 - 그 절이 만든 4계층 구조(A 공식 발행조건 / B 사용자 보유 / C 시장 / D 파생)는 그대로이고,
+> 이 절은 **B 계층의 원천을 거래내역으로 옮기는 것**이다.
+
+### 49-1. 원칙 (BOND-01 ~ BOND-08)
+
+| ID | 확정 내용 |
+|---|---|
+| BOND-01 | **거래내역이 채권 보유의 유일한 원천(SoT)이다.** 보유수량 · 매입원가는 거래에서 계산한다. |
+| BOND-02 | Bond Master(발행조건)와 Position(보유)은 서로 다른 계층이다 - 한쪽이 다른 쪽을 대신하지 않는다. |
+| BOND-03 | 자산관리 · Bond Risk · Monte Carlo는 전부 **같은 Transaction 파생 Position**을 본다(계산 창구 단일화). |
+| BOND-04 | 채권의 신분증은 **표준코드(ISIN, ISO 6166)** 다. 6자리 종목코드는 쓰지 않는다(조회 원천 없음). |
+| BOND-05 | **ISIN은 새 필드를 만들지 않고 기존 `ticker` 필드에 저장한다.** Identity는 기존 그대로 `owner + account + ticker + currency` - 공통 Identity 로직을 바꾸지 않는다. |
+| BOND-06 | **`classifyCategory()`에 ISIN 형식(`/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/`) → '채권' 예외를 넣는다.** 이게 없으면 부팅 · sync · cloud merge 때마다 채권이 ETF로 뒤집히고 Yahoo 조회를 반복한다(실측 확인). |
+| BOND-07 | **quantity 단위 = 액면 1만원.** `faceAmount = quantity × 10,000`, `purchaseAmount = quantity × price`. 사용자가 액면을 따로 입력하지 않는다(중복 입력 · 불일치의 원인). KIS bond-price의 "1만원 액면 기준 단가"와 같은 체계다. |
+| BOND-08 | **Bond Master의 `holding.faceAmount` · `purchaseAmount`는 거래 기반 채권에서 원천이 아니다.** legacy manual bond에서만 계속 쓰인다. |
+
+### 49-2. Legacy 처리 (BOND-09) — 절대 규칙
+
+기존 manual bond는 **그대로 보존한다.** 과거 거래 추정 생성 · 자동 transaction 화 · 수량 0 처리 ·
+강제 전환은 **전부 금지**다. 같은 `ISIN + owner + account`로 신규 거래가 들어오면 **저장을 차단하고**
+"수동관리 중"을 안내한다 - **조용한 병존을 금지**한다(거래 파생 보유분이 수동 총액을 덮어써
+사용자가 적어 둔 값이 사라진 것처럼 보이기 때문). 명시적 전환 기능은 별도 정책 확정 전까지 만들지 않는다.
+
+**반대 방향도 같은 규칙이다(2026-09-21 PM 추가 확인에서 실측으로 확정).** 이미 **거래내역으로
+관리 중인** 채권을 자산 폼([최초등록])에서 같은 `ISIN + owner + account`로 또 만들려 하면 **저장을
+차단한다.** 막지 않으면 채권 레코드가 둘이 되고, 둘 다 같은 원장을 가리켜 채권 위험 요약이 같은 채권을
+두 번 센다(실측: count 1 → 2). 보유수량 자체는 원장이 이기므로 어긋나지 않지만 포트폴리오 수준의 채권
+노출이 두 배가 된다. 구현: `js/07` assetForm submit 선두 가드. 검증: `e2e/109` #5.
+
+### 49-3. 입력 화면 (BOND-10 ~ BOND-14 · BOND-32 · BOND-33)
+
+| ID | 확정 내용 |
+|---|---|
+| BOND-10 | 계좌는 **목록에서 고르되 Account Master/ID를 만들지 않는다.** 기존 문자열을 그대로 쓰고, 기존 데이터에 실제로 존재하는 모든 `(owner, accountType)`을 목록에 포함한다. **자동 정규화 금지** (`isa`/`ISA`/`삼성증권` 등을 바꾸면 Position Identity가 깨진다). |
+| BOND-11 | 거래 입력에 **자산군 선택**을 둔다(주식 · ETF · 채권 · 현금 · 부동산 · 원자재 · 암호화폐 7종. '외화'는 자산군이 아니라 통화이므로 넣지 않는다). |
+| BOND-12 | **Transaction schema에 category를 추가하지 않는다.** 사용자의 자산군 선택은 UI override로만 전달해 그 거래로 만들어지는 **자산**에 반영한다(역할 · 대표매칭키와 같은 경로). 안전 전달이 불가능하면 임의 변경 말고 PM 보고. |
+| BOND-13 | 자산군이 채권이면 **ISIN으로 Bond Master를 연결**한다. 이미 아는 ISIN이면 발행조건을 채워 준다(네트워크 조회가 아니라 앱에 이미 있는 값). |
+| BOND-14 | 자산군에 따라 **입력 화면이 달라진다**(채권일 때만 ISIN · 만기 · 표면이율 · 지급방식 · 지급횟수 · 발행인유형 · 신용등급이 보인다). |
+| BOND-32 | 자산군을 바꾸면 **그 자산군과 무관한 칸은 비운다** - 화면에서 사라진 값이 저장되는 상황을 만들지 않는다. |
+| BOND-33 | 자산군과 종목코드가 어긋나면 **저장을 차단한다**(채권인데 ISIN 없음 · ISIN 형식 아님 · 채권이 아닌데 ISIN이 들어 있음). 조용히 한쪽으로 맞추지 않는다. |
+
+### 49-4. 거래 → 보유 (BOND-15 ~ BOND-19)
+
+| ID | 확정 내용 |
+|---|---|
+| BOND-15 | 거래 저장 시 **Bond Master를 upsert**한다(키 = ISIN + owner + account). 보유수량은 넣지 않는다(BOND-08). |
+| BOND-16 | 매수 · **추가매수는 기존 원장 로직 그대로 가중평균**된다(재구현 금지 - 이미 정상 동작함을 실측 확인). |
+| BOND-17 | **부분매도**는 수량 · 액면만 줄고 평단은 유지된다. |
+| BOND-18 | **전량매도**하면 보유 0이 되고 그 채권은 계산에서 빠진다. **레코드와 거래이력은 지우지 않는다.** |
+| BOND-19 | 거래 **수정 · 삭제**는 남은 거래 기준으로 전부 다시 계산된다(기존 재계산 경로 그대로). |
+
+### 49-5. 계산 연결 (BOND-20 ~ BOND-24)
+
+| ID | 확정 내용 |
+|---|---|
+| BOND-20 | **Bond Risk 가중**: MARKET / PURCHASE 2단 규칙은 **유지**하고, PURCHASE 금액의 **원천만** 거래 파생 누적 매입원가로 교체한다. Bond Risk 모델 재설계 금지. |
+| BOND-21 | 자산관리 화면의 채권 평가 · 표시는 같은 Position을 쓴다. |
+| BOND-22 | **Monte Carlo**는 같은 Position을 입력으로 받는다. **MC 수식 · 모델은 바꾸지 않는다**(자산 성격 매핑 BOND_CLASS → BOND_CLASS_TO_CHARACTER 그대로). |
+| BOND-23 | 보유가 0인(전량매도) 채권은 **위험 · MC 집계에서 제외**한다. 등급 분포 · 통화 노출 · 듀레이션 커버리지도 같은 기준을 쓴다. |
+| BOND-24 | **쿠폰 수령 회계(이자 수령을 거래로 기록)는 범위 밖**이다. 전량매도 후에는 이후 현금흐름을 만들지 않는다. |
+
+### 49-6. 데이터 수명 (BOND-25 ~ BOND-31)
+
+| ID | 확정 내용 |
+|---|---|
+| BOND-25 | Bond Master는 **historical 보존**한다 - 다 팔았다고 발행조건을 지우지 않는다. |
+| BOND-26 | 값이 없으면 **0이 아니라 "없음"** 이다(§47-7 원칙 유지 - `{status:'UNAVAILABLE', reason}`). |
+| BOND-27 | 공식 값(A 계층)과 사용자 수정값은 섞지 않는다(`userOverride` 분리 · §47-7 유지). |
+| BOND-28 | 자동 경로는 사용자 보유정보(B 계층)를 **건드리지 않는다**. |
+| BOND-29 | **Bond Master는 기기 간 동기화 대상**이다. 병합은 자산 · 거래와 같은 규칙(**id + `updatedAt` LWW**)이고, 삭제 전파를 위한 병합 기준선을 둔다(없으면 한쪽에서 지운 채권이 되살아난다). |
+| BOND-30 | **Bond Master는 JSON 백업 · 복원 대상**이다. 복원은 통째 교체 + 복원 시각 stamp(BL-15와 같은 이유). 백업에 채권 키가 아예 없으면(옛 백업) 지금 값을 그대로 둔다(FIX-7 원칙). |
+| BOND-31 | Bond Master 삭제 · Asset 삭제 · Transaction 삭제 · 전량매도 · 재계산 · Sync merge · Backup restore 어느 경로에서도 **ghost 레코드가 남지 않아야 한다.** 단 거래가 남아 있는 채권 레코드는 지우지 않는다(거래가 원천이므로 자산은 재계산으로 되살아나는데 발행조건만 사라진다). |
+
+### 49-7. 단계 분리 (BOND-34) — 이 순서를 지킨다
+
+- **1단계(KIS 없이 핵심 완성)**: 계좌 목록 · 자산군 선택 · ISIN→ticker · ISIN category 예외 ·
+  채권 거래 UI · Bond Master 연결 · 거래 파생 Position · 매수/추가매수/부분매도/전량매도 ·
+  수정 · 삭제 재계산 · legacy 보호 · Bond Risk · MC Position 연결 · ghost 정리 ·
+  Bond Master Sync(id + `updatedAt` LWW) · 테스트. **KIS 없이도 직접입력으로 완결되어야 한다.**
+- **2단계(KIS 복원)**: `/api/kis/bond-info` · `/api/kis/bond-price` 복원.
+  **과거 코드(`70c49b3`)를 그대로 복사하지 않는다** - 실제 raw response 확보 → 필드 · 단위 · 날짜 검증 →
+  호출량 검증 후 현재 구조에 맞게 재작성한다. 되돌린 이력(`e9b33cb`)의 원인 2가지가 미해결이기 때문이다.
+
+### 49-8. 재작성 금지 (BOND-35 ~ BOND-38) — 이미 정상 구현 확인됨
+
+Transaction Position 계산 · 거래 수정/삭제 재계산 · 과매도 방지(js/06) · Owner/Account Position 분리 ·
+Portfolio Beta의 Bond 제외 · MC UNCLASSIFIED 처리 · 조회 실패 시 직접입력(6상태 어댑터).
+
+### 49-9. 범위 밖 (BOND-39)
+
+AI Provider · 새 Bond Data Provider · **6자리 채권 종목코드 조회**(원천 없음) · Account Master/ID ·
+Transaction category schema · 새 Bond Risk Score · Equity Risk Score 변경 · 새 MC 모델 ·
+채권 이자/배당 회계 · 세무회계 · 과거거래 추정 migration · manual bond 강제 전환 ·
+신용위험 수치화 · 새 Macro 지표 · Macro→Risk 정량연계.
+
+### 49-10. 보고 (BOND-40)
+
+정책 충돌 시 임의 우회 금지. `[POLICY CONFLICT]` 형식(관련 정책 / 현재 코드 / 충돌 내용 / 영향 /
+선택지 / PM 결정 필요사항)으로 보고한다. MC 결과 변화는 P10 · P50 · P90 · Mean · μ지문 · σ ·
+Bond mapping을 baseline과 전후 비교해 기록한다(계산식 자체는 불변).
+
+### 49-11. 1단계 구현 결과 (2026-09-21)
+
+| 조항 | 구현 위치 |
+|---|---|
+| BOND-04 · 05 · 06 | `js/01` `BOND_ISIN_PATTERN` · `isBondIsin()` · `classifyCategory()` 선두 예외 |
+| BOND-07 | `js/29` `BOND_FACE_UNIT` · `bondFaceToQuantity()` · `bondQuantityToFace()`, `js/06` `updateTxBondFaceHint()` |
+| BOND-01 · 02 · 03 · 08 | `js/29` `bondLedgerKey()` · `resolveBondHolding()`(LEDGER / MANUAL / NONE) |
+| BOND-09 | `js/06` `findConflictingManualBond()` + 저장 차단 |
+| BOND-10 | `js/06` `collectKnownAccountTypes()` · `refreshAccountTypeDatalist()`(거래 폼 · 자산 폼 공용) |
+| BOND-11 · 12 | `index.html` `#tx_assetClass`, `js/06` 저장 핸들러의 자산 `category`/`categorySource` 반영 |
+| BOND-13 · 14 · 32 · 33 | `index.html` `#tx_bondFieldsWrap`, `js/06` `updateTxBondFieldsUI()` · `clearTxBondFields()` · `applyKnownBondMasterToTxForm()` · 저장 검증 |
+| BOND-15 | `js/06` `upsertBondMasterFromTxForm()` |
+| BOND-16 ~ 19 | 기존 `computePositionsAndRealizedPnL()` · `syncAssetsFromTransactions()` 그대로(재작성 없음) |
+| BOND-20 · 23 | `js/29` `computeBondRiskSummary()`(open 기준 집계 · `closedCount`), `js/10` 원장 전달 |
+| BOND-22 | `js/29` `resolveBondAssetCharacter()` 그대로(매핑 · 수식 불변) |
+| BOND-24 | `js/29` `buildBondCashFlows()` → 전량매도 시 `status:'CLOSED'` |
+| BOND-29 · 30 | `js/12` `buildSyncBlob()` · `applyRemoteState()` · `mergeAssetsAndTransactionsWithRemote()` · `stampPayload()`, `js/01` `LS_SYNC_MERGED_BOND_IDS` |
+| BOND-31 | `js/08` `cleanupOrphanBondPositionForAsset()`(자산 삭제 2경로) |
+| 자산 폼 중복 차단 | `js/07` assetForm submit 가드(49-2 반대 방향) |
+| 검증 | `test/bond-transaction-core.test.js`(23건) · `e2e/108`(12건) · `e2e/109` PM 추가 확인(6건) |
+
+**1단계에서 의도적으로 하지 않은 것**: KIS 관련 일체(2단계) · 새 Provider · 강제 전환 기능 ·
+쿠폰 수령 회계 · 신용위험 수치화 · Bond Risk 모델 변경 · MC 수식 변경.
+
+**PM 승인 완료(2026-09-21)**: BOND-10의 "Dropdown"을 `<select>`가 아니라 **실제 데이터로 채운
+`<datalist>`**(입력칸을 누르면 목록이 뜨고 직접 입력도 된다)로 구현했다. `<select>`로 바꾸면 목록에 없는
+**새 계좌를 만들 수 없게 되고**, 기존 E2E 4개 파일이 이 입력칸을 직접 채우고 있어 함께 고쳐야 한다.
+**PM이 이 `<datalist>` 구현을 승인했다 - 순수 `<select>`로 바꾸지 않는다.**

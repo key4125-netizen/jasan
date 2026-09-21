@@ -905,6 +905,8 @@ async function lookupBondByIsin() {
 
 function openModal(mode, id) {
   document.getElementById('assetForm').reset();
+  // [BOND-10 · §49] 계좌 목록은 자산 폼에서도 실제 데이터로 채운다(거래 폼과 같은 datalist를 쓴다).
+  if (typeof refreshAccountTypeDatalist === 'function') refreshAccountTypeDatalist();
   document.getElementById('modalTitle').textContent = mode === 'edit' ? '자산 수정' : '최초등록';
   document.getElementById('assetFormSubmitBtn').textContent = mode === 'edit' ? '수정 완료' : '최초등록';
   document.getElementById('f_id').value = '';
@@ -1035,6 +1037,23 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
   if (!isValidOwner(document.getElementById('f_owner').value)) {
     showToast('소유자를 신랑 또는 와이프 중에서 선택해주세요.', 'warn');
     return;
+  }
+  /* [BOND-02 · BOND-09 · §49] 거래내역으로 관리 중인 채권을 이 화면에서 또 만들지 못하게 막는다.
+   * BOND-09가 막는 것(수동 채권 → 거래 등록)의 반대 방향이다. 두 방향 다 막아야 "한 채권은 한 가지
+   * 방식으로만 관리된다"가 성립한다.
+   * 막지 않으면 같은 ISIN · 소유자 · 계좌의 채권 레코드가 둘이 되고, 둘 다 같은 원장을 가리켜
+   * 채권 위험 요약이 같은 채권을 두 번 센다(실측: count 1 → 2). 보유수량 자체는 원장이 이겨서
+   * 어긋나지 않지만, 포트폴리오 수준의 채권 노출이 두 배가 된다.
+   * 수정(id 있음)은 대상이 아니다 - 이미 있는 레코드를 고치는 것이라 새 레코드가 생기지 않는다. */
+  const formBondIsin = String((document.getElementById('f_bondIsin') || {}).value || '').trim().toUpperCase();
+  if (!id && document.getElementById('f_category').value.trim() === '채권' && formBondIsin) {
+    const formOwner = document.getElementById('f_owner').value;
+    const formAccount = document.getElementById('f_accountType').value.trim() || '일반계좌';
+    const ledger = computePositionsAndRealizedPnL().positions;
+    if (Object.prototype.hasOwnProperty.call(ledger, `${formOwner}__${formAccount}__${formBondIsin}`)) {
+      showToast('이 채권은 이미 거래내역으로 관리되고 있습니다. 보유량은 거래내역 탭에서 매수 · 매도를 넣어 바꿔 주세요 - 여기서 또 만들면 같은 채권이 두 번 잡힙니다.', 'warn', 9000);
+      return;
+    }
   }
 
   const isAmountMode = document.getElementById('f_manualEntryToggle').checked && document.getElementById('f_amountMode').checked;

@@ -374,7 +374,11 @@ function bondRiskCardHtml() {
   if (typeof computeBondRiskSummary !== 'function') return '';
   const positions = (typeof state !== 'undefined' && Array.isArray(state.bondPositions)) ? state.bondPositions : [];
   if (!positions.length) return '';
-  const s = computeBondRiskSummary(positions);
+  /* [BOND-20 · §49] 거래원장에서 계산한 보유를 함께 넘긴다 - 거래 기반 채권은 이 값이
+   * 가중치가 되고, 거래가 없는 legacy 수동 채권은 예전처럼 등록 당시 값을 쓴다. */
+  const ledger = (typeof computePositionsAndRealizedPnL === 'function')
+    ? computePositionsAndRealizedPnL().positions : null;
+  const s = computeBondRiskSummary(positions, { positions: ledger });
   if (!s || s.status !== 'OK') return '';
   const ratings = Object.entries(s.creditRatingDistribution || {}).map(([k, v]) => `${escapeHtml(k)} ${v}건`).join(' · ');
   const currencies = Object.keys(s.currencyExposure || {}).join(' · ');

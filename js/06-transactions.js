@@ -268,7 +268,7 @@ function syncAssetsFromTransactions(opts) {
       // 있던 자산의 수량/매수단가 갱신(else 분기)에는 다시 호출하지 않는다(중복 소급 방지, 자연히
       // 멱등적이다). 네트워크 호출이라 굳이 기다리지 않고 백그라운드로 흘려보낸다. 티커가 없는 자산
       // (부동산/실물채권 등)은 시세 조회 자체가 불가능하므로 호출하지 않는다.
-      if (pos.ticker) backfillDailyPnlHistory(asset);
+      if (pos.ticker && !NON_TRADABLE_CATEGORIES.includes(asset.category)) backfillDailyPnlHistory(asset);
     } else if (asset.quantity !== pos.quantity || asset.buyPrice !== pos.avgPrice) {
       asset.quantity = pos.quantity;
       asset.buyPrice = pos.avgPrice;
@@ -861,6 +861,177 @@ document.getElementById('tx_rateMatchOverride').addEventListener('change', refre
 document.getElementById('tx_name').addEventListener('input', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
 document.getElementById('tx_owner').addEventListener('change', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
 document.getElementById('tx_accountType').addEventListener('blur', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
+/* =========================================================================
+ * [BOND-10 ~ BOND-15 · BOND-32 · BOND-33 · §49] 거래 입력 - 계좌 목록 · 자산군 · 채권
+ *
+ * 왜 필요한가: 채권을 거래내역으로 관리하려면 거래 화면에서 채권을 채권이라고 말할 수 있어야 한다.
+ * 예전 거래 화면에는 자산군 칸 자체가 없어 자산군은 종목명에서 추측될 뿐이었고, 채권의 신분증인
+ * 표준코드(ISIN)를 넣을 자리도 없었다. 그래서 채권은 거래로 넣을 수 없고 자산관리 화면에서 총액을
+ * 직접 고치는 수밖에 없었다.
+ * ====================================================================== */
+
+/* [BOND-10] 계좌 목록을 실제 데이터에서 만든다. 자산 · 거래에 실제로 쓰인 계좌명을 있는 그대로
+ * 모은다 - 대소문자 · 공백을 손대지 않는다(계좌명이 곧 포지션 identity의 일부라, 'isa'를 'ISA'로
+ * 고치는 순간 그 포지션이 갈라진다). 기본 7개는 처음 쓰는 사람을 위해 남긴다. */
+const DEFAULT_ACCOUNT_TYPES = ['일반계좌', 'ISA', 'IRP', '연금저축', '토스', 'CMA', '채권/현금'];
+function collectKnownAccountTypes() {
+  const seen = new Set();
+  const out = [];
+  const add = (v) => { const s = String(v ?? ''); if (!s.trim() || seen.has(s)) return; seen.add(s); out.push(s); };
+  (state.assets || []).forEach((a) => add(a && a.accountType));
+  (state.transactions || []).forEach((tx) => add(tx && tx.accountType));
+  DEFAULT_ACCOUNT_TYPES.forEach(add);
+  return out;
+}
+function refreshAccountTypeDatalist() {
+  const list = document.getElementById('accountTypeList');
+  if (!list) return;
+  list.innerHTML = collectKnownAccountTypes().map((v) => '<option value="' + escapeHtml(v) + '"></option>').join('');
+}
+
+/* [BOND-13] 이미 이 앱에 있는 채권 원장에서 같은 채권을 찾는다 - 네트워크 조회가 아니다.
+ * 같은 ISIN이면 발행조건은 소유자 · 계좌와 무관하게 같으므로, 계좌가 달라도 조건은 가져다 쓴다. */
+function findBondMasterByIsin(isin) {
+  const key = String(isin || '').trim().toUpperCase();
+  if (!key) return null;
+  return (state.bondPositions || []).find((p) => p && p.identity && String(p.identity.isin || '').toUpperCase() === key) || null;
+}
+
+/* [BOND-09] 수동으로 관리 중인 채권과 같은 채권을 거래로 새로 넣으려 하면 막는다.
+ * 조용히 병존하면 거래 파생 보유분이 수동 보유분을 덮어써(resolveBondHolding의 LEDGER 우선) 사용자가
+ * 적어 둔 액면이 화면에서 사라진 것처럼 보인다. 이미 거래로 관리 중인 채권은 충돌이 아니다. */
+function findConflictingManualBond(isin, owner, account) {
+  const rec = findBondMasterByIsin(isin);
+  if (!rec) return null;
+  const h = rec.holding || {};
+  if (String(h.owner || '') !== String(owner) || String(h.account || '') !== String(account)) return null;
+  const key = (typeof bondLedgerKey === 'function') ? bondLedgerKey(rec) : null;
+  const ledger = computePositionsAndRealizedPnL().positions;
+  if (key && Object.prototype.hasOwnProperty.call(ledger, key)) return null; // 이미 거래로 관리 중
+  // 수동으로 적어 둔 보유분이 실제로 있을 때만 막는다(발행조건만 있는 빈 레코드는 막지 않는다).
+  const hasManualHolding = Number.isFinite(Number(h.faceAmount)) || Number.isFinite(Number(h.purchaseAmount));
+  return hasManualHolding ? rec : null;
+}
+
+function txBondEl(id) { return document.getElementById(id); }
+function isTxBondForm() { return (txBondEl('tx_assetClass') || {}).value === '채권'; }
+
+/* [BOND-14 · BOND-32] 자산군에 따라 화면을 바꾼다. 채권이 아니게 되면 채권 칸을 비운다 -
+ * 화면에서 사라진 값이 저장은 되는 상황을 만들지 않는다. */
+const TX_BOND_FIELD_IDS = ['tx_bondIsin', 'tx_bondMaturityDate', 'tx_bondCouponRate',
+  'tx_bondCouponType', 'tx_bondPayFreq', 'tx_bondType', 'tx_bondRating'];
+function clearTxBondFields() {
+  TX_BOND_FIELD_IDS.forEach((id) => { const el = txBondEl(id); if (el) el.value = ''; });
+  const note = txBondEl('tx_bondMasterNote');
+  if (note) note.textContent = '';
+}
+function updateTxBondFieldsUI() {
+  const isBond = isTxBondForm();
+  const wrap = txBondEl('tx_bondFieldsWrap');
+  if (wrap) wrap.classList.toggle('hidden', !isBond);
+  // 채권은 종목 마스터에 없다 - 검색이 아니라 직접 입력이 정상 경로다.
+  const manualToggle = txBondEl('tx_manualEntryToggle');
+  if (manualToggle) {
+    if (isBond && !manualToggle.checked) { manualToggle.checked = true; applyTxManualEntryModeUI(); }
+    manualToggle.disabled = isBond;
+  }
+  /* [BOND-07 · BOND-14] 채권은 단위 자체가 다르다 - "1주당 가격"이라고 적어 두면 사용자가 액면
+   * 1,000만원짜리를 수량 1 · 단가 10,000,000으로 넣는다(실제로 헷갈리기 쉬운 지점이다). */
+  const qtyLabel = txBondEl('tx_quantityLabel');
+  if (qtyLabel && isBond) qtyLabel.textContent = '수량 - 액면 1만원 단위';
+  else if (qtyLabel && !isUsdCashTxForm()) qtyLabel.textContent = '수량';
+  const priceLabel = txBondEl('tx_priceLabel');
+  if (priceLabel) {
+    priceLabel.innerHTML = isBond
+      ? '매매단가 <span class="text-slate-400">- 액면 1만원당 가격</span>'
+      : '매매단가 <span class="text-slate-400">- 1개(주)당 가격</span>';
+  }
+  updateTxBondFaceHint();
+}
+/* [BOND-07] 수량 × 10,000 = 액면총액. 사용자가 액면을 따로 입력하지 않게 하고 그 자리에서 환산해 준다. */
+function updateTxBondFaceHint() {
+  const hint = txBondEl('tx_bondFaceHint');
+  if (!hint) return;
+  if (!isTxBondForm()) { hint.classList.add('hidden'); hint.textContent = ''; return; }
+  const qty = num((txBondEl('tx_quantity') || {}).value);
+  const price = num((txBondEl('tx_price') || {}).value);
+  const face = (typeof bondQuantityToFace === 'function') ? bondQuantityToFace(qty) : qty * 10000;
+  hint.classList.remove('hidden');
+  hint.textContent = qty > 0
+    ? '액면총액 ' + fmtNum(face) + '원 (수량 ' + fmtNum(qty) + ' × 10,000) · 거래금액 ' + fmtNum(qty * price) + '원 - 매매단가는 액면 1만원당 가격입니다.'
+    : '수량은 액면 1만원 단위로 넣습니다(액면 1,000만원이면 1,000). 매매단가는 액면 1만원당 가격입니다.';
+}
+
+/* [BOND-13] ISIN을 넣으면 이 앱이 이미 아는 발행조건을 채워 준다(값이 비어 있는 칸만). */
+function applyKnownBondMasterToTxForm() {
+  const note = txBondEl('tx_bondMasterNote');
+  const isin = String((txBondEl('tx_bondIsin') || {}).value || '').trim().toUpperCase();
+  if (!note) return;
+  if (!isin) { note.textContent = ''; return; }
+  if (typeof isBondIsin === 'function' && !isBondIsin(isin)) {
+    note.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
+    return;
+  }
+  const rec = findBondMasterByIsin(isin);
+  if (!rec) { note.textContent = '처음 보는 채권입니다 - 아래 발행조건을 직접 넣어 주세요(모르는 값은 비워 둡니다).'; return; }
+  const eff = bondEffectiveTerms(rec);
+  const setIfEmpty = (id, v) => { const el = txBondEl(id); if (el && !el.value && v !== null && v !== undefined && v !== '') el.value = String(v); };
+  setIfEmpty('tx_bondMaturityDate', eff.terms.maturityDate);
+  setIfEmpty('tx_bondCouponRate', eff.terms.couponRate);
+  setIfEmpty('tx_bondCouponType', eff.terms.couponType);
+  setIfEmpty('tx_bondPayFreq', eff.terms.paymentFrequency);
+  setIfEmpty('tx_bondType', eff.identity.bondType);
+  setIfEmpty('tx_bondRating', eff.identity.creditRating);
+  const nameInput = txBondEl('tx_name');
+  if (nameInput && !nameInput.value && eff.identity.instrumentName) nameInput.value = eff.identity.instrumentName;
+  note.textContent = '이미 등록된 채권입니다 - 아는 발행조건을 채웠습니다' + (eff.identity.instrumentName ? ' (' + eff.identity.instrumentName + ')' : '') + '.';
+}
+
+document.getElementById('tx_assetClass').addEventListener('change', (e) => {
+  delete e.target.dataset.autofilled;
+  if (!isTxBondForm()) clearTxBondFields();
+  updateTxBondFieldsUI();
+});
+document.getElementById('tx_bondIsin').addEventListener('blur', applyKnownBondMasterToTxForm);
+document.getElementById('tx_quantity').addEventListener('input', updateTxBondFaceHint);
+document.getElementById('tx_price').addEventListener('input', updateTxBondFaceHint);
+
+/* [BOND-15] 거래를 저장할 때 채권 원장(Bond Master)도 같이 맞춘다.
+ * 보유수량 · 매입원가는 여기 쓰지 않는다(BOND-08) - 그건 거래내역이 원천이고(resolveBondHolding),
+ * 여기 적으면 두 개의 보유수량이 생겨 어느 쪽이 맞는지 알 수 없게 된다. */
+function upsertBondMasterFromTxForm(tx, assetId) {
+  const isin = String((txBondEl('tx_bondIsin') || {}).value || '').trim().toUpperCase();
+  if (!isin) return;
+  if (!Array.isArray(state.bondPositions)) state.bondPositions = [];
+  const val = (id) => String((txBondEl(id) || {}).value || '').trim();
+  const numOrNull = (id) => { const v = val(id); return v === '' ? null : Number(v); };
+  const idx = state.bondPositions.findIndex((p) => p && p.identity
+    && String(p.identity.isin || '').toUpperCase() === isin
+    && String((p.holding || {}).owner || '') === tx.owner
+    && String((p.holding || {}).account || '') === tx.accountType);
+  const base = idx >= 0 ? state.bondPositions[idx] : null;
+  const next = makeBondPosition({
+    id: base ? base.id : undefined,
+    assetId: assetId || (base ? base.assetId : null),
+    identity: Object.assign({}, base ? base.identity : {}, {
+      isin, instrumentName: tx.name, currency: tx.currency,
+      bondType: val('tx_bondType') || null, creditRating: val('tx_bondRating') || null
+    }),
+    terms: Object.assign({}, base ? base.terms : {}, {
+      maturityDate: val('tx_bondMaturityDate') || null,
+      couponRate: numOrNull('tx_bondCouponRate'),
+      couponType: val('tx_bondCouponType') || null,
+      paymentFrequency: numOrNull('tx_bondPayFreq')
+    }),
+    source: base ? base.source : null,
+    userOverride: base ? base.userOverride : {},
+    // 보유 칸에는 이 채권이 누구의 어느 계좌 것인지만 적는다 - 수량 · 금액은 거래내역이 원천이다.
+    holding: { owner: tx.owner, account: tx.accountType, purchaseDate: base ? base.holding.purchaseDate : tx.date }
+  });
+  if (idx >= 0) state.bondPositions[idx] = next; else state.bondPositions.push(next);
+  persistBondPositions();
+}
+
 function openTransactionModal(txId) {
   const form = document.getElementById('transactionForm');
   form.reset();
@@ -872,6 +1043,12 @@ function openTransactionModal(txId) {
   populateRateMatchOverrideOptions('');
   document.getElementById('tx_date').value = todayDateStr();
   document.getElementById('tx_fee').value = 0;
+  // [BOND-10 · BOND-32] 계좌 목록은 열 때마다 실제 데이터에서 다시 만들고, 채권 칸은 초기화한다
+  // (form.reset()은 입력값만 되돌리고 안내 문구 · 자동채움 표식은 그대로 남는다).
+  refreshAccountTypeDatalist();
+  clearTxBondFields();
+  delete document.getElementById('tx_assetClass').dataset.autofilled;
+  document.getElementById('tx_manualEntryToggle').disabled = false;
   delete document.getElementById('tx_appliedRate').dataset.autofilled; // 이전 모달 세션의 자동채움 표시 잔재 방지
 
   if (txId) {
@@ -904,6 +1081,19 @@ function openTransactionModal(txId) {
     document.getElementById('tx_role').value = editRole;
     document.getElementById('tx_tickerHint').textContent = tx.ticker ? `티커: ${tx.ticker}` : ' ';
     document.getElementById('tx_manualEntryToggle').checked = !tx.ticker;
+    /* [BOND-11 · BOND-14 · §49] 이 거래로 만들어진 자산의 자산군을 보여준다 - 역할 · 대표매칭키와
+     * 같은 방식이다. 저장 핸들러는 이 값이 "화면에서 채워진 그대로"면 아무것도 쓰지 않는다
+     * (autofilled 표식 - 거래를 하나 수정했다고 legacy 자산이 조용히 '사용자 확정'으로 승격되면
+     * 안 된다). 채권이면 거래의 ticker가 곧 ISIN이므로 그 칸에 되돌려 놓는다(BOND-05).
+     */
+    const editClass = (matchedForEdit && matchedForEdit.category) || (isBondIsin(tx.ticker) ? '채권' : '');
+    const classSelect = document.getElementById('tx_assetClass');
+    classSelect.value = ASSET_CATEGORIES.includes(editClass) ? editClass : '';
+    if (classSelect.value) classSelect.dataset.autofilled = '1';
+    if (classSelect.value === '채권') {
+      if (isBondIsin(tx.ticker)) document.getElementById('tx_bondIsin').value = tx.ticker;
+      applyKnownBondMasterToTxForm();
+    }
   } else {
     document.getElementById('txModalTitle').textContent = '거래 추가';
     document.getElementById('tx_manualEntryToggle').checked = false;
@@ -911,6 +1101,7 @@ function openTransactionModal(txId) {
     document.getElementById('tx_role').value = '';
   }
   applyTxManualEntryModeUI();
+  updateTxBondFieldsUI(); // [BOND-14] 자산군에 맞는 칸만 보이게 한다(수정 모드면 위에서 정해진 값 기준)
   updateTxAppliedRateVisibility();
   refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 수정 모드면 기존값 안내, 신규면 아직 종목이 없어 숨겨진다.
   document.getElementById('transactionModal').classList.remove('hidden');
@@ -944,11 +1135,42 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 등록할 수 없다 - 자산관리 탭에서 직접 잔고를 수정하도록 안내한다(findMatchingCashAsset 참고).
   const txOwnerVal = document.getElementById('tx_owner').value;
   const txAccountTypeVal = document.getElementById('tx_accountType').value.trim() || '일반계좌';
-  const txTickerVal = document.getElementById('tx_ticker').value.trim();
+  /* [BOND-05 · §49] 채권은 티커 대신 표준코드(ISIN)로 구분한다 - 새 필드를 만들지 않고 같은 ticker
+   * 칸에 담아, 포지션 identity · 과매도 검증 · 자산 매칭이 지금까지 쓰던 경로를 그대로 타게 한다. */
+  const txAssetClassVal = document.getElementById('tx_assetClass').value.trim();
+  const txBondIsinVal = String(document.getElementById('tx_bondIsin').value || '').trim().toUpperCase();
+  /* [BOND-11 · BOND-33 · §49] 자산군 칸이 "이번 입력에서 지정된 것"인지 "기존 자산에서 자동으로
+   * 채워진 것"인지 구분한다. 이 구분이 없으면 표준코드가 없던 시절의 채권(무티커 실물채권)의 거래를
+   * 수정하려 열기만 해도 자산군이 '채권'으로 채워져 ISIN을 요구받고, 예전 거래를 고칠 수 없게 된다
+   * (E2E-59가 이 상황을 그대로 재현했다). 자동으로 채워진 값은 아래 자산 반영에서도 쓰지 않는다. */
+  const classAutofilled = document.getElementById('tx_assetClass').dataset.autofilled === '1';
+  const txBondFormActive = txAssetClassVal === '채권' && !classAutofilled;
+  const txTickerVal = (txAssetClassVal === '채권' && txBondIsinVal)
+    ? txBondIsinVal
+    : document.getElementById('tx_ticker').value.trim();
   const txCurrencyVal = document.getElementById('tx_currency').value;
   if (findMatchingCashAsset(txOwnerVal, txAccountTypeVal, txTickerVal, name, txCurrencyVal)) {
     showToast('현금/외화 자산은 거래내역으로 등록할 수 없습니다. 자산관리 탭의 자산 수정에서 잔고를 직접 고쳐주세요.', 'warn', 6000);
     return;
+  }
+  /* [BOND-33 · §49] 자산군과 종목코드가 서로 다른 말을 하면 저장하지 않는다. 조용히 한쪽으로
+   * 맞춰 버리면 사용자가 무엇을 산 것으로 기록됐는지 알 수 없게 된다. */
+  if (txBondFormActive) {
+    if (!txBondIsinVal) { showToast('채권은 표준코드(ISIN)를 입력해야 저장할 수 있습니다.', 'warn', 6000); return; }
+    if (!isBondIsin(txBondIsinVal)) { showToast('표준코드(ISIN) 형식이 아닙니다 - 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).', 'warn', 7000); return; }
+  } else if (isBondIsin(txTickerVal) || txBondIsinVal) {
+    showToast('표준코드(ISIN)는 채권에만 씁니다. 자산군을 \'채권\'으로 고르거나 코드를 지워 주세요.', 'warn', 7000);
+    return;
+  }
+  /* [BOND-09 · §49] 자산관리 화면에서 총액으로 직접 관리 중인 채권은 거래로 새로 넣지 못하게 막는다.
+   * 조용히 병존시키면 거래 파생 보유분이 그 총액을 덮어써 사용자가 적어 둔 값이 사라진 것처럼 보인다.
+   * 강제 전환은 하지 않는다(PM 정책 - 명시적 전환 기능은 별도 확정 전까지 만들지 않는다). */
+  if (txBondFormActive) {
+    const conflictBond = findConflictingManualBond(txBondIsinVal, txOwnerVal, txAccountTypeVal);
+    if (conflictBond) {
+      showToast('이 채권은 현재 자산관리 화면에서 직접 관리 중입니다(수동 보유분이 있습니다). 거래내역으로 옮기려면 먼저 자산관리 탭에서 그 채권을 정리해 주세요 - 두 방식이 섞이면 보유액이 어긋납니다.', 'warn', 9000);
+      return;
+    }
   }
   const quantity = num(document.getElementById('tx_quantity').value);
   if (quantity <= 0) { showToast('수량은 0보다 커야 합니다.', 'warn'); return; }
@@ -976,7 +1198,7 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     date: document.getElementById('tx_date').value || todayDateStr(),
     owner: document.getElementById('tx_owner').value,
     accountType: document.getElementById('tx_accountType').value.trim() || '일반계좌',
-    ticker: document.getElementById('tx_ticker').value.trim(),
+    ticker: txTickerVal, // [BOND-05] 채권이면 위에서 ISIN으로 정해져 있다
     name,
     type: document.getElementById('tx_type').value,
     quantity, price,
@@ -1040,6 +1262,19 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] matchedAsset의 role 변경을 다른 화면에서도
   // 이어받게 레지스트리에도 반영한다. 티커가 없으면 이름으로 대신 키를 만든다.
   if (matchedAsset && (matchedAsset.ticker || matchedAsset.name)) setTickerRole(matchedAsset.ticker, matchedAsset.role, matchedAsset.name);
+  /* [BOND-11 · BOND-12 · §49] 사용자가 고른 자산군을 이 거래로 만들어진 자산에 반영한다 - 거래
+   * 레코드에는 자산군을 저장하지 않는다(거래는 "무엇을 얼마에 몇 개"만 담는다). 화면에 자동으로
+   * 채워진 값을 그대로 둔 경우에는 아무것도 쓰지 않는다 - 거래 한 건을 고쳤다는 이유로 legacy
+   * 자산의 분류가 '사용자 확정'으로 승격되면 안 된다(BL-17의 categorySource 의미).
+   */
+  if (matchedAsset && txAssetClassVal && !classAutofilled
+      && (matchedAsset.category !== txAssetClassVal || matchedAsset.categorySource !== 'user')) {
+    matchedAsset.category = txAssetClassVal;
+    matchedAsset.categorySource = 'user';
+    matchedAsset.updatedAt = Date.now();
+  }
+  // [BOND-15] 채권 원장(발행조건)도 같은 저장 한 번으로 맞춘다. 보유수량은 넣지 않는다(BOND-08).
+  if (txBondFormActive) upsertBondMasterFromTxForm(tx, matchedAsset ? matchedAsset.id : null);
   persistAssets();
   closeTransactionModal();
   renderTransactionsTab();

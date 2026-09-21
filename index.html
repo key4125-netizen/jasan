@@ -2480,10 +2480,32 @@
           <option value="와이프">와이프</option>
         </select>
       </label>
+      <!-- [BOND-10 · §49] 계좌 목록은 이제 실제 데이터에서 만든다(refreshAccountTypeDatalist, js/06) -
+           예전엔 이 datalist가 고정 7개였고 코드 어디서도 채우지 않아, 사용자가 실제로 쓰는 계좌명이
+           목록에 없었다. 문자열은 있는 그대로 쓴다(자동 정규화 금지 - 계좌명을 바꾸면 포지션 identity가
+           깨진다). 직접 입력도 그대로 되므로 새 계좌를 못 만드는 일은 없다. -->
       <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">계좌구분</span>
-        <input id="tx_accountType" list="accountTypeList" autocomplete="off" placeholder="예: 일반계좌"
+        <input id="tx_accountType" list="accountTypeList" autocomplete="off" placeholder="눌러서 선택 또는 직접 입력"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+      </label>
+
+      <!-- [BOND-11 · BOND-12 · §49] 자산군 선택. 거래(transaction)에는 저장하지 않는다 - 거래내역은
+           "무엇을 얼마에 몇 개 샀다"만 담고, 자산군은 이 거래로 만들어지는 자산에 반영된다(js/06 저장
+           핸들러 - 역할 · 대표매칭키와 같은 경로). '자동'이면 지금까지처럼 종목명 · 티커로 분류한다. -->
+      <label class="col-span-2 text-sm">
+        <span class="text-slate-500 dark:text-slate-400">자산군</span>
+        <select id="tx_assetClass"
+          class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+          <option value="">자동 (종목명·티커로 분류)</option>
+          <option value="주식">주식</option>
+          <option value="ETF">ETF</option>
+          <option value="채권">채권</option>
+          <option value="현금">현금</option>
+          <option value="부동산">부동산</option>
+          <option value="원자재">원자재</option>
+          <option value="암호화폐">암호화폐</option>
+        </select>
       </label>
 
       <!-- [수동입력 토글] 기본은 검색 모드(readonly - 입력칸/돋보기를 누르면 개별주식 검색 팝업이 뜬다,
@@ -2543,16 +2565,85 @@
         </select>
       </label>
 
+      <!-- ============ [BOND-13 · BOND-14 · BOND-15 · §49] 채권 전용 입력 ====================
+           자산군이 '채권'일 때만 보인다(updateTxBondFieldsUI, js/06). 채권은 티커 대신 표준코드(ISIN)로
+           구분되므로 여기 적은 ISIN이 거래의 ticker가 된다 - 새 필드를 만들지 않는다(BOND-05).
+           발행조건은 채권 원장(state.bondPositions)에 저장되고, 이미 아는 ISIN이면 그 값이 자동으로
+           채워진다(네트워크 조회가 아니라 이 앱에 이미 있는 값이다). 모르는 값은 비워 둔다. -->
+      <div id="tx_bondFieldsWrap" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+        <label class="col-span-2 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">표준코드(ISIN) <span class="text-slate-400">- 채권을 구분하는 12자리 코드</span></span>
+          <input id="tx_bondIsin" type="text" autocomplete="off" placeholder="예: KR103502G990"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none font-mono uppercase">
+          <span id="tx_bondMasterNote" class="block text-sm text-slate-400 mt-1"></span>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">만기일</span>
+          <input id="tx_bondMaturityDate" type="date"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">표면이율(연 %)</span>
+          <input id="tx_bondCouponRate" type="number" step="any" min="0" placeholder="예: 3.5"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">이자 지급 방식</span>
+          <select id="tx_bondCouponType"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함(모름)</option>
+            <option value="COUPON">이표채(정기 지급)</option>
+            <option value="DISCOUNT">할인채(중간 지급 없음)</option>
+            <option value="COMPOUND">복리채(만기 일시)</option>
+          </select>
+        </label>
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">연 지급 횟수</span>
+          <select id="tx_bondPayFreq"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함</option>
+            <option value="1">연 1회</option>
+            <option value="2">연 2회(반기)</option>
+            <option value="4">연 4회(분기)</option>
+            <option value="12">연 12회(매월)</option>
+          </select>
+        </label>
+
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">발행인 유형</span>
+          <select id="tx_bondType"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+            <option value="">선택 안 함(모름)</option>
+            <option value="국채">국채</option>
+            <option value="지방채">지방채</option>
+            <option value="특수채">특수채</option>
+            <option value="회사채">회사채</option>
+            <option value="금융채">금융채</option>
+          </select>
+        </label>
+        <label class="col-span-1 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">신용등급 <span class="text-slate-400">- 표시용</span></span>
+          <input id="tx_bondRating" type="text" autocomplete="off" placeholder="예: AA-"
+            class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
+        </label>
+      </div>
+
       <label class="col-span-1 text-sm">
         <span id="tx_quantityLabel" class="text-slate-500 dark:text-slate-400">수량</span>
         <input id="tx_quantity" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
       <label class="col-span-1 text-sm">
-        <span class="text-slate-500 dark:text-slate-400">매매단가 <span class="text-slate-400">- 1개(주)당 가격</span></span>
+        <span id="tx_priceLabel" class="text-slate-500 dark:text-slate-400">매매단가 <span class="text-slate-400">- 1개(주)당 가격</span></span>
         <input id="tx_price" type="number" step="any" min="0" required
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right">
       </label>
+
+      <!-- [BOND-07 · §49] 채권 수량은 액면 1만원 단위다 - 사용자가 액면총액을 따로 입력하지 않게 하고
+           (중복 입력 · 불일치의 원인), 지금 입력한 수량이 얼마인지 그 자리에서 환산해 보여준다. -->
+      <p id="tx_bondFaceHint" class="hidden col-span-2 text-sm text-slate-500 dark:text-slate-400 -mt-1"></p>
 
       <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">통화</span>

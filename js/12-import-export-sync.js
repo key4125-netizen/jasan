@@ -575,7 +575,12 @@ function buildSyncBlob() {
     learnedTickerNames: state.learnedTickerNames,
     // [티커별 역할(포지션) 단일 소스] getTickerRole() 주석 참고 - 이것도 기기 간 동기화되어야 한쪽에서
     // 지정한 포지션이 다른 기기에도 그대로 반영된다.
-    tickerRoles: state.tickerRoles
+    tickerRoles: state.tickerRoles,
+    /* [BOND-29 · BOND-30 · §49] 채권 레코드(만기 · 쿠폰 · 신용등급 같은 발행조건)는 여기에 빠져 있었다.
+     * 그래서 백업을 복원하거나 다른 기기에서 열면 채권만 조건이 사라지고, 위험 카드가 그 채권을
+     * "정보 없음"으로 되돌렸다(수량 · 매입가는 거래내역에서 복구되지만 발행조건은 어디에도 없다).
+     * 자산 · 거래와 같은 모양(id + updatedAt)이라 아래 mergeCollectionById를 그대로 쓴다. */
+    bondPositions: state.bondPositions
   };
 }
 
@@ -960,6 +965,15 @@ async function applyRemoteState(parsed) {
       state.tickerRoles = (parsed.tickerRoles && typeof parsed.tickerRoles === 'object' && !Array.isArray(parsed.tickerRoles)) ? parsed.tickerRoles : {};
       persistTickerRoles();
     }
+    /* [BOND-30 · §49] 채권 레코드도 "이 시점으로 되돌리기"라 통째 교체한다. 키가 아예 없으면
+     * 그 백업이 채권을 몰랐던 것이므로 지금 값을 그대로 둔다(FIX-7과 같은 원칙).
+     * updatedAt은 자산 · 거래와 똑같이 복원 시각으로 찍는다 - 파일에 적힌 시각은 정의상 과거라
+     * 그대로 두면 복원 직후 동기화에서 원격이 이겨 방금 되돌린 값이 다시 뒤집힌다(BL-15). */
+    if (hasOwn(parsed, 'bondPositions')) {
+      state.bondPositions = (Array.isArray(parsed.bondPositions) ? parsed.bondPositions : [])
+        .map((p) => makeBondPosition({ ...p, updatedAt: restoredAt }));
+      persistBondPositions();
+    }
     // [일별 손익 이력] 복원은 "이 시점으로 되돌리기"라 다른 필드들과 마찬가지로 통째 교체한다(applyRemoteScalarFields
     // 상단 주석 참고 - pullFromCloud의 날짜 단위 병합과는 의도적으로 다른 정책).
     if (parsed.dailySnapshots && typeof parsed.dailySnapshots === 'object' && !Array.isArray(parsed.dailySnapshots)) {
@@ -1207,6 +1221,18 @@ function mergeAssetsAndTransactionsWithRemote(parsed) {
     state.dailySnapshots = { ...parsed.dailySnapshots, ...state.dailySnapshots };
     persistDailySnapshots();
   }
+  /* [BOND-29 · §49] 채권 레코드는 id + updatedAt을 가진 레코드 모음이라 자산 · 거래와 같은 규칙으로
+   * 병합한다 - 날짜 키 합집합(dailySnapshots)이나 순수 추가형 캐시(tickerRoles)와 달리, 채권은
+   * 지울 수 있고 고칠 수 있기 때문이다. 기준선이 있어야 "상대가 지웠다"와 "내가 새로 만들었다"를
+   * 구분한다. 채권 키가 없는 구버전 페이로드면 병합 자체를 건너뛴다(로컬 채권을 지우지 않는다). */
+  if (Array.isArray(parsed.bondPositions)) {
+    const remoteBonds = parsed.bondPositions.map((p) => makeBondPosition(p));
+    state.bondPositions = mergeCollectionById(
+      Array.isArray(state.bondPositions) ? state.bondPositions : [], remoteBonds,
+      getMergeBaseline(LS_SYNC_MERGED_BOND_IDS));
+    localStorage.setItem(LS_SYNC_MERGED_BOND_IDS, JSON.stringify(state.bondPositions.map((p) => p.id)));
+    persistBondPositions();
+  }
   // [V1.2-B BL-18] asset/transaction을 여기까지는 각자 독립적으로 병합했다 - id별로 승자만 통째로
   // 고르는 mergeCollectionById 특성상, 두 기기가 같은 시점에서 갈라져 서로 다른 거래를 추가하면
   // "합쳐진 거래 전체 기준 포지션"과 "우연히 timestamp가 더 최신이었던 쪽 asset 레코드"가 서로 다른
@@ -1267,6 +1293,9 @@ function stampPayload(blob, ts) {
     ...blob,
     assets: (blob.assets || []).map((a) => ({ ...a, updatedAt: ts })),
     transactions: (blob.transactions || []).map((t) => ({ ...t, updatedAt: ts })),
+    /* [BOND-29 · §49] 채권 레코드도 같은 이유로 찍는다 - 상대 기기가 이 채권의 만기 · 쿠폰을 더
+     * 최근에 고쳐 뒀다면, "이 기기 기준"을 골라도 그 값이 남아 다음 병합에서 되돌아간다. */
+    bondPositions: (blob.bondPositions || []).map((p) => ({ ...p, updatedAt: ts })),
     rebalance: blob.rebalance ? { ...blob.rebalance, updatedAt: ts } : blob.rebalance,
     projection: blob.projection ? { ...blob.projection, updatedAt: ts } : blob.projection
   };
@@ -2082,7 +2111,8 @@ function buildEmptyCloudBlob() {
     transactions: [],
     dailySnapshots: {},
     learnedTickerNames: {},
-    tickerRoles: {}
+    tickerRoles: {},
+    bondPositions: [] // [BOND-29] 빈 슬롯도 정상 페이로드와 같은 모양이어야 한다
   };
 }
 

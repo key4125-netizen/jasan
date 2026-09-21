@@ -69,6 +69,9 @@ const LS_SYNC_LAST_SYNCED_AT = 'sam_sync_last_synced_at_v1';
 // mergeCollectionById 참고).
 const LS_SYNC_MERGED_ASSET_IDS = 'sam_sync_merged_asset_ids_v1';
 const LS_SYNC_MERGED_TX_IDS = 'sam_sync_merged_tx_ids_v1';
+/* [BOND-29 · §49] 채권 레코드도 같은 기준선이 필요하다. 없으면 한 기기에서 지운 채권이
+ * 다음 병합 때 상대 기기에서 그대로 되살아나 유령 레코드가 된다(BOND-31과 같은 문제). */
+const LS_SYNC_MERGED_BOND_IDS = 'sam_sync_merged_bond_ids_v1';
 // [JSON 자동 백업] 토글 on/off 상태와 "오늘 이미 백업했는지" 판정 기준 날짜(로컬 타임존, todayDateStr()
 // 형식) - js/12-import-export-sync.js의 downloadJsonBackup()/runAutoBackupIfDue() 참고.
 const LS_AUTO_BACKUP_ENABLED = 'sam_auto_backup_enabled_v1';
@@ -407,8 +410,26 @@ function sanitizeBuyRate(raw) {
   return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
+/* [BOND-04 · BOND-05 · BOND-06 · §49] 채권 표준코드(ISIN) 판정 - 한 곳에서만 정의한다.
+ * ISO 6166: 국가코드 2자 + 영숫자 9자 + 검사숫자 1자 = 12자(예: KR103502G990).
+ * 개별 채권은 ISIN을 ticker 필드에 담는다(BOND-05) - 새 공통 필드를 만들지 않고 기존
+ * Identity(owner + accountType + ticker)를 그대로 쓰기 위함이다. 주식 · ETF 티커는
+ * 6자리 숫자 · 4자리+영문+숫자 · 영문 약어라 이 형식과 겹치지 않는다(종목 마스터 16,731건 실측 0건). */
+const BOND_ISIN_PATTERN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
+function isBondIsin(code) {
+  return BOND_ISIN_PATTERN.test(String(code ?? '').trim().toUpperCase());
+}
+
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
+  /* [BOND-06 · §49] ISIN 형식 티커는 무조건 채권이다.
+   * 이 예외가 없으면 아래 "채권 키워드 + 티커 있음 = 상장 ETF" 규칙에 걸려, 부팅 재계산 ·
+   * 클라우드 병합 · 거래 재계산처럼 화면 밖에서 자산군을 다시 정하는 경로마다 개별 채권이
+   * ETF로 뒤집힌다(실측). 그러면 시세 조회 대상이 되어 Yahoo에 없는 ISIN을 계속 두드리고,
+   * Bond Risk 대상에서도 빠진다. 이름을 보지 않고 ticker 형식만으로 판정하므로
+   * 기존 주식 · ETF 분류 규칙은 전혀 달라지지 않는다.
+   */
+  if (isBondIsin(ticker)) return '채권';
   // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
   // 미국채10년선물 같은 채권형 ETF) 만기까지 들고 가는 개별 채권과 달리 매일 시세가 변하는 상장 상품이므로
   // '채권'(NON_TRADABLE_CATEGORIES에 포함되어 시세조회 대상에서 빠짐) 대신 ETF로 분류해 실시간 시세가
@@ -1652,6 +1673,7 @@ function searchAssetsByQuery(query) {
 // 살아남는지를 그 저장 함수 자체로 검증하기 위함이다.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { sanitizeAssetCategory, sanitizeCategorySource, resolveImportedCategory, classifyCategory, makeAsset, persistAssets, LS_ASSETS, persistBondPositions, LS_BOND_POSITIONS,
-    setLocalStorageItemSafely, isQuotaExceededError, LS_REGENERABLE_CACHE_KEYS, state };
+    setLocalStorageItemSafely, isQuotaExceededError, LS_REGENERABLE_CACHE_KEYS,
+    BOND_ISIN_PATTERN, isBondIsin, state };
 }
 

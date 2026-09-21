@@ -460,11 +460,28 @@ document.getElementById('assetDetailEditBtn').addEventListener('click', () => {
   openModal('edit', id);
   showModal();
 });
+/* [BOND-31 · §49] 자산을 지우면 그 자산에만 매달려 있던 채권 레코드도 함께 정리한다.
+ * 예전에는 자산만 지워져서 채권 위험 카드에 유령 레코드가 계속 잡혔다(실측).
+ * 단, 그 채권에 거래원장이 남아 있으면 지우지 않는다 - 거래가 원천이고(BOND-01) 자산은
+ * 다음 재계산에서 다시 만들어지므로, 여기서 지우면 만기 · 쿠폰 사실만 사라진다. */
+function cleanupOrphanBondPositionForAsset(assetId) {
+  if (!Array.isArray(state.bondPositions) || !state.bondPositions.length) return;
+  const ledger = (typeof computePositionsAndRealizedPnL === 'function')
+    ? computePositionsAndRealizedPnL().positions : {};
+  const next = state.bondPositions.filter((p) => {
+    if (!p || String(p.assetId || '') !== String(assetId)) return true;
+    const key = (typeof bondLedgerKey === 'function') ? bondLedgerKey(p) : null;
+    return !!(key && Object.prototype.hasOwnProperty.call(ledger, key)); // 거래가 있으면 남긴다
+  });
+  if (next.length !== state.bondPositions.length) { state.bondPositions = next; persistBondPositions(); }
+}
+
 document.getElementById('assetDetailDeleteBtn').addEventListener('click', () => {
   const id = assetDetailCurrentId;
   const a = state.assets.find((x) => x.id === id);
   if (a && confirm(`"${a.name}" 자산을 삭제하시겠습니까?`)) {
     state.assets = state.assets.filter((x) => x.id !== id);
+    cleanupOrphanBondPositionForAsset(id);
     delete state.dayChangeMap[id];
     delete state.prevCloseMap[id];
     delete state.sessionMap[id];
@@ -486,6 +503,7 @@ document.getElementById('assetDetailOwnerBreakdownList').addEventListener('click
 
   const remainingIds = (assetDetailCurrentGroupIds || []).filter((mid) => mid !== id);
   state.assets = state.assets.filter((x) => x.id !== id);
+  cleanupOrphanBondPositionForAsset(id);
   delete state.dayChangeMap[id];
   delete state.prevCloseMap[id];
   delete state.sessionMap[id];
