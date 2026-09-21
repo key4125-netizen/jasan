@@ -32,11 +32,126 @@
 
 ---
 
-## 🏁 v263 릴리스 완료 — 데이터 업데이트 거버넌스 · 프로젝트 종료 (2026-09-20 · 가장 최신)
+## 🧾 Bond Transaction Core — Stage 1 완료 · 커밋됨 (2026-09-21 · 가장 최신)
+
+> **APPLICATION VERSION: v263 유지 · RELEASE 안 함 · push 안 함 · deploy 안 함**
+> 로컬 `main` 커밋 2건만 있다: 구현 `7600e17` + 이 인계장.
+> **다음 세션은 여기서 시작한다.** 다음 단계는 PM이 Stage 2와 Release 중 하나를 고르는 것이다.
+
+### 무엇이 바뀌었나 — 한 문장
+
+채권을 **자산관리 화면에서 총액을 직접 고치는 방식**에서 벗어나 **실제 거래내역이 보유의 유일한
+원천**이 되게 했다. 구조: `Bond Master → Transaction → Transaction 파생 Position → 자산관리 · Bond Risk · MC`.
+**KIS는 Position의 원천이 아니라 기본정보 · 가격 Provider일 뿐이고, 이번 단계에서 손대지 않았다.**
+
+### 정책(SoT) — §49 신설
+
+`docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` **§49**에 PM FINAL POLICY **BOND-01 ~ BOND-40**을
+조항으로 편입했다(CLAUDE.md Governance §5 - 정책은 구현과 같은 변경단위로 SoT에 들어온다).
+§47-7(Bond Domain V1)은 폐기되지 않았다 - 그 절의 4계층(A 공식 발행조건 / B 사용자 보유 / C 시장 /
+D 파생)은 그대로이고, 이번에 바꾼 것은 **B 계층의 원천**뿐이다.
+
+### 구현된 것 (전부 실제 동작 검증 완료)
+
+| 항목 | 위치 |
+|---|---|
+| ISIN(ISO 6166) identity - 새 필드 없이 기존 `ticker` 칸에 담는다 | `js/01` `isBondIsin()` |
+| `classifyCategory` ISIN 예외 → 무조건 '채권' | `js/01` |
+| 액면 1만원 단위(`faceAmount = quantity × 10,000`) | `js/29` `BOND_FACE_UNIT` · 환산 2종 |
+| 거래 파생 Position 해석(LEDGER / MANUAL / NONE + closed) | `js/29` `resolveBondHolding()` |
+| 거래 폼 자산군 선택 · 채권 전용 칸 · 불일치 저장 차단 | `index.html` · `js/06` |
+| Bond Master 조회(로컬) · 저장 시 upsert | `js/06` `findBondMasterByIsin()` · `upsertBondMasterFromTxForm()` |
+| 계좌 목록을 실제 데이터에서 생성(자동 정규화 금지) | `js/06` `refreshAccountTypeDatalist()` |
+| legacy 수동 채권 ↔ 거래 충돌 차단(수동 → 거래 방향) | `js/06` `findConflictingManualBond()` |
+| 자산 [최초등록] ↔ 거래 관리 채권 중복 생성 차단(반대 방향) | `js/07` assetForm submit 가드 |
+| Bond Risk 가중 PURCHASE 원천 교체 · 전량매도분 제외 | `js/29` `computeBondRiskSummary()` |
+| 듀레이션 · 수익률에도 거래원장 관통 | `js/29` `computeBondDuration()` · `computeBondYields()` |
+| 전량매도 후 현금흐름 CLOSED | `js/29` `buildBondCashFlows()` |
+| 채권 레코드 백업 · 기기 간 동기화(id + `updatedAt` LWW + 삭제 기준선) | `js/12` · `js/01` `LS_SYNC_MERGED_BOND_IDS` |
+| 자산 삭제 시 유령 채권 레코드 정리(거래 남아 있으면 유지) | `js/08` `cleanupOrphanBondPositionForAsset()` |
+
+매수 · **추가매수 합산** · 부분매도 · 전량매도 · **거래 수정/삭제 재계산**은 기존 원장 로직
+(`computePositionsAndRealizedPnL` · `syncAssetsFromTransactions`)을 **그대로 탄다 - 재구현하지 않았다**.
+
+### 사용자 요구사항 실측 결과 (PM 추가 확인 지시 · `e2e/109`)
+
+**과거 거래일 입력** — 거래일 관련 validation은 코드에 아예 없다(과거 · 미래 모두 차단 없음).
+기존 보유 채권을 과거 매수일로 재구성할 수 있다.
+
+| 입력 날짜 | 수량 | 단가 | 저장 |
+|---|---|---|---|
+| 2024-01-15 | 300 | 9,800 | ✓ |
+| 2024-06-20 | 500 | 10,100 | ✓ |
+| 2025-03-05 | 200 | 10,400 | ✓ |
+
+→ Transaction 3건 · 날짜 그대로 보존 · **quantity 1,000 · faceAmount 10,000,000 ·
+purchaseAmount 10,070,000** · 채권 레코드 1개 · 자산 1개(채권 · ledger) ·
+듀레이션 커버리지 100%(수정듀레이션 5.0169).
+이어서 오늘 400좌 부분매도 → 잔량 600 · 액면 6,000,000, 과거 매수 3건은 그대로.
+
+**자산 화면 직접 수정 방지** — 경로를 전수 확인했다.
+
+| 경로 | 결과 |
+|---|---|
+| 자산 상세 [수정] · [삭제] | 숨김(거래 추적 자산) |
+| 자산관리 목록 인라인 편집 | 입력칸 0개(읽기 전용) |
+| 자산 레코드를 9,999로 강제 변경 후 부팅 재계산 | 1,000으로 복구 |
+| 자산 폼 [최초등록]으로 같은 채권 재등록 | **차단**(아래 참고) |
+
+> ⚠ **이번에 잡은 결함 1건.** 수정 전에는 자산 폼 [최초등록]으로 같은 `ISIN + owner + account`를
+> 만들 수 있었고, 그러면 채권 레코드가 둘로 갈라져 **Bond Risk가 같은 채권을 두 번 셌다
+> (count 1 → 2)**. 보유수량 자체는 원장이 이겨서 어긋나지 않았지만 포트폴리오 수준 채권 노출이
+> 두 배가 됐다. `js/07` assetForm submit 선두 가드로 차단했고, BOND-09(수동 → 거래)와 합쳐
+> **양방향 모두 막혀 "한 채권은 한 가지 방식으로만 관리된다"**가 성립한다. §49-2에 조항으로 적었다.
+
+### 검증 결과 (커밋 시점 · 전부 실제 실행)
+
+Unit **643/643** · E2E **1050/1050**(11.6분) · ESLint 0 · Data Guard PASS · Secret Scan 0 ·
+MC baseline(release263 → bond-stage1) **P10 · P50 · P90 · Mean 전부 0.00% · μ지문 동일 · σ 변경 0**
+(equityOnly · withSyntheticBonds 둘 다) · Risk 회귀 하네스 **779건 = v263 승인값과 동일(추가 차이 0)**.
+측정 기록: `docs/closeout/measurements/mc-bond-stage1.json`.
+새 테스트: `test/bond-transaction-core.test.js`(23) · `e2e/108`(12) · `e2e/109`(6, PM 추가 확인).
+
+**Release Guard는 FAIL이다 — 의도된 상태다.** "APP_SHELL이 바뀌었는데 CACHE_NAME이 v263 그대로"만
+지적한다. 이번 단계는 version bump 금지였으므로, **Release 단계에서 v263 → v264로 함께 올리면 해소된다.**
+이 FAIL을 없애려고 임의로 버전을 올리지 않는다.
+
+### PM 확정 사항
+
+- **BOND-10 계좌 입력은 `<datalist>` 방식으로 PM 승인 완료.** 순수 `<select>`로 바꾸지 않는다
+  (바꾸면 목록에 없는 새 계좌를 만들 수 없고, 이 입력칸을 직접 채우는 기존 E2E 4개도 함께 고쳐야 한다).
+- **KIS Stage 2 미착수.** `/api/kis/bond-info` · `/api/kis/bond-price` 복원은 다음 단계이며,
+  **과거 코드(`70c49b3`)를 그대로 복사하지 않는다** - 실제 raw response 확보 → 필드 · 단위 · 날짜 검증 →
+  호출량 검증 후 현재 구조에 맞게 재작성한다(되돌린 이력 `e9b33cb`의 원인 2가지가 미해결이라서).
+
+### 손대면 안 되는 것 (v263 항목에 더해)
+
+- **`.claude/launch.json`은 사용자 로컬 변경이다.** 이번에도 수정 · 복원 · 커밋하지 않았고,
+  working tree에 ` M` 상태로 그대로 남아 있다. 다음 세션도 건드리지 않는다.
+- `baseline/v262`를 덮어쓰지 않는다(`freeze-baseline.js`는 `--verify`로만).
+- Bond Risk 모델 · MC 수식 · Beta 정책 · Macro · Return Key 정책을 바꾸지 않는다.
+- 새 Bond Data Provider · Account Master/ID · Transaction category schema를 만들지 않는다.
+- 6자리 채권 종목코드 조회는 원천이 없다(범위 밖 · BOND-39).
+- 쿠폰 수령 회계 · 세무회계 · 신용위험 수치화 · manual bond 강제 전환은 범위 밖이다.
+
+### 다음 단계 — PM 결정 필요
+
+**Stage 2(KIS 복원)와 Release(v263 → v264) 중 무엇을 먼저 할지 PM이 정한다.**
+Release를 고르면 version bump + Release Guard 통과 + production 배포 + smoke 순서로 진행한다.
+
+### 추가 검토사항 (이번 범위 밖 · 비차단 · 기록만)
+
+- **자산 엑셀 업로드**는 자산 화면이 아니지만 ledger 자산의 수량을 잠시 덮어쓸 수 있다.
+  `positionSource='ledger'`라 다음 재계산(부팅 포함)이 원장 값으로 되돌리는 것을 실측 확인했다.
+  항구적 불일치는 생기지 않지만, 되돌아가기 전까지 화면에 다른 숫자가 보인다. 필요하면 별도 지시.
+
+---
+
+## 🏁 v263 릴리스 완료 — 데이터 업데이트 거버넌스 · 프로젝트 종료 (2026-09-20)
 
 > **APPLICATION VERSION: v263 / RELEASED · production 배포 완료 · smoke 완료**
 > main `c800a21`(릴리스 `56f0437` + 자동화 커밋 2건) · production `https://key4125-netizen.github.io/jasan/` v263
-> **다음 세션은 여기서 시작한다.** 새 기능·새 정책·새 자동화를 시작하지 않는다.
+> (이 절은 v263 릴리스 시점의 기록이다. 그 뒤 진행된 Bond Stage 1은 위 절을 본다.)
 
 ### 무엇이 배포됐나 — 두 겹이다(중요)
 
