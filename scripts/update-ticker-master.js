@@ -103,9 +103,17 @@ function validateParsedNames(exchange, items) {
   }
 }
 
-// [국내 코스피/코스닥 mst 파싱] 이 프로젝트는 코드+한글명 두 필드만 쓰므로, 뒤쪽 고정폭 70/62개 필드는
-// 파싱하지 않는다(나중에 필요해지면 그때 KIS 원본 field_specs를 추가하면 된다 - 불필요한 복잡도 회피).
-// width 계산 근거는 파일 상단의 "[고정폭 파싱 - 경계 계산 근거]" 주석 참고.
+/* [국내 코스피/코스닥 mst 파싱]
+ * 뒤쪽 고정폭 70/62개 필드 중 **첫 필드(증권그룹구분코드, 2바이트)만** 읽는다.
+ * [v267 · PC-3] 이 값이 "이 종목이 주권인가 ETF인가 리츠인가 예탁증서인가"라는 원천 사실이다.
+ *   ST 주권 · EF ETF · RT 부동산투자회사 · DR 주식예탁증서 · FS 외국주권 ·
+ *   MF 증권투자회사 · IF 사회간접자본투융자회사 · PF 선박투자회사 · SC 등
+ * 실측(2026-09-22): KOSPI ST 892 · EF 1,176 · RT 23 / KOSDAQ ST 1,803 · FS 11 · DR 9.
+ * 예전에는 이 사실이 없어 앱이 종목명 키워드로 자산군을 **추측**했다(js/01 classifyCategory).
+ * 첫 필드만 읽는 이유: 위치가 경계에서 0부터 시작이라 나머지 필드의 오프셋 계산과 무관하다
+ * (조사 단계에서 공개 field_specs 합계가 스펙 폭과 맞지 않아 그 뒤 필드는 위치를 확정하지 못했다 -
+ *  확정하지 못한 것을 추측해 쓰지 않는다).
+ * width 계산 근거는 파일 상단의 "[고정폭 파싱 - 경계 계산 근거]" 주석 참고. */
 function parseDomesticMst(text, exchange) {
   const suffix = exchange === 'KOSPI' ? '.KS' : '.KQ';
   const specWidth = exchange === 'KOSPI' ? 228 : 222;
@@ -116,8 +124,10 @@ function parseDomesticMst(text, exchange) {
   for (const line of lines) {
     if (line.length <= width) continue;
     const front = line.slice(0, line.length - width);
+    const back = line.slice(line.length - width);
     const code = front.slice(0, 9).trim();
     const nameKr = front.slice(21).trim();
+    const securityGroup = back.slice(0, 2).trim().toUpperCase() || null;
     // [2차 통합 보완] KRX 영문 혼합 신규 코드(예: 0052D0)도 받는다 - js/01 KRX_SHORT_CODE_PATTERN과 같은 형식.
     if (!/^(?:\d{6}|\d{4}[A-Z]\d)$/.test(code) || !nameKr) continue; // 헤더/빈 줄/형식 이상 행은 조용히 건너뜀
     items.push({
@@ -127,7 +137,10 @@ function parseDomesticMst(text, exchange) {
       market: 'KR',
       exchange,
       naverTicker: code,
-      yahooTicker: code + suffix
+      yahooTicker: code + suffix,
+      // [v267] 원천 사실. 판정하지 않고 적힌 값을 그대로 옮긴다.
+      securityGroup,
+      currency: 'KRW' // 국내 상장 종목의 호가 통화는 예외 없이 원화다(거래소 규정).
     });
   }
   if (items.length) console.log(`  [${exchange}] 샘플: ${items.slice(0, 5).map((i) => `${i.nameKr}(${i.yahooTicker})`).join(', ')}`);
@@ -137,7 +150,12 @@ function parseDomesticMst(text, exchange) {
 
 // [해외 cod 파싱] 24개 컬럼 탭 구분(overseas_stock_code.py 기준), 첫 줄은 헤더라 건너뛴다.
 // Security type이 2(Stock)/3(ETP·ETF)인 것만 남긴다(1=지수, 4=워런트는 "종목 검색" 취지와 안 맞음).
-const OVERSEAS_COL = { SYMBOL: 4, KOREA_NAME: 6, ENGLISH_NAME: 7, SECURITY_TYPE: 8 };
+/* [v267 · PC-3] SECURITY_TYPE은 예전에도 읽었지만 **필터에만 쓰고 버렸다**. 이제 저장한다.
+ * CURRENCY(호가 통화) · DR_FLAG(예탁증서 여부) · DR_COUNTRY(원 발행국)도 함께 담는다.
+ * ⚠ DR_FLAG는 단독으로 신뢰할 수 없다 - 실측(2026-09-22) 널리 알려진 ADR 20건 중 8건만 'Y'였고
+ *   ASML · JD · BABA 같은 명백한 예탁증서가 'N'이었다. 그래서 이 값은 **배제 신호 하나**로만 쓰고,
+ *   판정은 거래소 공식 디렉터리의 증권 클래스와 교차검증한다(js/01 resolveUsListingClass). */
+const OVERSEAS_COL = { SYMBOL: 4, KOREA_NAME: 6, ENGLISH_NAME: 7, SECURITY_TYPE: 8, CURRENCY: 9, DR_FLAG: 17, DR_COUNTRY: 18 };
 function parseOverseasCod(text, exchangeLabel) {
   const lines = text.split('\n');
   const items = [];
@@ -158,11 +176,54 @@ function parseOverseasCod(text, exchangeLabel) {
       market: 'US',
       exchange: exchangeLabel,
       naverTicker: symbol,
-      yahooTicker: symbol.toUpperCase()
+      yahooTicker: symbol.toUpperCase(),
+      // [v267] 원천 사실. 2 = Stock · 3 = ETP(ETF).
+      securityType: secType,
+      currency: (cols[OVERSEAS_COL.CURRENCY] || '').trim().toUpperCase() || null,
+      drFlag: (cols[OVERSEAS_COL.DR_FLAG] || '').trim().toUpperCase() || null,
+      drCountry: (cols[OVERSEAS_COL.DR_COUNTRY] || '').trim().toUpperCase() || null
     });
   }
   if (items.length) console.log(`  [${exchangeLabel}] 샘플: ${items.slice(0, 5).map((i) => `${i.nameEn}(${i.yahooTicker})`).join(', ')}`);
   return items;
+}
+
+/* [v267 · PC-8] 거래소 공식 종목 디렉터리.
+ * Nasdaq Trader가 배포하는 상장 종목 파일로, 인증 없이 받을 수 있는 공개 자료다
+ * (KIS 마스터와 같은 성격의 1차 자료 - EG 규칙의 "거래소" A등급).
+ * 여기서만 얻을 수 있는 두 가지 사실을 가져온다.
+ *   1) ETF 플래그 - 거래소가 직접 표시한 값(실측 13,261 심볼 중 Y 5,712)
+ *   2) 증권 클래스 - 종목명 끝에 붙는 거래소 표기
+ *      "Common Stock"(미국 보통주) · "Ordinary Shares"(외국 발행인) ·
+ *      "American Depositary Shares" · "New York Registry Shares" ·
+ *      "Class A Subordinate Voting Shares" · "Closed End Fund" 등
+ * KIS 마스터가 놓치는 것을 이쪽이 잡고(예: AZN은 KIS에 ADR 표기가 없지만 여기서는 Ordinary Shares),
+ * 이쪽이 놓치는 것을 KIS가 잡는다(예: BP · TM은 여기서 Common Stock이지만 KIS 한글명이 (ADR)).
+ * 그래서 둘을 **교차검증**해야 하며, 어느 한쪽만으로 판정하지 않는다. */
+const EXCHANGE_DIRECTORIES = [
+  { url: 'https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt', symbolCol: 0, nameCol: 1, etfCol: 6 },
+  { url: 'https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt', symbolCol: 0, nameCol: 1, etfCol: 4 }
+];
+async function fetchExchangeDirectory() {
+  const bySymbol = new Map();
+  for (const spec of EXCHANGE_DIRECTORIES) {
+    console.log('[다운로드] 거래소 종목 디렉터리 ' + spec.url.split('/').pop() + ' ...');
+    const buf = await download(spec.url);
+    const lines = buf.toString('latin1').split('\n').filter((l) => l.trim());
+    for (const line of lines.slice(1)) {
+      // 파일 마지막 줄은 "File Creation Time: ..." 안내라 컬럼 수가 맞지 않는다.
+      const cols = line.split('|');
+      if (cols.length < 4 || /^File Creation/i.test(cols[0])) continue;
+      const symbol = (cols[spec.symbolCol] || '').trim().toUpperCase();
+      if (!symbol) continue;
+      bySymbol.set(symbol, {
+        isEtf: (cols[spec.etfCol] || '').trim().toUpperCase() === 'Y',
+        securityName: (cols[spec.nameCol] || '').trim()
+      });
+    }
+  }
+  console.log('[파싱 완료] 거래소 종목 디렉터리: ' + bySymbol.size + '건');
+  return bySymbol;
 }
 
 async function fetchAndParse(fileBase, parseFn, label) {
@@ -197,6 +258,29 @@ async function main() {
     }
   }
 
+  /* [v267] 미국 종목에 거래소 공식 디렉터리 사실을 덧붙인다.
+   * 이 단계가 실패해도 종목 마스터 생성 자체는 계속한다 - 기존 필드는 그대로이고,
+   * 새 필드가 없으면 앱이 그 사실을 "모름"으로 처리하도록 되어 있다(추측하지 않는다). */
+  let directory = null;
+  try {
+    directory = await fetchExchangeDirectory();
+  } catch (e) {
+    console.error('[실패] 거래소 종목 디렉터리: ' + e.message + ' - 미국 종목의 ETF 플래그 · 증권 클래스 없이 진행합니다.');
+    failedMarkets.push('EXCHANGE_DIRECTORY');
+  }
+  if (directory) {
+    let matched = 0;
+    for (const item of all) {
+      if (item.market !== 'US') continue;
+      const hit = directory.get(item.yahooTicker);
+      if (!hit) continue;
+      matched++;
+      item.isEtf = hit.isEtf;
+      item.securityName = hit.securityName;
+    }
+    console.log('[병합] 거래소 디렉터리와 일치한 미국 종목: ' + matched + '건');
+  }
+
   // 같은 야후 티커가 여러 소스에 중복 등장하면(이론상 없어야 하지만 방어적으로) 먼저 나온 것만 남긴다.
   const seen = new Set();
   const deduped = all.filter((item) => {
@@ -218,7 +302,8 @@ async function main() {
 
   const output = {
     generatedAt: new Date().toISOString(),
-    sourceNote: 'KIS 공식 종목 마스터(new.real.download.dws.co.kr, 인증 불필요 정적 다운로드) 기반, 매달 1일 GitHub Actions가 자동 생성',
+    sourceNote: 'KIS 공식 종목 마스터(new.real.download.dws.co.kr, 인증 불필요 정적 다운로드) + 거래소 공식 종목 디렉터리(Nasdaq Trader, 미국분) 기반, 매달 1일 GitHub Actions가 자동 생성',
+    schemaVersion: 2, // [v267] securityGroup · securityType · currency · drFlag · drCountry · isEtf · securityName 추가
     failedMarkets,
     counts,
     items: deduped

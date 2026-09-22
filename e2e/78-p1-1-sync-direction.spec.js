@@ -106,11 +106,18 @@ const pull = (page) => page.locator('body').evaluate(() => pullFromCloud({ silen
 const disableSync = (page) => page.locator('body').evaluate((el) => { el.ownerDocument.getElementById('syncDisableBtn').click(); });
 // [v243 P1-1 차이 확인] 받은 클라우드 데이터가 이 기기와 의미 있게 다르면 자동 동기화는 합치지 않고 확인을 기다린다.
 // 상대 기기가 올린 내용은 그 기기에서 차이 화면의 [클라우드 데이터 받기]를 눌러야 반영된다(예전: pull이 곧바로 병합했다).
+/* [기대값 갱신 · §53-9 · v267] 손실이 생길 수 없는 차이(상대가 새로 추가 · 한쪽만 변경)는
+ * 이제 확인 없이 병합된다. 이 헬퍼의 목적은 "상대가 올린 내용을 이 기기에 반영한다"이므로
+ * 두 경로를 모두 받아들인다 - 확인 화면이 뜨면 [받기]를 누르고, 이미 병합됐으면 그대로 넘어간다.
+ * 확인 화면이 **반드시** 떠야 하는 경우(삭제 vs 수정 · 양쪽 변경)는 e2e/89가 따로 고정한다. */
 async function pullAndAccept(page) {
-  expect(await pull(page)).toBe('held');
-  await expect(page.locator('#syncDirectionBox')).toBeVisible();
-  await page.locator('#syncDirectionPullBtn').click();
-  await expect(page.locator('#syncSettingsModal')).toBeHidden();
+  const res = await pull(page);
+  expect(['held', 'applied']).toContain(res);
+  if (res === 'held') {
+    await expect(page.locator('#syncDirectionBox')).toBeVisible();
+    await page.locator('#syncDirectionPullBtn').click();
+    await expect(page.locator('#syncSettingsModal')).toBeHidden();
+  }
 }
 
 // 이미 정상 동기화가 끝난 두 기기(휴대폰/PC)를 만든다.

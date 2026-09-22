@@ -684,7 +684,11 @@ function updateTxAppliedRateVisibility() {
   if (isUsd) refreshAppliedRateDefault();
 }
 document.getElementById('tx_currency').addEventListener('change', updateTxAppliedRateVisibility);
-document.getElementById('tx_type').addEventListener('change', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
+document.getElementById('tx_type').addEventListener('change', (e) => {
+  e.target.dataset.userTouched = '1'; // [v267] 이후 자동 기본값이 이 선택을 덮지 않게 한다
+  updateTxCashPriceLock();
+  refreshAppliedRateDefault();
+});
 document.getElementById('tx_name').addEventListener('blur', () => { updateTxCashPriceLock(); refreshAppliedRateDefault(); });
 document.getElementById('tx_owner').addEventListener('change', refreshAppliedRateDefault);
 document.getElementById('tx_accountType').addEventListener('blur', refreshAppliedRateDefault);
@@ -735,7 +739,27 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
     ? `선택된 종목: ${ticker} · ${nextCcy}`
     : '티커 없는 자산 - 소유자/계좌구분이 자동으로 채워졌습니다(매도 시 기존 보유분과 정확히 연결됩니다).';
   updateTxAppliedRateVisibility();
+  applyDefaultTransactionType();                            // [v267] 보유 상태를 보고 거래유형 기본값을 맞춘다
   refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 종목이 정해졌으니 안내/추천을 다시 계산한다.
+}
+
+/* [v267] 거래유형 기본값. 앱은 이미 이 종목의 보유수량을 알고 있다 -
+ * 한 주도 없으면 매도는 성립하지 않으므로 '매수'를 기본값으로 둔다.
+ * **기본값만** 정한다. 사용자가 매도를 고르는 기능은 그대로이고(선택지를 지우지 않는다),
+ * 수정 모드에서는 저장된 값이 우선이므로 건드리지 않는다. */
+function applyDefaultTransactionType() {
+  const typeEl = document.getElementById('tx_type');
+  if (!typeEl || document.getElementById('tx_id').value) return;   // 수정 모드는 대상 아님
+  if (typeEl.dataset.userTouched === '1') return;                  // 사용자가 직접 고른 뒤에는 바꾸지 않는다
+  const name = document.getElementById('tx_name').value.trim();
+  const ticker = document.getElementById('tx_ticker').value.trim();
+  if (!name && !ticker) return;
+  const owner = document.getElementById('tx_owner').value;
+  const accountType = document.getElementById('tx_accountType').value.trim() || '일반계좌';
+  const currency = document.getElementById('tx_currency').value;
+  if (typeof computeCurrentHoldingQuantity !== 'function') return;
+  const held = computeCurrentHoldingQuantity(owner, accountType, ticker, name, currency, '');
+  if (!(num(held) > 0)) typeEl.value = 'buy';
 }
 
 // [수동입력 토글 UI 반영] OFF(검색 모드, 기본값)면 종목명 입력칸을 readonly로 잠그고 클릭/돋보기
@@ -1060,26 +1084,29 @@ function applyKnownBondMasterToTxForm() {
  * 직접 채워 저장하면 된다. 다만 실패를 성공처럼 보이게 하지 않는다: 무엇이 안 됐는지 적는다.
  * 사용자가 이미 적어 둔 값은 덮어쓰지 않는다(빈 칸만 채운다).
  */
-async function lookupBondFromKis() {
+async function lookupBondFromKis(opts) {
+  const quiet = !!(opts && opts.silent === true);
   const note = txBondEl('tx_bondMasterNote');
   const btn = txBondEl('txBondLookupBtn');
   const isin = String((txBondEl('tx_bondIsin') || {}).value || '').trim().toUpperCase();
   if (!note) return;
+  // [v267] quiet = 사용자가 [조회]를 누른 것이 아니라 입력이 끝나 자동으로 도는 경우.
+  //        성공하면 똑같이 채우고 알리지만, 실패하면 아무 말도 하지 않는다.
   if (!isBondIsin(isin)) {
-    note.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
+    if (!quiet) note.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
     return;
   }
-  if (btn) { btn.disabled = true; btn.textContent = '조회 중'; }
-  note.textContent = '발행조건을 조회하는 중입니다...';
+  if (btn && !quiet) { btn.disabled = true; btn.textContent = '조회 중'; }
+  if (!quiet) note.textContent = '발행조건을 조회하는 중입니다...';
   try {
     const raw = await fetchKisBondInfoRaw(isin);
     if (!raw) {
-      note.textContent = '조회에 실패했습니다(네트워크 또는 조회 서버). 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+      if (!quiet) note.textContent = '조회에 실패했습니다(네트워크 또는 조회 서버). 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
       return;
     }
     const mapped = mapKisBondInfo(raw, isin);
     if (!mapped.position) {
-      note.textContent = `조회되지 않았습니다: ${mapped.reason || '해당 표준코드의 채권을 찾지 못했습니다.'} 아래 발행조건을 직접 넣어 주세요.`;
+      if (!quiet) note.textContent = `조회되지 않았습니다: ${mapped.reason || '해당 표준코드의 채권을 찾지 못했습니다.'} 아래 발행조건을 직접 넣어 주세요.`;
       return;
     }
     const eff = mapped.position;
@@ -1096,12 +1123,28 @@ async function lookupBondFromKis() {
       : '';
     note.textContent = `조회했습니다: ${eff.identity.instrumentName || isin}${incomplete}`;
   } catch (e) {
-    note.textContent = '조회 중 문제가 생겼습니다. 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+    if (!quiet) note.textContent = '조회 중 문제가 생겼습니다. 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '조회'; }
+    if (btn && !quiet) { btn.disabled = false; btn.textContent = '조회'; }
   }
 }
-document.getElementById('txBondLookupBtn').addEventListener('click', lookupBondFromKis);
+document.getElementById('txBondLookupBtn').addEventListener('click', () => lookupBondFromKis());
+/* [v267] ISIN 형식이 완성되면 [조회]를 누르지 않아도 발행조건을 불러온다.
+ * 조회 경로(KIS bond-info) · 채움 규칙(빈 칸만 채움) · 성공 문구는 그대로다 - 실행 시점만 추가했다.
+ * 같은 코드를 반복 조회하지 않도록 마지막 조회값을 기억하고, 타이핑 도중 매 글자마다 두드리지
+ * 않도록 잠깐 기다렸다가 한 번만 부른다. */
+let txBondAutoLookupTimer = null;
+let txBondAutoLookupLastIsin = '';
+document.getElementById('tx_bondIsin').addEventListener('input', (e) => {
+  const isin = String(e.target.value || '').trim().toUpperCase();
+  if (txBondAutoLookupTimer) clearTimeout(txBondAutoLookupTimer);
+  if (!isin || isin === txBondAutoLookupLastIsin) return;
+  if (typeof isBondIsin !== 'function' || !isBondIsin(isin)) return; // 12자리가 완성되기 전에는 부르지 않는다
+  txBondAutoLookupTimer = setTimeout(() => {
+    txBondAutoLookupLastIsin = isin;
+    lookupBondFromKis({ silent: true });
+  }, 500);
+});
 
 document.getElementById('tx_assetClass').addEventListener('change', (e) => {
   delete e.target.dataset.autofilled;
@@ -1157,7 +1200,8 @@ function openTransactionModal(txId) {
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
   populateRateMatchOverrideOptions('');
-  document.getElementById('tx_date').value = todayDateStr();
+  // [v267] 주말에 열면 직전 영업일이 기본값이다(사용자가 바꿀 수 있다 - 기본값만 정한다).
+  document.getElementById('tx_date').value = (typeof defaultTradeDateStr === 'function') ? defaultTradeDateStr() : todayDateStr();
   document.getElementById('tx_fee').value = 0;
   // [BOND-10 · BOND-32] 계좌 목록은 열 때마다 실제 데이터에서 다시 만들고, 채권 칸은 초기화한다
   // (form.reset()은 입력값만 되돌리고 안내 문구 · 자동채움 표식은 그대로 남는다).
@@ -1330,6 +1374,19 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
       return;
     }
   }
+
+  /* [v267] 같은 거래를 두 번 저장하는 사고를 저장 전에 알린다.
+   * 날짜 · 종목 · 소유자 · 계좌 · 유형 · 수량 · 단가가 모두 같은 거래가 이미 있으면
+   * 실수일 가능성이 높다. 다만 실제로 같은 날 같은 조건으로 두 번 체결되는 경우도 있으므로
+   * **막지 않고 확인만 받는다** - 사용자가 아는 사실을 앱이 부정하지 않는다. */
+  const dupDate = document.getElementById('tx_date').value || todayDateStr();
+  const dupType = document.getElementById('tx_type').value;
+  const duplicated = state.transactions.some((t) => t && t.id !== id
+    && t.date === dupDate && t.type === dupType
+    && t.owner === txOwnerVal && (t.accountType || '일반계좌') === txAccountTypeVal
+    && String(t.ticker || '') === String(txTickerVal || '') && String(t.name || '') === String(name || '')
+    && num(t.quantity) === num(quantity) && num(t.price) === num(price));
+  if (duplicated && !window.confirm('같은 날짜 · 종목 · 수량 · 단가의 거래가 이미 있습니다.\n\n그대로 한 건 더 저장할까요?')) return;
 
   const existing = state.transactions.find((t) => t.id === id);
   const tx = {

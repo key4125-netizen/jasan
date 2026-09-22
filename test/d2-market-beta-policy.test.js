@@ -146,19 +146,40 @@ test('STEP 19 - .KS 접미사는 상장 시장 판정에만 쓴다: 국내 상�
 
 /* ══════════════════ STEP 5 · GAP-1  원장 미등재 → 미확정 ══════════════════ */
 
-test('STEP 5 - 승인된 노출 근거가 없으면 접미사 · 거래소 · 이름으로 추정하지 않고 미확정으로 둔다', () => {
+/* [기대값 갱신 · §53 PC-1 · 2026-09-22] §51-3이 개정됐다.
+ * 근거로 인정하는 원천이 "Exposure Master 하나"에서 "승인된 A등급 사실원천"으로 넓어졌다 -
+ * ① Exposure Master ② KIS 공식 종목마스터의 증권그룹구분 ③ 거래소 공식 종목 디렉터리.
+ * **추정 금지 원칙 자체는 그대로다** - 티커 접미사 단독 · 상품명 · 거래소 단독은 여전히 근거가 아니다.
+ * 이 테스트는 그 경계를 다시 고정한다: 원천 사실이 있으면 자동, 없으면 여전히 미확정. */
+test('STEP 5 - 원천 사실이 있으면 자동 판정하고, 없으면 접미사 · 이름으로 추정하지 않는다', () => {
   const s = loadRiskSandbox();
-  s.setTickerMaster({ 'ZZNEW.KS': { exchange: 'KOSPI', nameKr: 'ZZ 미등재 국내주', market: 'KR' } });
-  // 국내 접미사가 있어도, 종목 마스터에 상장 사실이 있어도 노출 근거가 없으면 붙이지 않는다.
-  const kr = bmOf(s, 'ZZNEW.KS', '주식');
-  assert.strictEqual(kr.key, null);
-  assert.strictEqual(kr.source, 'exposureUnconfirmed');
-  // 이름에 '미국'이 들어가도 S&P500을 자동 부여하지 않는다.
+  s.setTickerMaster({
+    // 증권그룹이 주권(ST)으로 확인된 국내 상장 종목 - 원장에 없어도 상장시장 지수를 받는다.
+    'ZZST.KS': { exchange: 'KOSPI', nameKr: 'ZZ 국내주권', market: 'KR', securityGroup: 'ST' },
+    'ZZSTQ.KQ': { exchange: 'KOSDAQ', nameKr: 'ZZ 코스닥주권', market: 'KR', securityGroup: 'ST' },
+    // 증권그룹이 ETF(EF) - 공식 기초지수가 있어야 하므로 자동 판정하지 않는다.
+    'ZZEF.KS': { exchange: 'KOSPI', nameKr: 'ZZ 상장지수펀드', market: 'KR', securityGroup: 'EF' },
+    // 리츠 · 외국주권 · 예탁증서도 자동 판정 대상이 아니다.
+    'ZZRT.KS': { exchange: 'KOSPI', nameKr: 'ZZ 리츠', market: 'KR', securityGroup: 'RT' },
+    'ZZFS.KQ': { exchange: 'KOSDAQ', nameKr: 'ZZ 외국주권', market: 'KR', securityGroup: 'FS' },
+    // 이름에 '미국'이 들어간 상품 - 이름은 근거가 아니다.
+    'ZZUSA.KS': { exchange: 'KOSPI', nameKr: 'ZZ 미국 S&P500 추종', market: 'KR', securityGroup: 'EF' }
+  });
+  // ① 주권으로 확인되면 상장 시장 지수를 자동으로 받는다(코스피 · 코스닥 모두).
+  assert.strictEqual(bmOf(s, 'ZZST.KS', '주식').key, 'KOSPI');
+  assert.strictEqual(bmOf(s, 'ZZSTQ.KQ', '주식').key, 'KOSDAQ');
+  // ② ETF는 공식 기초지수가 필요하다 - 상장 시장 지수를 대신 붙이지 않는다.
+  const ef = bmOf(s, 'ZZEF.KS', 'ETF');
+  assert.strictEqual(ef.key, null);
+  assert.strictEqual(ef.source, 'etfNeedsOfficialIndex');
+  // ③ 리츠 · 외국주권은 노출 시장이 상장 시장과 다를 수 있어 자동 판정하지 않는다.
+  assert.strictEqual(bmOf(s, 'ZZRT.KS', '주식').source, 'reitExposureUnconfirmed');
+  assert.strictEqual(bmOf(s, 'ZZFS.KQ', '주식').source, 'foreignListedSecurity');
+  // ④ 이름에 '미국'이 들어가도 S&P500을 자동 부여하지 않는다(추정 금지 그대로).
   const named = plain(s.resolveMarketRiskBenchmark({ ticker: 'ZZUSA.KS', category: 'ETF', name: 'ZZ 미국 S&P500 추종' }));
   assert.strictEqual(named.key, null);
-  assert.strictEqual(named.source, 'exposureUnconfirmed');
-  // 해외 티커도 마찬가지다.
-  assert.strictEqual(bmOf(s, 'ZZFGN', '주식').source, 'exposureUnconfirmed');
+  // ⑤ 공식 종목 정보에 아예 없는 티커는 여전히 미확정이다.
+  assert.strictEqual(bmOf(s, 'ZZFGN', '주식').source, 'notInInstrumentMaster');
 });
 
 /* ══════════════════ K · L  환헤지 게이트 ══════════════════ */

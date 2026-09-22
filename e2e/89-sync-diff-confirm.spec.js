@@ -91,6 +91,18 @@ async function pairedDevices(browser, kv, pcOptions) {
 }
 
 const pull = (page, opts) => page.locator('body').evaluate((el, o) => pullFromCloud(o || { silent: true }), opts);
+/* [§53-9 · v267] 손실이 생길 수 없는 차이(상대가 새로 추가 · 한쪽만 변경)는 이제 확인 없이 병합된다.
+ * 이 파일의 목적은 **확인 화면 자체**(차이 표시 · 방향 선택 · 취소 · 재진입)를 고정하는 것이므로,
+ * 확인 화면이 떠야 하는 시나리오는 아래 두 헬퍼로 이 기기 쪽에도 변경을 만들어 진짜 충돌로 바꾼다.
+ *   conflictLocalAsset : 값까지 바꿔 "내용이 다른 자산"을 만든다(차이 항목 자체가 없던 경우)
+ *   touchLocalAsset/Tx : 값은 그대로 두고 이 기기도 그 뒤에 손댔다는 사실만 남긴다
+ *                        (표시되는 양쪽 값이 시나리오 그대로 유지돼야 하는 경우)
+ * 자동 병합 경로는 e2e/115 E-3가 따로 본다. */
+const conflictLocalAsset = (page) => page.locator('body').evaluate(() => {
+  const a = state.assets.find((x) => x.id === 'e89-as');
+  a.quantity = (Number(a.quantity) || 0) + 1; a.updatedAt = Date.now(); persistAssets(true);
+});
+
 const push = (page, opts) => page.locator('body').evaluate((el, o) => pushToCloud(o), opts);
 // 편집은 persist*(true) / 직접 push로 한다 - 테스트가 부르는 동기화 순서를 결정적으로 유지한다.
 const edit = (page, fn, arg) => page.locator('body').evaluate(fn, arg);
@@ -170,6 +182,7 @@ test('S-02 (T02/T16) 이 기기에만 있는 자산이 있으면 병합 · 업�
   await push(phone.page);                            // 상대가 새 버전을 올렸다(내용은 같음)
   const cloudBefore = await cloudView(pc.page, kv);
   await edit(pc.page, (el, a) => { state.assets.push(a); persistAssets(true); }, MANUAL_ASSET('pc-only'));
+  await conflictLocalAsset(pc.page);   // [§53-9] 확인 화면이 뜨도록 진짜 충돌을 만든다
   const before = await localView(pc.page);
 
   expect(await pull(pc.page)).toBe('held');
@@ -202,6 +215,7 @@ test('S-03 (T03/T14) 클라우드에만 있는 자산은 실제 항목으로 보
   const { phone, pc } = await pairedDevices(browser, kv);
   await edit(phone.page, (el, a) => { state.assets.push(a); persistAssets(true); }, MANUAL_ASSET('phone-new', { name: 'E89_상가', quantity: 2 }));
   await push(phone.page);
+  await conflictLocalAsset(pc.page);   // [§53-9] 확인 화면이 뜨도록 진짜 충돌을 만든다
 
   expect(await pull(pc.page)).toBe('held');
   expect((await localView(pc.page)).assetIds).toEqual(['e89-as']);
@@ -278,9 +292,14 @@ test('S-06 (T06/T07) 삭제 vs 수정은 어느 방향이든 확인 전까지 �
     await edit(pc.page, (el, a) => { state.assets.push(a); persistAssets(true); }, MANUAL_ASSET('shared'));
     pc.page.once('dialog', (d) => d.accept());
     await push(pc.page);
-    expect(await pull(phone.page)).toBe('held'); // 휴대폰은 새 자산 확인 대기 - 받기로 맞춘다
-    await phone.page.locator('#syncDirectionPullBtn').click();
-    await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
+    /* [기대값 갱신 · §53-9] 준비 단계다 - 상대가 새 자산을 올린 것을 받는 것은 손실이 없어
+     * 이제 확인 없이 병합된다. 이 테스트의 본체(삭제 vs 수정 → 확인 대기)는 아래에서 그대로 검사한다. */
+    const prep = await pull(phone.page);
+    expect(['held', 'applied']).toContain(prep);
+    if (prep === 'held') {
+      await phone.page.locator('#syncDirectionPullBtn').click();
+      await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
+    }
 
     await edit(pc.page, () => { state.assets = state.assets.filter((a) => a.id !== 'shared'); persistAssets(true); });
     await edit(phone.page, () => { const a = state.assets.find((x) => x.id === 'shared'); a.quantity = 7; a.updatedAt = Date.now(); persistAssets(true); });
@@ -499,9 +518,14 @@ test('S-12 (T20) 동기화가 켜진 채 JSON을 복원해도 복원 데이터�
   const { phone, pc } = await pairedDevices(browser, kv);
   await edit(phone.page, (el, t) => { state.transactions.push(t); persistTransactions(); }, { ...BASE_TX, id: 'e89-tx-after-backup', quantity: 5, createdAt: 3000, updatedAt: 3000 });
   await push(phone.page);
-  expect(await pull(pc.page)).toBe('held');
-  await pc.page.locator('#syncDirectionPullBtn').click();
-  await expect(pc.page.locator('#syncSettingsModal')).toBeHidden();
+  /* [기대값 갱신 · §53-9] 준비 단계다 - 상대가 추가한 거래를 받는 것은 손실이 없어 자동 병합된다.
+   * 이 테스트의 본체(JSON 복원 뒤 확인 대기)는 아래에서 그대로 검사한다. */
+  const prep12 = await pull(pc.page);
+  expect(['held', 'applied']).toContain(prep12);
+  if (prep12 === 'held') {
+    await pc.page.locator('#syncDirectionPullBtn').click();
+    await expect(pc.page.locator('#syncSettingsModal')).toBeHidden();
+  }
   const cloudBefore = await cloudView(pc.page, kv);
   pc.gate.posts = 0;
 

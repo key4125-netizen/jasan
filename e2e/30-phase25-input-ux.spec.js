@@ -184,31 +184,39 @@ test('9. 인플레이션율 - 확인하면 state 반영 + persist + 요약 텍�
   await expect(page.locator('#projectionInflationSummary')).toHaveText('3.5%');
 });
 
-test('10. 투자금 증가율 - 적립금 설정 팝업에서 취소하면 반영되지 않는다', async ({ page }) => {
+// [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4 · UX-01] "매년 투자금 증가율" 입력이
+// 제거되고 "연도별 추가 투자"로 바뀌었다(PM 지시문 §10-1). 검증 관심사(팝업의 draft/취소/저장
+// 계약이 새 입력에도 그대로 적용되는가)는 그대로 유지하고 대상만 바꾼다.
+test('10. 연도별 추가 투자 - 투자금 설정 팝업에서 취소하면 반영되지 않는다', async ({ page }) => {
   await seed(page);
   const lsBefore = await readProjectionLS(page);
   await toPlanTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
-  await page.locator('#contributionGrowthRateInput').fill('7');
+  await page.locator('#yearlyExtraContributionAddBtn').click();
+  await page.locator('#yearlyExtraContributionList input[data-yearly-extra-amount="0"]').fill('7000000');
   await page.waitForTimeout(150);
-  expect(await page.evaluate(() => state.projection.contributionGrowthRate)).toBe(0);
+  expect(await page.evaluate(() => state.projection.yearlyExtraContributions)).toEqual([]);
   await page.locator('#cancelMonthlyContributionAllocationModalBtn').click();
-  expect(await page.evaluate(() => state.projection.contributionGrowthRate)).toBe(0);
+  expect(await page.evaluate(() => state.projection.yearlyExtraContributions)).toEqual([]);
   expect(await readProjectionLS(page)).toBe(lsBefore);
 });
 
-test('11. 투자금 증가율 - 저장하면 반영되고 미래예측 결과가 갱신된다', async ({ page }) => {
+test('11. 연도별 추가 투자 - 저장하면 반영되고 요약 한 줄이 갱신된다', async ({ page }) => {
   await seed(page);
-  const before = await page.locator('#projectionHeroFuture').innerText();
   await toPlanTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await page.locator('#monthlyContributionTotalInputHusband').fill('500000');
-  await page.locator('#contributionGrowthRateInput').fill('5');
+  await page.locator('#yearlyExtraContributionAddBtn').click();
+  const nextYear = new Date().getFullYear() + 1;
+  await page.locator('#yearlyExtraContributionList input[data-yearly-extra-year="0"]').fill(String(nextYear));
+  await page.locator('#yearlyExtraContributionList input[data-yearly-extra-amount="0"]').fill('10000000');
   await page.locator('#saveMonthlyContributionAllocationModalBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeHidden();
-  expect(await page.evaluate(() => state.projection.contributionGrowthRate)).toBe(5);
+  expect(await page.evaluate(() => state.projection.yearlyExtraContributions))
+    .toEqual([{ year: nextYear, amount: 10000000 }]);
   await toProjectionTab(page);
-  await expect(page.locator('#projectionHeroFuture')).not.toHaveText(before);
+  // 결정론 히어로 금액은 MC 범위 밖이라 그대로다(§54-7) - 요약 한 줄이 입력을 반영한다.
+  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('1개 연도 1,000만원');
 });
 
 test('12. MC 운용보수 - "미확인"과 "명시적 0%"가 화면에서 구분된다', async ({ page }) => {

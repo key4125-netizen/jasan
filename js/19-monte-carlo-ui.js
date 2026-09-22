@@ -177,6 +177,25 @@ document.getElementById('mcOwnerScopeSegmented').addEventListener('click', (e) =
 // 결정하는 순수 조회 함수다. 계산(js/15/16)에는 전혀 관여하지 않고, 계산에도 쓰이지 않는 값이다.
 // [Phase 24-B - Owner MC] ownerFilter를 주면 그 owner만 검사한다 - "신랑만" MC를 볼 때 와이프의 해외
 // 비중 때문에 신랑에게는 해당하지 않는 환율 안내가 뜨지 않도록 한다. 생략 시 기존과 동일(두 owner 중 하나라도).
+/* [MC-01] 연도별 추가 투자 → 엔진 입력.
+ * 반환: [{ monthIndex, amount, year }] - 예측 기간(years) 안에 드는 항목만 담는다.
+ * 지난 연도 · 예측 기간을 넘는 연도는 반영할 자리가 없으므로 담지 않고, 몇 건이 빠졌는지
+ * 함께 돌려준다(조용히 버리지 않고 화면에 알린다). */
+function mapYearlyExtraContributionsToMonths(years) {
+  const list = (typeof getYearlyExtraContributions === 'function') ? getYearlyExtraContributions() : [];
+  const months = Math.max(0, Math.trunc(num(years))) * 12;
+  const mapped = [];
+  const skipped = [];
+  list.forEach((it) => {
+    // [PM 결정 2] 시점 규칙은 js/05 yearlyExtraContributionMonthIndex 하나만 쓴다 - 결정론 카드와
+    // 같은 함수를 공유해야 두 화면이 같은 입력에 같은 시점을 본다(규칙을 두 곳에 두지 않는다).
+    const monthIndex = yearlyExtraContributionMonthIndex(it.year);
+    if (monthIndex === null || monthIndex > months) { skipped.push(it); return; }
+    mapped.push({ monthIndex, amount: num(it.amount), year: Math.trunc(num(it.year)) });
+  });
+  return { mapped, skipped };
+}
+
 function hasHouseholdForeignAllocation(ownerFilter) {
   const owners = ownerFilter ? [ownerFilter] : REBALANCE_OWNERS;
   return owners.some((owner) => num(state.rebalance[owner].domestic['해외']) > 0);
@@ -405,7 +424,10 @@ function hasDisplayedMonteCarloResult() {
 function computeMonteCarloInputSignature() {
   const priceFollowsMarket = (a) => String(a.ticker ?? '').trim() !== '' && !NON_TRADABLE_CATEGORIES.includes(a.category);
   const assets = (state.assets || []).map((a) => [a.id, a.ticker, a.name, a.owner, a.accountType, a.category, a.categorySource,
-    a.isDomestic, a.currency, a.quantity, a.buyPrice, a.buyRate, a.rateMatchOverride, priceFollowsMarket(a) ? null : a.currentPrice])
+    a.isDomestic, a.currency, a.quantity, a.buyPrice, a.buyRate, a.rateMatchOverride,
+    // [E-02] 환헤지 확정값은 MC 자산군(σ · 상관)을 바꾼다 - 빠지면 값을 바꿔도 예전 결과가 유효한 것처럼 남는다.
+    a.fxHedgeStatus,
+    priceFollowsMarket(a) ? null : a.currentPrice])
     .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
   const rebalance = {};
   REBALANCE_OWNERS.forEach((owner) => {
@@ -424,7 +446,8 @@ function computeMonteCarloInputSignature() {
     assets, rebalance,
     rates: p.customScenarioRates, fees: p.customFeeRates, instruments: p.instrumentReturnKeys || {},
     monthly: p.monthlyContribution, allocation: p.monthlyContributionAllocation, byOwner: p.monthlyContributionByOwner,
-    growth: p.contributionGrowthRate, inflation: p.inflationRate, tax: p.taxAdvantagedPlan,
+    // [MC-01] 증가율 대신 연도별 추가 투자가 서명에 들어간다(증가율은 더 이상 입력도 계산도 아니다).
+    extras: p.yearlyExtraContributions, inflation: p.inflationRate, tax: p.taxAdvantagedPlan,
     // [§37 CMA-VER-02] 장기 CMA 세트가 바뀌면 이전 결과를 조용히 현재 결과로 보이지 않게 한다.
     cma: getActiveCmaSetVersion(),
     run: { preset: mcUiEl('mcPresetSelect').value, iterations: mcUiEl('mcIterationsSelect').value, owner: mcOwnerScope,
@@ -733,8 +756,11 @@ function renderMonteCarloCmaSource(cma, setVersion) {
   const risky = (cma.instruments || []).filter((i) => !i.riskFree);
   const byClass = new Map();
   risky.forEach((i) => { if (!byClass.has(i.appClass)) byClass.set(i.appClass, i); });
+  // [PM 결정 1 후속] 자산군마다 위험 출처 기관이 다를 수 있다 - 줄마다 실제 기관을 적는다.
+  // (예전에는 제목 하나가 전부를 PRIMARY 기관으로 표기해, 다른 기관에서 온 줄까지 잘못 붙었다.)
   const volRows = Array.from(byClass.values()).map((i) =>
-    `<li>${escapeHtml(labelOf(i.appClass))} → ${escapeHtml(i.cmaClass || '-')} · 변동성 ${escapeHtml(fmtNum(i.volatilityPct, 1))}%</li>`);
+    `<li>${escapeHtml(labelOf(i.appClass))} → ${escapeHtml(i.cmaClass || '-')} · 변동성 ${escapeHtml(fmtNum(i.volatilityPct, 1))}%`
+    + `${i.riskProvider ? `<br><span class="text-slate-400">출처 ${escapeHtml(i.riskProvider)}</span>` : ''}</li>`);
   if ((cma.instruments || []).some((i) => i.riskFree && !i.noAssumption)) volRows.push('<li>채권 · 현금성 → 변동성 0(기존 정책)</li>');
   const noAssumption = (cma.instruments || []).filter((i) => i.noAssumption);
   if (noAssumption.length) volRows.push(`<li>수익률 가정이 없는 자산(${noAssumption.map((i) => escapeHtml(i.label)).join(', ')}) → 성장 · 변동성 가정 없이 원금 그대로 계산</li>`);
@@ -746,7 +772,7 @@ function renderMonteCarloCmaSource(cma, setVersion) {
       + `<br>${escapeHtml(r.classA || '-')} ↔ ${escapeHtml(r.classB || '-')}</li>`;
   });
   mcCmaDetailHtml =
-    `<div><p class="font-semibold text-slate-600 dark:text-slate-300">자산군 변동성(${escapeHtml(p.provider)})</p><ul class="list-disc pl-5 space-y-1">${volRows.join('') || '<li>위험자산 없음</li>'}</ul></div>`
+    `<div><p class="font-semibold text-slate-600 dark:text-slate-300">자산군 변동성</p><ul class="list-disc pl-5 space-y-1">${volRows.join('') || '<li>위험자산 없음</li>'}</ul></div>`
     + `<div><p class="font-semibold text-slate-600 dark:text-slate-300">상관계수 출처</p><ul class="list-disc pl-5 space-y-1">${pairRows.join('') || '<li>해당 없음</li>'}</ul></div>`
     + `<p>자료: ${escapeHtml(p.sourceTitle)} (${escapeHtml(p.version)})</p>`;
 }
@@ -835,7 +861,10 @@ async function runMonteCarloFromUi() {
   // [기존 State 재사용] state.projection.inflationRate/contributionGrowthRate는 js/05가 이미
   // input/저장을 처리한다 - 여기서는 읽기만 한다.
   const inflationRatePct = num(state.projection.inflationRate);
-  const contributionGrowthRatePct = Math.max(0, num(state.projection.contributionGrowthRate));
+  /* [MC-01] 연도별 추가 투자. 가구 전체 기준 입력이라 소유자별 관점(mcOwnerScope)으로 볼 때는
+   * 넘기지 않는다 - 어느 소유자 몫인지 사용자가 지정한 적이 없는데 앱이 나눠 붙이면
+   * 사용자가 입력하지 않은 금액을 만들어 내는 셈이 된다. */
+  const extraMapping = mcOwnerScope ? { mapped: [], skipped: [] } : mapYearlyExtraContributionsToMonths(years);
 
   // [실질 목표금액 → 명목 환산] Engine의 goalAmounts는 항상 명목 기준으로만 해석된다(js/20 설계) -
   // "현재 구매력 기준" 목표를 선택했으면 시뮬레이션에 넘기기 "전에" 여기서 미리 명목으로 바꾼다.
@@ -911,13 +940,28 @@ async function runMonteCarloFromUi() {
     if (!proceed) { showMonteCarloStatus('실행이 취소되었습니다.'); return; }
   }
 
+  /* [v267] BLOCK은 아니지만 결과를 왜곡할 수 있는 사항(운용보수 미확인 · 수익률 가정 없음 ·
+   * 월적립 대상 미선택 등)을 **실행 전에** 띄운다. 예전에는 계산이 끝난 뒤 결과 화면에서야
+   * 보였다 - 사용자는 이미 나온 숫자를 보고 나서 "이 숫자를 믿어도 되나"를 되짚어야 했다.
+   * 계산 · 판정은 그대로다(같은 Safety Layer 결과를 더 이른 시점에 보여 줄 뿐이다). */
+  if (preflightSafety && typeof renderSafetyIssueList === 'function' && mcUiEl('mcSafetyIssues')) {
+    const preIssues = (preflightSafety.issues || [])
+      .concat((preflightSafety.dataQuality && preflightSafety.dataQuality.issues) || [])
+      .filter((i) => i && i.severity !== 'BLOCK' && i.severity !== 'PASS');
+    if (preIssues.length) renderSafetyIssueList(mcUiEl('mcSafetyIssues'), preIssues);
+  }
+
   setMonteCarloUiRunning();
   startMonteCarloRun({
     presetKey, mode: 'official', ownerFilter: mcOwnerScope, // [Phase 24-B STEP 6] js/18 -> js/16 어댑터로 그대로 전달만 됨
     // [FUTURE-P1] 절세계좌 자산/납입계획이 하나도 없는 사용자는 어댑터가 taxScope를 만들지 않으므로
     // 이 값이 true여도 엔진 입력·결과가 기존과 완전히 동일하다(General-only 경로 그대로).
     includeTaxAdvantaged: true,
-    initialPrincipal, monthlyContribution, contributionGrowthRate: contributionGrowthRatePct / 100, years,
+    // [MC-01] "매년 투자금 증가율"은 사용자 입력에서 사라졌다 - 엔진 계약(하위호환)은 그대로 두고
+    // 값만 0으로 고정한다. 0이면 연차 배율이 모든 연도에서 정확히 1.0이라 증가율을 쓰지 않던
+    // 사용자의 결과는 이전과 비트 단위로 같다.
+    initialPrincipal, monthlyContribution, contributionGrowthRate: 0, years,
+    extraContributions: extraMapping.mapped.map((it) => ({ monthIndex: it.monthIndex, amount: it.amount })),
     contributionStreams, // [Step 2] 모든 owner가 years:null(제한없음)이면 엔진이 기존 monthlyContribution 경로로 폴백 - bit-identical
     simulations: iterations, seed: 20260101,
     goalAmounts: goalMeta ? [goalMeta.nominalGoalAmount] : undefined

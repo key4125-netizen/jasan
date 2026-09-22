@@ -100,6 +100,163 @@
         "coreImpacts": []
       },
       "applied": true
+    },
+    {
+      "auditId": "TMG-20260922T044456Z-d0f460",
+      "ranAt": "2026-09-22T04:44:56.835Z",
+      "runUrl": null,
+      "current": {
+        "generatedAt": "2026-09-20T12:37:22.757Z",
+        "count": 16731
+      },
+      "next": {
+        "generatedAt": "2026-09-22T03:37:06.775Z",
+        "count": 16706
+      },
+      "coreTickerCount": 58,
+      "thresholds": {
+        "addedCount": 1000,
+        "removedCount": 500,
+        "exchangeChangedCount": 10,
+        "nameChangedCount": 1000,
+        "addedOrRemovedPct": 5,
+        "nameChangedPct": 10
+      },
+      "diff": {
+        "added": 15,
+        "removed": 40,
+        "exchangeChanged": 0,
+        "nameChanged": 214,
+        "domesticNameChanged": 0,
+        "domesticExchangeMoves": 0,
+        "fundJudgementFlips": 0,
+        "coreImpacts": 0,
+        "addedPct": 0.0897,
+        "removedPct": 0.2391,
+        "nameChangedPct": 1.2791
+      },
+      "thresholdResults": [
+        {
+          "id": "ADDED_COUNT",
+          "hit": false,
+          "detail": "신규 15 >= 1000"
+        },
+        {
+          "id": "REMOVED_COUNT",
+          "hit": false,
+          "detail": "삭제 40 >= 500"
+        },
+        {
+          "id": "EXCHANGE_COUNT",
+          "hit": false,
+          "detail": "거래소 변경 0 >= 10"
+        },
+        {
+          "id": "NAME_COUNT",
+          "hit": false,
+          "detail": "이름 변경 214 >= 1000"
+        },
+        {
+          "id": "ADDED_PCT",
+          "hit": false,
+          "detail": "신규 0.0897% >= 5%"
+        },
+        {
+          "id": "REMOVED_PCT",
+          "hit": false,
+          "detail": "삭제 0.2391% >= 5%"
+        },
+        {
+          "id": "NAME_PCT",
+          "hit": false,
+          "detail": "이름 변경 1.2791% >= 10%"
+        },
+        {
+          "id": "DOMESTIC_EXCHANGE_MOVE",
+          "hit": false,
+          "detail": "국내 시장 이동 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "CORE_IMPACT",
+          "hit": false,
+          "detail": "핵심 종목 영향 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "FUND_JUDGEMENT_FLIP",
+          "hit": false,
+          "detail": "펀드형 판정 변화 0건(1건이라도 STOP)"
+        }
+      ],
+      "decision": "APPLY",
+      "triggered": [],
+      "samples": {
+        "added": [
+          "0238C0.KS",
+          "0240J0.KS",
+          "0241R0.KS",
+          "0242S0.KS",
+          "0161M0.KQ",
+          "0200G0.KQ",
+          "0209J0.KQ",
+          "IDIAU",
+          "SEUS",
+          "CTAG",
+          "DQSE",
+          "ENRG",
+          "MNGB",
+          "QQBF",
+          "SECA"
+        ],
+        "removed": [
+          "121850.KQ",
+          "472220.KQ",
+          "AACB",
+          "AACBU",
+          "FTRK",
+          "GGRP",
+          "IPCX",
+          "IPCXU",
+          "ISSC",
+          "LBRDA",
+          "LBRDK",
+          "LBRDP",
+          "NHX",
+          "TALK",
+          "TUGN",
+          "YBMN",
+          "AVB",
+          "BBBY",
+          "EQR",
+          "WBS"
+        ],
+        "exchangeChanged": [],
+        "nameChanged": [
+          "AFDM \"FIRST TR EXCHANGE-TRADED FD III ACTIVE FACTOR INTERNATIONAL\"→\"FIRST TRUST ACTIVE FACTOR INTERNATIONAL\"",
+          "AFEM \"FIRST TR EXCHANGE-TRADED FD III ACTIVE FACTOR EMERGING MARKE\"→\"FIRST TRUST ACTIVE FACTOR EMERGING MARKETS\"",
+          "AICH \"CHINA AI ETF\"→\"CHINA AI\"",
+          "ALLW \"STATE STREET BRIDGEWATER ALL WEATHER\"→\"SS BRIDGEWATER ALL WEATHER\"",
+          "BSMA \"INVESCO BULLETSHARES 2036 MUNICIPAL BOND ETF\"→\"INVESCO BULLETSHARES 2036 MUNICIPAL BOND\"",
+          "CORZZ \"코어 사이언티픽 워런트 2\"→\"코어 사이언티픽 워런트 2\"",
+          "DECO \"STATE STREET GALAXY DIGITAL ASSET ECOSYSTEM\"→\"SS GALAXY DIGITAL ASSET ECOSYSTEM\"",
+          "GSHR \"게셰르 애퀴지션 2\"→\"게셰르 애퀴지션 2\"",
+          "HECO \"STATE STREET GALAXY HEDGED DIGITAL ASSET ECOSYSTEM\"→\"SS GALAXY HEDGED DIGITAL ASSET ECOSYSTEM\"",
+          "IQGR \"ASTORIA INTERNATIONAL QUALITY GROWTH KINGS ETF\"→\"ASTORIA INTERNATIONAL QUALITY GROWTH KINGS\"",
+          "JINT \"JANUS HENDERSON INTERNATIONAL CORE ALPHA ETF\"→\"JANUS HENDERSON INTERNATIONAL CORE ALPHA\"",
+          "LEDRU \"리더스 어드밴티지 애퀴지션 유닛 1/2 워런트\"→\"리더스 어드밴티지 애퀴지션 유닛 1/2 워런트\"",
+          "LOT \"로터스 테크놀로지(ADR)\"→\"로터스 테크놀로지(ADR)\"",
+          "MYCF \"STATE STREET MY2026 CORPORATE BOND\"→\"SS MY2026 CORPORATE BOND\"",
+          "MYCG \"STATE STREET MY2027 CORPORATE BOND\"→\"SS MY2027 CORPORATE BOND\"",
+          "MYCH \"STATE STREET MY2028 CORPORATE BOND\"→\"SS MY2028 CORPORATE BOND\"",
+          "MYCI \"STATE STREET MY2029 CORPORATE BOND\"→\"SS MY2029 CORPORATE BOND\"",
+          "MYCJ \"STATE STREET MY2030 CORPORATE BOND\"→\"SS MY2030 CORPORATE BOND\"",
+          "MYCK \"STATE STREET MY2031 CORPORATE BOND\"→\"SS MY2031 CORPORATE BOND\"",
+          "MYCL \"STATE STREET MY2032 CORPORATE BOND\"→\"SS MY2032 CORPORATE BOND\""
+        ],
+        "domesticExchangeMoves": [],
+        "fundJudgementFlips": [],
+        "coreImpacts": []
+      },
+      "applied": true
     }
   ]
 }

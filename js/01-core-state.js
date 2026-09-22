@@ -420,6 +420,108 @@ function isBondIsin(code) {
   return BOND_ISIN_PATTERN.test(String(code ?? '').trim().toUpperCase());
 }
 
+/* =========================================================================
+ * [v267 · Instrument Fact Layer] "이 종목이 무엇인가"를 **원천 사실**로 답한다.
+ *
+ * 왜 필요한가: 지금까지 자산군 · 증권유형을 종목명 키워드로 추측했다(아래 classifyCategory).
+ * 실측(2026-09-22) 코스피 상장 2,098건 중 **1,176건(56%)이 ETF**인데, 이름에 브랜드 문자열
+ * (TIGER · KODEX 등)이 없으면 '주식'으로 떨어졌다. 추측이 필요 없는 자리였다 -
+ * KIS 공식 종목 마스터가 증권그룹구분(ST 주권 · EF ETF · RT 리츠 · DR 예탁증서 · FS 외국주권)을,
+ * 거래소 공식 디렉터리가 ETF 플래그와 증권 클래스를 이미 제공하고 있었는데 저장하지 않았을 뿐이다.
+ *
+ * 이 계층은 **사실만 돌려준다.** 판정(자산군 · 노출시장 · 벤치마크)은 호출부가 한다.
+ * 마스터에 없으면 null이다 - 지어내지 않는다(§51-3 추정 금지 원칙 그대로).
+ * ====================================================================== */
+
+/* 국내 증권그룹구분 → 자산군. 확실한 것만 적는다.
+ *  ST 주권(보통주 · 우선주 모두) · EF ETF · RT 부동산투자회사 · DR 주식예탁증서 · FS 외국주권
+ *  ⚠ RT를 '부동산'으로 두지 않는 이유: 상장 리츠는 매일 호가가 서는 거래 종목인데
+ *    '부동산'은 NON_TRADABLE_CATEGORIES라 시세 조회 대상에서 빠진다 - 평가금액이 멈춘다.
+ *    실물 부동산과 상장 리츠는 다른 자산이므로 '주식'(거래되는 지분증권)으로 둔다.
+ *  ⚠ MF · IF · PF(투자회사 · 투융자회사 · 선박투자회사, 실측 5건)는 성격이 갈려 적지 않는다 -
+ *    기존 이름 규칙으로 넘긴다(모르는 것을 아는 척하지 않는다). */
+const KR_SECURITY_GROUP_CATEGORY = Object.freeze({ ST: '주식', EF: 'ETF', RT: '주식', DR: '주식', FS: '주식' });
+/* 국내 증권그룹 중 **상장시장 지수를 자동 부여할 수 있는** 것. 주권뿐이다.
+ * ETF는 공식 기초지수가 따로 있고(원장 소관), 리츠 · 예탁증서 · 외국주권은 노출 시장이
+ * 상장 시장과 다를 수 있다 - 확실한 것만 자동 처리한다. */
+const KR_AUTO_EXPOSURE_GROUPS = Object.freeze(['ST']);
+
+/* 미국 상장 증권 클래스 교차검증 규칙 (HOME_COMMON_RULE_V2)
+ * 단일 원천으로는 판정할 수 없다는 것이 실측 결론이다.
+ *   · KIS DR 필드만 쓰면 알려진 ADR 20건 중 8건만 잡힌다(ASML · JD · BABA가 'N').
+ *   · 거래소 증권 클래스만 쓰면 BP · TM · RIO · BBVA · MUFG 등이 'Common Stock'으로 적혀 통과한다.
+ * 두 원천의 **놓치는 지점이 서로 다르므로** 배제 신호를 합집합으로 쓴다.
+ * 실측(2026-09-22): 알려진 ADR 20/20 배제 · 미국 본국주 30건 중 28건 자동확정. */
+const US_DEPOSITARY_KR_NAME = /\(ADR\)|\(ADS\)/i;
+const US_DEPOSITARY_EN_NAME = /\b(ADR|ADS|SPON|SPONSORED|DEPOSITARY|NY REGISTRY|REGISTRY SHS)\b/i;
+const US_NON_COMMON_CLASS = /(American Depositary|Depositary (Shares|Receipt)|\bADSs?\b|\bADRs?\b|New York Registry|Ordinary Shares?|Subordinate Voting|Closed End Fund|Preferred|Warrant|\bUnits?\b|\bRights?\b)/i;
+/* 발행인의 외국 법인격 표기. 거래소가 종목명에 적어 둔 사실이며, **배제 방향으로만** 쓴다
+ * (기존 looksLikeFundName과 같은 원칙 - 이름으로 무엇'이다'를 확정하지 않는다).
+ * 이 규칙이 Stellantis N.V.("Common Shares")를 자동확정에서 REVIEW로 내린다. */
+const US_FOREIGN_ENTITY_SUFFIX = /\b(N\.?V\.?|PLC|P\.L\.C\.|S\.?A\.?|A\/S|AG|SE|SpA|AB|ASA|OYJ|Ltd\.?|Limited)\s*$|\b(N\.?V\.?|PLC|S\.?A\.?|A\/S|Ltd|Limited)\b(?=[ ,]*(Common|Ordinary|American|Class))/i;
+const US_COMMON_CLASS = /\bCommon Stock\b/i;
+
+/** 종목 마스터 레코드. 마스터가 아직 로드되지 않았거나 없는 종목이면 null. */
+function instrumentMasterRecord(ticker) {
+  const y = sanitizeTicker(ticker).yahooTicker;
+  if (!y) return null;
+  if (typeof tickerMasterByTicker === 'undefined' || !tickerMasterByTicker) return null;
+  return tickerMasterByTicker[y] || null;
+}
+
+/** 미국 상장 증권의 종류 판정. 'ETF' | 'HOME_COMMON' | 'NOT_HOME_COMMON' | 'REVIEW' | 'UNKNOWN' */
+function resolveUsSecurityVerdict(rec) {
+  if (!rec || rec.market !== 'US') return { verdict: 'UNKNOWN', reason: 'notUsListing' };
+  if (rec.isEtf === true || rec.securityType === '3') return { verdict: 'ETF', reason: 'exchangeEtfFlag' };
+  const kr = String(rec.nameKr || '');
+  const en = String(rec.nameEn || '');
+  const cls = String(rec.securityName || '');
+  if (rec.drFlag === 'Y' || US_DEPOSITARY_KR_NAME.test(kr) || US_DEPOSITARY_EN_NAME.test(en)) {
+    return { verdict: 'NOT_HOME_COMMON', reason: 'depositaryReceipt' };
+  }
+  if (cls && US_NON_COMMON_CLASS.test(cls)) return { verdict: 'NOT_HOME_COMMON', reason: 'nonCommonSecurityClass' };
+  if (cls && US_FOREIGN_ENTITY_SUFFIX.test(cls)) return { verdict: 'NOT_HOME_COMMON', reason: 'foreignIssuerEntity' };
+  if (cls && US_COMMON_CLASS.test(cls)) return { verdict: 'HOME_COMMON', reason: 'exchangeCommonStock' };
+  return { verdict: 'REVIEW', reason: cls ? 'securityClassUnrecognized' : 'noExchangeSecurityClass' };
+}
+
+/* 상장 거래소 → 시장. 1:1 대응이라 추정이 아니다(앱의 riskSeriesMarketOf ·
+ * RISK_US_LISTING_EXCHANGES가 쓰는 것과 같은 사실). 레코드에 market이 직접 있으면 그쪽이 우선이다. */
+const EXCHANGE_TO_MARKET = Object.freeze({ KOSPI: 'KR', KOSDAQ: 'KR', NASDAQ: 'US', NYSE: 'US', AMEX: 'US' });
+
+/** 종목 하나에 대해 원천이 말해 주는 사실을 한 번에 돌려준다. 모르는 값은 null이다. */
+function resolveInstrumentFacts(ticker) {
+  const rec = instrumentMasterRecord(ticker);
+  if (!rec) return { found: false, market: null, exchange: null, currency: null, securityGroup: null, securityType: null, isEtf: null, securityName: null, usVerdict: null, usReason: null };
+  const market = rec.market || EXCHANGE_TO_MARKET[rec.exchange] || null;
+  const us = market === 'US' ? resolveUsSecurityVerdict(Object.assign({}, rec, { market })) : null;
+  return {
+    found: true,
+    market,
+    exchange: rec.exchange || null,
+    currency: rec.currency || null,
+    securityGroup: rec.securityGroup || null,
+    securityType: rec.securityType || null,
+    isEtf: typeof rec.isEtf === 'boolean' ? rec.isEtf : null,
+    securityName: rec.securityName || null,
+    usVerdict: us ? us.verdict : null,
+    usReason: us ? us.reason : null
+  };
+}
+
+/** 원천 사실만으로 정할 수 있는 자산군. 정할 수 없으면 null(이름 규칙으로 넘어간다). */
+function categoryFromInstrumentFacts(ticker) {
+  const f = resolveInstrumentFacts(ticker);
+  if (!f.found) return null;
+  if (f.market === 'KR') return KR_SECURITY_GROUP_CATEGORY[f.securityGroup] || null;
+  if (f.market === 'US') {
+    if (f.usVerdict === 'ETF') return 'ETF';
+    // 예탁증서 · 외국주권 · 본국 보통주 · 판정보류 - 전부 거래되는 지분증권이다.
+    if (f.usVerdict === 'HOME_COMMON' || f.usVerdict === 'NOT_HOME_COMMON' || f.usVerdict === 'REVIEW') return '주식';
+  }
+  return null;
+}
+
 function classifyCategory(ticker, name) {
   const hay = ((ticker || '') + ' ' + (name || '')).toUpperCase();
   /* [BOND-06 · §49] ISIN 형식 티커는 무조건 채권이다.
@@ -430,6 +532,12 @@ function classifyCategory(ticker, name) {
    * 기존 주식 · ETF 분류 규칙은 전혀 달라지지 않는다.
    */
   if (isBondIsin(ticker)) return '채권';
+  /* [v267 · PC-5] 공식 종목 마스터가 증권 종류를 알고 있으면 이름으로 추측하지 않는다.
+   * 순서가 중요하다 - ISIN(채권) 다음, 이름 규칙 앞이다. 마스터에 없으면 예전 규칙 그대로다.
+   * 사용자가 확정한 자산군(categorySource === 'user')은 이 함수까지 오지 않는다 -
+   * 호출부(makeAsset · resolveInstrumentMetadata · getConfirmedCategoryForCalc)가 먼저 가로챈다. */
+  const factCategory = categoryFromInstrumentFacts(ticker);
+  if (factCategory) return factCategory;
   // 이름에 '채권/국채/국고채' 등이 들어가도 실제 거래소 티커가 있으면(예: KODEX 국고채3년, TIGER
   // 미국채10년선물 같은 채권형 ETF) 만기까지 들고 가는 개별 채권과 달리 매일 시세가 변하는 상장 상품이므로
   // '채권'(NON_TRADABLE_CATEGORIES에 포함되어 시세조회 대상에서 빠짐) 대신 ETF로 분류해 실시간 시세가
@@ -658,6 +766,11 @@ function resolveInstrumentMetadata(input) {
   if (confirmedAsset) accept(confirmedAsset.currency, 'asset', INSTRUMENT_CONFIDENCE.CONFIRMED);
   // 2. 승인된 Master
   accept(lookupExposurePriceCcy({ ticker, name, category: src.category }), 'exposureMaster', INSTRUMENT_CONFIDENCE.MASTER);
+  /* [v267] 공식 종목 마스터의 호가 통화. 이 주석 맨 위 우선순위 표의 "종목 마스터"가 드디어 배선됐다.
+   * 국내 상장은 예외 없이 KRW이고, 미국 상장은 KIS 마스터의 통화 필드를 그대로 쓴다.
+   * Exposure Master 뒤에 둔다 - 원장은 상품 구조까지 확인한 큐레이션 값이라 더 좁고 정확하다
+   * (국내 상장 해외 ETF의 priceCcy=KRW 같은 판단이 그쪽에만 있다). 두 값이 어긋나면 아래에서 알린다. */
+  accept((resolveInstrumentFacts(ticker) || {}).currency, 'tickerMaster', INSTRUMENT_CONFIDENCE.MASTER);
   // 3. 식별자 힌트(.KS/.KQ · 국내 단축코드만 통화를 알려준다)
   accept(identifier.currencyHint, 'identifier', INSTRUMENT_CONFIDENCE.CLASSIFIER);
   // 4. 호출부가 준 값
@@ -992,7 +1105,10 @@ const state = {
   // customFeeRates: [Phase 3-4] 사용자가 "운용보수 관리"에서 직접 등록한 종목/카테고리별 연간 운용보수(%,
   // customScenarioRates와 같은 key 체계 - buildCustomRateKey 재사용). 등록 안 된 종목은 0%로 계산된다 -
   // 확인 안 된 보수율을 임의로 추정해 채워 넣지 않는다(요청 반영).
-  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, customScenarioRates: {}, customFeeRates: {},
+  // [MC-01] yearlyExtraContributions: 연도별 추가 투자([{year,amount}]). 빈 배열이면 추가 투자가 없는
+  // 상태이며 기존 결과와 완전히 동일하다. contributionGrowthRate는 **기존 사용자 데이터 보존을 위해
+  // 필드 자체를 남겨 두지만**, 이번 변경 이후 입력 · 계산 어느 쪽에서도 쓰지 않는다(§10-5 이중 반영 금지).
+  projection: { updatedAt: 0, monthlyContribution: 3000000, categoryReturns: {}, inflationRate: 2.5, contributionGrowthRate: 0, yearlyExtraContributions: [], customScenarioRates: {}, customFeeRates: {},
     // [v246 · PMD-12] instrumentReturnKeys: { [종목 식별자 원문]: returnKey } - Instrument Return Key Master(js/05 findInstrumentReturnKey).
     instrumentReturnKeys: {},
     // [Phase 29-A] { [anchor]: { seenVersion } } - 사용자가 CMA_SOURCE_METADATA[anchor].recommended의
@@ -1159,12 +1275,65 @@ function sanitizePositionSource(raw) {
  * 지정했다"는 뜻이 되어 override-first 규칙상 영원히 그 상태로 굳는다. 엑셀 내보내기는 이미 이
  * 경우를 빈 칸으로 쓰지만(js/12), 사용자가 셀에 직접 타이핑하거나 옛 백업 파일에 남아 있을 수
  * 있으므로 들어오는 쪽에서도 막는다. */
+/* [MC-01] 연도별 추가 투자 - 기존 "매년 투자금 증가율"(contributionGrowthRate)을 대체하는 입력이다.
+ * 구조: [{ year: 2027, amount: 10000000 }, ...] - 연도 오름차순 · 연도 중복 없음 · 금액 0 이상.
+ * 규칙은 normalizeMonthlyContributionAllocation과 같은 성격이다: 모양이 깨진 항목은 조용히 버리고,
+ * 사용자가 실제로 넣은 값은 그대로 보존한다(임의로 채우거나 반올림하지 않는다). */
+function normalizeYearlyExtraContributions(raw) {
+  if (!Array.isArray(raw)) return [];
+  const byYear = new Map();
+  raw.forEach((it) => {
+    if (!it || typeof it !== 'object') return;
+    const year = Math.trunc(num(it.year));
+    if (!Number.isFinite(year) || year < 1900 || year > 3000) return;
+    const amount = num(it.amount);
+    if (!Number.isFinite(amount) || amount < 0) return;
+    // 같은 연도가 두 번 오면(손으로 고친 백업 등) 마지막 값을 쓴다 - 합산하면 사용자가 보지 못한
+    // 금액이 만들어진다.
+    byYear.set(year, amount);
+  });
+  return Array.from(byYear.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([year, amount]) => ({ year, amount }));
+}
+
 function sanitizeRateMatchOverride(raw) {
   if (raw === undefined || raw === null) return undefined;
   const trimmed = String(raw).trim();
   if (trimmed === '') return undefined;
   if (typeof UNRESOLVED_RATE_KEY !== 'undefined' && trimmed === UNRESOLVED_RATE_KEY) return undefined;
   return trimmed;
+}
+
+/* [E-01] 사용자가 직접 확정하는 "시장민감도(Market Beta) 기준 지수".
+ * 고를 수 있는 값은 앱이 실제로 가격 원천을 갖고 Market Beta 기준으로 쓰는 지수뿐이다
+ * (js/09 RISK_MARKET_INDEX_BY_LISTING_EXCHANGE의 값들 + RISK_US_EXPOSURE_MARKET_INDEX).
+ * 목록에 없는 값은 받지 않는다 - 임의 문자열을 저장하면 resolveMarketRiskBenchmark가
+ * indexNotInMaster로 끝나 사용자에게는 "확인했는데도 계산이 안 되는" 상태가 된다. */
+const USER_MARKET_BETA_INDEX_CHOICES = Object.freeze(['KOSPI', 'KOSDAQ', 'SP500']);
+const USER_MARKET_BETA_INDEX_LABELS = Object.freeze({
+  KOSPI: '코스피(KOSPI)', KOSDAQ: '코스닥(KOSDAQ)', SP500: 'S&P 500'
+});
+function sanitizeMarketBetaIndexOverride(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim().toUpperCase();
+  if (trimmed === '') return undefined;
+  // 엑셀에서 사람이 적을 법한 표기도 같은 값으로 받는다(S&P500 · SP 500 등) - 새 지수를 만드는 게 아니다.
+  const normalized = trimmed.replace(/[\s&.]/g, '');
+  const hit = USER_MARKET_BETA_INDEX_CHOICES.find((k) => k.replace(/[\s&.]/g, '') === normalized);
+  return hit || undefined;
+}
+
+/* [E-02] 사용자가 직접 확정하는 환헤지 여부. 값이 없으면 undefined(=UNRESOLVED)로 남긴다 -
+ * 이름에 'H'가 있다거나 "미국"이 들어 있다는 이유로 시스템이 채우지 않는다(추정 금지).
+ * 표현은 기존 채권 레코드(js/29 normalizeBondIdentity)의 'HEDGED'/'UNHEDGED'를 그대로 쓴다. */
+function sanitizeFxHedgeStatus(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim().toUpperCase();
+  if (trimmed === '' || trimmed === 'UNRESOLVED') return undefined;
+  if (trimmed === 'HEDGED' || trimmed === '환헤지') return 'HEDGED';
+  if (trimmed === 'UNHEDGED' || trimmed === '환노출') return 'UNHEDGED';
+  return undefined;
 }
 
 function makeAsset(raw) {
@@ -1220,6 +1389,11 @@ function makeAsset(raw) {
     // calcRow의 기존 폴백(오늘 환율)이 예전 그대로 동작한다 - 원화 자산은 애초에 1로 고정이다.
     buyRate: sanitizeBuyRate(raw.buyRate),
     rateMatchOverride: sanitizeRateMatchOverride(raw.rateMatchOverride),
+    // [E-01 · E-02] 사용자가 직접 확정한 값. rateMatchOverride와 완전히 같은 취급을 받는다 -
+    // 값이 없으면 undefined로 남아 기존 자동판별이 그대로 동작하고(하위호환), 값이 있으면
+    // 자동판별보다 먼저 쓰인다(js/09). 엑셀 · 백업 · 동기화 세 경로 모두 같은 함수를 쓴다.
+    marketBetaIndexOverride: sanitizeMarketBetaIndexOverride(raw.marketBetaIndexOverride),
+    fxHedgeStatus: sanitizeFxHedgeStatus(raw.fxHedgeStatus),
     // [Phase 49] 넘어온 값이 있으면 그대로 보존하고, 없으면 값 없이 둔다 - 여기서 추측해 채우지 않는다.
     // 호출부가 "사실"을 아는 경우에만 명시적으로 넘긴다(js/06 sync -> 'ledger', js/07 자산 폼 -> 'manual').
     positionSource: sanitizePositionSource(raw.positionSource),
@@ -1256,6 +1430,18 @@ function sampleAssets() {
  * ---------------------------------------------------------------------- */
 // 로컬 타임존 기준 'YYYY-MM-DD'. toISOString()은 UTC 기준이라 자정 근처에서 날짜가 하루 어긋날 수 있어
 // getFullYear/getMonth/getDate로 직접 조합한다.
+/* [v267] 거래일 기본값. 주말에 거래는 체결되지 않으므로 직전 영업일을 기본값으로 둔다.
+ * 달력만 보는 결정론적 계산이며, 공휴일까지는 알지 못한다(휴장일에는 사용자가 고치면 된다) -
+ * 모르는 것을 아는 척하지 않되, 확실히 아는 주말은 처리한다. 사용자가 날짜를 바꾸는 기능은 그대로다. */
+function defaultTradeDateStr() {
+  const d = new Date();
+  const day = d.getDay(); // 0 일요일 · 6 토요일
+  if (day === 0) d.setDate(d.getDate() - 2);
+  else if (day === 6) d.setDate(d.getDate() - 1);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 function todayDateStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1703,7 +1889,9 @@ function loadState() {
         // 모두 안전하게 새 yearsByOwner 구조로 채워준다.
         taxAdvantagedPlan: normalizeTaxAdvantagedPlan(parsed.taxAdvantagedPlan),
         monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.monthlyContributionAllocation),
-        monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.monthlyContributionByOwner)
+        monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.monthlyContributionByOwner),
+        // [MC-01] 저장된 연도별 추가 투자. 필드가 없던 시절의 데이터는 빈 배열이 되어 기존과 동일하다.
+        yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.yearlyExtraContributions)
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }

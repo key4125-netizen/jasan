@@ -104,12 +104,19 @@ test.describe('적립기간(contributionYears) - Deterministic 경계조건', ()
     expect(capBeyond).toBeCloseTo(uncapped, 6);
   });
 
-  test('투자금 증가율(3%)이 있을 때도 적립기간 10년이 정확히 반영된다', async ({ page }) => {
+  // [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4] "매년 투자금 증가율"이 사용자 입력에서
+  // 제거됐고(PM 지시문 §10-1) 계산도 더 이상 그 값을 읽지 않는다. 다만 **저장된 값 자체는 지우지
+  // 않으므로**(§10-5 데이터 손실 금지), 옛 값이 남아 있는 기존 사용자에게 그 값이 조용히 적용되지
+  // 않는다는 사실이 오히려 중요해졌다 - 같은 자리에서 그것을 고정한다.
+  test('저장된 옛 "투자금 증가율"(3%)이 남아 있어도 계산에 적용되지 않는다(이중 반영 금지)', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction(() => typeof simulateMonthlyContributionGrowth === 'function');
-    const actual = await callSimulate(page, { annualRatePct: 6, y: 20, monthly: 1000000, growthRatePct: 3, contributionYears: 10 });
-    const expected = expectedCapped(6, 20, 1000000, 0.03, 0, 10);
-    expect(actual).toBeCloseTo(expected, 3);
+    const withLegacy = await callSimulate(page, { annualRatePct: 6, y: 20, monthly: 1000000, growthRatePct: 3, contributionYears: 10 });
+    // 증가율 0일 때와 정확히 같아야 한다 - 값이 남아 있어도 읽지 않기 때문이다.
+    const expected = expectedCapped(6, 20, 1000000, 0, 0, 10);
+    expect(withLegacy).toBeCloseTo(expected, 3);
+    // 그리고 저장된 값 자체는 사라지지 않았다(데이터 보존).
+    expect(await page.evaluate(() => state.projection.contributionGrowthRate)).toBe(3);
   });
 
   test('운용보수(fee 0.5%)가 있을 때도 적립기간 10년이 정확히 반영된다', async ({ page }) => {

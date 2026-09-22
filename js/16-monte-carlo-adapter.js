@@ -24,6 +24,30 @@
 //   1) 수익률 기준(Return Key)이 시스템 키면 그 키의 성격(RETURN_KEY_CHARACTER - 수익률 해석과 같은 표)
 //   2) 사용자 정의 키 · 기준 없음이면 종목 자체의 성격 판정(자동 수익률 추천과 같은 근거 목록 + Exposure Master · D-16)
 //   성격을 확인하지 못하면 UNRESOLVED - 지역만 보고 주식으로 단정하지 않는다(Phase 47-A 원칙 그대로).
+/* [E-02 · §6] 사용자가 환헤지로 확정한 미국 주식형 상품은 같은 공식 원문(JPM LTCMA KRW)의
+ * 환헤지 자산군으로 연결한다. 이 앱의 MC에는 별도의 FX 단계가 없고 환율 영향이 원화 기준 자산군의
+ * μ/σ/상관 안에 들어 있으므로, "환율 영향을 뺀다"는 것은 곧 환헤지 행을 고른다는 뜻이다
+ * (해외채권이 hedgeStatus로 이미 하고 있는 것과 같은 방식 - 새 환율 모형이 아니다).
+ *   · 사용자가 고르지 않았으면(UNRESOLVED) 아무것도 하지 않는다 - 환노출로 간주하지 않는다.
+ *     기존 US_EQUITY(원문 "U.S. Large Cap" = 원화 기준 · 환헤지 없음)가 그대로 쓰이며,
+ *     이는 이번 변경 전 동작과 완전히 같다.
+ *   · 국내 주식 · 신흥국 주식에는 원문에 환헤지 행이 없어 적용하지 않는다(가까운 자산군으로
+ *     옮겨 쓰지 않는다 - data/cma/app-asset-class-map.json unmapped 참고). */
+function applyUserHedgeToAppClass(appClass, subject) {
+  if (appClass !== ASSET_CHARACTERS.US_EQUITY) return null;
+  const hedge = (typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(subject && subject.fxHedgeStatus) : null;
+  if (hedge !== 'HEDGED') return null;
+  /* [2026-09-22 · PM 결정 대기] 활성 CMA 세트가 이 자산군을 실제로 연결하고 있을 때만 바꾼다.
+   * 연결이 없으면 US_EQUITY 그대로 두어 계산이 이전과 완전히 같다 - 연결 없는 자산군을 돌려주면
+   * 그 자산이 MC에서 통째로 빠져(UNMAPPED) 사용자가 환헤지를 골랐다는 이유만으로 자산이
+   * 사라지는 일이 벌어진다. 연결하지 않는 이유는 data/cma/app-asset-class-map.json의
+   * unmapped.US_EQUITY_HEDGED에 근거와 함께 적어 두었다(통화 기준이 다른 두 기관 숫자를 섞게 된다). */
+  if (typeof resolveCmaRiskForAppClass !== 'function') return null;
+  let mapped;
+  try { mapped = resolveCmaRiskForAppClass(ASSET_CHARACTERS.US_EQUITY_HEDGED, getActiveCmaSet()); } catch (e) { mapped = null; }
+  return (mapped && mapped.status === 'MAPPED') ? ASSET_CHARACTERS.US_EQUITY_HEDGED : null;
+}
+
 function resolveMcAppAssetClass(rateDetail) {
   const key = rateDetail ? canonicalRateKey(rateDetail.key) : null;
   // [BOND-4 · §47-3] 'BOND' Return Key는 "채권이다"까지만 말해 준다. 채권 레코드(js/29)가 발행인 유형 ·
@@ -35,7 +59,10 @@ function resolveMcAppAssetClass(rateDetail) {
       return { appClass: bondCh.character, basis: 'bondLedger' };
     }
   }
-  if (key && RETURN_KEY_CHARACTER[key]) return { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey' };
+  if (key && RETURN_KEY_CHARACTER[key]) {
+    const hedged = applyUserHedgeToAppClass(RETURN_KEY_CHARACTER[key], rateDetail && rateDetail.subject);
+    return hedged ? { appClass: hedged, basis: 'userHedge' } : { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey' };
+  }
   if (key === '현금') return { appClass: ASSET_CHARACTERS.CASH, basis: 'returnKey' };
   if (key && /\.KQ$/i.test(key)) return { appClass: ASSET_CHARACTERS.KR_EQUITY, basis: 'returnKey' };
   const subject = rateDetail && rateDetail.subject;
@@ -48,7 +75,8 @@ function resolveMcAppAssetClass(rateDetail) {
     const trusted = CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(ch.source) || ch.source === 'individualStock' || ch.source === 'exposureMaster';
     if (trusted && ch.character !== ASSET_CHARACTERS.UNRESOLVED) {
       const basis = ch.source === 'individualStock' ? 'listedStock' : (ch.source === 'exposureMaster' ? 'exposureMaster' : 'instrumentCharacter');
-      return { appClass: ch.character, basis };
+      const hedged = applyUserHedgeToAppClass(ch.character, subject);
+      return hedged ? { appClass: hedged, basis: 'userHedge' } : { appClass: ch.character, basis };
     }
   }
   return { appClass: ASSET_CHARACTERS.UNRESOLVED, basis: 'none' };
@@ -222,8 +250,8 @@ async function buildMonteCarloInputFromState(config) {
   const contributionGaps = findMonteCarloContributionTargetGaps(ownerFilter);
   contributionGaps.unselected.forEach((g) => safetyIssues.push(assessContributionTargetUnselected(g.owner, g.sharePct, g.amount)));
   contributionGaps.ownersWithoutWeight.forEach((owner) => safetyIssues.push(assessContributionOwnerWithoutPrincipal(owner)));
-  const growthIssue = assessContributionGrowth(num(state.projection.contributionGrowthRate));
-  if (growthIssue) safetyIssues.push(growthIssue);
+  // [MC-01] "매년 투자금 증가율"은 사용자 입력에서 사라졌고 계산에도 쓰이지 않으므로
+  // 그에 대한 경고도 더 이상 띄우지 않는다(고칠 수 없는 값을 지적하지 않는다).
   const inflationIssue = assessInflation(num(state.projection.inflationRate));
   if (inflationIssue) safetyIssues.push(inflationIssue);
 
@@ -278,6 +306,9 @@ async function buildMonteCarloInputFromState(config) {
     instruments: cmaEntries.map((e) => ({
       key: e.key, label: e.label, riskFree: e.riskFree, noAssumption: e.noAssumption, appClass: e.appClass, appClassBasis: e.appClassBasis,
       cmaClass: e.riskFree ? null : (cmaRisk.risk[e.key] && cmaRisk.risk[e.key].cmaClass) || null,
+      // [PM 결정 1 후속] 자산 성격마다 위험 출처 기관이 다를 수 있다(riskProvider · §47-3) -
+      // 화면이 "PRIMARY 기관 하나"로 뭉뚱그리지 않도록 줄마다 실제 기관을 함께 넘긴다.
+      riskProvider: e.riskFree ? null : (cmaRisk.risk[e.key] && cmaRisk.risk[e.key].riskProvider) || null,
       volatilityPct: e.riskFree ? 0 : cmaRisk.sigmaByKey[e.key] * 100, returnKey: e.returnKey, returnSource: e.returnSource
     })),
     pairs: cmaRisk.pairs
@@ -355,6 +386,25 @@ function validateMonteCarloInput(input) {
   const growth = input.contributionGrowthRate;
   if (growth !== undefined && growth !== null && (!Number.isFinite(growth) || growth < 0)) {
     errors.push(`contributionGrowthRate가 유효하지 않습니다: ${growth}`);
+  }
+  /* [MC-01] extraContributions는 생략 가능(undefined/빈 배열 -> 엔진이 추가 투자 없음으로 처리).
+   * 있다면 monthIndex는 1 이상의 정수, amount는 0 이상의 유한값이어야 한다. 시뮬레이션 기간을
+   * 넘는 monthIndex는 오류가 아니라 "이 예측 기간 밖"이며, 엔진이 그 항목만 버린다(js/15). */
+  if (input.extraContributions !== undefined && input.extraContributions !== null) {
+    if (!Array.isArray(input.extraContributions)) {
+      errors.push('extraContributions가 배열이 아닙니다.');
+    } else {
+      input.extraContributions.forEach((it, idx) => {
+        const mi = it && it.monthIndex;
+        if (!Number.isFinite(mi) || mi < 1 || Math.trunc(mi) !== mi) {
+          errors.push(`extraContributions[${idx}].monthIndex가 유효하지 않습니다: ${mi}`);
+        }
+        const amt = it && it.amount;
+        if (!Number.isFinite(amt) || amt < 0) {
+          errors.push(`extraContributions[${idx}].amount가 유효하지 않습니다: ${amt}`);
+        }
+      });
+    }
   }
   // [Step 2 - 적립기간 연결] contributionStreams는 생략 가능(undefined/빈 배열 -> 엔진이 기존
   // monthlyContribution 단일 흐름으로 폴백) - 있다면 각 스트림의 monthly는 0 이상의 유한값, years는

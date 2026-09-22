@@ -16,7 +16,10 @@
 // 자산에서 비교하는 필드(화면 표시 순서). 현재가 · regularMarketPrice · 당일 시가/고가/저가 · updatedAt은 넣지 않는다.
 const SYNC_DIFF_ASSET_FIELDS = Object.freeze([
   'name', 'ticker', 'owner', 'accountType', 'category', 'categorySource', 'isDomestic', 'currency',
-  'quantity', 'buyPrice', 'buyRate', 'rateMatchOverride', 'role', 'positionSource'
+  'quantity', 'buyPrice', 'buyRate', 'rateMatchOverride', 'role', 'positionSource',
+  // [E-01 · E-02] 사용자가 직접 확정한 값이라 다른 기기와 달라지면 반드시 사람이 보고 골라야 한다 -
+  // 자동 병합으로 조용히 덮어쓰면 "확인해 둔 기준이 이유 없이 바뀌는" 상태가 된다.
+  'marketBetaIndexOverride', 'fxHedgeStatus'
 ]);
 // 거래내역에서 비교하는 필드(화면 표시 순서) - normalizeImportedTransaction(js/12)이 받는 필드에서 createdAt · updatedAt만 뺐다.
 const SYNC_DIFF_TX_FIELDS = Object.freeze([
@@ -26,6 +29,7 @@ const SYNC_DIFF_FIELD_LABELS = Object.freeze({
   name: '종목명', ticker: '티커', owner: '보유자', accountType: '계좌', category: '자산군', categorySource: '자산군 확정',
   isDomestic: '국내/해외', currency: '통화', quantity: '수량', buyPrice: '매입단가', buyRate: '매입 환율',
   rateMatchOverride: '수익률 기준(대표매칭)', role: '역할(포지션)', positionSource: '수량 관리',
+  marketBetaIndexOverride: '시장민감도 기준지수(사용자확인)', fxHedgeStatus: '환헤지(사용자확인)',
   date: '거래일', type: '거래 구분', price: '거래 단가', appliedRate: '적용 환율', fee: '수수료', origin: '구분'
 });
 
@@ -67,6 +71,10 @@ function syncDiffAssetView(a) {
     buyPrice: num(a.buyPrice),
     buyRate: typeof a.buyRate === 'number' ? a.buyRate : null,
     rateMatchOverride: sanitizeRateMatchOverride(a.rateMatchOverride) ?? null,
+    // normalizeImportedAsset(js/12)과 같은 함수를 쓴다 - 규칙이 어긋나면 동기화하면 같아지는 표기
+    // 차이를 "차이"로 잘못 보고해 사용자가 매번 선택을 강요받는다.
+    marketBetaIndexOverride: sanitizeMarketBetaIndexOverride(a.marketBetaIndexOverride) ?? null,
+    fxHedgeStatus: sanitizeFxHedgeStatus(a.fxHedgeStatus) ?? null,
     role: parseAssetRoleInput(a.role) ?? null,
     positionSource: sanitizePositionSource(a.positionSource) ?? null
   };

@@ -585,15 +585,57 @@ const BETA_UNAVAILABLE_TEXT = Object.freeze({
   TICKER_INVALID: '종목코드를 확인하지 못했습니다',
   DATA_QUALITY_FAILED: '가격 자료의 품질 검사를 통과하지 못했습니다'
 });
+/* [v267] 베타를 못 구한 **구체적인 사유**를 사용자 말로 옮긴다.
+ * 엔진은 예전부터 사유를 코드로 구분해 두었는데(자동화로 종류가 더 늘었다) 화면에는
+ * "비교할 기준 지수가 확정되지 않았습니다" 한 줄로만 나왔다. 사유마다 사용자가 할 일이
+ * 전혀 다르므로(기다리기 · 확인 불가 · 정책상 대상 아님) 그대로 구분해 적는다.
+ * 여기 없는 코드는 예전처럼 betaStatus 기준 문구로 떨어진다(빈칸이 생기지 않는다). */
+const BETA_UNRESOLVED_SOURCE_TEXT = Object.freeze({
+  // 정책상 대상이 아닌 경우 - 사용자가 할 일이 없다
+  bondAssetClass: '채권형 상품이라 주식 시장위험 집계에서 제외했습니다(금리 위험은 따로 계산하지 않습니다)',
+  notEquityLike: '주식 · ETF가 아니라 시장위험 집계 대상이 아닙니다',
+  // 확인할 근거가 없는 경우
+  depositaryReceipt: '예탁증서(ADR·ADS)라 본국 시장과 미국 시장 중 어디에 노출됐는지 확정할 수 없습니다',
+  foreignIssuerEntity: '미국에 상장됐지만 발행인이 외국 법인이라 미국 시장 노출로 단정하지 않았습니다',
+  nonCommonSecurityClass: '보통주가 아닌 증권(우선주·워런트·펀드형 등)이라 시장지수와 비교하지 않았습니다',
+  securityClassUnrecognized: '거래소가 표기한 증권 종류를 확정하지 못해 기준 시장을 정하지 않았습니다',
+  listingDomicileUnconfirmed: '미국 상장이지만 본국 보통주인지 확인할 근거가 없습니다',
+  adrListing: '예탁증서(ADR)라 시장지수 비교 대상이 아닙니다',
+  foreignListedSecurity: '국내에 상장된 외국주권이라 노출 시장을 상장 시장으로 단정하지 않았습니다',
+  reitExposureUnconfirmed: '부동산투자회사(리츠)라 주식 시장지수를 자동으로 붙이지 않았습니다',
+  // 상품 정보가 더 필요한 경우
+  etfNeedsOfficialIndex: 'ETF는 공식 기초지수가 확인돼야 기준을 정합니다(상품 정보 확인 필요)',
+  mixedExposure: '주식과 채권이 섞인 상품이라 하나의 시장지수로 재지 않았습니다',
+  hedgeUnconfirmed: '환헤지 여부가 공식 자료로 확인되지 않아 계산을 멈췄습니다',
+  exposureIncomplete: '상품 정보가 일부 비어 있어 기준을 정하지 않았습니다',
+  // 종목 정보 자체가 없는 경우
+  notInInstrumentMaster: '공식 종목 정보에서 이 종목을 찾지 못했습니다(종목코드를 확인해 주세요)',
+  securityGroupUnknown: '공식 종목 정보에 증권 종류가 아직 없습니다(종목 정보가 갱신되면 자동으로 계산됩니다)',
+  noExchangeSecurityClass: '거래소 증권 종류 정보가 아직 없습니다(종목 정보가 갱신되면 자동으로 계산됩니다)',
+  noListingInfo: '상장 시장을 확인하지 못했습니다',
+  noTicker: '종목코드가 없어 시세를 비교할 수 없습니다',
+  marketIndexNotAvailable: '이 거래소의 대표지수를 앱이 아직 다루지 않습니다',
+  exchangeIndexNotAvailable: '이 거래소의 대표지수를 앱이 아직 다루지 않습니다',
+  etfIndexNotAvailable: '이 ETF가 추종하는 지수를 앱이 아직 다루지 않습니다',
+  fundLikeName: '펀드형 상품으로 보여 개별주 기준을 적용하지 않았습니다',
+  exposureUnconfirmed: '경제적 노출 시장을 확인할 근거가 없습니다'
+});
+function betaUnresolvedSourceText(source) {
+  return BETA_UNRESOLVED_SOURCE_TEXT[source] || null;
+}
 function betaUnavailableReasonsNoteHtml(m) {
   const list = (m && Array.isArray(m.holdings)) ? m.holdings : [];
   const flagged = list.filter((h) => h && h.betaStatus && h.betaStatus !== 'OK');
   if (!flagged.length) return '';
   const rows = flagged.map((h) => {
-    /* [D2-Q1] 채권 자산군은 "확정하지 못한" 것이 아니라 "대상이 아닌" 것이다 - 두 상태를 구분해 말한다. */
-    const text = h.benchmarkSource === 'bondAssetClass'
-      ? '채권형 상품이라 주식 시장위험 집계에서 제외했습니다(금리 위험은 따로 계산하지 않습니다)'
-      : (BETA_UNAVAILABLE_TEXT[h.betaStatus] || '시장 민감도를 계산하지 못했습니다');
+    /* [D2-Q1 · v267] 사유를 가장 구체적인 것부터 고른다.
+     *   ① 기준 지수를 정하지 못한 이유(benchmarkSource) - 종목마다 다르고 할 일도 다르다
+     *   ② 지수는 정해졌지만 계산이 안 된 이유(betaStatus) - 자료 부족 · 오래됨 등
+     * ①이 있으면 ①을 쓴다. "채권은 대상이 아니다"와 "확정하지 못했다"를 구분하던 기존 취지를
+     * 모든 사유로 넓힌 것이다. */
+    const text = betaUnresolvedSourceText(h.benchmarkSource)
+      || BETA_UNAVAILABLE_TEXT[h.betaStatus]
+      || '시장 민감도를 계산하지 못했습니다';
     return `<li class="flex flex-wrap justify-between gap-x-2" data-beta-reason-row><span class="break-keep">${escapeHtml(h.name || h.ticker)}</span><span class="text-slate-500 dark:text-slate-400 break-keep">${escapeHtml(text)}</span></li>`;
   }).join('');
   return `<div data-risk-beta-reasons>

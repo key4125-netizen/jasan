@@ -201,6 +201,79 @@ function renderAssetDetailReturnAssumption(assets) {
   box.classList.remove('hidden');
 }
 
+/* [E-01 · E-02] 위험 분석 확인 - 시장민감도 기준 지수와 환헤지 여부를 사용자가 직접 확정한다.
+ *
+ * 대상은 주식 · ETF(RISK_ELIGIBLE_CATEGORIES)뿐이다 - 채권 · 현금 · 부동산은 애초에 시장 베타
+ * 대상이 아니다(PD-15). 값을 고르면 이 팝업에 묶인 보유분 전부에 같은 값을 적는다 - 같은 종목이
+ * 소유자별로 나뉘어 있어도 "이 상품이 무엇을 따라가는가"는 하나이기 때문이다.
+ * "선택 안 함"으로 되돌리면 값을 지우고 자동 판정으로 돌아간다(사용자가 지울 수 있어야 한다).
+ * 계산 자체는 전혀 새로 만들지 않는다 - 저장된 값을 js/09 resolveMarketRiskBenchmark가 읽는다. */
+let assetDetailRiskConfirmTargets = [];
+function renderAssetDetailRiskConfirm(assets) {
+  const box = document.getElementById('assetDetailRiskConfirm');
+  if (!box) return;
+  const list = (assets || []).filter(Boolean);
+  const eligible = list.length > 0 && list.every((a) => RISK_ELIGIBLE_CATEGORIES.includes(a.category))
+    && String(list[0].ticker || '').trim() !== '';
+  if (!eligible) { box.classList.add('hidden'); box.innerHTML = ''; assetDetailRiskConfirmTargets = []; return; }
+  assetDetailRiskConfirmTargets = list;
+
+  const first = list[0];
+  const idxValue = sanitizeMarketBetaIndexOverride(first.marketBetaIndexOverride) || '';
+  const hedgeValue = sanitizeFxHedgeStatus(first.fxHedgeStatus) || '';
+  // 지금 실제로 어떻게 판정되는지 그대로 보여 준다 - 이미 자동으로 확인된 종목에까지 고르라고 하지 않는다.
+  let bm;
+  try { bm = resolveMarketRiskBenchmark(first); } catch (e) { bm = null; }
+  const resolved = !!(bm && bm.status === 'RESOLVED');
+  const statusText = resolved
+    ? `✓ 지금 ${escapeHtml(bm.key)} 기준으로 계산됩니다${bm.source === 'userConfirmedIndex' ? '(직접 확인함)' : '(자동 확인됨)'}`
+    : '⚠ 시장민감도 기준 지수를 확인하지 못했습니다 - 이 상품이 따라가는 시장을 골라 주세요';
+  const opt = (v, label, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+
+  box.innerHTML = `
+    <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">위험 분석 확인</h4>
+    <p class="text-sm ${resolved ? 'text-slate-500 dark:text-slate-400' : 'text-amber-600 dark:text-amber-400'} break-keep mb-2">${statusText}</p>
+    <div class="grid grid-cols-1 gap-2">
+      <label class="block text-sm">
+        <span class="text-slate-400 block mb-0.5">시장민감도 기준 지수</span>
+        <select id="assetDetailMarketBetaSelect" class="w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
+          ${opt('', '선택 안 함(자동 판별을 그대로 사용)', idxValue)}
+          ${USER_MARKET_BETA_INDEX_CHOICES.map((k) => opt(k, USER_MARKET_BETA_INDEX_LABELS[k] || k, idxValue)).join('')}
+        </select>
+      </label>
+      <label class="block text-sm">
+        <span class="text-slate-400 block mb-0.5">환헤지 여부 <span class="text-slate-400">- 상품설명서에 적힌 대로</span></span>
+        <select id="assetDetailFxHedgeSelect" class="w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
+          ${opt('', '선택 안 함(확인 필요)', hedgeValue)}
+          ${opt('UNHEDGED', '환노출(환헤지 안 함)', hedgeValue)}
+          ${opt('HEDGED', '환헤지(H)', hedgeValue)}
+        </select>
+      </label>
+    </div>
+    <p class="text-sm text-slate-400 mt-1.5 break-keep">모르면 비워 두세요 - 앱이 임의로 추정하지 않습니다.</p>`;
+  box.classList.remove('hidden');
+}
+
+/* 고른 값을 이 팝업에 묶인 보유분 전부에 적는다. 값 하나만 바꾸고 나머지는 그대로 둔다. */
+function applyAssetDetailRiskConfirm(field, rawValue) {
+  if (assetDetailRiskConfirmTargets.length === 0) return;
+  const value = field === 'marketBetaIndexOverride'
+    ? sanitizeMarketBetaIndexOverride(rawValue) : sanitizeFxHedgeStatus(rawValue);
+  assetDetailRiskConfirmTargets.forEach((target) => {
+    const asset = state.assets.find((x) => x.id === target.id);
+    if (!asset) return;
+    if (value === undefined) delete asset[field]; else asset[field] = value;
+    asset.updatedAt = Date.now(); // [가족 동기화 - 스마트 머지] 다른 기기가 이 변경을 볼 수 있어야 한다
+  });
+  persistAssets();
+  renderAssetDetailRiskConfirm(assetDetailRiskConfirmTargets.map((t) => state.assets.find((x) => x.id === t.id)).filter(Boolean));
+  renderAll();
+}
+document.getElementById('assetDetailRiskConfirm').addEventListener('change', (e) => {
+  if (e.target.id === 'assetDetailMarketBetaSelect') applyAssetDetailRiskConfirm('marketBetaIndexOverride', e.target.value);
+  else if (e.target.id === 'assetDetailFxHedgeSelect') applyAssetDetailRiskConfirm('fxHedgeStatus', e.target.value);
+});
+
 /* [통합 수정 · PMD-02 · N-10] 같은 종목(티커, 없으면 이름)을 가진 다른 보유분이 다른 수익률 기준으로 계산되면 알린다.
  * 어느 쪽이 맞는지 정하지 않고, 앱이 서로의 기준을 빌려 쓰지 않는다는 사실과 직접 맞추는 방법만 안내한다.
  * 기준 판정은 계산과 같은 resolveAssetGroupKeyDetail(js/05)을 그대로 쓴다 - 이 함수는 문자열만 조립한다. */
@@ -342,6 +415,7 @@ function openAssetDetailModal(id) {
 
   renderAssetDetailPositionNotice([a]); // [Phase 50]
   renderAssetDetailReturnAssumption([a]); // [Phase 47-F]
+  renderAssetDetailRiskConfirm([a]); // [E-01 · E-02]
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   // [거래내역 추적 여부 기준] 예전엔 "티커 유무"로 근사했지만, 이제 달러 현금도 티커 없이 거래내역
   // 기반으로 관리될 수 있어 정확한 기준(실제로 매칭되는 거래가 있는지)으로 판단한다 - 거래내역이
@@ -464,6 +538,7 @@ function openAssetDetailModalGroup(members) {
   // [Phase 47-F] 통합 모달은 보유분이 여럿이라 전부 넘긴다 - 서로 다르면 그 사실을 알린다.
   renderAssetDetailPositionNotice(members); // [Phase 50]
   renderAssetDetailReturnAssumption(members);
+  renderAssetDetailRiskConfirm(members); // [E-01 · E-02] 같은 종목의 보유분 전부에 같은 값을 적는다
   document.getElementById('assetDetailOwnerBreakdownList').innerHTML = [...members]
     .sort((a, b) => b.curAmount - a.curAmount)
     .map((m) => assetDetailOwnerRowHtml(m, totalCurAmount))

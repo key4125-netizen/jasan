@@ -135,8 +135,12 @@ test('RR-3~RR-5. 부팅·Cloud pull·JSON 가져오기가 복구 코드 없이 �
     localStorage.setItem('sam_sync_password_v1', 'e85-rr'); localStorage.setItem('sam_sync_enabled_v1', '1'); loadSyncState();
     return pullFromCloud({ silent: true });
   });
-  await pc.page.locator('#syncDirectionPullBtn').click();
-  await pc.page.locator('#syncSettingsModal').waitFor({ state: 'hidden' });
+  /* [기대값 갱신 · §53-9 · v267] 빈 기기가 클라우드 데이터를 처음 받는 것은 손실이 없는 차이라
+   * 이제 확인 없이 병합된다. 확인 화면이 뜬 경우에만 [받기]를 누른다(두 경로 모두 결과는 같다). */
+  if (await pc.page.locator('#syncDirectionBox').isVisible()) {
+    await pc.page.locator('#syncDirectionPullBtn').click();
+    await pc.page.locator('#syncSettingsModal').waitFor({ state: 'hidden' });
+  }
   const pulled = await pc.page.locator('body').evaluate((el, r) => ({ res: r, assets: state.assets.map((a) => a.name), snaps: Object.keys(state.dailySnapshots).length }), res);
   // JSON 가져오기(덮어쓰기 = 복원)
   const file = await pc.page.locator('body').evaluate(() => {
@@ -156,7 +160,10 @@ test('RR-3~RR-5. 부팅·Cloud pull·JSON 가져오기가 복구 코드 없이 �
   });
   await pc.page.reload();
   await settle(pc.page);
-  expect(pulled.res).toBe('held');
+  /* [기대값 갱신 · §53-9 · v267] 빈 기기가 클라우드 데이터를 처음 받는 것은 손실이 생길 수 없는
+   * 차이라 이제 확인 없이 병합된다. 이 테스트가 보는 것(복구 코드 없이 오류 없이 끝나고
+   * 일별 이력이 그대로인지)은 두 경로 모두에서 같아야 한다. */
+  expect(['held', 'applied']).toContain(pulled.res);
   expect(pulled.assets).toEqual(['E85_채권']);
   expect(pulled.snaps).toBeGreaterThanOrEqual(3);
   expect(restored).toEqual({ value: 123, pastKeys: 1 });

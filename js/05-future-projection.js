@@ -90,6 +90,11 @@ const ASSET_CHARACTERS = Object.freeze({
   KR_GOV_BOND: 'KR_GOV_BOND', KR_CORP_BOND: 'KR_CORP_BOND',
   FOREIGN_GOV_BOND_HEDGED: 'FOREIGN_GOV_BOND_HEDGED', FOREIGN_GOV_BOND_UNHEDGED: 'FOREIGN_GOV_BOND_UNHEDGED',
   FOREIGN_CORP_BOND_HEDGED: 'FOREIGN_CORP_BOND_HEDGED', FOREIGN_CORP_BOND_UNHEDGED: 'FOREIGN_CORP_BOND_UNHEDGED',
+  // [E-02 · §6] 환헤지가 사용자 확정된 미국 주식형 상품. 위 해외채권과 정확히 같은 구조다 -
+  // 원문(JPM LTCMA KRW)에 환헤지 행과 환노출 행이 따로 있고, 그 두 행의 차이가 환율 영향이다.
+  // 새 자산군 모델이 아니라 이미 등록된 Dataset의 다른 행을 고르는 것뿐이며, 연결은 MC 자산군
+  // (σ · 상관) 경로에서만 일어난다 - Return Key(μ) · Risk Score 공식은 전혀 바뀌지 않는다.
+  US_EQUITY_HEDGED: 'US_EQUITY_HEDGED',
   COMMODITY: 'COMMODITY', CRYPTO: 'CRYPTO',
   UNRESOLVED: 'UNRESOLVED'
 });
@@ -1105,7 +1110,8 @@ function returnKeyCandidatesForCharacter(character, region) {
   if (character === ASSET_CHARACTERS.KR_EQUITY) {
     return /\.KQ$/i.test(String(region || '')) ? ['KOSDAQ', 'KOSPI'] : ['KOSPI', 'KOSDAQ'];
   }
-  if (character === ASSET_CHARACTERS.US_EQUITY) return ['S&P500', 'NASDAQ', 'SCHD'];
+  // [E-02] 환헤지 여부는 수익률 가정(μ)을 고르는 기준이 아니다 - 환노출과 완전히 같은 후보를 쓴다.
+  if (character === ASSET_CHARACTERS.US_EQUITY || character === ASSET_CHARACTERS.US_EQUITY_HEDGED) return ['S&P500', 'NASDAQ', 'SCHD'];
   // [Phase 41-B] Vanguard VCMM 근거가 확보되어 더 이상 "적합한 기준 없음"이 아니다.
   if (character === ASSET_CHARACTERS.DEV_EX_US_EQUITY) return ['DEV_EX_US'];
   if (character === ASSET_CHARACTERS.EM_EQUITY) return ['EMERGING'];
@@ -1117,9 +1123,82 @@ function returnKeyCandidatesForCharacter(character, region) {
   return [];
 }
 
+/* [MC-01] 연도별 추가 투자 - 저장된 값을 정규화해 돌려준다([{year,amount}] · 연도 오름차순).
+ * 금액이 0인 항목은 "추가 투자 없음"과 같은 뜻이라 계산에 넘기지 않는다(§10-7 Case D). */
+function getYearlyExtraContributions() {
+  const list = (typeof normalizeYearlyExtraContributions === 'function')
+    ? normalizeYearlyExtraContributions(state.projection && state.projection.yearlyExtraContributions)
+    : [];
+  return list.filter((it) => num(it.amount) > 0);
+}
+function getYearlyExtraContributionTotal() {
+  return getYearlyExtraContributions().reduce((s, it) => s + num(it.amount), 0);
+}
+
+/* [MC-01 · PM 결정 2] 달력 연도 → "지금부터 몇 번째 달".
+ * MC(js/19)와 결정론 시나리오 카드(아래 simulateRebalancedPreset)가 **이 함수 하나**를 공유한다 -
+ * 시점 규칙이 갈라지면 같은 입력에 두 카드가 다른 답을 낸다(Phase 3-3이 고쳤던 그 불일치).
+ * 규칙: 시뮬레이션 m번째 달의 달력 연도 = year0 + floor((month0 - 1 + m) / 12) 이며,
+ *       목표 연도가 되는 가장 이른 m을 고른다(= 그 해에 속하는 첫 번째 달).
+ * 지난 연도는 반영할 자리가 없으므로 null을 돌려준다. */
+function yearlyExtraContributionMonthIndex(year) {
+  const y = Math.trunc(num(year));
+  if (!Number.isFinite(y)) return null;
+  const now = new Date();
+  const d = y - now.getFullYear();
+  if (d < 0) return null;
+  return Math.max(1, 12 * d - (now.getMonth() + 1) + 1);
+}
+
+/* 가구 전체의 가중평균 운용보수(%) - computeTargetWeightedAvgRate(수익률)와 완전히 같은 구조다
+ * (owner별 가중평균을 그 owner의 현재 원금 비중으로 다시 가중평균). 새 배분정책이 아니라,
+ * 이미 수익률에 쓰고 있는 집계 규칙을 보수에 그대로 적용한 것이다. */
+function computeOwnerWeightedFeeRate(owner) {
+  let sum = 0;
+  ['국내', '해외'].forEach((region) => {
+    const regionFrac = num(state.rebalance[owner].domestic[region]) / 100;
+    sum += regionFrac * computeRegionWeightedFeeRate(owner, region);
+  });
+  return sum;
+}
+function computeTargetWeightedFeeRate() {
+  const ownerTotals = {};
+  let grandTotal = 0;
+  REBALANCE_OWNERS.forEach((owner) => {
+    const total = getProjectionGroupTotal(getProjectionGroupStats(owner));
+    ownerTotals[owner] = total;
+    grandTotal += total;
+  });
+  if (grandTotal <= 0) {
+    return REBALANCE_OWNERS.reduce((sum, owner) => sum + computeOwnerWeightedFeeRate(owner), 0) / REBALANCE_OWNERS.length;
+  }
+  return REBALANCE_OWNERS.reduce((sum, owner) => sum + computeOwnerWeightedFeeRate(owner) * (ownerTotals[owner] / grandTotal), 0);
+}
+
+/* [PM 결정 2] 연차 y 시점에서 "연도별 추가 투자"가 불어나 있는 금액(가구 전체).
+ * 추가 투자가 없으면 정확히 0을 돌려주므로 기존 결과와 비트 단위로 같다.
+ * maxYears: 이 호출의 예측 기간 - 그 밖으로 나가는 해는 반영할 자리가 없어 넣지 않는다(화면에서 안내한다). */
+function simulateYearlyExtraContributionGrowth(presetKey, y, maxYears) {
+  const extras = getYearlyExtraContributions();
+  if (extras.length === 0) return 0;
+  const rate = computeTargetWeightedAvgRate(presetKey);
+  const feeRate = feePercentToDecimal(computeTargetWeightedFeeRate());
+  const horizonMonths = Math.max(0, Math.trunc(num(maxYears))) * 12;
+  let total = 0;
+  extras.forEach((it) => {
+    const monthIndex = yearlyExtraContributionMonthIndex(it.year);
+    if (monthIndex === null || monthIndex > horizonMonths) return; // 지난 해 · 예측 기간 밖
+    // MC와 같은 자리에 들어간다 - 그 달의 성장에 함께 참여한다(엔진 Step 1-B와 같은 규약).
+    const growthMonths = y * 12 - monthIndex + 1;
+    if (growthMonths < 0) return; // 아직 들어오지 않은 목돈은 그 시점 자산에 없다
+    total += computeFutureValueWithContributionGrowthAndFee(num(it.amount), rate, growthMonths / 12, 0, 0, feeRate);
+  });
+  return total;
+}
+
 // 사람이 읽는 성격 이름 - 화면에 'US_EQUITY' 같은 내부 값을 그대로 노출하지 않는다.
 const ASSET_CHARACTER_LABELS = Object.freeze({
-  KR_EQUITY: '국내 주식', US_EQUITY: '미국 주식', EM_EQUITY: '신흥국 주식',
+  KR_EQUITY: '국내 주식', US_EQUITY: '미국 주식', US_EQUITY_HEDGED: '미국 주식(환헤지)', EM_EQUITY: '신흥국 주식',
   DEV_EX_US_EQUITY: '미국 외 선진국 주식', BOND: '채권', CASH: '현금성',
   KR_GOV_BOND: '국내 국공채', KR_CORP_BOND: '국내 회사채',
   FOREIGN_GOV_BOND_HEDGED: '해외 국공채(환헤지)', FOREIGN_GOV_BOND_UNHEDGED: '해외 국공채(환노출)',
@@ -1993,11 +2072,16 @@ function renderProjectionHeroSummary(presetResults, milestoneOffsets, totalNorma
   // [장기 투자계획 UX 개선 - 신규] "현재자산 → 앞으로 투자 → 미래자산"으로 이어지는 계획의 핵심 조건 중
   // "투자 기간"과 "투자금 증가"를 한 줄로 보여준다 -
   // 이미 구한 years/growthRate를 그대로 표시만 한다(새 계산 없음).
-  const growthRate = num(state.projection.contributionGrowthRate);
   const planYearsEl = document.getElementById('projectionPlanYearsText');
   if (planYearsEl) planYearsEl.textContent = `${years}년`;
+  // [MC-01 · UX-01] "매년 N%씩 증가" 대신 사용자가 실제로 넣은 연도별 추가 투자를 요약한다.
+  const extras = getYearlyExtraContributions();
   const planGrowthEl = document.getElementById('projectionPlanGrowthText');
-  if (planGrowthEl) planGrowthEl.textContent = growthRate > 0 ? `매년 ${fmtNum(growthRate, 1)}%씩` : '증가 없음(매월 동일)';
+  if (planGrowthEl) {
+    planGrowthEl.textContent = extras.length === 0
+      ? '없음'
+      : `${extras.length}개 연도 ${fmtKRWShort(getYearlyExtraContributionTotal())}`;
+  }
   // [Phase 17 P1-3] 한 줄 요약 확장분 - 이미 계산된 값(presetResults.normal.weightedAvgRate,
   // state.projection.inflationRate)을 여기서도 그대로 표시만 한다(새 계산 없음).
   const planRateEl = document.getElementById('projectionPlanRateText');
@@ -3396,7 +3480,12 @@ function simulateRebalancedPreset(presetKey, maxYears, ownerFilter) {
       foreign += principalFutureValue(calc, '해외', y);
       contribution += simulateMonthlyContributionGrowth(presetKey, calc.monthlyContribution, calc.regionPV, calc.regionRate, calc.totalValue, y, calc.allocation, calc.regionFeeRate, calc.contributionYears, calc.regionWeightPct, calc.owner);
     });
-    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution });
+    /* [PM 결정 2 · 2026-09-22] 연도별 추가 투자는 소유자별 입력이 아니라 가구 단위 입력이므로
+     * owner 루프 밖에서 한 번만 더한다(소유자에게 임의로 나누지 않는다 - 새 배분정책 금지).
+     * ownerFilter가 걸린 소유자별 관점 호출에는 넣지 않는다 - 어느 소유자 몫인지 사용자가 정한 적이
+     * 없는데 앱이 나눠 붙이면 사용자가 입력하지 않은 금액이 만들어진다(MC의 mcOwnerScope와 같은 규칙). */
+    const extra = ownerFilter ? 0 : simulateYearlyExtraContributionGrowth(presetKey, y, maxYears);
+    yearlyPoints.push({ year: y, '국내': domestic, '해외': foreign, total: domestic + foreign + contribution + extra });
   }
   return { yearlyPoints, weightedAvgRate: computeTargetWeightedAvgRate(presetKey) };
 }
@@ -4119,10 +4208,83 @@ document.getElementById('saveProjectionAssumptionsModalBtn').addEventListener('c
 // 눌러도 15가 "실제로 설정한 값"인 것처럼 저장되어 버린다(기존 사용자 결과 보존 원칙 위반).
 let monthlyContributionByOwnerDraft = { '신랑': { total: 0, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } };
 
-let monthlyContributionGrowthDraft = 0;
-document.getElementById('contributionGrowthRateInput').addEventListener('input', (e) => {
-  monthlyContributionGrowthDraft = Math.max(0, num(e.target.value));
-});
+/* [MC-01] 연도별 추가 투자 초안 - [{year, amount}] 배열. 위 monthlyContributionByOwnerDraft와 같은
+ * 계약이다(팝업을 열 때 state에서 복사해 오고, [저장]에서만 state로 돌아간다). */
+let yearlyExtraContributionsDraft = [];
+
+/* 이 연도가 미래예측 기간 안에 드는가 - js/19의 월 번호 변환과 같은 식이다.
+ * 기간 밖이면 계산에 넣을 자리가 없으므로 그 사실을 행 옆에 그대로 적는다. */
+function isYearlyExtraYearInHorizon(year) {
+  const monthIndex = yearlyExtraContributionMonthIndex(year);
+  if (monthIndex === null) return false;
+  return monthIndex <= Math.max(...getMilestoneYearOffsets()) * 12;
+}
+
+function renderYearlyExtraContributionList() {
+  const container = document.getElementById('yearlyExtraContributionList');
+  if (!container) return;
+  if (yearlyExtraContributionsDraft.length === 0) {
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-2">추가로 넣을 목돈이 있는 해가 없습니다 - 매달 넣는 금액만으로 계산합니다.</p>';
+  } else {
+    container.innerHTML = yearlyExtraContributionsDraft.map((row, idx) => `
+      <div class="flex items-center gap-1.5">
+        <input type="number" step="1" min="1900" max="3000" value="${escapeHtml(String(row.year))}" data-yearly-extra-year="${idx}"
+          class="w-24 shrink-0 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right min-h-[44px]">
+        <span class="text-sm text-slate-400 shrink-0">년</span>
+        <input type="text" inputmode="numeric" placeholder="0" value="${row.amount === '' ? '' : escapeHtml(formatInputNumber(row.amount))}" data-yearly-extra-amount="${idx}"
+          class="flex-1 min-w-0 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none text-right min-h-[44px]">
+        <span class="text-sm text-slate-400 shrink-0">원</span>
+        <button type="button" data-yearly-extra-remove="${idx}" class="shrink-0 text-slate-400 hover:text-rose-500 px-1.5 min-h-[44px]" aria-label="이 해 삭제">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>${isYearlyExtraYearInHorizon(row.year) ? '' : '<p class="text-sm text-amber-600 dark:text-amber-400 pl-1">이 해는 미래예측 기간(' + Math.max(...getMilestoneYearOffsets()) + '년) 밖이라 계산에 반영되지 않습니다.</p>'}`).join('');
+  }
+  // [Global Readability Policy 9] 금액 입력칸은 천 단위 구분자를 쓴다 - 월 적립금 입력칸과 같은
+  // 기존 유틸을 그대로 붙인다(새 포맷 규칙을 만들지 않는다). num()이 콤마를 제거하므로 draft에는
+  // 숫자만 들어간다.
+  container.querySelectorAll('[data-yearly-extra-amount]').forEach((el) => attachThousandsInputFormatting(el));
+  const hint = document.getElementById('yearlyExtraContributionTotalHint');
+  if (hint) {
+    const total = yearlyExtraContributionsDraft.reduce((s, it) => s + Math.max(0, num(it.amount)), 0);
+    hint.textContent = `합계 ${fmtKRWShort(total)}`;
+  }
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+/* 입력은 위임(delegation)으로 받는다 - 행이 늘고 줄어도 리스너를 다시 달 필요가 없다. */
+(function wireYearlyExtraContributionEditor() {
+  const container = document.getElementById('yearlyExtraContributionList');
+  if (!container) return;
+  container.addEventListener('input', (e) => {
+    const yearIdx = e.target.getAttribute && e.target.getAttribute('data-yearly-extra-year');
+    const amountIdx = e.target.getAttribute && e.target.getAttribute('data-yearly-extra-amount');
+    // 타이핑 도중에는 다시 그리지 않는다(커서가 튄다) - 값만 초안에 담아 둔다.
+    if (yearIdx !== null && yearIdx !== undefined && yearlyExtraContributionsDraft[yearIdx]) {
+      yearlyExtraContributionsDraft[yearIdx].year = e.target.value;
+    } else if (amountIdx !== null && amountIdx !== undefined && yearlyExtraContributionsDraft[amountIdx]) {
+      yearlyExtraContributionsDraft[amountIdx].amount = e.target.value;
+      const hint = document.getElementById('yearlyExtraContributionTotalHint');
+      if (hint) hint.textContent = `합계 ${fmtKRWShort(yearlyExtraContributionsDraft.reduce((s, it) => s + Math.max(0, num(it.amount)), 0))}`;
+    }
+  });
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-yearly-extra-remove]');
+    if (!btn) return;
+    yearlyExtraContributionsDraft.splice(num(btn.getAttribute('data-yearly-extra-remove')), 1);
+    renderYearlyExtraContributionList();
+  });
+  const addBtn = document.getElementById('yearlyExtraContributionAddBtn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      // 아직 쓰지 않은 가장 이른 연도를 제안한다(올해 다음 해부터) - 사용자가 그대로 고칠 수 있다.
+      const used = new Set(yearlyExtraContributionsDraft.map((it) => Math.trunc(num(it.year))));
+      let year = new Date().getFullYear() + 1;
+      while (used.has(year)) year++;
+      yearlyExtraContributionsDraft.push({ year, amount: '' });
+      renderYearlyExtraContributionList();
+    });
+  }
+})();
 function openMonthlyContributionAllocationModal() {
   const byOwner = state.projection.monthlyContributionByOwner || {};
   const bothUnset = REBALANCE_OWNERS.every((o) => !(byOwner[o] && num(byOwner[o].total) > 0));
@@ -4148,10 +4310,13 @@ function openMonthlyContributionAllocationModal() {
     form.innerHTML = '';
     renderMonthlyContributionAllocationList(owner);
   });
-  // [Phase 25 P2] 매년 투자금 증가율도 이 팝업의 draft에 함께 담는다 - "매달 얼마 / 몇 년 /
-  // 매년 얼마나 늘릴지"가 하나의 투자계획이기 때문이다. 취소 계약도 자동으로 함께 적용된다.
-  monthlyContributionGrowthDraft = num(state.projection.contributionGrowthRate);
-  document.getElementById('contributionGrowthRateInput').value = monthlyContributionGrowthDraft;
+  // [MC-01] 연도별 추가 투자도 이 팝업의 draft에 함께 담는다 - "매달 얼마 / 몇 년 동안 / 어느 해에
+  // 목돈을 얼마"가 하나의 투자계획이기 때문이다. 취소 계약도 자동으로 함께 적용된다.
+  // 금액 0인 항목까지 그대로 보여 준다(사용자가 적어 둔 해를 임의로 지우지 않는다).
+  yearlyExtraContributionsDraft = (typeof normalizeYearlyExtraContributions === 'function'
+    ? normalizeYearlyExtraContributions(state.projection.yearlyExtraContributions) : [])
+    .map((it) => ({ year: it.year, amount: it.amount }));
+  renderYearlyExtraContributionList();
   document.getElementById('monthlyContributionAllocationModal').classList.remove('hidden');
   pushModalHistoryState();
   lucide.createIcons();
@@ -4331,10 +4496,22 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
   REBALANCE_OWNERS.forEach((owner) => {
     next[owner].allocation.forEach((it) => { if (it.ticker || it.label) setTickerRole(it.ticker, it.role, it.label); });
   });
-  // [Phase 25 P2] 증가율도 같은 [저장]에서 함께 validation 후 커밋한다.
-  if (!(num(monthlyContributionGrowthDraft) >= 0)) { alert('매년 투자금 증가율은 0 이상이어야 합니다.'); return; }
+  /* [MC-01] 연도별 추가 투자도 같은 [저장]에서 함께 검증하고 커밋한다.
+   * 잘못된 값은 조용히 고치지 않고 사용자에게 돌려준다 - 임의 보정은 사용자가 의도하지 않은
+   * 금액을 만들어 낸다. 같은 해를 두 번 적는 것도 막는다(합칠지 덮어쓸지 앱이 정할 일이 아니다). */
+  const seenYears = new Set();
+  for (const row of yearlyExtraContributionsDraft) {
+    const year = Math.trunc(num(row.year));
+    if (!Number.isFinite(year) || year < 1900 || year > 3000) { alert('연도를 1900~3000 사이로 적어 주세요.'); return; }
+    if (seenYears.has(year)) { alert(`${year}년이 두 번 적혀 있습니다. 한 해에 한 줄만 적어 주세요.`); return; }
+    seenYears.add(year);
+    const amount = num(row.amount);
+    if (!Number.isFinite(amount) || amount < 0) { alert(`${year}년 추가 투자 금액은 0 이상이어야 합니다.`); return; }
+  }
   state.projection.monthlyContributionByOwner = next;
-  state.projection.contributionGrowthRate = num(monthlyContributionGrowthDraft);
+  // [§10-5] 기존 "매년 투자금 증가율" 값은 지우지 않는다(데이터 손실 금지) - 다만 이제 입력에도
+  // 계산에도 쓰이지 않으므로 연도별 추가 투자와 이중으로 반영될 수 없다.
+  state.projection.yearlyExtraContributions = normalizeYearlyExtraContributions(yearlyExtraContributionsDraft);
   persistProjection();
   closeMonthlyContributionAllocationModal(false);
   updateProjection();
@@ -4364,10 +4541,13 @@ function getMonthlyAllocationItemRate(item, presetKey, owner, scope) {
 // 한 글자도 수정하지 않는다(새 계산 공식을 만들지 않고 기존 검증된 패턴만 재사용).
 // owner: [통합 수정 · PMD-02] 배분 종목의 수익률을 이 소유자의 일반계좌 보유분 기준으로 해석한다(다른 소유자 설정을 빌리지 않는다).
 function simulateMonthlyContributionGrowth(presetKey, monthlyContribution, regionPV, regionRate, totalValue, y, allocationList, regionFeeRate, contributionYears, regionWeightPct, owner) {
-  // [Phase 3-3 통합 감사] Monte Carlo와 동일한 state.projection.contributionGrowthRate를 여기서도
-  // 그대로 읽는다 - state.projection.monthlyContributionAllocation을 이미 이 함수가 직접 읽고 있는
-  // 것과 같은 방식(새 파라미터를 여러 호출부에 추가로 꿰어넣지 않는다).
-  const growthRate = num(state.projection.contributionGrowthRate) / 100;
+  /* [MC-01] 예전에는 여기서 state.projection.contributionGrowthRate를 읽어 매년 적립금을 불렸다.
+   * 그 입력 방식이 "연도별 추가 투자"로 바뀌면서 증가율은 사용자 입력에서 사라졌고, 화면에서 볼 수도
+   * 고칠 수도 없는 값을 계속 계산에 쓰면 사용자가 이유를 알 수 없는 금액이 만들어진다.
+   * 그래서 증가율은 0으로 고정한다 - 저장된 값 자체는 지우지 않는다(§10-5 데이터 보존).
+   * growth=0이면 computeFutureValueWithContributionGrowth의 배율이 모든 연도에서 정확히 1.0이라
+   * 증가율을 쓰지 않던 사용자(기존 대다수)의 결과는 이전과 비트 단위로 같다. */
+  const growthRate = 0;
   const allocation = (allocationList || state.projection.monthlyContributionAllocation).filter((it) => num(it.pct) > 0);
   const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
   const remainderPct = Math.max(0, 100 - allocatedPct);

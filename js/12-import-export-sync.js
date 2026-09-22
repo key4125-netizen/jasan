@@ -46,6 +46,11 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
       // 그것이 자동 판별인지 사용자 지정인지를 함께 보여준다(Phase 47-F) - 그 정보를 이 칸에 섞어
       // 내보내면 위 승격 문제가 되살아나므로 여기서는 의도적으로 내보내지 않는다.
       '대표매칭(수익률연동키)': sanitizeRateMatchOverride(a.rateMatchOverride) || '',
+      // [E-01 · E-02] 사용자가 "직접 확정한" 값만 적는다. 빈 칸은 "아직 확인하지 않았다"는 의미 있는
+      // 상태이며, 위 대표매칭 칸과 똑같이 자동판별 결과를 찍어 내보내지 않는다(Phase 48-A P0-3의 교훈 -
+      // 자동판별 결과를 내보내면 왕복 한 번에 사용자 확정값으로 굳어 버린다).
+      '시장민감도 기준지수(사용자확인)': sanitizeMarketBetaIndexOverride(a.marketBetaIndexOverride) || '',
+      '환헤지(사용자확인)': sanitizeFxHedgeStatus(a.fxHedgeStatus) || '',
       // [v246 · D-3] 지금 적용 중인 기준이 어디서 왔는지(사용자 지정 / 종목 기준 / 자동 판별 / 미확정) - 표시용이다.
       // 가져오기는 이 칸을 읽지 않는다(아래 pick 별칭에 없다) - 위 대표매칭 칸의 의미(사용자 지정 원본)는 그대로다.
       '수익률 기준 출처': describeReturnKeyProvenanceForExport(a),
@@ -242,7 +247,9 @@ function carryOverCategorySource(incoming, index) {
  * 구조는 positionSource(buildPositionSourceIndex/carryOverPositionSource)와 똑같다 - id로 먼저 찾고,
  * id가 없는 구형 파일은 identity(assetMergeKey)로 찾는다. 기존 자산을 못 찾으면 값 없이 그대로 둔다
  * (없던 값을 추정해 만들지 않는다 - 상시 정책 5항). */
-const IMPORT_CARRY_IF_ABSENT_FIELDS = ['buyRate', 'rateMatchOverride'];
+// [E-01 · E-02] 두 칸이 없던 시절의 엑셀 파일을 그대로 올리기만 해도 사용자 확정값이 사라지던 문제를
+// 애초에 만들지 않는다 - buyRate · rateMatchOverride와 완전히 같은 취급이다.
+const IMPORT_CARRY_IF_ABSENT_FIELDS = ['buyRate', 'rateMatchOverride', 'marketBetaIndexOverride', 'fxHedgeStatus'];
 function buildCarryIfAbsentIndex(existingAssets) {
   const byId = new Map(), byKey = new Map();
   (existingAssets || []).forEach((a) => {
@@ -322,6 +329,57 @@ document.getElementById('importChoiceModal').addEventListener('click', (e) => {
   if (e.target.id === 'importChoiceModal') closeImportChoiceModal('cancel');
 });
 
+/* [v267] 엑셀 가져오기 사전검증.
+ * 예전에는 불러오기를 누른 뒤에야 결과 문구로 문제를 알 수 있었다 - 이미 적용된 다음이다.
+ * 여기서는 **아무것도 바꾸지 않고** 파일 내용만 훑어 이상한 행을 센다.
+ * 자동으로 고치지 않는다(어느 쪽이 맞는지는 사용자만 안다) - 확인 화면에 요약만 덧붙인다. */
+function buildExcelImportPreflight(imported, existingAssets) {
+  const issues = [];
+  const add = (label, count) => { if (count > 0) issues.push({ label, count }); };
+  const rows = Array.isArray(imported) ? imported : [];
+  const existing = Array.isArray(existingAssets) ? existingAssets : [];
+
+  add('소유자가 비었거나 알 수 없는 행', rows.filter((a) => typeof isValidOwner === 'function' && !isValidOwner(a.owner)).length);
+  add('종목명이 비어 있는 행', rows.filter((a) => !String(a.name ?? '').trim() || a.name === '이름없음').length);
+  add('수량이 0 이하인 행', rows.filter((a) => !(num(a.quantity) > 0)).length);
+  add('매수단가가 0 이하인 행', rows.filter((a) => !(num(a.buyPrice) > 0)).length);
+  add('통화를 알 수 없는 행', rows.filter((a) => a.currency !== 'KRW' && a.currency !== 'USD').length);
+  // 자산군 칸에 무언가 적혀 있는데 앱이 아는 값이 아닌 경우(빈 칸은 정상이라 세지 않는다)
+  add('자산군을 알아볼 수 없는 행', rows.filter((a) => {
+    const cell = String(a.categoryCellRaw ?? '').trim();
+    return cell && (typeof sanitizeAssetCategory !== 'function' || sanitizeAssetCategory(cell) === undefined);
+  }).length);
+  // 파일 안에서 같은 보유분이 두 번 나오는 경우(소유자 · 계좌 · 티커 · 통화 기준)
+  const seen = new Set();
+  let dup = 0;
+  rows.forEach((a) => {
+    const key = [a.owner, a.accountType, String(a.ticker ?? '').toUpperCase(), a.name, a.currency].join('__');
+    if (seen.has(key)) dup++; else seen.add(key);
+  });
+  add('파일 안에서 중복된 보유분', dup);
+  /* 사용자가 직접 확정해 둔 자산군을 이 파일이 다른 값으로 바꾸려는 경우.
+   * 실제 이월 규칙(carryOverCategorySource)이 보호해 주지만, 파일에 값이 적혀 있으면 그 값이 쓰인다 -
+   * 바뀐다는 사실을 미리 알린다. */
+  const confirmedByKey = new Map();
+  existing.forEach((a) => {
+    if (a && a.categorySource === 'user') confirmedByKey.set([a.owner, a.accountType, String(a.ticker ?? '').toUpperCase(), a.name, a.currency].join('__'), a.category);
+  });
+  add('직접 정한 자산군이 파일 값으로 바뀌는 행', rows.filter((a) => {
+    const key = [a.owner, a.accountType, String(a.ticker ?? '').toUpperCase(), a.name, a.currency].join('__');
+    const prev = confirmedByKey.get(key);
+    const cell = String(a.categoryCellRaw ?? '').trim();
+    return prev && cell && a.category && a.category !== prev;
+  }).length);
+
+  return { total: rows.length, issues };
+}
+/** 확인 화면에 덧붙일 사람 말 요약. 문제가 없으면 빈 문자열. */
+function excelImportPreflightText(pf) {
+  if (!pf || !pf.issues.length) return '';
+  return '\n\n확인이 필요한 항목:\n' + pf.issues.map((i) => `· ${i.label} ${i.count}건`).join('\n')
+    + '\n\n그대로 불러와도 되지만, 위 항목은 불러온 뒤 값이 비어 있거나 예상과 다를 수 있습니다.';
+}
+
 document.getElementById('importExcelBtn').addEventListener('click', () => document.getElementById('excelFileInput').click());
 
 document.getElementById('excelFileInput').addEventListener('change', (e) => {
@@ -385,6 +443,10 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
           // rateMatchOverride로 저장된다(비어 있으면 makeAsset이 undefined로 남겨 자동판별을 그대로 쓴다) -
           // getProjectionAssetGroupKey(js/05)가 이 값을 최우선으로 반영해 즉시 시뮬레이션에 연동된다.
           rateMatchOverride: pick(row, '대표매칭(수익률연동키)', '대표매칭', '수익률연동키'),
+          // [E-01 · E-02] makeAsset()이 sanitizeMarketBetaIndexOverride / sanitizeFxHedgeStatus로
+          // 정규화한다 - 목록에 없는 값이 적혀 있으면 조용히 무시되고 자동판별이 그대로 쓰인다.
+          marketBetaIndexOverride: pick(row, '시장민감도 기준지수(사용자확인)', '시장민감도 기준지수', '시장민감도기준지수'),
+          fxHedgeStatus: pick(row, '환헤지(사용자확인)', '환헤지', '환헤지여부'),
           // [자산별 역할(포지션) 분류] 한글 라벨('공격수' 등) 또는 내부 키 둘 다 인식한다(parseAssetRoleInput).
           role: pick(row, '역할(포지션)', '역할', 'role')
         });
@@ -395,7 +457,9 @@ document.getElementById('excelFileInput').addEventListener('change', (e) => {
       });
 
       if (imported.length === 0) { alert('가져올 데이터가 없습니다. (ticker, 소유자, 계좌구분, 종목명, 국내/해외, 통화, 수량, 매수단가 헤더를 확인하세요)'); return; }
-      const choice = await openImportChoiceModal(`${imported.length}건을 불러옵니다.\n기존 데이터를 덮어쓸까요, 추가할까요?`);
+      // [v267] 적용하기 전에 파일을 먼저 훑어 이상한 행을 세고, 확인 화면에 함께 보여 준다.
+      const preflight = buildExcelImportPreflight(imported, state.assets);
+      const choice = await openImportChoiceModal(`${imported.length}건을 불러옵니다.\n기존 데이터를 덮어쓸까요, 추가할까요?${excelImportPreflightText(preflight)}`);
       if (choice === 'cancel') return; // 가져오기 자체를 취소 - 아무 것도 바뀌지 않는다.
       let resultMsg;
       // [P1 데이터 보존 - FIX-4/FIX-5] 엑셀에 그 칸이 비어 있거나 열 자체가 없을 때 기존
@@ -568,6 +632,9 @@ function buildSyncBlob() {
       updatedAt: a.updatedAt,
       // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
       rateMatchOverride: a.rateMatchOverride,
+      // [E-01 · E-02] 사용자가 직접 확정한 시장민감도 기준지수 · 환헤지 여부. 위와 같은 이유로 나열한다.
+      marketBetaIndexOverride: a.marketBetaIndexOverride,
+      fxHedgeStatus: a.fxHedgeStatus,
       // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 백업 복원/기기 간 동기화 시 사라진다.
       role: a.role,
       // [Phase 49] 같은 이유. 옛 버전 앱이 이 필드가 든 페이로드를 받아도 normalizeImportedAsset이
@@ -593,10 +660,38 @@ function buildSyncBlob() {
   };
 }
 
+/* [v267] 백업 파일 무결성 표식.
+ * CMA 파이프라인이 공식 자료에 sha256을 붙여 검증하는 것과 같은 방식을 사용자 백업에도 쓴다.
+ * 파일이 중간에 잘리거나 손상된 채 복원되어 자산이 조용히 사라지는 일을 막기 위함이다.
+ * 저장하는 **내용**은 전혀 바꾸지 않는다 - 봉투에 표식만 더 붙인다. */
+const BACKUP_SCHEMA_VERSION = 1;
+async function computeBackupChecksum(text) {
+  try {
+    if (!(globalThis.crypto && globalThis.crypto.subtle)) return null; // 안전한 컨텍스트가 아니면 붙이지 않는다
+    const bytes = new TextEncoder().encode(text);
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    return null; // 계산하지 못하면 표식 없이 예전처럼 내보낸다(백업 자체를 막지 않는다)
+  }
+}
+/** 복원할 때 쓰는 검증. 'ok' | 'mismatch' | 'absent'(옛 백업 - 예전처럼 진행) */
+async function verifyBackupChecksum(parsed) {
+  if (!parsed || typeof parsed.checksum !== 'string' || !parsed.checksum) return 'absent';
+  const { checksum, ...body } = parsed;
+  const recomputed = await computeBackupChecksum(JSON.stringify(body));
+  if (!recomputed) return 'absent';
+  return recomputed === checksum ? 'ok' : 'mismatch';
+}
+
 // [JSON 백업 다운로드 - 수동/자동 공용] 예전엔 exportJsonBtn 클릭 핸들러에만 인라인으로 있었다 - 이제
 // 자동 백업 토글(즉시 1회 실행 + 매일 부팅 체크) 양쪽에서도 똑같이 써야 해서 함수로 뽑았다.
-function downloadJsonBackup() {
+async function downloadJsonBackup() {
   const backup = buildSyncBlob();
+  backup.schemaVersion = BACKUP_SCHEMA_VERSION;
+  backup.exportedAt = new Date().toISOString();
+  const checksum = await computeBackupChecksum(JSON.stringify(backup));
+  if (checksum) backup.checksum = checksum;
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -633,7 +728,8 @@ function runAutoBackupIfDue() {
   if (!isAutoBackupEnabled()) return;
   const today = todayDateStr();
   if (localStorage.getItem(LS_LAST_AUTO_BACKUP_DATE) === today) return; // 오늘 이미 실행함
-  downloadJsonBackup();
+  // [v267] 체크섬 계산 때문에 비동기가 됐다 - 결과를 기다릴 필요는 없지만 실패가 조용히 떠돌지 않게 받는다.
+  Promise.resolve(downloadJsonBackup()).catch(() => {});
   localStorage.setItem(LS_LAST_AUTO_BACKUP_DATE, today);
 }
 
@@ -644,7 +740,7 @@ document.getElementById('autoBackupToggleBtn').addEventListener('click', () => {
   if (turningOn) {
     // [즉시 1회 백업] 켜는 순간 바로 백업하고 오늘 날짜를 기록해둔다 - 하루에 또 백업하고 싶으면
     // 껐다 켜는 것으로 수동 백업을 대신할 수 있다(요청 사항).
-    downloadJsonBackup();
+    Promise.resolve(downloadJsonBackup()).catch(() => {});
     localStorage.setItem(LS_LAST_AUTO_BACKUP_DATE, todayDateStr());
     showToast('JSON 자동 백업을 켰습니다 - 지금 1회 백업 파일을 내려받았습니다. 앞으로 매일 접속 시 자동으로 백업됩니다.', 'success', 6000);
   } else {
@@ -690,6 +786,16 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
       const parsed = JSON.parse(evt.target.result);
       if (!parsed || !Array.isArray(parsed.assets)) throw new Error('올바른 백업 파일 형식이 아닙니다(자산 목록이 없음)');
 
+      /* [v267] 파일이 손상됐는지 먼저 본다. 표식이 없는 옛 백업은 예전과 똑같이 그냥 진행한다.
+       * 표식이 있는데 맞지 않으면 파일이 중간에 잘렸거나 편집됐다는 뜻이라, 복원해서 자산이
+       * 조용히 사라지기 전에 사용자에게 알리고 선택을 받는다(막지는 않는다 - 사용자 데이터다). */
+      const integrity = await verifyBackupChecksum(parsed);
+      if (integrity === 'mismatch'
+        && !window.confirm('백업 파일의 무결성 표식이 맞지 않습니다.\n파일이 손상됐거나 편집됐을 수 있습니다.\n\n그래도 복원할까요?')) {
+        e.target.value = '';
+        return;
+      }
+
       // [P1 데이터 보존 - FIX-6] 이 가져오기 동작 전체가 공유하는 "복원 시각" - 핸들러에서 한 번만
       // 계산한다(applyRemoteState의 restoredAt과 같은 의미).
       const restoredAt = Date.now();
@@ -720,6 +826,11 @@ document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         buyRate: typeof a.buyRate === 'number' ? a.buyRate : undefined,
         // [대표매칭 오버라이드] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
         rateMatchOverride: (typeof a.rateMatchOverride === 'string' && a.rateMatchOverride.trim() !== '') ? a.rateMatchOverride.trim() : undefined,
+        // [E-01 · E-02] 같은 이유로 이 두 줄이 필요하다 - 백업 파일에는 들어 있는데(buildSyncBlob)
+        // 여기서 읽지 않으면 복원하는 순간 사용자가 직접 확인한 값이 사라진다(실측 재현 2026-09-22).
+        // 정규화는 makeAsset · normalizeImportedAsset과 완전히 같은 함수를 쓴다(js/01).
+        marketBetaIndexOverride: sanitizeMarketBetaIndexOverride(a.marketBetaIndexOverride),
+        fxHedgeStatus: sanitizeFxHedgeStatus(a.fxHedgeStatus),
         // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 빠지면 JSON 백업 복원 시 사라진다.
         role: parseAssetRoleInput(a.role),
         // [V1.1 Phase 1 - BL-7a] 이 한 줄이 빠져 있었다. 백업 파일에는 positionSource가 정상적으로
@@ -902,6 +1013,10 @@ function normalizeImportedAsset(a) {
     // 정규화 규칙은 makeAsset과 완전히 같은 함수를 쓴다(sanitizeRateMatchOverride, js/01) -
     // 두 경로가 서로 다른 판단을 하면 "엑셀로는 살아남는데 백업으로는 사라지는" 지금 상황이 재발한다.
     rateMatchOverride: sanitizeRateMatchOverride(a.rateMatchOverride),
+    // [E-01 · E-02] Phase 47-E와 정확히 같은 이유로 makeAsset과 같은 함수를 쓴다 - 이 두 줄이 빠지면
+    // "엑셀로는 살아남는데 백업 · 동기화로는 사라지는" 상태가 다시 만들어진다.
+    marketBetaIndexOverride: sanitizeMarketBetaIndexOverride(a.marketBetaIndexOverride),
+    fxHedgeStatus: sanitizeFxHedgeStatus(a.fxHedgeStatus),
     // [Phase 49] makeAsset과 완전히 같은 규칙(sanitizePositionSource, js/01)을 쓴다 - 두 경로가 다르게
     // 판단하면 "엑셀로는 살아남는데 백업으로는 사라지는" Phase 47-E의 상황이 그대로 재발한다.
     // 값이 없는 legacy 자산은 값 없이 그대로 복원된다(임의로 채우지 않는다).
@@ -1076,7 +1191,10 @@ function adoptRemoteRebalanceAndProjection(parsed, opts) {
       // 월적립금 종목 배분도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
       monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.projection.monthlyContributionAllocation),
       // 소유자별 독립 월적립금 설정도 동일한 이유로 loadState와 같은 정규화 함수(js/01)를 재사용한다.
-      monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.projection.monthlyContributionByOwner)
+      monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.projection.monthlyContributionByOwner),
+      // [MC-01] 연도별 추가 투자도 같은 이유로 loadState와 같은 정규화 함수를 재사용한다 - 이 줄이
+      // 없으면 복원 · 동기화 직후 추가 투자 계획이 통째로 사라진다.
+      yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.projection.yearlyExtraContributions)
     };
     persistProjection(true); // skipStamp - 위와 동일한 이유
   }
@@ -1391,12 +1509,55 @@ function checkSyncPayloadShape(parsed, remoteVersion, opts) {
   }
   return 'invalid_payload';
 }
-// 자동 동기화의 반영 직전 검사. 'ok'(차이 없음 - 예전 그대로 반영) | 'held'(차이 있음 - 반영하지 않음) | 'invalid_payload'
+/* [v267 · PC-6] 이 차이가 **사용자에게 물어야 하는 충돌**인가, 조용히 합쳐도 되는 변화인가.
+ *
+ * 병합 규칙(mergeCollectionById)이 실제로 무엇을 하는지에 맞춰 판정한다.
+ *   · 로컬에만 있고 직전 동기화 시점에는 없던 항목  → 이 기기가 새로 만든 것. 병합해도 남는다.  안전
+ *   · 로컬에만 있고 직전 동기화 시점에 있던 항목    → 원격이 지웠다는 뜻이라 병합하면 사라진다.  위험
+ *   · 원격에만 있는 항목                            → 새로 추가되거나, 이 기기가 지운 상태가 유지된다. 안전
+ * *   · 같은 항목의 값이 다름 → 최종수정 우선으로 한쪽이 사라질 수 있다.                     위험
+ *   · 목표비중 · 미래예측 설정은 통째로 덮어쓰므로 값이 다르면 항상 물어본다.                위험
+ *
+ * 안전한 변화만 있으면 예전처럼 조용히 병합하고(반환 'ok'), 하나라도 위험하면 멈춘다('held').
+ * 데이터가 사라질 수 있는 경우는 단 한 건도 자동으로 넘기지 않는다. */
+function syncDifferenceNeedsReview(diff) {
+  if (!diff) return false;
+  if (diff.rebalance && diff.rebalance.changed) return true;
+  if (diff.projection && diff.projection.changed) return true;
+  const check = (group, baselineKey) => {
+    if (!group) return false;
+    const baseline = getMergeBaseline(baselineKey);
+    /* 원격이 지운 항목(직전 동기화에 있었는데 지금 원격에 없다) - 병합하면 이 기기에서 사라진다. */
+    if ((group.localOnly || []).some((v) => baseline.has(v.id))) return true;
+    /* 이 기기가 지운 항목을 저쪽은 갖고 있다 - 병합하면 삭제가 유지되어 **저쪽의 수정이 사라진다**.
+     * "삭제 vs 수정"은 어느 방향이든 사람이 정해야 한다(V1.3 P1-1이 지키던 계약 그대로). */
+    if ((group.cloudOnly || []).some((v) => baseline.has(v.id))) return true;
+    /* 같은 항목의 값이 다르다 - 최종수정 우선으로 한쪽이 덮인다. **항상 물어본다.**
+     *
+     * PM 지시는 "한쪽만 바뀐 경우는 자동 병합"도 요구했지만, 지금 가진 메타데이터로는 그것을
+     * 안전하게 가릴 수 없다. 레코드마다 updatedAt이 있고 기기마다 마지막 동기화 시각이 하나 있을 뿐이라,
+     * "내 변경은 이미 올렸다(updatedAt < lastSyncedAt)"와 "클라우드 값이 내 상태의 후속이다"를
+     * 구분하지 못한다. 실제로 갈라지는 경로가 있다(e2e/89 S-04):
+     *   휴대폰이 120으로 고쳐 올린 뒤 PC가 [이 기기 데이터 올리기]로 100을 덮어쓰면,
+     *   휴대폰에서는 자기 변경이 "이미 동기화된 것"으로 보여 자동 병합 대상이 되고 120이 사라진다.
+     * 안전하게 하려면 레코드별 "마지막으로 동기화된 값"(해시 · 버전 벡터)이 필요한데 저장 구조 변경이다.
+     * 값이 다르면 무조건 확인받는다 - 사용자 데이터가 조용히 사라지는 쪽으로 기울지 않는다. */
+    return (group.different || []).length > 0;
+  };
+  if (check(diff.assets, LS_SYNC_MERGED_ASSET_IDS)) return true;
+  if (check(diff.transactions, LS_SYNC_MERGED_TX_IDS)) return true;
+  return false;
+}
+
+// 자동 동기화의 반영 직전 검사. 'ok'(그대로 반영) | 'held'(진짜 충돌 - 반영하지 않음) | 'invalid_payload'
 function gateIncomingSyncData(parsed, remoteVersion, opts) {
   const shape = checkSyncPayloadShape(parsed, remoteVersion, opts);
   if (shape !== 'ok') return shape;
   const diff = compareSyncData(syncLocalDataForCompare(), parsed);
   if (!diff.hasMeaningfulDifference) { clearSyncDiffHold(); return 'ok'; }
+  /* [v267 · PC-6] 차이가 있다고 무조건 멈추지 않는다 - 손실이 생길 수 있는 차이만 멈춘다.
+   * 다른 기기에서 거래를 추가하는 일상적인 경우가 여기서 조용히 병합된다. */
+  if (!syncDifferenceNeedsReview(diff)) { clearSyncDiffHold(); return 'ok'; }
   holdSyncForDifference(parsed, remoteVersion, diff);
   return 'held';
 }

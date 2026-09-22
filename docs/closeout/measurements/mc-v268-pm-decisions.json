@@ -1,0 +1,248 @@
+{
+  "measuredAt": "2026-09-22",
+  "purpose": "PM 결정 1(ETF 환헤지 → MC · A안) · PM 결정 2(연도별 추가 투자 → 결정론 카드) 적용 전후",
+  "baseline": "v266 production (91e28bf) 기준 working tree · 적용 직전 상태를 before로 측정",
+  "syntheticOnly": true,
+  "fixture": {
+    "seed": 20260101,
+    "iterations": 3000,
+    "years": 20,
+    "pv0": 100000000,
+    "monthlyContribution": 3000000,
+    "instruments": 3
+  },
+  "decision1": {
+    "change": "US_EQUITY riskProvider를 AllianzGI → J.P. Morgan으로 이전하고 US_EQUITY_HEDGED를 같은 원문의 짝으로 신설",
+    "rationale": "환헤지/환노출은 동일 provider · 동일 자산군 · 동일 기준의 pair여야 한다(혼합 C안 금지). 주식 상관은 이미 전부 JPM Benchmark에서 오고 있었으므로 σ와 상관의 출처가 일치하게 된다.",
+    "cmaBefore": {
+      "KR_EQUITY": {
+        "status": "MAPPED",
+        "provider": "Allianz Global Investors",
+        "cmaClass": "Korea Equities",
+        "sigmaPct": 29.4
+      },
+      "US_EQUITY": {
+        "status": "MAPPED",
+        "provider": "Allianz Global Investors",
+        "cmaClass": "North America Equities",
+        "sigmaPct": 16.6
+      },
+      "US_EQUITY_HEDGED": {
+        "status": "UNMAPPED",
+        "provider": null,
+        "cmaClass": null,
+        "sigmaPct": null
+      },
+      "EM_EQUITY": {
+        "status": "MAPPED",
+        "provider": "Allianz Global Investors",
+        "cmaClass": "Emerging Markets Equities",
+        "sigmaPct": 24.4
+      },
+      "KR_GOV_BOND": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Korean Government Bonds",
+        "sigmaPct": 5.357291318235813
+      },
+      "KR_CORP_BOND": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Korean Corporate Bonds",
+        "sigmaPct": 2.539956328818818
+      },
+      "FOREIGN_GOV_BOND_HEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "World Government Bonds hedged",
+        "sigmaPct": 3.985382018102107
+      },
+      "FOREIGN_GOV_BOND_UNHEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "World Government Bonds",
+        "sigmaPct": 9.69232747192174
+      },
+      "FOREIGN_CORP_BOND_HEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Global Credit hedged",
+        "sigmaPct": 5.556221501342378
+      }
+    },
+    "cmaAfter": {
+      "KR_EQUITY": {
+        "status": "MAPPED",
+        "provider": "Allianz Global Investors",
+        "cmaClass": "Korea Equities",
+        "sigmaPct": 29.4
+      },
+      "US_EQUITY": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "U.S. Large Cap",
+        "sigmaPct": 13.722309014388456
+      },
+      "US_EQUITY_HEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "U.S. Large Cap hedged",
+        "sigmaPct": 16.63977109253169
+      },
+      "EM_EQUITY": {
+        "status": "MAPPED",
+        "provider": "Allianz Global Investors",
+        "cmaClass": "Emerging Markets Equities",
+        "sigmaPct": 24.4
+      },
+      "KR_GOV_BOND": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Korean Government Bonds",
+        "sigmaPct": 5.357291318235813
+      },
+      "KR_CORP_BOND": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Korean Corporate Bonds",
+        "sigmaPct": 2.539956328818818
+      },
+      "FOREIGN_GOV_BOND_HEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "World Government Bonds hedged",
+        "sigmaPct": 3.985382018102107
+      },
+      "FOREIGN_GOV_BOND_UNHEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "World Government Bonds",
+        "sigmaPct": 9.69232747192174
+      },
+      "FOREIGN_CORP_BOND_HEDGED": {
+        "status": "MAPPED",
+        "provider": "J.P. Morgan Asset Management",
+        "cmaClass": "Global Credit hedged",
+        "sigmaPct": 5.556221501342378
+      }
+    },
+    "corrBefore": {
+      "US_EQUITY~KR_EQUITY": {
+        "value": 0.4124456921608721,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY~EM_EQUITY": {
+        "value": 0.5007268458463904,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY~KR_GOV_BOND": {
+        "value": -0.013600222151413276,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY_HEDGED~KR_EQUITY": {
+        "value": null,
+        "source": "CORRELATION_SOURCE_MISSING"
+      },
+      "US_EQUITY_HEDGED~US_EQUITY": {
+        "value": null,
+        "source": "CORRELATION_SOURCE_MISSING"
+      },
+      "KR_EQUITY~EM_EQUITY": {
+        "value": 0.6772476909891292,
+        "source": "BENCHMARK_REFERENCE"
+      }
+    },
+    "corrAfter": {
+      "US_EQUITY~KR_EQUITY": {
+        "value": 0.4124456921608721,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY~EM_EQUITY": {
+        "value": 0.5007268458463904,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY~KR_GOV_BOND": {
+        "value": -0.013600222151413276,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY_HEDGED~KR_EQUITY": {
+        "value": 0.6931240999229659,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "US_EQUITY_HEDGED~US_EQUITY": {
+        "value": 0.7023437621998414,
+        "source": "BENCHMARK_REFERENCE"
+      },
+      "KR_EQUITY~EM_EQUITY": {
+        "value": 0.6772476909891292,
+        "source": "BENCHMARK_REFERENCE"
+      }
+    },
+    "mcBefore": {
+      "usEquityPortfolio": {
+        "sigmaUS": 16.6,
+        "corrUSKR": 0.4124456921608721,
+        "p10": 967506828.2997465,
+        "p50": 1815289161.0306802,
+        "p90": 3657098007.7802753,
+        "mean": 2140071812.8317077
+      }
+    },
+    "mcAfter": {
+      "usEquityPortfolio": {
+        "sigmaUS": 13.722309014388456,
+        "corrUSKR": 0.4124456921608721,
+        "p10": 992008285.6379921,
+        "p50": 1789157265.149412,
+        "p90": 3466555102.697693,
+        "mean": 2086881223.2105844
+      },
+      "usEquityHedgedPortfolio": {
+        "sigmaUS": 16.63977109253169,
+        "corrUSKR": 0.6931240999229659,
+        "p10": 911836236.7966998,
+        "p50": 1759645692.7076805,
+        "p90": 3730883755.141253,
+        "mean": 2145352116.8096986
+      }
+    },
+    "unchanged": [
+      "μ(Return Key 경로)",
+      "returnUsableForMc=false",
+      "MC 엔진 · seed · 분포 · 상관 구조",
+      "Risk Score",
+      "Portfolio Beta",
+      "Tracking Beta",
+      "Bond",
+      "KR_EQUITY σ 29.4",
+      "EM_EQUITY σ 24.4",
+      "US_EQUITY 상관값(전부 동일)"
+    ]
+  },
+  "decision2": {
+    "change": "연도별 추가 투자를 결정론 시나리오 카드에도 반영(가구 단위 · MC와 같은 입력원 · 같은 시점 규칙)",
+    "sharedTimingFunction": "js/05 yearlyExtraContributionMonthIndex (js/19가 호출)",
+    "growthBasis": "computeTargetWeightedAvgRate(기존 화면 표시값) + computeTargetWeightedFeeRate(같은 집계 규칙)",
+    "measuredDeterministic": {
+      "note": "합성 가구(현재자산 1억 · 월 적립 100만 · 국내 100%) · 20년 · 일반적 시나리오",
+      "caseA_noExtra": 927839284,
+      "caseB_nextYearPlus10m": 967528059,
+      "caseC_twoYears": 986034607,
+      "caseD_beyondHorizon": 927839284,
+      "caseE_legacyGrowthRate3pct": 927839284,
+      "caseF_pastYear": 927839284,
+      "currentValueUnchanged": true
+    }
+  },
+  "engineInvariant": {
+    "note": "MC 엔진(js/15) 자체는 HEAD(91e28bf)와 비트 동일 - 월 정밀 · 연 근사 · 빈 배열 · 증가율 0 모두 확인",
+    "identical": true
+  },
+  "defectFoundAndFixed": {
+    "where": "js/12 jsonFileInput change 핸들러의 자산 복원 필드 목록",
+    "what": "marketBetaIndexOverride · fxHedgeStatus가 목록에 없어 JSON 백업 복원 시 두 값이 사라졌다(buildSyncBlob은 정상적으로 내보내고 있었다)",
+    "kind": "Phase 47-E · BL-7a · FIX-6와 같은 유형(복원 경로만 필드를 누락)",
+    "foundBy": "통합 더미데이터 검증 STEP 11·12(자동 단위/E2E 테스트로는 드러나지 않았다)",
+    "fix": "makeAsset · normalizeImportedAsset과 같은 정규화 함수로 두 줄 추가"
+  }
+}

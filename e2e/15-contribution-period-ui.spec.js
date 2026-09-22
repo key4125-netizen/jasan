@@ -15,7 +15,10 @@ async function saveModal(page) {
 }
 
 test.describe('적립 기간(년) UI/UX(Step 3)', () => {
-  test('기존 데이터(null/미설정) 로딩 - 입력칸이 비어있고 "제한없음" placeholder와 설명 문구가 보인다', async ({ page }) => {
+  // [기대값 갱신 사유 · PM 지시 2026-09-22 · §54-6-2] 팝업 상단의 💡 "적립 기간 vs 미래예측 기간"
+  // 안내 문단을 삭제했다(연도별 추가 투자가 들어오면서 화면 위쪽을 과하게 차지했다). 설명 자체가
+  // 사라진 것은 아니다 - 같은 내용이 입력칸의 title 툴팁에 남아 있으므로 그쪽을 확인한다.
+  test('기존 데이터(null/미설정) 로딩 - 입력칸이 비어있고 "제한없음" placeholder와 설명 툴팁이 있다', async ({ page }) => {
     await seedPortfolio(page, {
       targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
       projection: { monthlyContributionByOwner: { '신랑': { total: 1000000, years: null, allocation: [] }, '와이프': { total: 0, years: null, allocation: [] } } }
@@ -26,9 +29,15 @@ test.describe('적립 기간(년) UI/UX(Step 3)', () => {
     await expect(page.locator('#monthlyContributionYearsInputHusband')).toHaveAttribute('placeholder', '제한없음');
     const modalText = await page.locator('#monthlyContributionAllocationModal').innerText();
     expect(modalText).toContain('적립 기간');
-    expect(modalText).toContain('미래예측 기간(20년)과는 다른 개념');
-    expect(modalText).toContain('비워두면');
-    expect(modalText).toContain('추가로 투자할지');
+    // 삭제된 안내 문단이 되살아나지 않았는지도 함께 고정한다.
+    expect(modalText).not.toContain('미래예측 기간(20년)과는 다른 개념');
+    // 비워두는 경우와 0의 의미 차이는 입력칸 툴팁으로 전달된다(신랑 · 와이프 두 카드 모두).
+    for (const suffix of ['Husband', 'Wife']) {
+      const tip = await page.locator(`#monthlyContributionYearsInput${suffix}`)
+        .evaluate((el) => (el.previousElementSibling || el.parentElement.querySelector('span')).getAttribute('title'));
+      expect(tip, suffix).toContain('비워두면');
+      expect(tip, suffix).toContain('0이면 지금부터 추가 투자 없음');
+    }
   });
 
   test('0 입력 후 저장 -> 재진입 시 0이 그대로 유지된다(null로 되돌아가지 않음)', async ({ page }) => {

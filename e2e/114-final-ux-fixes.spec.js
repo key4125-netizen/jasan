@@ -47,8 +47,15 @@ test('F-1 채권형 ETF는 시장 베타에서 빠지고, 화면이 그 사유�
   expect(r.beta).toBeNull();
   // "확정하지 못했다"가 아니라 "대상이 아니다"라고 말해야 한다.
   expect(r.note).toContain('채권형 상품이라 주식 시장위험 집계에서 제외했습니다');
-  // 원장에 없는 코스닥 종목은 여전히 다른 사유로 표시된다(두 상태가 섞이지 않는다).
-  expect(r.note).toContain('비교할 기준 지수가 확정되지 않았습니다');
+  /* [기대값 갱신 · §53-2 · v267] 이 테스트가 보는 것은 "채권은 대상이 아니다"와 "확정하지 못했다"가
+   * 섞이지 않는다는 것이다. 자동화 이후 원장에 없는 코스닥 종목은 공식 종목 마스터의 증권그룹(ST)으로
+   * 코스닥 지수를 받게 됐고, 남은 사유는 지수 가격 자료 쪽이다 - 사유 문구가 달라졌을 뿐 구분은 그대로다.
+   * 그래서 특정 문구를 고정하지 않고 "채권 사유와 다른 사유가 함께 표시된다"를 고정한다. */
+  const rows = r.note.split("ZZ ").filter((x) => x.trim());
+  const bondRows = rows.filter((x) => x.includes("채권형 상품이라"));
+  expect(bondRows).toHaveLength(1);
+  expect(rows.length).toBeGreaterThan(1);
+  expect(rows.some((x) => !x.includes("채권형 상품이라"))).toBe(true);
 });
 
 test('F-2 「기초지수 추적 민감도」 설명이 실제 집계 대상과 일치한다', async ({ page }) => {

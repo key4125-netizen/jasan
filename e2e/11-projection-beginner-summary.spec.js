@@ -30,10 +30,11 @@ test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자�
   // 일정하다고 가정한 단일 경로 계산값이라는 성격을 라벨에 그대로 드러낸다(금액 계산은 무변경).
   await expect(page.locator('#projectionHeroFutureLabel')).toHaveText('20년 후 자산 참고값 (일반적 수익률 적용)');
 
-  // [장기 투자계획 UX 개선] 아코디언을 펼치지 않아도 "투자 기간"·"투자금 증가"가 바로 보여야 한다
-  // (contributionGrowthRate: 0으로 시딩했으므로 "증가 없음"으로 표시되어야 한다).
+  // [장기 투자계획 UX 개선] 아코디언을 펼치지 않아도 "투자 기간"·"연도별 추가 투자"가 바로 보여야 한다.
+  // [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4] "매년 투자금 증가율"이 사용자 입력에서
+  // 제거되고 "연도별 추가 투자"로 바뀌었다(PM 지시문 §10-1). 아무것도 넣지 않았으므로 "없음"이다.
   await expect(page.locator('#projectionPlanYearsText')).toHaveText('20년');
-  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('증가 없음(매월 동일)');
+  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('없음');
 
   // 확정적 표현("~입니다")이 아니라 가정 기반 계산임을 알리는 문구가 있어야 한다.
   // [FUTURE-P1 Phase 3-2] 여기서 한 걸음 더 나아가, ① 이 값이 "수익률이 매년 일정하다"는 가정의
@@ -45,36 +46,44 @@ test('히어로 요약 카드(현재 자산/매달 투자/20년 후 예상 자�
   expect(heroText).toContain('Monte Carlo에서 확인');
 });
 
-test('연간 납입액 증가율 입력을 바꾸면 히어로 요약의 20년 후 예상 자산도 기존 계산 흐름을 통해 함께 바뀐다', async ({ page }) => {
+// [기대값 갱신 사유 · PM 결정 2 확정 2026-09-22 · §54-4] 예전 이 테스트는 "증가율을 바꾸면 히어로
+// 예상 자산이 함께 바뀐다"를 고정했다. 증가율 입력이 "연도별 추가 투자"로 바뀌었고, PM 결정 2로
+// **결정론 시나리오 카드에도 반영**하기로 확정됐다(MC와 같은 입력원 · 같은 시점 규칙).
+// 그래서 검증 내용은 원래 의도 그대로다 - "투자금 입력을 바꾸면 히어로 예상 자산이 함께 바뀐다".
+test('연도별 추가 투자를 저장하면 요약 한 줄과 히어로 예상 자산이 함께 바뀐다', async ({ page }) => {
   await seedPortfolio(page, {
     targets: [{ owner: '신랑', region: '국내', name: 'E2E국내채권', pct: 100 }],
-    projection: { inflationRate: 2.5, contributionGrowthRate: 0, monthlyContribution: 3000000 },
+    projection: { inflationRate: 2.5, monthlyContribution: 3000000 },
   });
   await goToProjectionTab(page);
 
   const futureBefore = await page.locator('#projectionHeroFuture').innerText();
+  const currentBefore = await page.locator('#projectionHeroCurrent').innerText();
+  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('없음');
 
-  // [Phase 25 P2] 증가율은 이제 [적립금 설정] 팝업 안에서 [저장]을 눌러야 반영된다("매달 얼마 /
-  // 몇 년 / 매년 얼마나 늘릴지"를 하나의 투자계획으로 묶음) - 검증 내용은 그대로다.
-  // [v248-1 REQ-03] [적립금 설정]은 포트폴리오 설정 탭의 "일반계좌 적립계획" 카드로 옮겨졌다.
+  // [v248-1 REQ-03] [투자금 설정]은 포트폴리오 설정 탭의 "일반계좌 적립계획" 카드에 있다.
   await goToPortfolioSettingsTab(page);
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeVisible();
-  await page.locator('#contributionGrowthRateInput').fill('5');
+  await page.locator('#yearlyExtraContributionAddBtn').click();
+  const nextYear = await page.evaluate(() => new Date().getFullYear() + 1);
+  await page.locator('#yearlyExtraContributionList input[data-yearly-extra-year="0"]').fill(String(nextYear));
+  await page.locator('#yearlyExtraContributionList input[data-yearly-extra-amount="0"]').fill('10000000');
   await page.locator('#saveMonthlyContributionAllocationModalBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeHidden();
+  expect(await page.evaluate(() => state.projection.yearlyExtraContributions))
+    .toEqual([{ year: nextYear, amount: 10000000 }]);
   await goToProjectionTab(page);
 
+  // [v248-1 REQ-01] "이 계산은 이런 가정을 사용했어요" 목록은 삭제됐다 - 아래 한 줄 요약으로 확인한다.
+  await expect(page.locator('#projectionAssumptionsList')).toHaveCount(0);
+  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('1개 연도 1,000만원');
+  // [PM 결정 2] 히어로 예상 자산이 실제로 늘어나고, 그 값은 엔진 계산 결과와 정확히 같다.
   const expectedAfter = await page.evaluate(() => fmtKRWShort(simulateRebalancedPreset('normal', 20).yearlyPoints[20].total));
   await expect(page.locator('#projectionHeroFuture')).toHaveText(expectedAfter);
-  const futureAfter = await page.locator('#projectionHeroFuture').innerText();
-  expect(futureAfter).not.toBe(futureBefore);
-
-  // [v248-1 REQ-01] "이 계산은 이런 가정을 사용했어요" 목록은 삭제됐다 - 증가율은 아래 한 줄 요약으로 확인한다.
-  await expect(page.locator('#projectionAssumptionsList')).toHaveCount(0);
-
-  // 아코디언 밖의 "투자 기간·투자금 증가" 한 줄 요약도 같은 state를 읽으므로 함께 바뀌어야 한다.
-  await expect(page.locator('#projectionPlanGrowthText')).toHaveText('매년 5%씩');
+  expect(await page.locator('#projectionHeroFuture').innerText()).not.toBe(futureBefore);
+  // 현재 자산은 바뀌지 않는다(추가 투자가 지금 잔고에 합산되면 안 된다).
+  await expect(page.locator('#projectionHeroCurrent')).toHaveText(currentBefore);
 });
 
 test('Monte Carlo 결과 - percentile이 초보자용 표현으로 바뀌고, 표시값은 엔진 결과와 동일하다', async ({ page }) => {

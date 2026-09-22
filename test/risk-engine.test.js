@@ -689,10 +689,11 @@ test('Edge - 섹터 매핑에 없는 티커는 미분류로 안전하게 빠지�
 
   assert.strictEqual(m.sectorExposure.topSector, '미분류');
   assert.strictEqual(round(m.sectorExposure.unclassifiedWeightPct, 4), 100);
-  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] ZZZZ.KS는 Exposure Master에 없다. STEP 5(GAP-1)에 따라 경제적 노출 근거가 없으면
-   * 접미사(.KS)만 보고 KOSPI를 붙이지 않고 미확정으로 둔다 - 그래서 베타가 없고 신뢰도가 72 → 57로
-   * 내려간다. 커버리지가 줄어든 것이 아니라 "근거 없이 붙이던 기준"을 뺀 결과다. */
-  assert.strictEqual(m.dataConfidence.score, 57);
+  /* [기대값 갱신 · §53 PC-1 · 2026-09-22] ZZZZ.KS는 여전히 Exposure Master에 없지만, 공식 종목
+   * 마스터에 국내 상장 사실이 있고 자산군이 '주식'으로 확정돼 있어 상장 시장 지수를 자동으로 받는다.
+   * 그래서 베타가 다시 산출되고 신뢰도가 57 → 72로 **돌아온다**(D-2 이전 값과 같다).
+   * 새 산식을 만든 것이 아니라, 근거 없이 비워 두던 입력이 공식 근거로 채워진 결과다. */
+  assert.strictEqual(m.dataConfidence.score, 72);
 });
 
 test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에 반영된다', async () => {

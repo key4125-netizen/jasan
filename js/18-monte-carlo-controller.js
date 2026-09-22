@@ -174,6 +174,9 @@ async function startMonteCarloRun(params, callbacks) {
     contributionGrowthRate: params.contributionGrowthRate, // [Phase 3-3] 생략 시 엔진에서 0으로 처리(하위호환)
     // [Step 2 - 적립기간 연결] 생략 시(하위호환) js/15가 기존 monthlyContribution 단일 흐름으로 처리한다.
     contributionStreams: params.contributionStreams,
+    // [MC-01] 연도별 추가 투자 - js/19가 달력 연도를 시뮬레이션 월 번호로 바꿔 넘긴다.
+    // 생략 시(하위호환) js/15가 추가 투자 없음으로 처리해 기존 결과와 비트 단위로 같다.
+    extraContributions: params.extraContributions,
     // [FUTURE-P1] 어댑터가 절세계좌 잔고/납입을 실제로 찾았을 때만 존재한다 - 없으면 필드가 아예
     // 붙지 않아(undefined) 엔진이 기존 General-only 경로를 그대로 탄다.
     taxScope: adapterResult.taxScope,

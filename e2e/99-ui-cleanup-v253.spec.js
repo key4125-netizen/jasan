@@ -120,12 +120,15 @@ test('C. 신랑/와이프 목표 비중 드롭다운은 서로의 열림 상태�
   expect(await accordionState(page), '와이프만 열림 - 신랑은 닫힌 그대로').toEqual(state4(false, true));
 });
 
-test('D. 일반계좌 · 절세계좌 적립계획 버튼 이름이 모두 「적립설정」이다', async ({ page }) => {
+// [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4 · UX-01] 일반계좌 팝업은 이제 "매달 넣을
+// 금액 + 연도별 추가 투자"를 함께 다루므로 「투자금 설정」으로 바꿨다(PM 지시문 §11). 절세계좌는
+// 이번 변경 범위가 아니고 개념도 달라 「적립설정」 그대로다.
+test('D. 일반계좌는 「투자금 설정」 · 절세계좌는 「적립설정」이다', async ({ page }) => {
   await boot(page);
   await goToPortfolioSettingsTab(page);
-  await expect(page.locator('#openMonthlyContributionAllocationBtn')).toHaveText('적립설정');
+  await expect(page.locator('#openMonthlyContributionAllocationBtn')).toHaveText('투자금 설정');
   await expect(page.locator('#taxAdvantagedPlanBtn')).toHaveText('적립설정');
-  // 기능은 그대로 - 기존 적립금 설정 팝업이 열린다.
+  // 기능은 그대로 - 같은 팝업이 열린다(이름만 바뀌었다).
   await page.locator('#openMonthlyContributionAllocationBtn').click();
   await expect(page.locator('#monthlyContributionAllocationModal')).toBeVisible();
 });

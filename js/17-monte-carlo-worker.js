@@ -66,6 +66,8 @@ self.onmessage = function (e) {
       // [Step 2 - 적립기간 연결] 생략되면(기존 모든 호출부) engineConfig.contributionStreams가 undefined라
       // js/15의 hasContributionStreams가 항상 false - 기존 monthlyContribution 경로 그대로 bit-identical.
       contributionStreams: input.contributionStreams,
+      // [MC-01] 그대로 넘기기만 한다 - 이 Worker는 state도 달력도 모른다.
+      extraContributions: input.extraContributions,
       // [FUTURE-P1] 절세계좌 범위 - 어댑터(js/16)가 만든 값을 그대로 넘기기만 한다(이 Worker는
       // state를 읽지 않으므로 여기서 새로 만들 수 없고, 만들어서도 안 된다). 생략되면(절세계좌
       // 자산·납입이 전혀 없는 사용자, 또는 includeTaxAdvantaged 미지정 호출부) js/15의 hasTax가

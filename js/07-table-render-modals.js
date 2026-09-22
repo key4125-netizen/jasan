@@ -784,6 +784,36 @@ function updateBondFieldsUI() {
   }
 }
 
+/* [E-01 · E-02] 위험 분석 확인 칸 - 주식 · ETF만 Market Beta 대상이므로(PD-15) 그 때만 보인다.
+ * 지금 자동으로 무엇이 확인됐는지도 함께 알려 준다 - 이미 자동으로 정해진 종목에까지 사용자에게
+ * 고르라고 요구하지 않기 위해서다(AUTO 기본 · REVIEW는 불확실할 때만). */
+function updateRiskConfirmFieldsUI() {
+  const wrap = document.getElementById('riskConfirmFieldsWrap');
+  if (!wrap) return;
+  const category = (document.getElementById('f_category') || {}).value;
+  const eligible = (typeof RISK_ELIGIBLE_CATEGORIES !== 'undefined')
+    ? RISK_ELIGIBLE_CATEGORIES.includes(category) : ['주식', 'ETF'].includes(category);
+  wrap.classList.toggle('hidden', !eligible);
+  if (!eligible) return;
+  const hint = document.getElementById('f_marketBetaIndexHint');
+  if (!hint) return;
+  const ticker = String((document.getElementById('f_ticker') || {}).value || '').trim();
+  if (!ticker || typeof resolveMarketRiskBenchmark !== 'function') { hint.textContent = ''; return; }
+  // 사용자가 이 폼에서 이미 고른 값을 반영해 "지금 고르면 어떻게 되는지"를 그대로 보여 준다.
+  const probe = {
+    ticker, category,
+    marketBetaIndexOverride: (document.getElementById('f_marketBetaIndexOverride') || {}).value || undefined,
+    fxHedgeStatus: (document.getElementById('f_fxHedgeStatus') || {}).value || undefined
+  };
+  let r;
+  try { r = resolveMarketRiskBenchmark(probe); } catch (e) { r = null; }
+  if (r && r.status === 'RESOLVED') {
+    hint.textContent = `- 현재 ${r.key} 기준으로 계산됩니다${r.source === 'userConfirmedIndex' ? '(직접 확인함)' : '(자동 확인됨)'}`;
+  } else {
+    hint.textContent = '- 아직 확인되지 않았습니다. 이 상품이 따라가는 시장을 골라 주세요';
+  }
+}
+
 function fillBondFormFromPosition(p) {
   bondFormBase = p || null;
   if (!p) { BOND_FIELD_IDS.forEach((id) => setBondFieldValue(id, '')); bondEl('bondSourceNote').textContent = ''; return; }
@@ -875,39 +905,52 @@ function persistBondPositionForAsset(assetId, category) {
   persistBondPositions();
 }
 
-/* [ISIN 조회] 공공데이터 채권기본정보. 인증키는 소스에 넣지 않는다 - 사용자가 자기 키를 브라우저에
- * 저장해 둔 경우에만 호출하고, 없으면 "원천에 닿지 못함(SOURCE_UNAVAILABLE)"으로 안내한다.
- * 응답 파싱은 js/29 mapBondSourceResponse가 하고, 이 함수는 네트워크와 화면만 담당한다. */
-const BOND_API_KEY_STORAGE = 'sam_data_go_kr_key';
-const BOND_API_BASE = 'https://apis.data.go.kr/1160100/service/GetBondIssuInfoService/getBondBasiInfo';
-async function lookupBondByIsin() {
+/* [B-01] 표준코드(ISIN) 조회 - KIS 채권 발행정보(/api/kis/bond-info · TR CTPF1114R).
+ *
+ * 예전에는 이 화면만 공공데이터포털(GetBondIssuInfoService)을 썼고 거래등록 화면은 KIS를 썼다.
+ * 실측 결과 공공데이터 쪽 경로는 더 이상 응답하지 않는다(일부러 틀린 경로를 넣어도 같은
+ * NO_OPENAPI_SERVICE_ERROR가 나온다 - 같은 기관의 다른 서비스 3종은 "키 미등록"을 돌려준다).
+ * 그래서 신규 등록의 기본 경로를 실제로 동작하는 KIS 하나로 통일한다. 새 TR을 만들지 않고
+ * 거래등록이 이미 쓰는 어댑터(js/13 fetchKisBondInfoRaw · js/29 mapKisBondInfo ·
+ * mergeKisBondInfoIntoPosition)를 그대로 재사용한다.
+ *
+ * 사용자 입력 보호: 채우는 규칙은 mergeKisBondInfoIntoPosition이 그대로 담당한다 - 이미 입력한
+ * 값은 조회 결과로 덮어쓰지 않고, KIS가 모르는 항목(발행인명 · 선순위 · 발행금액 등)은 손대지 않는다.
+ * 조회에 실패해도 등록을 막지 않는다 - 아래 항목을 직접 입력하면 그대로 저장된다.
+ *
+ * opts.silent = true 이면 **실패했을 때만** 아무 말도 하지 않는다(성공하면 똑같이 채우고 알린다).
+ * 사용자가 [조회]를 눌렀을 때는 언제나 사유를 말한다 - 누른 사람에게는 결과를 알려야 한다. */
+async function lookupBondByIsin(opts) {
+  const quiet = !!(opts && opts.silent === true);
   const statusEl = bondEl('bondLookupStatus');
   const isin = String((bondEl('f_bondIsin') || {}).value || '').trim().toUpperCase();
-  if (!isin) { statusEl.textContent = '표준코드(ISIN)를 먼저 입력해 주세요.'; return; }
-  let key;
-  try { key = localStorage.getItem(BOND_API_KEY_STORAGE); } catch (e) { key = null; }
-  if (!key) {
-    statusEl.textContent = '공공데이터 인증키가 등록돼 있지 않아 조회할 수 없습니다(SOURCE_UNAVAILABLE). 아래 항목을 직접 입력해 주세요.';
+  if (!isin) { if (!quiet) statusEl.textContent = '표준코드(ISIN)를 먼저 입력해 주세요.'; return; }
+  if (typeof isBondIsin === 'function' && !isBondIsin(isin)) {
+    if (!quiet) statusEl.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
     return;
   }
-  statusEl.textContent = '조회 중...';
+  const btn = document.getElementById('bondLookupBtn');
+  if (btn && !quiet) { btn.disabled = true; btn.textContent = '조회 중'; }
+  if (!quiet) statusEl.textContent = '발행조건을 조회하는 중입니다...';
   try {
-    const url = `${BOND_API_BASE}?serviceKey=${encodeURIComponent(key)}&resultType=json&numOfRows=5&isinCd=${encodeURIComponent(isin)}`;
-    const res = await fetch(url);
-    if (!res.ok) { statusEl.textContent = `원천에 닿지 못했습니다(SOURCE_UNAVAILABLE · ${res.status}). 직접 입력해 주세요.`; return; }
-    const json = await res.json();
-    const items = (((json || {}).response || {}).body || {}).items;
-    const rows = items ? [].concat(items.item || []) : [];
-    const mapped = mapBondSourceResponse(rows, { retrievedAt: new Date().toISOString() });
-    if (mapped.status === BOND_SOURCE_STATUS.NOT_FOUND) { statusEl.textContent = '해당 표준코드를 원천에서 찾지 못했습니다(NOT_FOUND). 직접 입력해 주세요.'; return; }
-    if (mapped.status === BOND_SOURCE_STATUS.MULTIPLE_MATCH) { statusEl.textContent = `같은 코드로 ${mapped.candidates.length}건이 조회됐습니다(MULTIPLE_MATCH). 발행일 · 만기일을 직접 확인해 입력해 주세요.`; return; }
-    const merged = bondFormBase ? mergeBondSourceIntoPosition(bondFormBase, mapped.position) : mapped.position;
+    const raw = await fetchKisBondInfoRaw(isin);
+    if (!raw) {
+      if (!quiet) statusEl.textContent = '조회에 실패했습니다(네트워크 또는 조회 서버). 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+      return;
+    }
+    const mapped = mapKisBondInfo(raw, isin);
+    if (!mapped.position) {
+      if (!quiet) statusEl.textContent = `조회되지 않았습니다: ${mapped.reason || '해당 표준코드의 채권을 찾지 못했습니다.'} 아래 발행조건을 직접 넣어 주세요.`;
+      return;
+    }
+    // 사용자 명시값 > KIS 자동값. 병합 규칙은 거래등록과 같은 함수가 담당한다(규칙을 두 번 만들지 않는다).
+    const merged = bondFormBase ? mergeKisBondInfoIntoPosition(bondFormBase, mapped.position) : mapped.position;
     fillBondFormFromPosition(merged);
-    statusEl.textContent = mapped.status === BOND_SOURCE_STATUS.SOURCE_DATA_INCOMPLETE
-      ? `일부 항목이 원천에 없습니다(SOURCE_DATA_INCOMPLETE: ${mapped.missingFields.join(' · ')}). 나머지는 직접 채워 주세요.`
-      : '공식 발행조건을 불러왔습니다. 매입일 · 액면 · 매입금액은 조회로 바뀌지 않습니다.';
+    statusEl.textContent = '공식 발행조건을 불러왔습니다. 매입일 · 액면 · 매입금액은 조회로 바뀌지 않습니다.';
   } catch (e) {
-    statusEl.textContent = '조회에 실패했습니다(SOURCE_UNAVAILABLE). 직접 입력해 주세요.';
+    if (!quiet) statusEl.textContent = '조회 중 문제가 생겼습니다. 아래 발행조건을 직접 넣어 주세요 - 그대로 저장됩니다.';
+  } finally {
+    if (btn && !quiet) { btn.disabled = false; btn.textContent = '조회'; }
   }
 }
 
@@ -944,6 +987,9 @@ function openModal(mode, id) {
     // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다.
     document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml(a.role, '미지정');
     document.getElementById('f_role').value = a.role || '';
+    // [E-01 · E-02] 저장된 사용자 확정값을 그대로 보여 준다(없으면 "선택 안 함").
+    document.getElementById('f_marketBetaIndexOverride').value = a.marketBetaIndexOverride || '';
+    document.getElementById('f_fxHedgeStatus').value = a.fxHedgeStatus || '';
     fillBondFormFromPosition(findBondPositionByAssetId(a.id)); // [Bond V1] 연결된 채권 레코드가 있으면 채운다
   } else {
     document.getElementById('f_manualEntryToggleWrap').classList.remove('hidden');
@@ -954,6 +1000,9 @@ function openModal(mode, id) {
     document.getElementById('f_category').value = '주식';
     document.getElementById('f_role').innerHTML = assetRoleSelectOptionsHtml('', '미지정');
     document.getElementById('f_role').value = '';
+    // [E-01 · E-02] 신규 등록은 언제나 "선택 안 함"에서 시작한다 - 앱이 미리 골라 두지 않는다.
+    document.getElementById('f_marketBetaIndexOverride').value = '';
+    document.getElementById('f_fxHedgeStatus').value = '';
     fillBondFormFromPosition(null);
   }
   updatePriceUnitLabels();
@@ -974,13 +1023,27 @@ function updatePriceUnitLabels() {
 
 // 티커 또는 종목명을 입력하는 동안 자산군/국내해외/통화를 실시간으로 자동 추론해 반영한다("직접 입력"
 // 모드 전용 - 검색 모드에서는 이 두 필드가 readonly라 input 이벤트 자체가 발생하지 않는다).
+/* [v267] 공식 종목 마스터가 아는 사실을 먼저 쓰고, 모르는 것만 예전 이름 규칙으로 채운다.
+ * 거래 폼(js/06)이 이미 쓰고 있는 resolveInstrumentMetadata(§50 PD-01)를 그대로 부른다 -
+ * 두 폼이 같은 종목에 대해 서로 다른 답을 내지 않게 하기 위함이다.
+ * 사용자가 값을 직접 고른 뒤에는 이 함수가 다시 돌지 않는다(input 이벤트에만 연결돼 있고,
+ * 아래 자동 채움도 자동으로 채웠던 값만 덮는다 - markAutoFilled 참고). */
 function autoClassifyModal() {
   const ticker = document.getElementById('f_ticker').value;
   const name = document.getElementById('f_name').value;
-  const { category, isDomestic } = deriveDefaults(ticker, name);
+  const meta = (typeof resolveInstrumentMetadata === 'function')
+    ? resolveInstrumentMetadata({ ticker, name })
+    : null;
+  const fallback = deriveDefaults(ticker, name);
+  const category = (meta && meta.category) || fallback.category;
+  const isDomestic = (meta && meta.isDomestic) || fallback.isDomestic;
+  // 통화는 근거가 있을 때만 쓴다. 근거가 없으면 예전처럼 국내/해외에서 파생한다.
+  const currency = (meta && meta.currency === 'USD') || (meta && meta.currency === 'KRW')
+    ? meta.currency
+    : (isDomestic === '해외' ? 'USD' : 'KRW');
   document.getElementById('f_category').value = category;
   document.getElementById('f_isDomestic').value = isDomestic;
-  document.getElementById('f_currency').value = isDomestic === '해외' ? 'USD' : 'KRW';
+  document.getElementById('f_currency').value = currency;
   updatePriceUnitLabels();
   updateBondFieldsUI();
 }
@@ -1005,10 +1068,19 @@ async function applyStockPickToAssetForm(ticker, name) {
 
   const statusEl = document.getElementById('f_currentPriceStatus');
   statusEl.textContent = '(실시간 시세 조회 중...)';
+  /* [v267] 통화를 시세 조회 응답으로만 알아내던 것을 고친다 - 공식 종목 마스터에 호가 통화가
+   * 이미 있다(국내 상장은 예외 없이 KRW, 미국 상장은 마스터의 통화 필드). 시세 조회가
+   * 실패해도 통화는 확정된다. 마스터에 근거가 있으면 아래 시세 응답이 이 값을 덮지 않는다. */
+  const masterCcy = (typeof resolveInstrumentFacts === 'function') ? (resolveInstrumentFacts(ticker) || {}).currency : null;
+  if (masterCcy === 'KRW' || masterCcy === 'USD') {
+    document.getElementById('f_currency').value = masterCcy;
+    document.getElementById('f_isDomestic').value = masterCcy === 'USD' ? '해외' : '국내';
+    updatePriceUnitLabels();
+  }
   try {
     const result = await fetchPriceWithFallback(ticker, name);
     document.getElementById('f_currentPrice').value = result.price;
-    if (result.currency === 'KRW' || result.currency === 'USD') {
+    if (!masterCcy && (result.currency === 'KRW' || result.currency === 'USD')) {
       document.getElementById('f_currency').value = result.currency;
       document.getElementById('f_isDomestic').value = result.currency === 'USD' ? '해외' : '국내';
     }
@@ -1025,10 +1097,30 @@ document.getElementById('cancelModalBtn').addEventListener('click', () => closeM
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyWithDomestic);
 document.getElementById('f_currency').addEventListener('change', () => { updatePriceUnitLabels(); updateAssetAmountModeUI(); updateBondFieldsUI(); });
+// [E-01 · E-02] 고른 값에 따라 안내 문구가 바로 바뀌도록 두 칸 자신도 트리거에 넣는다.
+document.getElementById('f_marketBetaIndexOverride').addEventListener('change', updateRiskConfirmFieldsUI);
+document.getElementById('f_fxHedgeStatus').addEventListener('change', updateRiskConfirmFieldsUI);
 // [Bond Domain V1 · §47-7] 자산군을 채권으로 바꾸면 채권 칸이 펼쳐진다(다른 자산군에서는 보이지 않는다).
-document.getElementById('f_category').addEventListener('input', updateBondFieldsUI);
-document.getElementById('f_category').addEventListener('change', updateBondFieldsUI);
-document.getElementById('bondLookupBtn').addEventListener('click', lookupBondByIsin);
+document.getElementById('f_category').addEventListener('input', () => { updateBondFieldsUI(); updateRiskConfirmFieldsUI(); });
+document.getElementById('f_category').addEventListener('change', () => { updateBondFieldsUI(); updateRiskConfirmFieldsUI(); });
+document.getElementById('bondLookupBtn').addEventListener('click', () => lookupBondByIsin());
+/* [v267] ISIN 형식이 완성되면 버튼을 누르지 않아도 공식 발행조건을 불러온다.
+ * 조회 경로 · 결과 처리 · 실패 문구는 기존 lookupBondByIsin 그대로다(자동 실행 시점만 추가).
+ * 같은 ISIN을 반복 조회하지 않도록 마지막으로 조회한 값을 기억하고, 입력 도중에 매 글자마다
+ * 두드리지 않도록 잠깐 기다렸다가 한 번만 부른다. [조회] 버튼은 그대로 남는다(재조회용). */
+let bondAutoLookupTimer = null;
+let bondAutoLookupLastIsin = '';
+document.getElementById('f_bondIsin').addEventListener('input', (e) => {
+  const isin = String(e.target.value || '').trim().toUpperCase();
+  if (bondAutoLookupTimer) clearTimeout(bondAutoLookupTimer);
+  if (!isin || isin === bondAutoLookupLastIsin) return;
+  if (typeof isBondIsin !== 'function' || !isBondIsin(isin)) return; // 형식이 완성되기 전에는 부르지 않는다
+  bondAutoLookupTimer = setTimeout(() => {
+    bondAutoLookupLastIsin = isin;
+    // 사용자가 요청한 조회가 아니다 - 성공하면 채우고, 실패하면 조용히 넘어간다([조회] 버튼은 그대로).
+    lookupBondByIsin({ silent: true });
+  }, 500);
+});
 document.getElementById('f_ticker').addEventListener('input', autoClassifyModal);
 document.getElementById('f_name').addEventListener('input', autoClassifyModal);
 document.getElementById('f_manualEntryToggle').addEventListener('change', (e) => setAssetFormSearchMode(e.target.checked));
@@ -1099,7 +1191,11 @@ document.getElementById('assetForm').addEventListener('submit', (e) => {
     // 매입금액은 입력받지 않고 항상 수량×매수단가로 자동 산출된다 (calcRow 참고).
     currentPrice: currentPriceVal,
     // [자산별 역할(포지션) 분류] makeAsset()과 동일하게 parseAssetRoleInput으로 검증 - 미지정이면 undefined.
-    role: parseAssetRoleInput(document.getElementById('f_role').value)
+    role: parseAssetRoleInput(document.getElementById('f_role').value),
+    // [E-01 · E-02] makeAsset과 완전히 같은 정규화 함수를 쓴다 - "선택 안 함"은 undefined로 남아
+    // 자동 판별이 그대로 동작한다(빈 값을 특정 값으로 바꾸지 않는다).
+    marketBetaIndexOverride: sanitizeMarketBetaIndexOverride(document.getElementById('f_marketBetaIndexOverride').value),
+    fxHedgeStatus: sanitizeFxHedgeStatus(document.getElementById('f_fxHedgeStatus').value)
   };
 
   if (id) {

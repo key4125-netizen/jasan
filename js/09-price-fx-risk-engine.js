@@ -721,11 +721,17 @@ function resolveRiskBenchmark(a) {
     const key = RISK_BENCHMARK_BY_ETF_INDEX_LABEL[etf.label] || null;
     return key ? finalizeRiskBenchmark(yahoo, key, 'etfIndex', null) : unresolved('etfIndexNotAvailable');
   }
-  // ③ 개별 주식 - 국내 상장만 상장 시장 지수(D-06).
+  /* ③ 개별 주식 - 국내 상장만 상장 시장 지수(D-06).
+   * [v267 정합성] 예전에는 여기서 종목 마스터의 상장거래소만 보고 지수를 배정했다. 그래서 같은
+   * 종목에 대해 **Tracking Beta는 코스닥 기준으로 나오는데 Market Beta는 미확정**인 상태가 생겼다
+   * (실측: 140860.KQ · 005385.KS). 이제 두 경로가 같은 사실 계층(증권그룹 ST)을 본다 -
+   * 판정 근거가 하나이므로 두 값이 서로 다른 전제를 갖지 않는다. */
   if (a.category === '주식') {
     const rec = (typeof tickerMasterByTicker !== 'undefined' && tickerMasterByTicker) ? tickerMasterByTicker[yahoo] : null;
     if (!rec) return unresolved('noListingInfo');
     if (looksLikeFundName(`${a.name || ''} ${rec.nameKr || ''} ${rec.nameEn || ''}`)) return unresolved('fundLikeName');
+    const rtTrack = resolveRuntimeMarketExposure(a);
+    if (!rtTrack.exposure) return unresolved(rtTrack.reason || 'exposureUnconfirmed');
     const key = RISK_BENCHMARK_BY_LISTING_EXCHANGE[rec.exchange] || null;
     if (key) return finalizeRiskBenchmark(yahoo, key, 'listingExchange', null);
     return unresolved(RISK_US_LISTING_EXCHANGES.includes(rec.exchange) ? 'listingDomicileUnconfirmed' : 'exchangeIndexNotAvailable');
@@ -790,22 +796,114 @@ function riskListingMarketOf(yahoo) {
   if (/\.KQ$/.test(yahoo)) return 'KOSDAQ';
   return null;
 }
-/* [STEP 8 · STEP 13] 화면 표시용 노출 사실. 원장에 있는 값을 그대로 읽기만 한다 - 판정하지 않는다.
+/* =========================================================================
+ * [v267 · PC-1 · PC-2] 경제적 노출시장 runtime 판정.
+ *
+ * v266까지는 Exposure Master(58건)에 없으면 무조건 미확정이었다. 그 결과
+ * 코스닥 종목 전체 · 국내 우선주 · 원장 미등재 국내 주권 2,695건 · 미국 개별주 대부분이
+ * Market Beta를 받지 못했다. 정확해서가 아니라 **근거를 읽을 곳을 한 곳으로 묶어 두어서**다.
+ *
+ * 바뀐 것은 "어디까지를 근거로 인정하는가" 하나다(§51-3 개정).
+ *   ① Exposure Master            - 상품 구조 · 환헤지 · 혼합노출 · 사용자 override (그대로 최우선)
+ *   ② 공식 종목 마스터의 원천 사실 - KIS 증권그룹 · 상장거래소 · 거래소 증권클래스 (이번에 추가)
+ * 둘 다 EG 규칙이 A등급으로 정의한 1차 자료다. 여전히 **추정은 하지 않는다** -
+ * 티커 접미사 단독 · 상품명 · ISIN 국가코드는 근거가 아니며, 근거가 없으면 미확정이다.
+ *
+ * 왜 원장을 확대하지 않는가: marketExposure를 소비하는 곳은 js/09 두 군데뿐이고
+ * MC는 이 값을 읽지 않는다(MC는 assetClass 경로). runtime으로 공급하면 원장에 줄을
+ * 추가하지 않고도 같은 효과를 내면서 MC 계산이 구조적으로 영향받지 않는다.
+ *
+ * 반환: { exposure, source, reason } - exposure가 null이면 reason이 이유를 말한다.
+ * ====================================================================== */
+function resolveRuntimeMarketExposure(a) {
+  if (typeof resolveInstrumentFacts !== 'function') return { exposure: null, source: null, reason: 'factLayerUnavailable' };
+  const f = resolveInstrumentFacts(a && a.ticker);
+  if (!f.found) return { exposure: null, source: null, reason: 'notInInstrumentMaster' };
+
+  if (f.market === 'KR') {
+    /* 국내 상장 주권(ST)만 자동 판정한다. 보통주 · 우선주를 구분하지 않는다 -
+     * 우선주도 같은 발행인의 국내 상장 지분증권이라 노출 시장이 같다(§46 PM 결정 ④ 취지 복원).
+     * ETF(EF)는 공식 기초지수가 따로 있어 원장 소관이고, 리츠(RT) · 예탁증서(DR) ·
+     * 외국주권(FS)은 상장 시장과 경제적 노출이 다를 수 있어 자동 판정하지 않는다. */
+    /* 증권그룹이 아직 없는 마스터(갱신 전 · localStorage 캐시는 최대 20일 유지된다)에서는
+     * 예전 판정을 그대로 쓴다 - 자동화가 기존에 나오던 값을 없애면 안 된다.
+     * 이때는 ETF · 리츠를 주권과 가를 수 없으므로, 자산군이 '주식'으로 이미 확정된 경우에만
+     * 국내 상장 사실을 노출 근거로 인정한다(D-06 · P-4가 인정해 온 바로 그 경로). */
+    if (!f.securityGroup) {
+      if ((a && a.category) === '주식') return { exposure: 'KR', source: 'listingExchangeLegacy', reason: null };
+      return { exposure: null, source: null, reason: 'securityGroupUnknown' };
+    }
+    if (!Array.isArray(KR_AUTO_EXPOSURE_GROUPS) || !KR_AUTO_EXPOSURE_GROUPS.includes(f.securityGroup)) {
+      return { exposure: null, source: null, reason: krExposureReasonFor(f.securityGroup) };
+    }
+    return { exposure: 'KR', source: 'instrumentMasterKr', reason: null };
+  }
+
+  if (f.market === 'US') {
+    /* 미국 상장분은 단일 원천으로 판정할 수 없다 - KIS 예탁증서 필드와 거래소 증권클래스가
+     * 서로 다른 것을 놓친다(실측). resolveUsSecurityVerdict가 두 원천을 교차검증한 결과만 쓴다. */
+    if (f.usVerdict === 'HOME_COMMON') return { exposure: 'US', source: 'instrumentMasterUs', reason: null };
+    if (f.usVerdict === 'NOT_HOME_COMMON') return { exposure: null, source: null, reason: f.usReason || 'notHomeCommon' };
+    if (f.usVerdict === 'ETF') return { exposure: null, source: null, reason: 'etfNeedsOfficialIndex' };
+    /* 거래소 증권클래스가 아직 없는 마스터(갱신 전 · 캐시)에서는 교차검증 자체를 할 수 없다.
+     * 이때는 예전과 완전히 같은 상태이므로 **기존 사유 코드(listingDomicileUnconfirmed)** 를 그대로 쓴다 -
+     * 동작이 같은데 화면 문구만 바뀌는 일이 없게 한다. 새 사유는 새 근거가 있을 때만 나온다. */
+    if (!f.securityName) return { exposure: null, source: null, reason: 'listingDomicileUnconfirmed' };
+    return { exposure: null, source: null, reason: f.usReason || 'usListingClassUnconfirmed' };
+  }
+  return { exposure: null, source: null, reason: 'marketUnknown' };
+}
+/* 국내 증권그룹별 "왜 자동 판정하지 않았는가". 화면이 사용자 말로 옮길 수 있도록 코드로 남긴다. */
+function krExposureReasonFor(group) {
+  if (group === 'EF') return 'etfNeedsOfficialIndex';
+  if (group === 'RT') return 'reitExposureUnconfirmed';
+  if (group === 'DR') return 'depositaryReceipt';
+  if (group === 'FS') return 'foreignListedSecurity';
+  if (!group) return 'securityGroupUnknown';
+  return 'securityGroupNotAutoResolved';
+}
+
+/* [STEP 8 · STEP 13] 화면 표시용 노출 사실. 원장이 우선이고, 없으면 runtime 판정을 쓴다.
  * exposureStructure === 'MIXED'이면 그 상품은 한 가지 시장/자산으로 이루어져 있지 않다는 뜻이고,
  * 화면은 그 사실을 밝혀야 한다(472170 미국테크 50 + 국고채 50 · 237370 국내주식 30 + 국고채 70). */
 function riskExposureFactsOf(a) {
-  if (typeof lookupExposureRecord !== 'function' || typeof isExposureMasterActive !== 'function' || !isExposureMasterActive()) return { exposureMarket: null, exposureStructure: null };
-  const em = lookupExposureRecord(a);
-  const entry = em ? em.entry : null;
-  if (!entry) return { exposureMarket: null, exposureStructure: null };
-  return { exposureMarket: entry.marketExposure || null, exposureStructure: entry.exposureStructure || null };
+  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    const em = lookupExposureRecord(a);
+    const entry = em ? em.entry : null;
+    // 혼합 구조처럼 원장에만 있는 사실은 원장이 이긴다.
+    if (entry) return { exposureMarket: entry.marketExposure || null, exposureStructure: entry.exposureStructure || null };
+  }
+  /* [v267] 원장에 없으면 runtime 판정 결과를 그대로 보여 준다 - 베타는 계산됐는데
+   * 화면의 「경제적 노출」만 비어 있는 어긋남을 만들지 않기 위함이다. */
+  const rt = resolveRuntimeMarketExposure(a);
+  return { exposureMarket: rt.exposure, exposureStructure: null };
 }
+/* [E-01 · E-02] 사용자가 직접 확정한 사실만으로 만든 entry. 원장(Exposure Master)을 흉내 내거나
+ * 대체하지 않는다 - finalizeRiskBenchmark가 요구하는 세 가지(환헤지 · 상품 통화 · 환노출)만 담는다.
+ *   · 환헤지를 아직 고르지 않았으면 null을 돌려준다(추정 금지 - 비헤지로 간주하지 않는다).
+ *   · 상품 통화는 공식 종목 마스터의 사실(resolveInstrumentFacts, js/01)에서만 읽는다.
+ *   · fxExposure는 환헤지 여부에서 곧바로 따라오는 같은 사실의 다른 표현이다(새 판단이 아니다).
+ * 같은 시장 쌍(국내 주식 ↔ KOSPI 등)은 애초에 이 entry를 보지 않는다. */
+function userConfirmedRiskEntry(a) {
+  const hedge = (typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(a && a.fxHedgeStatus) : null;
+  if (!hedge) return null;
+  const facts = (typeof resolveInstrumentFacts === 'function') ? resolveInstrumentFacts(a && a.ticker) : null;
+  const priceCcy = (facts && facts.currency) || null;
+  return { hedgeStatus: hedge, priceCcy, fxExposure: hedge === 'UNHEDGED' ? 'EXPOSED' : 'HEDGED' };
+}
+
 function resolveMarketRiskBenchmark(a) {
   const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
   if (!yahoo) return unresolved('noTicker');
   // 주식 · ETF만 대상이다 - 채권 · 현금 · 부동산은 포트폴리오 베타에서 제외한다는 기존 정책 그대로(PD-15).
   if (!RISK_ELIGIBLE_CATEGORIES.includes(a && a.category)) return unresolved('notEquityLike');
+  /* [E-01 · §4-1 우선순위 1] 사용자가 직접 확인해 확정한 기준 지수가 무엇보다 먼저다.
+   * 자동 판정(원장 · 종목 마스터)은 이 값을 덮어쓰지 않는다 - 사용자가 지운 경우에만 자동으로 돌아간다.
+   * 고를 수 있는 값은 sanitizeMarketBetaIndexOverride(js/01)가 앱이 실제 지원하는 지수로 제한한다. */
+  const userIndexKey = (typeof sanitizeMarketBetaIndexOverride === 'function')
+    ? sanitizeMarketBetaIndexOverride(a && a.marketBetaIndexOverride) : null;
+  if (userIndexKey) return finalizeRiskBenchmark(yahoo, userIndexKey, 'userConfirmedIndex', userConfirmedRiskEntry(a));
   // [STEP 5] 경제적 노출시장은 승인된 원장에서만 읽는다. 없으면 여기서 끝난다(추정 금지).
   let entry = null;
   if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
@@ -813,7 +911,19 @@ function resolveMarketRiskBenchmark(a) {
     entry = em ? em.entry : null;
   }
   const exposure = entry ? (entry.marketExposure || null) : null;
-  if (!exposure) return unresolved('exposureUnconfirmed');
+  /* [v267 · PC-1] 원장에 없으면 여기서 끝내지 않는다. 공식 종목 마스터의 원천 사실로 이어간다.
+   * 새 베타 산식을 만드는 것이 아니다 - 아래 finalizeRiskBenchmark(기존 엔진 · 환헤지 게이트 ·
+   * 비동기 정렬 · 최소 관측 120)를 그대로 쓰고, 넘기는 지수 키를 정하는 근거만 넓혔다. */
+  if (!exposure) {
+    const rt = resolveRuntimeMarketExposure(a);
+    if (!rt.exposure) return unresolved(rt.reason || 'exposureUnconfirmed');
+    if (rt.exposure === 'US') return finalizeRiskBenchmark(yahoo, RISK_US_EXPOSURE_MARKET_INDEX, 'usExposureRuntime', null);
+    const rtExchange = riskListingMarketOf(yahoo);
+    if (!rtExchange) return unresolved('noListingInfo');
+    const rtKey = RISK_MARKET_INDEX_BY_LISTING_EXCHANGE[rtExchange] || null;
+    if (!rtKey) return unresolved(RISK_US_LISTING_EXCHANGES.includes(rtExchange) ? 'marketIndexNotAvailable' : 'exchangeIndexNotAvailable');
+    return finalizeRiskBenchmark(yahoo, rtKey, 'listingMarketRuntime', null);
+  }
   /* [D2-Q1 · PM 최종 승인 2026-09-22] 채권 자산군은 주식 시장지수 베타의 대상이 아니다.
    * 원장에 assetClass=BOND로 적힌 상품(미국 채권 ETF TLT · IEF 등)은 미국 경제적 노출이더라도
    * S&P500 Market Beta를 부여하지 않는다 - 채권 위험은 별도 영역(Duration · ±100bp)에서 다루고,

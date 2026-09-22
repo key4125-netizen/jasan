@@ -2558,7 +2558,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | **IM-2** 원천 없음 | 정해진 지수의 가격 원천이 없으면 Benchmark를 "계산 가능"으로 처리하지 않는다. **[2차 통합 보완 · 세 상태 분리]** Benchmark 확인(RESOLVED) ≠ 지수 가격 원천(`priceSource: UNAVAILABLE`) ≠ 베타(null · `SOURCE_UNAVAILABLE`) - 세 상태를 하나로 합치지 않는다(1차의 `UNRESOLVED(indexSourceUnavailable)` 표기를 대체). 원천 없는 지수는 조회하지 않고, 다른 정의 · 비슷한 지수로 대신하지 않는다 | js/09 `finalizeRiskBenchmark` · 종목 `benchmarkPriceSource` |
 | **D-01** 지수 가격 · PR/TR | ① 지수 수준을 통계 가격으로 인정(§44 제8조 8-1 단서) ② 공식 기초지수와 같은 수익 정의 우선 ③ 다른 정의를 쓰게 되면 `DEFINITION_MISMATCH` 보존 ④ 278530 목표 = 코스피 200 TR(현재 원천 없음 → UNRESOLVED) ⑤ KIS 2035 등 KIS 지수 API는 약관 확인 전 연결 · 호출하지 않는다 | js/09 지수 시계열은 `datedClosesFromSeries(data, 'raw')`(수준값). 원장 `underlyingReturnType`(공식 확인분만) ↔ Index Master `returnType` 비교(`resolveBenchmarkDefinitionStatus` - MATCH / DEFINITION_MISMATCH / UNCONFIRMED). 현재 원장에 불일치 항목 없음 |
 | **D-05** 비동기 쌍 | 같은 날짜 정렬 금지. 일반 엔진(Dimson 시차 0 + 1) · 원화 상품이면 H.10 원화 환산 지수. 공식 A등급 환헤지 사실이 있는 상품만 연결(비헤지 A: 360750 · 458730). 환헤지 A등급 미확인(368590 · 360200)은 HOLD. 특정 상품 하드코딩 없음 · 최소 관측 120 · 1년 조회 유지 | js/09 `riskSeriesMarketOf` · `RISK_MARKET_CLOSE_ORDER`(같은 날짜면 한국이 먼저 마감) · `buildAsyncDimsonRows` · `computeAsyncDimsonBeta`(절편 + 두 설명변수 최소제곱 · 기울기 합). 판정은 "종목 시계열 시장 ≠ 지수 시장"이라는 성질로만 한다. 458730은 기초지수 원천이 없어(IM-1) 현재 UNRESOLVED |
-| **D-06** 개별주 | §44 제10조 갱신 문구 그대로. 종목 마스터에 설립국 · ADR 필드가 없으므로 미국 상장주를 "본국 보통주"로 추정하지 않는다 | js/09 `RISK_BENCHMARK_BY_LISTING_EXCHANGE = { KOSPI, KOSDAQ }`. 원장에 없는 NASDAQ · NYSE · AMEX 상장 주식 → `listingDomicileUnconfirmed`. **[2차 통합 보완 · PM 결정 ③]** 원장의 해외 개별주는 `equityListing`(HOME_COMMON · ADR · 근거 등급 A만 기록 가능)이 HOME_COMMON일 때만 원장 Benchmark를 쓴다. 원장 미국 개별주 20건은 근거가 거래소 상장뿐이라 전부 UNRESOLVED(v261에서 NASDAQ이던 11건 포함 · 자산군 US_EQUITY는 그대로). ADR → `adrListing`. **PM 결정 ④** 국내 우선주는 종목유형 Master를 추가하지 않고 국내 상장시장 지수 정책을 유지 |
+| **D-06** 개별주 | §44 제10조 갱신 문구 그대로. 종목 마스터에 설립국 · ADR 필드가 없으므로 미국 상장주를 "본국 보통주"로 추정하지 않는다 | js/09 `RISK_BENCHMARK_BY_LISTING_EXCHANGE = { KOSPI, KOSDAQ }`. 원장에 없는 NASDAQ · NYSE · AMEX 상장 주식 → `listingDomicileUnconfirmed`. **[2차 통합 보완 · PM 결정 ③]** 원장의 해외 개별주는 `equityListing`(HOME_COMMON · ADR · 근거 등급 A만 기록 가능)이 HOME_COMMON일 때만 원장 Benchmark를 쓴다. 원장 미국 개별주 20건은 근거가 거래소 상장뿐이라 전부 UNRESOLVED(v261에서 NASDAQ이던 11건 포함 · 자산군 US_EQUITY는 그대로). ADR → `adrListing`. **PM 결정 ④** 국내 우선주는 종목유형 Master를 추가하지 않고 국내 상장시장 지수 정책을 유지. **[v267 정정 · §53-2]** D-2(§51) 도입으로 원장 조회가 상장시장 판정보다 앞서면서 이 결정이 실질적으로 무효화돼 있었다(원장 미등재 우선주 → 미확정). §53-2로 **원래 취지가 복원**됐다 — 우선주도 증권그룹이 ST(주권)이므로 보통주와 같은 상장시장 지수를 받는다. 종목유형 Master를 새로 만들지 않는다는 원칙도 그대로다(기존 KIS 종목마스터 필드를 읽을 뿐이다) |
 | **D-16** MC 자산군 | 원장 → 자산 성격 / MC 자산군 시행. 원장 → 자동 Return Key 금지. 불변: v261 원장 49건의 자산군 · MC 입력 · 같은 seed MC 결과 | js/05 `resolveAssetCharacter(asset, options)` 1-1단계(사용자 확정 자산군 · 이름 혼합 표시 다음, 공유표보다 먼저). Return Key 계층 3곳(`resolveRateKeyFromAssetCharacter` · `recommendReturnAssumptionKey` · `assessReturnAssumptionStatus`)은 `{ exposureMaster: false }`. `CHARACTER_SOURCES_FOR_AUTO_RATE_KEY`에 원장 없음. js/16 `resolveMcAppAssetClass`가 원장 성격을 신뢰 근거로 인정(basis `exposureMaster`). 신규 원장 항목의 MC 영향은 별도 판단 대상이다(사용자 정의 수익률 키를 쓴 경우의 자산군만 바뀔 수 있음). **[PM 결정 ① · 2026-09-19]** 신규 원장 항목이 MC 자산군에 연결돼 실제 MC 계산이 바뀌는 것(특히 사용자 정의 Return Key가 있는 신규 자산의 MC가 실행 가능해지는 것)을 허용한다 - EXPECTED CHANGE로 명시하고, v261 원장 49건의 MC 결과 불변 · 자동 Return Key 금지는 유지한다 |
 | **EG** Evidence Grade | A = 공식 1차 자료(운용사 상품정보 · 투자설명서 · 규제기관 공시 · 지수산출기관 · 거래소/KIS 종목마스터) · B = 공식 자료의 2차 요약(기록만 · 자동 연결 근거 아님) · C = 확인 불가/추정(원장 값으로 넣지 않음). 자동 연결(Benchmark · 환헤지)은 A만 | js/28 `EM_EVIDENCE_GRADE` · `evidenceGrade` 필드(EM-2026.2부터). A가 아닌데 Benchmark · 환헤지를 적으면 BLOCKED. 기존 49건(EM-2026.1)은 저장소 안 근거만 쓰며 소급 등급 부여 없음 |
 | **MX** 혼합 노출 | 주식 + 채권 혼합 상품(237370 · 472170)은 단일 Benchmark · 단일 자산군으로 강제하지 않는다 - UNRESOLVED(`MIXED_EXPOSURE`). 1:N 노출 구조는 이번 범위 밖 | js/28 `exposureStructure: 'MIXED'` → 검증 결과 UNRESOLVED · `mixedExposure`. Risk `mixedExposure` · 성격 `exposureMasterMixed` |
@@ -3515,7 +3515,11 @@ js/09 `resolveMarketRiskBenchmark(a)` — 순서: 티커 → 주식·ETF 카테�
 최소 관측 120은 전부 기존 승인 경로(`finalizeRiskBenchmark` · §44 44-15 · D-05)를 그대로 쓴다.
 바뀐 것은 그 경로에 **어떤 지수 키를 넘기는가** 하나뿐이다.
 
-### 51-3. 원장 미등재 종목 — 산출하지 않는다 (STEP 5 · GAP-1)
+### 51-3. ~~원장 미등재 종목 — 산출하지 않는다~~ → **§53-2로 개정(2026-09-22 · v267)** (STEP 5 · GAP-1)
+
+> **개정 요지**: 근거로 인정하는 원천이 "Exposure Master 하나"에서 "**승인된 A등급 사실원천**"으로
+> 넓어졌다. **추정 금지 원칙 자체는 그대로다** — 티커 접미사 단독 · 상품명 · 거래소 단독은 여전히
+> 근거가 아니다. 아래 원문은 개정 전 기록으로 보존한다.
 
 승인된 Exposure 근거(`marketExposure`)가 없으면 Market Beta를 **자동 산출하지 않는다**(UNRESOLVED ·
 사유 `exposureUnconfirmed`). 다음을 근거로 쓰지 않는다: `.KS`/`.KQ` 접미사 · 거래소 · ISIN 국가코드 ·
@@ -3714,6 +3718,9 @@ Portfolio Beta 공식 · Stress 상수.
 ### 52-2. D2-Q2 — KOSDAQ은 원장을 확대하지 않는다
 
 **결정**: 승인된 Exposure 근거가 없으면 Market Beta는 UNRESOLVED로 둔다. 원장을 대량 생성하지 않는다.
+**[v267 단서 · §53-2]** "원장 대량 생성 금지"는 **그대로 유지**된다(원장은 여전히 58건이다).
+KOSDAQ 커버리지는 원장 확대가 아니라 **§51-3의 근거 원천 확장**으로 해결했다 — 실행 시점에
+공식 종목 마스터의 증권그룹구분을 읽어 판정하고, 원장에는 한 줄도 쓰지 않는다.
 **확인 결과**(코드 변경 없음): 종목 마스터의 KOSDAQ 종목 1,822건, Exposure Master의 KOSDAQ 항목 **0건**.
 실제 코스닥 종목을 넣으면 Market Beta는 `exposureUnconfirmed`로 미확정이고, 화면은
 "비교할 기준 지수가 확정되지 않았습니다"로 표시한다. D-2의 KOSDAQ 분기 자체는 유지한다
@@ -3892,3 +3899,438 @@ Portfolio/Market/Tracking Beta · Bond Risk · 위험 감지 건수 · 경고 �
 **갱신한 테스트**(계약을 없애지 않고 확인 지점만 이동)
 e2e/72 A-1 · B · G · E/F(→ ⓘ 팝업에서 검사) · e2e/101 D · e2e/107 D · e2e/79 E ·
 e2e/111 "11" · test/wording-review.test.js §46 TXT-46-2.
+
+---
+
+## 53. 통합 자동화 — 앱이 아는 사실은 다시 묻지 않는다 (PM FINAL AUTOMATION IMPLEMENTATION 2026-09-22 · v267)
+
+> 기준: [FINAL READ-ONLY 2차 자동화 조사] 결과. 이번 작업은 **데이터 판정의 자동화**이며
+> 계산 모델(Risk Score 산식 · Beta 산식 · MC 엔진/seed/분포/상관 · Return Key μ · CMA · Bond Risk)은
+> 한 줄도 바꾸지 않았다. 회귀로 확인했다 — Risk 하네스 전 지표가 v266 승인 baseline과 완전히 같고,
+> MC는 두 시나리오 모두 p10/p50/p90/평균 변화 0.00% · μ 지문 동일 · σ 변경 0건이다.
+
+### 53-1. 원칙
+
+| 상황 | 처리 |
+| --- | --- |
+| 사용자가 확정한 값 | **보호** — 공식 원천이 달라도 자동으로 덮지 않고 충돌로 알린다 |
+| 공식 원천 + 결정론적 규칙으로 판단 가능 | **AUTO** — 다시 묻지 않는다 |
+| 출처끼리 어긋남 · 근거 없음 | **REVIEW / UNRESOLVED** — 사유를 구체적으로 말한다 |
+| 실제 거래 사실(수량 · 체결가 · 거래일) | **사용자 입력** — 만들어내지 않는다 |
+| 투자 전략(목표비중 · 적립금 · 역할 · 수익률 확정) | **사용자 결정** — 대신하지 않는다 |
+
+우선순위: `USER CONFIRMED > OFFICIAL FACT > MASTER > DETERMINISTIC RESOLVER > FALLBACK > REVIEW`
+
+### 53-2. 승인된 A등급 사실원천 (§51-3 개정 · PC-1 · PC-2)
+
+경제적 노출시장의 근거로 인정하는 원천을 다음 셋으로 확정한다. 전부 EG 규칙이 이미 A등급으로
+정의한 1차 자료다(새 등급을 만들지 않았다).
+
+1. **Exposure Master** — 상품 구조 · 공식 기초지수 · 환헤지 · 혼합노출 · 사용자 override (최우선)
+2. **KIS 공식 종목마스터의 증권그룹구분** — 국내 상장 증권의 종류
+3. **거래소 공식 종목 디렉터리** — 미국 상장 증권의 ETF 플래그 · 증권 클래스
+
+**여전히 근거가 아닌 것**: 티커 접미사 단독 · 상장 거래소 단독 · ISIN 국가코드 · 티커 문자열 ·
+상품명("미국"이 들어갔다는 사실). 근거가 없으면 미확정이다.
+
+**원장은 확대하지 않는다.** 판정은 실행 시점(runtime)에 한다 — `marketExposure`를 소비하는 곳은
+js/09 두 곳뿐이고 MC는 이 값을 읽지 않으므로(MC는 `assetClass` 경로), 원장에 줄을 추가하지 않으면
+MC가 **구조적으로** 영향받지 않는다. 원장은 예외 · 상품구조 · 사용자 지정 담당으로 남는다.
+
+| 구현 | 위치 |
+| --- | --- |
+| `resolveInstrumentFacts(ticker)` · `resolveUsSecurityVerdict(rec)` · `categoryFromInstrumentFacts(ticker)` | js/01 |
+| `KR_SECURITY_GROUP_CATEGORY` · `KR_AUTO_EXPOSURE_GROUPS` · `EXCHANGE_TO_MARKET` | js/01 |
+| `resolveRuntimeMarketExposure(a)` · `krExposureReasonFor(group)` | js/09 |
+| 종목 마스터 필드 확장(`securityGroup` · `securityType` · `currency` · `drFlag` · `drCountry` · `isEtf` · `securityName`) | scripts/update-ticker-master.js (schemaVersion 2) |
+
+### 53-3. 국내 판정 규칙 (PC-3 · PC-4)
+
+증권그룹구분 실측 분포(2026-09-22) — KOSPI: ST 892 · EF 1,176 · RT 23 · DR 1 · FS 1 · MF/IF/PF 5 /
+KOSDAQ: ST 1,803 · FS 11 · DR 9. 합계 **ST 2,695건**.
+
+| 증권그룹 | 자산군 | Market Exposure | 사유 코드 |
+| --- | --- | --- | --- |
+| **ST** 주권(보통주 · **우선주**) | 주식 | **KR → 상장시장 지수(KOSPI/KOSDAQ)** | — |
+| **EF** ETF | ETF | 미확정 | `etfNeedsOfficialIndex` |
+| **RT** 부동산투자회사 | **주식** | 미확정 | `reitExposureUnconfirmed` |
+| **DR** 주식예탁증서 | 주식 | 미확정 | `depositaryReceipt` |
+| **FS** 외국주권 | 주식 | 미확정 | `foreignListedSecurity` |
+| MF · IF · PF | (이름 규칙) | 미확정 | `securityGroupNotAutoResolved` |
+
+**RT를 '부동산'으로 두지 않는 이유**: 상장 리츠는 매일 호가가 서는 거래 종목인데 '부동산'은
+`NON_TRADABLE_CATEGORIES`라 시세 조회 대상에서 빠진다 — 평가금액이 멈춘다. 실물 부동산과 상장
+리츠는 다른 자산이므로 '주식'(거래되는 지분증권)으로 둔다. **PM 지시의 "RT → 부동산형" 문구에서
+벗어난 유일한 항목이며, 그 사유는 데이터 손실 방지다.**
+
+### 53-4. 미국 판정 규칙 — 교차검증 (PC-3 · HOME_COMMON_RULE_V2)
+
+단일 원천으로는 판정할 수 없다는 것이 실측 결론이다.
+· KIS DR 필드만 쓰면 알려진 ADR 20건 중 8건만 잡힌다(ASML · JD · BABA가 'N')
+· 거래소 증권클래스만 쓰면 BP · TM · RIO · BBVA · MUFG 등이 'Common Stock'으로 적혀 통과한다
+두 원천의 **놓치는 지점이 다르므로** 배제 신호를 합집합으로 쓴다.
+
+판정 순서 — ① ETF 플래그/증권유형 3 → ETF ② 예탁증서 신호(DR 필드 Y · 한글명 (ADR)/(ADS) ·
+영문명 ADR/ADS/SPON/DEPOSITARY/NY REGISTRY) → 배제 ③ 비보통주 클래스(Ordinary Shares ·
+American Depositary Shares · Subordinate Voting · Closed End Fund · Preferred · Warrant · Unit · Right)
+→ 배제 ④ 외국 법인격 표기(N.V. · PLC · S.A. · A/S · Ltd · Limited 등) → 배제
+⑤ 거래소가 "Common Stock"으로 표기 → **HOME_COMMON(S&P500)** ⑥ 그 외 → REVIEW
+
+실측 정확도: 알려진 ADR **20/20 배제** · 미국 본국주 30건 중 **28건 자동확정**(V · T는 거래소가
+증권 클래스를 적지 않아 REVIEW) · 외국 직상장 11건 중 9건 배제.
+전체 13,805 심볼 → ETF 6,104 · 배제 1,838 · **자동확정 3,875** · REVIEW 968(7.0%).
+
+**남는 한계(정직하게 기록)**: Royal Caribbean Cruises Ltd처럼 외국 설립이면서 거래소가
+"Common Stock"으로 표기하는 종목은 이 규칙으로 걸러지지 않는다. SEC EDGAR(10-K vs 20-F ·
+stateOfIncorporation)만이 확정할 수 있는데 이번 조사에서 접근 검증에 실패했다(HTTP 403 ·
+연락처 User-Agent 필요). **SEC를 필수 의존성으로 만들지 않았다** — 검증된 원천만으로 가능한
+범위까지만 자동화했다. 도입 여부는 PM 결정 사항으로 남긴다(§53-10).
+
+### 53-5. 자산군 자동 판정 (PC-5)
+
+`classifyCategory(ticker, name)`에 원천 사실 계층을 끼웠다. 순서는 **ISIN(채권) → 원천 사실 →
+기존 이름 규칙**이다. 마스터에 없으면 예전 규칙이 그대로 돌아간다(후퇴 없음).
+
+왜 필요했나: 코스피 상장 2,098건 중 **1,176건(56%)이 ETF**인데, 이름에 브랜드 문자열
+(TIGER · KODEX 등)이 없으면 '주식'으로 떨어졌다. 추측이 필요 없는 자리였다.
+
+**기존 저장 데이터를 일괄 변환하지 않는다.** 런타임 판정만 바꿨고, 사용자가 확정한 자산군
+(`categorySource === 'user'`)은 호출부가 먼저 가로채므로 이 함수까지 오지 않는다.
+
+### 53-6. 두 베타 경로 정합성
+
+v266에는 같은 종목에 대해 **Market Beta는 미확정인데 Tracking Beta는 상장시장 지수로 계산되는**
+불일치가 있었다(실측: 140860.KQ · 005385.KS). `resolveRiskBenchmark` 분기 ③이 종목 마스터의
+상장거래소만 보고 지수를 배정하고 있었기 때문이다. 이제 두 경로가 같은 사실 계층을 본다.
+
+### 53-7. 통화 자동 확정
+
+우선순위: 채권 원장 · 저장된 자산(확정) → Exposure Master `priceCcy` → **공식 종목마스터 통화(신규)**
+→ 식별자 힌트 → 호출부 입력. 근거끼리 어긋나면 덮지 않고 `conflicts`로 알린다(PD-03 그대로).
+
+**혼동 금지**: 거래통화 · `priceCcy`(가격계열 통화) · `underlyingCcy`(기초자산 통화) · 환산통화는
+서로 다른 축이다. 국내 상장 해외 ETF는 `priceCcy = KRW`이고 기초자산은 USD다 — 하나를 다른
+것으로 적용하면 환율이 이중 적용된다. 이번 변경은 **거래통화와 priceCcy 축만** 다룬다.
+
+### 53-8. 나머지 자동화
+
+| 항목 | 내용 | 위치 |
+| --- | --- | --- |
+| 자산 등록 폼 | 거래 폼과 같은 판정기(`resolveInstrumentMetadata`)를 쓴다. 예전에는 이 폼만 이름 키워드에 기댔다 | js/07 `autoClassifyModal` |
+| 통화 확정 시점 | 시세 조회 응답이 아니라 공식 마스터에서 먼저 정한다(조회 실패해도 통화는 확정된다) | js/07 `applyStockPickToAssetForm` |
+| 채권 자동 조회 | ISIN 형식이 완성되면 [조회] 없이 공식 발행조건을 불러온다(조회 경로 · 결과 처리 무변경) | js/07 `f_bondIsin` input |
+| 거래일 기본값 | 주말이면 직전 영업일(공휴일은 모른다 — 사용자가 고친다) | js/01 `defaultTradeDateStr` |
+| 거래유형 기본값 | 보유가 0이면 매수. 사용자가 직접 고르면 그 뒤로 덮지 않는다 | js/06 `applyDefaultTransactionType` |
+| 중복 거래 탐지 | 날짜 · 종목 · 소유자 · 계좌 · 유형 · 수량 · 단가가 같으면 저장 전에 확인(막지는 않는다) | js/06 |
+| Risk 자동 진단 | 베타 미산출 사유 24종을 종목마다 사용자 말로 표시 | js/10 `BETA_UNRESOLVED_SOURCE_TEXT` |
+| MC 사전 표시 | BLOCK이 아닌 주의사항도 **실행 전에** 보여 준다(결과를 본 뒤가 아니라) | js/19 |
+| Excel 사전검증 | 적용 전에 이상한 행을 세어 확인 화면에 요약(가져오기 규칙 무변경) | js/12 `buildExcelImportPreflight` |
+| 백업 무결성 | sha256 체크섬 + schemaVersion. 표식 없는 옛 백업은 예전처럼 복원된다 | js/12 `computeBackupChecksum` |
+
+### 53-9. 동기화 — 진짜 충돌만 묻는다 (PC-6)
+
+v266까지는 "의미 있는 차이"가 하나라도 있으면 무조건 방향 선택을 요구했다. 다른 기기에서 거래
+하나를 추가한 정상 상황까지 매번 물었다. 이제 **손실이 생길 수 있는 경우만** 멈춘다.
+
+| 차이 | 판정 | 근거 |
+| --- | --- | --- |
+| 로컬에만 있고 직전 동기화에 없던 항목 | **자동 병합** | 이 기기가 새로 만든 것 — 병합해도 남는다 |
+| 원격에만 있는 항목 | **자동 병합** | 추가되거나, 이 기기가 지운 상태가 유지된다 |
+| 로컬에만 있고 직전 동기화에 있던 항목 | **REVIEW** | 원격이 지웠다는 뜻 — 병합하면 사라진다 |
+| 이 기기가 지운 항목을 저쪽이 갖고 있음 | **REVIEW** | 삭제 vs 수정 — 병합하면 저쪽 수정이 사라진다 |
+| 같은 항목의 값이 다름 | **REVIEW** | 최종수정 우선으로 한쪽이 덮인다 |
+| 목표비중 · 미래예측 설정 변경 | **REVIEW** | 통째로 덮어쓴다 |
+
+구현: js/12 `syncDifferenceNeedsReview(diff)` — 기존 `mergeCollectionById` · `lastSyncedIds` 기준선을
+그대로 재사용한다.
+
+**[범위 축소 · 구현 중 확인]** PM 지시 §21은 "같은 ID인데 **한쪽만** lastSynced 이후 변경 → 자동 병합"도
+요구했으나 **구현하지 않았다.** 지금 앱이 가진 메타데이터로는 그것을 안전하게 가릴 수 없기 때문이다 —
+레코드마다 `updatedAt`이 있고 기기마다 마지막 동기화 시각이 **하나** 있을 뿐이라,
+"내 변경은 이미 올렸다(`updatedAt < lastSyncedAt`)"와 "클라우드 값이 내 상태의 후속이다"를 구분하지 못한다.
+실제 손실 경로를 회귀 테스트가 잡았다(e2e/89 S-04) — 휴대폰이 수량 120으로 고쳐 올린 뒤 PC가
+[이 기기 데이터 올리기]로 100을 덮어쓰면, 휴대폰에서는 자기 변경이 "이미 동기화된 것"으로 보여
+자동 병합 대상이 되고 **120이 조용히 사라진다.**
+안전하게 하려면 레코드별 "마지막으로 동기화된 값"(해시 또는 버전 벡터)이 필요한데 이는 저장 구조 변경이다.
+**§53-10의 PM 결정 대기 항목으로 남긴다.** 값이 다르면 지금은 무조건 확인받는다.
+
+### 53-10. 하지 않은 것 · PM 결정이 남은 것
+
+| 항목 | 상태 | 사유 |
+| --- | --- | --- |
+| Return Key 자동 확정 | **하지 않음** | D-16 유지. 추천만 자동, 적용은 사용자. μ 불변 |
+| CMA ACTIVE 자동 승격 | **하지 않음** | 모델 입력 변경 — PM 승인 유지 |
+| SEC EDGAR 연결 | **하지 않음** | **차단 사유 정정(실측 2026-09-22)**: 403의 본문은 "Request Rate Threshold Exceeded"로, User-Agent 연락처 문제가 아니라 **이 개발 PC 네트워크의 IP 차단**이다. UA를 네 가지로 바꿔도 모두 403이고 `data.sec.gov`도 같다. SEC 자료 자체는 **무료 · 공개 · 인증 불필요**이므로, GitHub Actions나 다른 네트워크에서는 접근될 가능성이 높다 — **환경 문제이지 데이터 확보 문제가 아니다** |
+| 채권 API 프록시화 | **하지 않음** | 데이터 확보는 문제없다(앱이 이미 사용자 키로 받아오고 있다). 막고 있는 것은 **공공누리 제2유형(상업적 이용금지) 해석** 하나뿐이다 |
+| ETF 기초지수 · 환헤지 자동 수집 | **하지 않음** | **원천 존재 확인(실측 2026-09-22)**: 공공데이터포털 금융위 `GetSecuritiesProductInfoService/getETFPriceInfo`가 키 미등록 오류(403 SERVICE_KEY_IS_NOT_REGISTERED_ERROR)를 돌려준다 — **서비스가 실재한다**. `GetKrxListedInfoService`(상장종목정보)도 같다. OpenDART도 응답한다("등록되지 않은 인증키"). 남은 것은 **해당 서비스 활용신청 + 실제 응답 스키마 확인**이지 원천 부재가 아니다. KRX 직접 조회(data.krx.co.kr)는 세션을 요구해 "LOGOUT"만 반환하므로 쓰지 않는다 |
+| 미국 외 해외시장 | **하지 않음** | **원천 존재 확인(실측 2026-09-22)**: KIS가 도쿄 · 홍콩 · 상해 · 심천 · 하노이 · 호치민 종목마스터를 모두 인증 없이 제공한다(전부 HTTP 200). 막는 것은 데이터가 아니라 **앱의 계산 코어가 KRW/USD 두 통화만 전제**한다는 점이다 — 통화 확장은 별도 프로젝트 |
+| 동기화 "한쪽만 변경" 자동 병합 | **하지 않음** | 현재 메타데이터로 안전 판정 불가(§53-9). 레코드별 동기화 값 해시가 선행돼야 한다 — **PM 결정 필요** |
+| 기존 저장 데이터 일괄 변환 | **하지 않음** | 런타임 판정만 바꿨다 |
+
+### 53-11. 계산 영향
+
+| 지표 | 영향 | 성격 |
+| --- | --- | --- |
+| Market Beta · Portfolio Beta · Risk Score · Stress | **산출 대상 확대** | EXISTING MODEL INPUT CORRECTION — 그동안 근거가 없어 비워 두던 입력이 공식 근거로 채워진 것. 산식 무변경 |
+| Volatility · VaR · CVaR · MDD · Correlation | **변화 없음** | 가격 수익률 기반 · benchmark 무관 |
+| MC · Return Key · CMA · Bond Risk | **변화 없음** | 실측 확인(전 지표 0.00% · μ 지문 동일) |
+| Portfolio Value · P&L | **변화 가능** | 자산군 판정이 정확해지면 시세조회 대상이 달라질 수 있다. 사용자 확정값은 보호되고 저장값은 변환하지 않는다 |
+
+**모델 변경이 아니다.** 새 베타 산식 · 새 Risk Score · 새 MC 분포를 만들지 않았다.
+`RISK_MARKET_INDEX_BY_LISTING_EXCHANGE` · `RISK_US_EXPOSURE_MARKET_INDEX` ·
+`RISK_ELIGIBLE_CATEGORIES` · `NON_TRADABLE_CATEGORIES` · `MIN_COMMON_RISK_RETURNS`는
+전부 그대로이며 테스트가 고정하고 있다(test/v267-automation.test.js I · I-2).
+
+### 53-12. 테스트
+
+신규 — test/v267-automation.test.js(21) · e2e/115-v267-automation.spec.js(16).
+갱신 — test/d2-market-beta-policy.test.js STEP 5(§51-3 개정 반영) ·
+test/risk-engine.test.js Edge 섹터(신뢰도 57 → 72, D-2 이전 값 복귀).
+
+---
+
+## §54. 통합 개선 배치 — ETF 사용자 확인 · 연도별 추가 투자 · 채권 KIS 통합 (PM 지시 2026-09-22)
+
+PM 지시문 [통합 개선 배치 — 최종 상세 구현 지시문](2026-09-22)의 확정 사항을 정책으로 등록한다.
+범위는 E-01 · E-02 · E-03 · E-04 · B-01 · MC-01 · UX-01 일곱 항목뿐이며, 그 밖의 확장은 없다.
+
+### 54-1. ETF Market Beta — 자동 우선 · 미확인은 사용자 확인 (E-01)
+
+우선순위는 다음 순서로 고정한다.
+
+1. **사용자 확정값**(`asset.marketBetaIndexOverride`) — 자동 판정이 덮어쓰지 않는다.
+2. Exposure Master(승인된 원장 · A등급)
+3. 공식 종목 마스터의 원천 사실(§53 v267 사실 계층)
+4. 위 어느 것으로도 확인되지 않으면 **UNRESOLVED** — 화면에서 사용자에게 확인을 요청한다.
+
+사용자가 고를 수 있는 값은 **앱이 실제로 Market Beta 기준으로 지원하는 지수**로 제한한다
+(`USER_MARKET_BETA_INDEX_CHOICES` = KOSPI · KOSDAQ · SP500 · js/01). 목록 밖 값은 저장하지 않고
+자동 판정으로 되돌린다 — 지원하지 않는 지수를 저장하면 "확인했는데도 계산되지 않는" 상태가 된다.
+
+**금지**: 상품명에 "미국"/"코스피"가 있다는 이유, 미국 거래소 상장이라는 이유, 유사 ETF가 그렇다는
+이유, ticker 문자열만으로 Market Beta를 확정하지 않는다.
+
+사용자 확정값은 기존 게이트를 우회하지 않는다. 비동기 쌍(국내 상장 미국 ETF ↔ S&P500)은 D-05
+환헤지 게이트를 그대로 지나며, 환헤지가 미선택이면 예전처럼 `hedgeUnconfirmed`로 막힌다.
+
+**확인 자리는 두 곳이다.** 자산 입력 폼(신규 등록 · 수정)과 **자산 상세 팝업**이다.
+후자가 반드시 필요하다 — 자산 입력 폼의 [수정] 진입점은 거래내역으로 관리되는 자산에서 숨겨지는데
+(js/08 `tracked` 판정 · 거래가 SoT이므로 이 화면에서 못 고치게 하는 기존 정책), 정작 기준 지수와
+환헤지를 확인해 줘야 하는 대상이 바로 그 자산들(이미 보유 중인 ETF · 주식)이다. 등록 시점에만
+고를 수 있으면 "미확인 시 사용자 확인"이 실제로는 작동하지 않는다.
+자산 상세의 확인 자리(`#assetDetailRiskConfirm` · js/08 `renderAssetDetailRiskConfirm`)는 주식 ·
+ETF에만 보이고, 고른 값을 같은 종목의 보유분 전부에 적는다("이 상품이 무엇을 따라가는가"는 하나다).
+"선택 안 함"으로 되돌리면 필드를 지워 자동 판정으로 되돌아간다 — 수량 · 매입가처럼 거래원장이
+SoT인 값은 여기서 건드리지 않는다.
+
+### 54-2. ETF 환헤지 — 사용자 선택이 SoT (E-02 §5)
+
+`asset.fxHedgeStatus` ∈ { `HEDGED`, `UNHEDGED`, 미선택(=UNRESOLVED) }. 표현은 기존 채권 레코드
+(js/29)의 enum을 그대로 재사용한다.
+
+- 시스템은 이름 · ticker · "H" 문자 · 키워드로 **추정하지 않는다**. 미선택은 미선택으로 보존한다.
+- 사용자 선택값은 저장 · reload · Excel Export/Import · Backup/Restore · Sync에서 유지된다.
+  동기화 차이 확인(js/25 `SYNC_DIFF_ASSET_FIELDS`)에 포함되어 다른 기기가 조용히 덮어쓰지 못한다.
+
+### 54-3. MC 환헤지 반영 — **PM 결정 1 · A안 확정 (2026-09-22)** (E-02 §6)
+
+#### 조사 결과(변경 전 실측)
+
+| 확인 항목 | 실측 결과 |
+| --- | --- |
+| js/15 · 16 · 17 · 18의 FX · 환율 · KRW 변환 코드 | **없음**(H.10 · FX adjustment 어느 것도 MC 경로에 없다) |
+| 환율 영향이 들어 있는 곳 | 원화 기준 CMA 자산군의 μ/σ/상관 **안에** |
+| 기존에 환헤지가 MC에 반영되던 방식 | 해외채권만 — `hedgeStatus` → 자산군 → 원문의 환헤지/환노출 **행 선택** |
+| 변경 전 US_EQUITY 위험 출처 | PRIMARY(AllianzGI) · **USD 기준** `North America Equities` σ 16.6% |
+| 변경 전 주식 상관 출처 | **이미 전부 JPM Benchmark**(AllianzGI 상관은 VERSUS_REFERENCE 형식이라 쌍 값을 주지 못한다) |
+
+#### PM 결정 1 (확정)
+
+**A안 채택.** HEDGED / UNHEDGED는 **동일 provider · 동일 자산군 · 동일 기준의 pair**로 처리한다.
+혼합(C안 — AllianzGI 환노출 + JPM 환헤지)은 **금지**한다.
+
+그래서 US_EQUITY의 위험(σ · 상관) 출처를 J.P. Morgan으로 옮겨 같은 원문의 짝을 만들었다.
+
+| 앱 자산군 | JPM LTCMA 2026 KRW 행 | 기대수익률 | 변동성 |
+| --- | --- | --- | --- |
+| `US_EQUITY`(환노출) | `U.S. Large Cap` | 4.7% | **13.722309014388456%** |
+| `US_EQUITY_HEDGED`(환헤지) | `U.S. Large Cap hedged` | 5.8% | **16.639771092531690%** |
+
+두 행의 차이(**+2.917%p**)가 이 원문이 말하는 환율 효과다. 환헤지 쪽 변동성이 더 큰 것은 원화가
+미국 주식과 음의 상관을 가져 **환노출이 원화 기준 변동성을 낮추기** 때문이며, 원문 값 그대로다.
+
+**이 변경은 σ와 상관의 출처를 일치시킨다.** 상관은 이전부터 JPM에서 왔으므로, 실측 결과
+US_EQUITY의 상관값은 **하나도 바뀌지 않았다**(0.4124456921608721 등 그대로).
+
+#### 적용 범위
+
+- 바뀌는 것: `US_EQUITY`의 σ(16.6 → 13.722) · `US_EQUITY_HEDGED` 신설(σ 16.640).
+- **바뀌지 않는 것**: μ(Return Key 경로 · 두 자산군의 `returnUsableForMc`는 false 유지 · §37-5) ·
+  MC 엔진 · seed · 분포 · 상관 구조 · Risk Score · Portfolio Beta · Tracking Beta ·
+  Bond · KR_EQUITY(29.4%) · EM_EQUITY(24.4%).
+- 연결 지점: `js/16 applyUserHedgeToAppClass` — 사용자가 **HEDGED로 확정한 경우에만** 환헤지
+  자산군으로 바꾼다. 미선택(UNRESOLVED)은 추정하지 않고 `US_EQUITY` 그대로 둔다(= 원문상 환노출).
+- 국내 주식 · 신흥국 주식은 원문에 환헤지 행이 없어 대상이 아니다
+  (`data/cma/app-asset-class-map.json`의 `unmapped`에 사유 기록).
+
+#### Before / After (합성 3자산 fixture · seed 20260101 · 3,000회 · 20년)
+
+| 항목 | Before | After |
+| --- | --- | --- |
+| US_EQUITY provider | Allianz Global Investors | J.P. Morgan Asset Management |
+| US_EQUITY class | North America Equities (USD 기준) | U.S. Large Cap (원화 기준) |
+| US_EQUITY σ | 16.6% | 13.722309014388456% |
+| US_EQUITY ~ KR_EQUITY 상관 | 0.4124456921608721 | **동일**(변화 없음) |
+| US_EQUITY ~ EM_EQUITY 상관 | 0.5007268458463904 | **동일** |
+| US_EQUITY_HEDGED | UNMAPPED | MAPPED · σ 16.63977109253169% · 상관 0.6931240999229659 |
+| MC P10 / P50 / P90 / mean (환노출) | 967,506,828 / 1,815,289,161 / 3,657,098,008 / 2,140,071,813 | 992,008,286 / 1,789,157,265 / 3,466,555,103 / 2,086,881,223 |
+| MC P10 / P50 / P90 / mean (환헤지) | — (연결 없음) | 911,836,237 / 1,759,645,693 / 3,730,883,755 / 2,145,352,117 |
+
+측정 기록: `docs/closeout/measurements/mc-v268-integrated.json` ·
+scratchpad `baseline-before.json` / `baseline-after.json`.
+
+### 54-4. 추가 투자 — "매년 투자금 증가율" 폐지, "연도별 추가 투자" 채택 (MC-01)
+
+- **입력 방식 변경**: 매달 적립금을 해마다 몇 %씩 자동으로 불리는 `contributionGrowthRate` 입력을
+  화면에서 제거하고, `state.projection.yearlyExtraContributions` = `[{year, amount}]`(연도 오름차순 ·
+  연도 중복 없음 · 금액 0 이상)를 사용자가 직접 입력한다.
+- **기본 적립과 분리**: 기본 월 적립금 계산은 그대로다. 추가 투자는 그 위에 더해지는 별도 현금흐름이다.
+- **이중 반영 금지**: 저장된 `contributionGrowthRate` 값은 **지우지 않는다**(데이터 손실 금지).
+  다만 입력에서도 계산에서도 더 이상 읽지 않으므로(js/05 · js/16 · js/19) 두 방식이 동시에
+  적용될 수 없다. 증가율을 쓰지 않던 사용자의 결과는 이전과 **비트 단위로 동일**하다.
+- **MC 반영**: 달력 연도 → 시뮬레이션 월 번호 변환은 달력을 아는 유일한 계층(js/19
+  `mapYearlyExtraContributionsToMonths`)이 맡고, 엔진(js/15)은 그 달에 목표비중대로 배분해
+  월 적립금과 **같은 자리**(수익률 적용 전)에 더한다. 새 확률모형 · 새 수익률 · seed · 분포 ·
+  상관 구조는 건드리지 않는다.
+- **예측 기간 밖**: 지난 연도 · 예측 기간(20년)을 넘는 연도는 반영할 자리가 없다. 조용히 버리지 않고
+  팝업의 해당 행에 "계산에 반영되지 않습니다"를 표시한다.
+- **범위 한계**: 소유자별 관점(mcOwnerScope) MC에는 넘기지 않는다 — 가구 전체 기준 입력이라
+  소유자 배분 규칙이 없고, 앱이 임의로 나누면 사용자가 입력하지 않은 금액이 만들어진다.
+- **결정론 시나리오 카드(js/05)** — **PM 결정 2 확정(2026-09-22): 반영한다.**
+  MC와 **같은 입력원**(`state.projection.yearlyExtraContributions`) · **같은 정규화 규칙** ·
+  **같은 시점 규칙**을 쓴다. 시점 규칙은 `js/05 yearlyExtraContributionMonthIndex` **한 함수**에만
+  두고 MC(js/19)가 그것을 부른다 — 규칙을 두 곳에 두면 같은 입력에 두 화면이 다른 답을 낸다
+  (Phase 3-3이 고쳤던 그 종류의 불일치).
+  성장은 새 공식을 만들지 않고, 이 카드가 이미 화면에 "기준 연간 성장률"로 보여 주는 가구
+  가중평균 수익률(`computeTargetWeightedAvgRate`)과, **그것과 완전히 같은 집계 방식**으로 구한 가구
+  가중평균 운용보수(`computeTargetWeightedFeeRate` — 새 배분정책이 아니라 수익률에 이미 쓰고 있는
+  집계 규칙을 보수에 그대로 적용한 것)를 기존 `computeFutureValueWithContributionGrowthAndFee`에 넘긴다.
+  **가구 단위**로만 반영하며 소유자 · 계좌 · 자산에 임의로 나누지 않는다. 소유자별 관점 호출
+  (`ownerFilter`)에는 넣지 않는다 — 어느 소유자 몫인지 사용자가 정한 적이 없기 때문이다.
+
+### 54-5. 채권 자산등록 KIS 통합 (B-01)
+
+자산등록 화면의 ISIN 조회를 공공데이터포털에서 **KIS `/api/kis/bond-info`(TR CTPF1114R)**로 통일한다
+— 거래등록(js/06)이 이미 쓰는 어댑터(js/13 `fetchKisBondInfoRaw` · js/29 `mapKisBondInfo` ·
+`mergeKisBondInfoIntoPosition`)를 그대로 재사용하며 새 TR을 만들지 않는다.
+
+- 사용자 명시값 > KIS 자동값. 병합 규칙은 거래등록과 **같은 함수**가 담당한다.
+- KIS가 모르는 항목(발행인명 · 선순위 · 발행금액 등)은 손대지 않는다.
+- 조회 실패가 등록을 막지 않는다 — 직접 입력하면 그대로 저장되며 기존 필수값 validation은 유지한다.
+- 공공데이터 경로 제거 근거: 해당 서비스는 응답하지 않는다(일부러 틀린 경로도 같은
+  `NO_OPENAPI_SERVICE_ERROR`를 돌려주는 반면 같은 기관의 다른 서비스 3종은 "키 미등록"을 돌려준다).
+- 기존 저장 데이터는 변환하지 않는다. Bond transaction/Stage2 · Bond Risk · Bond valuation
+  (MARKET → PURCHASE fallback) 정책은 모두 그대로다.
+
+### 54-6. ETF 근거 재확인 (E-03 · E-04)
+
+2026-09-22 운용사 · 지수 제공기관 1차 자료 실측.
+
+| 종목 | 확인한 것 | 조치 |
+| --- | --- | --- |
+| QQQM | Invesco 공식 상품자료(invesco.com 배포 PDF) "Access the Nasdaq-100 Index" · "based on the NASDAQ-100 Index" | evidence를 운용사 1차 자료로 교체 · `evidenceGrade: A` 부여 |
+| SPYM | SSGA 공식 상품 페이지 벤치마크 "S&P 500® Index" | 동일 |
+| 360750 | 미래에셋 공식 "S&P 500 Index"(원화환산) · "환헤지를 하지 아니함" | 기존 기록과 일치 — 변경 없음 |
+| 360200 | ACE ETF 공식 "S&P 500 지수"(S&P Dow Jones Indices 산출) | 기존 기록과 일치 — 변경 없음 |
+| 368590 | RISE ETF 공식 "NASDAQ 100 Index(KRW)(T-1)"(NASDAQ OMX Group 산출) | 기존 기록과 일치 — 변경 없음 |
+| SCHD | Schwab 공식 "the total return of the Dow Jones U.S. Dividend 100™ Index" | 기존 기록과 일치 — 이 문장은 **펀드 운용목표**이지 지수 유형 표기가 아니다 |
+| 472170 | 운용사 페이지가 동적 로딩이라 이번 조사에서 재확인 실패 | 기존 A등급 기록 유지 |
+
+**PR/TR 결론**: 운용사 자료 계층은 지수 이름만 적고 PR/TR을 표기하지 않는다. 표기 주체는 지수
+산출기관(S&P DJI · Nasdaq)이며 두 곳 모두 자동 접근을 차단한다(403). 따라서 `underlyingReturnType`은
+**채우지 않는다** — 임의 확정 금지(지시문 §8). Tracking Beta 계산식 · Risk Score · MC 연결은 무변경.
+
+원장 규모는 58행 그대로이며 EM-2026.1 / EM-2026.2 코호트 구분(48 / 10)도 바뀌지 않았다
+— QQQM · SPYM은 "새로 추가한 상품"이 아니라 **기존 항목에 새 근거가 생긴 것**이므로 미국 개별주 19건과
+같은 방식으로 등급만 부여했다(§44 44-16 선례).
+
+### 54-6-2. UX 정리 — 적립 기간 안내 문단 삭제 (PM 지시 2026-09-22)
+
+[투자금 설정] 팝업 상단의 💡 "적립 기간 vs 미래예측 기간" 안내 문단(Step 3에서 넣었던 것)을
+삭제했다. 연도별 추가 투자가 들어오면서 팝업이 길어졌고, 이 문단이 화면 위쪽 1/4을 차지했다.
+같은 설명은 "적립 기간(년, 선택)" 입력칸의 `title` 툴팁("비워두면 20년(미래예측 전체 기간) 내내
+투자, 0이면 지금부터 추가 투자 없음")에 신랑 · 와이프 두 카드 모두 남아 있다.
+계산 · id · 동작은 전혀 바뀌지 않았다(표시 문구만 제거).
+
+### 54-6-3. 통합 더미데이터 검증에서 발견해 고친 것 (2026-09-22)
+
+자동 단위 · E2E 테스트는 전부 통과하던 상태에서, 합성 가구를 실제 앱 흐름으로 통과시키는
+통합 검증(자산 → 거래 → Portfolio → Risk → Beta → 환헤지 → MC → 추가투자 → 결정론 →
+Excel → Backup/Restore → 재계산)을 돌려 다음 두 가지를 발견하고 고쳤다.
+
+**① [데이터 손실 결함] JSON 백업 복원에서 사용자 확정값 2종이 사라졌다**
+
+- 어디: `js/12` `jsonFileInput` change 핸들러의 자산 복원 필드 목록.
+- 무엇: 이 핸들러는 `makeAsset`도 `normalizeImportedAsset`도 아닌 **자기만의 필드 나열**로
+  자산을 만든다(세 번째 경로). 그 목록에 `marketBetaIndexOverride` · `fxHedgeStatus`가 없어,
+  백업 파일에는 정상적으로 들어 있는데도(`buildSyncBlob`이 내보낸다) 복원하면 두 값이 사라졌다.
+- 성격: Phase 47-E(대표매칭) · BL-7a(positionSource) · FIX-6(updatedAt)과 **같은 유형**이며,
+  그 세 곳의 주석이 "이 목록에 빠지면 사라진다"고 이미 경고하고 있던 자리다.
+- 왜 자동 테스트가 못 잡았나: 단위 테스트는 `normalizeImportedAsset`(덮어쓰기 · 동기화 경로)만
+  검증했고, JSON 파일 복원 경로는 실제 파일 왕복이 필요해 통합 검증에서만 드러난다.
+- 고침: 같은 목록에 두 줄 추가. 정규화는 다른 두 경로와 **같은 함수**(js/01)를 쓴다.
+- 회귀 고정: `e2e/117` STEP 11·12(백업 → 상태변경 → 복원 → 재계산 일치).
+
+**② [UX 정정] 장기 가정 출처 표기가 실제 기관과 어긋났다**
+
+- 어디: `js/19` 장기 가정 출처 상세("자산군 변동성(기관명)").
+- 무엇: 제목 하나가 모든 줄을 PRIMARY 기관으로 표기했다. 자산 성격마다 `riskProvider`를 따로
+  지정할 수 있는 구조(§47-3 · 채권이 이미 그렇다)에서는 줄마다 기관이 다를 수 있다.
+  PM 결정 1로 미국 주식이 J.P. Morgan을 쓰게 되면서 "미국 주식 → U.S. Large Cap"인데 제목은
+  AllianzGI로 표기되는 상태가 화면에 드러났다.
+- 고침: 제목에서 기관을 빼고 **줄마다 실제 기관**을 적는다(`riskProvider`를 결과에 함께 담는다).
+  값 · 계산은 건드리지 않았다.
+
+### 54-7. 하지 않은 것 · PM 결정이 남은 것
+
+| 항목 | 상태 | 사유 |
+| --- | --- | --- |
+| ETF 환헤지 → MC 자산군 연결 | **해소(구현 완료)** | PM 결정 1 · A안 확정(2026-09-22) — §54-3 |
+| 연도별 추가 투자 → 결정론 시나리오 카드 | **해소(구현 완료)** | PM 결정 2 확정(2026-09-22) — §54-4 |
+| 연도별 추가 투자 → 소유자별 MC | **하지 않음** | 가구 기준 입력이라 소유자 배분 근거가 없다 |
+| ETF PR/TR 확정 | **하지 않음** | 지수 산출기관이 자동 접근을 차단(403). 운용사 자료에는 표기 없음 |
+| Tracking Beta 계산식 · Risk Score · MC 연결 | **하지 않음** | 이번 범위 밖(지시문 §3 · §8) |
+| 기존 저장 데이터 일괄 변환 | **하지 않음** | `contributionGrowthRate`를 포함해 저장값은 전부 보존 |
+
+### 54-8. 계산 영향
+
+| 지표 | 영향 | 성격 |
+| --- | --- | --- |
+| Market Beta · Portfolio Beta · Risk Score | **산출 대상 확대** | 사용자가 확인해 준 기준 지수만큼 늘어난다. 산식 무변경 |
+| MC(추가 투자 없음) | **변화 없음** | 실측: 빈 배열 · 필드 생략 · 증가율 0 세 경우 모두 비트 동일 |
+| MC(추가 투자 있음) | **의도된 변화** | 지정한 달에 지정한 금액이 그대로 더해진다(실측: +1,000만 · +1,500만 정확 일치) |
+| MC(증가율을 쓰던 기존 사용자) | **의도된 변화** | 더 이상 자동 증가하지 않는다. 저장값은 보존되며 화면 안내로 대체된다 |
+| μ · σ · 상관 · seed · 분포 · 시뮬레이션 수 | **변화 없음** | CMA 자산군 목록 · 값 무변경(테스트가 고정) |
+| Bond valuation · Bond Risk | **변화 없음** | 입력 경로만 바뀌었다 |
+
+### 54-9. 테스트
+
+**신규** — `test/v268-integrated-batch.test.js`(17) · `e2e/116-integrated-batch.spec.js`(15).
+
+전체 결과 — Unit 756/756 · E2E 1,137/1,137 · ESLint 0 · Data Guard PASS · Release Guard PASS.
+
+**단위 테스트는 한 건도 수정하지 않았다**(739 → 756, 전부 통과).
+
+**E2E 기대값 갱신 16건** — 전부 이번에 PM 지시로 **제거한 기능을 기대하던** 테스트다
+(§10-1 "매년 투자금 증가율 입력 방식을 제거한다" · §11 "적립금 설정 문구를 교체한다").
+테스트를 고쳐 통과시킨 것이 아니라 사양이 바뀐 것이며, 각 지점에 갱신 사유를 남겼다.
+
+| 파일 | 건수 | 무엇이 바뀌었나 |
+| --- | --- | --- |
+| `e2e/11` | 2 | 요약 한 줄 `증가 없음(매월 동일)` → `없음`. 증가율 입력 테스트 → "연도별 추가 투자를 저장하면 요약 한 줄에 반영되고, 결정론 히어로 금액은 MC 범위 밖이라 그대로"로 교체 |
+| `e2e/13` | 1 | "증가율 3% + 적립기간" → "저장된 옛 증가율이 남아 있어도 계산에 적용되지 않는다(+ 저장값은 보존된다)" |
+| `e2e/14` | 1 | "증가율 3% + 적립기간" → "연도별 추가 투자 + 적립기간 병행". 기대값 헬퍼가 화면(js/19)과 같은 입력을 쓰도록 맞춤. 옛 증가율 무영향 테스트 **1건 추가** |
+| `e2e/17` | 1 | 원금 0 경로에서도 옛 증가율이 적용되지 않음을 고정 |
+| `e2e/30` | 2 | 팝업 draft/취소/저장 계약 검증 대상을 증가율 입력 → 연도별 추가 투자로 교체 |
+| `e2e/31` | 8 | 모바일 44px · 12px · 무오버플로 기준을 새 편집 UI(연도 · 금액 입력 · [연도 추가])에 적용 |
+| `e2e/99` | 1 | 버튼 이름 — 일반계좌 「투자금 설정」 · 절세계좌 「적립설정」(이번 범위 밖이라 유지) |

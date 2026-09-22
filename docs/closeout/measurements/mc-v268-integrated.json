@@ -1,0 +1,41 @@
+{
+  "measuredAt": "2026-09-22",
+  "purpose": "통합 개선 배치(E-01/E-02/E-03/E-04/B-01/MC-01/UX-01) MC invariant",
+  "baseline": "HEAD (v266 commit 91e28bf) js/15 · js/26",
+  "cmaCalculationPartIdentical": false,
+  "cmaAddedUnmappedKeys": [
+    "KR_EQUITY_HEDGED",
+    "EM_EQUITY_HEDGED"
+  ],
+  "engineFixture": {
+    "seed": 20260101,
+    "iterations": 3000,
+    "years": 20,
+    "instruments": 3
+  },
+  "finalValueBaseline": {
+    "year": 20,
+    "mean": 2140071812.8317077,
+    "p10": 967506828.2997465,
+    "p25": 1278572858.373355,
+    "p50": 1815289161.0306802,
+    "p75": 2603998955.598751,
+    "p90": 3657098007.7802753,
+    "goalProbability": {
+      "1000000000": 0.8843333333333333
+    }
+  },
+  "finalValueWithExtra2027": {
+    "year": 20,
+    "mean": 2182082483.286721,
+    "p10": 981016474.4940653,
+    "p25": 1299871899.4861064,
+    "p50": 1848954896.7387056,
+    "p75": 2650772080.5756397,
+    "p90": 3726975575.8062687,
+    "goalProbability": {
+      "1000000000": 0.893
+    }
+  },
+  "extraDeltaP50": 33665735.708025455
+}

@@ -55,11 +55,18 @@ for (const [w, h] of VIEWPORTS) {
       await expectTouchOk(page, '#saveTaxAdvantagedPlanModalBtn');
       await page.locator('#cancelTaxAdvantagedPlanModalBtn').click();
 
-      // 적립금 설정 팝업 - 증가율 입력이 여기로 옮겨왔다
+      // [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4] 증가율 입력이 사라지고 연도별 추가
+      // 투자 편집 UI가 그 자리에 들어왔다(PM 지시문 §10-1) - 같은 44px · 12px 기준을 새 UI에 적용한다.
       await page.locator('#openMonthlyContributionAllocationBtn').click();
-      const growth = page.locator('#contributionGrowthRateInput');
-      expect((await growth.boundingBox()).height).toBeGreaterThanOrEqual(TOUCH_MIN);
-      expect(await fontSizeOf(growth)).toBeGreaterThanOrEqual(12);
+      await expectTouchOk(page, '#yearlyExtraContributionAddBtn');
+      await page.locator('#yearlyExtraContributionAddBtn').click();
+      const extraYear = page.locator('#yearlyExtraContributionList input[data-yearly-extra-year="0"]');
+      const extraAmount = page.locator('#yearlyExtraContributionList input[data-yearly-extra-amount="0"]');
+      for (const input of [extraYear, extraAmount]) {
+        expect((await input.boundingBox()).height).toBeGreaterThanOrEqual(TOUCH_MIN);
+        expect(await fontSizeOf(input)).toBeGreaterThanOrEqual(12);
+      }
+      expect(await scrollWidthOf(page)).toBeLessThanOrEqual(w);
       await page.locator('#cancelMonthlyContributionAllocationModalBtn').click();
 
       await page.getByText('미래 예측', { exact: true }).click();

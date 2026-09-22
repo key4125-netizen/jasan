@@ -210,7 +210,12 @@ async function build(sb, preset = 'normal') {
   return sb.buildMonteCarloInputFromState({ presetKey: preset, ownerFilter: '신랑', includeTaxAdvantaged: true, years: 20 });
 }
 
-test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(29.4% · 16.6%), 상관은 Benchmark 원문 값, μ는 기존 Return Key(7.0% · 5.1%)', async () => {
+// [기대값 갱신 사유 · PM 결정 1 · A안 · 2026-09-22 · §54-3] 환헤지 여부를 MC에 반영하려면
+// 환노출/환헤지가 **같은 원문 · 같은 통화 기준의 짝**이어야 한다. 그래서 US_EQUITY의 위험(σ) 출처를
+// AllianzGI("North America Equities" 16.6% · USD 기준)에서 J.P. Morgan("U.S. Large Cap" 13.722% ·
+// 원화 기준)으로 옮겼다. 상관은 원래부터 이 Dataset에서 왔으므로(BENCHMARK_REFERENCE) 값이 그대로다 -
+// 이번 변경으로 σ와 상관의 출처가 오히려 일치하게 됐다. μ(Return Key)는 바뀌지 않는다.
+test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(29.4% · 13.722%), 상관은 Benchmark 원문 값, μ는 기존 Return Key(7.0% · 5.1%)', async () => {
   const sb = sandbox();
   sb.state.assets = [sb.asset({ ticker: '069500', name: 'KODEX 200' }), sb.asset({ ticker: 'QQQM', name: 'QQQM', currency: 'USD', isDomestic: '해외', currentPrice: 200, buyPrice: 200 })];
   sb.state.rebalance['신랑'].targets = { '국내': [{ type: 'ticker', ticker: '069500', label: 'KODEX 200', pct: 100 }], '해외': [{ type: 'ticker', ticker: 'QQQM', label: 'QQQM', pct: 100 }] };
@@ -218,7 +223,7 @@ test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(29.4% · 
   assert.deepStrictEqual(Array.from(r.errors), []);
   const kr = r.instruments[r.assetOrder.indexOf('T:069500.KS')], us = r.instruments[r.assetOrder.indexOf('T:QQQM')];
   assert.strictEqual(kr.sigmaAnnual, 29.4 / 100); // 원문 % 값을 100으로 나눈 값 그대로
-  assert.strictEqual(us.sigmaAnnual, 16.6 / 100);
+  assert.strictEqual(us.sigmaAnnual, 13.722309014388456 / 100);
   assert.strictEqual(kr.muAnnual, 0.07);
   assert.strictEqual(us.muAnnual, 0.051);
   const rho = r.correlationMatrix[r.assetOrder.indexOf('T:069500.KS')][r.assetOrder.indexOf('T:QQQM')];
@@ -228,7 +233,7 @@ test('M-1. 국내 지수 ETF + 미국 지수 ETF - σ는 CMA 자산군(29.4% · 
   assert.strictEqual(r.cma.pairs.length, 1);
   assert.strictEqual(r.cma.pairs[0].sourceType, 'BENCHMARK_REFERENCE');
   assert.ok(r.cma.instruments.every((i) => i.returnSource === 'RETURN_KEY'));
-  assert.deepStrictEqual(Array.from(r.cma.instruments, (i) => i.cmaClass).sort(), ['Korea Equities', 'North America Equities']);
+  assert.deepStrictEqual(Array.from(r.cma.instruments, (i) => i.cmaClass).sort(), ['Korea Equities', 'U.S. Large Cap']);
 });
 
 test('M-2. 채권 · 가정 없는 자산은 σ=0(기존 정책 · 경고), 수익률 가정은 있지만 CMA 자산군이 없는 위험자산(미국 외 선진국)은 오류', async () => {

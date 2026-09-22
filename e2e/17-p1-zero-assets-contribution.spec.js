@@ -157,17 +157,14 @@ test.describe('P1 - totalValue===0 신규 적립금 반영(회귀 없이 수정)
     expect(actual).toBeCloseTo(unlimited, 0);
   });
 
-  test('9. totalValue = 0 + 투자금 증가율(3%) - 정확히 반영된다', async ({ page }) => {
+  // [기대값 갱신 사유 · 통합 개선 배치 2026-09-22 · §54-4] 증가율이 사용자 입력에서 제거되고
+  // 계산에서도 읽지 않는다(PM 지시문 §10-1 · §10-5). 원금이 0인 신규 사용자 경로에서도 같은지 본다.
+  test('9. totalValue = 0 + 저장된 옛 증가율(3%) - 적용되지 않고 정액 적립과 같다', async ({ page }) => {
     await seedZeroAsset(page, { monthlyContribution: 1000000, contributionYears: null, contributionGrowthRate: 3 });
     const actual = await page.evaluate(() => simulateRebalancedPreset('normal', 20).yearlyPoints[20].total);
     const expected = await page.evaluate(() => {
       const rate = computeRegionWeightedRate('신랑', '국내', 'normal');
-      let balance = 0;
-      for (let y = 0; y < 20; y++) {
-        const yearMonthly = 1000000 * Math.pow(1.03, y);
-        balance = computeFutureValueWithContributionGrowthAndFee(balance, rate, 1, yearMonthly, 0, 0);
-      }
-      return balance;
+      return computeFutureValueWithContributionGrowthAndFee(0, rate, 20, 1000000, 0, 0);
     });
     expect(actual).toBeGreaterThan(0);
     expect(actual).toBeCloseTo(expected, 0);

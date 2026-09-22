@@ -83,6 +83,37 @@ function feePercentToDecimal(feeRatePercent) {
 // [Phase 3-3] 총 납입원금 - 수익률과 무관한 순수 현금흐름 합계라 Monte Carlo path(랜덤성)와 상관없이
 // 항상 같은 값이다. 월별 loop(연차별 배율 적용)을 그대로 재현해 합산한다 - 실제 엔진(runMonthlyPrecisionMC
 // Step 1)과 동일한 연차 산정(yearIndex=Math.floor((m-1)/12))을 쓰는지 반드시 확인할 것(회귀테스트 D).
+/* [MC-01] 연도별 추가 투자 - 호출부가 "시뮬레이션 몇 번째 달에 얼마"로 바꿔서 넘긴다
+ * (달력 연도 → 월 번호 변환은 js/16 어댑터가 담당한다 - 엔진은 달력을 모른다).
+ * 같은 달에 두 건이 오면 더한다(서로 다른 해가 같은 달에 겹칠 수 없으므로 실제로는 안 생기지만,
+ * 엔진이 입력을 조용히 버리지 않도록 정의해 둔다). 유효한 금액이 하나도 없으면 null을 돌려주고,
+ * 그 경우 호출부의 분기가 통째로 꺼져 기존 경로와 비트 단위로 같아진다. */
+function buildExtraContributionByMonth(list, months) {
+  if (!Array.isArray(list) || list.length === 0 || !(months > 0)) return null;
+  let any = false;
+  const out = new Float64Array(months);
+  for (let i = 0; i < list.length; i++) {
+    const it = list[i] || {};
+    const m = Math.trunc(Number(it.monthIndex));
+    const amount = Number(it.amount);
+    if (!Number.isFinite(m) || m < 1 || m > months) continue;
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    out[m - 1] += amount;
+    any = true;
+  }
+  return any ? out : null;
+}
+
+/* [MC-01] 총 납입원금에 더해지는 추가 투자 합계 - computeTotalContributionPrincipal 계열은
+ * 기존 서명을 그대로 두고(회귀 보호), 추가분만 이 함수로 따로 센다. */
+function computeTotalExtraContributionPrincipal(list, months) {
+  const table = buildExtraContributionByMonth(list, months);
+  if (!table) return 0;
+  let sum = 0;
+  for (let i = 0; i < table.length; i++) sum += table[i];
+  return sum;
+}
+
 function computeTotalContributionPrincipal(monthlyContribution, contributionGrowthRate, years) {
   const months = years * 12;
   let total = 0;
@@ -405,6 +436,9 @@ function runMonthlyPrecisionMC(config, hooks) {
   // owner-aware 자산 배분으로 확장하지 않음, 요청 범위 제한). streams가 없으면(기존 모든 호출부) 아래
   // hasContributionStreams 분기가 항상 false라 이 블록 자체가 실행되지 않고, iteration 루프도 기존
   // contribShare 경로를 그대로 타 완전히 bit-identical하다.
+  // [MC-01] 그 달에 들어오는 추가 투자금(가구 전체 총액). 배분은 아래에서 기존 목표비중(weight)
+  // 그대로 쓴다 - 월 적립금과 정확히 같은 방식이며, 추가 투자용 별도 배분 규칙을 만들지 않는다.
+  const extraByMonth = buildExtraContributionByMonth(config.extraContributions, months);
   const contributionStreams = config.contributionStreams;
   const hasContributionStreams = Array.isArray(contributionStreams) && contributionStreams.length > 0;
   let monthlyContribTotal = null;
@@ -472,6 +506,12 @@ function runMonthlyPrecisionMC(config, hooks) {
       } else {
         const contribMultiplier = yearlyContribMultiplier[Math.floor((m - 1) / 12)];
         for (let i = 0; i < n; i++) balances[i] += contribShare[i] * contribMultiplier;
+      }
+      // Step 1-B: [MC-01] 그 달에 지정된 추가 투자금 - 월 적립금과 같은 자리(수익률 적용 전)에
+      // 같은 목표비중으로 들어간다. 해당 월이 아니면 이 블록이 통째로 건너뛰어진다.
+      if (extraByMonth) {
+        const extra = extraByMonth[m - 1];
+        if (extra !== 0) for (let i = 0; i < n; i++) balances[i] += weight[i] * extra;
       }
       // Step 3: correlated shock 생성 (Z -> L*Z)
       for (let i = 0; i < n; i++) Z[i] = nextZ();
@@ -593,6 +633,14 @@ function runAnnualPreviewMC(config, hooks) {
   const rng = createSeededRandom(seed);
   const nextZ = makeBoxMuller(rng);
   const annualContribution = monthlyContribution * 12;
+  // [MC-01] 연 근사는 1스텝=1년이므로 그 해에 들어오는 추가 투자금을 연 단위로 합쳐 둔다.
+  // 납입금과 같은 Mid-Year 근사(sqrt(growth))를 그대로 적용한다 - 새 컨벤션을 만들지 않는다.
+  const extraByMonthPreview = buildExtraContributionByMonth(config.extraContributions, years * 12);
+  let extraByYear = null;
+  if (extraByMonthPreview) {
+    extraByYear = new Float64Array(years);
+    for (let m = 0; m < extraByMonthPreview.length; m++) extraByYear[Math.floor(m / 12)] += extraByMonthPreview[m];
+  }
   const weight = instruments.map((ins) => ins.weight);
   const annualParams = instruments.map((ins) => ({
     muLogAnnual: computeMuGBM(ins.muAnnual, ins.sigmaAnnual), sigmaAnnual: ins.sigmaAnnual
@@ -616,8 +664,9 @@ function runAnnualPreviewMC(config, hooks) {
       // 기존과 bit-identical). 수익률(growth)과는 완전히 분리된 현금흐름 배율이다.
       const contribMultiplier = computeContributionYearMultiplier(contributionGrowthRate, y - 1);
       // Mid-Year 컨벤션: 연간 납입금이 그 해 성장의 절반만 노출된다고 근사(sqrt(growth))
+      const extraThisYear = extraByYear ? extraByYear[y - 1] : 0;
       for (let i = 0; i < n; i++) {
-        const contrib = annualContribution * weight[i] * contribMultiplier;
+        const contrib = annualContribution * weight[i] * contribMultiplier + extraThisYear * weight[i];
         balances[i] = (balances[i] * growth[i] + contrib * Math.sqrt(growth[i])) * feeAnnualFactor[i];
       }
       balances = rebalanceToWeights(balances, weight);
@@ -656,6 +705,7 @@ function runAnnualPreviewMC(config, hooks) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     MC_MODEL_VERSION, computeMuGBM, computeDeterministicMonthlyFV, computeTotalContributionPrincipal, computeTotalContributionPrincipalMultiStream, computeContributionYearMultiplier, computeMonthlyFeeFactor, feePercentToDecimal,
+    buildExtraContributionByMonth, computeTotalExtraContributionPrincipal,
     createSeededRandom, makeBoxMuller,
     dateAlignedReturns, pearsonCorrelation, computeDateAlignedCorrelationMatrix,
     validateCorrelationMatrixShape, jacobiEigenDecomposition, ensurePSD, choleskyDecompose, prepareCholeskyFromCorrelation,

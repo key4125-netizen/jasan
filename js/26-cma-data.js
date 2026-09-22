@@ -115,6 +115,10 @@ const CMA_ACTIVE_SET = {
           "expectedReturn": 4.7,
           "volatility": 13.722309014388456
         },
+        "U.S. Large Cap hedged": {
+          "expectedReturn": 5.800000000000001,
+          "volatility": 16.63977109253169
+        },
         "Emerging Markets Equity": {
           "expectedReturn": 5.800000000000001,
           "volatility": 14.473282329575344
@@ -130,6 +134,7 @@ const CMA_ACTIVE_SET = {
           "World Government Bonds hedged",
           "Korean Equity",
           "U.S. Large Cap",
+          "U.S. Large Cap hedged",
           "Emerging Markets Equity"
         ],
         "matrix": [
@@ -141,6 +146,7 @@ const CMA_ACTIVE_SET = {
             0.6933710393845445,
             0.15880356073907428,
             -0.013600222151413276,
+            0.19790284092050703,
             -0.037934006936419906
           ],
           [
@@ -151,6 +157,7 @@ const CMA_ACTIVE_SET = {
             0.61309022948334,
             0.09256821710065198,
             -0.0754399540844658,
+            0.09907637833302613,
             -0.08995315831250561
           ],
           [
@@ -161,6 +168,7 @@ const CMA_ACTIVE_SET = {
             0.7373964259936657,
             0.4235167435878428,
             0.2688422244953301,
+            0.5266111476445496,
             0.37736893812002026
           ],
           [
@@ -171,6 +179,7 @@ const CMA_ACTIVE_SET = {
             0.32587874642400655,
             -0.39363415929700274,
             0.1655820143486541,
+            -0.42230947360999105,
             -0.16270566147351306
           ],
           [
@@ -181,6 +190,7 @@ const CMA_ACTIVE_SET = {
             1,
             0.08655686891410166,
             0.04682511723961898,
+            0.14531192490289155,
             -0.03126133334397982
           ],
           [
@@ -191,6 +201,7 @@ const CMA_ACTIVE_SET = {
             0.08655686891410166,
             1,
             0.4124456921608721,
+            0.6931240999229659,
             0.6772476909891292
           ],
           [
@@ -201,7 +212,19 @@ const CMA_ACTIVE_SET = {
             0.04682511723961898,
             0.4124456921608721,
             1.0000000000000002,
+            0.7023437621998414,
             0.5007268458463904
+          ],
+          [
+            0.19790284092050703,
+            0.09907637833302613,
+            0.5266111476445496,
+            -0.42230947360999105,
+            0.14531192490289155,
+            0.6931240999229659,
+            0.7023437621998414,
+            1.0000000000000002,
+            0.570297328939026
           ],
           [
             -0.037934006936419906,
@@ -211,6 +234,7 @@ const CMA_ACTIVE_SET = {
             -0.03126133334397982,
             0.6772476909891292,
             0.5007268458463904,
+            0.570297328939026,
             1
           ]
         ]
@@ -240,7 +264,18 @@ const CMA_ACTIVE_SET = {
         },
         "J.P. Morgan Asset Management": {
           "class": "U.S. Large Cap",
-          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"U.S. Large Cap\"(원화 기준 · 환헤지 없음)"
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"U.S. Large Cap\"(기대수익률 4.7% · 변동성 13.722%) - 원화 기준 · 환헤지 없음. [PM 결정 1 · A안 · 2026-09-22] 환헤지 여부를 MC에 반영하려면 환노출/환헤지가 같은 원문 · 같은 통화 기준의 짝이어야 한다(\"U.S. Large Cap hedged\" 5.8% · 16.640%와 쌍). 그래서 위험(σ · 상관) 출처를 이 Dataset으로 고정한다(riskProvider). 이 앱의 주식 상관계수는 이미 전부 이 Dataset에서 오고 있었으므로(AllianzGI 상관은 VERSUS_REFERENCE 형식이라 쌍 값을 주지 못한다) σ와 상관의 출처가 일치하게 된다. 기대수익률은 Benchmark Dataset이라 MC 수익률 경로를 열지 않는다(§37-5 유지 · μ는 Return Key 그대로)."
+        }
+      },
+      "riskProvider": "J.P. Morgan Asset Management"
+    },
+    "US_EQUITY_HEDGED": {
+      "label": "미국 주식(환헤지)",
+      "riskProvider": "J.P. Morgan Asset Management",
+      "providers": {
+        "J.P. Morgan Asset Management": {
+          "class": "U.S. Large Cap hedged",
+          "evidence": "J.P. Morgan 2026 LTCMA 원화(KRW) 행렬 행 \"U.S. Large Cap hedged\"(기대수익률 5.8% · 변동성 16.640%). 같은 행렬의 환노출 행 \"U.S. Large Cap\"(4.7% · 13.722%)과 짝을 이루며, 두 행의 차이가 이 원문이 말하는 환율 효과다(환헤지 쪽 변동성이 더 큰 것은 원화가 미국 주식과 음의 상관을 가져 환노출이 원화 기준 변동성을 낮추기 때문이며, 원문 값 그대로다). 사용자가 환헤지로 확정한 미국 주식형 상품만 이 자산군에 연결한다 - 추정 금지(미선택은 환노출로 간주하지 않고 US_EQUITY 그대로 둔다)."
         }
       }
     },
@@ -317,7 +352,9 @@ const CMA_ACTIVE_SET = {
     "BOND": "발행인 유형 · 통화 · 환헤지 중 하나라도 확인되지 않은 채권은 자산군을 정하지 않는다(§47-3). 예전처럼 변동성 0으로 두지 않고 장기 MC에서 제외하며, 그 사실을 화면에 표시한다.",
     "CASH": "현금성은 기존 §7 정책대로 변동성 0으로 둔다(채권으로 취급하지 않는다 · §47-3 ②).",
     "UNRESOLVED": "성격을 확인하지 못한 위험자산은 장기 CMA 자산군을 정할 수 없다.",
-    "FOREIGN_CORP_BOND_UNHEDGED": "J.P. Morgan 원문에 환헤지하지 않은 글로벌 크레딧 자산군이 없다(\"Global Credit\"은 hedged만 있다). 가까운 다른 자산군으로 옮겨 쓰지 않고 연결하지 않는다 - 장기 MC에서 제외한다."
+    "FOREIGN_CORP_BOND_UNHEDGED": "J.P. Morgan 원문에 환헤지하지 않은 글로벌 크레딧 자산군이 없다(\"Global Credit\"은 hedged만 있다). 가까운 다른 자산군으로 옮겨 쓰지 않고 연결하지 않는다 - 장기 MC에서 제외한다.",
+    "KR_EQUITY_HEDGED": "국내 주식은 원화 자산이라 환헤지 개념이 성립하지 않는다 - J.P. Morgan 원문에도 \"Korean Equity hedged\" 행이 없다.",
+    "EM_EQUITY_HEDGED": "J.P. Morgan 원문에 \"Emerging Markets Equity hedged\" 행이 없다. 가까운 다른 자산군으로 옮겨 쓰지 않고 연결하지 않는다."
   }
 };
 

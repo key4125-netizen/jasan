@@ -79,7 +79,13 @@ test('A · B. 가격 이력 없이 계산되고, 장기 가정 출처(기관 · 
   await expect(summary).toContainText('수익률: 기존 수익률 기준을 그대로 씁니다(장기 CMA에서는 변동성 · 상관계수만 사용합니다)');
   const detail = page.locator('#mcInfoModalBody [data-mc-cma-detail]');
   await expect(detail).toContainText('국내 주식 → Korea Equities · 변동성 29.4%');
-  await expect(detail).toContainText('미국 주식 → North America Equities · 변동성 16.6%');
+  // [기대값 갱신 사유 · PM 결정 1 · A안 2026-09-22 · §54-3] 환헤지/환노출을 같은 원문의 짝으로
+  // 만들기 위해 미국 주식의 위험 출처를 J.P. Morgan("U.S. Large Cap" 13.722%)으로 옮겼다.
+  await expect(detail).toContainText('미국 주식 → U.S. Large Cap · 변동성 13.7%');
+  // 줄마다 실제 기관이 적힌다 - 예전에는 제목 하나가 전부를 PRIMARY 기관으로 표기해, 다른 기관에서
+  // 온 줄까지 잘못 붙었다(PM 결정 1로 드러난 표기 오류를 함께 고쳤다).
+  await expect(detail).toContainText('출처 Allianz Global Investors');
+  await expect(detail).toContainText('출처 J.P. Morgan Asset Management');
   await expect(detail).toContainText('국내 주식 ↔ 미국 주식: 0.41');
   await expect(detail).toContainText('Benchmark 참고값 · J.P. Morgan Asset Management');
   await expect(detail).not.toContainText('BENCHMARK_REFERENCE');
