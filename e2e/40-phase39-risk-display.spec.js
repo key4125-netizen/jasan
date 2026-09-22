@@ -122,19 +122,23 @@ test('4-B. [Phase 39-B] 결측이 더 이상 "데이터 충분"으로 보이지 
 
 /* ─────────────────────── 2. 가구 전체 기준 명시 ─────────────────────── */
 
-test('5. Risk 카드에 가구 전체 합산 기준임이 표시된다', async ({ page }) => {
+/* [기대값 갱신 · PM 지시 2026-09-22] 「위험 관리」 제목과 진단 대상 고지(#riskScopeNote)는
+ * 메인 카드에서 없어지고 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업으로 합쳐졌다(SoT §52-13).
+ * 검사 내용은 그대로다 - 가구 전체 합산 기준이 사용자에게 보여야 하고, 특정 가족 구성을 전제하지 않는다. */
+test('5. 가구 전체 합산 기준임이 점수 옆 ⓘ 안내에 표시된다', async ({ page }) => {
   await boot(page);
-  const note = page.locator('#riskScopeNote');
-  await expect(note).toBeVisible();
-  const txt = await note.innerText();
+  await expect(page.locator('#riskScopeNote')).toHaveCount(0);
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const txt = await page.locator('#portfolioRiskInfoModal').innerText();
   expect(txt).toContain('가구 전체');
-  expect(txt).toContain('소유자 구분 없이');
+  expect(txt).toContain('소유자를 구분하지 않고');
   // 특정 가족 구성을 전제하는 표현은 쓰지 않는다.
   expect(txt).not.toContain('신랑');
   expect(txt).not.toContain('와이프');
   expect(txt).not.toContain('부부');
-  // 기존 자산군 안내는 그대로 남아 있어야 한다(대체가 아니라 보강).
-  expect(txt).toContain('주식·ETF만');
+  // 자산군 안내도 같은 자리에 있다.
+  expect(txt).toContain('주식 · ETF');
 });
 
 test('6. 가구 기준 표기는 진단 대상 자산에 실제로 부합한다(계산 무변경 확인)', async ({ page }) => {
@@ -239,8 +243,12 @@ test('13. [v256] 화면에 보이는 RISK 안내 어디에도 거래량 급증�
   }));
   expect(texts.visible).not.toContain('거래량 급증');
   expect(texts.tips).not.toContain('거래량 급증');
-  // 진단 대상 · 범위 안내는 그대로 보인다.
-  expect(texts.visible).toContain('진단 대상');
+  /* [기대값 갱신 · PM 지시 2026-09-22] 범위 안내는 메인 카드가 아니라 점수 옆 ⓘ 팝업에 있다. */
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const info = await page.locator('#portfolioRiskInfoModal').innerText();
+  expect(info).toContain('무엇이 대상인가');
+  expect(info).not.toContain('거래량 급증');
 });
 
 /* ─────────────────────── 5. 위험점수 불변 ─────────────────────── */
@@ -286,7 +294,9 @@ for (const w of [375, 390, 412, 768]) {
       // 새로 추가된 두 문구(가구 기준 / 계획 확인)와 신뢰도 라벨, 그리고 [🔍 세부내용] 버튼까지
       // 예외 없이 검사한다. [Phase 39-C] 예전엔 .detail-btn(공용 10px)을 제외하고 쟀지만, 이제
       // Risk 영역 한정으로 14px를 보장하므로(#riskDetailBtn, index.html) 제외 규칙을 없앴다.
-      for (const sel of ['#riskScopeNote', '#riskDiagnosisSummary']) {
+      /* [기대값 갱신 · PM 지시 2026-09-22] #riskScopeNote는 없어졌다 - 같은 기준(14px · 가로 넘침)을
+       * 그 내용이 옮겨간 ⓘ 「포트폴리오 위험 안내」 팝업에서 아래에 이어서 검사한다. */
+      for (const sel of ['#riskDiagnosisSummary']) {
         const info = await page.locator(sel).evaluate((el) => {
           const win = el.ownerDocument.defaultView;
           const nodes = [el, ...el.querySelectorAll('p, span, button')].filter((n) => n.textContent.trim());
@@ -298,6 +308,24 @@ for (const w of [375, 390, 412, 768]) {
         expect(info.min, `${sel} 최소 글꼴`).toBeGreaterThanOrEqual(14);
         expect(info.clipped, `${sel} 가로 넘침`).toBeLessThanOrEqual(1);
       }
+      // ⓘ 안내 팝업도 같은 기준을 지킨다(진단 대상 고지가 옮겨간 자리).
+      await page.locator('#portfolioRiskInfoBtn').click();
+      await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+      const infoModal = await page.locator('#portfolioRiskInfoModal').evaluate((el) => {
+        const win = el.ownerDocument.defaultView;
+        const nodes = [...el.querySelectorAll('p, li, span, button')].filter((n) => n.textContent.trim());
+        return {
+          min: Math.min(...nodes.map((n) => parseFloat(win.getComputedStyle(n).fontSize))),
+          outside: [...el.querySelectorAll('*')].filter((n) => {
+            const r = n.getBoundingClientRect();
+            return r.width > 0 && (r.right > win.innerWidth + 1 || r.left < -1);
+          }).length
+        };
+      });
+      expect(infoModal.min, 'ⓘ 안내 팝업 최소 글꼴').toBeGreaterThanOrEqual(14);
+      expect(infoModal.outside, 'ⓘ 안내 팝업 화면 밖 요소').toBe(0);
+      await page.locator('#closePortfolioRiskInfoBtn').click();
+      await expect(page.locator('#portfolioRiskInfoModal')).toBeHidden();
       const bodyOverflow = await page.locator('body').evaluate((el) => el.scrollWidth - el.clientWidth);
       expect(bodyOverflow).toBeLessThanOrEqual(1);
 

@@ -26,6 +26,50 @@ const MC_UI_ERROR_MESSAGE = {
   WORKER_TIMEOUT: '계산이 예상보다 오래 걸려 중단되었습니다. 시뮬레이션 횟수를 줄이거나 다시 시도해주세요.'
 };
 
+/* [UX-1 · PM 최종 승인 2026-09-22] 계산을 시작하지 못한 사유를 사용자 말로 옮긴다.
+ *
+ * 문제였던 것: 검증기(js/16 validateMonteCarloInput)와 어댑터는 사유를 정확히 만들어 전달하는데,
+ * 화면은 code만 보고 message를 버려서 "입력값을 확인해주세요."만 남았다. 사용자는 무엇을
+ * 고쳐야 하는지 알 수 없었다.
+ *
+ * 원칙 세 가지.
+ *   ① 새 검증을 만들지 않는다 - 이미 만들어진 message만 번역한다.
+ *   ② 개발 용어를 그대로 보여주지 않는다("instruments가 비어있습니다" 같은 문장).
+ *   ③ 짝이 없는 사유는 **추측해서 지어내지 않는다** - null을 돌려주고 기본 안내만 쓴다.
+ * 어댑터가 만든 사유(js/16 186~197행)는 이미 한국어 사용자 문구라 그대로 통과시킨다. */
+const MC_USER_REASON_RULES = Object.freeze([
+  { match: /instruments가 비어있습니다/, text: '미래 예측에 넣을 자산이 없습니다. 주식·ETF 자산을 등록하고 수익률 관리에서 기준을 정한 뒤 다시 실행해 주세요.' },
+  { match: /weight 합계가 1이 아닙니다/, text: '자산 비중 합계가 100%가 되지 않아 계산하지 못했습니다. 보유 자산의 평가금액을 확인해 주세요.' },
+  { match: /중복된 asset key/, text: '같은 자산이 두 번 잡혀 계산하지 못했습니다. 자산 목록에서 중복 등록이 있는지 확인해 주세요.' },
+  { match: /유효한 (muAnnual|sigmaAnnual)이|sigmaAnnual이 음수/, text: '일부 자산의 장기 수익률·변동성 가정을 정하지 못했습니다. 수익률 관리에서 그 자산의 기준을 지정해 주세요.' },
+  { match: /feeRateAnnual이 유효하지 않습니다/, text: '운용보수 값이 올바르지 않습니다(0% 이상 100% 미만). 운용보수 설정을 확인해 주세요.' },
+  { match: /correlationMatrix|assetOrder가/, text: '자산 간 상관관계를 준비하지 못해 계산하지 못했습니다. 잠시 후 다시 실행해 주세요.' },
+  { match: /최대 60년까지의 투자기간/, text: '투자 기간은 60년까지만 계산할 수 있습니다. 기간을 줄여 주세요.' },
+  { match: /years 값이 유효하지 않습니다/, text: '투자 기간이 올바르지 않습니다. 1년 이상으로 입력해 주세요.' },
+  { match: /monthlyContribution이 유효하지 않습니다|contributionStreams\[\d+\]\.monthly/, text: '매달 투자 금액이 올바르지 않습니다. 0원 이상의 숫자로 입력해 주세요.' },
+  { match: /initialPrincipal이 유효하지 않습니다/, text: '현재 자산 금액이 올바르지 않습니다. 자산 등록 상태를 확인해 주세요.' },
+  { match: /contributionGrowthRate가 유효하지 않습니다/, text: '투자금 증가율이 올바르지 않습니다. 적립 설정을 확인해 주세요.' },
+  { match: /contributionStreams\[\d+\]\.years/, text: '적립 기간 설정이 올바르지 않습니다. 적립 설정을 확인해 주세요.' },
+  { match: /taxScope\./, text: '절세계좌 자산·납입 설정을 준비하지 못해 계산하지 못했습니다. 절세계좌 적립 설정을 확인해 주세요.' }
+]);
+/* 어댑터가 만든 한국어 사유인지 - 개발 식별자가 섞이지 않은 문장만 그대로 보여준다. */
+function mcLooksUserFacing(s) {
+  return /[가-힣]/.test(s) && !/instruments|correlationMatrix|assetOrder|muAnnual|sigmaAnnual|feeRateAnnual|monthlyContribution|initialPrincipal|contributionStreams|contributionGrowthRate|taxScope|weight 합계|asset key|years 값/.test(s);
+}
+function monteCarloUserReason(message) {
+  const raw = String(message == null ? '' : message).trim();
+  if (!raw) return null;
+  const parts = raw.split(';').map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  parts.forEach((p) => {
+    const rule = MC_USER_REASON_RULES.find((r) => r.match.test(p));
+    if (rule) { if (!out.includes(rule.text)) out.push(rule.text); return; }
+    if (mcLooksUserFacing(p) && !out.includes(p)) out.push(p);
+    // 짝이 없고 사용자 문장도 아니면 버린다 - 개발 용어를 화면에 내보내지 않는다.
+  });
+  return out.length ? out.join(' ') : null;
+}
+
 function mcUiEl(id) { return document.getElementById(id); }
 
 /* -------------------------------------------------------------------------
@@ -754,9 +798,14 @@ function handleMonteCarloError(error) {
     return;
   }
   const friendly = MC_UI_ERROR_MESSAGE[error && error.code] || 'Monte Carlo 계산 중 알 수 없는 오류가 발생했습니다.';
-  showToast(friendly, 'error');
-  // [§37] 장기 가정 오류는 사용자가 고칠 수 있도록 어떤 자산인지(어댑터의 한국어 사유)를 함께 보여준다.
-  showMonteCarloStatus(error && error.code === 'DATA_ERROR' && error.message ? `${friendly} ${error.message}` : friendly);
+  /* [§37 → UX-1 확장] 예전에는 DATA_ERROR만 사유를 덧붙였다. 사용자가 고칠 수 있는 사유는
+   * INPUT_ERROR 쪽에도 있는데 그것을 버려서 "입력값을 확인해주세요."만 남았다.
+   * 이제 어떤 코드든 **사용자 말로 옮길 수 있는 사유가 있으면** 함께 보여준다.
+   * 옮길 짝이 없으면 아무것도 덧붙이지 않는다(개발 용어 노출 금지 · 추측 금지). */
+  const reason = monteCarloUserReason(error && error.message);
+  const shown = reason ? `${friendly} ${reason}` : friendly;
+  showToast(shown, 'error');
+  showMonteCarloStatus(shown);
 }
 
 function handleMonteCarloCancelled(info) {
@@ -838,6 +887,15 @@ async function runMonteCarloFromUi() {
   // [Phase 3-5 Safety Layer - 계산 시작 전 BLOCK] startMonteCarloRun 내부(js/18)에서도 동일하게 다시
   // 검사하지만(어댑터를 이 화면에서 한 번 더 부르므로 결과가 항상 같음), 여기서 먼저 걸러야 진행바가
   // 잠깐이라도 뜨는 것을 막고 즉시 issue 카드를 보여줄 수 있다.
+  /* [UX-1] 계산에 넣을 자산이 하나도 없으면 진행바를 띄우지 않고 그 사실을 바로 말한다.
+   * 어댑터가 사유를 남겼으면(장기 가정 미연결 등) 그 한국어 사유를 그대로 함께 보여준다. */
+  if (!Array.isArray(feeDisplayResult.instruments) || feeDisplayResult.instruments.length === 0) {
+    const why = monteCarloUserReason((feeDisplayResult.errors || []).join('; '))
+      || '미래 예측에 넣을 자산이 없습니다. 주식·ETF 자산을 등록하고 수익률 관리에서 기준을 정한 뒤 다시 실행해 주세요.';
+    showToast(why, 'error');
+    showMonteCarloStatus(why);
+    return;
+  }
   const preflightSafety = feeDisplayResult.safety;
   if (preflightSafety && preflightSafety.status === 'BLOCK') {
     const blockIssues = preflightSafety.issues.filter((i) => i.severity === 'BLOCK')

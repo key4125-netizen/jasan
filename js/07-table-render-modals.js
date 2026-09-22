@@ -617,7 +617,7 @@ function showToast(message, type = 'info', duration = 6000) {
   // [클릭 가능 영역 복구] 컨테이너 자체는 pointer-events-none(빈 공간이 아래 화면 클릭을 막지 않게)
   // 이지만, 실제 토스트 알약 하나하나는 닫기(✕) 버튼을 눌러야 하니 pointer-events-auto로 되살린다.
   el.className = `modal-anim pointer-events-auto ${colors[type] || colors.info} text-sm font-medium px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-start gap-3`;
-  el.innerHTML = `<span class="flex-1 leading-relaxed">${escapeHtml(message)}</span><button class="opacity-70 hover:opacity-100 shrink-0" aria-label="닫기">✕</button>`;
+  el.innerHTML = `<span class="flex-1 leading-relaxed">${escapeHtml(message)}</span><button class="tap44 opacity-70 hover:opacity-100 shrink-0" aria-label="닫기">✕</button>`;
   el.querySelector('button').addEventListener('click', () => el.remove());
   container.appendChild(el);
   setTimeout(() => { if (el.isConnected) el.remove(); }, duration);

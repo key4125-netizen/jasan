@@ -656,8 +656,8 @@ function openStockSearchModal(mode) {
   // [티커 없는 자산 검색 지원] 거래내역 모드에서는 부동산/채권처럼 티커 없는 보유 자산도 이름으로
   // 찾아 고를 수 있다는 안내를 추가한다(searchLocalHoldings 참고).
   document.getElementById('stockSearchHint').textContent = stockSearchTargetMode === 'transaction'
-    ? '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요. 부동산·채권 등 티커 없는 보유 자산도 이름으로 검색해 고를 수 있습니다.'
-    : '국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.';
+    ? '국내 종목은 한글 종목명이나 종목코드로, 해외 종목은 영문명이나 티커로 검색하세요. 부동산·채권처럼 티커가 없는 보유 자산도 이름으로 찾아 고를 수 있습니다. 같은 이름이 여러 개 나오면 결과에 함께 표시되는 거래소·국내/해외 표시를 보고 골라 주세요.'
+    : '국내 종목은 한글 종목명이나 종목코드로, 해외 종목은 영문명이나 티커로 검색하세요. 같은 이름이 여러 개 나오면 결과에 함께 표시되는 거래소·국내/해외 표시를 보고 골라 주세요.';
   document.getElementById('stockSearchModal').classList.remove('hidden');
   pushModalHistoryState();
   const input = document.getElementById('stockSearchInput');

@@ -461,6 +461,8 @@ function renderKPIs() {
   // [Phase 17 P1-1] 금융자산 평가금액 보조정보 - 이미 위에서 집계된 financialCur(부동산 제외)를
   // 그대로 재사용한다(새 계산 없음, 총자산현황 탭의 kpiFinancialValue와 동일한 값·동일한 범위).
   document.getElementById('kpiFinancialValueInline').textContent = fmtKRW(financialCur);
+  // [UX-7] 부동산까지 포함한 총자산(totalCur - 이 함수가 위에서 이미 합산해 둔 값 그대로, 새 계산 없음).
+  document.getElementById('kpiTotalValueInline').textContent = fmtKRW(totalCur);
 
   const profitEl = document.getElementById('kpiTotalProfit');
   profitEl.textContent = fmtSigned(totalProfit);
@@ -491,7 +493,11 @@ function renderKPIs() {
   dailyEl.textContent = fmtSigned(financialDailyProfit);
   dailyEl.className = 'text-lg font-bold ' + profitColor(financialDailyProfit);
   const dailyRateEl = document.getElementById('kpiDailyProfitRate');
-  dailyRateEl.textContent = fmtPct(dailyProfitRate);
+  /* [UX-7] 금액은 움직였는데 비율이 반올림으로 0%가 되면 "변동 없음"처럼 읽힌다 - 그 경우만 문구를 바꾼다. */
+  const dailyRateRoundsToZero = Math.round(financialDailyProfit) !== 0 && Math.abs(dailyProfitRate) < 0.005;
+  dailyRateEl.textContent = dailyRateRoundsToZero
+    ? (dailyProfitRate >= 0 ? '+0.01% 미만' : '-0.01% 미만')
+    : fmtPct(dailyProfitRate);
   dailyRateEl.className = 'text-sm font-semibold mt-0.5 ' + profitColor(dailyProfitRate);
   document.getElementById('kpiDailyHint').textContent = hasAnyFetchedChange ? '실시간 반영 + 수동 변동률' : '수동 변동률';
   // 총 손익 바로 아래: 소유자(신랑/와이프/공동 등) 기준 세부 손익(부동산 제외) - 다른 태그보다 눈에

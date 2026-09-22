@@ -226,7 +226,7 @@ function buildReturnKeyConflictNotice(list) {
     others.push(`${c.asset.owner || '소유자 미지정'} ${c.asset.accountType || ''} → ${keyLabel}`.replace(/\s+→/, ' →'));
   }));
   if (others.length === 0) return '';
-  return `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep mt-1">⚠ ${escapeHtml(`같은 종목의 다른 보유분은 다른 수익률 기준으로 계산됩니다(${others.join(' · ')}). 앱은 서로의 기준을 빌려 쓰지 않으니, 같은 기준이어야 한다면 직접 맞춰 주세요.`)}</p>`;
+  return `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep mt-1 flex items-start gap-1.5"><span class="shrink-0">⚠</span><span class="break-keep break-words min-w-0">${escapeHtml(`같은 종목의 다른 보유분은 다른 수익률 기준으로 계산됩니다(${others.join(' · ')}). 앱은 서로의 기준을 빌려 쓰지 않으니, 같은 기준이어야 한다면 직접 맞춰 주세요.`)}</span></p>`;
 }
 
 // [V1.3 BL-19] LEDGER_UNKNOWN/MANUAL_WITH_TX 안내에 붙일 "현재 자산 vs 거래내역 기준" 대조 + 확인
@@ -312,7 +312,7 @@ function renderAssetDetailPositionNotice(assets) {
     const detailLines = buildPositionNoticeDetailLines(x, x.asset);
     const detailHtml = detailLines.map((line) =>
       `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep mt-1">${escapeHtml(line)}</p>`).join('');
-    return `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep">⚠ ${escapeHtml(x.message)}</p>${detailHtml}`;
+    return `<p class="text-sm ${RETURN_SOURCE_TONE_CLASSES.weak} break-keep flex items-start gap-1.5"><span class="shrink-0">⚠</span><span class="break-keep break-words min-w-0">${escapeHtml(x.message)}</span></p>${detailHtml}`;
   }).join('');
   box.classList.remove('hidden');
 }

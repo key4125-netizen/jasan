@@ -36,8 +36,10 @@ function nasdaqCompositePortfolio(s) {
   s.setDailyCloses('AAPL', series(260, 100, 1.1, 0.9));
   s.setDailyCloses('^KS11', series(260, 2500, 1.0, 0.9));
   s.setDailyCloses('^IXIC', series(260, 15000, 0.95, 0.85));
+  // [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 미국 노출 개별주의 시장 지수는 S&P500이다(^IXIC와 같은 시계열 - 베타 값 유지).
+  s.setDailyCloses('^GSPC', series(260, 15000, 0.95, 0.85));
   s.setTickerMaster(LISTED);
-  // [2차 통합 보완 · PM 결정 ③] 나스닥 종합 Benchmark를 받는 해외 개별주를 만들려면 본국 보통주 근거가 필요하다(시험용).
+  // [2차 통합 보완 · PM 결정 ③] 해외 개별주에 기준 지수를 주려면 본국 보통주 근거가 필요하다(시험용).
   s.markHomeCommonListing(['AAPL']);
   return s;
 }
@@ -60,7 +62,8 @@ function kospiOnlyPortfolio(s) {
 test('T4 - NASDAQ 종합도 실측 낙폭이 있으므로 스트레스를 계산한다(자료 없는 경우의 거부 규칙은 그대로)', async () => {
   const s = nasdaqCompositePortfolio(freshSandbox());
   const m = await s.computeAdvancedRiskMetrics();
-  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'NASDAQ');
+  // [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 미국 노출 → S&P500. 낙폭 상수는 SP500(2020 -33.92 · 2022 -25.43)을 쓴다.
+  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'SP500');
   assert.ok(m.holdings.every((h) => typeof h.beta === 'number'));
   assert.strictEqual(m.stressStatus.covid2020, null);
   assert.strictEqual(m.stressStatus.rateHike2022, null);

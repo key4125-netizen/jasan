@@ -111,27 +111,31 @@ test('C. 상단 필터를 바꿔도 총자산 카드의 금액 · 보유 자산 
   expect(byCat.chartLabels, '그래프는 필터를 따른다').toEqual(['주식']);
 });
 
-test('D. 위험 관리 제목 옆 ⓘ 버튼이 없고 제목과 주변 안내는 그대로다', async ({ page }) => {
+/* [기대값 갱신 · PM 지시 2026-09-22] 「⚠️ 위험 관리」 제목과 진단 대상 고지(#riskScopeNote)는
+ * 메인 카드에서 없어지고 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업으로 합쳐졌다(SoT §52-13).
+ * 이 테스트가 보던 것(제목 줄에 ⓘ 버튼을 두지 않는다 · 카드의 나머지 구조는 그대로)은 그대로 본다. */
+test('D. 위험 관리 제목과 고지는 ⓘ 팝업으로 옮겨졌고 카드의 나머지 구조는 그대로다', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof state !== 'undefined');
   const r = await page.evaluate(() => {
     const section = document.getElementById('riskManagementSection');
-    const title = [...section.querySelectorAll('h3')].find((h) => h.textContent.includes('위험 관리'));
-    const row = title.parentElement;
     return {
-      titleText: title.textContent.trim(),
-      buttonsInTitleRow: row.querySelectorAll('button').length,
+      riskTitleCount: [...section.querySelectorAll('h3')].filter((h) => h.textContent.includes('위험 관리')).length,
+      hasScopeNote: !!document.getElementById('riskScopeNote'),
       infoTitleButtons: [...document.querySelectorAll('button[title]')].filter((b) => b.title.indexOf('HHI') >= 0).length,
-      scopeNote: document.getElementById('riskScopeNote').textContent.slice(0, 10),
       hasSummary: !!document.getElementById('riskDiagnosisSummary'),
-      hasRiskyAccordion: !!document.getElementById('riskyAccordionBtn')
+      hasRiskyAccordion: !!document.getElementById('riskyAccordionBtn'),
+      hasMacro: !!document.getElementById('macroBriefingSection')
     };
   });
   expect(r.infoTitleButtons, 'ⓘ 버튼 없음').toBe(0);
-  expect(r.buttonsInTitleRow, '제목 줄에 버튼 없음').toBe(0);
-  // [§46 TXT-46-2] 제목 「RISK 관리」 → 「위험 관리」(기능 · id 무변경).
-  expect(r.titleText).toBe('위험 관리');
-  expect(r.scopeNote).toContain('진단 대상');
+  expect(r.riskTitleCount, '제목은 제거됐다').toBe(0);
+  expect(r.hasScopeNote, '진단 대상 고지 줄은 제거됐다').toBe(false);
+  // 카드의 나머지 구조는 그대로다 - 레이아웃이 크게 재설계되지 않았다.
   expect(r.hasSummary).toBe(true);
   expect(r.hasRiskyAccordion).toBe(true);
+  expect(r.hasMacro).toBe(true);
+  // 같은 설명을 ⓘ 팝업에서 찾을 수 있다(정보가 사라지지 않았다).
+  const info = await page.locator('#portfolioRiskInfoModal').innerText();
+  expect(info).toContain('주식 · ETF');
 });

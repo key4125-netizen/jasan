@@ -182,6 +182,37 @@
   .dark .detail-btn { border-color: #334155; color: #94a3b8; }
   .detail-btn:hover { border-color: #818cf8; color: #4f46e5; }
   .dark .detail-btn:hover { border-color: #6366f1; color: #a5b4fc; }
+  /* [UX-6 · 모바일 터치 영역] 아이콘 버튼이 14~34px로 작아 손가락으로 누르기 어려웠다.
+     보이는 크기는 그대로 두고 **눌리는 범위의 세로만** 44px로 넓힌다 - ::after는 문서 흐름에
+     들어가지 않으므로 카드 높이도 글자 크기도 바뀌지 않는다(밀도 유지).
+     가로는 버튼 폭 그대로 둔다(width:100%) - 아이콘보다 넓히면 이 프로젝트가 지키는
+     "가로 넘침 0" 계약(e2e 91 · 92 · 93 · 103 · 111)을 깨기 때문이다. */
+  /* [UX-6] 목록 · 필터의 조작 컨트롤은 손가락으로 직접 누르는 대상이다. 아이콘 버튼과 달리
+     이쪽은 겹침으로 옆 요소의 터치를 가로채지 않도록 **컨트롤 자체**의 최소 높이를 44px로 둔다.
+     (폭은 기존 레이아웃을 그대로 쓰고, 세로만 보장한다 - 필터 줄 하나당 10px 남짓만 늘어난다.) */
+  #filterOwner, #filterCategory, #filterAccount, #assetSearchBtn,
+  #txFilterAccount, #txFilterType, #txFilterResetBtn, #txFilterApplyBtn,
+  #addTransactionBtn, #seedTransactionsBtn { min-height: 44px; }
+  /* 신랑/와이프 포지션 분석 카드의 구분 행(국내/해외 · 코어/미드필더/공격수)도 펼침 버튼이다. */
+  #positionAnalysisCardHusband > button, #positionAnalysisCardWife > button,
+  #positionAnalysisCardTotal > button, #positionAnalysisCardAll > button { min-height: 44px; }
+  /* 기간 이동(◀ ▶) · 거래백업 · 거래등록 버튼도 같은 기준을 지킨다. */
+  #pnlPeriodPrev, #pnlPeriodNext, #backupTransactionsBtn, #importTxExcelBtn { min-height: 44px; min-width: 44px; }
+  /* 손익 기간 전환(일별·월별·연별)도 자주 누르는 세그먼트 버튼이다. */
+  .pnl-period-btn { min-height: 44px; }
+  .tap44 { position: relative; }
+  .tap44::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 44px;
+  }
+  /* 세부내용 버튼(.detail-btn)도 같은 방식으로 넓힌다 - 테두리 크기는 그대로다. */
+  .detail-btn { position: relative; }
+  .detail-btn::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 44px;
+  }
   /* [Phase 39-C] Risk 진단 카드의 "🔍 세부내용" 버튼만 Global Readability Policy(최소 14px)에 맞춘다.
      위 공용 .detail-btn(10px)은 KPI 카드 3개와 리밸런싱 [비중조절] 2개가 함께 쓰므로 건드리지 않는다 -
      전역으로 올리면 그 화면들의 줄바꿈/정렬이 같이 바뀐다. Risk 영역에 있는 .detail-btn은 이
@@ -276,18 +307,18 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v265</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v266</p>
           </div>
         </div>
 
         <!-- [1번/2번 핵심 버튼] 타이틀 우측에 세로로 붙는다 - id/클릭 핸들러는 그대로라 위치만 옮겨도
              JS 쪽 수정이 필요 없다. -->
         <div class="flex flex-col gap-1.5 shrink-0 lg:flex-row lg:gap-1.5">
-          <button id="refreshAllBtn" class="flex items-center justify-center gap-1.5 text-sm font-semibold px-2.5 lg:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+          <button id="refreshAllBtn" class="tap44 flex items-center justify-center gap-1.5 text-sm font-semibold px-2.5 lg:px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
             <i id="refreshBtnIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0"></i>
             <span id="refreshBtnText">시세 &amp; 환율 갱신</span>
           </button>
-          <button id="coreStocksLiveBtn" class="flex items-center justify-center gap-1.5 text-sm font-medium px-2.5 lg:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
+          <button id="coreStocksLiveBtn" class="tap44 flex items-center justify-center gap-1.5 text-sm font-medium px-2.5 lg:px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
             <i data-lucide="activity" class="w-3.5 h-3.5 shrink-0"></i> 핵심종목 실시간
           </button>
         </div>
@@ -498,6 +529,8 @@
            포함 전체 금액은 총자산현황 탭에 있다는 점만 짧게 안내한다. -->
       <p class="text-sm text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
         금융자산 평가금액 <span id="kpiFinancialValueInline" class="font-semibold text-slate-600 dark:text-slate-300">0원</span>
+        <span class="whitespace-nowrap">· 부동산 포함 총자산 <span id="kpiTotalValueInline" class="font-semibold text-slate-600 dark:text-slate-300">0원</span></span>
+        <span class="whitespace-nowrap">(자세히는 「총자산현황」 탭)</span>
       </p>
       <!-- 총 손익 바로 아래: 소유자(신랑/와이프/공동 등)별 총 평가손익 금액+수익률을 함께 보여준다
            (renderKpiOwnerProfitBreakdown - 다른 태그처럼 금액만 보여주는 renderKpiBreakdown과 달리
@@ -567,21 +600,15 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-between mb-1 flex-wrap gap-y-1">
-      <div class="flex items-center gap-1.5">
-        <span class="text-base leading-none">⚠️</span>
-        <h3 class="text-base font-bold text-red-600 dark:text-red-400">위험 관리</h3>
-      </div>
-    </div>
-    <!-- [PM 지시 2026-09-21] 6대 요인 설명은 점수 옆 (i) 버튼의 「포트폴리오 위험 안내」 팝업으로 옮겼다
-         (#portfolioRiskInfoModal) - 카드 위쪽이 설명문으로 길어져 정작 점수가 밀려나 있었다.
-         [남겨 둔 이유] 아래 #riskScopeNote는 옮기지 않았다. V1.3 P1-1(체크리스트 §5 · v226 RELEASE)이
-         "진단 대상 고지는 숨김 · 툴팁이 아니라 점수가 보이는 자리에 **상시 노출**"로 확정했고
-         e2e/40 "5" · e2e/72 A-1이 그 사실을 고정하고 있다. 팝업 안에도 같은 내용을 넣되, 이 한 줄은
-         화면에 그대로 둔다. -->
-    <!-- [보유 부동산 없으면 문구에서 제외 - 요청 반영] updateRealEstateGuidanceText()(js/03)가 보유 부동산
-         유무에 따라 텍스트 전체를 교체한다. -->
-    <p id="riskScopeNote" class="text-sm text-slate-400 mb-3">진단 대상: 주식·ETF만 해당(현금/채권 등은 가격 변동성 진단 대상이 아니라 제외)</p>
+    <!-- [PM 지시 2026-09-22] 「⚠️ 위험 관리」 제목과 그 아래 진단 대상 고지(#riskScopeNote)를 이 자리에서
+         없애고, 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업(#portfolioRiskInfoModal) 하나로 모았다.
+         팝업에는 같은 내용이 이미 들어 있다 - 「누구 기준인가(소유자 구분 없이 가구 전체 합산)」 ·
+         「무엇이 대상인가(주식 · ETF)」 · 「현금 · 채권 · 부동산은 빠집니다」.
+         정보를 지운 것이 아니라 두 곳에 나뉘어 있던 같은 설명을 한 곳으로 합친 것이다.
+         카드의 첫 화면은 이제 매크로 브리핑 다음에 바로 위험점수가 온다 - 점수가 설명문에 밀리지 않는다.
+         [바뀌지 않은 것] 위험점수 계산 · 등급 · 6대 요인 · 진단 대상 집합(RISK_ELIGIBLE_CATEGORIES) ·
+         Portfolio/Market/Tracking Beta · Bond Risk · 경고 발생 조건. 표시 위치만 바뀌었다.
+         [종전 근거] V1.3 P1-1(상시 노출) · §46 TXT-46-2(화면 명칭 「위험 관리」)는 이 지시로 개정됐다 - SoT §52-13 참조. -->
 
     <!-- [포트폴리오 위험 진단 & 위기 시뮬레이션] 초보자용 안전 점수/신호등 + 쉬운 행동 제안 + 2020년
          코로나 폭락 재현 시뮬레이션 - computeAdvancedRiskMetrics()가 실제로 계산한 베타/VaR/CVaR/
@@ -591,7 +618,7 @@
 
     <div class="space-y-2">
       <div class="rounded-xl border border-red-200 dark:border-red-900/50 overflow-hidden">
-        <button type="button" id="riskyAccordionBtn" class="w-full flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/40 text-left">
+        <button type="button" id="riskyAccordionBtn" class="tap44 w-full flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/40 text-left">
           <span class="text-sm font-semibold text-red-600 dark:text-red-400 flex items-center gap-1.5">
             ⚠️ 리스크 감지 <span id="riskyCountBadge" class="text-sm font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">0건</span>
           </span>
@@ -1221,7 +1248,7 @@
       <!-- [v248-1 REQ-01] "이 계산은 이런 가정을 사용했어요" 접힘 영역을 삭제했다 - 그 안의 인플레이션율 · [가정 수정]은
            Monte Carlo 카드의 운용보수 설정 아래로 옮겼다(id · 리스너 그대로). 20년 후 값에 절세계좌가 더해져
            "(일반계좌 기준)"이 어긋나므로, 일반계좌 기준인 항목이 현재 자산 · 매달 투자라고 범위만 고쳤다. -->
-      <p class="text-sm text-slate-400 mt-1 leading-relaxed break-keep">현재 자산 · 매달 투자는 일반계좌 기준이며, 수익률이 매년 일정하다고 가정한 단순 계산값입니다. 실제 투자 결과의 변동성은 아래 Monte Carlo에서 확인할 수 있습니다.</p>
+      <p class="text-sm text-slate-400 mt-1 leading-relaxed break-keep">현재 자산 · 매달 투자는 일반계좌 기준이며, 수익률이 매년 일정하다고 가정한 단순 계산값입니다. 수익률이 0%여도 매달 넣는 돈이 쌓이기 때문에 미래 금액은 늘어납니다. 실제 투자 결과의 변동성은 아래 Monte Carlo에서 확인할 수 있습니다.</p>
     </section>
 
     <!-- [FUTURE-P1 Phase 3-2] 위 참고값(고정 수익률 단일 경로)과 아래 Monte Carlo(변동 범위)가 "같은
@@ -1504,7 +1531,7 @@
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
       <h3 id="modalTitle" class="text-sm font-semibold">최초등록</h3>
-      <button id="closeModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+      <button type="button" id="closeModalBtn" aria-label="닫기" class="w-11 h-11 -mr-2 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
@@ -1584,7 +1611,7 @@
       </label>
 
       <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 my-1"></div>
-      <p class="col-span-2 text-sm text-slate-400 -mt-1">아래 항목은 검색 결과(실시간 시세 조회) 기준으로 자동 채워지며 직접 수정할 수 없습니다. 매입금액은 수량×매수단가로 자동 계산됩니다.</p>
+      <p class="col-span-2 text-sm text-slate-400 -mt-1">번호가 붙은 <b>①~④</b> 네 칸만 직접 입력하시면 됩니다. 나머지 항목은 검색 결과(실시간 시세 조회) 기준으로 자동 채워지며 직접 수정할 수 없습니다. 매입금액은 수량×매수단가로 자동 계산됩니다.</p>
 
       <label class="col-span-1 text-sm">
         <span class="text-slate-500 dark:text-slate-400">자산군</span>
@@ -2443,7 +2470,7 @@
     <div class="px-5 py-3 shrink-0">
       <input id="stockSearchInput" type="text" autocomplete="off" placeholder="종목명(영문) 또는 티커/코드 검색 - 예: Samsung, 005930, QQQM"
         class="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 outline-none focus:border-brand-400">
-      <p id="stockSearchHint" class="text-sm text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명(보유 중인 종목 한정)이나 코드로, 그 외에는 영문명/티커로 검색하세요.</p>
+      <p id="stockSearchHint" class="text-sm text-slate-400 mt-1.5 leading-relaxed">국내 종목은 한글 종목명이나 종목코드로, 해외 종목은 영문명이나 티커로 검색하세요. 같은 이름이 여러 개 나오면 결과에 함께 표시되는 거래소·국내/해외 표시를 보고 골라 주세요.</p>
     </div>
     <div id="stockSearchResults" class="flex-1 overflow-y-auto px-2 pb-3 min-h-[140px]">
       <p class="text-sm text-slate-400 text-center py-6">검색어를 입력하세요</p>
@@ -2456,7 +2483,7 @@
   <div class="modal-anim bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
       <h3 id="txModalTitle" class="text-sm font-semibold">거래 추가</h3>
-      <button type="button" id="closeTxModalBtn" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+      <button type="button" id="closeTxModalBtn" aria-label="닫기" class="w-11 h-11 -mr-2 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
     </div>
@@ -2675,7 +2702,7 @@
 
       <div class="col-span-2 flex justify-end gap-2 mt-2">
         <button type="button" id="cancelTxModalBtn" class="text-sm font-medium px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">취소</button>
-        <button type="submit" class="text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
+        <button type="submit" id="txFormSubmitBtn" aria-label="거래 내역 저장" class="text-sm font-medium px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/30">저장</button>
       </div>
     </form>
   </div>

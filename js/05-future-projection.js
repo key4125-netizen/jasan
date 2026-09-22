@@ -2877,7 +2877,7 @@ function renderScenarioRateManagerList() {
     const ratePlaceholder = (preset) => (row.isBase ? fmtNum(getSystemDefaultRate(preset, row.key), 1) : '미입력');
     // [PMD-01] 형식 때문에 보유 종목과 연결되지 않는 키 · [F-02] 값을 정하지 않은 칸이 있는 사용자 행 안내.
     const formatHint = getRateKeyFormatHint(row.key);
-    const formatHintLine = formatHint ? `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep">⚠ ${escapeHtml(formatHint)}</p>` : '';
+    const formatHintLine = formatHint ? `<p class="text-sm text-amber-600 dark:text-amber-400 break-keep flex items-start gap-1.5"><span class="shrink-0">⚠</span><span class="break-keep break-words min-w-0">${escapeHtml(formatHint)}</span></p>` : '';
     const blankNoticeLine = (!row.isBase && ['conservative', 'normal', 'optimistic'].some((p) => row[p] === ''))
       ? '<p class="text-sm text-slate-500 dark:text-slate-400 break-keep">빈 칸은 값을 정하지 않은 상태로 저장되며 0%로 바뀌지 않습니다.</p>'
       : '';
@@ -2919,7 +2919,7 @@ function renderScenarioRateManagerList() {
       </div>
       <p class="text-sm ${RETURN_SOURCE_TONE_CLASSES[src.tone]} flex items-center gap-1">
         <span>${src.tone === 'user' ? '📝 ' : ''}장기 수익률 가정: ${escapeHtml(src.label)}</span>
-        <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" data-info-tip="${escapeHtml(src.detail)}" class="tap44 text-slate-400" aria-label="근거 설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </p>
       ${referenceLine}
       ${formatHintLine}

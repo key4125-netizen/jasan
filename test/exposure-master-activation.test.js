@@ -280,8 +280,9 @@ test('16. 원장 규모와 상태 분포가 기록한 것과 같다', () => {
   assert.strictEqual(entries.filter((e) => e.version === 'EM-2026.2').length, 10);
   // [기대값 갱신 사유 · 실행 묶음 B · 2026-09-20] 공식 자료로 세 건이 추가 확정됐다 -
   // 069500 · 102110(기초지수 코스피 200) · 368590(환노출 확정으로 환헤지 사실 완비).
-  assert.strictEqual(byStatus('RESOLVED').length, 41);
-  assert.strictEqual(byStatus('UNRESOLVED').length, 17);
+  // [[D-2 기대값 갱신 · PM 최종 정책 2026-09-21] · STEP 6] 360200.KS(ACE 미국S&P500)에 환헤지 사실이 공식 문서로 채워져 RESOLVED가 됐다.
+  assert.strictEqual(byStatus('RESOLVED').length, 42);
+  assert.strictEqual(byStatus('UNRESOLVED').length, 16);
   const types = {};
   entries.forEach((e) => { types[e.assetType] = (types[e.assetType] || 0) + 1; });
   assert.deepStrictEqual(types, { KR_STOCK: 16, FOREIGN_STOCK: 20, FOREIGN_LISTED_ETF: 11, KR_LISTED_DOMESTIC_ETF: 5, KR_LISTED_FOREIGN_ETF: 6 });

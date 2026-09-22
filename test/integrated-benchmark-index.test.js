@@ -355,11 +355,14 @@ test('④ H.10 원화 환산: 원화 지수 수익률 = 달러 수익률 + 환�
   s.state.assets = [krEtfAsset('ZZ0001.KS', 'ZZ 미국지수')];
   const m = await s.computeAdvancedRiskMetrics();
   const h = m.holdings[0];
-  /* [§50 · PD-15 기대값 갱신] H.10 원화 환산이 필요한 쪽은 공식 기초지수(추적) 경로다.
-   * Market Beta는 같은 시장 · 같은 통화끼리 비교하므로 애초에 환산이 없다(정의가 섞일 여지가 사라졌다). */
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 국내 상장 미국 ETF는 시장 베타도 S&P500 기준이 됐다. 그래서 두 베타 모두
+   * 비동기 쌍(Dimson 시차 0+1) + H.10 원화 환산이라는 **같은 승인 경로**를 탄다(§44 44-15 · D-05).
+   * 새 계산 엔진이 아니라, 기존 경로를 쓰는 대상이 늘어난 것이다. */
   assert.strictEqual(h.trackingBenchmarkFx, 'USD_TO_KRW_H10');
-  assert.strictEqual(h.benchmarkFx, null, '시장 베타는 환산하지 않는다');
+  assert.strictEqual(h.benchmarkFx, 'USD_TO_KRW_H10', '미국 노출 · 국내 상장이면 시장 베타도 원화 환산한다');
+  assert.strictEqual(h.benchmarkAlignment, 'ASYNC_DIMSON');
   assert.ok(Math.abs(h.trackingBeta - 1) < 1e-9, `원화 환산 Dimson 추적 베타 ${h.trackingBeta}`);
+  assert.ok(Math.abs(h.beta - 1) < 1e-9, `원화 환산 Dimson 시장 베타 ${h.beta}`);
   const noFx = s.computeAsyncDimsonBeta(mk.kr, mk.us, 'KR', 'US');
   // 환율을 빼고 달러 지수에 맞추면 정확히 1이 되지 않는다(환율 변동이 잡음으로 남는다) - 위의 정확한 1은 환산을 실제로 쓴 결과다.
   assert.ok(Math.abs(noFx.beta - 1) > 1e-6, String(noFx.beta));
@@ -369,12 +372,16 @@ test('④ H.10 원화 환산: 원화 지수 수익률 = 달러 수익률 + 환�
   /* [기대값 갱신 사유 · D-9 · PM 승인 2026-09-20] 정의를 섞지 않는다는 원칙은 그대로이고, 이제
    * 원화 기준 낙폭 표가 생겨 **맞는 짝**을 곱할 수 있게 됐다 - 원화 환산 베타 × 원화 기준 낙폭.
    * 예전에는 원화 낙폭 자료가 없어 만들지 않았던 것이지, 만들면 안 되는 것이 아니었다. */
-  /* [§50 · PD-15 기대값 갱신] 스트레스는 Portfolio Risk의 일부이므로 위험점수와 같은 베타(Market)를 쓴다.
-   * 이 fixture에는 상장 시장 지수(^KS11) 시계열이 없어 시장 베타가 없고, 그래서 스트레스도 만들지 않는다 -
-   * 정의가 맞는 짝끼리만 곱한다는 원칙이 지켜진 결과다(없는 값을 지어내지 않는다).
-   * 시장 베타로 실제 계산되는 경우는 아래 Market Beta 스트레스 테스트에서 고정한다. */
-  assert.strictEqual(m.portfolioBeta, null);
-  assert.strictEqual(m.stressLossKRW, null);
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 이 종목은 국내 상장 · 미국 경제적 노출이므로
+   * 시장 베타도 S&P500 기준이 된다. 그래서 v265에서 "시장 지수가 없어 만들지 않던" 값이 이제 생긴다.
+   * 스트레스는 **정의가 맞는 짝**을 곱한다 - 베타가 H.10 원화 환산 기준이므로 낙폭도 원화 기준
+   * 표(COVID_CRASH_BENCHMARK_DROP_PCT_KRW.SP500 = -29.86)를 쓴다(D-9). 미국 상장 종목이었다면
+   * 현지통화 표(-33.92)를 쓴다 - 상장지에 따라 곱하는 상수가 갈리는 것은 통화 정의를 맞춘 결과다. */
+  assert.ok(Math.abs(m.portfolioBeta - 1) < 1e-9, `원화 환산 Dimson 시장 베타 ${m.portfolioBeta}`);
+  assert.strictEqual(m.holdings[0].benchmarkKey, 'SP500');
+  assert.ok(Math.abs(m.stressLossPct - (-29.86)) < 1e-6, `2020 스트레스 ${m.stressLossPct}`);
+  assert.ok(Math.abs(m.stressLossPct2022 - (-17.55)) < 1e-6, `2022 스트레스 ${m.stressLossPct2022}`);
+  assert.strictEqual(Math.round(m.stressLossKRW), Math.round(m.totalCur * m.stressLossPct / 100));
 });
 
 test('④ H.10을 쓸 수 없으면 달러 지수로 대신하지 않고 베타를 만들지 않는다', async () => {
@@ -528,7 +535,10 @@ test('상태 표(실제 원장): 확인·원천있음 / 확인·원천없음 / �
   //   069500 · 102110: 기초지수 코스피 200 확인 → 미해결에서 "확인 · 원천 없음"으로
   //   368590: 환노출(비헤지) 확정 → 헤지 미확인에서 "확인 · 원천 있음"(비동기 · 원화환산)으로
   // [기대값 갱신 사유 · D-11 · §47-5 · 2026-09-20] HOME_COMMON 규칙 v2로 GOOG 1건이 미해결 → 확인·원천있음으로 옮겨갔다.
-  assert.deepStrictEqual(buckets, { RESOLVED: 34, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 1, mixedExposure: 2, UNRESOLVED: 14 });
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] STEP 6 - ACE 미국S&P500(360200.KS)의 환헤지가 운용사 공식 간이투자설명서로 확정돼
+   * (UNHEDGED · A등급) 「헤지 미확인」 1건이 「확인 · 원천 있음」으로 옮겨갔다. 이 표는 **공식
+   * 기초지수(추적)** 경로를 재므로, D-2의 시장 지수 변경 자체는 이 분포를 건드리지 않는다. */
+  assert.deepStrictEqual(buckets, { RESOLVED: 35, SOURCE_UNAVAILABLE: 7, hedgeUnconfirmed: 0, mixedExposure: 2, UNRESOLVED: 14 });
 });
 
 /* ── ⑥ D-5 KOSPI200 원천 정책 (§47-6 · PM APPROVED WITH CONSTRAINT 2026-09-20) ───────────── */

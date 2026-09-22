@@ -54,6 +54,10 @@ function buildStandardPortfolio(s) {
    * 그래야 이번 구조 변경이 계산식을 건드리지 않았다는 사실이 Golden 숫자 그대로 드러난다
    * (베타 값이 같으므로 portfolioBeta · 6대 요인 · riskScore가 v264와 동일해야 한다). */
   s.setDailyCloses('^IXIC', withDates({ closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) }));
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 미국 노출 자산의 시장 지수는 S&P500이다. 여기에도 **같은 시계열**을 넣는다 -
+   * 그래야 기준 지수가 바뀌어도 베타 값 자체는 그대로여서, 이번 변경이 계산식이 아니라
+   * "무엇과 비교하는가"만 바꿨다는 사실이 Golden 숫자에 그대로 드러난다. */
+  s.setDailyCloses('^GSPC', withDates({ closes: zigzagCloses(260, 15000, 0.9, 0.8), volumes: volumes(260, 1, 1) }));
   s.setTickerMaster(LISTED);
   return s;
 }
@@ -685,7 +689,10 @@ test('Edge - 섹터 매핑에 없는 티커는 미분류로 안전하게 빠지�
 
   assert.strictEqual(m.sectorExposure.topSector, '미분류');
   assert.strictEqual(round(m.sectorExposure.unclassifiedWeightPct, 4), 100);
-  assert.strictEqual(m.dataConfidence.score, 72);
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] ZZZZ.KS는 Exposure Master에 없다. STEP 5(GAP-1)에 따라 경제적 노출 근거가 없으면
+   * 접미사(.KS)만 보고 KOSPI를 붙이지 않고 미확정으로 둔다 - 그래서 베타가 없고 신뢰도가 72 → 57로
+   * 내려간다. 커버리지가 줄어든 것이 아니라 "근거 없이 붙이던 기준"을 뺀 결과다. */
+  assert.strictEqual(m.dataConfidence.score, 57);
 });
 
 test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에 반영된다', async () => {
@@ -698,6 +705,7 @@ test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에
   s.setDailyCloses('AAPL', withDates({ closes: zigzagCloses(260, 100, 1, 1), volumes: volumes(260, 1000, 1) }));
   s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1, 1), volumes: volumes(260, 1, 1) }));
   s.setDailyCloses('^IXIC', withDates({ closes: zigzagCloses(260, 15000, 1, 1), volumes: volumes(260, 1, 1) }));
+  s.setDailyCloses('^GSPC', withDates({ closes: zigzagCloses(260, 15000, 1, 1), volumes: volumes(260, 1, 1) }));
   s.setTickerMaster(LISTED);
   // [기대값 유지 방법 · 2차 통합 보완 · PM 결정 ③] 해외 개별주 Benchmark는 본국 보통주 근거가 있을 때만 정해진다 - 시험용 근거를 붙인다.
   s.markHomeCommonListing(['AAPL']);
@@ -706,8 +714,8 @@ test('Edge - 해외자산은 state.exchangeRate로 원화 환산되어 비중에
   // $1,000 × 1,300 = 130만, 국내 130만 → 정확히 50:50
   assert.strictEqual(m.totalCur, 2600000);
   assert.deepStrictEqual(plain(m.holdings.map((h) => round(h.weight * 100, 4)).sort()), [50, 50]);
-  // [Risk 정책 P-4] 예전 근사 집합(NASDAQ100 스타일) 대신 실제 상장 거래소 종합지수(NASDAQ)를 쓴다.
-  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'NASDAQ');
+  // [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 미국 경제적 노출이므로 상장 거래소(NASDAQ)가 아니라 S&P500을 쓴다.
+  assert.strictEqual(m.holdings.find((h) => h.ticker === 'AAPL').benchmarkKey, 'SP500');
 });
 
 test('Edge - 계산 중 예외가 나면 null을 반환하고 앱을 멈추지 않는다', async () => {
@@ -825,8 +833,10 @@ test('Golden - 표준 2종목 포트폴리오의 전체 지표', async () => {
   assert.strictEqual(m.totalCur, 6300000);
   assert.deepStrictEqual(plain(m.holdings.map((h) => h.ticker)), ['005930.KS', 'QQQM']);
   assert.deepStrictEqual(plain(m.holdings.map((h) => h.curAmount)), [5000000, 1300000]);
-  // [§50 · PD-15 기대값 갱신] benchmarkKey는 이제 **상장 시장 지수**다(QQQM은 NASDAQ 상장).
-  assert.deepStrictEqual(plain(m.holdings.map((h) => h.benchmarkKey)), ['KOSPI', 'NASDAQ']);
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] benchmarkKey는 **경제적 노출 기준 시장 지수**다.
+   * 국내 노출(삼성전자)은 상장 시장 그대로 KOSPI, 미국 노출(QQQM)은 상장 거래소(NASDAQ)와
+   * 무관하게 S&P500이다. 베타 값(1.157895 / 0.882353)은 fixture가 같은 시계열이라 그대로다. */
+  assert.deepStrictEqual(plain(m.holdings.map((h) => h.benchmarkKey)), ['KOSPI', 'SP500']);
   assert.deepStrictEqual(plain(m.holdings.map((h) => h.trackingBenchmarkKey)), ['KOSPI', 'NASDAQ100'], '공식 기초지수는 그대로 보존된다');
   assert.strictEqual(m.betaDefinition, 'MARKET');
   assert.strictEqual(m.missingCount, 0);
@@ -883,16 +893,17 @@ test('Golden - 스트레스 시나리오 상수와 손실 추정(beta × 실측 
   assert.deepStrictEqual(plain(s.RATE_HIKE_2022_BENCHMARK_DROP_PCT_KRW), { SP500: -17.55, NASDAQ: -31.37, NASDAQ100: -31.15, DOW: -12.41 });
 
   /* 손실률 = Σ(비중 × beta × 그 종목 벤치마크의 실측 낙폭) - 계산식은 그대로다.
-   * [§50 · PD-15 기대값 갱신] 스트레스는 Portfolio Risk의 일부이므로 위험점수와 같은 베타(Market)를
-   * 쓴다. 그래서 곱하는 낙폭도 그 베타의 기준 지수 것으로 바뀐다 - QQQM은 NASDAQ100(-28.03/-35.28)이
-   * 아니라 상장 시장인 NASDAQ 종합(-30.12/-35.49)이다. 베타 값 자체는 변하지 않았다(이 fixture에서
-   * ^IXIC와 ^NDX가 같은 시계열이다) - 즉 이 차이는 낙폭 상수 하나에서만 나온다.
-   * 부수 효과: 시장 베타는 같은 시장 · 같은 통화끼리 비교하므로 원화 환산 낙폭표(_KRW)를 쓰는
-   * 경우가 사라졌다 - 정의가 맞는 짝끼리만 곱한다는 원칙이 구조적으로 보장된다.
-   *   2020: 0.793651×1.157895×(-35.71) + 0.206349×0.882353×(-30.12) = -38.300241
-   *   2022: 0.793651×1.157895×(-27.89) + 0.206349×0.882353×(-35.49) = -32.091673 */
-  assert.strictEqual(round(m.stressLossPct, 6), -38.300241);
-  assert.strictEqual(round(m.stressLossPct2022, 6), -32.091673);
+   * [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] 스트레스는 Portfolio Risk의 일부이므로 위험점수와
+   * 같은 베타(Market)를 쓴다. 그래서 곱하는 낙폭도 그 베타의 기준 지수 것으로 따라 바뀐다 -
+   * QQQM은 미국 경제적 노출이므로 상장 거래소(NASDAQ 종합 -30.12/-35.49)가 아니라
+   * **S&P500(-33.92/-25.43)**을 쓴다. 베타 값 자체는 변하지 않았다(이 fixture에서 ^GSPC · ^IXIC ·
+   * ^NDX가 모두 같은 시계열이다) - 즉 아래 차이는 낙폭 상수 하나에서만 나온다.
+   * QQQM은 미국 상장(가격통화 USD)이라 지수와 같은 달력 · 같은 통화다 → 원화 낙폭표(_KRW)가 아니라
+   * 현지통화 낙폭표를 쓴다. 국내 상장 미국 ETF였다면 H.10 원화 환산 베타에 _KRW 표를 곱한다(D-9).
+   *   2020: 0.793651×1.157895×(-35.71) + 0.206349×0.882353×(-33.92) = -38.992118
+   *   2022: 0.793651×1.157895×(-27.89) + 0.206349×0.882353×(-25.43) = -30.260020 */
+  assert.strictEqual(round(m.stressLossPct, 6), -38.992118);
+  assert.strictEqual(round(m.stressLossPct2022, 6), -30.26002);
   assert.strictEqual(Math.round(m.stressLossKRW), Math.round(m.totalCur * m.stressLossPct / 100));
 });
 
@@ -1142,15 +1153,19 @@ test('P-4 · P-5 - 벤치마크가 없는 채권 ETF는 beta · 스트레스를 
   const s = freshSandbox();
   s.state.assets = [
     makeTestAsset({ name: '삼성전자', ticker: '005930.KS', quantity: 30, buyPrice: 100000, currentPrice: 100000 }),
-    makeTestAsset({ name: 'iShares 20+ Year Treasury Bond ETF', ticker: 'TLT', category: 'ETF', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 })
+    /* [D-2 기대값 갱신 · 2026-09-21] 예전에는 실제 TLT를 썼다. TLT는 Exposure Master에
+     * marketExposure=US로 등재돼 있어서, D-2 이후에는 S&P500 시장 지수를 받는다(아래 별도 테스트가
+     * 그 사실을 고정한다). 이 테스트가 검사하려는 것은 "기준 지수가 **없는** 종목"의 처리이므로,
+     * 원장에 없는 합성 채권 ETF로 바꾼다 - 검사 대상 동작은 그대로다. */
+    makeTestAsset({ name: 'ZZ 미등재 채권 ETF', ticker: 'ZZBND', category: 'ETF', isDomestic: '해외', currency: 'USD', quantity: 10, buyPrice: 100, currentPrice: 100 })
   ];
   s.setDailyCloses('005930.KS', withDates({ closes: zigzagCloses(260, 100000, 1.2, 1.0), volumes: volumes(260, 1000, 1) }));
-  s.setDailyCloses('TLT', withDates({ closes: zigzagCloses(260, 100, 0.3, 0.3), volumes: volumes(260, 1000, 1) }));
+  s.setDailyCloses('ZZBND', withDates({ closes: zigzagCloses(260, 100, 0.3, 0.3), volumes: volumes(260, 1000, 1) }));
   s.setDailyCloses('^KS11', withDates({ closes: zigzagCloses(260, 2500, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
   s.setDailyCloses('^GSPC', withDates({ closes: zigzagCloses(260, 5000, 1.0, 0.9), volumes: volumes(260, 1, 1) }));
   s.setTickerMaster(LISTED);
   const m = await s.computeAdvancedRiskMetrics();
-  const tlt = m.holdings.find((h) => h.ticker === 'TLT');
+  const tlt = m.holdings.find((h) => h.ticker === 'ZZBND');
   assert.strictEqual(tlt.benchmarkKey, null);
   assert.strictEqual(tlt.benchmarkStatus, 'UNRESOLVED');
   assert.strictEqual(tlt.beta, null);
@@ -1169,6 +1184,30 @@ test('P-4 · P-5 - 벤치마크가 없는 채권 ETF는 beta · 스트레스를 
   // [기대값 갱신 사유 · BOND-5 · §47-2 · 2026-09-20] 포트폴리오 베타가 설명 범위와 함께 표시되므로
   // 시장 요인이 다시 점수에 참여한다(요인 자체를 빼던 §44 제12조의 재정규화는 베타가 없을 때 그대로다).
   assert.ok(typeof m.subScores.market === 'number');
+});
+
+/* [D2-Q1 · PM 최종 승인 2026-09-22] 원장에 assetClass=BOND로 적힌 상품(미국 채권 ETF TLT · IEF)은
+ * marketExposure=US여도 **주식 시장지수 베타의 대상이 아니다.**
+ * 왜 바꿨나: 실측 S&P500 베타가 TLT 0.0824 · IEF 0.0171로, 시장위험 밴드의 최저점(20점)을 받는다.
+ * 통계적으로 맞는 값이지만(국채는 주식시장과 거의 함께 움직이지 않는다) 그 결과 실효 듀레이션이
+ * 16년에 이르는 상품이 "가장 안전"으로 표시되고, 정작 그 상품의 진짜 위험인 금리위험은
+ * 어디에도 잡히지 않는다. 채권은 별도 위험영역에서 다룬다는 기존 정책(PD-15)을
+ * 앱 카테고리가 아니라 **원장의 A등급 사실(assetClass)** 로 적용한다.
+ * 채권 위험 계산 · Duration · ±100bp · MC · Tracking Beta는 변경하지 않았다. */
+test('D2-Q1 - 원장 assetClass가 BOND인 상품은 미국 노출이어도 시장 베타 대상이 아니다', async () => {
+  const s = freshSandbox();
+  const bm = (a) => s.resolveMarketRiskBenchmark(a);
+  assert.strictEqual(bm({ ticker: 'TLT', category: 'ETF', name: 'ZZ 미국 장기국채 ETF' }).key, null);
+  assert.strictEqual(bm({ ticker: 'TLT', category: 'ETF', name: 'ZZ 미국 장기국채 ETF' }).source, 'bondAssetClass');
+  assert.strictEqual(bm({ ticker: 'IEF', category: 'ETF', name: 'ZZ 미국 중기국채 ETF' }).key, null);
+  assert.strictEqual(bm({ ticker: 'IEF', category: 'ETF', name: 'ZZ 미국 중기국채 ETF' }).source, 'bondAssetClass');
+  // 같은 미국 노출이라도 주식형은 그대로 S&P500이다(D-2 규칙 무변경).
+  assert.strictEqual(bm({ ticker: 'SPY', category: 'ETF', name: 'ZZ S&P500 ETF' }).key, 'SP500');
+  assert.strictEqual(bm({ ticker: 'AAPL', category: '주식', name: 'ZZ 미국주' }).key, 'SP500');
+  // 앱에서 '채권' 카테고리로 등록된 자산은 종목이 무엇이든 시장 베타 대상이 아니다(PD-15 · 기존 정책).
+  assert.strictEqual(bm({ ticker: 'TLT', category: '채권', name: 'ZZ 채권' }).key, null);
+  assert.strictEqual(bm({ ticker: 'TLT', category: '채권', name: 'ZZ 채권' }).source, 'notEquityLike');
+  assert.strictEqual(bm({ ticker: '005930.KS', category: '현금', name: 'ZZ 현금' }).source, 'notEquityLike');
 });
 
 test('What-If - 같은 비중이면 기준 결과와 같고, 데이터 부족이면 계산하지 않는다', async () => {

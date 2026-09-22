@@ -32,11 +32,199 @@
 
 ---
 
-## 🚀 v264 Release 준비 완료 — Bond Stage 2(KIS) · 포트폴리오 위험 안내 UI · 전체 통합검증 (2026-09-21 · 가장 최신)
+## 🏁 v266 FINAL RELEASE · 프로젝트 종료 — D-2 Market Beta · 최종 종합감사 · 최종 UX 감사 (2026-09-22 · 가장 최신)
+
+> **APPLICATION VERSION: v266 / PRODUCTION RELEASE 완료 · tag `v266`**
+> **이 절이 현재 상태다. 새 세션은 여기서 시작한다.**
+> 아래 v264 절은 역사적 기록으로 보존한다(그 시점의 "가장 최신" 표기는 이제 유효하지 않다).
+
+### 한 문장
+
+시장 민감도(베타)를 **무엇과 비교할지**를 최종 확정하고(D-2), 그 위에서 앱 전체를 기능·계산·데이터·
+UI/UX·모바일·보안 관점으로 종합감사한 뒤 PM이 승인한 항목만 반영해 **v266으로 릴리스하고 프로젝트를
+종료**했다. **Risk Score 계산식 · Risk Model · MC 엔진 · Return Key · Macro · 채권 위험 계산은 바뀌지
+않았다**(회귀 측정에서 변동성 · VaR · CVaR · MDD · 상관 · MC 전 지표가 비트 단위로 동일).
+
+---
+
+### 1. v266 최종 상태
+
+| 항목 | 값 |
+| --- | --- |
+| 앱 버전 | **v266** (`index.html` `#appVersionLabel` · `sw.js` `CACHE_NAME = 'smart-asset-manager-v266'`) |
+| Release commit | `이 커밋 자신 (`release: v266 final closeout`)` — `release: v266 final closeout` |
+| 직전 baseline commit | `a72e984` (v265 · D-2 직전 frozen baseline · 이번에 함께 push됨) |
+| tag | **`v266`** (release commit에 부여) · 기존 `v264` 유지 |
+| remote | `origin/main` — normal fast-forward push (force · history rewrite 없음) |
+| Production | GitHub Pages — https://key4125-netizen.github.io/jasan/ |
+
+---
+
+### 2. 최종 PM 승인사항 (재설계·재논의 금지)
+
+**D-2 Market Beta 최종 정책 (§51)**
+
+- **국내 경제적 노출** → 상장 시장 지수. 코스피 상장 → KOSPI · 코스닥 상장 → KOSDAQ.
+- **미국 경제적 노출** → 상장 거래소와 **무관하게 S&P500**. 나스닥 · 뉴욕 · 아멕스 · 국내 상장 미국 ETF 모두 동일.
+- 경제적 노출시장은 **승인된 Exposure Master 원장에서만** 읽는다. 티커 접미사 · 거래소 · 상품명으로
+  추정하지 않는다. 근거가 없으면 **미확정**으로 둔다(추정보다 침묵).
+- ADR · 상장지 미확인 해외주식은 미확정 유지.
+- 결과: 뉴욕 9종목 · 아멕스 4종목이 미확정 → 실제 계산으로 전환, 원장 58건 전부에 기준이 생겼다.
+
+**최종 종합감사 · UX 감사 승인사항 (§52)**
+
+| 코드 | 내용 | 처리 |
+| --- | --- | --- |
+| D2-Q1 | 미국 채권 ETF(TLT · IEF)는 미국 노출이어도 주식 시장지수 베타를 받지 않는다 (`assetClass === 'BOND'` → `unresolved('bondAssetClass')`) | 구현 |
+| D2-Q2 | 혼합구조 상품의 기준 변경 | **변경 없음** (코스피 유지 · 화면에 혼합구조임을 표시) |
+| UX-1 | 미래 예측 실패 시 "입력값을 확인해주세요" 대신 무엇을 해야 하는지 알려준다 | 구현 |
+| UX-2 | — | **변경 없음** |
+| UX-3 | 직접 관리 자산에 거래를 저장하면 수량이 그대로임을 저장 직후 알린다 (정책 무변경) | 구현 |
+| UX-4 | 검색 안내문을 실제 동작에 맞춘다 (한글 종목명은 보유 여부와 무관하게 검색) | 구현 |
+| UX-5 | — | **변경 없음** |
+| UX-6 | 용어가 줄 사이에서 쪼개지지 않게 한다 | 구현 |
+| UX-7 | 첫 화면에서 부동산 포함 총자산 표시 · 반올림 0% → "0.01% 미만" | 구현 |
+| UX-8 ①②③ | 터치 대상 44px 이상 · 아이콘 안내문 19곳 행잡기(hanging indent) · 모달 스크롤 초기화 | 구현 |
+| UX-9 | 안내 문장 보강 | 구현 |
+| T-2 / T-3 | 거래 팝업 닫기 버튼 44px + `aria-label` · 저장 버튼 `id`/`aria-label` | 구현 |
+| A-2 / A-3 | 최초 자산등록 안내문 명확화 · 닫기 버튼 44px + `aria-label` + `type="button"` | 구현 |
+| **A-1** | "최초 자산등록 빈칸 저장 무반응" | **결함 없음으로 종결** (아래 3항) |
+| 위험관리 영역 | 「⚠️ 위험 관리」 제목 + `#riskScopeNote` | **PM 결정으로 삭제** (아래 4항) |
+
+---
+
+### 3. A-1 — 결함 없음으로 종결
+
+UX 감사에서 "최초 자산등록에서 빈칸으로 저장하면 아무 반응이 없다"고 보고했으나 **오진이었다.**
+감사 프로브가 `showToast`만 가로채고 `window.alert`는 보지 않아 생긴 착오다. 실제 앱은
+`js/07-table-render-modals.js:1042`에서 `alert('종목명을 입력해주세요.')`를 띄운다.
+**코드를 고치지 않았고, PM이 "결함 없음으로 종결"로 확정했다.** 다시 열지 않는다.
+
+### 4. 「위험 관리」 영역 삭제 — PM 최종 결정
+
+PM이 처음 지시한 것은 "위험 관리 영역을 위험점수 ⓘ 팝업으로 **이동**"이었다. 조사 결과 **이동할 정보가
+이미 ⓘ 팝업 안에 전부 있었고**, 남는 작업은 화면에서의 제거뿐인데 그 제거가 기존 PM 결정 2건과
+정면으로 충돌했다 — ① §46 TXT-46-2(제목 「위험 관리」 고정) ② V1.3 P1-1(`#riskScopeNote` 상시 노출).
+임의 진행하지 않고 `[POLICY CONFLICT]`로 보고했고, **PM이 "삭제"로 최종 결정**해 아래를 실행했다.
+
+| 대상 | 조치 |
+| --- | --- |
+| `<h3>⚠️ 위험 관리</h3>` 제목 블록 | `index.html`에서 **제거** |
+| `#riskScopeNote` (진단 대상 고지) | `index.html`에서 **제거** · `js/03`의 죽은 `setText` 호출도 제거 |
+| ⓘ 팝업 `#portfolioRiskInfoModal` | **변경 없음** — 같은 설명이 이미 들어 있다 |
+| 위험 경고 팝업 `riskAlertModal`의 진단 대상 줄 | **유지** — 별도 고지이며 삭제 대상 아님 |
+
+**개정된 기존 정책 2건** (SoT §52-13에 기록)
+- **V1.3 P1-1** — "메인 RISK 카드에 `#riskScopeNote` 상시 노출"은 개정됐다. 범위 고지는 ⓘ 팝업과
+  위험 경고 팝업 두 자리에 남는다. §50-18 보존 목록의 해당 항목은 §52-13으로 대체된다(취소선 표기).
+- **§46 TXT-46-2** — 화면 명칭 4개 중 「위험 관리」 제목 항목이 빠진다(나머지 3개와 옛 이름 금지는 유지).
+
+**바뀌지 않은 것**: 위험점수 계산 · 등급 · 6대 요인 · 진단 대상 집합
+(`RISK_ELIGIBLE_CATEGORIES = ['주식','ETF']`) · Portfolio/Market/Tracking Beta · Bond Risk ·
+위험 감지 건수 · 경고 발생 조건 · Risk 화면의 나머지 카드 배치.
+
+---
+
+### 5. 주요 구현 위치
+
+| 파일 | 내용 |
+| --- | --- |
+| `js/09-price-fx-risk-engine.js` | `resolveMarketRiskBenchmark()` 재작성(D-2 핵심) · `riskListingMarketOf()` · `riskExposureFactsOf()` 신설 · holding record에 `exposureMarket`/`exposureStructure` 추가 |
+| `js/10-risk-translation-alerts.js` | `RISK_BENCHMARK_MARKET_LABEL` · `benchmarkMarketLabel()` · `betaBenchmarkMixHtml()`(「기준시장 구성」) · `bondAssetClass` 사유 문구 · 추적 베타 툴팁 정정 · 행잡기 19곳 · `tap44` |
+| `js/28-exposure-master.js` | 2건 변경 — 360200.KS(fxExposure/hedgeStatus/conversionMethod/근거 추가 → RESOLVED) · 472170.KS(hedgeStatus 추가) |
+| `js/19-monte-carlo-ui.js` | UX-1 — `MC_USER_REASON_RULES`(13) · `monteCarloUserReason()` · 실행 전 preflight |
+| `js/06-transactions.js` | UX-3 — `notifyManualAssetMismatchAfterSave()` |
+| `js/02-dashboard-kpi.js` | UX-7 — `kpiTotalValueInline` · "+0.01% 미만" |
+| `index.html` | `.tap44` CSS · `min-height:44px` · UX-7/UX-9 문구 · T-2/T-3/A-2/A-3 · **위험관리 영역 삭제** |
+| `js/03-filters-charts-tabs.js` | 죽은 `setText('riskScopeNote', …)` 제거 |
+| `js/04-rebalancing.js` | UX-4 검색 안내문 2곳 |
+| `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` | §51(D-2) · §52(감사+UX) · §52-12(팝업 잔여) · §52-13(A-1 종결 + 위험관리 삭제 + 정책 개정) · §50-18 취소선 |
+
+**⚠️ `.tap44`의 제약 (되돌리지 말 것)**: `::after`를 `width:100%; height:44px`로 **세로 방향만**
+확장한다. `width:44px`로 가로까지 넓히면 "가로 넘침 0" 계약이 깨져 E2E 15건이 실패한다(실측 확인).
+
+### 6. 신규/갱신 테스트
+
+- **신규**: `test/d2-market-beta-policy.test.js`(22) · `e2e/113-d2-market-beta.spec.js`(5) ·
+  `e2e/114-final-ux-fixes.spec.js`(14)
+- **갱신**(계약을 없애지 않고 확인 지점만 ⓘ 팝업으로 이동): `test/risk-engine` · `risk-fx-krw` ·
+  `risk-honesty` · `integrated-benchmark-index` · `exposure-master-activation` · `wording-review` ·
+  `e2e/40` · `72` · `79` · `101` · `103` · `107` · `111` · `smoke`
+
+---
+
+### 7. 최종 검증 결과 (Release 직전 실측)
+
+| 게이트 | 결과 |
+| --- | --- |
+| Unit (`npm test`) | **718 / 718 PASS** |
+| E2E (`npx playwright test`) | **1,105 / 1,105 PASS (12.2m · failed 0 · flaky 0)** |
+| ESLint | **0 error** |
+| Data Guard | **PASS** |
+| Release Guard | **PASS (v266)** |
+| Secret Scan | 1건 검출 — **기존 항목**(`js/01-core-state.js:251` `KIS_CLIENT_SHARED_SECRET`). v264 이전부터 존재하며 코드 주석에 봇 스캔 임계값 용도로 문서화되어 있다. 이번 변경으로 생긴 것이 아니다. |
+
+**Risk 회귀** (`scripts/closeout/regression-harness.js`) — 승인 baseline과 **완전 일치**
+
+```
+score=45  vol=14.83527456  VaR=-1.075213608  CVaR=-1.211565192
+MDD=-2.662509179  corr=0.9022471287  beta=0.931428547
+```
+
+**Monte Carlo 회귀** (`scripts/closeout/measure-mc.js`) — 두 시나리오 모두 **변동 0**
+
+- p10 / p50 / p90 / mean 변화율 전부 **0.00%**
+- μ fingerprint `af875582fc001dc2` · `a36f5ba2112d4d44` — 동일
+- σ 변경 **0건** · NaN **false** · Infinity **false** · null **0건**
+
+**Bond** — Bond Risk 계산식 · Duration · Modified Duration · ±100bp 무변경. D2-Q1은 *주식 시장지수
+베타 대상에서 제외*하는 변경일 뿐 채권 위험 계산에는 손대지 않았다.
+
+**Return Key** — 계산 · 매칭 정책 무변경. 회귀 측정값 동일.
+
+**측정 파일**: `docs/closeout/measurements/mc-d2-market-beta.json` · `mc-final-v266.json` ·
+`risk-d2-market-beta.json`
+
+---
+
+### 8. Production Release 상태
+
+- push: `origin/main` normal fast-forward. **force · `--force-with-lease` · history rewrite · reset ·
+  rebase 전부 사용하지 않았다.**
+- tag `v266` 생성.
+- GitHub Pages 배포 후 Production smoke 수행(상세는 최종 보고 참조).
+
+### 9. 남은 NOT VERIFIED 항목
+
+- **KIS 실계좌 실시간 연동** — 자동화 테스트는 mock/fixture 기준이다. 실제 KIS 응답을 이용한
+  end-to-end는 사용자 환경에서만 가능하며 이번 릴리스에서 실환경 재검증을 수행하지 않았다.
+- **실제 사용자 데이터에서의 장기 사용** — 테스트는 전부 익명화·합성 데이터(ZZ 접두어) 기준이다.
+- **iOS Safari / 실제 단말 PWA 설치 동작** — Playwright(Chromium) 기준으로만 검증했다.
+- `Calibration 4c` (`test/monte-carlo-calibration.test.js:128`) — 시드 없는 `Math.random()`을 써서
+  드물게 흔들린다. **이번 변경과 무관한 기존 성질**이며 연속 3회 재실행 전부 PASS를 확인했다.
+
+### 10. 프로젝트 종료 상태
+
+**v266으로 프로젝트를 종료한다.** 대장(§51 · §52)의 미결항목은 전부 종결됐고, PM이 Release와
+Closeout을 최종 승인했다. 다음 작업은 새 PM 지시가 있을 때 새 프로젝트로 시작한다.
+
+**다음 세션이 지켜야 할 것**
+1. 시작 전 `git pull` — 이 파일 맨 위 절이 가장 최신이다.
+2. `.claude/launch.json`은 사용자 로컬 변경이다. **수정 · 복원 · 삭제 · commit 금지.**
+3. 실제 사용자 금융정보 · KIS credential을 소스 · fixture · 로그 · 스크린샷에 넣지 않는다.
+4. Risk 계산식 · Risk Model · Beta 엔진 · Bond Risk · MC 엔진/seed/분포/상관 · Return Key ·
+   Macro · CMA · Exposure Master 범위 · 데이터 SoT는 PM 승인 없이 변경하지 않는다.
+5. 정책 충돌 · SoT 불명확 · 데이터 손실 가능성 · 보안 문제를 발견하면 임의 구현하지 말고
+   `[POLICY CONFLICT]`로 STOP 보고한다.
+
+---
+
+## 🚀 v264 Release 준비 완료 — Bond Stage 2(KIS) · 포트폴리오 위험 안내 UI · 전체 통합검증 (2026-09-21 · 위 v266 절이 더 최신)
 
 > **APPLICATION VERSION: v264 / RELEASE 준비 완료 · push 안 함 · deploy 안 함 · tag 없음**
 > 로컬 `main` 커밋 3건: Stage 1 `7600e17` · 인계장 `f829233` · v264 `46792ca`.
-> **다음 세션은 여기서 시작한다.** 남은 것은 PM의 최종 Release 승인과 push/deploy뿐이다.
+> ~~**다음 세션은 여기서 시작한다.**~~ → **이 기록은 종료됐다.** v264는 v265 · v266으로 이어졌고,
+> v266에서 실제 Release · tag · deploy까지 완료했다. 현재 상태는 맨 위 v266 절을 본다.
 
 ### 한 문장
 

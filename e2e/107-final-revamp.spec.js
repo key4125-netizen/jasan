@@ -206,6 +206,10 @@ test('D. 환율 실패 안내는 쉬운 말 · 화면 명칭 4개', async ({ pag
   await expect(page.getByText('환율 API 연결 실패')).toHaveCount(0);
   await expect(page.getByText('금융자산 오늘 평가손익', { exact: true })).toBeVisible();
   await expect(page.getByText('금융자산 전체 평가손익', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '위험 관리', exact: true })).toHaveCount(1);
+  /* [기대값 갱신 · PM 지시 2026-09-22] 「위험 관리」 제목은 메인 카드에서 없어지고
+   * 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업으로 합쳐졌다(SoT §52-13). */
+  await expect(page.getByRole('heading', { name: '위험 관리', exact: true })).toHaveCount(0);
+  // 팝업은 기본 숨김이라 role 쿼리에 잡히지 않는다 - 요소 자체로 확인한다.
+  expect(await page.locator('#portfolioRiskInfoModal h3').first().textContent()).toContain('포트폴리오 위험 안내');
   expect(await page.locator('#riskDetailModal h3').first().textContent()).toContain('📊 위험 세부내용');
 });

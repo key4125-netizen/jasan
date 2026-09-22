@@ -58,9 +58,19 @@ test('§46 TXT-46-1 - 환율 실패 안내는 내부 구현(API) 대신 지금 �
   assert.ok(src.includes('환율을 불러오지 못해 기존 환율(${fmtNum(prevRate, 1)}원)을 그대로 사용합니다. 상단 환율 입력란에서 직접 수정할 수 있습니다.'));
 });
 
-test('§46 TXT-46-2 - 화면 명칭 4개(오늘/전체 평가손익 · 위험 관리 · 위험 세부내용)', () => {
+/* [기대값 갱신 · PM 지시 2026-09-22] 「⚠️ 위험 관리」 제목과 진단 대상 고지는 메인 카드에서
+ * 없어지고 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업으로 합쳐졌다(§52-13).
+ * 그래서 '>위험 관리</h3>' 항목만 빼고, 같은 설명이 팝업에 남아 있다는 사실을 아래에서 새로 고정한다 -
+ * 계약을 없애는 것이 아니라 확인 지점을 옮기는 것이다. 나머지 명칭 3개와 옛 이름 금지는 그대로다. */
+test('§46 TXT-46-2 - 화면 명칭(오늘/전체 평가손익 · 위험 세부내용)과 위험관리 설명의 위치', () => {
   const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
-  ['금융자산 오늘 평가손익', '금융자산 전체 평가손익', '>위험 관리</h3>', '📊 위험 세부내용', '📊 위험 관리로 이동'].forEach((w) => assert.ok(html.includes(w), w));
+  ['금융자산 오늘 평가손익', '금융자산 전체 평가손익', '📊 위험 세부내용', '📊 위험 관리로 이동'].forEach((w) => assert.ok(html.includes(w), w));
+  // 메인 카드에서는 사라졌다.
+  assert.ok(!html.includes('>위험 관리</h3>'), '메인 카드의 「위험 관리」 제목은 제거됐다');
+  assert.ok(!html.includes('id="riskScopeNote"'), '진단 대상 고지 줄은 제거됐다');
+  // 같은 내용이 ⓘ 팝업에 그대로 있다(정보가 사라지지 않았다).
+  const popup = html.slice(html.indexOf('id="portfolioRiskInfoModal"'));
+  ['가구 전체', '주식 · ETF', '현금 · 채권 · 부동산은 빠집니다'].forEach((w) => assert.ok(popup.includes(w), 'ⓘ 팝업: ' + w));
   ['일간금융평가손익', '총금융자산평가손익', 'RISK 관리', 'RISK 세부내용'].forEach((w) => assert.ok(!html.includes(w), w));
   assert.ok(!read('js/10-risk-translation-alerts.js').includes('(RISK 세부내용'));
 });

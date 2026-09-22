@@ -118,7 +118,10 @@ for (const w of [375, 1440]) {
     expect(txt).toContain('환율 자료 오래됨 (환율 기준일 2026-08-21)');
     expect(txt).not.toContain('마지막 2026-09-18');
     ['undefined', 'NaN', 'null'].forEach((x) => expect(txt, x).not.toContain(x));
-    const span = body.locator('[data-risk-fx-note] .whitespace-nowrap');
+    /* [UX-8② 기대값 갱신 · 2026-09-22] 같은 문단 안에 「시장 민감도(베타)」도 줄바꿈 금지 덩어리로
+     * 묶였다(375px에서 여는 괄호에서 갈라지던 문제). 이 테스트가 고정하는 것은 **날짜 덩어리**이므로
+     * 텍스트로 그 하나만 집어 검사한다 - 검사 의도는 그대로다. */
+    const span = body.locator('[data-risk-fx-note] .whitespace-nowrap').filter({ hasText: '환율 기준일' });
     await expect(span).toHaveText('환율 기준일: 2026-08-21');
     // 한 덩어리로 그려졌으면 줄 상자(client rect)가 1개다.
     expect(await span.evaluate((el) => el.getClientRects().length)).toBe(1);

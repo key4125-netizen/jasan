@@ -46,6 +46,10 @@ function mixedPortfolio(s) {
   s.setDailyCloses('133690.KS', series(N, 100000, 0.9, 0.8));
   s.setDailyCloses('^KS11', series(N, 2500, 1.0, 0.9));
   s.setDailyCloses('^IXIC', series(N, 15000, 0.95, 0.85));
+  /* [D-2 기대값 갱신 · PM 최종 정책 2026-09-21] AAPL(미국 노출)의 시장 지수가 S&P500으로 바뀌었다. ^IXIC와 **같은 시계열**을 넣어
+   * 베타 값을 유지한다 - 이 파일이 검사하는 것은 "베타가 환율에 영향받지 않는다"이지
+   * 어느 지수를 쓰는가가 아니기 때문이다. (133690.KS는 원장에 없어 STEP 5대로 미확정이 된다.) */
+  s.setDailyCloses('^GSPC', series(N, 15000, 0.95, 0.85));
   s.setTickerMaster(LISTED);
   // [2차 통합 보완 · PM 결정 ③] 달러 종목의 베타(현지통화) 경로를 검사하려면 Benchmark가 있어야 한다 - 본국 보통주 근거를 시험용으로 붙인다.
   s.markHomeCommonListing(['AAPL']);
@@ -281,7 +285,10 @@ test('[후속 Issue 2] "환율 기준일: 날짜"는 줄바꿈되지 않는 한 
   const m = await s.computeAdvancedRiskMetrics();
   const note = s.riskFxBasisNote(m);
   assert.ok(note.includes(`<span class="whitespace-nowrap">환율 기준일: ${m.fxBasis.basisDate}</span> (미국 연방준비제도 H.10)`), note);
-  assert.ok(note.includes('시장 민감도(베타)는 달러 가격 기준'));
+  /* [UX-8② 기대값 갱신] 375px에서 「시장 민감도(베타)」가 여는 괄호에서 갈라지던 문제를
+   * 앱의 기존 패턴(whitespace-nowrap)으로 묶었다 - 문구 자체는 그대로다. */
+  assert.ok(note.includes('<span class="whitespace-nowrap">시장 민감도(베타)</span>는 달러 가격 기준'));
+  assert.ok(note.replace(/<[^>]+>/g, '').includes('시장 민감도(베타)는 달러 가격 기준'));
   const detail = s.buildIndividualRiskDetailHtml(byTicker(m, 'AAPL'), 10);
   assert.ok(detail.includes(`<span class="whitespace-nowrap">환율 기준일: ${byTicker(m, 'AAPL').fxLastDate}</span>`), detail);
 });

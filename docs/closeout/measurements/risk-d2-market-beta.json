@@ -1,0 +1,205 @@
+{
+  "label": "d2-market-beta",
+  "measuredAt": "2026-09-21",
+  "what": "D-2 Market Beta 최종 정책(국내=상장시장 · 미국 노출=S&P500) 적용 전후 Risk 회귀 측정",
+  "harness": "scripts/closeout/regression-harness.js run (FROZEN 데이터 · 합성 7종목 · 실제 사용자 보유 아님)",
+  "baselineCommit": "a72e984 (v265 frozen baseline · push/deploy/tag 없음)",
+  "note": "베타를 쓰지 않는 지표(변동성 · VaR · CVaR · MDD · 상관)는 두 실행에서 같아야 한다 - 계산식 무변경의 직접 증거다.",
+  "before": {
+    "version": "v265",
+    "portfolio": {
+      "riskScore": 48,
+      "portfolioVolatilityPct": 14.83527456,
+      "var95Pct": -1.075213608,
+      "cvarPct": -1.211565192,
+      "portfolioMDDPct": -2.662509179,
+      "weightedAvgCorrelation": 0.9022471287,
+      "portfolioBeta": 1.041762861
+    },
+    "holdings": [
+      {
+        "ticker": "005930.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 1.157894735,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "AAPL",
+        "benchmarkKey": "NASDAQ",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 1.235294118,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "069500.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.8947368405,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "360750.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.9999999981,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "237370.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.5789473674,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "SCHD",
+        "benchmarkKey": null,
+        "benchmarkStatus": "UNRESOLVED",
+        "priceSource": null,
+        "alignment": null,
+        "beta": null,
+        "betaStatus": "BENCHMARK_UNRESOLVED"
+      },
+      {
+        "ticker": "278530.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.7894736829,
+        "betaStatus": "OK"
+      }
+    ]
+  },
+  "after": {
+    "version": "v266 (D-2)",
+    "portfolio": {
+      "riskScore": 45,
+      "portfolioVolatilityPct": 14.83527456,
+      "var95Pct": -1.075213608,
+      "cvarPct": -1.211565192,
+      "portfolioMDDPct": -2.662509179,
+      "weightedAvgCorrelation": 0.9022471287,
+      "portfolioBeta": 0.931428547
+    },
+    "holdings": [
+      {
+        "ticker": "005930.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 1.157894735,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "AAPL",
+        "benchmarkKey": "SP500",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 1.312500001,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "069500.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.8947368405,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "360750.KS",
+        "benchmarkKey": "SP500",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "ASYNC_DIMSON",
+        "beta": -0.001153408318,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "237370.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.5789473674,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "SCHD",
+        "benchmarkKey": "SP500",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.8125000044,
+        "betaStatus": "OK"
+      },
+      {
+        "ticker": "278530.KS",
+        "benchmarkKey": "KOSPI",
+        "benchmarkStatus": "RESOLVED",
+        "priceSource": "AVAILABLE",
+        "alignment": "SAME_DATE",
+        "beta": 0.7894736829,
+        "betaStatus": "OK"
+      }
+    ]
+  },
+  "unchangedPortfolioMetrics": [
+    "portfolioVolatilityPct",
+    "var95Pct",
+    "cvarPct",
+    "portfolioMDDPct",
+    "weightedAvgCorrelation"
+  ],
+  "changedPortfolioMetrics": [
+    {
+      "metric": "riskScore",
+      "before": 48,
+      "after": 45
+    },
+    {
+      "metric": "portfolioBeta",
+      "before": 1.041762861,
+      "after": 0.931428547
+    }
+  ],
+  "benchmarkChanges": [
+    {
+      "ticker": "AAPL",
+      "before": "NASDAQ",
+      "after": "SP500",
+      "betaBefore": 1.235294118,
+      "betaAfter": 1.312500001
+    },
+    {
+      "ticker": "360750.KS",
+      "before": "KOSPI",
+      "after": "SP500",
+      "betaBefore": 0.9999999981,
+      "betaAfter": -0.001153408318
+    },
+    {
+      "ticker": "SCHD",
+      "before": null,
+      "after": "SP500",
+      "betaBefore": null,
+      "betaAfter": 0.8125000044
+    }
+  ],
+  "mcComparison": "docs/closeout/measurements/mc-d2-market-beta.json (v265-s50 대비 P10/P50/P90/평균 0.00% · μ지문 동일 · σ 변경 0건)"
+}

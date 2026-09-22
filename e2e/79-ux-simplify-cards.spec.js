@@ -152,11 +152,15 @@ test('D. 지수는 진입 직후부터 보이고, 해석만 따로 접힌다', a
   expect(r.diagnosisVisibleH).toBe(0);
 });
 
-test('E. 그 아래 위험 관리 카드는 그대로 있다', async ({ page }) => {
+test('E. 그 아래 위험 관리 카드는 그대로 있다(제목은 ⓘ 팝업으로 이동)', async ({ page }) => {
   await open(page);
   await seed(page);
   await expect(page.locator('#macroBriefingSection')).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: '위험 관리' })).toHaveCount(1);
+  // 카드(섹션)와 그 안의 위험 진단 영역은 그대로다.
+  await expect(page.locator('#riskManagementSection')).toHaveCount(1);
+  await expect(page.locator('#riskDiagnosisSummary')).toHaveCount(1);
+  /* [기대값 갱신 · PM 지시 2026-09-22] 「위험 관리」 제목 줄은 없어지고 점수 옆 ⓘ 팝업으로 합쳐졌다. */
+  await expect(page.getByRole('heading', { name: '위험 관리', exact: true })).toHaveCount(0);
 });
 
 /* ── 반응형 ───────────────────────────────────────────────────────────── */

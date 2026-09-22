@@ -737,44 +737,102 @@ function getBenchmarkKeyForAsset(a) {
 }
 
 /* =========================================================================
- * [§50 · PD-15] Market Beta 기준 지수 — 시장위험 전용
+ * [§50 · PD-15 → D-2 PM 최종 정책 2026-09-21] Market Beta 기준 지수 — 시장위험 전용
  *
  * 두 베타는 **서로 다른 통계량**이다.
- *   Market Beta   : 그 종목이 **자기가 거래되는 시장**에 얼마나 민감한가 → 위험점수 · 포트폴리오 베타
- *   Tracking Beta : 그 종목이 **자기 공식 기초지수**를 얼마나 따라가는가 → 표시 전용
- * 지수추종 ETF의 Tracking Beta는 구조적으로 1.0 근방이라 시장위험 칸(밴드 <1.2 → 55점)에
- * 넣으면 방어적 ETF와 고베타 테마 ETF가 같은 점수를 받는다 - 요인이 종목을 구분하지 못한다.
+ *   Market Beta   : 그 종목이 **자기 시장**에 얼마나 민감한가 → 위험점수 · 포트폴리오 베타 · 스트레스
+ *   Tracking Beta : 그 종목이 **자기 공식 기초지수**를 얼마나 따라가는가 → 표시 전용(resolveRiskBenchmark)
+ * 지수추종 ETF의 Tracking Beta는 구조적으로 1.0 근방이라 시장위험 칸에 넣으면 방어적 ETF와
+ * 고베타 테마 ETF가 같은 점수를 받는다 - 요인이 종목을 구분하지 못한다.
  *
- * 기준 지수 매핑은 **원장 · 코드에 이미 있는 사실만** 쓴다(새 지수 · 임의 대체 없음 · §31).
- *   KOSPI 상장  → KOSPI(^KS11)   : 기존 RISK_BENCHMARK_BY_LISTING_EXCHANGE 그대로
- *   KOSDAQ 상장 → KOSDAQ(^KQ11)  : 동일
- *   NASDAQ 상장 → NASDAQ(^IXIC)  : Exposure Master가 미국 개별주에 이미 부여한 기준과 같다
- *   NYSE · AMEX → **매핑 없음(UNRESOLVED)** : 앱에 그 시장의 종합지수가 없다(§44 D-02 유지).
- *                 S&P500으로 대신하지 않는다 - 그것은 PM 결정 사항이다.
- * 해외 상장 개별주는 본국 보통주(HOME_COMMON) 근거가 있을 때만 쓴다(D-06 게이트 유지).
+ * [D-2] "자기 시장"을 무엇으로 볼 것인가 — PM 최종 판정 구조.
+ *
+ *                         Market Beta
+ *                              │
+ *                  ┌───────────┴───────────┐
+ *              국내 노출                미국 노출
+ *                  │                       │
+ *            ┌─────┴─────┐                 │
+ *        KOSPI 상장   KOSDAQ 상장      (상장지 무관)
+ *            │           │                 │
+ *          KOSPI       KOSDAQ            S&P500
+ *
+ *   ① 경제적 노출시장(marketExposure)이 **US**면 → S&P500. 상장 거래소는 보지 않는다.
+ *      나스닥 · 뉴욕 · 아멕스 상장이든, 국내(.KS/.KQ) 상장 미국 ETF든 모두 같다.
+ *      v265까지는 "나스닥 상장 → 나스닥 종합 / 뉴욕 · 아멕스 → 미확정"이었는데, 그것은
+ *      같은 미국 노출에 성격이 다른 지수를 붙이고 절반은 계산조차 못 하는 구조였다.
+ *   ② 그 밖(국내 노출 · GLOBAL 등)이면 → **상장 시장** 지수(KOSPI / KOSDAQ).
+ *      국내 자산에서 코스피 · 코스닥 구분을 없애지 않는다.
+ *
+ * [STEP 5 · GAP-1 · D-06] 경제적 노출시장은 **승인된 원장에서만** 읽는다. 티커 접미사 · 거래소 ·
+ *   ISIN 국가코드 · 상품명으로 추정하지 않는다. 원장에 없으면 UNRESOLVED다 - ".KS니까 국내 노출"도,
+ *   "이름에 미국이 있으니 S&P500"도 쓰지 않는다. 상장시장(listingMarket) 판정에만 접미사를 쓴다.
+ *
+ * [STEP 9 · MIXED] MIXED라는 값 하나로 기준을 정하지 않는다. 237370(국내주식+국내국채)은
+ *   marketExposure=KR이므로 ②로 가서 KOSPI, 472170(미국테크 50 + 국고채 50)은 GLOBAL이므로
+ *   ②로 가서 KOSPI다(PM 결정 · 1:N Exposure Engine 미도입 · D-13 유지).
+ *
+ * 환헤지 · 통화 · 달력 정렬은 finalizeRiskBenchmark가 기존 승인 경로(§44 44-15 · D-05 ·
+ * ASYNC_DIMSON · H.10)로 그대로 처리한다 - 여기서 새 계산 경로를 만들지 않는다.
  * ====================================================================== */
-const RISK_MARKET_INDEX_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ', NASDAQ: 'NASDAQ' });
+// 국내 노출 자산의 상장시장 → 시장지수. 미국 노출은 이 표를 쓰지 않는다(아래 상수).
+const RISK_MARKET_INDEX_BY_LISTING_EXCHANGE = Object.freeze({ KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ' });
+// [D-2] 미국 경제적 노출의 시장지수. 상장 거래소와 무관하게 이 하나만 쓴다.
+const RISK_US_EXPOSURE_MARKET_INDEX = 'SP500';
+/* 상장 시장만 판정한다. 종목 마스터가 1순위이고, 없으면 국내 거래소 접미사(.KS/.KQ)를 읽는다 -
+ * sanitizeTicker · riskSeriesMarketOf가 이미 쓰는 같은 사실이다. 접미사가 없는 해외 티커는
+ * 나스닥인지 뉴욕인지 알 수 없으므로 여기서 추측하지 않는다.
+ * ⚠ 이 값은 **상장시장**이다. exposureMarket · currency · hedge 판정에 재사용하지 않는다(STEP 4 · STEP 19). */
+function riskListingMarketOf(yahoo) {
+  const rec = (typeof tickerMasterByTicker !== 'undefined' && tickerMasterByTicker) ? tickerMasterByTicker[yahoo] : null;
+  if (rec && rec.exchange) return rec.exchange;
+  if (/\.KS$/.test(yahoo)) return 'KOSPI';
+  if (/\.KQ$/.test(yahoo)) return 'KOSDAQ';
+  return null;
+}
+/* [STEP 8 · STEP 13] 화면 표시용 노출 사실. 원장에 있는 값을 그대로 읽기만 한다 - 판정하지 않는다.
+ * exposureStructure === 'MIXED'이면 그 상품은 한 가지 시장/자산으로 이루어져 있지 않다는 뜻이고,
+ * 화면은 그 사실을 밝혀야 한다(472170 미국테크 50 + 국고채 50 · 237370 국내주식 30 + 국고채 70). */
+function riskExposureFactsOf(a) {
+  if (typeof lookupExposureRecord !== 'function' || typeof isExposureMasterActive !== 'function' || !isExposureMasterActive()) return { exposureMarket: null, exposureStructure: null };
+  const em = lookupExposureRecord(a);
+  const entry = em ? em.entry : null;
+  if (!entry) return { exposureMarket: null, exposureStructure: null };
+  return { exposureMarket: entry.marketExposure || null, exposureStructure: entry.exposureStructure || null };
+}
 function resolveMarketRiskBenchmark(a) {
   const yahoo = sanitizeTicker(a && a.ticker).yahooTicker;
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
   if (!yahoo) return unresolved('noTicker');
   // 주식 · ETF만 대상이다 - 채권 · 현금 · 부동산은 포트폴리오 베타에서 제외한다는 기존 정책 그대로(PD-15).
   if (!RISK_ELIGIBLE_CATEGORIES.includes(a && a.category)) return unresolved('notEquityLike');
-  const rec = (typeof tickerMasterByTicker !== 'undefined' && tickerMasterByTicker) ? tickerMasterByTicker[yahoo] : null;
-  /* 종목 마스터에 없더라도 **접미사 자체가 상장 시장**인 경우가 있다 - `.KS`는 KOSPI, `.KQ`는
-   * KOSDAQ이다(sanitizeTicker · riskSeriesMarketOf가 이미 쓰는 같은 사실). 새 판정 규칙이 아니라
-   * 이미 코드에 있는 사실을 한 번 더 읽는 것이다. 접미사가 없는 해외 티커는 거래소를 알 수 없으므로
-   * (NASDAQ인지 NYSE인지) 여기서 추측하지 않는다 - 마스터에 없으면 미확정이다. */
-  const exchange = rec ? rec.exchange : (/\.KS$/.test(yahoo) ? 'KOSPI' : (/\.KQ$/.test(yahoo) ? 'KOSDAQ' : null));
-  if (!exchange) return unresolved('noListingInfo');
-  // [D-06] 해외 상장 개별주는 상장 사실만으로 본국 보통주라고 보지 않는다 - 원장 근거가 있어야 한다.
+  // [STEP 5] 경제적 노출시장은 승인된 원장에서만 읽는다. 없으면 여기서 끝난다(추정 금지).
+  let entry = null;
   if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
     const em = lookupExposureRecord(a);
-    const entry = em ? em.entry : null;
-    if (entry && entry.assetType === 'FOREIGN_STOCK' && entry.equityListing !== 'HOME_COMMON') {
+    entry = em ? em.entry : null;
+  }
+  const exposure = entry ? (entry.marketExposure || null) : null;
+  if (!exposure) return unresolved('exposureUnconfirmed');
+  /* [D2-Q1 · PM 최종 승인 2026-09-22] 채권 자산군은 주식 시장지수 베타의 대상이 아니다.
+   * 원장에 assetClass=BOND로 적힌 상품(미국 채권 ETF TLT · IEF 등)은 미국 경제적 노출이더라도
+   * S&P500 Market Beta를 부여하지 않는다 - 채권 위험은 별도 영역(Duration · ±100bp)에서 다루고,
+   * Portfolio Beta에서 채권을 빼는 기존 정책과 의미를 맞춘다. 앱 카테고리 '채권'을 고른 자산은
+   * 위 notEquityLike에서 이미 걸러지고, 이 줄은 **ETF로 등록된 채권형 상품**을 같은 기준으로 다룬다. */
+  if (entry.assetClass === 'BOND') return unresolved('bondAssetClass');
+  if (exposure === 'US') {
+    // [D-06] 해외 상장 개별주는 상장 사실만으로 본국 보통주라고 보지 않는다 - 원장 근거가 있어야 한다.
+    if (entry.assetType === 'FOREIGN_STOCK' && entry.equityListing !== 'HOME_COMMON') {
       return unresolved(entry.equityListing === 'ADR' ? 'adrListing' : 'listingDomicileUnconfirmed');
     }
+    /* entry를 넘기는 이유: 미국 상장분은 지수와 같은 달력 · 같은 통화라 SAME_DATE로 끝나지만,
+     * 국내 상장 미국 ETF는 비동기 쌍이라 환헤지 사실(A등급)이 있어야 한다. 미확인이면
+     * finalizeRiskBenchmark가 hedgeUnconfirmed로 막고, 환헤지형은 hedgeCostUnavailable로 막는다(STEP 12). */
+    return finalizeRiskBenchmark(yahoo, RISK_US_EXPOSURE_MARKET_INDEX, 'usExposure', entry);
   }
+  // 국내 노출(및 그 밖) - 상장 시장 지수. 상장시장을 모르면 미확정이다.
+  const exchange = riskListingMarketOf(yahoo);
+  if (!exchange) return unresolved('noListingInfo');
   const key = RISK_MARKET_INDEX_BY_LISTING_EXCHANGE[exchange] || null;
   if (!key) return unresolved(RISK_US_LISTING_EXCHANGES.includes(exchange) ? 'marketIndexNotAvailable' : 'exchangeIndexNotAvailable');
   // 상장 시장과 지수 시장이 같으므로 같은 달력 · 같은 통화다(비동기 · 환산 경로를 타지 않는다).
@@ -1999,6 +2057,7 @@ async function computeAdvancedRiskMetrics() {
          * 플러밍(기존 코드)이 그대로 "위험점수가 쓰는 베타"를 설명하게 하기 위해서다. */
         const bm = resolveMarketRiskBenchmark(a);
         const trk = resolveRiskBenchmark(a);
+        const exf = riskExposureFactsOf(a);
         byTicker.set(yahoo, {
           ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a),
           // [1차 통합 구현] 판정 근거 · 정렬 방식 · 지수 환산(진단용). 같은 시장이면 SAME_DATE(기존 계산 그대로).
@@ -2012,7 +2071,9 @@ async function computeAdvancedRiskMetrics() {
           trackingBenchmarkPriceSource: trk.key ? (trk.priceSource || 'AVAILABLE') : null,
           trackingBenchmarkAlignment: trk.key ? (trk.alignment || 'SAME_DATE') : null,
           trackingBenchmarkFx: trk.benchmarkFx || null, trackingBenchmarkMarket: trk.benchmarkMarket || null,
-          trackingBenchmarkDefinitionStatus: trk.definitionStatus || null
+          trackingBenchmarkDefinitionStatus: trk.definitionStatus || null,
+          // [D-2] 표시 전용 노출 사실 - 어떤 기준으로 잰 베타인지, 혼합구조인지를 화면이 말할 수 있게 한다.
+          exposureMarket: exf.exposureMarket, exposureStructure: exf.exposureStructure
         });
       }
       byTicker.get(yahoo).curAmount += r.curAmount;

@@ -30,7 +30,9 @@ test('4. 기본 화면에서 핵심 입력/탐색 UI가 존재한다', async ({ 
   await page.goto('/');
   await expect(page.getByText('포트폴리오/자산예측')).toBeVisible();
   await expect(page.getByText('거래내역')).toBeVisible();
-  await expect(page.getByText('총자산현황')).toBeVisible();
+  /* [UX-7 기대값 갱신 · 2026-09-22] 금융투자현황 카드에 「자세히는 「총자산현황」 탭」 안내가 생겨
+   * 같은 낱말이 화면에 두 번 나온다. 이 테스트가 보려는 것은 **탭 버튼**이므로 역할로 정확히 집는다. */
+  await expect(page.getByRole('button', { name: '총자산현황' })).toBeVisible();
 });
 
 test('5. Monte Carlo 관련 UI가 정상적으로 로드된다', async ({ page }) => {

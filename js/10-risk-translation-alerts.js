@@ -85,7 +85,7 @@ function buildRiskDiagnosisLine(m) {
   if (maxKey === 'market' && typeof m.portfolioBeta === 'number') {
     // [용어 정비] 베타가 1 미만이어도 참인 정의형 문장만 쓴다("더 크게" 단정 금지).
     // [§50 · PD-15] 이 값은 **상장 시장 지수** 대비 민감도다(기초지수 추적 베타와 다른 값이다).
-    return `상장된 시장의 대표지수가 1% 움직일 때 내 주식·ETF는 평균 약 ${fmtNum(m.portfolioBeta, 1)}% 움직였습니다(시장 민감도, 최근 1년).`;
+    return `각 종목의 기준 시장(국내는 코스피·코스닥, 미국 노출은 S&P500)이 1% 움직일 때 내 주식·ETF는 평균 약 ${fmtNum(m.portfolioBeta, 1)}% 움직였습니다(시장 민감도, 최근 1년).`;
   }
   if (maxKey === 'correlation' && m.topCorrelationPair) {
     return `비중이 큰 ${m.topCorrelationPair[0]}과(와) ${m.topCorrelationPair[1]}의 가격이 같은 방향으로 움직인 정도가 높아, 보유 종목 간 동조성(상관) 점수가 가장 높습니다.`;
@@ -282,7 +282,12 @@ function buildIndividualSignalLightsHtml(h) {
 }
 
 function buildIndividualRiskDetailHtml(h, weightPct) {
-  const betaText = h && typeof h.beta === 'number' ? fmtNum(h.beta, 2) + '배' : '데이터 부족';
+  /* [D-2 STEP 13] 이 종목의 베타가 **무엇 대비** 값인지 숫자 옆에 그대로 적는다 - 화면마다 기준이
+   * 다를 수 있다는 오해를 없애고, 포트폴리오 합계가 서로 다른 기준의 가중평균임을 알 수 있게 한다. */
+  const bmLabel = h ? benchmarkMarketLabel(h.benchmarkKey) : null;
+  const betaText = h && typeof h.beta === 'number'
+    ? fmtNum(h.beta, 2) + '배' + (bmLabel ? ' (' + bmLabel + ' 기준)' : '')
+    : '데이터 부족';
   const sortinoText = h ? (sortinoToGrade(h.sortino) || '-') + '등급' : '-등급';
   const drawdownText = h && typeof h.week52DrawdownPct === 'number' ? fmtNum(h.week52DrawdownPct, 1) + '%' : '데이터 부족';
   const contribText = h && typeof h.riskContributionPct === 'number' ? fmtNum(h.riskContributionPct, 0) + '%' : '데이터 부족';
@@ -291,14 +296,15 @@ function buildIndividualRiskDetailHtml(h, weightPct) {
     <div>
       <p class="text-sm font-semibold text-slate-400 mb-1">📊 주가 및 리스크 정밀 진단</p>
       <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5">${buildIndividualDiagnosisLine(h)}</p>
-      ${h && holdingDataStatusForDisplay(h) !== 'OK' ? `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed mb-2.5 break-keep" data-holding-data-status>📋 가격 기록 상태: ${escapeHtml(holdingDataStatusShortText(h))}</p>` : ''}
+      ${h && h.exposureStructure === 'MIXED' ? `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-2.5 break-keep flex items-start gap-1.5" data-holding-mixed-note><span class="shrink-0">🧩</span><span class="break-keep break-words min-w-0">이 상품은 한 시장만 담고 있지 않습니다(주식 + 채권 등 혼합구조). 위 시장 민감도는 ${escapeHtml(bmLabel || '기준 시장')} 하나를 기준으로 잰 값이라 상품 구조 전체를 그대로 나타내지는 않습니다.</span></p>` : ''}
+      ${h && holdingDataStatusForDisplay(h) !== 'OK' ? `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed mb-2.5 break-keep flex items-start gap-1.5" data-holding-data-status><span class="shrink-0">📋</span><span class="break-keep break-words min-w-0">가격 기록 상태: ${escapeHtml(holdingDataStatusShortText(h))}</span></p>` : ''}
       ${h && h.priceCcy === 'USD' && (h.fxLastDate || h.fxStatus) ? `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-2.5 break-keep" data-holding-fx-note>${h.fxLastDate
         ? `💱 변동성·손실 지표는 달러 가격과 원/달러 환율을 함께 반영한 원화 기준입니다(시장 민감도(베타)는 달러 가격 기준). <span class="whitespace-nowrap">환율 기준일: ${escapeHtml(h.fxLastDate)}</span>`
         : '💱 원/달러 환율 자료가 없어 원화 기준 변동성·손실 지표를 계산하지 않았습니다.'}</p>` : ''}
       ${buildIndividualSignalLightsHtml(h)}
     </div>
     <div>
-      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목이 상장된 시장의 대표지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 지수는 상장 시장으로 정합니다 - 코스피 상장은 코스피, 코스닥 상장은 코스닥, 나스닥 상장은 나스닥 종합입니다. 상장 시장의 종합지수가 앱에 없거나(뉴욕·아멕스) 함께 있는 거래일이 120일보다 적으면 \'데이터 부족\'으로 표시합니다. 종목이 추종하는 공식 기초지수와 비교한 값은 이것과 다른 지표입니다(위험 세부내용의 「기초지수 추적 민감도」).')}
+      ${buildMetricItem('⚡ 시장 민감도(베타)', betaText, '이 종목의 기준 시장 대표지수가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다(최근 1년, 포트폴리오 전체 값과는 별개입니다). 기준 시장은 국내 자산이면 상장 시장(코스피 상장은 코스피, 코스닥 상장은 코스닥), 미국에 경제적으로 노출된 자산이면 상장 거래소와 무관하게 S&P500입니다 - 국내에 상장된 미국 ETF도 S&P500 기준이며, 이때는 원/달러 환율을 반영한 원화 기준 지수와 비교합니다. 경제적 노출을 확인할 근거가 없는 종목은 티커나 거래소만 보고 추측하지 않고 \'데이터 부족\'으로 둡니다. 함께 있는 거래일이 120일보다 적을 때도 마찬가지입니다. 종목이 추종하는 공식 기초지수와 비교한 값은 이것과 다른 지표입니다(위험 세부내용의 「기초지수 추적 민감도」).')}
       ${buildMetricItem('하락 변동 대비 수익 (소르티노)', sortinoText, SORTINO_GUIDE_TEXT)}
       ${buildMetricItem('계좌 내 비중 (전체 자산 기준)', fmtNum(weightPct, 1) + '%', '현금·채권·부동산을 포함한 전체 자산 대비 이 종목의 평가금액 비중입니다 - "최대 종목 비중"(위험 세부내용 팝업, 주식·ETF만 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('52주 고점 대비 현재 하락률', drawdownText, '지금 가격이 최근 1년 최고가보다 얼마나 낮은지(현재 위치)입니다. 1년 중 가장 크게 떨어졌던 폭인 최대낙폭(MDD)과는 다른 값입니다.')}
@@ -337,7 +343,7 @@ function buildFactorBarRow(label, score, tooltip, unavailableText) {
     <div class="flex items-center justify-between gap-2 mb-1">
       <span class="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-1">
         ${escapeHtml(label)}
-        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="tap44 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </span>
       <span class="text-sm font-semibold text-amber-600 dark:text-amber-400 shrink-0">점수 없음</span>
     </div>
@@ -351,7 +357,7 @@ function buildFactorBarRow(label, score, tooltip, unavailableText) {
     <div class="flex items-center justify-between gap-2 mb-1">
       <span class="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-1">
         ${escapeHtml(label)}
-        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="tap44 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </span>
       <span class="text-sm font-bold text-slate-700 dark:text-slate-200 shrink-0">${Math.round(score)}</span>
     </div>
@@ -436,7 +442,7 @@ function betaCoverageNoteHtml(m) {
   if (m.betaMissingCount > 0) parts.push(`베타를 구하지 못한 종목 ${m.betaMissingCount}개는 제외했습니다`);
   if (typeof m.bondWeightPct === 'number' && m.bondWeightPct > 0) parts.push(`채권 비중 ${fmtNum(m.bondWeightPct, 0)}%는 베타 집계 대상이 아닙니다`);
   if (!parts.length) return '';
-  return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-2 leading-relaxed">↳ ${escapeHtml(parts.join(' · '))}</p>`;
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-2 leading-relaxed flex items-start gap-1.5"><span class="shrink-0">↳</span><span class="break-keep break-words min-w-0">${escapeHtml(parts.join(' · '))}</span></p>`;
 }
 
 function buildMetricItem(label, valueHtml, tooltip) {
@@ -444,7 +450,7 @@ function buildMetricItem(label, valueHtml, tooltip) {
   <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
     <span class="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1 min-w-0 leading-snug break-keep">
       ${escapeHtml(label)}
-      <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+      <button type="button" data-info-tip="${escapeHtml(tooltip)}" class="tap44 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
     </span>
     <span class="text-base font-semibold text-slate-700 dark:text-slate-200 text-right shrink-0 whitespace-nowrap pl-2">${valueHtml}</span>
   </div>`;
@@ -519,7 +525,7 @@ function riskExcludedFactorsNote(m) {
   const list = (m && Array.isArray(m.excludedFactors)) ? m.excludedFactors : [];
   if (!list.length) return '';
   const names = list.map((f) => escapeHtml(f.label)).join(' · ');
-  return `<p class="text-sm text-amber-700 dark:text-amber-400 mt-2 leading-relaxed break-keep">⚠️ 데이터가 부족해 점수에 넣지 못한 항목: ${names}. 이 항목들이 안전하다는 뜻이 아니라, 아직 판단할 수 없다는 뜻입니다.</p>`;
+  return `<p class="text-sm text-amber-700 dark:text-amber-400 mt-2 leading-relaxed break-keep flex items-start gap-1.5"><span class="shrink-0">⚠️</span><span class="break-keep break-words min-w-0">데이터가 부족해 점수에 넣지 못한 항목: ${names}. 이 항목들이 안전하다는 뜻이 아니라, 아직 판단할 수 없다는 뜻입니다.</span></p>`;
 }
 /* [Phase 2-4 · T1] 종목 하나의 가격 기록 상태(표시용). 엔진이 정한 h.dataStatus를 그대로 쓰고,
  * 새 상태를 만들지 않는다. 단 조회는 정상(OK)이어도 조정주가 하루 변동이 통계 최소 관측 수
@@ -553,13 +559,13 @@ function riskHoldingStatusNoteHtml(m) {
   if (!list.length) return '';
   const flagged = list.filter((h) => holdingDataStatusForDisplay(h) !== 'OK');
   if (!flagged.length) {
-    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-holding-status="ok">📋 보유 주식·ETF ${fmtNum(list.length, 0)}개 모두 가격 기록을 정상적으로 받았습니다.</p>`;
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-holding-status="ok"><span class="shrink-0">📋</span><span class="break-keep break-words min-w-0">보유 주식·ETF ${fmtNum(list.length, 0)}개 모두 가격 기록을 정상적으로 받았습니다.</span></p>`;
   }
   // [T6 후속 · Issue 11-1] 종목명과 상태가 한 줄에 다 들어가지 않으면(375px + 긴 "환율 자료 오래됨 …")
   // 상태를 다음 줄로 내린다(flex-wrap) - 종목명을 말줄임으로 줄이지 않는다. 넓은 화면은 예전처럼 한 줄이다.
   const rows = flagged.map((h) => `<li class="flex flex-wrap justify-between gap-x-2" data-holding-status-row><span class="break-keep">${escapeHtml(h.name || h.ticker)}</span><span class="text-amber-700 dark:text-amber-400 break-keep">${escapeHtml(holdingDataStatusShortText(h))}</span></li>`).join('');
   return `<div data-risk-holding-status="flagged">
-      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">📋 가격 기록 확인이 필요한 종목 ${fmtNum(flagged.length, 0)}개 (전체 ${fmtNum(list.length, 0)}개 중)</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5"><span class="shrink-0">📋</span><span class="break-keep break-words min-w-0">가격 기록 확인이 필요한 종목 ${fmtNum(flagged.length, 0)}개 (전체 ${fmtNum(list.length, 0)}개 중)</span></p>
       <ul class="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">${rows}</ul>
     </div>`;
 }
@@ -584,15 +590,44 @@ function betaUnavailableReasonsNoteHtml(m) {
   const flagged = list.filter((h) => h && h.betaStatus && h.betaStatus !== 'OK');
   if (!flagged.length) return '';
   const rows = flagged.map((h) => {
-    const text = BETA_UNAVAILABLE_TEXT[h.betaStatus] || '시장 민감도를 계산하지 못했습니다';
+    /* [D2-Q1] 채권 자산군은 "확정하지 못한" 것이 아니라 "대상이 아닌" 것이다 - 두 상태를 구분해 말한다. */
+    const text = h.benchmarkSource === 'bondAssetClass'
+      ? '채권형 상품이라 주식 시장위험 집계에서 제외했습니다(금리 위험은 따로 계산하지 않습니다)'
+      : (BETA_UNAVAILABLE_TEXT[h.betaStatus] || '시장 민감도를 계산하지 못했습니다');
     return `<li class="flex flex-wrap justify-between gap-x-2" data-beta-reason-row><span class="break-keep">${escapeHtml(h.name || h.ticker)}</span><span class="text-slate-500 dark:text-slate-400 break-keep">${escapeHtml(text)}</span></li>`;
   }).join('');
   return `<div data-risk-beta-reasons>
-      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep">⚡ 시장 민감도(베타)를 계산하지 못한 종목 ${fmtNum(flagged.length, 0)}개 - 이유가 서로 다릅니다.</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5"><span class="shrink-0">⚡</span><span class="break-keep break-words min-w-0"><span class="whitespace-nowrap">시장 민감도(베타)</span>를 계산하지 못한 <span class="whitespace-nowrap">종목 ${fmtNum(flagged.length, 0)}개</span> - 이유가 서로 다릅니다.</span></p>
       <ul class="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">${rows}</ul>
     </div>`;
 }
 
+/* [D-2 STEP 13] 기준시장을 사람 말로 옮긴다. 값을 만들지 않고 이름만 붙인다.
+ * Market Beta는 자산마다 **자기 시장**을 기준으로 재므로, 화면은 "무엇 대비 잰 값인지"를
+ * 종목 단위로도, 합계 단위로도 말할 수 있어야 한다(단일 지수에 대한 통합 베타로 오해 방지). */
+const RISK_BENCHMARK_MARKET_LABEL = Object.freeze({
+  KOSPI: '코스피', KOSDAQ: '코스닥', SP500: 'S&P500', NASDAQ: '나스닥 종합', NASDAQ100: '나스닥100', DOW: '다우'
+});
+function benchmarkMarketLabel(key) {
+  return RISK_BENCHMARK_MARKET_LABEL[key] || null;
+}
+/* 포트폴리오 베타에 실제로 들어간 종목만 모아 기준시장별 비중을 낸다(베타를 못 구한 종목은
+ * 집계에서 빠지므로 여기서도 뺀다 - 두 숫자가 서로 다른 모집단을 말하지 않게 하기 위함이다). */
+function betaBenchmarkMixHtml(m) {
+  const used = (m && Array.isArray(m.holdings) ? m.holdings : []).filter((h) => typeof h.beta === 'number' && h.benchmarkKey);
+  if (!used.length || typeof m.portfolioBeta !== 'number') return '';
+  const sum = used.reduce((s, h) => s + (Number(h.weight) || 0), 0);
+  if (!(sum > 0)) return '';
+  const byKey = new Map();
+  used.forEach((h) => { byKey.set(h.benchmarkKey, (byKey.get(h.benchmarkKey) || 0) + (Number(h.weight) || 0)); });
+  const parts = [...byKey.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, w]) => `${benchmarkMarketLabel(k) || k} ${fmtNum((w / sum) * 100, 0)}%`);
+  if (parts.length <= 1) {
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-benchmark-mix><span class="shrink-0">🧭</span><span class="break-keep break-words min-w-0">기준시장: ${escapeHtml(parts[0])} - 집계에 들어간 종목이 모두 같은 시장 기준이라 이 값은 그 시장 하나에 대한 민감도입니다.</span></p>`;
+  }
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-benchmark-mix><span class="shrink-0">🧭</span><span class="break-keep break-words min-w-0">기준시장 구성: ${escapeHtml(parts.join(' · '))} - 위 숫자는 하나의 지수에 대한 값이 아니라, 종목마다 <b>자기 시장</b>에 대해 잰 민감도를 보유비중대로 합친 값입니다.</span></p>`;
+}
 /* [F-5 · PM 승인 2026-09-20] 기준 지수의 수익 정의(PR/TR)가 확인되지 않은 종목을 밝힌다.
  * 원장에는 UNCONFIRMED로 기록돼 있는데 화면은 아무 말도 하지 않았다 - 가격지수(PR)와 총수익지수(TR)는
  * 배당만큼 다르므로, 확인되지 않았다는 사실 자체가 사용자가 알아야 할 정보다. */
@@ -610,7 +645,7 @@ function benchmarkDefinitionNoteHtml(m) {
     if (st && st.returnTypeStatus === 'UNCONFIRMED') rows.push(h.name || h.ticker);
   });
   if (!rows.length) return '';
-  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-benchmark-definition>📐 ${escapeHtml(rows.join(' · '))}은(는) 기준 지수가 배당을 포함하는지(총수익지수) 여부가 공식 자료에서 확인되지 않았습니다 - 비교 결과에 그만큼 차이가 있을 수 있습니다.</p>`;
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-benchmark-definition><span class="shrink-0">📐</span><span class="break-keep break-words min-w-0">${escapeHtml(rows.join(' · '))}은(는) 기준 지수가 배당을 포함하는지(총수익지수) 여부가 공식 자료에서 확인되지 않았습니다 - 비교 결과에 그만큼 차이가 있을 수 있습니다.</span></p>`;
 }
 
 function riskObservationBasisNote(m) {
@@ -624,11 +659,11 @@ function riskObservationBasisNote(m) {
      * 그 전제가 바뀌었는데도 문구를 그대로 두면 화면이 사실과 다른 말을 하게 된다. */
     const volSt = m.metricStatus.volatility;
     const volObs = volSt && typeof volSt.observations === 'number' ? volSt.observations : null;
-    const volPart = volObs !== null ? `변동성·시장 민감도(베타)·상관은 최근 ${fmtNum(volObs, 0)}거래일` : '변동성·시장 민감도(베타)·상관';
-    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 ${volPart}, 최대낙폭·VaR·CVaR는 최근 ${fmtNum(obs, 0)}거래일의 하루 변동으로 계산했습니다(지표마다 필요한 기간이 다릅니다). VaR·CVaR는 그중 하락이 가장 컸던 ${fmtNum(tail, 0)}일을 기준으로 합니다.</p>`;
+    const volPart = volObs !== null ? `변동성·<span class="whitespace-nowrap">시장 민감도(베타)</span>·상관은 <span class="whitespace-nowrap">최근 ${fmtNum(volObs, 0)}거래일</span>` : '변동성·시장 민감도(베타)·상관';
+    return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-observation-basis><span class="shrink-0">📏</span><span class="break-keep break-words min-w-0">${volPart}, 최대낙폭·VaR·CVaR는 <span class="whitespace-nowrap">최근 ${fmtNum(obs, 0)}거래일</span>의 하루 변동으로 계산했습니다(지표마다 필요한 기간이 다릅니다). VaR·CVaR는 그중 하락이 가장 컸던 ${fmtNum(tail, 0)}일을 기준으로 합니다.</span></p>`;
   }
   const required = typeof st.required === 'number' ? st.required : null;
-  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-observation-basis>📏 보유 종목이 함께 거래된 날이 ${fmtNum(obs, 0)}거래일이라${required !== null ? `, 통계 지표에 필요한 ${fmtNum(required, 0)}거래일보다 적어` : ''} 해당 지표를 계산하지 않았습니다.</p>`;
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-observation-basis><span class="shrink-0">📏</span><span class="break-keep break-words min-w-0">보유 종목이 함께 거래된 날이 ${fmtNum(obs, 0)}거래일이라${required !== null ? `, 통계 지표에 필요한 ${fmtNum(required, 0)}거래일보다 적어` : ''} 해당 지표를 계산하지 않았습니다.</span></p>`;
 }
 // [T6 · §44 44-15 · Phase 2-4 T3 문구 대체] 가격통화가 USD인 종목이 있을 때만 알린다. 국내 상장 해외
 // ETF는 원화 가격이므로 대상이 아니다. 실제 계산 정의와 환율 기준일(엔진 결과 값)만 말한다.
@@ -637,11 +672,11 @@ function riskFxBasisNote(m) {
   if (!fx || !(fx.usdHoldingCount > 0)) return '';
   const n = fmtNum(fx.usdHoldingCount, 0);
   if (!fx.applied) {
-    return `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed break-keep" data-risk-fx-note>💱 원/달러 환율 자료를 불러오지 못해, 달러로 거래되는 종목 ${n}개의 원화 기준 변동성·손실 지표를 계산하지 않았습니다.</p>`;
+    return `<p class="text-sm text-amber-700 dark:text-amber-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-fx-note><span class="shrink-0">💱</span><span class="break-keep break-words min-w-0">원/달러 환율 자료를 불러오지 못해, 달러로 거래되는 종목 ${n}개의 원화 기준 변동성·손실 지표를 계산하지 않았습니다.</span></p>`;
   }
   // [T6 후속 · Issue 2] "환율 기준일: 날짜"를 한 덩어리로 묶어 좁은 화면에서 날짜가 "2026-" / "09-11"로 갈라지지 않게 한다.
   const basis = fx.basisDate ? ` <span class="whitespace-nowrap">환율 기준일: ${escapeHtml(fx.basisDate)}</span> (미국 연방준비제도 H.10)` : '';
-  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep" data-risk-fx-note>💱 달러로 거래되는 종목 ${n}개는 달러 가격과 원/달러 환율을 함께 반영한 원화 가치 변동으로 Risk를 계산했습니다(시장 민감도(베타)는 달러 가격 기준).${basis}</p>`;
+  return `<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep flex items-start gap-1.5" data-risk-fx-note><span class="shrink-0">💱</span><span class="break-keep break-words min-w-0">달러로 거래되는 종목 ${n}개는 달러 가격과 원/달러 환율을 함께 반영한 원화 가치 변동으로 Risk를 계산했습니다(<span class="whitespace-nowrap">시장 민감도(베타)</span>는 달러 가격 기준).${basis}</span></p>`;
 }
 const RISK_INSUFFICIENT_TITLE = '포트폴리오 종합 위험점수 계산 불가 (데이터 부족)';
 function riskInsufficientMessage(m) {
@@ -706,11 +741,11 @@ function renderRiskDiagnosisSummary() {
            묶고(whitespace-nowrap) 글자만 한 단계 줄인다(375px에서 한 줄에 들어간다). -->
       <span class="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap min-w-0">
         <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap">${level.emoji} 포트폴리오 종합 위험점수</span>
-        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap flex items-center gap-1">${score}/100 [${level.label}]<button type="button" id="portfolioRiskInfoBtn" class="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="포트폴리오 위험 안내 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
+        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap flex items-center gap-1">${score}/100 [${level.label}]<button type="button" id="portfolioRiskInfoBtn" class="tap44 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="포트폴리오 위험 안내 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
       </span>
       <span class="shrink-0 text-sm font-semibold ${confBand.colorClass} flex items-center gap-1 whitespace-nowrap">
         ${confBand.label}
-        <button type="button" data-info-tip="${escapeHtml(confTip)}" class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" data-info-tip="${escapeHtml(confTip)}" class="tap44 text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </span>
       <!-- [모바일 시인성 개선] 카드 다른 곳의 "세부내용" 버튼과 같은 .detail-btn(테두리 있는 버튼 모양)
            스타일로 통일하고, ml-auto로 항상 이 줄의 맨 오른쪽 끝에 붙인다 - 분석 신뢰도 텍스트와 줄바꿈
@@ -808,9 +843,10 @@ function renderRiskDetailModal() {
 
     <!-- [정밀 수치] 쉬운 한글 + (i) 툴팁 - 라벨이 길어 2열 그리드 대신 한 줄씩 나열한다(가독성). -->
     <div class="mt-3.5">
-      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '내 주식·ETF가 상장된 시장의 대표지수(국내는 코스피/코스닥, 미국 나스닥 상장은 나스닥 종합)가 1% 움직일 때 평균 약 몇 % 함께 움직였는지입니다. 1보다 크면 그 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 위험점수의 「시장위험」은 이 값만 씁니다. 종목이 추종하는 공식 기초지수와 비교한 값은 아래 「기초지수 추적 민감도」에 따로 있습니다 - 지수를 그대로 따라가는 ETF는 그 값이 1 근처로 나오는 것이 정상이라, 시장위험과 같은 뜻이 아닙니다. 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권·현금·부동산은 집계 대상이 아닙니다.')}
+      ${buildMetricItem('⚡ 포트폴리오 시장 민감도(베타)', typeof m.portfolioBeta === 'number' ? fmtNum(m.portfolioBeta, 2) + '배' : riskMetricUnavailableShortText(m, 'beta'), '각 종목을 자기 시장의 대표지수와 비교해 구한 민감도를, 보유비중대로 합친 값입니다. 기준 시장은 국내 자산이면 상장 시장(코스피 상장 → 코스피, 코스닥 상장 → 코스닥), 미국에 경제적으로 노출된 자산이면 상장 거래소와 무관하게 S&P500입니다 - 국내에 상장된 미국 ETF도 S&P500 기준입니다. 그래서 이 값은 어느 지수 하나에 대한 통합 베타가 아니라 서로 다른 기준의 가중평균이며, 어떤 기준이 얼마나 섞였는지는 바로 아래 「기준시장 구성」에 있습니다. 1보다 크면 그 시장보다 크게, 작으면 작게 움직였다는 뜻이며, 가격의 출렁임 자체(변동성)와는 다른 값입니다. 위험점수의 「시장위험」은 이 값만 씁니다. 종목이 추종하는 공식 기초지수와 비교한 값은 아래 「기초지수 추적 민감도」에 따로 있습니다 - 지수를 그대로 따라가는 ETF는 그 값이 1 근처로 나오는 것이 정상이라, 시장위험과 같은 뜻이 아닙니다. 베타를 구하지 못한 종목은 남은 종목에 얹지 않고 빼며, 아래 "설명 범위"가 그 사실을 말해 줍니다. 채권·현금·부동산은 집계 대상이 아닙니다.')}
+      ${betaBenchmarkMixHtml(m)}
       ${betaCoverageNoteHtml(m)}
-      ${buildMetricItem('🧭 기초지수 추적 민감도', typeof m.portfolioTrackingBeta === 'number' ? fmtNum(m.portfolioTrackingBeta, 2) + '배' : '자료 없음', '각 종목이 자기 공식 기초지수를 1% 움직임당 얼마나 따라갔는지를 비중대로 합친 값입니다(표시 전용 - 위험점수에는 들어가지 않습니다). 지수를 그대로 복제하는 ETF는 1에 가깝게 나오는 것이 정상이고, 1에서 멀어지면 환노출·시차·부분복제 같은 구조 차이를 살펴볼 신호입니다. 다만 이 값 하나로 추적 품질을 판정할 수는 없습니다 - 추적오차(잔차의 크기)는 별개의 지표입니다. 개별 주식은 공식 기초지수가 없어 이 값에 들어가지 않습니다. 국내에 상장된 해외 지수 ETF처럼 우리 시장이 닫힌 뒤에 기준 지수가 움직이는 경우에는 같은 날과 그 다음 날의 반응을 함께 더해(시차 0 + 1) 계산합니다.')}
+      ${buildMetricItem('🧭 기초지수 추적 민감도', typeof m.portfolioTrackingBeta === 'number' ? fmtNum(m.portfolioTrackingBeta, 2) + '배' : '자료 없음', '각 종목이 자기 공식 기초지수를 1% 움직임당 얼마나 따라갔는지를 비중대로 합친 값입니다(표시 전용 - 위험점수에는 들어가지 않습니다). 지수를 그대로 복제하는 ETF는 1에 가깝게 나오는 것이 정상이고, 1에서 멀어지면 환노출·시차·부분복제 같은 구조 차이를 살펴볼 신호입니다. 다만 이 값 하나로 추적 품질을 판정할 수는 없습니다 - 추적오차(잔차의 크기)는 별개의 지표입니다. 개별 주식도 이 값에 함께 들어갑니다 - 따라갈 상품이 없는 대신 원장이 정해 둔 지수(국내 개별주는 상장 시장 지수, 해외 개별주는 원장에 적힌 지수)와 비교하므로, 이 숫자를 ETF만의 추적 품질로 읽으면 안 됩니다. 국내에 상장된 해외 지수 ETF처럼 우리 시장이 닫힌 뒤에 기준 지수가 움직이는 경우에는 같은 날과 그 다음 날의 반응을 함께 더해(시차 0 + 1) 계산합니다.')}
       ${buildMetricItem('🎯 최대 종목 비중 (주식·ETF 기준)', fmtNum(m.topWeight, 0) + '% (' + escapeHtml(m.topHolding ? m.topHolding.name : '-') + ')', '주식·ETF 보유분만을 기준으로(현금·채권·부동산 제외) 특정 종목 하나에 얼마나 쏠려 있는지 보여줍니다 - 종목 상세의 "계좌 내 비중"(전체 자산 기준)과는 분모가 달라 숫자가 다를 수 있습니다.')}
       ${buildMetricItem('📉 하루 하락 기준선 (VaR 95%)', typeof m.var95KRW === 'number' ? fmtKRWShort(Math.abs(m.var95KRW)) : riskMetricUnavailableShortText(m, 'var'), '최근 1년 중 하루 하락이 컸던 하위 약 5% 날의 경계를 현재 평가액에 적용한 금액입니다. 약 20거래일에 하루꼴로 이보다 크게 떨어진 날이 있었다는 뜻이며, 최대 손실이 아닙니다.')}
       ${buildMetricItem('📉 하락이 컸던 날 평균 (CVaR 95%)', typeof m.cvarKRW === 'number' ? fmtKRWShort(Math.abs(m.cvarKRW)) : riskMetricUnavailableShortText(m, 'cvar'), '위 기준선과 같거나 더 크게 떨어진 날들(최근 1년 하위 약 5%)의 하루 평균 하락폭을 현재 평가액에 적용한 금액입니다. 특정 위기 상황의 손실이 아닙니다.')}
@@ -827,7 +863,7 @@ function renderRiskDetailModal() {
       ${benchmarkDefinitionNoteHtml(m)}
       ${riskFxBasisNote(m)}
     </div>
-    ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5">🏭 (ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</p>` : ''}
+    ${m.sectorExposure && m.sectorExposure.topSector && m.sectorExposure.topSector !== '미분류' ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-2.5 flex items-start gap-1.5"><span class="shrink-0">🏭</span><span class="break-keep break-words min-w-0">(ETF 속 구성종목 포함) 최다 노출 섹터: <b>${escapeHtml(m.sectorExposure.topSector)}</b> ${fmtNum(m.sectorExposure.topSectorWeight, 0)}%</span></p>` : ''}
 
     <!-- [역사적 하락장 체험하기] 2020 코로나(짧고 강한 급락) + 2022 고금리(길게 이어진 약세장) 두 시나리오
          - 모바일(375px)에서도 카드가 잘리지 않도록 grid-cols-1로 세로로 쌓고, sm 이상에서만 2열로
@@ -837,7 +873,7 @@ function renderRiskDetailModal() {
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2020년 초 급락 가정 시 (추정)</p>
         <p class="text-lg sm:text-xl font-bold text-blue-500 dark:text-blue-400 break-keep">${escapeHtml(stressLossValueText(m.stressLossKRW, m.stressLossPct, m.stressStatus && m.stressStatus.covid2020))}</p>
-        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2020년 2~3월 기준 지수 하락폭(코스피 -35.7%·S&P500 -33.9% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다. 그 사건이 다시 일어난다는 뜻이 아니며, 하루 하락 지표(VaR·CVaR)와는 다른 가정 계산입니다.</p>
+        <p class="text-sm text-slate-400 mt-1 leading-relaxed">* 2020년 2~3월 기준 지수 하락폭(코스피 -35.7%·S&P500 -33.9% 등)에 종목별 시장 민감도를 곱해 계산한 추정 손실입니다. 국내에 상장된 미국 ETF는 베타를 원화 기준으로 재므로 하락폭도 같은 원화 기준 값(S&P500 -29.9%)을 씁니다. 그 사건이 다시 일어난다는 뜻이 아니며, 하루 하락 지표(VaR·CVaR)와는 다른 가정 계산입니다.</p>
       </div>
       <div class="rounded-lg bg-white/70 dark:bg-black/20 p-3 min-w-0">
         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">📉 2022년 금리 인상기 하락 가정 시 (추정)</p>
@@ -851,7 +887,7 @@ function renderRiskDetailModal() {
     <div class="mt-3 rounded-lg bg-white/70 dark:bg-black/20 p-3" id="whatIfSimBox" data-top-ticker="${escapeHtml(m.topHolding.ticker)}">
       <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
         💡 위험관리 시뮬레이션(What-If)
-        <button type="button" data-info-tip="실제 매도 지시가 아니라, 비중을 조정하면 위험점수가 어떻게 바뀌는지 미리 계산해 보는 기능입니다." class="text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
+        <button type="button" data-info-tip="실제 매도 지시가 아니라, 비중을 조정하면 위험점수가 어떻게 바뀌는지 미리 계산해 보는 기능입니다." class="tap44 text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
       </p>
       <p class="text-sm text-slate-600 dark:text-slate-300 mb-2">${escapeHtml(m.topHolding.name)} 비중을 조절하면?</p>
       <div class="flex gap-1.5 mb-2.5">
@@ -1479,7 +1515,7 @@ function buildMacroDetailBodyHtml(key) {
       <!-- [V1.2-A C4] 위 구간(예: VIX 20/30)은 계산식이 아니라 이 화면이 초보자 설명을 위해 쓰는 고정
            참고값이다(js/10 MACRO_TREND_THRESHOLDS/vixWeatherIcon 주석 참고) - 숫자·판정 로직은 그대로
            두고, 그 사실만 한 줄 공개한다. -->
-      <p class="text-sm text-slate-400 mt-2 pt-2 border-t border-brand-100 dark:border-brand-900/50">※ 위 구간은 시장에서 널리 참고되는 범위를 바탕으로 한 설명용 기준이며, 절대적인 위험 기준은 아닙니다.</p>
+      <p class="text-sm text-slate-400 mt-2 pt-2 border-t border-brand-100 dark:border-brand-900/50 flex items-start gap-1.5"><span class="shrink-0">※</span><span class="break-keep break-words min-w-0">위 구간은 시장에서 널리 참고되는 범위를 바탕으로 한 설명용 기준이며, 절대적인 위험 기준은 아닙니다.</span></p>
     </div>`;
 }
 
@@ -1771,9 +1807,9 @@ function openRiskAlertModal() {
   const score = m.riskScore;
   const level = riskLevelFromScore(score);
 
-  // [V1.3 P1-1] 이 팝업도 메인 RISK 카드와 똑같이 "종합 위험점수"를 크게 보여주는데, 카드에는 헤드라인
-  // 바로 아래 상시 노출되는 진단 대상 안내(#riskScopeNote, index.html + updateRealEstateGuidanceText)가
-  // 있는 반면 이 팝업에는 없어서, 팝업만 본 사용자는 이 점수를 전체 자산 기준으로 오해할 수 있었다.
+  // [V1.3 P1-1 · PM 지시 2026-09-22 갱신] 이 팝업도 "종합 위험점수"를 크게 보여주므로, 팝업만 본
+  // 사용자가 이 점수를 전체 자산 기준으로 오해하지 않도록 진단 대상을 한 줄로 함께 적는다.
+  // (메인 카드의 #riskScopeNote는 2026-09-22 지시로 없어지고 점수 옆 ⓘ 팝업으로 합쳐졌다 - 이 줄은 그와 별개다.)
   // 계산(riskEligibleAssets = 주식·ETF)은 전혀 건드리지 않고, 카드와 같은 사실을 같은 자리(점수 바로
   // 아래)에 한 줄로만 덧붙인다 - 새 카드/새 점수/새 계산을 만들지 않는다.
   document.getElementById('riskAlertScoreBox').innerHTML = `

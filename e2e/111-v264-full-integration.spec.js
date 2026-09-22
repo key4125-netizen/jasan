@@ -440,15 +440,23 @@ test('10. (i)를 누르면 「포트폴리오 위험 안내」가 열리고 6대
   await expect(modal).toBeHidden();
 });
 
-test('11. 진단 대상 고지는 팝업으로 옮기지 않고 화면에 그대로 남아 있다(V1.3 P1-1 유지)', async ({ page }) => {
+/* [기대값 갱신 · PM 지시 2026-09-22] V1.3 P1-1의 "메인 카드 상시 노출"은 이 지시로 개정됐다 -
+ * 「⚠️ 위험 관리」 제목과 진단 대상 고지(#riskScopeNote)를 점수 옆 ⓘ 「포트폴리오 위험 안내」
+ * 팝업 하나로 합쳤다(SoT §52-13). 계약은 유지한다 - 고지가 사라지지 않고 팝업에서 읽힌다. */
+test('11. 진단 대상 고지는 점수 옆 ⓘ 팝업으로 합쳐졌다(정보는 사라지지 않았다)', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof renderRiskDiagnosisSummary === 'function');
   await seedMetrics(page);
-  const note = page.locator('#riskScopeNote');
-  await expect(note).toBeVisible();
-  const t = await note.innerText();
-  expect(t).toContain('주식·ETF');
+  // 메인 카드의 상시 노출 줄과 제목은 없어졌다.
+  await expect(page.locator('#riskScopeNote')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '위험 관리', exact: true })).toHaveCount(0);
+  // 같은 고지를 ⓘ 팝업에서 읽을 수 있다.
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const t = await page.locator('#portfolioRiskInfoModal').innerText();
+  expect(t).toContain('주식 · ETF');
   expect(t).toContain('채권');
+  expect(t).toContain('가구 전체');
 });
 
 [375, 390, 1440].forEach((w) => {

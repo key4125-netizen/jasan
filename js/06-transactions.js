@@ -1419,7 +1419,26 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   renderTransactionsTab();
   renderAll();
   showToast('거래 내역을 저장했습니다.', 'success');
+  notifyManualAssetMismatchAfterSave(matchedAsset);
 });
+
+/* [UX-3] 저장 직후 "이 거래가 자산 수량에 반영되지 않았다"는 사실을 그 자리에서 알린다.
+ * 자산 상세의 상세 안내(현재 자산 vs 거래내역 숫자 비교)는 그대로 두고, 여기서는
+ * 사용자가 다음에 무엇을 보면 되는지만 한 줄로 말한다. 값은 아무것도 바꾸지 않는다. */
+function notifyManualAssetMismatchAfterSave(asset) {
+  if (!asset || typeof assessPositionConsistency !== 'function') return;
+  let verdict;
+  try { verdict = assessPositionConsistency(asset); } catch (e) { return; }
+  if (!verdict) return;
+  const mismatched = verdict.status === POSITION_CONSISTENCY.MANUAL_WITH_TX
+    || verdict.status === POSITION_CONSISTENCY.LEDGER_UNKNOWN;
+  if (!mismatched) return;
+  const name = String(asset.name || asset.ticker || '이 자산');
+  const kept = verdict.status === POSITION_CONSISTENCY.MANUAL_WITH_TX
+    ? `「${name}」 자산은 자산관리 화면에서 직접 관리하고 있어, 보유 수량이 거래내역으로 바뀌지 않습니다.`
+    : `「${name}」 자산은 자산 정보와 거래내역의 값이 서로 다릅니다.`;
+  showToast(`${kept} 자산을 눌러 「현재 자산 vs 거래내역」 비교를 확인해 주세요.`, 'warning');
+}
 
 function deleteTransaction(id) {
   if (!confirm('이 거래 내역을 삭제하시겠습니까? 삭제 시 관련 종목의 수량/평단가가 남은 거래내역 기준으로 다시 계산됩니다.')) return;

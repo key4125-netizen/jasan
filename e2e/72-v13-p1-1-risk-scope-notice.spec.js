@@ -4,10 +4,13 @@
 // 않는다. 사용자가 "종합 위험점수"를 전체 자산 기준으로 오해하지 않도록, 점수가 표시되는 자리마다
 // 그 사실이 화면에 보이는지만 고정한다.
 //
-// [기존 구현과의 관계] 메인 RISK 카드는 이미 #riskScopeNote(index.html + updateRealEstateGuidanceText,
-// js/03)로 헤드라인 바로 아래에 상시 고지하고 있었고 e2e/40 "5"가 그것을 고정한다. 이번 변경은
-// 그 고지가 없던 위험 경고 팝업(riskAlertModal)에만 같은 사실을 한 줄 덧붙인 것이다.
-// 이 파일은 "점수가 보이는 모든 자리에 범위 고지가 함께 보인다"는 계약을 두 자리 모두에서 검사한다.
+// [기존 구현과의 관계] 메인 RISK 카드는 #riskScopeNote로 헤드라인 바로 아래에 상시 고지했고,
+// 위험 경고 팝업(riskAlertModal)에는 같은 사실을 한 줄 덧붙였다.
+//
+// [갱신 · PM 지시 2026-09-22] 메인 카드의 「⚠️ 위험 관리」 제목과 #riskScopeNote는 화면에서 없어지고,
+// 점수 옆 ⓘ 「포트폴리오 위험 안내」 팝업(#portfolioRiskInfoModal)으로 합쳐졌다(SoT §52-13).
+// 계약 자체는 유지한다 - "점수를 보는 사용자가 범위 고지를 찾을 수 있다"를 이제 **두 팝업**
+// (ⓘ 안내 · 위험 경고)에서 검사한다. 계산(RISK_ELIGIBLE_CATEGORIES)은 예전 그대로다.
 const { test, expect } = require('@playwright/test');
 
 async function boot(page) {
@@ -50,19 +53,22 @@ async function seedBondHeavyPortfolio(page) {
 
 /* ── A. 점수가 보이는 두 자리 모두에서 계산 대상 고지가 보인다 ───────────────── */
 
-test('A-1. 메인 RISK 카드 - 점수 바로 위에 진단 대상(주식·ETF) 고지가 상시 보인다', async ({ page }) => {
+test('A-1. 메인 RISK 카드 - 점수 옆 ⓘ 안내에서 진단 대상(주식·ETF) 고지를 볼 수 있다', async ({ page }) => {
   await boot(page);
   await seedMetrics(page);
   await page.evaluate(() => renderRiskDiagnosisSummary());
   await expect(page.locator('#riskDiagnosisSummary')).toBeVisible();
-
-  const note = page.locator('#riskScopeNote');
-  await expect(note, '고지는 숨김/툴팁이 아니라 화면에 상시 보여야 한다').toBeVisible();
-  const noteText = await note.innerText();
-  expect(noteText).toContain('주식·ETF');
-  expect(noteText).toContain('채권');
-  // 점수 헤드라인이 실제로 같은 화면에 함께 있다.
+  // 점수 헤드라인은 그대로 카드에 있다.
   expect(await page.locator('#riskDiagnosisSummary').innerText()).toContain('종합 위험점수');
+  // 예전의 상시 노출 줄은 없어졌다(PM 지시 2026-09-22).
+  await expect(page.locator('#riskScopeNote')).toHaveCount(0);
+  // 같은 고지를 점수 옆 ⓘ에서 볼 수 있어야 한다 - 정보가 사라지면 안 된다.
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const info = await page.locator('#portfolioRiskInfoModal').innerText();
+  expect(info).toContain('주식 · ETF');
+  expect(info).toContain('채권');
+  expect(info).toContain('가구 전체');
 });
 
 test('A-2. 위험 경고 팝업 - 점수 바로 아래에 같은 고지가 보인다(이번 변경 지점)', async ({ page }) => {
@@ -83,14 +89,22 @@ test('B. 채권·현금·부동산이 대부분인 포트폴리오에서도 두 
   await boot(page);
   await seedBondHeavyPortfolio(page);
   await seedMetrics(page);
-  await page.evaluate(() => { renderRiskDiagnosisSummary(); openRiskAlertModal(); });
+  await page.evaluate(() => { renderRiskDiagnosisSummary(); });
 
-  await expect(page.locator('#riskScopeNote')).toBeVisible();
-  expect(await page.locator('#riskScopeNote').innerText()).toContain('주식·ETF');
+  // [갱신 2026-09-22] 메인 카드의 상시 노출 줄 대신 ⓘ 안내 팝업에서 확인한다.
+  await expect(page.locator('#riskScopeNote')).toHaveCount(0);
+  // ① 점수 옆 ⓘ 안내 팝업 - 위험 경고 팝업을 열기 전에 먼저 본다(겹치면 클릭이 가려진다).
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const infoB = await page.locator('#portfolioRiskInfoModal').innerText();
+  expect(infoB).toContain('주식 · ETF');
+  // 채권 · 현금 · 부동산이 빠진다는 사실도 같은 자리에서 읽을 수 있다.
+  expect(infoB).toContain('부동산');
+  await page.locator('#closePortfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeHidden();
+  // ② 위험 경고 팝업(기존 그대로)
+  await page.evaluate(() => openRiskAlertModal());
   expect(await page.locator('#riskAlertScoreBox').innerText()).toContain('주식·ETF');
-
-  // 보유 부동산이 있으면 기존 정책대로 문구에 '부동산'까지 명시된다(updateRealEstateGuidanceText).
-  expect(await page.locator('#riskScopeNote').innerText()).toContain('부동산');
 });
 
 /* ── C. 기존 Risk 계산값이 변하지 않는다 ──────────────────────────────────── */
@@ -123,14 +137,17 @@ test('G. 범위 고지(어떤 자산이 대상인가)는 그대로 있고, 성�
   await seedMetrics(page);
   await page.evaluate(() => renderRiskDiagnosisSummary());
   const summary = await page.locator('#riskDiagnosisSummary').innerText();
-  const scope = await page.locator('#riskScopeNote').innerText();
+  // [갱신 · PM 지시 2026-09-22] 범위 고지는 점수 옆 ⓘ 안내 팝업이 맡는다.
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const scope = await page.locator('#portfolioRiskInfoModal').innerText();
 
   // 서로 다른 축이다: 범위(자산 종류) vs 성격(가격 변동 위험만 본다).
-  expect(scope).toContain('주식·ETF');
+  expect(scope).toContain('주식 · ETF');
   // [v254 · PM 지시] 성격 고지(계획 확인 안내)는 메인 카드에서 표시하지 않는다 - 범위 고지는 그대로 남는다.
   expect(summary).not.toContain('가격 변동 위험');
   await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
-  await expect(page.locator('#riskScopeNote')).toBeVisible();
+  await expect(page.locator('#riskScopeNote')).toHaveCount(0);
   // 범위 고지에 행동 지시/위험 표현을 얹지 않는다(기존 e2e/40 "8"과 같은 원칙).
   ['매도', '매수', '손절', '줄이', '늘리', '위험합니다'].forEach((w) => {
     expect(scope, `범위 고지에 행동/위험 표현 발견: ${w}`).not.toContain(w);
@@ -145,7 +162,9 @@ test('E/F. 375px 모바일 다크모드에서 두 고지 모두 가로 오버플
   await page.locator('html').evaluate((el) => el.classList.add('dark'));
   await seedBondHeavyPortfolio(page);
   await seedMetrics(page);
-  await page.evaluate(() => { renderRiskDiagnosisSummary(); openRiskAlertModal(); });
+  /* [갱신 · PM 지시 2026-09-22] 고지가 보이는 두 자리가 바뀌었다 -
+   * 메인 카드의 상시 노출 줄 대신 점수 옆 ⓘ 안내 팝업, 그리고 기존 위험 경고 팝업이다. */
+  await page.evaluate(() => { renderRiskDiagnosisSummary(); });
 
   const readable = async (selector) => page.locator(selector).evaluate((el) => {
     const view = el.ownerDocument.defaultView;
@@ -154,9 +173,24 @@ test('E/F. 375px 모바일 다크모드에서 두 고지 모두 가로 오버플
     return { fontPx: Math.round(parseFloat(cs.fontSize)), text: target.innerText.trim() };
   });
 
-  const cardNote = await readable('#riskScopeNote');
+  // ① 점수 옆 ⓘ 안내 팝업
+  await page.locator('#portfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeVisible();
+  const infoNote = await page.locator('#portfolioRiskInfoModal').evaluate((el) => {
+    const p = [...el.querySelectorAll('p')].find((x) => /주식 · ETF/.test(x.textContent || ''));
+    const cs = el.ownerDocument.defaultView.getComputedStyle(p);
+    return { fontPx: Math.round(parseFloat(cs.fontSize)), text: p.innerText.trim() };
+  });
+  expect(infoNote.fontPx, '폰트를 줄여 해결하지 않는다').toBeGreaterThanOrEqual(14);
+  expect(infoNote.text).toContain('주식 · ETF');
+  const infoOverflow = await page.locator('body').evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(infoOverflow, '안내 팝업에서 가로 오버플로가 생기면 안 된다').toBeLessThanOrEqual(1);
+  await page.locator('#closePortfolioRiskInfoBtn').click();
+  await expect(page.locator('#portfolioRiskInfoModal')).toBeHidden();
+
+  // ② 위험 경고 팝업(기존 그대로)
+  await page.evaluate(() => openRiskAlertModal());
   const popupNote = await readable('#riskAlertScoreBox');
-  expect(cardNote.fontPx, '폰트를 줄여 해결하지 않는다').toBeGreaterThanOrEqual(14);
   expect(popupNote.fontPx).toBeGreaterThanOrEqual(14);
   expect(popupNote.text).toContain('주식·ETF');
 
