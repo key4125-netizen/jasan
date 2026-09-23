@@ -214,59 +214,54 @@ test('E-2 - 백업 무결성 표식을 만들고 손상 여부를 가려낸다',
   expect(r.old).toBe('absent');  // 옛 백업은 예전처럼 그대로 복원된다
 });
 
-test('E-3 - 동기화는 진짜 충돌만 사용자에게 묻는다', async ({ page }) => {
+/* [기대값 갱신 사유 · PM 지시 2026-09-23] 이 테스트는 v267(PC-6 · SoT §53-9)의 "진짜 충돌만
+ * 묻는다"를 고정하고 있었다. PM 결정으로 그 완화를 되돌렸다 - **두 곳이 다르면 종류를 가리지 않고
+ * 사용자가 고른다**(§30 v243 규칙 복귀). 그래서 판정 함수(syncDifferenceNeedsReview)는 사라졌고,
+ * 이제 확인 여부를 정하는 것은 compareSyncData의 hasMeaningfulDifference 하나다.
+ * 기대값을 낮춘 것이 아니라 정반대 방향으로 고정한다 - 자동으로 합쳐지던 두 경우(①②)도 이제 묻는다. */
+test('E-3 - 동기화는 두 곳이 다르면 종류를 가리지 않고 사용자에게 묻는다', async ({ page }) => {
   await bootWithMaster(page);
   const r = await page.evaluate(() => {
-    // 직전 동기화 시점을 과거로 두고, 그때 알던 id 집합을 비워 둔다(= 아래 항목들은 전부 신규).
-    localStorage.setItem(LS_SYNC_LAST_SYNCED_AT, new Date(Date.now() - 86400000).toISOString());
-    localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify([]));
-    localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify([]));
-    const empty = { localOnly: [], cloudOnly: [], different: [] };
-    const base = { assets: { ...empty }, transactions: { ...empty }, rebalance: { changed: false }, projection: { changed: false } };
+    const asset = (over) => Object.assign({
+      id: 'a1', name: 'ZZ자산', ticker: 'ZZ.KS', owner: '신랑', accountType: '일반계좌',
+      category: '주식', isDomestic: '국내', currency: 'KRW', quantity: 10, buyPrice: 1000
+    }, over || {});
+    const tx = (over) => Object.assign({
+      id: 't1', date: '2026-01-02', name: 'ZZ자산', ticker: 'ZZ.KS', owner: '신랑',
+      accountType: '일반계좌', type: 'buy', quantity: 1, price: 1000, currency: 'KRW'
+    }, over || {});
+    const localBase = { assets: [asset()], transactions: [tx()], rebalance: state.rebalance, projection: state.projection };
+    const cloud = (over) => Object.assign({
+      assets: [asset()], transactions: [tx()], rebalance: state.rebalance, projection: state.projection
+    }, over || {});
+    const ask = (remote, local) => compareSyncData(local || localBase, remote).hasMeaningfulDifference;
 
-    // ① 다른 기기가 거래를 새로 추가했다 - 손실이 없으므로 자동 병합
-    const added = JSON.parse(JSON.stringify(base));
-    added.transactions.cloudOnly = [{ id: 'tx-new' }];
-    const addedNeedsReview = syncDifferenceNeedsReview(added);
-
-    // ② 이 기기가 자산을 새로 만들었다(직전 동기화에 없던 id) - 자동 병합
-    const localNew = JSON.parse(JSON.stringify(base));
-    localNew.assets.localOnly = [{ id: 'a-new' }];
-    const localNewNeedsReview = syncDifferenceNeedsReview(localNew);
-
-    // ③ 원격이 지운 항목(직전 동기화에 있던 id) - 병합하면 사라지므로 물어본다
-    //    (이 시점부터 'a-known'은 직전 동기화에 있던 항목이다 - 아래 ④ ⑤도 같은 기준선을 쓴다)
-    localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(['a-known']));
-    const removed = JSON.parse(JSON.stringify(base));
-    removed.assets.localOnly = [{ id: 'a-known' }];
-    const removedNeedsReview = syncDifferenceNeedsReview(removed);
-
-    /* ④ 같은 항목의 값이 다르다 - 항상 확인받는다.
-     * 지금 메타데이터로는 "한쪽만 바뀐 것"과 "양쪽이 갈라진 것"을 안전하게 구분할 수 없어서,
-     * 값이 다르면 무조건 사람이 정한다(js/12 syncDifferenceNeedsReview 주석 참고). */
-    state.assets = [{ id: 'a-known', updatedAt: 1 }]; // 아주 오래된 변경이라도 마찬가지다
-    const conflict = JSON.parse(JSON.stringify(base));
-    conflict.assets.different = [{ id: 'a-known', fields: [] }];
-    const conflictNeedsReview = syncDifferenceNeedsReview(conflict);
-
-    // ⑤ 이 기기가 지운 항목을 저쪽이 갖고 있다(삭제 vs 수정) - 확인받는다
-    const delVsMod = JSON.parse(JSON.stringify(base));
-    delVsMod.assets.cloudOnly = [{ id: 'a-known' }];
-    const delVsModNeedsReview = syncDifferenceNeedsReview(delVsMod);
-
-    // ⑤ 목표비중 설정이 다르다 - 통째로 덮어쓰므로 물어본다
-    const rb = JSON.parse(JSON.stringify(base));
-    rb.rebalance.changed = true;
-    const rbNeedsReview = syncDifferenceNeedsReview(rb);
-
-    return { addedNeedsReview, localNewNeedsReview, removedNeedsReview, conflictNeedsReview, delVsModNeedsReview, rbNeedsReview };
+    return {
+      // 같다 - 묻지 않는다(Case A). updatedAt · 시세만 다른 것은 차이로 보지 않는다(§30 S-5).
+      same: ask(cloud()),
+      sameButStamped: ask(cloud({ assets: [asset({ updatedAt: Date.now(), currentPrice: 99999 })] })),
+      // ① 클라우드에만 있는 신규 거래 - v267에서는 자동 병합, 이제는 묻는다
+      cloudOnlyTx: ask(cloud({ transactions: [tx(), tx({ id: 't2' })] })),
+      // ② 이 기기에만 있는 신규 자산 - v267에서는 자동 병합, 이제는 묻는다
+      localOnlyAsset: ask(cloud({ assets: [] }), { ...localBase, assets: [asset(), asset({ id: 'a2' })] }),
+      // ③ 같은 항목의 값이 다르다
+      valueDiffers: ask(cloud({ assets: [asset({ quantity: 20 })] })),
+      // ④ 삭제 vs 보유
+      deletedHere: ask(cloud(), { ...localBase, assets: [] }),
+      // ⑤ 목표비중 설정이 다르다
+      rebalanceChanged: ask(cloud({ rebalance: { ...state.rebalance, updatedAt: Date.now() + 1, '신랑': { domestic: { '국내': 10, '해외': 90 }, targets: { '국내': [], '해외': [] } } } }))
+    };
   });
-  expect(r.addedNeedsReview).toBe(false);
-  expect(r.localNewNeedsReview).toBe(false);
-  expect(r.removedNeedsReview).toBe(true);
-  expect(r.conflictNeedsReview).toBe(true);
-  expect(r.delVsModNeedsReview).toBe(true);
-  expect(r.rbNeedsReview).toBe(true);
+  expect(r.same, '같으면 묻지 않는다').toBe(false);
+  expect(r.sameButStamped, '시각 · 시세만 달라진 것은 차이가 아니다').toBe(false);
+  expect(r.cloudOnlyTx, '클라우드에만 있는 거래도 이제 묻는다').toBe(true);
+  expect(r.localOnlyAsset, '이 기기에만 있는 자산도 이제 묻는다').toBe(true);
+  expect(r.valueDiffers).toBe(true);
+  expect(r.deletedHere).toBe(true);
+  expect(r.rebalanceChanged).toBe(true);
+  // 완화 판정 함수는 더 이상 존재하지 않는다(자동 병합 경로가 남아 있지 않다는 뜻이다).
+  const gone = await page.evaluate(() => typeof syncDifferenceNeedsReview === 'undefined');
+  expect(gone, '자동 병합 판정 함수가 남아 있지 않다').toBe(true);
 });
 
 /* ══════════════════ F. 사용자 확정값 보호 ══════════════════ */

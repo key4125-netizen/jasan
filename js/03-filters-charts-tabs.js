@@ -240,10 +240,10 @@ function resetAllAccordionsOnTabSwitch() {
   assetGroupExpanded.clear();
   portfolioDiagRowOpen = {};
   pnlPeriodDetailOpen = {};
-  // 대시보드의 「상세 현황 보기」와 미래 예측의 Monte Carlo 결과(장기 가정 출처 · 주의사항 묶음)는 탭 전환으로
-  // 다시 그려지지 않으므로 그려져 있는 화면도 함께 접는다.
-  macroDiagnosisOpen = false;
-  if (typeof reapplyMacroDiagnosisAccordionHeight === 'function') reapplyMacroDiagnosisAccordionHeight();
+  /* 미래 예측의 Monte Carlo 결과(장기 가정 출처 · 주의사항 묶음)는 탭 전환으로 다시 그려지지
+   * 않으므로 그려져 있는 화면도 함께 접는다.
+   * [PM 지시 2026-09-23 · #3] 대시보드의 「상세 현황 보기」 아코디언은 팝업(#macroDetailModal)이
+   * 되어 여기서 되돌릴 펼침 상태가 없다 - 팝업은 닫으면 그걸로 끝이고 카드 높이에 영향을 주지 않는다. */
   if (typeof collapseMonteCarloResultAccordions === 'function') collapseMonteCarloResultAccordions();
 }
 
@@ -317,7 +317,7 @@ const SWIPE_MIN_DISTANCE = 50; // px
 // [핵심종목 실시간 팝업이 위험진단 팝업보다 위에 뜸] coreStocksModal(z-[65])이 riskAlertModal(z-50)
 // 보다 시각적으로 위에 있으므로, 뒤로가기도 그 순서(위에 있는 것부터)로 닫혀야 자연스럽다 - 배열에서
 // coreStocksModal을 riskAlertModal보다 앞에 둔다(앞에 있는 항목이 먼저 닫힘, 위 주석 참고).
-const SWIPE_MODAL_IDS = ['stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'systemManagementModal', 'mcInfoModal', 'projectionAssumptionsModal', 'mcFeeRatesModal', 'cmaRecommendationModal'];
+const SWIPE_MODAL_IDS = ['macroDetailModal', 'stockSearchModal', 'assetModal', 'transactionModal', 'assetDetailModal', 'chartZoomModal', 'stockAllocationModal', 'rebalanceTargetModal', 'positionRoleBreakdownModal', 'dailyPnlModal', 'totalValueModal', 'importChoiceModal', 'exchangeRateModal', 'scenarioRateManagerModal', 'taxAdvantagedPlanModal', 'monthlyContributionAllocationModal', 'coreStocksModal', 'riskAlertModal', 'riskDetailModal', 'assetSearchResultModal', 'syncSettingsModal', 'stockAnalysisModal', 'systemManagementModal', 'mcInfoModal', 'projectionAssumptionsModal', 'mcFeeRatesModal', 'cmaRecommendationModal'];
 let swipeStartX = 0, swipeStartY = 0, swipeTracking = false;
 
 function isAnyModalOpen() {
@@ -359,6 +359,7 @@ const MODAL_CLOSE_FNS = {
   riskAlertModal: (viaBack) => closeRiskAlertModal(viaBack),
   coreStocksModal: (viaBack) => closeCoreStocksModal(viaBack),
   riskDetailModal: (viaBack) => closeRiskDetailModal(viaBack),
+  macroDetailModal: (viaBack) => closeMacroDetailModal(viaBack),
   assetSearchResultModal: (viaBack) => closeAssetSearchResultModal(viaBack),
   syncSettingsModal: (viaBack) => closeSyncSettingsModal(viaBack),
   stockAnalysisModal: (viaBack) => closeStockAnalysisModal(viaBack),

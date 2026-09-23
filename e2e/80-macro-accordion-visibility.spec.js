@@ -91,14 +91,32 @@ function measure(page) {
       diagnosisFullH: Math.round(doc.getElementById('macroBriefingDiagnosis').getBoundingClientRect().height),
       guideVisibleH: visibleHeight(guide),
       guideFullH: guide ? Math.round(guide.getBoundingClientRect().height) : null,
+      /* [PM 지시 2026-09-23 · #3] 팝업 기준 측정 두 가지.
+       * sectionH - 팝업은 카드 높이를 바꾸지 않아야 한다(아코디언이 밀어내던 문제의 근본 해결).
+       * diagnosisReachable - 화면보다 긴 세부 내용은 팝업 안에서 스크롤로 전부 닿을 수 있어야 한다
+       *   (잘려서 영영 못 보는 것과 스크롤로 볼 수 있는 것은 다르다). */
+      sectionH: Math.round(doc.getElementById('macroBriefingSection').getBoundingClientRect().height),
+      diagnosisReachable: (() => {
+        const d = doc.getElementById('macroBriefingDiagnosis');
+        const box = d && d.parentElement;
+        if (!box) return null;
+        if (doc.getElementById('macroDetailModal').classList.contains('hidden')) return null;
+        // 스크롤 컨테이너가 내용 전체 높이를 담고 있으면(잘라내지 않으면) 닿을 수 있다.
+        return box.scrollHeight >= Math.round(d.getBoundingClientRect().height) - 1;
+      })(),
       pageOverflowX: doc.documentElement.scrollWidth > doc.documentElement.clientWidth,
     };
   });
 }
 
-const clickDetails = async (page) => {
-  await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(TRANSITION);
+/* [PM 지시 2026-09-23 · #3] 아코디언 토글(같은 버튼 두 번) -> 팝업 열기/닫기. */
+const openDetails = async (page) => {
+  await page.locator('#macroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeVisible();
+};
+const closeDetails = async (page) => {
+  await page.locator('#closeMacroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeHidden();
 };
 
 /* ── ① 지수 10개 기본 표시 ───────────────────────────────────────────── */
@@ -136,24 +154,29 @@ test('C. 세부 내용을 열고-닫고-다시 열면 매번 실제로 보이고
   await open(page);
   await seed(page);
 
-  // ② 열기 - 부모에게 잘리지 않고 내용 전체가 보여야 한다.
-  await clickDetails(page);
+  const sectionH0 = (await measure(page)).sectionH;
+
+  // ② 열기 - 팝업 안에서 잘리지 않고 내용 전체에 닿을 수 있어야 한다.
+  await openDetails(page);
   let m = await measure(page);
   expect(m.diagnosisVisibleH, '세부 내용이 실제로 보인다(부모 clipping 없음)').toBeGreaterThan(0);
-  expect(m.diagnosisVisibleH, '일부만 보이는 게 아니라 전체가 보인다').toBe(m.diagnosisFullH);
-  expect(m.tilesFullyVisible, '세부 내용을 펼쳐도 지수 10개는 그대로 보인다').toBe(10);
+  expect(m.diagnosisReachable, '긴 내용도 팝업 안에서 전부 닿는다').toBe(true);
+  expect(m.tilesFullyVisible, '세부 내용을 열어도 지수 10개는 그대로 보인다').toBe(10);
+  expect(m.sectionH, '팝업은 카드 높이를 바꾸지 않는다').toBe(sectionH0);
 
   // ③ 닫기
-  await clickDetails(page);
+  await closeDetails(page);
   m = await measure(page);
-  expect(m.diagnosisVisibleH, '두 번째 클릭으로 실제로 닫힌다').toBe(0);
+  expect(m.diagnosisVisibleH, '닫으면 실제로 사라진다').toBe(0);
   expect(m.tilesFullyVisible).toBe(10);
+  expect(m.sectionH).toBe(sectionH0);
 
-  // ④ 다시 열기 - v233에서 바로 이 세 번째 클릭이 다시 깨졌다.
-  await clickDetails(page);
+  // ④ 다시 열기 - v233에서 바로 이 세 번째 조작이 깨졌다(회귀 방지 목적 그대로).
+  await openDetails(page);
   m = await measure(page);
-  expect(m.diagnosisVisibleH, '세 번째 클릭으로 다시 실제로 보인다').toBe(m.diagnosisFullH);
-  expect(m.diagnosisVisibleH).toBeGreaterThan(0);
+  expect(m.diagnosisVisibleH, '다시 열면 또 보인다').toBeGreaterThan(0);
+  expect(m.diagnosisReachable).toBe(true);
+  await closeDetails(page);
 });
 
 /* ── ⑤ 재렌더 ───────────────────────────────────────────────────────── */
@@ -161,7 +184,7 @@ test('C. 세부 내용을 열고-닫고-다시 열면 매번 실제로 보이고
 test('D. 매크로 재렌더 후에도 펼친 세부 내용이 그대로 보인다', async ({ page }) => {
   await open(page);
   await seed(page);
-  await clickDetails(page);
+  await openDetails(page);
 
   // 5분 자동 갱신이 타는 경로와 같다 - diagnosis innerHTML이 통째로 다시 그려진다.
   await page.locator('body').evaluate(() => renderRiskSection());
@@ -169,11 +192,11 @@ test('D. 매크로 재렌더 후에도 펼친 세부 내용이 그대로 보인�
 
   const m = await measure(page);
   expect(m.tilesFullyVisible, '재렌더 후에도 지수 10개는 보인다').toBe(10);
-  expect(m.diagnosisVisibleH, '재렌더가 펼친 세부 내용을 되돌리거나 잘라내지 않는다').toBe(m.diagnosisFullH);
-  expect(m.diagnosisVisibleH).toBeGreaterThan(0);
+  expect(m.diagnosisVisibleH, '재렌더가 열려 있는 세부 내용을 닫거나 잘라내지 않는다').toBeGreaterThan(0);
+  expect(m.diagnosisReachable).toBe(true);
 
-  // 재렌더 뒤에도 토글이 계속 동작한다(리스너 소실 없음).
-  await clickDetails(page);
+  // 재렌더 뒤에도 닫기가 계속 동작한다(리스너 소실 없음).
+  await closeDetails(page);
   expect((await measure(page)).diagnosisVisibleH).toBe(0);
 });
 
@@ -182,7 +205,8 @@ test('D. 매크로 재렌더 후에도 펼친 세부 내용이 그대로 보인�
 test('E. 다른 탭에 다녀와도 지수와 세부 내용 토글이 정상이다', async ({ page }) => {
   await open(page);
   await seed(page);
-  await clickDetails(page);
+  await openDetails(page);
+  await closeDetails(page);
 
   await page.locator('[data-tab="investmentDetail"]').click();
   await page.waitForTimeout(300);
@@ -191,31 +215,36 @@ test('E. 다른 탭에 다녀와도 지수와 세부 내용 토글이 정상이�
 
   let m = await measure(page);
   expect(m.tilesFullyVisible).toBe(10);
-  // [v255 · PM 지시] 탭을 옮겼다 돌아오면 펼쳐 둔 영역은 접혀 있다(e2e/100 B-1) - 예전엔 펼친 채로 남았다.
-  expect(m.diagnosisVisibleH, '복귀하면 접혀 있다').toBe(0);
+  // [v255 · PM 지시] 탭을 옮겼다 돌아와도 세부 내용이 저절로 열려 있지 않다(e2e/100 B-1).
+  expect(m.diagnosisVisibleH, '복귀하면 닫혀 있다').toBe(0);
 
   // 복귀 후 열고 닫기까지 동작하고, 열었을 때 잘리지 않는다(v234 회귀 방지 목적 그대로).
-  await clickDetails(page);
+  await openDetails(page);
   m = await measure(page);
-  expect(m.diagnosisVisibleH, '복귀 후에도 세부 내용이 잘리지 않는다').toBe(m.diagnosisFullH);
-  await clickDetails(page);
+  expect(m.diagnosisVisibleH, '복귀 후에도 세부 내용이 보인다').toBeGreaterThan(0);
+  expect(m.diagnosisReachable, '복귀 후에도 내용 전체에 닿는다').toBe(true);
+  await closeDetails(page);
   expect((await measure(page)).diagnosisVisibleH).toBe(0);
 });
 
 /* ── ⑦ 세부 내용 네 항목 ───────────────────────────────────────────── */
 
-test('F. 세부 내용을 펼치면 네 항목(상관관계 가이드 포함)이 별도 토글 없이 잘리지 않고 보인다', async ({ page }) => {
+test('F. 세부 내용을 열면 네 항목(상관관계 가이드 포함)이 별도 토글 없이 잘리지 않고 보인다', async ({ page }) => {
   await open(page);
   await seed(page);
-  await clickDetails(page);
+  await openDetails(page);
 
-  const m = await measure(page);
   for (const title of DETAIL_TITLES) {
     await expect(page.locator('#macroBriefingDiagnosis')).toContainText(title);
   }
+  /* [PM 지시 2026-09-23 · #3] 팝업은 화면보다 긴 내용을 스크롤로 담는다 - 마지막 항목(상관관계
+   * 가이드)까지 스크롤해서 실제로 보이는지 확인한다. "열었는데 영영 못 본다"를 막는 것이 목적이고,
+   * 그 목적은 그대로다. */
+  await page.locator('#correlationGuide').scrollIntoViewIfNeeded();
+  const m = await measure(page);
   expect(m.guideVisibleH, '상관관계 가이드가 실제로 보인다').toBeGreaterThan(0);
   expect(m.guideVisibleH, '상관관계 가이드가 부분적으로 잘리지 않는다').toBe(m.guideFullH);
-  expect(m.diagnosisVisibleH, '세부 내용 전체가 보인다').toBe(m.diagnosisFullH);
+  expect(m.diagnosisReachable, '세부 내용 전체에 닿는다').toBe(true);
   expect(m.tilesFullyVisible, '지수 10개도 그대로다').toBe(10);
 
   // 세부 내용 안에는 접기를 다시 두지 않는다.
@@ -235,17 +264,18 @@ test('G. 브리핑 제목에는 접기 버튼/caret이 없고, 접기는 「상�
     return {
       title: h4 ? h4.textContent.trim() : null,
       titleInsideButton: !!(h4 && h4.closest('button')),
-      titleRowIcons: h4 ? h4.parentElement.querySelectorAll('svg, i').length : null,
+      /* [PM 지시 2026-09-23 · #3] 제목 줄에는 이제 [세부내용] 버튼이 함께 있다 - 그 버튼 안의
+       * 아이콘은 세다가 말고, "제목을 접는 caret"이 없는지만 본다(원래 이 검사의 목적). */
+      titleRowIcons: h4 ? [...h4.parentElement.querySelectorAll('svg, i')].filter((n) => !n.closest('#macroDetailBtn')).length : null,
       togglers: [...sec.querySelectorAll('[id$="ToggleBtn"]')].map((b) => b.id),
-      detailsLabel: (sec.querySelector('#macroDiagnosisToggleBtn') || {}).textContent,
+      detailsLabel: (sec.querySelector('#macroDetailBtn') || {}).textContent,
     };
   });
   expect(s.title).toBe('시장 현황 & 매크로 브리핑');
   expect(s.titleInsideButton, '제목은 버튼이 아니다(눌러서 접히지 않는다)').toBe(false);
   expect(s.titleRowIcons, '제목 줄에 caret이 없다').toBe(0);
-  expect(s.togglers, '브리핑 안의 접기는 세부 내용 하나뿐이다').toEqual(['macroDiagnosisToggleBtn']);
-  // [v253] 명칭 · 아이콘만 바뀌었다(📌 세부 내용 보기 → 📄 상세 현황 보기). 접기 동작은 아래 검사 그대로다.
-  expect(s.detailsLabel.trim()).toBe('📄 상세 현황 보기');
+  expect(s.togglers, '브리핑 안에는 접기가 하나도 남지 않았다(세부 내용은 팝업이다)').toEqual([]);
+  expect(s.detailsLabel.trim()).toBe('세부내용');
   expect(s.detailsLabel).not.toContain('시장 해석 보기');
   await expect(page.locator('#macroBriefingToggleBtn')).toHaveCount(0);
   await expect(page.locator('#macroBriefingChevron')).toHaveCount(0);
@@ -280,19 +310,30 @@ for (const [w, h] of [[375, 812], [768, 1024], [1024, 768]]) {
           const cs = el.ownerDocument.defaultView.getComputedStyle(el);
           return Math.round(el.getBoundingClientRect().height / parseFloat(cs.lineHeight));
         };
-        return { title: lineCount(sec.querySelector('h4')), details: lineCount(sec.querySelector('#macroDiagnosisToggleBtn span')) };
+        return { title: lineCount(sec.querySelector('h4')), details: lineCount(sec.querySelector('#macroDetailBtn span')) };
       });
-      expect(rows, '제목과 「세부 내용 보기」가 줄바꿈되지 않는다').toEqual({ title: 1, details: 1 });
+      expect(rows, '제목과 [세부내용]이 줄바꿈되지 않는다').toEqual({ title: 1, details: 1 });
+      const sectionH0 = m.sectionH;
 
-      await clickDetails(page);
+      await openDetails(page);
       m = await measure(page);
-      expect(m.diagnosisVisibleH, '세부 내용이 잘리지 않고 전부 보인다').toBe(m.diagnosisFullH);
-      expect(m.diagnosisVisibleH).toBeGreaterThan(0);
-      expect(m.guideVisibleH, '상관관계 가이드도 함께 보인다').toBe(m.guideFullH);
+      expect(m.diagnosisVisibleH, '세부 내용이 실제로 보인다').toBeGreaterThan(0);
+      expect(m.diagnosisReachable, '팝업 안에서 내용 전체에 닿는다').toBe(true);
+      expect(m.sectionH, '팝업은 카드 높이를 바꾸지 않는다').toBe(sectionH0);
       expect(m.tilesFullyVisible).toBe(10);
       expect(m.pageOverflowX).toBe(false);
 
-      await clickDetails(page);
+      // 팝업 안 글자도 14px 아래로 내려가지 않는다(세부 내용이 여기로 옮겨 왔으므로 여기서 잰다).
+      const modalFont = await page.locator('#macroBriefingDiagnosis').evaluate((el) => {
+        const win = el.ownerDocument.defaultView;
+        const sizes = [...el.querySelectorAll('div,p,span,li')]
+          .filter((n) => !n.children.length && n.textContent.trim())
+          .map((n) => parseFloat(win.getComputedStyle(n).fontSize));
+        return sizes.length ? Math.min(...sizes) : null;
+      });
+      expect(modalFont).toBeGreaterThanOrEqual(14);
+
+      await closeDetails(page);
       expect((await measure(page)).diagnosisVisibleH).toBe(0);
 
       // 가독성 - 이 섹션 안 글자는 14px 아래로 내려가지 않는다.

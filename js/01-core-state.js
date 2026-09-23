@@ -1336,6 +1336,51 @@ function sanitizeFxHedgeStatus(raw) {
   return undefined;
 }
 
+/* [PM 수정 지시 2026-09-23] 환노출 유무 - 환헤지 선택 UI를 보여 줄지 정하는 단 하나의 판정.
+ * 위 주석의 ①~④ 순서를 그대로 따른다. 계산에는 쓰지 않는다(표시 조건 전용).
+ * 원장 유형 구분은 §44 매트릭스(js/28 EM_REQUIRED_FIELDS)가 이미 정해 둔 것을 읽을 뿐이다. */
+const FX_EXPOSED_ASSET_TYPES = Object.freeze(['FOREIGN_STOCK', 'FOREIGN_LISTED_ETF', 'KR_LISTED_FOREIGN_ETF', 'FX_CASH']);
+const FX_DOMESTIC_ASSET_TYPES = Object.freeze(['KR_STOCK', 'KR_LISTED_DOMESTIC_ETF', 'KRW_CASH']);
+function fxExposureStateOf(asset) {
+  const a = (asset && typeof asset === 'object') ? asset : {};
+  // ① 표시 통화가 원화가 아니면 그 자체로 환노출이다(채권 폼의 기존 규칙과 같다).
+  const ccy = String(a.currency || '').trim().toUpperCase();
+  if (ccy && ccy !== 'KRW') return 'EXPOSED';
+
+  // ② 승인된 원장 - 유형과 fxExposure가 이미 구분돼 있다.
+  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    let rec;
+    try { rec = lookupExposureRecord(a); } catch (e) { rec = null; }
+    const entry = rec ? rec.entry : null;
+    if (entry) {
+      if (entry.fxExposure === 'EXPOSED') return 'EXPOSED';
+      if (entry.fxExposure === 'NONE') return 'NONE';
+      if (FX_EXPOSED_ASSET_TYPES.includes(entry.assetType)) return 'EXPOSED';
+      if (FX_DOMESTIC_ASSET_TYPES.includes(entry.assetType)) return 'NONE';
+    }
+  }
+
+  // ③ 공식 종목 마스터의 원천 사실(v267) - 국내 상장 주권 · 미국 상장분은 여기서 갈린다.
+  if (typeof resolveRuntimeMarketExposure === 'function') {
+    let rt;
+    try { rt = resolveRuntimeMarketExposure(a); } catch (e) { rt = null; }
+    if (rt && rt.exposure === 'US') return 'EXPOSED';
+    if (rt && rt.exposure === 'KR') return 'NONE';
+  }
+
+  // ④ 사용자가 고른 국내/해외(자산 레코드의 기존 필드).
+  if (a.isDomestic === '해외') return 'EXPOSED';
+  if (a.isDomestic === '국내') return 'NONE';
+
+  // 티커가 없는 원화 자산(현금 · 부동산 등)은 환노출 개념이 없다. 채권은 자기 폼의 기존 규칙을 쓴다.
+  if (!String(a.ticker || '').trim()) return 'NONE';
+  return 'UNKNOWN';
+}
+/* 화면이 쓰는 최종 판단 - 모른다는 이유로 숨기지 않는다(숨기면 사용자가 알려 줄 방법이 사라진다). */
+function shouldOfferFxHedgeChoice(asset) {
+  return fxExposureStateOf(asset) !== 'NONE';
+}
+
 function makeAsset(raw) {
   // 엑셀 셀은 숫자만 있으면 문자열이 아닌 number 타입으로 읽히고 앞자리 0도 사라진다(예: '005930' -> 5930).
   // 원본이 number 타입이었던 경우에만 6자리로 0-패딩해 한국 종목코드 판별 규칙이 깨지지 않도록 복원한다.

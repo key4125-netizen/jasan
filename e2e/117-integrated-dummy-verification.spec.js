@@ -131,6 +131,62 @@ test('STEP 1 - 7가지 자산 유형이 등록되고 자동 판정값과 사용�
   expect(r.every((x) => x.userBeta === null)).toBe(true);
 });
 
+/* ══════════════ 거래 추가 폼 · 장기 수익률 기준 / 환헤지 (PM 수정 지시 2026-09-23) ══════════════ */
+
+test('거래폼 - 국내 원화 주식에는 환헤지 칸이 없고, 0% 안내가 사실대로 나온다', async ({ page }) => {
+  await boot(page);
+  const r = await page.evaluate(() => {
+    openTransactionModal();
+    document.getElementById('tx_name').value = 'ZZ국내대표';
+    document.getElementById('tx_ticker').value = 'ZZKP.KS';
+    document.getElementById('tx_assetClass').value = '주식';
+    document.getElementById('tx_currency').value = 'KRW';
+    refreshTxRateMatchRecommendation({ allowPrefill: true });
+    refreshTxFxHedgeUI();
+    return {
+      hedgeHidden: document.getElementById('tx_fxHedgeWrap').classList.contains('hidden'),
+      help: document.getElementById('txRateMatchHelpText').textContent,
+      label: document.querySelector('label[for], label') && [...document.querySelectorAll('#transactionModal span')]
+        .map((s) => s.textContent).find((t) => t && t.includes('장기 수익률 기준'))
+    };
+  });
+  expect(r.hedgeHidden, '국내 원화 주식에 환헤지 칸이 보인다').toBe(true);
+  expect(r.label).toContain('장기 수익률 기준');
+  expect(r.help).toContain('찾지 못했습니다');
+  expect(r.help).toContain('0%');
+  expect(r.help).not.toContain('시스템이 정하');
+});
+
+test('거래폼 - 환노출 상품이면 환헤지를 고를 수 있고 그 값이 자산까지 이어진다', async ({ page }) => {
+  await boot(page);
+  const r = await page.evaluate(() => {
+    state.assets = []; state.transactions = [];
+    persistAssets(); persistTransactions();
+    openTransactionModal();
+    document.getElementById('tx_date').value = '2026-09-01';
+    document.getElementById('tx_owner').value = '신랑';
+    document.getElementById('tx_accountType').value = '일반계좌';
+    document.getElementById('tx_name').value = 'ZZ 미국대표 ETF';
+    document.getElementById('tx_ticker').value = 'ZZUSETF.KS';
+    document.getElementById('tx_assetClass').value = 'ETF';
+    // 한국 상장 해외 ETF - 원화 표시지만 환노출이 있는 대표 케이스다.
+    // (외화 거래는 적용환율이 있어야 저장되는 기존 검증이 따로 있어 여기서는 원화로 본다.)
+    document.getElementById('tx_currency').value = 'KRW';
+    document.getElementById('tx_type').value = 'buy';
+    document.getElementById('tx_quantity').value = '10';
+    document.getElementById('tx_price').value = '100';
+    refreshTxFxHedgeUI();
+    const shown = !document.getElementById('tx_fxHedgeWrap').classList.contains('hidden');
+    document.getElementById('tx_fxHedgeStatus').value = 'HEDGED';
+    document.getElementById('transactionForm').dispatchEvent(new window.Event('submit', { cancelable: true, bubbles: true }));
+    const a = state.assets.find((x) => x.ticker === 'ZZUSETF.KS');
+    return { shown, saved: a && a.fxHedgeStatus, qty: a && a.quantity };
+  });
+  expect(r.shown, '환노출 상품인데 환헤지 칸이 없다').toBe(true);
+  expect(r.saved).toBe('HEDGED');
+  expect(r.qty).toBe(10);
+});
+
 /* ══════════════ STEP 2 · 거래 입력 → STEP 3 · Portfolio ══════════════ */
 
 test('STEP 2·3 - 매수 · 추가매수 · 일부매도 · 수정 · 삭제가 Portfolio에 그대로 반영된다', async ({ page }) => {
@@ -658,13 +714,28 @@ for (const w of [375, 390, 1440]) {
       };
       await noOverflow('대시보드');
 
-      // 자산 입력 폼 - 위험 분석 확인 칸이 보이고 터치 가능하다.
-      await page.evaluate(() => { openModal('add'); showModal(); document.getElementById('f_category').value = 'ETF'; updateRiskConfirmFieldsUI(); });
+      /* 자산 입력 폼 - 위험 분석 확인 칸이 보이고 터치 가능하다.
+       * [기대값 갱신 사유 · PM 수정 지시 2026-09-23 · B] 환헤지 칸은 이제 **환노출이 있는
+       * 상품에만** 보인다. 국내 원화 자산에서는 아예 나타나지 않으므로 두 경우를 나눠 본다. */
+      await page.evaluate(() => {
+        openModal('add'); showModal();
+        document.getElementById('f_category').value = 'ETF';
+        document.getElementById('f_currency').value = 'KRW';
+        document.getElementById('f_isDomestic').value = '국내';
+        updateRiskConfirmFieldsUI();
+      });
       await expect(page.locator('#riskConfirmFieldsWrap')).toBeVisible();
-      for (const sel of ['#f_marketBetaIndexOverride', '#f_fxHedgeStatus']) {
-        const box = await page.locator(sel).boundingBox();
-        expect(box.height, sel).toBeGreaterThanOrEqual(38);
-      }
+      await expect(page.locator('#f_fxHedgeWrap'), '국내 원화 ETF에는 환헤지 칸이 없다').toBeHidden();
+      const betaBox = await page.locator('#f_marketBetaIndexOverride').boundingBox();
+      expect(betaBox.height, '#f_marketBetaIndexOverride').toBeGreaterThanOrEqual(38);
+      // 해외 노출로 바꾸면 환헤지 칸이 나타나고 터치 가능하다.
+      await page.evaluate(() => {
+        document.getElementById('f_isDomestic').value = '해외';
+        updateRiskConfirmFieldsUI();
+      });
+      await expect(page.locator('#f_fxHedgeWrap'), '해외 노출이면 환헤지 칸이 보인다').toBeVisible();
+      const hedgeBox = await page.locator('#f_fxHedgeStatus').boundingBox();
+      expect(hedgeBox.height, '#f_fxHedgeStatus').toBeGreaterThanOrEqual(38);
       await noOverflow('자산 입력 폼');
       await page.evaluate(() => closeModal());
 

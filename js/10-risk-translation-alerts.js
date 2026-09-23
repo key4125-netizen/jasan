@@ -1720,25 +1720,31 @@ function renderMacroBriefing() {
       매크로 동향과 보유자산 위험은 서로 다른 기준으로 계산됩니다. 매크로 동향은 현재 시장환경을, 보유자산 위험은 내 자산의 위험 특성을 보여줍니다.
     </p>`;
 
-  // [세부 내용 높이 재적용] 매크로 브리핑은 5분 자동 갱신 등으로 diagnosisEl.innerHTML이 통째로 새로 그려진다 -
-  // 「상세 현황 보기」가 펼쳐져 있다면 새 내용의 높이로 max-height를 다시 맞춘다(계산/데이터 영향 없음).
-  reapplyMacroDiagnosisAccordionHeight();
+  /* [PM 지시 2026-09-23 · #3] 예전에는 여기서 아코디언 높이를 다시 맞춰야 했다(5분 자동 갱신으로
+   * 내용이 통째로 새로 그려지면 max-height가 옛 높이에 묶였기 때문이다). 팝업은 높이를 스스로
+   * 잡으므로 그 보정이 필요 없다 - 열려 있는 동안 갱신되면 새 내용이 그대로 보인다. */
 }
 
-// [매크로 브리핑 구조 정정] PM 확정 정책: 「시장 현황 & 매크로 브리핑」 자체와 지표 10개는 접지 않고 항상
-// 보인다. 접는 것은 그 아래 「📄 상세 현황 보기」(v253 전 「📌 세부 내용 보기」) 하나뿐이고(시장 종합 평가 / 내 포트폴리오 영향 / 참고 /
-// 상관관계 가이드), 그 안에 접기를 다시 두지 않는다. 예전의 브리핑 전체 접기와 상관관계 가이드 접기는 이
-// 정책과 어긋나 제거했다 - 중첩이 없어져 v234의 transitionend 높이 보정(바깥이 안쪽을 잘라내던 문제)도
-// 더는 필요 없다. 표시 구조만 바뀌고 데이터·계산은 그대로다.
-let macroDiagnosisOpen = false;
-function reapplyMacroDiagnosisAccordionHeight() {
-  const body = document.getElementById('macroDiagnosisBody');
-  const chevron = document.getElementById('macroDiagnosisChevron');
-  if (body && chevron) setAccordionOpen(body, chevron, macroDiagnosisOpen);
+/* [매크로 브리핑 구조] PM 확정 정책: 「시장 현황 & 매크로 브리핑」 자체와 지표 10개는 접지 않고 항상
+ * 보인다. 세부 내용(시장 종합 평가 / 내 포트폴리오 영향 / 참고 / 상관관계 가이드)은 한 곳에 모아 두고
+ * 그 안에 다시 접기를 두지 않는다.
+ *
+ * [PM 지시 2026-09-23 · #3] 그 세부 내용을 **아코디언에서 팝업으로** 옮겼다. 펼치면 카드가 길어져
+ * 바로 아래 위험 점수가 화면 밖으로 밀려나던 문제가 있었다 - 팝업은 카드 높이를 바꾸지 않는다.
+ * 내용 · 문구 · 데이터 · 계산은 전혀 바뀌지 않았다(같은 #macroBriefingDiagnosis를 그대로 쓴다).
+ * 열고 닫는 방식은 #portfolioRiskInfoModal과 같다 - 뒤로가기로도 닫힌다(MODAL_CLOSE_FNS, js/03). */
+function openMacroDetailModal() {
+  document.getElementById('macroDetailModal').classList.remove('hidden');
+  pushModalHistoryState();
 }
-document.getElementById('macroDiagnosisToggleBtn').addEventListener('click', () => {
-  macroDiagnosisOpen = !macroDiagnosisOpen;
-  reapplyMacroDiagnosisAccordionHeight();
+function closeMacroDetailModal(viaBackButton) {
+  document.getElementById('macroDetailModal').classList.add('hidden');
+  if (!viaBackButton) popModalHistoryIfNeeded();
+}
+document.getElementById('macroDetailBtn').addEventListener('click', openMacroDetailModal);
+document.getElementById('closeMacroDetailBtn').addEventListener('click', () => closeMacroDetailModal());
+document.getElementById('macroDetailModal').addEventListener('click', (e) => {
+  if (e.target.id === 'macroDetailModal') closeMacroDetailModal();
 });
 
 function renderRiskSection() {

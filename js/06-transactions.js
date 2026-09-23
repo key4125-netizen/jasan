@@ -741,6 +741,7 @@ function applyStockPickToTransactionForm(ticker, name, owner, accountType, curre
   updateTxAppliedRateVisibility();
   applyDefaultTransactionType();                            // [v267] 보유 상태를 보고 거래유형 기본값을 맞춘다
   refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 종목이 정해졌으니 안내/추천을 다시 계산한다.
+  refreshTxFxHedgeUI(); // [PM 수정 지시 2026-09-23] 종목이 정해지면 환노출 판정도 다시 한다.
 }
 
 /* [v267] 거래유형 기본값. 앱은 이미 이 종목의 보유수량을 알고 있다 -
@@ -766,21 +767,28 @@ function applyDefaultTransactionType() {
 // 버튼으로 개별주식 검색 팝업을 띄운다 - ON(수동입력)이면 돋보기를 숨기고 입력칸을 자유 텍스트로
 // 바꿔 현금/부동산/예적금처럼 티커가 없는 자산명을 직접 타이핑해 저장할 수 있게 한다.
 function applyTxManualEntryModeUI() {
-  const manual = document.getElementById('tx_manualEntryToggle').checked;
+  /* [PM 지시 2026-09-23 · #1] 채권은 종목 마스터에 없다 - 검색 버튼을 눌러도 나올 것이 없고,
+   * 이름은 ISIN 조회가 채우거나 사용자가 직접 적는다. 그래서 채권이면 수동입력 체크와 상관없이
+   * 항상 직접 입력 상태다(체크박스 자체는 #2에 따라 OFF로 두고 숨긴다 - updateTxBondFieldsUI). */
+  const isBond = isTxBondForm();
+  const manual = document.getElementById('tx_manualEntryToggle').checked || isBond;
   const nameInput = document.getElementById('tx_name');
   nameInput.readOnly = !manual;
   nameInput.classList.toggle('cursor-pointer', !manual);
-  nameInput.placeholder = manual ? '예: 정기예금, 부동산(강남 아파트) 등 자유롭게 입력' : '클릭해서 종목 검색';
+  nameInput.placeholder = isBond
+    ? '표준코드를 조회하면 자동으로 채워집니다 - 직접 입력해도 됩니다'
+    : (manual ? '예: 정기예금, 부동산(강남 아파트) 등 자유롭게 입력' : '클릭해서 종목 검색');
   document.getElementById('txSearchStockBtn').classList.toggle('hidden', manual);
 }
 document.getElementById('tx_manualEntryToggle').addEventListener('change', () => {
   applyTxManualEntryModeUI();
   document.getElementById('tx_name').value = '';
   document.getElementById('tx_ticker').value = '';
-  document.getElementById('tx_tickerHint').textContent = ' ';
+  document.getElementById('tx_tickerHint').textContent = '\u00A0'; // [D-2] 줄 하나를 예약한다(index.html의 &nbsp;와 같은 문자)
   updateTxCashPriceLock();
 });
 document.getElementById('tx_name').addEventListener('click', () => {
+  if (isTxBondForm()) return; // [#1] 채권은 검색 대상이 아니다 - ISIN으로 조회한다
   if (!document.getElementById('tx_manualEntryToggle').checked) openStockSearchModal();
 });
 
@@ -907,9 +915,12 @@ function refreshTxRateMatchRecommendation(opts) {
 
   const rec = recommendRateMatchKey({ ticker, name, currency: document.getElementById('tx_currency').value });
   if (!rec) {
-    // [추천 없음은 실패가 아니다] 비워두면 계산 시점에 시스템이 알아서 정한다 - 지금까지도 그렇게
-    // 동작해 왔다. 그래서 "직접 골라야만 한다"고 몰아붙이지 않는다.
-    text.textContent = '자동으로 추천할 기준을 찾지 못했어요. 비워두면 계산할 때 시스템이 정하고, 원하면 위에서 직접 고를 수 있어요.';
+    /* [PM 수정 지시 2026-09-23 · A-2] 예전 문구는 "비워두면 계산할 때 시스템이 정한다"였다.
+     * Phase 47-A에서 지역 폴백("국내면 KOSPI")을 없앤 뒤로 그것은 사실이 아니다 - 근거를 찾지
+     * 못하면 UNRESOLVED로 두고 **장기 수익률 0%**로 계산한다(실측 확인: 042700.KS → 0%).
+     * 사용자는 거래 입력 시점에 "비워둬도 된다"고 안내받고, 한참 뒤 자산 상세에서야
+     * "성장 없이 계산 중"을 보게 됐다. 그래서 지금 사실대로 말한다. */
+    text.textContent = '이 종목에 맞는 장기 수익률 기준을 찾지 못했습니다. 비워 두면 장기 수익률을 0%로(성장 없이) 계산합니다. 필요하면 위에서 직접 고를 수 있어요.';
     return;
   }
   ensureRateMatchOption(rec.key);
@@ -940,8 +951,30 @@ document.getElementById('txRateMatchApplyBtn').addEventListener('click', () => {
   document.getElementById('tx_rateMatchOverride').value = txRateMatchRecommendation.key;
   refreshTxRateMatchRecommendation();
 });
+/* [PM 수정 지시 2026-09-23 · C] 환헤지 칸은 환노출이 있는 상품일 때만 보인다.
+ * 판정은 js/01 fxExposureStateOf 하나만 쓴다 - 거래 스키마에는 isDomestic이 없으므로(js/06 상단 주석)
+ * 통화 · 원장 · 공식 종목 마스터의 사실만으로 판정된다. 국내 원화 주식에서는 나타나지 않는다.
+ * 숨긴다고 이미 저장된 자산의 값을 지우지는 않는다. */
+function refreshTxFxHedgeUI() {
+  const wrap = document.getElementById('tx_fxHedgeWrap');
+  if (!wrap) return;
+  const ticker = String((document.getElementById('tx_ticker') || {}).value || '').trim();
+  const probe = {
+    ticker,
+    name: String((document.getElementById('tx_name') || {}).value || '').trim(),
+    category: (document.getElementById('tx_assetClass') || {}).value || '',
+    currency: (document.getElementById('tx_currency') || {}).value || 'KRW'
+  };
+  const offer = (typeof shouldOfferFxHedgeChoice === 'function') ? shouldOfferFxHedgeChoice(probe) : false;
+  wrap.classList.toggle('hidden', !offer);
+}
 // 사용자가 직접 고르거나 되돌리면 안내 문구도 즉시 그 상태를 반영한다.
 document.getElementById('tx_rateMatchOverride').addEventListener('change', refreshTxRateMatchRecommendation);
+['tx_currency', 'tx_assetClass'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', refreshTxFxHedgeUI);
+});
+document.getElementById('tx_name').addEventListener('input', refreshTxFxHedgeUI);
 // 종목명 직접 입력(수동입력 모드)/소유자·계좌구분 변경도 판단 근거가 바뀌는 입력이다.
 document.getElementById('tx_name').addEventListener('input', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
 document.getElementById('tx_owner').addEventListener('change', () => refreshTxRateMatchRecommendation({ allowPrefill: true }));
@@ -1006,6 +1039,9 @@ function findConflictingManualBond(isin, owner, account) {
 
 function txBondEl(id) { return document.getElementById(id); }
 function isTxBondForm() { return (txBondEl('tx_assetClass') || {}).value === '채권'; }
+/* [PM 결정 D-2 2026-09-23] 자산군이 바뀔 때 "직전에 무엇이었는지"가 필요하다 - change 이벤트는
+ * 바뀐 뒤 값만 준다. 새 상태를 만드는 게 아니라 이 한 칸의 직전 값만 들고 있는다. */
+let txAssetClassBeforeChange = '';
 
 /* [BOND-14 · BOND-32] 자산군에 따라 화면을 바꾼다. 채권이 아니게 되면 채권 칸을 비운다 -
  * 화면에서 사라진 값이 저장은 되는 상황을 만들지 않는다. */
@@ -1020,12 +1056,24 @@ function updateTxBondFieldsUI() {
   const isBond = isTxBondForm();
   const wrap = txBondEl('tx_bondFieldsWrap');
   if (wrap) wrap.classList.toggle('hidden', !isBond);
-  // 채권은 종목 마스터에 없다 - 검색이 아니라 직접 입력이 정상 경로다.
+  /* [PM 지시 2026-09-23 · #1] 채권이면 표준코드(ISIN) 칸이 종목 검색 UI 자리에 나타난다.
+   * 종목 검색 UI는 hidden으로 layout에서 빠지므로 빈 자리가 남지 않는다(visibility 아님). */
+  const isinWrap = txBondEl('tx_bondIsinWrap');
+  if (isinWrap) isinWrap.classList.toggle('hidden', !isBond);
+  /* 이름칸은 그대로 쓴다 - 채권에서는 "채권명"이고, ISIN 조회가 채우거나 직접 적는다.
+   * (칸 자체를 없애면 조회가 안 되는 채권의 이름을 넣을 방법이 사라진다.) */
+  const nameLabel = txBondEl('tx_nameLabelText');
+  if (nameLabel) nameLabel.textContent = isBond ? '채권명' : '종목명/티커';
+  const tickerHint = txBondEl('tx_tickerHint');
+  if (tickerHint) tickerHint.classList.toggle('hidden', isBond); // 채권에는 티커가 없다
+  /* [PM 지시 2026-09-23 · #2] 수동입력 체크박스는 채권에서 의미가 없다(항상 직접 입력이다) -
+   * 예전처럼 강제로 켜고 비활성화하면 그 ON 상태가 다음 자산군으로 그대로 따라갔다. 숨기고,
+   * 켜지 않으며, 비활성화도 하지 않는다. 자산군을 바꿔도 승계될 상태가 아예 남지 않는다. */
+  const manualToggleWrap = txBondEl('tx_manualEntryToggleWrap');
+  if (manualToggleWrap) manualToggleWrap.classList.toggle('hidden', isBond);
   const manualToggle = txBondEl('tx_manualEntryToggle');
-  if (manualToggle) {
-    if (isBond && !manualToggle.checked) { manualToggle.checked = true; applyTxManualEntryModeUI(); }
-    manualToggle.disabled = isBond;
-  }
+  if (manualToggle) manualToggle.disabled = false;
+  applyTxManualEntryModeUI();
   /* [BOND-07 · BOND-14] 채권은 단위 자체가 다르다 - "1주당 가격"이라고 적어 두면 사용자가 액면
    * 1,000만원짜리를 수량 1 · 단가 10,000,000으로 넣는다(실제로 헷갈리기 쉬운 지점이다). */
   const qtyLabel = txBondEl('tx_quantityLabel');
@@ -1148,7 +1196,32 @@ document.getElementById('tx_bondIsin').addEventListener('input', (e) => {
 
 document.getElementById('tx_assetClass').addEventListener('change', (e) => {
   delete e.target.dataset.autofilled;
+  const prevClass = txAssetClassBeforeChange;
+  txAssetClassBeforeChange = e.target.value;
   if (!isTxBondForm()) clearTxBondFields();
+  /* [PM 지시 2026-09-23 · #2] 이전 자산군의 수동입력 상태를 다음 자산군으로 승계하지 않는다.
+   * 주식 -> ETF -> 채권 -> 주식으로 오갈 때마다 항상 OFF(검색 모드)에서 시작한다.
+   * 켜져 있던 것을 끄는 경우에는 수동으로 적어 둔 이름/티커도 함께 비운다 - 검색 모드의
+   * 읽기전용 칸에 직접 입력한 값이 남아 있으면 무엇이 저장될지 알 수 없다
+   * (수동입력 토글을 직접 끌 때와 똑같은 처리다).
+   *
+   * [PM 결정 D-2 2026-09-23] 채권과 다른 자산군은 **이 칸이 가리키는 것 자체가 다르다**
+   * (채권명 ↔ 종목명/티커). 그 경계를 넘을 때도 비운다 - 그러지 않으면 조회로 채워진 채권명이
+   * 주식 거래의 종목명으로 남아 그대로 저장될 수 있다(실측으로 확인한 누출이다).
+   * 채권은 수동입력을 쓰지 않으므로 위 조건만으로는 걸리지 않았다. */
+  const bondBoundaryCrossed = (prevClass === '채권') !== (e.target.value === '채권');
+  const manualToggle = document.getElementById('tx_manualEntryToggle');
+  if ((manualToggle && manualToggle.checked) || bondBoundaryCrossed) {
+    if (manualToggle) manualToggle.checked = false;
+    document.getElementById('tx_name').value = '';
+    document.getElementById('tx_ticker').value = '';
+    document.getElementById('tx_tickerHint').textContent = '\u00A0'; // [D-2] 줄 하나를 예약한다(index.html의 &nbsp;와 같은 문자)
+    updateTxCashPriceLock();
+    /* 이름에 딸린 안내도 같이 되돌린다 - 비운 값에 대한 설명이 남아 있으면 안 된다.
+     * (두 함수 모두 이름이 비면 숨기거나 기본 상태로 돌아간다 - 새 동작이 아니다.) */
+    refreshTxRateMatchRecommendation();
+    refreshTxFxHedgeUI();
+  }
   updateTxBondFieldsUI();
 });
 document.getElementById('tx_bondIsin').addEventListener('blur', applyKnownBondMasterToTxForm);
@@ -1196,6 +1269,9 @@ function openTransactionModal(txId) {
   form.reset();
   delete document.getElementById('tx_role').dataset.userTouched; // [v246] 이전 모달 세션의 역할 칸 표식 정리
   delete document.getElementById('tx_role').dataset.autofilled;
+  // [PM 수정 지시 2026-09-23 · C] 새 모달 세션은 환헤지 칸을 비운 채 시작하고 조건을 다시 판정한다.
+  const txHedgeEl = document.getElementById('tx_fxHedgeStatus');
+  if (txHedgeEl) txHedgeEl.value = '';
   document.getElementById('tx_id').value = '';
   document.getElementById('tx_ticker').value = '';
   document.getElementById('tx_tickerHint').textContent = ' ';
@@ -1233,6 +1309,9 @@ function openTransactionModal(txId) {
     // 잡혀서, 달러 거래를 열면 원화 자산의 대표매칭키/역할이 폼에 채워지고 저장 시 그 값이 옮겨 붙었다.
     const matchedForEdit = state.assets.find((a) => assetMatchesLedgerIdentity(a, tx));
     populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
+    // [PM 수정 지시 2026-09-23 · C] 수정 모드에서는 이 자산에 저장된 환헤지를 그대로 보여 준다.
+    const hedgeEl = document.getElementById('tx_fxHedgeStatus');
+    if (hedgeEl) hedgeEl.value = (matchedForEdit && matchedForEdit.fxHedgeStatus) || '';
     // [자산별 역할(포지션) 분류 - 수정 모드] rateMatchOverride와 동일하게 매칭되는 자산의 현재 role을 보여준다.
     // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다 -
     // 옵션에 없는 값이면 select가 조용히 빈칸이 되어 저장 시 기존 포지션이 날아간다.
@@ -1260,10 +1339,12 @@ function openTransactionModal(txId) {
     document.getElementById('tx_role').innerHTML = assetRoleSelectOptionsHtml('', '미지정');
     document.getElementById('tx_role').value = '';
   }
+  txAssetClassBeforeChange = document.getElementById('tx_assetClass').value; // [D-2] 전환 판정 기준점
   applyTxManualEntryModeUI();
   updateTxBondFieldsUI(); // [BOND-14] 자산군에 맞는 칸만 보이게 한다(수정 모드면 위에서 정해진 값 기준)
   updateTxAppliedRateVisibility();
   refreshTxRateMatchRecommendation({ allowPrefill: true }); // [Phase 30] 수정 모드면 기존값 안내, 신규면 아직 종목이 없어 숨겨진다.
+  refreshTxFxHedgeUI(); // [PM 수정 지시 2026-09-23] 환헤지 칸은 환노출 상품일 때만 보인다.
   document.getElementById('transactionModal').classList.remove('hidden');
   pushModalHistoryState();
 }
@@ -1447,12 +1528,18 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
   // 찍으면 "아무것도 안 바뀌었는데 방금 수정됨"이 되어 병합에서 상대의 진짜 편집을 이겨버린다.
   const beforeRateMatch = matchedAsset ? matchedAsset.rateMatchOverride : undefined;
   const beforeRole = matchedAsset ? matchedAsset.role : undefined;
+  // [PM 수정 지시 2026-09-23 · C-1] 환헤지도 같은 규칙으로 반영한다.
+  // 칸이 숨겨져 있으면(환노출 없는 상품) 값이 빈 문자열이므로 아무 일도 일어나지 않는다.
+  const beforeHedge = matchedAsset ? matchedAsset.fxHedgeStatus : undefined;
+  const hedgeRaw = String((document.getElementById('tx_fxHedgeStatus') || {}).value || '').trim();
   if (matchedAsset && (rateMatchRaw || isEditingExistingTx)) matchedAsset.rateMatchOverride = rateMatchRaw || undefined;
+  if (matchedAsset && (hedgeRaw || isEditingExistingTx)) matchedAsset.fxHedgeStatus = sanitizeFxHedgeStatus(hedgeRaw);
   // [자산별 역할(포지션) 분류] rateMatchOverride와 나란히 반영 - 위와 같은 이유로 신규 거래의 빈칸은
   // 기존 역할을 지우지 않는다(수정 모드에서 비우면 기존처럼 미지정으로 되돌아간다).
   const roleRaw = (roleWasAutofilled && assetExistedBeforeSave) ? '' : document.getElementById('tx_role').value.trim();
   if (matchedAsset && (roleRaw || isEditingExistingTx)) matchedAsset.role = parseAssetRoleInput(roleRaw);
-  if (matchedAsset && (matchedAsset.rateMatchOverride !== beforeRateMatch || matchedAsset.role !== beforeRole)) {
+  if (matchedAsset && (matchedAsset.rateMatchOverride !== beforeRateMatch || matchedAsset.role !== beforeRole
+      || matchedAsset.fxHedgeStatus !== beforeHedge)) {
     matchedAsset.updatedAt = Date.now();
   }
   // [티커별 역할(포지션) 단일 소스 - 티커 없는 자산까지 확장] matchedAsset의 role 변경을 다른 화면에서도

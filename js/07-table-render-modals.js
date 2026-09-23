@@ -795,6 +795,18 @@ function updateRiskConfirmFieldsUI() {
     ? RISK_ELIGIBLE_CATEGORIES.includes(category) : ['주식', 'ETF'].includes(category);
   wrap.classList.toggle('hidden', !eligible);
   if (!eligible) return;
+  /* [PM 수정 지시 2026-09-23] 환헤지는 환노출이 있는 상품에만 묻는다 - 판정은 js/01 하나뿐이다.
+   * 숨길 때 저장된 값을 지우지 않는다("UI 미표시"와 "데이터 삭제"는 다른 문제다). */
+  const hedgeWrap = document.getElementById('f_fxHedgeWrap');
+  if (hedgeWrap) {
+    hedgeWrap.classList.toggle('hidden', !shouldOfferFxHedgeChoice({
+      ticker: (document.getElementById('f_ticker') || {}).value,
+      name: (document.getElementById('f_name') || {}).value,
+      category,
+      currency: (document.getElementById('f_currency') || {}).value,
+      isDomestic: (document.getElementById('f_isDomestic') || {}).value
+    }));
+  }
   const hint = document.getElementById('f_marketBetaIndexHint');
   if (!hint) return;
   const ticker = String((document.getElementById('f_ticker') || {}).value || '').trim();
@@ -1100,6 +1112,9 @@ document.getElementById('f_currency').addEventListener('change', () => { updateP
 // [E-01 · E-02] 고른 값에 따라 안내 문구가 바로 바뀌도록 두 칸 자신도 트리거에 넣는다.
 document.getElementById('f_marketBetaIndexOverride').addEventListener('change', updateRiskConfirmFieldsUI);
 document.getElementById('f_fxHedgeStatus').addEventListener('change', updateRiskConfirmFieldsUI);
+// [PM 수정 지시 2026-09-23] 국내/해외 · 티커가 바뀌면 환노출 판정도 달라진다.
+document.getElementById('f_isDomestic').addEventListener('change', updateRiskConfirmFieldsUI);
+document.getElementById('f_ticker').addEventListener('input', updateRiskConfirmFieldsUI);
 // [Bond Domain V1 · §47-7] 자산군을 채권으로 바꾸면 채권 칸이 펼쳐진다(다른 자산군에서는 보이지 않는다).
 document.getElementById('f_category').addEventListener('input', () => { updateBondFieldsUI(); updateRiskConfirmFieldsUI(); });
 document.getElementById('f_category').addEventListener('change', () => { updateBondFieldsUI(); updateRiskConfirmFieldsUI(); });

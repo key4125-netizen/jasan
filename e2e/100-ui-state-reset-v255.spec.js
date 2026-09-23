@@ -59,11 +59,15 @@ test('A. 상단 필터와 자산 세부현황 보기 버튼은 서로의 선택 
 
 test('B-1. 자산 세부현황 그룹 · 대시보드 상세 현황 보기는 탭을 옮겼다 오면 접혀 있고, 상단 필터 선택값은 그대로다', async ({ page }) => {
   await boot(page);
-  // 대시보드 「상세 현황 보기」
+  /* 대시보드 세부 현황
+   * [기대값 갱신 사유 · PM 지시 2026-09-23 · #3] 아코디언이 팝업(#macroDetailModal)이 되었다.
+   * 이 테스트가 지키려던 것은 "탭을 다녀오면 펼쳐 둔 것이 남아 있지 않다"이다 - 팝업에는 화면에
+   * 남는 펼침 상태 자체가 없으므로, 열었다가 닫으면 그걸로 끝인지를 대신 확인한다. */
   await page.evaluate(() => { state.macroIndicatorCache = { VIX: { price: 20, changePercent: 1 } }; renderAll(); });
-  await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(TRANSITION);
-  expect(await bodyHeight(page, '#macroDiagnosisBody')).toBeGreaterThan(0);
+  await page.locator('#macroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeVisible();
+  await page.locator('#closeMacroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeHidden();
   // 자산 세부현황 그룹 + 필터 선택
   await tab(page, 'investmentDetail');
   const ownerValue = await page.locator('#filterOwner option').nth(1).getAttribute('value');
@@ -77,8 +81,7 @@ test('B-1. 자산 세부현황 그룹 · 대시보드 상세 현황 보기는 �
   await expect(page.locator('#assetCardList [data-group-toggle][aria-expanded="true"]')).toHaveCount(0);
   await expect(page.locator('#filterOwner')).toHaveValue(ownerValue);
   await tab(page, 'dashboard');
-  expect(await bodyHeight(page, '#macroDiagnosisBody')).toBe(0);
-  await expect(page.locator('#macroDiagnosisChevron')).not.toHaveClass(/rotate-180/);
+  await expect(page.locator('#macroDetailModal'), '탭을 다녀와도 팝업이 저절로 열려 있지 않다').toBeHidden();
 });
 
 test('B-2. 목표 비중 종목 행 · 기간별 실현손익 행은 탭을 옮겼다 오면 접혀 있다(목표 비중은 그대로)', async ({ page }) => {

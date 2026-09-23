@@ -125,7 +125,8 @@ test('D. 지수는 진입 직후부터 보이고, 해석만 따로 접힌다', a
       gridExists: !!doc.getElementById('macroBriefingGrid'),
       gridVisibleH: visibleH('macroBriefingGrid'),
       diagnosisVisibleH: visibleH('macroBriefingDiagnosis'),
-      toggleExists: !!doc.getElementById('macroDiagnosisToggleBtn'),
+      toggleExists: !!doc.getElementById('macroDetailBtn'),
+      sectionH: Math.round(doc.getElementById('macroBriefingSection').getBoundingClientRect().height),
     };
   });
 
@@ -133,23 +134,28 @@ test('D. 지수는 진입 직후부터 보이고, 해석만 따로 접힌다', a
   let r = await read();
   expect(r.gridExists).toBe(true);
   expect(r.gridVisibleH, '진입 직후부터 지수 타일이 보인다').toBeGreaterThan(0);
-  expect(r.toggleExists, '해석 접기 버튼이 있다').toBe(true);
-  expect(r.diagnosisVisibleH, '해석은 처음엔 접혀 있다').toBe(0);
+  expect(r.toggleExists, '해석을 여는 [세부내용] 버튼이 있다').toBe(true);
+  expect(r.diagnosisVisibleH, '해석은 처음엔 보이지 않는다').toBe(0);
+  const sectionH0 = r.sectionH;
 
-  // 해석을 펼쳐도 지수는 계속 보인다.
-  await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(900);
+  /* [기대값 갱신 사유 · PM 지시 2026-09-23 · #3] 해석은 아코디언이 아니라 팝업으로 열린다.
+   * 이 테스트의 목적("지수는 항상 보이고 해석만 따로 열린다")은 그대로 확인하고,
+   * 팝업이라서 새로 지켜야 하는 것 - 카드 높이가 변하지 않아 아래 위험 점수가 밀리지 않는다 - 을 더한다. */
+  await page.locator('#macroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeVisible();
   r = await read();
-  expect(r.gridVisibleH, '해석을 펼쳐도 지수는 계속 보인다').toBeGreaterThan(0);
-  expect(r.diagnosisVisibleH, '해석이 실제로 펼쳐진다').toBeGreaterThan(0);
+  expect(r.gridVisibleH, '해석을 열어도 지수는 계속 보인다').toBeGreaterThan(0);
+  expect(r.diagnosisVisibleH, '해석이 실제로 보인다').toBeGreaterThan(0);
+  expect(r.sectionH, '팝업은 카드 높이를 바꾸지 않는다').toBe(sectionH0);
   await expect(page.locator('#macroBriefingDiagnosis')).toContainText('시장 종합 평가');
 
-  // 다시 접어도 지수는 그대로다.
-  await page.locator('#macroDiagnosisToggleBtn').click();
-  await page.waitForTimeout(900);
+  // 닫으면 지수는 그대로이고 해석은 사라진다.
+  await page.locator('#closeMacroDetailBtn').click();
+  await expect(page.locator('#macroDetailModal')).toBeHidden();
   r = await read();
   expect(r.gridVisibleH).toBeGreaterThan(0);
   expect(r.diagnosisVisibleH).toBe(0);
+  expect(r.sectionH).toBe(sectionH0);
 });
 
 test('E. 그 아래 위험 관리 카드는 그대로 있다(제목은 ⓘ 팝업으로 이동)', async ({ page }) => {
@@ -173,15 +179,18 @@ for (const scheme of ['light', 'dark']) {
     await page.locator('body').evaluate((el, dark) => {
       el.ownerDocument.documentElement.classList.toggle('dark', dark);
     }, scheme === 'dark');
-    // [v234] 브리핑은 기본 펼침이라 해석만 연다.
-    await page.locator('#macroDiagnosisToggleBtn').click();
-    await page.waitForTimeout(900);
+    // [PM 지시 2026-09-23 · #3] 해석은 제목 우측 [세부내용] 팝업으로 연다.
+    await page.locator('#macroDetailBtn').click();
+    await expect(page.locator('#macroDetailModal')).toBeVisible();
 
-    const m = await page.locator('#macroDiagnosisToggleBtn').evaluate((btn) => {
+    const m = await page.locator('#macroDetailBtn').evaluate((btn) => {
       const win = btn.ownerDocument.defaultView;
       const span = btn.querySelector('span');
+      /* [PM 지시 2026-09-23 · #3] 이 버튼의 보이는 테두리는 작지만, 눌리는 범위는 앱의 다른
+       * 세부내용 버튼과 똑같이 .detail-btn::after가 44px로 넓힌다 - 보이는 높이가 아니라 그 값을 본다. */
       return {
-        height: Math.round(btn.getBoundingClientRect().height),
+        height: Math.max(Math.round(btn.getBoundingClientRect().height),
+          parseFloat(win.getComputedStyle(btn, '::after').height) || 0),
         font: parseFloat(win.getComputedStyle(span).fontSize),
         clipped: span.scrollWidth > span.clientWidth + 1,
         pageOverflow: btn.ownerDocument.documentElement.scrollWidth > btn.ownerDocument.documentElement.clientWidth,

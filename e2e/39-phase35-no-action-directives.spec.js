@@ -251,8 +251,10 @@ for (const w of [375, 390, 412, 768]) {
       const isDark = await page.locator('html').evaluate((el) => el.classList.contains('dark'));
       if (isDark !== dark) await page.locator('#darkModeBtn').click();
       await page.locator('[data-tab="dashboard"]').click();
-      // [v234] 브리핑 자체는 기본 펼침이고, 그 아래 해석만 접혀 있다 - 문구를 재려면 해석을 연다.
-      await page.locator('#macroDiagnosisToggleBtn').click();
+      /* [기대값 갱신 사유 · PM 지시 2026-09-23 · #3] 지수는 그대로 상시 노출이고, 해석은
+       * 아코디언이 아니라 제목 우측 [세부내용] 팝업으로 옮겼다 - 문구를 재려면 팝업을 연다.
+       * 재는 대상(#macroBriefingDiagnosis)과 기준(14px · 잘림 없음)은 그대로다. */
+      await page.locator('#macroDetailBtn').click();
       await expect(page.locator('#macroBriefingDiagnosis')).toBeVisible();
       const info = await page.locator('#macroBriefingDiagnosis').evaluate((el) => {
         const win = el.ownerDocument.defaultView;

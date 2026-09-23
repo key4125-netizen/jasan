@@ -1716,10 +1716,16 @@ Object.keys(POSITION_ANALYSIS_ACCORDION_SUFFIX).forEach((key) => {
   const btn = document.getElementById(`positionAnalysisAccordion${suffix}Btn`);
   if (!btn) return;
   btn.addEventListener('click', (e) => {
-    // [비중조절 버튼과 겹침 방지] 신랑/와이프 헤더는 [비중조절] 버튼과 같은 행을 공유한다 - 그 버튼
-    // 클릭이 이 행으로 버블링돼도 아코디언까지 함께 토글되지 않게 걸러낸다.
-    // [v247 REQ-06] 타이틀 행은 [엑셀 다운로드]·[비중조절]과 같은 줄을 공유한다 - 두 버튼 클릭이 버블링돼도 아코디언이 함께 토글되지 않게 거른다.
-    if (e.target.closest('[data-rebalance-detail-btn], [data-rebalance-export-btn]')) return;
+    /* [비중조절 버튼과 겹침 방지] 신랑/와이프 헤더는 [엑셀 다운로드]·[비중조절]과 같은 행을 공유한다 -
+     * 그 버튼 클릭이 이 행으로 버블링돼도 아코디언까지 함께 토글되지 않게 걸러낸다(v247 REQ-06).
+     *
+     * [PM 지시 2026-09-23 · #4 · 6-5] 거르는 범위를 **버튼 줄 전체**(data-rebalance-actions)로 넓혔다.
+     * 예전에는 두 버튼 요소만 걸렀는데, 375px에서 두 버튼 사이 간격이 6px밖에 안 되고 버튼 그룹 좌우에도
+     * 여백이 있어, 손가락이 버튼을 살짝 빗나가면 그 탭이 조용히 부모 행으로 전달돼 아코디언이 열렸다.
+     * 사용자는 그것을 "비중조절 팝업을 닫았더니 목표비중이 저절로 열렸다"로 겪는다(누른 적 없는 펼침).
+     * 버튼 줄은 조작 영역이지 아코디언 트리거가 아니므로, 그 안쪽은 전부 제외한다.
+     * 제목·chevron을 직접 누르는 정상 경로는 그대로다. */
+    if (e.target.closest('[data-rebalance-actions]')) return;
     positionAnalysisAccordionOpen[key] = !positionAnalysisAccordionOpen[key];
     reapplyPositionAnalysisAccordionHeights();
   });

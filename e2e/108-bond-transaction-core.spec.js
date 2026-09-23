@@ -72,16 +72,29 @@ test('A. 자산군 칸이 있고, 채권을 고르면 채권 전용 칸이 펼�
   await page.locator('#tx_assetClass').selectOption('채권');
   await expect(page.locator('#tx_bondFieldsWrap')).toBeVisible();
   await expect(page.locator('#tx_bondIsin')).toBeVisible();
-  // 채권은 종목 마스터에 없다 - 직접 입력으로 자동 전환되고 되돌릴 수 없게 잠긴다.
-  await expect(page.locator('#tx_manualEntryToggle')).toBeChecked();
-  await expect(page.locator('#tx_manualEntryToggle')).toBeDisabled();
+  /* [기대값 갱신 사유 · PM 지시 2026-09-23 · #1 · #2] 표준코드(ISIN) 칸이 종목 검색 UI 자리로 올라왔고,
+   * 수동입력 체크박스는 채권에서 숨긴다. 예전에는 체크박스를 강제로 켜고 비활성화했는데, 그 ON 상태가
+   * 자산군을 바꿔도 따라가 다음 자산군에서 검색이 막혔다(#2가 고친 문제다).
+   * 지키려는 것은 그대로다 - 채권에서는 종목 검색이 아니라 직접 입력/ISIN 조회가 정상 경로다. */
+  await expect(page.locator('#tx_bondIsinWrap')).toBeVisible();
+  await expect(page.locator('#txSearchStockBtn'), '채권에는 종목 검색 버튼이 없다').toBeHidden();
+  await expect(page.locator('#tx_manualEntryToggleWrap'), '수동입력 체크박스는 숨긴다').toBeHidden();
+  await expect(page.locator('#tx_manualEntryToggle')).not.toBeChecked();
+  await expect(page.locator('#tx_manualEntryToggle'), '비활성화로 잠그지 않는다').toBeEnabled();
+  await expect(page.locator('#tx_nameLabelText')).toHaveText('채권명');
+  expect(await page.locator('#tx_name').evaluate((el) => el.readOnly), '채권명은 직접 적을 수 있다').toBe(false);
   // 수량 라벨이 액면 단위임을 말한다.
   await expect(page.locator('#tx_quantityLabel')).toContainText('액면 1만원 단위');
   // 자산군을 되돌리면 채권 칸이 접히고 비워진다.
   await page.locator('#tx_bondIsin').fill(ISIN);
   await page.locator('#tx_assetClass').selectOption('주식');
   await expect(page.locator('#tx_bondFieldsWrap')).toBeHidden();
+  await expect(page.locator('#tx_bondIsinWrap')).toBeHidden();
   expect(await page.locator('#tx_bondIsin').inputValue()).toBe('');
+  // [PM 지시 2026-09-23 · #2] 채권을 거쳤다고 다음 자산군의 수동입력이 켜지거나 잠기지 않는다.
+  await expect(page.locator('#tx_manualEntryToggle')).not.toBeChecked();
+  await expect(page.locator('#tx_manualEntryToggle')).toBeEnabled();
+  await expect(page.locator('#txSearchStockBtn')).toBeVisible();
 });
 
 test('B. 수량을 넣으면 액면총액으로 환산해 보여준다(액면을 따로 입력하지 않는다)', async ({ page }) => {

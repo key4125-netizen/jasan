@@ -192,7 +192,14 @@ test('14. 추천 불가면 안내만 보이고 [이대로 사용] 버튼은 없�
   await seed(page);
   await openTxFormWith(page, { name: 'E2E37 이름만있는 알수없는종목' });
   await expect(page.locator('#txRateMatchHelp')).toBeVisible();
-  await expect(page.locator('#txRateMatchHelpText')).toContainText('찾지 못했어요');
+  /* [기대값 갱신 사유 · PM 수정 지시 2026-09-23 · A-2] 예전 문구는 "비워두면 계산할 때 시스템이
+   * 정하고…"였는데, Phase 47-A 이후로는 사실이 아니다(근거를 못 찾으면 0%로 계산한다).
+   * 이제 ① 찾지 못했다 ② 비워두면 0% ③ 직접 고를 수 있다 세 가지를 모두 말한다. */
+  const help = page.locator('#txRateMatchHelpText');
+  await expect(help).toContainText('찾지 못했습니다');
+  await expect(help).toContainText('0%');
+  await expect(help).toContainText('직접 고를 수 있');
+  await expect(help).not.toContainText('시스템이 정하'); // 사실과 다른 옛 표현이 되살아나지 않게
   await expect(page.locator('#txRateMatchApplyBtn')).toBeHidden();
 });
 

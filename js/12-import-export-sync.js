@@ -1509,55 +1509,23 @@ function checkSyncPayloadShape(parsed, remoteVersion, opts) {
   }
   return 'invalid_payload';
 }
-/* [v267 · PC-6] 이 차이가 **사용자에게 물어야 하는 충돌**인가, 조용히 합쳐도 되는 변화인가.
- *
- * 병합 규칙(mergeCollectionById)이 실제로 무엇을 하는지에 맞춰 판정한다.
- *   · 로컬에만 있고 직전 동기화 시점에는 없던 항목  → 이 기기가 새로 만든 것. 병합해도 남는다.  안전
- *   · 로컬에만 있고 직전 동기화 시점에 있던 항목    → 원격이 지웠다는 뜻이라 병합하면 사라진다.  위험
- *   · 원격에만 있는 항목                            → 새로 추가되거나, 이 기기가 지운 상태가 유지된다. 안전
- * *   · 같은 항목의 값이 다름 → 최종수정 우선으로 한쪽이 사라질 수 있다.                     위험
- *   · 목표비중 · 미래예측 설정은 통째로 덮어쓰므로 값이 다르면 항상 물어본다.                위험
- *
- * 안전한 변화만 있으면 예전처럼 조용히 병합하고(반환 'ok'), 하나라도 위험하면 멈춘다('held').
- * 데이터가 사라질 수 있는 경우는 단 한 건도 자동으로 넘기지 않는다. */
-function syncDifferenceNeedsReview(diff) {
-  if (!diff) return false;
-  if (diff.rebalance && diff.rebalance.changed) return true;
-  if (diff.projection && diff.projection.changed) return true;
-  const check = (group, baselineKey) => {
-    if (!group) return false;
-    const baseline = getMergeBaseline(baselineKey);
-    /* 원격이 지운 항목(직전 동기화에 있었는데 지금 원격에 없다) - 병합하면 이 기기에서 사라진다. */
-    if ((group.localOnly || []).some((v) => baseline.has(v.id))) return true;
-    /* 이 기기가 지운 항목을 저쪽은 갖고 있다 - 병합하면 삭제가 유지되어 **저쪽의 수정이 사라진다**.
-     * "삭제 vs 수정"은 어느 방향이든 사람이 정해야 한다(V1.3 P1-1이 지키던 계약 그대로). */
-    if ((group.cloudOnly || []).some((v) => baseline.has(v.id))) return true;
-    /* 같은 항목의 값이 다르다 - 최종수정 우선으로 한쪽이 덮인다. **항상 물어본다.**
-     *
-     * PM 지시는 "한쪽만 바뀐 경우는 자동 병합"도 요구했지만, 지금 가진 메타데이터로는 그것을
-     * 안전하게 가릴 수 없다. 레코드마다 updatedAt이 있고 기기마다 마지막 동기화 시각이 하나 있을 뿐이라,
-     * "내 변경은 이미 올렸다(updatedAt < lastSyncedAt)"와 "클라우드 값이 내 상태의 후속이다"를
-     * 구분하지 못한다. 실제로 갈라지는 경로가 있다(e2e/89 S-04):
-     *   휴대폰이 120으로 고쳐 올린 뒤 PC가 [이 기기 데이터 올리기]로 100을 덮어쓰면,
-     *   휴대폰에서는 자기 변경이 "이미 동기화된 것"으로 보여 자동 병합 대상이 되고 120이 사라진다.
-     * 안전하게 하려면 레코드별 "마지막으로 동기화된 값"(해시 · 버전 벡터)이 필요한데 저장 구조 변경이다.
-     * 값이 다르면 무조건 확인받는다 - 사용자 데이터가 조용히 사라지는 쪽으로 기울지 않는다. */
-    return (group.different || []).length > 0;
-  };
-  if (check(diff.assets, LS_SYNC_MERGED_ASSET_IDS)) return true;
-  if (check(diff.transactions, LS_SYNC_MERGED_TX_IDS)) return true;
-  return false;
-}
-
 // 자동 동기화의 반영 직전 검사. 'ok'(그대로 반영) | 'held'(진짜 충돌 - 반영하지 않음) | 'invalid_payload'
 function gateIncomingSyncData(parsed, remoteVersion, opts) {
   const shape = checkSyncPayloadShape(parsed, remoteVersion, opts);
   if (shape !== 'ok') return shape;
   const diff = compareSyncData(syncLocalDataForCompare(), parsed);
+  /* [PM 지시 2026-09-23] 두 곳이 같으면 묻지 않는다 - 예전 그대로 병합 · 업로드가 이어진다. */
   if (!diff.hasMeaningfulDifference) { clearSyncDiffHold(); return 'ok'; }
-  /* [v267 · PC-6] 차이가 있다고 무조건 멈추지 않는다 - 손실이 생길 수 있는 차이만 멈춘다.
-   * 다른 기기에서 거래를 추가하는 일상적인 경우가 여기서 조용히 병합된다. */
-  if (!syncDifferenceNeedsReview(diff)) { clearSyncDiffHold(); return 'ok'; }
+  /* [PM 지시 2026-09-23] 두 곳이 다르면 **앱이 어느 쪽을 쓸지 고르지 않는다.** 반영을 멈추고
+   * 무엇이 다른지 보여 준 뒤 사용자가 [이 기기 데이터] · [클라우드 데이터] 중에서 고른다.
+   *
+   * v267(PC-6 · SoT §53-9)은 "손실이 생길 수 있는 차이만" 멈추게 완화했었다. 그래서 한쪽에만
+   * 있는 신규 항목은 사용자가 모르는 사이 자동으로 합쳐졌다. PM 결정으로 그 완화를 되돌린다 -
+   * updatedAt 최신 우선 · last write wins · 레코드별 자동 병합 · 순수 추가 자동 병합 중
+   * 어느 것도 사용자 모르게 일어나지 않는다(§30 v243 규칙 그대로).
+   *
+   * 병합 함수(mergeCollectionById) 자체는 그대로 둔다 - 차이가 없을 때의 정상 경로와
+   * [받기] · [올리기]가 그대로 쓰기 때문이다. 바뀐 것은 **언제 사람에게 묻는가** 하나다. */
   holdSyncForDifference(parsed, remoteVersion, diff);
   return 'held';
 }
@@ -2251,6 +2219,10 @@ document.getElementById('syncDisableBtn').addEventListener('click', () => {
   localStorage.setItem(LS_SYNC_ENABLED, '0');
   updateSyncStatusUI();
   showToast('동기화를 껐습니다.', 'info');
+  /* [PM 지시 2026-09-23 · 팝업] 이 호출이 빠져 있었다 - 완료 메시지는 떴는데 설정 팝업이 그대로
+   * 남아, 사용자는 "껐다는데 왜 계속 떠 있지?"를 보게 됐다(실측 재현). 다른 완료 경로
+   * ([받기] · [올리기] · [업로드] · [취소])는 전부 닫고 있었다 - 같은 규칙으로 맞춘다. */
+  closeSyncSettingsModal();
 });
 
 /* -------------------------------------------------------------------------
@@ -2407,7 +2379,16 @@ async function resetCloudData() {
 // 데이터 관리(시스템관리) 화면과 가족 동기화 설정 화면의 버튼이 같은 함수를 부른다. 다른 핸들러처럼 id로 등록한다(단위 테스트 샌드박스의 document 스텁과도 맞다).
 ['resetCloudDataBtn', 'resetCloudDataSyncBtn'].forEach((id) => {
   const btn = document.getElementById(id);
-  if (btn) btn.addEventListener('click', () => { resetCloudData(); });
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const result = await resetCloudData();
+    /* [PM 지시 2026-09-23 · 팝업] 초기화가 실제로 끝났을 때만 닫는다 - 취소 · 이미 비어 있음 ·
+     * 네트워크 실패에서는 그대로 두어 바로 다시 시도할 수 있게 한다([받기] 실패와 같은 규칙).
+     * 이 버튼은 데이터 관리 화면에도 있으므로, 동기화 설정 팝업이 실제로 열려 있을 때만 닫는다 -
+     * 닫혀 있는데 부르면 다른 팝업의 뒤로가기 기록을 대신 소비한다(popModalHistoryIfNeeded). */
+    const modal = document.getElementById('syncSettingsModal');
+    if (result === 'reset' && modal && !modal.classList.contains('hidden')) closeSyncSettingsModal();
+  });
 });
 
 // [테스트 전용] 브라우저에는 `module`이 없으므로 이 블록은 그냥 무시된다 - Node의 test/merge.test.js가

@@ -171,7 +171,8 @@ function renderAssetDetailReturnAssumption(assets) {
 
   const infos = list.map((a) => describeAppliedReturnAssumption(a));
   const same = infos.every((x) => x.appliedKey === infos[0].appliedKey && x.sourceLabel === infos[0].sourceLabel);
-  const title = '<h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">장기 수익률 가정</h4>';
+  // [PM 수정 지시 2026-09-23 · A-1] 같은 값을 화면마다 다르게 부르지 않는다 - 거래 추가 폼과 같은 이름을 쓴다.
+  const title = '<h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">장기 수익률 기준</h4>';
 
   if (!same) {
     box.innerHTML = `${title}
@@ -229,6 +230,9 @@ function renderAssetDetailRiskConfirm(assets) {
     ? `✓ 지금 ${escapeHtml(bm.key)} 기준으로 계산됩니다${bm.source === 'userConfirmedIndex' ? '(직접 확인함)' : '(자동 확인됨)'}`
     : '⚠ 시장민감도 기준 지수를 확인하지 못했습니다 - 이 상품이 따라가는 시장을 골라 주세요';
   const opt = (v, label, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  // [PM 수정 지시 2026-09-23] 환노출이 없는 상품(원화 표시 국내 자산 등)에는 환헤지를 묻지 않는다.
+  // 저장된 값은 그대로 둔다 - 보이지 않는 것과 지우는 것은 다르다.
+  const offerHedge = shouldOfferFxHedgeChoice(first);
 
   box.innerHTML = `
     <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">위험 분석 확인</h4>
@@ -241,14 +245,14 @@ function renderAssetDetailRiskConfirm(assets) {
           ${USER_MARKET_BETA_INDEX_CHOICES.map((k) => opt(k, USER_MARKET_BETA_INDEX_LABELS[k] || k, idxValue)).join('')}
         </select>
       </label>
-      <label class="block text-sm">
-        <span class="text-slate-400 block mb-0.5">환헤지 여부 <span class="text-slate-400">- 상품설명서에 적힌 대로</span></span>
+      ${offerHedge ? `<label class="block text-sm">
+        <span class="text-slate-400 block mb-0.5">환헤지 <span class="text-slate-400">- 상품설명서에 적힌 대로</span></span>
         <select id="assetDetailFxHedgeSelect" class="w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
           ${opt('', '선택 안 함(확인 필요)', hedgeValue)}
           ${opt('UNHEDGED', '환노출(환헤지 안 함)', hedgeValue)}
           ${opt('HEDGED', '환헤지(H)', hedgeValue)}
         </select>
-      </label>
+      </label>` : ''}
     </div>
     <p class="text-sm text-slate-400 mt-1.5 break-keep">모르면 비워 두세요 - 앱이 임의로 추정하지 않습니다.</p>`;
   box.classList.remove('hidden');
