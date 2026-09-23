@@ -32,7 +32,122 @@
 
 ---
 
-## 🏁 v268 FINAL RELEASE — ETF 사용자 확인 · 연도별 추가 투자 · 채권 KIS 통합 (2026-09-23 · 가장 최신 · **출시 완료**)
+## 🏁 v269 FINAL RELEASE — 입력 UX 정합성 · UI 개선 4건 · 채권 조회 구조 · 동기화 사용자 선택 복귀 (2026-09-23 · 가장 최신 · **출시 완료**)
+
+> **상태**: **출시 완료 · 프로젝트 종료.**
+> **버전 변경**: v268 → **v269**
+> **release commit**: `0c5b3b8` · **handover commit**: 이 커밋
+> **production**: https://key4125-netizen.github.io/jasan/ · **tag**: `v269`
+> **SoT**: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` **§55 · §56 · §57**
+
+### 무엇이 바뀌었나 (네 배치)
+
+**§55 장기 수익률 기준 · 환헤지 입력 UX**
+- 같은 값을 화면마다 다르게 부르던 것을 「장기 수익률 기준」으로 통일(내부 필드명 `rateMatchOverride` ·
+  엑셀 컬럼명은 호환성 때문에 그대로).
+- 자동 추천이 없을 때의 안내를 **사실대로 정정**했다. 예전 문구 "비워두면 계산할 때 시스템이 정하고…"는
+  Phase 47-A 이후 사실이 아니다 — 근거를 못 찾으면 **장기 수익률 0%로(성장 없이)** 계산한다.
+- 환헤지는 **환노출이 있는 상품에만** 묻는다(`js/01 fxExposureStateOf` — 표시 조건 전용, 계산에 쓰지 않는다).
+  국내 원화 자산에서는 무엇을 골라도 계산이 달라지지 않으므로 아예 보여 주지 않는다.
+- 거래 추가 폼에도 같은 조건으로 환헤지 칸을 두었다(기존 `fxHedgeStatus`에 저장 · 새 필드 없음).
+
+**§56 UI 개선 4건**
+- **채권 ISIN 위치** — 자산군이 '채권'이면 종목 검색 UI가 있던 자리에 표준코드(ISIN) 입력/조회 칸이 온다.
+  조회 로직(`applyKnownBondMasterToTxForm` · `lookupBondFromKis` · KIS 호출)은 **그대로**이고 위치와 표시 조건만 바꿨다.
+- **수동입력 기본 OFF** — 주식 · ETF · 채권 모두 OFF에서 시작하고 자산군을 바꿔도 승계하지 않는다.
+  예전에는 채권에서 강제로 켜고 비활성화해, 그 ON 상태가 다음 자산군으로 따라가 검색이 막혔다.
+- **Macro 세부내용 팝업** — 「상세 현황 보기」 아코디언을 제목 우측 **[세부내용]** 버튼 + 팝업으로 옮겼다.
+  펼치면 카드가 길어져 아래 위험 점수가 화면 밖으로 밀려나던 문제가 없어졌다(카드 높이 불변 · 내용·계산 무변경).
+  375px에서 제목과 한 줄에 들어가야 해 라벨은 「세부내용」이다(이모지를 넣으면 두 줄로 밀린다 — 실측).
+- **목표비중 dropdown** — 누른 적 없이 펼쳐지던 원인은 **이벤트 충돌이 아니라 빗맞은 탭**이었다.
+  375px에서 [엑셀]과 [비중조절] 사이가 6px뿐인데 예전 필터는 두 버튼 **요소만** 제외했다.
+  제외 범위를 **버튼 줄 전체**(`[data-rebalance-actions]`)로 넓혔다. setTimeout 같은 임시방편은 쓰지 않았다.
+
+**D-2 채권 조회/채권명 구조 (PM 최종 결정)**
+- 「채권 조회」(ISIN · [조회] · 안내문)와 「채권명」을 나누고, 조회 영역을 채권명 바로 위에 두었다.
+- 조회되면 채권명 · 발행조건이 자동으로 채워지고, 조회되지 않아도 직접 적어 저장할 수 있다(`required` 유지).
+- **자산군 전환 시 채권명 누출 차단** — 채권명이 주식/ETF/현금으로 바꿔도 종목명 칸에 남던 결함을 막았다.
+  판정은 "이름칸이 가리키는 대상이 바뀌는 경계"(채권명 ↔ 종목명/티커) 하나이며, 직전 자산군 한 값만 기억한다.
+
+**§57 동기화 — 사용자 선택으로 복귀**
+- **두 곳이 같으면 묻지 않고, 다르면 앱이 고르지 않는다.** 사용자가 [클라우드 데이터 받기] ·
+  [이 기기 데이터 올리기]를 고른다(§30 v243 규칙 복귀).
+- v267(§53-9)의 "손실이 생길 수 있는 차이만 묻는다" 완화를 되돌렸다 — `syncDifferenceNeedsReview` 제거.
+  updatedAt 최신 우선 · last write wins · 순수 추가 자동 병합이 사용자 모르게 일어나지 않는다.
+- **팝업 종료 결함 수정** — [동기화 끄기]와 [클라우드 데이터 초기화]가 완료 메시지만 띄우고 설정 팝업을
+  닫지 않았다(실측 재현). 원인은 `closeSyncSettingsModal()` 호출 누락 하나였고, 빠진 호출을 넣었다.
+  초기화는 **성공했을 때만** 닫는다(취소 · 이미 비어 있음 · 실패에서는 남겨 재시도).
+
+### 바뀌지 않은 것 (회귀 보호)
+
+Risk Score 산식 · Portfolio Beta · Tracking Beta · MC 엔진/seed/분포/상관 구조 · Return Key μ ·
+Bond 모델 · Macro 모델 · Stress · VaR · CVaR · MDD · 저장 schema · Transaction schema ·
+Excel 컬럼 · Backup payload · 암호화 · Cloud schema · localStorage 키 · Worker API.
+
+**승인 baseline(릴리스 시점 재확인 · 완전 일치)**
+```
+score = 45           vol  = 14.83527456
+VaR   = -1.075213608 CVaR = -1.211565192
+MDD   = -2.662509179 corr = 0.9022471287
+portfolioBeta = 0.931428547
+MC errors = []  keys = assets · diagnostics · finalValue · milestones · mode · modelVersion · simulations · years
+Master EM=58 · Index=11 · resolution=58 · tickerMaster=16706
+종목별 Beta 7종: 005930.KS 1.157894735 / AAPL 1.312500001 / 069500.KS 0.8947368405 /
+                 360750.KS -0.001153408318 / 237370.KS 0.5789473674 / SCHD 0.8125000044 / 278530.KS 0.7894736829
+```
+
+### 게이트 결과 (v269 트리)
+
+| 항목 | 결과 |
+| --- | --- |
+| Unit | **811 / 811 PASS** |
+| Full E2E | **1,193 / 1,193 PASS** (확인 실행 clean) |
+| ESLint | 0 problems |
+| Data Guard | PASS (staged 25 · 추적 298파일 · 사용자 데이터 0) |
+| Secret Scan | PASS (credential 값 0 · 계좌/주민번호 패턴 0) |
+| Risk Regression | PASS (위 baseline 일치) |
+| MC Regression | PASS (errors=[] · 키 구성 동일) |
+| Sync Scenario | **20 / 20 PASS** (15 Case + 설정 + 무결성 + 정책 2) |
+| Release Guard | **PASS** (CACHE_NAME/appVersionLabel 모두 v269) |
+
+### 신규/갱신 테스트
+
+신규 — `test/v269-input-ux.test.js`(11) · `test/v270-ui-batch.test.js`(18) ·
+`test/sync-user-choice.test.js`(20) · `e2e/118-ui-batch-v270.spec.js`(25) ·
+`e2e/119-sync-user-choice.spec.js`(9).
+기대값 갱신(사양이 바뀐 지점 · 전부 사유 주석 포함) — `e2e/37` · `e2e/39` · `e2e/79` · `e2e/80` ·
+`e2e/99` · `e2e/100` · `e2e/108` · `e2e/115` · `e2e/117`.
+
+### production smoke (2026-09-23 · 실측)
+
+- HTTP 200 (index.html · sw.js · js/12 · js/06 · data/ticker-master.json)
+- appVersionLabel = **v269** · Service Worker CACHE_NAME = **smart-asset-manager-v269**
+- v268 캐시 → v269 캐시 전환 확인(브라우저 캐시 목록에 v269만 남음)
+- 네 배치 마커 전부 프로덕션에 반영(`tx_bondIsinWrap` · 「채권 조회」 · `macroDetailBtn` ·
+  `data-rebalance-actions` 2개 · 구 아코디언 0 · `syncDifferenceNeedsReview` 0)
+- Core UI 4탭 정상 · Risk 진단 표시 · Market/Tracking Beta 해소 · **채권은 Beta 대상에서 제외**(정책 유지)
+- Monte Carlo 실행 성공("Monte Carlo 시뮬레이션 완료" · P50 표시 · 오류 0)
+- 연도별 추가 투자 → MC 월 인덱스 매핑 정상 · 환헤지 HEDGED → `US_EQUITY_HEDGED` 전환 정상
+- 채권 입력 순서(자산군 → 채권 조회 → ISIN → 채권명 → 장기 수익률 → 역할 → 만기일) 정상
+- 자산군 전환 누출 0 · Macro 팝업 카드 높이 불변 · 목표비중 빗맞은 탭 4지점 전부 안 열림
+- Backup → Restore 왕복 정상 · 동기화 팝업 열기/닫기 정상
+- 375 / 390 / 1440 × Light/Dark × 4탭 = **24조합 가로 overflow 0 · console error 0 · unhandled rejection 0**
+
+### 보호 상태
+
+- `.claude/launch.json` — **사용자 로컬 변경 그대로 보존.** 이번 릴리스 커밋의 staged 파일에 0개.
+  수정 · revert · checkout · reset · commit 모두 하지 않았다.
+- force push · reset · rebase · history rewrite 없음.
+- 실제 사용자 금융데이터를 source/fixture에 넣지 않았다(테스트는 전부 합성 ZZ 데이터).
+
+### 프로젝트 상태
+
+**종료.** 이번 릴리스로 §55 · §56 · D-2 · §57 네 배치가 모두 출시됐다.
+새 backlog를 열지 않는다. 다음 작업은 PM 지시가 있을 때만 시작한다.
+
+---
+
+## 🏁 v268 FINAL RELEASE — ETF 사용자 확인 · 연도별 추가 투자 · 채권 KIS 통합 (2026-09-23 · 위 v269 절이 더 최신 · **출시 완료**)
 
 > **상태**: **출시 완료 · 이번 개선 프로젝트 종료.**
 > **버전 변경**: v266 → **v268** (v267은 중간 단계로 출시하지 않았고 이번 릴리스에 함께 포함됐다).
