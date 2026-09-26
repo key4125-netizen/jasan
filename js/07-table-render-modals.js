@@ -910,8 +910,18 @@ function persistBondPositionForAsset(assetId, category) {
     return;
   }
   const next = buildBondPositionFromForm(assetId);
-  // 아무 항목도 채우지 않았으면 빈 레코드를 만들지 않는다.
-  const hasAny = next.identity.isin || next.terms.maturityDate || next.terms.couponRate !== null || next.holding.faceAmount !== null;
+  /* 아무 항목도 채우지 않았으면 빈 레코드를 만들지 않는다.
+   *
+   * [PM 지시 2026-09-24 · ISSUE-01] 예전에는 화면의 채권 칸 11개 중 4개(표준코드 · 만기일 ·
+   * 표면이율 · 액면총액)만 봤다. 그래서 **발행인 유형만 골라 저장하면 조용히 버려졌고**, 그 항목만
+   * 들어 있던 기존 레코드는 오히려 지워졌다(아래 splice). 채권의 장기 자산군은 발행인 유형 하나로
+   * 갈리므로(js/29 resolveBondClass), 사용자가 정확히 그 값을 고칠 때 정보가 사라지는 경로였다.
+   * 이제 화면에 있는 칸을 전부 본다 - 판정 조건만 넓혔고 저장 구조 · 다른 자산군은 그대로다. */
+  const hasAny = !!(next.identity.isin || next.identity.bondType || next.identity.creditRating
+    || next.identity.hedgeStatus
+    || next.terms.maturityDate || next.terms.issueDate || next.terms.couponType
+    || next.terms.couponRate !== null || next.terms.paymentFrequency !== null
+    || next.holding.purchaseDate || next.holding.faceAmount !== null);
   if (!hasAny) { if (idx >= 0) { state.bondPositions.splice(idx, 1); persistBondPositions(); } return; }
   if (idx >= 0) state.bondPositions[idx] = next; else state.bondPositions.push(next);
   persistBondPositions();

@@ -4,7 +4,7 @@
  *      차이가 있으면 반영하지 않고 사용자에게 보여 준 뒤 [클라우드 데이터 받기] / [이 기기 데이터 올리기] / [취소]
  *      중 하나를 직접 고르게 한다. 동기화 재개 화면(방향 선택)도 같은 결과로 차이를 보여 준다.
  *    - 비교 대상은 동기화가 실제로 옮기는 사용자 데이터뿐이다: 자산(id별 사용자 입력 · 보유 필드), 거래내역(id별),
- *      목표비중(rebalance), 미래예측 설정(projection). 받는 쪽 정규화(normalizeImportedAsset · normalizeImportedTransaction ·
+ *      채권 레코드(id별 - [D-3] 2026-09-24 추가), 목표비중(rebalance), 미래예측 설정(projection). 받는 쪽 정규화(normalizeImportedAsset · normalizeImportedTransaction ·
  *      adoptRemoteRebalanceAndProjection, js/12)와 같은 규칙으로 값을 맞춘 뒤 비교한다 - 동기화하면 같아지는 표기 차이는
  *      차이로 보지 않는다.
  *    - 차이로 보지 않는 것: updatedAt · createdAt · version · 배열 순서 · 직렬화(키) 순서 · 현재가 · regularMarketPrice ·
@@ -30,7 +30,21 @@ const SYNC_DIFF_FIELD_LABELS = Object.freeze({
   isDomestic: '국내/해외', currency: '통화', quantity: '수량', buyPrice: '매입단가', buyRate: '매입 환율',
   rateMatchOverride: '수익률 기준(대표매칭)', role: '역할(포지션)', positionSource: '수량 관리',
   marketBetaIndexOverride: '시장민감도 기준지수(사용자확인)', fxHedgeStatus: '환헤지(사용자확인)',
-  date: '거래일', type: '거래 구분', price: '거래 단가', appliedRate: '적용 환율', fee: '수수료', origin: '구분'
+  date: '거래일', type: '거래 구분', price: '거래 단가', appliedRate: '적용 환율', fee: '수수료', origin: '구분',
+  // [D-3] 채권 레코드. 키는 makeBondPosition(js/29)의 저장 구조를 그대로 따른다.
+  'identity.isin': '표준코드(ISIN)', 'identity.instrumentName': '채권명', 'identity.issuer': '발행인',
+  'identity.currency': '통화', 'identity.bondType': '발행인 유형', 'identity.seniority': '변제순위',
+  'identity.creditRating': '신용등급', 'identity.hedgeStatus': '환헤지',
+  'terms.issueDate': '발행일', 'terms.maturityDate': '만기일', 'terms.faceValue': '액면가',
+  'terms.issuePrice': '발행가', 'terms.couponRate': '표면이율', 'terms.couponType': '이자 지급 방식',
+  'terms.rateType': '금리 유형', 'terms.paymentFrequency': '연 지급 횟수', 'terms.paymentDates': '이자 지급일',
+  'source.provider': '출처', 'source.sourceDate': '출처 기준일', 'source.retrievedAt': '조회 시각',
+  'source.evidenceGrade': '근거 등급', 'source.status': '조회 상태', 'source.licenseNote': '이용 조건',
+  'holding.owner': '보유자', 'holding.account': '계좌', 'holding.purchaseDate': '매입일',
+  'holding.faceAmount': '액면총액', 'holding.purchaseUnitPrice': '매입단가', 'holding.purchaseAmount': '매입금액',
+  'holding.accruedInterestAtPurchase': '매입 경과이자', 'holding.taxType': '과세 구분',
+  'holding.soldDate': '매도일', 'holding.soldAmount': '매도금액',
+  assetId: '연결된 자산', userOverride: '직접 고친 항목'
 });
 
 function isSyncRecordWithId(x) {
@@ -47,6 +61,12 @@ function validateSyncPayload(parsed) {
   if (!Array.isArray(parsed.transactions)) return { ok: false, reason: 'transactionsNotArray' };
   if (!parsed.assets.every(isSyncRecordWithId)) return { ok: false, reason: 'assetWithoutId' };
   if (!parsed.transactions.every(isSyncRecordWithId)) return { ok: false, reason: 'transactionWithoutId' };
+  /* [D-3] 채권 키는 구버전 payload에 없을 수 있다 - 없으면 예전 그대로 통과시킨다(js/12도 그때는
+   * 병합 자체를 건너뛴다). 있는데 모양이 아니면 자산 · 거래와 같은 이유로 막는다. */
+  if (parsed.bondPositions !== undefined && parsed.bondPositions !== null) {
+    if (!Array.isArray(parsed.bondPositions)) return { ok: false, reason: 'bondPositionsNotArray' };
+    if (!parsed.bondPositions.every(isSyncRecordWithId)) return { ok: false, reason: 'bondPositionWithoutId' };
+  }
   for (const key of ['rebalance', 'projection']) {
     const v = parsed[key];
     if (v !== undefined && v !== null && (typeof v !== 'object' || Array.isArray(v))) return { ok: false, reason: key + 'NotObject' };
@@ -120,6 +140,33 @@ function syncDiffStableJson(value) {
   });
 }
 
+/* [D-3] 채권 레코드 비교값. 받는 쪽과 같은 정규화 함수(makeBondPosition · js/29)를 써서
+ * "동기화하면 같아지는 표기 차이"를 차이로 보지 않는다. identity · terms · source · holding을
+ * 점 표기로 펼쳐, 어느 항목이 다른지 화면에 그대로 보여 줄 수 있게 한다.
+ * updatedAt은 기존 원칙대로 비교하지 않는다(id는 짝을 짓는 키라 값 비교에서 뺀다). */
+function syncDiffBondView(p) {
+  const b = makeBondPosition(p || {});
+  const view = { id: String(b.id) };
+  ['identity', 'terms', 'source', 'holding'].forEach((group) => {
+    Object.keys(b[group]).forEach((k) => {
+      const v = b[group][k];
+      view[group + '.' + k] = (v && typeof v === 'object') ? syncDiffStableJson(v) : (v === undefined ? null : v);
+    });
+  });
+  view.assetId = b.assetId ?? null;
+  view.userOverride = syncDiffStableJson(b.userOverride || {});
+  return view;
+}
+/* 비교할 필드 목록을 손으로 적지 않는다 - 저장 구조에서 바로 만든다. 채권에 필드가 늘어도
+ * 여기를 고칠 필요가 없고, 빠뜨려서 조용히 병합되는 일도 생기지 않는다. */
+let syncDiffBondFieldsCache = null;
+function syncDiffBondFields() {
+  if (!syncDiffBondFieldsCache) {
+    syncDiffBondFieldsCache = Object.freeze(Object.keys(syncDiffBondView({})).filter((k) => k !== 'id'));
+  }
+  return syncDiffBondFieldsCache;
+}
+
 // 같은 id끼리 짝을 지어 이 기기에만 · 클라우드에만 · 내용이 다름으로 나눈다. 같은 id가 여러 번 있으면
 // mergeCollectionById(Map)와 같이 마지막 것을 쓴다.
 function syncDiffCollection(localArr, cloudArr, toView, fields) {
@@ -173,6 +220,12 @@ function compareSyncData(localData, cloudData) {
   const cloud = cloudData || {};
   const assets = syncDiffCollection(local.assets, cloud.assets, syncDiffAssetView, SYNC_DIFF_ASSET_FIELDS);
   const transactions = syncDiffCollection(local.transactions, cloud.transactions, syncDiffTransactionView, SYNC_DIFF_TX_FIELDS);
+  /* [D-3] 채권 레코드. 클라우드에 채권 키 자체가 없는 구버전 payload는 받아도 이 기기 채권이
+   * 바뀌지 않으므로(js/12가 병합을 건너뛴다) 차이로 보지 않는다 - 목표비중 · 미래예측과 같은 규칙이다. */
+  const cloudHasBonds = Array.isArray(cloud.bondPositions);
+  const bondPositions = cloudHasBonds
+    ? syncDiffCollection(local.bondPositions, cloud.bondPositions, syncDiffBondView, syncDiffBondFields())
+    : { localOnly: [], cloudOnly: [], different: [] };
   // 클라우드에 설정 자체가 없으면 받아도 이 기기 설정이 바뀌지 않으므로 차이로 보지 않는다.
   const rebalanceChanged = isSyncPlainObject(local.rebalance) && isSyncPlainObject(cloud.rebalance)
     && syncDiffRebalanceKey(local.rebalance) !== syncDiffRebalanceKey(cloud.rebalance);
@@ -182,9 +235,10 @@ function compareSyncData(localData, cloudData) {
   return {
     assets,
     transactions,
+    bondPositions,
     rebalance: { changed: rebalanceChanged },
     projection: { changed: projectionChanged },
-    hasMeaningfulDifference: size(assets) + size(transactions) > 0 || rebalanceChanged || projectionChanged
+    hasMeaningfulDifference: size(assets) + size(transactions) + size(bondPositions) > 0 || rebalanceChanged || projectionChanged
   };
 }
 
@@ -196,7 +250,11 @@ function syncDiffSignature(diff) {
     c: g.cloudOnly.map((v) => v.id).sort(),
     d: g.different.map((d) => [d.id, d.fields.map((f) => [f.field, f.local, f.cloud])]).sort(byId)
   });
-  return JSON.stringify({ a: group(diff.assets), t: group(diff.transactions), r: !!diff.rebalance.changed, p: !!diff.projection.changed });
+  return JSON.stringify({
+    a: group(diff.assets), t: group(diff.transactions),
+    b: group(diff.bondPositions || { localOnly: [], cloudOnly: [], different: [] }), // [D-3]
+    r: !!diff.rebalance.changed, p: !!diff.projection.changed
+  });
 }
 
 /* ---- 화면 문구(초보자용 · 개발 용어를 쓰지 않는다) ---- */
@@ -219,12 +277,37 @@ function syncDiffValueText(field, value, view) {
     case 'role': return ASSET_ROLE_LABELS[value] || String(value);
     case 'type': return value === 'sell' ? '매도' : '매수';
     case 'origin': return value === 'initial' ? '최초' : '기간';
-    case 'currency': return value === 'USD' ? '달러(USD)' : '원화(KRW)';
+    case 'currency':
+    case 'identity.currency': return value === 'USD' ? '달러(USD)' : '원화(KRW)';
+    // [D-3] 채권 레코드
+    case 'identity.hedgeStatus': return value === 'HEDGED' ? '환헤지' : value === 'UNHEDGED' ? '환노출' : String(value);
+    case 'terms.couponRate': return `${fmtNum(value, 4)}%`;
+    case 'terms.faceValue':
+    case 'terms.issuePrice':
+    case 'holding.faceAmount':
+    case 'holding.purchaseUnitPrice':
+    case 'holding.purchaseAmount':
+    case 'holding.accruedInterestAtPurchase':
+    case 'holding.soldAmount': return `${fmtNum(value, 4)}원`;
+    case 'terms.paymentFrequency': return `연 ${fmtNum(value)}회`;
     default: return String(value);
   }
 }
 
 function syncDiffItemLines(kind, view) {
+  if (kind === 'bond') {
+    // [D-3] 채권은 자산 · 거래와 필드 이름이 달라 따로 만든다(사용자가 화면에서 알아보는 순서).
+    const name = view['identity.instrumentName'] || '채권';
+    const isin = view['identity.isin'];
+    const maturity = view['terms.maturityDate'] || '없음';
+    const face = view['holding.faceAmount'] === null || view['holding.faceAmount'] === undefined
+      ? '없음' : `${fmtNum(view['holding.faceAmount'], 4)}원`;
+    return [
+      isin ? `${name} (${isin})` : name,
+      `${view['holding.owner'] || '보유자 없음'} · ${view['holding.account'] || '계좌 없음'}`,
+      `만기 ${maturity} · 액면총액 ${face}`
+    ];
+  }
   const nameLine = view.ticker ? `${view.name} (${view.ticker})` : view.name;
   if (kind === 'asset') {
     return [nameLine, `${view.owner || '보유자 없음'} · ${view.accountType}`, `수량 ${syncDiffValueText('quantity', view.quantity, view)}`];
@@ -236,10 +319,11 @@ function syncDiffItemLines(kind, view) {
   ];
 }
 
-function syncDiffCountPhrase(assetCount, txCount) {
+function syncDiffCountPhrase(assetCount, txCount, bondCount) {
   const parts = [];
   if (assetCount) parts.push(`자산 ${assetCount}건`);
   if (txCount) parts.push(`거래내역 ${txCount}건`);
+  if (bondCount) parts.push(`채권 정보 ${bondCount}건`); // [D-3] 0건이면 문장에 넣지 않는다(기존 문구 그대로)
   return parts.join(' · ');
 }
 
@@ -254,20 +338,21 @@ function syncDiffSettingsPhrase(diff) {
 // 올리기 = 이 기기 기준으로 올리기)과 정확히 같게 쓴다.
 function syncDiffEffectLines(diff, direction) {
   const a = diff.assets, t = diff.transactions;
+  const b = diff.bondPositions || { localOnly: [], cloudOnly: [], different: [] }; // [D-3]
   const lines = [];
   const settings = syncDiffSettingsPhrase(diff);
   if (direction === 'pull') {
-    const lost = syncDiffCountPhrase(a.localOnly.length, t.localOnly.length);
-    const changed = syncDiffCountPhrase(a.different.length, t.different.length);
-    const added = syncDiffCountPhrase(a.cloudOnly.length, t.cloudOnly.length);
+    const lost = syncDiffCountPhrase(a.localOnly.length, t.localOnly.length, b.localOnly.length);
+    const changed = syncDiffCountPhrase(a.different.length, t.different.length, b.different.length);
+    const added = syncDiffCountPhrase(a.cloudOnly.length, t.cloudOnly.length, b.cloudOnly.length);
     if (lost) lines.push(`이 기기에만 있는 ${lost}은 이 기기에서 사라집니다.`);
     if (changed) lines.push(`내용이 다른 ${changed}은 클라우드 내용으로 바뀝니다.`);
     if (added) lines.push(`클라우드에만 있는 ${added}을 이 기기에 받아옵니다.`);
     if (settings) lines.push(`${settings} 설정은 클라우드 값으로 바뀝니다.`);
   } else {
-    const removed = syncDiffCountPhrase(a.cloudOnly.length, t.cloudOnly.length);
-    const changed = syncDiffCountPhrase(a.different.length, t.different.length);
-    const added = syncDiffCountPhrase(a.localOnly.length, t.localOnly.length);
+    const removed = syncDiffCountPhrase(a.cloudOnly.length, t.cloudOnly.length, b.cloudOnly.length);
+    const changed = syncDiffCountPhrase(a.different.length, t.different.length, b.different.length);
+    const added = syncDiffCountPhrase(a.localOnly.length, t.localOnly.length, b.localOnly.length);
     if (removed) lines.push(`클라우드에만 있는 ${removed}은 클라우드에서 빠집니다.`);
     if (changed) lines.push(`내용이 다른 ${changed}은 이 기기 내용으로 올라갑니다.`);
     if (added) lines.push(`이 기기에만 있는 ${added}을 클라우드에 올립니다.`);
@@ -279,6 +364,7 @@ function syncDiffEffectLines(diff, direction) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SYNC_DIFF_ASSET_FIELDS, SYNC_DIFF_TX_FIELDS, SYNC_DIFF_FIELD_LABELS, validateSyncPayload, compareSyncData,
+    syncDiffBondFields, syncDiffBondView, // [D-3]
     syncDiffSignature, syncDiffValueText, syncDiffItemLines, syncDiffEffectLines, syncDiffStableJson
   };
 }

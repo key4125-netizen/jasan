@@ -997,6 +997,39 @@ function searchRtmAddCandidates(region, query) {
   return [...tickerResults, ...namedResults];
 }
 
+/* [PM 지시 2026-09-24 · ISSUE-04] 검색 결과가 0건인 이유.
+ *
+ * 보유한 자산인데 안 나오는 경우가 실제로 있다 - 다른 지역 탭 · 절세계좌 · 다른 사람 명의 ·
+ * 이미 목표에 추가됨. 어느 쪽인지 말해 주지 않으면 사용자는 "등록했는데 검색이 안 된다"에서
+ * 더 나아갈 수 없다(원화 국채가 '해외'로 저장돼 국내 탭에서 사라진 사례가 그랬다).
+ *
+ * 판정만 하고 후보 목록은 건드리지 않는다. 돌려주는 값은 화면에 그대로 쓸 한 문장이다.
+ */
+function diagnoseRtmAddNoResult(region, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return '';
+  const hit = (a) => `${a.name || ''} ${String(a.ticker ?? '').trim()}`.toLowerCase().includes(q);
+  const found = (state.assets || []).filter((a) => a && hit(a));
+  if (found.length === 0) return '보유 자산 중에 이 이름 · 코드와 맞는 것이 없습니다. 종목명 일부나 표준코드(ISIN)로 다시 찾아보세요.';
+
+  const mine = found.filter((a) => a.owner === rebalanceModalOwner);
+  if (mine.length === 0) {
+    const owners = [...new Set(found.map((a) => a.owner).filter(Boolean))].join(' · ');
+    return `찾으시는 자산은 ${owners} 명의입니다. 이 화면은 ${rebalanceModalOwner} 목표만 다룹니다.`;
+  }
+  const here = mine.filter((a) => a.isDomestic === region);
+  if (here.length === 0) {
+    const other = region === '국내' ? '해외' : '국내';
+    return `이 자산은 ${other}으로 저장돼 있어 ${other} 탭에 있습니다. 지역이 잘못 저장됐다면 자산관리에서 해당 자산의 국내 / 해외를 고칠 수 있습니다.`;
+  }
+  const eligible = here.filter((a) => isRebalanceEligibleAccount(a));
+  if (eligible.length === 0) {
+    const accounts = [...new Set(here.map((a) => a.accountType).filter(Boolean))].join(' · ');
+    return `이 자산은 ${accounts}에 있습니다. 목표 비중은 일반계좌만 다루므로 여기에는 나오지 않습니다.`;
+  }
+  return '이 자산은 이미 목표에 추가돼 있습니다. 아래 목록에서 비중을 고쳐 주세요.';
+}
+
 function renderRtmAddSearchResults(region, query) {
   const containerId = region === '국내' ? 'rtmAddSearchResultsDomestic' : 'rtmAddSearchResultsForeign';
   const container = document.getElementById(containerId);
@@ -1004,7 +1037,10 @@ function renderRtmAddSearchResults(region, query) {
   const candidates = searchRtmAddCandidates(region, query);
   if (!query.trim()) { container.innerHTML = ''; return; }
   if (candidates.length === 0) {
-    container.innerHTML = '<p class="text-sm text-slate-400 py-1">검색 결과가 없습니다.</p>';
+    // [ISSUE-04] 왜 없는지까지 말한다 - "없다"만으로는 사용자가 다음에 할 일을 알 수 없다.
+    const reason = diagnoseRtmAddNoResult(region, query);
+    container.innerHTML = `<p class="text-sm text-slate-400 py-1">검색 결과가 없습니다.</p>`
+      + (reason ? `<p id="rtmAddNoResultReason" class="text-sm text-amber-600 dark:text-amber-400 break-keep pb-1">${escapeHtml(reason)}</p>` : '');
     return;
   }
   container.innerHTML = candidates.map((c) => c.kind === 'ticker' ? `

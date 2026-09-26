@@ -178,16 +178,60 @@ function bondEffectiveTerms(position) {
   return { terms: t, identity: i, overridden: Object.keys(ov) };
 }
 
+// 환헤지로 인정하는 두 값만 통과시킨다(makeBondPosition의 정규화 · js/01 sanitizeFxHedgeStatus와 같은 규칙).
+function bondHedgeValue(raw) {
+  const v = String(raw || '').trim().toUpperCase();
+  return (v === 'HEDGED' || v === 'UNHEDGED') ? v : null;
+}
+// 이 채권 레코드가 붙어 있는 자산. 호출부가 넘겨 주지 않았을 때만 state에서 한 번 찾는다.
+function findAssetForBondPosition(position) {
+  const id = String((position || {}).assetId || '');
+  if (!id) return null;
+  const assets = (typeof state !== 'undefined' && Array.isArray(state.assets)) ? state.assets : [];
+  return assets.find((a) => a && String(a.id || '') === id) || null;
+}
+
+/* [PM 결정 2026-09-24 · D-2 = A안] 이 채권에 적용할 환헤지와 그 근거.
+ *
+ * 환헤지 값이 두 곳에 따로 있다 - 채권 레코드의 identity.hedgeStatus(자산 폼에서 입력)와
+ * 자산의 fxHedgeStatus(거래 폼 · 자산 상세에서 입력). 거래내역이 원천인 자산은 자산 폼이
+ * 숨겨지므로 앞의 값을 넣을 방법이 없었고, 그런 외화 채권은 영원히 분류되지 않았다.
+ *
+ * 우선순위는 고정이다 - 두 값이 모두 있고 서로 달라도 언제나 같은 답이 나온다.
+ *   1 채권 레코드의 값   (그 채권만을 두고 고른 값이므로 가장 구체적이다)
+ *   2 자산의 값          (같은 자산에 대해 사용자가 고른 값 - 의미를 바꾸지 않고 그대로 읽는다)
+ *   3 UNRESOLVED         (없으면 비헤지로 단정하지 않는다 - 기존 원칙)
+ * 원화 채권은 이 판단 자체를 하지 않는다(NOT_APPLICABLE).
+ *
+ * 돌려주는 것은 사실뿐이다 - σ도 자산군도 여기서 정하지 않는다.
+ */
+function resolveBondHedgeStatusDetail(position, asset) {
+  const { identity } = bondEffectiveTerms(position);
+  const currency = String(identity.currency || 'KRW').toUpperCase();
+  if (currency === 'KRW') return { status: null, source: 'NOT_APPLICABLE', currency };
+  const own = bondHedgeValue(identity.hedgeStatus);
+  if (own) return { status: own, source: 'bondPosition', currency };
+  const a = asset || findAssetForBondPosition(position);
+  const fromAsset = a ? bondHedgeValue(a.fxHedgeStatus) : null;
+  if (fromAsset) return { status: fromAsset, source: 'asset', currency };
+  return { status: null, source: 'UNRESOLVED', currency };
+}
+function resolveBondHedgeStatus(position, asset) {
+  return resolveBondHedgeStatusDetail(position, asset).status;
+}
+
 /** MC · Risk가 쓰는 채권 구분. 근거가 없으면 UNCLASSIFIED다(추정하지 않는다). */
-function resolveBondClass(position) {
+function resolveBondClass(position, asset) {
   const { identity } = bondEffectiveTerms(position);
   const ccy = String(identity.currency || 'KRW').toUpperCase();
   const byType = BOND_TYPE_TO_CLASS[String(identity.bondType || '').trim()];
   if (ccy !== 'KRW') {
+    // [D-2] 환헤지는 채권 레코드 → 자산 순으로 읽는다. 아래 분기 규칙 자체는 이전과 같다.
+    const hedgeStatus = resolveBondHedgeStatus(position, asset);
     // 환헤지 미확인이면 헤지로도 비헤지로도 단정하지 않는다 - 발행인 유형을 몰라도 마찬가지다.
-    if (!identity.hedgeStatus || !byType) return BOND_CLASS.UNCLASSIFIED;
+    if (!hedgeStatus || !byType) return BOND_CLASS.UNCLASSIFIED;
     const gov = byType === BOND_CLASS.KR_GOV;
-    if (identity.hedgeStatus === 'HEDGED') return gov ? BOND_CLASS.FOREIGN_GOV_HEDGED : BOND_CLASS.FOREIGN_CORP_HEDGED;
+    if (hedgeStatus === 'HEDGED') return gov ? BOND_CLASS.FOREIGN_GOV_HEDGED : BOND_CLASS.FOREIGN_CORP_HEDGED;
     return gov ? BOND_CLASS.FOREIGN_GOV_UNHEDGED : BOND_CLASS.FOREIGN_CORP_UNHEDGED;
   }
   return byType || BOND_CLASS.UNCLASSIFIED;
@@ -1029,7 +1073,7 @@ function resolveBondAssetCharacter(asset, positions) {
   const id = String(asset.id || '');
   const p = list.find((x) => x && String(x.assetId || '') === id && id !== '');
   if (!p) return null;
-  const cls = resolveBondClass(p);
+  const cls = resolveBondClass(p, asset); // [D-2] 자산의 환헤지가 폴백이다 - 이미 들고 있으므로 넘긴다
   const ch = BOND_CLASS_TO_CHARACTER[cls];
   return ch ? { character: ch, bondClass: cls, bondId: p.id } : { character: null, bondClass: cls, bondId: p.id };
 }
@@ -1121,6 +1165,8 @@ if (typeof module !== 'undefined' && module.exports) {
     BOND_SOURCE_STATUS, BOND_CLASS, BOND_COUPON_TYPE, BOND_TYPE_TO_CLASS, BOND_DAY_COUNT,
     BOND_STORAGE_KEY, BOND_RATE_SHOCKS_BP, BOND_PRIMARY_SHOCK_BP, BOND_CLASS_TO_CHARACTER,
     makeBondPosition, bondEffectiveTerms, resolveBondClass, bondCouponSchedule, buildBondCashFlows,
+    // [D-2] 환헤지 우선순위(채권 레코드 → 자산 → UNRESOLVED)를 쓰는 모든 화면이 같은 함수를 본다
+    resolveBondHedgeStatus, resolveBondHedgeStatusDetail,
     computeAccruedInterest, solveBondYtm, computeBondYields, computeBondDuration, computeBondRiskSummary,
     resolveBondAssetCharacter, mapBondSourceResponse, mergeBondSourceIntoPosition,
     BOND_FACE_UNIT, bondLedgerKey, resolveBondHolding, bondFaceToQuantity, bondQuantityToFace,

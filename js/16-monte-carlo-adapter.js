@@ -48,6 +48,30 @@ function applyUserHedgeToAppClass(appClass, subject) {
   return (mapped && mapped.status === 'MAPPED') ? ASSET_CHARACTERS.US_EQUITY_HEDGED : null;
 }
 
+/* [PM 지시 2026-09-24 · ISSUE-02 · ISSUE-03] 이 채권이 왜 분류되지 않았는지.
+ *
+ * 판정만 하고 아무것도 바꾸지 않는다 - 문구를 고르는 데에만 쓴다.
+ * 채권 분류는 position.assetId === asset.id로만 이어지므로(js/29 resolveBondAssetCharacter),
+ * 대상에 id가 없으면 채권 정보를 채우는 것으로는 절대 해결되지 않는다. 그 사실을 먼저 가른다.
+ */
+function bondRiskGuidanceFor(rateDetail) {
+  const subject = rateDetail && rateDetail.subject;
+  // 자산군 캐치올 목표(「채권 20%」)는 특정 자산을 가리키지 않는다(js/05 categoryDetail의 subject는 null).
+  if (!subject) return 'CATEGORY_TARGET';
+  // 가상 자산(probe)에는 id 자체가 없다 - 이어지는 보유분을 하나로 특정하지 못한 행이다.
+  if (!subject.id) return 'NO_LINKED_HOLDING';
+  const positions = (typeof state !== 'undefined' && Array.isArray(state.bondPositions)) ? state.bondPositions : [];
+  const pos = positions.find((p) => p && String(p.assetId || '') === String(subject.id));
+  if (!pos) return 'NO_BOND_RECORD';
+  // 원화면 발행인 유형 하나, 외화면 발행인 유형 + 환헤지 - js/29 resolveBondClass의 규칙 그대로다.
+  const ccy = String((pos.identity && pos.identity.currency) || subject.currency || 'KRW').trim().toUpperCase();
+  if (ccy === 'KRW') return 'KRW_BOND_TYPE_MISSING';
+  /* [PM 결정 2026-09-24 · D-2] 외화 채권의 환헤지는 채권 레코드 → 자산 순으로 읽는다.
+   * 사용자가 이미 환헤지를 골랐다면 남은 것은 발행인 유형 하나다 - 이미 채운 값을 또 채우라고 하지 않는다. */
+  const hedged = (typeof resolveBondHedgeStatus === 'function') ? resolveBondHedgeStatus(pos, subject) : null;
+  return hedged ? 'FX_BOND_TYPE_MISSING' : 'FX_BOND_TYPE_OR_HEDGE_MISSING';
+}
+
 function resolveMcAppAssetClass(rateDetail) {
   const key = rateDetail ? canonicalRateKey(rateDetail.key) : null;
   // [BOND-4 · §47-3] 'BOND' Return Key는 "채권이다"까지만 말해 준다. 채권 레코드(js/29)가 발행인 유형 ·
@@ -161,7 +185,7 @@ async function buildMonteCarloInputFromState(config) {
     //   · 현금성(CASH)은 기존 §7 정책 그대로 σ=0이다 - 채권으로 취급하지 않는다.
     const bondish = typeof isBondCharacter === 'function' && isBondCharacter(appClass);
     const bondUnclassified = appClass === ASSET_CHARACTERS.BOND;
-    if (bondUnclassified) bondsWithoutRiskAssumption.push({ key, label, weight, appClass, reason: 'BOND_CLASS_UNRESOLVED' });
+    if (bondUnclassified) bondsWithoutRiskAssumption.push({ key, label, weight, appClass, reason: 'BOND_CLASS_UNRESOLVED', guidance: bondRiskGuidanceFor(rateDetail) });
     // 분류된 채권만 CMA에서 변동성을 받는다. 분류되지 않은 채권은 변동성을 만들지 않되(위 목록으로 알린다)
     // 원금은 그대로 굴러간다. 현금성은 기존 §7 정책 그대로다.
     const riskFree = appClass === ASSET_CHARACTERS.CASH || noAssumption || bondUnclassified || (riskFreeFlag && !bondish);
@@ -255,17 +279,40 @@ async function buildMonteCarloInputFromState(config) {
   const inflationIssue = assessInflation(num(state.projection.inflationRate));
   if (inflationIssue) safetyIssues.push(inflationIssue);
 
-  // [BOND-4 · §47-3] 위험을 반영하지 못한 채권을 명시한다 - 조용히 0으로 두지 않는다.
-  if (bondsWithoutRiskAssumption.length) {
-    const names = bondsWithoutRiskAssumption.map((e) => e.label).join(' · ');
-    const pct = bondsWithoutRiskAssumption.reduce((sum, e) => sum + (e.weight || 0), 0) * 100;
-    dataQualityIssues.push(makeIssue('BOND_RISK_ASSUMPTION_UNRESOLVED', SAFETY_LEVEL.WARNING, 'bondPositions',
+  /* [BOND-4 · §47-3] 위험을 반영하지 못한 채권을 명시한다 - 조용히 0으로 두지 않는다.
+   * [PM 지시 2026-09-24 · ISSUE-02 · ISSUE-03] 빠진 이유가 셋인데 문구는 하나였다.
+   * 이제 자산마다 그 자산의 이유를 말하고, 해야 할 일이 다르면 카드도 나눈다(§59).
+   * 어떤 채권이 빠지는지 · σ · 원금은 전부 그대로다. */
+  bondsWithoutRiskAssumption.forEach((e) => {
+    const share = `(비중 약 ${((e.weight || 0) * 100).toFixed(1)}%)`;
+    const tail = ' 원금과 적립은 그대로 계산하지만 이 자산의 가격 변동은 시뮬레이션에 들어가지 않았습니다 - '
+      + '"이 채권에 위험이 없다"는 뜻이 아니라 "위험을 계산할 근거가 아직 없다"는 뜻입니다.';
+    if (e.guidance === 'CATEGORY_TARGET' || e.guidance === 'NO_LINKED_HOLDING') {
+      /* [ISSUE-03] 이 행은 특정 보유 채권을 가리키지 않는다 - 채권 정보를 채워도 반영될 수 없다.
+       * 예전 문구는 "채권 정보를 채우면 반영됩니다"라고 했고, 그것은 사실이 아니었다. */
+      const why = e.guidance === 'CATEGORY_TARGET'
+        ? `"${e.label}"${share}은 자산군 전체를 가리키는 목표 행이라 어느 채권인지 특정되지 않습니다.`
+        : `"${e.label}"${share}과 이어지는 보유 채권을 이 소유자의 일반계좌에서 찾지 못했습니다(이름 · 티커가 다를 수 있습니다).`;
+      dataQualityIssues.push(makeIssue('BOND_RISK_TARGET_NOT_LINKED', SAFETY_LEVEL.WARNING, e.label,
+        '이 목표 행은 보유 채권과 이어져 있지 않습니다',
+        why + ' 그래서 채권 정보를 채워도 이 행에는 반영되지 않습니다.' + tail,
+        '포트폴리오 비중조절에서 보유 채권을 개별 종목으로 추가하면 그 행부터 발행인 유형이 반영됩니다.'));
+      return;
+    }
+    /* [ISSUE-02] 원화 채권은 환헤지를 보지 않는다(js/29 resolveBondClass는 통화가 KRW가 아닐 때만
+     * 환헤지를 요구한다). 원화 국채 사용자에게 환헤지를 채우라고 말하지 않는다. */
+    const why = e.guidance === 'KRW_BOND_TYPE_MISSING'
+      ? `"${e.label}"${share}은 원화 채권이라 발행인 유형(국채 · 회사채 등)만 있으면 됩니다 - 환헤지는 원화 채권에 적용되지 않습니다. 지금은 그 발행인 유형이 비어 있습니다.`
+      : (e.guidance === 'FX_BOND_TYPE_MISSING'
+        ? `"${e.label}"${share}은 환헤지 여부는 확인됐지만 발행인 유형(국채 · 회사채 등)이 비어 있습니다.`
+        : (e.guidance === 'FX_BOND_TYPE_OR_HEDGE_MISSING'
+          ? `"${e.label}"${share}은 외화 채권이라 발행인 유형과 환헤지 여부가 둘 다 있어야 장기 자산군을 정할 수 있습니다. 지금은 둘 다 또는 둘 중 하나가 비어 있습니다.`
+          : `"${e.label}"${share}에는 아직 채권 정보(발행인 유형 · 통화 · 환헤지)가 등록돼 있지 않아 장기 자산군을 정할 수 없습니다.`));
+    dataQualityIssues.push(makeIssue('BOND_RISK_ASSUMPTION_UNRESOLVED', SAFETY_LEVEL.WARNING, e.label,
       '이 채권은 위험 시뮬레이션에서 빠졌습니다(원금은 그대로 반영됩니다)',
-      `${names}(합계 비중 약 ${pct.toFixed(1)}%)은 발행인 유형 · 통화 · 환헤지가 확인되지 않아 장기 자산군을 정할 수 없습니다. `
-      + '원금과 적립은 그대로 계산하지만 이 자산의 가격 변동은 시뮬레이션에 들어가지 않았습니다 - '
-      + '"이 채권에 위험이 없다"는 뜻이 아니라 "위험을 계산할 근거가 아직 없다"는 뜻입니다.',
-      '채권 정보(발행인 유형 · 통화 · 환헤지)를 채우면 다음 계산부터 변동성까지 함께 반영됩니다.'));
-  }
+      why + tail,
+      '자산관리의 자산 수정에서 발행인 유형(외화 채권은 환헤지도)을 채워 주세요. 거래내역으로 등록한 채권은 그 거래를 열어 같은 값을 고칠 수 있습니다.'));
+  });
 
   const safety = buildSafetyResult(safetyIssues, dataQualityIssues, []);
 

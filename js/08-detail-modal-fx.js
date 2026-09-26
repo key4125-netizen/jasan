@@ -278,6 +278,66 @@ document.getElementById('assetDetailRiskConfirm').addEventListener('change', (e)
   else if (e.target.id === 'assetDetailFxHedgeSelect') applyAssetDetailRiskConfirm('fxHedgeStatus', e.target.value);
 });
 
+/* [PM 지시 2026-09-24 · D-8] 국내/해외 교정 칸.
+ *
+ * 거래내역이 원천이라 [수정]이 숨겨진 자산(tracked)에서만 보인다 - 그 자산만 고칠 방법이 없었다.
+ * 자산 폼에서 직접 고칠 수 있는 자산(manual · 티커 없는 자산)은 예전 경로가 그대로 있으므로 띄우지 않는다.
+ *
+ * 과거 판정 버그(§50 PD-04 · D-5)로 '해외'가 된 원화 채권이면 그 사실도 함께 알린다 -
+ * D-5 자동 교정에서 REVIEW로 남은 자산(사용자가 직접 정했을 수 있는 것)이 여기로 온다.
+ */
+let assetDetailRegionFixTargets = [];
+function renderAssetDetailRegionFix(assets, tracked) {
+  const box = document.getElementById('assetDetailRegionFix');
+  if (!box) return;
+  const list = (assets || []).filter(Boolean);
+  // 고칠 방법이 없는 자산에만 연다 - 자산 폼으로 고칠 수 있으면 경로를 둘로 만들지 않는다.
+  if (!tracked || list.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; assetDetailRegionFixTargets = []; return; }
+  assetDetailRegionFixTargets = list;
+
+  const first = list[0];
+  const cur = first.isDomestic === '해외' ? '해외' : '국내';
+  const suggest = (typeof classifyIsDomestic === 'function') ? classifyIsDomestic(first.ticker, first.currency) : null;
+  const mismatched = !!(suggest && suggest !== cur);
+  /* 과거 판정 버그로 굳은 원화 채권인지 - D-5와 같은 판정 함수를 쓴다(두 곳이 갈라지지 않게). */
+  const legacyBond = (typeof bondRegionMigrationCandidate === 'function') && !!bondRegionMigrationCandidate(first);
+  const note = legacyBond
+    ? '이 채권은 예전 버전이 표준코드(ISIN)를 해외로 잘못 판정해 <b>해외</b>로 저장돼 있습니다. 지금 기준으로는 <b>국내</b>입니다.'
+    : (mismatched ? `지금 이 앱의 판정 기준으로는 <b>${escapeHtml(suggest)}</b>입니다.` : '거래내역으로 관리되는 자산이라 이 값만 여기서 고칠 수 있습니다.');
+  const opt = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v}</option>`;
+
+  box.innerHTML = `
+    <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">국내 / 해외</h4>
+    <p class="text-sm ${(legacyBond || mismatched) ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'} break-keep mb-2">${note}</p>
+    <label class="block text-sm">
+      <span class="text-slate-400 block mb-0.5">이 자산의 지역</span>
+      <select id="assetDetailRegionSelect" class="w-full min-h-[44px] text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 outline-none">
+        ${opt('국내')}${opt('해외')}
+      </select>
+    </label>
+    <p class="text-sm text-slate-400 mt-1.5 break-keep">지역별 집계 · 목표 비중 · 미래 예측에 함께 반영됩니다. 수량 · 매입가 · 계좌는 거래내역이 원천이라 여기서 바뀌지 않습니다.</p>`;
+  box.classList.remove('hidden');
+}
+/* 고른 값을 이 팝업에 묶인 보유분 전부에 적는다. isDomestic 한 값만 바꾼다. */
+function applyAssetDetailRegionFix(rawValue) {
+  const value = rawValue === '해외' ? '해외' : '국내';
+  if (assetDetailRegionFixTargets.length === 0) return;
+  assetDetailRegionFixTargets.forEach((target) => {
+    const asset = state.assets.find((x) => x.id === target.id);
+    if (!asset || asset.isDomestic === value) return;
+    asset.isDomestic = value;
+    asset.updatedAt = Date.now(); // 사용자가 직접 고친 값이다 - 다른 기기도 이 변경을 볼 수 있어야 한다
+  });
+  persistAssets();
+  const refreshed = assetDetailRegionFixTargets.map((t) => state.assets.find((x) => x.id === t.id)).filter(Boolean);
+  renderAssetDetailRegionFix(refreshed, true);
+  renderAssetDetailRiskConfirm(refreshed); // 환헤지 표시 조건이 지역에 달려 있다 - 같이 다시 그린다
+  renderAll();
+}
+document.getElementById('assetDetailRegionFix').addEventListener('change', (e) => {
+  if (e.target.id === 'assetDetailRegionSelect') applyAssetDetailRegionFix(e.target.value);
+});
+
 /* [통합 수정 · PMD-02 · N-10] 같은 종목(티커, 없으면 이름)을 가진 다른 보유분이 다른 수익률 기준으로 계산되면 알린다.
  * 어느 쪽이 맞는지 정하지 않고, 앱이 서로의 기준을 빌려 쓰지 않는다는 사실과 직접 맞추는 방법만 안내한다.
  * 기준 판정은 계산과 같은 resolveAssetGroupKeyDetail(js/05)을 그대로 쓴다 - 이 함수는 문자열만 조립한다. */
@@ -432,6 +492,8 @@ function openAssetDetailModal(id) {
   const tracked = a.positionSource !== 'manual' && isTransactionTracked(a);
   document.getElementById('assetDetailDeleteBtn').classList.toggle('hidden', tracked);
   document.getElementById('assetDetailEditBtn').classList.toggle('hidden', tracked);
+  // [D-8] [수정]이 숨겨진 자산(거래내역이 원천)만 국내/해외 교정 칸을 연다 - tracked가 정해진 뒤다.
+  renderAssetDetailRegionFix([a], tracked);
   document.getElementById('assetDetailModal').classList.remove('hidden');
   resetAssetDetailModalScroll();
   pushModalHistoryState();
@@ -543,6 +605,8 @@ function openAssetDetailModalGroup(members) {
   renderAssetDetailPositionNotice(members); // [Phase 50]
   renderAssetDetailReturnAssumption(members);
   renderAssetDetailRiskConfirm(members); // [E-01 · E-02] 같은 종목의 보유분 전부에 같은 값을 적는다
+  // [D-8] 묶인 보유분이 전부 거래로 관리될 때만 연다 - 하나라도 자산 폼에서 고칠 수 있으면 그 경로를 쓴다.
+  renderAssetDetailRegionFix(members, members.length > 0 && members.every((m) => m.positionSource !== 'manual' && isTransactionTracked(m)));
   document.getElementById('assetDetailOwnerBreakdownList').innerHTML = [...members]
     .sort((a, b) => b.curAmount - a.curAmount)
     .map((m) => assetDetailOwnerRowHtml(m, totalCurAmount))
@@ -680,6 +744,11 @@ function openStockDetailModalReadOnly(ticker, name, sanitized) {
   document.getElementById('assetDetailOwnerBreakdown').classList.add('hidden');
   document.getElementById('assetDetailDeleteBtn').classList.add('hidden');
   document.getElementById('assetDetailEditBtn').classList.add('hidden');
+  /* [PM 지시 2026-09-24 · D-8 연관] 보유 중이 아닌 종목을 보는 화면이다 - 고칠 대상이 없으므로
+   * 사용자 확정 칸도 남기지 않는다. 이 경로는 두 칸을 다시 그리지 않아, 직전에 본 보유 자산의
+   * 칸이 그대로 남아 있었다(다른 종목의 값을 이 화면에서 고칠 수 있는 것처럼 보였다). */
+  renderAssetDetailRiskConfirm([]);
+  renderAssetDetailRegionFix([], false);
   document.getElementById('assetDetailModal').classList.remove('hidden');
   resetAssetDetailModalScroll();
   pushModalHistoryState();

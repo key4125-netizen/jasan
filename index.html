@@ -310,7 +310,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v269</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v270</p>
           </div>
         </div>
 
@@ -1848,6 +1848,12 @@
            거래내역으로 관리되는 자산도 여기서는 고칠 수 있다(수량 · 매입가와 달리 이 두 값은 원래
            자산 레코드가 SoT다). 주식 · ETF에만 보인다(renderAssetDetailRiskConfirm, js/08). -->
       <div id="assetDetailRiskConfirm" class="hidden mb-4"></div>
+
+      <!-- [PM 지시 2026-09-24 · D-8] 국내/해외 교정 - 거래내역으로 관리되는 자산은 [수정] 버튼이
+           숨겨지고 거래 폼에도 국내/해외 칸이 없어, 잘못 저장된 값을 고칠 방법이 없었다.
+           여기서는 **국내/해외 한 칸만** 연다(수량 · 매입가 · 계좌는 그대로 거래내역이 원천이다).
+           renderAssetDetailRegionFix(js/08). -->
+      <div id="assetDetailRegionFix" class="hidden mb-4"></div>
 
       <!-- [종목 통합 표시 전용] 동일 티커를 여러 소유자/계좌로 나눠 보유 중인 경우에만 표시된다. -->
       <div id="assetDetailOwnerBreakdown" class="hidden mb-4">

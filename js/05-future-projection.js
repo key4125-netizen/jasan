@@ -1593,7 +1593,10 @@ function makeRateProbe(ticker, name, category, region) {
   const t = String(ticker ?? '');
   const n = String(name ?? '');
   // [PMD-10] category를 넘기지 않으면 자동 분류값이므로 시스템 추천(미확정)으로 표시한다 - 확정 자산군처럼 쓰지 않는다.
-  return { ticker: t, name: n, category: category || classifyCategory(t, n), categorySource: category ? undefined : 'system', isDomestic: region || sanitizeTicker(t).isDomestic };
+  /* [PM 지시 2026-09-24 · D-7] 지역 판정에 sanitizeTicker를 쓰지 않는다 - 채권 표준코드(ISIN)를
+   * 해외로 떨어뜨린다(§50 PD-04에서 자산 저장 경로는 이미 고쳤다). 통화를 모르는 자리이므로
+   * 식별자만으로 판정하는 classifyIsDomestic을 쓴다 - ISIN 이외의 결과는 이전과 같다. */
+  return { ticker: t, name: n, category: category || classifyCategory(t, n), categorySource: category ? undefined : 'system', isDomestic: region || classifyIsDomestic(t) };
 }
 
 // 목표 항목(티커 지정 또는 자산군 캐치올) 하나가 특정 프리셋·지역에서 쓸 예상 수익률을 정한다.
@@ -1936,7 +1939,8 @@ function getSystemDefaultRate(presetKey, key) {
 function resolveTickerToRateKey(ticker, label, owner, scope) {
   // [통합 수정 · F-24] 계산(resolveTargetRateDetail)과 같은 해석을 쓴다 - 보유 자산에 지정된 대표매칭도 반영하고,
   // 성격을 확인하지 못하면 UNRESOLVED를 돌려준다(지역 폴백 없음 - Phase 47-A).
-  return resolveTargetRateDetail({ type: 'ticker', ticker, label, owner }, undefined, sanitizeTicker(ticker).isDomestic, scope).key;
+  // [D-7] 지역 판정은 classifyIsDomestic으로 통일한다(ISIN을 해외로 보지 않는다).
+  return resolveTargetRateDetail({ type: 'ticker', ticker, label, owner }, undefined, classifyIsDomestic(ticker), scope).key;
 }
 // [수익률 관리 팝업 동적 필터링 - 요청 반영] "수익률 관리"에 나열할 상품을 하드코딩된 시스템 기본
 // 목록 그대로가 아니라, 지금 실제 포트폴리오에서 대표 수익률로 매칭·지정된 것만 모아 반환한다
@@ -3753,7 +3757,8 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years, optio
     const addAllocationSet = (allocation, amount, contribYears, frequency, scope, who) => {
       const allocatedPct = Math.min(100, allocation.reduce((s, it) => s + num(it.pct), 0));
       allocation.forEach((item) => {
-        const region = sanitizeTicker(item.ticker).isDomestic === '해외' ? '해외' : '국내';
+        // [D-7] ISIN 채권을 해외로 묶지 않는다 - 이 region은 지역별 집계 · 수익률 해석에 그대로 쓰인다.
+        const region = classifyIsDomestic(item.ticker) === '해외' ? '해외' : '국내';
         const label = item.label || item.ticker;
         const rateTarget = { type: 'ticker', ticker: item.ticker, label, owner };
         addContribution(tickerKey(item.ticker), rateIdentityOfTarget(rateTarget, region, scope),
@@ -4525,7 +4530,8 @@ document.getElementById('saveMonthlyContributionAllocationModalBtn').addEventLis
 // [통합 수정 · PMD-02 · N-10] owner/scope를 주면 그 소유자 · 그 계좌 범위의 보유 자산만 보고 해석한다 - 다른 소유자나
 // 다른 계좌에 지정된 대표매칭을 빌려 쓰지 않는다. 둘 다 생략하면 계좌·소유자 제한 없이 해석한다(기존 호출 호환).
 function getMonthlyAllocationItemRate(item, presetKey, owner, scope) {
-  return getTargetProjectionRate({ type: 'ticker', ticker: item.ticker, label: item.label, owner }, presetKey, sanitizeTicker(item.ticker).isDomestic, scope);
+  // [D-7] ③과 같은 이유로 지역 판정을 classifyIsDomestic으로 통일한다.
+  return getTargetProjectionRate({ type: 'ticker', ticker: item.ticker, label: item.label, owner }, presetKey, classifyIsDomestic(item.ticker), scope);
 }
 
 // 월 적립금 전체의 미래가치(연차 y 기준) - 사용자가 [월적립금 설정]에서 배분한 종목들은 각자의 수익률로

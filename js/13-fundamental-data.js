@@ -29,13 +29,18 @@ function extractKisDomesticCode(rawTicker) {
 // 재사용할 예정이라 - 그쪽은 실패 시 안전망 자체가 무한정 멈추면 안 되므로 - 이 기회에 타임아웃을
 // 다시 넣어둔다(다른 프록시 호출과 비슷한 10초).
 async function kisProxyFetch(path, code, extraParams) {
+  /* [PM 결정 2026-09-26 · D안] 프록시 접근 토큰은 소스의 기본값을 쓰되, 설정이 있으면
+   * 그쪽이 앞선다(js/01 resolveKisProxyAccessToken) - 토큰을 바꿔도 코드를 고치지 않는다.
+   * 토큰은 X-App-Secret 헤더에만 싣는다 - 주소 · 쿼리 · 로그 · 오류 메시지에 넣지 않는다.
+   * 불일치는 Worker가 401, 한도 초과는 429로 돌려주고 이 함수는 기존대로 null을 반환한다. */
+  const proxyToken = (typeof resolveKisProxyAccessToken === 'function') ? resolveKisProxyAccessToken() : null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const url = new URL(KIS_PROXY_URL + path);
     url.searchParams.set('ticker', code);
     Object.entries(extraParams || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url.toString(), { signal: controller.signal, headers: { 'X-App-Secret': KIS_CLIENT_SHARED_SECRET } });
+    const res = await fetch(url.toString(), { signal: controller.signal, headers: { 'X-App-Secret': proxyToken } });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {

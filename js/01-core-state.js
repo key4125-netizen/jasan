@@ -240,15 +240,45 @@ const CORS_PROXIES = [
 ];
 const YAHOO_CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 
-// [한국투자증권(KIS) 시세/재무 프록시] 국내주식 전용 - 사용자가 직접 배포한 cloudflare-worker-kis-proxy.js
-// Worker 주소다. KIS 앱키/앱시크릿은 이 Worker 안(서버 사이드)에만 있고 클라이언트 코드에는 전혀
-// 노출되지 않는다. KIS_CLIENT_SHARED_SECRET은 이 Worker가 매 요청마다 X-App-Secret 헤더로 검증하는
-// 공유 비밀키인데, 이 저장소는 공개(public) GitHub 저장소라 여기 적힌 값도 사실상 누구나 볼 수 있다 -
-// 그래서 이건 "진짜 비밀"이 아니라 무작위 봇의 무차별 스캔을 막는 최소한의 문턱 정도로만 취급한다
-// (실제 방어선은 이 Worker 코드에 주문/계좌 라우트를 아예 만들지 않은 것 - cloudflare-worker-kis-proxy.js
-// 참고). 값이 새어나가 남용되면 Cloudflare 대시보드에서 이 값만 새로 바꾸면 된다.
+/* [한국투자증권(KIS) 시세/재무 프록시] 국내주식 전용 - 사용자가 직접 배포한
+ * cloudflare-worker-kis-proxy.js Worker 주소다. KIS 앱키/앱시크릿은 그 Worker 안(서버 사이드)에만
+ * 있고 클라이언트 코드에는 전혀 들어오지 않는다.
+ *
+ * [PM 결정 2026-09-26 · D안] 이 값은 **비밀이 아니다.** 이름을 사실에 맞췄다.
+ *   기존 명칭 KIS_CLIENT_SHARED_SECRET → 정책 재정의 후 KIS_PROXY_ACCESS_TOKEN
+ *
+ * 왜 비밀이 아닌가 - 한국투자증권이 발급한 자격증명이 아니라 **사용자가 직접 정한 임의
+ * 문자열**이고, 정적 공개 페이지가 매 요청에 실어 보내므로 원리상 공개값이다(브라우저
+ * 개발자도구에 그대로 보인다). Worker 소스도 같은 말을 적고 있다 - "실질적인 방어선은
+ * Origin 허용 목록 + 요청 수 제한이고, 공유 비밀키는 보조 수단이다".
+ *
+ * 그래서 하는 일은 하나다: 주소를 알아낸 제3자가 curl로 무작정 두드리는 것을 한 번 걸러낸다.
+ * 이 토큰으로 할 수 있는 최대치는 **공개 시세 · 공시 재무 · 채권 발행정보 조회, 하루 300회**다
+ * (Worker의 RATE_LIMIT_PER_DAY). 계좌 · 잔고 · 주문 라우트는 Worker에 만들어져 있지 않고,
+ * 그 사실은 test/kis-worker-security.test.js가 고정하고 있다.
+ *
+ * 남용이 확인되면 Cloudflare에서 값만 새로 바꾸면 된다. 앱은 아래 덮어쓰기 경로로
+ * 코드 수정 없이 따라갈 수 있다(설정이 있으면 그 값이 소스 기본값보다 앞선다).
+ *
+ * 예외 조건과 재검토 시점은 체크리스트 §62에 적어 두었다 - Worker에 계좌 · 잔고 · 주문 등
+ * 사용자별 금융정보 기능이 추가되면 이 정책을 다시 본다.
+ *
+ * ※ 실제 비밀(KIS APP KEY · APP SECRET)은 여기에도, 저장소 어디에도 없다. */
 const KIS_PROXY_URL = 'https://keymaster.key4125.workers.dev';
-const KIS_CLIENT_SHARED_SECRET = 'KeymasterSecret2026!';
+const KIS_PROXY_ACCESS_TOKEN = 'KeymasterSecret2026!';
+// 토큰을 바꿨을 때 코드 수정 없이 따라가기 위한 덮어쓰기 경로(선택). 없으면 위 기본값을 쓴다.
+const LS_KIS_PROXY_ACCESS_TOKEN = 'sam_kis_proxy_access_token_v1';
+function resolveKisProxyAccessToken() {
+  try {
+    const cfg = (typeof globalThis !== 'undefined' && globalThis.JASAN_RUNTIME_CONFIG) || null;
+    const injected = (cfg && typeof cfg.kisProxyAccessToken === 'string') ? cfg.kisProxyAccessToken.trim() : '';
+    if (injected) return injected;
+    const stored = (typeof localStorage !== 'undefined') ? String(localStorage.getItem(LS_KIS_PROXY_ACCESS_TOKEN) || '').trim() : '';
+    return stored || KIS_PROXY_ACCESS_TOKEN;
+  } catch (e) {
+    return KIS_PROXY_ACCESS_TOKEN; // 저장소 접근이 막힌 환경에서도 기본값으로 동작한다
+  }
+}
 
 // [실시간성 문제 발견] open.er-api/exchangerate-api는 둘 다 하루 1회만 갱신되는 스냅샷 API였다
 // (open.er-api 응답의 time_last_update_utc/time_next_update_utc 필드로 실측 확인 - 다음 갱신까지
@@ -1839,6 +1869,55 @@ function seedTickerRolesFromLegacyStorageOnce() {
 // 이미 기기에 남아 있는 플래그 값은 굳이 지우지 않는다(지울 이유가 없고, 참조하는 코드도 없다).
 // 이미 'core_mid'로 저장된 사용자 데이터도 그대로 둔다 - 코어/미드필더로 자동 분해하지 않는다.
 
+/* ══ [PM 지시 2026-09-24 · D-5] 원화 채권의 국내/해외 1회 교정 ═══════════════════════
+ *
+ * 대상 판정은 두 단계다. 둘 다 만족해야 후보다.
+ *   ① 저장된 모양   : 표준코드(ISIN) 티커 · 자산군 채권 · 통화 KRW · 현재 isDomestic '해외'
+ *   ② 승인된 판정기 : classifyIsDomestic(ticker, currency)가 지금 '국내'라고 답한다(§50 PD-04)
+ * ②가 핵심이다 - "원화니까 국내"가 아니라 **지금 이 앱이 같은 입력에 내리는 판정**으로 되돌린다.
+ *
+ * 후보를 다시 둘로 나눈다.
+ *   · ledger  : 거래내역이 원천인 자산. 자산 상세의 [수정]이 숨겨져 있어 사용자가 이 값을
+ *               만들 수도 고칠 수도 없었다 → 과거 판정 버그의 산물로 확정 → **자동 교정**
+ *   · 그 밖   : 사용자가 직접 정했을 수 있다 → 바꾸지 않고 **REVIEW**로 남긴다(D-8 교정 UI가 안내)
+ *
+ * 바꾸는 값은 isDomestic 하나뿐이다. updatedAt도 찍지 않는다 - 사용자가 편집한 것이 아니라
+ * 과거 판정을 되돌리는 것이므로, 동기화 비교에서 "이 기기가 방금 고쳤다"로 보이게 하지 않는다.
+ */
+const LS_BOND_REGION_MIGRATED = 'sam_bond_region_migrated_v1';
+function bondRegionMigrationCandidate(a) {
+  if (!a || a.category !== '채권') return null;
+  const ticker = String(a.ticker || '').trim();
+  if (!ticker || typeof isBondIsin !== 'function' || !isBondIsin(ticker)) return null;
+  const ccy = String(a.currency || '').trim().toUpperCase();
+  if (ccy !== 'KRW') return null;
+  if (a.isDomestic !== '해외') return null;
+  if (classifyIsDomestic(ticker, a.currency) !== '국내') return null; // 지금 판정기도 국내라고 해야 후보다
+  return a.positionSource === 'ledger' ? 'auto' : 'review';
+}
+/* 지금 이 기기에 남아 있는 후보를 센다 - 화면(D-8 안내)과 보고가 같은 함수를 쓴다. */
+function findBondRegionMigrationTargets() {
+  const auto = [];
+  const review = [];
+  (state.assets || []).forEach((a) => {
+    const kind = bondRegionMigrationCandidate(a);
+    if (kind === 'auto') auto.push(a);
+    else if (kind === 'review') review.push(a);
+  });
+  return { auto, review };
+}
+function runBondRegionMigrationOnce() {
+  if (localStorage.getItem(LS_BOND_REGION_MIGRATED) === '1') return { skipped: true, fixed: 0, review: 0 };
+  const { auto, review } = findBondRegionMigrationTargets();
+  auto.forEach((a) => { a.isDomestic = '국내'; }); // isDomestic 외에는 아무것도 건드리지 않는다
+  if (auto.length) persistAssets(true); // skipPush - 교정 자체가 클라우드 업로드를 예약하지 않는다
+  localStorage.setItem(LS_BOND_REGION_MIGRATED, '1');
+  if (auto.length) {
+    console.info('[D-5] 원화 채권 국내/해외 교정 ' + auto.length + '건(해외 → 국내): '
+      + auto.map((a) => a.name + '/' + a.ticker).join(' · '));
+  }
+  return { skipped: false, fixed: auto.length, review: review.length };
+}
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_ASSETS);
@@ -1858,7 +1937,8 @@ function loadState() {
   // 최초 1회 "지금"으로 채워 넣는다(이후로는 실제 수정 시각이 정확히 기록됨). 되돌릴 필요 없는 단순
   // 채움이라 매번 훑어도 안전하다(이미 값이 있으면 건드리지 않음).
   state.assets.forEach((a) => { if (!a.updatedAt) a.updatedAt = Date.now(); });
-  // [대표매칭 키 개명 마이그레이션 - 버그 수정] 자산에 직접 지정해둔 대표매칭 오버라이드가 옛 키
+  
+// [대표매칭 키 개명 마이그레이션 - 버그 수정] 자산에 직접 지정해둔 대표매칭 오버라이드가 옛 키
   // (SPYM/QQQM)를 가리키고 있으면 새 키(S&P500/NASDAQ)로 함께 옮긴다 - 안 옮기면 이 자산만 옛 키로
   // "고아 항목" 취급되어 "수익률 관리" 팝업에 정상 항목과 별도로 중복 표시된다(customScenarioRates
   // 마이그레이션과 동일한 이유, 아래 참고).
@@ -1871,6 +1951,8 @@ function loadState() {
     }
   });
   if (rateMatchOverrideRenamed) persistAssets();
+  // [PM 지시 2026-09-24 · D-5] 과거 판정 버그로 '해외'가 된 원화 채권을 1회만 되돌린다(마커로 재실행 방지).
+  runBondRegionMigrationOnce();
   localStorage.setItem(LS_HAS_LAUNCHED, '1');
 
   state.exchangeRate = num(localStorage.getItem(LS_RATE)) || 1450;

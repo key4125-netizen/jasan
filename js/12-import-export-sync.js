@@ -1389,6 +1389,25 @@ let applyingRemoteUpdate = false; // 원격 데이터 반영 중엔 재push 금�
 // 이미 시작된 push/pull이 끝날 때까지 기다리기 위해 진행 중인 개수를 센다(syncOpsInFlight). resetCloudData 참고.
 let cloudResetInProgress = false;
 let syncOpsInFlight = 0;
+/* [2026-09-24] 확인과 쓰기 사이에 클라우드가 바뀌었다. 지금 써도 잃는 것이 없는가.
+ *
+ * 버전이 달라졌다는 사실만으로 판단하지 않는다 - 상대 기기가 같은 내용을 다시 올린 경우
+ * (예: 방금 받은 내용을 그대로 되올리는 자동 업로드)까지 막으면 사용자가 고른 동작이 이유 없이
+ * 실패한다. 각 경로가 처음 판단할 때 쓴 바로 그 기준으로 다시 본다.
+ *   · [이 기기 데이터 올리기] : 사용자가 본 차이가 그대로인가(expectSignature)
+ *   · 자동 업로드             : 새로 생긴 차이가 없는가
+ * 읽기만 하고 아무것도 바꾸지 않는다 - 화면도 띄우지 않는다(판단 전용).
+ */
+async function pushStillSafeToOverwrite(fresh, nowVersion, localWins, opts) {
+  if (!fresh || !nowVersion) return false; // 빈 슬롯 · 초기화된 슬롯 위에는 덮어쓰지 않는다
+  let parsed;
+  try { parsed = heldRemoteFor(nowVersion) || await decryptSyncBlob(fresh, syncState.password); } catch (e) { return false; }
+  if (checkSyncPayloadShape(parsed, nowVersion, { silent: true }) !== 'ok') return false;
+  const diff = compareSyncData(syncLocalDataForCompare(), parsed);
+  if (localWins && opts && opts.expectSignature) return syncDiffSignature(diff) === opts.expectSignature;
+  return !diff.hasMeaningfulDifference;
+}
+
 function schedulePush() {
   if (!syncState.enabled || applyingRemoteUpdate || cloudResetInProgress) return;
   clearTimeout(pushDebounceTimer);
@@ -1488,7 +1507,13 @@ function heldRemoteFor(remoteVersion) {
   return syncDiffHold && syncDiffHold.remoteVersion === remoteVersion ? syncDiffHold.remote : null;
 }
 function syncLocalDataForCompare() {
-  return { assets: state.assets, transactions: state.transactions, rebalance: state.rebalance, projection: state.projection };
+  // [D-3] 채권 레코드도 동기화가 옮기는 사용자 데이터다 - 비교에서 빠지면 클라우드 채권이 전부
+  // "클라우드에만 있음"으로 보이고, 반대로 이 기기 채권 변경이 조용히 덮인다.
+  return {
+    assets: state.assets, transactions: state.transactions,
+    bondPositions: Array.isArray(state.bondPositions) ? state.bondPositions : [],
+    rebalance: state.rebalance, projection: state.projection
+  };
 }
 function clearSyncDiffHold() {
   syncDiffHold = null;
@@ -1574,9 +1599,15 @@ async function pushToCloudNow(opts) {
     // 거래가 이 push 한 번으로 통째 덮어써져 사라질 수 있다(부부가 비슷한 시간에 각자 입력하는 경우
     // 정확히 이 시나리오였다). 비밀번호가 틀려 복호화가 실패하면 아래 catch가 잡아 push 자체를
     // 중단한다 - 검증 안 된 원격 위에 무작정 덮어쓰지 않기 위함이다.
+    /* [2026-09-24] 확인한 버전을 기억해 둔다 - 아래에서 업로드 직전에 같은 값인지 다시 본다.
+     * 404(빈 슬롯)는 0이다. 통신 자체가 실패했으면 비교 기준이 없으므로 재확인을 건너뛴다
+     * (그 경우의 동작은 이전과 완전히 같다). */
+    let baseRemoteVersion = null;
     const getRes = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
+    if (getRes.status === 404) baseRemoteVersion = 0;
     if (getRes.ok) {
       const remote = await getRes.json();
+      baseRemoteVersion = Number(remote.version) || 0;
       if (isCloudResetSinceLastSync(remote, savedLastVersion)) { stopSyncAfterRemoteCloudReset(); return 'cloud_reset'; } // 다른 기기에서 초기화됨 - 업로드하지 않는다
       // [P1-1] [이 기기 데이터 올리기]를 고르는 사이 차이가 달라졌으면(사용자가 본 것과 다르면) 올리지 않고 다시 보여 준다.
       //   상대 기기가 시세 · 일별 기록만 올려 클라우드 버전만 바뀐 경우는 차이가 같으므로 그대로 올린다.
@@ -1608,6 +1639,7 @@ async function pushToCloudNow(opts) {
           applyingRemoteUpdate = false;
         }
         syncState.lastVersion = remote.version;
+        baseRemoteVersion = Number(remote.version) || 0; // 방금 반영했으므로 이 버전이 새 기준이다
         renderAll();
       }
     }
@@ -1615,15 +1647,36 @@ async function pushToCloudNow(opts) {
     // [P1-1] localWins일 때만 업로드본에 "지금"을 찍는다 - state는 건드리지 않는다(stampPayload 주석).
     const blob = buildSyncBlob();
     const encrypted = await encryptSyncBlob(localWins ? stampPayload(blob, version) : blob, syncState.password);
+    /* [2026-09-24 · 덮어쓰기 전 재확인] 위 확인과 여기 사이에는 암호화(PBKDF2 · AES-GCM)가 들어 있어
+     * 실제로 시간이 걸린다. 그 사이 상대 기기가 올렸다면 지금 쓰는 순간 그 내용이 통째로 사라진다
+     * (실측 재현: 상대가 올린 거래가 클라우드에서 없어지고 버전도 과거로 되돌아갔다).
+     * 막으려는 것은 "버전이 바뀐 것"이 아니라 "못 본 내용을 덮어쓰는 것"이다 - 상대가 같은 내용을
+     * 다시 올린 경우까지 막으면 [이 기기 데이터 올리기]가 이유 없이 실패한다(실측).
+     * 그래서 각 경로가 처음 판단할 때 쓴 기준으로 다시 본다(pushStillSafeToOverwrite).
+     * 병합 규칙도 충돌 해소 방식도 바꾸지 않는다. */
+    if (baseRemoteVersion !== null) {
+      const recheck = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`);
+      const fresh = recheck.status === 404 ? null : (recheck.ok ? await recheck.json() : undefined);
+      if (fresh !== undefined) { // 통신이 정상일 때만 판단한다(오류면 예전 동작 그대로 진행)
+        const nowVersion = fresh ? (Number(fresh.version) || 0) : 0;
+        if (nowVersion !== baseRemoteVersion && !(await pushStillSafeToOverwrite(fresh, nowVersion, localWins, opts))) {
+          updateSyncStatusUI();
+          return 'remote_changed';
+        }
+      }
+    }
+    /* 버전 시각은 실제로 쓰기 직전에 찍는다 - 예전에는 암호화 전에 찍어, 늦게 도착한 쓰기가
+     * 더 작은 버전을 남겼다(받는 기기가 "받을 새 내용이 없다"고 오해하는 원인이었다). */
+    const writeVersion = Date.now();
     const res = await fetch(`${SYNC_WORKER_URL}/?k=${encodeURIComponent(kvKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...encrypted, version, updatedAt: new Date().toISOString() })
+      body: JSON.stringify({ ...encrypted, version: writeVersion, updatedAt: new Date().toISOString() })
     });
     if (!res.ok) throw new Error('push failed: ' + res.status);
-    syncState.lastVersion = version;
+    syncState.lastVersion = writeVersion;
     syncState.hasError = false;
-    localStorage.setItem(LS_SYNC_LAST_VERSION, String(version));
+    localStorage.setItem(LS_SYNC_LAST_VERSION, String(writeVersion));
     localStorage.setItem(LS_SYNC_LAST_SYNCED_AT, new Date().toISOString());
     // [스마트 머지 - 기준선 갱신] 병합을 안 거치고 곧장 push한 경우(원격이 비어있던 최초 push 등)에도
     // 기준선을 반드시 갱신해야 한다 - 안 그러면 이 기기의 기준선이 계속 비어있는 채로 남아, 다음 번
@@ -1707,6 +1760,17 @@ async function pullFromCloudNow(opts) {
         state.transactions = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(normalizeImportedTransaction);
         localStorage.setItem(LS_SYNC_MERGED_ASSET_IDS, JSON.stringify(state.assets.map((a) => a.id)));
         localStorage.setItem(LS_SYNC_MERGED_TX_IDS, JSON.stringify(state.transactions.map((t) => t.id)));
+        /* [D-3 · 2026-09-24] 채권 레코드도 자산 · 거래와 같이 통째로 채택한다.
+         * 예전에는 이 경로가 채권에 손대지 않아, 사용자가 [클라우드 데이터 받기]를 골라도
+         * 이 기기 채권이 그대로 남았다(채권 병합은 자동 동기화 경로에만 있었다).
+         * 채권 키가 없는 구버전 payload면 건드리지 않는다 - 이 기기 채권을 지우지 않는다. */
+        if (Array.isArray(parsed.bondPositions)) {
+          state.bondPositions = parsed.bondPositions.map((p) => makeBondPosition(p));
+          localStorage.setItem(LS_SYNC_MERGED_BOND_IDS, JSON.stringify(state.bondPositions.map((p) => p.id)));
+          persistBondPositions();
+          // [§50 · PD-11] 기기마다 자산 id가 다를 수 있다 - ISIN으로 연결을 되살린다(삭제 없음).
+          if (typeof relinkBondPositionsToAssets === 'function') relinkBondPositionsToAssets();
+        }
         // [학습된 종목명 캐시는 최초 페어링이어도 병합] 자산/거래내역과 달리 "잘못 섞이면 안 되는 진짜
         // 데이터"가 아니라 순수 도움용 캐시라, 이 기기가 이미 배운 이름을 굳이 버릴 이유가 없다.
         if (parsed.learnedTickerNames && typeof parsed.learnedTickerNames === 'object' && !Array.isArray(parsed.learnedTickerNames)) {
@@ -2021,9 +2085,16 @@ function renderSyncDirectionDiff(diff, mode, remoteVersion) {
     if (differs) {
       summaryEl.append(
         buildSyncDiffGroup('asset', '자산', '자산', diff.assets),
-        buildSyncDiffGroup('transaction', '거래내역', '거래', diff.transactions),
-        buildSyncDiffSettings(diff)
+        buildSyncDiffGroup('transaction', '거래내역', '거래', diff.transactions)
       );
+      /* [D-3] 채권 레코드 차이도 같은 묶음 UI로 보여 준다 - 새 화면을 만들지 않는다.
+       * 자산 · 거래 카드는 예전부터 늘 있던 자리라 그대로 두고, 채권은 **다를 때만** 넣는다 -
+       * 채권을 쓰지 않는 사용자에게 "0건" 카드를 새로 만들지 않는다. */
+      const bondDiff = diff.bondPositions || { localOnly: [], cloudOnly: [], different: [] };
+      if (bondDiff.localOnly.length || bondDiff.cloudOnly.length || bondDiff.different.length) {
+        summaryEl.append(buildSyncDiffGroup('bond', '채권 정보', '채권', bondDiff));
+      }
+      summaryEl.append(buildSyncDiffSettings(diff));
     }
   }
   setSyncDirectionEffect('syncDirectionPullEffect', syncDiffEffectLines(diff, 'pull'));

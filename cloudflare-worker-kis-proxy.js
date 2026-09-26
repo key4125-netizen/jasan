@@ -46,7 +46,16 @@
 // 4-2. (선택) Variables에 ALLOWED_ORIGINS를 등록하면 코드 수정 없이 허용 Origin 목록을 바꿀 수 있다
 //    (쉼표로 구분). 등록하지 않으면 DEFAULT_ALLOWED_ORIGINS(운영 GitHub Pages · localhost:8644)를 쓴다.
 // 5. 배포 후 발급되는 https://<임의이름>.<계정>.workers.dev 주소와, 4번에서 정한
-//    CLIENT_SHARED_SECRET 값을 프론트엔드 설정(다음 단계에서 안내)에 반영한다.
+//    CLIENT_SHARED_SECRET 값을 프론트엔드에 반영한다.
+//    [D안 · 2026-09-26] 프론트엔드에서 이 값의 이름은 KIS_PROXY_ACCESS_TOKEN이다
+//    (기존 명칭 KIS_CLIENT_SHARED_SECRET → 정책 재정의 후 개명. js/01 참고).
+//    이름이 다른 이유는 역할이 다르기 때문이다 - 여기(Worker 환경변수)는 대조 기준이고,
+//    프론트엔드가 들고 있는 것은 **원리상 공개값인 접근 토큰**이다(아래 79~80줄 참고).
+//    Worker 쪽 변수명(CLIENT_SHARED_SECRET)과 헤더명(X-App-Secret)은 이미 등록 · 배포된
+//    계약이라 바꾸지 않는다 - 바꾸면 재등록 전까지 fail-closed로 전면 503이 된다.
+//    앱은 소스의 기본값을 쓰되, 토큰을 교체하면 설정으로 덮어쓸 수 있다
+//    (globalThis.JASAN_RUNTIME_CONFIG.kisProxyAccessToken 또는
+//     localStorage 'sam_kis_proxy_access_token_v1'). 예외 근거는 체크리스트 §62.
 //
 // [토큰 캐싱 이유] KIS 접근토큰(access_token)은 발급 API 자체에 호출 빈도 제한이 있고 유효기간이
 // 길다(문서 기준 24시간) - 그래서 요청마다 새로 발급받지 않고 KV에 캐시해 두었다가 만료 10분 전까지는
