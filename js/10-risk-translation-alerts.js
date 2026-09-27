@@ -637,7 +637,13 @@ const BETA_UNRESOLVED_SOURCE_TEXT = Object.freeze({
   exchangeIndexNotAvailable: '이 거래소의 대표지수를 앱이 아직 다루지 않습니다',
   etfIndexNotAvailable: '이 ETF가 추종하는 지수를 앱이 아직 다루지 않습니다',
   fundLikeName: '펀드형 상품으로 보여 개별주 기준을 적용하지 않았습니다',
-  exposureUnconfirmed: '경제적 노출 시장을 확인할 근거가 없습니다'
+  exposureUnconfirmed: '경제적 노출 시장을 확인할 근거가 없습니다',
+  /* [PM STEP D · 결함 1] v272에서 "보유분마다 답이 갈리면 고르지 않는다"는 사유를 새로 만들었는데
+   * 이 표에 넣지 않아 화면에는 "비교할 기준 지수가 확정되지 않았습니다"라는 일반 문구만 나왔다.
+   * 사용자가 무엇을 고쳐야 하는지 알 수 없었다(실측 확인). 무엇이 · 왜 · 어떻게를 모두 적는다. */
+  instrumentHedgeConflict: '같은 종목의 환헤지가 확인해 두신 값과 공식 자료 · 다른 보유분 사이에서 어긋나 하나로 정하지 못했습니다 - 「위험 분석 확인」에서 하나로 맞춰 주세요',
+  instrumentIndexConflict: '같은 종목인데 보유분마다 기준 지수를 다르게 확인해 두셨습니다 - 같은 상품이므로 하나여야 합니다. 「위험 분석 확인」에서 하나로 맞춰 주세요',
+  holdingConflict: '같은 종목의 보유분끼리 기준이 서로 달라 하나로 정하지 못했습니다 - 「위험 분석 확인」에서 같은 기준으로 맞춰 주세요'
 });
 function betaUnresolvedSourceText(source) {
   return BETA_UNRESOLVED_SOURCE_TEXT[source] || null;
@@ -799,11 +805,13 @@ function renderRiskDiagnosisSummary() {
       <!-- [PM 지시 2026-09-21] 이 점수가 포트폴리오 전체 기준임을 이름으로 분명히 하고, 바로 옆에
            「포트폴리오 위험 안내」를 여는 (i)를 둔다. 표시 명칭과 버튼만 바뀐다 - 점수 · 등급 계산식은
            건드리지 않았다. 모바일에서 점수가 줄바꿈으로 밀리지 않도록 점수 문구와 (i)를 한 덩어리로
-           묶고(whitespace-nowrap) 글자만 한 단계 줄인다(375px에서 한 줄에 들어간다). -->
-      <span class="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap min-w-0">
-        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap">${level.emoji} 포트폴리오 종합 위험점수</span>
-        <span class="text-base sm:text-lg font-bold ${level.colorClass} whitespace-nowrap flex items-center gap-1">${score}/100 [${level.label}]<button type="button" id="portfolioRiskInfoBtn" class="tap44 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="포트폴리오 위험 안내 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
-      </span>
+           묶었다. [사용자 지시 2026-09-27] 이름과 점수가 두 span으로 나뉘어 있고 바깥 span이
+           flex-wrap이라, 모바일에서 이름과 「91/100 [위험]」이 서로 다른 줄로 나뉘었다.
+           하나의 nowrap span으로 합치고, 모바일 글자만 한 단계(14px · 가독성 최소값) 줄였다.
+           그래도 375px(287px 폭)에 313px가 필요해 사용자 지시로 이름에서 「종합」만 뺐다 - 276px가
+           되어 자간 · 간격 · 아이콘은 원래대로 두고도 한 행에 들어간다. 점수 · 등급 · 계산은 무변경.
+           320px는 어떤 조합으로도 들어가지 않아(232px 폭) 그 아래에서는 예전처럼 줄바꿈한다. -->
+      <span id="portfolioRiskScoreLine" class="text-sm sm:text-lg font-bold ${level.colorClass} min-[375px]:whitespace-nowrap flex items-center gap-1 min-w-0">${level.emoji} 포트폴리오 위험점수 ${score}/100 [${level.label}]<button type="button" id="portfolioRiskInfoBtn" class="tap44 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="포트폴리오 위험 안내 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button></span>
       <span class="shrink-0 text-sm font-semibold ${confBand.colorClass} flex items-center gap-1 whitespace-nowrap">
         ${confBand.label}
         <button type="button" data-info-tip="${escapeHtml(confTip)}" class="tap44 text-slate-400" aria-label="설명 보기"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
@@ -1881,7 +1889,7 @@ function openRiskAlertModal() {
   // 아래)에 한 줄로만 덧붙인다 - 새 카드/새 점수/새 계산을 만들지 않는다.
   document.getElementById('riskAlertScoreBox').innerHTML = `
     <div class="rounded-xl border p-3 ${level.bgClass}">
-      <p class="text-base font-bold ${level.colorClass}">${level.emoji} 포트폴리오 종합 위험점수 ${score}/100 [${level.label}]</p>
+      <p class="text-base font-bold ${level.colorClass}">${level.emoji} 포트폴리오 위험점수 ${score}/100 [${level.label}]</p>
       <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-keep">진단 대상: 주식·ETF 보유분만 해당(현금·채권·부동산 제외)</p>
       <p class="text-sm font-medium text-slate-700 dark:text-slate-200 mt-1.5 leading-relaxed">${buildRiskDiagnosisLine(m)}</p>
     </div>`;

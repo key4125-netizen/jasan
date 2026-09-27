@@ -207,7 +207,8 @@ for (const w of [375, 1440]) {
       ['가격 변동 위험', '목표 자산배분과 지금 비중', '포트폴리오 설정에서 보기'].forEach((s) => expect(txt, s).not.toContain(s));
       await expect(card.locator('#riskPlanCheckBtn')).toHaveCount(0);
       // 유지되는 내용: 점수 · 데이터 상태 · 세부내용 버튼 · 진단 문장 · 확인 항목 1~2
-      expect(txt).toContain('종합 위험점수');
+      // [사용자 지시 2026-09-27] 이름에서 「종합」을 뺐다(모바일 한 행 표시).
+      expect(txt).toContain('포트폴리오 위험점수');
       expect(txt).toContain('💡 1.');
       await expect(card.locator('#riskDetailBtn')).toBeVisible();
       await expect(page.locator('#riskyAccordionBtn')).toBeVisible();

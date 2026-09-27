@@ -304,8 +304,11 @@ test('O-1. 같은 종목의 다른 보유분이 다른 수익률 기준을 쓰�
   expect(text).toContain('같은 종목의 다른 보유분');
   expect(text).toContain('와이프 ISA → KOSDAQ');
   expect(await page.evaluate(() => state.assets.map((a) => a.rateMatchOverride))).toEqual(['BOND.STOCK', 'KOSDAQ']);
-  // 결정론 절세계좌(와이프 ISA)는 와이프 기준(KOSDAQ 7%)으로 계산된다 - 신랑 4.5%가 번지지 않는다
-  expect(await page.evaluate(() => getAssetProjectionRate(state.assets[1], 'normal'))).toBe(7);
+  /* [PM STEP E · §11] 예전에는 소유자마다 자기 기준으로 계산했다(신랑 4.5% · 와이프 7%).
+   * 같은 상품에 서로 다른 기준이 쓰이는 상태 자체가 문제이므로, 이제 어느 쪽 기준도 빌려 쓰지
+   * 않고 "적용할 근거 있는 가정이 없다"(0%)로 두고 확인을 요청한다. 저장값은 그대로 둔다. */
+  expect(await page.evaluate(() => getAssetProjectionRate(state.assets[1], 'normal'))).toBe(0);
+  expect(await page.evaluate(() => getAssetProjectionRate(state.assets[0], 'normal'))).toBe(0);
 });
 
 /* ── R. 모바일 우선 가독성 ─────────────────────────────────────────────── */

@@ -1532,20 +1532,148 @@ function fxExposureNoticeFor(asset) {
  *
  * 둘이 다르면 어느 쪽도 자동으로 고치지 않는다(PM STEP 1 §3). conflict=true로 사실만 알린다.
  */
-function resolveInstrumentFxHedge(assetLike) {
+/* ─────────────────────────────────────────────────────────────────────────
+ * [PM STEP B] 상품 고유 사실(Instrument Fact) — 같은 상품이면 사실은 하나다.
+ *
+ * 그동안 환헤지 · 기준지수 · 수익률 기준 같은 "상품 자체에 관한 사실"이 자산(보유분)마다
+ * 따로 저장돼 있었고, 읽을 때도 그 보유분 것만 읽었다. 그래서 같은 상품을 두 사람이 들고
+ * 있으면 한 사람이 확인해 둔 사실을 다른 사람은 다시 입력해야 했고, 한쪽만 입력하면 두
+ * 보유분이 조용히 다르게 계산됐다(실측 확인).
+ *
+ * 여기서는 저장 구조를 바꾸지 않는다. 읽을 때 같은 상품의 보유분 전부를 모아 하나로 해석한다.
+ *   · 저장값 이동 · 삭제 · 덮어쓰기 없음 (provenance 보존)
+ *   · localStorage · Excel · 백업 · 동기화 schema 무변경
+ *
+ * 보유 사실(수량 · 매입단가 · 소유자 · 계좌)과 개인 운용 설정(목표 비중 등)은 대상이 아니다.
+ * 이 파일의 함수들은 상품 사실만 다룬다.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 상품 식별자. 앱이 이미 쓰는 규칙(js/05 buildCustomRateKey)을 그대로 쓴다 -
+ * 티커가 있으면 yahooTicker, 없으면 'NAME:이름'. 종목 역할 · 종목 수익률 기준 · 운용보수
+ * 세 Master가 이미 같은 키를 쓰므로 새 식별 체계를 만들지 않는다. */
+function instrumentIdentityOfAsset(assetLike) {
   const a = (assetLike && typeof assetLike === 'object') ? assetLike : {};
-  const override = (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(a.fxHedgeStatus) || null) : null;
+  const t = (typeof sanitizeTicker === 'function') ? sanitizeTicker(a.ticker).yahooTicker : String(a.ticker ?? '').trim();
+  if (t) return (typeof buildCustomRateKey === 'function') ? (buildCustomRateKey(a.ticker, a.name) || t) : t;
+  /* 티커가 없으면 이름이 곧 식별자인데, 이름만으로는 같은 상품이라고 단정할 수 없다 -
+   * 실제로 같은 이름의 원화 채권과 달러 채권이 서로 다른 상품인 경우가 있다(e2e/59 실측).
+   * 앱이 보유분을 가르는 기준(assetMatchesLedgerIdentity)도 통화를 포함하므로 여기서도 함께 본다.
+   * 티커가 있는 상품은 영향이 없다 - 통화가 달라도 같은 상품이다. */
+  const n = String(a.name ?? '').replace(/\s+/g, '').toUpperCase();
+  if (!n) return null;
+  const ccy = String(a.currency ?? '').trim().toUpperCase();
+  return 'NAME:' + n + (ccy ? '|' + ccy : '');
+}
+
+/* 같은 상품의 보유분 전부. id로 정렬해 배열 순서에 답이 좌우되지 않게 한다. */
+function instrumentHoldingsOf(assetLike, assets) {
+  const key = instrumentIdentityOfAsset(assetLike);
+  if (!key) return [];
+  const pool = Array.isArray(assets) ? assets
+    : ((typeof state !== 'undefined' && Array.isArray(state.assets)) ? state.assets : []);
+  return pool.filter((x) => x && instrumentIdentityOfAsset(x) === key)
+    .slice().sort((x, y) => String(x.id || '').localeCompare(String(y.id || '')));
+}
+
+/* 상품 사실 하나를 해석한다.
+ *   spec.userOf(asset)    이 보유분에 저장된 "사용자가 확정한 상품 사실"(없으면 null)
+ *   spec.masterOf(asset)  공식 Master가 아는 상품 사실(없으면 null) - 같은 상품이면 모두 같은 값
+ *
+ * 판정(PM 지시 §8)
+ *   확정값이 서로 다름           → CONFLICT   어느 쪽도 고르지 않는다(value=null)
+ *   확정값 하나 + Master 불일치  → 그 값을 쓰되 conflict=true로 알린다
+ *                                  (사용자 확정이 1순위라는 기존 정책 E-01 · §55를 지킨다 -
+ *                                   Master가 사용자의 확인을 조용히 덮어쓰지 않는다)
+ *   확정값 하나 + Master 일치/없음 → RESOLVED  동일 상품 전체가 그 값을 쓴다
+ *   확정값 없음 + Master 있음      → RESOLVED  Master 값
+ *   둘 다 없음                     → UNRESOLVED (추정하지 않는다)
+ *
+ * 반환값의 units는 "각 보유분이 무엇을 말하고 있는가"다 - 안내 문구가 쓴다.
+ */
+function resolveSharedInstrumentFact(assetLike, spec, assets) {
+  const self = (assetLike && typeof assetLike === 'object') ? assetLike : null;
+  const members = instrumentHoldingsOf(assetLike, assets);
+  /* 넘어온 자산이 목록에 없을 수도 있다(아직 저장 전인 입력값 · 화면이 만든 가상 자산 ·
+   * 목표비중 계산용 probe). 그 값도 이 상품에 대한 사실이므로 반드시 함께 센다 -
+   * 빠뜨리면 "방금 고른 값이 무시되는" 상태가 된다. */
+  const pool = members.slice();
+  if (self && !pool.some((m) => m === self || (m.id && self.id && m.id === self.id))) pool.push(self);
+  const readUser = (m) => { try { const v = spec.userOf(m); return (v === undefined || v === '') ? null : v; } catch (e) { return null; } };
+  const readMaster = (m) => { try { const v = spec.masterOf ? spec.masterOf(m) : null; return (v === undefined || v === '') ? null : v; } catch (e) { return null; } };
   let master = null;
-  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
-    let rec;
-    try { rec = lookupExposureRecord(a); } catch (e) { rec = null; }
-    const raw = (rec && rec.entry) ? rec.entry.hedgeStatus : null;
-    master = (raw === 'HEDGED' || raw === 'UNHEDGED') ? raw : null;
+  for (let i = 0; i < pool.length && master === null; i += 1) master = readMaster(pool[i]);
+  if (master === null && self && pool.indexOf(self) < 0) master = readMaster(self);
+  const units = pool.map((m) => {
+    const own = readUser(m);
+    return { id: m.id, owner: m.owner, accountType: m.accountType, currency: m.currency, own, effective: own || master };
+  });
+  const distinct = [...new Set(units.map((u) => u.own).filter((v) => v !== null))];
+  const base = { units, master, distinct, memberIds: pool.map((m) => m.id) };
+  if (distinct.length > 1) {
+    // 어느 쪽도 고르지 않는다. 사용자가 하나로 맞출 때까지 이 상품 사실은 없는 것으로 둔다.
+    return Object.assign({ status: 'CONFLICT', value: null, conflict: true, reason: 'holdingConflict' }, base);
   }
-  const conflict = !!(override && master && override !== master);
-  if (override) return { status: override, source: 'userOverride', override, master, conflict };
-  if (master) return { status: master, source: 'instrumentMaster', override, master, conflict };
-  return { status: null, source: 'UNRESOLVED', override, master, conflict };
+  if (distinct.length === 1) {
+    /* [PM 최종 지시] 공식 자료와 사용자가 확인해 둔 값이 다르면 **어느 쪽도 쓰지 않는다.**
+     * 예전에는 "사용자 확정이 1순위"라는 기존 정책에 따라 사용자 값을 쓰면서 충돌만 표시했는데,
+     * 그러면 사용자 값이 공식 자료를 조용히 이기는 것과 같다. 반대로 Master를 쓰면 사용자의
+     * 확인을 조용히 덮어쓰는 것이 된다. 둘 다 임의 선택이므로 확정을 보류하고 확인을 요청한다. */
+    const mismatch = !!(master && master !== distinct[0]);
+    if (mismatch) {
+      return Object.assign({
+        status: 'CONFLICT', value: null, conflict: true, reason: 'masterMismatch', source: 'INSTRUMENT_CONFLICT'
+      }, base);
+    }
+    return Object.assign({
+      status: 'RESOLVED', value: distinct[0], conflict: false,
+      reason: 'userConfirmed', source: 'userConfirmed'
+    }, base);
+  }
+  if (master) return Object.assign({ status: 'RESOLVED', value: master, conflict: false, reason: 'instrumentMaster', source: 'instrumentMaster' }, base);
+  return Object.assign({ status: 'UNRESOLVED', value: null, conflict: false, reason: 'noEvidence', source: 'UNRESOLVED' }, base);
+}
+
+/* 안내 문구가 쓰는 "누가 무엇을 말하고 있는가" 목록. 값이 실제로 갈리는 보유분만 남긴다. */
+function instrumentFactUnitLines(fact, labelOf) {
+  const label = typeof labelOf === 'function' ? labelOf : ((v) => String(v));
+  return (fact && Array.isArray(fact.units) ? fact.units : [])
+    .filter((u) => u.own !== null && u.own !== undefined)
+    .map((u) => `${u.owner || '소유자 미지정'} · ${u.accountType || '계좌 미지정'} - ${label(u.own)}`);
+}
+
+/* 공식 원장(Exposure Master)이 아는 이 상품의 환헤지 사실. 없으면 null. */
+function exposureHedgeMasterOf(assetLike) {
+  if (typeof lookupExposureRecord !== 'function' || typeof isExposureMasterActive !== 'function') return null;
+  if (!isExposureMasterActive()) return null;
+  let rec;
+  try { rec = lookupExposureRecord(assetLike); } catch (e) { rec = null; }
+  const raw = (rec && rec.entry) ? rec.entry.hedgeStatus : null;
+  return (raw === 'HEDGED' || raw === 'UNHEDGED') ? raw : null;
+}
+
+/* [PM STEP B · 1-D 폐기] 이 상품의 환헤지 사실. 같은 상품이면 소유자 · 계좌 · 거래가 달라도 하나다.
+ *
+ * 예전(STEP 1-D)에는 보유분 자기 값만 읽었다. 그래서 한 사람이 확인해 둔 사실을 다른 사람이
+ * 다시 입력해야 했고, 한쪽만 입력하면 두 보유분이 서로 다른 σ로 계산됐다(MC 13.72 ↔ 16.64).
+ * js/08의 원래 설계 주석이 이미 말하고 있던 것으로 되돌린다 -
+ * "같은 종목이 소유자별로 나뉘어 있어도 이 상품이 무엇을 따라가는가는 하나이기 때문이다."
+ *
+ * 반환값의 status · source · override · master · conflict는 기존 소비처와 같은 모양을 유지한다.
+ */
+function resolveInstrumentFxHedge(assetLike, assets) {
+  const fact = resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(x && x.fxHedgeStatus) || null) : null,
+    masterOf: (x) => exposureHedgeMasterOf(x)
+  }, assets);
+  const source = fact.status === 'CONFLICT' ? 'INSTRUMENT_CONFLICT'
+    : (fact.status === 'UNRESOLVED' ? 'UNRESOLVED'
+      : (fact.reason === 'instrumentMaster' ? 'instrumentMaster' : 'userOverride'));
+  return {
+    status: fact.value, source,
+    // override는 "이 상품에 대해 사용자가 확정한 값"이다(어느 보유분에 저장돼 있든 같은 상품 사실이다).
+    override: fact.distinct.length === 1 ? fact.distinct[0] : null,
+    master: fact.master, conflict: fact.conflict, instrument: fact
+  };
 }
 
 /* [PM STEP 1-B] 같은 종목을 여러 보유분이 서로 다른 환헤지로 들고 있는지 본다.
@@ -1557,21 +1685,129 @@ function resolveInstrumentFxHedge(assetLike) {
  * 반환은 Return Key의 기존 충돌 표현과 같은 모양이다({ conflict, values, units }).
  * 값이 없는 보유분은 "아직 확인하지 않음"이라 충돌로 세지 않는다 - 서로 다른 확정값이 둘 이상일 때만 충돌이다.
  */
-function fxHedgeConflictFor(assetLike, assets) {
+
+/* [PM STEP B] 시장민감도 기준 지수 - "이 상품을 어느 지수와 비교하는가"는 상품 사실이다.
+ * 소유자 · 계좌가 달라도 하나여야 한다. 공식 Master는 없으므로 사용자 확정값만 본다. */
+function resolveInstrumentMarketBetaIndex(assetLike, assets) {
+  return resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => (typeof sanitizeMarketBetaIndexOverride === 'function')
+      ? (sanitizeMarketBetaIndexOverride(x && x.marketBetaIndexOverride) || null) : null,
+    masterOf: () => null
+  }, assets);
+}
+
+/* [PM STEP B] 장기 수익률 기준(대표매칭) - "이 상품이 어떤 기준을 따르는가"는 상품 사실이다.
+ * 화면 라벨도 "장기 수익률 기준"이고, 같은 목적의 종목 단위 Master(PMD-12)가 이미 있다.
+ * 여기서는 보유분에 저장된 사용자 확정값을 상품 단위로 모으기만 한다 -
+ * Master와의 우선순위는 기존 resolveAssetGroupKeyDetail(js/05)이 그대로 정한다. */
+function resolveInstrumentRateMatch(assetLike, assets) {
+  return resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => (typeof sanitizeRateMatchOverride === 'function')
+      ? (sanitizeRateMatchOverride(x && x.rateMatchOverride) || null)
+      : (String((x && x.rateMatchOverride) ?? '').trim() || null),
+    /* 「수익률 관리」에 등록해 둔 종목 기준(PMD-12)도 같은 상품에 대한 사용자 확정값이다.
+     * 보유분에 적어 둔 값과 어긋나면 어느 쪽이 맞는지 앱이 정하지 않고 사실만 알린다. */
+    masterOf: (x) => {
+      if (typeof findInstrumentReturnKey !== 'function') return null;
+      let r;
+      try { r = findInstrumentReturnKey(x && x.ticker, x && x.name); } catch (e) { r = null; }
+      const k = (r && !r.conflict && r.key) ? String(r.key) : null;
+      return (k && typeof canonicalRateKey === 'function') ? canonicalRateKey(k) : k;
+    }
+  }, assets);
+}
+
+/* [PM STEP B] 자산 분류 - 사용자가 직접 확정한 것(categorySource === 'user')만 상품 사실로 본다.
+ * 자동 추천값(system)은 "아직 확인하지 않음"이라 다른 보유분의 확인을 막지 않는다.
+ * 확정값이 갈리면 어느 쪽도 고르지 않는다 - 다만 화면 · 합계가 멈추지 않도록
+ * 소비처는 value가 없으면 각자의 저장값을 그대로 쓴다(표시용 폴백). */
+function resolveInstrumentCategory(assetLike, assets) {
+  return resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => (x && x.categorySource === 'user' && typeof sanitizeAssetCategory === 'function')
+      ? (sanitizeAssetCategory(x.category) || null) : null,
+    masterOf: () => null
+  }, assets);
+}
+
+/* 이 상품에 대해 실제로 쓸 자산 분류. 상품 사실이 있으면 그것을, 없으면 이 보유분의 값을 쓴다. */
+function effectiveInstrumentCategory(assetLike, assets) {
   const a = (assetLike && typeof assetLike === 'object') ? assetLike : {};
-  const key = (typeof sanitizeTicker === 'function') ? sanitizeTicker(a.ticker).yahooTicker : String(a.ticker || '').trim();
-  if (!key) return { conflict: false, values: [], units: [] };
-  const pool = Array.isArray(assets) ? assets : ((typeof state !== 'undefined' && Array.isArray(state.assets)) ? state.assets : []);
-  const units = [];
-  pool.forEach((x) => {
-    if (!x) return;
-    const k = (typeof sanitizeTicker === 'function') ? sanitizeTicker(x.ticker).yahooTicker : String(x.ticker || '').trim();
-    if (k !== key) return;
-    const st = (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(x.fxHedgeStatus) || null) : null;
-    units.push({ id: x.id, owner: x.owner, accountType: x.accountType, currency: x.currency, status: st });
-  });
-  const values = [...new Set(units.map((u) => u.status).filter(Boolean))];
-  return { conflict: values.length > 1, values, units };
+  const fact = resolveInstrumentCategory(a, assets);
+  return fact.value || a.category;
+}
+
+/* [PM STEP B] 상품명 - 티커가 있는 상품에만 적용한다.
+ * 티커가 없는 자산은 이름 자체가 식별자라(NAME: 키) 통합 대상이 아니다(PM 지시 §5 · §15).
+ * 이름을 고쳐 쓰지 않는다 - 이름이 갈리면 "이름을 근거로 한 판정"을 하지 않게 하는 데만 쓴다. */
+function resolveInstrumentName(assetLike, assets) {
+  const a = (assetLike && typeof assetLike === 'object') ? assetLike : {};
+  const hasTicker = !!((typeof sanitizeTicker === 'function') ? sanitizeTicker(a.ticker).yahooTicker : String(a.ticker ?? '').trim());
+  if (!hasTicker) return { status: 'RESOLVED', value: String(a.name ?? '').trim() || null, conflict: false, reason: 'nameIsIdentity', units: [], distinct: [], master: null, memberIds: [] };
+  return resolveSharedInstrumentFact(a, {
+    userOf: (x) => String((x && x.name) ?? '').trim() || null,
+    masterOf: () => null
+  }, assets);
+}
+
+/* [PM STEP B] 국내/해외 - 상품이 어디에 속한 것인가는 상품 사실이다. */
+function resolveInstrumentIsDomestic(assetLike, assets) {
+  return resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => String((x && x.isDomestic) ?? '').trim() || null,
+    masterOf: () => null
+  }, assets);
+}
+
+/* [PM STEP B] 종목 역할(포지션) - 앱이 이미 tickerRoles 레지스트리로 종목 단위 공유를 한다.
+ * 그런데 자산 레코드의 role이 레지스트리와 어긋날 수 있었다(STEP A 실측).
+ * 레지스트리를 Master로 두고 보유분의 값을 상품 단위로 모아 같은 규칙으로 판정한다. */
+function resolveInstrumentRole(assetLike, assets) {
+  return resolveSharedInstrumentFact(assetLike, {
+    userOf: (x) => (typeof parseAssetRoleInput === 'function') ? (parseAssetRoleInput(x && x.role) || null) : ((x && x.role) || null),
+    masterOf: (x) => (typeof getTickerRole === 'function') ? (getTickerRole(x && x.ticker, x && x.name) || null) : null
+  }, assets);
+}
+
+/* 상품 사실 충돌을 사용자 말로 옮긴다. 어느 쪽도 고르지 않는다는 사실과 할 일을 말한다.
+ * labelOf는 값 → 화면 표기 변환(없으면 값 그대로). */
+function instrumentFactConflictNote(fact, what, labelOf) {
+  if (!fact || !fact.conflict) return '';
+  const lines = instrumentFactUnitLines(fact, labelOf);
+  const label = typeof labelOf === 'function' ? labelOf : ((v) => String(v));
+  if (fact.status === 'CONFLICT') {
+    return `확인 필요 - 같은 종목인데 보유분마다 ${what}이(가) 다릅니다. ${lines.join(' / ')}. `
+      + '같은 상품이므로 하나여야 합니다 - 어느 쪽이 맞는지 확인해 주세요. 앱이 임의로 고르지 않습니다.';
+  }
+  return `확인 필요 - 확인해 두신 ${what}(${lines.join(' / ')})이(가) 공식 자료(${label(fact.master)})와 다릅니다. `
+    + '어느 쪽이 맞는지 확인될 때까지 앱이 어느 값도 쓰지 않습니다 - 하나로 맞춰 주세요.';
+}
+/* [PM STEP B · 결함 2] 같은 상품의 환헤지 해석이 갈리는지 본다.
+ *
+ * 예전에는 **직접 입력한 값끼리만** 비교했다. 그래서 한 사람만 「환헤지」를 고르고 다른 사람은
+ * 비워 둔 경우, 비운 쪽은 원장 값을 따라 실제 해석이 갈리는데도 아무 말도 하지 않았다(실측).
+ * 이제 앱이 실제로 쓰는 값(effective value)으로 판정한다.
+ *
+ * 상품 사실을 하나로 해석하게 됐으므로 갈리는 경우는 둘뿐이다.
+ *   · 확정값이 서로 다르다        → 어느 쪽도 쓰지 않는다(CONFLICT)
+ *   · 확정값이 공식 원장과 다르다 → 사용자 값을 쓰되 확인이 필요하다고 알린다
+ */
+function fxHedgeConflictFor(assetLike, assets) {
+  const r = resolveInstrumentFxHedge(assetLike, assets);
+  const fact = r.instrument || { units: [], distinct: [], master: null, status: 'UNRESOLVED' };
+  const units = (fact.units || []).map((u) => ({
+    id: u.id, owner: u.owner, accountType: u.accountType, currency: u.currency,
+    status: u.own, effective: fact.value
+  }));
+  // 사용자가 이 상품에 대해 확정해 둔 서로 다른 값들(충돌 여부와 무관하게 채운다).
+  // 공식 자료와 어긋나는 경우에는 비교 대상이 되도록 공식 값도 함께 보여 준다.
+  const values = fact.reason === 'masterMismatch'
+    ? [...new Set(fact.distinct.concat(fact.master ? [fact.master] : []))]
+    : fact.distinct.slice();
+  return {
+    conflict: fact.status === 'CONFLICT',
+    kind: fact.status === 'CONFLICT' ? fact.reason : null,
+    // 충돌이면 resolved는 언제나 null이다 - 앱이 고른 값이 없다는 뜻이다.
+    values, units, master: fact.master, resolved: fact.value
+  };
 }
 
 function makeAsset(raw) {

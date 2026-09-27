@@ -165,7 +165,8 @@ test('7. [v254] 계획 확인 안내는 메인 Risk 카드에 표시되지 않�
   expect(txt).not.toContain('가격 변동 위험');
   expect(txt).not.toContain('포트폴리오 설정에서 보기');
   await expect(page.locator('#riskPlanCheckBtn')).toHaveCount(0);
-  expect(txt).toContain('종합 위험점수');
+  // [사용자 지시 2026-09-27] 모바일 한 행 표시를 위해 이름에서 「종합」을 뺐다 - 이름 확인은 그대로 한다.
+  expect(txt).toContain('포트폴리오 위험점수');
   await expect(page.locator('#riskDiagnosisSummary #riskDetailBtn')).toBeVisible();
 });
 

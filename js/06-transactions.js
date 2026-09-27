@@ -1394,10 +1394,20 @@ function openTransactionModal(txId) {
     // [B-5 일관성] 통화까지 보고 이 거래의 자산을 찾는다 - 예전엔 같은 이름의 다른 통화 자산이
     // 잡혀서, 달러 거래를 열면 원화 자산의 대표매칭키/역할이 폼에 채워지고 저장 시 그 값이 옮겨 붙었다.
     const matchedForEdit = state.assets.find((a) => assetMatchesLedgerIdentity(a, tx));
-    populateRateMatchOverrideOptions((matchedForEdit && matchedForEdit.rateMatchOverride) || '');
-    // [PM 수정 지시 2026-09-23 · C] 수정 모드에서는 이 자산에 저장된 환헤지를 그대로 보여 준다.
+    /* [PM STEP C] 이 상품에 대해 이미 확인해 둔 기준이 있으면 그 값을 보여 준다 -
+     * 소유자·계좌가 달라도 같은 상품이면 상품 사실은 하나이므로 다시 고르게 하지 않는다. */
+    const rmFactTx = (typeof resolveInstrumentRateMatch === 'function' && matchedForEdit)
+      ? resolveInstrumentRateMatch(matchedForEdit) : null;
+    populateRateMatchOverrideOptions((rmFactTx && rmFactTx.distinct.length === 1 ? rmFactTx.value : null)
+      || (matchedForEdit && matchedForEdit.rateMatchOverride) || '');
+    // [PM 수정 지시 2026-09-23 · C] 수정 모드에서는 이 상품에 확인해 둔 환헤지를 그대로 보여 준다.
     const hedgeEl = document.getElementById('tx_fxHedgeStatus');
-    if (hedgeEl) hedgeEl.value = (matchedForEdit && matchedForEdit.fxHedgeStatus) || '';
+    const hedgeFactTx = (typeof resolveInstrumentFxHedge === 'function' && matchedForEdit)
+      ? resolveInstrumentFxHedge(matchedForEdit) : null;
+    if (hedgeEl) {
+      hedgeEl.value = (hedgeFactTx && hedgeFactTx.source === 'userOverride' ? hedgeFactTx.override : null)
+        || (matchedForEdit && matchedForEdit.fxHedgeStatus) || '';
+    }
     // [자산별 역할(포지션) 분류 - 수정 모드] rateMatchOverride와 동일하게 매칭되는 자산의 현재 role을 보여준다.
     // [Phase 32] 정식 4개 + (이 자산이 legacy core_mid면) legacy 항목까지 채운 뒤 값을 세팅한다 -
     // 옵션에 없는 값이면 select가 조용히 빈칸이 되어 저장 시 기존 포지션이 날아간다.

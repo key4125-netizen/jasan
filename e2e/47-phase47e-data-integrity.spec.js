@@ -221,8 +221,11 @@ test('J. Golden 사용자의 13개 대표매칭 키가 백업 왕복 후에도 �
         custom[k] = { label: k, conservative: golden[k][0], normal: golden[k][1], optimistic: golden[k][2] };
       });
       state.projection.customScenarioRates = custom;
-      state.assets = Object.keys(golden).map((k) => Object.assign(
-        makeAsset({ ticker: 'ZZG', owner: '신랑', accountType: '일반계좌', name: 'GOLDEN-' + k, currency: 'KRW', quantity: 1, buyPrice: 1 }),
+      state.assets = Object.keys(golden).map((k, i) => Object.assign(
+        /* [PM STEP E] 예전에는 13개 자산이 한 티커(ZZG)를 공유했다. 상품 사실을 상품 단위로
+         * 해석하게 된 뒤로는 "한 상품에 13개의 서로 다른 기준"이 되어 충돌로 잡힌다 -
+         * 이 테스트가 보려는 것은 13개 키의 백업 왕복이므로 종목을 키마다 나눈다(검사 범위 동일). */
+        makeAsset({ ticker: 'ZZG' + i, owner: '신랑', accountType: '일반계좌', name: 'GOLDEN-' + k, currency: 'KRW', quantity: 1, buyPrice: 1 }),
         { rateMatchOverride: k }));
       const before = {};
       state.assets.forEach((a, i) => { before[Object.keys(golden)[i]] = presets.map((p) => getAssetProjectionRate(a, p)); });

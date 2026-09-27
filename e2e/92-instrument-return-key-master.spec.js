@@ -133,8 +133,13 @@ test('T-2. 다른 기준을 직접 고르면 그 자산의 사용자 지정으�
   await expect(page.locator('#txRateMatchHelpText')).toContainText('사용자 지정으로 저장');
   await submitTx(page);
   const got = await assetView(page, "a.name === 'KODEX 200TR'");
-  expect([got.override, got.key, got.sourceLabel]).toEqual(['NASDAQ', 'NASDAQ', '사용자 지정']);
-  expect(got.rate).toBe(await page.evaluate(() => resolveProjectionRateForKey('NASDAQ', 'normal', false)));
+  /* [PM 최종 지시] 저장은 예전과 같다 - 이 자산의 사용자 지정으로만 들어가고
+   * 종목 기준 · 사전은 그대로다. 다만 이 종목에는 종목 기준(KOSPI)이 이미 등록돼 있어
+   * 사용자 지정(NASDAQ)과 어긋난다 - 어느 쪽도 계산에 쓰지 않고 확인을 요청한다. */
+  expect(got.override, '사용자 지정은 그 자산에 그대로 저장된다').toBe('NASDAQ');
+  expect(got.key, '임의의 한쪽을 고르지 않는다').not.toBe('NASDAQ');
+  expect(got.key, 'Master가 사용자 확인을 조용히 덤어쓰지도 않는다').not.toBe('KOSPI');
+  expect(got.sourceLabel).not.toBe('종목 기준');
   expect(await readMaster(page)).toEqual({ '278530.KS': 'KOSPI' });
   expect(await readRates(page)).toEqual(rates);
 });

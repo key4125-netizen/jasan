@@ -405,23 +405,66 @@ async function seedMetrics(page) {
   });
 }
 
-test('9. 점수 이름이 "포트폴리오 종합 위험점수"이고 (i)가 점수와 같은 줄에 있다', async ({ page }) => {
+test('9. 점수 이름이 "포트폴리오 위험점수"이고 (i)가 점수와 같은 줄에 있다', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => typeof renderRiskDiagnosisSummary === 'function');
   await seedMetrics(page);
   const card = page.locator('#riskDiagnosisSummary');
-  await expect(card).toContainText('포트폴리오 종합 위험점수');
+  /* [사용자 지시 2026-09-27] 모바일에서 문구 전체가 한 행에 들어가도록 이름에서 「종합」을 뺐다.
+   * 「포트폴리오」 · 「위험점수」 · 점수 · 등급은 그대로 남아 있어야 한다. */
+  await expect(card).toContainText('포트폴리오 위험점수');
+  await expect(card).not.toContainText('포트폴리오 종합 위험점수');
   await expect(page.locator('#portfolioRiskInfoBtn')).toBeVisible();
   const same = await page.evaluate(() => {
-    const spans = document.querySelectorAll('#riskDiagnosisSummary span.whitespace-nowrap');
+    const line = document.getElementById('portfolioRiskScoreLine');
     const b = document.getElementById('portfolioRiskInfoBtn').getBoundingClientRect();
-    const s = spans[1].getBoundingClientRect();
-    return Math.abs(s.top - b.top) < 12;
+    return Math.abs(line.getBoundingClientRect().top - b.top) < 12;
   });
   expect(same).toBe(true);
   // 기존 세부내용 버튼과 역할이 분리돼 공존한다.
   await expect(page.locator('#riskDetailBtn')).toBeVisible();
 });
+
+/* [사용자 지시 2026-09-27] 위험점수 문구가 모바일에서 두 줄로 나뉘었다.
+ * 문구 전체(이름 + 점수 + 등급)가 한 행이어야 한다 - 이름과 점수 사이에도, 점수와 등급 사이에도
+ * 줄바꿈이 없어야 하며, 글자가 잘리거나 가로 스크롤이 생기면 안 된다. */
+for (const [w, label] of [[375, '375px'], [390, '일반 모바일'], [1440, '데스크톱']]) {
+  test(`9-1. ${label} - 위험점수 문구 전체가 한 행이고 잘리지 않는다`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 812 });
+    await page.goto('/');
+    await page.waitForFunction(() => typeof renderRiskDiagnosisSummary === 'function');
+    await seedMetrics(page);
+    const r = await page.evaluate(() => {
+      const el = document.getElementById('portfolioRiskScoreLine');
+      /* 이 요소는 글자 + (i) 버튼을 담은 flex다. 버튼 박스와 글자 박스는 세로 정렬이 미세하게
+       * 달라 Range 전체를 재면 항상 2개로 잡힌다 - 줄바꿈 여부는 **글자 자체**로만 잰다.
+       * (i)가 같은 줄에 있는지는 위 9번 테스트가 따로 본다. */
+      const textNode = Array.from(el.childNodes).find((n) => n.nodeType === 3 && n.textContent.trim());
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      const rects = Array.from(range.getClientRects()).filter((x) => x.height > 1);
+      const tops = [...new Set(rects.map((x) => Math.round(x.top)))];
+      const card = el.closest('.rounded-xl');
+      const cs = getComputedStyle(el);
+      return {
+        text: el.textContent.replace(/\s+/g, ' ').trim(),
+        lineCount: tops.length,
+        fontPx: parseFloat(cs.fontSize),
+        overflowsCard: el.getBoundingClientRect().right > card.getBoundingClientRect().right + 1,
+        clipped: el.scrollWidth > el.clientWidth + 1,
+        docScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      };
+    });
+    expect(r.text, '이름을 더 줄이지 않는다').toContain('포트폴리오 위험점수');
+    expect(r.text, '표시(●)를 지우지 않는다').toMatch(/^[^\s]/);
+    expect(r.text).toMatch(/\d+\/100 \[.+\]/);
+    expect(r.lineCount, '문구 전체가 한 행이어야 한다').toBe(1);
+    expect(r.fontPx, '가독성 최소 14px을 지킨다').toBeGreaterThanOrEqual(14);
+    expect(r.clipped, '글자가 잘리지 않는다').toBe(false);
+    expect(r.overflowsCard, '카드 밖으로 넘치지 않는다').toBe(false);
+    expect(r.docScroll, '가로 스크롤이 생기지 않는다').toBe(false);
+  });
+}
 
 test('10. (i)를 누르면 「포트폴리오 위험 안내」가 열리고 6대 요인 · 대상 범위가 전부 들어 있다', async ({ page }) => {
   await page.goto('/');
@@ -469,12 +512,14 @@ test('11. 진단 대상 고지는 점수 옆 ⓘ 팝업으로 합쳐졌다(정�
       const card = document.getElementById('riskDiagnosisSummary');
       const spans = card.querySelectorAll('span.whitespace-nowrap');
       const btn = document.getElementById('portfolioRiskInfoBtn');
+      // [2026-09-27] 이름과 점수를 한 span으로 합쳐 한 행에 표시하므로 그 span을 직접 본다.
+      const line = document.getElementById('portfolioRiskScoreLine');
       return {
         카드넘침: card.scrollWidth > card.clientWidth + 1,
         글자잘림: [...spans].some((s) => s.scrollWidth > s.clientWidth + 1),
         페이지가로스크롤: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        점수와info같은줄: Math.abs(spans[1].getBoundingClientRect().top - btn.getBoundingClientRect().top) < 12,
-        글자크기: parseFloat(getComputedStyle(spans[1]).fontSize)
+        점수와info같은줄: Math.abs(line.getBoundingClientRect().top - btn.getBoundingClientRect().top) < 12,
+        글자크기: parseFloat(getComputedStyle(line).fontSize)
       };
     });
     expect(r.카드넘침).toBe(false);

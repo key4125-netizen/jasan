@@ -165,9 +165,13 @@ test('보존. 해외 직접 상장에 이미 저장된 환헤지 값이 있으�
     assert.strictEqual(reasonOf(stored), 'FOREIGN_DIRECT_LISTING_STORED');
     assert.match(noticeOf(stored), /환노출/);
   });
-  // 저장된 HEDGED는 여전히 MC 자산군에 적용된다 - 앱이 조용히 무효화하지 않는다.
+  /* [PM 최종 지시] 저장값은 지우지 않는다 - 다만 공식 자료와 어긋나는 동안에는 계산에 쓰지 않는다.
+   * "조용히 무효화"가 아니라 "확인될 때까지 확정 보류"이며, 화면이 그 사실을 알린다. */
   const hedged = Object.assign({}, base, { fxHedgeStatus: 'HEDGED' });
-  assert.strictEqual(ev(`applyUserHedgeToAppClass('US_EQUITY', ${JSON.stringify(hedged)})`), 'US_EQUITY_HEDGED');
+  assert.strictEqual(hedged.fxHedgeStatus, 'HEDGED', '저장값은 그대로다');
+  assert.strictEqual(ev(`(resolveInstrumentFxHedge(${JSON.stringify(hedged)}) || {}).source`), 'INSTRUMENT_CONFLICT');
+  assert.strictEqual(ev(`applyUserHedgeToAppClass('US_EQUITY', ${JSON.stringify(hedged)})`), null,
+    '확정되지 않은 환헤지는 자산군을 바꾸지 않는다');
 });
 
 test('보존. 칸을 숨기는 코드가 저장된 값을 지우지 않는다', () => {

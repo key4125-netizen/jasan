@@ -104,7 +104,10 @@ const hedgeOf = (page, owner) => page.evaluate((o) => {
   return a ? (a.fxHedgeStatus === undefined ? '(없음)' : a.fxHedgeStatus) : '(자산 없음)';
 }, owner);
 
-test('C. 통합 상세에서 고른 값은 그 소유자 · 계좌 보유분에만 적용된다', async ({ page }) => {
+/* [PM STEP E · STEP 1-D 폐기] 환헤지는 상품 자체의 사실이므로 소유자 · 계좌가 달라도 하나다.
+ * 예전에는 고른 보유분에만 적었고 다른 소유자는 다시 고르게 했다 -
+ * 같은 상품에 대해 사람마다 다른 답이 저장되는 구조였다. 이제 한 번 확인하면 끝이다. */
+test('C. 통합 상세에서 고른 값은 같은 종목의 모든 보유분에 적용된다', async ({ page }) => {
   await open(page);
   await seedTwoOwners(page, undefined, undefined);
   // 같은 티커의 모든 보유분을 묶어 여는 경로(전체 목록 통합 행 · 종목 상세와 같은 진입)
@@ -115,12 +118,12 @@ test('C. 통합 상세에서 고른 값은 그 소유자 · 계좌 보유분에�
   await page.waitForTimeout(300);
 
   expect(await hedgeOf(page, '신랑'), '고른 보유분').toBe('HEDGED');
-  expect(await hedgeOf(page, '와이프'), '다른 소유자는 영향을 받지 않는다').toBe('(없음)');
+  expect(await hedgeOf(page, '와이프'), '같은 상품이므로 함께 적용된다').toBe('HEDGED');
   // 어디에 적용되는지 화면이 말해 준다.
-  await expect(page.locator('#assetDetailRiskConfirm')).toContainText('보유분에만 적용됩니다');
+  await expect(page.locator('#assetDetailRiskConfirm')).toContainText('모든 보유분');
 });
 
-test('C-2. 소유자별 보기에서 연 단일 상세도 같은 단위로 적용된다', async ({ page }) => {
+test('C-2. 소유자별 보기에서 연 단일 상세도 같은 상품 전체에 적용된다', async ({ page }) => {
   await open(page);
   await seedTwoOwners(page, undefined, undefined);
   const wifeId = await page.evaluate(() => state.assets.find((a) => a.owner === '와이프').id);
@@ -129,7 +132,7 @@ test('C-2. 소유자별 보기에서 연 단일 상세도 같은 단위로 적�
   await page.locator('#assetDetailFxHedgeSelect').selectOption('UNHEDGED');
   await page.waitForTimeout(300);
   expect(await hedgeOf(page, '와이프')).toBe('UNHEDGED');
-  expect(await hedgeOf(page, '신랑'), '다른 소유자는 그대로다').toBe('(없음)');
+  expect(await hedgeOf(page, '신랑'), '같은 상품이므로 함께 적용된다').toBe('UNHEDGED');
 });
 
 /* ══════════════ D. 충돌 안내 ══════════════ */
@@ -154,6 +157,38 @@ test('D-2. 값이 하나뿐이면(나머지는 미확인) 충돌로 보지 않�
   await expect(page.locator('#assetDetailRiskConfirm')).not.toContainText('보유분마다 환헤지가 다릅니다');
 });
 
+test('D-3. 공식 자료와 확인해 둔 값이 다르면 어느 쪽도 쓰지 않고 알린다', async ({ page }) => {
+  await open(page);
+  /* 원장에 비헤지로 등재된 종목(360750)에 신랑만 환헤지를 적어 둔 상태.
+   * 와이프 보유분은 비어 있다 - 미확인은 충돌의 원인이 아니므로 안내에 나열하지 않는다. */
+  await page.evaluate(() => {
+    state.assets = [
+      makeAsset({ id: 'zz-mh', ticker: '360750.KS', name: 'ZZ 미국S&P500 ETF', category: 'ETF', owner: '신랑',
+        accountType: '일반계좌', currency: 'KRW', isDomestic: '국내', quantity: 10, buyPrice: 1000, currentPrice: 1200, fxHedgeStatus: 'HEDGED' }),
+      makeAsset({ id: 'zz-mw', ticker: '360750.KS', name: 'ZZ 미국S&P500 ETF', category: 'ETF', owner: '와이프',
+        accountType: '연금저축', currency: 'KRW', isDomestic: '국내', quantity: 5, buyPrice: 1000, currentPrice: 1200 })
+    ];
+    persistAssets(true); renderAll();
+  });
+  await page.evaluate(() => openStockDetailModal('360750.KS', 'ZZ 미국S&P500 ETF'));
+  const box = page.locator('#assetDetailRiskConfirm');
+  await expect(box).toBeVisible();
+  await expect(box).toContainText('공식 자료');
+  await expect(box).toContainText('어느 값도 쓰지 않습니다');
+  await expect(box, '값이 없는 보유분까지 나열하면 무엇이 어긋나는지 흐려진다').not.toContainText('연금저축 - 선택 안 함');
+  // 어느 쪽도 계산에 쓰지 않고, 저장값은 둘 다 그대로다.
+  const r = await page.evaluate(() => ({
+    status: resolveInstrumentFxHedge(state.assets[0]).status,
+    source: resolveInstrumentFxHedge(state.assets[0]).source,
+    bm: resolveMarketRiskBenchmark(state.assets[0]).source,
+    stored: state.assets.map((a) => a.fxHedgeStatus || null)
+  }));
+  expect(r.status).toBeNull();
+  expect(r.source).toBe('INSTRUMENT_CONFLICT');
+  expect(r.bm).toBe('instrumentHedgeConflict');
+  expect(r.stored).toEqual(['HEDGED', null]);
+});
+
 /* ══════════════ E. 상품 기준정보 해석(1-A) ══════════════ */
 
 test('E. 원장에 비헤지로 등재된 종목은 사용자 입력이 없어도 그 사실을 쓴다', async ({ page }) => {
@@ -166,7 +201,12 @@ test('E. 원장에 비헤지로 등재된 종목은 사용자 입력이 없어�
   expect(r.없음.status).toBe('UNHEDGED');
   expect(r.없음.source).toBe('instrumentMaster');
   expect(r.없음.override).toBeNull();          // 자산에 값을 복사하지 않는다
-  expect(r.사용자헤지.status).toBe('HEDGED');  // 사용자 확정값이 먼저다
-  expect(r.사용자헤지.conflict).toBe(true);    // 다르다는 사실은 알린다
+  /* [PM 최종 지시] 원장(UNHEDGED)과 사용자 확정(HEDGED)이 다르면 어느 쪽도 계산에 쓰지 않는다.
+   * 사용자 값도 원장 값도 그대로 보존되어 화면에는 보이고, 확인을 요청한다. */
+  expect(r.사용자헤지.status).toBeNull();
+  expect(r.사용자헤지.source).toBe('INSTRUMENT_CONFLICT');
+  expect(r.사용자헤지.override).toBe('HEDGED');
+  expect(r.사용자헤지.master).toBe('UNHEDGED');
+  expect(r.사용자헤지.conflict).toBe(true);
   expect(r.원장없음.source).toBe('UNRESOLVED'); // 근거가 없으면 단정하지 않는다
 });

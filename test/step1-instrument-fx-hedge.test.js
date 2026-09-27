@@ -50,12 +50,16 @@ test('1-A-1. Master = UNHEDGED · 사용자 없음 → Master를 쓴다(값은 �
   assert.strictEqual(r.conflict, false);
 });
 
-test('1-A-2. Master = UNHEDGED · 사용자 = HEDGED → 사용자 값이 먼저이고 충돌을 표시한다', () => {
+/* [PM 최종 지시] 예전에는 사용자 확정값이 원장을 이겼다. 그러면 사용자 값이 공식 자료를
+ * 조용히 이기는 것과 같다 - 반대로 원장을 쓰면 사용자의 확인을 조용히 덮어쓰는 것이 된다.
+ * 둘 다 임의 선택이므로 **어느 쪽도 쓰지 않고** 확인을 요청한다. 저장값은 그대로 남는다. */
+test('1-A-2. Master = UNHEDGED · 사용자 = HEDGED → 어느 쪽도 쓰지 않고 확인을 요청한다', () => {
   const r = hedgeOf(etf({ fxHedgeStatus: 'HEDGED' }));
-  assert.strictEqual(r.status, 'HEDGED', '사용자가 직접 확정한 값이 언제나 먼저다');
-  assert.strictEqual(r.source, 'userOverride');
-  assert.strictEqual(r.master, 'UNHEDGED', '원장 값은 그대로 남는다');
-  assert.strictEqual(r.conflict, true, '둘이 다르다는 사실을 알린다 - 고치지는 않는다');
+  assert.strictEqual(r.status, null, '임의의 한쪽을 계산에 쓰지 않는다');
+  assert.strictEqual(r.source, 'INSTRUMENT_CONFLICT');
+  assert.strictEqual(r.override, 'HEDGED', '사용자가 확인한 값은 그대로 보인다');
+  assert.strictEqual(r.master, 'UNHEDGED', '원장 값도 그대로 남는다');
+  assert.strictEqual(r.conflict, true);
 });
 
 test('1-A-3. Master = UNHEDGED · 사용자도 UNHEDGED → 충돌이 아니다', () => {
@@ -80,9 +84,13 @@ test('1-A-5. MC 자산군이 같은 해석을 쓴다 - Risk와 갈라지지 않�
   // 원장이 비헤지라고 말하는 종목은 환노출 자산군 그대로다(기존 계산과 같다).
   assert.strictEqual(cls(etf()), 'US_EQUITY');
   assert.strictEqual(cls(etf({ fxHedgeStatus: 'UNHEDGED' })), 'US_EQUITY');
-  // 사용자가 환헤지로 확정하면 그때만 환헤지 자산군으로 간다.
-  assert.strictEqual(cls(etf({ fxHedgeStatus: 'HEDGED' })), 'US_EQUITY_HEDGED');
-  assert.ok(sigma(etf({ fxHedgeStatus: 'HEDGED' })) > sigma(etf()), 'σ가 실제로 달라진다');
+  /* [PM 최종 지시] 이 종목은 원장이 비헤지라고 적어 둔 상품이다 - 사용자가 환헤지로 적어도
+   * 둘이 어긋나므로 확정하지 않는다. 확정되지 않은 환헤지는 자산군을 바꾸지 않는다
+   * (미확인일 때와 같은 취급 - 1-A-4 참고). 원장이 없는 종목은 사용자 확정이 그대로 쓰인다. */
+  assert.strictEqual(cls(etf({ fxHedgeStatus: 'HEDGED' })), 'US_EQUITY');
+  const noMaster = etf({ ticker: MASTER_ABSENT, fxHedgeStatus: 'HEDGED' });
+  assert.strictEqual(cls(noMaster), 'US_EQUITY_HEDGED', '원장이 없으면 확인한 값을 그대로 쓴다');
+  assert.ok(sigma(noMaster) > sigma(etf()), 'σ가 실제로 달라진다');
 });
 
 test('1-A-6. 원장에 HEDGED 항목이 없다 - 이 연결로 기존 계산이 달라지지 않는다', () => {
@@ -124,7 +132,11 @@ test('1-B-3. 충돌을 찾아도 어느 값도 고르지 않고 자산을 바꾸
   const c = SB.fxHedgeConflictFor(list[0], list);
   assert.strictEqual(c.conflict, true);
   assert.strictEqual(list.map((a) => String(a.fxHedgeStatus)).join('|'), before.map(String).join('|'), '자동 전파 · 자동 삭제 없음');
-  assert.ok(!('resolved' in c) && !('winner' in c), '정답을 만들어내지 않는다');
+  /* [PM STEP B] 예전에는 "resolved라는 키 자체가 없다"로 검사했다. 이제는 어느 쪽도 고르지
+   * 않았다는 사실을 null로 명시한다 - 키가 없는 것보다 강한 단언이다. */
+  assert.strictEqual(c.resolved, null, '정답을 만들어내지 않는다');
+  assert.strictEqual(c.kind, 'holdingConflict');
+  assert.ok(!('winner' in c), '승자를 만들지 않는다');
 });
 
 test('1-B-4. 다른 종목은 서로 영향을 주지 않는다', () => {
@@ -187,4 +199,58 @@ test('1-회귀. 주식 · ETF · 현금의 기존 제공 규칙은 그대로다'
   assert.strictEqual(s({ ticker: '005930.KS', name: 'ZZ 국내주', category: '주식', currency: 'KRW', isDomestic: '국내' }).offer, false);
   assert.strictEqual(s({ ticker: '', name: '달러예금', category: '현금', currency: 'USD' }).reason, 'FX_CASH');
   assert.strictEqual(s({ ticker: '', name: '예금', category: '현금', currency: 'KRW' }).offer, false);
+});
+
+/* ══ 1-I. [PM STEP B] 상품 고유 사실은 소유자 · 계좌가 달라도 하나다 ═══════ */
+
+test('1-I-1. 원장 없는 상품 - 한 사람이 확인하면 다른 보유분도 같은 사실을 쓴다', () => {
+  const list = pool(['HEDGED', undefined, undefined]);
+  // 저장은 신랑 보유분에만 돼 있다.
+  assert.strictEqual(list[1].fxHedgeStatus, undefined);
+  // 그래도 와이프 · 연금저축 보유분이 같은 상품 사실을 쓴다(PM 지시 §6 "한 번 확인하면 끝").
+  list.forEach((a) => assert.strictEqual(SB.resolveInstrumentFxHedge(a, list).status, 'HEDGED', a.id));
+  assert.strictEqual(SB.resolveInstrumentFxHedge(list[2], list).source, 'userOverride');
+});
+
+test('1-I-2. 확정값이 갈리면 어느 쪽도 쓰지 않는다 - 상품을 둘로 나누지 않는다', () => {
+  const list = pool(['HEDGED', 'UNHEDGED']);
+  list.forEach((a) => {
+    const r = SB.resolveInstrumentFxHedge(a, list);
+    assert.strictEqual(r.status, null, '임의 선택 금지');
+    assert.strictEqual(r.source, 'INSTRUMENT_CONFLICT');
+    assert.strictEqual(r.conflict, true);
+  });
+});
+
+test('1-I-3. 배열 순서를 바꿔도 같은 답이다', () => {
+  const list = pool(['HEDGED', undefined, undefined]);
+  const pick = (arr) => arr.map((a) => {
+    const r = SB.resolveInstrumentFxHedge(a, arr);
+    return [a.id, r.status, r.source].join('/');
+  }).sort().join('|');
+  assert.strictEqual(pick(list), pick(list.slice().reverse()));
+  const conf = pool(['HEDGED', 'UNHEDGED']);
+  assert.strictEqual(pick(conf), pick(conf.slice().reverse()));
+});
+
+test('1-I-4. 원장과 사용자 확정이 다르면 알린다(한쪽만 입력해도 감지한다 - 결함 2)', () => {
+  // 이 티커는 원장이 A등급으로 UNHEDGED라고 적어 둔 상품이다.
+  const list = [
+    etf({ id: 'zz-h', owner: '신랑', accountType: '일반계좌', fxHedgeStatus: 'HEDGED' }),
+    etf({ id: 'zz-w', owner: '와이프', accountType: '연금저축' })
+  ];
+  const c = SB.fxHedgeConflictFor(list[0], list);
+  assert.strictEqual(c.conflict, true, '한쪽만 입력했어도 원장과 다르면 알린다');
+  assert.strictEqual(c.kind, 'masterMismatch');
+  // [PM 최종 지시] 확인될 때까지 어느 값도 쓰지 않는다.
+  assert.strictEqual(c.resolved, null);
+  list.forEach((a) => assert.strictEqual(SB.resolveInstrumentFxHedge(a, list).status, null, a.id));
+});
+
+test('1-I-5. 상품 사실을 읽어도 저장값을 바꾸지 않는다', () => {
+  const list = pool(['HEDGED', undefined]);
+  const before = JSON.stringify(list);
+  SB.resolveInstrumentFxHedge(list[1], list);
+  SB.fxHedgeConflictFor(list[0], list);
+  assert.strictEqual(JSON.stringify(list), before, '읽기만 한다 - 자동 전파 저장 없음');
 });

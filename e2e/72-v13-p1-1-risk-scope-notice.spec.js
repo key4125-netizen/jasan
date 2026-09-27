@@ -59,7 +59,8 @@ test('A-1. 메인 RISK 카드 - 점수 옆 ⓘ 안내에서 진단 대상(주식
   await page.evaluate(() => renderRiskDiagnosisSummary());
   await expect(page.locator('#riskDiagnosisSummary')).toBeVisible();
   // 점수 헤드라인은 그대로 카드에 있다.
-  expect(await page.locator('#riskDiagnosisSummary').innerText()).toContain('종합 위험점수');
+  // [사용자 지시 2026-09-27] 이름에서 「종합」을 뺐다(모바일 한 행 표시).
+  expect(await page.locator('#riskDiagnosisSummary').innerText()).toContain('포트폴리오 위험점수');
   // 예전의 상시 노출 줄은 없어졌다(PM 지시 2026-09-22).
   await expect(page.locator('#riskScopeNote')).toHaveCount(0);
   // 같은 고지를 점수 옆 ⓘ에서 볼 수 있어야 한다 - 정보가 사라지면 안 된다.
@@ -78,7 +79,7 @@ test('A-2. 위험 경고 팝업 - 점수 바로 아래에 같은 고지가 보�
   await expect(page.locator('#riskAlertModal')).toBeVisible();
 
   const box = await page.locator('#riskAlertScoreBox').innerText();
-  expect(box).toContain('종합 위험점수');
+  expect(box).toContain('포트폴리오 위험점수');
   expect(box).toContain('주식·ETF');
   expect(box).toContain('제외');
 });

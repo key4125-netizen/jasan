@@ -125,7 +125,10 @@ test('Fixture 2. 한국 상장 미국 ETF는 환헤지가 MC 자산군에 그대
   };
   assert.strictEqual(cls(null), 'US_EQUITY');
   assert.strictEqual(cls('UNHEDGED'), 'US_EQUITY');
-  assert.strictEqual(cls('HEDGED'), 'US_EQUITY_HEDGED');
+  /* [PM 최종 지시] 360750은 원장이 비헤지라고 적어 둔 상품이다 - 사용자가 환헤지로 적으면
+   * 둘이 어긋나므로 확정하지 않고, 확정되지 않은 환헤지는 자산군을 바꾸지 않는다.
+   * 환헤지 → 자산군 연결 자체는 그대로다(원장이 없는 종목에서 확인된다 · test/step1 1-A-5). */
+  assert.strictEqual(cls('HEDGED'), 'US_EQUITY');
 });
 
 test('보존. UI를 숨겨도 이미 저장된 값은 지우지 않는다', () => {

@@ -132,10 +132,17 @@ test('C. 자동 판별과 사용자 지정이 다르면 사용자 지정이 왕�
   const exported = await seedAndExport(page, [
     { ticker: '069500.KS', name: 'KODEX 200', currency: 'KRW', override: 'KOSDAQ' }
   ]);
-  // 자동 판별이 무엇인지도 함께 확인한다(둘이 실제로 다른 상황인지 보증).
+  /* 자동 판별이 무엇인지도 함께 확인한다(둘이 실제로 다른 상황인지 보증).
+   * [PM STEP E] 상품 사실은 이제 같은 종목의 보유분에서 함께 읽으므로, 이 종목을 보유한 상태에서
+   * probe를 만들면 사용자가 정해 둔 기준(KOSDAQ)을 그대로 물려받는다(그것이 정상 동작이다).
+   * 여기서 보려는 것은 "아무도 정하지 않았을 때의 자동 판별"이므로 보유 목록을 비우고 잰다. */
   const auto = await page.evaluate(() => {
-    const probe = makeAsset({ ticker: '069500.KS', owner: '신랑', accountType: '일반계좌', name: 'KODEX 200', currency: 'KRW', quantity: 1, buyPrice: 1 });
-    return resolveAssetGroupKeyDetail(probe).key;
+    const keep = state.assets;
+    try {
+      state.assets = [];
+      const probe = makeAsset({ ticker: '069500.KS', owner: '신랑', accountType: '일반계좌', name: 'KODEX 200', currency: 'KRW', quantity: 1, buyPrice: 1 });
+      return resolveAssetGroupKeyDetail(probe).key;
+    } finally { state.assets = keep; }
   });
   expect(auto).toBe('KOSPI');
   expect(cellOf(exported.rows, 'KODEX 200')).toBe('KOSDAQ');

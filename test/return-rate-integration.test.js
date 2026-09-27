@@ -183,36 +183,48 @@ test('C-1. 같은 티커 · 같은 소유자 / 다른 소유자 · 같은 키는
   assert.ok(!codes.includes('SAFETY_RETURN_KEY_CONFLICT'));
 });
 
-test('C-2. 같은 티커 · 다른 소유자 · 다른 키 - 결정론은 소유자별, MC는 기준별 instrument로 나뉘고 서로 빌려 쓰지 않는다 + 경고', async () => {
+/* [PM STEP C · §11 · §12] 같은 상품에 서로 다른 기준이 확정돼 있으면 예전에는 **상품을 둘로 나눠**
+ * 각자의 수익률로 계산했다. PM 지시로 그 규칙(N-10)은 폐기됐다 - 상품은 하나이므로 나누지 않고,
+ * 어느 쪽도 고르지 않은 채(임의 선택 금지) 확인이 필요하다고 알린다. */
+test('C-2. 같은 티커 · 다른 소유자 · 다른 키 - 상품을 나누지 않고 어느 쪽도 고르지 않는다 + 확인 필요', async () => {
   const sb = freshSandbox();
   parkSystems(sb, 'BOND.STOCK', 'KOSDAQ');
-  assert.strictEqual(sb.computeRegionWeightedRate('신랑', '국내', 'normal'), 4.5);
-  assert.strictEqual(sb.computeRegionWeightedRate('와이프', '국내', 'normal'), 7);
+  // 어느 소유자 관점에서도 임의의 기준을 적용하지 않는다(0% = "적용할 근거 있는 가정이 없다").
+  assert.strictEqual(sb.computeRegionWeightedRate('신랑', '국내', 'normal'), 0);
+  assert.strictEqual(sb.computeRegionWeightedRate('와이프', '국내', 'normal'), 0);
+  sb.state.assets.forEach((a) => {
+    const d = sb.resolveAssetGroupKeyDetail(a);
+    assert.strictEqual(d.instrumentConflict, true);
+    assert.deepStrictEqual(Array.from(d.instrumentConflictKeys).sort(), ['BOND.STOCK', 'KOSDAQ']);
+  });
   const { byKey, codes, input } = await buildMc(sb);
-  assert.strictEqual(byKey['T:140860.KQ|BOND.STOCK'].muAnnual, 0.045);
-  assert.strictEqual(byKey['T:140860.KQ|KOSDAQ'].muAnnual, 0.07);
-  assert.ok(codes.includes('SAFETY_RETURN_KEY_CONFLICT'));
-  // 와이프 ISA 보유분은 와이프 키(KOSDAQ) instrument에 들어간다 - 신랑 4.5%가 번지지 않는다
-  const kosdaqIdx = input.assetOrder.indexOf('T:140860.KQ|KOSDAQ');
-  assert.strictEqual(input.taxScope.initialBalances[kosdaqIdx], 3e7);
-  assert.strictEqual(input.taxScope.initialBalances[input.assetOrder.indexOf('T:140860.KQ|BOND.STOCK')], 0);
-  // 소유자 설정 원본은 그대로
+  assert.deepStrictEqual(Object.keys(byKey), ['T:140860.KQ'], '같은 상품을 둘로 나누지 않는다');
+  assert.strictEqual(byKey['T:140860.KQ'].muAnnual, 0, '어느 쪽 수익률도 빌려 쓰지 않는다');
+  assert.ok(codes.includes('SAFETY_RETURN_KEY_NEEDS_REVIEW'), '확인이 필요하다고 알린다');
+  assert.ok(codes.includes('SAFETY_RETURN_ASSUMPTION_MISSING'), '가정이 없다는 사실도 알린다');
+  // 와이프 ISA 보유분은 그 하나뿐인 instrument에 그대로 들어간다(보유 금액은 잃지 않는다)
+  assert.strictEqual(input.taxScope.initialBalances[input.assetOrder.indexOf('T:140860.KQ')], 3e7);
+  // 소유자 설정 원본은 그대로 - 앱이 지우거나 맞추지 않는다
   assert.deepStrictEqual(sb.state.assets.map((a) => a.rateMatchOverride), ['BOND.STOCK', 'KOSDAQ', 'KOSDAQ']);
   // 두 instrument는 같은 가격 이력(ρ=1)이어도 계산된다(F-07)
   const res = runSigma0(sb, input);
   assert.ok(res.milestones.length === 4);
 });
 
-test('C-3. 목표 소유자가 보유하지 않은 종목은 다른 소유자의 대표매칭을 빌리지 않고 자동 판별로 계산한다', () => {
+/* [PM STEP C · §0 · §6] 예전에는 "다른 소유자의 대표매칭을 빌리지 않는다"가 규칙이었다.
+ * PM 지시로 이 상품 기준은 상품 사실이므로, 한 사람이 확인해 두면 같은 상품을 목표로 가진
+ * 다른 소유자도 같은 사실을 쓴다. 보유 금액 · 목표 비중은 여전히 각자의 것이다. */
+test('C-3. 보유하지 않은 소유자의 목표도 같은 상품 사실을 쓴다(상품 기준은 하나다)', () => {
   const sb = freshSandbox();
   sb.state.projection.customScenarioRates = { 'BOND.STOCK': { label: '채권혼합', normal: 4.5 } };
   sb.state.assets = [sb.asset({ ticker: '069500', name: 'KODEX 200', category: 'ETF', rateMatchOverride: 'BOND.STOCK' })];
   sb.state.rebalance['와이프'].targets['국내'] = [{ type: 'ticker', ticker: '069500', label: 'KODEX 200', pct: 100 }];
-  assert.strictEqual(sb.computeRegionWeightedRate('와이프', '국내', 'normal'), 7);
+  assert.strictEqual(sb.computeRegionWeightedRate('와이프', '국내', 'normal'), 4.5, '같은 상품이면 같은 기준');
   assert.strictEqual(sb.getTargetProjectionRate({ type: 'ticker', ticker: '069500', label: 'KODEX 200', owner: '신랑' }, 'normal', '국내', 'general'), 4.5);
-  // 월 적립 배분도 소유자별
+  assert.strictEqual(sb.getTargetProjectionRate({ type: 'ticker', ticker: '069500', label: 'KODEX 200', owner: '와이프' }, 'normal', '국내', 'general'), 4.5);
+  // 월 적립 배분도 같은 상품이면 같은 기준을 쓴다(금액 배분 자체는 여전히 소유자별이다)
   const item = { ticker: '069500', label: 'KODEX 200', pct: 100 };
-  assert.strictEqual(sb.getMonthlyAllocationItemRate(item, 'normal', '와이프', 'general'), 7);
+  assert.strictEqual(sb.getMonthlyAllocationItemRate(item, 'normal', '와이프', 'general'), 4.5);
   assert.strictEqual(sb.getMonthlyAllocationItemRate(item, 'normal', '신랑', 'general'), 4.5);
 });
 

@@ -885,7 +885,12 @@ function riskExposureFactsOf(a) {
  *   · fxExposure는 환헤지 여부에서 곧바로 따라오는 같은 사실의 다른 표현이다(새 판단이 아니다).
  * 같은 시장 쌍(국내 주식 ↔ KOSPI 등)은 애초에 이 entry를 보지 않는다. */
 function userConfirmedRiskEntry(a) {
-  const hedge = (typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(a && a.fxHedgeStatus) : null;
+  /* [PM STEP C] 예전에는 이 보유분에 저장된 값만 읽었다 - 같은 상품을 두 사람이 들고 있고
+   * 한 사람만 확인해 두면 다른 사람 몫은 확인하지 않은 것으로 취급됐다.
+   * 이제 같은 상품의 확인 결과를 함께 읽는다(js/01 resolveInstrumentFxHedge). */
+  const hedge = (typeof resolveInstrumentFxHedge === 'function')
+    ? (resolveInstrumentFxHedge(a).status || null)
+    : ((typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(a && a.fxHedgeStatus) : null);
   if (!hedge) return null;
   const facts = (typeof resolveInstrumentFacts === 'function') ? resolveInstrumentFacts(a && a.ticker) : null;
   const priceCcy = (facts && facts.currency) || null;
@@ -897,12 +902,20 @@ function resolveMarketRiskBenchmark(a) {
   const unresolved = (source) => ({ key: null, status: 'UNRESOLVED', source });
   if (!yahoo) return unresolved('noTicker');
   // 주식 · ETF만 대상이다 - 채권 · 현금 · 부동산은 포트폴리오 베타에서 제외한다는 기존 정책 그대로(PD-15).
-  if (!RISK_ELIGIBLE_CATEGORIES.includes(a && a.category)) return unresolved('notEquityLike');
+  /* [PM STEP C] 자산 분류도 상품 사실이다 - 같은 상품이 소유자마다 ETF/채권으로 갈리면
+   * 위험 집계 대상 여부까지 달라졌다(STEP A 실측). 상품 단위 확정값이 있으면 그것을 쓴다. */
+  const cat = (typeof effectiveInstrumentCategory === 'function') ? effectiveInstrumentCategory(a) : (a && a.category);
+  if (!RISK_ELIGIBLE_CATEGORIES.includes(cat)) return unresolved('notEquityLike');
   /* [E-01 · §4-1 우선순위 1] 사용자가 직접 확인해 확정한 기준 지수가 무엇보다 먼저다.
    * 자동 판정(원장 · 종목 마스터)은 이 값을 덮어쓰지 않는다 - 사용자가 지운 경우에만 자동으로 돌아간다.
    * 고를 수 있는 값은 sanitizeMarketBetaIndexOverride(js/01)가 앱이 실제 지원하는 지수로 제한한다. */
-  const userIndexKey = (typeof sanitizeMarketBetaIndexOverride === 'function')
-    ? sanitizeMarketBetaIndexOverride(a && a.marketBetaIndexOverride) : null;
+  /* [PM STEP C] 기준 지수는 "이 상품을 어느 지수와 비교하는가"이므로 상품 사실이다.
+   * 예전에는 보유분 자기 값만 읽어, 같은 상품인데 소유자마다 다른 지수로 비교될 수 있었다.
+   * 이제 같은 상품의 확정값을 함께 읽고, 확정값이 서로 다르면 **어느 쪽도 고르지 않는다**. */
+  const idxFact = (typeof resolveInstrumentMarketBetaIndex === 'function') ? resolveInstrumentMarketBetaIndex(a) : null;
+  if (idxFact && idxFact.status === 'CONFLICT') return unresolved('instrumentIndexConflict');
+  const userIndexKey = idxFact ? idxFact.value
+    : ((typeof sanitizeMarketBetaIndexOverride === 'function') ? sanitizeMarketBetaIndexOverride(a && a.marketBetaIndexOverride) : null);
   if (userIndexKey) return finalizeRiskBenchmark(yahoo, userIndexKey, 'userConfirmedIndex', userConfirmedRiskEntry(a));
   // [STEP 5] 경제적 노출시장은 승인된 원장에서만 읽는다. 없으면 여기서 끝난다(추정 금지).
   let entry = null;
@@ -910,6 +923,11 @@ function resolveMarketRiskBenchmark(a) {
     const em = lookupExposureRecord(a);
     entry = em ? em.entry : null;
   }
+  /* [PM 최종 지시] 사용자가 확인해 둔 환헤지와 원장이 어긋나면, 원장 값으로 계산하지 않는다 -
+   * 그렇게 하면 원장이 사용자의 확인을 조용히 덤어쓰는 것과 같다(실측으로 발견).
+   * 아래 정렬 · 환산 판정이 entry.hedgeStatus를 그대로 쓰기 때문에 여기서 멈춰야 한다. */
+  const hedgeFact = (typeof resolveInstrumentFxHedge === 'function') ? resolveInstrumentFxHedge(a) : null;
+  if (hedgeFact && hedgeFact.conflict) return unresolved('instrumentHedgeConflict');
   const exposure = entry ? (entry.marketExposure || null) : null;
   /* [v267 · PC-1] 원장에 없으면 여기서 끝내지 않는다. 공식 종목 마스터의 원천 사실로 이어간다.
    * 새 베타 산식을 만드는 것이 아니다 - 아래 finalizeRiskBenchmark(기존 엔진 · 환헤지 게이트 ·

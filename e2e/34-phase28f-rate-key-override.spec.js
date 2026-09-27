@@ -163,8 +163,12 @@ test.describe('Phase 28-F: 대표매칭키 override가 경로 A/B 모두에 동�
         wife: getTargetProjectionRate(targetWife, PRESET, '국내')
       };
     }, { PRESET });
-    expect(result.husband).toBeCloseTo(2, 6);
-    expect(result.wife).toBeCloseTo(20, 6);
+    /* [PM STEP E · §11] 예전에는 target.owner가 있는 쪽의 override를 우선했다 -
+     * 같은 상품인데 소유자마다 다른 수익률로 계산되는 구조였다.
+     * 이제는 상품 기준이 하나여야 하므로, 갈리면 어느 쪽도 고르지 않고(임의 선택 금지)
+     * 0%(적용할 근거 있는 가정 없음)로 두고 확인을 요청한다. 저장값은 그대로 남는다. */
+    expect(result.husband).toBeCloseTo(0, 6);
+    expect(result.wife).toBeCloseTo(0, 6);
   });
 
   test('8. Monte Carlo 어댑터(buildMonteCarloInputFromState)의 instrument muAnnual도 override를 그대로 반영한다', async ({ page }) => {

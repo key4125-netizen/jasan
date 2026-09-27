@@ -340,16 +340,54 @@ function resolveAssetGroupKeyDetail(asset, presetKey) {
   // 쓴다. 값이 실제로 유효한 수익률에 연결되는지는 resolveProjectionRateForKey가 알아서 안전하게
   // 처리한다 - 여기서는 형식 검증을 하지 않는다. [Phase 47-A] 예전에는 못 알아보는 키를 지역 대표지수로
   // 조용히 대체했지만 그 폴백은 폐지됐다 - 지금은 0을 돌려주고 "가정 없음"으로 표시한다.
-  if (asset.rateMatchOverride) return { key: asset.rateMatchOverride, source: 'override' };
+  /* [PM STEP C] 예전에는 **이 보유분에 저장된** 대표매칭만 봤다. 그래서 같은 상품을 두 사람이
+   * 들고 있으면 한 사람이 정해 둔 기준을 다른 사람은 다시 정해야 했고, 서로 다르게 정해 두면
+   * 같은 상품이 서로 다른 수익률로 계산됐다(MC는 아예 다른 상품으로 나눴다 - N-10).
+   * 이제 같은 상품의 확정값을 함께 읽는다. 갈리면 어느 쪽도 고르지 않는다. */
+  const rmFact = (typeof resolveInstrumentRateMatch === 'function') ? resolveInstrumentRateMatch(asset) : null;
+  const rmConflict = !!(rmFact && rmFact.status === 'CONFLICT');
+  const rmMasterMismatch = !!(rmFact && rmFact.reason === 'masterMismatch');
+  // 공식 「수익률 관리」 종목 기준과 어긋난 경우에는 그 값도 함께 보여 줘야 비교가 된다.
+  const rmKeys = rmConflict
+    ? [...new Set(rmFact.distinct.concat(rmMasterMismatch && rmFact.master ? [rmFact.master] : []))]
+    : null;
+  /* 보유분에 적어 둔 확정값만 여기서 쓴다 - 종목 기준 Master는 아래 기존 단계가
+   * 그대로 처리한다(source: 'instrument'). 여기서 Master를 override로 올리지 않는다. */
+  const overrideKey = rmConflict ? null
+    : (rmFact ? (rmFact.distinct.length === 1 ? rmFact.value : null) : (asset.rateMatchOverride || null));
+  if (overrideKey) return { key: overrideKey, source: 'override' };
+  /* [PM 지시 §15] 같은 상품인데 보유분마다 상품명이 다르면 이름 키워드를 근거로 쓰지 않는다 -
+   * 어느 이름을 믿을지 앱이 정하는 것이 곧 임의 선택이기 때문이다. 이름 자체는 고치지 않는다. */
+  const nameFact = (typeof resolveInstrumentName === 'function') ? resolveInstrumentName(asset) : null;
+  const nameConflict = !!(nameFact && nameFact.status === 'CONFLICT');
+  const mark = (out) => {
+    let o = out;
+    if (nameConflict && o && o.source === 'nameKeyword') {
+      o = Object.assign({}, o, { key: UNRESOLVED_RATE_KEY, source: 'unresolved', nameConflict: true, nameConflictValues: nameFact.distinct.slice() });
+    } else if (nameConflict && o) {
+      o = Object.assign({}, o, { nameConflict: true, nameConflictValues: nameFact.distinct.slice() });
+    }
+    // 보유분끼리 갈린 것과 「수익률 관리」 등록이 갈린 것은 해결 방법이 다르므로 표식을 구분한다.
+    // 보유분끼리 갈린 것 · 「수익률 관리」 등록과 어긋난 것 · 등록끼리 갈린 것은 해결 위치가 다르다.
+    return rmConflict
+      ? Object.assign(o, {
+        instrumentConflict: true, instrumentConflictKeys: rmKeys,
+        holdingKeyConflict: !rmMasterMismatch, masterMismatch: rmMasterMismatch, masterKey: rmFact.master || null
+      })
+      : o;
+  };
   // [v246 · PMD-12] Instrument Return Key Master - 사용자 지정 다음, 기존 사전 매칭 · 자동 판별보다 먼저 본다.
   // 연결된 키에 그 시나리오 수익률이 없어도 다른 기준으로 넘기지 않는다(D-5: 0% + 가정 없음 경고).
   // 같은 종목에 서로 다른 키가 연결돼 있으면 채택하지 않고 아래 기존 순서로 계속 해석한 뒤 충돌 표식을 붙인다(D-4).
   const instrument = findInstrumentReturnKey(asset.ticker, asset.name);
-  if (instrument && !instrument.conflict) return { key: instrument.key, source: 'instrument' };
+  /* [PM 최종 지시] 보유분에 확정한 값과 이 종목 기준이 어긋나면 종목 기준도 쓰지 않는다 -
+   * 그렇지 않으면 Master가 사용자의 확인을 조용히 덤어쓰는 것과 같다(실측으로 발견).
+   * 자동 판별로 계산하고 확인을 요청한다. */
+  if (instrument && !instrument.conflict && !rmMasterMismatch) return mark({ key: instrument.key, source: 'instrument' });
   if (instrument && instrument.conflict) {
-    return Object.assign(resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey), { instrumentConflict: true, instrumentConflictKeys: instrument.keys });
+    return mark(Object.assign(resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey), { instrumentConflict: true, instrumentConflictKeys: instrument.keys }));
   }
-  return resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey);
+  return mark(resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey));
 }
 // resolveAssetGroupKeyDetail의 3단계 이후(기존 v245 순서 그대로) - Master가 없거나 충돌일 때만 온다.
 function resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey) {
@@ -707,6 +745,21 @@ function findInstrumentReturnKey(ticker, name) {
 function getInstrumentIdentifiersForKey(key) {
   const map = getInstrumentReturnKeys();
   return Object.keys(map).filter((id) => String(map[id] ?? '').trim() === key);
+}
+/* [PM STEP E] 같은 상품인데 **보유분마다** 다른 기준이 지정된 경우 - 해결 위치가 다르므로
+ * 「수익률 관리」 등록 충돌과 다른 문구를 쓴다(엉뚱한 곳을 고치라고 하지 않는다). */
+/* [PM 최종 지시] 보유분에 확정한 기준과 「수익률 관리」에 등록한 종목 기준이 서로 다른 경우 -
+ * 어느 쪽도 쓰지 않는다. 두 곳 중 어디를 고쳐야 하는지 함께 말해 준다. */
+function describeMasterMismatchReturnKeyConflict(keys, masterKey) {
+  const lab = (k) => getRateMatchKeyDisplayLabel(k === '채권' ? 'BOND' : k);
+  const mine = (keys || []).filter((k) => k !== masterKey).map(lab).join(' · ');
+  return `확인해 두신 기준(${mine})과 「수익률 관리」에 등록된 종목 기준(${lab(masterKey)})이 서로 다릅니다. `
+    + '어느 쪽이 맞는지 확인될 때까지 앱이 어느 값도 쓰지 않습니다 - 두 곳 중 한쪽을 고쳐 하나로 맞춰 주세요.';
+}
+function describeHoldingReturnKeyConflict(keys) {
+  const labels = (keys || []).map((k) => getRateMatchKeyDisplayLabel(k === '채권' ? 'BOND' : k)).join(' · ');
+  return `같은 종목인데 보유분마다 다른 기준(${labels})이 지정돼 있어 어느 쪽도 고르지 않고 자동 판별로 계산했습니다. `
+    + '같은 상품이므로 하나여야 합니다 - 자산 상세나 거래 수정에서 하나로 맞춰 주세요.';
 }
 function describeInstrumentReturnKeyConflict(keys) {
   const labels = (keys || []).map((k) => getRateMatchKeyDisplayLabel(k === '채권' ? 'BOND' : k)).join(' · ');
@@ -1386,7 +1439,9 @@ function assessReturnAssumptionStatus(asset) {
     return {
       appliedKey, character: char.character, characterLabel: getAssetCharacterLabel(char.character),
       status: RETURN_ASSUMPTION_STATUS.NEEDS_REVIEW, instrumentConflict: true,
-      message: describeInstrumentReturnKeyConflict(detail.instrumentConflictKeys)
+      message: detail.masterMismatch
+        ? describeMasterMismatchReturnKeyConflict(detail.instrumentConflictKeys, detail.masterKey)
+        : (detail.holdingKeyConflict ? describeHoldingReturnKeyConflict : describeInstrumentReturnKeyConflict)(detail.instrumentConflictKeys)
         + (missing ? ' 자동 판별로도 적용할 가정을 찾지 못해 지금은 성장 없이(0%) 계산하고 있습니다.' : '')
     };
   }

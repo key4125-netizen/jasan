@@ -127,7 +127,8 @@ test('교차. 같은 상품을 Risk와 MC가 같은 환헤지 사실로 해석�
   SB.applyTickerMasterData(JSON.parse(fs.readFileSync(path.join(ROOT, 'data/ticker-master.json'), 'utf8')));
   const cases = [
     { ticker: '360750.KS', fxHedgeStatus: undefined, want: 'UNHEDGED' },   // 원장 A등급
-    { ticker: '360750.KS', fxHedgeStatus: 'HEDGED', want: 'HEDGED' },      // 사용자 확정이 먼저
+    // [PM 최종 지시] 원장(UNHEDGED)과 사용자 확정(HEDGED)이 다르면 어느 쪽도 쓰지 않는다.
+    { ticker: '360750.KS', fxHedgeStatus: 'HEDGED', want: null },
     { ticker: '133690.KS', fxHedgeStatus: undefined, want: null }          // 원장 없음 → 단정 않음
   ];
   cases.forEach((c) => {
@@ -137,7 +138,9 @@ test('교차. 같은 상품을 Risk와 MC가 같은 환헤지 사실로 해석�
     // Risk가 쓰는 해석(사용자 확정 → 원장) - js/09 userConfirmedRiskEntry · finalizeRiskBenchmark와 같은 근거
     const rec = SB.isExposureMasterActive() ? SB.lookupExposureRecord(a) : null;
     const master = (rec && rec.entry && ['HEDGED', 'UNHEDGED'].includes(rec.entry.hedgeStatus)) ? rec.entry.hedgeStatus : null;
-    const risk = (SB.sanitizeFxHedgeStatus(a.fxHedgeStatus) || null) || master;
+    const own = SB.sanitizeFxHedgeStatus(a.fxHedgeStatus) || null;
+    // Risk도 같은 규칙을 쓴다 - 둘이 어긋나면 확정하지 않는다(js/09 userConfirmedRiskEntry).
+    const risk = (own && master && own !== master) ? null : (own || master);
     assert.strictEqual(mc.status, c.want, `${c.ticker} MC`);
     assert.strictEqual(risk, c.want, `${c.ticker} Risk`);
     assert.strictEqual(mc.status, risk, `${c.ticker} - Risk와 MC가 같은 답을 내야 한다`);

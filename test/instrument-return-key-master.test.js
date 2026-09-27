@@ -129,15 +129,26 @@ test('I-3. 보유하지 않은 종목(일반 목표 · 월 적립 배분 · 절�
   assert.ok(!codes.includes('SAFETY_RETURN_ASSUMPTION_MISSING'));
 });
 
-test('I-4. USER override(NASDAQ)가 Master(KOSPI)보다 우선 · 기존 불일치 분리 · Master와 override 원본 불변', async () => {
+/* [PM STEP C · §12] 예전에는 같은 종목인데 한 사람만 기준을 정해 두면 나머지는 Master로 계산되고,
+ * MC는 그 둘을 **서로 다른 상품으로 나눴다**. PM 지시로 이 규칙(N-10)은 폐기됐다 -
+ * 확정된 상품 기준은 같은 상품의 모든 보유분이 함께 쓴다("한 번 확인하면 끝").
+ * 대신 종목 기준 Master와 어긋난다는 사실은 그대로 알린다(§8 CASE D). */
+test('I-4. 확정한 기준(NASDAQ)을 같은 상품 전체가 쓴다 · 상품을 나누지 않는다 · Master 불일치는 알린다 · 원본 불변', async () => {
   const sb = freshSandbox();
   sb.state.projection.instrumentReturnKeys = { '278530.KS': 'KOSPI' };
   sb.state.assets = [sb.asset(Object.assign({ rateMatchOverride: 'NASDAQ' }, TR)), sb.asset(Object.assign({ owner: '와이프' }, TR))];
   ['신랑', '와이프'].forEach((o) => { sb.state.rebalance[o].targets['국내'] = [sb.target()]; });
-  assert.deepStrictEqual(sb.state.assets.map((a) => [sb.resolveAssetGroupKeyDetail(a).key, sb.resolveAssetGroupKeyDetail(a).source]), [['NASDAQ', 'override'], ['KOSPI', 'instrument']]);
-  const { byKey, codes } = await buildMc(sb);
-  assert.ok(byKey['T:278530.KS|NASDAQ'] && byKey['T:278530.KS|KOSPI'], 'N-10 기준별 instrument 분리');
-  assert.ok(codes.includes('SAFETY_RETURN_KEY_CONFLICT'));
+  /* [PM 최종 지시] 보유분에 확정한 NASDAQ과 「수익률 관리」 종목 기준 KOSPI가 어긋난다 -
+   * 어느 쪽도 쓰지 않고 자동 판별로 계산한 뒤 확인을 요청한다(상품을 나누지도 않는다). */
+  sb.state.assets.forEach((a) => {
+    const d = sb.resolveAssetGroupKeyDetail(a);
+    assert.notStrictEqual(d.source, 'override', '임의의 한쪽을 계산에 쓰지 않는다');
+    assert.strictEqual(d.masterMismatch, true);
+    assert.strictEqual(d.masterKey, 'KOSPI');
+    assert.deepStrictEqual(Array.from(d.instrumentConflictKeys).sort(), ['KOSPI', 'NASDAQ']);
+  });
+  const { byKey } = await buildMc(sb);
+  assert.deepStrictEqual(Object.keys(byKey), ['T:278530.KS'], '같은 상품을 둘로 나누지 않는다');
   assert.deepStrictEqual(clone(sb.state.projection.instrumentReturnKeys), { '278530.KS': 'KOSPI' });
   assert.deepStrictEqual(sb.state.assets.map((a) => a.rateMatchOverride), ['NASDAQ', undefined]);
 });

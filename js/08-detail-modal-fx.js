@@ -170,13 +170,18 @@ function renderAssetDetailReturnAssumption(assets) {
   if (list.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
 
   const infos = list.map((a) => describeAppliedReturnAssumption(a));
-  const same = infos.every((x) => x.appliedKey === infos[0].appliedKey && x.sourceLabel === infos[0].sourceLabel);
+  /* [PM STEP E] 상품 사실을 하나로 묶은 뒤부터는 보유분들의 해석 결과가 같아지므로,
+   * 결과만 비교하면 "지정이 갈렸다"는 사실이 화면에서 사라진다. 지정값 충돌을 직접 본다. */
+  const rmConflict = (typeof resolveInstrumentRateMatch === 'function')
+    && resolveInstrumentRateMatch(list[0], state.assets).status === 'CONFLICT';
+  const same = !rmConflict
+    && infos.every((x) => x.appliedKey === infos[0].appliedKey && x.sourceLabel === infos[0].sourceLabel);
   // [PM 수정 지시 2026-09-23 · A-1] 같은 값을 화면마다 다르게 부르지 않는다 - 거래 추가 폼과 같은 이름을 쓴다.
   const title = '<h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">장기 수익률 기준</h4>';
 
   if (!same) {
     box.innerHTML = `${title}
-      <p class="text-sm text-slate-500 dark:text-slate-400 break-keep">보유분마다 적용 중인 기준이 서로 다릅니다. 아래 소유자별 보유 세부 현황에서 각각 확인해 주세요.</p>`;
+      <p class="text-sm text-slate-500 dark:text-slate-400 break-keep">보유분마다 적용 중인 기준이 서로 다릅니다. 같은 상품이므로 하나여야 합니다 - 하나로 맞춰 주세요.</p>${buildReturnKeyConflictNotice(list)}`;
     box.classList.remove('hidden');
     if (window.lucide && lucide.createIcons) lucide.createIcons();
     return;
@@ -230,15 +235,25 @@ function renderAssetDetailRiskConfirm(assets) {
    * 넘지 않는 쪽으로 통일한다. 다른 보유분에 같은 값이 필요하면 사용자가 직접 고르고,
    * 값이 갈려 있으면 아래 안내가 그 사실을 알린다(자동 전파 · 자동 선택 없음).
    */
+  /* [PM STEP D · STEP 1-D 폐기] 이 칸이 다루는 두 값(기준 지수 · 환헤지)은 상품 자체의 사실이다.
+   * STEP 1-D에서 "소유자 · 계좌별 설정은 독립"이라는 조항을 여기까지 넓혀 보유 단위로 좁혔는데,
+   * 그 조항은 목표 비중 같은 **운용 설정**을 가리키는 것이었다. 같은 상품이 소유자마다 다른
+   * 지수를 따라가거나 다른 환헤지를 가질 수는 없다 - 이 파일의 원래 주석이 이미 적어 둔 대로다.
+   * 값을 고르면 같은 상품의 모든 보유분에 적는다(다시 입력하게 하지 않는다). */
   const first = list[0];
-  const unitKey = (x) => [String(x.owner || ''), String(x.accountType || ''), String(x.currency || '').toUpperCase()].join('|');
-  const firstUnit = unitKey(first);
-  const sameUnit = list.filter((x) => unitKey(x) === firstUnit);
-  const crossUnit = list.length !== sameUnit.length;
-  assetDetailRiskConfirmTargets = sameUnit;
+  assetDetailRiskConfirmTargets = (typeof instrumentHoldingsOf === 'function')
+    ? instrumentHoldingsOf(first, state.assets) : list;
+  if (assetDetailRiskConfirmTargets.length === 0) assetDetailRiskConfirmTargets = list;
   assetDetailRiskConfirmGroup = list;
-  const idxValue = sanitizeMarketBetaIndexOverride(first.marketBetaIndexOverride) || '';
-  const hedgeValue = sanitizeFxHedgeStatus(first.fxHedgeStatus) || '';
+  const crossUnit = assetDetailRiskConfirmTargets.length > 1;
+  /* 다른 보유분에서 이미 확인해 둔 상품 사실이 있으면 그 값이 그대로 보여야 한다 -
+   * 그래야 "이미 확인했는데 또 비어 있다"가 되지 않는다. 갈려 있으면 비워 두고 아래에서 알린다. */
+  const idxFact = (typeof resolveInstrumentMarketBetaIndex === 'function') ? resolveInstrumentMarketBetaIndex(first, state.assets) : null;
+  const hedgeFact = (typeof resolveInstrumentFxHedge === 'function') ? resolveInstrumentFxHedge(first, state.assets) : null;
+  const idxValue = (idxFact && idxFact.status === 'RESOLVED' ? idxFact.value : null)
+    || sanitizeMarketBetaIndexOverride(first.marketBetaIndexOverride) || '';
+  const hedgeValue = (hedgeFact && hedgeFact.source === 'userOverride' ? hedgeFact.override : null)
+    || sanitizeFxHedgeStatus(first.fxHedgeStatus) || '';
   // 지금 실제로 어떻게 판정되는지 그대로 보여 준다 - 이미 자동으로 확인된 종목에까지 고르라고 하지 않는다.
   let bm;
   try { bm = resolveMarketRiskBenchmark(first); } catch (e) { bm = null; }
@@ -261,14 +276,28 @@ function renderAssetDetailRiskConfirm(assets) {
     try { c = fxHedgeConflictFor(first, state.assets); } catch (e) { c = null; }
     if (c && c.conflict) {
       const label = (st) => (st === 'HEDGED' ? '환헤지(H)' : (st === 'UNHEDGED' ? '환노출' : '선택 안 함'));
-      const lines = c.units.map((u) => `${u.owner || '(소유자 없음)'} · ${u.accountType || '(계좌 없음)'} - ${label(u.status)}`);
-      conflictNote = `확인 필요 - 같은 종목인데 보유분마다 환헤지가 다릅니다. ${lines.join(' / ')}. 상품설명서에 적힌 하나의 사실이므로 어느 쪽이 맞는지 확인해 주세요. 앱이 임의로 맞추지 않습니다.`;
+      /* 값이 없는 보유분까지 "선택 안 함"으로 나열하면 무엇이 어긋나는지 흐려진다 -
+       * 실제로 적어 둔 보유분만 적는다(미확인은 충돌의 원인이 아니다). */
+      const lines = c.units.filter((u) => u.status)
+        .map((u) => `${u.owner || '(소유자 없음)'} · ${u.accountType || '(계좌 없음)'} - ${label(u.status)}`);
+      conflictNote = c.kind === 'masterMismatch'
+        ? `확인 필요 - 확인해 두신 환헤지(${lines.join(' / ')})가 공식 자료(${label(c.master)})와 다릅니다. 어느 쪽이 맞는지 확인될 때까지 앱이 어느 값도 쓰지 않습니다 - 하나로 맞춰 주세요.`
+        : `확인 필요 - 같은 종목인데 보유분마다 환헤지가 다릅니다. ${lines.join(' / ')}. 상품설명서에 적힌 하나의 사실이므로 어느 쪽이 맞는지 확인해 주세요. 앱이 임의로 맞추지 않습니다.`;
     }
+  }
+  /* [PM STEP D] 기준 지수도 같은 방식으로 알린다 - 갈려 있으면 베타를 만들지 않으므로
+   * 왜 값이 사라졌는지 이 자리에서 말해 준다. */
+  let indexConflictNote = '';
+  if (idxFact && idxFact.status === 'CONFLICT') {
+    const lab = (k) => (typeof USER_MARKET_BETA_INDEX_LABELS !== 'undefined' && USER_MARKET_BETA_INDEX_LABELS[k]) || k;
+    const lines2 = (typeof instrumentFactUnitLines === 'function') ? instrumentFactUnitLines(idxFact, lab) : [];
+    indexConflictNote = `확인 필요 - 같은 종목인데 보유분마다 기준 지수가 다릅니다. ${lines2.join(' / ')}. `
+      + '같은 상품이므로 하나여야 합니다 - 하나로 맞춰 주세요. 맞출 때까지 시장민감도를 계산하지 않습니다.';
   }
   /* [PM STEP 1-D] 통합 행처럼 여러 보유 단위가 한 화면에 묶여 있으면, 지금 고치는 값이 어디에
    * 적용되는지 분명히 말한다 - 사용자가 "전부 바뀐다"고 오해하지 않게 한다. */
   const scopeNote = crossUnit
-    ? `이 설정은 ${first.owner || '(소유자 없음)'} · ${first.accountType || '(계좌 없음)'} 보유분에만 적용됩니다. 다른 소유자 · 계좌의 보유분은 각각 열어서 골라 주세요.`
+    ? `상품 기준정보입니다 - 고르시면 같은 종목의 모든 보유분(${assetDetailRiskConfirmTargets.length}건)에 함께 적용됩니다. 보유 수량 · 매입가 · 목표 비중은 그대로입니다.`
     : ''
 
   box.innerHTML = `
@@ -293,6 +322,7 @@ function renderAssetDetailRiskConfirm(assets) {
     </div>
     ${exposureNote ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 break-keep">${escapeHtml(exposureNote)}</p>` : ''}
     ${conflictNote ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1.5 break-keep">${escapeHtml(conflictNote)}</p>` : ''}
+    ${indexConflictNote ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1.5 break-keep">${escapeHtml(indexConflictNote)}</p>` : ''}
     ${scopeNote ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 break-keep">${escapeHtml(scopeNote)}</p>` : ''}
     <p class="text-sm text-slate-400 mt-1.5 break-keep">모르면 비워 두세요 - 앱이 임의로 추정하지 않습니다.</p>`;
   box.classList.remove('hidden');
@@ -389,6 +419,16 @@ function findHoldingReturnKeyConflicts(asset) {
   const sameInstrument = (a) => a !== asset && a.id !== asset.id
     && (ticker ? sanitizeTicker(a.ticker).yahooTicker === ticker : (!String(a.ticker ?? '').trim() && normalizeNameKey(a.name) === nameKey));
   // '채권'(확정 자산군 키)과 'BOND'는 같은 기준이다 - 표기만 다른 것을 불일치로 알리지 않는다(canonicalRateKey, js/05).
+  /* [PM STEP E] 상품 사실을 하나로 묶은 뒤부터는 보유분들의 **해석 결과**가 같아진다 -
+   * 그래서 결과만 비교하면 "갈렸다"는 사실 자체가 사라진다. 갈린 지정값을 그대로 보여 준다 -
+   * 사용자는 누가 무엇을 지정했는지 알아야 하나로 맞출 수 있다. */
+  const rmFact = (typeof resolveInstrumentRateMatch === 'function') ? resolveInstrumentRateMatch(asset) : null;
+  if (rmFact && rmFact.status === 'CONFLICT') {
+    const mine = canonicalRateKey((rmFact.units.find((u) => u.id === asset.id) || {}).own);
+    return (rmFact.units || [])
+      .filter((u) => u.own && u.id !== asset.id && canonicalRateKey(u.own) !== mine)
+      .map((u) => ({ asset: (state.assets || []).find((a) => a.id === u.id) || u, key: canonicalRateKey(u.own) }));
+  }
   const myKey = canonicalRateKey(resolveAssetGroupKeyDetail(asset).key);
   return (state.assets || []).filter(sameInstrument)
     .map((a) => ({ asset: a, key: canonicalRateKey(resolveAssetGroupKeyDetail(a).key) }))
