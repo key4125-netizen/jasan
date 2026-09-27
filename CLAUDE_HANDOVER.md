@@ -32,7 +32,136 @@
 
 ---
 
-## 🏁 v270 FINAL RELEASE — 채권 입력 보존 · 안내 정확성 · 동기화 안전성 · 보안 정책 정리 (2026-09-26 · 가장 최신 · **출시 완료**)
+## 🏁 v271 FINAL RELEASE — v270 운영본 전수 통합 테스트 발견사항 전건 종결 (2026-09-27 · 가장 최신 · **출시 완료**)
+
+> **상태**: **출시 완료 · 코드 미결 0건 · PM 결정 대기 0건.**
+> **버전 변경**: v270 → **v271**
+> **release commit**: `26113e9` · **handover commit**: 이 커밋
+> **branch**: `main` (origin/main · master 브랜치는 만들지 않았다)
+> **production**: https://key4125-netizen.github.io/jasan/ · **tag**: `v271` (annotated)
+> **SoT**: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` **§63 · §64**
+> **PM 결정 원장**: `docs/closeout/PM_DECISION_LOG.md` (ISSUE-C · ISSUE-E · ISSUE-D · ISSUE-F 4건 추가)
+
+### 이번 릴리스에서 종결한 것
+
+| 항목 | 내용 | 처리 |
+| --- | --- | --- |
+| ISSUE-A | 팝업 28개 중 둘만 배경 클릭으로 닫히지 않았다(수익률 관리 · CMA 추천) | 구현 — 다른 24개와 같은 패턴만 추가 |
+| ISSUE-B | "환노출이 있는가"와 "고를 수 있는 환헤지형이 실재하는가"가 한 조건에 묶여 정반대 문제가 동시에 났다 | 구현 — 두 축으로 분리 |
+| ISSUE-C | IVV · VTI Return Key 기준 | **PM 결정 · 현행 유지** |
+| ISSUE-D | 혼합형 상품이 이름 속 지수 브랜드에 걸려 미국주식 100% 가정을 받았다 | 구현 — §Phase 45 혼합 규칙을 빠진 한 단계에도 적용 |
+| ISSUE-E | MIXED 상품 Market Risk Benchmark 기준 지수 | **PM 결정 · 현행 유지** |
+| ISSUE-F | 과매도 검증이 "저장하는 거래가 매도일 때"만 돌아, 매수 수량을 줄이면 안내 없이 저장되고 계산이 조용히 잘라냈다 | 구현 — 같은 규칙을 매수 수정 경로에도 적용 |
+| D-8 | 되돌릴 수 없는 초기화가 끝났는데도 「데이터 관리」 팝업이 남았다 | 구현 — 실제 성공했을 때만 닫는다 |
+| e2e/114 F-7 | `page.evaluate: Resulting promise was garbage collected` | **원인 규명 후 코드 수정 없이 CLOSED**(아래) |
+
+### ISSUE-B — 환노출 판정과 환헤지 선택 제공의 분리 (핵심)
+
+한 조건에 두 질문이 묶여 있어 정반대 방향의 문제가 동시에 났다.
+
+- **해외 거래소 직접 상장**(SCHD · QQQM · SPY · VOO · AAPL 등)은 달러로 사서 달러로 보유하므로
+  같은 종목의 환헤지형이 **없는데도** 선택지가 떴고, 잘못 고르면 MC 자산군이 US_EQUITY_HEDGED로
+  바뀌어 σ가 13.72 → 16.64로 **실제로 달라졌다**. → 이제 묻지 않고 「환노출」이라고 표시만 한다.
+- 반대로 **국내 상장 해외 ETF**(133690 등)는 원장에 없고 공식 종목마스터가 "KOSPI 상장 ETF"까지만
+  말해 주어, 사용자가 '국내'로 저장하면 환노출이 없다고 판정돼 선택지가 **사라졌다**. → 환노출 판정에
+  "이미 승인된 자산 성격"을 읽는 단계(③-2)를 넣어 자산 성격 · Return Key와 같은 근거로 묶었다.
+
+새 키워드 · 새 추정 규칙 없음. 이미 저장된 환헤지 값은 자동으로 고치지 않고, 값이 있으면 칸을 그대로
+보여 주어 사용자가 직접 되돌릴 수 있게 했다.
+
+관련 함수(js/01): `fxExposureStateOf` · `fxHedgeChoiceStateOf` · `fxExposureNoticeFor` ·
+`FX_EXPOSED_ASSET_CHARACTERS`. **이 판정은 표시 조건 전용이라 계산 경로에서 호출되지 않는다**
+(소스 스캔 테스트로 고정 — `test/fx-hedge-choice-scope.test.js`).
+
+### e2e/114 F-7 최종 처리 — Playwright/CDP promise lifecycle 현상 · 코드 수정 없이 CLOSED
+
+PM 결정 C안(원인 규명 우선) → 규명 완료 → **A안 채택(무수정 CLOSED)**.
+
+확인된 사실:
+1. 실패 회차에서도 `page.evaluate` 내부 함수는 **마지막 단계까지 실행**됐다(진행표시 `modal`).
+2. 관련 비동기 호출 6건이 모두 정상 settle했다(각 4~6ms).
+3. 실패 회차 소요 79~88ms = 성공 회차 80~101ms — **멈춘 것이 아니다**.
+4. page crash 0 · pageerror 0 · 실패 직후 되읽기 evaluate 성공(실행 컨텍스트 살아 있음) →
+   페이지 lifecycle 문제 아님.
+5. 제품 코드 경로는 `fetchWithTimeout`(AbortController+12초) · `Promise.any` · try/catch로
+   **settle하지 않을 수 있는 await가 없다**.
+6. 하네스 왕복 타이밍을 넣고 뺄 때만 재현률이 0% ↔ 25~35%로 변했다(제품 호출은 전 변이 동일).
+7. 강제 GC(CDP HeapProfiler.collectGarbage 연속)만으로는 재현되지 않았다(0/12).
+8. 원문 그대로의 반복 스트레스는 실패 0(48회 · 96회@12 worker · 24회×2 = 192회).
+
+분류: **Playwright/CDP promise lifecycle 현상**. 제품 코드 결함 · 테스트 assertion 결함 ·
+페이지 lifecycle 문제는 확인되지 않았다. **V8 inspector 내부의 정확한 GC trigger는 직접 증명
+불가 → 세부 메커니즘은 미확정으로 남긴다.**
+
+금지사항(재발 시에도 동일): e2e/114 코드 구조 변경 · `page.evaluate` 구조 변경 · assertion
+변경/약화/삭제 · `retries` 추가 · timeout 확대 우회 · test skip · Playwright 설정 변경 ·
+오류를 숨기는 예외처리.
+
+### 릴리스 게이트 결과 (모두 현재 tree 기준 실측)
+
+| 게이트 | 결과 |
+| --- | --- |
+| Unit | **928 / 928 PASS · fail 0** |
+| Full E2E | **1302 / 1302 PASS · fail 0** (16.3분) |
+| ESLint | **PASS** (error 0) |
+| Data Guard | **PASS** (추적 311개 · 사용자 데이터 파일 없음) |
+| Secret Scan | **PASS** (변경·신규 32개 파일에 실제 secret 값 0건) |
+| Risk Regression | **PASS** — v270 승인 baseline과 숫자 하나까지 동일 |
+| MC Regression | **PASS** — 사분위 전부 0.00% · μ지문 동일 · σ 변경 0건 · errors=[] |
+| Excel | **PASS** (e2e/128 · e2e/20 · e2e/117 포함) |
+| Backup/Restore | **PASS** (e2e/117 · e2e/25 · e2e/115 포함) |
+| Sync (Bond 포함 · D-3 · D-6 유지) | **PASS** (동기화 관련 123건 통과) |
+| Data Integrity | **PASS** (e2e/47 · e2e/117) |
+| Release Guard | **PASS** (v271 marker · APP_SHELL 32) |
+| Production Smoke | **PASS**(단, Monte Carlo 수치 산출은 production 미실행 — 아래) |
+
+Risk baseline(불변): `score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192
+MDD=-2.662509179 corr=0.9022471287 beta=0.931428547`
+MC μ지문(불변): `af875582fc001dc2` / `a36f5ba2112d4d44`
+
+### Production Smoke 결과 (https://key4125-netizen.github.io/jasan/)
+
+- 화면 버전 **v271** · `sw.js` CACHE_NAME **smart-asset-manager-v271** (HTTP 직접 확인 + 화면 확인)
+- Service Worker **activated** · scope `/jasan/` · **캐시 목록에 `smart-asset-manager-v271` 하나뿐**
+  (구버전 캐시 없음). 사용자 기기의 v270 → v271 전환은 `sw.js` install의 `skipWaiting()`과
+  activate의 "CACHE_NAME이 다른 캐시 전부 삭제"가 담당한다(sw.js:677~684).
+- app shell: index + js 29개 + `data/fx/usdkrw-h10.json` 전부 200 · 404 0건
+- 외부 라이브러리 4종 로드 정상(Chart.js · lucide · XLSX · Tailwind)
+- 탭 4개 전환 정상 · 자산등록 팝업 · 거래등록 팝업 열림/닫힘 정상 · 데이터 관리 팝업 정상 ·
+  동기화 설정 팝업 정상(미연결 상태 확인만 — **비밀번호 입력하지 않음**)
+- Risk: `computeAdvancedRiskMetrics()` 실제 실행 성공(holdings 4 · beta 4건 산출)
+- ISSUE-A: 수익률 관리 · CMA 추천 두 팝업 모두 **배경 클릭 → 닫힘 / 내부 클릭 → 유지** 확인
+- ISSUE-B: `FX_EXPOSED_ASSET_CHARACTERS` 4종 · SCHD/AAPL → `선택제공=false · FOREIGN_DIRECT_LISTING` ·
+  국내상장 해외ETF → `선택제공=true · KR_LISTED_FX_EXPOSED` · 순수국내 → `NO_FX_EXPOSURE` 확인
+- ISSUE-D: 혼합형 이름 → `UNRESOLVED` · 순수 지수 이름 → `S&P500/nameKeyword` 확인
+- ISSUE-F: `findOversellAfterTransactionEdit` 배포본에 존재 확인
+- **Monte Carlo 수치 산출은 production에서 수행하지 않았다.** 새 브라우저 프로필에는 수익률 기준이
+  설정돼 있지 않아 앱이 정책대로 실행을 거부했고(안내 문구 정상 출력), 억지로 설정을 만들지 않았다.
+  MC 수치는 로컬 회귀(0.00% · μ지문 동일)와 전체 E2E의 MC spec에서 확인했다.
+- console error: **r.jina.ai 401 다수**. 이것은 `CORS_PROXIES`의 **6번째(최후순위) 공개 프록시**가
+  이제 API 키를 요구해서 나는 것이다 — 사용자 본인 Worker(`asset-manager-proxy`)는 **200 정상**이고
+  매크로 지표(VIX · 환율 · 미 10년물 · 금 · 달러인덱스)가 실제 값으로 표시된다. js/01의 기존 주석이
+  "정책이 바뀔 수 있고 실패해도 경쟁 구조상 다른 소스가 이어받는다"고 이미 적어 둔 상황이며,
+  **v271이 만든 문제가 아니다**(v271은 시세/프록시 코드를 건드리지 않았다).
+- **KIS 프록시 경로는 이번 smoke에서 확인하지 않았다** — 아래 운영 조치가 선행되어야 한다.
+
+### 남은 운영 조치 (코드 아님)
+
+- **KIS Proxy Access Token 교체** — Cloudflare 대시보드에서 수행한다. v270 종결 때부터 이어지는
+  운영 항목이며 이번 릴리스 코드 변경과 섞지 않았다.
+
+### 주의사항 (다음 세션이 지켜야 할 것)
+
+- `.claude/launch.json`은 **사용자 로컬 변경**이다. 수정 · 되돌리기 · checkout · restore ·
+  stage · commit 전부 금지. 이번 릴리스에서도 건드리지 않았다
+  (blob `2a39711674f3af2df32a46825454020b34599670` · mtime `2026-09-08 22:35:15.477209800` 유지).
+- 공식 브랜치는 `main`뿐이다. `master`를 만들지 않는다.
+- §4의 PM 결정(ISSUE-C · ISSUE-E · ISSUE-F clamp · Bond · 환헤지 · Return Key · MC · Risk ·
+  Exposure Master · Sync · KIS · CMA)은 **재오픈하지 않는다**.
+
+---
+
+## 🏁 v270 FINAL RELEASE — 채권 입력 보존 · 안내 정확성 · 동기화 안전성 · 보안 정책 정리 (2026-09-26 · 직전 릴리스 · **출시 완료**)
 
 > **상태**: **출시 완료 · 미결 0건.**
 > **버전 변경**: v269 → **v270**
