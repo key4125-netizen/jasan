@@ -310,7 +310,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v270</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v271</p>
           </div>
         </div>
 
@@ -1682,6 +1682,11 @@
           </select>
           <span class="block text-sm text-slate-400 mt-1">환헤지를 고르면 장기 시뮬레이션에서 환율 영향이 빠진 공식 가정(환헤지 자산군)으로 계산합니다.</span>
         </label>
+        <!-- [PM 지시 2026-09-26 · ISSUE-B · D·E항] 해외 거래소에 직접 상장된 주식 · ETF는 환노출이
+             구조적으로 고정돼 있고 같은 종목의 환헤지형이 존재하지 않는다 - 위 선택 칸을 숨기는 대신
+             그 사실을 이 줄로 알린다("묻지 않는다"와 "환노출이 없다"는 다른 말이다).
+             문구는 js/01 fxExposureNoticeFor 하나가 만든다. -->
+        <p id="f_fxExposureNote" class="col-span-2 text-sm text-slate-500 dark:text-slate-400 break-keep hidden"></p>
       </div>
 
       <!-- ============ [Bond Domain V1 · §47-7] 채권 정보 ============================
@@ -2669,6 +2674,8 @@
         </select>
         <span class="block text-sm text-slate-400 mt-1">환헤지를 고르면 장기 시뮬레이션에서 환율 영향이 빠진 공식 가정으로 계산합니다. 모르면 비워 두세요.</span>
       </label>
+      <!-- [PM 지시 2026-09-26 · ISSUE-B · D·E항] 위 칸을 숨긴 경우의 「환노출」 표시(js/01 fxExposureNoticeFor). -->
+      <p id="tx_fxExposureNote" class="col-span-2 text-sm text-slate-500 dark:text-slate-400 break-keep hidden"></p>
 
       <!-- [자산별 역할(포지션) 분류] rateMatchOverride와 동일하게 매칭되는 자산에 반영된다(js/06 submit 핸들러). -->
       <label class="col-span-2 text-sm">

@@ -122,7 +122,8 @@ test('환헤지. 자산 종류별 표시 조건', () => {
     ['국내 주식(원화)', { ticker: '005930.KS', category: '주식', currency: 'KRW', isDomestic: '국내' }, false],
     ['국내 ETF(원화)', { ticker: '069500.KS', category: 'ETF', currency: 'KRW', isDomestic: '국내' }, false],
     ['국내상장 해외ETF', { ticker: '360750.KS', category: 'ETF', currency: 'KRW', isDomestic: '해외' }, true],
-    ['해외 직접(USD)', { ticker: 'AAPL', category: '주식', currency: 'USD', isDomestic: '해외' }, true],
+    // [PM 지시 2026-09-26 · 미결 2번] 해외 거래소 직접 상장 → 환노출은 표시하지만 선택은 묻지 않는다.
+    ['해외 직접(USD)', { ticker: 'AAPL', category: '주식', currency: 'USD', isDomestic: '해외' }, false],
     ['원화 국채(교정 후)', { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '국내' }, false],
     ['원화 국채(교정 전)', { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '해외' }, true],
     ['외화 채권', { ticker: '', category: '채권', currency: 'USD', isDomestic: '해외' }, true],

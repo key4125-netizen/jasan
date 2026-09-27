@@ -115,6 +115,15 @@ document.getElementById('resetDataBtn').addEventListener('click', () => {
   if (!document.getElementById('dailyPnlModal').classList.contains('hidden')) updateDailyPnlModal();
   if (!document.getElementById('totalValueModal').classList.contains('hidden')) updateTotalValueModal();
   showToast('이 기기의 데이터를 초기화했습니다. 클라우드 데이터는 삭제하지 않았습니다.', 'success');
+  /* [PM 결정 2026-09-26 · D-8 · A안] 되돌릴 수 없는 삭제가 실제로 끝났으므로 이 팝업을 닫는다.
+   * 예전에는 같은 팝업이 그대로 떠 있어 완료 여부가 전달되지 않았고, 바로 아래의
+   * 「클라우드 데이터 초기화」(빨간 버튼)를 잘못 누를 위험이 있었다.
+   * confirm 취소는 이 핸들러 맨 위에서 이미 return했고 그 아래는 전부 동기 처리라,
+   * 이 줄에 도달했다는 것 자체가 초기화 완료를 뜻한다(성공 확인 전에 닫지 않는다).
+   * 팝업이 실제로 열려 있을 때만 닫는다 - 닫혀 있는데 부르면 popModalHistoryIfNeeded가
+   * 다른 팝업의 뒤로가기 기록을 대신 소비한다(§57이 같은 이유로 둔 가드다). */
+  const sysModal = document.getElementById('systemManagementModal');
+  if (sysModal && !sysModal.classList.contains('hidden')) closeSystemManagementModal();
 });
 
 /* -------------------------------------------------------------------------

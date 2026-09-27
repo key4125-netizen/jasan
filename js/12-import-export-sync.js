@@ -2453,12 +2453,18 @@ async function resetCloudData() {
   if (!btn) return;
   btn.addEventListener('click', async () => {
     const result = await resetCloudData();
-    /* [PM 지시 2026-09-23 · 팝업] 초기화가 실제로 끝났을 때만 닫는다 - 취소 · 이미 비어 있음 ·
+    /* [PM 지시 2026-09-23 · 팝업 · §57] 초기화가 실제로 끝났을 때만 닫는다 - 취소 · 이미 비어 있음 ·
      * 네트워크 실패에서는 그대로 두어 바로 다시 시도할 수 있게 한다([받기] 실패와 같은 규칙).
-     * 이 버튼은 데이터 관리 화면에도 있으므로, 동기화 설정 팝업이 실제로 열려 있을 때만 닫는다 -
-     * 닫혀 있는데 부르면 다른 팝업의 뒤로가기 기록을 대신 소비한다(popModalHistoryIfNeeded). */
-    const modal = document.getElementById('syncSettingsModal');
-    if (result === 'reset' && modal && !modal.classList.contains('hidden')) closeSyncSettingsModal();
+     * 각 팝업은 실제로 열려 있을 때만 닫는다 - 닫혀 있는데 부르면 다른 팝업의 뒤로가기 기록을
+     * 대신 소비한다(popModalHistoryIfNeeded).
+     * [PM 결정 2026-09-26 · D-8 · A안] 이 버튼은 「데이터 관리」 화면에도 있다. §57은 동기화 설정
+     * 팝업만 닫았기 때문에, 데이터 관리 화면에서 실행하면 초기화가 끝나도 같은 팝업이 남아
+     * 완료 여부가 전달되지 않았다. 이제 실행한 화면의 관리 팝업을 닫는다 - 판정 기준은 위 §57 그대로다. */
+    if (result !== 'reset') return;
+    const syncModal = document.getElementById('syncSettingsModal');
+    if (syncModal && !syncModal.classList.contains('hidden')) closeSyncSettingsModal();
+    const sysModal = document.getElementById('systemManagementModal');
+    if (sysModal && !sysModal.classList.contains('hidden')) closeSystemManagementModal();
   });
 });
 

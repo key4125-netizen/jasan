@@ -232,7 +232,9 @@ function renderAssetDetailRiskConfirm(assets) {
   const opt = (v, label, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
   // [PM 수정 지시 2026-09-23] 환노출이 없는 상품(원화 표시 국내 자산 등)에는 환헤지를 묻지 않는다.
   // 저장된 값은 그대로 둔다 - 보이지 않는 것과 지우는 것은 다르다.
+  // [PM 지시 2026-09-26 · ISSUE-B · D·E항] 해외 직접 상장은 칸 대신 「환노출」을 표시한다.
   const offerHedge = shouldOfferFxHedgeChoice(first);
+  const exposureNote = (typeof fxExposureNoticeFor === 'function') ? fxExposureNoticeFor(first) : '';
 
   box.innerHTML = `
     <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">위험 분석 확인</h4>
@@ -254,6 +256,7 @@ function renderAssetDetailRiskConfirm(assets) {
         </select>
       </label>` : ''}
     </div>
+    ${exposureNote ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 break-keep">${escapeHtml(exposureNote)}</p>` : ''}
     <p class="text-sm text-slate-400 mt-1.5 break-keep">모르면 비워 두세요 - 앱이 임의로 추정하지 않습니다.</p>`;
   box.classList.remove('hidden');
 }

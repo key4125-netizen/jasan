@@ -122,6 +122,54 @@ function computeCurrentHoldingQuantity(owner, accountType, ticker, name, currenc
   return qty;
 }
 
+/* [PM 지시 2026-09-27 · ISSUE-F] 거래를 이렇게 고치면 **기존 매도**가 그 시점 보유수량을 넘게 되는가.
+ *
+ * 왜 필요한가(실측 2026-09-26): 과매도 검증은 지금까지 "저장하는 거래가 매도일 때"만 돌았다.
+ * 그래서 매수 거래를 줄이는 수정은 검증 없이 통과했고, 계산(computePositionsAndRealizedPnL)이
+ * -Math.min(매도수량, 보유수량)으로 조용히 잘라냈다. 매수 10 · 매도 8인 상태에서 매수를 5로
+ * 줄이면 보유량 0 · 매도 기록은 8 그대로 · 실현손익은 5 기준으로 계산되고 안내가 없었다.
+ * 데이터가 망가지지는 않지만(수량이 음수가 되지 않는다) 이것은 Phase 7-G가 막으려던 바로 그
+ * 상황이다 - "왜 화면 수량이 내가 입력한 매도수량과 다르지?".
+ *
+ * 새 규칙이 아니다. 같은 규칙("매도는 그 시점 보유수량을 넘을 수 없다")을 매수 수정 경로에도
+ * 적용할 뿐이며, 판정 근거도 실제 계산과 같은 것을 쓴다 - 같은 포지션 키(transactionIdentityKey),
+ * 같은 정렬(날짜 → 생성시각). 다른 것은 하나뿐이다: 여기서는 clamp하지 않고, 넘어서는 순간을
+ * 위반으로 돌려준다(clamp는 계산 쪽 최후 방어선으로 그대로 둔다 - 엑셀 · 클라우드 병합 · 예전
+ * 데이터처럼 이 화면을 거치지 않는 경로가 있기 때문이다).
+ *
+ * 고치는 거래가 **다른 포지션으로 옮겨가는 경우**(소유자 · 계좌 · 종목 · 통화 변경)에는 떠나는
+ * 쪽도 함께 본다 - 그쪽에 남겨진 매도가 같은 이유로 보유수량을 넘기 때문이다.
+ * 날짜만 바꾸는 수정도 같은 함수가 그대로 잡는다(정렬이 날짜 순이므로).
+ *
+ * 이 함수는 state를 전혀 바꾸지 않는다(순수 사전 검증 - 호출부가 결과에 따라 저장 여부를 정한다).
+ * 반환: 위반이 있으면 { tx, available, requested }, 없으면 null.
+ */
+function findOversellAfterTransactionEdit(proposedTx, editingTxId) {
+  const proposedKey = transactionIdentityKey(proposedTx);
+  const keys = [proposedKey];
+  const leaving = state.transactions.find((t) => t && t.id === editingTxId);
+  // 정체성이 바뀌어 다른 포지션으로 옮겨가는 수정이면, 떠나는 포지션도 확인한다.
+  if (leaving) {
+    const leavingKey = transactionIdentityKey(leaving);
+    if (leavingKey !== proposedKey) keys.push(leavingKey);
+  }
+  for (const key of keys) {
+    const list = state.transactions
+      .filter((t) => t && t.id !== editingTxId && transactionIdentityKey(t) === key)
+      .concat(key === proposedKey ? [proposedTx] : [])
+      // computePositionsAndRealizedPnL과 같은 정렬 - 규칙이 갈라지면 "막았는데 계산은 다르게 보는" 상태가 된다.
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || (num(a.createdAt) - num(b.createdAt)));
+    let qty = 0;
+    for (const t of list) {
+      if (t.type === 'buy') { qty += num(t.quantity); continue; }
+      const want = num(t.quantity);
+      if (want > qty) return { tx: t, available: qty, requested: want };
+      qty -= want;
+    }
+  }
+  return null;
+}
+
 // [Phase 13 - Excel 대량 거래입력 초과매도 검증] 단건 입력(위 tx_id 저장 핸들러의 computeCurrentHoldingQuantity
 // 호출)과 동일한 정책을 대량 업로드에도 적용하기 위한 사전 검증 헬퍼. computePositionsAndRealizedPnL()과
 // 완전히 동일한 키 규칙(소유자__계좌구분__티커/이름)과 정렬 기준(날짜→생성시각)으로 "이번에 새로 추가될
@@ -965,8 +1013,18 @@ function refreshTxFxHedgeUI() {
     category: (document.getElementById('tx_assetClass') || {}).value || '',
     currency: (document.getElementById('tx_currency') || {}).value || 'KRW'
   };
+  /* [PM 지시 2026-09-26 · ISSUE-B] 저장된 값이 있으면 해외 직접 상장이라도 칸을 유지한다 -
+   * 그래야 잘못 고른 값을 되돌릴 수 있다(js/01 fxHedgeChoiceStateOf 주석 참고). */
+  probe.fxHedgeStatus = (document.getElementById('tx_fxHedgeStatus') || {}).value || undefined;
   const offer = (typeof shouldOfferFxHedgeChoice === 'function') ? shouldOfferFxHedgeChoice(probe) : false;
   wrap.classList.toggle('hidden', !offer);
+  // 칸을 숨긴 자리에 「환노출」을 표시한다 - "묻지 않는다"가 "환노출이 없다"로 읽히지 않게 한다.
+  const note = document.getElementById('tx_fxExposureNote');
+  if (note) {
+    const text = (typeof fxExposureNoticeFor === 'function') ? fxExposureNoticeFor(probe) : '';
+    note.textContent = text;
+    note.classList.toggle('hidden', !text);
+  }
 }
 // 사용자가 직접 고르거나 되돌리면 안내 문구도 즉시 그 상태를 반영한다.
 document.getElementById('tx_rateMatchOverride').addEventListener('change', refreshTxRateMatchRecommendation);
@@ -1452,6 +1510,30 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     const available = computeCurrentHoldingQuantity(txOwnerVal, txAccountTypeVal, txTickerVal, name, txCurrencyVal, excludeTxId);
     if (quantity > available) {
       showToast(`현재 보유수량(${fmtNum(available, 4)})보다 많은 수량을 매도할 수 없습니다.`, 'warn', 6000);
+      return;
+    }
+  }
+
+  /* [PM 지시 2026-09-27 · ISSUE-F] 위 검증은 "지금 저장하는 거래가 매도일 때"만 돈다.
+   * **기존 매수 거래를 고치는 경우**에는 그 수정 때문에 이미 적어 둔 매도가 보유수량을 넘을 수 있는데
+   * 지금까지 아무 안내 없이 저장되고 계산이 조용히 잘라냈다. 같은 규칙을 이 경로에도 적용한다
+   * (findOversellAfterTransactionEdit 주석 참고 - 새 규칙이 아니라 적용 범위를 넓힌 것이다).
+   *
+   * 막는 방식은 위 매도 검증과 똑같다 - 무엇이 문제인지 알리고 **아무것도 저장하지 않는다.**
+   * 아래 어떤 코드도 아직 state를 건드리지 않았으므로 거래 · 자산 · 실현손익이 전부 그대로 남는다.
+   * 새 거래 추가는 대상이 아니다 - 보유수량을 줄이지 않으므로 이 상황이 생기지 않는다. */
+  const editingTx = state.transactions.find((t) => t && t.id === document.getElementById('tx_id').value);
+  if (editingTx && editingTx.type === 'buy') {
+    const proposed = {
+      id: editingTx.id,
+      date: document.getElementById('tx_date').value || todayDateStr(),
+      owner: txOwnerVal, accountType: txAccountTypeVal, ticker: txTickerVal, name,
+      type: document.getElementById('tx_type').value, quantity, currency: txCurrencyVal,
+      createdAt: editingTx.createdAt
+    };
+    const violation = findOversellAfterTransactionEdit(proposed, editingTx.id);
+    if (violation) {
+      showToast(`저장하지 않았습니다 - 이렇게 고치면 ${violation.tx.date} 매도(${fmtNum(violation.requested, 4)})가 그 시점 보유수량(${fmtNum(violation.available, 4)})을 넘어섭니다. 매수 수량을 더 크게 두거나, 그 매도 거래를 먼저 고쳐 주세요.`, 'warn', 9000);
       return;
     }
   }

@@ -146,8 +146,12 @@ test('환헤지-A. 교정된 원화 국채는 환헤지를 묻지 않는다', as
     return { krwBond: shouldOfferFxHedgeChoice(bond), usdBond: shouldOfferFxHedgeChoice(usd), usEtf: shouldOfferFxHedgeChoice(etf) };
   });
   expect(r.krwBond, '원화 국채 - 묻지 않는다').toBe(false);
-  expect(r.usdBond, '외화 채권 - 묻는다').toBe(true);
-  expect(r.usEtf, '해외 직접투자 - 묻는다').toBe(true);
+  expect(r.usdBond, '외화 채권 - 묻는다(환헤지가 분류의 근거다 · D-2)').toBe(true);
+  /* [PM 지시 2026-09-26 · 미결 2번 · §63-2] 해외 거래소에 직접 상장된 주식 · ETF에는 묻지 않는다 -
+   * 달러로 사서 달러로 보유하므로 같은 종목의 환헤지형이 존재하지 않는다. 환노출 자체는 그대로
+   * 표시한다(칸 대신 안내 한 줄). 이 테스트의 관심사는 "채권 규칙이 주식 · ETF로 번지지 않는다"이고
+   * 그 관심사는 그대로다 - 채권만 true이고 나머지는 각자의 규칙을 따른다. */
+  expect(r.usEtf, '해외 직접 상장 ETF - 묻지 않고 환노출만 표시한다').toBe(false);
 });
 
 test('환헤지-B. 국내/해외를 바꾸면 환헤지 표시도 함께 맞춰진다', async ({ page }) => {

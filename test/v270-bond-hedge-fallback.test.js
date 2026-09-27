@@ -199,7 +199,9 @@ test('D-2-8. 주식 · ETF의 환헤지 동작은 그대로다(채권 규칙이 
     [{ ticker: '005930.KS', category: '주식', currency: 'KRW', isDomestic: '국내' }, false],
     [{ ticker: '069500.KS', category: 'ETF', currency: 'KRW', isDomestic: '국내' }, false],
     [{ ticker: '360750.KS', category: 'ETF', currency: 'KRW', isDomestic: '해외' }, true],
-    [{ ticker: 'AAPL', category: '주식', currency: 'USD', isDomestic: '해외' }, true]
+    /* [PM 지시 2026-09-26 · 미결 2번] 해외 거래소 직접 상장은 묻지 않는다(환헤지형이 없다).
+     * 이 테스트의 관심사는 "채권 폴백이 주식 · ETF로 번지지 않는다"이고 그 관심사는 그대로다. */
+    [{ ticker: 'AAPL', category: '주식', currency: 'USD', isDomestic: '해외' }, false]
   ];
   cases.forEach(([a, want]) => {
     assert.strictEqual(sb.evalInSandbox(`shouldOfferFxHedgeChoice(${JSON.stringify(a)})`), want, a.ticker);

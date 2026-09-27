@@ -1371,6 +1371,14 @@ function sanitizeFxHedgeStatus(raw) {
  * 원장 유형 구분은 §44 매트릭스(js/28 EM_REQUIRED_FIELDS)가 이미 정해 둔 것을 읽을 뿐이다. */
 const FX_EXPOSED_ASSET_TYPES = Object.freeze(['FOREIGN_STOCK', 'FOREIGN_LISTED_ETF', 'KR_LISTED_FOREIGN_ETF', 'FX_CASH']);
 const FX_DOMESTIC_ASSET_TYPES = Object.freeze(['KR_STOCK', 'KR_LISTED_DOMESTIC_ETF', 'KRW_CASH']);
+/* [PM 지시 2026-09-26 · ISSUE-B] 자산 성격만으로 환노출이 확정되는 자산군.
+ * js/05 ASSET_CHARACTERS의 값을 그대로 적으며 새 값을 만들지 않는다. 국내 주식 · 채권 · 현금 ·
+ * 부동산은 여기 없다 - 그쪽은 통화 · 원장 · 사용자 입력으로 판정된다(아래 ①②③④ 그대로).
+ * US_EQUITY_HEDGED는 방어용이다 - 지금 resolveAssetCharacter는 이 값을 돌려주지 않고(환헤지 자산군은
+ * js/16 applyUserHedgeToAppClass가 MC 경로에서만 만든다), 나중에 성격 판정이 이 값을 돌려주게 되더라도
+ * "환헤지형이니까 환노출이 없다"로 읽혀 칸이 사라지는 일이 없게 미리 같은 편에 둔다.
+ * (이미 고른 값을 되돌릴 수 있어야 한다는 원칙은 아래 fxHedgeChoiceStateOf가 따로 지킨다.) */
+const FX_EXPOSED_ASSET_CHARACTERS = Object.freeze(['US_EQUITY', 'US_EQUITY_HEDGED', 'DEV_EX_US_EQUITY', 'EM_EQUITY']);
 function fxExposureStateOf(asset) {
   const a = (asset && typeof asset === 'object') ? asset : {};
   // ① 표시 통화가 원화가 아니면 그 자체로 환노출이다(채권 폼의 기존 규칙과 같다).
@@ -1398,6 +1406,25 @@ function fxExposureStateOf(asset) {
     if (rt && rt.exposure === 'KR') return 'NONE';
   }
 
+  /* ③-2 [PM 지시 2026-09-26 · ISSUE-B] 이미 승인된 자산 성격 판정이 "해외 시장 자산군"이라고
+ *      말하면 그것 자체가 환노출의 근거다. 새 키워드 · 새 추정 규칙을 만들지 않는다 -
+ *      MC 자산군(σ · 상관)이 이미 근거로 쓰고 있는 바로 그 판정(js/05 resolveAssetCharacter)을
+ *      읽을 뿐이다. 성격이 UNRESOLVED면 여기서도 아무 말을 하지 않는다(추정 금지 유지).
+ *
+ *      왜 필요한가(2026-09-26 실측): 133690(TIGER 미국나스닥100)은 Exposure Master에 없고,
+ *      공식 종목마스터는 "KOSPI 상장 · 증권그룹 EF(ETF) · 원화"까지만 말해 준다 - 기초자산이
+ *      어느 시장인지는 마스터에 담기지 않으므로 ③이 etfNeedsOfficialIndex로 미확정을 돌려준다.
+ *      그래서 ④ 사용자 입력에 의존했고, 사용자가 '국내'로 저장하면 환노출 NONE이 되어 환헤지
+ *      선택 UI가 사라졌다. 그런데 같은 종목의 자산 성격과 Return Key는 이름 근거
+ *      (indexNameKeyword)로 이미 미국 주식(US_EQUITY · NASDAQ)으로 판정돼 MC에 들어가 있었다.
+ *      한 종목에 서로 다른 두 근거가 쓰이고 있던 것이 이 문제의 원인이고, 이 단계가 그 둘을
+ *      같은 근거로 묶는다(원장에 등재된 360750은 ②에서 이미 끝나므로 영향이 없다). */
+  if (typeof resolveAssetCharacter === 'function') {
+    let ch;
+    try { ch = resolveAssetCharacter(a); } catch (e) { ch = null; }
+    if (ch && FX_EXPOSED_ASSET_CHARACTERS.includes(ch.character)) return 'EXPOSED';
+  }
+
   // ④ 사용자가 고른 국내/해외(자산 레코드의 기존 필드).
   if (a.isDomestic === '해외') return 'EXPOSED';
   if (a.isDomestic === '국내') return 'NONE';
@@ -1406,9 +1433,62 @@ function fxExposureStateOf(asset) {
   if (!String(a.ticker || '').trim()) return 'NONE';
   return 'UNKNOWN';
 }
-/* 화면이 쓰는 최종 판단 - 모른다는 이유로 숨기지 않는다(숨기면 사용자가 알려 줄 방법이 사라진다). */
+/* [PM 지시 2026-09-26 · ISSUE-B · 미결 2번] 환헤지 선택 UI의 두 번째 축 -
+ * "환노출이 있는가"와 "고를 수 있는 환헤지형 상품이 실제로 존재하는가"는 다른 질문이다.
+ *
+ * 1차 전수 테스트에서 이 둘을 한 조건으로 묶어 둔 탓에 서로 반대 방향의 문제가 동시에 나왔다.
+ *   · 물을 필요가 없는데 물었다 - SCHD · QQQM · SPY · VOO · AAPL 등 해외 거래소에 직접 상장된
+ *     주식 · ETF. 달러로 사서 달러로 보유하므로 환노출이 100% 고정이고, 같은 종목의
+ *     "환헤지형 클래스"라는 것이 존재하지 않는다. 그런데도 선택지가 떴고, 잘못 고르면
+ *     MC 자산군이 US_EQUITY_HEDGED로 바뀌어 σ가 실제로 달라졌다(단순 표시 문제가 아니었다).
+ *   · 물어야 하는데 묻지 않았다 - ISSUE-B(위 ③-2 주석). 이 쪽은 환노출 판정을 고쳐 해결한다.
+ *
+ * 판정 기준은 "표시 통화가 원화인가" 하나다. 원화 표시 = 국내 상장 = 같은 기초지수에 대해
+ * 환헤지형((H))과 환노출형이 따로 상장돼 있는 구조이므로 사용자만 답을 알 수 있다.
+ * 외화 표시 = 해외 직접 상장이므로 고를 것이 없다.
+ *
+ * 범위에서 빼는 것(기존 정책 유지 - 이번 변경 대상이 아니다):
+ *   · 채권 - 외화 채권의 환헤지는 표시가 아니라 분류의 근거다(D-2 · js/29 resolveBondClass).
+ *     거래내역으로 등록한 외화 채권은 이 칸이 유일한 입력 경로이므로 절대 숨기지 않는다.
+ *   · 현금 - 외화 현금의 기존 정책을 그대로 둔다(§55-3 범위 밖).
+ *   · 자산군 미지정('자동') · 그 밖 - 모른다는 이유로 숨기지 않는다(숨기면 알려 줄 방법이 사라진다).
+ *
+ * 반환값을 객체로 두는 이유: 화면이 "왜 묻지 않는지"를 사용자 말로 옮길 수 있어야 한다
+ * (해외 직접 상장은 칸을 숨기는 대신 「환노출」이라고 표시한다 - PM 지시 D · E항). */
+function fxHedgeChoiceStateOf(asset) {
+  const a = (asset && typeof asset === 'object') ? asset : {};
+  const exposure = fxExposureStateOf(a);
+  if (exposure === 'NONE') return { exposure, offer: false, reason: 'NO_FX_EXPOSURE' };
+  const category = String(a.category || '').trim();
+  if (category === '주식' || category === 'ETF') {
+    const ccy = String(a.currency || '').trim().toUpperCase();
+    if (ccy && ccy !== 'KRW') {
+      /* [실측 2026-09-26] 숨기기만 하면, 이 규칙이 생기기 전에 잘못 저장된 환헤지 값이
+       * MC 자산군(US_EQUITY_HEDGED · σ 13.72 → 16.64)에 계속 적용되는데 사용자가 그것을
+       * 되돌릴 화면이 사라진다. 저장값이 있으면 칸을 그대로 보여 주어 직접 지울 수 있게 한다 -
+       * 기존 데이터를 앱이 자동으로 고치지 않는다(§55-3 · 데이터 migration 금지 원칙 유지). */
+      const stored = (typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(a.fxHedgeStatus) : null;
+      if (stored) return { exposure, offer: true, reason: 'FOREIGN_DIRECT_LISTING_STORED', stored };
+      return { exposure, offer: false, reason: 'FOREIGN_DIRECT_LISTING' };
+    }
+    return { exposure, offer: true, reason: 'KR_LISTED_FX_EXPOSED' };
+  }
+  return { exposure, offer: true, reason: category === '채권' ? 'BOND_DOMAIN' : (category === '현금' ? 'FX_CASH' : 'CATEGORY_UNDECIDED') };
+}
+/* 화면이 쓰는 최종 판단. 저장된 값은 숨긴다고 지우지 않는다("UI 미표시"와 "데이터 삭제"는 다르다). */
 function shouldOfferFxHedgeChoice(asset) {
-  return fxExposureStateOf(asset) !== 'NONE';
+  return fxHedgeChoiceStateOf(asset).offer;
+}
+/* 칸을 숨긴 자리에 대신 보여 줄 한 줄. 표시할 것이 없으면 빈 문자열이다. */
+function fxExposureNoticeFor(asset) {
+  const st = fxHedgeChoiceStateOf(asset);
+  if (st.reason === 'FOREIGN_DIRECT_LISTING') {
+    return '환노출 - 해외 거래소에 직접 상장된 상품입니다. 외화로 사서 외화로 보유하므로 환율 영향이 그대로 반영되고, 같은 종목의 환헤지형은 존재하지 않아 고를 것이 없습니다.';
+  }
+  if (st.reason === 'FOREIGN_DIRECT_LISTING_STORED') {
+    return '환노출 - 해외 거래소에 직접 상장된 상품이라 환헤지형이 존재하지 않습니다. 이 자산에는 환헤지 값이 저장돼 있어 장기 시뮬레이션이 환헤지 자산군으로 계산됩니다. 「선택 안 함」으로 되돌리면 환노출 기준으로 돌아갑니다.';
+  }
+  return '';
 }
 
 function makeAsset(raw) {

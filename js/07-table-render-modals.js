@@ -796,16 +796,25 @@ function updateRiskConfirmFieldsUI() {
   wrap.classList.toggle('hidden', !eligible);
   if (!eligible) return;
   /* [PM 수정 지시 2026-09-23] 환헤지는 환노출이 있는 상품에만 묻는다 - 판정은 js/01 하나뿐이다.
-   * 숨길 때 저장된 값을 지우지 않는다("UI 미표시"와 "데이터 삭제"는 다른 문제다). */
+   * 숨길 때 저장된 값을 지우지 않는다("UI 미표시"와 "데이터 삭제"는 다른 문제다).
+   * [PM 지시 2026-09-26 · ISSUE-B] 판정이 두 축(환노출 유무 · 환헤지형 존재 여부)으로 갈렸다 -
+   * 칸을 숨긴 경우에는 그 자리에 「환노출」이라고 표시한다(js/01 fxExposureNoticeFor). */
+  const hedgeProbe = {
+    ticker: (document.getElementById('f_ticker') || {}).value,
+    name: (document.getElementById('f_name') || {}).value,
+    category,
+    currency: (document.getElementById('f_currency') || {}).value,
+    isDomestic: (document.getElementById('f_isDomestic') || {}).value,
+    // 저장된 환헤지 값이 있으면 해외 직접 상장이라도 칸을 유지한다(되돌릴 수 있어야 한다).
+    fxHedgeStatus: (document.getElementById('f_fxHedgeStatus') || {}).value || undefined
+  };
   const hedgeWrap = document.getElementById('f_fxHedgeWrap');
-  if (hedgeWrap) {
-    hedgeWrap.classList.toggle('hidden', !shouldOfferFxHedgeChoice({
-      ticker: (document.getElementById('f_ticker') || {}).value,
-      name: (document.getElementById('f_name') || {}).value,
-      category,
-      currency: (document.getElementById('f_currency') || {}).value,
-      isDomestic: (document.getElementById('f_isDomestic') || {}).value
-    }));
+  if (hedgeWrap) hedgeWrap.classList.toggle('hidden', !shouldOfferFxHedgeChoice(hedgeProbe));
+  const exposureNote = document.getElementById('f_fxExposureNote');
+  if (exposureNote) {
+    const text = (typeof fxExposureNoticeFor === 'function') ? fxExposureNoticeFor(hedgeProbe) : '';
+    exposureNote.textContent = text;
+    exposureNote.classList.toggle('hidden', !text);
   }
   const hint = document.getElementById('f_marketBetaIndexHint');
   if (!hint) return;

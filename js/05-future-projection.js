@@ -376,7 +376,22 @@ function resolveAssetGroupKeyDetailAfterInstrument(asset, presetKey) {
   const yahoo = sanitized.yahooTicker;
   if (SCENARIO_RATE_PRESETS.normal.tickers[yahoo] !== undefined) return { key: yahoo, source: 'presetTicker' };
   if (TICKER_RATE_KEY_ALIAS[yahoo]) return { key: TICKER_RATE_KEY_ALIAS[yahoo], source: 'tickerAlias' }; // 실제 QQQM/SPYM 티커 보유 - 이름 무관하게 항상 매칭
-  const nameKey = getNameKeywordRateKey(asset.name);
+  /* [PM 지시 2026-09-26 · ISSUE-D] 이름이 스스로 "한 자산군이 아니다"라고 밝히는 상품에는
+   * 이름 키워드 매칭을 적용하지 않는다. 새 규칙이 아니라 §Phase 45가 이미 정한 규칙
+   * (MIXED_ASSET_NAME_KEYWORDS)을 이 경로에도 적용하는 것이다 - 그 Phase는 혼합형이 단일
+   * 자산군으로 밀려 들어가는 경로 세 개를 막았는데(카테고리 · 이름 키워드 · 이름 지수 키워드)
+   * 세 곳 모두 "자산 성격" 판정 경로였고, 수익률 기준(Return Key) 쪽의 이 단계는 빠져 있었다.
+   *
+   * 실측(2026-09-26): 'TIGER 미국배당다우존스채권혼합'(미국 주식 50% + 국내 국고채 50%)은
+   * 자산 성격이 UNRESOLVED(mixedAssetName)로 올바르게 판정되는데, 같은 자산의 Return Key는
+   * 이름 속 '배당다우존스'에 걸려 SCHD(미국 배당주 100%)를 받았다. 그래서 MC가 이 상품 전체에
+   * 미국 주식 기대수익률(μ)과 변동성(σ)을 적용했다 - 한 자산에 두 판정이 서로 달랐다.
+   *
+   * 여기서 멈추면 아래 자산 성격 단계로 넘어가고, 성격도 UNRESOLVED이므로 "가정 없음"이 된다.
+   * 그럴듯한 숫자를 만들어 넣는 것보다 정직하다(Phase 47-A와 같은 원칙). 사용자가 대표매칭
+   * 오버라이드 · 사전 등록 · 키워드로 직접 지정한 값은 이 단계보다 앞에 있어 그대로 유지된다. */
+  const saysMixed = matchesAnyKeyword(String(asset.name ?? ''), MIXED_ASSET_NAME_KEYWORDS);
+  const nameKey = saysMixed ? null : getNameKeywordRateKey(asset.name);
   if (nameKey) return { key: nameKey, source: 'nameKeyword' }; // 국내상장 해외지수 ETF(절세계좌 등) - 이름 키워드로 대표 상품에 매칭
   // [Phase 47-A] 여기까지 왔다면 "이 종목이라서 이 키"라고 말할 종목 단위 근거는 없다. 예전엔 이 자리에서
   // 지역 대표지수로 대체했지만(getRegionFallbackRateKey), 지역은 자산의 성격이 아니다 - 그래서 국고채
@@ -2874,6 +2889,13 @@ function closeScenarioRateManagerModal(viaBackButton) {
 document.getElementById('openScenarioRateManagerBtn').addEventListener('click', openScenarioRateManagerModal);
 document.getElementById('closeScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
 document.getElementById('cancelScenarioRateManagerModalBtn').addEventListener('click', () => closeScenarioRateManagerModal(false));
+/* [PM 지시 2026-09-26 · ISSUE-A] 배경(오버레이) 클릭 시 닫기 - 다른 팝업 24개와 같은 규칙이다.
+ * 전수 점검에서 이 팝업과 CMA 추천 팝업 둘만 배경 클릭이 등록돼 있지 않았고, 그렇게 둔 이유를 적은
+ * 주석도 없었다(편집 폼인 자산 · 거래 팝업도 배경 클릭으로 닫히므로 "편집 중이라 막았다"도 아니다).
+ * 동작은 [취소] 버튼과 같다 - 작성 중이던 초안(scenarioRateManagerDraft)은 저장하지 않고 버린다. */
+document.getElementById('scenarioRateManagerModal').addEventListener('click', (e) => {
+  if (e.target.id === 'scenarioRateManagerModal') closeScenarioRateManagerModal(false);
+});
 
 /* [Phase 40-C] 이 기준의 근거가 어디까지 확인됐는지 한 줄로 보여준다.
  * CMA_SOURCE_METADATA는 지금까지 순수 내부 추적용이라 사용자에게 전혀 노출되지 않았다 - 그래서
@@ -3099,6 +3121,12 @@ function closeCmaRecommendationModal(viaBackButton) {
   cmaRecommendationModalKey = null;
 }
 document.getElementById('closeCmaRecommendationModalBtn').addEventListener('click', () => closeCmaRecommendationModal(false));
+/* [PM 지시 2026-09-26 · ISSUE-A] 배경 클릭 시 닫기 - 위 X 버튼과 완전히 같은 처리다.
+ * [나중에] 버튼과는 다르다 - 배경 클릭은 '이 버전을 봤다'는 기록(seenVersion)을 남기지 않으므로
+ * 다음에 같은 추천이 다시 뜬다. X 버튼이 이미 그렇게 동작한다. */
+document.getElementById('cmaRecommendationModal').addEventListener('click', (e) => {
+  if (e.target.id === 'cmaRecommendationModal') closeCmaRecommendationModal(false);
+});
 
 // [나중에] - 값은 절대 바꾸지 않는다. "이 버전을 봤다"는 사실만 기록해 같은 추천을 반복해서 들이밀지
 // 않는다(다음에 더 새로운 버전이 나오면 그때 다시 뜬다 - getPendingCmaFields의 seenVersion 비교 참고).

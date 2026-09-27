@@ -354,6 +354,12 @@ test('교차. 채권 레코드의 환헤지가 동기화로 들어오면 그 값
   await savePassword(pc.page, PW);
   await pc.page.locator('#syncDirectionPullBtn').click();
   await expect(pc.page.locator('#syncSettingsModal')).toBeHidden();
+  /* [2026-09-27] 위 pairedDevices와 같은 이유로 여기서도 기다린다 - 이 테스트는 페어링 절차를
+   * 따로 펼쳐 쓰면서 그 대기를 빠뜨리고 있었다. 방금 받은 내용을 pc가 3초 뒤 자동으로 되올리는데
+   * (schedulePush 디바운스), 그것이 아래 phone의 업로드와 겹치면 클라우드가 pc의 옛 내용으로
+   * 덮여 pc의 다음 조회가 up_to_date가 된다(전체 실행 부하에서 실측). 이 테스트가 보려는 것은
+   * "채권 환헤지 차이를 어떻게 다루는가"이므로 그 경쟁 상태를 겸해 보지 않는다. 단정은 그대로다. */
+  await pc.page.waitForTimeout(4500);
 
   // phone에서 채권 레코드에 환헤지를 직접 적고(자산 값과 반대로) 올린다.
   await disableSync(phone.page);

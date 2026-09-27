@@ -59,8 +59,19 @@ test('B. 환노출 판정 - 원화 국내 자산은 NONE, 외화 · 해외 노�
     [{ ticker: '', name: 'ZZ달러예수금', category: '현금', currency: 'USD', isDomestic: '해외' }, 'EXPOSED']
   ];
   cases.forEach(([a, want]) => assert.strictEqual(stateOf(sb, a), want, a.name));
-  // 표시 여부는 "NONE이 아니면 보여 준다"이다.
-  cases.forEach(([a, want]) => assert.strictEqual(offers(sb, a), want !== 'NONE', a.name));
+  /* [PM 지시 2026-09-26 · ISSUE-B · 미결 2번] 표시 여부는 더 이상 "NONE이 아니면 보여 준다"가 아니다.
+   * 환노출이 있어도 **고를 수 있는 환헤지형 상품이 존재하지 않으면** 묻지 않는다 -
+   * 해외 거래소에 직접 상장된 주식 · ETF는 외화로 사서 외화로 보유하므로 환노출이 구조적으로
+   * 고정돼 있고 같은 종목의 환헤지형 클래스가 없다(그 자리에는 「환노출」을 표시한다).
+   * 채권 · 현금은 기존 정책 그대로 묻는다 - 외화 채권의 환헤지는 분류의 근거이고(D-2),
+   * 외화 현금은 §55-3 범위 밖이다. 뭉뚱그리지 않고 종목별로 적는다. */
+  const wantOffer = {
+    '한미반도체': false, '삼성전자': false, 'KODEX 200': false, 'KODEX 200TR': false,
+    'TIGER 미국S&P500': true, 'TIGER 미국테크TOP10채권혼합': true,
+    'QQQM': false, 'Apple': false,
+    'ZZ국고채': false, 'ZZ미국채': true, 'ZZ예수금': false, 'ZZ달러예수금': true
+  };
+  cases.forEach(([a]) => assert.strictEqual(offers(sb, a), wantOffer[a.name], a.name));
 });
 
 test('B-2. 확인되지 않은 상품은 숨기지 않는다(모른다고 "없다"로 단정하지 않는다)', () => {
