@@ -32,7 +32,110 @@
 
 ---
 
-## 🏁 v271 FINAL RELEASE — v270 운영본 전수 통합 테스트 발견사항 전건 종결 (2026-09-27 · 가장 최신 · **출시 완료**)
+## 🏁 v272 FINAL RELEASE — 상품 기준정보 구조 정리(FX Hedge · Bond) · 전체 통합검증 (2026-09-27 · 가장 최신 · **출시 완료**)
+
+> **상태**: **출시 완료 · 실제 미결 0건 · PM 결정 대기 0건 · 운영 조치 0건.**
+> **버전 변경**: v271 → **v272**
+> **release commit**: `8cad774` · **handover commit**: 이 커밋
+> **branch**: `main` (origin/main)
+> **production**: https://key4125-netizen.github.io/jasan/ · **tag**: `v272` (annotated · `8cad774`)
+> **SoT**: `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` **§44-16-1**(D-4 해소) · 기존 §55 · §58-5 · §65
+> **PM 결정 원장**: 이번 릴리스에서 추가된 결정 0건
+
+### 무엇이 바뀌었나 (STEP 1~3)
+
+| STEP | 문제 | 처리 |
+| --- | --- | --- |
+| 1 | 같은 종목인데 화면마다 다른 근거를 봤다 — 위험분석은 원장(Exposure Master)+사용자 확정을 보는데 Monte Carlo는 사용자 값만 봤다 | 공통 판정 `resolveInstrumentFxHedge` 한 곳으로 통일(우선순위 정책 자체는 무변경) |
+| 1 | 같은 종목의 보유분마다 다른 환헤지가 적혀 있어도 아무도 알려주지 않았다 | `fxHedgeConflictFor` — 앱이 고르지 않고 알린다 |
+| 1 | 원화 채권에 환헤지를 물었다 | `fxHedgeChoiceStateOf` 채권 게이트 — 원화 채권은 묻지 않는다(§58-5) |
+| 2 | 같은 ISIN의 발행조건을 **먼저 만난 레코드**로 정했다(배열 순서가 답) | `resolveBondInstrumentFacts` — 보유분 전부를 보고, 갈리면 채우지 않고 무엇이 다른지 말한다 |
+| 2 | `findBondMasterByIsin` 등 first-found 경로 4곳 | 전부 제거(참조 0건) |
+| 3 | **BUG-3 (HIGH)** 사용자가 확정한 `fxHedgeStatus` · `marketBetaIndexOverride`가 `persistAssets` 저장 목록에 없어 새로고침 한 번에 사라졌다 | 저장 목록에 추가 — 두 값은 MC 자산군(σ 13.72↔16.64)과 Risk 기준지수를 실제로 바꾼다 |
+| 3 | **BUG-1** Risk가 같은 티커를 합칠 때 먼저 만난 보유분으로 기준 지수를 정했다 | `resolveAcrossHoldings` — 하나의 답일 때만 쓰고, 갈리면 `UNRESOLVED/holdingConflict` |
+| 3 | **BUG-2** 수익률 기준 추천도 같은 순서 의존 | 지정이 하나로 모일 때만 추천(PMD-02) |
+
+### 계산 무변경 (v271 승인 기준선과 완전 일치)
+
+Risk: `score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192 MDD=-2.662509179
+corr=0.9022471287 beta=0.931428547` · 개별 베타 7종 동일
+MC: equityOnly 49 / `af875582fc001dc2` · withSyntheticBonds 51 / `a36f5ba2112d4d44` ·
+P10/P50/P90/Mean 전부 **0.00%** · σ 변경 0건 · errors=[]
+
+**계산이 달라지는 지점은 단 하나** — 같은 티커 보유분들의 기준지수 지정이 서로 갈릴 때, 예전에는
+배열 순서로 정해진 값을 쓰던 것이 이제 UNRESOLVED가 된다. 임의값 제거이며 의도된 변화다.
+
+### 릴리스 게이트 결과 (v272 tree 실측)
+
+| 게이트 | 결과 |
+| --- | --- |
+| Unit | **967 / 967 PASS · fail 0** |
+| Full E2E | **1315 / 1315 PASS · fail 0** (17.8분 · 타임아웃 0) |
+| ESLint | **PASS** (error 0) |
+| Data Guard | **PASS** (stage 24개 · 추적 336개) |
+| Secret Scan | **PASS** (변경·신규 전체에 secret 0건) |
+| Release Guard | **PASS** (bump 전 FAIL → bump 후 PASS) |
+| Risk Regression | **PASS** — v271 baseline과 숫자 하나까지 동일 |
+| MC Regression | **PASS** — 사분위 전부 0.00% · μ지문 2종 동일 |
+| Production Smoke | **PASS** (아래 · 단 MC 수치 산출은 production 미실행) |
+
+### Production Smoke 결과 (https://key4125-netizen.github.io/jasan/)
+
+- Pages build `8cad774` · status **built** · error 없음 (Pages source = `main` 루트 · legacy)
+- HTTP 직접 확인: `sw.js` **smart-asset-manager-v272** · `index.html` **v272** ·
+  app shell(index · sw · manifest · js 28개 · usdkrw-h10) **404 0건**
+- 배포본에 STEP 1~3 코드 존재 확인: `resolveInstrumentFxHedge` · `resolveBondInstrumentFacts` ·
+  `resolveAcrossHoldings`(3곳) · `twinKeys` · `fxHedgeStatus: a.fxHedgeStatus`
+- 화면 v272 · 탭 4개 각자 패널만 표시 · 자산 상세(환헤지 UI) · 거래 폼 채권 ISIN 자동채움
+  (만기 2030-12-01 · 쿠폰 3.5 · 국채) · 채권 위험 카드 · 데이터 관리 팝업 정상
+- Risk 실행 성공 · **배열 뒤집기 후 결과 동일**(BUG-1) · baseline 7종목 벤치마크 판정이
+  로컬 회귀와 동일(005930/069500/237370/278530 → KOSPI · AAPL/360750/SCHD → SP500 · 전부 RESOLVED)
+- 저장 → 새로고침 왕복에서 `HEDGED`/`KOSPI` 유지 · 해석 `HEDGED/userOverride` conflict 표시(BUG-3)
+- **Monte Carlo 수치 산출은 production에서 수행하지 않았다.** 합성 포트폴리오에 목표 비중이 없어
+  앱이 정책대로 거부했다("자산 비중 합계가 100%가 되지 않아 계산하지 못했습니다" — **정상 동작**).
+  목표 비중을 억지로 만들지 않았다. MC 수치는 로컬 회귀(0.00%)와 E2E MC spec이 담당한다.
+- console error: **r.jina.ai 401 다수**(요청 18건) — `CORS_PROXIES` 최후순위 공개 프록시가 API 키를
+  요구해서 나는 기존 현상이며 **SoT §65-2에서 이미 CLOSED**다. 사용자 본인 Worker
+  (`asset-manager-proxy`)는 29건 호출되어 정상이고 "환율 갱신 완료 · 시세 3건 갱신"이 실제로 떴다.
+  **v272가 만든 문제가 아니다**(v272는 시세/프록시 코드를 건드리지 않았다).
+- 합성(ZZ) 데이터는 검증 후 전부 정리했다(자산 0 · 거래 0 · 채권 0).
+
+### ⚠ Service Worker 전환 조건 — 실측으로 확인한 사실 (다음 릴리스에서도 같다)
+
+v272 배포 직후, **v271 SW가 이미 설치된 브라우저**에서 다음을 실측했다.
+
+1. 앱을 열면 v272 sw.js가 내려와 **설치되고 `smart-asset-manager-v272` 캐시(APP_SHELL 32개)가
+   만들어진다.** 그러나 새 worker는 `waiting` 상태에 머물고, 그 세션 동안 화면은 **v271 그대로**다.
+2. 같은 탭에서 새로고침을 반복해도(30초 이상 대기 포함) `waiting`이 풀리지 않았다.
+3. **그 origin의 페이지를 떠났다가(다른 사이트로 이동 약 45초) 다시 열면** 새 worker가 activate되어
+   `clients.claim()` + 구버전 캐시 삭제가 실행되고, 화면이 **v272**가 되며
+   캐시 목록이 `smart-asset-manager-v272` **하나만** 남는다(실측 확인).
+
+즉 **전환은 정상 동작하되 즉시가 아니다** — sw.js에 `skipWaiting()`이 있어도, 앱 페이지가 열려 있는
+동안에는 넘어가지 않았다. 사용자 입장에서는 "이번에 열었을 때는 이전 버전, 앱을 닫았다가 다시 열면
+새 버전"이다. v271 릴리스 때의 production smoke는 **구버전 SW가 없는 깨끗한 프로필**에서 했기 때문에
+이 경로를 지나지 않았다 — 이번에 처음 실측했다.
+
+- **실패로 판정하지 않았다**: PM 지시 §8·§14가 정한 기준(새 SW 등록 → cache v272 → 새로 열린 페이지
+  v272 → asset 정상) 네 가지를 모두 충족한다.
+- **다음 릴리스에서 주의**: "배포 직후 같은 탭에서 새 버전이 안 보인다"는 것은 장애가 아니다.
+  확인하려면 해당 origin을 떠났다가 다시 열어야 한다.
+- 이 동작을 바꾸려면(예: 새 버전 알림 후 즉시 전환) `sw.js`에 message 핸들러를 넣는 등의 **제품 결정**이
+  필요하다. 현재 sw.js에는 message 핸들러가 없다(실측). **임의로 만들지 않았다.**
+
+### 다음 세션에게
+
+- 실제 미결 0건 · PM 결정 대기 0건. 새 backlog를 임의로 열지 않는다.
+- `.claude/launch.json`은 사용자 로컬 변경이다. blob `2a39711674f3af2df32a46825454020b34599670` ·
+  mtime `2026-09-08 22:35:15`. **수정 · 복원 · 삭제 · checkout · commit 모두 금지.**
+  v272 commit에도 포함하지 않았다(확인 완료).
+- `baseline/v262/` 변경 금지 · freeze-baseline 실행 금지(§65-4 — `--help`도 실제로 파일을 덮어쓴다).
+- 다음에 js/를 고치면 반드시 `sw.js` CACHE_NAME과 `index.html` appVersionLabel을 함께 올린다.
+  Release Guard가 이것을 잡는다(v272에서 실제로 FAIL → PASS 전이를 확인했다).
+
+---
+
+## 🏁 v271 FINAL RELEASE — v270 운영본 전수 통합 테스트 발견사항 전건 종결 (2026-09-27 · 직전 릴리스 · **출시 완료**)
 
 > **상태**: **출시 완료 · 실제 미결 0건 · PM 결정 대기 0건 · 운영 조치 미실시 0건.**
 > (2026-09-27 PM 최종 종결 — KIS Token · r.jina.ai · P-9 전부 CLOSED · SoT **§65**)
