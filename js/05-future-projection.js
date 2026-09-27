@@ -1266,10 +1266,20 @@ function recommendReturnAssumptionKey(input) {
     });
   }
 
-  // Step 2 - 같은 티커를 이미 보유 중이고 그 자산에 명시적 지정이 있으면 강한 증거로 쓴다.
+  /* Step 2 - 같은 티커를 이미 보유 중이고 그 자산에 명시적 지정이 있으면 강한 증거로 쓴다.
+   * [PM STEP 3 · BUG-2] 예전에는 `find()`로 **먼저 만난** 보유분의 지정을 그대로 추천했다 -
+   * 보유분마다 다른 기준을 지정해 둔 경우 배열 순서가 추천을 정했고, 문구는 마치 하나뿐인
+   * 것처럼 말했다. PMD-02 / N-10은 "같은 종목에 서로 다른 기준이 쓰이면 경고 + 사용자 수정 ·
+   * 자동 해결 금지 · 먼저/나중 우선순위 금지"다. 그래서 값이 갈리면 추천하지 않고 넘어간다.
+   * (하나로 모여 있을 때만 추천한다 - 그때는 순서와 무관하게 같은 답이다.) */
   if (ticker) {
     const yahoo = sanitizeTicker(ticker).yahooTicker;
-    const twin = (state.assets || []).find((a) => a.rateMatchOverride && sanitizeTicker(a.ticker).yahooTicker === yahoo);
+    const twinKeys = [...new Set((state.assets || [])
+      .filter((a) => a && a.rateMatchOverride && sanitizeTicker(a.ticker).yahooTicker === yahoo)
+      .map((a) => a.rateMatchOverride))];
+    const twin = twinKeys.length === 1
+      ? (state.assets || []).find((a) => a && a.rateMatchOverride === twinKeys[0] && sanitizeTicker(a.ticker).yahooTicker === yahoo)
+      : null;
     if (twin) {
       return Object.assign(base, {
         recommendedReturnKey: twin.rateMatchOverride,

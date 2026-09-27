@@ -397,6 +397,24 @@ function bondRiskCardHtml() {
   const durationLine = typeof s.weightedModifiedDuration === 'number'
     ? `평균 수정듀레이션 <b>${fmtNum(s.weightedModifiedDuration, 2)}년</b> · 시장금리가 +1.00%p(100bp) 오르면 평가금액은 약 <b>${fmtNum(s.primaryImpactPct, 1)}%</b> 움직입니다`
     : '만기일 · 표면이율이 채워진 채권이 없어 금리 민감도를 계산하지 못했습니다';
+  /* [PM STEP 2-E] 같은 채권(ISIN)인데 보유분마다 발행조건이 다르면 그 사실을 알린다.
+   * 고르지 않고 · 합치지 않고 · 지우지 않는다(js/29 resolveBondInstrumentFacts).
+   * 만기일 하나가 갈리면 현금흐름과 듀레이션이 달라지므로 숫자만 보여 주면 안 된다. */
+  let factConflicts = '';
+  if (typeof resolveBondInstrumentFacts === 'function' && typeof bondInstrumentConflictNote === 'function') {
+    const seen = [];
+    const notes = [];
+    positions.forEach((p) => {
+      const isin = String((p && p.identity && p.identity.isin) || '').trim().toUpperCase();
+      if (!isin || seen.includes(isin)) return;
+      seen.push(isin);
+      const note = bondInstrumentConflictNote(resolveBondInstrumentFacts(isin, positions));
+      if (note) notes.push(note);
+    });
+    if (notes.length) {
+      factConflicts = `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1.5 leading-relaxed">${notes.map(escapeHtml).join('<br>')}</p>`;
+    }
+  }
   const unavailable = (s.unavailable || []).length
     ? `<p class="text-sm text-slate-400 mt-1">계산하지 못한 채권 ${s.unavailable.length}건: ${escapeHtml(s.unavailable.map((u) => (u.name || '이름 없음') + '(' + (u.reason || '') + ')').join(' · '))}</p>`
     : '';
@@ -408,6 +426,7 @@ function bondRiskCardHtml() {
         신용등급 ${ratings || '미확인'}${currencies ? ' · 통화 ' + escapeHtml(currencies) : ''} · 듀레이션 계산 범위 ${fmtNum(s.durationCoveragePct, 0)}%
       </p>
       ${bondValuationSourceHtml(s)}
+      ${factConflicts}
       ${unavailable}
       <p class="text-sm text-slate-400 mt-1.5 leading-relaxed">
         위 <b>금리 민감도(듀레이션)</b>는 시장에서 실제로 관측한 가격 변동이 아니라 <b>현금흐름 구조로 계산한 모형값</b>입니다(일수 계산 ${escapeHtml(s.dayCount)}).

@@ -740,20 +740,35 @@ const INSTRUMENT_CONFIDENCE = Object.freeze({
   UNRESOLVED: 'UNRESOLVED'  // 근거 없음 - 만들어내지 않는다
 });
 /** 이 자산에 대해 채권 원장(state.bondPositions)이 아는 사실. 없으면 null. */
+/* [PM STEP 2-D · 2-E] 예전에는 `find()`가 **먼저 만난 레코드**를 답으로 돌려줬다 -
+ * 같은 ISIN을 두 사람이 들고 있으면 배열 순서에 따라 발행통화가 달라질 수 있는 구조였다.
+ * 이제 두 갈래로 나눈다.
+ *   ① 이 자산에 직접 붙은 레코드(assetId 1:1) - 순서와 무관한 그 자산 자신의 사실이다.
+ *   ② 없으면 같은 ISIN의 **상품 기준정보**(js/29 resolveBondInstrumentFacts) - 레코드를 전부
+ *      보고, 값이 갈리면 어느 쪽도 고르지 않는다(null). 먼저 발견된 값을 정답으로 쓰지 않는다.
+ */
 function lookupBondMasterFacts(ticker, assetId) {
   if (typeof state === 'undefined' || !Array.isArray(state.bondPositions) || !state.bondPositions.length) return null;
   const isin = String(ticker ?? '').trim().toUpperCase();
   const id = String(assetId ?? '');
-  const rec = state.bondPositions.find((p) => {
-    if (!p) return false;
-    if (id && String(p.assetId || '') === id) return true;
-    const pIsin = String((p.identity && p.identity.isin) || '').trim().toUpperCase();
-    return !!isin && pIsin === isin;
-  });
-  if (!rec) return null;
-  const identity = (typeof bondEffectiveTerms === 'function' ? bondEffectiveTerms(rec).identity : rec.identity) || {};
-  const ccy = String(identity.currency || '').trim().toUpperCase();
-  return { record: rec, currency: ccy || null, instrumentName: identity.instrumentName || null };
+  const own = id ? state.bondPositions.find((p) => p && String(p.assetId || '') === id) : null;
+  if (own) {
+    const identity = (typeof bondEffectiveTerms === 'function' ? bondEffectiveTerms(own).identity : own.identity) || {};
+    const ccy = String(identity.currency || '').trim().toUpperCase();
+    return { record: own, currency: ccy || null, instrumentName: identity.instrumentName || null, source: 'ownRecord' };
+  }
+  if (!isin) return null;
+  const resolved = (typeof resolveBondInstrumentFacts === 'function') ? resolveBondInstrumentFacts(isin, state.bondPositions) : null;
+  if (!resolved || resolved.count === 0) return null;
+  return {
+    // 레코드 하나뿐일 때만 그 레코드를 돌려준다 - 여럿이면 "이 상품의 레코드"라고 말할 수 없다.
+    record: resolved.count === 1 ? state.bondPositions.find((p) => p && p.id === resolved.recordIds[0]) || null : null,
+    currency: resolved.facts.currency || null,        // 갈리면 null(모른다)로 둔다
+    instrumentName: resolved.facts.instrumentName || null,
+    source: 'instrumentFacts',
+    instrumentStatus: resolved.status,
+    conflicts: resolved.conflicts
+  };
 }
 /** Exposure Master가 아는 가격통화. 활성 상태가 아니거나 등록되지 않았으면 null. */
 function lookupExposurePriceCcy(assetLike) {
@@ -1473,7 +1488,20 @@ function fxHedgeChoiceStateOf(asset) {
     }
     return { exposure, offer: true, reason: 'KR_LISTED_FX_EXPOSED' };
   }
-  return { exposure, offer: true, reason: category === '채권' ? 'BOND_DOMAIN' : (category === '현금' ? 'FX_CASH' : 'CATEGORY_UNDECIDED') };
+  /* [PM STEP 1-C · 1-E] 원화 채권은 환헤지를 보지 않는다(§58-5 · js/29 resolveBondHedgeStatusDetail 0순위).
+   * 원화로 사서 원화로 상환하므로 환노출이 없고, 같은 종목의 환헤지형이라는 것도 존재하지 않는다.
+   * 그래서 통화만 보고 판단한다 - 국내/해외 입력에 기대지 않는다. 거래 폼에는 그 칸이 아예 없고
+   * (거래 스키마에 isDomestic이 없다 · §58-4) 그 탓에 같은 채권이 화면마다 다른 답을 냈다.
+   * 자산군이 비어 있어도 표준코드(ISIN)면 채권으로 본다 - 판정 근거를 화면마다 갈라지게 두지 않는다.
+   * 숨기는 것뿐이고 이미 저장된 값은 지우지 않는다(§55-3 데이터 보호 원칙 그대로). */
+  const looksBond = category === '채권'
+    || (!category && typeof isBondIsin === 'function' && isBondIsin(String(a.ticker || '').trim()));
+  if (looksBond) {
+    const bondCcy = String(a.currency || '').trim().toUpperCase();
+    if (!bondCcy || bondCcy === 'KRW') return { exposure, offer: false, reason: 'BOND_KRW_NOT_APPLICABLE' };
+    return { exposure, offer: true, reason: 'BOND_DOMAIN' };
+  }
+  return { exposure, offer: true, reason: category === '현금' ? 'FX_CASH' : 'CATEGORY_UNDECIDED' };
 }
 /* 화면이 쓰는 최종 판단. 저장된 값은 숨긴다고 지우지 않는다("UI 미표시"와 "데이터 삭제"는 다르다). */
 function shouldOfferFxHedgeChoice(asset) {
@@ -1489,6 +1517,61 @@ function fxExposureNoticeFor(asset) {
     return '환노출 - 해외 거래소에 직접 상장된 상품이라 환헤지형이 존재하지 않습니다. 이 자산에는 환헤지 값이 저장돼 있어 장기 시뮬레이션이 환헤지 자산군으로 계산됩니다. 「선택 안 함」으로 되돌리면 환노출 기준으로 돌아갑니다.';
   }
   return '';
+}
+
+/* [PM STEP 1-A] 환헤지 사실을 한 곳에서 해석한다 - Risk(js/09)와 MC(js/16)가 같은 답을 보게 한다.
+ *
+ * 왜 필요한가(STEP 0 실측): Risk는 finalizeRiskBenchmark가 Exposure Master의 hedgeStatus를 읽는데,
+ * MC(js/16 applyUserHedgeToAppClass)는 자산의 사용자 값만 읽었다. 그래서 원장이 A등급 근거로
+ * "이 상품은 비헤지"라고 적어 둔 종목(현재 17건)에 대해 두 엔진이 서로 다른 근거를 쓰고 있었다.
+ *
+ * 순서(고정) - 값을 복사하지 않는다. Master는 Master로, Override는 Override로 둔다.
+ *   1 사용자 Override  asset.fxHedgeStatus  (사용자가 직접 확정한 값이 언제나 먼저다)
+ *   2 Instrument Master Exposure Master entry.hedgeStatus (근거 등급이 붙은 원장 사실)
+ *   3 UNRESOLVED       (없으면 비헤지로 단정하지 않는다 - 기존 원칙 그대로)
+ *
+ * 둘이 다르면 어느 쪽도 자동으로 고치지 않는다(PM STEP 1 §3). conflict=true로 사실만 알린다.
+ */
+function resolveInstrumentFxHedge(assetLike) {
+  const a = (assetLike && typeof assetLike === 'object') ? assetLike : {};
+  const override = (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(a.fxHedgeStatus) || null) : null;
+  let master = null;
+  if (typeof lookupExposureRecord === 'function' && typeof isExposureMasterActive === 'function' && isExposureMasterActive()) {
+    let rec;
+    try { rec = lookupExposureRecord(a); } catch (e) { rec = null; }
+    const raw = (rec && rec.entry) ? rec.entry.hedgeStatus : null;
+    master = (raw === 'HEDGED' || raw === 'UNHEDGED') ? raw : null;
+  }
+  const conflict = !!(override && master && override !== master);
+  if (override) return { status: override, source: 'userOverride', override, master, conflict };
+  if (master) return { status: master, source: 'instrumentMaster', override, master, conflict };
+  return { status: null, source: 'UNRESOLVED', override, master, conflict };
+}
+
+/* [PM STEP 1-B] 같은 종목을 여러 보유분이 서로 다른 환헤지로 들고 있는지 본다.
+ *
+ * PMD-02 / N-10이 이미 요구한 것("같은 종목에 서로 다른 기준이 쓰이면 경고 + 사용자 수정 ·
+ * 자동 해결 금지 · 먼저/나중 우선순위 금지")인데 실제 구현이 없었다. 여기서는 사실만 돌려준다 -
+ * 고르지 않고, 전파하지 않고, 지우지 않는다.
+ *
+ * 반환은 Return Key의 기존 충돌 표현과 같은 모양이다({ conflict, values, units }).
+ * 값이 없는 보유분은 "아직 확인하지 않음"이라 충돌로 세지 않는다 - 서로 다른 확정값이 둘 이상일 때만 충돌이다.
+ */
+function fxHedgeConflictFor(assetLike, assets) {
+  const a = (assetLike && typeof assetLike === 'object') ? assetLike : {};
+  const key = (typeof sanitizeTicker === 'function') ? sanitizeTicker(a.ticker).yahooTicker : String(a.ticker || '').trim();
+  if (!key) return { conflict: false, values: [], units: [] };
+  const pool = Array.isArray(assets) ? assets : ((typeof state !== 'undefined' && Array.isArray(state.assets)) ? state.assets : []);
+  const units = [];
+  pool.forEach((x) => {
+    if (!x) return;
+    const k = (typeof sanitizeTicker === 'function') ? sanitizeTicker(x.ticker).yahooTicker : String(x.ticker || '').trim();
+    if (k !== key) return;
+    const st = (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(x.fxHedgeStatus) || null) : null;
+    units.push({ id: x.id, owner: x.owner, accountType: x.accountType, currency: x.currency, status: st });
+  });
+  const values = [...new Set(units.map((u) => u.status).filter(Boolean))];
+  return { conflict: values.length > 1, values, units };
 }
 
 function makeAsset(raw) {
@@ -2220,7 +2303,17 @@ function persistAssets(skipPush) {
     // [자산별 역할(포지션) 분류] makeAsset() 주석 참고 - 저장하지 않으면 새로고침마다 사라진다.
     role: a.role,
     // [Phase 49] 저장하지 않으면 새로고침 한 번에 사라져 표시 자체가 무의미해진다.
-    positionSource: a.positionSource
+    positionSource: a.positionSource,
+    /* [PM STEP 3 · BUG-3] 사용자가 「위험 분석 확인」에서 직접 확정한 두 값이 이 목록에 없었다 -
+     * 메모리에는 남고 저장은 되지 않아 **새로고침 한 번에 사라졌다**(실측 확인).
+     * 조용히 사라지는 것이 특히 나쁜 이유: 두 값은 계산을 실제로 바꾼다.
+     *   fxHedgeStatus        - MC 자산군 US_EQUITY ↔ US_EQUITY_HEDGED(σ 13.72 ↔ 16.64)
+     *   marketBetaIndexOverride - Risk 시장 기준지수(userConfirmedIndex 경로 · js/09)
+     * 게다가 Excel 내보내기(js/12) · 백업 payload · 동기화 차이 검사(js/25)는 이 둘을 이미
+     * 다루고 있어서, 화면 · 파일 · 다른 기기는 값이 있다고 말하는데 재부팅하면 없는 상태였다.
+     * categorySource · positionSource · rateMatchOverride가 같은 이유로 이미 여기 들어와 있다. */
+    fxHedgeStatus: a.fxHedgeStatus,
+    marketBetaIndexOverride: a.marketBetaIndexOverride
   }));
   setLocalStorageItemSafely(LS_ASSETS, JSON.stringify(clean));
   if (!skipPush) schedulePush();

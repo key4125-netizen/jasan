@@ -1065,22 +1065,43 @@ function refreshAccountTypeDatalist() {
   list.innerHTML = collectKnownAccountTypes().map((v) => '<option value="' + escapeHtml(v) + '"></option>').join('');
 }
 
-/* [BOND-13] 이미 이 앱에 있는 채권 원장에서 같은 채권을 찾는다 - 네트워크 조회가 아니다.
- * 같은 ISIN이면 발행조건은 소유자 · 계좌와 무관하게 같으므로, 계좌가 달라도 조건은 가져다 쓴다. */
-function findBondMasterByIsin(isin) {
+/* [BOND-13 · PM STEP 2-D] 이미 이 앱에 있는 채권 원장에서 같은 채권의 **발행조건**을 찾는다
+ * (네트워크 조회가 아니다). 같은 ISIN이면 발행조건은 소유자 · 계좌와 무관하게 같다.
+ *
+ * 예전에는 `find()`로 먼저 만난 레코드를 그대로 썼다 - 레코드가 여럿이고 값이 다르면
+ * 배열 순서가 답을 정했다. 이제 js/29 resolveBondInstrumentFacts가 전부를 보고 답하며,
+ * 값이 갈리는 필드는 **비워 둔다**(고르지 않는다).
+ */
+function resolveBondFactsByIsin(isin) {
+  const key = String(isin || '').trim().toUpperCase();
+  if (!key || typeof resolveBondInstrumentFacts !== 'function') return null;
+  const r = resolveBondInstrumentFacts(key, state.bondPositions);
+  return r && r.count > 0 ? r : null;
+}
+
+/* [PM STEP 2-E] 같은 ISIN · 같은 소유자 · 같은 계좌의 레코드. 보유 충돌 판정에 쓴다 -
+ * "이 사람이 이 계좌에 수동으로 적어 둔 그 채권"을 찾는 것이므로 ISIN만으로 고르면 안 된다. */
+function findBondRecordFor(isin, owner, account) {
   const key = String(isin || '').trim().toUpperCase();
   if (!key) return null;
-  return (state.bondPositions || []).find((p) => p && p.identity && String(p.identity.isin || '').toUpperCase() === key) || null;
+  return (state.bondPositions || []).find((p) => {
+    if (!p || !p.identity) return false;
+    if (String(p.identity.isin || '').toUpperCase() !== key) return false;
+    const h = p.holding || {};
+    return String(h.owner || '') === String(owner) && String(h.account || '') === String(account);
+  }) || null;
 }
 
 /* [BOND-09] 수동으로 관리 중인 채권과 같은 채권을 거래로 새로 넣으려 하면 막는다.
  * 조용히 병존하면 거래 파생 보유분이 수동 보유분을 덮어써(resolveBondHolding의 LEDGER 우선) 사용자가
  * 적어 둔 액면이 화면에서 사라진 것처럼 보인다. 이미 거래로 관리 중인 채권은 충돌이 아니다. */
 function findConflictingManualBond(isin, owner, account) {
-  const rec = findBondMasterByIsin(isin);
+  /* [PM STEP 2-E] 예전에는 ISIN으로 **먼저 만난** 레코드를 집은 뒤 소유자 · 계좌가 같은지 봤다 -
+   * 다른 사람의 레코드가 앞에 있으면 정작 이 사람의 수동 보유분을 놓쳤다(순서 의존).
+   * 이제 소유자 · 계좌까지 함께 찾는다. */
+  const rec = findBondRecordFor(isin, owner, account);
   if (!rec) return null;
   const h = rec.holding || {};
-  if (String(h.owner || '') !== String(owner) || String(h.account || '') !== String(account)) return null;
   const key = (typeof bondLedgerKey === 'function') ? bondLedgerKey(rec) : null;
   const ledger = computePositionsAndRealizedPnL().positions;
   if (key && Object.prototype.hasOwnProperty.call(ledger, key)) return null; // 이미 거래로 관리 중
@@ -1169,19 +1190,26 @@ function applyKnownBondMasterToTxForm() {
     note.textContent = '표준코드(ISIN)는 영문 2자 + 영숫자 9자 + 숫자 1자, 모두 12자리입니다(예: KR103502G990).';
     return;
   }
-  const rec = findBondMasterByIsin(isin);
-  if (!rec) { note.textContent = '처음 보는 채권입니다 - 아래 발행조건을 직접 넣어 주세요(모르는 값은 비워 둡니다).'; return; }
-  const eff = bondEffectiveTerms(rec);
+  /* [PM STEP 2-D] 이 ISIN의 상품 기준정보를 쓴다 - 레코드 하나를 골라 베끼지 않는다.
+   * 값이 갈리는 필드는 애초에 비어 있으므로 잘못된 값이 폼에 들어가지 않는다. */
+  const resolved = resolveBondFactsByIsin(isin);
+  if (!resolved) { note.textContent = '처음 보는 채권입니다 - 아래 발행조건을 직접 넣어 주세요(모르는 값은 비워 둡니다).'; return; }
+  const f = resolved.facts;
   const setIfEmpty = (id, v) => { const el = txBondEl(id); if (el && !el.value && v !== null && v !== undefined && v !== '') el.value = String(v); };
-  setIfEmpty('tx_bondMaturityDate', eff.terms.maturityDate);
-  setIfEmpty('tx_bondCouponRate', eff.terms.couponRate);
-  setIfEmpty('tx_bondCouponType', eff.terms.couponType);
-  setIfEmpty('tx_bondPayFreq', eff.terms.paymentFrequency);
-  setIfEmpty('tx_bondType', eff.identity.bondType);
-  setIfEmpty('tx_bondRating', eff.identity.creditRating);
+  setIfEmpty('tx_bondMaturityDate', f.maturityDate);
+  setIfEmpty('tx_bondCouponRate', f.couponRate);
+  setIfEmpty('tx_bondCouponType', f.couponType);
+  setIfEmpty('tx_bondPayFreq', f.paymentFrequency);
+  setIfEmpty('tx_bondType', f.bondType);
+  setIfEmpty('tx_bondRating', f.creditRating);
   const nameInput = txBondEl('tx_name');
-  if (nameInput && !nameInput.value && eff.identity.instrumentName) nameInput.value = eff.identity.instrumentName;
-  note.textContent = '이미 등록된 채권입니다 - 아는 발행조건을 채웠습니다' + (eff.identity.instrumentName ? ' (' + eff.identity.instrumentName + ')' : '') + '.';
+  if (nameInput && !nameInput.value && f.instrumentName) nameInput.value = f.instrumentName;
+  if (resolved.status === 'CONFLICT' && typeof bondInstrumentConflictNote === 'function') {
+    note.textContent = bondInstrumentConflictNote(resolved)
+      + ' 서로 다른 값은 채우지 않았습니다 - 맞는 값을 직접 넣어 주세요.';
+    return;
+  }
+  note.textContent = '이미 등록된 채권입니다 - 아는 발행조건을 채웠습니다' + (f.instrumentName ? ' (' + f.instrumentName + ')' : '') + '.';
 }
 
 /* ══ [Bond Stage 2 · §49 BOND-41~46] ISIN으로 발행조건 자동 조회 ══════════════

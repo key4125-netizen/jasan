@@ -154,7 +154,12 @@ test('환헤지-A. 교정된 원화 국채는 환헤지를 묻지 않는다', as
   expect(r.usEtf, '해외 직접 상장 ETF - 묻지 않고 환노출만 표시한다').toBe(false);
 });
 
-test('환헤지-B. 국내/해외를 바꾸면 환헤지 표시도 함께 맞춰진다', async ({ page }) => {
+/* [기대값 갱신 · PM STEP 1-C] 예전에는 원화 채권의 환헤지 제공 여부가 지역 값에 따라 바뀌었다
+ * (지역이 '해외'면 환노출 EXPOSED로 판정돼 물었다 - §58-5가 "교정 전 증상"이라 부른 상태다).
+ * 이제는 **통화만 보고** 판단하므로 지역을 바꿔도 묻지 않는다(§58-5 · js/29 0순위와 같은 말).
+ * 이 테스트의 관심사는 그대로다 - 지역 교정 경로가 실제로 동작하는가 + 환헤지 표시가 그 값에
+ * 끌려다니지 않는가. 거래 폼에는 지역 칸이 아예 없으므로(§58-4) 끌려다니면 화면마다 답이 갈린다. */
+test('환헤지-B. 지역을 바꿔도 원화 채권은 환헤지를 묻지 않는다(지역 교정 경로는 그대로 동작한다)', async ({ page }) => {
   await bootWithLegacy(page);
   await page.evaluate((isin) => {
     state.transactions = [{ id: 'ZZT1', date: '2026-01-05', owner: '신랑', accountType: '일반계좌',
@@ -164,10 +169,13 @@ test('환헤지-B. 국내/해외를 바꾸면 환헤지 표시도 함께 맞춰�
     openAssetDetailModal('ZZ-LEDGER');
   }, ISIN);
   const ask = () => page.evaluate(() => shouldOfferFxHedgeChoice(state.assets.find((x) => x.id === 'ZZ-LEDGER')));
+  const region = () => page.evaluate(() => state.assets.find((x) => x.id === 'ZZ-LEDGER').isDomestic);
   expect(await ask(), '국내면 묻지 않는다').toBe(false);
   await page.locator('#assetDetailRegionSelect').selectOption('해외');
-  expect(await ask(), '해외로 바꾸면 묻는다').toBe(true);
+  expect(await region(), '교정 경로는 실제로 지역 값을 바꾼다').toBe('해외');
+  expect(await ask(), '지역이 해외여도 원화 채권은 묻지 않는다').toBe(false);
   await page.locator('#assetDetailRegionSelect').selectOption('국내');
+  expect(await region()).toBe('국내');
   expect(await ask()).toBe(false);
 });
 

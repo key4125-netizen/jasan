@@ -100,8 +100,15 @@ test('D-2. 채권명 칸과 required 정책은 그대로다(조회 실패가 입
   const nameTag = HTML_CODE.match(/<input id="tx_name"[^>]*>/);
   assert.ok(nameTag && /\srequired/.test(nameTag[0]), 'required 정책 유지');
   assert.match(JS06_CODE, /nameLabel\.textContent = isBond \? '채권명' : '종목명\/티커'/);
-  // 조회 성공 시 채권명을 채우는 경로가 두 곳 모두 살아 있다(이 앱이 아는 값 · KIS 조회).
-  assert.equal(JS06_CODE.split("if (nameInput && !nameInput.value && eff.identity.instrumentName) nameInput.value = eff.identity.instrumentName;").length - 1, 2);
+  /* 조회 성공 시 채권명을 채우는 경로가 두 곳 모두 살아 있다(이 앱이 아는 값 · KIS 조회).
+   * [기대값 갱신 · PM STEP 2-D] 예전에는 두 경로가 **같은 코드 한 줄**이라 등장 횟수로 셌다.
+   * 이제 "이 앱이 아는 값" 경로는 레코드 하나를 베끼지 않고 ISIN 단위 상품 기준정보
+   * (resolveBondInstrumentFacts)를 쓰므로 문장이 달라졌다. 고정할 사실은 그대로다 -
+   * **두 경로가 모두 채권명을 채운다**. 한쪽이 사라지면 실패한다. */
+  assert.equal(JS06_CODE.split("if (nameInput && !nameInput.value && f.instrumentName) nameInput.value = f.instrumentName;").length - 1, 1,
+    '이 앱이 아는 값(상품 기준정보) 경로');
+  assert.equal(JS06_CODE.split("if (nameInput && !nameInput.value && eff.identity.instrumentName) nameInput.value = eff.identity.instrumentName;").length - 1, 1,
+    'KIS 조회 경로');
 });
 
 test('D-2. 채권 ↔ 다른 자산군 경계를 넘으면 이름 · 티커가 남지 않는다', () => {

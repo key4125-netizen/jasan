@@ -35,8 +35,16 @@
  *     옮겨 쓰지 않는다 - data/cma/app-asset-class-map.json unmapped 참고). */
 function applyUserHedgeToAppClass(appClass, subject) {
   if (appClass !== ASSET_CHARACTERS.US_EQUITY) return null;
-  const hedge = (typeof sanitizeFxHedgeStatus === 'function') ? sanitizeFxHedgeStatus(subject && subject.fxHedgeStatus) : null;
-  if (hedge !== 'HEDGED') return null;
+  /* [PM STEP 1-A] 환헤지 사실은 js/01 resolveInstrumentFxHedge 한 곳에서 해석한다 -
+   * 사용자 Override → Exposure Master hedgeStatus → UNRESOLVED 순서다(값을 복사하지 않는다).
+   * 예전에는 여기서 자산의 사용자 값만 읽어, 원장이 A등급 근거로 비헤지라고 적어 둔 종목에 대해
+   * Risk(finalizeRiskBenchmark는 원장 hedgeStatus를 읽는다)와 MC가 서로 다른 근거를 쓰고 있었다.
+   * 원장에 HEDGED인 항목은 현재 0건이라 이 연결로 기존 계산이 달라지지 않는다(STEP 1 측정으로 고정).
+   * 두 값이 어긋나도 여기서 고르거나 고치지 않는다 - Override가 먼저이고 충돌은 화면이 알린다. */
+  const resolved = (typeof resolveInstrumentFxHedge === 'function')
+    ? resolveInstrumentFxHedge(subject)
+    : { status: (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(subject && subject.fxHedgeStatus) || null) : null };
+  if (resolved.status !== 'HEDGED') return null;
   /* [2026-09-22 · PM 결정 대기] 활성 CMA 세트가 이 자산군을 실제로 연결하고 있을 때만 바꾼다.
    * 연결이 없으면 US_EQUITY 그대로 두어 계산이 이전과 완전히 같다 - 연결 없는 자산군을 돌려주면
    * 그 자산이 MC에서 통째로 빠져(UNMAPPED) 사용자가 환헤지를 골랐다는 이유만으로 자산이

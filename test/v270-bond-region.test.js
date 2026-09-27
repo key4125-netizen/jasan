@@ -125,7 +125,11 @@ test('환헤지. 자산 종류별 표시 조건', () => {
     // [PM 지시 2026-09-26 · 미결 2번] 해외 거래소 직접 상장 → 환노출은 표시하지만 선택은 묻지 않는다.
     ['해외 직접(USD)', { ticker: 'AAPL', category: '주식', currency: 'USD', isDomestic: '해외' }, false],
     ['원화 국채(교정 후)', { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '국내' }, false],
-    ['원화 국채(교정 전)', { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '해외' }, true],
+    /* [기대값 갱신 · PM STEP 1-C] 원화 채권은 **통화만 보고** 환헤지를 묻지 않는다(§58-5 ·
+     * js/29 resolveBondHedgeStatusDetail 0순위). 예전에는 지역이 '해외'로 잘못 굳은 원화 국채가
+     * 환노출 EXPOSED로 판정돼 물었는데, 그것이 바로 §58-5가 "교정 전 증상"이라고 적어 둔 상태다.
+     * 이제는 지역 값과 무관하게 묻지 않는다 - 판정 근거가 화면마다 갈라지지 않게 하기 위해서다. */
+    ['원화 국채(지역이 해외로 굳은 경우에도)', { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '해외' }, false],
     ['외화 채권', { ticker: '', category: '채권', currency: 'USD', isDomestic: '해외' }, true],
     ['원화 현금', { ticker: '', category: '현금', currency: 'KRW', isDomestic: '국내' }, false],
     ['달러 현금', { ticker: '', category: '현금', currency: 'USD', isDomestic: '해외' }, true]
@@ -135,11 +139,18 @@ test('환헤지. 자산 종류별 표시 조건', () => {
   });
 });
 
-test('환헤지. 국내 국채는 교정되면 환헤지를 묻지 않는다(같은 원인 · 같은 해소)', () => {
+/* [기대값 갱신 · PM STEP 1-C] 예전에는 이 테스트가 "지역 교정이 환헤지 질문을 없앤다"를 고정했다.
+ * 이제 원화 채권은 지역과 **무관하게** 묻지 않으므로, 고정할 사실이 바뀌었다 -
+ * "환헤지 제공 여부가 지역 교정에 의존하지 않는다"가 이 테스트가 지켜야 할 것이다.
+ * 지역 교정 자체의 동작(isDomestic을 바꾼다 · 그 밖은 건드리지 않는다)은 위 D-5 테스트들이 고정한다. */
+test('환헤지. 원화 채권은 지역 값과 무관하게 묻지 않는다(판정 근거가 화면마다 갈라지지 않는다)', () => {
   const before = { ticker: ISIN, category: '채권', currency: 'KRW', isDomestic: '해외' };
   const after = Object.assign({}, before, { isDomestic: '국내' });
-  assert.equal(ev(`shouldOfferFxHedgeChoice(${JSON.stringify(before)})`), true, '교정 전에는 물었다');
-  assert.equal(ev(`shouldOfferFxHedgeChoice(${JSON.stringify(after)})`), false, '교정 후에는 묻지 않는다');
+  const noRegion = { ticker: ISIN, category: '채권', currency: 'KRW' }; // 거래 폼에는 지역 칸이 없다(§58-4)
+  assert.equal(ev(`shouldOfferFxHedgeChoice(${JSON.stringify(before)})`), false, '지역이 해외로 굳어 있어도 묻지 않는다');
+  assert.equal(ev(`shouldOfferFxHedgeChoice(${JSON.stringify(after)})`), false, '교정 후에도 묻지 않는다');
+  assert.equal(ev(`shouldOfferFxHedgeChoice(${JSON.stringify(noRegion)})`), false, '지역 칸이 없는 화면에서도 같다');
+  assert.equal(ev(`fxHedgeChoiceStateOf(${JSON.stringify(noRegion)}).reason`), 'BOND_KRW_NOT_APPLICABLE');
 });
 
 test('환헤지. 저장된 hedgeStatus는 교정으로 지워지지 않는다', () => {

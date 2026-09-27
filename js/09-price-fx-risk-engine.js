@@ -2152,21 +2152,51 @@ async function computeAdvancedRiskMetrics() {
     const totalCur = assets.reduce((s, a) => s + calcRow(a).curAmount, 0);
     if (totalCur === 0) return null;
 
-    // 종목(티커) 단위로 소유자/계좌 합산 - RISK 관리 카드의 병합 기준과 동일하다. currentPrice는 같은
-    // 티커면 소유자가 달라도 동일한 시세이므로 처음 만난 값을 그대로 쓴다.
+    // 종목(티커) 단위로 소유자/계좌 합산 - RISK 관리 카드의 병합 기준과 동일하다.
     // [Risk 정책 P-4 · v252] 벤치마크는 확인된 경우에만 정하고, 아니면 null(UNRESOLVED)로 둔다.
-    const byTicker = new Map();
+    /* [PM STEP 3 · BUG-1] 예전에는 **먼저 만난 보유분**으로 이 종목의 기준 지수를 정했다.
+     * 같은 티커를 여러 사람이 들고 있고 기준지수 지정(marketBetaIndexOverride) · 환헤지 ·
+     * 자산군 같은 입력이 갈려 있으면, 배열 순서가 곧 답이었다 - 저장 순서가 바뀌면 베타가 바뀐다.
+     * 이제 보유분 전부를 판정해 보고 이렇게 답한다.
+     *   확정된 답이 하나뿐  → 그 답 (누가 먼저인지와 무관하다 · 정상 데이터에서는 예전과 같다)
+     *   확정된 답이 여럿    → **고르지 않는다**(UNRESOLVED · holdingConflict)
+     *   아무도 확정 못 함   → 예전처럼 그 사유를 그대로 전한다
+     * 표시용 값(이름 · 현재가 등)도 배열 순서 대신 id 정렬로 뽑아 순서 의존을 없앴다. */
+    const groups = new Map();
     assets.forEach((a) => {
       const yahoo = sanitizeTicker(a.ticker).yahooTicker;
-      const r = calcRow(a);
-      if (!byTicker.has(yahoo)) {
+      if (!groups.has(yahoo)) groups.set(yahoo, []);
+      groups.get(yahoo).push(a);
+    });
+    /* 보유분마다 판정해 보고 "하나의 답"일 때만 그 답을 쓴다. 계산에 쓰이는 필드가 하나라도
+     * 다르면 같은 답으로 보지 않는다(키만 같고 정렬 · 환산이 다르면 베타가 달라진다). */
+    const resolveAcrossHoldings = (members, resolveOne) => {
+      const results = members.map((m) => { try { return resolveOne(m); } catch (e) { return null; } }).filter(Boolean);
+      const confirmed = results.filter((r) => r && r.key);
+      if (confirmed.length === 0) return results[0] || { key: null, status: 'UNRESOLVED', source: 'noHolding' };
+      const sig = (r) => [r.key, r.status, r.priceSource || '', r.alignment || '', r.benchmarkFx || '',
+        r.benchmarkMarket || '', r.definitionStatus || ''].join('|');
+      const distinct = [...new Set(confirmed.map(sig))];
+      if (distinct.length > 1) {
+        // 어느 쪽도 고르지 않는다 - 사용자가 보유분의 지정을 맞출 때까지 베타를 만들지 않는다.
+        return { key: null, status: 'UNRESOLVED', source: 'holdingConflict' };
+      }
+      const one = confirmed[0];
+      const sources = [...new Set(confirmed.map((r) => r.source).filter(Boolean))];
+      return sources.length > 1 ? Object.assign({}, one, { source: 'multiHolding' }) : one;
+    };
+    const byTicker = new Map();
+    groups.forEach((members, yahoo) => {
+      const ordered = members.slice().sort((x, y) => String(x.id || '').localeCompare(String(y.id || '')));
+      const a = ordered[0];
+      {
         /* [§50 · PD-15] 기준 지수를 두 벌 정한다.
          *   benchmark*        = **시장 지수**(상장 시장) → h.beta → 위험점수 · 포트폴리오 베타
          *   trackingBenchmark* = **공식 기초지수**(Exposure Master) → h.trackingBeta → 표시 전용
          * 필드 이름을 바꾸지 않고 의미만 나눈 이유: benchmark*에 달린 상태 · 사유 · FX · 정렬
          * 플러밍(기존 코드)이 그대로 "위험점수가 쓰는 베타"를 설명하게 하기 위해서다. */
-        const bm = resolveMarketRiskBenchmark(a);
-        const trk = resolveRiskBenchmark(a);
+        const bm = resolveAcrossHoldings(ordered, resolveMarketRiskBenchmark);
+        const trk = resolveAcrossHoldings(ordered, resolveRiskBenchmark);
         const exf = riskExposureFactsOf(a);
         byTicker.set(yahoo, {
           ticker: yahoo, name: a.name, curAmount: 0, benchmarkKey: bm.key, benchmarkStatus: bm.status, currentPrice: a.currentPrice, priceCcy: resolveRiskPriceCcy(a),
@@ -2186,7 +2216,7 @@ async function computeAdvancedRiskMetrics() {
           exposureMarket: exf.exposureMarket, exposureStructure: exf.exposureStructure
         });
       }
-      byTicker.get(yahoo).curAmount += r.curAmount;
+      ordered.forEach((m) => { byTicker.get(yahoo).curAmount += calcRow(m).curAmount; });
     });
     const holdings = [...byTicker.values()].map((h) => ({ ...h, weight: h.curAmount / totalCur }));
 

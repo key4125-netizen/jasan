@@ -178,6 +178,108 @@ function bondEffectiveTerms(position) {
   return { terms: t, identity: i, overridden: Object.keys(ov) };
 }
 
+/* [PM STEP 2-C · 2-E] 같은 채권(ISIN)의 상품 기준정보.
+ *
+ * 왜 필요한가(STEP 2 감사): 채권 레코드는 `assetId` 하나에 묶여 있다. 같은 채권을 두 사람이
+ * 들고 있으면 레코드가 두 벌 생기고, 만기 · 쿠폰 · 발행인 유형이 서로 달라질 수 있다.
+ * 그런데 조회 helper들은 `find()`로 **먼저 만난 레코드**를 답으로 썼다 - 배열 순서가 바뀌면
+ * 같은 채권의 사실이 달라지는 구조였다. 만기일 하나가 갈리면 현금흐름과 듀레이션이 달라진다.
+ *
+ * 이 함수는 고르지 않는다. 같은 ISIN의 레코드를 **전부** 보고 필드마다 이렇게 답한다.
+ *   값이 하나뿐이다        → 그 값이 이 상품의 사실이다
+ *   값이 없다              → null (모른다 · 추정하지 않는다)
+ *   서로 다른 값이 둘 이상 → **충돌**. 어느 쪽도 고르지 않고 사실만 알린다(null로 둔다)
+ * 그래서 결과는 배열 순서 · assetId · 소유자 · 계좌와 무관하다.
+ *
+ * 비교는 `bondEffectiveTerms`를 지나온 값으로 한다 - 사용자가 고친 값이 그 레코드의 사실이다.
+ * 보유 정보(holding) · 출처(source) · 연결(assetId · id)은 상품의 사실이 아니라 비교하지 않는다.
+ *
+ * hedgeStatus는 **충돌 표시용으로만** 함께 본다. 환헤지 판정 자체는 STEP 1이 정한 경로
+ * (resolveBondHedgeStatusDetail · js/01 resolveInstrumentFxHedge)가 그대로 담당한다 -
+ * 여기에 경쟁 resolver를 만들지 않는다.
+ */
+const BOND_INSTRUMENT_FACT_FIELDS = Object.freeze({
+  identity: Object.freeze(['instrumentName', 'issuer', 'currency', 'bondType', 'seniority', 'creditRating', 'hedgeStatus']),
+  terms: Object.freeze(['issueDate', 'maturityDate', 'faceValue', 'issuePrice', 'couponRate', 'couponType', 'rateType', 'paymentFrequency'])
+});
+// 상품의 사실로 쓰는 값만 통과시킨다. 빈 값 · null은 "모른다"이고 값이 아니다.
+function bondFactValue(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const t = String(v).trim();
+  return t === '' ? null : t;
+}
+function bondIsinKey(v) { return String(v || '').trim().toUpperCase() || null; }
+
+function resolveBondInstrumentFacts(isin, positions) {
+  const key = bondIsinKey(isin);
+  const pool = Array.isArray(positions)
+    ? positions
+    : ((typeof state !== 'undefined' && Array.isArray(state.bondPositions)) ? state.bondPositions : []);
+  const empty = { isin: key, status: 'UNRESOLVED', facts: {}, conflicts: [], recordIds: [], count: 0 };
+  if (!key) return empty;
+
+  const members = [];
+  pool.forEach((p) => {
+    if (!p) return;
+    const eff = bondEffectiveTerms(p);
+    if (bondIsinKey(eff.identity.isin) !== key) return;
+    members.push({ id: p.id || null, assetId: p.assetId || null, eff });
+  });
+  if (members.length === 0) return empty;
+
+  const facts = {};
+  const conflicts = [];
+  const scan = (group, field) => {
+    const seen = [];
+    members.forEach((m) => {
+      const v = bondFactValue(m.eff[group][field]);
+      if (v === null) return;
+      if (!seen.some((x) => x === v)) seen.push(v);
+    });
+    if (seen.length === 1) { facts[field] = seen[0]; return; }
+    if (seen.length > 1) {
+      facts[field] = null; // 고르지 않는다
+      conflicts.push({ field, values: seen.slice().sort((a, b) => String(a).localeCompare(String(b))) });
+    }
+  };
+  BOND_INSTRUMENT_FACT_FIELDS.identity.forEach((f) => scan('identity', f));
+  BOND_INSTRUMENT_FACT_FIELDS.terms.forEach((f) => scan('terms', f));
+
+  conflicts.sort((a, b) => a.field.localeCompare(b.field));
+  const known = Object.keys(facts).filter((k) => facts[k] !== null && facts[k] !== undefined).length;
+  const status = conflicts.length ? 'CONFLICT' : (known ? 'RESOLVED' : 'UNRESOLVED');
+  return {
+    isin: key,
+    status,
+    facts,
+    conflicts,
+    recordIds: members.map((m) => m.id).filter(Boolean).sort(),
+    count: members.length
+  };
+}
+
+/** 이 레코드가 속한 상품의 기준정보(위 함수의 얇은 래퍼). */
+function bondInstrumentFactsFor(position, positions) {
+  const p = position || {};
+  const eff = bondEffectiveTerms(p);
+  return resolveBondInstrumentFacts(eff.identity.isin, positions);
+}
+
+/** 화면이 쓰는 한 줄 - 같은 채권인데 레코드마다 발행조건이 다르면 그 사실만 말한다. */
+const BOND_FACT_LABELS = Object.freeze({
+  instrumentName: '채권명', issuer: '발행인', currency: '발행통화', bondType: '발행인 유형',
+  seniority: '변제순위', creditRating: '신용등급', hedgeStatus: '환헤지',
+  issueDate: '발행일', maturityDate: '만기일', faceValue: '액면', issuePrice: '발행가',
+  couponRate: '표면금리', couponType: '이자지급 방식', rateType: '금리 유형', paymentFrequency: '연 지급횟수'
+});
+function bondInstrumentConflictNote(resolved) {
+  if (!resolved || resolved.status !== 'CONFLICT') return '';
+  const parts = resolved.conflicts.map((c) => `${BOND_FACT_LABELS[c.field] || c.field}(${c.values.join(' / ')})`);
+  return `확인 필요 - 같은 채권(${resolved.isin})인데 보유분마다 발행조건이 다릅니다: ${parts.join(' · ')}.`
+    + ' 발행조건은 누가 들고 있든 같은 하나의 사실이므로 어느 쪽이 맞는지 확인해 주세요. 앱이 임의로 고르지 않습니다.';
+}
+
 // 환헤지로 인정하는 두 값만 통과시킨다(makeBondPosition의 정규화 · js/01 sanitizeFxHedgeStatus와 같은 규칙).
 function bondHedgeValue(raw) {
   const v = String(raw || '').trim().toUpperCase();

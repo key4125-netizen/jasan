@@ -210,16 +210,33 @@ function renderAssetDetailReturnAssumption(assets) {
  * "선택 안 함"으로 되돌리면 값을 지우고 자동 판정으로 돌아간다(사용자가 지울 수 있어야 한다).
  * 계산 자체는 전혀 새로 만들지 않는다 - 저장된 값을 js/09 resolveMarketRiskBenchmark가 읽는다. */
 let assetDetailRiskConfirmTargets = [];
+/* [PM STEP 1-D] 저장 대상(한 보유 단위)과 화면에 묶여 있는 원본 목록을 따로 기억한다 -
+ * 값을 고친 뒤 다시 그릴 때 "어디에 적용되는지" 안내가 사라지면 안 된다. */
+let assetDetailRiskConfirmGroup = [];
 function renderAssetDetailRiskConfirm(assets) {
   const box = document.getElementById('assetDetailRiskConfirm');
   if (!box) return;
   const list = (assets || []).filter(Boolean);
   const eligible = list.length > 0 && list.every((a) => RISK_ELIGIBLE_CATEGORIES.includes(a.category))
     && String(list[0].ticker || '').trim() !== '';
-  if (!eligible) { box.classList.add('hidden'); box.innerHTML = ''; assetDetailRiskConfirmTargets = []; return; }
-  assetDetailRiskConfirmTargets = list;
+  if (!eligible) { box.classList.add('hidden'); box.innerHTML = ''; assetDetailRiskConfirmTargets = []; assetDetailRiskConfirmGroup = []; return; }
 
+  /* [PM STEP 1-D] 저장 범위를 한 가지로 고정한다 - 같은 **소유자 · 계좌구분 · 통화 · 티커**다.
+   *
+   * 예전에는 같은 "환헤지 고르기"가 화면 경로에 따라 적용 범위가 달랐다(STEP 0 실측) -
+   * 「전체」 목록에서 통합 행으로 열면 소유자 · 계좌를 가로질러 전부에 적었고, 소유자별 보기나
+   * 거래 폼에서는 한 보유분에만 적었다. 같은 동작이 화면마다 다른 뜻을 갖고 있었던 것이다.
+   * PMD-02 / N-10이 정한 대로 **소유자별 사용자 설정은 독립**이므로, 경계를 넘는 쪽이 아니라
+   * 넘지 않는 쪽으로 통일한다. 다른 보유분에 같은 값이 필요하면 사용자가 직접 고르고,
+   * 값이 갈려 있으면 아래 안내가 그 사실을 알린다(자동 전파 · 자동 선택 없음).
+   */
   const first = list[0];
+  const unitKey = (x) => [String(x.owner || ''), String(x.accountType || ''), String(x.currency || '').toUpperCase()].join('|');
+  const firstUnit = unitKey(first);
+  const sameUnit = list.filter((x) => unitKey(x) === firstUnit);
+  const crossUnit = list.length !== sameUnit.length;
+  assetDetailRiskConfirmTargets = sameUnit;
+  assetDetailRiskConfirmGroup = list;
   const idxValue = sanitizeMarketBetaIndexOverride(first.marketBetaIndexOverride) || '';
   const hedgeValue = sanitizeFxHedgeStatus(first.fxHedgeStatus) || '';
   // 지금 실제로 어떻게 판정되는지 그대로 보여 준다 - 이미 자동으로 확인된 종목에까지 고르라고 하지 않는다.
@@ -235,6 +252,24 @@ function renderAssetDetailRiskConfirm(assets) {
   // [PM 지시 2026-09-26 · ISSUE-B · D·E항] 해외 직접 상장은 칸 대신 「환노출」을 표시한다.
   const offerHedge = shouldOfferFxHedgeChoice(first);
   const exposureNote = (typeof fxExposureNoticeFor === 'function') ? fxExposureNoticeFor(first) : '';
+
+  /* [PM STEP 1-B] PMD-02 / N-10 - "같은 종목에 서로 다른 기준이 쓰이면 경고 + 사용자 수정".
+   * 고르지 않고 · 전파하지 않고 · 지우지 않는다. 다르다는 사실만 사람 말로 적는다. */
+  let conflictNote = '';
+  if (typeof fxHedgeConflictFor === 'function') {
+    let c;
+    try { c = fxHedgeConflictFor(first, state.assets); } catch (e) { c = null; }
+    if (c && c.conflict) {
+      const label = (st) => (st === 'HEDGED' ? '환헤지(H)' : (st === 'UNHEDGED' ? '환노출' : '선택 안 함'));
+      const lines = c.units.map((u) => `${u.owner || '(소유자 없음)'} · ${u.accountType || '(계좌 없음)'} - ${label(u.status)}`);
+      conflictNote = `확인 필요 - 같은 종목인데 보유분마다 환헤지가 다릅니다. ${lines.join(' / ')}. 상품설명서에 적힌 하나의 사실이므로 어느 쪽이 맞는지 확인해 주세요. 앱이 임의로 맞추지 않습니다.`;
+    }
+  }
+  /* [PM STEP 1-D] 통합 행처럼 여러 보유 단위가 한 화면에 묶여 있으면, 지금 고치는 값이 어디에
+   * 적용되는지 분명히 말한다 - 사용자가 "전부 바뀐다"고 오해하지 않게 한다. */
+  const scopeNote = crossUnit
+    ? `이 설정은 ${first.owner || '(소유자 없음)'} · ${first.accountType || '(계좌 없음)'} 보유분에만 적용됩니다. 다른 소유자 · 계좌의 보유분은 각각 열어서 골라 주세요.`
+    : ''
 
   box.innerHTML = `
     <h4 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">위험 분석 확인</h4>
@@ -257,11 +292,14 @@ function renderAssetDetailRiskConfirm(assets) {
       </label>` : ''}
     </div>
     ${exposureNote ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 break-keep">${escapeHtml(exposureNote)}</p>` : ''}
+    ${conflictNote ? `<p class="text-sm text-amber-600 dark:text-amber-400 mt-1.5 break-keep">${escapeHtml(conflictNote)}</p>` : ''}
+    ${scopeNote ? `<p class="text-sm text-slate-500 dark:text-slate-400 mt-1.5 break-keep">${escapeHtml(scopeNote)}</p>` : ''}
     <p class="text-sm text-slate-400 mt-1.5 break-keep">모르면 비워 두세요 - 앱이 임의로 추정하지 않습니다.</p>`;
   box.classList.remove('hidden');
 }
 
-/* 고른 값을 이 팝업에 묶인 보유분 전부에 적는다. 값 하나만 바꾸고 나머지는 그대로 둔다. */
+/* [PM STEP 1-D] 고른 값을 **같은 소유자 · 계좌구분 · 통화 · 티커** 보유분에만 적는다.
+ * 값 하나만 바꾸고 나머지 필드는 그대로 둔다. 소유자 · 계좌 경계는 넘지 않는다(PMD-02 / N-10). */
 function applyAssetDetailRiskConfirm(field, rawValue) {
   if (assetDetailRiskConfirmTargets.length === 0) return;
   const value = field === 'marketBetaIndexOverride'
@@ -273,7 +311,7 @@ function applyAssetDetailRiskConfirm(field, rawValue) {
     asset.updatedAt = Date.now(); // [가족 동기화 - 스마트 머지] 다른 기기가 이 변경을 볼 수 있어야 한다
   });
   persistAssets();
-  renderAssetDetailRiskConfirm(assetDetailRiskConfirmTargets.map((t) => state.assets.find((x) => x.id === t.id)).filter(Boolean));
+  renderAssetDetailRiskConfirm(assetDetailRiskConfirmGroup.map((t) => state.assets.find((x) => x.id === t.id)).filter(Boolean));
   renderAll();
 }
 document.getElementById('assetDetailRiskConfirm').addEventListener('change', (e) => {
