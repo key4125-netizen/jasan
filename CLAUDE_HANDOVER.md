@@ -32,7 +32,125 @@
 
 ---
 
-## 🏁 v273 FINAL RELEASE — 상품 고유 사실 Instrument-level 공유 · 충돌 시 임의 선택 금지 (2026-09-28 · 가장 최신 · **출시 완료**)
+## 📋 Phase 0 + 후속 — Code ↔ Policy 정합성 복구 · MM-014 · MM-015 실측 (2026-09-28 · 가장 최신 · **문서 작업 · 출시 아님**)
+
+> **상태**: 문서 정합성 복구 완료 · **코드 변경 0건** · **버전 변경 없음(v273 유지)** · tag 없음 · 배포 없음.
+> **commit**: `32de49f`(문서) · 이 커밋(인계장) · **branch** `main`
+> **다음 단계**: MM-014 · MM-015 구현이 PM 지시로 승인됨(아래 "다음 세션에게" 참조).
+> **Phase A · Phase B는 NOT STARTED.**
+
+### 배경 — 「변경 구현 계획서 v1.3」 Phase 0
+
+PM이 세법 자동화 확장(Phase A/B/C)에 앞서 **현재 코드와 정책문서의 불일치 목록만** 만들라고
+지시했다(코드 · 데이터 · 문서 변경 0건). 그 결과 불일치 **20건** · PM 결정 필요 **8건**을 찾았고,
+PM이 8건 전부를 결정해 문서에 반영한 것이 이번 세션이다.
+
+### 가장 중요한 발견 — SoT가 2개 릴리스 뒤처져 있었다
+
+`docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`에서 `v272` **0건** · `v273` **0건** ·
+`PM STEP` **0건**이었다(마지막 절이 §65 = v271). `PM_DECISION_LOG.md`의 마지막 항목도
+v271 기준이었다. **확정 · 구현 · 출시된 정책이 문서에 없는 상태**로, GOV-03과 CLAUDE.md
+PM GOVERNANCE 5항을 지키지 못한 것이다.
+
+그 결과 SoT 원문이 현재 코드와 **정면으로 반대**를 말하는 조항이 4건 있었다 —
+PMD-02 전단 · N-10 · PMD-12 · E-01(§54-1) 우선순위. 전부 v273에서 PM 지시로 바뀐 것이며,
+**코드가 틀린 것이 아니라 문서가 갱신되지 않은 것**이다.
+
+### 문서에 반영한 것 (commit `32de49f`)
+
+| 문서 | 반영 |
+| --- | --- |
+| SoT §3 | 현재 기준선(v273 · main)을 맨 앞에 추가 · 아래 항목은 "당시 기록"으로 표시 |
+| SoT **§66 신설** | v272 INST-01~07 · v273 INST-10~18 · 판정 규칙표 · 개정 대조표 · 계산 영향 · UI · MM-014/015 실측 기록 |
+| SoT **§67 신설** | TAX-RISK-01~04(절세계좌 70:30) · ACCT-DICT-01~06(Account Type Dictionary) · §67-3(소유자 고정값은 범위 외) |
+| SoT §32-1 · §32-2 · §33-1 · §54-1 · §55-2 | 정정 표시 5곳 — **원문은 취소선으로 보존**하고 §66-4로 연결 |
+| `PM_DECISION_LOG.md` | **11건 등재** — V273-01~05 · GOV-20260928-01/02 · TAX-RISK-01 · ACCT-DICT-01 · MM-014 · MM-015. **기존 30건 무수정** |
+| `CLAUDE.md` | CURRENT PRIORITY에 현재 기준 블록 추가(과거 문단은 `[과거 기록]` 표시) · Primary scope 3건 종결 표시 · Bond domain 갱신 · push 브랜치 `origin/master` → **`origin/main`** |
+
+### PM이 확정한 정책 (요약)
+
+- **기준문서** — production **v273** · 릴리스 브랜치 **`main`** 하나.
+  `integration/v262-closeout`(마지막 커밋 v263 · main의 조상)과
+  `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`는 **v262 종결 단계의 역사적 기록**이며
+  현재 실행 기준문서가 아니다. **브랜치 · 문서 삭제는 하지 않았다.**
+- **V273-01** Master ≠ 사용자 확정값 → **CONFLICT**(어느 쪽도 채택 금지). 대상은 공식 Master가
+  있는 사실 — 환헤지 · 장기 수익률 기준 · 종목 역할.
+- **V273-02** MC N-10 폐기 · **V273-03** 상품 고유 사실 7종의 instrument 단위 공유
+  (PMD-02 전단 · PMD-12 마지막 문장 폐기) · **V273-04** STEP 1-D 폐기 ·
+  **V273-05** 「종합」 제거.
+- **TAX-RISK-01** 절세계좌 70:30 현행 유지 · `Tax Classification ≠ Risk Share` ·
+  **미등록 계좌유형에 자동 적용 금지**.
+- **ACCT-DICT-01** Account Type Dictionary 도입 방향 승인. **Account Master/ID가 아니다** ·
+  자유 입력 유지 · 미등록은 UNCLASSIFIED/UNRESOLVED · 자동 정규화 금지 ·
+  **BOND-10 현행 유지**. 코드 구현은 Phase B-2에서 별도 지시.
+
+### MM-014 실측 결과 — 환헤지 CONFLICT일 때 MC가 멈추지 않는다
+
+합성(ZZ) 자산 · 제품 코드 무변경 · seed 20260101 · 2000회 · 20년 · PV0 1억 · 적립 0.
+
+- 활성 CMA(**CMA-2026.2**)에서 `US_EQUITY`(U.S. Large Cap · σ **13.722309014388456%**)와
+  `US_EQUITY_HEDGED`(U.S. Large Cap hedged · σ **16.63977109253169%**)는 **둘 다 MAPPED**다.
+  연결이 없어 결과가 같아지는 fallback이 **아니다** — 환헤지 전환은 실제로 작동한다.
+- 충돌(`masterMismatch` · `holdingConflict`)에서 `resolveInstrumentFxHedge().status`가 null이므로
+  `js/16:47`의 `resolved.status !== 'HEDGED'` 분기로 떨어져 **`US_EQUITY`로 계산이 계속된다** —
+  미확인 상태와 MC 전체 지문이 **완전히 같다**. 같은 충돌에서 Risk는
+  `instrumentHedgeConflict`로 **베타를 산출하지 않는다**(비대칭).
+- 분포 실측 — HEDGED 확정: P10 1.0671억 / P50 2.7441억 / P90 7.0048억 / 평균 3.6096억.
+  충돌 및 UNHEDGED: P10 1.2612억 / P50 2.7481억 / P90 5.9522억 / 평균 3.3141억.
+  **μ지문은 동일**하다(환헤지는 σ만 바꾼다).
+- 원장에 `hedgeStatus: HEDGED`로 등재된 항목은 **0건**(UNHEDGED 17건).
+
+### MM-015 실측 결과 — 채권만 상품 단위 해석기를 지나지 않는다
+
+합성 외화 채권 1종(USD 국채)을 두 사람이 보유. `js/29:317`이 자산의 `fxHedgeStatus`
+**원시값**을 읽는다(`resolveInstrumentFxHedge` 미경유).
+
+- 한 보유분만 확인해 두면 Risk · MC용 해석은 **양쪽 HEDGED**인데 채권 분류는 **그 보유분만
+  분류되고 다른 보유분은 UNCLASSIFIED**다.
+- 채권 레코드 `UNHEDGED` + 자산 `HEDGED`이면 두 경로가 **정반대**를 답한다(§60-2 1순위).
+- 자산 값이 보유분끼리 충돌하면 상품 해석은 CONFLICT(값 없음)인데 채권 분류는 **각자 자기
+  값으로 계산을 계속**해 같은 채권이 두 자산군으로 갈린다.
+- σ 차이 — `FOREIGN_GOV_BOND_HEDGED` **3.985382018102107%** ↔
+  `FOREIGN_GOV_BOND_UNHEDGED` **9.69232747192174%**(약 2.4배).
+- Risk 베타는 채권에서 항상 `notEquityLike`이므로 영향은 **MC 자산군(σ)에 한정**된다.
+- `js/29:196~198` 주석은 이미 "환헤지 판정은 `resolveBondHedgeStatusDetail` ·
+  **js/01 `resolveInstrumentFxHedge`**가 담당한다"고 적고 있는데 실제로는 호출하지 않는다 —
+  주석과 코드가 다르다.
+
+### 검증 (이번 세션 · 문서만 변경)
+
+| 게이트 | 결과 |
+| --- | --- |
+| Unit | **991 / 991 PASS** |
+| ESLint | **PASS** |
+| Data Guard | **PASS** |
+| Release Guard | **PASS** (v273 일치 · APP_SHELL 32) |
+| 종결 대장 정합성 | **PASS** (OPEN 0 · PM 결정 필요 0) |
+| Full E2E · Risk/MC harness | **NOT RUN** — 코드 · 테스트 · 데이터 변경 0건이라 결과가 달라질 수 없다 |
+
+### 다음 세션에게
+
+- **MM-014 · MM-015 구현이 PM 지시로 승인됐다**(2026-09-28). 확정 정책은 다음 둘이다.
+  ① **MM-014** 환헤지 CONFLICT → **MC 위험가정에서 제외 + 충돌 사실 안내.**
+     CONFLICT를 UNHEDGED로도 HEDGED로도 Master 값으로도 바꾸지 않는다.
+  ② **MM-015** 채권의 상품 고유 환헤지 사실도 **`resolveInstrumentFxHedge`로 통일.**
+     Bond · Risk · MC · Asset Detail이 같은 사실을 다르게 해석하지 않는다.
+     `bondPosition.identity.hedgeStatus`는 사실 출처로 쓸 수 있으나 보유분 단위로 독립
+     확정해 해석기를 우회하지 않는다 — 값이 갈리면 CONFLICT다(§60-2의 "1순위가 언제나
+     이긴다"는 이 결정으로 개정 대상이다).
+  새 resolver 체계 · 새 MC 엔진 · 새 분류 체계를 만들지 않는다. 최소 변경이다.
+- **Phase A · Phase B는 NOT STARTED.** "구조적으로 필요해 보인다"는 이유로
+  Phase B modularization을 함께 하지 않는다 — 필요하면 STOP하고 PM 승인을 받는다.
+- 실측 스크립트는 저장소에 넣지 않았다(scratchpad에만 있다). 재현이 필요하면
+  `test/mc-adapter-sandbox.js`를 그대로 쓰면 된다 — 실제 js/01~29를 index.html 순서로 싣는다.
+- `scripts/closeout/freeze-baseline.js`는 **PM 승인 없이 실행하지 않는다**(§65-4 · `--help`도 덮어쓴다).
+- ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 15.8분). Python으로 테스트 파일을 고치지 않는다.
+- `.claude/launch.json`은 사용자 로컬 변경이다 — blob `2a39711674f3af2df32a46825454020b34599670`.
+  이번 두 커밋에도 포함하지 않았다(확인 완료).
+
+---
+
+## 🏁 v273 FINAL RELEASE — 상품 고유 사실 Instrument-level 공유 · 충돌 시 임의 선택 금지 (2026-09-28 · 직전 릴리스 · **출시 완료**)
 
 > **상태**: **출시 완료 · 실제 미결 0건 · PM 결정 대기 0건 · 운영 조치 0건.**
 > **버전 변경**: v272 → **v273**
