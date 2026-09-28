@@ -191,8 +191,75 @@ const DEFAULT_LEGACY_FX_RATE = 1450;
 // 입력칸이 자유 텍스트라(f_accountType, 데이터리스트는 힌트일 뿐) '토스'/'CMA'/'채권/현금'처럼 절세
 // 계좌가 아닌데도 '일반계좌'라고 정확히 쓰지 않은 계좌가 전부 리밸런싱/미래예측 계산에서 빠지는
 // 문제가 있었다. 의도(절세 계좌만 제외)에 맞게 절세 계좌 이름 목록에 대한 제외 방식으로 바꾼다.
-const TAX_ADVANTAGED_ACCOUNT_TYPES = ['ISA', 'IRP', '연금저축'];
-function isRebalanceEligibleAccount(a) { return !TAX_ADVANTAGED_ACCOUNT_TYPES.includes(a.accountType); }
+/* ─────────────────────────────────────────────────────────────────────────
+ * [PHASE B-2 · ACCT-DICT-01~06] Account Type Dictionary — 계좌유형 분류 보조정보.
+ *
+ * 무엇인가: 자유 입력된 `accountType` 문자열의 **정책적 의미를 해석**하기 위한 사전이다.
+ * 무엇이 아닌가: Account Master도, Account ID도, 계좌 레코드도, 정규화 체계도 아니다
+ *   (ACCT-DICT-01 · 04 · 05 · BOND-10). 저장값을 읽기만 하고 절대 바꾸지 않는다.
+ *
+ * 왜 필요한가: 예전에는 `TAX_ADVANTAGED_ACCOUNT_TYPES` 배열 하나가 "세제혜택 분류"와
+ * "위험 배분(70:30) 대상"의 **유일한 근거**였다. 두 개념이 한 상수에 묶여 있어, 세제혜택
+ * 목록에 계좌유형을 하나 추가하면 그 계좌가 자동으로 70:30까지 받았다(SoT §67-1 TAX-RISK-03 ·
+ * TAX-RISK-04가 금지한 결합). 이제 **세제혜택 분류의 권위는 이 사전**이고,
+ * **위험 배분의 권위는 js/05의 별도 정책**(RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES)이다.
+ *
+ * 등재 기준(ACCT-DICT-02 · §12): 기존 정책에 근거가 있는 유형만 둔다. 임의로 늘리지 않는다.
+ *   · ISA · IRP · 연금저축 - 세제혜택 계좌(SoT §67-1 TAX-RISK-02 · §67-2 ACCT-DICT-02)
+ *   · 일반계좌 - 앱의 기본값이자 세제혜택이 아닌 계좌(makeAsset이 빈 값에 넣는 값 ·
+ *     DEFAULT_ACCOUNT_TYPES의 첫 항목). 이 값을 사전에서 빼면 가장 흔한 계좌가
+ *     "사전에 없는 유형"으로 표시돼 사실과 다른 안내가 된다.
+ * 사전에 없는 값은 **UNCLASSIFIED**다(ACCT-DICT-03) - 세제혜택 여부 · Risk Share ·
+ * Return Key · 세법상 분류를 **추론하지 않는다**.
+ *
+ * ⚠ [PM 결정 DR-B2] 이번 단계에서 UNCLASSIFIED는 **표시 · 안내 전용**이다.
+ * 계산에서 제외하지 않고, 70:30을 주지 않으며, 기존 계산 결과를 바꾸지 않는다.
+ * ────────────────────────────────────────────────────────────────────────── */
+const ACCOUNT_TYPE_CLASS = Object.freeze({
+  TAX_ADVANTAGED: 'TAX_ADVANTAGED',
+  GENERAL: 'GENERAL',
+  UNCLASSIFIED: 'UNCLASSIFIED'
+});
+const ACCOUNT_TYPE_DICTIONARY = Object.freeze({
+  'ISA': Object.freeze({ taxClass: ACCOUNT_TYPE_CLASS.TAX_ADVANTAGED, basis: 'SoT §67-1 TAX-RISK-02 · §67-2 ACCT-DICT-02' }),
+  'IRP': Object.freeze({ taxClass: ACCOUNT_TYPE_CLASS.TAX_ADVANTAGED, basis: 'SoT §67-1 TAX-RISK-02 · §67-2 ACCT-DICT-02' }),
+  '연금저축': Object.freeze({ taxClass: ACCOUNT_TYPE_CLASS.TAX_ADVANTAGED, basis: 'SoT §67-1 TAX-RISK-02 · §67-2 ACCT-DICT-02' }),
+  '일반계좌': Object.freeze({ taxClass: ACCOUNT_TYPE_CLASS.GENERAL, basis: 'makeAsset 기본값 · DEFAULT_ACCOUNT_TYPES(js/06)' })
+});
+/* 사전 조회. **정확 일치만** 본다 - 대소문자 · 공백 · 유사명 자동 변환을 하지 않는다(ACCT-DICT-04).
+ * 앞뒤 공백만 떼는 것은 makeAsset이 저장 시 이미 하는 것과 같은 규칙이라 새 정규화가 아니다. */
+function lookupAccountTypeEntry(accountType) {
+  const key = String(accountType ?? '').trim();
+  if (!key) return null;
+  return Object.prototype.hasOwnProperty.call(ACCOUNT_TYPE_DICTIONARY, key) ? ACCOUNT_TYPE_DICTIONARY[key] : null;
+}
+function isAccountTypeRegistered(accountType) { return lookupAccountTypeEntry(accountType) !== null; }
+/* 이 계좌유형의 분류. 사전에 없으면 UNCLASSIFIED다 - 다른 유형으로 추정하지 않는다. */
+function classifyAccountType(accountType) {
+  const entry = lookupAccountTypeEntry(accountType);
+  return entry ? entry.taxClass : ACCOUNT_TYPE_CLASS.UNCLASSIFIED;
+}
+/* [Tax Classification 권위] 이 계좌유형이 세제혜택 계좌인가. 사전이 유일한 근거다. */
+function isTaxAdvantagedAccountType(accountType) {
+  return classifyAccountType(accountType) === ACCOUNT_TYPE_CLASS.TAX_ADVANTAGED;
+}
+/* 화면이 쓰는 한 줄. 사전에 있는 유형에는 아무 말도 하지 않는다(안내는 모를 때만 필요하다). */
+function accountTypeClassificationNote(accountType) {
+  const raw = String(accountType ?? '').trim();
+  if (!raw || isAccountTypeRegistered(raw)) return '';
+  return `"${raw}"는 계좌유형 사전에 없는 값입니다 - 세제혜택 여부를 앱이 추정하지 않습니다.`
+    + ' 입력한 값은 그대로 저장되며 지금의 계산도 달라지지 않습니다.';
+}
+
+// [절세 계좌 제외] 아래 목록은 **위 사전에서 파생된다** - 세제혜택 분류의 근거를 한 곳(사전)으로
+// 모으기 위해서다(PHASE B-2). 값은 예전과 같다(ISA · IRP · 연금저축).
+const TAX_ADVANTAGED_ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_DICTIONARY)
+  .filter((t) => ACCOUNT_TYPE_DICTIONARY[t].taxClass === ACCOUNT_TYPE_CLASS.TAX_ADVANTAGED);
+/* [범위 판정] "이 자산이 일반계좌 범위(리밸런싱 · 일반계좌 미래예측)에 드는가".
+ * ⚠ 이 함수는 **범위 판정 전용**이다 - 70:30 위험 배분 여부를 여기서 묻지 않는다(SoT §67-1
+ * TAX-RISK-03). 위험 배분은 js/05의 `isRiskShareEligibleAccountType` · `resolveRemainderRiskShare`가
+ * 별도 정책으로 답한다. 두 판정이 지금 같은 세 유형을 가리키더라도 같은 게이트로 묶지 않는다. */
+function isRebalanceEligibleAccount(a) { return !isTaxAdvantagedAccountType(a && a.accountType); }
 const FALLBACK_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#64748b','#06b6d4','#a855f7','#ec4899','#84cc16','#0ea5e9'];
 function colorFor(key, idx){ return CATEGORY_COLORS[key] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]; }
 

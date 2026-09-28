@@ -2189,6 +2189,44 @@ const TAX_ADVANTAGED_OWNERS = ['신랑', '와이프'];
 // 채권 수익률(categories.채권)을 그대로 재사용해 다른 카드들과 기준이 어긋나지 않게 한다.
 const TAX_ADVANTAGED_RISK_SHARE = 0.7;
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * [PHASE B-1 · TAX-RISK-03] 위험 배분(Risk Share)은 세제혜택 분류와 **다른 정책**이다.
+ *
+ * 예전 구조: `TAX_ADVANTAGED_ACCOUNT_TYPES` 배열 하나가 "세제혜택 계좌인가"와
+ * "70:30을 받는가"를 동시에 결정했다. 그래서 세제혜택 목록에 계좌유형을 추가하면
+ * 그 계좌가 **자동으로** 70:30까지 받았다 - SoT §67-1 TAX-RISK-04가 금지한 동작이다.
+ *
+ * 지금 구조: 아래 목록과 함수가 위험 배분의 **독립된 정책 근거**다.
+ *   · 세제혜택 분류 → js/01 `ACCOUNT_TYPE_DICTIONARY` · `isTaxAdvantagedAccountType`
+ *   · 위험 배분     → 여기(`RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES` · `resolveRemainderRiskShare`)
+ * 두 목록이 지금 같은 세 유형을 담고 있더라도 **같은 상수 · 같은 게이트로 묶지 않는다**
+ * (TAX-RISK-03). 한쪽에 유형을 더해도 다른 쪽은 따라가지 않는다.
+ *
+ * 적용 범위는 바뀌지 않았다(TAX-RISK-01) - 절세계좌 적립금 중 **사용자가 종목을 지정하지 않은
+ * 미배분 잔여분**에만 적용되며, 보유 종목과 배분한 종목은 각자의 수익률로 계산된다.
+ * ────────────────────────────────────────────────────────────────────────── */
+const RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES = Object.freeze(['ISA', 'IRP', '연금저축']);
+/* 계좌유형 단위 판정. 세제혜택 분류를 거치지 않는다 - 이 목록이 유일한 근거다. */
+function isRiskShareEligibleAccountType(accountType) {
+  return RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES.includes(String(accountType ?? '').trim());
+}
+/* 계좌 구분 없는 절세계좌 단일 풀(계좌별 적립설정을 쓰지 않는 하위호환 경로)의 범위 표식.
+ * 이 풀은 특정 계좌유형이 아니라 "그 소유자의 절세계좌 적립금 전체"이므로 별도 값으로 둔다. */
+const RISK_SHARE_POOL_SCOPE = 'tax';
+/* 미배분 잔여분에 적용할 위험 배분. 대상이 아니면 **어떤 비율도 만들지 않는다**(null).
+ * 반환: { eligible, share, reason } - share는 위험자산 몫이고 나머지가 안전자산 몫이다. */
+function resolveRemainderRiskShare(scope) {
+  const key = String(scope ?? '').trim();
+  if (key === RISK_SHARE_POOL_SCOPE) {
+    return { eligible: true, share: TAX_ADVANTAGED_RISK_SHARE, reason: 'taxAdvantagedPool' };
+  }
+  if (isRiskShareEligibleAccountType(key)) {
+    return { eligible: true, share: TAX_ADVANTAGED_RISK_SHARE, reason: 'registeredAccountType' };
+  }
+  // 사전에 없는 계좌유형에 위험 배분을 추론하지 않는다(TAX-RISK-04 · ACCT-DICT-03).
+  return { eligible: false, share: null, reason: 'notRiskShareEligible' };
+}
+
 // 절세계좌 보유 자산을 소유자별로 집계 - 총액과, 참고용으로 계좌종류별 소계도 함께 반환한다.
 function getTaxAdvantagedHoldingsByOwner() {
   const result = {};
@@ -2334,9 +2372,11 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
       total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey, owner, 'tax'), monthlyTotal * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
-    if (remainderPct > 0) {
+    // [PHASE B-1] 위험 배분 여부와 비율은 별도 정책이 답한다(세제혜택 분류에 종속되지 않는다).
+    const remainderShare = resolveRemainderRiskShare(RISK_SHARE_POOL_SCOPE);
+    if (remainderPct > 0 && remainderShare.eligible) {
       const remainderMonthly = monthlyTotal * remainderPct / 100;
-      const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+      const riskShare = remainderShare.share;
       total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare, remainderStockFeeRate);
       total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare), remainderBondFeeRate);
     }
@@ -2364,9 +2404,13 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
       total += grow(getMonthlyAllocationItemRate(item, presetKey, owner, acc.accountType), num(acc.amount) * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
-    if (remainderPct > 0) {
+    /* [PHASE B-1] 이 계좌유형이 위험 배분 대상인지를 별도 정책에 묻는다 - 세제혜택으로 분류됐다는
+     * 이유만으로 70:30을 주지 않는다(TAX-RISK-03 · TAX-RISK-04). 대상이 아니면 잔여분에
+     * 어떤 비율도 만들지 않는다(추론 금지) - 배분한 종목은 예전처럼 각자 계산된다. */
+    const remainderShare = resolveRemainderRiskShare(acc.accountType);
+    if (remainderPct > 0 && remainderShare.eligible) {
       const remainderAmount = num(acc.amount) * remainderPct / 100;
-      const riskShare = TAX_ADVANTAGED_RISK_SHARE;
+      const riskShare = remainderShare.share;
       total += grow(getEffectiveIndexRate(presetKey, 'domestic'), remainderAmount * riskShare, remainderStockFeeRate);
       total += grow(getReferenceRate(presetKey, 'BOND'), remainderAmount * (1 - riskShare), remainderBondFeeRate);
     }
@@ -3837,13 +3881,18 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years, optio
         else entry.monthly[m - 1] += amountPerPeriod;
       }
     };
-    // 미배분 잔여분은 deterministic과 완전히 같은 규칙(TAX_ADVANTAGED_RISK_SHARE로 국내지수/BOND 분할)을 쓴다.
-    const addRemainder = (amount, contribYears, frequency, who) => {
+    /* 미배분 잔여분은 deterministic과 완전히 같은 규칙을 쓴다.
+     * [PHASE B-1] 비율과 대상 여부를 결정하는 것은 세제혜택 분류가 아니라 위험 배분 정책이다
+     * (resolveRemainderRiskShare) - 결정론 경로와 같은 함수를 본다. */
+    const addRemainder = (amount, contribYears, frequency, who, scope) => {
       if (!(amount > 0)) return;
+      const remainderShare = resolveRemainderRiskShare(scope);
+      if (!remainderShare.eligible) return;
+      const riskShare = remainderShare.share;
       addContribution('C:국내:주식', 'category:주식', { kind: 'category', ticker: '', name: '국내주식', label: '국내주식', category: '주식', region: '국내', riskFree: false, rateOwner: owner, displayKey: 'KOSPI' },
-        who, amount * TAX_ADVANTAGED_RISK_SHARE, contribYears, frequency);
+        who, amount * riskShare, contribYears, frequency);
       addContribution('C:국내:채권', 'category:채권', { kind: 'category', ticker: '', name: '채권', label: '채권', category: '채권', region: '국내', riskFree: true, rateOwner: owner, displayKey: 'BOND' },
-        who, amount * (1 - TAX_ADVANTAGED_RISK_SHARE), contribYears, frequency);
+        who, amount * (1 - riskShare), contribYears, frequency);
     };
     // scope: 이 적립금이 들어가는 계좌(계좌별 설정이면 그 계좌종류, 하위호환 풀이면 절세계좌 전체) - 배분 종목의
     // 수익률은 그 소유자 · 그 계좌 범위의 보유 자산으로 해석한다(결정론과 같은 인자).
@@ -3859,7 +3908,7 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years, optio
             rateTarget, rateScope: scope, rateOwner: owner, displayKey: resolveTargetRateDetail(rateTarget, undefined, region, scope).key },
           who, amount * num(item.pct) / 100, contribYears, frequency);
       });
-      addRemainder(amount * Math.max(0, 100 - allocatedPct) / 100, contribYears, frequency, who);
+      addRemainder(amount * Math.max(0, 100 - allocatedPct) / 100, contribYears, frequency, who, scope);
     };
 
     if (accountPlans.length > 0) {

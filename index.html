@@ -1577,6 +1577,9 @@
           <option value="연금저축"><option value="토스"><option value="CMA">
           <option value="채권/현금">
         </datalist>
+        <!-- [PHASE B-2 · ACCT-DICT-03] 계좌유형 사전에 없는 값일 때만 한 줄로 알린다(표시 전용).
+             값은 그대로 저장되고 계산도 달라지지 않는다 - 자동 정규화 · 자동 분류를 하지 않는다. -->
+        <p id="f_accountTypeClassNote" class="hidden mt-1 text-xs text-amber-600 dark:text-amber-400 leading-snug"></p>
       </label>
 
       <label class="col-span-2 text-sm">

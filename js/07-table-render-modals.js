@@ -1039,6 +1039,8 @@ function openModal(mode, id) {
   updatePriceUnitLabels();
   updateAssetAmountModeUI();
   updateBondFieldsUI();
+  // [PHASE B-2] 폼을 열거나 기존 값을 채운 직후에도 사전 등재 여부 안내를 맞춰 둔다.
+  updateAccountTypeClassNoteUI();
 }
 
 function showModal() { modal.classList.remove('hidden'); syncModalOpenFlag(); pushModalHistoryState(); }
@@ -1128,6 +1130,20 @@ document.getElementById('cancelModalBtn').addEventListener('click', () => closeM
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('f_isDomestic').addEventListener('change', syncCurrencyWithDomestic);
 document.getElementById('f_currency').addEventListener('change', () => { updatePriceUnitLabels(); updateAssetAmountModeUI(); updateBondFieldsUI(); });
+/* [PHASE B-2 · ACCT-DICT-03] 계좌유형이 사전에 없으면 그 사실만 한 줄로 알린다.
+ * 표시 전용이다 - 입력값을 바꾸지 않고(자동 정규화 금지 · ACCT-DICT-04), 세제혜택 여부 ·
+ * Risk Share · 계산 대상 여부를 여기서 정하지 않는다(PM 결정 DR-B2). */
+function updateAccountTypeClassNoteUI() {
+  const el = document.getElementById('f_accountTypeClassNote');
+  if (!el) return;
+  const input = document.getElementById('f_accountType');
+  const note = (typeof accountTypeClassificationNote === 'function')
+    ? accountTypeClassificationNote(input ? input.value : '') : '';
+  el.textContent = note;
+  el.classList.toggle('hidden', !note);
+}
+document.getElementById('f_accountType').addEventListener('input', updateAccountTypeClassNoteUI);
+document.getElementById('f_accountType').addEventListener('change', updateAccountTypeClassNoteUI);
 // [E-01 · E-02] 고른 값에 따라 안내 문구가 바로 바뀌도록 두 칸 자신도 트리거에 넣는다.
 document.getElementById('f_marketBetaIndexOverride').addEventListener('change', updateRiskConfirmFieldsUI);
 document.getElementById('f_fxHedgeStatus').addEventListener('change', updateRiskConfirmFieldsUI);
