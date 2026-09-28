@@ -5,7 +5,7 @@
 작업(코드 변경)을 완료하면, 다음 순서를 따른다:
 
 1. 사용자에게 **커밋 메시지(초안)**와 **변경된 파일 목록**을 먼저 보여주고 커밋 여부를 물어본다.
-2. 사용자가 승인하면, 그 승인 한 번으로 **커밋과 origin/master로의 push를 이어서 함께** 진행한다 — push 직전에 별도로 다시 "정말 push할까요?"라고 재확인하지 않는다.
+2. 사용자가 승인하면, 그 승인 한 번으로 **커밋과 origin/main으로의 push를 이어서 함께** 진행한다 — push 직전에 별도로 다시 "정말 push할까요?"라고 재확인하지 않는다.
 3. 사용자가 거절하거나 수정을 요청하면 커밋하지 않고 반영한다.
 
 **예외 - 아래는 이 지침과 무관하게 항상 사전 확인을 거친다** (파괴적/되돌리기 어려운 작업):
@@ -65,11 +65,33 @@ This checklist is the project's official governance Source of Truth.
 
 ## CURRENT PRIORITY
 
+> **2026-09-28 — 현재 기준 (PM 결정 · 이 항목이 최신이다)**
+>
+> - **production `v273`** · release commit `d474f51` · annotated tag `v273`.
+> - **작업 · 릴리스 브랜치는 `main` 하나다**(origin HEAD = `main`).
+>   `integration/v262-closeout`은 v262 종결 단계의 **역사적 기록**이며 현재 작업 브랜치가 아니다.
+> - **실행 기준문서**: 정책 SoT는 계속 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`이고,
+>   최신 결정은 `docs/closeout/PM_DECISION_LOG.md`다.
+>   `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`는 **v262 종결 기록**으로, 현재 실행 기준문서가 아니다.
+> - **현재 단계**: 「변경 구현 계획서 v1.3」 Phase 0(Code ↔ Policy Mismatch) 완료 → 후속 조치 완료.
+>   v272 · v273 정책은 SoT **§66**, Phase B 선행 정책(절세계좌 Risk Share 70:30 ·
+>   Account Type Dictionary)은 SoT **§67**에 등재됐다.
+> - **Phase A · Phase B는 NOT STARTED**다. PM 지시 없이 착수하지 않는다.
+>   MM-014(환헤지 충돌 시 MC) · MM-015(채권 환헤지 판정)는 실측을 마쳤고 **PM 결정 대기**다 —
+>   결정 전에 `js/16` · `js/29`를 고치지 않는다(SoT §66-7).
+> - 종결 대장 OPEN 0 · PM 결정 필요 0(`node scripts/closeout/ledger.js`).
+
+> **[과거 기록]** 아래 문단들은 당시 상태의 기록이다 — 삭제하지 않고 남긴다.
+> 현재 기준은 위 2026-09-28 항목이다.
+
 > **2026-09-20 — 기준문서 등록**: PM이 **`docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`**(v262 → 전체 미결사항 종결 통합작업계획서 FINAL)를 이 프로젝트의 **실행 기준문서**로 확정했다. 정책 원문 SoT는 계속 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`이며, 위 계획서는 "무엇을 어떤 순서·규칙으로 종결할 것인가"를 규정한다. 작업 브랜치는 `integration/v262-closeout`(원격 보존 허용), main 갱신·버전업·배포는 최종 릴리스 1회뿐이다. **2026-09-20 PHASE 0 착수**(PM 지시) — 기준선 고정 · 회귀 하네스 · 종결 대장은 `docs/closeout/`에 있다. 모든 작업은 integration branch에서만 한다.
 
 > 2026-09-19 update (status corrected 2026-09-20): the **asset-calculation integration project** — Risk Benchmark / Index Master / Exposure Master / MC Asset Class (checklist §44 44-16 · 44-16-2: D-01 · D-05 · D-06 · D-16) — was implemented in two passes and **released as v262 (production, commit b9ff90e)**. Current step: **no active implementation. Follow-up items are listed in `CLAUDE_HANDOVER.md` (v262 section) and are not to be started without a PM instruction** — US-stock HOME_COMMON evidence, Risk UI status wording, periodic re-verification of Master facts, legacy `analyzeTickerForModal` benchmark path, plus the PM's new workstreams (bond management process, automatic updates for Risk/MC base data). Exposure Master must not become an automatic Return Key source without a separate PM decision. The V1.2-B text below is kept as history.
 
 Previous phase (history): **V1.2-B**.
+
+**[과거 기록]** 아래 Primary scope 3건은 모두 종결됐다 — BL-17 = v224 · BL-18 = v225 ·
+BL-19 = v226 **RESOLVED**(SoT §3 · §5). 현재 우선순위가 아니다.
 
 Primary scope:
 1. BL-17 — category confirmation policy
@@ -174,7 +196,13 @@ Tax MC is required to have three distinct scopes:
 Combined MC must be derived from the same simulation path/sample; never simply add P50 values.
 
 ### Bond domain
-Bond work is a separate backlog phase. Do not implement bond-domain changes during V1.2-B unless PM explicitly authorizes them.
+**[갱신 2026-09-28]** 채권 도메인은 이미 PM 승인 하에 구현 · 출시됐다(SoT §47 · §49 BOND-01~40 ·
+§58 · §59 · §60 · §61 · `js/29-bond-domain.js`). 따라서 아래 금지 문구는 **당시 단계(V1.2-B)의
+기록**이다. 다만 원칙은 그대로다 — 채권 정책 · 분류 · Position Identity를 바꾸는 변경은
+PM 승인 없이 하지 않는다. 특히 BOND-10(Account Master/ID 생성 금지 · 자동 정규화 금지)은
+현행 유지다(SoT §67-2 ACCT-DICT-05).
+
+**[과거 기록]** Bond work is a separate backlog phase. Do not implement bond-domain changes during V1.2-B unless PM explicitly authorizes them.
 
 ### Macro/Risk
 Do not create a quantitative Macro→Risk link or redesign Risk Score without PM approval.

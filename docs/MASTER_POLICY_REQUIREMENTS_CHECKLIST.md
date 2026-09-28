@@ -53,6 +53,12 @@
 
 ## 3. Current Project Baseline
 
+- **현재 기준선(2026-09-28)**: production **v273** · release commit `d474f51` · annotated tag `v273` ·
+  브랜치 **`main`**(origin/HEAD = main) · 종결 대장 OPEN 0 · PM 결정 대기 0.
+  v273이 확정한 상품 기준정보 정책은 **§66**, Phase B 선행 정책은 **§67**이다.
+  `integration/v262-closeout` 브랜치와 `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`는
+  **v262 종결 단계의 역사적 기록**이며 현재 실행 기준문서가 아니다(PM 결정 2026-09-28 · §66-0).
+- **아래 항목은 당시 기록이다** — 삭제하지 않고 이력으로 남긴다.
 - V1.2-A FINAL RELEASE: v222 / commit `33641d6`
 - V1.1 FINAL FREEZE 완료
 - V1.0 FINAL 완료
@@ -62,7 +68,7 @@
 - **다음 작업 우선순위(PM 확정)**: ① RET-02(Return Key 정기 검토 거버넌스 — §8-1~8-3, **확정 완료**) → ② RET-03(전체 Return Key 정책 감사 + PM Decision — §8-4, **확정 완료 / 값 변경 0건**) → ③ **FUTURE-P1(Monte Carlo 중심 미래예측 구조 개편 — 진입 승인, 다음 단계)** → ④ BOND-P1 → ⑤ FX-P1 → ⑥ UX-P1. 앞 단계가 끝났다는 사실이 다음 단계의 착수/변경을 자동 승인하지 않는다(FUTURE-P1은 §8-4 RET-03-09로 진입이 명시 승인됨).
 - **V1.3 — CLOSED**: BL-19(v226) · P1-1 위험점수 범위 고지(v226) 두 항목을 릴리즈하고 종료했다. Bond Domain은 READ-ONLY audit + Decision Gate만 수행했고 **production code는 변경하지 않았다** — BOND-DEF-01~05의 PM 최종 결정은 §9-3 참고. V1.3 종료가 Bond 구현 착수 승인을 의미하지 않으며, 다음 단계는 PM이 별도로 결정한다.
 - V1.2-B에서는 대규모 UX/기능 확장을 하지 않는다.
-- **현재 production: v243**(2026-09-15) — v238 과거 이력 무결성(§25) · v239 신규 시작 안정화(§26) · v240 일별 이력 복구 제거 · 클라우드 데이터 초기화(§27) · v241 총자산 추이 Daily Valuation(§28) · v242 일별 손익 추이 Daily Valuation · 두 팝업 기간 통일(§29) · v243 P1-1 동기화 차이 확인 · 사용자 확정(§30, commit `ce40c06`). 아래는 당시 기록이다 — **이전 기록: 현재 production: v237**(2026-09-13). v236 = 일별 이력 복구 **안전성 수정의 코드 배포**(§22), v237 = 매크로 브리핑 UX 단순화 **RELEASE ACCEPTED**(§23). **실제 사용자 데이터에 대한 Recovery Apply는 BLOCKED**이며, v236 Recovery 문제는 **해결 완료가 아니다**. 현재 상태 요약은 §24.
+- **[과거 기록 · 당시 현행]** 현재 production: v243(2026-09-15) — v238 과거 이력 무결성(§25) · v239 신규 시작 안정화(§26) · v240 일별 이력 복구 제거 · 클라우드 데이터 초기화(§27) · v241 총자산 추이 Daily Valuation(§28) · v242 일별 손익 추이 Daily Valuation · 두 팝업 기간 통일(§29) · v243 P1-1 동기화 차이 확인 · 사용자 확정(§30, commit `ce40c06`). 아래는 당시 기록이다 — **이전 기록: 현재 production: v237**(2026-09-13). v236 = 일별 이력 복구 **안전성 수정의 코드 배포**(§22), v237 = 매크로 브리핑 UX 단순화 **RELEASE ACCEPTED**(§23). **실제 사용자 데이터에 대한 Recovery Apply는 BLOCKED**이며, v236 Recovery 문제는 **해결 완료가 아니다**. 현재 상태 요약은 §24.
 
 ## 4. Current V1.2-A Resolved
 
@@ -1705,7 +1711,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | ID | 정책 |
 |---|---|
 | **PMD-01** | 사용자가 입력한 티커 · 키 원본 보존, 자동 접미사/표준화 금지. 접미사 없는 국내 종목코드 키(예: `005930`)는 보유 종목과 연결되지 않는다는 사실만 안내(수익률 관리 행 · 엑셀 가져오기 알림) |
-| **PMD-02 / N-10** | 소유자별 사용자 설정은 독립. 다른 소유자 · 다른 계좌의 대표매칭(`rateMatchOverride`)을 빌려 쓰지 않는다. 같은 종목에 서로 다른 기준이 쓰이면 경고 + 사용자 수정(자동 해결 · 먼저/나중 우선순위 없음) |
+| **PMD-02 / N-10** | **[정정 2026-09-28 · 전단 폐기 → §66-4]** 앞 문장("다른 보유분의 대표매칭을 빌려 쓰지 않는다")은 v273에서 폐기됐다 — 장기 수익률 기준은 상품 고유 사실이므로 같은 상품의 보유분 전체가 공유한다. **뒤 문장(충돌 시 경고 + 사용자 수정 · 자동 해결 금지)은 현행 유지**다. 아래는 당시 원문이다. ~~소유자별 사용자 설정은 독립. 다른 소유자 · 다른 계좌의 대표매칭(`rateMatchOverride`)을 빌려 쓰지 않는다.~~ 같은 종목에 서로 다른 기준이 쓰이면 경고 + 사용자 수정(자동 해결 · 먼저/나중 우선순위 없음) |
 | **PMD-03** | **PM 최종 결정 A(2026-09-15): 현행 MC 계산 유지 + 월 적립금 대상 종목 미선택 경고.** 미선택 사실 · 비율 · 금액을 알리고 종목 선택을 안내한다. 금지: 미선택 금액 자동 종목 배분 · 투자 제외 · 현금 처리 · 실행 차단 · contribution/target allocation 계산 변경 · MC 모델 변경(§7 순서 contribution → target allocation → correlated shock → gross return → fee → annual rebalance → milestone 그대로) |
 | **PMD-04** | 절세계좌 운용보수 = 일반계좌와 같은 정책(결정론에도 월 보수 배율 적용) · 절세 전용 fee 모델 없음 |
 | **PMD-05** | MC 구조적 낙관성은 모델 특성으로 인정 - GBM · σ · 상관 · 리밸런싱 무변경, Det에 맞추지 않음 |
@@ -1729,7 +1735,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 | N-06 | 이름형 목표 · 절세 이름형 보유의 σ=0 판정 = 확정 자산군(시스템 추천이면 이름) - 어댑터 · 시계열 빌더 같은 값 | js/05 · js/16 |
 | N-07 | 엔진 안에서만 계산용 비중을 합계로 나눔(합계가 1이면 비트 동일) · 입력 · 저장 비중 불변 · 가중평균 보수 표시도 같은 기준 | js/15 · js/19 |
 | N-09 | 상관 경고 기준 = 수익률 관측치 수(`returnObservationCount`) | js/15 · js/16 · js/21 |
-| N-10 | 같은 종목이라도 세 시나리오 키가 다른 항목은 instrument 키에 기준을 붙여 분리(`T:티커\|키`) · 같으면 기존 키 그대로 · `채권`/`BOND` 표기 차이는 같은 기준(`canonicalRateKey`) · 경고 `SAFETY_RETURN_KEY_CONFLICT` · 자산 상세 안내 | js/05 · js/16 · js/08 |
+| N-10 | **[폐기 2026-09-28 → §66-4]** v273에서 이 분리 규칙을 폐기했다 — 상품은 하나이므로 나누지 않고, 확정할 수 없으면 확인을 요청한다. 아래는 당시 원문이다. ~~같은 종목이라도 세 시나리오 키가 다른 항목은 instrument 키에 기준을 붙여 분리(`T:티커\|키`) · 같으면 기존 키 그대로 · `채권`/`BOND` 표기 차이는 같은 기준(`canonicalRateKey`) · 경고 `SAFETY_RETURN_KEY_CONFLICT` · 자산 상세 안내~~ | js/05 · js/16 · js/08 |
 | F-06a | 실행 중(WAITING/RUNNING)에는 화면을 READY로 되돌리지 않음 · 새 실행이 이전 실행을 대신한 취소는 화면을 초기화하지 않음 · 준비 · 실행 중 중복 클릭 무시 | js/05 · js/18 · js/19 |
 | F-07 · N-04 | Cholesky가 기존 경로로 실패할 때만 같은 PSD 클리핑을 고유값 하한(1e-8, 1e-6)으로 재시도 - ρ=±1 · 고유값 0 계산 가능, 기존 성공 행렬 비트 동일 | js/15 |
 | PMD-03 경고 | `SAFETY_CONTRIBUTION_TARGET_UNSELECTED`(소유자별 미선택 비율 · 금액) · `SAFETY_CONTRIBUTION_OWNER_NOT_WEIGHTED`(원금이 없어 가구 가중에서 빠진 소유자) | js/05 · js/21 · js/16 |
@@ -1761,7 +1767,7 @@ GET `?k=sync:…` → 200 `{ciphertext, iv, salt, version, updatedAt}` / 404. PO
 
 | ID | 정책 |
 |---|---|
-| **PMD-12** | `state.projection.instrumentReturnKeys = { [종목 식별자 원문]: returnKey }`가 시스템 단위 **Instrument Return Key Master**다. 소유자 · 계좌 · 보유 여부와 무관하게 그 종목의 모든 보유분 · 목표 · 월 적립 배분 · 절세 배분에 적용된다. 해석 순서는 **USER override(`asset.rateMatchOverride`) → INSTRUMENT MASTER → 기존 자동 추천(customKey · customKeyword · category · presetTicker · tickerAlias · nameKeyword · assetCharacter) → UNRESOLVED**. Master는 자산 설정이 아니라 금융상품 자체의 기준정보이므로 PMD-02(다른 소유자 · 계좌의 `rateMatchOverride` 차용 금지)와 충돌하지 않는다 - 다른 보유분의 대표매칭은 계속 빌리지 않는다 |
+| **PMD-12** | `state.projection.instrumentReturnKeys = { [종목 식별자 원문]: returnKey }`가 시스템 단위 **Instrument Return Key Master**다. 소유자 · 계좌 · 보유 여부와 무관하게 그 종목의 모든 보유분 · 목표 · 월 적립 배분 · 절세 배분에 적용된다. 해석 순서는 **USER override(`asset.rateMatchOverride`) → INSTRUMENT MASTER → 기존 자동 추천(customKey · customKeyword · category · presetTicker · tickerAlias · nameKeyword · assetCharacter) → UNRESOLVED**. Master는 자산 설정이 아니라 금융상품 자체의 기준정보이므로 PMD-02와 충돌하지 않는다. **[정정 2026-09-28 → §66-4]** ① 마지막 문장("다른 보유분의 대표매칭은 계속 빌리지 않는다")은 v273에서 폐기됐다 — 같은 상품의 확정값은 보유분 전체가 공유한다. ② 해석 순서에서 **보유분 확정값과 Master가 어긋나면 Master 단계를 건너뛴다**(자동 채택 금지 · 자동 추천 체인으로 계속) |
 | D-1 · D-7 | 식별자는 사용자가 적은 원문(티커, 티커 없으면 `NAME:이름`)을 그대로 저장하고 비교할 때만 `sanitizeTicker` · `normalizeNameKey`로 정규화한다 |
 | D-3 | 엑셀 1시트 `대표매칭(수익률연동키)` = USER override 원본(Phase 48-A 유지) · 표시용 `수익률 기준 출처`(가져오기에서 읽지 않음). 2시트에 `적용 종목` 칸 추가(3시트 없음). 헤더에 칸이 없으면 옛 파일 → Master 불변, 칸이 있고 빈 칸이면 그 키의 연결 해제, 값이 있으면 복원 · 교체 |
 | D-4 | 같은 종목에 서로 다른 Master 키 → 자동 선택 금지 · 기존 자동 추천 체인으로 계산 · NEEDS_REVIEW. 자동 결과가 UNRESOLVED여도 MISSING과 NEEDS_REVIEW를 따로 발생. Master와 사전 티커 키 행(customKey)이 함께 있으면 승인 순서대로 Master가 우선(충돌 아님) |
@@ -4098,6 +4104,11 @@ PM 지시문 [통합 개선 배치 — 최종 상세 구현 지시문](2026-09-2
 
 우선순위는 다음 순서로 고정한다.
 
+> **[정정 2026-09-28 · v273 → §66-4]** 이 순서는 **공식 Master가 없는 사실**(시장민감도 기준 지수)에는
+> 그대로 유효하다. **공식 Master가 있는 사실**(환헤지 · 장기 수익률 기준)에서 Master와 사용자
+> 확정값이 서로 다르면 **어느 쪽도 채택하지 않고 CONFLICT**로 둔다(§66-3). 또한 같은 상품의
+> 보유분끼리 확정값이 갈려도 CONFLICT다. 아래 1~4는 "값이 하나로 모였을 때"의 순서다.
+
 1. **사용자 확정값**(`asset.marketBetaIndexOverride`) — 자동 판정이 덮어쓰지 않는다.
 2. Exposure Master(승인된 원장 · A등급)
 3. 공식 종목 마스터의 원천 사실(§53 v267 사실 계층)
@@ -4379,6 +4390,8 @@ UNRESOLVED → `getTargetProjectionRate` **0%**.
 
 자동 추천이 있는 경우와 기존 사용자 확정값이 있는 경우의 안내 · 우선순위는 그대로다
 (사용자 확정값 → 승인된 자동 판정 → UNRESOLVED).
+**[정정 2026-09-28 · v273 → §66-4]** 여기에 한 단계가 앞선다 — 같은 상품의 확정값이 서로 갈리거나
+공식 종목 기준(Master)과 어긋나면 **어느 쪽도 쓰지 않고 CONFLICT**로 두고 확인을 요청한다.
 
 ### 55-3. 환헤지 입력 — 환노출이 있는 상품에만 묻는다
 
@@ -5823,3 +5836,169 @@ baseline 관련 코드 수정.
 
 구조적 제약을 해소하려는 목적으로 새 원천이나 기능을 만들지 않는다. 모르는 것은 모른다고
 적어 두는 것이 이 프로젝트의 기록 원칙이다.
+
+---
+
+## §66. 상품 기준정보 구조 — v272 · v273 정책 사후 등재 (PM 결정 2026-09-28)
+
+### 66-0. 왜 사후 등재인가 (기록)
+
+v272 · v273에서 PM이 확정하고 실제로 구현 · 출시한 정책이 이 체크리스트에 **한 건도 등재되지
+않은 상태**였다(Phase 0 실측 2026-09-28: 본 문서에서 `v272` 0건 · `v273` 0건 · 마지막 절이
+§65 = v271). **GOV-03**("확정되는 정책은 반드시 본 체크리스트에 추가한다")과 CLAUDE.md의
+"정책은 구현 전 또는 구현과 함께 체크리스트에 추가한다"를 지키지 못한 상태다.
+
+**PM 결정(2026-09-28)**: 이 절로 사후 등재한다. **새 정책을 만드는 것이 아니라 이미 확정 ·
+구현된 정책을 문서로 복구하는 것**이다. 기존 조항은 삭제하지 않고 정정 표시로 연결한다.
+
+같은 결정으로 **기준문서 운영 기준**도 확정한다 — 현재 production은 **v273**, 릴리스 브랜치는
+**`main`**(origin/HEAD = main)이다. `integration/v262-closeout`(마지막 커밋 v263 · 2026-09-20 ·
+현재 main의 조상)과 `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`는 **v262 종결 단계의 역사적
+기록**으로 구분하며 현재 실행 기준문서가 아니다. 현재 실행 기준은 본 체크리스트와
+`docs/closeout/PM_DECISION_LOG.md`의 최신 결정이다. 과거 기록은 삭제하지 않는다.
+
+### 66-1. v272 — 상품 기준정보 판정 경로 통일 (출시 2026-09-27 · `8cad774`)
+
+| ID | 확정 내용 |
+|---|---|
+| **INST-01** | 환헤지 사실을 한 곳에서 해석한다(`js/01 resolveInstrumentFxHedge`). 예전에는 Risk(js/09)가 Exposure Master의 `hedgeStatus`를 읽고 MC(js/16 `applyUserHedgeToAppClass`)는 자산의 사용자 값만 읽어, 같은 종목에 두 엔진이 서로 다른 근거를 쓰고 있었다. 우선순위 정책 자체는 이 단계에서 바꾸지 않았다 |
+| **INST-02** | 같은 종목의 보유분마다 다른 환헤지가 적혀 있으면 사실을 알린다(`fxHedgeConflictFor`). 앱이 고르지 않는다 |
+| **INST-03** | 원화 채권에는 환헤지를 묻지 않는다(`fxHedgeChoiceStateOf` 채권 게이트 · §58-5) |
+| **INST-04** | 같은 ISIN의 발행조건은 보유분 전체를 보고 정한다(`js/29 resolveBondInstrumentFacts`). 값이 하나면 그 값 · 없으면 null · 갈리면 **고르지 않고** 무엇이 다른지 알린다. `find()`로 먼저 만난 레코드를 쓰던 first-found 경로 4곳을 제거했다(배열 순서가 답을 바꾸지 않는다) |
+| **INST-05** | `hedgeStatus`는 INST-04의 비교 대상에 **충돌 표시용으로만** 포함한다. 환헤지 판정 자체는 `resolveBondHedgeStatusDetail`(§60-2)과 `resolveInstrumentFxHedge`가 담당한다 — 경쟁 resolver를 만들지 않는다 |
+| **INST-06** | 사용자가 확정한 `fxHedgeStatus` · `marketBetaIndexOverride`를 `persistAssets` 저장 목록에 추가한다(BUG-3). 두 값은 MC 자산군과 Risk 기준지수를 실제로 바꾸는데 새로고침 한 번에 사라지고 있었다 |
+| **INST-07** | Risk가 같은 티커를 합칠 때 먼저 만난 보유분의 기준 지수를 쓰던 것을 고쳤다(`resolveAcrossHoldings`) — 하나의 답일 때만 쓰고, 갈리면 `UNRESOLVED / holdingConflict` |
+
+**계산**: v271 승인 기준선과 완전 일치(Risk 7지표 · 개별 베타 7종 · MC μ지문 2종 · 사분위 0.00% ·
+σ 변경 0건). 달라지는 지점은 하나 — 같은 티커 보유분의 기준지수 지정이 갈릴 때 예전에는 배열
+순서로 정해진 값을 쓰던 것이 UNRESOLVED가 된다(임의값 제거).
+
+### 66-2. v273 — 같은 금융상품이면 상품 고유의 사실은 하나다 (출시 2026-09-28 · `d474f51`)
+
+| ID | 확정 내용 |
+|---|---|
+| **INST-10** | **상품 고유 사실은 소유자 · 계좌 · 거래가 달라도 하나로 읽는다.** 대상 7종 — 환헤지 · 시장민감도 기준지수 · 장기 수익률 기준 · 자산 분류(사용자 확정분) · 상품명(티커 있는 상품) · 국내외 · 종목 역할 |
+| **INST-11** | **보유 사실**(owner · accountType · quantity · buyPrice · buyRate · 거래내역 · 채권 holding)과 **개인 운용 설정**(목표 비중 · 절세계좌 계획 · 적립 설정 · 시나리오)은 예전처럼 보유분별 · 소유자별로 독립이다. 공유하지 않는다 |
+| **INST-12** | **저장 구조를 바꾸지 않는다.** 읽을 때만 같은 상품의 보유분을 모아 해석한다(read-time resolver). localStorage · Excel · 백업 · 동기화 schema 무변경 · migration 0건 · 기존 저장값 보존 |
+| **INST-13** | 상품 식별자는 기존 규칙을 재사용한다(`js/05 buildCustomRateKey` — 티커가 있으면 yahooTicker). **티커가 없으면 이름만으로 같은 상품이라고 단정하지 않고 통화를 함께 본다**(`NAME:이름\|통화`) — 같은 이름의 원화 채권과 달러 채권이 하나로 합쳐지는 것을 막는다(실측 확인). 새 Master를 만들지 않는다 |
+| **INST-14** | **STEP 1-D(보유 단위 적용) 폐기.** 자산 상세에서 고른 값은 같은 상품의 보유분 전부에 적용한다 — §54-1이 이미 적어 둔 설계("이 상품이 무엇을 따라가는가는 하나다")로 복귀한 것이다 |
+| **INST-15** | **MC N-10 폐기.** 같은 종목이라도 수익률 기준이 다르면 서로 다른 instrument로 나눠 각자의 수익률로 계산하던 규칙을 없앴다. 상품은 하나이므로 나누지 않고, 확정할 수 없으면 확인을 요청한다 |
+| **INST-16** | **Master 자동 채택 2곳 차단.** ① 수익률 기준이 충돌할 때 「수익률 관리」 종목 기준이 그대로 쓰이던 경로 ② Risk 기준지수 판정이 환헤지 충돌에도 원장 `hedgeStatus`로 정렬 · 환산을 정하던 경로 |
+| **INST-17** | **effective value 기준으로 충돌을 검출한다.** 예전에는 직접 입력한 값끼리만 비교해서, 한쪽만 고르고 다른 쪽이 공식 자료를 따르면 실제 해석이 갈리는데도 경고가 없었다 |
+| **INST-18** | 시장민감도를 구하지 못한 사유 3종에 사람 말 안내를 넣는다 — `holdingConflict` · `instrumentIndexConflict` · `instrumentHedgeConflict` |
+
+### 66-3. 판정 규칙 — `js/01 resolveSharedInstrumentFact` (INST-20)
+
+같은 상품의 보유분 전부를 모아 **한 규칙으로** 판정한다. 아래 7개 상품 사실 전부에 같이 적용된다.
+
+| 경우 | 결과 | reason |
+|---|---|---|
+| Master = 사용자 확정값 | RESOLVED (그 값) | `userConfirmed` |
+| Master만 있음 | RESOLVED (Master) | `instrumentMaster` |
+| 사용자 확정값만 있음 | RESOLVED (그 값 · 같은 상품 전체가 사용) | `userConfirmed` |
+| **사용자 확정값끼리 다름** | **CONFLICT · value 없음** | `holdingConflict` |
+| **Master ≠ 사용자 확정값** | **CONFLICT · value 없음** | `masterMismatch` |
+| 아무것도 없음 | UNRESOLVED (충돌과 구분한다) | `noEvidence` |
+
+**임의 선택 금지가 최종 원칙이다**(PM 최종 지시). 공식 자료가 사용자의 확인을 조용히 덮어쓰지도,
+사용자 값이 공식 자료를 조용히 이기지도 않는다. 저장값은 **양쪽 다 그대로 남아** 화면에 보이고,
+하나로 맞추면 즉시 정상 계산으로 돌아온다.
+
+공식 Master가 있는 사실은 **환헤지**(Exposure Master `hedgeStatus`) · **장기 수익률 기준**
+(Instrument Return Key Master) · **종목 역할** 셋뿐이다. 나머지 사실은 Master가 없으므로
+`masterMismatch`가 성립하지 않고 `holdingConflict`만 발생한다.
+
+### 66-4. 이 절이 개정하는 기존 조항
+
+| 기존 조항 | 위치 | 개정 내용 |
+|---|---|---|
+| **PMD-02 / N-10** 전단 | §32-1 | "다른 소유자 · 다른 계좌의 대표매칭을 빌려 쓰지 않는다" → **폐기**(INST-10). 후단(충돌 시 경고 + 사용자 수정 · 자동 해결 금지 · 먼저/나중 우선순위 금지)은 **현행 유지**이며 `holdingConflict`가 그 구현이다 |
+| **N-10** 분리 규칙 | §32-2 | **폐기**(INST-15) |
+| **PMD-12** 해석 순서 | §33-1 | USER override → INSTRUMENT MASTER → 자동 추천 → UNRESOLVED 중 **2단계에 조건이 붙는다** — 보유분 확정값과 Master가 어긋나면 Master를 건너뛰고 자동 추천 체인으로 계속한다(INST-16). D-4("자동 선택 금지 · 자동 추천 체인으로 계산 · NEEDS_REVIEW") · D-5 · D-8은 **무변경** |
+| **PMD-12** 마지막 문장 | §33-1 | "다른 보유분의 대표매칭은 계속 빌리지 않는다" → **폐기**(INST-10) |
+| **E-01 우선순위 1** | §54-1 | "사용자 확정값이 1순위 · 자동 판정이 덮어쓰지 않는다" → Master가 있는 사실에서 **어긋나면 어느 쪽도 쓰지 않는다**(§66-3). Master가 없는 사실(기준 지수)에는 그대로 유효하다 |
+| **우선순위 안내** | §55-2 | 위와 같다 |
+| **§54-1 확인 자리** | §54-1 | "고른 값을 같은 종목의 보유분 전부에 적는다"는 **무변경** — INST-14가 이 문장으로 복귀한 것이다 |
+
+되돌리려면 **PM 결정이 필요하다.** 임의로 예전 동작으로 되돌리지 않는다.
+
+### 66-5. 계산 영향
+
+v272 승인 기준선과 **숫자 하나까지 같다** — Risk `score=45 vol=14.83527456 VaR=-1.075213608
+CVaR=-1.211565192 MDD=-2.662509179 corr=0.9022471287 beta=0.931428547` · 개별 베타 7종 동일 ·
+MC equityOnly 49 / `af875582fc001dc2` · withSyntheticBonds 51 / `a36f5ba2112d4d44` ·
+사분위 전부 0.00% · σ 변경 0건.
+
+**계산이 달라지는 경우는 하나뿐** — 같은 상품에 서로 다른 사실이 적혀 있을 때, 예전에는 임의의
+한쪽을 쓰던 것이 이제 "확인 필요"가 된다. 임의값 제거이며 의도된 변화다.
+
+### 66-6. 화면 (UI-273)
+
+위험 카드의 점수 문구를 한 행으로 고치고, **PM 지시로 이름에서 「종합」을 뺐다** →
+`포트폴리오 위험점수`. 카드 헤더(`#portfolioRiskScoreLine` · js/10)와 위험 알림 팝업 두 곳에
+같이 적용한다 — 같은 점수를 화면마다 다르게 부르지 않는다. 성격이 다른 문장
+`포트폴리오 종합 위험점수 계산 불가 (데이터 부족)`(§2035 계열)은 **그대로 둔다.**
+375px 이상에서만 한 행을 강제하고(`min-[375px]:whitespace-nowrap`) 320px에서는 예전처럼
+줄바꿈한다 — 무조건 한 행으로 만들면 320px에서 9px 넘침이 생긴다(e2e/33 검출).
+
+### 66-7. 남은 사실 — MM-014 · MM-015 (2026-09-28 실측 · **PM 결정 대기**)
+
+Phase 0에서 확인하고 이 날 실측한 두 경로다. **결론을 내리지 않았고 코드를 고치지 않았다.**
+
+**MM-014 환헤지 충돌 시 MC** — 활성 CMA(CMA-2026.2)에서 `US_EQUITY`(U.S. Large Cap ·
+σ 13.722309014388456%)와 `US_EQUITY_HEDGED`(U.S. Large Cap hedged · σ 16.63977109253169%)는
+**둘 다 MAPPED이고 서로 다른 값을 쓴다**(fallback 아님). 충돌(`masterMismatch` ·
+`holdingConflict`) 상태에서 Risk는 `instrumentHedgeConflict`로 베타 산출을 멈추지만,
+MC는 `resolved.status !== 'HEDGED'` 분기로 떨어져 **`US_EQUITY`(환노출 행)로 계산을 계속한다** —
+미확인 상태와 결과가 완전히 같다(전체 지문 동일). 즉 충돌에서 MC는 사실상 환노출 쪽을 고른다.
+원장에 `hedgeStatus: HEDGED`로 등재된 항목은 현재 **0건**, UNHEDGED는 17건이다.
+
+**MM-015 채권 환헤지** — `js/29 resolveBondHedgeStatusDetail`은 2순위에서 자산의
+`fxHedgeStatus` **원시값**을 읽는다(상품 단위 해석기를 거치지 않는다). 그래서 같은 외화 채권을
+두 사람이 들고 있고 한쪽만 확인해 두면 Risk · MC용 해석은 양쪽 모두 HEDGED인데 **채권 분류는
+한쪽만 분류되고 다른 쪽은 UNCLASSIFIED**가 된다(실측). 자산 `fxHedgeStatus`가 보유분끼리
+충돌해도 채권 분류는 각자 자기 값으로 계속 계산한다(`FOREIGN_GOV_BOND_HEDGED` σ
+3.985382018102107% ↔ `FOREIGN_GOV_BOND_UNHEDGED` σ 9.69232747192174%).
+
+두 항목의 **정책 결정은 PM이 한다**(정책 후보는 `docs/closeout/PM_DECISION_LOG.md` 참조).
+결정 전에 `js/16` · `js/29`를 고치지 않는다.
+
+---
+
+## §67. Phase B 선행 정책 — 절세계좌 Risk Share · Account Type Dictionary (PM 결정 2026-09-28)
+
+Phase 0에서 "코드에만 있고 정책문서에 없다"로 확인된 두 가지를 정책으로 확정한다.
+**이 절은 정책 명문화이며, 이 절로 코드를 바꾸지 않는다**(Phase B 구현은 별도 지시).
+
+### 67-1. TAX-RISK-01 — 절세계좌 Risk Share 70:30
+
+| ID | 확정 내용 |
+|---|---|
+| **TAX-RISK-01** | 절세계좌의 미배분 잔여분을 **국내지수 70% · BOND 30%**로 나눈다(`js/05 TAX_ADVANTAGED_RISK_SHARE = 0.7`). 결정론 경로와 MC 경로가 **같은 규칙**을 쓴다. 현행 동작을 그대로 유지한다 |
+| **TAX-RISK-02** | 적용 대상은 현재 세제혜택 계좌로 취급하는 **ISA · IRP · 연금저축** 셋이다(`js/01 TAX_ADVANTAGED_ACCOUNT_TYPES`) |
+| **TAX-RISK-03** | **Tax Classification ≠ Risk Share.** 70:30은 세법상 분류가 아니라 별도의 위험 배분 정책이다. 두 개념을 하나의 상수 · 하나의 게이트로 묶어 두지 않는다(Phase B-1의 책임 경계) |
+| **TAX-RISK-04** | **새 계좌유형이 추가되었다는 이유로 70:30을 자동 적용하지 않는다.** 정책에 등록되지 않은 계좌유형은 Risk Share를 **자동 추론하지 않는다** |
+
+이 값의 근거를 지금까지 이 문서에 적어 두지 않았다는 사실도 함께 기록한다(Phase 0 · MM-016).
+**값 자체는 바뀌지 않았고 이 절로 계산이 달라지지 않는다.**
+
+### 67-2. ACCT-DICT — Account Type Dictionary (도입 방향 승인 · 구현은 Phase B-2)
+
+`accountType`은 지금도 **자유 입력**이며 그 방식을 유지한다(`js/06 DEFAULT_ACCOUNT_TYPES`는
+힌트 목록이고, `collectKnownAccountTypes()`가 실제 데이터에서 목록을 만든다).
+
+| ID | 확정 내용 |
+|---|---|
+| **ACCT-DICT-01** | Dictionary는 자유 입력된 `accountType`의 **정책적 의미를 보조적으로 분류**하기 위한 구조다. 사용자가 입력한 값을 다른 값으로 바꾸는 정규화 체계가 **아니다** |
+| **ACCT-DICT-02** | 초기 명시 대상은 **ISA · IRP · 연금저축** 셋이다 |
+| **ACCT-DICT-03** | Dictionary에 없는 `accountType`은 **UNCLASSIFIED / UNRESOLVED**로 둔다. 세제혜택 여부 · Risk Share · Return Key · 세법상 분류를 **자동 추론하지 않는다** |
+| **ACCT-DICT-04** | **금지** — Account Master 생성 · Account ID 생성 · 기존 `accountType` 자동 변경 · `isa` → `ISA` 자동 정규화 · 증권사명 → 계좌유형 자동 변환 · 기존 데이터 migration · Position Identity 변경 |
+| **ACCT-DICT-05** | 따라서 **BOND-10**(§49-3 "Account Master/ID를 만들지 않는다 · 자동 정규화 금지")과 충돌하지 않는다. BOND-10은 **현행 유지**이며, Dictionary는 저장값을 건드리지 않고 해석만 얹는다 |
+| **ACCT-DICT-06** | 실제 Dictionary 코드 구현과 기존 consumer 연결(`isRebalanceEligibleAccount` · 절세 MC · 절세 결정론 경로)은 **Phase B-2에서 별도 지시로** 수행한다. 이 절만으로 구현하지 않는다 |
+
+### 67-3. 범위 외 — 소유자 고정값 (기록만)
+
+`REBALANCE_OWNERS` · `VALID_ASSET_OWNERS`(js/01) · `TAX_ADVANTAGED_OWNERS`(js/05)가
+두 소유자로 고정돼 있고 js/01 · 04 · 05 · 19에서 **70곳**이 참조한다. **이번 단계에서 수정하지
+않으며 Owner 모델 재설계도 하지 않는다**(PM 결정 2026-09-28). Phase B-1 구현이 실제로 이
+구조에 막히는 경우에만 작업을 멈추고 PM에게 보고한다.
