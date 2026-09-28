@@ -32,7 +32,115 @@
 
 ---
 
-## 🔧 MM-014 · MM-015 구현 완료 — 환헤지 충돌은 어느 쪽도 고르지 않는다 (2026-09-28 · 가장 최신 · **구현 완료 · 출시 아님**)
+## 🏁 v274 FINAL RELEASE — 환헤지 충돌 시 MC 위험가정 제외 · 채권 환헤지 판정 통일 (2026-09-28 · 가장 최신 · **출시 완료**)
+
+> **상태**: **출시 완료 · 실제 미결 0건 · PM 결정 대기 0건 · 운영 조치 0건.**
+> **버전 변경**: v273 → **v274**
+> **release commit**: `a08b5c4` · **handover commit**: 이 커밋
+> **branch**: `main` (origin/main) · **tag**: `v274` (annotated · `a08b5c4`)
+> **production**: https://key4125-netizen.github.io/jasan/ (Pages build `a08b5c4` · **built** · error 없음)
+> **SoT**: §60-2 정정 · **§66** · **§67** · **§68**(FXC-01~20)
+> **PM 결정 원장**: `MM-014-IMPL` · `MM-015-IMPL` · `MM-015-TESTS`
+> **Phase A · Phase B — NOT STARTED**
+
+### 이번 릴리스가 담은 것
+
+v274는 **MM-014 · MM-015 두 정책의 구현만** 담는다(구현 커밋 `e9fe982` · 릴리스 커밋 `a08b5c4`).
+릴리스 커밋은 **version marker 2줄뿐**이다 — `sw.js` `CACHE_NAME`과 `index.html`
+`appVersionLabel`. 기능 코드는 릴리스 단계에서 한 줄도 건드리지 않았다.
+
+### MM-014 — 환헤지 CONFLICT는 MC 위험가정에서 제외한다
+
+    CONFLICT
+    → appClass = US_EQUITY (기존 호환성 유지)
+    → riskFree = true
+    → HEDGED σ 미적용 · UNHEDGED σ 미적용 · sigmaAnnual = 0
+    → MC_FX_HEDGE_CONFLICT 안내
+
+⚠ **CONFLICT를 UNHEDGED로 해석한 것이 아니다.** 자산군 이름만 호환성을 위해 유지하고 위험가정은
+어느 쪽에서도 받지 않는다(σ 13.722309014388456%도 16.63977109253169%도 아니다).
+**정상 HEDGED · 정상 UNHEDGED · UNRESOLVED는 전부 예전 그대로다.** 원금 · 적립 · 리밸런싱 ·
+상관행렬 참여 · μ(Return Key)도 무변경이다. 분류되지 않은 채권에 이미 쓰던 구조(§47-3)를 재사용했다.
+
+### MM-015 — 채권 환헤지도 상품 단위 해석기 하나가 답한다
+
+    bondPosition.identity.hedgeStatus
+    → resolveInstrumentFxHedge 입력원
+    → Bond / Risk / MC / Asset Detail 공통 해석
+
+**실측: 경로 불일치 10건 → 0건.** 두 값이 같거나 한쪽만 있으면 확정하고, 어긋나면 CONFLICT다
+(`UNCLASSIFIED` + `FX_BOND_HEDGE_CONFLICT` 안내). 원화 채권은 예전처럼 이 판단을 하지 않는다(§58-5).
+**저장값은 어느 쪽도 바꾸지 않는다** — migration 0 · Position Identity 무변경.
+⚠ §60-2의 "채권 레코드가 언제나 1순위"는 폐기됐다(원문 보존 · §68로 연결).
+
+### 릴리스 게이트 결과 (v274 tree 실측)
+
+| 게이트 | 결과 |
+| --- | --- |
+| MM-014 focused (Case A~E · 경계 · MC 통합) | **PASS** |
+| MM-015 focused (Case A~D · B-2 · D-2 · 원화 경계) | **PASS** |
+| Unit | **1011 / 1011 PASS · fail 0** |
+| ESLint | **PASS** (error 0) |
+| Data Guard | **PASS** (추적 339개 · 사용자 데이터 0) |
+| **Release Guard** | **PASS** — CACHE_NAME/appVersionLabel 모두 **v274** · APP_SHELL 32 |
+| Risk Regression | **PASS** — v273 기준선과 `diff` **완전 동일** |
+| MC Regression | **PASS** — **변경 0건**(사분위 4/4 · μ지문 2종 · σ 0건 · 제외목록 동일) |
+| Order Independence | **PASS** |
+| Determinism | **PASS** |
+| Full E2E | **1319 / 1319 PASS** (15.7분 · **단독 실행** · 실패 artifact 0건) |
+| Production Smoke | **PASS** (아래) |
+
+**기준선 보존 실측** — Risk `score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192
+MDD=-2.662509179 corr=0.9022471287 beta=0.931428547` · 개별 베타 7종 · Master EM=58 Index=11
+resolution=58 tickerMaster=16706 · MC equityOnly 49 / `af875582fc001dc2` · withSyntheticBonds
+51 / `a36f5ba2112d4d44` · 사분위 4종 · CMA-2026.2 **전부 v273과 동일**.
+
+### Production Smoke 결과
+
+- Pages build `a08b5c4` · **built** · error 없음
+- HTTP 직접 확인: `sw.js` **smart-asset-manager-v274** · `index.html` **v274** ·
+  app shell(index · sw · manifest · js 29개) **404 0건**
+- 배포본에 이번 코드 존재 확인: `bondRecordHedgeStatusesOf` · `fxHedgeConflictBlocksRiskAssumption` ·
+  `MC_FX_HEDGE_CONFLICT` · `FX_BOND_HEDGE_CONFLICT` · `INSTRUMENT_CONFLICT` · units `owns`
+- 브라우저: 화면 **v274** · SW **activated** · waiting 없음 ·
+  캐시 목록 `smart-asset-manager-v274` **하나만** · app shell 4xx **0건**
+- 탭 4개(금융투자현황 · 총자산현황 · 거래내역 · 포트폴리오/자산예측) 정상 ·
+  위험 카드 `포트폴리오 위험점수` 한 행 렌더 정상
+- **이번 릴리스 핵심 실측(production)** — 합성(ZZ) 객체를 **인자로만** 넘겨 확인했고
+  저장 데이터는 읽지도 쓰지도 않았다(전후 자산 수 · 채권 수 · localStorage 키 수 동일):
+  · MM-014 원장 UNHEDGED + 사용자 HEDGED → `INSTRUMENT_CONFLICT`(status null) ·
+    MC `appClass=US_EQUITY` + `fxHedgeConflict=true` · Risk `instrumentHedgeConflict`
+  · MM-014 정상(원장과 일치) → `fxHedgeConflict=false`(기존 동작 그대로)
+  · MM-015 레코드 UNHEDGED + 자산 HEDGED → `INSTRUMENT_CONFLICT` · 분류 `UNCLASSIFIED`
+  · MM-015 두 값 일치 → `HEDGED` 확정(`source: bondPosition`)
+- console error는 `r.jina.ai` 401뿐이다 — 최후순위 공개 프록시가 API 키를 요구해서 나는
+  **기존 현상이며 SoT §65-2에서 이미 CLOSED**다. v274가 만든 문제가 아니고, 사용자 본인 Worker
+  (`asset-manager-proxy`)는 정상 응답한다. app shell 4xx는 0건이다.
+
+### ⚠ Service Worker 전환 조건 — v272 · v273에서 기록한 사실 그대로다
+
+이번 production smoke는 **구버전 SW가 없는 깨끗한 프로필**에서 했으므로 곧바로 v274가 됐다.
+**기존 사용자 기기는 다르다** — v273 SW가 설치된 브라우저에서 배포 직후 열면 화면은 v273이고
+새 worker는 `waiting`에 머문다. **origin을 떠났다가 다시 들어오면** activate →
+`clients.claim()` → 구버전 캐시 삭제 → v274가 된다. "배포했는데 아직 이전 버전"은 장애가 아니다.
+
+### 다음 세션에게
+
+- **실제 미결 0건 · PM 결정 대기 0건.** 새 backlog를 임의로 열지 않는다.
+- **Phase A · Phase B — NOT STARTED.** v274 완료가 다음 단계 착수를 승인하지 않는다.
+  다음 작업은 PM이 별도로 결정한다.
+- ⚠ `js/15` · `js/16`은 **Worker에서도 실려 돈다**(js/17 `importScripts`는 js/05를 싣지 않는다).
+  이 두 파일의 **최상위에서 다른 파일의 값을 평가하면 Worker가 죽고, Unit은 잡지 못한다** -
+  이번에 실제로 겪었고 E2E가 잡았다(직전 절 참조). 함수 안에서 `typeof` 가드와 함께 읽는다.
+- ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 15.7분). Python으로 테스트 파일을 고치지 않는다.
+- js/를 고치면 `sw.js` CACHE_NAME과 `index.html` appVersionLabel을 함께 올린다(Release Guard).
+- `baseline/v262/` 변경 금지 · `freeze-baseline.js`는 PM 승인 없이 실행 금지(`--help`도 덮어쓴다).
+- `.claude/launch.json`은 사용자 로컬 변경이다 — blob `2a39711674f3af2df32a46825454020b34599670`.
+  v274의 두 커밋에도 포함하지 않았다(확인 완료). `baseline/` · `data/` 변경 0건.
+
+---
+
+## 🔧 MM-014 · MM-015 구현 완료 — 환헤지 충돌은 어느 쪽도 고르지 않는다 (2026-09-28 · 직전 작업 · **v274로 출시됨**)
 
 > **상태**: 구현 · 회귀검증 완료 · **PM 승인 완료** · **배포하지 않았다.**
 > **commit**: `e9fe982`(코드 · 테스트 · E2E · 문서 9파일) · 이 커밋(인계장) · **branch** `main`
