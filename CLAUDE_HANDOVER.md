@@ -32,6 +32,145 @@
 
 ---
 
+## 🚀 v275 RELEASE — Phase A · Phase B 전달 · 계좌유형 추천 정합성 (2026-09-28 · **가장 최신**)
+
+> **상태**: 출시. **Phase A CLOSED · Phase B CLOSED · DR-B1 · DR-B2 · DR-B3 전부 resolved.**
+> **버전 변경**: v274 → **v275**
+> **release commit**: 이 커밋 · **branch** `main` · **tag** `v275`
+> **SoT**: §67-4 · **§67-5**(신설) · **§69**(신설) · TAX-RISK-04 범위 한정
+> **PM 결정 원장**: `DR-B1` · `DR-B2`(+ DR-B3 참조 보강) · `DR-B3` · `PHASE-B-CLOSEOUT`
+> **Phase C · Phase T — NOT STARTED**(아래 "Phase C 착수 전 조사" 참조)
+
+### v275가 담은 것 (v274 이후 전부)
+
+| 묶음 | 내용 | 커밋 |
+| --- | --- | --- |
+| **Phase A** | Return Key 보존 정책의 범위를 A-1 · A-2 · A-3으로 고정하고 lifecycle을 SoT §69로 통합. **코드 변경 불필요**로 판정(이미 구현돼 있었다) · orphan 키 엑셀 왕복 회귀 `e2e/133` 1건 신설 | `ed18a5d` |
+| **Phase B-1** | 세제혜택 분류와 위험 배분(70:30)의 **정책 책임 분리**. `RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES` · `resolveRemainderRiskShare(scope)` 신설(js/05). 세제혜택 목록에 유형을 더해도 70:30이 따라가지 않는다 | `6c6a99e` |
+| **Phase B-2** | `ACCOUNT_TYPE_DICTIONARY` 도입(js/01) · `classifyAccountType` · UNCLASSIFIED **표시 · 안내 전용** · 자산 폼에 한 줄 안내 | `6c6a99e` |
+| **Phase B CLOSEOUT** | SoT §67-4 · TAX-RISK-03/04 · ACCT-DICT-01~06 RESOLVED 표식 · 결정 원장 등재 | `095c188` |
+| **DR-B3 (HOLD 해소)** | Phase B-1이 **이미 저장된** 적립계획 행의 잔여분을 계좌유형 등재 여부로 빼 버렸다. 계산 게이트 3곳 제거 · v274 값 복원 · 테스트 6건 추가 | `099d0b8` |
+| **DR-B2 ↔ DR-B3** | 결정 원장에 참조 한 항목 추가(기존 문구 삭제 0) | `73a0ec2` |
+| **PMD-1** | 계좌구분 안내 문구 `text-xs`(12px) → `text-sm`(14px) | 이 커밋 |
+| **PMD-2** | 계좌유형 **기본 추천목록**에서 사전 미등재 3개(토스 · CMA · 채권/현금) 제거 | 이 커밋 |
+| **version** | `sw.js` CACHE_NAME · `index.html` appVersionLabel v274 → v275 | 이 커밋 |
+
+### DR-B3 — 이번 구간에서 가장 중요한 사건
+
+Phase B-1 구현이 저장된 적립계획 행의 잔여분을 **계좌유형 등재 여부로 게이트**했다.
+그 결과 사전에 없는 `accountType`을 가진 **기존 행**의 계산이 사라졌다 —
+합성 실측으로 **결정론 495,891,124 → 209,586,159(-57.74%)** · **MC 납입 2.4억 → 0.96억**이었다.
+
+이런 행은 구조적으로 존재할 수 있다 — `contributionByOwnerAccount`에 정리(prune) 로직이 **0건**이고,
+JSON 백업 복원(js/12)과 클라우드 동기화(js/25)가 값을 거르지 않는다.
+
+**PM 결정**: TAX-RISK-04와 DR-B2는 **서로 다른 대상**을 규정한다.
+
+    기존 저장 적립계획   → 계산 결과 보존(게이트 제거)     ← DR-B2
+    Risk Share 자동 적용 → 정책 등재 목록만                ← TAX-RISK-04
+
+신규 미등재 계좌유형에 70:30이 붙지 않는 이유는 **계산 게이트가 아니라 진입 경로**다 —
+적립계획 행은 `renderTaxAdvantagedAllocationEditor`가 보유 중인 절세계좌 유형에만 만든다.
+v274 코드와 같은 입력으로 나란히 돌려 **미등재 · 토스 · CMA · ISA · 연금저축 전 케이스에서
+결정론 495,891,124 동일 · MC 절세 scope 완전 동일**을 확인했다. 자세한 내용은 SoT **§67-5**.
+
+### PMD-2 — 추천목록과 사전의 불일치 (이번에 발견하고 고침)
+
+앱은 계좌구분 칸에서 `토스` · `CMA` · `채권/현금`을 **기본 추천**했는데 이 셋은 사전에 없다.
+그래서 **앱이 추천한 값을 고르면 곧바로 "사전에 없는 값입니다"라는 안내가 떴다.**
+
+⚠ **실제 추천목록의 출처는 `index.html`의 static datalist가 아니다.**
+`refreshAccountTypeDatalist()`(js/06:1062)가 모달을 열 때마다 `list.innerHTML`을 통째로 다시 쓴다 —
+출처는 `js/06` `DEFAULT_ACCOUNT_TYPES`다. **index.html만 고치면 화면은 하나도 바뀌지 않는다.**
+
+PM 결정에 따라 **두 곳을 함께** 4개로 줄였다(일반계좌 · ISA · IRP · 연금저축).
+**사전을 늘린 것이 아니라 추천을 줄인 것이다** — `ACCOUNT_TYPE_DICTIONARY` · taxClass ·
+Risk Share · 세금 정책은 무변경이다. **기존 데이터는 그대로다** —
+`collectKnownAccountTypes()`가 자산 · 거래의 계좌명을 먼저 모으므로 이미 `토스`로 저장해 둔
+자산은 목록에 계속 나온다(저장값 변경 · migration 0). 회귀: `test/v275-account-type-suggestions.test.js` 7건.
+
+### PMD-1 — 가독성 회귀 (Phase B-2가 만든 것)
+
+B-2가 넣은 안내 문구가 `text-xs`(12px)였다. 이 저장소의 상시 기준은 **14px**이고(이 파일 최상단
+Global Readability Policy) `text-xs`는 **저장소 전체에서 그 한 곳뿐**이었다.
+`e2e/32`가 못 잡은 이유: 그 검사는 `display:none`과 빈 텍스트를 건너뛰는데, 이 요소는 평소
+`hidden`이고 **사용자가 미등재 계좌유형을 입력한 순간에만** 나타난다. 그래서 소스 수준 회귀를 함께 넣었다.
+
+### Phase C 착수 전 READ-ONLY 조사 결과 (2026-09-28 · **구현 0건**)
+
+**없는 것** — `js/` 전체 대소문자 무시 검색 결과 **출현 0회**:
+`weightsByYear` · `glide`/`glidePath` · `retirement`/`retirementAge` ·
+`withdraw`/`withdrawal`/`withdrawalRate` · `spending` · `decumulation` ·
+데이터 필드로서의 `phase`(386건 전부 `Phase` 주석 라벨) · 기간별 allocation ·
+세율 · 과세 계산(`taxRate` · 원천징수 · 양도소득 · 배당소득세…).
+한국어 「인출 · 은퇴」는 js/21 안전장치 2곳뿐이며 **"이 앱은 적립 단계만 다룬다"는 고지 문장**이다.
+
+**Phase C 설계에 직접 영향을 주는 사실 5가지:**
+
+1. **배분(weight)은 시뮬레이션 내내 상수다.** `weight`는 iteration · month 루프 **밖에서** 한 번
+   계산되고, 연 1회 리밸런싱(`m % 12 === 0`)도 **같은 `weight[i]`로** 되돌린다(js/15).
+   → Glide Path를 표현할 자리가 없다.
+2. **음수 현금흐름이 두 겹으로 막혀 있다.** 엔진 `buildExtraContributionByMonth`는
+   `amount <= 0`을 건너뛰고(js/15:99), 어댑터 `validateMonteCarloInput`은 `amt < 0`을 오류로
+   본다(js/16). 월별 현금흐름 배열은 **있지만 양수 전용**이다.
+3. **기간은 20년 고정이다.** `years = Math.max(...getMilestoneYearOffsets())`(js/19)이고
+   `getMilestoneYearOffsets()`는 `[5,10,15,20]` 하드코딩(js/05:646)이다.
+   `MILESTONE_YEARS`도 js/15:344에 **따로 하드코딩**돼 있다(같은 값 두 곳). 기간 입력 UI도 퇴직 나이도 없다.
+4. **MC는 경로를 저장하지 않는다 — 가장 큰 제약.** js/15는 메모리 절약을 위해 milestone(5/10/15/20년)
+   시점의 총액 표본만 남기고 240개월 경로를 버린다. **인출은 복리 기반 자체를 바꾸므로 사후 변환으로
+   표현할 수 없다** — js/20(인플레이션) 같은 **순수 후처리 계층으로는 Phase C를 만들 수 없고**
+   월 루프 안에 접점이 필요하다. 이 지점이 "기존 MC를 건드리지 않는다"와 충돌하므로 설계 전에 먼저 푼다.
+5. **"있을 때만 켜지는 확장"의 검증된 선례가 이미 3개 있다.** `contributionStreams` · `taxScope` ·
+   `hooks`는 넘기지 않으면 기존 경로로 폴백하며 **bit-identical**이 회귀로 고정돼 있고,
+   `accountScopes`는 **입력이 있을 때만 생기는 출력 필드**다.
+
+**PM 확정 전제**: Phase C 입력 · 설정이 없으면 기존 MC 결과가 **bit-identical**이어야 한다.
+
+### Phase T 선행조건 (해소 전 착수 금지)
+
+활성 CMA(**CMA-2026.2**)의 자산군 레코드는 `expectedReturn` · `volatility` **두 필드뿐**이고
+`returnDefinition`은 `"NOT_STATED_IN_SOURCE"`다. `incomeReturn` · `capitalGain` ·
+`dividendYield`는 저장소 전체 **0건**이다. 더구나 **PRIMARY(AllianzGI) · BENCHMARK(JPM KRW)
+둘 다 `returnUsableForMc: false`**여서 **CMA는 σ만 공급**하고 μ는 Return Key(js/05)에서 온다.
+→ **배당 · 이자 · 자본이득 비율을 만들어낼 근거가 없다.** 이 제약이 풀리기 전에는
+세율 · 소득수익률 가정을 코드에 넣지 않는다(T0 이전 선행조건).
+
+### 검증 (v275 릴리스 게이트 · 전부 최종 트리 실측)
+
+| 게이트 | 결과 |
+| --- | --- |
+| Unit | **1037 / 1037 PASS** · fail 0 · skip 0 (v274 1030 → PMD 회귀 7건 신설) |
+| ESLint | **PASS**(exit 0) |
+| Data Guard | **PASS**(추적 341개 · 사용자 데이터 0) |
+| **Release Guard** | **PASS** — CACHE_NAME/appVersionLabel 모두 **v275** · APP_SHELL 32 |
+| Risk Regression | **PASS** — v274 스냅샷과 **수치 차이 0건**(`score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192 MDD=-2.662509179 corr=0.9022471287 beta=0.931428547`) |
+| MC Regression | **PASS** — `measure-mc.js --json` 출력이 v274와 **바이트 단위 동일** |
+| Master | **PASS** — EM=58 · Index=11 · resolution=58 · tickerMaster=16706 (v274 동일) |
+| Order Independence · Determinism | **PASS** — 131 / 131(명시 실행) |
+| e2e/123 | **9 / 9 PASS**(단독) |
+| e2e/108(계좌 목록) | **12 / 12 PASS**(단독 · PMD-2 영향 확인) |
+| **Full E2E** | **1320 / 1320 PASS** · 16.0분 · **단독 실행** · 실패 artifact 0 |
+| Production Smoke | 배포 직후 확인(아래 갱신 커밋에 기록) |
+
+⚠ 중간에 js/06 주석 한 줄을 고치는 바람에 **먼저 돌던 Full E2E가 최종 트리와 다른 상태를 검사하게 됐다.**
+주석이라 동작에는 영향이 없지만 **그 실행 결과를 근거로 쓰지 않고 중단한 뒤 최종 트리로 처음부터 다시
+돌렸다**(위 1320/1320이 그 결과다). 검사하지 않은 트리를 PASS로 적지 않는다.
+
+### 다음 세션에게
+
+- **다음은 v275 안정화 → Phase C 상세 READ-ONLY 설계 검토 → PM 승인 → Phase C 구현이다.**
+  **Phase C · Phase T를 PM 승인 없이 착수하지 않는다.**
+- ⚠ `js/15` · `js/16`은 **Worker에서도 실려 돈다**(js/17 `importScripts`는 js/05를 싣지 않는다).
+  이 두 파일의 **최상위에서 다른 파일의 값을 평가하면 Worker가 죽고 Unit은 잡지 못한다**.
+- ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 16분대). Python으로 테스트 파일을 고치지 않는다.
+- ⚠ `text-xs` 등 14px 미만 클래스를 다시 만들지 않는다 — `e2e/32`는 **보이는** 텍스트만 재므로
+  평소 숨어 있는 요소는 못 잡는다. 새 안내 요소를 만들면 소스 수준 회귀를 함께 넣는다.
+- js/를 고치면 `sw.js` CACHE_NAME과 `index.html` appVersionLabel을 함께 올린다(Release Guard).
+- `baseline/` · `data/` 변경 금지 · `freeze-baseline.js`는 PM 승인 없이 실행 금지(`--help`도 덮어쓴다).
+- `.claude/launch.json`은 **사용자 로컬 변경이며 절대 커밋하지 않는다**(v275 커밋에도 없다).
+
+---
+
 ## 🏁 v274 FINAL RELEASE — 환헤지 충돌 시 MC 위험가정 제외 · 채권 환헤지 판정 통일 (2026-09-28 · 가장 최신 · **출시 완료**)
 
 > **상태**: **출시 완료 · 실제 미결 0건 · PM 결정 대기 0건 · 운영 조치 0건.**
@@ -41,7 +180,7 @@
 > **production**: https://key4125-netizen.github.io/jasan/ (Pages build `a08b5c4` · **built** · error 없음)
 > **SoT**: §60-2 정정 · **§66** · **§67** · **§68**(FXC-01~20)
 > **PM 결정 원장**: `MM-014-IMPL` · `MM-015-IMPL` · `MM-015-TESTS`
-> **Phase A · Phase B — NOT STARTED**
+> **Phase A · Phase B — NOT STARTED**(당시 기록 · **둘 다 v275에서 CLOSED**)
 
 ### 이번 릴리스가 담은 것
 
@@ -128,6 +267,7 @@ resolution=58 tickerMaster=16706 · MC equityOnly 49 / `af875582fc001dc2` · wit
 
 - **실제 미결 0건 · PM 결정 대기 0건.** 새 backlog를 임의로 열지 않는다.
 - **Phase A · Phase B — NOT STARTED.** v274 완료가 다음 단계 착수를 승인하지 않는다.
+  **[당시 기록 · 이후 갱신]** 둘 다 PM 지시로 착수해 **v275에서 CLOSED**됐다(맨 위 절 참조).
   다음 작업은 PM이 별도로 결정한다.
 - ⚠ `js/15` · `js/16`은 **Worker에서도 실려 돈다**(js/17 `importScripts`는 js/05를 싣지 않는다).
   이 두 파일의 **최상위에서 다른 파일의 값을 평가하면 Worker가 죽고, Unit은 잡지 못한다** -
@@ -146,6 +286,7 @@ resolution=58 tickerMaster=16706 · MC equityOnly 49 / `af875582fc001dc2` · wit
 > **commit**: `e9fe982`(코드 · 테스트 · E2E · 문서 9파일) · 이 커밋(인계장) · **branch** `main`
 > **version**: **v273 유지** · version bump 없음 · tag 없음 · deploy 없음
 > **Release Guard**: **FAIL** (사유는 아래 "릴리스 상태") · **Phase A · Phase B — NOT STARTED**
+> (당시 기록 · **둘 다 v275에서 CLOSED**)
 
 ### 무엇을 고쳤나
 

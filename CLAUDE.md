@@ -65,6 +65,34 @@ This checklist is the project's official governance Source of Truth.
 
 ## CURRENT PRIORITY
 
+> **2026-09-28 (2) — 현재 기준 (PM 결정 · 이 항목이 최신이다)**
+>
+> - **Production baseline: `v274`** · annotated tag `v274` · 릴리스 브랜치는 `main` 하나다.
+> - **`v275`: release preparation** — 이 문단을 쓰는 시점의 HEAD는 `73a0ec2`이며,
+>   v275에는 **Phase A · Phase B · DR-B3 관련 구현 · 테스트 · 문서와 PM 승인 변경(PMD-1 · PMD-2)만**
+>   포함한다. 새 기능을 끼워 넣지 않는다.
+> - **MM-014 · MM-015: RESOLVED** — v274에 포함돼 출시됐다(SoT §68).
+> - **Phase A: CLOSED** (SoT §69 · A-1 · A-2 · A-3 · `e2e/133` 회귀).
+> - **Phase B: CLOSED** (SoT §67-4 · TAX-RISK-03/04 · ACCT-DICT-01~06 RESOLVED).
+> - **DR-B1 · DR-B2 · DR-B3: 전부 resolved** · **DR-B2 ↔ DR-B3 정책 참조 명확화 resolved**
+>   (`docs/closeout/PM_DECISION_LOG.md`).
+> - **실행 기준문서**: 정책 SoT는 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md`,
+>   최신 결정은 `docs/closeout/PM_DECISION_LOG.md`다.
+>   `docs/PROJECT_V262_CLOSEOUT_FINAL_PLAN.md`는 **v262 종결 기록**이며 현재 실행 기준문서가 아니다.
+> - **로드맵 A → B → C → T** · 현재 상태:
+>   **A CLOSED · B CLOSED · C NOT STARTED · T NOT STARTED.**
+>   Phase C(퇴직 · 인출 · 기간별 자산배분 · Glide Path)와 Phase T(세금)는 **PM 승인 전까지 착수하지
+>   않는다.** Phase C는 v275 안정화 후 상세 READ-ONLY 설계 검토를 먼저 한다.
+> - **Phase C 기본 전제(PM 확정)**: Phase C 입력 · 설정이 없으면 기존 MC 결과가 **bit-identical**이어야
+>   한다. 기존 사용자의 결과가 바뀌면 안 된다.
+> - **Phase T 선행 제약**: 활성 CMA는 `expectedReturn` · `volatility`만 제공하고
+>   **income return / capital gain을 분리하지 않는다**(`returnDefinition: NOT_STATED_IN_SOURCE` ·
+>   PRIMARY · BENCHMARK 둘 다 `returnUsableForMc: false`). 근거 없는 세율 · 배당수익률 · 자본이득
+>   비율을 만들어 세후 계산을 구현하지 않는다.
+> - 종결 대장 OPEN 0 · PM 결정 필요 0(`node scripts/closeout/ledger.js`).
+
+> **[과거 기록]** 아래는 v274 출시 전 상태다 — 삭제하지 않고 남긴다. 현재 기준은 위 항목이다.
+
 > **2026-09-28 — 현재 기준 (PM 결정 · 이 항목이 최신이다)**
 >
 > - **production `v273`** · release commit `d474f51` · annotated tag `v273`.

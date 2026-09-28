@@ -1048,8 +1048,13 @@ document.getElementById('tx_accountType').addEventListener('blur', () => refresh
 
 /* [BOND-10] 계좌 목록을 실제 데이터에서 만든다. 자산 · 거래에 실제로 쓰인 계좌명을 있는 그대로
  * 모은다 - 대소문자 · 공백을 손대지 않는다(계좌명이 곧 포지션 identity의 일부라, 'isa'를 'ISA'로
- * 고치는 순간 그 포지션이 갈라진다). 기본 7개는 처음 쓰는 사람을 위해 남긴다. */
-const DEFAULT_ACCOUNT_TYPES = ['일반계좌', 'ISA', 'IRP', '연금저축', '토스', 'CMA', '채권/현금'];
+ * 고치는 순간 그 포지션이 갈라진다). 기본 목록은 처음 쓰는 사람을 위해 남긴다. */
+/* [PMD-2 v275] 기본 추천값은 **계좌유형 사전**(js/01 ACCOUNT_TYPE_DICTIONARY)에 등재된 것만 둔다 -
+ * 앱이 추천한 값(토스 · CMA · 채권/현금)을 고르면 곧바로 "사전에 없는 값"이라고 안내하던 불일치를
+ * 없앤다. **사전을 늘린 것이 아니라 추천을 줄인 것이다** - taxClass · Risk Share · 세금 정책은 무변경.
+ * 아래 collectKnownAccountTypes()가 실제 데이터의 계좌명을 먼저 모으므로, 이미 '토스' 등으로 저장해 둔
+ * 자산 · 거래는 목록에 그대로 남는다(저장값 변경 · migration 없음). */
+const DEFAULT_ACCOUNT_TYPES = ['일반계좌', 'ISA', 'IRP', '연금저축'];
 function collectKnownAccountTypes() {
   const seen = new Set();
   const out = [];

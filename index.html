@@ -310,7 +310,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v274</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v275</p>
           </div>
         </div>
 
@@ -1573,13 +1573,15 @@
         <input id="f_accountType" list="accountTypeList" autocomplete="off" placeholder="예: 일반계좌"
           class="w-full mt-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 outline-none">
         <datalist id="accountTypeList">
+          <!-- [PMD-2 v275] 계좌유형 사전(js/01 ACCOUNT_TYPE_DICTIONARY)에 등재된 값만 기본으로 추천한다 -
+               앱이 추천한 값이 곧바로 "사전에 없는 값"으로 안내되던 불일치를 없앤다. 실제 데이터에 쓰인
+               계좌는 js/06 collectKnownAccountTypes()가 그대로 모으므로 기존 값은 목록에서 사라지지 않는다. -->
           <option value="일반계좌"><option value="ISA"><option value="IRP">
-          <option value="연금저축"><option value="토스"><option value="CMA">
-          <option value="채권/현금">
+          <option value="연금저축">
         </datalist>
         <!-- [PHASE B-2 · ACCT-DICT-03] 계좌유형 사전에 없는 값일 때만 한 줄로 알린다(표시 전용).
              값은 그대로 저장되고 계산도 달라지지 않는다 - 자동 정규화 · 자동 분류를 하지 않는다. -->
-        <p id="f_accountTypeClassNote" class="hidden mt-1 text-xs text-amber-600 dark:text-amber-400 leading-snug"></p>
+        <p id="f_accountTypeClassNote" class="hidden mt-1 text-sm text-amber-600 dark:text-amber-400 leading-snug"></p>
       </label>
 
       <label class="col-span-2 text-sm">
