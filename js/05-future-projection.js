@@ -2213,18 +2213,38 @@ function isRiskShareEligibleAccountType(accountType) {
 /* 계좌 구분 없는 절세계좌 단일 풀(계좌별 적립설정을 쓰지 않는 하위호환 경로)의 범위 표식.
  * 이 풀은 특정 계좌유형이 아니라 "그 소유자의 절세계좌 적립금 전체"이므로 별도 값으로 둔다. */
 const RISK_SHARE_POOL_SCOPE = 'tax';
-/* 미배분 잔여분에 적용할 위험 배분. 대상이 아니면 **어떤 비율도 만들지 않는다**(null).
- * 반환: { eligible, share, reason } - share는 위험자산 몫이고 나머지가 안전자산 몫이다. */
+/* [PM 결정 2026-09-28 · v275 HOLD 해소 · SoT §67-5] 저장된 절세계좌 적립계획의 미배분 잔여분에
+ * 적용할 위험 배분.
+ *
+ * ⚠ 여기서 계좌유형 등재 여부로 **계산을 막지 않는다.** 처음 구현에서는 미등재 계좌유형에
+ * `{ eligible: false, share: null }`을 돌려줬는데, 그러면 **이미 저장돼 있던 적립계획 행**의
+ * 잔여분이 통째로 사라졌다(실측: 결정론 -57.74% · MC 납입 1.44억 소멸). 그런 행은 구조적으로
+ * 존재할 수 있다 - `contributionByOwnerAccount`에는 정리 로직이 없고, 백업 복원 · 동기화도
+ * 값을 거르지 않는다. DR-B2("UNCLASSIFIED는 표시 · 안내 전용 · 기존 계산 결과 보존")와 충돌해
+ * 그 게이트를 제거했다.
+ *
+ * **저장된 계획 행이 있다는 것 자체가 "이 적립금은 절세계좌 적립이다"라는 사용자 입력**이므로,
+ * 계좌유형이 사전에 없더라도 그 행의 잔여분은 예전(v274)과 똑같이 계산한다.
+ *
+ * TAX-RISK-04("새 계좌유형이 추가되었다는 이유로 70:30을 자동 적용하지 않는다")의 근거는
+ * 그대로 남는다 - 그 조항의 대상은 **"누가 Risk Share 자동 적용 대상인가"라는 정책 등재 문제**이며,
+ * `RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES`가 세제혜택 사전에서 파생되지 않는 별도 목록이라는 사실이
+ * 그 답이다. 등재 여부는 아래 `registeredTarget`으로 알린다(안내 · 회귀 고정용).
+ * 신규 미등재 계좌유형에 70:30이 붙지 않는 이유는 게이트가 아니라 **진입 경로**다 -
+ * 적립계획 행은 보유 중인 절세계좌 유형에만 자동 생성된다
+ * (`renderTaxAdvantagedAllocationEditor` → `getTaxAdvantagedAssetsByOwnerAccount`).
+ *
+ * 반환: { share, registeredTarget, reason } - share는 위험자산 몫이고 나머지가 안전자산 몫이다. */
 function resolveRemainderRiskShare(scope) {
   const key = String(scope ?? '').trim();
   if (key === RISK_SHARE_POOL_SCOPE) {
-    return { eligible: true, share: TAX_ADVANTAGED_RISK_SHARE, reason: 'taxAdvantagedPool' };
+    return { share: TAX_ADVANTAGED_RISK_SHARE, registeredTarget: true, reason: 'taxAdvantagedPool' };
   }
   if (isRiskShareEligibleAccountType(key)) {
-    return { eligible: true, share: TAX_ADVANTAGED_RISK_SHARE, reason: 'registeredAccountType' };
+    return { share: TAX_ADVANTAGED_RISK_SHARE, registeredTarget: true, reason: 'registeredAccountType' };
   }
-  // 사전에 없는 계좌유형에 위험 배분을 추론하지 않는다(TAX-RISK-04 · ACCT-DICT-03).
-  return { eligible: false, share: null, reason: 'notRiskShareEligible' };
+  /* 사전에 없는 계좌유형 - 저장된 계획 행의 계산은 보존하되(DR-B2) 등재 대상이 아님을 함께 알린다. */
+  return { share: TAX_ADVANTAGED_RISK_SHARE, registeredTarget: false, reason: 'storedPlanUnregisteredType' };
 }
 
 // 절세계좌 보유 자산을 소유자별로 집계 - 총액과, 참고용으로 계좌종류별 소계도 함께 반환한다.
@@ -2372,11 +2392,10 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
       total += growWithStop(0, getMonthlyAllocationItemRate(item, presetKey, owner, 'tax'), monthlyTotal * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
-    // [PHASE B-1] 위험 배분 여부와 비율은 별도 정책이 답한다(세제혜택 분류에 종속되지 않는다).
-    const remainderShare = resolveRemainderRiskShare(RISK_SHARE_POOL_SCOPE);
-    if (remainderPct > 0 && remainderShare.eligible) {
+    // [PHASE B-1] 위험 배분 비율은 별도 정책이 답한다(세제혜택 분류에 종속되지 않는다).
+    if (remainderPct > 0) {
       const remainderMonthly = monthlyTotal * remainderPct / 100;
-      const riskShare = remainderShare.share;
+      const riskShare = resolveRemainderRiskShare(RISK_SHARE_POOL_SCOPE).share;
       total += growWithStop(0, getEffectiveIndexRate(presetKey, 'domestic'), remainderMonthly * riskShare, remainderStockFeeRate);
       total += growWithStop(0, getReferenceRate(presetKey, 'BOND'), remainderMonthly * (1 - riskShare), remainderBondFeeRate);
     }
@@ -2404,13 +2423,12 @@ function simulateTaxAdvantagedOwnerGrowth(owner, presetKey, evalYears, planOverr
       total += grow(getMonthlyAllocationItemRate(item, presetKey, owner, acc.accountType), num(acc.amount) * num(item.pct) / 100, itemFeeRate(item));
     });
     const remainderPct = Math.max(0, 100 - allocatedPct);
-    /* [PHASE B-1] 이 계좌유형이 위험 배분 대상인지를 별도 정책에 묻는다 - 세제혜택으로 분류됐다는
-     * 이유만으로 70:30을 주지 않는다(TAX-RISK-03 · TAX-RISK-04). 대상이 아니면 잔여분에
-     * 어떤 비율도 만들지 않는다(추론 금지) - 배분한 종목은 예전처럼 각자 계산된다. */
-    const remainderShare = resolveRemainderRiskShare(acc.accountType);
-    if (remainderPct > 0 && remainderShare.eligible) {
+    /* [PHASE B-1 · §67-5] 잔여분에 적용할 비율은 위험 배분 정책이 답한다(세제혜택 분류에
+     * 종속되지 않는다). ⚠ 계좌유형 등재 여부로 **계산을 막지 않는다** - 이미 저장된 계획 행의
+     * 결과를 바꾸지 않기 위해서다(DR-B2 · v275 HOLD 해소). */
+    if (remainderPct > 0) {
       const remainderAmount = num(acc.amount) * remainderPct / 100;
-      const riskShare = remainderShare.share;
+      const riskShare = resolveRemainderRiskShare(acc.accountType).share;
       total += grow(getEffectiveIndexRate(presetKey, 'domestic'), remainderAmount * riskShare, remainderStockFeeRate);
       total += grow(getReferenceRate(presetKey, 'BOND'), remainderAmount * (1 - riskShare), remainderBondFeeRate);
     }
@@ -3886,9 +3904,8 @@ function buildTaxAdvantagedMonteCarloInputs(ownerFilter, presetKey, years, optio
      * (resolveRemainderRiskShare) - 결정론 경로와 같은 함수를 본다. */
     const addRemainder = (amount, contribYears, frequency, who, scope) => {
       if (!(amount > 0)) return;
-      const remainderShare = resolveRemainderRiskShare(scope);
-      if (!remainderShare.eligible) return;
-      const riskShare = remainderShare.share;
+      // [§67-5] 결정론과 같다 - 등재 여부로 막지 않고 비율만 정책에서 받는다.
+      const riskShare = resolveRemainderRiskShare(scope).share;
       addContribution('C:국내:주식', 'category:주식', { kind: 'category', ticker: '', name: '국내주식', label: '국내주식', category: '주식', region: '국내', riskFree: false, rateOwner: owner, displayKey: 'KOSPI' },
         who, amount * riskShare, contribYears, frequency);
       addContribution('C:국내:채권', 'category:채권', { kind: 'category', ticker: '', name: '채권', label: '채권', category: '채권', region: '국내', riskFree: true, rateOwner: owner, displayKey: 'BOND' },
