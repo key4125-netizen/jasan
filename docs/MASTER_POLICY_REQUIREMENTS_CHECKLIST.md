@@ -6090,3 +6090,98 @@ MC equityOnly 49 / `af875582fc001dc2` · withSyntheticBonds 51 / `a36f5ba2112d4d
 
 신규 테스트는 `test/mm014-mm015-fx-hedge-conflict.test.js` 하나(19건)다 -
 MM-014 Case A~E + 경계 + MC 통합, MM-015 Case A~D + 원화 경계, 순서 비의존성, 결정성.
+
+---
+
+## §69. Phase A — Return Key 보존 정책의 범위 확정과 lifecycle 통합 (PM 결정 2026-09-28)
+
+### 69-0. 왜 이 절이 필요한가 (기록)
+
+Phase A의 요구사항 정의가 **이 체크리스트에도 `PM_DECISION_LOG.md`에도 없었다**
+(READ-ONLY Gap Assessment 2026-09-28 실측: 두 문서에서 "Phase A" 검색 0건).
+정의는 저장소 밖 PM 문서에만 있었고, 이 문서에는 "Phase A/B NOT STARTED"라는 **상태**만
+`CLAUDE.md` · `CLAUDE_HANDOVER.md`에 있었다. **GOV-03**을 지키지 못한 상태이며, §66-0에서
+한 번 시정한 것과 같은 유형이다.
+
+**PM 결정(2026-09-28)**: Phase A의 공식 범위를 아래 **A-1 · A-2 · A-3 세 항목으로 고정**해
+등재한다. 범위를 넓히지 않는다. 기존 조항은 삭제 · 수정 · 이동하지 않고 아래에서 연결만 한다.
+
+### 69-1. PHASE A 공식 범위
+
+| ID | Phase A 요구사항 | 연결되는 기존 조항 | 상태 |
+|---|---|---|---|
+| **A-1** | **미연결 Return Key의 Excel round-trip 보존** — 지금 어떤 자산에도 연결돼 있지 않은 Return Key도 내보내기 · 가져오기를 거쳐 사라지지 않는다 | §32-2 **F-01**(키만 적힌 행 보존) · §33-1 **PMD-12** · **D-3**(적용 종목 칸) · §32-2 **N-01**(UNRESOLVED는 키가 아니다) | 기능 구현 완료 · 회귀 고정 완료 |
+| **A-2** | **Blank와 explicit 0의 구분** — 비어 있음(미입력)과 명시적 0은 다른 상태다 | §32-2 **F-02** · **N-01**(빈 칸 = 미입력 · 기존 명시 0 보존) | 기능 구현 완료 · 회귀 고정 완료 |
+| **A-3** | **Return Key lifecycle 정책의 통합 문서화** — 여러 절에 흩어진 Return Key 정책을 하나의 lifecycle 관점에서 읽을 수 있게 한다 | §32-1 · §32-2 · §33-1 · §55-2 · §66-4 | **이 절(69-2)이 그 통합 문서다** |
+
+**Phase A는 새 기능을 만드는 단계가 아니다.** A-1 · A-2의 동작은 v274 코드에 이미 구현돼 있고
+(Phase 29-B · Phase 47-A · Phase 48-A · v246 D-3 · 통합 수정 F-01 · F-02 · N-01에서 각각
+확정된 것들이다), Phase A는 그 사실을 **범위로 고정하고 · 회귀로 보호하고 · 한 곳에 적는** 작업이다.
+
+### 69-2. A-3 — Return Key lifecycle (통합)
+
+아래는 새 정책이 아니라 **이미 확정된 조항들을 하나의 흐름으로 다시 배열한 것**이다.
+각 원칙의 원전은 오른쪽 조항이며, 충돌이 있으면 원전이 우선한다.
+
+```
+Excel Import
+    ↓
+Normalization
+    ↓
+Stored User Input
+    ↓
+Return Key Resolution
+    ↓
+Calculation
+    ↓
+Excel Export / UI
+```
+
+| 단계 | 원칙 | 원전 |
+|---|---|---|
+| **User Override** | `asset.rateMatchOverride`는 **사용자가 직접 확정한 값**이다. 저장되는 것은 사용자가 적은 원본뿐이며, 자동 해석 결과를 이 필드에 쓰지 않는다 | §33-1 PMD-12 · §48-A |
+| **Automatic Resolution** | 자동 매칭 결과는 **runtime 해석 결과**다(저장하지 않고 읽을 때마다 해석한다). **자동 결과를 사용자 override로 승격시키지 않는다** — 승격되면 이후 시스템 정책이 바뀌어도 그 자산만 영원히 따라가지 못한다 | §48-A(P0-3) · §32-2 F-03 |
+| **Blank** | 빈 칸 · 값 없음은 "아직 정하지 않았다"는 **의미 있는 상태**다. explicit 0과 같지 않다 | §32-2 F-02 · N-01 |
+| **Explicit 0** | 명시적 0은 **유효한 값**이다. missing으로 처리하지 않으며, 0%로 계산하고 "가정 없음" 경고를 붙이지 않는다 | §32-2 F-02 |
+| **Unresolved** | `UNRESOLVED`는 **유효한 Return Key가 아니라 상태값**이다. 계산은 0%로 진행할 수 있으나 **unresolved와 explicit 0을 같은 것으로 취급하지 않는다** — unresolved에는 "가정 없음" 경고가 붙고 explicit 0에는 붙지 않는다. 목록 · 저장 · 엑셀 키로 만들지 않는다 | §32-2 N-01 · Phase 47-A |
+| **Key-only / Orphan** | 지금 어떤 자산에도 연결되지 않은 Return Key도 **보존 대상**이다. ① 사전에 등록된 사용자 키 ② **orphan 키**(계산에는 쓰이는데 사전 · 종목 기준 어디에도 없는 키) ③ 종목 기준 Master 키 — **세 갈래 모두** 목록에 남고 엑셀 왕복에서 사라지지 않는다 | §32-2 F-01 · §33-1 PMD-12 |
+| **Import** | Return Key 가져오기는 **upsert**다. **엑셀에서 행이 사라졌다는 이유만으로 앱의 키를 자동 삭제하지 않는다.** 같은 키 행이 파일에 있으면 그 행의 내용이 그 키의 override가 되며, 빈 칸은 "미입력"이다 | §32-2 F-01 · F-02 |
+| **Export** | 사용자가 지정한 override는 **저장된 원본 그대로** 내보낸다. **자동 해석 결과를 사용자 override 칸으로 내보내지 않는다**(빈 칸으로 둔다) — 자동 판별이 무엇인지는 별도의 표시 전용 칸으로만 알린다 | §48-A · §33-1 D-3 |
+
+**적용 종목(Instrument Return Key Master) 칸은 예외 규칙이 하나 있다** — 그 칸이 있는 파일에서
+키 행의 칸이 비어 있으면 **그 키의 연결만 해제**한다(칸이 없는 옛 파일은 기존 연결을 유지한다).
+이것은 위 "Import는 삭제하지 않는다"와 모순되지 않는다 — 삭제 대상이 **키가 아니라 연결**이기
+때문이며, §33-1 **D-3**이 정한 기존 규칙 그대로다.
+
+### 69-3. 회귀 보호 (A-1 · A-2)
+
+| 보호 대상 | 회귀 |
+|---|---|
+| 사전 등록 키의 왕복 보존 | `e2e/36` #6 |
+| 종목 기준 Master 키의 왕복 보존 | `e2e/92` X-1 · X-3 · P-1 |
+| **orphan 키의 왕복 보존** | **`e2e/133`**(이번에 신설 · Phase A A-1) |
+| 키만 적힌 행 보존 | `e2e/50` D · `e2e/128` D-5 |
+| explicit 0 ≠ 빈 칸 | `test/return-rate-integration.test.js` A-2 |
+| override 없음 → 왕복 후에도 없음 | `e2e/36` #1 · #2 · #3 |
+| 자동 매칭 → override 승격 금지 | `e2e/50` A · C · E · `e2e/128` E-2 |
+| UNRESOLVED 비노출 | `test/return-rate-integration.test.js`(목록 단언) |
+| 왕복 무손실 · MC μ 불변 | `e2e/128` D-2 · `e2e/36` #7 · #8 |
+
+### 69-4. Phase A 종결 판정
+
+READ-ONLY Gap Assessment(2026-09-28) 결과 **CODE REQUIRED = 0 · GAP-3 = 0**이었다.
+A-1 · A-2의 동작은 이미 구현돼 있었고, 남은 것은 orphan 경로의 회귀 1건(TEST ONLY)과
+이 절의 문서화(DOC ONLY)뿐이었다. **이 절과 `e2e/133`으로 둘 다 닫는다.**
+
+**이 절로 코드가 바뀌지 않는다** — Return Key 해석기 · 계산 · 저장 구조 · 엑셀 입출력 로직은
+한 줄도 변경하지 않았다(Phase A 범위 밖이다). Risk · MC 기준선도 그대로다.
+
+### 69-5. 범위 밖 (기록)
+
+Phase A Gap Assessment에서 함께 확인됐으나 **Phase A로 흡수하지 않는다** — §67 참조.
+`PHASE B / OUT OF SCOPE` — MM-016(`TAX_ADVANTAGED_RISK_SHARE = 0.7`) ·
+MM-017(Account Type Dictionary) · 소유자 고정값 · 세법 자동화 · 절세계좌 자동화 확장.
+
+**Architecture 판정: 유지.** Return Key는 저장하지 않고 읽을 때 해석하는 구조이고(read-time
+resolver), 사용자 확정값과 자동 해석 결과가 필드 수준에서 분리돼 있어 위 lifecycle 원칙을
+현재 구조로 전부 만족한다. 이 절을 근거로 refactor를 하지 않는다.
