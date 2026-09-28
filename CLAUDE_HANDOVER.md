@@ -32,7 +32,156 @@
 
 ---
 
-## 📋 Phase 0 + 후속 — Code ↔ Policy 정합성 복구 · MM-014 · MM-015 실측 (2026-09-28 · 가장 최신 · **문서 작업 · 출시 아님**)
+## 🔧 MM-014 · MM-015 구현 완료 — 환헤지 충돌은 어느 쪽도 고르지 않는다 (2026-09-28 · 가장 최신 · **구현 완료 · 출시 아님**)
+
+> **상태**: 구현 · 회귀검증 완료 · **PM 승인 완료** · **배포하지 않았다.**
+> **commit**: `e9fe982`(코드 · 테스트 · E2E · 문서 9파일) · 이 커밋(인계장) · **branch** `main`
+> **version**: **v273 유지** · version bump 없음 · tag 없음 · deploy 없음
+> **Release Guard**: **FAIL** (사유는 아래 "릴리스 상태") · **Phase A · Phase B — NOT STARTED**
+
+### 무엇을 고쳤나
+
+Phase 0에서 찾고 실측한 두 경로를 PM 결정(ⓐ · ⓑ · ⓙ)에 따라 구현했다.
+**공통 원칙은 하나다 — 환헤지 사실이 갈리면 어느 쪽도 자동 채택하지 않는다.**
+SoT는 **§68**(FXC-01~20)과 **§60-2 정정**에 기록했고, 결정 기록은
+`PM_DECISION_LOG.md`의 `MM-014-IMPL` · `MM-015-IMPL` · `MM-015-TESTS` 3건이다.
+
+### MM-014 — 환헤지 CONFLICT는 MC 위험가정에서 제외한다 (PM 결정 ⓑ)
+
+    CONFLICT
+    → appClass = US_EQUITY (기존 호환성 유지)
+    → riskFree = true
+    → HEDGED σ 미적용
+    → UNHEDGED σ 미적용
+    → sigmaAnnual = 0
+    → MC_FX_HEDGE_CONFLICT 안내
+
+⚠ **CONFLICT를 UNHEDGED로 해석한 것이 아니다.** 자산군 이름만 호환성을 위해 유지하고,
+실제 위험가정은 **어느 쪽에서도 받지 않는다**(σ 13.722309014388456%도 16.63977109253169%도 아니다).
+원금 · 적립 · 리밸런싱 · 상관행렬 참여는 예전과 똑같고, μ(Return Key)도 건드리지 않았다.
+분류되지 않은 채권에 이미 쓰고 있던 구조(§47-3)를 그대로 재사용했다 - 새 제외 프레임워크는 없다.
+대상은 **환헤지가 실제로 자산군을 바꿀 수 있는 자산군뿐**이다(미국 주식형) - 국내 주식형 등은
+충돌이 있어도 기존 동작 그대로다. **UNRESOLVED(미확인)는 CONFLICT가 아니며 기존 정책 그대로다.**
+
+구현 전에는 충돌이어도 `US_EQUITY`로 계산해 **미확인과 MC 전체 지문이 완전히 같았다**(사실상
+환노출 쪽 채택). Risk는 같은 충돌에서 이미 `instrumentHedgeConflict`로 멈추고 있었다 -
+이 비대칭을 없앤 것이다.
+
+### MM-015 — 채권 환헤지도 상품 단위 해석기 하나가 답한다 (PM 결정 ⓙ)
+
+    bondPosition.identity.hedgeStatus
+    → resolveInstrumentFxHedge 입력원
+    → Bond / Risk / MC / Asset Detail 공통 해석
+
+`js/29 resolveBondHedgeStatusDetail`이 자산의 `fxHedgeStatus` 원시값을 보유분 단위로
+독립 확정하던 구조를 없앴다. 두 값이 **같거나 한쪽만 있으면** 확정하고, **서로 다르면 CONFLICT**다.
+같은 채권(ISIN)의 다른 보유분과 갈려도 CONFLICT다. 반환값의 `source`는 이제 **그 값이 어디에
+적혀 있는지의 표시**이며 우선순위가 아니다.
+
+**실측: 경로 불일치 10건 → 0건.**
+
+- 한 보유분만 확인해도 같은 상품의 다른 보유분이 그 사실을 쓴다(예전에는 다른 쪽이 `UNCLASSIFIED`).
+- 채권 레코드에만 적어 둔 값도 상품 전체가 쓴다.
+- 갈리면 분류하지 않는다(`UNCLASSIFIED` + `FX_BOND_HEDGE_CONFLICT` 안내) - 기존 미확인 처리구조 재사용.
+- **원화 채권은 이 판단 자체를 하지 않는다**(§58-5) - 레코드에 값이 있어도 상품 사실로 세지 않는다.
+- Risk 베타는 채권에서 항상 `notEquityLike`이므로 이 항목의 영향은 **MC 자산군(σ)에 한정**된다.
+- **저장값은 어느 쪽도 바꾸지 않았다** - 삭제 · 정규화 · migration 0건 · Position Identity 무변경.
+
+⚠ **§60-2의 "두 값이 모두 있고 서로 달라도 언제나 1순위(채권 레코드)가 이긴다"는 폐기됐다.**
+원문은 취소선으로 보존하고 정정 이력을 §68로 연결했다. 되돌리려면 PM 결정이 필요하다.
+
+해석기 입력만 확장했다 - `resolveSharedInstrumentFact`의 `spec.userOf`가 보유분당 **배열**을
+돌려줄 수 있게 했다(환헤지 하나만 사용 · 나머지 6개 상품 사실은 예전과 완전히 같은 경로).
+**판정 규칙(§66-3 표) 자체는 바뀌지 않았다.**
+
+### 테스트 정책 변경 (PM 결정 ⓐ 승인)
+
+구 정책을 단언하던 기존 테스트의 **기대값만** 변경했다.
+**assertion 삭제 · test skip · 조건부 PASS · 약화 · 충돌 케이스 제거 · regression 범위 축소는 0건이다.**
+
+| 테스트 | 변경 전 → 변경 후 |
+| --- | --- |
+| `test/v270-bond-hedge-fallback.test.js` D-2-7 | `status`=레코드값 · `source`=`bondPosition` · 분류 HEDGED/UNHEDGED → `status`=`null` · `source`=`INSTRUMENT_CONFLICT` · `conflict`=true · 분류 `UNCLASSIFIED` |
+| 같은 파일 D-2(보존) | 분류 `FOREIGN_GOV_UNHEDGED` → `UNCLASSIFIED` (**저장값 보존 단언 2건은 그대로 유지**) |
+| `test/step2-bond-instrument-facts.test.js` | `status`=`HEDGED` · `source`=`bondPosition` → 어긋나면 CONFLICT · 같으면 확정 · 한쪽만 있으면 그 값 |
+| `e2e/123-sync-bond-diff.spec.js` | `source`=`bondPosition` · 분류 `FOREIGN_GOV_UNHEDGED` → `INSTRUMENT_CONFLICT` · `status`=`null` · `UNCLASSIFIED` (**저장값 보존 단언 유지**) |
+
+함께 **강화**한 것 — D-2-7b 신설("두 값이 같으면 확정한다") · 저장값 보존 단언 추가 ·
+신규 `test/mm014-mm015-fx-hedge-conflict.test.js`(19건).
+`test/step1-instrument-fx-hedge.test.js` 1-A-5의 `appClass` 기대값은 **변경하지 않았다**
+(결정 ⓑ가 자산군 이름을 유지하기로 했으므로 그대로 PASS한다).
+
+### ⚠ Worker `ReferenceError` — 첫 E2E가 잡아낸 실제 결함
+
+첫 Full E2E에서 **MC 관련 spec 16건이 실패**했다(`#mcResultArea` hidden = MC가 전혀 실행되지 않음).
+
+- **원인**: MC는 Web Worker에서 돌고, `js/17-monte-carlo-worker.js`는
+  `importScripts('15-monte-carlo-engine.js', '16-monte-carlo-adapter.js')`로 **js/05를 싣지 않는다.**
+  그런데 `js/16` **최상위에서** `const FX_HEDGE_SENSITIVE_APP_CLASSES =
+  Object.freeze([ASSET_CHARACTERS.US_EQUITY, ...])`를 평가해
+  `ReferenceError: ASSET_CHARACTERS is not defined`로 **Worker가 즉시 종료**됐다.
+- **Unit 테스트는 이 경로를 재현하지 못한다** — `test/mc-adapter-sandbox.js`는 js/05를 함께 싣는다.
+- **수정**: 최상위 평가를 없애고 함수 안에서 `typeof ASSET_CHARACTERS === 'undefined'` 가드와 함께
+  읽는다. 이 파일의 다른 함수들이 이미 그렇게 하고 있던 이유가 이것이며 주석으로 명시해 두었다.
+- **검증**: Worker 단독 로드(js/15 + js/16만)로 수정 전/후를 재현했다 -
+  수정 전 `ReferenceError`, 수정 후 정상 로드 · `runMonthlyPrecisionMC` 존재 확인.
+- **실패한 첫 E2E는 중단하고 결과를 폐기**했다(겹쳐 돌리지 않는다). `test-results`를 비우고
+  Full E2E를 **처음부터 단독 재실행**해 **1319/1319 PASS**를 받았다.
+
+⚠ **교훈**: `js/16`(그리고 `js/15`)은 **Worker에서도 실려 돈다.** 이 두 파일의 최상위에서
+다른 js 파일의 값을 평가하면 Worker가 죽고, **Unit은 그것을 잡지 못한다.** 함수 안에서만 읽는다.
+
+### 검증 결과
+
+| 게이트 | 결과 |
+| --- | --- |
+| MM-014 focused (Case A~E · 경계 · MC 통합) | **PASS** |
+| MM-015 focused (Case A~D · B-2 · D-2 · 원화 경계) | **PASS** |
+| Unit | **1011 / 1011 PASS · fail 0** (기존 991 → 신규 19 + 보강 1) |
+| ESLint | **PASS** |
+| Data Guard | **PASS** (추적 338개 · 사용자 데이터 0) |
+| Risk Regression | **PASS** — 기준선과 숫자 전부 동일 |
+| MC Regression | **PASS** — **변경 0건** |
+| Order Independence | **PASS** — 배열 뒤집어도 모든 답 동일 |
+| Determinism | **PASS** — 반복 5회 동일 · 같은 seed MC 동일 |
+| Full E2E | **1319 / 1319 PASS** (16.0분 · 단독 실행 · 실패 artifact 0건) |
+| **Release Guard** | **FAIL** — 아래 |
+
+**기준선 보존 실측** — Risk `score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192
+MDD=-2.662509179 corr=0.9022471287 beta=0.931428547` · 개별 베타 7종 · Master EM=58 Index=11
+tickerMaster=16706 · MC equityOnly 49 / `af875582fc001dc2` · withSyntheticBonds 51 /
+`a36f5ba2112d4d44` · 사분위 4종 · σ 변경 0건 · 위험 미반영 목록 · CMA-2026.2 **전부 동일**.
+기존 기준선 포트폴리오에는 환헤지 충돌이 없으므로 결과가 달라지지 않는다 -
+**달라지는 경우는 충돌이 실제로 있을 때 하나뿐**이며 그것이 이 변경의 목적이다.
+
+### 릴리스 상태
+
+    version: v273 유지
+    version bump: 없음
+    tag: 없음
+    deploy: 없음
+    Release Guard: FAIL
+
+**FAIL 사유**: `js/01` · `js/16` · `js/29`가 v273 marker 이후 바뀌었는데 `sw.js`의
+`CACHE_NAME`이 `smart-asset-manager-v273` 그대로다. cache-first이므로 이 변경은 **기존
+사용자에게 전달되지 않는다.** PM이 version bump를 승인하지 않았으므로 **v274로 올리지 않았다** -
+Release Guard를 PASS로 만들려고 marker를 건드리거나 게이트를 우회하지 않았다. 코드 결함이 아니다.
+
+### 다음 세션에게
+
+- **Phase A · Phase B — NOT STARTED.** PM 지시 없이 착수하지 않는다.
+- **유일한 후속 PM 결정사항: `v273 → v274` version bump 및 release 여부.**
+  이 결정 없이는 Release Guard가 통과하지 않고, 변경이 사용자에게 전달되지 않는다.
+  bump를 하게 되면 `sw.js` `CACHE_NAME`과 `index.html` `appVersionLabel`을 **함께** 올린다.
+- ⚠ `js/15` · `js/16`의 **최상위에서 다른 파일의 값을 평가하지 않는다**(Worker가 죽는다 · 위 참조).
+- ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 16.0분). Python으로 테스트 파일을 고치지 않는다.
+- `scripts/closeout/freeze-baseline.js`는 PM 승인 없이 실행하지 않는다(`--help`도 덮어쓴다).
+- `.claude/launch.json`은 사용자 로컬 변경이다 — blob `2a39711674f3af2df32a46825454020b34599670`.
+  이번 두 커밋에도 포함하지 않았다(확인 완료). `baseline/` · `data/` 변경 0건.
+
+---
+
+## 📋 Phase 0 + 후속 — Code ↔ Policy 정합성 복구 · MM-014 · MM-015 실측 (2026-09-28 · 직전 작업 · **문서 작업 · 출시 아님**)
 
 > **상태**: 문서 정합성 복구 완료 · **코드 변경 0건** · **버전 변경 없음(v273 유지)** · tag 없음 · 배포 없음.
 > **commit**: `32de49f`(문서) · 이 커밋(인계장) · **branch** `main`
