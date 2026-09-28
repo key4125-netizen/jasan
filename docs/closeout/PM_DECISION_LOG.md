@@ -712,3 +712,82 @@
 - **남긴 것 · 사유**: `test/step1-instrument-fx-hedge.test.js` 1-A-5의 `appClass` 기대값은
   **변경하지 않았다** - PM 결정 ⓑ가 자산군 이름을 유지하기로 했으므로 그대로 PASS한다.
 - **종결 조건**: Unit 전체 PASS + 변경 내역 기록 → 종결
+## PM DECISION
+- **ID**: DR-B1 (Tax Classification ↔ Risk Share 분리 · **최소분리안 채택 · 구현 완료** · 2026-09-28)
+- **배경**: Phase B READ-ONLY Gap Assessment에서 `isRebalanceEligibleAccount`(js/01) 하나가
+  "일반계좌 범위 판정"과 "세제혜택 분류"에 동시에 답하고, 그 결과가 곧 70:30 진입 조건이라는
+  사실을 확인했다(참조 18곳 · js/01 ×1 · js/04 ×7 · js/05 ×9 · js/09 ×1).
+  SoT §67-1 **TAX-RISK-03**이 금지한 결합이며, 분리 범위에 따라 작업량이 크게 달라져 PM 판단이 필요했다.
+- **확인한 사실**: 18곳 중 리밸런싱(js/04)과 Risk(js/09)의 8곳은 **범위 판정 용도**이지 세제혜택
+  판정 용도가 아니다. 70:30이 실제로 적용되는 지점은 4곳뿐이다(결정론 소유자 풀 · 결정론 계좌별 ·
+  MC `addRemainder`). 70:30은 절세계좌 자산 전체가 아니라 **미배분 잔여분**에만 걸린다.
+- **영향(계산 / 데이터 의미 / 보안·라이선스 / 범위)**: 계산 — 기존 결과 불변(실측: Risk 7지표 ·
+  개별 베타 · MC 사분위 · μ지문 2종 · σ 변경 0건이 v274 기준선과 완전히 같다).
+  데이터 의미 — 무변경 · migration 0. 보안·라이선스 — 없음. 범위 — js/01 · js/05 두 파일.
+- **판단**: **최소분리안 채택.** Risk Share의 정책 책임을 Tax Classification에서 분리하되,
+  기존 `isRebalanceEligibleAccount` 사용처를 무조건 재작성하지 않는다. 리밸런싱 · 일반 미래예측 ·
+  Risk의 범위 판정은 기존 구조를 유지하고, **70:30만 별도 정책 경로**를 쓴다.
+  ⚠ "최소 분리"를 함수 복제나 이름 변경으로 해석하지 않는다 - 두 개념이 **서로 다른 정책 근거**를
+  갖게 하는 것이 목적이다.
+- **판단 근거**: 세제혜택 목록에 계좌유형을 하나 추가하면 그 계좌가 자동으로 70:30까지 받는 구조가
+  문제였다. 그 고리만 끊으면 정책 요구는 충족되며, 범위 판정 8곳을 함께 건드리면 리밸런싱 · Risk
+  구조까지 재설계하게 되어 §67이 금지한 범위 확대가 된다.
+- **실행**: 완료(commit `6c6a99e`) — `js/05 RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES` ·
+  `isRiskShareEligibleAccountType` · `resolveRemainderRiskShare(scope)` 신설, 적용 4곳 배선.
+  이 판정은 `isTaxAdvantagedAccountType`에도 `isRebalanceEligibleAccount`에도 종속되지 않으며
+  테스트가 소스 수준에서 이를 고정한다. SoT §67-4-1 기록.
+- **남긴 것 · 사유**: 두 목록의 대상은 지금 같지만(ISA · IRP · 연금저축 · TAX-RISK-02)
+  **같은 배열 객체를 공유하지 않는다** - 한쪽 정책이 바뀌어도 다른 쪽이 따라가지 않는다.
+  js/04 · js/09는 한 줄도 바꾸지 않았다.
+- **종결 조건**: **TAX-RISK-03 = RESOLVED** · TAX-RISK-04 = RESOLVED · SoT §67-4 기록 → 종결
+
+## PM DECISION
+- **ID**: DR-B2 (Account Type Dictionary 도입 · **UNCLASSIFIED는 표시 · 안내 전용** · 2026-09-28)
+- **배경**: SoT §67-2가 Dictionary 도입 방향을 승인하고 구현을 Phase B-2로 미뤄 둔 상태였다
+  (ACCT-DICT-06). Gap Assessment 결과 Dictionary는 코드에 **0건**이었고, 계좌 분류는
+  세제혜택/일반 이분법뿐이라 **UNCLASSIFIED 상태 자체가 없었다**.
+- **확인한 사실**: 빈 `accountType`은 `makeAsset`(js/01)이 `'일반계좌'`로 확정한다.
+  미등재 유형(`토스` · `CMA` 등)은 일반계좌로 취급돼 계산에 그대로 들어간다 -
+  UNCLASSIFIED를 **계산에까지** 반영하면 그 사용자들의 기존 결과가 달라진다.
+- **영향**: 계산 — **변경 0건**(표시 전용으로 한정했기 때문). 데이터 의미 — 저장값 무변경 ·
+  자동 정규화 없음 · migration 0 · Position Identity 무변경. 범위 — js/01 · js/07 · index.html.
+- **판단**: **Dictionary를 도입하고 UNCLASSIFIED는 표시 · 안내 전용으로 한다.**
+  미등재 계좌유형을 별도 분류 상태로 **표시**하되 **기존 계산 결과를 변경하지 않는다** -
+  계산 제외 · Risk 제외 · MC 제외 · 리밸런싱 제외 · 70:30 자동 적용 · 세제혜택 추정 ·
+  Return Key 추론 · 세법상 분류 추론을 모두 하지 않는다.
+  **계산 결과를 바꾸기 위한 별도 제외 로직을 만들지 않는다.**
+- **판단 근거**: "모르면 추정하지 않는다"는 원칙과 "기존 결과 보존" 사이에서, 이번 단계는
+  사실을 **알리는 것**까지만 한다. 계산 반영은 영향 범위가 사용자 데이터에 직접 닿으므로
+  별도 결정 사항으로 남긴다.
+- **실행**: 완료(commit `6c6a99e`) — `js/01 ACCOUNT_TYPE_DICTIONARY`(동결 · `taxClass`/`basis`만) ·
+  `classifyAccountType` · `isTaxAdvantagedAccountType` · `accountTypeClassificationNote` 신설.
+  `TAX_ADVANTAGED_ACCOUNT_TYPES`를 사전에서 파생시켜 세제혜택 분류의 근거를 한 곳으로 모았고,
+  `isRebalanceEligibleAccount`는 **범위 판정 전용**으로 주석에 명시했다.
+  화면은 자산 폼 계좌구분 칸 아래 한 줄(`#f_accountTypeClassNote`)뿐이다. SoT §67-4-2 · §67-4-3 기록.
+- **남긴 것 · 사유**: ① 사전에 **`일반계좌`를 `GENERAL`로 한 건 더 등재**했다 - `makeAsset`의
+  기본값이라 빼면 가장 흔한 계좌가 "사전에 없는 유형"으로 표시돼 사실과 다른 안내가 된다.
+  **이를 계기로 다른 계좌유형을 선제적으로 추가하지 않는다.**
+  ② 빈 `accountType` → `'일반계좌'` 저장은 **바꾸지 않았다**(기존 결과 보존) -
+  "빈 값"과 "사전 미등재"를 다른 상태로 구분한다.
+  ③ Account Master · Account ID를 만들지 않았다(테스트가 소스 수준에서 확인한다).
+- **종결 조건**: **ACCT-DICT-03 = RESOLVED** · ACCT-DICT-01 · 02 · 04 · 05 · 06 = RESOLVED ·
+  SoT §67-4 기록 → 종결
+
+## PM DECISION
+- **ID**: PHASE-B-CLOSEOUT (Phase B 문서 종결 · 2026-09-28)
+- **배경**: Phase B-1 · B-2 구현과 전체 검증이 끝나(commit `6c6a99e`) 정책 문서와 구현을
+  일치시키고 Phase B를 닫는다.
+- **확인한 사실**: Phase B focused 13/13 · Unit 1024/1024 · Full E2E 1320/1320 · ESLint ·
+  Data Guard PASS · Risk · MC 회귀가 v274 기준선과 **숫자 하나까지 동일**(σ 변경 0건).
+  Release Guard는 **FAIL**이며 사유는 v274 marker 유지 상태에서 js/ · index.html이 바뀐 것뿐이다.
+- **영향**: 문서만. 이 결정으로 코드 · 계산 · 데이터가 바뀌지 않는다.
+- **판단**: **Phase B를 문서적으로 CLOSE한다.** SoT §67에 구현 상태를 최소 추가하고(§67-4 신설 ·
+  기존 문구 삭제 0건) 이 문서에 DR-B1 · DR-B2를 등재한다.
+  **v275 Release는 승인하지 않는다** - v274 Production을 유지하며 Release는 별도 PM 승인 단계다.
+- **판단 근거**: Release Guard FAIL은 코드 결함이 아니라 "배포 전 버전 bump가 필요하다"는 신호다.
+  구현을 main에 반영한 상태와 배포를 분리해 관리한다.
+- **실행**: 완료 — SoT §67 머리 고지 · TAX-RISK-03/04 · ACCT-DICT-01~06 상태 표식 · §67-4 신설.
+  version marker · v274 tag · production 배포는 건드리지 않았다.
+- **남긴 것 · 사유**: **v275 Release 승인 여부**는 별도 PM 결정사항으로 남긴다.
+  그 전까지 Release Guard는 FAIL 상태를 유지한다(우회하지 않는다).
+- **종결 조건**: SoT §67-4 + 이 문서 등재 → **Phase B CLOSED**

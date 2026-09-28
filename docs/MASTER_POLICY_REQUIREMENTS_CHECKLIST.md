@@ -5979,14 +5979,18 @@ MC는 `resolved.status !== 'HEDGED'` 분기로 떨어져 **`US_EQUITY`(환노출
 Phase 0에서 "코드에만 있고 정책문서에 없다"로 확인된 두 가지를 정책으로 확정한다.
 **이 절은 정책 명문화이며, 이 절로 코드를 바꾸지 않는다**(Phase B 구현은 별도 지시).
 
+> **[구현 완료 2026-09-28 → 67-4]** 이 절이 정한 정책은 **Phase B-1 · B-2로 구현됐다**
+> (commit `6c6a99e`). 아래 각 항목의 상태 표식과 **67-4**(구현 결과)를 함께 본다.
+> **production 배포는 하지 않았다** — v274 유지 · v275 Release는 별도 PM 승인 사항이다.
+
 ### 67-1. TAX-RISK-01 — 절세계좌 Risk Share 70:30
 
 | ID | 확정 내용 |
 |---|---|
 | **TAX-RISK-01** | 절세계좌의 미배분 잔여분을 **국내지수 70% · BOND 30%**로 나눈다(`js/05 TAX_ADVANTAGED_RISK_SHARE = 0.7`). 결정론 경로와 MC 경로가 **같은 규칙**을 쓴다. 현행 동작을 그대로 유지한다 |
 | **TAX-RISK-02** | 적용 대상은 현재 세제혜택 계좌로 취급하는 **ISA · IRP · 연금저축** 셋이다(`js/01 TAX_ADVANTAGED_ACCOUNT_TYPES`) |
-| **TAX-RISK-03** | **Tax Classification ≠ Risk Share.** 70:30은 세법상 분류가 아니라 별도의 위험 배분 정책이다. 두 개념을 하나의 상수 · 하나의 게이트로 묶어 두지 않는다(Phase B-1의 책임 경계) |
-| **TAX-RISK-04** | **새 계좌유형이 추가되었다는 이유로 70:30을 자동 적용하지 않는다.** 정책에 등록되지 않은 계좌유형은 Risk Share를 **자동 추론하지 않는다** |
+| **TAX-RISK-03** | **[RESOLVED · Phase B-1 구현 완료 2026-09-28 → 67-4]** **Tax Classification ≠ Risk Share.** 70:30은 세법상 분류가 아니라 별도의 위험 배분 정책이다. 두 개념을 하나의 상수 · 하나의 게이트로 묶어 두지 않는다(Phase B-1의 책임 경계) |
+| **TAX-RISK-04** | **[RESOLVED · Phase B-1 구현 완료 2026-09-28 → 67-4]** **새 계좌유형이 추가되었다는 이유로 70:30을 자동 적용하지 않는다.** 정책에 등록되지 않은 계좌유형은 Risk Share를 **자동 추론하지 않는다** |
 
 이 값의 근거를 지금까지 이 문서에 적어 두지 않았다는 사실도 함께 기록한다(Phase 0 · MM-016).
 **값 자체는 바뀌지 않았고 이 절로 계산이 달라지지 않는다.**
@@ -5998,12 +6002,93 @@ Phase 0에서 "코드에만 있고 정책문서에 없다"로 확인된 두 가�
 
 | ID | 확정 내용 |
 |---|---|
-| **ACCT-DICT-01** | Dictionary는 자유 입력된 `accountType`의 **정책적 의미를 보조적으로 분류**하기 위한 구조다. 사용자가 입력한 값을 다른 값으로 바꾸는 정규화 체계가 **아니다** |
-| **ACCT-DICT-02** | 초기 명시 대상은 **ISA · IRP · 연금저축** 셋이다 |
-| **ACCT-DICT-03** | Dictionary에 없는 `accountType`은 **UNCLASSIFIED / UNRESOLVED**로 둔다. 세제혜택 여부 · Risk Share · Return Key · 세법상 분류를 **자동 추론하지 않는다** |
-| **ACCT-DICT-04** | **금지** — Account Master 생성 · Account ID 생성 · 기존 `accountType` 자동 변경 · `isa` → `ISA` 자동 정규화 · 증권사명 → 계좌유형 자동 변환 · 기존 데이터 migration · Position Identity 변경 |
-| **ACCT-DICT-05** | 따라서 **BOND-10**(§49-3 "Account Master/ID를 만들지 않는다 · 자동 정규화 금지")과 충돌하지 않는다. BOND-10은 **현행 유지**이며, Dictionary는 저장값을 건드리지 않고 해석만 얹는다 |
-| **ACCT-DICT-06** | 실제 Dictionary 코드 구현과 기존 consumer 연결(`isRebalanceEligibleAccount` · 절세 MC · 절세 결정론 경로)은 **Phase B-2에서 별도 지시로** 수행한다. 이 절만으로 구현하지 않는다 |
+| **ACCT-DICT-01** | **[RESOLVED → 67-4]** Dictionary는 자유 입력된 `accountType`의 **정책적 의미를 보조적으로 분류**하기 위한 구조다. 사용자가 입력한 값을 다른 값으로 바꾸는 정규화 체계가 **아니다** |
+| **ACCT-DICT-02** | **[RESOLVED · 보완 2026-09-28 → 67-4]** 초기 명시 대상은 **ISA · IRP · 연금저축** 셋이다. 구현 시 여기에 **`일반계좌`를 `GENERAL`로 한 건 더 등재**했다(PM 결정 2026-09-28) - `makeAsset`이 빈 값에 넣는 앱의 기본 계좌유형이라, 사전에서 빠지면 가장 흔한 계좌가 "사전에 없는 유형"으로 표시돼 사실과 다른 안내가 되기 때문이다. **이를 계기로 다른 계좌유형을 선제적으로 추가하지 않는다** - 세제혜택 등재 대상은 위 셋 그대로다 |
+| **ACCT-DICT-03** | **[RESOLVED · 표시 · 안내 전용으로 구현 → 67-4]** Dictionary에 없는 `accountType`은 **UNCLASSIFIED / UNRESOLVED**로 둔다. 세제혜택 여부 · Risk Share · Return Key · 세법상 분류를 **자동 추론하지 않는다** |
+| **ACCT-DICT-04** | **[RESOLVED · 위반 0건 확인 → 67-4]** **금지** — Account Master 생성 · Account ID 생성 · 기존 `accountType` 자동 변경 · `isa` → `ISA` 자동 정규화 · 증권사명 → 계좌유형 자동 변환 · 기존 데이터 migration · Position Identity 변경 |
+| **ACCT-DICT-05** | **[RESOLVED · BOND-10 현행 유지 확인 → 67-4]** 따라서 **BOND-10**(§49-3 "Account Master/ID를 만들지 않는다 · 자동 정규화 금지")과 충돌하지 않는다. BOND-10은 **현행 유지**이며, Dictionary는 저장값을 건드리지 않고 해석만 얹는다 |
+| **ACCT-DICT-06** | **[DONE 2026-09-28 · Phase B-2로 수행 → 67-4]** 실제 Dictionary 코드 구현과 기존 consumer 연결(`isRebalanceEligibleAccount` · 절세 MC · 절세 결정론 경로)은 **Phase B-2에서 별도 지시로** 수행한다. 이 절만으로 구현하지 않는다 |
+
+### 67-4. Phase B-1 · B-2 구현 결과 (2026-09-28 · commit `6c6a99e`)
+
+이 절의 정책이 실제 코드가 된 결과다. **새 정책을 만드는 절이 아니다** - 위 항목들의 구현 상태를
+한 곳에 적는다. production 배포는 하지 않았다(v274 유지).
+
+#### 67-4-1. B-1 — Risk Share는 독립된 정책 책임이다 (TAX-RISK-03 · TAX-RISK-04)
+
+| 개념 | 정책 근거(권위) | 위치 |
+|---|---|---|
+| **Tax Classification**(세제혜택 분류) | `ACCOUNT_TYPE_DICTIONARY` → `isTaxAdvantagedAccountType` | js/01 |
+| **Risk Share**(70:30 적용 여부 · 비율) | `RISK_SHARE_ELIGIBLE_ACCOUNT_TYPES` → `resolveRemainderRiskShare(scope)` | js/05 |
+| **범위 판정**(일반계좌 · 리밸런싱 대상) | `isRebalanceEligibleAccount` — **범위 판정 전용**(기존 구조 유지) | js/01 |
+
+**Risk Share 판정은 `isTaxAdvantagedAccountType`에도 `isRebalanceEligibleAccount`에도
+종속되지 않는다.** 70:30 적용 지점 4곳(결정론 소유자 풀 · 결정론 계좌별 · MC `addRemainder`)이
+모두 `resolveRemainderRiskShare` 하나만 본다.
+
+**두 목록의 대상이 지금 같더라도 정책적으로 같은 목록이 아니다** - 같은 배열 객체를 공유하지 않으며,
+한쪽 정책이 바뀌어도 다른 쪽이 따라 바뀌는 구조로 취급하지 않는다. 이것이 TAX-RISK-03의 요구다.
+
+**계산 규칙은 바뀌지 않았다**(TAX-RISK-01) - 미배분 잔여분 × 0.7 → 국내지수, × 0.3 → BOND.
+결정론과 MC가 같은 함수를 본다. 대상도 그대로다(TAX-RISK-02).
+
+**TAX-RISK-04** - 위험 배분 대상이 아닌 계좌유형에는 **어떤 비율도 만들지 않는다**
+(`{ eligible: false, share: null }`). 세제혜택 목록에 유형을 추가해도 70:30이 따라가지 않는다.
+
+#### 67-4-2. B-2 — Account Type Dictionary (ACCT-DICT-01~06)
+
+```
+ISA       → TAX_ADVANTAGED
+IRP       → TAX_ADVANTAGED
+연금저축  → TAX_ADVANTAGED
+일반계좌  → GENERAL
+그 외     → UNCLASSIFIED
+```
+
+사전(`ACCOUNT_TYPE_DICTIONARY` · js/01)은 **동결**돼 있고 각 항목은 `taxClass`와 `basis`만
+갖는다 - 계좌 id · 레코드 · 잔고가 없다. 조회는 **정확 일치**만 하며(`isa` · `IRP연금` 같은
+유사명을 등재 유형으로 바꾸지 않는다) 저장값을 읽기만 한다.
+`TAX_ADVANTAGED_ACCOUNT_TYPES`는 이제 이 사전에서 **파생**된다(세제혜택 분류의 근거를 한 곳으로 모았다).
+
+#### 67-4-3. UNCLASSIFIED 처리 — 표시 · 안내 전용 (PM 결정 DR-B2)
+
+```
+미등재
+  ↓
+UNCLASSIFIED
+  ↓
+표시 / 안내
+  ↓
+계산 구조는 기존 정책 유지
+```
+
+이번 단계에서 UNCLASSIFIED는 **표시 · 안내 전용**이다. 미등재라는 이유로 다음을 하지 않는다 —
+계산 제외 · Risk 제외 · MC 제외 · 리밸런싱 제외 · 70:30 자동 적용 · 세제혜택 추정 ·
+Return Key 추론 · 세법상 분류 추론 · Account Master 생성 · 자동 정규화.
+**계산 결과를 바꾸기 위한 별도 제외 로직을 만들지 않는다.**
+
+화면은 자산 입력 폼의 계좌구분 칸 아래 한 줄(`#f_accountTypeClassNote`)로만 알린다 -
+사전에 있는 유형에는 아무 말도 하지 않는다.
+
+⚠ **빈 `accountType`은 예전처럼 `'일반계좌'`로 저장된다**(js/01 `makeAsset`). 이번 단계에서
+바꾸지 않았다 - 바꾸면 기존 사용자의 계산 결과가 달라지기 때문이다.
+"빈 값"과 "사전 미등재"는 다른 상태로 구분한다.
+
+#### 67-4-4. 검증 결과
+
+| 게이트 | 결과 |
+|---|---|
+| Phase B focused | **13 / 13 PASS**(`test/phase-b-account-type-risk-share.test.js`) |
+| Unit | **1024 / 1024 PASS** |
+| ESLint · Data Guard | **PASS** |
+| Risk Regression | **PASS** — v274 기준선과 완전 동일 |
+| MC Regression | **PASS** — 사분위 · μ지문 2종 · σ 변경 **0건** |
+| Full E2E | **1320 / 1320 PASS**(단독 실행) |
+| Release Guard | **FAIL** — v274 marker 유지 상태에서 js/ · index.html이 바뀌었기 때문이며 **코드 결함이 아니다.** v275 Release는 별도 PM 승인 사항이다 |
+
+**바꾸지 않은 것** — js/04 리밸런싱 · js/09 Risk · MC 엔진 · Risk Score · CMA · Bond · 환헤지 ·
+Return Key · Owner 고정값 · 저장 schema · 사용자 데이터 · baseline · fixture · seed ·
+version marker · v274 tag. 세법 자동화는 구현하지 않았다.
 
 ### 67-3. 범위 외 — 소유자 고정값 (기록만)
 
