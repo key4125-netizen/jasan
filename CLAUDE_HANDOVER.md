@@ -150,7 +150,7 @@ Global Readability Policy) `text-xs`는 **저장소 전체에서 그 한 곳뿐*
 | e2e/123 | **9 / 9 PASS**(단독) |
 | e2e/108(계좌 목록) | **12 / 12 PASS**(단독 · PMD-2 영향 확인) |
 | **Full E2E** | **1320 / 1320 PASS** · 16.0분 · **단독 실행** · 실패 artifact 0 |
-| Production Smoke | 배포 직후 확인(아래 갱신 커밋에 기록) |
+| Production Smoke | **PASS** — production **v275** · 앱 자산 29/29 로드(실패 0) · DEFAULT_ACCOUNT_TYPES 4개 · 안내 문구 computed **14px** · 사전 4개 · classify(토스)=UNCLASSIFIED · resolveRemainderRiskShare(토스)={share:0.7, registeredTarget:false} · RISK_SHARE_ELIGIBLE 3개. 콘솔 401은 `r.jina.ai`(기존 종결 항목 RJINA-401-CLOSEOUT)로 v275 회귀가 아니다 |
 
 ⚠ 중간에 js/06 주석 한 줄을 고치는 바람에 **먼저 돌던 Full E2E가 최종 트리와 다른 상태를 검사하게 됐다.**
 주석이라 동작에는 영향이 없지만 **그 실행 결과를 근거로 쓰지 않고 중단한 뒤 최종 트리로 처음부터 다시
@@ -168,6 +168,10 @@ Global Readability Policy) `text-xs`는 **저장소 전체에서 그 한 곳뿐*
 - js/를 고치면 `sw.js` CACHE_NAME과 `index.html` appVersionLabel을 함께 올린다(Release Guard).
 - `baseline/` · `data/` 변경 금지 · `freeze-baseline.js`는 PM 승인 없이 실행 금지(`--help`도 덮어쓴다).
 - `.claude/launch.json`은 **사용자 로컬 변경이며 절대 커밋하지 않는다**(v275 커밋에도 없다).
+- ⚠ **production 스모크에서 스크린샷을 찍지 않는다.** 배포본은 클라우드 동기화로 **실제 사용자
+  자산 데이터를 자동으로 불러온다** - v275 스모크에서 실제로 화면에 떴다(즉시 닫았고 수치는
+  어디에도 기록하지 않았다). 버전 · 함수 존재 · 자산 로드 성공 여부는 `javascript_tool`로
+  **값을 읽지 않고** 확인할 수 있다. 저장소의 사용자 데이터 금지 규칙은 배포본 확인에도 적용된다.
 
 ---
 
