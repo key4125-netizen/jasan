@@ -1598,16 +1598,33 @@ function resolveSharedInstrumentFact(assetLike, spec, assets) {
    * 빠뜨리면 "방금 고른 값이 무시되는" 상태가 된다. */
   const pool = members.slice();
   if (self && !pool.some((m) => m === self || (m.id && self.id && m.id === self.id))) pool.push(self);
-  const readUser = (m) => { try { const v = spec.userOf(m); return (v === undefined || v === '') ? null : v; } catch (e) { return null; } };
+  /* [MM-015 · PM 결정 ⓙ 2026-09-28] spec.userOf는 값 하나 대신 **배열**을 돌려줄 수 있다 -
+   * 한 보유분이 같은 사실을 두 곳에 적어 둘 수 있기 때문이다(채권: 자산의 fxHedgeStatus와
+   * 채권 레코드의 identity.hedgeStatus). 두 곳이 어긋나면 그 보유분 안에서 이미 사실이 갈린 것이므로
+   * 여기서 고르지 않고 양쪽을 그대로 distinct에 넣어 충돌로 드러낸다.
+   * 배열을 쓰지 않는 나머지 6개 상품 사실은 예전과 완전히 같은 경로다(값 하나 → own). */
+  const readUser = (m) => {
+    try {
+      const v = spec.userOf(m);
+      if (Array.isArray(v)) {
+        const list = [...new Set(v.filter((x) => x !== null && x !== undefined && x !== ''))];
+        return list.length ? list : null;
+      }
+      return (v === undefined || v === '') ? null : v;
+    } catch (e) { return null; }
+  };
   const readMaster = (m) => { try { const v = spec.masterOf ? spec.masterOf(m) : null; return (v === undefined || v === '') ? null : v; } catch (e) { return null; } };
   let master = null;
   for (let i = 0; i < pool.length && master === null; i += 1) master = readMaster(pool[i]);
   if (master === null && self && pool.indexOf(self) < 0) master = readMaster(self);
   const units = pool.map((m) => {
-    const own = readUser(m);
-    return { id: m.id, owner: m.owner, accountType: m.accountType, currency: m.currency, own, effective: own || master };
+    const raw = readUser(m);
+    const owns = Array.isArray(raw) ? raw : (raw === null ? [] : [raw]);
+    // 이 보유분이 하나의 값만 말할 때만 own이다 - 스스로 갈린 보유분은 어느 쪽도 own으로 쓰지 않는다.
+    const own = owns.length === 1 ? owns[0] : null;
+    return { id: m.id, owner: m.owner, accountType: m.accountType, currency: m.currency, own, owns, effective: own || master };
   });
-  const distinct = [...new Set(units.map((u) => u.own).filter((v) => v !== null))];
+  const distinct = [...new Set(units.reduce((acc, u) => acc.concat(u.owns), []))];
   const base = { units, master, distinct, memberIds: pool.map((m) => m.id) };
   if (distinct.length > 1) {
     // 어느 쪽도 고르지 않는다. 사용자가 하나로 맞출 때까지 이 상품 사실은 없는 것으로 둔다.
@@ -1637,8 +1654,12 @@ function resolveSharedInstrumentFact(assetLike, spec, assets) {
 function instrumentFactUnitLines(fact, labelOf) {
   const label = typeof labelOf === 'function' ? labelOf : ((v) => String(v));
   return (fact && Array.isArray(fact.units) ? fact.units : [])
-    .filter((u) => u.own !== null && u.own !== undefined)
-    .map((u) => `${u.owner || '소유자 미지정'} · ${u.accountType || '계좌 미지정'} - ${label(u.own)}`);
+    .filter((u) => (Array.isArray(u.owns) ? u.owns.length > 0 : (u.own !== null && u.own !== undefined)))
+    /* 한 보유분이 두 곳에 서로 다르게 적어 둔 경우도 있다(MM-015) - 그 보유분의 값을 모두 말한다. */
+    .map((u) => {
+      const list = Array.isArray(u.owns) && u.owns.length ? u.owns : [u.own];
+      return `${u.owner || '소유자 미지정'} · ${u.accountType || '계좌 미지정'} - ${list.map(label).join(' / ')}`;
+    });
 }
 
 /* 공식 원장(Exposure Master)이 아는 이 상품의 환헤지 사실. 없으면 null. */
@@ -1660,9 +1681,40 @@ function exposureHedgeMasterOf(assetLike) {
  *
  * 반환값의 status · source · override · master · conflict는 기존 소비처와 같은 모양을 유지한다.
  */
+/* [MM-015 · PM 결정 ⓙ 2026-09-28] 이 보유분의 채권 레코드가 말하는 환헤지 사실.
+ *
+ * 환헤지 값이 두 곳에 있다 - 자산의 `fxHedgeStatus`(거래 폼 · 자산 상세)와 채권 레코드의
+ * `identity.hedgeStatus`(자산 폼). 예전에는 채권 분류만 레코드를 보고 **보유분 단위로 독립
+ * 확정**했고(js/29), Risk · MC는 자산 값만 봤다. 그래서 같은 채권이 화면마다 다른 답을 냈다(실측).
+ * 이제 두 값을 같은 상품 사실의 **입력원 둘**로 보고 한 해석기가 판정한다 -
+ * 같으면 확정, 어긋나면 CONFLICT다. 저장값은 어느 쪽도 바꾸지 않는다(migration 없음).
+ *
+ * 원화 채권은 이 판단 자체를 하지 않는다(§58-5 · 원화 채권에는 환헤지 개념이 적용되지 않는다) -
+ * 혹시 값이 적혀 있어도 상품 사실로 세지 않는다. */
+function bondRecordHedgeStatusesOf(assetLike) {
+  const id = String((assetLike && assetLike.id) || '');
+  if (!id) return [];
+  if (typeof state === 'undefined' || !Array.isArray(state.bondPositions)) return [];
+  const out = [];
+  state.bondPositions.forEach((p) => {
+    if (!p || String(p.assetId || '') !== id) return;
+    let identity;
+    try { identity = (typeof bondEffectiveTerms === 'function') ? bondEffectiveTerms(p).identity : (p.identity || {}); } catch (e) { identity = p.identity || {}; }
+    const ccy = String(identity.currency || (assetLike && assetLike.currency) || 'KRW').trim().toUpperCase();
+    if (!ccy || ccy === 'KRW') return;
+    const raw = String(identity.hedgeStatus || '').trim().toUpperCase();
+    if (raw === 'HEDGED' || raw === 'UNHEDGED') out.push(raw);
+  });
+  return out;
+}
+
 function resolveInstrumentFxHedge(assetLike, assets) {
   const fact = resolveSharedInstrumentFact(assetLike, {
-    userOf: (x) => (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(x && x.fxHedgeStatus) || null) : null,
+    /* [MM-015] 이 보유분이 말하는 환헤지 사실 전부 - 자산의 값과 채권 레코드의 값. */
+    userOf: (x) => {
+      const own = (typeof sanitizeFxHedgeStatus === 'function') ? (sanitizeFxHedgeStatus(x && x.fxHedgeStatus) || null) : null;
+      return (own ? [own] : []).concat(bondRecordHedgeStatusesOf(x));
+    },
     masterOf: (x) => exposureHedgeMasterOf(x)
   }, assets);
   const source = fact.status === 'CONFLICT' ? 'INSTRUMENT_CONFLICT'

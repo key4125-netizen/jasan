@@ -56,6 +56,34 @@ function applyUserHedgeToAppClass(appClass, subject) {
   return (mapped && mapped.status === 'MAPPED') ? ASSET_CHARACTERS.US_EQUITY_HEDGED : null;
 }
 
+/* [MM-014 · PM 결정 ⓑ 2026-09-28] 환헤지가 충돌한 상품은 위험가정을 확정할 수 없다.
+ *
+ * 실측(2026-09-28)에서 나온 문제: 충돌이면 resolveInstrumentFxHedge().status가 null이라
+ * 위 applyUserHedgeToAppClass가 null을 돌려주고, 그러면 환노출 자산군(US_EQUITY · σ 13.72%)이
+ * **그대로 쓰였다** - 미확인과 결과가 완전히 같았다. 같은 충돌에서 Risk는 베타를 내지 않는데
+ * MC만 계산을 계속한 것이다. 충돌은 "확정되지 않았다"이지 "환노출이다"가 아니다.
+ *
+ * PM 결정 ⓑ에 따라 자산군 이름(appClass)은 기존 호환성을 위해 그대로 두고, **위험가정만
+ * 적용하지 않는다** - 분류되지 않은 채권에 이미 쓰고 있는 구조(riskFree + 제외 목록 + 안내)를
+ * 그대로 재사용한다. 원금 · 적립 · 리밸런싱은 예전과 똑같이 굴러가고, HEDGED σ도 UNHEDGED σ도
+ * 쓰지 않으며, 왜 빠졌는지 화면에 말한다. 어느 쪽도 고르지 않는다.
+ *
+ * 대상은 환헤지가 실제로 자산군을 바꿀 수 있는 자산군뿐이다(환헤지 짝이 있는 미국 주식형).
+ * 환헤지가 자산군에 영향을 주지 않는 자산군은 기존 동작 그대로다 - 충돌이 있어도 막지 않는다.
+ *
+ * ⚠ 이 파일은 Worker에서도 실려 돈다(js/17 `importScripts('15…','16…')` - js/05는 싣지 않는다).
+ * 그래서 `ASSET_CHARACTERS`(js/05) 같은 값을 **모듈 최상위에서 평가하면 Worker가 죽는다**
+ * (실측: E2E에서 MC가 전혀 실행되지 않았다). 함수 안에서만 읽는다 -
+ * 이 파일의 다른 함수들이 이미 그렇게 하고 있는 이유가 이것이다. */
+function fxHedgeConflictBlocksRiskAssumption(appClass, subject) {
+  if (!subject || typeof ASSET_CHARACTERS === 'undefined') return false;
+  if (appClass !== ASSET_CHARACTERS.US_EQUITY && appClass !== ASSET_CHARACTERS.US_EQUITY_HEDGED) return false;
+  if (typeof resolveInstrumentFxHedge !== 'function') return false;
+  let fact;
+  try { fact = resolveInstrumentFxHedge(subject); } catch (e) { return false; }
+  return !!(fact && fact.conflict);
+}
+
 /* [PM 지시 2026-09-24 · ISSUE-02 · ISSUE-03] 이 채권이 왜 분류되지 않았는지.
  *
  * 판정만 하고 아무것도 바꾸지 않는다 - 문구를 고르는 데에만 쓴다.
@@ -74,9 +102,12 @@ function bondRiskGuidanceFor(rateDetail) {
   // 원화면 발행인 유형 하나, 외화면 발행인 유형 + 환헤지 - js/29 resolveBondClass의 규칙 그대로다.
   const ccy = String((pos.identity && pos.identity.currency) || subject.currency || 'KRW').trim().toUpperCase();
   if (ccy === 'KRW') return 'KRW_BOND_TYPE_MISSING';
-  /* [PM 결정 2026-09-24 · D-2] 외화 채권의 환헤지는 채권 레코드 → 자산 순으로 읽는다.
-   * 사용자가 이미 환헤지를 골랐다면 남은 것은 발행인 유형 하나다 - 이미 채운 값을 또 채우라고 하지 않는다. */
-  const hedged = (typeof resolveBondHedgeStatus === 'function') ? resolveBondHedgeStatus(pos, subject) : null;
+  /* [MM-015 · PM 결정 ⓙ 2026-09-28] 외화 채권의 환헤지는 상품 단위 해석기 하나가 답한다.
+   * 사용자가 이미 환헤지를 골랐다면 남은 것은 발행인 유형 하나다 - 이미 채운 값을 또 채우라고 하지 않는다.
+   * 값이 갈려 확정하지 못한 경우는 "비어 있음"과 해야 할 일이 다르므로 사유를 나눈다. */
+  const detail = (typeof resolveBondHedgeStatusDetail === 'function') ? resolveBondHedgeStatusDetail(pos, subject) : null;
+  if (detail && detail.conflict) return 'FX_BOND_HEDGE_CONFLICT';
+  const hedged = detail ? detail.status : ((typeof resolveBondHedgeStatus === 'function') ? resolveBondHedgeStatus(pos, subject) : null);
   return hedged ? 'FX_BOND_TYPE_MISSING' : 'FX_BOND_TYPE_OR_HEDGE_MISSING';
 }
 
@@ -92,6 +123,10 @@ function resolveMcAppAssetClass(rateDetail) {
     }
   }
   if (key && RETURN_KEY_CHARACTER[key]) {
+    // [MM-014] 환헤지가 갈렸으면 자산군 이름은 그대로 두고 위험가정만 적용하지 않는다.
+    if (fxHedgeConflictBlocksRiskAssumption(RETURN_KEY_CHARACTER[key], rateDetail && rateDetail.subject)) {
+      return { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey', fxHedgeConflict: true };
+    }
     const hedged = applyUserHedgeToAppClass(RETURN_KEY_CHARACTER[key], rateDetail && rateDetail.subject);
     return hedged ? { appClass: hedged, basis: 'userHedge' } : { appClass: RETURN_KEY_CHARACTER[key], basis: 'returnKey' };
   }
@@ -107,6 +142,10 @@ function resolveMcAppAssetClass(rateDetail) {
     const trusted = CHARACTER_SOURCES_FOR_AUTO_RATE_KEY.includes(ch.source) || ch.source === 'individualStock' || ch.source === 'exposureMaster';
     if (trusted && ch.character !== ASSET_CHARACTERS.UNRESOLVED) {
       const basis = ch.source === 'individualStock' ? 'listedStock' : (ch.source === 'exposureMaster' ? 'exposureMaster' : 'instrumentCharacter');
+      // [MM-014] 위와 같다 - 충돌이면 어느 쪽 환헤지 자산군도 쓰지 않는다.
+      if (fxHedgeConflictBlocksRiskAssumption(ch.character, subject)) {
+        return { appClass: ch.character, basis, fxHedgeConflict: true };
+      }
       const hedged = applyUserHedgeToAppClass(ch.character, subject);
       return hedged ? { appClass: hedged, basis: 'userHedge' } : { appClass: ch.character, basis };
     }
@@ -180,8 +219,11 @@ async function buildMonteCarloInputFromState(config) {
    * 리밸런싱에는 그대로 참여시키되, 변동성 가정을 적용하지 않고 "위험을 반영하지 못했다"는 사실을
    * 결과와 화면에 명시한다. 예전처럼 조용히 σ=0으로 두고 아무 말도 하지 않는 것과 다른 점이 이것이다. */
   const bondsWithoutRiskAssumption = [];
+  /* [MM-014 · PM 결정 ⓑ] 환헤지가 갈려 위험가정을 확정할 수 없는 상품. 위 채권 목록과 **같은 구조**다 -
+   * 원금 · 적립 · 리밸런싱에는 그대로 참여하고 변동성 가정만 적용하지 않으며 그 사실을 화면에 말한다. */
+  const fxHedgeConflictAssets = [];
   const addEntry = (key, weight, rateDetail, feeRatePctRaw, feeExplicit, label, riskFreeFlag) => {
-    const { appClass, basis } = resolveMcAppAssetClass(rateDetail);
+    const { appClass, basis, fxHedgeConflict } = resolveMcAppAssetClass(rateDetail);
     // [§7 · Bond BACKLOG] 채권 · 현금은 기존 정책대로 σ=0이다 - 티커가 있는 채권형 · 현금성 상품도 가격 이력 대신 같은 정책을 쓴다.
     // [RET-03-00 · PMD-08] 수익률 가정이 없는 자산(0% + 가정 없음 경고)은 "시스템이 가정을 적용하지 않고 원금 그대로 둔다" -
     // 성장 가정과 마찬가지로 변동성 가정도 적용하지 않는다(MC는 경고와 함께 계속 실행된다). 수익률 가정이 있는데 CMA 자산군이
@@ -194,9 +236,11 @@ async function buildMonteCarloInputFromState(config) {
     const bondish = typeof isBondCharacter === 'function' && isBondCharacter(appClass);
     const bondUnclassified = appClass === ASSET_CHARACTERS.BOND;
     if (bondUnclassified) bondsWithoutRiskAssumption.push({ key, label, weight, appClass, reason: 'BOND_CLASS_UNRESOLVED', guidance: bondRiskGuidanceFor(rateDetail) });
+    // [MM-014] 환헤지 충돌 - HEDGED σ도 UNHEDGED σ도 쓰지 않는다(어느 쪽도 고르지 않는다).
+    if (fxHedgeConflict) fxHedgeConflictAssets.push({ key, label, weight, appClass, reason: 'FX_HEDGE_CONFLICT' });
     // 분류된 채권만 CMA에서 변동성을 받는다. 분류되지 않은 채권은 변동성을 만들지 않되(위 목록으로 알린다)
     // 원금은 그대로 굴러간다. 현금성은 기존 §7 정책 그대로다.
-    const riskFree = appClass === ASSET_CHARACTERS.CASH || noAssumption || bondUnclassified || (riskFreeFlag && !bondish);
+    const riskFree = appClass === ASSET_CHARACTERS.CASH || noAssumption || bondUnclassified || !!fxHedgeConflict || (riskFreeFlag && !bondish);
     let muAnnualPct = rateDetail.rate;
     let returnSource = 'RETURN_KEY';
     if (!riskFree) {
@@ -311,15 +355,29 @@ async function buildMonteCarloInputFromState(config) {
      * 환헤지를 요구한다). 원화 국채 사용자에게 환헤지를 채우라고 말하지 않는다. */
     const why = e.guidance === 'KRW_BOND_TYPE_MISSING'
       ? `"${e.label}"${share}은 원화 채권이라 발행인 유형(국채 · 회사채 등)만 있으면 됩니다 - 환헤지는 원화 채권에 적용되지 않습니다. 지금은 그 발행인 유형이 비어 있습니다.`
-      : (e.guidance === 'FX_BOND_TYPE_MISSING'
+      : (e.guidance === 'FX_BOND_HEDGE_CONFLICT'
+        ? `"${e.label}"${share}은 외화 채권인데 환헤지 정보가 서로 다르게 적혀 있어 환헤지 여부를 확정하지 못했습니다 - 앱이 어느 쪽도 임의로 고르지 않습니다.`
+        : (e.guidance === 'FX_BOND_TYPE_MISSING'
         ? `"${e.label}"${share}은 환헤지 여부는 확인됐지만 발행인 유형(국채 · 회사채 등)이 비어 있습니다.`
         : (e.guidance === 'FX_BOND_TYPE_OR_HEDGE_MISSING'
           ? `"${e.label}"${share}은 외화 채권이라 발행인 유형과 환헤지 여부가 둘 다 있어야 장기 자산군을 정할 수 있습니다. 지금은 둘 다 또는 둘 중 하나가 비어 있습니다.`
-          : `"${e.label}"${share}에는 아직 채권 정보(발행인 유형 · 통화 · 환헤지)가 등록돼 있지 않아 장기 자산군을 정할 수 없습니다.`));
+          : `"${e.label}"${share}에는 아직 채권 정보(발행인 유형 · 통화 · 환헤지)가 등록돼 있지 않아 장기 자산군을 정할 수 없습니다.`)));
     dataQualityIssues.push(makeIssue('BOND_RISK_ASSUMPTION_UNRESOLVED', SAFETY_LEVEL.WARNING, e.label,
       '이 채권은 위험 시뮬레이션에서 빠졌습니다(원금은 그대로 반영됩니다)',
       why + tail,
       '자산관리의 자산 수정에서 발행인 유형(외화 채권은 환헤지도)을 채워 주세요. 거래내역으로 등록한 채권은 그 거래를 열어 같은 값을 고칠 수 있습니다.'));
+  });
+
+  /* [MM-014 · PM 결정 ⓑ 2026-09-28] 환헤지가 갈려 위험가정을 확정할 수 없는 상품을 명시한다.
+   * 예전에는 충돌이어도 환노출 자산군으로 조용히 계산했다 - 그것이 곧 한쪽을 고른 것이었다. */
+  fxHedgeConflictAssets.forEach((e) => {
+    const share = `(비중 약 ${((e.weight || 0) * 100).toFixed(1)}%)`;
+    dataQualityIssues.push(makeIssue('MC_FX_HEDGE_CONFLICT', SAFETY_LEVEL.WARNING, e.label,
+      '환헤지 정보가 충돌하여 이 상품의 위험가정을 확정할 수 없습니다',
+      `"${e.label}"${share}에 서로 다른 환헤지 정보가 적혀 있어 환헤지 기준과 환노출 기준 중 어느 쪽으로도 변동성을 정하지 않았습니다.`
+      + ' 원금과 적립은 그대로 계산하지만 이 자산의 가격 변동은 시뮬레이션에 들어가지 않았습니다 - '
+      + '"이 자산에 위험이 없다"는 뜻이 아니라 "어느 쪽이 맞는지 아직 확인되지 않았다"는 뜻입니다.',
+      '자산 상세의 환헤지에서 같은 종목의 값을 하나로 맞춰 주세요. 공식 자료(원장 · 채권 레코드)와 다르게 적혀 있으면 그 차이도 함께 표시됩니다.'));
   });
 
   const safety = buildSafetyResult(safetyIssues, dataQualityIssues, []);
@@ -369,7 +427,7 @@ async function buildMonteCarloInputFromState(config) {
     pairs: cmaRisk.pairs
   };
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, bondsWithoutRiskAssumption, ...(taxScope ? { taxScope } : {}) };
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, bondsWithoutRiskAssumption, fxHedgeConflictAssets, ...(taxScope ? { taxScope } : {}) };
 }
 function cmaDatasetMetaForResult(ds) {
   if (!ds) return null;

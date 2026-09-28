@@ -336,7 +336,7 @@ test('교차. 동기화 뒤에도 환헤지 두 값이 각각 보존되고 D-2 �
   await phone.context.close(); await pc.context.close();
 });
 
-test('교차. 채권 레코드의 환헤지가 동기화로 들어오면 그 값이 자산 값보다 앞선다', async ({ browser }) => {
+test('교차. 채권 레코드의 환헤지가 동기화로 들어와 자산 값과 어긋나면 어느 쪽도 채택하지 않는다', async ({ browser }) => {
   const kv = makeKv();
   const phone = await openDevice(browser, kv);
   await phone.page.locator('body').evaluate((el, { asset, bondRaw }) => {
@@ -381,11 +381,16 @@ test('교차. 채권 레코드의 환헤지가 동기화로 들어오면 그 값
   await pc.page.locator('#syncDirectionPullBtn').click();
   await expect(pc.page.locator('#syncSettingsModal')).toBeHidden();
 
+  /* [MM-015 · PM 결정 ⓙ 2026-09-28 — 기대값 변경] 예전 기대값은 source `bondPosition` ·
+   * bondClass `FOREIGN_GOV_UNHEDGED`("채권 레코드 값이 1순위다")였다. PM 결정으로 §60-2의
+   * 그 규칙이 폐기됐다 - 레코드와 자산은 같은 상품 사실의 입력원 둘이므로 어긋나면 어느 쪽도
+   * 채택하지 않는다. **저장된 두 값이 각각 보존된다는 단언은 그대로 유지한다.** */
   const after = await hedgeSnap(pc.page);
   expect(after.bondHedge).toBe('UNHEDGED');
   expect(after.assetHedge, '자산 쪽 값은 지워지지 않는다').toBe('HEDGED');
-  expect(after.source, '채권 레코드 값이 1순위다').toBe('bondPosition');
-  expect(after.bondClass).toBe('FOREIGN_GOV_UNHEDGED');
+  expect(after.source, '두 값이 어긋나면 어느 쪽도 채택하지 않는다').toBe('INSTRUMENT_CONFLICT');
+  expect(after.status, '확정값을 만들지 않는다').toBe(null);
+  expect(after.bondClass, '확정하지 못했으므로 분류하지 않는다').toBe('UNCLASSIFIED');
 
   await phone.context.close(); await pc.context.close();
 });

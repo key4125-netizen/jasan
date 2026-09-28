@@ -1,10 +1,13 @@
 /* [PM 결정 2026-09-24 · D-2 = A안] 외화 채권 환헤지의 폴백 규칙.
  *
- * 환헤지 값이 두 곳에 따로 있다. 채권 분류는 이 우선순위를 **언제나 같게** 따라야 한다.
- *   1 bondPosition.identity.hedgeStatus
- *   2 asset.fxHedgeStatus
- *   3 UNRESOLVED (비헤지로 단정하지 않는다)
- *   4 원화 채권은 이 판단 자체를 하지 않는다
+ * 환헤지 값이 두 곳에 따로 있다 - `bondPosition.identity.hedgeStatus`와 `asset.fxHedgeStatus`.
+ *
+ * [MM-015 · PM 결정 ⓙ 2026-09-28] 둘은 **같은 상품에 관한 하나의 사실의 입력원 둘**이다.
+ * 예전 규칙("레코드가 1순위 · 어긋나도 레코드가 이긴다")은 폐기됐다. 채권 분류는 이렇게 따른다.
+ *   · 두 값이 같거나 한쪽만 있으면  그 값으로 확정 (source는 어디에 적혀 있는지의 표시다)
+ *   · 두 값이 서로 다르면          CONFLICT · 분류하지 않음(UNCLASSIFIED) · 저장값은 양쪽 보존
+ *   · 아무것도 없으면              UNRESOLVED (비헤지로 단정하지 않는다)
+ *   · 원화 채권은 이 판단 자체를 하지 않는다(NOT_APPLICABLE)
  *
  * 앞부분은 js/29를 모듈로 직접 불러 순수 판정을 고정하고, 뒷부분은 실제 앱을 vm 샌드박스에
  * 그대로 실어 MC까지 흐르는지 확인한다(자산군 · CMA · MC 로직은 하나도 흉내 내지 않는다).
@@ -89,7 +92,11 @@ test('D-2-5. 외화 채권 + 둘 다 없음 - UNRESOLVED (비헤지로 단정하
   });
 });
 
-test('D-2-7. 두 값이 모두 있고 서로 다르면 언제나 채권 레코드 쪽이 이긴다', () => {
+/* [MM-015 · PM 결정 ⓙ 2026-09-28 — 기대값 변경] 예전 기대값은 "언제나 채권 레코드 쪽이 이긴다"
+ * (status=레코드값 · source='bondPosition' · bondClass=HEDGED/UNHEDGED)였다.
+ * PM 결정으로 §60-2의 그 규칙이 폐기됐다 - 같은 상품에 관한 하나의 사실을 두 곳에 적어 둔 것이므로
+ * 어긋나면 **어느 쪽도 자동 채택하지 않는다**. 충돌 케이스 자체는 그대로 두고 기대값만 바꾼다. */
+test('D-2-7. 두 값이 모두 있고 서로 다르면 어느 쪽도 채택하지 않는다(CONFLICT)', () => {
   const pairs = [['HEDGED', 'UNHEDGED'], ['UNHEDGED', 'HEDGED']];
   pairs.forEach(([own, onAsset]) => {
     const p = pos({ currency: 'USD', bondType: '국채', hedgeStatus: own });
@@ -97,10 +104,27 @@ test('D-2-7. 두 값이 모두 있고 서로 다르면 언제나 채권 레코�
     // 여러 번 불러도 같은 답이다(순서 · 호출 횟수에 흔들리지 않는다).
     for (let i = 0; i < 5; i += 1) {
       const d = B.resolveBondHedgeStatusDetail(p, asset);
-      assert.deepStrictEqual([d.status, d.source], [own, 'bondPosition'], `${own}/${onAsset}`);
+      assert.deepStrictEqual([d.status, d.source], [null, 'INSTRUMENT_CONFLICT'], `${own}/${onAsset}`);
+      assert.strictEqual(d.conflict, true, `${own}/${onAsset} - 충돌 사실을 말한다`);
     }
+    // 확정하지 못했으므로 분류도 하지 않는다 - 기존 미확인 처리구조(UNCLASSIFIED)를 그대로 쓴다.
+    assert.strictEqual(B.resolveBondClass(p, asset), B.BOND_CLASS.UNCLASSIFIED, `${own}/${onAsset}`);
+    // 저장된 두 값은 어느 쪽도 지우거나 바꾸지 않는다(migration 없음).
+    assert.strictEqual(p.identity.hedgeStatus, own);
+    assert.strictEqual(asset.fxHedgeStatus, onAsset);
+  });
+});
+
+/* 같은 값이 두 곳에 적혀 있으면 충돌이 아니다 - 확정한다(정상 경로가 막히지 않는 것을 고정한다). */
+test('D-2-7b. 두 값이 모두 있고 서로 같으면 그대로 확정한다', () => {
+  ['HEDGED', 'UNHEDGED'].forEach((v) => {
+    const p = pos({ currency: 'USD', bondType: '국채', hedgeStatus: v });
+    const asset = { id: 'ZZ-A1', fxHedgeStatus: v };
+    const d = B.resolveBondHedgeStatusDetail(p, asset);
+    assert.deepStrictEqual([d.status, d.source], [v, 'bondPosition'], v);
+    assert.ok(!d.conflict, v);
     assert.strictEqual(B.resolveBondClass(p, asset),
-      own === 'HEDGED' ? B.BOND_CLASS.FOREIGN_GOV_HEDGED : B.BOND_CLASS.FOREIGN_GOV_UNHEDGED);
+      v === 'HEDGED' ? B.BOND_CLASS.FOREIGN_GOV_HEDGED : B.BOND_CLASS.FOREIGN_GOV_UNHEDGED);
   });
 });
 
@@ -215,9 +239,14 @@ test('D-2-8. 주식 · ETF의 환헤지 동작은 그대로다(채권 규칙이 
     null, '국내 주식에는 환헤지 자산군이 없다');
 });
 
-test('D-2. 채권 레코드의 환헤지는 자산 값으로 덮이지 않는다(저장된 사용자 선택 보존)', () => {
+/* [MM-015 · PM 결정 ⓙ 2026-09-28 — 기대값 변경] 예전 기대값은 분류 `FOREIGN_GOV_UNHEDGED`
+ * ("레코드 값이 자산 값으로 덮이지 않는다")였다. 이제는 두 값이 어긋나면 분류하지 않는다 -
+ * 레코드가 자산에 덮이는 것도, 자산이 레코드에 덮이는 것도 아니다(어느 쪽도 채택하지 않는다).
+ * **저장된 두 값이 그대로 남는다는 단언은 그대로 유지한다** - 이것이 이 테스트의 원래 목적이다. */
+test('D-2. 두 값이 어긋나면 분류하지 않되 저장된 사용자 선택은 양쪽 다 보존한다', () => {
   const sb = sandboxWithFxBond({ bondType: '국채', hedgeStatus: 'UNHEDGED' }, { fxHedgeStatus: 'HEDGED' });
-  assert.strictEqual(sb.evalInSandbox('resolveBondClass(state.bondPositions[0])'), 'FOREIGN_GOV_UNHEDGED');
+  assert.strictEqual(sb.evalInSandbox('resolveBondClass(state.bondPositions[0])'), 'UNCLASSIFIED');
+  assert.strictEqual(sb.evalInSandbox('resolveBondHedgeStatusDetail(state.bondPositions[0]).source'), 'INSTRUMENT_CONFLICT');
   // 폴백은 읽기만 한다 - 저장된 두 값 어느 쪽도 바뀌지 않는다.
   assert.strictEqual(sb.evalInSandbox('state.bondPositions[0].identity.hedgeStatus'), 'UNHEDGED');
   assert.strictEqual(sb.evalInSandbox("state.assets.find((a) => a.category === '채권').fxHedgeStatus"), 'HEDGED');

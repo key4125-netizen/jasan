@@ -168,15 +168,30 @@ test('STEP 1 유지. 환헤지 판정 경로는 그대로다 - 여기서 다시 
   assert.strictEqual(SB.fxHedgeChoiceStateOf(a).offer, false);
 });
 
-test('STEP 1 유지. 외화 채권의 환헤지 우선순위(레코드 → 자산 → UNRESOLVED)도 그대로다', () => {
-  const usd = SB.makeBondPosition({
-    id: 'zz-u1', assetId: 'zz-u', identity: { isin: 'US912810TM03', bondType: '국채', currency: 'USD', hedgeStatus: 'HEDGED' },
-    terms: { maturityDate: '2030-12-01', couponRate: 3, paymentFrequency: 2 }
-  });
-  const asset = { id: 'zz-u', ticker: 'US912810TM03', category: '채권', currency: 'USD', fxHedgeStatus: 'UNHEDGED' };
-  const d = SB.resolveBondHedgeStatusDetail(usd, asset);
-  assert.strictEqual(d.status, 'HEDGED', '레코드 값이 1순위');
-  assert.strictEqual(d.source, 'bondPosition');
+/* [MM-015 · PM 결정 ⓙ 2026-09-28 — 기대값 변경] 예전 기대값은 `status='HEDGED'` ·
+ * `source='bondPosition'`("레코드 값이 1순위")이었다. 레코드와 자산은 같은 상품 사실의 입력원
+ * 둘이므로, 어긋나면 어느 쪽도 채택하지 않는다(§60-2의 1순위 규칙 폐기). 한쪽만 있을 때의
+ * 동작(레코드만 → 레코드 값 · 자산만 → 자산 값 · 둘 다 없으면 UNRESOLVED)은 그대로다. */
+const usdBond = (hedgeStatus) => SB.makeBondPosition({
+  id: 'zz-u1', assetId: 'zz-u', identity: { isin: 'US912810TM03', bondType: '국채', currency: 'USD', hedgeStatus },
+  terms: { maturityDate: '2030-12-01', couponRate: 3, paymentFrequency: 2 }
+});
+const usdAsset = (fxHedgeStatus) => ({ id: 'zz-u', ticker: 'US912810TM03', category: '채권', currency: 'USD', fxHedgeStatus });
+
+test('STEP 1 개정. 외화 채권의 환헤지는 레코드와 자산을 하나의 상품 사실로 본다', () => {
+  // 어긋나면 어느 쪽도 채택하지 않는다.
+  const conflict = SB.resolveBondHedgeStatusDetail(usdBond('HEDGED'), usdAsset('UNHEDGED'));
+  assert.strictEqual(conflict.status, null, '어느 쪽도 채택하지 않는다');
+  assert.strictEqual(conflict.source, 'INSTRUMENT_CONFLICT');
+  assert.strictEqual(conflict.conflict, true);
+  // 같으면 확정한다.
+  const agree = SB.resolveBondHedgeStatusDetail(usdBond('HEDGED'), usdAsset('HEDGED'));
+  assert.strictEqual(agree.status, 'HEDGED');
+  assert.strictEqual(agree.source, 'bondPosition');
+  // 한쪽만 있으면 그 값이다(기존 동작 유지).
+  assert.strictEqual(SB.resolveBondHedgeStatusDetail(usdBond('HEDGED'), usdAsset(undefined)).status, 'HEDGED');
+  assert.strictEqual(SB.resolveBondHedgeStatusDetail(usdBond(undefined), usdAsset('UNHEDGED')).status, 'UNHEDGED');
+  assert.strictEqual(SB.resolveBondHedgeStatusDetail(usdBond(undefined), usdAsset(undefined)).source, 'UNRESOLVED');
 });
 
 test('환헤지도 갈리면 충돌로 알린다(판정은 하지 않고 사실만 말한다)', () => {

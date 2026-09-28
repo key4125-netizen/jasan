@@ -299,10 +299,13 @@ function findAssetForBondPosition(position) {
  * 자산의 fxHedgeStatus(거래 폼 · 자산 상세에서 입력). 거래내역이 원천인 자산은 자산 폼이
  * 숨겨지므로 앞의 값을 넣을 방법이 없었고, 그런 외화 채권은 영원히 분류되지 않았다.
  *
- * 우선순위는 고정이다 - 두 값이 모두 있고 서로 달라도 언제나 같은 답이 나온다.
- *   1 채권 레코드의 값   (그 채권만을 두고 고른 값이므로 가장 구체적이다)
- *   2 자산의 값          (같은 자산에 대해 사용자가 고른 값 - 의미를 바꾸지 않고 그대로 읽는다)
- *   3 UNRESOLVED         (없으면 비헤지로 단정하지 않는다 - 기존 원칙)
+ * [MM-015 · PM 결정 ⓙ 2026-09-28 — §60-2 개정] 예전에는 "두 값이 모두 있고 서로 달라도 언제나
+ * 1순위(채권 레코드)가 이긴다"였다. 그 규칙은 폐기됐다 - 같은 상품에 관한 하나의 사실을 두 곳에
+ * 적어 둔 것이므로, 어긋나면 어느 쪽도 자동 채택하지 않는다.
+ *   · 두 값이 같거나 한쪽만 있으면  그 값이 이 상품의 환헤지 사실이다
+ *   · 두 값이 서로 다르면          CONFLICT (status 없음 · 양쪽 저장값은 그대로 보존)
+ *   · 같은 채권(ISIN)의 다른 보유분과 갈려도  CONFLICT (js/01이 상품 단위로 모아 본다)
+ *   · 아무것도 없으면              UNRESOLVED (비헤지로 단정하지 않는다 - 기존 원칙)
  * 원화 채권은 이 판단 자체를 하지 않는다(NOT_APPLICABLE).
  *
  * 돌려주는 것은 사실뿐이다 - σ도 자산군도 여기서 정하지 않는다.
@@ -312,9 +315,45 @@ function resolveBondHedgeStatusDetail(position, asset) {
   const currency = String(identity.currency || 'KRW').toUpperCase();
   if (currency === 'KRW') return { status: null, source: 'NOT_APPLICABLE', currency };
   const own = bondHedgeValue(identity.hedgeStatus);
-  if (own) return { status: own, source: 'bondPosition', currency };
   const a = asset || findAssetForBondPosition(position);
   const fromAsset = a ? bondHedgeValue(a.fxHedgeStatus) : null;
+
+  /* [MM-015 · PM 결정 ⓙ 2026-09-28] 상품 단위 해석기가 답한다.
+   * 이 함수는 더 이상 레코드 값을 보유분 단위로 **독립 확정**하지 않는다 - 같은 채권(ISIN)을
+   * 여러 사람이 들고 있으면 한 사람이 확인해 둔 사실을 모두가 쓰고, 값이 갈리면 어느 쪽도
+   * 쓰지 않는다. 판정은 js/01 resolveInstrumentFxHedge 하나가 하며 Risk · MC · 자산 상세가
+   * 같은 답을 본다. `source`는 그 값이 어디에 적혀 있는지(출처 표시)일 뿐 우선순위가 아니다. */
+  if (typeof resolveInstrumentFxHedge === 'function' && a) {
+    let fact;
+    try { fact = resolveInstrumentFxHedge(a); } catch (e) { fact = null; }
+    if (fact) {
+      if (fact.conflict) {
+        return {
+          status: null, source: 'INSTRUMENT_CONFLICT', conflict: true,
+          reason: (fact.instrument && fact.instrument.reason) || 'holdingConflict', currency
+        };
+      }
+      /* 넘어온 레코드가 아직 state에 없을 수 있다(저장 전 · 화면이 만든 임시 레코드 · 단위 테스트).
+       * 그러면 js/01이 이 레코드의 값을 보지 못하므로 여기서 함께 센다 - 빠뜨리면 "적어 둔 값이
+       * 무시되는" 상태가 된다. 두 값이 어긋나면 여기서도 어느 쪽도 고르지 않는다. */
+      const values = (own ? [own] : []).concat(fact.status && fact.status !== own ? [fact.status] : []);
+      if (values.length > 1) {
+        return { status: null, source: 'INSTRUMENT_CONFLICT', conflict: true, reason: 'bondAssetMismatch', currency };
+      }
+      if (values.length === 1) {
+        const src = own ? 'bondPosition' : (fromAsset ? 'asset' : (fact.source === 'instrumentMaster' ? 'instrumentMaster' : 'instrument'));
+        return { status: values[0], source: src, currency };
+      }
+      return { status: null, source: 'UNRESOLVED', currency };
+    }
+  }
+
+  /* js/01을 함께 싣지 않은 단독 실행(모듈 require) 경로. 같은 정책을 그대로 적용한다 -
+   * 두 값이 어긋나면 어느 쪽도 채택하지 않는다(PM 결정으로 §60-2의 "1순위가 이긴다"는 폐기됐다). */
+  if (own && fromAsset && own !== fromAsset) {
+    return { status: null, source: 'INSTRUMENT_CONFLICT', conflict: true, reason: 'bondAssetMismatch', currency };
+  }
+  if (own) return { status: own, source: 'bondPosition', currency };
   if (fromAsset) return { status: fromAsset, source: 'asset', currency };
   return { status: null, source: 'UNRESOLVED', currency };
 }
