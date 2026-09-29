@@ -32,12 +32,14 @@
 
 ---
 
-## 🛑 v276 RELEASE HOLD — e2e/114 F-7 Release Gate FAIL (2026-09-29 · **가장 최신**)
+## ✅ e2e/114 F-7 해결 · v276 Release Gate 전건 PASS (2026-09-29 · **가장 최신**)
 
-> **Production: v275** · **Target: v276** · **Release: HOLD**
+> **Production: v275** · **Target: v276** · **Release: PM 최종 승인 대기**
 > **release commit 없음 · tag 없음 · push 없음 · deploy 없음 · production smoke 없음**
 > v276 version marker(`index.html` · `sw.js` 각 1줄)는 **working tree에만** 있고 커밋하지 않았다.
-> HEAD `4d4f1ce` 기준 origin/main 대비 ahead 6(전부 문서 · Phase C 코드 커밋).
+> F-7 수정 commit **`48691be`**(`e2e/114` 한 파일 · +24/−1).
+> **아래 「무엇이 막고 있나」 ~ 「F-7 최종 분류」는 조사 당시 기록이다 — 지우지 않고 남긴다.**
+> **현재 상태는 맨 아래 「F-7 해결」 소절이다.**
 
 ### 무엇이 막고 있나
 
@@ -172,6 +174,52 @@ Release Gate 결과는 **1319 PASS / 1 FAIL**이므로 **RELEASE HOLD**다.
   정확한 GC trigger가 관측되지 않았다는 사실은 그대로 남기고, 억지로 확정하지 않는다.
   반대로 원인이 확정되지 않았다는 이유로 제품 코드를 임의로 고치지도 않는다.
 - Playwright `upgrade` · `downgrade` · lock 변경 · package 변경 — **금지**(근거 미확보)
+
+### F-7 해결 (2026-09-29 · PM 지시 「최소 수정 및 Release Gate 재검증」)
+
+**고친 것은 테스트 한 곳뿐이다 — `e2e/114-final-ux-fixes.spec.js`의 F-7(+24 / −1).**
+제품 코드 · Playwright 버전 · `playwright.config.js` · Phase C · Sync Push **전부 무변경**.
+
+**무엇을 바꿨나** — 제품 호출과 순서는 그대로고, *그 일이 끝나기를 기다리는 방법*만 바꿨다.
+
+- 예전: 계산(`computeAdvancedRiskMetrics`가 시세 · 지수 · 환율 조회를 await한다) +
+  `renderRiskDiagnosisSummary()` + `openRiskDetailModal()`을 **하나의 async `page.evaluate`** 로 감싸
+  그 반환 Promise를 기다렸다 → Playwright가 `Runtime.callFunctionOn(awaitPromise:true)`으로
+  만든 **장시간 결과 Promise** 하나에 결과가 걸린다.
+- 지금: 같은 호출을 **페이지 안에서 시작만 시키고**(evaluate는 즉시 반환한다),
+  완료 여부와 예외를 `window.__f7` 상태로 남긴 뒤 **`expect.poll`로 "끝났고 예외가 없었다"를 고정**한다.
+  예전 evaluate가 예외를 전하던 역할을 이 assertion이 그대로 맡는다 —
+  `try/catch`로 숨기지 않고 **잡은 값을 그대로 실패로 만든다.**
+
+**검증 약화가 아닌 이유** — 검사 대상이 동일하다.
+`#riskDetailModalBody` 표시 · 첫 `p.flex.items-start` 표시 · `Range`로 첫 줄/둘째 줄 왼쪽 시작점 측정 ·
+`r.length > 0` · `diff < -2` 인 행 0건 — **전부 그대로**다.
+`sleep` · `retry` · `timeout` 확대 · `skip` · assertion 삭제/완화 **0건**이고,
+「계산 · 렌더 중 예외가 없었다」는 검사가 **하나 늘었다.**
+
+**게이트 결과(수정 후 · 전부 실측)**
+
+| 게이트 | 결과 |
+|---|---|
+| F-7 단독 | **PASS** (1.4s) |
+| `e2e/114` 전체 | **14 / 14 PASS** |
+| Risk · UX 관련 스펙 9개 | **102 / 102 PASS** |
+| Unit | **1067 / 1067 PASS** (fail 0 · skip 0) |
+| ESLint | **PASS** (exit 0) |
+| Data Guard | **PASS** (추적 343) |
+| Sensitive File Check | **PASS** (0건 · untracked 0 · 실패 artifact 0) |
+| **Full E2E** | **1320 / 1320 PASS** · 15.8분 · 단독 1회 · retry 0 · 설정 무변경 |
+| Release Guard | **PASS** (v276 marker) |
+
+동기화 스펙 7종도 전부 PASS(69건). **Sync Push는 OPEN 그대로** — 이번 PASS를 해결로 기록하지 않는다.
+
+**원인 판정은 그대로 STRONGLY SUPPORTED다.** 이번 수정으로 증상이 사라졌지만,
+**실제 GC 발생 순간 · 직접 trigger · Playwright 1.62.1 defect 여부는 여전히 미확정**이다.
+수정이 통했다는 사실을 근거로 원인을 CONFIRMED로 올리지 않는다.
+
+**남겨 둔 관찰(이번 범위 밖 · 고치지 않았다)**: 같은 파일의 `spec:35`(F-1) 등
+다른 async `page.evaluate`도 같은 구조를 쓴다. 지금까지 실패한 적은 없으므로 건드리지 않았다 —
+재발하면 F-7과 같은 방식으로 최소 수정할 수 있다는 것만 기록해 둔다.
 
 ### 참고 — 실패 trace artifact
 
