@@ -241,7 +241,12 @@ test('K - 환율 자료가 오래됨(DATA_STALE)이면 값은 쓰고 종목 상�
 test('저장소의 data/fx/usdkrw-h10.json은 앱 검사를 통과하고 게시 수치와 일치한다', () => {
   const s = freshSandbox();
   const json = require('../data/fx/usdkrw-h10.json');
-  const r = s.parseUsdKrwDataset(json, '2026-09-19');
+  // [고정 날짜 결합 제거] 예전에는 "오늘"을 2026-09-19로 박아 두어, H.10 자동 갱신이 그보다
+  // 뒤 날짜를 추가할 때마다 이 테스트가 깨졌다(그 행들이 "미래 날짜"로 거부된다).
+  // 이 테스트가 보려는 것은 "저장소에 들어 있는 데이터셋이 앱 검사를 통과하는가"이므로
+  // 기준일을 데이터셋 자신의 endDate로 둔다. 미래 날짜 거부 규칙 자체는 바로 아래
+  // 「K - 정적 JSON 검사」가 합성 데이터로 그대로 고정한다.
+  const r = s.parseUsdKrwDataset(json, json.endDate);
   assert.notStrictEqual(r.rates, null);
   assert.strictEqual(r.endDate, json.endDate);
   assert.strictEqual(json.startDate, '2000-01-03');
