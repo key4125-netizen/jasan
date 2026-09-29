@@ -994,3 +994,131 @@ document.querySelectorAll('input[name="mcGoalMode"]').forEach((el) => el.addEven
 document.getElementById('mcCancelBtn').addEventListener('click', () => {
   cancelMonteCarloRun();
 });
+
+/* ══════════════════════════════════ [PHASE C] 인출 · 목표비중 변화 입력 ══════════════════════════════════
+ *
+ * 이 블록이 하는 일은 **입력값을 state.projection에 저장하는 것뿐**이다.
+ * 실행 배선은 건드리지 않는다 - 어댑터(js/16 buildMonteCarloInputFromState)가 이미
+ * getGlidePlan() · getWithdrawalPlan()으로 state를 직접 읽어 input.glide · input.withdrawal을 만든다.
+ *
+ * 규칙 셋(Phase C 계약 그대로):
+ *   ① 아무것도 입력하지 않으면 **필드 자체를 저장하지 않는다** - 빈 객체 · 0을 "꺼짐"으로 저장하지 않는다.
+ *      그래야 기존 MC 경로가 그대로 실행된다(비활성 bit-identical).
+ *   ② 연차는 **상대 연차(1-based)**다 - 달력 연도를 쓰지 않는다.
+ *   ③ 범위 · 빈 목표 판정을 여기서 하지 않는다 - 값을 그대로 저장하고
+ *      기존 validateMonteCarloInput → INPUT_ERROR → monteCarloUserReason 경로에 맡긴다.
+ * ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+const PHASE_C_INPUT_IDS = Object.freeze({
+  withdrawStart: 'phaseCWithdrawStartInput', withdrawMonthly: 'phaseCWithdrawMonthlyInput',
+  glideStart: 'phaseCGlideStartInput', glideEnd: 'phaseCGlideEndInput'
+});
+
+/* 빈 칸은 null로 돌려준다 - 0과 구분해야 "입력 안 함"과 "0을 적음"이 섞이지 않는다. */
+function phaseCInputValue(id) {
+  const el = mcUiEl(id);
+  if (!el) return null;
+  const raw = String(el.value ?? '').trim();
+  return raw === '' ? null : Number(raw);
+}
+function phaseCStoredGlide() {
+  return (state.projection && state.projection.glidePlan) ? state.projection.glidePlan : null;
+}
+function phaseCGlideTargetCount(plan) {
+  if (!plan || !plan.targets) return 0;
+  return (plan.targets['국내'] || []).length + (plan.targets['해외'] || []).length;
+}
+
+/* 지금 입력칸 + 저장된 종료 목표로 state.projection을 갱신한다.
+ * 어느 쪽도 채워지지 않았으면 키를 지운다(필드 없음 = 비활성). */
+function persistPhaseCFromUi() {
+  if (!state.projection) return;
+  const ws = phaseCInputValue(PHASE_C_INPUT_IDS.withdrawStart);
+  const wm = phaseCInputValue(PHASE_C_INPUT_IDS.withdrawMonthly);
+  if (ws === null && wm === null) delete state.projection.withdrawalPlan;
+  else state.projection.withdrawalPlan = { startYearNo: ws, monthly: wm };
+
+  const gs = phaseCInputValue(PHASE_C_INPUT_IDS.glideStart);
+  const ge = phaseCInputValue(PHASE_C_INPUT_IDS.glideEnd);
+  const stored = phaseCStoredGlide();
+  const hasTarget = phaseCGlideTargetCount(stored) > 0;
+  if (gs === null && ge === null && !hasTarget) {
+    delete state.projection.glidePlan;
+  } else {
+    state.projection.glidePlan = {
+      startYearNo: gs, endYearNo: ge,
+      domestic: stored ? stored.domestic : makeDefaultRebalanceOwnerState().domestic,
+      targets: stored ? stored.targets : { '국내': [], '해외': [] }
+    };
+  }
+  persistProjection();
+  renderPhaseCInputs();
+  refreshMonteCarloResultValidity();
+}
+
+/* [PHASE C] 종료 목표 편집 모달([확인])이 부른다 - 연차 입력은 그대로 두고 목표만 바꾼다.
+ * state.rebalance[owner](지금 목표)는 여기서도 읽지 않는다. */
+function savePhaseCGlideTargetFromModal(target) {
+  if (!state.projection || !target) return;
+  const gs = phaseCInputValue(PHASE_C_INPUT_IDS.glideStart);
+  const ge = phaseCInputValue(PHASE_C_INPUT_IDS.glideEnd);
+  const emptyTarget = ((target.targets['국내'] || []).length + (target.targets['해외'] || []).length) === 0;
+  /* 연차도 목표도 비어 있으면 **설정을 지운다**(비활성). 그대로 저장하면 "빈 설정"이 남아
+   * 실행할 때마다 막히는데 화면에서 지울 방법이 없어진다 - 빈 값을 저장하지 않는다는 규칙 그대로다. */
+  if (gs === null && ge === null && emptyTarget) {
+    delete state.projection.glidePlan;
+  } else {
+    state.projection.glidePlan = {
+      startYearNo: gs, endYearNo: ge, domestic: target.domestic, targets: target.targets
+    };
+  }
+  persistProjection();
+  renderPhaseCInputs();
+  refreshMonteCarloResultValidity();
+}
+
+/* 저장된 값을 입력칸과 요약 배지에 되비춘다. **편집 중인 칸은 건드리지 않는다** -
+ * renderProjection()이 여러 이벤트에서 불리므로 타이핑 도중 값이 덮여 쓰이면 안 된다. */
+function renderPhaseCInputs() {
+  /* 0 이하는 빈 칸으로 보여 준다 - 이 칸들은 연차 1 이상 · 금액 0 초과만 뜻이 있고,
+   * 저장을 비우면 normalizeGlidePlan이 Number(null)=0으로 정규화해 다시 읽히기 때문이다.
+   * 0이 "입력한 값"처럼 보이면 사용자가 설정을 지울 방법이 없어진다. */
+  const setIfIdle = (id, v) => {
+    const el = mcUiEl(id);
+    if (!el || document.activeElement === el) return;
+    const n = Number(v);
+    el.value = (v === null || v === undefined || v === '' || !Number.isFinite(n) || n <= 0) ? '' : String(n);
+  };
+  const w = (state.projection && state.projection.withdrawalPlan) || null;
+  setIfIdle(PHASE_C_INPUT_IDS.withdrawStart, w ? w.startYearNo : null);
+  setIfIdle(PHASE_C_INPUT_IDS.withdrawMonthly, w ? w.monthly : null);
+  const g = phaseCStoredGlide();
+  setIfIdle(PHASE_C_INPUT_IDS.glideStart, g ? g.startYearNo : null);
+  setIfIdle(PHASE_C_INPUT_IDS.glideEnd, g ? g.endYearNo : null);
+
+  const targetCount = phaseCGlideTargetCount(g);
+  const targetHint = mcUiEl('phaseCGlideTargetHint');
+  if (targetHint) targetHint.textContent = targetCount > 0 ? `종목 ${fmtNum(targetCount, 0)}개` : '미설정';
+
+  const statusHint = mcUiEl('phaseCStatusHint');
+  if (statusHint) {
+    const parts = [];
+    if (w) parts.push('인출');
+    if (g) parts.push('목표비중 변화');
+    statusHint.textContent = parts.length ? `${parts.join(' · ')} 설정됨` : '설정 없음';
+  }
+}
+
+Object.values(PHASE_C_INPUT_IDS).forEach((id) => {
+  const el = mcUiEl(id);
+  if (!el) return;
+  // change(입력 확정 시점)에만 저장한다 - 타이핑 중간값이 그대로 저장돼 오류 안내가 깜빡이지 않게 한다.
+  el.addEventListener('change', () => persistPhaseCFromUi());
+});
+const phaseCGlideBtn = mcUiEl('phaseCGlideTargetBtn');
+if (phaseCGlideBtn) {
+  phaseCGlideBtn.addEventListener('click', () => {
+    if (typeof openGlideTargetModal === 'function') openGlideTargetModal();
+  });
+}
+renderPhaseCInputs();

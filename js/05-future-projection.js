@@ -580,6 +580,8 @@ function renderProjection() {
   // 값을 덮어써 버린다).
   updateProjectionAssumptionsSummary();
   if (typeof updateMcFeeSummary === 'function') updateMcFeeSummary();
+  // [PHASE C] 저장된 인출 · 목표비중 변화 설정을 입력칸에 되비춘다(편집 중인 칸은 건드리지 않는다).
+  if (typeof renderPhaseCInputs === 'function') renderPhaseCInputs();
   updateMonthlyContributionSummary();
   updateProjection();
 }

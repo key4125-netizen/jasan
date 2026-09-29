@@ -1338,6 +1338,50 @@
         </button>
       </div>
 
+      <!-- [PHASE C] 은퇴 후 인출 · 기간별 목표비중 변화(Glide) - **Monte Carlo 정밀 계산에만** 반영된다.
+           비워 두면 설정을 저장하지 않으므로(빈 객체 · 0을 "꺼짐"으로 저장하지 않는다) 기존 계산과 완전히 같다.
+           연차는 달력 연도가 아니라 시뮬레이션 시작 후 몇 년째인지다(상대 연차 · 1 = 첫 해). -->
+      <div class="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2.5">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">은퇴 후 계획(선택)</span>
+          <span id="phaseCStatusHint" class="shrink-0 text-sm font-semibold text-slate-400 whitespace-nowrap">설정 없음</span>
+        </div>
+        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep mb-2">비워 두면 지금과 똑같이 계산합니다. <b class="text-slate-600 dark:text-slate-300">연차</b>는 시뮬레이션이 시작되고 몇 년째인지를 뜻합니다(1 = 첫 해).</p>
+
+        <span class="text-sm text-slate-500 dark:text-slate-400 block mb-1">매달 찾아 쓰기</span>
+        <div class="grid grid-cols-2 gap-2 mb-2.5">
+          <label class="text-sm">
+            <span class="text-slate-400 block mb-0.5">시작 연차</span>
+            <input id="phaseCWithdrawStartInput" type="number" inputmode="numeric" min="1" step="1" placeholder="예: 11" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          </label>
+          <label class="text-sm">
+            <span class="text-slate-400 block mb-0.5">매달 금액(원)</span>
+            <input id="phaseCWithdrawMonthlyInput" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 2000000" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          </label>
+        </div>
+
+        <span class="text-sm text-slate-500 dark:text-slate-400 block mb-1">목표비중 바꾸기</span>
+        <div class="grid grid-cols-2 gap-2 mb-1.5">
+          <label class="text-sm">
+            <span class="text-slate-400 block mb-0.5">시작 연차</span>
+            <input id="phaseCGlideStartInput" type="number" inputmode="numeric" min="1" step="1" placeholder="예: 8" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          </label>
+          <label class="text-sm">
+            <span class="text-slate-400 block mb-0.5">마치는 연차</span>
+            <input id="phaseCGlideEndInput" type="number" inputmode="numeric" min="1" step="1" placeholder="예: 15" class="touch-target min-h-[44px] w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5">
+          </label>
+        </div>
+        <!-- 종료 목표는 기존 [비중조절] 편집 화면을 그대로 쓴다 - 다만 저장되는 곳은 지금 목표가 아니라
+             이 설정(가구 전체 1벌)이다. 지금 목표 비중은 이 화면에서 바뀌지 않는다. -->
+        <button type="button" id="phaseCGlideTargetBtn" class="touch-target min-h-[44px] w-full flex items-center justify-between gap-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2">
+          <span>나중 목표 포트폴리오(가구 전체)</span>
+          <span id="phaseCGlideTargetHint" class="shrink-0 font-semibold whitespace-nowrap">미설정</span>
+        </button>
+
+        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep mt-2">지금 목표에는 있지만 나중 목표에 없는 종목은 그때 보유하지 않는 것으로 계산합니다. 계속 들고 갈 종목이라면 나중 목표에도 적어 주세요.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed break-keep mt-1">여기서 정한 인출과 목표비중 변화는 Monte Carlo 시뮬레이션에만 반영되며, 결정론 계산에는 반영되지 않습니다. 인출 시점의 시장 상황에 따른 고갈 위험은 따로 계산하지 않습니다.</p>
+      </div>
+
       <button type="button" id="mcRunBtn" class="touch-target min-h-[44px] w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">Monte Carlo 실행</button>
       <button type="button" id="mcCancelBtn" class="touch-target min-h-[44px] hidden w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold mt-2">취소</button>
 
