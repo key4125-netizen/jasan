@@ -110,8 +110,21 @@ const disableSync = (page) => page.locator('body').evaluate((el) => { el.ownerDo
  * 이제 확인 없이 병합된다. 이 헬퍼의 목적은 "상대가 올린 내용을 이 기기에 반영한다"이므로
  * 두 경로를 모두 받아들인다 - 확인 화면이 뜨면 [받기]를 누르고, 이미 병합됐으면 그대로 넘어간다.
  * 확인 화면이 **반드시** 떠야 하는 경우(삭제 vs 수정 · 양쪽 변경)는 e2e/89가 따로 고정한다. */
-async function pullAndAccept(page) {
+/* [예약 push 경합 · 2026-09-29 trace 실측] 상대 기기는 동기화가 켜진 뒤 3초 트레일링 디바운스
+ * (js/12 schedulePush)로 스스로 업로드할 수 있고, 그 경로는 올리기 전에 클라우드를 먼저 병합한다
+ * (pushToCloudNow). 그래서 이 기기가 [올리기]로 올린 직후 상대가 자기 push를 하면, 상대는 이미
+ * 그 내용을 흡수한 상태가 되어 뒤이은 pull에 받아올 것이 남지 않는다(up_to_date · 제품 정상 동작).
+ * 실측: phone POST 07:24:05.171Z → pc POST 07:24:05.208Z(37ms 뒤) → pc pull = up_to_date.
+ *
+ * 그 경우에도 이 헬퍼의 목적("상대가 올린 내용이 이 기기에 반영됐다")은 그대로 지켜야 하므로,
+ * 반환값만 넓히지 않고 **최종 데이터 상태로 반영 사실을 확인**한다. 확인 방법을 넘기지 않은
+ * 호출부는 예전처럼 held/applied만 받아들인다(다른 테스트의 엄격함은 그대로다). */
+async function pullAndAccept(page, alreadyApplied) {
   const res = await pull(page);
+  if (res === 'up_to_date' && alreadyApplied) {
+    alreadyApplied(await snap(page)); // 이미 반영됐다면 그 사실을 데이터로 단언한다
+    return;
+  }
   expect(['held', 'applied']).toContain(res);
   if (res === 'held') {
     await expect(page.locator('#syncDirectionBox')).toBeVisible();
@@ -195,10 +208,15 @@ test('T-03. [이 기기 데이터 올리기]를 고르면 이 기기 내용이 �
   await phone.page.locator('#syncDirectionPushBtn').click();
   await expect(phone.page.locator('#syncSettingsModal')).toBeHidden();
 
-  await pullAndAccept(pc.page); // [v243] 상대 기기는 자동 병합 대신 차이 확인 뒤 받기
+  // [v243] 상대 기기는 자동 병합 대신 차이 확인 뒤 받기.
+  // 상대가 자기 예약 push로 먼저 흡수한 경우(up_to_date)에도 같은 기대값으로 최종 상태를 확인한다.
+  const pcExpected = (s) => {
+    expect(s.txIds).toEqual(['e78-tx-base', 'e78-tx-phone']);
+    expect(s.ledgerQty).toBe(110);
+  };
+  await pullAndAccept(pc.page, pcExpected);
   const pcState = await snap(pc.page);
-  expect(pcState.txIds).toEqual(['e78-tx-base', 'e78-tx-phone']);
-  expect(pcState.ledgerQty).toBe(110);
+  pcExpected(pcState);
   await phone.context.close(); await pc.context.close();
 });
 
