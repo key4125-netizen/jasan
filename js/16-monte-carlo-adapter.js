@@ -196,7 +196,19 @@ async function buildMonteCarloInputFromState(config) {
     }
   };
 
-  const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter);
+  /* [PHASE C] 시작 · 종료 목표비중을 **같은 splitBases로 한 번에** 구한다.
+   * 두 번 따로 구하면(상태가 같아 결과는 같더라도) "같은 기준을 썼다"는 계약이 코드에 남지 않는다.
+   * ⚠ 종료 목표도 반드시 같은 경로(owner 부여 · region 순회 · 가중 병합 · 정규화)를 타야 한다 -
+   * owner 없이 계산하면 rateIdentity가 달라져 같은 종목이 다른 instrument로 갈린다(IC-06). */
+  const splitBases = getMcRateSplitBaseKeys();
+  const weightsMap = computeHouseholdTargetInstrumentWeights(ownerFilter, undefined, splitBases);
+  /* 설정 필드가 없으면 null - Phase C 비활성이며 아래 분기가 전부 꺼진다.
+   * 값이 잘못돼 있어도 여기서 버리지 않는다(조용히 무시 금지) - 그대로 실어 보내 검증이 BLOCK한다. */
+  const glidePlan = (typeof getGlidePlan === 'function') ? getGlidePlan() : null;
+  const withdrawalPlan = (typeof getWithdrawalPlan === 'function') ? getWithdrawalPlan() : null;
+  const endWeightsMap = glidePlan
+    ? computeHouseholdTargetInstrumentWeights(ownerFilter, { domestic: glidePlan.domestic, targets: glidePlan.targets }, splitBases)
+    : null;
   /* [FUTURE-P1] 절세계좌 입력 - config.includeTaxAdvantaged일 때만 구성한다(생략하면 아래 taxEntries가
    * 비어 있어 기존 경로와 완전히 같다). 절세계좌는 목표비중이 아니라 "지금 들고 있는 자산 + 이미 입력된
    * 적립 계획"이므로 weight를 만들지 않고, 일반계좌 목표와 같은 키 규칙으로만 맞춰 둔다 - 같은 종목이면
@@ -206,6 +218,14 @@ async function buildMonteCarloInputFromState(config) {
     : null;
   const taxOnlyEntries = [];
   if (taxMap) taxMap.forEach((entry, key) => { if (!weightsMap.has(key)) taxOnlyEntries.push({ key, entry }); });
+  /* [PHASE C] 종료 목표에만 있는 종목 - 지금은 안 들고 있지만 나중에 가져갈 종목이다.
+   * 시작 weight는 0이고(지금 배분 없음) 상관행렬 · 시장충격에는 정상 참여한다 - taxOnlyEntries와 같은 처리다. */
+  const glideOnlyEntries = [];
+  if (endWeightsMap) {
+    endWeightsMap.forEach((entry, key) => {
+      if (!weightsMap.has(key) && !(taxMap && taxMap.has(key))) glideOnlyEntries.push({ key, entry });
+    });
+  }
 
   /* [§37 CMA-01~03] 변동성 · 상관계수는 장기 CMA 자산군에서 온다 - 종목의 최근 가격 이력을 쓰지 않는다.
    * 수익률(μ)은 기존 Return Key 해석(resolveMcEntryRateDetail - 결정론과 같은 함수 · 같은 인자)을 그대로 쓴다.
@@ -281,6 +301,13 @@ async function buildMonteCarloInputFromState(config) {
   taxOnlyEntries.forEach(({ key, entry }) => {
     const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: undefined };
     // [통합 수정 · F-04] 절세계좌 보유분은 그 자산 자체, 적립 배분은 그 소유자 · 그 계좌 범위로 해석한다.
+    const rateDetail = resolveMcEntryRateDetail(entry, presetKey);
+    addEntry(key, 0, rateDetail, getTargetProjectionFeeRate(pseudoTarget), isFeeExplicitlySet(pseudoTarget), entry.label, !!entry.riskFree);
+  });
+
+  /* [PHASE C] 종료 목표 전용 종목 등록 - 위 절세 전용 종목과 완전히 같은 방식(weight 0)이다. */
+  glideOnlyEntries.forEach(({ key, entry }) => {
+    const pseudoTarget = { type: entry.kind, ticker: entry.ticker, category: entry.category, name: entry.name, label: entry.label, owner: entry.owner };
     const rateDetail = resolveMcEntryRateDetail(entry, presetKey);
     addEntry(key, 0, rateDetail, getTargetProjectionFeeRate(pseudoTarget), isFeeExplicitlySet(pseudoTarget), entry.label, !!entry.riskFree);
   });
@@ -427,7 +454,19 @@ async function buildMonteCarloInputFromState(config) {
     pairs: cmaRisk.pairs
   };
 
-  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, bondsWithoutRiskAssumption, fxHedgeConflictAssets, ...(taxScope ? { taxScope } : {}) };
+  /* [PHASE C] 엔진이 쓰는 종료 weight - assetOrder와 **같은 순서**로 맞춘다.
+   * 종료 목표에 없는 종목은 0이다(= 그때는 보유하지 않는다는 명시적 의미 · IC-06). */
+  const glide = glidePlan ? {
+    startYearNo: glidePlan.startYearNo,
+    endYearNo: glidePlan.endYearNo,
+    endWeights: assetOrder.map((k) => {
+      const e = endWeightsMap && endWeightsMap.get(k);
+      return e ? e.weight : 0;
+    })
+  } : null;
+
+  return { instruments, correlationMatrix, assetOrder, errors, warnings, safety, cma, bondsWithoutRiskAssumption, fxHedgeConflictAssets,
+    ...(taxScope ? { taxScope } : {}), ...(glide ? { glide } : {}), ...(withdrawalPlan ? { withdrawal: withdrawalPlan } : {}) };
 }
 function cmaDatasetMetaForResult(ds) {
   if (!ds) return null;
@@ -537,6 +576,42 @@ function validateMonteCarloInput(input) {
         }
       });
     }
+  }
+
+  /* [PHASE C] 기간별 목표비중(Glide) - 설정이 있으면 반드시 이 실행의 기간 안에서 유효해야 한다.
+   * 잘못된 설정을 조용히 버리고 기존 결과로 돌아가지 않는다(Phase C 설계 §3). 문구는 개발 식별자 없이
+   * 그대로 화면에 나갈 수 있게 한국어로만 쓴다(js/19 mcLooksUserFacing 참고). */
+  if (input.glide !== undefined && input.glide !== null) {
+    const g = input.glide;
+    const gs = g.startYearNo;
+    const ge = g.endYearNo;
+    const okStart = Number.isFinite(gs) && Math.trunc(gs) === gs && gs >= 1;
+    const okEnd = Number.isFinite(ge) && Math.trunc(ge) === ge;
+    if (!okStart) errors.push('목표비중 변화를 시작할 연차가 올바르지 않습니다. 1 이상의 정수로 입력해 주세요.');
+    if (!okEnd) errors.push('목표비중 변화를 마칠 연차가 올바르지 않습니다. 정수로 입력해 주세요.');
+    if (okStart && okEnd && !(gs < ge)) errors.push('목표비중 변화는 시작 연차가 마치는 연차보다 앞서야 합니다.');
+    if (okEnd && Number.isFinite(years) && ge > years) errors.push('목표비중 변화를 마칠 연차가 예측 기간을 넘습니다. 예측 기간 안의 연차로 입력해 주세요.');
+    if (!Array.isArray(g.endWeights) || g.endWeights.length !== instruments.length) {
+      errors.push('나중에 가져갈 목표 포트폴리오를 계산할 수 없습니다. 목표 비중 설정을 확인해 주세요.');
+    } else {
+      let endSum = 0;
+      let badWeight = false;
+      g.endWeights.forEach((w) => {
+        if (!Number.isFinite(w) || w < 0) badWeight = true; else endSum += w;
+      });
+      if (badWeight) errors.push('나중에 가져갈 목표 비중에 올바르지 않은 값이 있습니다. 목표 비중 설정을 확인해 주세요.');
+      else if (!(endSum > 0)) errors.push('나중에 가져갈 목표 포트폴리오가 비어 있습니다. 종목과 비중을 입력해 주세요.');
+    }
+  }
+  /* [PHASE C] 인출 - 시작 연차는 이 실행의 기간 안이어야 하고 금액은 0보다 커야 한다
+   * (0을 넣어 "꺼짐"을 표현하지 않는다 - 설정을 지우는 것이 끄는 방법이다). */
+  if (input.withdrawal !== undefined && input.withdrawal !== null) {
+    const w = input.withdrawal;
+    const ws = w.startYearNo;
+    const okWs = Number.isFinite(ws) && Math.trunc(ws) === ws && ws >= 1;
+    if (!okWs) errors.push('인출을 시작할 연차가 올바르지 않습니다. 1 이상의 정수로 입력해 주세요.');
+    else if (Number.isFinite(years) && ws > years) errors.push('인출을 시작할 연차가 예측 기간을 넘습니다. 예측 기간 안의 연차로 입력해 주세요.');
+    if (!Number.isFinite(w.monthly) || !(w.monthly > 0)) errors.push('매달 찾아 쓸 금액이 올바르지 않습니다. 0보다 큰 금액으로 입력해 주세요.');
   }
 
   // [FUTURE-P1] taxScope는 생략 가능(undefined -> 엔진이 기존 General-only 경로). 있다면 배열 길이가

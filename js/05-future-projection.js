@@ -1199,6 +1199,16 @@ function getYearlyExtraContributions() {
     : [];
   return list.filter((it) => num(it.amount) > 0);
 }
+/* [PHASE C] 저장된 기간별 목표비중 · 인출 계획. 필드가 없으면 null(비활성)이다.
+ * 여기서 범위를 검사하거나 값을 고치지 않는다 - 검증은 어댑터(js/16)가 한 곳에서만 한다. */
+function getGlidePlan() {
+  const raw = state.projection && state.projection.glidePlan;
+  return (typeof normalizeGlidePlan === 'function') ? normalizeGlidePlan(raw) : null;
+}
+function getWithdrawalPlan() {
+  const raw = state.projection && state.projection.withdrawalPlan;
+  return (typeof normalizeWithdrawalPlan === 'function') ? normalizeWithdrawalPlan(raw) : null;
+}
 function getYearlyExtraContributionTotal() {
   return getYearlyExtraContributions().reduce((s, it) => s + num(it.amount), 0);
 }
@@ -4063,13 +4073,18 @@ function findMonteCarloContributionTargetGaps(ownerFilter) {
 // computeOwnerTargetRoleWeights(js/04)와 같은 원리이지만, 여기서는 role이 아니라 실제 수익률/변동성
 // 계산에 쓸 수 있도록 티커·카테고리 정보 자체를 담아 반환한다. selectedStocks까지 놓치지 않도록 펼쳐진
 // 목록(expandRebalanceTargetsForComputation, js/04)을 쓴다.
-function computeOwnerTargetInstrumentWeights(owner, splitBases) {
+/* [PHASE C] planOverride: { domestic, targets } - 목표 포트폴리오의 **출처만** 교체한다.
+ * 생략하면(기존 모든 호출부) state.rebalance[owner]를 그대로 읽어 완전히 동일하게 동작한다.
+ * ⚠ owner를 그대로 부여한 채 같은 경로를 타는 것이 핵심이다 - rateIdentityOfTarget이
+ * resolveTargetRateSubject(target.owner)로 그 소유자의 보유분을 찾기 때문에, owner 없이 계산하면
+ * 같은 종목이 서로 다른 instrument key로 갈라진다(Phase C 설계 IC-06). */
+function computeOwnerTargetInstrumentWeights(owner, splitBases, planOverride) {
   const split = splitBases || getMcRateSplitBaseKeys();
   const weights = new Map();
-  const domestic = state.rebalance[owner].domestic;
+  const domestic = planOverride ? planOverride.domestic : state.rebalance[owner].domestic;
   ['국내', '해외'].forEach((region) => {
     const regionWeight = num(domestic[region]) / 100;
-    expandRebalanceTargetsForComputation(owner, region).forEach((t) => {
+    expandRebalanceTargetsForComputation(owner, region, planOverride ? planOverride.targets[region] : undefined).forEach((t) => {
       const rowWeight = regionWeight * (num(t.pct) / 100);
       if (rowWeight <= 0) return;
       // [namedHolding 키 충돌 버그 수정] namedHolding은 t.category가 없으므로, 예전엔 이 항목들이
@@ -4151,8 +4166,11 @@ function assessHouseholdWeightSums(ownerFilter) {
 // 정규화돼 있어(국내/해외 split 합 100% × 각 지역 targets pct 합 100%) 별도 가중 병합·재정규화가
 // 필요 없다(새 계산식이 아니라 기존 함수를 그대로 재사용). ownerFilter 생략 시 기존과 완전히 동일
 // (bit-identical) - 아래 두 owner 가중 병합 로직은 전혀 건드리지 않았다.
-function computeHouseholdTargetInstrumentWeights(ownerFilter) {
-  if (ownerFilter) return computeOwnerTargetInstrumentWeights(ownerFilter);
+/* [PHASE C] planOverride를 넘기면 **목표 포트폴리오만** 그것으로 바꿔서 같은 계산을 한다 -
+ * 소유자별 가중치(그 소유자의 현재 원금 비중)는 목표가 아니라 소유자의 성질이므로 그대로 쓴다.
+ * 그래야 시작 벡터와 종료 벡터가 **같은 가중 기준**으로 합쳐져 두 벡터를 그대로 보간할 수 있다. */
+function computeHouseholdTargetInstrumentWeights(ownerFilter, planOverride, splitBasesOverride) {
+  if (ownerFilter) return computeOwnerTargetInstrumentWeights(ownerFilter, splitBasesOverride, planOverride);
   const ownerTotals = {};
   let grandTotal = 0;
   REBALANCE_OWNERS.forEach((owner) => {
@@ -4175,11 +4193,11 @@ function computeHouseholdTargetInstrumentWeights(ownerFilter) {
 
   const merged = new Map();
   // [N-10] 두 소유자의 목표를 합칠 때도 instrument 구분 기준(같은 종목이라도 수익률 기준이 다르면 분리)을 한 번만 구해 같이 쓴다.
-  const splitBases = getMcRateSplitBaseKeys();
+  const splitBases = splitBasesOverride || getMcRateSplitBaseKeys();
   REBALANCE_OWNERS.forEach((owner) => {
     const weightBasis = weightBasisByOwner[owner];
     if (weightBasis <= 0) return;
-    computeOwnerTargetInstrumentWeights(owner, splitBases).forEach((v, key) => {
+    computeOwnerTargetInstrumentWeights(owner, splitBases, planOverride).forEach((v, key) => {
       const prev = merged.get(key) || { ...v, weight: 0, rateIdentities: new Set() };
       prev.weight += v.weight * weightBasis;
       v.rateIdentities.forEach((id) => prev.rateIdentities.add(id));

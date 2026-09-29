@@ -102,8 +102,11 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
 // 보유 종목이 "목표 항목 없음"으로 조용히 제외(uncovered, 부동산과 같은 취급)되는 대신, 명시적으로
 // 매도 대상(목표 0%→전량 매도)으로 계산에 반영된다. 이 펼쳐진 목록은 계산 전용이고, 사용자가 실제로
 // 편집하는 state.rebalance.targets[region](원본, 3개 고정 항목 구조)은 그대로 둔다.
-function expandRebalanceTargetsForComputation(owner, region) {
-  const raw = state.rebalance[owner].targets[region] || [];
+/* [PHASE C] sourceTargets: 이 지역의 목표 항목 배열을 **직접** 넘길 수 있다(생략 시 기존 동작 그대로).
+ * Glide Path의 종료 목표를 시작 목표와 **완전히 같은 경로**로 펼치기 위한 것이다 - owner 부여 ·
+ * role 폴백 · 주식 캐치올 펼치기 규칙을 두 번 구현하지 않는다. 계산식은 한 줄도 바뀌지 않는다. */
+function expandRebalanceTargetsForComputation(owner, region, sourceTargets) {
+  const raw = (Array.isArray(sourceTargets) ? sourceTargets : state.rebalance[owner].targets[region]) || [];
   const expanded = [];
   raw.forEach((t) => {
     if (t.type === 'category' && t.category === '주식' && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0) {

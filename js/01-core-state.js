@@ -1409,6 +1409,43 @@ function normalizeYearlyExtraContributions(raw) {
     .map(([year, amount]) => ({ year, amount }));
 }
 
+/* [PHASE C] 기간별 목표비중(Glide Path)과 인출 계획.
+ *
+ * 두 값 모두 **상대 연차(1-based)**로만 표현한다 - 달력 연도를 쓰지 않는다. MC 엔진은 달력을
+ * 전혀 모르고(js/15~18에 new Date()가 없다) m=1이 실행 다음 달이라, 달력 연도로 저장하면 같은
+ * 설정이 실행일에 따라 다른 결과를 낸다(Phase C 설계 PD-1).
+ *   startYearNo = 1  → 1년차(m 1~12)
+ *   startYearNo = 3  → 3년차(m 25~36)
+ *
+ * ⚠ 이 함수들의 역할은 **모양 정리뿐**이다. 범위 보정 · start/end 자동 교환 · 잘못된 값 삭제 ·
+ * 기간 밖 값 조용히 버리기 · 빈 목표 자동 채우기를 **하지 않는다** - 잘못된 값은 그대로 남겨
+ * 어댑터 검증(js/16 validateMonteCarloInput)이 BLOCK하게 한다(조용히 기존 결과로 돌아가지 않는다).
+ *
+ * 필드 자체가 없으면 null을 돌려 Phase C 비활성이 된다 - 빈 객체를 만들지 않는다. */
+function normalizeGlidePlan(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const rawTargets = (raw.targets && typeof raw.targets === 'object') ? raw.targets : {};
+  /* 지역 배열이 없으면 **빈 배열**로 둔다 - normalizeRebalanceOwnerTargets는 배열이 아니면 기본
+   * 목표를 채워 넣는데(js/01 cloneDefaultRebalanceTargets), 그러면 "종료 목표가 비어 있다"는
+   * 사용자 입력 오류가 자동 보정돼 사라진다. 배열이면 빈 배열이어도 그대로 보존된다. */
+  const safeTargets = {
+    '국내': Array.isArray(rawTargets['국내']) ? rawTargets['국내'] : [],
+    '해외': Array.isArray(rawTargets['해외']) ? rawTargets['해외'] : []
+  };
+  const owned = normalizeRebalanceOwnerState({ domestic: raw.domestic, targets: safeTargets });
+  return {
+    // 숫자로만 바꾸고 범위는 손대지 않는다(검증은 어댑터가 한다).
+    startYearNo: Number(raw.startYearNo),
+    endYearNo: Number(raw.endYearNo),
+    domestic: owned.domestic,
+    targets: owned.targets
+  };
+}
+function normalizeWithdrawalPlan(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return { startYearNo: Number(raw.startYearNo), monthly: Number(raw.monthly) };
+}
+
 function sanitizeRateMatchOverride(raw) {
   if (raw === undefined || raw === null) return undefined;
   const trimmed = String(raw).trim();
@@ -2536,7 +2573,12 @@ function loadState() {
         monthlyContributionAllocation: normalizeMonthlyContributionAllocation(parsed.monthlyContributionAllocation),
         monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.monthlyContributionByOwner),
         // [MC-01] 저장된 연도별 추가 투자. 필드가 없던 시절의 데이터는 빈 배열이 되어 기존과 동일하다.
-        yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.yearlyExtraContributions)
+        yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.yearlyExtraContributions),
+        /* [PHASE C] 기간별 목표비중 · 인출 계획. **필드가 없으면 키 자체를 만들지 않는다** -
+         * 빈 객체를 저장하면 "꺼진 설정"이 데이터로 남아 나중에 의미가 흔들린다(DR-B3의 교훈).
+         * 아래 spread는 값이 null이면 아무 키도 넣지 않는다. */
+        ...(normalizeGlidePlan(parsed.glidePlan) ? { glidePlan: normalizeGlidePlan(parsed.glidePlan) } : {}),
+        ...(normalizeWithdrawalPlan(parsed.withdrawalPlan) ? { withdrawalPlan: normalizeWithdrawalPlan(parsed.withdrawalPlan) } : {})
       };
     }
   } catch (e) { /* 손상된 값이면 기본값 유지 */ }

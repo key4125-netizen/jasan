@@ -1194,7 +1194,17 @@ function adoptRemoteRebalanceAndProjection(parsed, opts) {
       monthlyContributionByOwner: normalizeMonthlyContributionByOwner(parsed.projection.monthlyContributionByOwner),
       // [MC-01] 연도별 추가 투자도 같은 이유로 loadState와 같은 정규화 함수를 재사용한다 - 이 줄이
       // 없으면 복원 · 동기화 직후 추가 투자 계획이 통째로 사라진다.
-      yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.projection.yearlyExtraContributions)
+      yearlyExtraContributions: normalizeYearlyExtraContributions(parsed.projection.yearlyExtraContributions),
+      /* [PHASE C] 기간별 목표비중 · 인출 계획 - instrumentReturnKeys(위)와 완전히 같은 hasOwn 규칙이다.
+       * 원격 · 백업에 **필드 자체가 없으면**(이 개념을 모르는 예전 기기 · 파일) 이 기기의 설정을 그대로
+       * 두고, 필드가 있으면 그 값을 채택한다. 값이 비활성(null)이면 키를 아예 만들지 않는다 -
+       * 빈 객체를 남기지 않기 위해서다. 이 식은 state.projection을 바꾸기 전에 평가된다. */
+      ...(hasOwn(parsed.projection, 'glidePlan')
+        ? (normalizeGlidePlan(parsed.projection.glidePlan) ? { glidePlan: normalizeGlidePlan(parsed.projection.glidePlan) } : {})
+        : ((state.projection && state.projection.glidePlan) ? { glidePlan: state.projection.glidePlan } : {})),
+      ...(hasOwn(parsed.projection, 'withdrawalPlan')
+        ? (normalizeWithdrawalPlan(parsed.projection.withdrawalPlan) ? { withdrawalPlan: normalizeWithdrawalPlan(parsed.projection.withdrawalPlan) } : {})
+        : ((state.projection && state.projection.withdrawalPlan) ? { withdrawalPlan: state.projection.withdrawalPlan } : {}))
     };
     persistProjection(true); // skipStamp - 위와 동일한 이유
   }

@@ -180,6 +180,10 @@ async function startMonteCarloRun(params, callbacks) {
     // [FUTURE-P1] 어댑터가 절세계좌 잔고/납입을 실제로 찾았을 때만 존재한다 - 없으면 필드가 아예
     // 붙지 않아(undefined) 엔진이 기존 General-only 경로를 그대로 탄다.
     taxScope: adapterResult.taxScope,
+    /* [PHASE C] 어댑터가 state에서 읽어 만든 값 - 설정이 없으면 두 필드 모두 undefined라
+     * 엔진이 기존 경로를 그대로 탄다. 값이 잘못돼 있으면 아래 validateMonteCarloInput이 BLOCK한다. */
+    glide: adapterResult.glide,
+    withdrawal: adapterResult.withdrawal,
     years: params.years,
     simulations: params.simulations,
     seed: params.seed,

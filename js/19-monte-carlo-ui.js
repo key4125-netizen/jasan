@@ -50,7 +50,9 @@ const MC_USER_REASON_RULES = Object.freeze([
   { match: /initialPrincipal이 유효하지 않습니다/, text: '현재 자산 금액이 올바르지 않습니다. 자산 등록 상태를 확인해 주세요.' },
   { match: /contributionGrowthRate가 유효하지 않습니다/, text: '투자금 증가율이 올바르지 않습니다. 적립 설정을 확인해 주세요.' },
   { match: /contributionStreams\[\d+\]\.years/, text: '적립 기간 설정이 올바르지 않습니다. 적립 설정을 확인해 주세요.' },
-  { match: /taxScope\./, text: '절세계좌 자산·납입 설정을 준비하지 못해 계산하지 못했습니다. 절세계좌 적립 설정을 확인해 주세요.' }
+  { match: /taxScope\./, text: '절세계좌 자산·납입 설정을 준비하지 못해 계산하지 못했습니다. 절세계좌 적립 설정을 확인해 주세요.' },
+  // [PHASE C] 빠른 미리보기 경로 거부 - 엔진 메시지 자체가 이미 한국어지만, 문구를 한 곳에서 관리한다.
+  { match: /빠른 미리보기 방식으로는/, text: '빠른 미리보기 방식으로는 인출·목표비중 변화 설정을 계산할 수 없습니다. 정밀 계산으로 실행해 주세요.' }
 ]);
 /* 어댑터가 만든 한국어 사유인지 - 개발 식별자가 섞이지 않은 문장만 그대로 보여준다. */
 function mcLooksUserFacing(s) {
@@ -670,7 +672,9 @@ function renderMonteCarloResult(result, inflationRatePct, goalMeta, contribution
       (goalMeta && typeof explainGoalProbabilitySemanticAlwaysOn === 'function') ? explainGoalProbabilitySemanticAlwaysOn() : null,
       (typeof explainHistoricalDataPeriodAlwaysOn === 'function') ? explainHistoricalDataPeriodAlwaysOn() : null,
       (typeof explainFxRiskIfForeign === 'function') ? explainFxRiskIfForeign(hasHouseholdForeignAllocation(contributionMeta && contributionMeta.ownerScope)) : null,
-      (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn() : null,
+      /* [PHASE C] 이 실행에 인출 · 목표비중 변화가 실제로 적용됐는지를 결과에서 읽어 넘긴다 -
+       * 적용되지 않았으면 기존 문구가 한 글자도 바뀌지 않는다. */
+      (typeof explainAccumulationScopeAlwaysOn === 'function') ? explainAccumulationScopeAlwaysOn(result && result.phaseC) : null,
     ].filter(Boolean);
     // [Phase 17 P1-4] "결과 해석에 직접 영향(critical)"만 결과 바로 아래 펼쳐서 보여주고, 나머지
     // (참고성 WARNING + 항상-on INFO)는 [v250] 맨 위 ⓘ 팝업에서 보여준다(mcSafetyDetailStore, js/22
