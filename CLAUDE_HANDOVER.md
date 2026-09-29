@@ -230,8 +230,13 @@ Release Gate 결과는 **1319 PASS / 1 FAIL**이므로 **RELEASE HOLD**다.
 
 ---
 
-## 🧭 Phase C — Glide Path + Withdrawal 구현 완료 (2026-09-29 · **가장 최신** · **CLOSED · 출시 아님**)
+## 🧭 Phase C — Glide Path + Withdrawal 개발 기록 (2026-09-29 · **현재 사용자 버전에서는 제외**)
 
+> **[상태 2026-09-29] Phase C — 정책 및 개발 기록 보존 / 현재 사용자 버전에서는 제외.**
+> 아래 기록은 개발 당시의 사실이며 **삭제하지 않는다.** 다만 **제품 코드의 Phase C 기능은
+> PM 결정에 따라 현재 사용자 버전에서 제외됐다** - 이 절을 근거로 현재 제품에 인출 ·
+> Glide Path 기능이 있다고 읽지 않는다. 정책 원문은 SoT **§71**에 보존돼 있다.
+>
 > **상태**: **Phase C CLOSED** · **PM Decision Required = 0**
 > **commit**: **`a3c39de`** `feat: Phase C glide path and withdrawal` (직전 `d6a95ce`)
 > **branch** `main` · origin/main 대비 **ahead 1**(push 안 함) · 최신 tag **`v275`**

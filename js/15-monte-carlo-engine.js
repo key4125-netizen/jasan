@@ -104,54 +104,6 @@ function buildExtraContributionByMonth(list, months) {
   return any ? out : null;
 }
 
-/* [PHASE C] 월별 인출 테이블. buildExtraContributionByMonth와 같은 모양이다 - iteration 루프
- * **밖에서 한 번만** 만들고 루프는 읽기만 한다(이 현금흐름은 랜덤성과 무관하다).
- *
- * 시점은 **상대 연차**다(달력 연도를 쓰지 않는다). startYearNo=3이면 3년차 첫 달 = m 25부터.
- * 설정이 없거나 쓸 수 없는 값이면 null을 돌려 호출부의 블록이 통째로 건너뛰어진다.
- * ⚠ 여기서 범위 오류를 조용히 흡수하지 않는다 - 범위 검증은 어댑터(js/16)가 먼저 BLOCK한다. */
-function buildWithdrawalByMonth(plan, months) {
-  if (!plan || !(months > 0)) return null;
-  const startYearNo = Number(plan.startYearNo);
-  const monthly = Number(plan.monthly);
-  if (!Number.isFinite(startYearNo) || Math.trunc(startYearNo) !== startYearNo || startYearNo < 1) return null;
-  if (!Number.isFinite(monthly) || !(monthly > 0)) return null;
-  const startMonth = (startYearNo - 1) * 12 + 1;
-  if (startMonth > months) return null;
-  const out = new Float64Array(months);
-  for (let m = startMonth; m <= months; m++) out[m - 1] = monthly;
-  return out;
-}
-
-/* [PHASE C] 연차별 목표비중을 **iteration 루프 밖에서 한 번만** 펼친다(flat Float64Array).
- * 월마다 새 배열을 만들면 240개월 × iterations만큼 할당이 생겨 GC가 계산을 지배한다
- * (Phase 26 실측: 같은 호출량에서 643.7ms 대 9.7ms).
- *
- *   yIdx <  startYIdx        → 시작 weight 그대로
- *   startYIdx ≤ yIdx ≤ endYIdx → s + p(e - s),  p = (yIdx-startYIdx)/(endYIdx-startYIdx)
- *   yIdx >  endYIdx          → 종료 weight 그대로
- *
- * 양 끝은 보간식을 쓰지 않고 원본 배열 값을 그대로 복사한다 - s + 1*(e-s)가 부동소수점에서 e와
- * 1 ulp 어긋날 수 있어 합계가 정확히 1을 벗어나기 때문이다(볼록결합의 이점을 그대로 보존한다). */
-function buildGlideWeightsByYear(startWeight, endWeight, startYearNo, endYearNo, numYears, n) {
-  const startYIdx = startYearNo - 1;
-  const endYIdx = endYearNo - 1;
-  const span = endYIdx - startYIdx;
-  const out = new Float64Array(numYears * n);
-  for (let y = 0; y < numYears; y++) {
-    const off = y * n;
-    if (y <= startYIdx) {
-      for (let i = 0; i < n; i++) out[off + i] = startWeight[i];
-    } else if (y >= endYIdx) {
-      for (let i = 0; i < n; i++) out[off + i] = endWeight[i];
-    } else {
-      const p = (y - startYIdx) / span;
-      for (let i = 0; i < n; i++) out[off + i] = startWeight[i] + p * (endWeight[i] - startWeight[i]);
-    }
-  }
-  return out;
-}
-
 /* [MC-01] 총 납입원금에 더해지는 추가 투자 합계 - computeTotalContributionPrincipal 계열은
  * 기존 서명을 그대로 두고(회귀 보호), 추가분만 이 함수로 따로 센다. */
 function computeTotalExtraContributionPrincipal(list, months) {
@@ -505,28 +457,6 @@ function runMonthlyPrecisionMC(config, hooks) {
     }
   }
 
-  /* [PHASE C] 기간별 목표비중(Glide) - config.glide가 있을 때만 켜진다.
-   * endWeights는 어댑터(js/16)가 instruments와 **같은 순서**로 만들어 넘긴다. 길이가 다르면 켜지 않는다
-   * (어댑터 검증이 먼저 BLOCK하지만, 엔진도 스스로 안전한 쪽으로만 동작한다).
-   * 종료 벡터에도 위 N-07과 **같은 규칙**을 적용한다 - 새 정규화 정책이 아니라 기존 규칙의 재사용이다. */
-  const glide = config.glide;
-  let weightsByYear = null;
-  let hasGlide = false;
-  if (glide && Array.isArray(glide.endWeights) && glide.endWeights.length === n
-      && Number.isFinite(glide.startYearNo) && Number.isFinite(glide.endYearNo)
-      && glide.startYearNo >= 1 && glide.startYearNo < glide.endYearNo) {
-    const endRaw = glide.endWeights;
-    let endSum = 0;
-    for (let i = 0; i < n; i++) endSum += endRaw[i];
-    const normalizeEnd = endSum > 0 && Math.abs(endSum - 1) > 1e-9;
-    const endWeight = new Float64Array(n);
-    for (let i = 0; i < n; i++) endWeight[i] = normalizeEnd ? endRaw[i] / endSum : endRaw[i];
-    weightsByYear = buildGlideWeightsByYear(weight, endWeight, glide.startYearNo, glide.endYearNo, numYears, n);
-    hasGlide = true;
-  }
-  /* [PHASE C] 월별 인출 - config.withdrawal이 있을 때만 켜진다(없으면 아래 블록이 통째로 건너뛰어진다). */
-  const withdrawalByMonth = buildWithdrawalByMonth(config.withdrawal, months);
-
   /* [FUTURE-P1] 절세계좌(buy-and-hold) 동시 시뮬레이션 - config.taxScope가 있을 때만 켜진다.
    *
    * 왜 같은 루프 안에서 도는가: 일반계좌와 절세계좌의 결과를 path 단위로 합치려면(combined) 두 계좌가
@@ -570,66 +500,24 @@ function runMonthlyPrecisionMC(config, hooks) {
       // 이미 배분됨) - 수익률 계산(Step 3/4)과는 완전히 분리된 현금흐름 전용 배율이다. streams가 있으면
       // (Step 2 - 적립기간 연결) 미리 계산해둔 월별 가구 전체 총액을 weight로 배분하고, 없으면(기존
       // 모든 호출부) 기존 contribShare 경로를 그대로 쓴다.
-      /* [PHASE C] 그 달이 속한 연차(기존 납입 배율이 쓰는 식과 완전히 같다). Glide가 꺼져 있으면
-       * wOff는 0이고 아래 분기가 전부 기존 식을 그대로 실행한다 - 연산 순서 · 개수가 바뀌지 않는다. */
-      const wOff = hasGlide ? Math.floor((m - 1) / 12) * n : 0;
       if (hasContributionStreams) {
         const monthTotal = monthlyContribTotal[m - 1];
-        if (hasGlide) {
-          for (let i = 0; i < n; i++) balances[i] += weightsByYear[wOff + i] * monthTotal;
-        } else {
-          for (let i = 0; i < n; i++) balances[i] += weight[i] * monthTotal;
-        }
+        for (let i = 0; i < n; i++) balances[i] += weight[i] * monthTotal;
       } else {
         const contribMultiplier = yearlyContribMultiplier[Math.floor((m - 1) / 12)];
-        if (hasGlide) {
-          /* contribShare는 시작 weight로 미리 곱해 둔 값이라 Glide에서는 쓸 수 없다 - 그 해의 비중으로
-           * 다시 배분한다. 곱셈 순서가 달라지므로 **Glide가 켜졌을 때만** 이 경로를 탄다. */
-          const monthTotal = monthlyContribution * contribMultiplier;
-          for (let i = 0; i < n; i++) balances[i] += weightsByYear[wOff + i] * monthTotal;
-        } else {
-          for (let i = 0; i < n; i++) balances[i] += contribShare[i] * contribMultiplier;
-        }
+        for (let i = 0; i < n; i++) balances[i] += contribShare[i] * contribMultiplier;
       }
       // Step 1-B: [MC-01] 그 달에 지정된 추가 투자금 - 월 적립금과 같은 자리(수익률 적용 전)에
       // 같은 목표비중으로 들어간다. 해당 월이 아니면 이 블록이 통째로 건너뛰어진다.
       if (extraByMonth) {
         const extra = extraByMonth[m - 1];
-        if (extra !== 0) {
-          if (hasGlide) {
-            for (let i = 0; i < n; i++) balances[i] += weightsByYear[wOff + i] * extra;
-          } else {
-            for (let i = 0; i < n; i++) balances[i] += weight[i] * extra;
-          }
-        }
+        if (extra !== 0) for (let i = 0; i < n; i++) balances[i] += weight[i] * extra;
       }
       // [FUTURE-P1] Step 1-T: 절세계좌 신규 납입 - 계좌별 적립 계획(월납/연납)을 어댑터가 미리 월별
       // 배열로 펼쳐 둔 값을 그대로 더한다(연납이면 각 연도 첫 달에만 값이 들어 있다). 일반계좌와 달리
       // 목표비중이 아니라 사용자가 지정한 종목별 배분 그대로 들어간다.
       if (hasTax && taxMonthlyContrib) {
         for (let i = 0; i < n; i++) taxBalances[i] += taxMonthlyContrib[i][m - 1];
-      }
-      /* [PHASE C] Step 1-W: 인출 - 납입 3종(신규 · 추가 · 절세) **직후**이고 성장(Step 4) **이전**이다(W-1).
-       * "그 달 초에 찾아 쓰고, 남은 돈이 그 달 시장을 겪는다"는 뜻이다.
-       * ⚠ 인출에는 난수 호출이 없다 - 아래 Step 3(Z 생성)의 소비 횟수 · 순서는 이 블록과 무관하다.
-       *
-       * 종목을 고르지 않는다 - **그 시점 잔고 비중 그대로** 비례 차감한다.
-       * 요청액이 총잔고 이상이면 전액을 인출하고 잔고를 0으로 둔다(B-1 clamp) - 이렇게 해야
-       * 부동소수점 나머지로 음수 잔고가 생기지 않는다. 소진 시점 · 소진 확률은 계산하지 않는다.
-       * ⚠ 절세계좌(taxBalances)는 건드리지 않는다 - 기존 buy-and-hold 의미를 그대로 둔다. */
-      if (withdrawalByMonth) {
-        const requested = withdrawalByMonth[m - 1];
-        if (requested > 0) {
-          let cash = 0;
-          for (let i = 0; i < n; i++) cash += balances[i];
-          if (cash > 0) {
-            if (requested >= cash) {
-              for (let i = 0; i < n; i++) balances[i] = 0;
-            } else {
-              for (let i = 0; i < n; i++) balances[i] -= requested * balances[i] / cash;
-            }
-          }
-        }
       }
       // Step 3: correlated shock 생성 (Z -> L*Z)
       for (let i = 0; i < n; i++) Z[i] = nextZ();
@@ -668,13 +556,7 @@ function runMonthlyPrecisionMC(config, hooks) {
       // 정책(연 1회, 목표비중으로 전액 재배분) 자체는 전혀 바뀌지 않는다.
       if (m % 12 === 0) {
         let total = 0; for (let i = 0; i < n; i++) total += balances[i];
-        if (hasGlide) {
-          /* m=12는 wOff가 1년차(yIdx=0)를 가리킨다 - 그 해를 **그 해의 목표로** 마감한다
-           * (2년차 비중으로 미리 옮기지 않는다). */
-          for (let i = 0; i < n; i++) balances[i] = total * weightsByYear[wOff + i];
-        } else {
-          for (let i = 0; i < n; i++) balances[i] = total * weight[i];
-        }
+        for (let i = 0; i < n; i++) balances[i] = total * weight[i];
       }
       if (nextMilestoneIdx < milestoneMonths.length && m === milestoneMonths[nextMilestoneIdx]) {
         let total = 0; for (let i = 0; i < n; i++) total += balances[i];
@@ -724,9 +606,6 @@ function runMonthlyPrecisionMC(config, hooks) {
     assets: n,
     milestones,
     ...(accountScopes ? { accountScopes } : {}),
-    /* [PHASE C] 이 실행에 실제로 적용된 것만 알린다 - 화면 안내문이 "설정만 있고 적용은 안 된"
-     * 상태를 잘못 말하지 않게 한다. 둘 다 꺼져 있으면 이 키 자체가 생기지 않아 기존 출력과 같다. */
-    ...((hasGlide || withdrawalByMonth) ? { phaseC: { glide: hasGlide, withdrawal: !!withdrawalByMonth } } : {}),
     finalValue: milestones.length ? milestones[milestones.length - 1] : null,
     executionTime: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
     diagnostics: { seed, correlationMethod: 'date-aligned', psdCorrectionApplied: choleskyDiagnostics.psdCorrectionApplied,
@@ -831,7 +710,6 @@ if (typeof module !== 'undefined' && module.exports) {
     dateAlignedReturns, pearsonCorrelation, computeDateAlignedCorrelationMatrix,
     validateCorrelationMatrixShape, jacobiEigenDecomposition, ensurePSD, choleskyDecompose, prepareCholeskyFromCorrelation,
     rebalanceToWeights, extractMilestoneStats, MILESTONE_YEARS,
-    buildWithdrawalByMonth, buildGlideWeightsByYear,
     runMonthlyPrecisionMC, runAnnualPreviewMC
   };
 }

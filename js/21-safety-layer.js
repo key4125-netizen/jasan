@@ -402,19 +402,10 @@ function explainFxRiskIfForeign(hasForeignAllocation) {
 // [MC 표시 정책 ⑤] Phase 3-2부터 위쪽 금액·표는 사용자가 고른 계좌 범위를 따르고, 이제 절세계좌가 있으면
 // 기본 화면이 통합이다 - "화면 위쪽은 일반계좌 기준"이라는 옛 문장은 기본 화면부터 사실과 달라지므로
 // 범위별 계산 방식을 설명하는 문장으로 바꿨다(계산 범위 자체는 그대로).
-/* [PHASE C] phaseC: 이번 실행에 실제로 적용된 것({ glide, withdrawal } · js/15 결과). 없거나 둘 다
- * 꺼져 있으면 **기존 문구를 한 글자도 바꾸지 않는다** - Phase C를 쓰지 않는 사용자에게 화면 변화가
- * 생기면 안 되기 때문이다. 적용된 실행에서만 ① "인출 위험을 다루지 않는다"는 문장을 사실에 맞게
- * 바꾸고 ② 결정론 계산에는 반영되지 않는다는 문장을 덧붙인다. */
-function explainAccumulationScopeAlwaysOn(phaseC) {
-  const active = !!(phaseC && (phaseC.glide || phaseC.withdrawal));
-  const base = '이 시뮬레이션은 자산을 모아가는 적립 단계만 다룹니다. 적립 기간 중 수익률이 오고 가는 순서에 따른 결과 차이는 반영되지만, 은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다. 화면 위쪽의 금액과 범위표는 위에서 고른 계좌 범위(일반계좌·절세계좌·통합)를 따릅니다. 일반계좌는 해마다 목표 비중대로 다시 맞춘다고 보고, 절세계좌(ISA·IRP·연금저축)는 매수 후 그대로 보유하는 것으로 보고 따로 계산하며, 통합은 같은 시장 흐름에서 두 계좌를 합친 결과입니다. 부동산과 "공동" 자산은 계산에서 제외됩니다.';
-  const text = active
-    ? base.replace('은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다',
-      '설정한 인출은 계산에 반영되지만, 인출 시점의 시장 상황에 따른 고갈 위험은 따로 계산하지 않습니다')
-      + ' 여기서 정한 인출과 목표비중 변화는 Monte Carlo 시뮬레이션에만 반영되며, 결정론 계산에는 반영되지 않습니다.'
-    : base;
-  return makeIssue('SAFETY_ACCUMULATION_SCOPE', SAFETY_LEVEL.INFO, 'result', '이 시뮬레이션의 범위 안내', text, '');
+function explainAccumulationScopeAlwaysOn() {
+  return makeIssue('SAFETY_ACCUMULATION_SCOPE', SAFETY_LEVEL.INFO, 'result', '이 시뮬레이션의 범위 안내',
+    '이 시뮬레이션은 자산을 모아가는 적립 단계만 다룹니다. 적립 기간 중 수익률이 오고 가는 순서에 따른 결과 차이는 반영되지만, 은퇴 후 인출 단계에서 발생하는 위험은 이 모델에 포함되어 있지 않습니다. 화면 위쪽의 금액과 범위표는 위에서 고른 계좌 범위(일반계좌·절세계좌·통합)를 따릅니다. 일반계좌는 해마다 목표 비중대로 다시 맞춘다고 보고, 절세계좌(ISA·IRP·연금저축)는 매수 후 그대로 보유하는 것으로 보고 따로 계산하며, 통합은 같은 시장 흐름에서 두 계좌를 합친 결과입니다. 부동산과 "공동" 자산은 계산에서 제외됩니다.',
+    '');
 }
 
 if (typeof module !== 'undefined' && module.exports) {

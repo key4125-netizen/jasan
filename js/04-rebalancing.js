@@ -102,9 +102,10 @@ function computeRegionTargetAmounts(region, targetsOverride, ownerFilter) {
 // 보유 종목이 "목표 항목 없음"으로 조용히 제외(uncovered, 부동산과 같은 취급)되는 대신, 명시적으로
 // 매도 대상(목표 0%→전량 매도)으로 계산에 반영된다. 이 펼쳐진 목록은 계산 전용이고, 사용자가 실제로
 // 편집하는 state.rebalance.targets[region](원본, 3개 고정 항목 구조)은 그대로 둔다.
-/* [PHASE C] sourceTargets: 이 지역의 목표 항목 배열을 **직접** 넘길 수 있다(생략 시 기존 동작 그대로).
- * Glide Path의 종료 목표를 시작 목표와 **완전히 같은 경로**로 펼치기 위한 것이다 - owner 부여 ·
- * role 폴백 · 주식 캐치올 펼치기 규칙을 두 번 구현하지 않는다. 계산식은 한 줄도 바뀌지 않는다. */
+/* sourceTargets(선택): 이 지역의 목표 항목 배열을 **직접** 넘길 수 있다. 생략하면
+ * state.rebalance[owner].targets[region]을 읽어 기존과 완전히 같게 동작한다 - 현재 제품
+ * 호출부는 모두 생략한다. 같은 펼치기 규칙(owner 부여 · role 폴백 · 주식 캐치올)을 다른
+ * 목표 배열에도 재사용할 수 있게 열어 둔 입구일 뿐이며, 계산식은 한 줄도 바뀌지 않는다. */
 function expandRebalanceTargetsForComputation(owner, region, sourceTargets) {
   const raw = (Array.isArray(sourceTargets) ? sourceTargets : state.rebalance[owner].targets[region]) || [];
   const expanded = [];
@@ -773,54 +774,7 @@ function cloneRebalanceTargetList(list) {
   }));
 }
 
-/* [PHASE C] 이 모달이 지금 무엇을 편집하는지.
- *   'owner' - 기존 소유자별 목표 비중(기존 동작 그대로, 저장처 state.rebalance[owner])
- *   'glide' - Phase C 종료 목표 포트폴리오(가구 1벌, 저장처 state.projection.glidePlan)
- * 기본값이 'owner'라 기존 경로는 아래 분기를 한 번도 타지 않는다. */
-let rebalanceModalScope = 'owner';
-
-/* 검색 후보에 넣을 보유 자산인지 - 소유자 모드에서는 그 소유자만, 종료 목표(가구)에서는 두 소유자 모두.
- * 판정식 자체는 기존과 같고 대상 범위만 넓힌다(새 규칙을 만들지 않는다). */
-function rtmAssetInScope(a) {
-  return rebalanceModalScope === 'glide'
-    ? REBALANCE_OWNERS.includes(a.owner)
-    : a.owner === rebalanceModalOwner;
-}
-
-/* [PHASE C] 종료 목표 포트폴리오 편집 - 같은 모달 · 같은 렌더 함수를 쓰고 draft 출처와 저장처만 다르다.
- * ⚠ state.rebalance[owner]는 읽지도 쓰지도 않는다 - 지금 목표가 이 편집으로 바뀌면 안 된다.
- * 금액 미리보기(목표금액 · 조정금액)는 "지금 얼마를 사고팔아야 하나"를 말하므로 나중 목표에는 뜻이
- * 맞지 않는다 - snapshot을 만들지 않아 그 영역이 꺼진다. */
-function openGlideTargetModal() {
-  const plan = (typeof getGlidePlan === 'function') ? getGlidePlan() : null;
-  rebalanceModalScope = 'glide';
-  rebalanceModalOwner = null;
-  rebalanceModalSnapshot = null;
-  document.getElementById('rebalanceTargetModalTitle').textContent = '나중 목표 포트폴리오(가구 전체)';
-  rebalanceModalDraft = {
-    /* 저장된 설정이 없으면 이 앱이 이미 쓰는 기본 지역 배분을 그대로 출발점으로 둔다
-     * (makeDefaultRebalanceOwnerState · normalizeGlidePlan이 쓰는 값과 같다 - 새 숫자를 만들지 않는다). */
-    domestic: plan ? { ...plan.domestic } : { ...makeDefaultRebalanceOwnerState().domestic },
-    targets: {
-      '국내': plan ? cloneRebalanceTargetList(plan.targets['국내']) : [],
-      '해외': plan ? cloneRebalanceTargetList(plan.targets['해외']) : []
-    }
-  };
-  renderRtmDomesticSplit();
-  renderRtmTargetGroup('국내');
-  renderRtmTargetGroup('해외');
-  updateRtmPreviews();
-  ['Domestic', 'Foreign'].forEach((suffix) => {
-    document.getElementById('rtmAddForm' + suffix).classList.add('hidden');
-    document.getElementById('rtmAddSearchInput' + suffix).value = '';
-    document.getElementById('rtmAddSearchResults' + suffix).innerHTML = '';
-  });
-  document.getElementById('rebalanceTargetModal').classList.remove('hidden');
-  pushModalHistoryState();
-}
-
 function openRebalanceTargetModal(owner) {
-  rebalanceModalScope = 'owner';
   rebalanceModalOwner = owner;
   document.getElementById('rebalanceTargetModalTitle').textContent = `${owner}님 목표 비중 수정`;
   const { total, byDomestic, perRegion } = getRebalanceTotals(owner);
@@ -848,7 +802,6 @@ function openRebalanceTargetModal(owner) {
 
 function closeRebalanceTargetModal(viaBackButton) {
   document.getElementById('rebalanceTargetModal').classList.add('hidden');
-  rebalanceModalScope = 'owner'; // [PHASE C] 다음에 열 때 기존 소유자 모드가 기본이다
   rebalanceModalDraft = null;
   rebalanceModalSnapshot = null;
   rebalanceModalOwner = null;
@@ -904,7 +857,7 @@ function renderRtmTargetGroup(region) {
     // (disabled) 하단에 "└ 종목명 %, 종목명 %" 소형 텍스트로 구성 내역을 보여준다.
     const isStockCategory = t.type === 'category' && t.category === '주식';
     const hasSelectedStocks = isStockCategory && Array.isArray(t.selectedStocks) && t.selectedStocks.length > 0;
-    const searchBtn = (isStockCategory && rebalanceModalScope !== 'glide')
+    const searchBtn = isStockCategory
       ? `<button type="button" data-rtm-stock-search data-region="${region}" data-idx="${idx}" title="보유 주식 종목 선택"
           class="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-brand-600 hover:border-brand-400 dark:hover:border-brand-500 shrink-0">
           <i data-lucide="search" class="w-3.5 h-3.5"></i>
@@ -1007,7 +960,7 @@ function searchRtmAddCandidates(region, query) {
     if (masterResults.length + heldTickerResults.length >= 10) return;
     const ticker = String(a.ticker ?? '').trim();
     if (!ticker) return; // 티커 없는 자산은 아래 이름 검색(namedHolding)이 담당
-    if (!rtmAssetInScope(a) || a.isDomestic !== region) return;
+    if (a.owner !== rebalanceModalOwner || a.isDomestic !== region) return;
     if (!isRebalanceEligibleAccount(a)) return;
     const yahoo = sanitizeTicker(ticker).yahooTicker;
     if (existingTickers.has(yahoo) || seenTickers.has(yahoo)) return;
@@ -1034,7 +987,7 @@ function searchRtmAddCandidates(region, query) {
   state.assets.forEach((a) => {
     if (namedResults.length >= 10) return;
     if (String(a.ticker ?? '').trim()) return; // 티커 있는 자산은 위 종목 마스터 검색이 이미 담당
-    if (!rtmAssetInScope(a) || a.isDomestic !== region) return;
+    if (a.owner !== rebalanceModalOwner || a.isDomestic !== region) return;
     if (!isRebalanceEligibleAccount(a)) return;
     if (!a.name || !a.name.toLowerCase().includes(qLower)) return;
     if (existingNames.has(a.name) || seenNames.has(a.name)) return;
@@ -1063,12 +1016,10 @@ function diagnoseRtmAddNoResult(region, query) {
   const found = (state.assets || []).filter((a) => a && hit(a));
   if (found.length === 0) return '보유 자산 중에 이 이름 · 코드와 맞는 것이 없습니다. 종목명 일부나 표준코드(ISIN)로 다시 찾아보세요.';
 
-  const mine = found.filter((a) => rtmAssetInScope(a));
+  const mine = found.filter((a) => a.owner === rebalanceModalOwner);
   if (mine.length === 0) {
     const owners = [...new Set(found.map((a) => a.owner).filter(Boolean))].join(' · ');
-    return rebalanceModalScope === 'glide'
-      ? `찾으시는 자산은 ${owners} 명의입니다. 이 화면은 가구 전체 목표만 다룹니다.`
-      : `찾으시는 자산은 ${owners} 명의입니다. 이 화면은 ${rebalanceModalOwner} 목표만 다룹니다.`;
+    return `찾으시는 자산은 ${owners} 명의입니다. 이 화면은 ${rebalanceModalOwner} 목표만 다룹니다.`;
   }
   const here = mine.filter((a) => a.isDomestic === region);
   if (here.length === 0) {
@@ -1525,22 +1476,6 @@ function updateRtmPreviews() {
   const frInput = document.getElementById('rtm_domesticFR');
   if (frInput) frInput.value = fmtNum(100 - num(rebalanceModalDraft.domestic['국내']), 1);
 
-  /* [PHASE C] 나중 목표에는 "지금 사고팔 금액"이라는 개념이 없다 - snapshot이 없으면 금액 미리보기를
-   * 만들지 않고 합계(%) 배지만 갱신한다. 소유자 모드는 항상 snapshot이 있어 기존 그대로 동작한다. */
-  if (!rebalanceModalSnapshot) {
-    ['국내', '해외'].forEach((region) => {
-      const el = document.querySelector(`[data-rtm-domestic-preview="${region}"]`);
-      if (el) el.innerHTML = '';
-      document.querySelectorAll(`[data-rtm-preview][data-region="${region}"]`).forEach((p) => { p.innerHTML = ''; });
-      const sum = (rebalanceModalDraft.targets[region] || []).reduce((acc, t) => acc + num(t.pct), 0);
-      const sumEl = document.getElementById(region === '국내' ? 'rtmSumDomestic' : 'rtmSumForeign');
-      if (!sumEl) return;
-      const ok = (rebalanceModalDraft.targets[region] || []).length === 0 || Math.abs(sum - 100) < 0.05;
-      sumEl.textContent = `합계 ${fmtNum(sum, 1)}%`;
-      sumEl.className = ok ? 'text-sm font-semibold text-emerald-600 dark:text-emerald-400' : 'text-sm font-semibold text-amber-600 dark:text-amber-400';
-    });
-    return;
-  }
   const { total, byDomestic, perRegion } = rebalanceModalSnapshot;
   // 국내/해외 split 아래 목표금액/조정금액 미리보기 - 모달 안의 세부 목표 항목 미리보기와 같은 형식
   // (한 줄 flex row, 목표금액 굵게)을 그대로 맞춘다. 모달은 폭이 넓어(max-w-lg) 기본 화면의 좁은
@@ -1607,22 +1542,6 @@ function syncTickerRolesFromRebalanceTargets(owner) {
 
 // [확인] - 초안을 state.rebalance에 커밋하고 저장 + 메인 화면/연산 로직에 반영한다.
 document.getElementById('confirmRebalanceTargetModalBtn').addEventListener('click', () => {
-  /* [PHASE C] 종료 목표 편집이면 state.projection.glidePlan에만 저장한다 -
-   * state.rebalance[owner](지금 목표)는 읽지도 쓰지도 않는다. 포지션 레지스트리도 건드리지 않는다
-   * (나중에 가져갈 목표일 뿐 지금 보유의 성격을 바꾸는 입력이 아니다). */
-  if (rebalanceModalScope === 'glide') {
-    if (typeof savePhaseCGlideTargetFromModal === 'function') {
-      savePhaseCGlideTargetFromModal({
-        domestic: { ...rebalanceModalDraft.domestic },
-        targets: {
-          '국내': cloneRebalanceTargetList(rebalanceModalDraft.targets['국내']),
-          '해외': cloneRebalanceTargetList(rebalanceModalDraft.targets['해외'])
-        }
-      });
-    }
-    closeRebalanceTargetModal();
-    return;
-  }
   const owner = rebalanceModalOwner;
   state.rebalance[owner].domestic = { ...rebalanceModalDraft.domestic };
   state.rebalance[owner].targets = {

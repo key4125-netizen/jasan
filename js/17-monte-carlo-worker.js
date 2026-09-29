@@ -59,13 +59,6 @@ self.onmessage = function (e) {
       return;
     }
 
-    /* [PHASE C] 빠른 미리보기(연 단위 근사 엔진)에는 Phase C를 구현하지 않는다 - 두 엔진에
-     * 이중 구현하지 않기 위해서다. 설정이 있는데 이 경로로 들어오면 **조용히 무시하지 않고**
-     * 기존 INPUT_ERROR로 거부한다(새 오류 코드 체계를 만들지 않는다). */
-    if (mode === 'preview' && (input.glide || input.withdrawal)) {
-      self.postMessage({ type: 'FAILED', requestId, error: { code: 'INPUT_ERROR', message: '빠른 미리보기 방식으로는 인출·목표비중 변화 설정을 계산할 수 없습니다. 정밀 계산으로 실행해 주세요.' } });
-      return;
-    }
     const runner = mode === 'preview' ? runAnnualPreviewMC : runMonthlyPrecisionMC;
     const engineConfig = {
       pv0: input.initialPrincipal, instruments: input.instruments, correlationMatrix: input.correlationMatrix,
@@ -80,8 +73,6 @@ self.onmessage = function (e) {
       // 자산·납입이 전혀 없는 사용자, 또는 includeTaxAdvantaged 미지정 호출부) js/15의 hasTax가
       // false가 되어 기존 General-only 경로와 완전히 동일하다.
       taxScope: input.taxScope,
-      // [PHASE C] 어댑터가 만든 값을 그대로 넘기기만 한다 - 생략되면 엔진의 Glide · 인출 분기가 꺼진다.
-      glide: input.glide, withdrawal: input.withdrawal,
       years: input.years, iterations: input.simulations || input.iterations,
       seed: input.seed, goalAmounts: input.goalAmounts
     };
