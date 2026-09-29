@@ -32,6 +32,84 @@
 
 ---
 
+## 🛑 v276 RELEASE HOLD — e2e/114 F-7 Release Gate FAIL (2026-09-29 · **가장 최신**)
+
+> **Production: v275** · **Target: v276** · **Release: HOLD**
+> **release commit 없음 · tag 없음 · push 없음 · deploy 없음 · production smoke 없음**
+> v276 version marker(`index.html` · `sw.js` 각 1줄)는 **working tree에만** 있고 커밋하지 않았다.
+> HEAD `5a24f8b` 기준 origin/main 대비 ahead 4(전부 문서 · Phase C 코드 커밋).
+
+### 무엇이 막고 있나
+
+v276 Release 직전 Full E2E(단독 1회 · 15.8분 · 설정 무변경)에서 **1319 PASS / 1 FAIL**.
+
+```
+e2e/114-final-ux-fixes.spec.js:201  F-7 (375) 아이콘으로 시작하는 안내문은 둘째 줄이 본문 시작점에 맞는다
+Error: page.evaluate: Resulting promise was garbage collected.
+```
+
+같은 테스트가 **v271 작업 때도 같은 문구로 실패**해 조사 후 "코드 수정 없이 CLOSED"로 종결된 적이
+있다(아래 v271 절). **그 CLOSED는 기술적 이슈 종결이며 Release Gate 면제가 아니다.**
+
+### 2026-09-29 조사에서 **확인된 사실** (재실행 0회 · 기존 실패 trace와 소스만 사용)
+
+| 항목 | 확인 |
+|---|---|
+| 앱 계산 · side effect 실행 | **확인** — `computeAdvancedRiskMetrics()` 결과가 state에 반영됨 |
+| `page.evaluate` callback 완료 증거 | **확인** — 실패 직후 화면 스냅샷에 「📊 위험 세부내용」 팝업이 **열려 있고 지표까지 렌더링**돼 있다. 콜백의 **마지막 문장** `openRiskDetailModal()`까지 실행됐다는 뜻이다 |
+| browser / page crash | **없음** |
+| pageerror | **없음** |
+| navigation · context 파괴 | **없음** |
+| console error 215건 | 전부 `net::ERR_FAILED` 계열(DNS 격리로 **의도된** 시세 · 환율 조회 실패) · **JS 예외 0건** |
+| 실패 구간 소요 | **181.5ms** — 멈춤도 timeout도 아니다 |
+| `Promise was collected` 응답 | **확인** |
+| Playwright rewrite 경로 | **확인** — `playwright-core` `crExecutionContext.rewriteError()`가 Chromium의 `"Promise was collected"`를 받아 `"Resulting promise was garbage collected."`로 바꾼다. **Playwright가 만든 판정이 아니다** |
+| CDP 호출 형태 | **확인** — `Runtime.callFunctionOn`에 `awaitPromise: true`로 보낸다 |
+| 실패 창 안의 동시 작업 | **확인** — 181ms 안에 네트워크 실패 콘솔 **30건** |
+
+### 원인 판단 (증거보다 강하게 쓰지 않는다)
+
+- **원인 범위를 `Playwright ↔ CDP ↔ Chromium/V8 Promise lifecycle` 계층으로 특정했다.**
+- **현재 증거상 제품 코드의 해당 계산 실패는 직접 원인으로 확인되지 않는다**
+  (부수효과가 전부 완료됐고 미완료 await도 없다).
+- **현재 증거상 테스트 코드도 직접 원인으로 확인되지 않는다**(콜백이 settle했고 표준 API 사용이다).
+
+### **미확정**으로 남긴 것
+
+- 해당 회차에서 **실제 GC가 발생한 정확한 순간** — 관측하지 못했다
+- **GC를 발생시킨 직접 trigger**
+- 네트워크 실패 30건이 GC pressure를 **직접** 유발했는지
+- **병렬 실행이 필수 재현 조건인지**
+- **Playwright 1.62.1 자체의 특정 defect 여부는 확정하지 않는다**
+
+### Release와의 관계 — 반드시 구분한다
+
+```
+기술적 원인 판단  ≠  Release Gate PASS
+기존 CLOSED       ≠  새로운 FAIL의 자동 PASS
+제품 기능 정상    ≠  Release Gate PASS
+```
+
+Release Gate 결과는 **1319 PASS / 1 FAIL**이므로 **RELEASE HOLD**다.
+「FAIL이면 배포하지 않는다」 원칙은 **변경하지 않았다.**
+`Promise was collected`를 PASS로 처리하는 예외 정책은 **만들지 않았다** — 별도 PM 결정사항이다.
+
+### 다음 세션이 하지 말아야 할 것
+
+- `e2e/114` 재실행으로 PASS를 찾아 넘어가기 — **금지**(과거 겹쳐 돌린 실패 15건 중 7건이 실제 회귀였다)
+- `page.evaluate` 구조 변경 · assertion 변경/약화/삭제 · `retries` 추가 · timeout 확대 ·
+  test skip · Playwright 설정 변경 · 오류를 숨기는 예외처리 — **전부 금지**(v271 절의 금지사항과 동일)
+- 이 FAIL을 이유로 Phase C 코드를 고치기 — **금지**(인과 확인되지 않음)
+
+### 참고 — 실패 trace artifact
+
+`test-results/114-final-ux-fixes-F-7-…-chromium/`(`error-context.md` · `trace.zip`).
+`.gitignore` 대상이라 추적되지 않는다. **삭제하지 않았다.**
+스냅샷에 보이는 종목명은 `js/01-core-state.js`의 **앱 내장 데모 자산**(`sampleAssets()`)이며
+**실제 사용자 데이터가 아니다**(빈 브라우저 부팅 직후 상태).
+
+---
+
 ## 🧭 Phase C — Glide Path + Withdrawal 구현 완료 (2026-09-29 · **가장 최신** · **CLOSED · 출시 아님**)
 
 > **상태**: **Phase C CLOSED** · **PM Decision Required = 0**
