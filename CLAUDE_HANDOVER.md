@@ -32,6 +32,129 @@
 
 ---
 
+## 🧭 Phase C — Glide Path + Withdrawal 구현 완료 (2026-09-29 · **가장 최신** · **CLOSED · 출시 아님**)
+
+> **상태**: **Phase C CLOSED** · **PM Decision Required = 0**
+> **commit**: **`a3c39de`** `feat: Phase C glide path and withdrawal` (직전 `d6a95ce`)
+> **branch** `main` · origin/main 대비 **ahead 1**(push 안 함) · 최신 tag **`v275`**
+> **Production**: **v275 유지** · `index.html` = `v275` · `sw.js` = `smart-asset-manager-v275`
+> **Release**: **HOLD** · Deploy · Tag · Push · production smoke **전부 미수행**
+
+### 무엇을 만들었나
+
+**Phase C = Glide Path(기간별 목표비중) + Withdrawal(월별 인출)** 두 가지다.
+**기존 MC 엔진(js/15)을 조건부로 확장**했고 **Phase C 전용 두 번째 엔진을 만들지 않았다.**
+
+- **Phase C 설정이 없으면 기존 MC 경로가 그대로 실행된다**(결과 bit-identical · 아래 검증 참조).
+  설정 필드 자체가 없으면 비활성이며, `{}`나 `0`으로 "꺼진 설정"을 저장하지 않는다.
+- **Glide Path**: 지금 목표비중(시작)과 두 번째 목표 포트폴리오(종료) 사이를 **시간에 따라 선형으로**
+  옮긴다. `startYearNo` · `endYearNo`는 **상대 시뮬레이션 연차(1-based)**다 — 달력 연도를 쓰지 않는다
+  (MC 엔진은 달력을 모르고 `m=1`이 실행 다음 달이라, 달력으로 저장하면 같은 설정이 실행일마다 다른 결과를 낸다).
+- **Withdrawal**: 월별 계산에 반영된다. 그 시점 종목별 잔고 비중대로 비례 차감하고, 요청액이 잔고
+  이상이면 잔고까지만 빼고 0에서 멈춘다(음수 잔고 없음). **절세계좌(taxBalances)는 건드리지 않는다.**
+- **ownerFilter가 걸린 실행에서도 household 단위 Glide 구조를 그대로 쓴다** — owner별 Glide 설정을
+  새로 만들지 않았다. 시작 · 종료 벡터는 **완전히 같은 계산 경로**(owner 부여 · region 순회 ·
+  같은 `splitBases` · 가중 병합 · 정규화)를 탄다.
+  ⚠ owner 없이 종료 목표를 계산하면 `rateIdentity`가 달라져 **같은 종목이 다른 instrument key로 갈린다** —
+  이 점이 이 구현에서 가장 주의할 지점이다.
+- **빠른 미리보기(`runAnnualPreviewMC`)에서는 Phase C를 계산하지 않는다** — 설정이 있는데 그 경로로
+  들어오면 조용히 무시하지 않고 기존 `INPUT_ERROR`로 명시적으로 거부한다(새 오류 코드 체계를 만들지 않았다).
+- **결정론 계산에는 Phase C를 반영하지 않는다.** 적용된 실행에서만 `js/21` 안내 문구가 바뀐다
+  (비활성 사용자에게는 기존 문구가 한 글자도 바뀌지 않는다).
+- **Phase C 전용 신규 UI는 이번 범위에 포함하지 않았다** — `glidePlan` · `withdrawalPlan`은 저장값 ·
+  백업 복원 · 클라우드 동기화로만 설정된다. 입력 화면이 필요하면 **별도 요구사항**이다.
+- **기존 정책 무변경**: Return Key · Risk Share 70:30 · Account Type Dictionary · DR-B3 · CMA ·
+  Bond · FX Hedge · Risk Score · Macro · Tax. AI 추가 없음 · migration 없음.
+
+### state 구조 (`state.projection` 하위 · migration 없음)
+
+```
+state.projection.glidePlan      = { startYearNo, endYearNo, domestic, targets }
+state.projection.withdrawalPlan = { startYearNo, monthly }
+```
+
+⚠ **화이트리스트 3곳 등록이 필수다** — 하나라도 빠지면 백업 복원 · 클라우드 동기화 때마다
+설정이 **조용히 사라진다**: `js/01` 기본값 · `js/01 loadState` · `js/12 applySyncBlob`.
+구버전 기기 호환은 `instrumentReturnKeys`의 `hasOwn` 패턴을 그대로 따른다.
+
+### 월 루프 최종 순서 (js/15)
+
+```
+① 납입 → ①-B 추가투자 → ①-T 절세납입 → ①-W 인출
+      → ③ shock 생성 → ④ 성장 → ④.5 보수 → ⑤ 연 1회 리밸런싱 → ⑥ milestone
+```
+
+연차 판정은 기존 식 `Math.floor((m - 1) / 12)` 하나만 쓴다(`m=12`는 1년차).
+연차별 weight는 **iteration 루프 밖에서 `Float64Array(years × n)`로 한 번** 펼치고 루프는 오프셋으로 읽기만 한다
+— 월마다 새 배열을 만들면 240개월 × iterations만큼 할당이 생겨 GC가 계산을 지배한다(Phase 26 실측).
+
+### 커밋 범위 (a3c39de · 11개 파일 · +951 / −29)
+
+| 파일 | 역할 |
+| --- | --- |
+| `js/01-core-state.js` | `normalizeGlidePlan` · `normalizeWithdrawalPlan` · loadState 화이트리스트 |
+| `js/04-rebalancing.js` | `expandRebalanceTargetsForComputation`에 targets 출처 선택 인자 |
+| `js/05-future-projection.js` | 목표비중 계산에 `planOverride` · `splitBases` 선택 인자 · Phase C 접근자 |
+| `js/12-import-export-sync.js` | `applySyncBlob` 화이트리스트 |
+| `js/15-monte-carlo-engine.js` | `buildWithdrawalByMonth` · `buildGlideWeightsByYear` · 월 루프 분기 |
+| `js/16-monte-carlo-adapter.js` | 종료 weight 생성 · universe 합집합 · 범위/빈목표 BLOCK |
+| `js/17-monte-carlo-worker.js` | 빠른 미리보기 명시적 거부 |
+| `js/18-monte-carlo-controller.js` | `input.glide` · `input.withdrawal` 배선 |
+| `js/19-monte-carlo-ui.js` | 오류 문구 매핑 · 안내문 인자 |
+| `js/21-safety-layer.js` | 안내문 조건부 |
+| `test/phase-c-glide-withdrawal.test.js` | 회귀 30건(신규) |
+
+커밋 전 확인: Phase C 외 변경 **0건** · `index.html` · `sw.js` · `baseline/` · `data/` **무변경** ·
+`git diff --check` clean · `.claude/launch.json`은 사용자 로컬 파일로 **커밋하지 않음**.
+
+### 검증 결과
+
+| 게이트 | 결과 |
+| --- | --- |
+| Phase C Unit | **30 / 30 PASS** |
+| 전체 Unit | **1067 / 1067 PASS** |
+| Phase C 비활성 L2 회귀 | **PASS**(4 milestone × mean·p10·p25·p50·p75·p90 전부 strictEqual) |
+| 기존 MC Regression | **PASS** |
+| Risk Regression | **PASS** |
+| Order Independence · Determinism | **PASS** |
+| ESLint | **PASS** |
+| Data Guard | **PASS** |
+| **최종 Full E2E** | **1320 / 1320 PASS** |
+
+### Release Guard — HOLD 상태였다(코드 오류 아님)
+
+Phase C 코드가 들어오면서 **APP_SHELL이 바뀌었는데 `CACHE_NAME` · version marker가 v275 그대로**여서
+Release Guard가 **HOLD** 상태다. 이는 **코드 결함이 아니라 "배포하려면 버전을 올려야 한다"는 신호**다.
+→ **다음 release preparation 단계에서 version bump와 그에 따른 release 검증이 필요하다.**
+이번 단계에서는 bump · tag · deploy를 하지 않았고 Release Guard를 우회하지도 않았다.
+
+### 별도 OPEN 이슈 — 동기화 Push E2E 간헐 실패
+
+> **상태: OPEN · 원인 미확정 · Phase C와 분리된 별도 과제**
+
+- **Phase C 회귀로 확정하지 않는다.** 동시에 **기존 flaky라고도 확정하지 않는다.**
+- 증상: `syncDirectionPushBtn` 클릭 후 `syncSettingsModal` 미닫힘(timeout) · push 미도달 → `up_to_date`
+- 관측: Full E2E 6회 중 2회 실패(`e2e/123` D-3-8 · `e2e/78` T-03) · 나머지 4회는 PASS
+  (clean HEAD 기준선 단독 실행 · 최종 Phase C 코드 실행 모두 PASS)
+- 단독 반복에서는 **재현되지 않았다**(`e2e/123` D-3-8 3/3 · `e2e/78` T-03 3/3)
+- MC 엔진과 동기화 테스트 사이에 **직접 실행 경로가 없다**
+- **테스트 완화 0건** — skip · timeout 확대 · retry · assertion 완화 · flaky annotation 전부 하지 않았다
+- 향후 조사 범위(이번 작업 범위 밖): sync push E2E 경쟁 조건 · `syncSettingsModal` 상태 전이 ·
+  push 버튼 이벤트 처리 · 동기화 요청 완료/응답 타이밍 · 서버/클라이언트 상태 전환 · E2E 병렬성·부하 영향
+
+### 다음 세션에게
+
+- **Phase C는 CLOSED다.** 기능을 더 붙이거나 미비점을 임의로 보완하지 않는다.
+- **아직 push하지 않았다**(origin/main 대비 ahead 1). push · tag · deploy는 PM 지시 사항이다.
+- 다음 단계는 **release preparation**(version bump + 전체 게이트)이며 PM 승인 사항이다.
+- 동기화 Push E2E 간헐 실패는 **OPEN**이다 — Phase C 코드를 고쳐서 해결하려 하지 않는다.
+- ⚠ `js/15` · `js/16`은 Worker에서도 실려 돈다 — **최상위에서 다른 파일의 값을 평가하면 Worker가 죽고
+  Unit은 잡지 못한다**. Phase C 코드도 전부 함수 안에서 `typeof` 가드와 함께 읽도록 했다.
+- ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 약 16분).
+- ⚠ `.claude/launch.json`은 사용자 로컬 변경이며 **절대 커밋하지 않는다**.
+
+---
+
 ## 🚀 v275 RELEASE — Phase A · Phase B 전달 · 계좌유형 추천 정합성 (2026-09-28 · **가장 최신**)
 
 > **상태**: 출시. **Phase A CLOSED · Phase B CLOSED · DR-B1 · DR-B2 · DR-B3 전부 resolved.**
@@ -39,7 +162,7 @@
 > **release commit**: 이 커밋 · **branch** `main` · **tag** `v275`
 > **SoT**: §67-4 · **§67-5**(신설) · **§69**(신설) · TAX-RISK-04 범위 한정
 > **PM 결정 원장**: `DR-B1` · `DR-B2`(+ DR-B3 참조 보강) · `DR-B3` · `PHASE-B-CLOSEOUT`
-> **Phase C · Phase T — NOT STARTED**(아래 "Phase C 착수 전 조사" 참조)
+> **Phase C · Phase T — NOT STARTED**(당시 기록 · **Phase C는 2026-09-29 CLOSED** — 맨 위 절 참조)
 
 ### v275가 담은 것 (v274 이후 전부)
 
@@ -160,6 +283,8 @@ Global Readability Policy) `text-xs`는 **저장소 전체에서 그 한 곳뿐*
 
 - **다음은 v275 안정화 → Phase C 상세 READ-ONLY 설계 검토 → PM 승인 → Phase C 구현이다.**
   **Phase C · Phase T를 PM 승인 없이 착수하지 않는다.**
+  **[당시 기록 · 이후 갱신]** Phase C는 설계 검토와 PM 승인을 거쳐 **2026-09-29 구현 완료 · CLOSED**됐다(맨 위 절).
+  **Phase T는 여전히 NOT STARTED**다.
 - ⚠ `js/15` · `js/16`은 **Worker에서도 실려 돈다**(js/17 `importScripts`는 js/05를 싣지 않는다).
   이 두 파일의 **최상위에서 다른 파일의 값을 평가하면 Worker가 죽고 Unit은 잡지 못한다**.
 - ⚠ 전체 E2E를 **겹쳐 돌리지 않는다**(단독 16분대). Python으로 테스트 파일을 고치지 않는다.
