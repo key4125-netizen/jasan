@@ -37,7 +37,7 @@
 > **Production: v275** · **Target: v276** · **Release: HOLD**
 > **release commit 없음 · tag 없음 · push 없음 · deploy 없음 · production smoke 없음**
 > v276 version marker(`index.html` · `sw.js` 각 1줄)는 **working tree에만** 있고 커밋하지 않았다.
-> HEAD `5a24f8b` 기준 origin/main 대비 ahead 4(전부 문서 · Phase C 코드 커밋).
+> HEAD `4d4f1ce` 기준 origin/main 대비 ahead 6(전부 문서 · Phase C 코드 커밋).
 
 ### 무엇이 막고 있나
 
@@ -82,6 +82,73 @@ Error: page.evaluate: Resulting promise was garbage collected.
 - **병렬 실행이 필수 재현 조건인지**
 - **Playwright 1.62.1 자체의 특정 defect 여부는 확정하지 않는다**
 
+### 왜 하필 F-7인가 (2026-09-29 2차 조사에서 새로 확보한 증거)
+
+1차 조사는 "무엇이 일어났는가"까지였고, 2차 조사에서 **"왜 이 테스트인가"** 를 설명하는 증거를 얻었다.
+
+- **F-7의 evaluate는 네트워크를 await한다.** `computeAdvancedRiskMetrics()`(js/09:2166)는
+  `await Promise.all(... getCachedDailyClosesWithStatus ...)` · `await getRiskUsdKrwRates()`로
+  시세 · 지수 · 환율을 조회한다. DNS 격리 환경에서는 이 요청이 전부 실패하고
+  `Promise.any` 팬아웃이 프록시마다 재시도한다.
+- **trace 전체 306 요청 중 231건 실패**(`api.allorigins.win` 67 · `asset-manager-proxy` 47 ·
+  `r.jina.ai` 34 · `corsproxy.io` 33 · `api.codetabs.com` 33 · `stooq.com` 13 · 기타 4).
+  **의도된 차단**이며 제품 결함이 아니다. 실패는 예외로 새지 않고 「데이터 부족」 표시로 끝난다.
+- **F-7은 이 spec에서 가장 오래 pending하는 evaluate다** — 위 네트워크 대기에 더해
+  `renderRiskDiagnosisSummary()` + `openRiskDetailModal()`로 **위험 상세 팝업 전체를 렌더**한다.
+- **대조**: 같은 파일 `spec:35`(F-1)도 **같은 `computeAdvancedRiskMetrics()`를 async evaluate 안에서
+  await**하지만 값만 반환하고 끝나며, **같은 실행에서 통과했다.**
+
+**환경 동일성**(1차 실패 때와 비교) — Playwright **1.62.1**(`playwright` · `playwright-core` ·
+`@playwright/test` 전부 package-lock 고정) · Chromium **151.0.7922.34** · `playwright.config.js` 무변경 ·
+`e2e/114`는 v268(`c977885`) 이후 무변경 · 제품 코드의 해당 경로도 Phase C가 건드리지 않았다.
+
+**공개자료 조사**: Playwright 1.62.1의 확정된 동일 defect, 또는 상위 버전이 이 문제를 해결했다는
+근거를 **찾지 못했다**. 따라서 버전 변경의 근거가 없다.
+
+### F-7 최종 분류 (2026-09-29 · PM 확정)
+
+```
+F-7
+
+Status:
+  RELEASE HOLD
+
+Technical classification:
+  STRONGLY SUPPORTED   (CONFIRMED 아님)
+
+Root-cause layer:
+  page.evaluate(async ...)
+      -> Playwright Runtime.callFunctionOn (awaitPromise: true)
+      -> Chromium/V8 Promise lifecycle
+      -> "Promise was collected"
+      -> Playwright rewriteError -> "Resulting promise was garbage collected"
+
+Confirmed:
+  - Runtime.callFunctionOn / awaitPromise:true
+  - Chromium 측 "Promise was collected" 응답
+  - Playwright rewriteError 변환 경로
+  - callback이 마지막 렌더 단계까지 도달
+  - crash / pageerror / navigation 없이 발생
+  - F-7이 상대적으로 무거운 async / network / render lifecycle을 가짐
+
+Strongly supported:
+  - Playwright / CDP / Chromium 경계에서 결과 Promise lifecycle 유실
+
+Unconfirmed:
+  - 실제 GC 발생 순간
+  - GC의 직접 trigger
+  - network failure -> GC pressure 인과관계
+  - 병렬 실행이 필수 조건인지
+  - Playwright 1.62.1 자체 defect 여부
+
+Product code fix:        NONE
+Test code fix:           NONE
+Playwright version change: NONE
+```
+
+**표현 주의**: 오류 문자열을 Playwright가 *생성*했다고 쓰지 않는다 —
+**Chromium 측 오류 응답을 Playwright가 그 메시지로 변환한다**가 정확한 서술이다.
+
 ### Release와의 관계 — 반드시 구분한다
 
 ```
@@ -100,6 +167,11 @@ Release Gate 결과는 **1319 PASS / 1 FAIL**이므로 **RELEASE HOLD**다.
 - `page.evaluate` 구조 변경 · assertion 변경/약화/삭제 · `retries` 추가 · timeout 확대 ·
   test skip · Playwright 설정 변경 · 오류를 숨기는 예외처리 — **전부 금지**(v271 절의 금지사항과 동일)
 - 이 FAIL을 이유로 Phase C 코드를 고치기 — **금지**(인과 확인되지 않음)
+- **실제 GC 순간을 포착하려고 전체 E2E를 반복 실행하기 — 금지(2026-09-29 PM 결정).**
+  현재 증거로 원인 계층을 STRONGLY SUPPORTED까지 좁힌 것으로 충분하다고 확정했다.
+  정확한 GC trigger가 관측되지 않았다는 사실은 그대로 남기고, 억지로 확정하지 않는다.
+  반대로 원인이 확정되지 않았다는 이유로 제품 코드를 임의로 고치지도 않는다.
+- Playwright `upgrade` · `downgrade` · lock 변경 · package 변경 — **금지**(근거 미확보)
 
 ### 참고 — 실패 trace artifact
 
