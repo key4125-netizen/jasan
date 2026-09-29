@@ -6399,9 +6399,9 @@ DR-B1(716행) · DR-B3(800행)이 있으나 PMD-1 · PMD-2는 **양쪽 모두 �
 
 ---
 
-## §71. Phase C — 인출 · 기간별 목표비중(Glide Path) 정책 등재 (PM 결정 2026-09-29 등재)
+## §71. Phase C — 인출 · 기간별 목표비중(Glide Path) 정책 등재 (PM 결정 2026-09-28 · 2026-09-29 원문 복원)
 
-### 71-0. 왜 이 절이 필요한가 (기록)
+### 71-0. 이 절의 성격 · 범위 · 상태
 
 Phase C는 **구현 · 검증이 완료(commit `a3c39de` 엔진 · `1854256` UI)** 됐으나,
 확정 정책이 이 문서에도 `PM_DECISION_LOG.md`에도 없었다
@@ -6411,55 +6411,205 @@ Phase C는 **구현 · 검증이 완료(commit `a3c39de` 엔진 · `1854256` UI)
 **이 절은 이미 PM이 확정한 내용의 기록이다. 새 정책을 만들지 않으며,
 현재 구현 방식에 맞춰 정책을 고쳐 적지 않는다.**
 
-### 71-1. PMC — 구조 결정
+**복원 근거(PM 원문)** — 아래 세 건의 PM 지시가 이 절의 1차 근거다.
+
+| 약칭 | PM 지시 | 확정한 것 |
+|---|---|---|
+| **[설계]** | 「Phase C 구현 전 상세 설계 및 계약서 작성」(2026-09-28 · HEAD `d6a95ce`) | PMC-1 · PMC-2 · PMC-3 · W-1 · B-1 · **IC-01~IC-18 항목명** |
+| **[정정]** | 「Phase C 최종 구현 계약서 정정」(2026-09-28 · HEAD `d6a95ce`) | **PD-1~PD-8** · Glide 계산 · 시간축 · 입력 구조 · key union · validation · lifecycle · 성능 |
+| **[구현]** | 「Phase C 실제 구현 작업지시서」(2026-09-29) | **최종 확정 데이터 구조 · 필드명 · normalize · validation 문구 · 보간식 · 인출식** |
+
+**범위**: Phase C는 「은퇴 후 월 인출」과 「Glide Path(기간별 목표비중)」 두 가지다.
+
+### 71-1. PMC — 구조 확정 ([설계] §1 원문)
 
 | ID | 확정 내용 |
 |---|---|
-| **PMC-1** | **기존 MC 엔진을 조건부로 확장한다**(ⓐ안). **별도 MC 엔진을 신설하지 않는다** |
-| **PMC-2** | 회귀 기준은 **L2** — 4개 milestone × 6통계(mean · p10 · p25 · p50 · p75 · p90) |
-| **PMC-3** | 저장 위치는 **`state.projection`** 하위다(`glidePlan` · `withdrawalPlan`) |
+| **PMC-1** | 기존 MC 엔진 `js/15`의 월 루프를 **조건부 확장**한다. **별도 MC 엔진은 만들지 않는다.** Phase C 설정이 없으면 ① 기존 RNG sequence/consumption 동일 ② 기존 arithmetic operation order/count 동일 ③ 기존 `instruments[].weight` 의미 동일 ④ **기존 MC 결과 bit-identical** |
+| **PMC-2** | Phase C 비활성 경로의 회귀 기준은 **L2** — 4 milestone × (mean · p10 · p25 · p50 · p75 · p90) **전부 `strictEqual`** |
+| **PMC-3** | Phase C state는 **`state.projection` 하위**에 둔다. 기존 사용자 **migration은 하지 않는다.** **Phase C 필드가 없으면 비활성**이다. **빈 객체/0 등의 기본 "꺼짐 상태"를 저장하지 않는다.** whitelist 3곳 등록 필요: ① `js/01` 기본값 ② `js/01 loadState` ③ `js/12 applySyncBlob` |
 
-### 71-2. 시간축과 입력 규칙
+### 71-2. PD-1 ~ PD-8 — 최종 정정 확정사항 ([정정] §1~§8 원문)
+
+| ID | 제목 | 확정 내용 |
+|---|---|---|
+| **PD-1** | Glide 시간축 | **Glide는 달력연도를 사용하지 않는다. MC의 상대 시뮬레이션 연차를 사용한다.** 기존 MC의 `m=1~12 → 1년차 · m=13~24 → 2년차 …`를 그대로 쓴다. 이유: MC 엔진은 달력을 알지 못함 · `m=1`은 실행 다음 달 · 달력연도 입력은 실행일에 따라 상대 위치가 달라짐 · 동일한 설정이 실행일에 따라 다른 MC 결과를 만들 수 있음 · 장기 MC의 재현성과 설명 가능성. 따라서 `startYear`/`endYear`(달력연도)는 **구현하지 않는다** |
+| **PD-2** | Glide 기간 | **`start < end`여야 한다.** `start === end`와 `start > end`는 **모두 오류**다. **자동 교환하지 않는다.** 자동 무효화하여 조용히 기존 결과로 돌아가지 않는다. **사용자 입력 오류로 처리한다** |
+| **PD-3** | MC 기간 밖 Glide | Glide 시작 또는 종료 시점이 MC simulation 기간을 벗어나면 **조용히 무시하지 않는다.** 20년 MC라면 20년 범위 안에서 유효해야 한다. **기간 밖 설정은 입력 오류로 처리한다.** 기존 `mapYearlyExtraContributionsToMonths`의 `skipped` 배열이 사용자에게 전달되지 않아 생기는 silent skip 문제를 **Phase C에서 재사용하지 않는다**(단, 기존 추가투자 기능 자체는 Phase C에서 수정하지 않는다) |
+| **PD-4** | 종료 목표에서 사라지는 자산 | **시작 목표에 존재 + 종료 목표에 없음 = 종료 weight 0.** 즉 Glide 종료 시 해당 자산을 보유하지 않는 것으로 해석한다. 기존 target 구조에는 `0%` vs `미기재`를 구분하는 별도 필드가 없으므로 **새 필드를 만들지 않는다.** 이 의미를 기존 UI 위치에서 최소한으로 고지하되 **새 UI 기능을 만들지 않는다** |
+| **PD-5** | 빈 종료 목표 | 종료 목표 portfolio가 비어 있으면 **입력 오류로 차단한다.** 절대로 **전부 매도 · 기존 목표 유지 · 자동 보정**으로 해석하지 않는다 |
+| **PD-6** | ownerFilter | Glide 설정은 **household 단위 하나만 유지한다. owner별 Glide 설정을 새로 만들지 않는다.** **ownerFilter가 있는 MC 실행에서도 household Glide weight를 적용한다.** 구조: household Glide 설정 1개 → ownerFilter 실행 → 기존 ownerFilter weight 생성 → 해당 weight를 Glide 시작/종료 벡터로 변환. **새로운 owner별 정책을 만들지 않는다** |
+| **PD-7** | Annual Preview | `runAnnualPreviewMC`에는 Phase C를 **구현하지 않는다.** Phase C 입력이 있는데 preview 요청이 들어오면 **기존 `INPUT_ERROR`로 명시적으로 거부한다. 새로운 오류 코드 체계를 만들지 않는다.** 사용자 표시 문구는 기존 `js/19` 오류 매핑 구조에 맞춘다 |
+| **PD-8** | Deterministic | Phase C의 **인출 · Glide 모두 deterministic 계산에는 적용하지 않는다.** 기존 `js/21` 전제 안내문에 **최소 한 문장만 추가**한다. **새 UI를 만들지 않는다.** 「Phase C 설정은 Monte Carlo 시뮬레이션에만 반영됩니다」라는 의미가 사용자에게 명확히 전달되도록 한다 |
+
+### 71-3. IC-01 ~ IC-18 — Implementation Contract 항목
+
+**IC-01~IC-18의 항목명은 [설계] §18에서 PM이 확정한 것이다.** 각 IC의 상세 본문은
+설계 단계에서 작성된 계약서 초안이었고, **PM이 확정한 내용은 PMC · PD · W-1 · B-1과
+[구현] 지시서로 대체 · 확정됐다.** 따라서 아래 표는 **PM이 정한 항목명**과
+**그 내용을 확정한 PM 원문의 위치**를 연결한다. 항목명과 내용의 연결을 추론으로 만들지 않았다.
+
+| ID | 항목명(PM 원문) | 확정 내용의 PM 원문 위치 |
+|---|---|---|
+| **IC-01** | 입력 state 구조 | PMC-3 · **71-6-1** |
+| **IC-02** | normalize 규칙 | **71-6-2** |
+| **IC-03** | validation 규칙 | PD-2 · PD-3 · PD-5 · **71-6-3** |
+| **IC-04** | 달력연도 → MC 월 index 매핑 | **PD-1로 폐기** — 달력연도를 쓰지 않으므로 이 매핑 자체가 없다([정정] §17 「IC-04 달력연도 변환 제거」) |
+| **IC-05** | Glide 시작/종료 의미 | PD-1 · **71-6-4** · **71-6-5**([정정] §17 「IC-05 Glide 상대연차 정의」) |
+| **IC-06** | weight key union 규칙 | **71-6-6**([정정] §12) |
+| **IC-07** | 선형 보간 규칙 | **71-6-5**([정정] §9 · [구현] §6) |
+| **IC-08** | 초기 배분 적용 규칙 | **71-6-7** |
+| **IC-09** | 월별 납입/추가투자 적용 규칙 | **71-6-7** |
+| **IC-10** | 연간 rebalance 적용 규칙 | **71-6-7** |
+| **IC-11** | 인출 적용 규칙 | **W-1**(71-4) |
+| **IC-12** | 잔액 부족 규칙 | **B-1**(71-5) |
+| **IC-13** | milestone/output 규칙 | **71-7-2** |
+| **IC-14** | deterministic 표시 규칙 | **PD-8** |
+| **IC-15** | Annual Preview 거부 규칙 | **PD-7** |
+| **IC-16** | backup/sync/restore 규칙 | PMC-3 · **71-6-8** |
+| **IC-17** | bit-identical regression 규칙 | **PMC-1 · PMC-2** · 71-7-1 |
+| **IC-18** | 성능/메모리 기준 | **71-6-9**([정정] §15) |
+
+### 71-4. W-1 — 인출 적용 순서 ([설계] §2 원문)
+
+인출은 **W-1** 순서를 따른다.
+
+```
+① 납입
+①-B 추가투자
+①-T 절세납입
+①-W 인출
+③ correlated shock
+④ growth
+④.5 fee
+⑤ annual rebalance
+⑥ milestone
+```
+
+즉 **기존 cash contribution / tax contribution 이후, 시장 shock 이전**이다([구현] §14).
+인출은 **인출 시점의 종목별 잔액 비중에 따라 비례 차감**한다([설계] §2).
+
+### 71-5. B-1 — 잔액 부족 clamp ([설계] §2 · [구현] §15 원문)
 
 | 확정 내용 |
 |---|
-| **상대 시뮬레이션 연차만 쓴다. 달력 연도를 쓰지 않는다**(`startYearNo` · `endYearNo`는 1-based). MC 엔진은 달력을 모르고 `m=1`이 실행 다음 달이므로, 달력으로 저장하면 같은 설정이 실행일마다 다른 결과를 낸다 |
-| Glide는 **start < end**여야 한다 |
-| **시뮬레이션 기간 밖 입력은 오류**다 |
-| **빈 종료 목표는 오류**다 — 조용히 무시하지 않는다 |
-| 잘못된 설정을 **조용히 버리지 않는다**. 기존 `validateMonteCarloInput` → `INPUT_ERROR` 경로로 BLOCK한다(**새 오류 체계를 만들지 않는다**) |
-| **필드가 없으면 비활성**이다. 빈 객체 · 0을 "꺼짐"으로 **저장하지 않는다** |
-| **새 migration을 만들지 않는다** |
+| 요청액 ≤ 총잔액 → **요청액 인출** |
+| 요청액 > 총잔액 → **총잔액까지만 인출** |
+| **음수 잔액 금지** |
+| **소진 확률 · 소진 시점 계산 없음** · 고갈 분포 저장 없음 · 추가 출력 없음 |
 
-### 71-3. Glide Path
+계산식([구현] §15 원문):
 
-| 확정 내용 |
-|---|
-| **household 단위 하나만 유지한다**(소유자별 Glide 없음) |
-| **`ownerFilter`가 걸린 실행에서도 household Glide를 적용한다** |
-| 구간 사이는 **선형 보간(linear interpolation)** 하고 **연 단위로 적용**한다(`yIdx = floor((m-1)/12)`) |
-| **종료 목표에 없는 종목은 그 시점에 0%** 로 본다 |
-| 시작 · 종료 weight는 **완전히 같은 계산 경로**(owner 부여 · region 순회 · 같은 splitBases · 가중 병합 · 정규화)를 탄다 |
+```
+requested = withdrawalByMonth[m]
+total = sum(balances)
+if total <= 0:  withdrawal = 0
+else:           actual = min(requested, total)
+                balances[i] -= actual * balances[i] / total
+```
 
-### 71-4. Withdrawal(인출)
+### 71-6. 구현 확정사항 ([구현] 지시서 원문)
 
-| ID | 확정 내용 |
+#### 71-6-1. 최종 확정 데이터 구조 ([구현] §2)
+
+```
+state.projection.glidePlan     = { startYearNo, endYearNo, domestic, targets }
+state.projection.withdrawalPlan = { startYearNo, monthly }
+```
+
+- **달력연도 필드 사용 금지** · `startYear`/`endYear` 형태의 calendar year 사용 금지
+- **상대연차 1-based** — `startYearNo = 1 → 1년차` · `startYearNo = 20 → 20년차`
+- **household-level 설정** · **owner 필드 추가 금지** · **owner-specific Glide 생성 금지**
+- **필드 자체가 없으면 Phase C 비활성** · **빈 객체 저장 금지** · **0값만 넣어 비활성 상태를 표현하지 않는다**
+- **필드명 `startYearNo` · `endYearNo`는 PM이 최종 승인했다**
+
+#### 71-6-2. normalize ([구현] §3)
+
+`js/01`에 `normalizeGlidePlan` · `normalizeWithdrawalPlan`을 둔다
+(위치는 기존 `normalizeYearlyExtraContributions` 인근 · 기존 `normalizeRebalanceOwnerState` 재사용).
+**normalize의 역할은 「형태 정리」뿐이다.** 다음을 **절대 하지 않는다** —
+범위 자동 보정 · start/end 자동 교환 · 잘못된 값 자동 삭제 · 기간 밖 값 silent skip ·
+empty target 자동 보정 · 누락 target 자동 복구.
+**잘못된 값은 validation 단계까지 전달하여 BLOCK 처리한다.**
+
+#### 71-6-3. validation ([구현] §4)
+
+기존 `assessHouseholdWeightSums` · `assessIndividualWeightSigns`를
+**시작 target과 종료 target 양쪽에** 적용한다. 추가로 다음을 **BLOCK**한다.
+
+| 조건 | 처리 |
 |---|---|
-| **W-1** | 인출은 **납입 3종 직후 · 성장 이전**에 적용한다(월 루프: 납입 → 추가투자 → 절세납입 → **인출** → shock 생성 → 성장 → 보수 → 리밸런싱 → milestone) |
-| **B-1** | 요청액이 잔고 이상이면 **잔고까지만 빼고 0에서 멈춘다**(음수 잔고 없음) |
-| — | 인출은 그 시점 잔고 **비중대로 비례 차감**한다 |
-| — | **절세계좌는 건드리지 않는다** |
+| `1 ≤ startYearNo < endYearNo ≤ years` 위반 | **INPUT_ERROR** (`start === end` · `start > end` · `start < 1` · `end > years` 전부 오류) |
+| end target이 비어 있음 | **INPUT_ERROR** · 사용자 문구 「나중에 가져갈 목표 포트폴리오가 비어 있습니다. 종목과 비중을 입력해 주세요.」 |
+| MC 실행 기간 밖의 Glide | **INPUT_ERROR** · 기간 밖 설정을 조용히 버리지 않는다 |
 
-### 71-5. 적용 범위
+**자동 swap 금지 · 자동 무효화 금지 · 자동 보정 금지.**
+**`years`를 하드코딩하지 않는다** — 실행 시 실제 `params.years` 기준으로 검증한다.
+**Validation 실패 시 Worker를 시작하지 않는다.**
 
-| 확정 내용 |
-|---|
-| Phase C는 **Monte Carlo 정밀 계산에만** 반영된다 |
-| **결정론(deterministic) 계산에는 반영하지 않는다** |
-| **빠른 미리보기(Annual Preview)는 Phase C 설정을 거부한다** — 기존 `INPUT_ERROR`로 명시적으로 거부하며 조용히 무시하지 않는다 |
-| **전체 경로를 보관하지 않는다**(엔진은 기존대로 milestone 통계만 남긴다) |
+#### 71-6-4. 시간축 ([구현] §5)
 
-### 71-6. 비활성 경로 보존
+```
+yIdx      = Math.floor((m - 1) / 12)
+startYIdx = startYearNo - 1
+endYIdx   = endYearNo - 1
+```
+
+**달력연도를 사용하지 않는다.** `yearlyExtraContributionMonthIndex`를 Phase C에서 사용하지 않는다.
+`new Date()` · `getFullYear()` 등 달력 기반 변환을 Phase C에 추가하지 않는다.
+**`m=12`는 `yIdx=0`이다** — 1년차 종료 시점에 2년차 weight를 미리 적용하지 않는다.
+
+#### 71-6-5. Glide weight 계산 ([구현] §6 · [정정] §9)
+
+```
+w_i(y) = s_i + p(y) × (e_i - s_i)
+p(y)   = (yIdx - startYIdx) / (endYIdx - startYIdx)
+
+yIdx < startYIdx            → start weight
+startYIdx ≤ yIdx ≤ endYIdx  → 선형 보간
+yIdx > endYIdx              → end weight
+경계: p(startYIdx) = 0 · p(endYIdx) = 1
+```
+
+예(`startYearNo=3` · `endYearNo=8`): 1~2년차 = start · **3년차 = start** ·
+4~7년차 = 선형 이동 · **8년차 = end** · 9년차 이후 = end.
+
+**선형 보간 외에 계단식 · 즉시 전환 · 배율 · 위험자산 비중 등은 사용하지 않는다.
+새로운 interpolation framework를 만들지 않는다.**
+
+#### 71-6-6. weight key union ([정정] §12)
+
+`startMap` · `endMap` · `taxOnlyEntries`를 **동일한 `splitBases`로 계산**한다.
+동일 자산이라도 `rateIdentity`가 다르면 **기존 정책대로 별도 instrument**다.
+**한쪽에만 존재하는 key는 반대쪽에서 weight 0.** **새 key 체계를 만들지 않는다.**
+사용자에게 내부 `T:` / `N:` / `C:` key를 입력받지 않는다([정정] §11).
+
+#### 71-6-7. 적용 지점 3곳 ([설계] §5 · [정정] §10 · [구현] §10 · §12 · §13)
+
+**① 초기 배분 · ② 월별 납입/추가투자 · ③ 연 1회 리밸런싱** 세 지점에
+**동일한 연도별 목표 weight**를 일관되게 적용한다. 리밸런싱은 기존 계약대로 총액을 보존하고,
+기존 monthly contribution의 의미와 순서를 변경하지 않는다.
+**월별로 매달 다른 weight를 만드는 구조는 만들지 않는다**(연 단위 적용).
+
+#### 71-6-8. state lifecycle ([정정] §14)
+
+```
+입력 → normalize → validation → state.projection → backup/sync → restore → MC input → MC engine
+```
+
+whitelist 3곳 등록 필요(`js/01` 기본값 · `js/01 loadState` · `js/12 applySyncBlob`).
+**필드 없음 = Phase C 비활성. migration 없음.**
+
+#### 71-6-9. 성능 · 메모리 ([정정] §15 · [구현] §11 · §14)
+
+Glide weight는 **iteration 밖에서 1회 계산**한다. 가능하면 **`Float64Array(years × n)`** 로
+저장하고 loop에서는 offset으로 읽는다. 인출 테이블도 iteration loop 밖에서 1회만
+`buildWithdrawalByMonth()`로 만들고 `Float64Array(months)`를 쓴다.
+**월별 vector 신규 생성 금지 · 새 caching framework 금지 · 전체 path 저장 금지.**
+
+### 71-7. 회귀 · Release 제약
+
+#### 71-7-1. 비활성 경로 보존 (PMC-1 · PMC-2)
 
 | 확정 내용 |
 |---|
@@ -6469,7 +6619,23 @@ Phase C는 **구현 · 검증이 완료(commit `a3c39de` 엔진 · `1854256` UI)
 
 회귀: `test/phase-c-glide-withdrawal.test.js`(30건).
 
-### 71-7. Phase C UI v1
+#### 71-7-2. milestone / output ([설계] §14)
+
+기존 `MILESTONE_YEARS = [5,10,15,20]`의 의미를 유지한다.
+**Glide 계산과 milestone 계산을 결합하지 않는다** — milestone은 결과를 관찰하는 시점이고
+Glide는 계산 중 weight를 결정하는 입력이다. **새로운 milestone 정책을 만들지 않는다.**
+
+### 71-8. 명시적 비범위 (Explicit non-scope)
+
+Phase C는 다음을 **바꾸지 않는다** —
+`Return Key` · `Risk Share` · `DR-B3` · `Account Type Dictionary` · `CMA` · `Bond` ·
+`FX Hedge` · `Risk Score` · `Macro` · `Tax`. **AI 기능을 추가하지 않는다.**
+**migration을 만들지 않는다.** 기존 사용자 데이터의 자동 변환 · 정규화 · 삭제를 하지 않는다.
+**새로운 범용 framework/cache/추상화 계층을 만들지 않는다.**
+소진 확률 · 소진 시점 · 고갈 분포 · owner별 Glide · 위험자산/안전자산 분류체계 ·
+새 오류 코드 체계 · 새 key 체계 · 새 정규화 정책 — **전부 만들지 않는다.**
+
+### 71-9. Phase C UI v1
 
 | 확정 내용 |
 |---|
@@ -6479,21 +6645,21 @@ Phase C는 **구현 · 검증이 완료(commit `a3c39de` 엔진 · `1854256` UI)
 | **새 페이지 · 새 메뉴 · 별도 설정 시스템 · 별도 MC 엔진 · 별도 결과 화면을 만들지 않는다** |
 | **빈 기본값을 새로 저장하지 않는다** |
 
-### 71-8. 상태
+### 71-10. 상태
 
 **구현 완료 · 검증 완료 · Production 미출시.**
 Unit 1067/1067 · Phase C 30/30 · 비활성 회귀(MC · Risk · Master) v275 기준선과 수치 동일 ·
-Full E2E는 v276 Release Gate에서 **1319/1320**(별건 `e2e/114` F-7 1건 FAIL · §71-10 참고).
+Full E2E는 v276 Release Gate에서 **1319/1320**(별건 `e2e/114` F-7 1건 FAIL · §71-12 참고).
 Production은 **v275**이며 **v276은 RELEASE HOLD**다.
 
-### 71-9. 이 절이 기록하지 않은 것
+### 71-11. 복원 범위에 대한 기록
 
-PM 지시에는 **PD-1 ~ PD-8**, **IC-01 ~ IC-18**이라는 ID 체계도 있었다.
-그 **개별 ID의 원문**은 저장소 안에서 확인되지 않아 **이 절에 옮겨 적지 않았다** —
-근거 없이 문구를 재구성하지 않기 위함이다(위 71-1~71-7은 근거가 확인된 내용만 담았다).
-개별 ID 원문 등재가 필요하면 **PM이 원문을 제공해야 한다**(PM Decision Required).
+**PMC-1~3 · PD-1~PD-8 · W-1 · B-1 · IC-01~IC-18 항목명은 PM 원문에서 확인해 그대로 옮겼다.**
+IC 각 항목의 **설계 단계 초안 본문**은 PM이 아니라 설계 보고서가 작성한 것이므로
+**정책 원문으로 옮기지 않았다** — 대신 각 IC의 내용을 확정한 PM 원문 위치를 71-3에 연결했다.
+**항목 번호와 내용의 연결을 추론으로 만들지 않았다.**
 
-### 71-10. Phase C와 무관한 별건
+### 71-12. Phase C와 무관한 별건
 
 `e2e/114` F-7과 동기화 Push E2E 간헐 실패는 **Phase C와 인과가 확인되지 않은 별건**이다.
 Phase C 코드를 고쳐서 해결하려 하지 않는다.
