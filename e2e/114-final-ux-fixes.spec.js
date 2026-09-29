@@ -202,7 +202,30 @@ test('F-7 (375) 아이콘으로 시작하는 안내문은 둘째 줄이 본문 �
   await page.setViewportSize({ width: 375, height: 812 });
   await boot(page);
   await seed(page);
-  await page.evaluate(async () => { state.advancedRiskMetrics = await computeAdvancedRiskMetrics(); renderRiskDiagnosisSummary(); openRiskDetailModal(); });
+  /* [F-7 안정화] 제품 호출 · 순서는 그대로다. 달라진 것은 "이 일이 끝나기를 어떻게 기다리는가"뿐이다.
+   * 예전에는 계산(시세 · 지수 · 환율 조회를 await한다) + 요약 렌더 + 팝업 렌더 전체를 하나의 async
+   * page.evaluate로 감싸 그 반환 Promise를 기다렸다 - 그 사이 Playwright는 Runtime.callFunctionOn
+   * (awaitPromise:true)으로 만든 결과 Promise 하나에 결과를 걸어 두고, 이 테스트는 그 대기 시간이
+   * 이 파일에서 가장 길다(네트워크 팬아웃 대기 + 위험 상세 팝업 전체 렌더). 실제로 그 구간에서
+   * Chromium이 "Promise was collected"를 돌려주는 실패가 관측됐다(부수효과는 전부 끝난 상태였다).
+   * 그래서 "시작만 시키고 결과는 화면 상태로 확인한다"로 바꿨다 - 검사하는 대상은 그대로다. */
+  await page.evaluate(() => {
+    window.__f7 = { done: false, error: null };
+    (async () => {
+      try {
+        state.advancedRiskMetrics = await computeAdvancedRiskMetrics();
+        renderRiskDiagnosisSummary();
+        openRiskDetailModal();
+      } catch (e) {
+        // 숨기지 않는다 - 아래 expect가 이 값을 그대로 실패로 만든다.
+        window.__f7.error = String((e && e.message) || e);
+      } finally {
+        window.__f7.done = true;
+      }
+    })();
+  });
+  // 계산 · 렌더가 끝났고 예외가 없었다는 것을 먼저 고정한다(예전 evaluate가 예외를 전하던 역할).
+  await expect.poll(() => page.evaluate(() => (window.__f7.done ? (window.__f7.error || 'ok') : 'pending'))).toBe('ok');
   await expect(page.locator('#riskDetailModalBody')).toBeVisible();
   // 안내 문단이 실제로 그려진 뒤에 재야 한다(비동기 렌더 · 병렬 실행에서 흔들리지 않도록).
   await expect(page.locator('#riskDetailModalBody p.flex.items-start').first()).toBeVisible();
