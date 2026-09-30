@@ -1389,6 +1389,11 @@ let applyingRemoteUpdate = false; // 원격 데이터 반영 중엔 재push 금�
 // 이미 시작된 push/pull이 끝날 때까지 기다리기 위해 진행 중인 개수를 센다(syncOpsInFlight). resetCloudData 참고.
 let cloudResetInProgress = false;
 let syncOpsInFlight = 0;
+/* [SYNC-123] push가 진행되는 동안에는 10초 주기 자동 pull(js/11)을 시작하지 않는다 - push가 쓰기를
+ * 끝내고 syncState.lastVersion을 올리기까지 수십 ms가 걸리는데, 그 사이 자동 pull이 아직 낡은
+ * lastVersion으로 "원격이 더 새롭다"고 판정해 이미 지나간 클라우드와의 차이를 보류 처리하고 설정
+ * 팝업을 다시 열었다(실측). 사용자가 고른 pull([클라우드 데이터 받기]) · 부팅 pull은 막지 않는다. */
+let pushInFlight = 0;
 /* [2026-09-24] 확인과 쓰기 사이에 클라우드가 바뀌었다. 지금 써도 잃는 것이 없는가.
  *
  * 버전이 달라졌다는 사실만으로 판단하지 않는다 - 상대 기기가 같은 내용을 다시 올린 경우
@@ -1580,9 +1585,11 @@ function holdSyncForDifference(parsed, remoteVersion, diff) {
 async function pushToCloud(opts) {
   if (cloudResetInProgress) return;
   syncOpsInFlight++;
+  pushInFlight++; // [SYNC-123] 아래 finally가 성공 · early return · remote_changed · throw 전부에서 되돌린다
   try {
     return await pushToCloudNow(opts);
   } finally {
+    pushInFlight--;
     syncOpsInFlight--;
   }
 }

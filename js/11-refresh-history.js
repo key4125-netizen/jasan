@@ -271,7 +271,9 @@ setInterval(() => {
 // (Workers 10만/일, KV 읽기 10만/일)에 여유가 큰 것을 확인하고 정한 주기다(§22-2 참고). silent:true라
 // 변경사항이 없을 때(가장 흔한 경우)는 토스트 없이 조용히 지나가고, 실제로 원격 데이터를 반영했을
 // 때만 pullFromCloud() 내부에서 토스트를 띄운다.
-setInterval(() => pullFromCloud({ silent: true }), 10000);
+/* [SYNC-123] push가 진행 중이면 이번 tick만 건너뛴다 - 10초 뒤 다음 tick이 그대로 이어받으므로
+ * 받을 내용이 사라지지 않는다. 억제 대상은 이 자동 tick 하나뿐이다(js/12 pushInFlight 주석 참고). */
+setInterval(() => { if (pushInFlight > 0) return; pullFromCloud({ silent: true }); }, 10000);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
