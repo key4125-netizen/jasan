@@ -2062,6 +2062,34 @@ function daysSinceMonthsAgoStart(monthsBack) {
   return Math.round((startOfToday - start) / 86400000) + 1;
 }
 
+/* [기간 확장 · PM 결정] 금주 - 월요일 시작 · 오늘 포함 · 달력일 기준.
+ * 반환 단위는 daysSinceMonthsAgoStart와 같은 "오늘 포함 최근 며칠"이라 dvDateList(오늘, days)(js/23)에
+ * 그대로 넘길 수 있다. 영업일 캘린더를 새로 만들지 않는다 - 주말 · 휴장은 기존 그래프가 이미 직전 종가
+ * 유지(closedCarry)로 처리한다. */
+function daysSinceWeekStart() {
+  const dow = new Date().getDay();   // 0 일요일 · 6 토요일
+  return ((dow + 6) % 7) + 1;        // 월=1 · 화=2 … 일=7 (오늘 포함)
+}
+
+/* [기간 확장 · PM 결정] 전체 - 거래원장(state.transactions)의 가장 이른 거래일부터 오늘까지(양끝 포함).
+ * origin('initial' · 'period' · 'adjust')으로 걸러내지 않는다 - 기초 등록분도 원장의 일부다.
+ * 거래가 하나도 없으면 오늘 하루(1)를 돌려주고, 그 다음은 기존 그래프의 "계산할 수 있는 날이 없음"
+ * 처리가 그대로 담당한다(별도 no-data 분기를 새로 만들지 않는다).
+ * 미래 날짜 거래만 있는 경우도 오늘 하루로 둔다(음수 일수를 만들지 않는다). */
+function daysSinceLedgerStart() {
+  const dates = (state.transactions || [])
+    .map((t) => String((t && t.date) || ''))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  if (dates.length === 0) return 1;
+  const first = dates.reduce((min, d) => (d < min ? d : min), dates[0]);
+  const parts = first.split('-').map(Number);
+  const start = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (!(start < startOfToday)) return 1;
+  return Math.round((startOfToday - start) / 86400000) + 1;
+}
+
 // [버그 수정 - 기기 간 일간 손익 기준선 불일치] 예전엔 이 함수가 "달력 날짜가 바뀐 뒤 이 기기가 처음
 // 실행된 순간의 환율"을 그날의 기준값으로 직접 스냅샷해 저장했다 - 그 결과 데스크탑/모바일처럼 서로
 // 다른 시각에 앱을 켜는 기기마다 기준선이 달라져 "일간금융평가손익"이 크게 어긋났다(실사용자 리포트로

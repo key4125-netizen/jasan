@@ -293,7 +293,7 @@ test('TEST-G - 성장률 3개가 "지금 계획대로면" 제목 아래에 기�
   await expect(hero).not.toContainText('목표배분');
   await expect(hero).not.toContainText('기준 연간 성장률');
   const layout = await page.evaluate(() => {
-    const title = [...document.querySelectorAll('#projectionHeroSummary p')].find((p) => p.textContent.trim() === '지금 계획대로면');
+    const title = [...document.querySelectorAll('#projectionHeroSummary p')].find((p) => p.textContent.trim() === '단순 수익률 적용 시');
     const grid = document.getElementById('scenarioSummaryCardsGrid');
     const cur = document.getElementById('projectionHeroCurrent');
     const cells = [...grid.children].map((c) => ({ top: c.getBoundingClientRect().top, right: c.getBoundingClientRect().right, sw: c.scrollWidth, cw: c.clientWidth }));
@@ -383,9 +383,9 @@ test('TEST-I - 삭제된 UI가 화면에 없고, 미래예측 탭의 카드 구�
   }
   // 계산 데이터 자체는 남아 있다 - 기존 계산 함수가 그대로 호출 가능하다.
   expect(await page.evaluate(() => typeof simulateRebalancedPreset === 'function' && typeof simulateTaxAdvantagedOwnerYearlyPoints === 'function')).toBe(true);
-  // 미래예측 탭에서도 MC 설명 팝업은 사라진 카드 이름 대신 "지금 계획대로면"을 가리킨다.
+  // 미래예측 탭에서도 MC 설명 팝업은 사라진 카드 이름 대신 현재 카드 이름("단순 수익률 적용 시")을 가리킨다.
   await page.locator('#mcIntroInfoBtn').click();
-  await expect(page.locator('#mcInfoModalBody')).toContainText('"지금 계획대로면"의 참고값은');
+  await expect(page.locator('#mcInfoModalBody')).toContainText('"단순 수익률 적용 시"의 참고값은');
   await expect(page.locator('#mcInfoModalBody')).not.toContainText('성장률별 참고 결과');
   await page.locator('#closeMcInfoModalBtn').click();
 });

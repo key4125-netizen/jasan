@@ -141,7 +141,7 @@ document.getElementById('mcIntroInfoBtn').addEventListener('click', () => {
     mcSafetyDetailStore.querySelectorAll('[data-safety-group-body]').forEach((el) => { delete mcSafetyGroupOpen[el.dataset.safetyGroupBody]; });
   }
   openMcInfoModal('Monte Carlo란?', `
-    <p>"지금 계획대로면"의 참고값은 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 자산군별 장기 변동성·상관관계(공식 기관 CMA)를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
+    <p>"단순 수익률 적용 시"의 참고값은 기준 연간 성장률이 매년 그대로 반복되고 목표 투자비중이 항상 유지된다고 가정한 단순 계산(단일 경로)입니다 - 이 성장률은 평균이 아니라 "가장 전형적인(중앙값) 경로" 기준입니다. Monte Carlo는 자산군별 장기 변동성·상관관계(공식 기관 CMA)를 반영하고 연 1회 리밸런싱을 적용해 실제로 가능한 미래 경로들을 시뮬레이션한 확률 분포이므로, 두 결과는 같은 조건을 두 방식으로 검증한 것이 아니라 서로 다른 가정에 기반한 계산입니다.</p>
     <div class="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3">
       <p class="font-semibold text-slate-700 dark:text-slate-200">공식 모델: Monthly Precision Monte Carlo</p>
       <p class="mt-1">월 단위 수익률을 적용하고 매년 리밸런싱하는 방식으로 미래자산의 가능한 범위를 시뮬레이션합니다.</p>

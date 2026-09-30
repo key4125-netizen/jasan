@@ -117,7 +117,8 @@ test('1. [Golden] D1~D5 신랑·와이프·합계를 손계산과 일치시킨�
   const rows = await rowsOf(page, 30);
   const byDate = Object.fromEntries(rows.map((r) => [r.date, r]));
   expect(rows).toHaveLength(30);
-  expect(rows.filter((r) => r.date < '2026-10-05').every((r) => r.s === null && r.w === null && r.t === null), '첫 기록 이전은 계산하지 않는다').toBe(true);
+  // [PM 결정 2026-09-30] 최초 거래일(10/05) 이전은 자산이 아직 없던 날이라 계산 불가(null)가 아니라 실제 0이다.
+  expect(rows.filter((r) => r.date < '2026-10-05').every((r) => r.s === 0 && r.w === 0 && r.t === 0), '최초 거래일 이전은 0').toBe(true);
   expect(D.map((d) => [byDate[d].s, byDate[d].w, byDate[d].t])).toEqual([
     [1100000, 1560000, 2660000],
     [1150000, 1574620, 2724620],
@@ -168,7 +169,7 @@ test('3. [팝업] 신랑/와이프/합계 한 그래프 · null 공백 · 잠정
     const label = (dsIdx, i) => chart.options.plugins.tooltip.callbacks.label({ dataset: chart.data.datasets[dsIdx], dataIndex: i, parsed: { y: chart.data.datasets[dsIdx].data[i] } });
     const out = {
       datasets: chart.data.datasets.map((ds) => ds.label), spanGaps: chart.options.spanGaps,
-      last5: chart.data.datasets.map((ds) => ds.data.slice(n - 5)), earlierNull: chart.data.datasets.every((ds) => ds.data.slice(0, n - 5).every((v) => v === null)),
+      last5: chart.data.datasets.map((ds) => ds.data.slice(n - 5)), earlierZero: chart.data.datasets.every((ds) => ds.data.slice(0, n - 5).every((v) => v === 0)),
       tipTotalToday: label(0, n - 1), tipHusbandD4: label(1, n - 2), tipWifeD3: label(2, n - 3),
       summary: doc.getElementById('totalValueList').textContent.replace(/\s+/g, ' ')
     };
@@ -180,7 +181,8 @@ test('3. [팝업] 신랑/와이프/합계 한 그래프 · null 공백 · 잠정
   expect(r.datasets).toEqual(['합계', '신랑', '와이프']);
   expect(r.spanGaps).toBe(false);
   expect(r.last5).toEqual([[2660000, 2724620, 2744140, 2661480, 2683720], [1100000, 1150000, 1157500, 1057500, 1065000], [1560000, 1574620, 1586640, 1603980, 1618720]]);
-  expect(r.earlierNull, '첫 기록 이전은 0이 아니라 공백').toBe(true);
+  // [PM 결정 2026-09-30] 최초 거래일 이전은 공백이 아니라 0 - 자산이 아직 없던 날이기 때문이다.
+  expect(r.earlierZero, '최초 거래일 이전은 0').toBe(true);
   expect(r.tipTotalToday).toContain('잠정');
   expect(r.tipHusbandD4).toContain('추정 포함');
   expect(r.tipHusbandD4).toContain('마지막 기록값 포함');
@@ -189,7 +191,9 @@ test('3. [팝업] 신랑/와이프/합계 한 그래프 · null 공백 · 잠정
   expect(r.summary).toContain('시세를 받지 못한 날은 직전 확정값을 기준으로 추정합니다.');
   expect(r.summary).toContain('현금·부동산·채권은 앱에 마지막으로 기록된 값을 이어서 사용합니다.');
   expect(r.summary).toContain('거래내역과 현금 잔액은 자동으로 연결되지 않으므로');
-  expect(r.summary).toContain('계산할 수 없는 날은 표시하지 않습니다.');
+  // [PM 결정 2026-09-30] 최초 거래일 이전이 0이 되면서 이 창(30일)에는 계산할 수 없는 날이 하나도 없다 - 안내도 나오지 않는다.
+  // 계산할 수 없는 날이 실제로 있는 경우의 안내는 아래 7번(분할로 D1~D3이 null)에서 그대로 검증한다.
+  expect(r.summary).not.toContain('계산할 수 없는 날은 표시하지 않습니다.');
   expect(fp2, 'Daily Valuation 계산은 거래·자산·스냅샷·저장소·KPI를 바꾸지 않는다').toBe(fp1);
   expect(writes).toEqual([]);
   expect([...new Set(log)].sort()).toEqual(['900001.KS', 'KRW=X', 'ZZDV', '^GSPC', '^KS11']);
@@ -249,10 +253,12 @@ test('7. [M4 · 조회 실패] 보유 중 분할 이벤트가 있으면 그 이�
     await openTotalValueModal();
     const t = el.ownerDocument.getElementById('totalValueList').textContent;
     closeTotalValueModal();
-    // 와이프·합계는 D4부터 있다 - 요약은 모든 선을 합계와 같은 첫날(D4)·마지막날(D5)로 비교해 소유자 증감의 합이 합계 증감과 같다.
-    return { t, husband: fmtSigned(1065000 - 1057500), wife: fmtSigned(1618720 - 1603980), total: fmtSigned(2683720 - 2661480), husbandFromD1: fmtSigned(1065000 - 1100000) };
+    // [PM 결정 2026-09-30] 30일 창의 첫날은 최초 거래일(D1=10/05)보다 앞이라 모든 선이 0에서 시작한다 - 기준일은 창 첫날이다.
+    // 요약은 여전히 모든 선을 같은 기준일·마지막날로 비교한다 - 소유자 증감의 합(1,065,000 + 1,618,720)이 합계 증감(2,683,720)과 같다.
+    return { t, husband: fmtSigned(1065000 - 0), wife: fmtSigned(1618720 - 0), total: fmtSigned(2683720 - 0), husbandFromD1: fmtSigned(1065000 - 1100000) };
   });
   expect(note.t).toContain('분할 또는 병합 이력을 안전하게 반영할 수 없어');
+  expect(note.t, '계산할 수 없는 날이 실제로 있으면 안내가 나온다').toContain('계산할 수 없는 날은 표시하지 않습니다.');
   expect(note.t).toContain(note.husband);
   expect(note.t).toContain(note.wife);
   expect(note.t).toContain(note.total);

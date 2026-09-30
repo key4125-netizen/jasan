@@ -193,6 +193,19 @@ function dvLatestSnapshotDate(snapshotDates, date) {
   return found;
 }
 
+/* [PM 결정 2026-09-30 · 최초 거래일 이전 = 0] 거래원장의 가장 이른 거래일. 거래가 없으면 null.
+ * 전체 기간 시작일(js/01 daysSinceLedgerStart)과 같은 규칙이다 - YYYY-MM-DD 형식만 세고 origin으로 거르지 않는다.
+ * 이 날짜 이전에는 자산이 아직 존재하지 않으므로 총자산이 "계산 불가"가 아니라 실제 0이다. */
+function dvLedgerStartDate(transactions) {
+  let min = null;
+  (transactions || []).forEach((t) => {
+    const d = String((t && t.date) || '');
+    if (!DV_DATE_RE.test(d)) return;
+    if (min === null || d < min) min = d;
+  });
+  return min;
+}
+
 // [D-3] 소유자 한 명의 "마지막 기록값 유지" 합계. 스냅샷은 읽기만 한다.
 // 기록이 있는 날인데 그 카테고리 키가 없으면 그날 그 카테고리 자산이 없었다는 기록이라 0이다.
 // 기록 자체가 없으면(첫 기록 이전) 계산하지 않는다(null).
@@ -299,6 +312,7 @@ function dvBuildRows(input) {
   const { dates, owners, classified, transactions, snapshots, seriesBySymbol, K } = input;
   const positionsAsOf = dvPositionsAsOfFactory(transactions);
   const snapshotDates = Object.keys(snapshots || {}).filter((d) => DV_DATE_RE.test(d)).sort();
+  const ledgerStart = dvLedgerStartDate(transactions);
   const fxSeries = seriesBySymbol[DV_FX_SYMBOL];
   const ownerPlans = owners.map((owner) => {
     const mine = classified.filter((c) => c.asset.owner === owner);
@@ -311,12 +325,20 @@ function dvBuildRows(input) {
   });
   return dates.map((date) => {
     const positions = positionsAsOf(date);
+    /* [PM 결정 2026-09-30] 최초 거래일 이전 = 자산이 아직 존재하지 않는 날 = 실제 0.
+     * 예전엔 첫 스냅샷 이전이라는 이유로 dvMaintainedAt이 beforeFirstRecord(null)를 내고 U-B가 그것을 합계까지
+     * 전파해 "계산할 수 없는 날"이 됐다. 원장에 거래가 하나라도 있으면 그 최초 거래일 이전은 보유 자산이 없던 날이
+     * 확실하므로 0으로 본다. 거래가 하나도 없으면(원장 자체가 없으면) 최초 거래일을 알 수 없어 기존 판정을 그대로 쓴다.
+     * 최초 거래일 당일부터는 기존 계산(스냅샷 유지 · 시세 · U-B)을 한 줄도 바꾸지 않는다. */
+    const beforeLedger = ledgerStart !== null && date < ledgerStart;
     const ownerValues = {}, ownerFlags = {}, ownerReasons = {};
     const ownerParts = [];
     ownerPlans.forEach((plan) => {
-      const parts = [dvMaintainedAt(snapshots, snapshotDates, date, plan.owner, plan.maintainedKeys)];
-      if (plan.usdMixed) parts.push({ value: null, state: 'unavailable', reason: 'usdCashMixed' });
-      plan.mine.forEach(({ asset, cls }) => {
+      // 최초 거래일 이전이면 스냅샷 · 시세를 보지 않고 0 하나로 끝낸다(아래 기존 계산은 그대로 둔다).
+      const parts = beforeLedger ? [{ value: 0, state: 'confirmed' }]
+        : [dvMaintainedAt(snapshots, snapshotDates, date, plan.owner, plan.maintainedKeys)];
+      if (!beforeLedger && plan.usdMixed) parts.push({ value: null, state: 'unavailable', reason: 'usdCashMixed' });
+      if (!beforeLedger) plan.mine.forEach(({ asset, cls }) => {
         if (cls.kind === 'maintained') return; // 스냅샷 카테고리 합계에 이미 들어 있다
         if (cls.kind === 'unavailable') { parts.push({ value: null, state: 'unavailable', reason: cls.reason }); return; }
         const pos = findLedgerPositionForAsset(asset, positions);

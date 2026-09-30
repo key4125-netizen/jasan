@@ -310,7 +310,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v278</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v279</p>
           </div>
         </div>
 
@@ -1192,7 +1192,7 @@
            "기준 시나리오"라는 표현은 쓰지 않는다 - 이 화면에 이미 "보수/일반/긍정 시나리오 비교" 기능이
            따로 있어 "시나리오"라는 단어를 여기서도 쓰면 그 기능과 혼동될 수 있다(Phase 16-B 재검증
            결과). 새 계산 없음 - 순수 표시 문구 추가. -->
-      <p class="text-sm font-semibold text-brand-600 dark:text-brand-300 text-center mb-2">지금 계획대로면</p>
+      <p class="text-sm font-semibold text-brand-600 dark:text-brand-300 text-center mb-2">단순 수익률 적용 시</p>
       <!-- [v248-1 REQ-07 · REQ-08] 성장률 3개 - "성장률별 참고 결과" 카드를 삭제하면서 그 카드가 보여주던 값
            (presetResults[preset].weightedAvgRate, renderScenarioSummaryCards)만 제목 바로 아래로 옮겼다. 새 계산 없음. -->
       <div id="scenarioSummaryCardsGrid" class="grid grid-cols-3 gap-1.5 mb-3"></div>
@@ -1967,10 +1967,12 @@
              loadDailyPnlRows(days)에 넘긴다(js/11 참고). [기간 통일] 총 평가금액 추이 팝업의 버튼과 문구 · 크기 · 기본값이 같다.
              터치 영역 44px · 줄바꿈을 강제로 막지 않고 단어 단위로만 넘긴다. -->
         <div class="flex items-center gap-1 flex-wrap">
+          <button type="button" data-period-range="week" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">금주</button>
           <button type="button" data-pnl-months="1" class="daily-pnl-period-btn active min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">당월</button>
           <button type="button" data-pnl-months="3" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">3개월</button>
           <button type="button" data-pnl-months="6" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">6개월</button>
           <button type="button" data-pnl-months="12" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">1년</button>
+          <button type="button" data-period-range="all" class="daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">전체</button>
         </div>
       </div>
 
@@ -2000,10 +2002,12 @@
 
     <div class="px-4 py-3 overflow-y-auto space-y-3">
       <div class="flex items-center justify-end gap-1 flex-wrap">
+        <button type="button" data-period-range="week" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">금주</button>
         <button type="button" data-tv-months="1" class="total-value-period-btn daily-pnl-period-btn active min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">당월</button>
         <button type="button" data-tv-months="3" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">3개월</button>
         <button type="button" data-tv-months="6" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">6개월</button>
         <button type="button" data-tv-months="12" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">1년</button>
+        <button type="button" data-period-range="all" class="total-value-period-btn daily-pnl-period-btn min-h-[44px] text-sm font-semibold px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 break-keep">전체</button>
       </div>
 
       <div class="daily-pnl-chart-box relative h-56 sm:h-64">

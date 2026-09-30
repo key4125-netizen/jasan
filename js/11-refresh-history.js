@@ -304,11 +304,24 @@ let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
 // 누를 때마다 다시 계산한다. [기간 통일] 총 평가금액 추이 팝업(totalValuePopupDays)도 같은 함수 · 같은 버튼 · 같은 기본값(당월)을 쓴다.
 let dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업 최초 오픈 시 항상 당월부터
 
+/* [기간 확장 · PM 결정] 버튼 하나가 뜻하는 기간을 일수로 바꾼다. 두 팝업이 같은 함수를 쓴다.
+ * 기존 4종(당월 · 3 · 6 · 12개월)은 data-*-months를 그대로 읽어 daysSinceMonthsAgoStart의 의미가
+ * 한 글자도 바뀌지 않는다. 새로 추가한 금주 · 전체만 data-period-range를 읽는다. */
+function popupPeriodDays(btn, monthsKey) {
+  const range = btn.dataset.periodRange;
+  if (range === 'week') return daysSinceWeekStart();
+  if (range === 'all') return daysSinceLedgerStart();
+  return daysSinceMonthsAgoStart(Number(btn.dataset[monthsKey]));
+}
+
 // [기간 통일] 두 팝업(일별 손익 · 총 평가금액) 요약의 기간 머리말 - "당월"은 "최근" 접두어가 어색해 따로 조합한다.
+// [기간 확장] 금주도 "최근"이 어색해 같은 방식으로 두고, 전체는 기간 전체를 뜻하므로 따로 적는다.
 function periodSummaryLabel(activeBtnSelector) {
   const btn = document.querySelector(activeBtnSelector);
   const label = btn ? btn.textContent.trim() : '';
-  return label === '당월' ? '당월 기준' : `최근 ${label} 기준`;
+  if (label === '당월' || label === '금주') return `${label} 기준`;
+  if (label === '전체') return '전체 기간 기준';
+  return `최근 ${label} 기준`;
 }
 
 // 실제 보유 자산에 등장하는 소유자만 동적으로 뽑는다(신랑/와이프를 하드코딩하지 않아 다른 소유자
@@ -653,11 +666,17 @@ function renderDailyPnlChart(series, owner) {
   // 계산할 수 없는 날은 null → 막대를 그리지 않는다. 실제 손익 0원인 날은 0 막대다.
   const data = series.map((s) => seriesAmountForOwner(s, owner));
   const colors = data.map((v) => dailyPnlLineColor(v));
+  /* [기간 확장 · PM 결정] 표시 방식만 바꾼다 - 막대가 1,000개 이상이면 선으로 그린다(경계: 정확히 1,000개도 선).
+   * 데이터는 일별 그대로다(월별 · 주별 집계 · 샘플링을 하지 않는다). 계산할 수 없는 날(null)은 막대가
+   * 없던 것과 같은 의미로 선이 끊긴다(spanGaps 기본값 false). 다른 그래프에는 영향이 없다. */
+  const useLine = series.length >= 1000;
 
   charts.dailyPnl = new Chart(canvas, {
-    type: 'bar',
+    type: useLine ? 'line' : 'bar',
     // minBarLength: 손익 0원인 날도 얇은 회색 막대로 보이게 한다 - 막대가 아예 없는 "계산할 수 없는 날"과 눈으로 구분된다.
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28, minBarLength: 3 }] },
+    data: { labels, datasets: [useLine
+      ? { data, borderColor: getSeriesColors().total, backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0 }
+      : { data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 28, minBarLength: 3 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
@@ -779,7 +798,7 @@ function renderDailyPnlOwnerTabs() {
 
 document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    dailyPnlPopupDays = daysSinceMonthsAgoStart(Number(btn.dataset.pnlMonths));
+    dailyPnlPopupDays = popupPeriodDays(btn, 'pnlMonths');
     document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateDailyPnlModal();
   });
@@ -966,7 +985,7 @@ function updateTotalValueModal(opts) {
 
 document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    totalValuePopupDays = daysSinceMonthsAgoStart(Number(btn.dataset.tvMonths));
+    totalValuePopupDays = popupPeriodDays(btn, 'tvMonths');
     document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
     updateTotalValueModal();
   });

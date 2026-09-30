@@ -1,5 +1,5 @@
 // E2E-88 [Daily Valuation 통합] 일별 손익 추이도 거래내역 + 시장 종가 · 환율로 계산하고(PM 확정 U1=C · U2 · U3 · U4 · U6),
-// 두 팝업(일별 손익 · 총 평가금액)의 기간 선택을 당월/3개월/6개월/1년 · 기본 당월로 통일한다.
+// 두 팝업(일별 손익 · 총 평가금액)의 기간 선택을 금주/당월/3개월/6개월/1년/전체 · 기본 당월로 통일한다.
 //
 // U1=C  손익 = D일 수량×평가 − D−1일 수량×평가 − 당일 매수대금 + 당일 매도대금(원장 자산만). 원화 현금 · 부동산 · 채권은 0.
 // U3    원장으로 수량을 알 수 없는 달러 현금은 계산 불가 · U4 계산 불가 자산이 있으면 그 소유자 · 합계 null.
@@ -177,7 +177,7 @@ test('2. [U-A] 모든 시장 종가가 확인된 뒤에는 금요일 손익이 �
   expect(sat.flags).not.toContain('provisional');
 });
 
-test('3. [기간 통일] 두 팝업의 기간 버튼 4종 · 기본 당월 · 같은 날짜 목록 · 다시 열면 당월 · 버튼 터치 영역 44px', async ({ page, context }) => {
+test('3. [기간 통일] 두 팝업의 기간 버튼 6종 · 기본 당월 · 같은 날짜 목록 · 다시 열면 당월 · 버튼 터치 영역 44px', async ({ page, context }) => {
   await start(page, context, '2026-10-09T14:30:00Z', yahooFixtures('friNight'));
   await seedGolden(page);
   const r = await page.locator('body').evaluate(async (el, waitForSrc) => {
@@ -211,7 +211,9 @@ test('3. [기간 통일] 두 팝업의 기간 버튼 4종 · 기본 당월 · �
     closeTotalValueModal();
     return { pnl, tv, reopened };
   }, WAIT_FOR);
-  const expectedButtons = () => [['당월', '1', true], ['3개월', '3', false], ['6개월', '6', false], ['1년', '12', false]];
+  // [기간 확장 · PM 결정 2026-09-30] 두 팝업 모두 6종(금주 · 당월 · 3 · 6 · 12개월 · 전체) · 기본 당월.
+  // 금주 · 전체는 data-*-months가 없어 months가 undefined다(data-period-range로 구분한다).
+  const expectedButtons = () => [['금주', undefined, false], ['당월', '1', true], ['3개월', '3', false], ['6개월', '6', false], ['1년', '12', false], ['전체', undefined, false]];
   expect(r.pnl.buttons.map((b) => [b.text, b.months, b.active])).toEqual(expectedButtons());
   expect(r.tv.buttons.map((b) => [b.text, b.months, b.active])).toEqual(expectedButtons());
   [...r.pnl.buttons, ...r.tv.buttons].forEach((b) => expect(b.h, `${b.text} 버튼 높이`).toBeGreaterThanOrEqual(43.9));
@@ -223,7 +225,7 @@ test('3. [기간 통일] 두 팝업의 기간 버튼 4종 · 기본 당월 · �
   expect(r.tv.labels3).toEqual(r.pnl.labels3);
   expect(r.pnl.prefix3).toContain('최근 3개월 기준 합계');
   expect(r.tv.prefix3).toContain('최근 3개월 기준');
-  expect(r.reopened.buttons.map((b) => b.active)).toEqual([true, false, false, false]);
+  expect(r.reopened.buttons.map((b) => b.active)).toEqual([false, true, false, false, false, false]);
   expect(r.reopened.labels).toEqual(r.pnl.labels);
   expect(r.reopened.tvLabels).toEqual(r.pnl.labels);
 });
