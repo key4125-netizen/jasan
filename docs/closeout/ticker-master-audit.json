@@ -257,6 +257,168 @@
         "coreImpacts": []
       },
       "applied": true
+    },
+    {
+      "auditId": "TMG-20261001T052552Z-93d1e8",
+      "ranAt": "2026-10-01T05:25:52.414Z",
+      "runUrl": "https://github.com/key4125-netizen/jasan/actions/runs/36819711746",
+      "current": {
+        "generatedAt": "2026-09-22T03:37:06.775Z",
+        "count": 16706
+      },
+      "next": {
+        "generatedAt": "2026-10-01T05:25:52.193Z",
+        "count": 16724
+      },
+      "coreTickerCount": 58,
+      "thresholds": {
+        "addedCount": 1000,
+        "removedCount": 500,
+        "exchangeChangedCount": 10,
+        "nameChangedCount": 1000,
+        "addedOrRemovedPct": 5,
+        "nameChangedPct": 10
+      },
+      "diff": {
+        "added": 66,
+        "removed": 48,
+        "exchangeChanged": 0,
+        "nameChanged": 41,
+        "domesticNameChanged": 1,
+        "domesticExchangeMoves": 0,
+        "fundJudgementFlips": 0,
+        "coreImpacts": 0,
+        "addedPct": 0.3951,
+        "removedPct": 0.2873,
+        "nameChangedPct": 0.2454
+      },
+      "thresholdResults": [
+        {
+          "id": "ADDED_COUNT",
+          "hit": false,
+          "detail": "신규 66 >= 1000"
+        },
+        {
+          "id": "REMOVED_COUNT",
+          "hit": false,
+          "detail": "삭제 48 >= 500"
+        },
+        {
+          "id": "EXCHANGE_COUNT",
+          "hit": false,
+          "detail": "거래소 변경 0 >= 10"
+        },
+        {
+          "id": "NAME_COUNT",
+          "hit": false,
+          "detail": "이름 변경 41 >= 1000"
+        },
+        {
+          "id": "ADDED_PCT",
+          "hit": false,
+          "detail": "신규 0.3951% >= 5%"
+        },
+        {
+          "id": "REMOVED_PCT",
+          "hit": false,
+          "detail": "삭제 0.2873% >= 5%"
+        },
+        {
+          "id": "NAME_PCT",
+          "hit": false,
+          "detail": "이름 변경 0.2454% >= 10%"
+        },
+        {
+          "id": "DOMESTIC_EXCHANGE_MOVE",
+          "hit": false,
+          "detail": "국내 시장 이동 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "CORE_IMPACT",
+          "hit": false,
+          "detail": "핵심 종목 영향 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "FUND_JUDGEMENT_FLIP",
+          "hit": false,
+          "detail": "펀드형 판정 변화 0건(1건이라도 STOP)"
+        }
+      ],
+      "decision": "APPLY",
+      "triggered": [],
+      "samples": {
+        "added": [
+          "0010S0.KQ",
+          "0035S0.KQ",
+          "266690.KQ",
+          "468670.KQ",
+          "486510.KQ",
+          "ACCV",
+          "ADRX",
+          "AFNXU",
+          "AMRO",
+          "BRRKU",
+          "CHIP",
+          "ENHE",
+          "ESYN",
+          "FFR",
+          "FGC",
+          "FGCPP",
+          "FJDI",
+          "GOW",
+          "HUCK",
+          "HWMV"
+        ],
+        "removed": [
+          "006380.KS",
+          "465780.KS",
+          "008290.KQ",
+          "046070.KQ",
+          "082660.KQ",
+          "465320.KQ",
+          "AIHS",
+          "ALOT",
+          "BBCQ",
+          "BBCQU",
+          "BCAR",
+          "BCARU",
+          "CMII",
+          "CMIIU",
+          "DKNX",
+          "DVIN",
+          "DVRE",
+          "DVUT",
+          "DVXB",
+          "DVXC"
+        ],
+        "exchangeChanged": [],
+        "nameChanged": [
+          "381970.KS \"케이카\"→\"KG모빌리티플랫폼\"",
+          "BNC \"CEA 인더스트리스\"→\"CEA 인더스트리스\"",
+          "CATL \"CATALYST ACQUISITION CORPORATION\"→\"캐털리스트 애퀴지션\"",
+          "CCXI \"처칠 캐피털 XI\"→\"처칠 캐피탈 XI\"",
+          "CXIIU \"처칠 캐피털 XII 유닛\"→\"처칠 캐피탈 XII 유닛\"",
+          "DRK \"DARKHORSE TECHNOLOGIES INC\"→\"다크호스 테크놀로지스\"",
+          "ETRA \"ELECTRA THERAPEUTICS INC\"→\"일렉트라 테라퓨틱스\"",
+          "IDIAU \"INNOVATIVE DIGITAL INVRS ACQ CORP UNIT 1 COM & 1/2 WT EX\"→\"이노베이티브 디지털 인베스터스 애퀴지션 유닛 1/2 워런트\"",
+          "IMMP \"이뮤텝(ADR)\"→\"이뮤텝(ADR)\"",
+          "INVE \"아이덴티브\"→\"아이덴티브\"",
+          "MTAK \"MARKET TECHNOLOGY ACQUISITION CORP\"→\"마켓 테크놀로지 애퀴지션\"",
+          "NFEGP \"NEW FORTRESS ENERGY INC PFD SER A MANDATORILY CONV\"→\"뉴포트리스 에너지 의무전환우선주 A\"",
+          "OIG \"ORION180 INSURANCE GROUP INC\"→\"오리온180 인슈어런스 그룹\"",
+          "RNAQ \"RAINIER ACQUISITION CORPORATION\"→\"레이니어 애퀴지션\"",
+          "SEUS \"SEI EXCHANGE TRADED FUNDS QIM US EQUITY FACTOR ALLOCATION AC\"→\"SEI QIM US EQUITY FACTOR ALLOCATION ACTIVE\"",
+          "TLAC \"THREE LIONS ACQUISITION CORPORATION\"→\"쓰리 라이언스 애퀴지션\"",
+          "TRT \"TRIO-TECH INTERNATIONAL\"→\"트리오 테크 인터내셔널\"",
+          "WCCB \"WEST COAST COMMUNITY BANCORP\"→\"웨스트 코스트 커뮤니티 뱅코프\"",
+          "XIII \"CHURCHILL CAPITAL CORPORATION XIII\"→\"처칠 캐피탈 XIII\"",
+          "XIIIU \"처칠 캐피털 코프 XIII 유닛\"→\"처칠 캐피탈 코프 XIII 유닛\""
+        ],
+        "domesticExchangeMoves": [],
+        "fundJudgementFlips": [],
+        "coreImpacts": []
+      },
+      "applied": true
     }
   ]
 }
