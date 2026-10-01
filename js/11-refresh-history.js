@@ -301,8 +301,8 @@ let dailyPnlPopupOwner = 'all';       // 'all' | 실제 소유자명
 // [월 단위 기간 기준 - 요청 반영] dailyPnlPopupDays는 더 이상 고정값(30/90/180/365)이 아니라
 // daysSinceMonthsAgoStart(js/01)로 그때그때 계산되는 "해당 월 1일부터 오늘까지의 일수"다 - 날짜가
 // 바뀌면 같은 개월 수 선택이어도 일수가 달라질 수 있어(예: 당월은 매일 커짐), 팝업을 열 때/기간 버튼을
-// 누를 때마다 다시 계산한다. [기간 통일] 총 평가금액 추이 팝업(totalValuePopupDays)도 같은 함수 · 같은 버튼 · 같은 기본값(당월)을 쓴다.
-let dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업 최초 오픈 시 항상 당월부터
+// 누를 때마다 다시 계산한다. [기간 통일] 총 평가금액 추이 팝업(totalValuePopupDays)도 같은 함수 · 같은 버튼 · 같은 기본값(금주)을 쓴다.
+let dailyPnlPopupDays = daysSinceWeekStart(); // [기본 기간 금주] 팝업 최초 오픈 시 항상 금주부터
 
 /* [기간 확장 · PM 결정] 버튼 하나가 뜻하는 기간을 일수로 바꾼다. 두 팝업이 같은 함수를 쓴다.
  * 기존 4종(당월 · 3 · 6 · 12개월)은 data-*-months를 그대로 읽어 daysSinceMonthsAgoStart의 의미가
@@ -807,8 +807,9 @@ document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((btn) 
 function openDailyPnlModal() {
   dailyPnlPopupType = 'unrealized';
   dailyPnlPopupOwner = 'all';
-  dailyPnlPopupDays = daysSinceMonthsAgoStart(1); // [기본 기간 당월] 팝업을 열 때마다 항상 당월부터 보여준다
-  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlMonths) === 1));
+  dailyPnlPopupDays = daysSinceWeekStart(); // [기본 기간 금주] 팝업을 열 때마다 항상 금주부터 보여준다
+  // 금주 버튼은 data-pnl-months가 없어 data-period-range로 고른다 - 금주의 뜻(월요일 시작 · 오늘 포함)은 daysSinceWeekStart 그대로다.
+  document.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', b.dataset.periodRange === 'week'));
   renderDailyPnlOwnerTabs();
   document.getElementById('dailyPnlModal').classList.remove('hidden');
   pushModalHistoryState();
@@ -822,11 +823,12 @@ document.getElementById('kpiDailyProfitDetailBtn').addEventListener('click', ope
 document.getElementById('closeDailyPnlModalBtn').addEventListener('click', () => closeDailyPnlModal());
 
 /* ---- 20-1. 총 평가금액 추이 팝업 (총 평가금액 KPI 카드 터치 시) ---- */
-// [기간 통일] 일별 손익 추이와 같은 당월/3/6/12개월(daysSinceMonthsAgoStart) - 열 때마다 당월로 돌아간다.
-let totalValuePopupDays = daysSinceMonthsAgoStart(1);
+// [기간 통일] 일별 손익 추이와 같은 기간 6종 - 열 때마다 금주로 돌아간다.
+let totalValuePopupDays = daysSinceWeekStart(); // [기간 통일 · 기본 금주] 일별 손익 추이 팝업과 같다
 
 // [D-1 Daily Valuation] 점마다의 상태를 사용자 말로 바꾼다 - 내부 상태명은 화면에 쓰지 않는다. 확정과 휴장일 직전 종가 유지는 표시하지 않는다.
-const DV_FLAG_WORDS = Object.freeze({ provisional: '잠정', estimated: '추정 포함', maintained: '마지막 기록값 포함' });
+// [2단계] costBasis - 스냅샷 기록값이 없어 취득원가로 평가한 날. 시장가격 · 현재가 · 시세라고 쓰지 않는다.
+const DV_FLAG_WORDS = Object.freeze({ provisional: '잠정', estimated: '추정 포함', maintained: '마지막 기록값 포함', costBasis: '취득원가 기준' });
 function dvFlagWords(flags) {
   return (flags || []).map((f) => DV_FLAG_WORDS[f]).filter(Boolean).join(' · ');
 }
@@ -848,7 +850,7 @@ function renderTotalValueChart(series, dv) {
 }
 
 // [D-1 Daily Valuation] 요약 아래 안내 - 해당하는 것만 짧게. 내부 상태명·사유 코드는 쓰지 않는다.
-const DV_PERMANENT_REASONS = Object.freeze(['manualMarketAsset', 'tickerlessMarketAsset', 'noLedger', 'ledgerMismatch', 'usdCashMixed', 'usdCashNoLedger', 'ledgerReplayMismatch']);
+const DV_PERMANENT_REASONS = Object.freeze(['manualMarketAsset', 'tickerlessMarketAsset', 'noLedger', 'ledgerMismatch', 'usdCashMixed', 'krwCashMixed', 'usdCashNoLedger', 'ledgerReplayMismatch']);
 function dvSummaryNotes(series, info) {
   const flags = new Set();
   const reasons = new Set();
@@ -863,6 +865,8 @@ function dvSummaryNotes(series, info) {
   if (flags.has('provisional')) notes.push('오늘 값은 현재 정규장 시세를 반영한 잠정값이며, 종가가 확인되면 확정됩니다.');
   if (flags.has('estimated')) notes.push('시세를 받지 못한 날은 직전 확정값을 기준으로 추정합니다.');
   if (flags.has('maintained')) notes.push('현금·부동산·채권은 앱에 마지막으로 기록된 값을 이어서 사용합니다.');
+  // [2단계] 기록이 아직 없던 날의 채권 · 부동산은 거래내역의 취득원가로 보여준다 - 시장가격이 아니다.
+  if (flags.has('costBasis')) notes.push('앱 기록이 아직 없던 날의 채권·부동산은 거래내역의 취득원가로 표시합니다(시장가격이 아닙니다).');
   if (info && info.hasLedger) notes.push('거래내역과 현금 잔액은 자동으로 연결되지 않으므로, 과거 날짜의 총자산은 실제 당시 잔액과 차이가 날 수 있습니다.');
   if (reasons.has('corporateActionUnverified')) notes.push('분할 또는 병합 이력을 안전하게 반영할 수 없어 해당 이전 날짜의 평가값을 표시하지 않습니다.');
   if (DV_PERMANENT_REASONS.some((r) => reasons.has(r))) notes.push('거래내역으로 과거 수량을 확인할 수 없는 자산이 있어, 그 자산을 가진 소유자와 합계는 표시하지 않습니다.');
@@ -992,8 +996,8 @@ document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b
 });
 
 function openTotalValueModal() {
-  totalValuePopupDays = daysSinceMonthsAgoStart(1); // [기간 통일 · 기본 당월] 일별 손익 추이 팝업과 같다
-  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvMonths) === 1));
+  totalValuePopupDays = daysSinceWeekStart(); // [기간 통일 · 기본 금주] 일별 손익 추이 팝업과 같다
+  document.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', b.dataset.periodRange === 'week'));
   document.getElementById('totalValueModal').classList.remove('hidden');
   pushModalHistoryState();
   return updateTotalValueModal();

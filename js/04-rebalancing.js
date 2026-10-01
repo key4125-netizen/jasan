@@ -537,21 +537,22 @@ let stockSearchRequestSeq = 0; // 느린 응답이 늦게 도착해 최신 검�
 // symbol을 빈 문자열로 둬(실제 시장 티커가 아님을 표시) 선택 시 tx_ticker도 비워 넣는다 - 대신
 // owner/accountType/currency를 함께 실어 보내 매도 입력 시 소유자·계좌구분까지 정확히 자동완성되게
 // 한다(applyStockPickToTransactionForm 참고).
+// [1단계 · KRW 현금 거래기반 전환] 원화 현금도 거래로 관리하므로 거래 추가 모달의 검색에서 더 이상
+// 빼지 않는다 - excludeTransactionKrwCash 인자와 그 분기를 함께 없앴다(호출부도 같이 정리).
+// [과거 기록] 아래 주석은 그 인자가 있던 이유다 - 지우지 않고 남긴다.
 // excludeTransactionKrwCash: [원화 현금만 거래내역 차단 - 전역 상태 의존 제거, 요청 반영] 예전엔 이
 // 배제 규칙이 모듈 전역 stockSearchTargetMode를 직접 읽었다 - 거래 추가 모달(mode='transaction')이
 // 마지막으로 남겨둔 값을 이 함수를 재사용하는 다른 전혀 무관한 팝업(적립금 설정/절세계좈 적립설정의
 // "+ 종목 추가")이 그대로 물려받아, 그 팝업들에서 원화 현금성 자산이 검색됐다 안 됐다 하는 일관성
 // 없는 버그가 있었다(사용자 신고). 이제 호출부가 명시적으로 true를 넘길 때만(실제 거래 추가 모달)
 // 이 규칙을 적용하고, 기본값(false)에서는 아무것도 배제하지 않는다.
-function searchLocalHoldings(query, excludeTransactionKrwCash) {
+function searchLocalHoldings(query) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const seen = new Set();
   const results = [];
   state.assets.forEach((a) => {
-    // 거래 추가 모달에서는 원화 현금만 검색 결과에서 빼서 선택 자체를 못 하게 한다(자산관리 탭에서만
-    // 잔고를 직접 수정) - 달러(USD) 현금은 거래내역 기반 가중평균 환율 관리 대상이므로 정상 노출된다.
-    if (excludeTransactionKrwCash && !a.ticker && a.category === '현금' && a.currency !== 'USD') return;
+    // [1단계] 원화 현금도 거래 추가 모달 검색에 그대로 나온다 - 달러 현금과 같은 취급이다.
     const hay = `${a.name} ${a.ticker}`.toLowerCase();
     if (!hay.includes(q)) return;
     const key = a.ticker ? a.ticker.toUpperCase() : `NOTICKER:${a.owner}__${a.accountType}__${a.name}`;
@@ -733,7 +734,7 @@ document.getElementById('stockSearchInput').addEventListener('input', (e) => {
     // 검색(느릴 때 8~12초까지 걸림)을 기다리지 않고 먼저 보여준 뒤, Yahoo 응답이 도착하면 새로 찾은
     // 종목만 추가로 이어붙인다. 결과가 하나도 없으면(로컬/마스터 둘 다 무매칭) "검색 중..." 문구를
     // 그대로 둔다 - 비워서 렌더링하면 Yahoo 결과가 아직 안 왔는데도 "결과 없음"이 잠깐 깜빡여 보인다.
-    const instant = mergeStockSearchResults(searchLocalHoldings(query, stockSearchTargetMode === 'transaction'), searchTickerMaster(query));
+    const instant = mergeStockSearchResults(searchLocalHoldings(query), searchTickerMaster(query));
     if (instant.length > 0) renderStockSearchResults(instant, seq);
     const remote = await searchYahooStocks(query);
     const merged = mergeStockSearchResults(instant, remote);

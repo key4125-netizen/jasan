@@ -252,6 +252,17 @@ function buildJsonImportOversellAlertMessage(violations) {
 // 발생한다 - 이걸 추적하려면 주식과 똑같이 거래내역 기반 가중평균 매입환율(computePositionsAndRealizedPnL의
 // avgRate)이 필요하므로, currency==='USD'인 경우는 더 이상 여기서 차단하지 않고 그대로 통과시킨다
 // (호출부가 통화 값을 함께 넘겨줘야 한다).
+/* [1단계 · KRW 현금 거래기반 전환 · PM 지시 2026-10-01] 이 현금 거래를 저장할 수 없는 경우만 true다.
+ * 원화 현금도 이제 거래원장으로 관리하므로 "현금은 거래로 못 넣는다"는 차단은 없앴다. 남는 것은
+ * 하나뿐이다 - 같은 소유자 · 계좌구분 · 이름 · 통화의 현금 자산이 둘 이상이면 어느 쪽 잔액을 뜻하는
+ * 거래인지 앱이 알 수 없다(티커가 없는 현금은 identity가 이름에 의존한다 · transactionIdentityKey).
+ * 그때는 임의로 첫 번째 자산을 고르지 않고 저장을 멈춘다 - 0단계 DUPLICATE_IDENTITY와 같은 규칙이다.
+ * 수동 저장(saveTransaction)과 엑셀 업로드가 이 한 함수를 함께 쓴다. */
+function cashTransactionIdentityAmbiguous(tx) {
+  if (!findMatchingCashAsset(tx.owner, tx.accountType, tx.ticker, tx.name, tx.currency)) return false;
+  return findAssetsMatchingLedgerIdentity(tx).filter(isKrwCashAsset).length > 1;
+}
+
 function findMatchingCashAsset(owner, accountType, ticker, name, currency) {
   if (ticker) return null;
   if (currency === 'USD') return null;
@@ -291,6 +302,112 @@ function findMatchingCashAsset(owner, accountType, ticker, name, currency) {
    [모르면 건드리지 않는다] 그렇다고 legacy를 manual로 승격시키지 않는다. 표식은 끝까지 없는 채로
    남고, 이 함수는 그 값을 읽기만 한다. 바뀌는 것은 "자동 재계산이 모르는 자산을 덮어쓰지 않는다"
    하나뿐이며, 사용자가 거래를 입력/수정/삭제하면 예전과 똑같이 거래원장이 반영된다. */
+/* =========================================================================
+ * [0단계 · KRW 현금 거래기반 전환 선행 안전장치 · PM 지시 2026-10-01]
+ *
+ * 왜 지금 넣는가: 지금은 원화 현금 거래를 아예 만들 수 없어(findMatchingCashAsset) 아래 보호가
+ * 실제로 쓰이는 일이 없다. 그러나 1단계에서 그 차단을 열면 거래원장이 자산 잔액을 쓰기 시작하고,
+ * 그 순간 사용자가 자산관리 탭에서 직접 적어 둔 현금 잔액이 다음 세 경로로 훼손될 수 있다.
+ *   ① 같은 소유자 · 계좌구분 · 이름 · 통화의 현금 자산이 둘 이상이면 어느 쪽에 원장을 붙일지
+ *      알 수 없다 - 티커가 없는 현금은 identity가 이름에 의존한다(transactionIdentityKey 참고).
+ *   ② 원장 포지션이 없거나 전량 매도로 0이 되면 일반 동기화 경로가 잔액을 0으로 만든다.
+ *   ③ 원장 잔액과 자산 잔액이 다르면 일반 동기화 경로가 원장 값으로 덮어쓴다.
+ * 그래서 "왜 막는가"를 판정 함수로 분리해 둔다 - 1단계에서 거래를 허용해도 ①②③에서는 자산을
+ * 건드리지 않는다는 보호가 그대로 남는다.
+ *
+ * 지금의 동작은 바뀌지 않는다: 아래 판정은 ①②③ 전부 예전과 똑같이 return하고, 잔액이 원장과
+ * 정확히 같을 때(LEDGER_MATCH)만 통과시키는데 그 경우 아래 반영 분기가 값을 바꾸지 않는다.
+ *
+ * 이번 단계에서 하지 않는 것(PM 지시): 거래 등록 차단 해제 · 엑셀 import 허용 · 거래 검색 노출 ·
+ * dvClassifyAsset 분류 변경 · 역사적 평가 변경 · Snapshot · 보통예금(CASH_KEYWORDS) · identity 확장.
+ * 사용자가 입력하지 않은 과거 현금 거래를 만들지 않는다 - USD의 yesterdayDateStr() migration
+ * (migrateUsdCashAssetsToTransactions, js/01)을 원화에 복사하지 않는다.
+ * ====================================================================== */
+const KRW_CASH_LEDGER_SYNC = Object.freeze({
+  NOT_KRW_CASH: 'NOT_KRW_CASH',             // 이 안전장치의 대상이 아니다(다른 자산군 · 달러 현금)
+  DUPLICATE_IDENTITY: 'DUPLICATE_IDENTITY', // 같은 identity의 현금 자산이 둘 이상 - 자동 매칭 금지
+  NO_LEDGER_POSITION: 'NO_LEDGER_POSITION', // 원장 포지션 없음 - 자산 잔액을 그대로 둔다
+  BALANCE_MISMATCH: 'BALANCE_MISMATCH',     // 원장과 자산 잔액이 다르다 - 덮어쓰지 않는다
+  ZERO_BALANCE_ADOPT: 'ZERO_BALANCE_ADOPT', // 기존 잔액이 정확히 0 + 정상적인 최초 거래 - 원장을 채택한다
+  LEDGER_MATCH: 'LEDGER_MATCH'              // 원장과 정확히 같다 - 원장이 관리하는 상태
+});
+
+// 이 안전장치의 대상 - category가 '현금'이고 달러가 아닌 자산. 기존 가드와 **같은 조건**을 쓴다
+// (syncAssetsFromTransactions · assessPositionConsistency · js/04 searchLocalHoldings).
+// '보통예금'처럼 category가 '현금'이 아닌 자산은 이번 범위가 아니다(PM 지시 - 범위 제외).
+function isKrwCashAsset(asset) {
+  return !!asset && asset.category === '현금' && asset.currency !== 'USD';
+}
+
+// 한 포지션에 매칭되는 자산을 **전부** 돌려준다. syncAssetsFromTransactions의 find()는 첫 번째만
+// 고르므로 중복 identity를 알아내려면 전체 목록이 필요하다. 판정 규칙은 그 find()와 같다.
+function findAssetsMatchingLedgerIdentity(ledger, assets) {
+  return (assets || state.assets).filter((a) => assetMatchesLedgerIdentity(a, ledger));
+}
+
+// 원화 현금 자산 하나에 대해 "원장이 이 자산의 잔액을 써도 되는가"만 판정한다. 값을 바꾸지 않는다.
+function krwCashLedgerSyncDecision(asset, pos, matches) {
+  if (!isKrwCashAsset(asset)) return KRW_CASH_LEDGER_SYNC.NOT_KRW_CASH;
+  const sameIdentity = matches || (pos ? findAssetsMatchingLedgerIdentity(pos) : [asset]);
+  if (sameIdentity.length > 1) return KRW_CASH_LEDGER_SYNC.DUPLICATE_IDENTITY;
+  if (!pos) return KRW_CASH_LEDGER_SYNC.NO_LEDGER_POSITION;
+  /* [1단계 보완 · PM 지시 2026-10-01] 기존 잔액이 **정확히 0**인 현금 자산에 정상적인 최초 거래가
+   * 들어오면 원장을 채택한다 - 0원짜리 자산은 보호할 잔액이 없고, 거래원장 기반으로 관리한다는
+   * 정책상 첫 거래가 그 자산의 잔액이 되는 것이 맞다. 이 예외는 아래 네 조건을 **모두** 만족할
+   * 때만이다: 원화 현금 · 단일 identity(위에서 이미 걸렀다) · 원장 포지션 존재(위에서 걸렀다) ·
+   * 기존 수량이 정확히 0. 잔액이 0보다 크면 예전처럼 BALANCE_MISMATCH로 보호한다.
+   * 허용오차를 쓰지 않는다(=== 0) - "거의 0"을 0으로 보면 보호 범위가 조용히 넓어진다. */
+  if (num(asset.quantity) === 0 && pos.quantity > 0) return KRW_CASH_LEDGER_SYNC.ZERO_BALANCE_ADOPT;
+  if (positionValuesDiffer(asset.quantity, pos.quantity) || positionValuesDiffer(asset.buyPrice, pos.avgPrice)) {
+    return KRW_CASH_LEDGER_SYNC.BALANCE_MISMATCH;
+  }
+  return KRW_CASH_LEDGER_SYNC.LEDGER_MATCH;
+}
+
+// [1단계 보완] 원장이 이 자산의 잔액을 써도 되는 상태 - 동기화 가드와 진단이 같은 목록을 쓴다.
+function krwCashLedgerSyncAllowed(status) {
+  return status === KRW_CASH_LEDGER_SYNC.LEDGER_MATCH || status === KRW_CASH_LEDGER_SYNC.ZERO_BALANCE_ADOPT;
+}
+
+/* 원화 현금의 거래원장 상태를 **읽기만** 해서 돌려준다(사전 진단) - 자산 · 거래 · 스냅샷을 바꾸지
+ * 않는다. 1단계 전에 "지금 전환하면 어떤 자산이 사용자 확인 대상인가"를 이 함수 하나로 알 수 있다. */
+function diagnoseKrwCashLedgerState(assets, transactions) {
+  const all = assets || state.assets;
+  const positions = computePositionsAndRealizedPnL(transactions || state.transactions).positions;
+  const cashAssets = all.filter(isKrwCashAsset);
+  const countByIdentity = new Map();
+  cashAssets.forEach((a) => {
+    const k = transactionIdentityKey(a);
+    countByIdentity.set(k, (countByIdentity.get(k) || 0) + 1);
+  });
+  const items = cashAssets.map((asset) => {
+    const identityKey = transactionIdentityKey(asset);
+    const pos = findLedgerPositionForAsset(asset, positions);
+    const matches = pos ? findAssetsMatchingLedgerIdentity(pos, all)
+      : all.filter((a) => transactionIdentityKey(a) === identityKey);
+    const status = krwCashLedgerSyncDecision(asset, pos, matches);
+    return {
+      id: asset.id, owner: asset.owner, accountType: asset.accountType, name: asset.name,
+      identityKey, assetQuantity: num(asset.quantity),
+      ledgerQuantity: pos ? num(pos.quantity) : null,
+      status, overwriteAllowed: krwCashLedgerSyncAllowed(status)
+    };
+  });
+  // 원장에만 있는 원화 현금 포지션 - 1단계에서 자산이 새로 생길 경로다(지금은 거래 자체가 막혀 있다).
+  const orphanPositions = Object.values(positions)
+    .filter((p) => !String(p.ticker || '').trim() && ledgerCurrencyOf(p) !== 'USD'
+      && classifyCategory('', p.name) === '현금'
+      && !all.some((a) => assetMatchesLedgerIdentity(a, p)))
+    .map((p) => ({ owner: p.owner, accountType: p.accountType, name: p.name, ledgerQuantity: num(p.quantity) }));
+  return {
+    items,
+    duplicateIdentities: [...countByIdentity.entries()].filter((e) => e[1] > 1)
+      .map((e) => ({ identityKey: e[0], count: e[1] })),
+    orphanPositions,
+    needsUserReview: items.some((i) => !i.overwriteAllowed) || orphanPositions.length > 0
+  };
+}
+
 function syncAssetsFromTransactions(opts) {
   const isAutoSync = !!(opts && opts.auto);
   const { positions } = computePositionsAndRealizedPnL();
@@ -301,7 +418,14 @@ function syncAssetsFromTransactions(opts) {
     // 잘못된 자산 위에서 실행된 것이지 가드 자체가 문제가 아니었다. 순서는 그대로 두고(매칭 → 가드
     // → 반영) 매칭만 정확하게 만든다.
     let asset = state.assets.find((a) => assetMatchesLedgerIdentity(a, pos));
-    if (asset && asset.category === '현금' && asset.currency !== 'USD') return; // 원화 현금만 자산관리 탭 전용 - 절대 덮어쓰지 않는다
+    /* [0단계 안전장치] 원화 현금은 지금도 자산관리 탭 전용이라 이 return은 예전 그대로다 - 다만
+     * "왜 막는가"를 krwCashLedgerSyncDecision으로 분리해, 1단계에서 거래를 허용해도 중복 identity ·
+     * 원장 포지션 없음 · 잔액 불일치에서는 자산을 건드리지 않는다는 보호가 유지된다. 잔액이 원장과
+     * 정확히 같을 때(LEDGER_MATCH)만 통과하며, 그 경우 아래 반영 분기가 값을 바꾸지 않는다. */
+    if (isKrwCashAsset(asset) && !krwCashLedgerSyncAllowed(krwCashLedgerSyncDecision(asset, pos,
+      findAssetsMatchingLedgerIdentity(pos)))) {
+      return; // 중복 identity · 원장 없음 · 잔액 불일치 - 기존 잔액을 그대로 둔다
+    }
     // [Phase 50 - P0-1] 자산 마스터가 수량을 관리한다고 스스로 적어 둔 자산(positionSource='manual',
     // Phase 49)은 거래원장이 덮어쓰지 않는다. 바로 위 원화 현금 가드와 같은 성격의 예외이며, 차이는
     // "카테고리로 추정한 예외"가 아니라 "자산에 저장된 사실에 따른 예외"라는 점이다.
@@ -605,17 +729,18 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
         return tx;
       }).filter((t) => t.quantity > 0 && t.price > 0 && t.name);
 
-      // [현금/외화현금 거래내역 차단] 기존 보유 '현금' 자산과 이름/소유자/계좌구분이 일치하는 행은
-      // 엑셀 업로드로도 등록할 수 없다 - 자산관리 탭에서 직접 잔고를 수정하도록 유도한다.
+      // [1단계 · KRW 현금 거래기반 전환] 원화 현금 행도 그대로 등록한다 - 예전엔 현금 행을 전부
+      // 건너뛰었다. 남은 예외는 하나뿐이다: 같은 identity의 현금 자산이 둘 이상인 행은 어느 쪽
+      // 잔액인지 알 수 없어 건너뛴다(cashTransactionIdentityAmbiguous · 0단계와 같은 규칙).
       let cashSkippedCount = 0;
       const importable = parsed.filter((t) => {
-        if (findMatchingCashAsset(t.owner, t.accountType, t.ticker, t.name, t.currency)) { cashSkippedCount++; return false; }
+        if (cashTransactionIdentityAmbiguous(t)) { cashSkippedCount++; return false; }
         return true;
       });
 
       if (importable.length === 0) {
         alert(cashSkippedCount > 0
-          ? `현금/외화 자산 거래 ${cashSkippedCount}건은 등록할 수 없어 전부 건너뛰었습니다. 자산관리 탭에서 직접 잔고를 수정해주세요.`
+          ? `같은 이름의 현금 자산이 둘 이상인 거래 ${cashSkippedCount}건은 어느 쪽 잔액인지 알 수 없어 전부 건너뛰었습니다. 자산 이름을 구분한 뒤 다시 올려주세요.`
           : '가져올 거래 데이터가 없습니다. (일자, 소유자, 계좌구분, 종목명, 거래유형, 수량, 매매단가 헤더를 확인하세요)');
         return;
       }
@@ -625,7 +750,7 @@ document.getElementById('txExcelFileInput').addEventListener('change', (e) => {
       // [기존 데이터 덮어쓰기]/[기존 데이터에 추가하기]/[취소]를 명시적으로 고르게 한다.
       const choice = await openImportChoiceModal(`${importable.length}건의 거래를 등록합니다.\n기존 거래내역을 덮어쓸까요, 추가할까요?`);
       if (choice === 'cancel') return;
-      const cashSkipSuffix = cashSkippedCount > 0 ? ` (현금/외화 거래 ${cashSkippedCount}건은 등록 불가로 건너뜀)` : '';
+      const cashSkipSuffix = cashSkippedCount > 0 ? ` (같은 이름의 현금 자산이 둘 이상인 ${cashSkippedCount}건은 건너뜀)` : '';
       let resultMsg;
       if (choice === 'overwrite') {
         // [Phase 13 - 초과매도 사전 검증] 덮어쓰기는 기존 거래를 전부 버리므로, 새로 들어올 importable
@@ -1496,8 +1621,10 @@ document.getElementById('transactionForm').addEventListener('submit', (e) => {
     ? txBondIsinVal
     : document.getElementById('tx_ticker').value.trim();
   const txCurrencyVal = document.getElementById('tx_currency').value;
-  if (findMatchingCashAsset(txOwnerVal, txAccountTypeVal, txTickerVal, name, txCurrencyVal)) {
-    showToast('현금/외화 자산은 거래내역으로 등록할 수 없습니다. 자산관리 탭의 자산 수정에서 잔고를 직접 고쳐주세요.', 'warn', 6000);
+  /* [1단계 · KRW 현금 거래기반 전환] 원화 현금도 거래로 등록한다 - 차단 문구를 없앴다.
+   * 같은 identity의 현금 자산이 둘 이상일 때만 저장을 멈춘다(cashTransactionIdentityAmbiguous). */
+  if (cashTransactionIdentityAmbiguous({ owner: txOwnerVal, accountType: txAccountTypeVal, ticker: txTickerVal, name, currency: txCurrencyVal })) {
+    showToast('같은 소유자 · 계좌구분 · 이름의 현금 자산이 둘 이상입니다. 어느 쪽 잔액인지 알 수 없어 저장하지 않았습니다 - 자산 이름을 구분한 뒤 다시 저장해 주세요.', 'warn', 7000);
     return;
   }
   /* [BOND-33 · §49] 자산군과 종목코드가 서로 다른 말을 하면 저장하지 않는다. 조용히 한쪽으로

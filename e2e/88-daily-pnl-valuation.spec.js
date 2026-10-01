@@ -123,6 +123,11 @@ test('1. [Golden · U1=C] 일별 손익 D1~D5를 손계산과 일치시킨다 - 
   const opened = await page.locator('body').evaluate(async (el) => {
     const doc = el.ownerDocument;
     await openDailyPnlModal();
+    // [기본 기간 금주 2026-10-01] 이 테스트의 목적은 D1~D5 손계산 대조다 - 창을 당월로 고정해 기본값 변경 전과
+    // 똑같은 9일 창 · 똑같은 기대값으로 본다(기본값 자체는 아래 3번 테스트가 검증한다).
+    dailyPnlPopupDays = daysSinceMonthsAgoStart(1);
+    doc.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlMonths) === 1));
+    await updateDailyPnlModal();
     const chart = doc.defaultView.Chart.getChart(doc.getElementById('dailyPnlChart'));
     const tip = (i) => chart.options.plugins.tooltip.callbacks.label({ dataIndex: i, parsed: { y: chart.data.datasets[0].data[i] } });
     return {
@@ -177,7 +182,7 @@ test('2. [U-A] 모든 시장 종가가 확인된 뒤에는 금요일 손익이 �
   expect(sat.flags).not.toContain('provisional');
 });
 
-test('3. [기간 통일] 두 팝업의 기간 버튼 6종 · 기본 당월 · 같은 날짜 목록 · 다시 열면 당월 · 버튼 터치 영역 44px', async ({ page, context }) => {
+test('3. [기간 통일] 두 팝업의 기간 버튼 6종 · 기본 금주 · 같은 날짜 목록 · 다시 열면 금주 · 버튼 터치 영역 44px', async ({ page, context }) => {
   await start(page, context, '2026-10-09T14:30:00Z', yahooFixtures('friNight'));
   await seedGolden(page);
   const r = await page.locator('body').evaluate(async (el, waitForSrc) => {
@@ -211,21 +216,22 @@ test('3. [기간 통일] 두 팝업의 기간 버튼 6종 · 기본 당월 · �
     closeTotalValueModal();
     return { pnl, tv, reopened };
   }, WAIT_FOR);
-  // [기간 확장 · PM 결정 2026-09-30] 두 팝업 모두 6종(금주 · 당월 · 3 · 6 · 12개월 · 전체) · 기본 당월.
+  // [기간 확장 · PM 결정 2026-09-30] 두 팝업 모두 6종(금주 · 당월 · 3 · 6 · 12개월 · 전체).
+  // [기본 기간 금주 2026-10-01] 기본 선택은 금주다(금주의 뜻 - 월요일 시작 · 오늘 포함 - 은 그대로다).
   // 금주 · 전체는 data-*-months가 없어 months가 undefined다(data-period-range로 구분한다).
-  const expectedButtons = () => [['금주', undefined, false], ['당월', '1', true], ['3개월', '3', false], ['6개월', '6', false], ['1년', '12', false], ['전체', undefined, false]];
+  const expectedButtons = () => [['금주', undefined, true], ['당월', '1', false], ['3개월', '3', false], ['6개월', '6', false], ['1년', '12', false], ['전체', undefined, false]];
   expect(r.pnl.buttons.map((b) => [b.text, b.months, b.active])).toEqual(expectedButtons());
   expect(r.tv.buttons.map((b) => [b.text, b.months, b.active])).toEqual(expectedButtons());
   [...r.pnl.buttons, ...r.tv.buttons].forEach((b) => expect(b.h, `${b.text} 버튼 높이`).toBeGreaterThanOrEqual(43.9));
   r.pnl.ownerTabHeights.forEach((h) => expect(h, '소유자 탭 높이').toBeGreaterThanOrEqual(43.9));
-  expect(r.pnl.labels, '기본 당월 = 10/1~10/9').toEqual(['10/1', '10/2', '10/3', '10/4', '10/5', '10/6', '10/7', '10/8', '10/9']);
+  expect(r.pnl.labels, '기본 금주 = 10/5(월)~10/9').toEqual(['10/5', '10/6', '10/7', '10/8', '10/9']);
   expect(r.tv.labels, '총 평가금액도 같은 날짜').toEqual(r.pnl.labels);
   expect(r.pnl.labels3[0], '3개월 = 8/1부터').toBe('8/1');
   expect(r.pnl.labels3[r.pnl.labels3.length - 1]).toBe('10/9');
   expect(r.tv.labels3).toEqual(r.pnl.labels3);
   expect(r.pnl.prefix3).toContain('최근 3개월 기준 합계');
   expect(r.tv.prefix3).toContain('최근 3개월 기준');
-  expect(r.reopened.buttons.map((b) => b.active)).toEqual([false, true, false, false, false, false]);
+  expect(r.reopened.buttons.map((b) => b.active)).toEqual([true, false, false, false, false, false]);
   expect(r.reopened.labels).toEqual(r.pnl.labels);
   expect(r.reopened.tvLabels).toEqual(r.pnl.labels);
 });
@@ -243,6 +249,11 @@ test('4. [U4 · U3] 계산 불가 자산(manual 시세 · 원장 없는 달러 �
   const popup = await page.locator('body').evaluate(async (el) => {
     const doc = el.ownerDocument;
     await openDailyPnlModal();
+    // [기본 기간 금주 2026-10-01] 이 테스트의 목적은 D1~D5 손계산 대조다 - 창을 당월로 고정해 기본값 변경 전과
+    // 똑같은 9일 창 · 똑같은 기대값으로 본다(기본값 자체는 아래 3번 테스트가 검증한다).
+    dailyPnlPopupDays = daysSinceMonthsAgoStart(1);
+    doc.querySelectorAll('#dailyPnlModal .daily-pnl-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.pnlMonths) === 1));
+    await updateDailyPnlModal();
     const out = { total: doc.defaultView.Chart.getChart(doc.getElementById('dailyPnlChart')).data.datasets[0].data.slice(4), summary: doc.getElementById('dailyPnlList').textContent.replace(/\s+/g, ' ') };
     closeDailyPnlModal();
     return out;

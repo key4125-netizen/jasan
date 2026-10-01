@@ -164,6 +164,11 @@ test('3. [팝업] 신랑/와이프/합계 한 그래프 · null 공백 · 잠정
   const r = await page.locator('body').evaluate(async (el) => {
     const doc = el.ownerDocument;
     await openTotalValueModal();
+    // [기본 기간 금주 2026-10-01] 기본 창(금주 = D1~D5)에는 최초 거래일 이전 날짜가 없어 아래 earlierZero가
+    // 빈 배열을 검사하게 된다 - 검사 대상이 남도록 창을 당월로 고정한다(기대값은 전부 그대로다).
+    totalValuePopupDays = daysSinceMonthsAgoStart(1);
+    doc.querySelectorAll('#totalValueModal .total-value-period-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.tvMonths) === 1));
+    await updateTotalValueModal();
     const chart = doc.defaultView.Chart.getChart(doc.getElementById('totalValueChart'));
     const n = chart.data.labels.length;
     const label = (dsIdx, i) => chart.options.plugins.tooltip.callbacks.label({ dataset: chart.data.datasets[dsIdx], dataIndex: i, parsed: { y: chart.data.datasets[dsIdx].data[i] } });
@@ -249,8 +254,11 @@ test('7. [M4 · 조회 실패] 보유 중 분할 이벤트가 있으면 그 이�
   expect(rows.map((r) => r.t)).toEqual([null, null, null, 2661480, 2683720]);
   expect(rows[0].reasons).toContain('corporateActionUnverified');
   const note = await page.locator('body').evaluate(async (el) => {
-    totalValuePopupDays = 30;
     await openTotalValueModal();
+    // [기본 기간 금주 2026-10-01] 30일 창을 보려는 것이므로 팝업을 연 뒤에 기간을 넣고 다시 그린다 -
+    // 예전에는 open 앞에 두어 openTotalValueModal의 기본값 초기화가 곧바로 덮어썼다(실제로는 기본 창이었다).
+    totalValuePopupDays = 30;
+    await updateTotalValueModal();
     const t = el.ownerDocument.getElementById('totalValueList').textContent;
     closeTotalValueModal();
     // [PM 결정 2026-09-30] 30일 창의 첫날은 최초 거래일(D1=10/05)보다 앞이라 모든 선이 0에서 시작한다 - 기준일은 창 첫날이다.

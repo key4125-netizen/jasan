@@ -26,10 +26,19 @@ const DV_MARKETS = Object.freeze({
 // 스냅샷 byOwnerCategory에서 "마지막 기록값 유지"로 읽는 카테고리 키(js/02 categoryDisplayKey 기준).
 const DV_MAINTAINED_KEYS = Object.freeze(['현금', '부동산', '채권']);
 const DV_USD_CASH_KEY = '달러';
+// [1단계 · KRW 현금 거래기반 전환] 원장이 관리하는 원화 현금을 가려내는 카테고리 키.
+// DV_MAINTAINED_KEYS에도 들어 있다 - 원장이 관리하지 않는 원화 현금은 예전처럼 유지형이다.
+const DV_KRW_CASH_KEY = '현금';
+/* [2단계 · PM 결정 2026-10-01] 스냅샷 기록값이 없는 날에 취득원가로 평가할 수 있는 유지형 자산.
+ * 현금('현금' · '달러')은 **대상이 아니다** - 원장이 관리하는 현금은 이미 ledger 분기가 계산하고,
+ * 유지형으로 남은 현금은 0단계 · 1단계가 "기존 잔액 보호"로 판정한 것이라 원장 값을 꺼내 쓰면
+ * 그 보호를 되돌리는 셈이 된다. 분류(DV_MAINTAINED_KEYS)는 바꾸지 않는다. */
+const DV_COST_BASIS_KEYS = Object.freeze(['채권', '부동산']);
 // 휴장 판정용 기준지수가 없는 시리즈(환율) 표시.
 const DV_NO_HOLIDAY_REF = 'noHolidayRef';
 // 소유자 · 합계로 전파하는 상태(확정은 표시하지 않는다). 순서는 화면 안내 순서다.
-const DV_STATE_FLAGS = Object.freeze(['provisional', 'estimated', 'maintained', 'closedCarry']);
+// [2단계] costBasis - 스냅샷 기록값이 없어 취득원가로 평가한 날. **시장가격이 아니다.**
+const DV_STATE_FLAGS = Object.freeze(['provisional', 'estimated', 'maintained', 'closedCarry', 'costBasis']);
 const DV_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // epoch초를 시장 타임존의 날짜와 시각(HHMM)으로 바꾼다. 타임존 변환을 못 하는 환경이면 null -
@@ -277,6 +286,19 @@ function dvClassifyAsset(asset, finalPositions) {
     if (positionValuesDiffer(asset.quantity, pos.quantity)) return { kind: 'unavailable', reason: 'ledgerMismatch' };
     return { kind: 'ledgerUsdCash' };
   }
+  /* [1단계 · KRW 현금 거래기반 전환] 원화 현금은 달러 현금과 **같은 4단 판정**을 받는다 - 원장이
+   * 관리하는 현금만 ledgerKrwCash가 되고 그 밖에는 예전처럼 스냅샷 유지값(maintained)이다.
+   * 달러와 다른 점 한 가지: 수량이 어긋나면 달러는 unavailable(ledgerMismatch)로 그 소유자를
+   * 계산 불가로 만들지만, 원화 현금은 **유지형으로 되돌린다** - 0단계 BALANCE_MISMATCH 정책이
+   * "기존 자산 잔액을 보호한다"이므로, 사용자가 적어 둔 잔액이 들어 있는 스냅샷 값을 그대로 쓴다.
+   * 부동산 · 채권은 이 분기에 들어오지 않는다(이번 단계 범위 밖 - 다음 단계에서 다룬다). */
+  if (key === DV_KRW_CASH_KEY) {
+    if (ticker || asset.positionSource === 'manual') return { kind: 'maintained', key };
+    const cashPos = findLedgerPositionForAsset(asset, finalPositions);
+    if (!cashPos) return { kind: 'maintained', key };
+    if (positionValuesDiffer(asset.quantity, cashPos.quantity)) return { kind: 'maintained', key };
+    return { kind: 'ledgerKrwCash' };
+  }
   if (DV_MAINTAINED_KEYS.includes(key)) return { kind: 'maintained', key };
   if (!ticker) return { kind: 'unavailable', reason: 'tickerlessMarketAsset' };
   if (asset.positionSource === 'manual') return { kind: 'unavailable', reason: 'manualMarketAsset' };
@@ -318,9 +340,26 @@ function dvBuildRows(input) {
     const mine = classified.filter((c) => c.asset.owner === owner);
     const hasLedgerUsd = mine.some((c) => c.cls.kind === 'ledgerUsdCash');
     const hasMaintainedUsd = mine.some((c) => c.cls.kind === 'maintained' && c.cls.key === DV_USD_CASH_KEY);
+    /* [1단계] 원장이 관리하는 원화 현금이 있으면 스냅샷의 '현금' 합계를 다시 더하지 않는다 -
+     * 달러에서 '달러' 키를 빼는 것과 **같은 이유 · 같은 방식**(이중 계상 방지)이다. 원장형과
+     * 유지형 원화 현금이 함께 있으면 어느 쪽이 스냅샷에 들어갔는지 가를 수 없어 계산하지 않는다
+     * (usdCashMixed와 같은 판단). 원장 원화 현금이 없는 소유자는 예전과 완전히 같다. */
+    const hasLedgerKrwCash = mine.some((c) => c.cls.kind === 'ledgerKrwCash');
+    const hasMaintainedKrwCash = mine.some((c) => c.cls.kind === 'maintained' && c.cls.key === DV_KRW_CASH_KEY);
+    const baseKeys = DV_MAINTAINED_KEYS.filter((k) => !(hasLedgerKrwCash && k === DV_KRW_CASH_KEY));
     return {
       owner, mine, usdMixed: hasLedgerUsd && hasMaintainedUsd,
-      maintainedKeys: hasLedgerUsd ? [...DV_MAINTAINED_KEYS] : [...DV_MAINTAINED_KEYS, DV_USD_CASH_KEY]
+      krwCashMixed: hasLedgerKrwCash && hasMaintainedKrwCash,
+      /* [2단계 · K-1 일반화 · PM 결정 2026-10-01] 1단계에서는 "원장 원화 현금이 있을 때"로만 한정했던
+       * 조건을 일반화한다 - 그 소유자에게 **스냅샷에서 읽을 유지형 자산이 하나도 없으면** 스냅샷
+       * 조각을 아예 넣지 않는다. 스냅샷이 없다는 이유만으로(beforeFirstRecord) 거래원장 + 역사적
+       * 시세로 계산할 수 있는 자산까지 전부 null로 만들지 않기 위함이다. 주식만 가진 소유자가 여기
+       * 해당한다. 유지형 자산이 있으면 예전 그대로 스냅샷을 읽는다. maintainedKeys에서 빠진 키
+       * (원장 달러 · 원장 원화 현금)는 스냅샷에서 읽지 않으므로 "읽을 자산"에서도 제외한다.
+       * DV_MAINTAINED_KEYS 정의는 바꾸지 않는다. */
+      hasSnapshotBackedAsset: mine.some((c) => c.cls.kind === 'maintained'
+        && (hasLedgerUsd ? [...baseKeys] : [...baseKeys, DV_USD_CASH_KEY]).includes(c.cls.key)),
+      maintainedKeys: hasLedgerUsd ? [...baseKeys] : [...baseKeys, DV_USD_CASH_KEY]
     };
   });
   return dates.map((date) => {
@@ -335,11 +374,37 @@ function dvBuildRows(input) {
     const ownerParts = [];
     ownerPlans.forEach((plan) => {
       // 최초 거래일 이전이면 스냅샷 · 시세를 보지 않고 0 하나로 끝낸다(아래 기존 계산은 그대로 둔다).
+      /* [2단계] 스냅샷 조각을 넣을지 세 갈래로 가른다.
+       *   · 읽을 유지형 자산이 없다 → 넣지 않는다(K-1 일반화).
+       *   · 스냅샷 기록값이 있다 → 그 값을 쓴다(**1순위**. 취득원가로 덮어쓰지 않는다 - PM 지시 8).
+       *   · 그 날짜 이하 스냅샷이 아예 없다(beforeFirstRecord) → 조각을 빼고, 아래에서 유지형 자산마다
+       *     취득원가 fallback을 따로 넣는다. 스냅샷이 있는데 형식 · 값이 깨진 경우
+       *     (snapshotWithoutCategory · snapshotValueInvalid)는 예전 그대로 null을 전파한다 -
+       *     "기록이 없다"와 "기록이 깨졌다"는 다른 상태다. */
+      const maintainedPart = (beforeLedger || !plan.hasSnapshotBackedAsset) ? null
+        : dvMaintainedAt(snapshots, snapshotDates, date, plan.owner, plan.maintainedKeys);
+      const costBasisFallback = !!maintainedPart && maintainedPart.value === null
+        && maintainedPart.reason === 'beforeFirstRecord';
       const parts = beforeLedger ? [{ value: 0, state: 'confirmed' }]
-        : [dvMaintainedAt(snapshots, snapshotDates, date, plan.owner, plan.maintainedKeys)];
+        : ((maintainedPart && !costBasisFallback) ? [maintainedPart] : []);
       if (!beforeLedger && plan.usdMixed) parts.push({ value: null, state: 'unavailable', reason: 'usdCashMixed' });
+      if (!beforeLedger && plan.krwCashMixed) parts.push({ value: null, state: 'unavailable', reason: 'krwCashMixed' });
       if (!beforeLedger) plan.mine.forEach(({ asset, cls }) => {
-        if (cls.kind === 'maintained') return; // 스냅샷 카테고리 합계에 이미 들어 있다
+        if (cls.kind === 'maintained') {
+          /* [2단계] 스냅샷 기록값이 있으면 그 합계에 이미 들어 있으므로 아무것도 더하지 않는다.
+           * 기록이 없는 날만 취득원가로 채운다 - 채권 · 부동산만 대상이다(DV_COST_BASIS_KEYS).
+           * 현금은 대상이 아니라 예전처럼 스냅샷이 없으면 계산하지 않는다. */
+          if (!costBasisFallback) return;
+          if (!DV_COST_BASIS_KEYS.includes(cls.key)) {
+            parts.push({ value: null, state: 'unavailable', reason: 'beforeFirstRecord' });
+            return;
+          }
+          const cb = dvCostBasisAt(asset, cls, positions, date);
+          if (cb.value === null) { parts.push({ value: null, state: 'unavailable', reason: cb.reason }); return; }
+          // 취득원가는 시장가격이 아니다 - costBasis 상태로 구분해 화면이 그대로 말할 수 있게 한다.
+          parts.push(cb.value === 0 ? { value: 0, state: 'confirmed' } : { value: cb.value, state: 'costBasis' });
+          return;
+        }
         if (cls.kind === 'unavailable') { parts.push({ value: null, state: 'unavailable', reason: cls.reason }); return; }
         const pos = findLedgerPositionForAsset(asset, positions);
         const qty = pos ? pos.quantity : 0;
@@ -416,6 +481,38 @@ function dvPositionDailyPnl(input) {
   const endValue = qtyCur > 0 ? qtyCur * unitCur : 0;
   const startValue = qtyPrev > 0 ? qtyPrev * unitPrev : 0;
   return { value: endValue - startValue + flow, endQty: running };
+}
+
+/* [2단계 · PM 결정 2026-10-01] 기준일 D의 취득원가. 값을 만들지 않고 **기존 두 원천 중 하나를 고를 뿐**이다.
+ *   ① 기준일 원장 포지션이 있으면 pos.totalCost - 매입 수수료 포함 · 매도 반영 · 잔존 포지션 기준이며
+ *      dvPositionsAsOfFactory가 "D 이하 거래"만 재생하므로 그 자체로 기준일 값이다(재계산하지 않는다).
+ *   ② 포지션이 없고 채권이면 resolveBondHolding(...)의 MANUAL purchaseAmount(사용자가 확정한 매입금액).
+ *      매입일(holding.purchaseDate)이 있을 때만, 그리고 D가 그 날 이후일 때만 쓴다 - 매입 전 날짜에
+ *      금액을 만들어내지 않는다. 매입일이 없으면 날짜를 가를 수 없어 쓰지 않는다.
+ *   ③ 그 밖에는 null. **asset.quantity × asset.buyPrice는 쓰지 않는다** - 금액 모드에서는 buyPrice가 1,
+ *      채권 수량 모드에서는 액면 1만원당 가격, 미입력이면 0이라 의미가 갈린다(PM 지시 4-3).
+ * 반환: { value: number|null, reason: string|null } */
+function dvCostBasisAt(asset, cls, positions, date) {
+  const pos = findLedgerPositionForAsset(asset, positions);
+  if (pos) {
+    if (!(pos.quantity > 0)) return { value: 0, reason: null }; // 그날 보유하지 않았다 = 실제 0
+    const cost = num(pos.totalCost);
+    if (Number.isFinite(cost) && cost > 0) return { value: cost, reason: null };
+    return { value: null, reason: 'costBasisUnavailable' };
+  }
+  if (cls.key === '채권' && typeof lookupBondMasterFacts === 'function' && typeof resolveBondHolding === 'function') {
+    const facts = lookupBondMasterFacts(asset.ticker, asset.id);
+    const record = facts && facts.record;
+    const held = record ? resolveBondHolding(record, positions) : null;
+    if (held && held.source === 'MANUAL' && Number.isFinite(num(held.purchaseAmount)) && num(held.purchaseAmount) > 0) {
+      const bought = String((record.holding && record.holding.purchaseDate) || '');
+      if (DV_DATE_RE.test(bought)) {
+        if (date < bought) return { value: 0, reason: null }; // 매입 전 날짜는 보유하지 않았다 = 실제 0
+        return { value: num(held.purchaseAmount), reason: null };
+      }
+    }
+  }
+  return { value: null, reason: 'costBasisUnavailable' };
 }
 
 // 원장 포지션 맵에서 자산과 같은 대상의 { key, pos } - findLedgerPositionForAsset(js/06)와 같은 판정 · 같은 순서다.
