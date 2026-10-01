@@ -32,6 +32,319 @@
 
 ---
 
+## 🏁 v280 FINAL RELEASE — KRW 현금 거래기반 전환 · 기록 이전 날짜의 총평가금액 산출 (2026-10-01 · **가장 최신** · **출시 완료**)
+
+> **Production: v280** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
+> **버전 변경**: v279 → **v280**
+> **base commit**: `2d0c47dca978f9f8d0e9f060104bd172a3604793` (v279)
+> **release commit**: `a6abc04d148f0b3207ecc4532c478d80fca8871a` · **branch** `main` · **tag** `v280`
+> **merge commit**: `2b450203ed38fcf34989f28987d2cac77fe52eae` — parents `a6abc04` + `112911d`
+> **ticker master 자동 갱신**: `112911dfda1f98bc1eb3f33e2f072254ac562499` (github-actions[bot] · 2026-10-01 05:25:52 UTC · `chore: update ticker master data (2026-10-01) [TMG-20261001T052552Z-93d1e8]`)
+> **E2E 안정화 commit**: `40ae21a660c2e2f12956a7355624c1aabf104fc4` (= `origin/main` 최종 tip)
+> **origin/main** = `40ae21a` · **origin/v280** = tag object `075fe9c97e9223b74b24612a5a2aab9861a3b945` → `a6abc04`
+> **Production**: https://key4125-netizen.github.io/jasan/ (GitHub Pages · source `main/` · build type `legacy`)
+> **SoT**: §29 **REQ-3-1 신설**(1단계) · **REQ-3-2 신설**(2단계) · D-1 · D-3-A · D-3-B · REQ-3에 supersede 주석만 덧붙임(기존 원문 삭제 0건 · 정책 행 436 → 438)
+> **평가손익 · MC · Risk 계산식은 변경하지 않았다** — 아래 「계산 정책 보존」 참조.
+
+### v280이 담은 것 — 누적 4개 작업을 하나의 Release로
+
+| 묶음 | 내용 |
+| --- | --- |
+| **UI 기간 필터** | 두 팝업의 기간 버튼 6종을 **한 행**에 둔다(`flex-wrap` → `flex-nowrap` · 버튼 `px-3` → `px-2`). **기본 선택을 당월 → 금주로 변경**(`daysSinceWeekStart()`). 기간 정의 · 해석 함수(`popupPeriodDays`)는 v279 그대로 |
+| **0단계 · 기존 잔액 보호** | KRW 현금을 거래원장으로 옮기기 전에 **기존 잔액을 지키는 판정부터** 만들었다(`krwCashLedgerSyncDecision` · `diagnoseKrwCashLedgerState`, js/06). 자동으로 0원이 되는 경로 0건 |
+| **1단계 · KRW 현금 거래기반** | 원화 현금도 달러와 **같은 거래원장 구조**로 관리한다 — 새 거래유형 없이 `buy`(유입) / `sell`(유출) · `quantity`=금액 · `price`=1. 분류는 달러와 같은 4단 판정으로 `ledgerKrwCash`를 가리고(`dvClassifyAsset`, js/23), 평가는 **기준일 원장 잔액 × 1**(환율 불필요). 원장이 관리하면 스냅샷 `현금` 합계를 다시 더하지 않는다(이중 계상 방지) · 원장형과 유지형이 함께 있으면 `krwCashMixed`로 계산하지 않는다 |
+| **1단계 보완 · ZERO_BALANCE_ADOPT** | **기존 잔액이 정확히 0 + 정상적인 최초 거래 → 원장 채택**(허용오차 없이 `=== 0`). 0.0001원도 0이 아니므로 보호한다 |
+| **2단계 · 역사적 총평가금액** | 스냅샷은 역사적 총평가금액의 **필수조건이 아니다**. ① 소유자에게 스냅샷에서 읽을 유지형 자산이 하나도 없으면 `beforeFirstRecord`(null) 조각을 넣지 않는다(K-1 일반화) ② 채권 · 부동산(`DV_COST_BASIS_KEYS`)은 **ⓐ 유효한 스냅샷 기록값 → ⓑ 기준일 `pos.totalCost` → ⓒ 채권이고 원장 포지션이 없으면 MANUAL `purchaseAmount`(매입일 이후에만) → ⓓ null** 순서로 평가 |
+| **취득원가 표시** | ⓑⓒ로 평가한 날은 `costBasis` 상태이며 화면에는 **"취득원가 기준"**으로만 적는다 — 시장가격 · 현재가 · 시세라고 표현하지 않는다 |
+
+### 보호 규칙 (이번 Release의 핵심 — 되돌리지 않는다)
+
+- **중복 identity**(같은 소유자 · 계좌구분 · 이름 · 통화) → 자동 매칭 · 자동 덮어쓰기 · **거래 저장**까지 모두 막는다(`cashTransactionIdentityAmbiguous`).
+- **원장 포지션 없음** → 자산 잔액을 그대로 둔다.
+- **잔액 불일치** → 덮어쓰지 않고 사용자 확인 상태로 남긴다(`diagnoseKrwCashLedgerState().needsUserReview`).
+- **`manual` 자산 보호(BL-12)는 그대로다** — 0원 manual 현금도 계속 보호된다.
+- **자동 migration 금지** — 사용자가 입력하지 않은 과거 현금 거래를 만들지 않는다(USD의 `yesterdayDateStr()` 방식을 복사하지 않았다).
+- **`보통예금`은 범위 밖이다** — `CASH_KEYWORDS` 무변경 · 보통예금 전용 로직 0건.
+- **`asset.quantity × asset.buyPrice`는 쓰지 않는다** — 금액 모드는 `buyPrice`=1 · 채권 수량 모드는 액면 1만원당 가격 · 미입력 시 0이라 의미가 갈린다. 안전한 원천이 없으면 `null`이다.
+- **스냅샷 기록값이 있으면 취득원가로 덮어쓰지 않는다.** 깨진 스냅샷(`snapshotWithoutCategory` · `snapshotValueInvalid`)은 예전처럼 null을 전파한다.
+- **backfill · migration · 새 역사적 시세 저장소 0건.** `dailySnapshots` 스키마 · 생성 방식(`recordDailySnapshot`은 `todayDateStr()`만 기록) 무변경.
+
+### 바뀐 파일 (release commit `a6abc04` · 12개 · +1109 / −53)
+
+| 파일 | 내용 |
+| --- | --- |
+| `index.html` | `appVersionLabel` v279 → **v280** · 기간 버튼 컨테이너 2개 `flex-nowrap` · 버튼 12개 `px-2` · `active`를 당월 → 금주로 이동 |
+| `sw.js` | `CACHE_NAME` `smart-asset-manager-v279` → **v280** (그 줄의 릴리스 노트 주석은 v275 기준 그대로 — 손대지 않았다) |
+| `js/23-daily-valuation.js` | `DV_KRW_CASH_KEY` · `DV_COST_BASIS_KEYS` · `costBasis` 플래그 신설 · `dvClassifyAsset`에 KRW 현금 4단 판정 삽입 · `dvBuildRows`에 `krwCashMixed` · K-1 일반화 · 취득원가 fallback · **`dvCostBasisAt()` 신설** |
+| `js/06-transactions.js` | `KRW_CASH_LEDGER_SYNC`(6상태) · `isKrwCashAsset` · `findAssetsMatchingLedgerIdentity` · `krwCashLedgerSyncDecision` · `krwCashLedgerSyncAllowed` · `diagnoseKrwCashLedgerState` · `cashTransactionIdentityAmbiguous` 신설. `syncAssetsFromTransactions`의 KRW 현금 일괄 차단을 판정 기반 가드로 교체 |
+| `js/11-refresh-history.js` | 두 팝업 기본값 `daysSinceWeekStart()` · `active` 토글 기준 `periodRange === 'week'` · `DV_FLAG_WORDS.costBasis = '취득원가 기준'` · `DV_PERMANENT_REASONS`에 `krwCashMixed` 추가 · 취득원가 안내문 1줄 |
+| `js/04-rebalancing.js` | `searchLocalHoldings()`에서 더 이상 쓰이지 않는 `excludeTransactionKrwCash` 분기 제거(호출부 1곳 동시 정리) |
+| `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` | **REQ-3-1 · REQ-3-2 신설** · D-1 · D-3-A · D-3-B · REQ-3에 supersede 주석 덧붙임(원문 삭제 0건) |
+| `test/krw-cash-ledger-guard.test.js` | **신설 164줄 · 11 tests** — 0단계 안전장치 |
+| `test/krw-cash-ledger-transition.test.js` | **신설 359줄 · 24 tests** — 1단계 Case 1~12 + 보완 Test 1~6 + 회귀 |
+| `test/historical-valuation-cost-basis.test.js` | **신설 283줄 · 22 tests** — 2단계 취득원가 fallback |
+| `e2e/87-daily-valuation.spec.js` | test 3 · 7이 기간 창을 명시적으로 고정(기대값 변경 0건 — 기본값이 금주로 바뀌어 창 길이를 못 박아야 했다) |
+| `e2e/88-daily-pnl-valuation.spec.js` | test 1 · 4를 당월로 고정 · **test 3이 기본 금주를 소유**하도록 갱신 |
+
+> `.claude/launch.json`은 **열지 않았고 수정 · stage · commit 하지 않았다**(로컬 변경 상태 그대로 보존).
+> `CLAUDE_HANDOVER.md`는 코드 Release · merge commit과 **분리된 별도 commit**으로 갱신했다.
+
+### 선행 자동 커밋 merge — ticker master 16,706 → 16,724
+
+Release commit을 push하려는 시점에 `origin/main`에 이 저장소의 **월 1회 GitHub Actions 자동화**가 남긴
+`112911d`가 먼저 있었다(`data/ticker-master.json` · `docs/closeout/ticker-master-audit.json` 2개 파일).
+PM 결정에 따라 **force push · rebase 없이 일반 merge**로 수용하고, merge 후 전체 Gate를 다시 실측했다.
+
+- `counts` KOSPI 2098 → 2096 · KOSDAQ 1823 → 1824 · NASDAQ 5243 → 5255 · NYSE 2845 → 2844 · AMEX 4697 → 4705
+- **`tickerMaster` baseline 16,706 → 16,724 (PM 승인된 새 baseline)**. 다른 baseline은 전부 그대로다.
+- ticker master · audit 파일은 **봇 커밋 그대로 수용**했다(수동 수정 0건 · 작업트리 blob 차이 0건).
+- `v280` tag는 재작성하지 않았다 — 계속 `a6abc04`(코드 Release commit)를 가리킨다.
+
+### E2E 하네스 안정화 1줄 (`40ae21a`)
+
+merge 직후 Full E2E에서 `e2e/103-risk-fx-krw-t6.spec.js` test 2가 1건 실패했다. **제품 회귀가 아니다.**
+`boot()`이 함수 존재만 기다려서, 부팅 시세 갱신에 체이닝된 `computeAdvancedRiskMetrics()`(js/11:161)가
+주입한 `state.advancedRiskMetrics`를 덮어쓸 수 있었다 — 전체 스위트 부하에서 그 시점이 `setResult()`와
+`openRiskDetailModal()` 사이에 떨어지면 초기 샘플 데이터(`sampleAssets()`, js/01:2011) 화면이 그려진다.
+ticker master가 커지며 스위트가 15.6m → 17.4m로 느려져 경쟁 구간이 이동한 것이 계기였다.
+
+- 조치: `e2e/103`의 `boot()`에 **`await page.waitForFunction(() => lastRefreshAt > 0);` 1줄 추가**(+1 / −0).
+- 근거: `e2e/107-final-revamp.spec.js:15`가 **이미 같은 줄을 같은 이유로** 쓴다 — 새 convention이 아니다.
+  `lastRefreshAt`은 js/11:188의 `await Promise.all([... riskMetricsPromise ...])` 뒤 js/11:197에서
+  설정되므로, 이 값이 0보다 크면 앱의 Risk 계산이 끝났음이 보장된다.
+- **fixture · 기대값 · assertion · timeout · test structure 변경 0건 · retry · skip · only · 삭제 0건 · 제품 코드 변경 0건.**
+- 같은 `boot()` 패턴을 쓰는 나머지 11개 spec(40 · 72 · 97 · 98 · 99 · 102 · 105 · 107 · 111 · 113 · 114)은
+  **이번에 건드리지 않았다** — 잠재 경쟁 상태는 별도 작업 범위로 남긴다. **(미결 항목)**
+
+### 계산 정책 보존 — v280에서 **변경 없음**
+
+- **평가손익 산식** `dvPositionDailyPnl` · `dvBuildDailyPnlRows` · `calcDailyPnL` · `calcRow` 변경 없음
+- **REQ-2-1(최초 거래일 이전 = 0)** · **U4(0 = 실제 0 · null = 계산 불가 · U-B 전파)** 변경 없음 —
+  "첫 거래일 이전"과 "첫 스냅샷 이전"은 서로 다른 개념이다
+- MC 엔진 · seed · 분포 · 상관 구조 · Return Key · CMA · Risk · Macro · Bond 도메인 · FX · SYNC ·
+  PWA/SW 구조 · transaction schema · localStorage schema · 차트 라이브러리 **전부 무변경**
+- `migrateUsdCashAssetsToTransactions`(USD 현금) 무변경 · snapshot backfill 함수 **없음**
+
+### Release Gate 실측 (merge + E2E 1줄 보완 이후 최종 트리 = `40ae21a`)
+
+| Gate | 결과 |
+| --- | --- |
+| ESLint | **PASS** — exit 0 · error 0 · warning 0 |
+| Full Unit | **PASS** — tests 1094 · pass 1094 · fail 0 · skipped 0 · todo 0 (v279 1037 → **1094**, +57) |
+| Full E2E | **PASS** — **1320 / 1320** · failed 0 · flaky 0 · retry 0 · skipped 0 · exit 0 · 15.6m · 단독 실행 |
+| Regression | **PASS** — Risk score 45 · vol 14.83527456 · VaR −1.075213608 · CVaR −1.211565192 · MDD −2.662509179 · corr 0.9022471287 · beta 0.931428547 · 개별 Beta 7종 전부 `/OK` · Benchmark 전부 `RESOLVED` · 정렬 `SAME_DATE` 6 + `ASYNC_DIMSON` 1 |
+| Master | **PASS** — EM 58 · Index 11 · resolution 58 · **tickerMaster 16724**(승인된 새 baseline) |
+| MC | **PASS** — `errors=[]` · `measure-mc --json` 4680 bytes · sha256 `bfca3ae4834e44a7…` · **merge 전 결과와 `measuredAt` 포함 완전 동일** |
+| Release Guard | **PASS** — CACHE_NAME · appVersionLabel 모두 v280 · APP_SHELL 32개 전부 존재 · js/ 전체 포함 · v280 이후 변경된 APP_SHELL 파일 없음 |
+| Data Guard | **PASS** — stage 0개 · 추적 345개 모두 사용자 데이터 없음 |
+| git diff --check | **PASS** — exit 0 |
+
+> Full E2E는 **v280 marker 변경 후 1회 · merge 후 1회(1건 실패) · 1줄 보완 후 1회(최종)** 실행했다.
+> 마지막 실행 결과가 Release 근거다 — 이전 결과를 재사용하지 않았다.
+
+### Production smoke (2026-10-01 · 배포 후 실측)
+
+- `index.html` **200** · `sw.js` **200** · `manifest.json` **200**
+- `sw.js` `CACHE_NAME` = **smart-asset-manager-v280** · `appVersionLabel` = **v280**
+- Service Worker **activated** (scope `/jasan/` · registration 1개 · waiting · installing 없음)
+- Cache Storage 키 = **`["smart-asset-manager-v280"]`** — **v279 cache 제거 확인** · APP_SHELL 32개 전부 캐시됨
+- runtime **pageErrors 0** (uncaught exception 0건). 콘솔 error는 전부 외부 시세 · 환율 프록시
+  (`r.jina.ai` 401 · `stooq.com` · `*.workers.dev` 등) 호출 실패이며 앱 자체 리소스 29개는 전부 정상 로드
+- 가로 overflow **0** (1440px · 375px 둘 다) · 기간 버튼 6종 **1행** · `flex-nowrap` · 14px · 44px ·
+  **기본 선택 = 금주** (두 팝업 모두) · 전체 기간 전환 정상
+- v280 신설 식별자 production 실측: `DV_COST_BASIS_KEYS = ['채권','부동산']` ·
+  `DV_STATE_FLAGS`에 `costBasis` 포함 · `DV_FLAG_WORDS.costBasis = '취득원가 기준'` ·
+  `DV_PERMANENT_REASONS`에 `krwCashMixed` 포함 · `KRW_CASH_LEDGER_SYNC` 6상태 전부 존재
+- 취득원가 fallback production 실측(합성 인자 · 상태 변경 없음):
+  채권 `pos.totalCost` 400,000,000 → `{value:400000000}` · 부동산 900,000,000 → `{value:900000000}` ·
+  안전한 원천 없음 → `{value:null, reason:'costBasisUnavailable'}`
+- KRW 현금 판정 production 실측: 기존 0원 + 최초 거래 → `ZERO_BALANCE_ADOPT` ·
+  잔액 불일치 → `BALANCE_MISMATCH` · 원장 없음 → `NO_LEDGER_POSITION`
+- 대시보드 「오늘 평가손익」 · 「전체 평가손익」 · 총자산 · 위험 · 매크로 정상 렌더 ·
+  `단순 수익률 적용 시` 카드 1건 · `undefined` · `NaN` · `[object Object]` 노출 0건
+
+> smoke는 **사용자 실제 데이터를 쓰지 않았다** — 격리된 브라우저 프로필에서 앱 기본 샘플 데이터로만
+> 확인했고, screenshot · video · trace · export · localStorage dump 0건이다.
+> 거래내역이 0건인 새 프로필이므로 총평가금액 추이는 「계산할 수 있는 날이 아직 없습니다」가
+> 정상이며(U4 · U-B 그대로), 이는 회귀가 아니다.
+
+### 현재 작업트리 상태
+
+```
+branch       main
+HEAD         40ae21a  test(risk): wait for boot refresh before injecting FX fixture
+origin/main  40ae21a  (동일 · ahead 0 / behind 0)
+v280 tag     a6abc04  (origin/v280 동일 · 재작성 0)
+미커밋        M .claude/launch.json   ← 사용자 로컬 변경 · 절대 손대지 않는다
+```
+
+### 잔여 참고사항 · 미결
+
+1. **e2e/103과 같은 `boot()` 패턴을 쓰는 11개 spec의 잠재 경쟁 상태** — 40 · 72 · 97 · 98 · 99 · 102 ·
+   105 · 107(이미 가드 있음) · 111 · 113 · 114(이미 가드 있음). 전체 스위트가 더 느려지면 다시 드러날
+   수 있다. PM이 별도 작업 범위로 남겼다.
+2. **`sw.js`의 릴리스 노트 주석은 아직 v275 기준**이다(`// [v275 FINAL RELEASE] …`). 기능에 영향이
+   없고 Release 범위 밖이라 손대지 않았다.
+3. **`bondQuoteMemory`는 ISIN 키 · TTL 20분 · 메모리 전용**이다(날짜 축 없음 · 영속화 없음). 그래서
+   채권의 **역사적 시장가격은 존재하지 않고**, 2단계는 취득원가로만 fallback한다. 부동산도 평가액
+   저장소가 없다.
+4. **날짜 색인이 있는 저장소는 `dailySnapshots` 하나뿐**이고 `recordDailySnapshot`은 `todayDateStr()`만
+   기록한다. backfill 코드는 저장소 어디에도 없다.
+5. `.claude/launch.json`은 계속 미커밋 로컬 변경으로 남아 있다. **열지 않는다 · 되돌리지 않는다.**
+---
+
+## 🏁 v279 FINAL RELEASE — 평가손익 · 총자산 추이 기간 6종 확대 · 최초 거래일 기준 정리 (2026-09-30 · **직전 릴리스** · **출시 완료**)
+
+> **Production: v279** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
+> **버전 변경**: v278 → **v279**
+> **base commit**: `8c0bd3506d03684cc878416a126951366ad59035` (v278)
+> **release commit**: `2d0c47dca978f9f8d0e9f060104bd172a3604793` · **branch** `main` · **tag** `v279`
+> **origin/main** = `2d0c47d` (로컬 HEAD와 동일 · tag가 이 커밋을 가리키는 것 확인)
+> **Production**: https://key4125-netizen.github.io/jasan/ (GitHub Pages · source `main/` · build type `legacy`)
+> **SoT**: §29 REQ-2 갱신 · **§29 REQ-2-1 신설**
+> **이번 릴리스는 기존 일간손익 · 총손익 계산정책을 재설계한 릴리스가 아니다** — 아래 「계산 정책 보존」 참조.
+
+### v279가 담은 것
+
+| 묶음 | 내용 |
+| --- | --- |
+| **기간 6종 확대** | 「금융자산 오늘 평가손익」 상세 팝업과 「총자산 추이」 상세 팝업 **둘 다** 금주 / 당월 / 3개월 / 6개월 / 1년 / 전체 6종으로 확대. 기본값은 그대로 당월. 두 팝업이 같은 해석 함수(`popupPeriodDays`)를 쓴다 |
+| **금주 정의** | **월요일 시작 · 오늘 포함 · 기존 calendar-day 방식 유지**(`daysSinceWeekStart`, js/01). 영업일 캘린더를 새로 만들지 않았다 — 주말 · 휴장은 기존 `closedCarry` 처리 그대로 |
+| **전체 정의** | **최초 거래일을 시작일로 사용**(`daysSinceLedgerStart`, js/01). `state.transactions`의 가장 이른 `date`이며 `origin`으로 거르지 않는다. 거래가 하나도 없으면 오늘 하루 + 기존 no-data 처리 |
+| **최초 거래일 기준 정리** | 총자산 추이에서 **최초 거래일 이전 = 확정적으로 `0`**(계산 불가 null 아님). **최초 거래일 당일 총자산 = 최초 등록 자산 합계** · **당일 평가손익 = `0`** · **다음 날부터 기존 손익 계산 적용**. 구현은 `dvLedgerStartDate()` 신설(js/23) + `dvBuildRows`에 분기 1개 |
+| **1,000개 그래프** | 일별 손익 막대가 **999 이하 = 기존 bar · 1,000 이상 = line**(경계: 정확히 1,000개도 line). **데이터 · 라벨 · 집계 방식은 변경하지 않았다** — 집계 · 샘플링 · 평균화 0건 |
+| **표시 문구 통일** | 미래예측 카드와 **Monte Carlo 설명 모달 둘 다** `단순 수익률 적용 시`. 이전 명칭 "지금 계획대로면"은 화면 표시 문자열에서 0건 |
+
+### 바뀐 파일 (release commit `2d0c47d` · 10개 · +108 / −26)
+
+| 파일 | 내용 |
+| --- | --- |
+| `index.html` | `appVersionLabel` v278 → **v279** · 카드 표제 `단순 수익률 적용 시` · 두 팝업에 금주 · 전체 버튼 추가(`data-period-range`) |
+| `sw.js` | `CACHE_NAME` `smart-asset-manager-v278` → **v279** (그 줄의 릴리스 노트 주석은 손대지 않았다 — 아래 「잔여 참고사항 ②」) |
+| `js/01-core-state.js` | `daysSinceWeekStart()` · `daysSinceLedgerStart()` **신설 2개**. 기존 함수 본문 변경 0건(110개 전부 v278과 바이트 동일) |
+| `js/11-refresh-history.js` | `popupPeriodDays()` **신설** · `periodSummaryLabel`(문구 분기) · `renderDailyPnlChart`(차트 type 분기)만 변경. 나머지 46개 함수 바이트 동일 |
+| `js/23-daily-valuation.js` | `dvLedgerStartDate()` **신설** · `dvBuildRows`에 최초 거래일 이전 분기 1개 추가 |
+| `js/19-monte-carlo-ui.js` | MC 설명 모달 문구 1줄 |
+| `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` | §29 REQ-2 갱신 · **REQ-2-1 신설**(기존 REQ 행 삭제 0건) |
+| `e2e/87-daily-valuation.spec.js` | 「최초 거래일 이전 = null」을 고정하던 기대값 3곳을 **`0`으로 갱신** + 안내문 회귀 assertion **1건 추가**(삭제 · skip · 완화 0건) |
+| `e2e/88-daily-pnl-valuation.spec.js` | 기간 버튼 4종 → **6종** 기대값 |
+| `e2e/94-plan-cards-projection-cleanup.spec.js` | 카드 명칭 · MC 모달 문구 assertion |
+
+> `.claude/launch.json`은 **열지 않았고 수정 · stage · commit 하지 않았다**(로컬 변경 상태 그대로 보존).
+
+### 계산 정책 보존 — v279에서 **변경 없음**
+
+**이번 릴리스는 기존 일간 평가손익 · 총 손익 계산정책을 재설계한 릴리스가 아니다.**
+아래는 전부 v278과 동일하다(함수 본문 바이트 대조로 확인).
+
+- 기존 **일간 평가손익 산식(U1=C)** 유지 — `dvPositionDailyPnl` **변경 없음** · `dvBuildDailyPnlRows` **변경 없음**
+- `calcDailyPnL` · `calcRow` · `computePositionsAndRealizedPnL` · `loadDailyPnlRows` · `loadDailyValuationRows` · `updateTotalValueModal` 변경 없음
+- **MC 계산식** · Return Key · CMA · Risk · Macro · Bond · **FX / 환헤지** · SYNC 정책 변경 없음
+- **transaction schema** · **localStorage schema** · **dailySnapshots의 의미** 변경 없음
+- **차트 라이브러리** 변경 없음(Chart.js 그대로 · type 문자열만 분기)
+- **데이터 집계 / 샘플링 방식** 변경 없음
+- PWA / Service Worker **구조** 변경 없음(버전 marker만 상향)
+
+최초 등록 자산이 손익으로 중복 계산되지 않는 것은 새 로직이 아니라 **기존 U1=C 산식의 결과**다
+(당일 평가 − 전일 평가 0 − 당일 매수대금 = 0). 손익 쪽 코드는 한 줄도 바꾸지 않았다.
+
+### Release Gate 결과 (전건 PASS)
+
+| 게이트 | 결과 |
+| --- | --- |
+| ESLint | **PASS** (`npx eslint .` exit 0) |
+| Unit | **PASS** `1037/1037` · fail 0 · skipped 0 · todo 0 |
+| Target E2E | **PASS** `40 passed` (e2e/87 · e2e/88 · e2e/94) |
+| Full E2E | **PASS** `1320/1320` · failed **0** · flaky **0** · retry **0** · skipped **0** (단독 1회 · 15.9분) |
+| Data Guard | **PASS** (stage 10개 · 추적 342개 · 사용자 데이터 파일 0) |
+| Release Guard | **PASS** — CACHE_NAME = v279 · appVersionLabel = v279 · APP_SHELL 32개 정상 · `js/` 전체 APP_SHELL 포함 · 변경 APP_SHELL 누락 없음 |
+
+**Regression — v278 baseline과 전 항목 동일**
+
+```
+Risk  score=45 vol=14.83527456 VaR=-1.075213608 CVaR=-1.211565192
+      MDD=-2.662509179 corr=0.9022471287 beta=0.931428547
+Master EM=58 Index=11 resolution=58 tickerMaster=16706
+MC    errors=[]
+```
+
+**MC** — `measure-mc --json` 결과가 ① v278 기간확대 시점 ② FIX 적용 시점 ③ v279 marker 승격 후
+**세 시점 모두 byte 단위 동일**.
+
+### Deployment · Production smoke
+
+**Deployment**: GitHub Pages 배포 완료 · source `main/` · build type `legacy` · commit `2d0c47d`
+(빌드 상태 building → built 확인 후 smoke 수행)
+
+**Production smoke: PASS** (새 클린 브라우저 컨텍스트 · Chromium 151.0.7922.34)
+
+- `index.html` **200** · `sw.js` **200**
+- `appVersionLabel` = **v279** · `CACHE_NAME` = **smart-asset-manager-v279**
+- Service Worker **activated** · 캐시 `[smart-asset-manager-v279]` · **v278 cache 제거 확인**
+- 4개 탭(금융투자현황 · 총자산현황 · 거래내역 · 포트폴리오/자산예측) 정상 · **overflowX = 0**
+- **runtime pageErrors = 0** (전 화면) · 핵심 화면 정상 · `#mcRunBtn` 표시 확인
+- 평가손익 **6개 기간 정상** · 총자산 추이 **6개 기간 정상**(두 팝업 날짜 경계 완전 일치)
+- **금주 = 월요일 시작**(2026-09-28 월 ~ 09-30)
+- **1,000개 경계 = 999 bar / 1000 line / 1001 line**
+- 카드 · MC 설명 문구 = **`단순 수익률 적용 시`**
+
+> smoke는 **실사용자 데이터를 읽지 않기 위해 빈 프로필**로 접속했으므로 거래 0건 상태였다.
+> 그래서 production 화면에서 「전체 = 최초 거래일」의 소급 동작과 「최초 거래일 이전 총자산 0」은
+> 실데이터로 재현하지 않았다(거래 0건일 때의 정상 동작만 확인). 두 항목은 배포 전에 합성 fixture로
+> 실측 PASS 했고(08-08 총자산 0 · 08-09 4억 · 당일 손익 0 · 08-10 +5,000,000 · 추가입금 5천만이
+> 손익에 섞이지 않음), `e2e/87` · `e2e/88`이 Full E2E에서 회귀로 고정한다.
+> console error 171건은 전부 네트워크 계층(CORS · 401 · 404) — 자격증명 없는 새 프로필에서
+> 시세 · 환율 · 프록시 호출이 거절된 것이며 **JS 실행 오류가 아니다**.
+
+### Release 이후 잔여 참고사항 — **문제로 판정하지 않는다 · 추가 수정하지 않는다**
+
+**① 최초 거래일 < 최초 snapshot일 (소급입력)**
+`dailySnapshots`가 없는 특수 소급입력 상황에서는 **최초 거래일 당일** 총자산이 `null`이 될 수 있다.
+이번 Release 범위(「최초 거래일 **이전** 날짜에 대해서만」)에서 다루지 않았다.
+정상 사용에서는 앱이 열릴 때마다 스냅샷을 기록하므로 최초 거래일 == 최초 스냅샷일이라 발생하지 않는다.
+**추후 별도 요구사항이 생기면 별도 PM 결정으로 처리한다.**
+
+**② `sw.js` 릴리스 노트 주석**
+`CACHE_NAME` 주변 기존 주석이 `// [v275 FINAL RELEASE] ...`로 시작하는 상태를 **그대로 유지**한다.
+v278 시점부터 이미 그 상태였고 v279 기능 · 동작에 영향을 주지 않는다.
+이번 Release에서 **marker 외 불필요한 코드 · 주석 변경을 하지 않았다는 원칙**에 따라 유지했다.
+
+### Git / Release 상태
+
+| 항목 | 상태 |
+| --- | --- |
+| commit | **완료** `2d0c47dca978f9f8d0e9f060104bd172a3604793` |
+| tag | **완료** `v279` → 위 commit |
+| push | **완료** `origin main` (8c0bd35..2d0c47d) · `origin v279` (new tag) |
+| deploy | **완료** (GitHub Pages) |
+| Production smoke | **PASS** |
+| 최종 상태 | **`RELEASED`** |
+
+### 다음 세션이 먼저 할 일
+
+1. 시작 전 `git pull` — 이 파일 **맨 위 절이 가장 최신**이다(아래 v276 · v275 · v274 절의 "가장 최신" 표기는 당시 기록이다).
+2. Production baseline은 **v279**다. 새 작업은 v279를 기준선으로 잡는다.
+3. 정책 SoT는 `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` — 이번 릴리스로 **§29 REQ-2 · REQ-2-1**이 최신이다.
+4. 위 「잔여 참고사항 ①」(소급입력 시 최초 거래일 당일 null)은 **PM 결정 없이 손대지 않는다**.
+5. `.claude/launch.json`은 사용자 로컬 변경이다 — **열지 말고 수정 · stage · commit 하지 않는다**.
+
+### 인계장 공백 보정 — v277 · v278 (이 파일에 절이 없던 구간)
+
+v276 절 이후 v277 · v278이 이 인계장에 기록되지 않은 채 v279에 이르렀다. 다음 세션이 흐름을
+잃지 않도록 **git에서 확인한 사실만** 적어 둔다(상세 기록은 해당 커밋과 SoT를 참조한다).
+
+| 태그 | commit | 제목 |
+| --- | --- | --- |
+| `v276` | `bb7bccdf33e0f525b038d9ba386009f99462933b` | test(sync): verify final state when peer already merged (T-03) |
+| `v277` | `27eb15f5a3357d5ca92a8ef050741a5de2647554` | release: finalize v277 after Phase C removal |
+| `v278` | `8c0bd3506d03684cc878416a126951366ad59035` | fix(sync): stabilize push and auto-pull release path |
+| `v279` | `2d0c47dca978f9f8d0e9f060104bd172a3604793` | release: v279 — 평가손익 · 총자산 추이 기간 6종 확대와 최초 거래일 기준 정리 |
+
+> v278은 동기화 경합(SYNC-123) 수정 릴리스였다 — push 진행 중에는 10초 자동 pull을 억제한다
+> (`js/11`의 타이머가 `js/12`의 `pushInFlight`를 확인). **v279에서는 이 SYNC 경로를 건드리지 않았다.**
+
+---
+
 ## ✅ e2e/114 F-7 해결 · v276 Release Gate 전건 PASS (2026-09-29 · **가장 최신**)
 
 > **Production: v275** · **Target: v276** · **Release: PM 최종 승인 대기**
