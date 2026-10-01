@@ -605,9 +605,27 @@ function dvBuildDailyPnlRows(input) {
           unitPrev = u.unit;
           states.push(...u.states);
         }
+        /* [PM 결정 2026-10-01 · REQ-2-1 준수] '최초'(origin='initial') 거래는 **거래가 아니라 기존
+         * 보유분을 원장에 올리는 등록**이다 - 앱이 스스로 만든다(downloadHoldingsAsTxTemplate ·
+         * migrateUsdCashAssetsToTransactions). 그래서 그 price는 "그날의 체결가"가 아니라 과거
+         * 평균 취득단가(달러 현금은 추정 appliedRate)이고, 기존 산식에 그대로 넣으면 그 종목이
+         * 지금까지 쌓은 평가차익 전체가 등록일 하루의 손익으로 몰렸다(실측 +545,774,933원).
+         * REQ-2-1이 이미 "최초 등록 자산 합계가 손익으로 잡히지 않는다"고 적고 있으므로, 그 괄호
+         * 산식(qty_D × P_D − 0 − 당일 매수대금 = 0)이 성립하는 조건 **매수단가 = 그날 평가가격**을
+         * 등록 거래에만 실제로 맞춰 준다. dvPositionDailyPnl 산식 · 원장(수량 · 평단가 · totalCost ·
+         * 실현손익) · 총평가금액(dvBuildRows) · 최초 거래일 판정(dvLedgerStartDate)은 건드리지
+         * 않는다 - 등록분은 원장에서 계속 정상 이벤트다(js/01 daysSinceLedgerStart 주석과 같은 범위).
+         * rate로 나눈 값에 같은 rate를 다시 곱하므로 flow = quantity × unitCur가 되어 환율과
+         * 무관하게 정확히 0이다(USD 주식 · USD 현금 동일). 같은 날 섞인 'period' 실거래는 자기
+         * price · appliedRate를 그대로 쓴다. unitCur이 없으면(등록 당일 전량 매도) 예전 그대로다. */
         const r = dvPositionDailyPnl({
           qtyPrev, unitPrev, qtyCur, unitCur,
-          trades: trades.map((t) => ({ type: t.type, quantity: t.quantity, price: t.price, rate: dvTradeRate(t, defaultTradeRate) }))
+          trades: trades.map((t) => ({
+            type: t.type,
+            quantity: t.quantity,
+            price: (t.origin === 'initial' && unitCur !== null) ? unitCur / dvTradeRate(t, defaultTradeRate) : t.price,
+            rate: dvTradeRate(t, defaultTradeRate)
+          }))
         });
         // 다시 재생한 끝 수량이 원장의 그날 수량과 다르면 어느 쪽이 맞는지 알 수 없다 - 계산하지 않는다.
         if (positionValuesDiffer(r.endQty, qtyCur)) { parts.push({ value: null, state: 'unavailable', reason: 'ledgerReplayMismatch' }); return; }

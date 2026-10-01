@@ -370,3 +370,208 @@ test('12. [기간 통일] 당월/3/6/12개월 = 이번 달 포함 (N−1)개월 
     SB.Date = original;
   }
 });
+
+/* ===========================================================================
+ * [PM 결정 2026-10-01 · REQ-2-1 준수] origin='initial' 최초 등록일 Daily P/L = 0.
+ *
+ * '최초' 거래는 거래가 아니라 기존 보유분을 원장에 올리는 등록이다(앱이 직접 만든다 -
+ * downloadHoldingsAsTxTemplate · migrateUsdCashAssetsToTransactions). 그 price는 과거 평균
+ * 취득단가이므로 기존 산식에 그대로 넣으면 그 종목의 누적 평가차익 전체가 등록일 하루 손익으로
+ * 몰린다. 아래 테스트가 그 회귀를 고정한다. 기존 'period' 거래 동작은 바꾸지 않는다.
+ * ======================================================================== */
+
+// 이 절 전용 세계. 종목 하나(원장) + 소유자 하나. 날짜별 종가와 거래만 바꾼다.
+function initWorld({ closes, transactions, assets, dates, owners = ['신랑'], extraSeries = {} }) {
+  return run({
+    assets, transactions,
+    seriesBySymbol: Object.assign({
+      ZZINIT: series('ZZINIT', 'KR', closes),
+      '^KS11': series('^KS11', 'KR', flat(3000))
+    }, extraSeries),
+    dates, owners
+  });
+}
+const INIT_ASSET = (o) => A(Object.assign({ id: 'zi', ticker: 'ZZINIT', owner: '신랑', category: '주식', name: 'ZZ등록', positionSource: 'ledger' }, o));
+const INIT_TX = (o) => T(Object.assign({ ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', origin: 'initial' }, o));
+const CLOSES = (over) => Object.assign(flat(5000), over || {});
+
+test('TEST-01. 최초 등록일(initial) Daily P/L은 0이다 - 등록 단가 1,000 · 당일 종가 5,000', () => {
+  const w = initWorld({
+    closes: CLOSES(), assets: [INIT_ASSET()],
+    transactions: [INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 })],
+    dates: ['2026-09-07', '2026-09-08']
+  });
+  close(w.pnl('2026-09-08').owners['신랑'], 0, '등록일 소유자 손익');
+  close(w.pnl('2026-09-08').total, 0, '등록일 합계');
+  close(w.pnl('2026-09-07').total, 0, '등록 전날은 보유도 거래도 없어 실제 0');
+});
+
+test('TEST-02. 등록 다음 날부터는 기존 산식을 그대로 쓴다 - 종가 5,000 → 5,500', () => {
+  const w = initWorld({
+    closes: CLOSES({ '2026-09-09': 5500, '2026-09-10': 5500, '2026-09-11': 5500 }),
+    assets: [INIT_ASSET()],
+    transactions: [INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 })],
+    dates: ['2026-09-08', '2026-09-09']
+  });
+  close(w.pnl('2026-09-08').total, 0, '등록일');
+  close(w.pnl('2026-09-09').total, 50000, '등록 다음 날 = 100 x (5,500 - 5,000)');
+});
+
+test('TEST-03. 등록일에 역사적 평가차익(100 x (5,000 - 1,000) = 400,000)이 손익으로 잡히지 않는다', () => {
+  const w = initWorld({
+    closes: CLOSES(), assets: [INIT_ASSET()],
+    transactions: [INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 })],
+    dates: ['2026-09-08']
+  });
+  const v = w.pnl('2026-09-08').total;
+  assert.notStrictEqual(v, 400000, '누적 차익 400,000이 등록일 손익이 되어서는 안 된다');
+  close(v, 0, '등록일 손익');
+});
+
+test('TEST-04. 등록 이후 실제 매수(period)는 기존 산식 그대로다', () => {
+  const w = initWorld({
+    closes: CLOSES({ '2026-09-09': 5500, '2026-09-10': 5500, '2026-09-11': 5500 }),
+    assets: [INIT_ASSET()],
+    transactions: [
+      INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 }),
+      T({ id: 'p1', date: '2026-09-09', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', quantity: 50, price: 5200, createdAt: 2 })
+    ],
+    dates: ['2026-09-08', '2026-09-09']
+  });
+  close(w.pnl('2026-09-08').total, 0, '등록일');
+  // 150 x 5,500 - 100 x 5,000 - 50 x 5,200 = 65,000 (기존 U1=C 산식 그대로)
+  close(w.pnl('2026-09-09').total, 65000, '실제 매수일 = 기존 산식');
+});
+
+test('TEST-05. 등록 이후 실제 매도(period)는 기존 Daily P/L · 실현손익 그대로다', () => {
+  const transactions = [
+    INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 }),
+    T({ id: 's1', date: '2026-09-09', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', type: 'sell', quantity: 40, price: 5400, createdAt: 2 })
+  ];
+  const w = initWorld({
+    closes: CLOSES({ '2026-09-09': 5500, '2026-09-10': 5500, '2026-09-11': 5500 }),
+    assets: [INIT_ASSET()], transactions, dates: ['2026-09-08', '2026-09-09']
+  });
+  close(w.pnl('2026-09-08').total, 0, '등록일');
+  // 60 x 5,500 - 100 x 5,000 + 40 x 5,400 = 46,000
+  close(w.pnl('2026-09-09').total, 46000, '실제 매도일 = 기존 산식');
+  // 실현손익은 원장 그대로 - 등록 거래의 평단가(1,000)를 그대로 쓴다.
+  const pos = SB.computePositionsAndRealizedPnL(transactions).positions;
+  const key = SB.transactionIdentityKey({ owner: '신랑', accountType: '일반계좌', ticker: 'ZZINIT', name: 'ZZ등록', currency: 'KRW' });
+  close(pos[key].realizedPnL, 176000, '실현손익 = (5,400 - 1,000) x 40');
+  close(pos[key].avgPrice, 1000, '평단가는 등록 단가 그대로');
+  close(pos[key].quantity, 60, '잔량');
+});
+
+test('TEST-06. 같은 날 initial + period가 섞이면 initial만 0이고 실거래 손익은 보존된다', () => {
+  const w = initWorld({
+    closes: CLOSES(), assets: [INIT_ASSET()],
+    transactions: [
+      INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 }),
+      T({ id: 'p1', date: '2026-09-08', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', quantity: 10, price: 4800, createdAt: 2 })
+    ],
+    dates: ['2026-09-08']
+  });
+  // 110 x 5,000 - 0 - (100 x 5,000 + 10 x 4,800) = 2,000 = 10 x (5,000 - 4,800)
+  close(w.pnl('2026-09-08').total, 2000, '실제 매수 10주의 당일 손익만 남는다');
+});
+
+test('TEST-07. 여러 소유자 · 여러 자산을 같은 날 한꺼번에 등록해도 전부 0이다', () => {
+  const mk = (id, owner, ticker, name) => A({ id, ticker, owner, category: '주식', name, positionSource: 'ledger' });
+  const tx = (id, owner, ticker, name, quantity, price) => T({ id, date: '2026-09-08', owner, ticker, name, quantity, price, origin: 'initial', createdAt: 1 });
+  const w = run({
+    assets: [
+      mk('a1', '신랑', 'ZZINIT', 'ZZ등록'), mk('a2', '신랑', 'ZZ2.KS', 'ZZ둘'),
+      mk('a3', '와이프', 'ZZINIT', 'ZZ등록'), mk('a4', '와이프', 'ZZ3.KS', 'ZZ셋')
+    ],
+    transactions: [
+      tx('t1', '신랑', 'ZZINIT', 'ZZ등록', 273, 228666), tx('t2', '신랑', 'ZZ2.KS', 'ZZ둘', 470, 127809),
+      tx('t3', '와이프', 'ZZINIT', 'ZZ등록', 71, 150736), tx('t4', '와이프', 'ZZ3.KS', 'ZZ셋', 40, 465557)
+    ],
+    seriesBySymbol: {
+      ZZINIT: series('ZZINIT', 'KR', flat(1828000)), 'ZZ2.KS': series('ZZ2.KS', 'KR', flat(274500)),
+      'ZZ3.KS': series('ZZ3.KS', 'KR', flat(349000)), '^KS11': series('^KS11', 'KR', flat(3000))
+    },
+    dates: ['2026-09-08'], owners: ['신랑', '와이프']
+  });
+  close(w.pnl('2026-09-08').owners['신랑'], 0, '신랑');
+  close(w.pnl('2026-09-08').owners['와이프'], 0, '와이프');
+  close(w.pnl('2026-09-08').total, 0, '합계');
+});
+
+test('TEST-08. 달러 주식 initial은 적용환율 != 평가환율이어도 등록일 0이다', () => {
+  const w = run({
+    assets: [A({ id: 'zu', ticker: 'ZZUSD', owner: '신랑', category: '주식', name: 'ZZ미국', currency: 'USD', isDomestic: '해외', positionSource: 'ledger' })],
+    transactions: [T({ id: 'iu', date: '2026-09-08', ticker: 'ZZUSD', owner: '신랑', name: 'ZZ미국', quantity: 10, price: 50, currency: 'USD', appliedRate: 1200, origin: 'initial' })],
+    seriesBySymbol: {
+      ZZUSD: series('ZZUSD', 'US', flat(200)), '^GSPC': series('^GSPC', 'US', flat(7000)),
+      'KRW=X': series('KRW=X', 'FX', flat(1400))
+    },
+    dates: ['2026-09-08'], owners: ['신랑']
+  });
+  close(w.pnl('2026-09-08').total, 0, '달러 주식 등록일');
+});
+
+test('TEST-09. 달러 현금 initial도 적용환율 != 평가환율이어도 등록일 0이다 (P-3)', () => {
+  const w = run({
+    assets: [A({ id: 'zd', ticker: '', owner: '신랑', category: '현금', name: '달러', currency: 'USD', isDomestic: '해외', positionSource: 'ledger' })],
+    transactions: [T({ id: 'id', date: '2026-09-08', ticker: '', owner: '신랑', name: '달러', quantity: 9075.84, price: 1, currency: 'USD', appliedRate: 1420, origin: 'initial' })],
+    seriesBySymbol: { 'KRW=X': series('KRW=X', 'FX', flat(1400)), '^KS11': series('^KS11', 'KR', flat(3000)) },
+    dates: ['2026-09-08'], owners: ['신랑']
+  });
+  close(w.pnl('2026-09-08').total, 0, '달러 현금 등록일(환차손을 손익으로 잡지 않는다)');
+});
+
+test('TEST-10. 총평가금액은 이 변경에 영향받지 않는다 - 등록일에도 원장 x 종가 그대로다', () => {
+  const w = initWorld({
+    closes: CLOSES({ '2026-09-09': 5500, '2026-09-10': 5500, '2026-09-11': 5500 }),
+    assets: [INIT_ASSET()],
+    transactions: [INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 })],
+    dates: ['2026-09-07', '2026-09-08', '2026-09-09']
+  });
+  close(w.tv('2026-09-07').total, 0, '최초 거래일 이전 = 0(REQ-2-1 무변경)');
+  close(w.tv('2026-09-08').total, 500000, '등록일 총평가 = 100 x 5,000');
+  close(w.tv('2026-09-09').total, 550000, '다음 날 = 100 x 5,500');
+});
+
+test('TEST-11. 등록 당일 전량 매도(unitCur 없음)는 예전 동작 · 실현손익을 그대로 유지한다', () => {
+  const transactions = [
+    INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000 }),
+    T({ id: 's1', date: '2026-09-08', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', type: 'sell', quantity: 100, price: 5000, createdAt: 2 })
+  ];
+  const w = initWorld({ closes: CLOSES(), assets: [INIT_ASSET()], transactions, dates: ['2026-09-08'] });
+  // qtyCur = 0이라 등록일 기준가 치환을 쓸 수 없다 - 기존 가격 fallback 그대로 실현손익만큼 남는다.
+  close(w.pnl('2026-09-08').total, 400000, '전량 매도분 실현손익이 예전처럼 그대로 보인다');
+  const pos = SB.computePositionsAndRealizedPnL(transactions).positions;
+  const key = SB.transactionIdentityKey({ owner: '신랑', accountType: '일반계좌', ticker: 'ZZINIT', name: 'ZZ등록', currency: 'KRW' });
+  close(pos[key].realizedPnL, 400000, '실현손익 = (5,000 - 1,000) x 100');
+});
+
+test('TEST-12. initial보다 period 거래가 먼저 있던 경우 선행 포지션의 당일 변동분만 남는다', () => {
+  const w = initWorld({
+    closes: CLOSES({ '2026-09-07': 4900 }), assets: [INIT_ASSET()],
+    transactions: [
+      T({ id: 'p0', date: '2026-09-07', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', quantity: 20, price: 4900 }),
+      INIT_TX({ id: 'i1', date: '2026-09-08', quantity: 100, price: 1000, createdAt: 2 })
+    ],
+    dates: ['2026-09-07', '2026-09-08']
+  });
+  close(w.pnl('2026-09-07').total, 0, '선행 매수일(체결가 = 종가)');
+  // 120 x 5,000 - 20 x 4,900 - 100 x 5,000 = 2,000 = 20 x (5,000 - 4,900)
+  close(w.pnl('2026-09-08').total, 2000, '등록일에는 선행 20주의 시장 변동분만 남는다');
+});
+
+test('TEST-13. origin이 initial이 아닌 기존 거래의 손익은 바뀌지 않는다(체결가 != 종가 포함)', () => {
+  const w = initWorld({
+    closes: Object.assign(flat(100), { '2026-09-09': 110, '2026-09-10': 110, '2026-09-11': 110 }),
+    assets: [INIT_ASSET()],
+    transactions: [
+      T({ id: 'p0', date: '2026-09-08', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', quantity: 10, price: 100 }),
+      T({ id: 'p1', date: '2026-09-09', ticker: 'ZZINIT', owner: '신랑', name: 'ZZ등록', quantity: 5, price: 105, createdAt: 2 })
+    ],
+    dates: ['2026-09-08', '2026-09-09']
+  });
+  close(w.pnl('2026-09-08').total, 0, '매수일(체결가 = 종가)');
+  // 기존 테스트 1의 사례 9와 같은 값 - 15 x 110 - 10 x 100 - 5 x 105 = 125
+  close(w.pnl('2026-09-09').total, 125, 'period 거래는 체결가와 종가 차이를 그대로 손익으로 본다');
+});
