@@ -32,7 +32,179 @@
 
 ---
 
-## 🏁 v280 FINAL RELEASE — KRW 현금 거래기반 전환 · 기록 이전 날짜의 총평가금액 산출 (2026-10-01 · **가장 최신** · **출시 완료**)
+## 🏁 v281 FINAL RELEASE — 최초 등록일 Daily P/L 0 처리 (2026-10-01 · **가장 최신** · **출시 완료**)
+
+> **Production: v281** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
+> **버전 변경**: v280 → **v281**
+> **base commit**: `203a266f3b8eb417872406a7d7ae1fcc7680d297` (v280 인계장 커밋)
+> **release commit**: `8c92f6854b9ee722c6ed21f95b50f45fc0ed9c37` · **branch** `main` · **tag** `v281`
+> **origin/main** = `8c92f68` · **origin/v281** = tag object `f2cab7b57326e4c8b8e057ef98bb848c153f107f` → `8c92f68`
+> **v280 tag 불변** = `a6abc04d148f0b3207ecc4532c478d80fca8871a`
+> **Production**: https://key4125-netizen.github.io/jasan/ (GitHub Pages · source `main/` · build type `legacy`)
+> **SoT**: §29 **REQ-2-1 보완**(숨은 전제 명시) · **REQ-2-2 신설**(P-1~P-6) — 기존 원문 삭제 0건
+> **새 정책이 아니다** — 기존 REQ-2-1을 코드가 준수하게 한 변경이다.
+
+### 왜 고쳤는가 — 2026-08-09 약 +5.46억원 가짜 일별 손익
+
+사용자가 일별 손익 추이에서 3개월을 선택했을 때 **2026-08-09 하루에 약 +4억원** 막대가 보였다.
+READ-ONLY 조사로 원인을 확정했다(v280 회귀 아님 · 사용자 입력 오류 아님).
+
+- `origin='initial'`('최초') 거래는 **거래가 아니라 기존 보유분을 원장에 올리는 등록**이다.
+  **앱이 스스로 만든다** — `downloadHoldingsAsTxTemplate`(js/06:612~620)가
+  `구분='최초' · 일자=yesterdayDateStr() · 매매단가=a.buyPrice(과거 평균 취득단가)`로 양식을 내려주고,
+  `migrateUsdCashAssetsToTransactions`(js/01:2146~)가 달러 현금에 같은 모양을 만든다.
+- 그런데 **DV(js/23 · js/24)는 `origin`을 한 번도 읽지 않았다**. 그래서 등록 거래를 실제 매수로 보아
+  `qty × (등록일 종가 − 과거 평균 취득단가)` = **그 종목이 지금까지 쌓은 평가차익 전체**를
+  등록일 하루의 손익으로 표시했다.
+- 실측(사용자 데이터 · 읽기 전용): 2026-08-09 '최초' 25건 합계 **+545,774,933원**,
+  단일 최대 **와이프 SK하이닉스 +436,618,182원** (= 273 × 종가 − 273 × 228,666).
+  2026-08-18 달러 현금 '최초'는 **−535,475원**(적용환율 1,420 vs 평가환율 차이).
+- **KRW 현금 거래는 0건**이었다 — 앞서 의심했던 "KRW cash price ≠ 1" 가설은 **REJECTED**이며
+  이번 건과 무관한 **별건 잠재 결함**으로 남아 있다(아래 「잔여 참고사항 ①」).
+- 3개월 버튼은 **v278에도 있었다** — 이 막대는 v278 · v279 · v280 모두 같았다(회귀 아님).
+
+### 기존 정책이 이미 약속한 것이었다
+
+REQ-2-1 원문: 「일별 손익은 기존 U1=C 산식만으로 이미 0이라 코드 변경이 없다 —
+**최초 등록 자산 합계가 손익으로 잡히지 않는다**(qty_D × P_D − 0 − 당일 매수대금 = 0)」
+
+이 괄호 산식이 0이 되는 조건은 **당일 매수단가 = 그날 평가가격(P_D)** 이다. 실제 체결 거래는
+만족하지만 '최초' 등록은 과거 평균 취득단가라 만족하지 않는다 — **정책 문구에 숨은 전제가 있었고,
+테스트도 같은 전제를 안고 있었다**(`test/daily-pnl-valuation.test.js:113`의 assertion 메시지가
+스스로 "매수일(체결가 = 종가) 손익"이라고 밝힌다). 그래서 Unit 1094 · E2E 1320이 전부 통과하면서도
+이 결함이 남아 있었다. v281은 **그 조건을 등록 거래에만 실제로 맞춰 준 것**이다.
+
+### 바뀐 파일 (release commit `8c92f68` · 5개 · +228 / −4)
+
+| 파일 | 내용 |
+| --- | --- |
+| `js/23-daily-valuation.js` | **+19 / −1.** `dvBuildDailyPnlRows`가 산식에 넘기는 거래의 기준가 **1곳**만 바꿨다 — `price: (t.origin === 'initial' && unitCur !== null) ? unitCur / dvTradeRate(t, defaultTradeRate) : t.price`. 같은 `rate`로 나누고 다시 곱하므로 `flow = quantity × unitCur`가 되어 `endValue − startValue + flow = 0`이다(**환율과 무관하게 정확히 0** · USD 주식 · USD 현금 동일). 근거 주석 13줄 포함 |
+| `test/daily-pnl-valuation.test.js` | **+205 / −0.** TEST-01~13 추가. 기존 12건 삭제 · 완화 · skip · 기대값 변경 **0건** |
+| `docs/MASTER_POLICY_REQUIREMENTS_CHECKLIST.md` | **+2 / −1.** REQ-2-1에 숨은 전제 보완(원문 삭제 0) · **REQ-2-2 신설**(PM 결정 P-1~P-6 등재) |
+| `index.html` | `appVersionLabel` v280 → **v281** (1줄 · 바이트 수 변화 0) |
+| `sw.js` | `CACHE_NAME` `smart-asset-manager-v280` → **v281** (1줄 · 릴리스 노트 주석 무변경) |
+
+> `.claude/launch.json`은 **열지 않았고 수정 · stage · commit 하지 않았다**(로컬 변경 그대로 보존).
+
+### PM 결정 (SoT REQ-2-2에 등재됨)
+
+| | 결정 |
+| --- | --- |
+| **P-1** | 최초 등록일 Daily P/L = **0** |
+| **P-2** | 같은 날 `origin='period'` 실거래 손익은 **기존 산식대로 보존**(거래 단위 처리) |
+| **P-3** | `origin='initial'`인 **달러 현금도 0**. 단 `period` 달러 거래의 `appliedRate` 계산은 무변경 |
+| **P-4** | `origin='adjust'`는 **대상 아님** — 생성 경로가 이미 제거됐고(js/07 「잔고조정 거래 자동생성 로직 제거」) 사용자 데이터에 0건 |
+| **P-5** | REQ-2-1의 **결론은 그대로**. 이번 변경은 그 결론을 코드가 준수하게 한 것 |
+| **P-6** | 기존 「origin으로 거르지 않는다」 원칙 **유지** — 그 범위는 **날짜 판정**(js/01 `daysSinceLedgerStart` · js/23 `dvLedgerStartDate`)이며, Daily P/L의 등록일 기준가까지 origin을 무조건 무시한다는 뜻은 아니다 |
+
+### 기각된 구현 후보 (같은 문제를 다시 만지기 전에 읽을 것)
+
+| 후보 | 결과 | 왜 기각했나 |
+| --- | --- | --- |
+| 1. initial flow만 제외 | 8/9 **+994,371,918** | 수량은 `endValue`에 남아 **시가총액 전체가 손익**이 된다 — 결함이 2배로 악화 |
+| 2. 그 자산의 등록일 손익을 0 | 8/9 0 | 같은 날 섞인 **실거래 손익까지 사라진다**(P-2 위반) |
+| 2b. 그날 거래가 전부 initial일 때만 0 | 8/9 0 | 섞인 날에는 역사적 차익이 그대로 남는다(부분 해결) |
+| 3. initial 거래를 DV에서 제외 | 8/9 **null** | 수량 재생이 어긋나 `ledgerReplayMismatch` → 0이 아니라 **공백**이 된다 |
+| **4. 기준가 = 등록일 평가가격** | 8/9 **0** | **채택.** 거래 단위로 처리돼 실거래 손익 · 총평가금액 · 원장이 모두 보존된다 |
+
+### 계산 정책 보존 — v281에서 **변경 없음**
+
+`js/23`에서 바뀐 함수는 **`dvBuildDailyPnlRows` 하나뿐**이다(나머지 16개 함수 바이트 대조 IDENTICAL).
+
+- **`dvPositionDailyPnl` 산식 무변경** — `endValue − startValue + flow` 그대로
+- `dvBuildRows`(총평가금액) · `dvClassifyAsset` · `dvLedgerStartDate` · `dvMaintainedAt` ·
+  `dvCombineParts` · `dvPriceAt` · `dvCostBasisAt` · `dvTradeRate` 무변경
+- `computePositionsAndRealizedPnL`(수량 · 평단가 · `totalCost` · **실현손익**) 무변경 —
+  등록분은 원장에서 계속 정상 이벤트다
+- `calcRow`(미실현손익 · 수익률) · `calcDailyPnL`(대시보드 오늘 평가손익) 무변경
+- `daysSinceLedgerStart`(전체 기간 시작일) · REQ-2-1(최초 거래일 이전 = 0) · U4 무변경
+- transaction schema · localStorage schema · 엑셀 입출력 · 백업 · 동기화 · Risk · MC · CMA ·
+  Exposure Master · **KRW 현금 처리** 전부 무변경
+- `js/01` · `js/06` · `js/11` · `js/24` diff **0줄** · APP_SHELL 무변경
+
+### Release Gate 실측
+
+| Gate | 결과 |
+| --- | --- |
+| ESLint | **PASS** — exit 0 · error 0 · warning 0 |
+| Full Unit | **PASS** — tests **1107** · pass 1107 · fail 0 · skipped 0 · todo 0 (v280 1094 → **1107**, +13) |
+| Full E2E | **PASS** — **1320 / 1320** · failed 0 · flaky 0 · retry 0 · skipped 0 · exit 0 · 15.7m · 단독 실행 |
+| Regression | **PASS** — Risk score 45 · vol 14.83527456 · VaR −1.075213608 · CVaR −1.211565192 · MDD −2.662509179 · corr 0.9022471287 · beta 0.931428547 · 개별 Beta 7종 `/OK` · Benchmark `RESOLVED` |
+| Master | **PASS** — EM 58 · Index 11 · resolution 58 · tickerMaster **16724** |
+| MC | **PASS** — `errors=[]` · `measure-mc --json` 4680 bytes · sha256 `bfca3ae4834e44a7…` · v280 결과와 **byte-identical** |
+| Release Guard | **PASS** — CACHE_NAME · appVersionLabel 모두 v281 · APP_SHELL 32개 · v281 이후 변경된 APP_SHELL 파일 없음 |
+| Data Guard | **PASS** — stage 0 · 추적 345개 사용자 데이터 없음 |
+| git diff --check | **PASS** — exit 0 |
+
+### 실제 사용자 데이터 회귀 (읽기 전용 · 수정 · 재저장 · export 0건)
+
+| 항목 | v280 | v281 |
+| --- | ---: | ---: |
+| 2026-08-09 합계 | 545,774,933 | **0** |
+| 와이프 SK하이닉스 | 436,618,182 | **0** |
+| 신랑 삼성전자 | 68,944,770 | **0** |
+| 신랑 SK하이닉스 | 20,888,068 | **0** |
+| 나머지 initial 20건 | 각각 ±값 | **전부 0** |
+| 2026-08-18 달러 현금 | −535,475 | **≈0** (−1.9e-9) |
+| 08-21 · 08-25 · 08-27 | −460 · +310 · −41,303 | **동일** |
+| 09-03 · 09-08 · 09-17 · 09-29 | +29,130 · +45,173 · −2,528 · +7,432 | **동일** |
+| 총평가금액 | — | **변경 없음** |
+| 93일 중 v279와 다른 날 | — | **2일**(8/9 · 8/18 — 둘 다 등록일) |
+
+### Production smoke (2026-10-01 · 배포 후 실측)
+
+- 배포된 `js/23-daily-valuation.js` · `index.html` · `sw.js`가 release commit `8c92f68`과 **sha256 동일**
+- `index.html` 200 · `sw.js` 200 · `manifest.json` 200 · `js/23` 200
+- `appVersionLabel` = **v281** · `CACHE_NAME` = **smart-asset-manager-v281**
+- Service Worker **activated** · Cache Storage = `["smart-asset-manager-v281"]` — **v280 cache 제거 확인**
+- runtime **pageErrors 0**(uncaught 0건) · 가로 overflow **0**(1440×900 실측)
+- 배포본에서 `dvBuildDailyPnlRows`를 직접 호출한 실측(순수 함수 · state · localStorage 쓰기 0):
+  · SK하이닉스 initial 273 @228,666 · 종가 1,828,000 → **P/L 0** · TV **499,044,000**(= 273 × 1,828,000) 유지
+  · 달러 현금 initial 9,075.84 @1 · appliedRate 1,420 → **P/L ≈0**(−1.9e-9) · TV 12,352,218 유지
+  · `period` 실거래(전일 10주 @100 → 당일 5주 @105 · 종가 110) → **125**(기존 사례 9와 동일)
+  · 같은 날 initial + period 혼합 → **2,000**(실거래분만)
+- 일별 손익 팝업: 기간 버튼 6종 · 한 행 · 기본 **금주** · 14px · 44px ·
+  안내문 「사고판 금액 자체는 손익에 넣지 않습니다」 표시 · `undefined` · `NaN` 0건
+- 대시보드 「오늘 평가손익」 · 「전체 평가손익」 · 총자산 · 위험 정상 렌더
+
+> smoke는 **사용자 실제 데이터를 앱에 적재하지 않았다** — 격리된 브라우저에서 순수 함수를 직접
+> 호출해 실제 수치 모양만 재현했고, screenshot · video · trace · export · localStorage dump 0건이다.
+
+### 현재 작업트리 상태
+
+```
+branch       main
+HEAD         8c92f68  release: v281 — 최초 등록일 Daily P/L 0 처리
+origin/main  8c92f68  (동일)
+v281 tag     8c92f68  (release commit)
+v280 tag     a6abc04  (불변)
+미커밋        M .claude/launch.json   ← 사용자 로컬 변경 · 절대 손대지 않는다
+```
+
+### 잔여 참고사항 · 미결
+
+1. **KRW 현금 거래의 단가가 1이 아닐 때의 잠재 결함 — 미해결 · 이번 건과 별개.**
+   `ledgerKrwCash`는 DV에서 단가를 **1로 하드코딩**하는데(js/23 `dvBuildRows` · `unitAt`),
+   원화 현금 거래의 단가를 1로 강제하는 코드가 **없다** — `isUsdCashTxForm()`(js/06:805)이
+   `currency === 'USD'`를 요구해 UI 잠금(js/06:814) · 저장 강제(js/06:1671)가 **달러에만** 걸리고,
+   엑셀 업로드(js/06:716)도 강제하지 않는다. 그래서 `수량=1 · 단가=4억` 같은 원화 현금 거래가
+   있으면 일별 손익이 ±(수량 × (단가−1))만큼 틀어지고 총평가금액은 그 현금을 1원으로 본다
+   (합성으로 재현 확인). **현재 사용자 데이터에는 원화 현금 거래가 0건이라 발현하지 않는다.**
+   설계 조사 결론: 후보 G(거래 단위로 "모든 단가 = 1" 전제 검사 → 아니면 maintained로 복귀) +
+   후보 A(입력 차단, 달러 잠금을 원화에도) 조합이 최소 수정. **PM 결정 대기.**
+2. **등록 당일 전량 매도 경계** — `qtyCur = 0`이면 `unitCur`이 없어 기준가 치환을 쓸 수 없고
+   예전 `t.price` 폴백이다(실현손익 우선). TEST-11이 이 동작을 고정한다. 사용자 데이터 0건.
+3. **부동소수 잔차** — `unitCur / rate × rate`의 이진 반올림으로 1e-8원 수준 잔차가 남는다
+   (실측 QQQM +7.45e-9원 · 달러 현금 −1.86e-9원). `fmtKRW`는 양수 잔차를 "0원"으로 쓰지만
+   **음수 잔차는 "-0원"으로 쓴다**(`fmtKRW(-1.86e-9)` = `"-0원"` 실측). 계산 오류가 아니라
+   표시상의 부호이며 금액은 0.000000002원 미만이다. **PM 판단 대기 · 이번 릴리스에서 손대지 않았다.**
+4. **e2e/103과 같은 `boot()` 패턴을 쓰는 11개 spec의 잠재 경쟁 상태**(v280에서 남긴 미결) —
+   40 · 72 · 97 · 98 · 99 · 102 · 105 · 107 · 111 · 113 · 114. 그대로 남아 있다.
+5. **`sw.js`의 릴리스 노트 주석은 아직 v275 기준**이다. 기능 무관이라 손대지 않았다.
+6. `.claude/launch.json`은 계속 미커밋 로컬 변경으로 남아 있다. **열지 않는다 · 되돌리지 않는다.**
+---
+
+## 🏁 v280 FINAL RELEASE — KRW 현금 거래기반 전환 · 기록 이전 날짜의 총평가금액 산출 (2026-10-01 · **직전 릴리스** · **출시 완료**)
 
 > **Production: v280** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
 > **버전 변경**: v279 → **v280**
