@@ -11,6 +11,7 @@ const { test, expect } = require('@playwright/test');
 async function boot(page) {
   await page.goto('/');
   await page.waitForFunction(() => typeof renderRiskDiagnosisSummary === 'function' && typeof riskFxBasisNote === 'function');
+  await page.waitForFunction(() => lastRefreshAt > 0);
 }
 
 async function setResult(page, fxBasis) {
