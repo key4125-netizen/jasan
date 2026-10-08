@@ -32,7 +32,200 @@
 
 ---
 
-## 🏁 v281 FINAL RELEASE — 최초 등록일 Daily P/L 0 처리 (2026-10-01 · **가장 최신** · **출시 완료**)
+## 🏁 v282 FINAL RELEASE — 핵심종목 실시간 정확성 4건 (2026-10-08 · **가장 최신** · **출시 완료**)
+
+> **Production: v282** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
+> **버전 변경**: v281 → **v282**
+> **base commit**: `935b58e4dbb280799f9adc36420c23a2c254dd37` (v281 인계장 커밋)
+> **release commit**: `ef28e41e9db3bca224e46bbc606c242dd2b2d3f2` · **tag** `v282` → `ef28e41`
+> **merge commit**: `d575e6553f3d338815db94b041ea959ec9b2f543` — parents `ef28e41` + `e8a553e`
+> **FX 자동 갱신**: `e8a553e81b5713cbd94cd3190f1eb254b8d6a010` (github-actions[bot] · 2026-10-06 ·
+>   `chore: update USD/KRW H.10 data (2026-10-06)` · `data/fx/usdkrw-h10.json` 1개 ·
+>   endDate 2026-09-25 → 2026-10-02 · validCount 6,703 → 6,708)
+> **origin/main** = `d575e65` · **v281 tag** = `8c92f685…` 불변
+> **Production**: https://key4125-netizen.github.io/jasan/ (GitHub Pages · source `main/` · build type `legacy`)
+> **SoT 변경 없음** — 기존 기능의 정확성 보완으로 처리했다(PM 결정: 새 정책 등재 불필요).
+> **계산 로직 · provider · quote parsing · ticker master · 5분 자동 갱신 · 디자인 무변경.**
+
+### 왜 고쳤는가 — READ-ONLY 감사에서 나온 4건
+
+「핵심종목 실시간」 버튼 팝업을 전수 감사해(코드 수정 0건) 다음을 확인했다.
+
+- **F-1 「상위 5개」의 뜻이 화면에 없었다.** 코드는 처음부터 "보유 자산 중 평가금액 상위 5개"를
+  골랐는데(universe = `state.assets`), 제목은 "국내 핵심 종목 실시간 시세"뿐이라 시장 전체 상위로
+  읽힐 수 있었다. 거래대금 · 상승률 · 시가총액 기준이 아니다.
+- **F-2 후보군을 통화로 갈랐다.** 예전 `getCoreStockCandidates`는 ⓐ `isDomestic=='해외' && currency=='USD'`를
+  먼저 채우고 5개가 안 되면 ⓑ 원화 표시 해외 ETF로 보충했다. 그래서 ① 국내 거래소에 상장된 해외 ETF가
+  **해외** 후보군에 들어갔고 ② ⓐ→ⓑ 순서 때문에 **평가금액이 큰 종목이 더 아래**에 왔다
+  (실측: 사용자 데이터에서 USD 후보가 4종목뿐이라 ⓑ가 1칸 보충 → TIGER 미국S&P500 4,006만원이
+  알파벳A 998만원보다 5위).
+- **F-3 지수 타일에 장 상태가 없었다.** `coreIndexCardHtml`은 `session`을 한 번도 참조하지 않았다
+  (종목 행 `coreStockRowHtml`은 5번 참조). 그래서 장이 닫힌 시간(국내 07~09시 · 15:30~20시 · 주말 ·
+  공휴일)에 전일 종가가 아무 표시 없이 "실시간 시세" 제목 아래 보였다
+  (실측 2026-10-08 07:26 KST: 코스피 타일 "6,803.9 −1.98%" · session=`closed`).
+- **F-4 stale 상한이 없었다.** `getCoreStockInfoFromState` · `getMarketIndexInfoFromState`가
+  `fetchedAt`을 전혀 보지 않고 가격 유효성만 검사했다. 캐시는 `fetchedAt`을 **저장하고 있었고**,
+  매크로 브리핑 팝업은 이미 "마지막 정상 조회 HH:MM"을 쓴다(js/10) — 이 팝업만 그 패턴을 안 썼다.
+  js/11은 조회 실패 시 이전 지수 값을 그대로 남기므로, 실패가 누적되면 임의로 오래된 값이
+  "실시간"으로 남을 수 있었다.
+
+> 감사에서 **정상**으로 확인된 것: ticker 매칭(`sanitizeTicker` · .KS/.KQ 동시 조회 + 오매칭 검증) ·
+> 부분 응답 시 실패 항목만 "조회 실패" 표시하고 **순위가 당겨지지 않음** · 늦은 응답 폐기(토큰) ·
+> 티커별 중복 제거 · 세션 배지 자체의 DST · 휴장일 정확성(Yahoo `currentTradingPeriod` epoch 비교).
+
+### 바뀐 파일 (release commit `ef28e41` · 5개 · +472 / −22)
+
+| 파일 | 내용 |
+| --- | --- |
+| `js/02-dashboard-kpi.js` | **+102 / −15.** ① `getCoreStockCandidates`를 **상장시장 1단계**로 교체 — 기존 공용 `getMarketKeyForTicker(a.ticker)`(`.KS/.KQ`→`KR`, 그 밖 `US`)만 쓴다. 통화 2단계 폐지 · 종목명 문자열 추정 0. ② `CORE_QUOTE_STALE_MS = 10 * 60 * 1000` · `isCoreQuoteStale()` 신설, 두 캐시 리더에 적용. ③ `coreIndexSessionHtml()` 신설 + `coreIndexCardHtml`에 한 줄 — 종목 행과 **같은** `SESSION_BADGE_META`(js/07) · **같은** session 값(js/09)을 쓴다. ④ 제목 · 빈 안내 문구. ⑤ `maybeAutoShowCoreStocksModal()` + 1회 플래그(연결은 보류). ⑥ 낡은 주석 2건 정정 |
+| `js/14-settings-boot.js` | **+20 / −3.** 자동 표시 호출을 넣고 **주석 처리**했다(아래 「자동 팝업」) |
+| `index.html` | **+5 / −3.** 팝업 설명 주석(선정 기준 = 상장시장) + `appVersionLabel` v281 → **v282** |
+| `sw.js` | **+1 / −1.** `CACHE_NAME` → **smart-asset-manager-v282** (릴리스 노트 주석 · APP_SHELL 무변경) |
+| `test/core-stocks-live.test.js` | **신규 344줄 · 20건.** 상장시장 분리 CASE 1~5 · stale CASE 1~6 · 지수 session 4상태 + 14px/컴포넌트 금지 · 지역 전환 경계 · 미국 DST 두 국면 + 전환일 전후 · 국내 장마감/주말/휴장 · 자동 표시 1회성 |
+
+> `.claude/launch.json`은 **열지 않았고 수정 · stage · commit 하지 않았다**(로컬 변경 그대로 보존).
+
+### 확정된 정책 (PM 결정 2026-10-08)
+
+| | 결정 |
+| --- | --- |
+| **F-1** | 제목 `${국내\|해외} 보유자산 상위 5개 실시간 시세 (창)` · 빈 안내 `${국내\|해외} 시장에 상장된 보유 주식/ETF가 없습니다.` 문구만 바꾸고 선정 로직 · 레이아웃 · 새 안내문 0 |
+| **F-2** | **국내 = 국내 거래소 상장**(`.KS/.KQ`) — 국내 상장 해외 ETF(TIGER 미국S&P500 등) **포함**.<br>**해외 = 해외 거래소 상장** — 국내 상장 해외 ETF **제외**. 판정은 기존 공용 `getMarketKeyForTicker()` |
+| **F-3** | 지수 타일도 기존 공용 `SESSION_BADGE_META` · 기존 session 값 사용. 새 시장시간 판정 함수 0 |
+| **F-4** | 취득 후 **10분** 초과는 실시간으로 취급하지 않는다. 캐시 미사용 → **기존** 개별 보충 조회 → 실패 시 **기존** "조회 실패" 표시. 새 UI 0 |
+| **순위** | 기존 평가금액(`calcRow().curAmount`) 내림차순 유지. 거래량 · 거래대금 · 상승률 · 시가총액으로 바꾸지 않는다 |
+| **자동 팝업** | 이번 릴리스 **제외** |
+
+### stale 10분 — 취득시각의 출처가 둘이다 (중요)
+
+- **지수**: `state.marketIndexCache[t].fetchedAt` — 그 조회에 성공한 **실제 시각**이다(js/11).
+- **보유 종목**: 자산별 quote 타임스탬프가 **없다**. `refreshPricesAndRates()`가 한 사이클을 끝낸
+  시각 `lastRefreshAt`(js/11:197)이 `asset.currentPrice` · `dayChangeMap` · `prevCloseMap` ·
+  `sessionMap`이 함께 채워진 시점이라 그것을 취득시각으로 쓴다 — **per-quote가 아니라 사이클
+  완료 시각**이라는 점을 js/02 주석에 명시했다. 갱신이 끝나기 전이면 0이라 stale로 떨어지고,
+  그때도 개별 보충 조회가 받아온다. `lastRefreshAt`은 js/11 선언이므로 js/11을 싣지 않는 환경
+  (테스트 vm 등)에서 던지지 않도록 `typeof`로 받는다.
+
+### 자동 팝업 — 구현 완료 · 부팅 연결 보류 (PM 결정)
+
+PM이 "접속 시 기존 팝업을 1회 자동 표시"를 지시해 구현했고(`maybeAutoShowCoreStocksModal` ·
+버튼과 **같은** `openCoreStocksModal()` 하나만 호출 · 1회 플래그 · 단위 테스트 2건), 그 뒤
+**이번 릴리스에서는 제외**하기로 결정했다. 연결 지점은 js/14의 한 줄뿐이고 주석 상태다.
+
+```
+js/14-settings-boot.js  refreshPricesAndRates().finally() 안
+  // try { maybeAutoShowCoreStocksModal(); } catch (e) { ... }   ← 주석 유지
+```
+
+**왜 보류했는가 (실측)** — 부팅 후 모달이 떠서 `coreStocksModal`이 pointer event를 가로채고,
+기존 E2E의 전제(부팅 뒤 열린 모달 없음)가 깨진다.
+
+| spec | 자동 표시 ON | OFF |
+| --- | --- | --- |
+| `e2e/32-phase27-readability` | **16 failed** | 16 passed |
+| `e2e/99-ui-cleanup-v253` | **11 failed** (22초 → 5.7분) | 12 passed |
+| `e2e/smoke` | **1 failed** | 5 passed |
+
+전체 스위트를 ON으로 돌리면 30초 타임아웃이 누적돼 16분이 아니라 수 시간이 된다(e2e/99가 15배).
+테스트를 고쳐 통과시키는 것은 금지라 연결만 멈췄다. **켜려면 그 한 줄의 주석만 풀면 된다**
+(js/02의 함수와 테스트는 그대로 있다 — 의도된 보류이므로 dead code로 보고 지우지 않는다).
+남은 선택지: ⓐ 포기 ⓑ 채택 + E2E 공통 부팅 절차 조정(별도 승인 필요) ⓒ 모달이 아닌 방식(새 UI).
+
+### 기각된 설계 후보 (F-2를 다시 만지기 전에 읽을 것)
+
+- **통화 기준 유지(ⓐUSD → ⓑ원화 보충)**: 국내 상장 해외 ETF가 해외로 가고 순위가 역전된다 — 원인 자체.
+- **종목명으로 시장 추정**("미국" · "S&P500" 등): 금지. `TIGER 미국S&P500`은 KRX 상장이다.
+- **지수 타일에 배지 모양(`px-1.5 py-0.5`) 사용**: 375px에서 타일 폭이 약 59px뿐이라 넘친다 —
+  한 줄 텍스트로 넣고 `break-keep`을 쓰지 않아 "애프터마켓"이 2줄로 줄바꿈되게 했다(잘림 0 · 실측).
+
+### Release Gate 실측 (merge 후 최종 트리 = `d575e65`)
+
+| Gate | 결과 |
+| --- | --- |
+| ESLint | **PASS** — exit 0 · error 0 · warning 0 |
+| Full Unit | **PASS** — tests **1127** · pass 1127 · fail 0 · skipped 0 · todo 0 (v281 1107 → +20) |
+| Full E2E | **PASS** — **1320 / 1320** · failed 0 · flaky 0 · retry 0 · skipped 0 · exit 0 · 15.8m · 단독 |
+| Regression | **PASS** — Risk 45 · vol 14.83527456 · VaR −1.075213608 · CVaR −1.211565192 · MDD −2.662509179 · corr 0.9022471287 · beta 0.931428547 — **FX 5영업일 추가 후에도 v281과 전건 동일**(변화량 0) · 개별 Beta 7종 `/OK` · Benchmark `RESOLVED` · SAME_DATE 6 + ASYNC_DIMSON 1 |
+| Master | **PASS** — EM 58 · Index 11 · resolution 58 · tickerMaster **16724** (v281과 동일) |
+| MC | **PASS** — `errors=[]` · 4680 bytes · `measuredAt` 외 **IDENTICAL**(제외 sha256 v281 `c7c6243177450f6b` = v282 동일) |
+| Release Guard | **PASS** — CACHE_NAME · appVersionLabel 모두 v282 · APP_SHELL 32개 · v282 이후 변경된 APP_SHELL 파일 없음 |
+| Data Guard | **PASS** — stage 0 · 추적 346개 사용자 데이터 없음 |
+| git diff --check | **PASS** — exit 0 |
+
+> Full E2E는 **marker 상향 전 1회 · 상향 후 1회 · FX merge 후 1회** 돌렸고 모두 1320/1320이다.
+> 그 전 1회 실행에서 `e2e/78-p1-1-sync-direction.spec.js:275 T-09`가 1건 실패한 적이 있는데
+> (`#syncSettingsModal` toBeHidden 5초 타임아웃), 단독 3/3 + 전체 2/2로 **재현되지 않았다**.
+> e2e/78 · js/12 · js/25는 이번에 0줄 변경이다. 원인은 확정하지 못했고 "무관하므로 PASS"로
+> 간주하지 않았다 — 타이밍성 실패로 기록해 둔다.
+
+### Production smoke (2026-10-08 · 배포 후 실측)
+
+- 배포본 sha256이 release tree(`d575e65`)와 전부 IDENTICAL —
+  `js/02` · `js/14` · `index.html` · `sw.js` · `data/fx/usdkrw-h10.json`
+- `index.html` 200 · `sw.js` 200 · `manifest.json` 200
+- `appVersionLabel` = **v282** · `CACHE_NAME` = **smart-asset-manager-v282**
+- Service Worker **activated** · waiting false · controller yes ·
+  Cache Storage = `["smart-asset-manager-v282"]` — **v281 cache 제거 확인**
+- runtime **pageErrors 0** · `undefined` · `NaN` · `[object Object]` **0건**(1440px · 375px)
+- `#coreStocksLiveBtn` **실제 클릭** → 팝업 열림 · 제목 "국내 보유자산 상위 5개 실시간 시세 (07:00~20:00)"
+- 분류 실측: 국내 `SK하이닉스(000660.KS) 542,850,500 [KR]`(소유자 2건 합산 1줄) ·
+  해외 `QQQM 46,807,174 [US]` → `알파벳A 9,840,400 [US]` → `마이크로소프트 5,663,194 [US]`
+  (내림차순 · 겹침 0건)
+- 지수 session 실측(KST 11:4x 장중): `코스피 6,758 −0.68% 정규장` · `코스닥 895.2 −0.36% 정규장` ·
+  `S&P 500 7,801.8 −0.22% 애프터마켓` · `나스닥 27,538.7 −0.22% 애프터마켓`
+  (공용 session 값 `^KS11/^KQ11=regular` · `^GSPC/^IXIC=post`와 일치)
+- stale 실측: `CORE_QUOTE_STALE_MS=600000` · 4분 정상 · 9분 정상 · 11분 stale · 취득시각 없음 stale
+- **자동 팝업 미노출 확인** — 부팅 직후 `coreStocksModal` 자동 표시 0건(1440px · 375px 둘 다)
+- 레이아웃: 1440px page overflow 0 · 375px page 0 · grid 0 · 타일 4개 각 0 · 모달 우측 359 < 375 ·
+  최소 글자 14px · 지수 session 문구 **잘림 0**("애프터마켓"은 2줄 줄바꿈)
+
+> smoke는 격리된 테스트 브라우저에서 앱 기본 샘플 데이터로만 했다 — 사용자 실제 데이터 적재 ·
+> screenshot · export · localStorage dump 0건. **외부 provider의 실제 quote 숫자 대조는 하지 않았다.**
+
+### 기록해 둘 관찰 — Service Worker 갱신 타이밍 (결함 아님)
+
+기존 v281 SW가 떠 있던 탭에서는 새 SW가 잠시 `waiting`으로 남아 v281 화면이 그대로 보였다.
+그 상태에서 SW 등록만 해제(= 첫 방문과 동일)하니 **즉시 v282로 활성화되고 v281 캐시가 삭제**됐다.
+`sw.js`의 install/activate 핸들러(`skipWaiting()` · `clients.claim()` · 구 캐시 삭제)는
+**v281과 바이트 동일**하므로 v282가 바꾼 동작이 아니다 — 이 앱의 기존 업데이트 방식이다.
+서버는 처음부터 v282를 주고 있었다(curl · 해시 대조 확인).
+
+### 현재 작업트리 상태
+
+```
+branch       main
+HEAD         d575e65  merge: origin/main (FX H.10 자동 갱신 e8a553e) into v282 release
+origin/main  d575e65  (동일 · ahead/behind 0/0)
+v282 tag     ef28e41  (release commit · merge commit으로 이동시키지 않았다)
+v281 tag     8c92f68  (불변)
+미커밋        M .claude/launch.json   ← 사용자 로컬 변경 · 절대 손대지 않는다
+```
+
+### 잔여 참고사항 · 미결
+
+1. **자동 팝업 연결 — PM 결정 대기.** 위 「자동 팝업」 절 참고. js/14 한 줄 주석만 풀면 켜진다.
+   단 켜면 기존 E2E가 대량 실패하므로 E2E 공통 부팅 절차 조정이 선행되어야 한다.
+2. **지역 전환 창의 구조적 특성(바꾸지 않음).** `getCoreStocksRegion()`은 KST 07:00~20:00을
+   국내로 보는 **고정 시각 규칙**이고 요일 · 공휴일 · 실제 개장 여부를 보지 않는다. 미국 정규장은
+   DST 두 국면 모두 해외 창 안에 들어가지만(여름 KST 22:30~05:00 · 겨울 23:30~06:00),
+   **애프터마켓 후반은 해외 창을 벗어나 국내 목록이 보인다**(여름 ET 18:00 = KST 07:00).
+   판정식은 `test/core-stocks-live.test.js`가 고정해 두었다. 장 상태 자체는 session 배지가 말한다.
+3. **KRW 현금 거래 단가 ≠ 1 잠재 결함 — 미해결 · 별건(v281에서 넘어옴).**
+   `ledgerKrwCash`는 DV에서 단가를 1로 하드코딩하는데, 원화 현금 거래의 단가를 1로 강제하는 코드가
+   없다(`isUsdCashTxForm()`이 `currency==='USD'`를 요구해 UI 잠금 · 저장 강제 · 엑셀 업로드가
+   달러에만 걸린다). 현재 사용자 데이터에는 원화 현금 거래가 0건이라 발현하지 않는다.
+   설계 조사 결론: 후보 G(거래 단위 "모든 단가 = 1" 전제 검사 → 아니면 maintained 복귀) + 후보 A
+   (입력 차단)가 최소 수정. **PM 결정 대기.**
+4. **`-0원` 표시 — 미해결 · 별건(v281에서 넘어옴).** `unitCur/rate × rate`의 이진 반올림으로
+   1e-8원 수준 음수 잔차가 남으면 `fmtKRW(-1.86e-9)`가 `"-0원"`을 쓴다. 계산 오류가 아니라 부호
+   표시이며 금액은 0.000000002원 미만이다.
+5. **e2e/103과 같은 `boot()` 패턴을 쓰는 11개 spec의 잠재 경쟁 상태(v280에서 넘어옴)** —
+   40 · 72 · 97 · 98 · 99 · 102 · 105 · 107 · 111 · 113 · 114. 그대로 남아 있다.
+6. **`sw.js`의 릴리스 노트 주석은 아직 v275 기준**이다. 기능 무관이라 손대지 않았다.
+7. `.claude/launch.json`은 계속 미커밋 로컬 변경으로 남아 있다. **열지 않는다 · 되돌리지 않는다.**
+---
+
+## 🏁 v281 FINAL RELEASE — 최초 등록일 Daily P/L 0 처리 (2026-10-01 · **직전 릴리스** · **출시 완료**)
 
 > **Production: v281** · **상태: RELEASED** — Production 배포 · smoke 검증까지 완료했다.
 > **버전 변경**: v280 → **v281**
