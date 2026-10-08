@@ -310,7 +310,7 @@
             <!-- [버전 표시] 모바일에서 방금 새로고침/PWA 재실행한 게 실제로 최신 배포분인지 눈으로 바로
                  확인할 수 있게 - sw.js의 CACHE_NAME과 항상 같은 값으로 맞춰서 유지한다(버전 올릴 때 이
                  줄도 함께 수정). -->
-            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v281</p>
+            <p id="appVersionLabel" class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-0.5">v282</p>
           </div>
         </div>
 
@@ -2796,8 +2796,10 @@
 </div>
 
 <!-- ============================= 핵심종목 실시간 시세 팝업 =============================
-     헤더 [핵심종목 실시간] 버튼 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 07~20시=국내, 20~07시=해외)의
-     실시간 시세를 즉석 조회해 보여준다. getCoreStockCandidates()/openCoreStocksModal() 참고. z-[65]로
+     헤더 [핵심종목 실시간] 버튼과 접속 시 1회 자동 표시가 같은 팝업을 쓴다 - 보유 주식/ETF 중
+     **그 시장에 상장된** 종목의 평가금액 상위 5개(한국시각 07~20시=국내 상장, 20~07시=해외 상장)를
+     보여준다. 국내 상장 해외 ETF(TIGER 미국S&P500 등)는 국내 쪽이다.
+     getCoreStockCandidates()/openCoreStocksModal() 참고. z-[65]로
      리스크 진단 팝업(riskAlertModal, z-50)보다 위에, 종목 상세(assetDetailModal, z-[70])보다는 아래에
      둔다 - 이 팝업 안에서 지수/종목을 눌러도 상세 팝업이 그 위에 정상적으로 뜬다. -->
 <div id="coreStocksModal" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">

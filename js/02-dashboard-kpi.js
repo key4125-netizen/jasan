@@ -529,13 +529,19 @@ function renderKPIs() {
 }
 
 /* -------------------------------------------------------------------------
- * 11-A. [핵심종목 실시간] 헤더 버튼 팝업 - 보유 주식/ETF 중 평가금액 상위 5개(한국시각 기준 국내/해외
- *    자동 전환)의 실시간 시세를 그 자리에서 즉석 조회해 보여준다. 기존 목록/그래프와 달리 저장된 시세를
- *    쓰지 않고 팝업을 열 때마다 fetchPriceWithFallback()으로 매번 새로 받아온다.
+ * 11-A. [핵심종목 실시간] 헤더 버튼 팝업 - **보유 중인 주식/ETF 중 그 시장에 상장된 종목의 평가금액
+ *    상위 5개**(한국시각 기준 국내/해외 자동 전환)를 보여준다. 헤더 [핵심종목 실시간] 버튼과
+ *    앱 접속 시 1회 자동 표시(maybeAutoShowCoreStocksModal · js/14 bootApp)가 **같은 함수**
+ *    openCoreStocksModal() 하나를 쓴다.
+ *    [갱신 경로 정정] 예전 주석은 "팝업을 열 때마다 매번 새로 받아온다"고 적고 있었는데, 그 뒤
+ *    [중복 조회 제거]로 바뀌어 지금은 refreshPricesAndRates()가 채워 둔 state 캐시를 먼저 읽고
+ *    그 값이 없거나 10분을 넘겼을 때만(P-5) 그 항목 하나를 개별 조회한다 - 아래 두 캐시 리더 참고.
  * ---------------------------------------------------------------------- */
-// 07:00~21:00(KST)은 국내 장(+시간외 포함) 시간대라 국내 종목을, 그 외(밤 9시~다음날 아침 7시)는
-// 미국 장 시간대라 해외 종목을 보여준다. hour12:false가 자정을 "24"로 반환하는 일부 브라우저 구현
-// 차이를 %24로 방어한다.
+// hour12:false가 자정을 "24"로 반환하는 일부 브라우저 구현 차이를 %24로 방어한다.
+// [감사 2026-10-08] 이 판정은 "지금 어느 쪽 목록을 보여줄지"만 정하는 고정 시각 창이며 실제 개장
+// 여부를 뜻하지 않는다 - 장중/장마감 구분은 종목 행과 지수 타일의 session 배지가 담당한다
+// (SESSION_BADGE_META · js/07 / pickCurrentPriceFromChart · js/09). 미국 정규장은 DST 두 국면
+// 모두 아래 foreign 창(20:00~07:00) 안에 들어간다(여름 KST 22:30~05:00 · 겨울 23:30~06:00).
 // [시간대별 국내/해외 분기] 07:00~20:00(오전 7시~저녁 8시 미만)은 국내 정규장 시간대라 국내 핵심종목을,
 // 20:00~07:00(저녁 8시~다음날 오전 7시 미만)은 미국 장 시간대라 해외 핵심종목을 보여준다.
 function getCoreStocksRegion() {
@@ -571,14 +577,21 @@ function buildCoreStockGroups(filterFn) {
 // 통화(USD 등) 종목을 평가금액 내림차순으로 먼저 채우고, ⓐ만으로 5개가 안 차면 ⓑ원화로 거래되는
 // 해외자산군(국내 상장 해외지수 ETF 등)을 평가금액 내림차순으로 이어 붙여 5개를 채운다. ⓐ+ⓑ를 합쳐도
 // 5개 미만이면(보유 해외 종목 자체가 적은 경우) 국내 종목으로 보충하지 않고 있는 만큼만 보여준다.
+/* [PM 결정 2026-10-08 · P-1 · P-2] 후보군은 **실제 상장시장**으로 가른다 - 기초자산이 어디든
+ * 국내 거래소에 상장된 상품은 국내, 해외 거래소에 상장된 상품은 해외다. 판정은 이미 공용으로
+ * 쓰는 getMarketKeyForTicker()(이 파일 위쪽 · sanitizeTicker 기반 .KS/.KQ 판별)를 그대로 쓴다 -
+ * 새 판정 함수를 만들지 않고, 종목명의 "미국"/"S&P500" 같은 문자열로 추정하지도 않는다.
+ *   · TIGER 미국S&P500(360750.KS) → KR → 국내 후보군
+ *   · QQQM · GOOGL                → US → 해외 후보군
+ * 예전 구현은 자산의 isDomestic(투자지역)과 통화를 봤다. 그래서 ⓐ USD 종목을 먼저 채우고 ⓑ 원화
+ * 표시 해외 ETF로 보충하는 2단계였는데, 두 가지가 어긋났다 - ① 국내 상장 해외 ETF가 해외 후보군에
+ * 들어갔고 ② ⓐ→ⓑ 순서 때문에 평가금액이 더 큰 종목이 더 아래에 왔다(실측: 4,006만원 ETF가
+ * 998만원 종목보다 5위). 상장시장 하나로 가르면 각 후보군 안에서 평가금액 내림차순 한 번으로
+ * 끝나고(buildCoreStockGroups가 이미 정렬해 돌려준다), 한 티커는 한 시장에만 속하므로 국내/해외에
+ * 중복으로 나오지도 않는다. 순위 기준(평가금액)은 그대로다 - P-3. */
 function getCoreStockCandidates(region) {
-  if (region === 'domestic') {
-    return buildCoreStockGroups((a) => a.isDomestic === '국내').slice(0, 5);
-  }
-  const foreignCurrency = buildCoreStockGroups((a) => a.isDomestic === '해외' && a.currency === 'USD');
-  if (foreignCurrency.length >= 5) return foreignCurrency.slice(0, 5);
-  const krwDenominated = buildCoreStockGroups((a) => a.isDomestic === '해외' && a.currency !== 'USD');
-  return foreignCurrency.concat(krwDenominated).slice(0, 5);
+  const wantMarketKey = region === 'domestic' ? 'KR' : 'US';
+  return buildCoreStockGroups((a) => getMarketKeyForTicker(a.ticker) === wantMarketKey).slice(0, 5);
 }
 
 // [중복 조회 제거] 이 팝업이 열리는 시점(부팅 직후는 항상, 수동 버튼도 대부분)은 refreshPricesAndRates()가
@@ -587,9 +600,32 @@ function getCoreStockCandidates(region) {
 // 호출하면 방금 끝난 시세 갱신과 똑같은 API를 5번 더 부르는 순수 낭비다(그만큼 팝업이 늦게 뜨고
 // 부팅 체감 로딩도 길어짐 - 실측 신고된 문제). 이미 state에 있는 값을 그대로 재사용한다. 지수(코스피
 // 등)는 보유 자산이 아니라 이 갱신에 포함되지 않으므로 그건 계속 별도로 실시간 조회한다.
+/* [PM 결정 2026-10-08 · P-5 · stale 10분] 취득 후 10분을 넘긴 값은 실시간 시세로 취급하지 않는다.
+ * 자동 갱신 주기가 5분(AUTO_REFRESH_INTERVAL_MS, js/11)이므로 정상 동작 중에는 늘 10분 이내다 -
+ * 이 상한에 걸리는 건 갱신이 연속 실패했거나 기기를 한참 절전/백그라운드에 뒀다 돌아온 경우다.
+ * 상한을 넘으면 캐시 리더가 null을 돌려주고, 그러면 openCoreStocksModal()의 **기존** 개별 보충
+ * 조회(fetchPriceWithFallback)가 그 항목만 새로 받아온다 - 그것도 실패하면 기존 "조회 실패" 표시로
+ * 떨어진다. 즉 오래된 값이 최신 시세인 척 남는 경로가 없어지고, 새 UI는 만들지 않는다. */
+const CORE_QUOTE_STALE_MS = 10 * 60 * 1000;
+// 취득시각이 숫자가 아니거나(한 번도 못 받음) 상한을 넘으면 true. Date.now()와의 차이만 보지 않고
+// **그 값이 실제 취득시각인지**를 호출부에서 구분해 넘긴다(아래 두 호출부 주석 참고).
+function isCoreQuoteStale(fetchedAtMs) {
+  if (typeof fetchedAtMs !== 'number' || !(fetchedAtMs > 0)) return true;
+  return (Date.now() - fetchedAtMs) > CORE_QUOTE_STALE_MS;
+}
+
 function getCoreStockInfoFromState(candidate) {
   const asset = state.assets.find((a) => a.id === candidate.assetId);
   if (!asset || !Number.isFinite(asset.currentPrice) || asset.currentPrice <= 0) return null;
+  /* [P-5] 보유 종목 값(asset.currentPrice · dayChangeMap · prevCloseMap · sessionMap)은 자산별
+   * 취득시각을 따로 갖고 있지 않다 - refreshPricesAndRates()가 한 사이클을 끝낸 시각
+   * lastRefreshAt(js/11)이 이 값들이 함께 채워진 시점이라, 그것을 취득시각으로 쓴다. 지수와 달리
+   * per-quote 타임스탬프가 아니라 **사이클 완료 시각**이라는 점을 분명히 해 둔다(갱신이 끝나기
+   * 전이면 0이라 stale로 떨어지고, 그때도 아래 개별 보충 조회가 받아온다).
+   * lastRefreshAt은 js/11에 선언돼 있다 - 브라우저에서는 이 함수가 불릴 때 이미 초기화돼 있지만,
+   * js/11을 싣지 않는 환경(테스트 vm 등)에서도 던지지 않도록 typeof로 받아 0으로 떨어뜨린다. */
+  const quoteFetchedAt = (typeof lastRefreshAt === 'number') ? lastRefreshAt : 0;
+  if (isCoreQuoteStale(quoteFetchedAt)) return null;
   return {
     price: asset.currentPrice,
     changePercent: num(state.dayChangeMap[asset.id]),
@@ -674,7 +710,23 @@ function coreIndexCardHtml(c, info) {
     <div class="text-sm text-slate-400 truncate">${escapeHtml(c.name)}</div>
     <div class="text-sm font-semibold truncate">${fmtNum(info.price, 1)}</div>
     <div class="text-sm font-medium ${colorClass}">${isUp ? '+' : ''}${fmtNum(info.changePercent, 2)}%</div>
+    ${coreIndexSessionHtml(info.session)}
   </div>`;
+}
+/* [PM 결정 2026-10-08 · P-4 · F-3] 지수 타일에도 장 상태를 적는다 - 예전에는 가격과 등락률만 있어서,
+ * 장이 닫힌 시간(국내 07~09시 · 15:30~20시 · 주말 · 공휴일)에 전일 종가가 아무 표시 없이 "실시간
+ * 시세" 제목 아래 그대로 보였다(실측 2026-10-08 07:26 KST: 코스피 타일 "6,803.9 -1.98%" ·
+ * session='closed'). 판정은 새로 만들지 않는다 - 종목 행이 쓰는 것과 **같은** session 값
+ * (pickCurrentPriceFromChart가 Yahoo currentTradingPeriod의 실제 개장/마감 epoch와 지금을 비교해
+ * 정한 값 · js/09)과 **같은** 공용 표 SESSION_BADGE_META(js/07)를 그대로 쓴다. 미국 지수의 DST는
+ * 그 epoch 자체에 이미 반영돼 있어 여기서 시간대 계산을 하지 않는다.
+ * 타일이 좁아(375px에서 약 69px) 배지 모양 대신 한 줄 텍스트로 넣고, 한국어가 글자 단위로 줄바꿈
+ * 되도록 break-keep을 쓰지 않는다 - 잘리는 대신 두 줄이 되어 가로 넘침이 생기지 않는다.
+ * session 값이 없는 소스(Stooq 등)는 종목 행과 같이 아무것도 적지 않는다. */
+function coreIndexSessionHtml(session) {
+  const meta = SESSION_BADGE_META[session];
+  if (!meta) return '';
+  return `<div class="text-sm leading-tight text-slate-400 dark:text-slate-500" title="${escapeHtml(meta.title)}">${escapeHtml(meta.label)}</div>`;
 }
 function coreIndexCardHtmlError(c) {
   return `
@@ -690,6 +742,10 @@ function coreIndexCardHtmlError(c) {
 function getMarketIndexInfoFromState(ticker) {
   const cached = state.marketIndexCache[ticker];
   if (!cached || !Number.isFinite(cached.price) || cached.price <= 0) return null;
+  /* [P-5] 지수 캐시는 조회에 성공한 그 순간의 fetchedAt을 항목별로 갖고 있다(js/11 indexPromise) -
+   * 실제 취득시각이므로 그대로 쓴다. 조회 실패 시 js/11은 이전 값을 그대로 남기는데, 그 값이
+   * 10분을 넘으면 여기서 null이 되어 개별 보충 조회로 넘어간다. */
+  if (isCoreQuoteStale(cached.fetchedAt)) return null;
   return cached;
 }
 
@@ -700,7 +756,10 @@ async function openCoreStocksModal() {
   const region = getCoreStocksRegion();
   const regionLabel = region === 'domestic' ? '국내' : '해외';
   const timeRangeLabel = region === 'domestic' ? '07:00~20:00' : '20:00~07:00';
-  document.getElementById('coreStocksModalTitle').textContent = `${regionLabel} 핵심 종목 실시간 시세 (${timeRangeLabel})`;
+  // [PM 결정 2026-10-08 · F-1] "상위 5개"가 시장 전체 상위로 읽히지 않도록 제목에 선정 기준을
+  // 그대로 적는다 - 실제 의미는 "내가 보유한 그 시장 상장 종목 중 평가금액 상위 5개"다. 문구만
+  // 바꾸고 선정 로직 · 레이아웃 · 새 안내문은 건드리지 않는다.
+  document.getElementById('coreStocksModalTitle').textContent = `${regionLabel} 보유자산 상위 5개 실시간 시세 (${timeRangeLabel})`;
   document.getElementById('coreStocksModal').classList.remove('hidden');
   pushModalHistoryState();
 
@@ -748,7 +807,9 @@ async function openCoreStocksModal() {
   }).join('');
 
   if (candidates.length === 0) {
-    emptyEl.textContent = `보유 중인 ${regionLabel} 주식/ETF 종목이 없습니다.`;
+    // [F-1] 제목과 같은 기준(상장시장)으로 말한다 - "해외 주식/ETF가 없다"가 아니라
+    // "해외 시장에 상장된 보유 종목이 없다"가 사실이다(국내 상장 해외 ETF는 국내에 들어간다).
+    emptyEl.textContent = `${regionLabel} 시장에 상장된 보유 주식/ETF가 없습니다.`;
     emptyEl.classList.remove('hidden');
   } else {
     listEl.innerHTML = candidates.map((c, i) => {
@@ -764,6 +825,32 @@ function closeCoreStocksModal(viaBackButton) {
   if (!viaBackButton) popModalHistoryIfNeeded();
 }
 document.getElementById('coreStocksLiveBtn').addEventListener('click', () => openCoreStocksModal());
+
+/* [PM 결정 2026-10-08 · 접속 시 1회 자동 표시] 앱이 정상 로드되면 이 팝업을 자동으로 한 번 띄운다.
+ * 버튼은 그대로 두고(위 리스너 무변경), 자동 표시도 **버튼과 똑같이 openCoreStocksModal() 하나를**
+ * 호출한다 - 전용 UI · 복제 함수 · 별도 조회/분류 로직을 만들지 않으므로 상장시장 분리 · 평가금액
+ * 상위 5개 · stale 10분 · 지수 session 표시가 자동 표시에도 그대로 적용된다.
+ * 호출 시점은 bootApp()의 refreshPricesAndRates() 체인이 끝난 뒤다(js/14) - loadState() ·
+ * syncAssetsFromTransactions() · renderAll()이 모두 끝나 DOM과 자산 데이터가 준비되고, 시세 캐시도
+ * 채워진 상태라 빈 팝업이나 미완성 상위 5개가 뜨지 않는다.
+ * 한 번만 뜨게 하는 장치: 이 플래그는 페이지 로드마다 새로 0에서 시작하고 한 번 뜨면 다시 안 뜬다.
+ * 5분 자동 갱신 · visibilitychange · focus · 재렌더 · Service Worker 갱신은 bootApp()을 다시
+ * 부르지 않으므로 이 경로를 타지 않는다(호출부가 bootApp 한 곳뿐이다).
+ * 사용자가 닫은 뒤에는 아무 제약이 없다 - 버튼을 누르면 예전과 똑같이 다시 열린다(플래그는 자동
+ * 표시 여부만 기억하고 버튼 경로와 무관하다). */
+let coreStocksAutoShown = false;
+function maybeAutoShowCoreStocksModal() {
+  if (coreStocksAutoShown) return;
+  coreStocksAutoShown = true;
+  // 자동 표시가 실패해도 부팅 뒷단(동기화 pull 등)이 멈추지 않도록 호출부에서 감싸지만, 여기서도
+  // 반환되는 Promise의 거부를 흘려보낸다(openCoreStocksModal은 async다).
+  try {
+    const p = openCoreStocksModal();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (e) {
+    console.error('[부팅] 핵심종목 실시간 자동 표시 실패 - 버튼으로는 그대로 열 수 있다:', e);
+  }
+}
 // [타이틀 영역 터치 닫기] 헤더(타이틀+X버튼) 전체를 눌러도 닫히도록 - X버튼은 자체 핸들러에서
 // stopPropagation해 이 리스너까지 중복으로 닫기 처리가 전파되지 않게 막는다.
 document.getElementById('coreStocksModalHeader').addEventListener('click', () => closeCoreStocksModal());
