@@ -419,6 +419,184 @@
         "coreImpacts": []
       },
       "applied": true
+    },
+    {
+      "auditId": "TMG-20261101T053843Z-b58f6a",
+      "ranAt": "2026-11-01T05:38:43.789Z",
+      "runUrl": "https://github.com/key4125-netizen/jasan/actions/runs/41277722646",
+      "current": {
+        "generatedAt": "2026-10-01T05:25:52.193Z",
+        "count": 16724
+      },
+      "next": {
+        "generatedAt": "2026-11-01T05:38:43.635Z",
+        "count": 16831
+      },
+      "coreTickerCount": 58,
+      "thresholds": {
+        "addedCount": 1000,
+        "removedCount": 500,
+        "exchangeChangedCount": 10,
+        "nameChangedCount": 1000,
+        "addedOrRemovedPct": 5,
+        "nameChangedPct": 10
+      },
+      "diff": {
+        "added": 174,
+        "removed": 67,
+        "exchangeChanged": 13,
+        "nameChanged": 176,
+        "domesticNameChanged": 7,
+        "domesticExchangeMoves": 0,
+        "fundJudgementFlips": 0,
+        "coreImpacts": 0,
+        "addedPct": 1.0404,
+        "removedPct": 0.4006,
+        "nameChangedPct": 1.0524
+      },
+      "thresholdResults": [
+        {
+          "id": "ADDED_COUNT",
+          "hit": false,
+          "detail": "신규 174 >= 1000"
+        },
+        {
+          "id": "REMOVED_COUNT",
+          "hit": false,
+          "detail": "삭제 67 >= 500"
+        },
+        {
+          "id": "EXCHANGE_COUNT",
+          "hit": true,
+          "detail": "거래소 변경 13 >= 10"
+        },
+        {
+          "id": "NAME_COUNT",
+          "hit": false,
+          "detail": "이름 변경 176 >= 1000"
+        },
+        {
+          "id": "ADDED_PCT",
+          "hit": false,
+          "detail": "신규 1.0404% >= 5%"
+        },
+        {
+          "id": "REMOVED_PCT",
+          "hit": false,
+          "detail": "삭제 0.4006% >= 5%"
+        },
+        {
+          "id": "NAME_PCT",
+          "hit": false,
+          "detail": "이름 변경 1.0524% >= 10%"
+        },
+        {
+          "id": "DOMESTIC_EXCHANGE_MOVE",
+          "hit": false,
+          "detail": "국내 시장 이동 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "CORE_IMPACT",
+          "hit": false,
+          "detail": "핵심 종목 영향 0건(1건이라도 STOP)"
+        },
+        {
+          "id": "FUND_JUDGEMENT_FLIP",
+          "hit": false,
+          "detail": "펀드형 판정 변화 0건(1건이라도 STOP)"
+        }
+      ],
+      "decision": "STOP",
+      "triggered": [
+        "EXCHANGE_COUNT"
+      ],
+      "samples": {
+        "added": [
+          "0236J0.KS",
+          "0241D0.KS",
+          "0243M0.KS",
+          "0246X0.KS",
+          "0247S0.KS",
+          "0252P0.KS",
+          "0252V0.KS",
+          "0254C0.KS",
+          "0254H0.KS",
+          "0254S0.KS",
+          "0254W0.KS",
+          "0255D0.KS",
+          "0255E0.KS",
+          "0256C0.KS",
+          "0258B0.KS",
+          "0013Y0.KQ",
+          "0015M0.KQ",
+          "0053F0.KQ",
+          "0127E0.KQ",
+          "0158S0.KQ"
+        ],
+        "removed": [
+          "005030.KS",
+          "005110.KS",
+          "454180.KS",
+          "464240.KS",
+          "488200.KS",
+          "488210.KS",
+          "028080.KQ",
+          "084180.KQ",
+          "196490.KQ",
+          "469900.KQ",
+          "472230.KQ",
+          "473050.KQ",
+          "ANY",
+          "APGE",
+          "ARQQW",
+          "ATAI",
+          "BCAB",
+          "BRNS",
+          "BRR",
+          "BTAI"
+        ],
+        "exchangeChanged": [
+          "CECO NASDAQ→AMEX",
+          "IBOC NASDAQ→AMEX",
+          "TCBI NASDAQ→AMEX",
+          "DDS NYSE→AMEX",
+          "DDT NYSE→AMEX",
+          "ET NYSE→AMEX",
+          "ET/I NYSE→AMEX",
+          "LUMN NYSE→NASDAQ",
+          "NXDR NYSE→NASDAQ",
+          "OBK NYSE→AMEX",
+          "SUN NYSE→AMEX",
+          "SUNC NYSE→AMEX",
+          "USAC NYSE→AMEX"
+        ],
+        "nameChanged": [
+          "000640.KS \"동아쏘시오홀딩스\"→\"동아제약\"",
+          "001080.KS \"만호제강\"→\"MH머트리얼즈\"",
+          "078130.KQ \"국일제지\"→\"에스엠국일\"",
+          "091340.KQ \"S&K폴리텍\"→\"S&K글로벌\"",
+          "134580.KQ \"탑코미디어\"→\"엔키AX\"",
+          "210120.KQ \"캔버스엔\"→\"빅텐츠\"",
+          "457600.KQ \"벡트\"→\"벡트로보틱스\"",
+          "ACCV \"ACCELEVATION HOLDINGS CORPORATION\"→\"액셀러베이션 홀딩스\"",
+          "AFNXU \"AFTERNEXT ACQUISITION I CORP. UNITS 1 CL A 1 WT & 1 RT\"→\"애프터넥스트 애퀴지션 I 유닛\"",
+          "AGNT \"EXP 월드 홀딩스\"→\"AGNT\"",
+          "AMCI \"AMC ROBOTICS CORP\"→\"AMC ROBOTICS CORPORATION\"",
+          "AMCX \"AMC 네트웍스\"→\"AMC 글로벌 미디어\"",
+          "ASBP \"어스파이어 바이오파머 홀딩스\"→\"어스파이어 레이크우드\"",
+          "BDRX \"바이오덱사 파머슈티컬스(ADR)\"→\"바이오덱사 파머슈티컬스(ADR)\"",
+          "BEATW \"허트빔 콜 워런트(2026-10-31)\"→\"허트빔 콜 워런트(2026-10-31)\"",
+          "BIRD \"올버즈\"→\"스마트버드\"",
+          "BNC \"CEA 인더스트리스\"→\"BNB 스탠다드\"",
+          "CCCT \"콜럼버스 서클 캐피탈 III\"→\"콜럼버스 서클 캐피털 III\"",
+          "CCCTU \"콜럼버스 서클 캐피탈 III 유닛 1/3 워런트\"→\"콜럼버스 서클 캐피털 III 유닛 1/3 워런트\"",
+          "CCXI \"처칠 캐피탈 XI\"→\"처칠 캐피털 XI\""
+        ],
+        "domesticExchangeMoves": [],
+        "fundJudgementFlips": [],
+        "coreImpacts": []
+      },
+      "applied": false
     }
   ]
 }
