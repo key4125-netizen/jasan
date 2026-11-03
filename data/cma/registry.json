@@ -35,9 +35,9 @@
       "returnDefinitionEvidence": "원문 열 이름은 \"10-year Expected Return p.a.\"뿐이며 기하(복리) · 산술 구분을 적지 않았다(2025 Q4 · 2026 Q1 · 2026 Q2 원문 확인). 앱이 임의로 해석하지 않는다.",
       "volatilityDefinition": "10-year Expected Volatility p.a. (원문 표기 - 연율 표준편차)",
       "active": true,
-      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
-      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
-      "lastDatasetVersion": "AGI-2026.2"
+      "lastCheckedAt": "2026-11-03T07:43:40.821Z",
+      "lastSuccessfulFetchAt": "2026-11-03T07:43:40.821Z",
+      "lastDatasetVersion": "AGI-2026.3"
     },
     {
       "sourceId": "JPM_LTCMA_MATRIX_KRW",
@@ -81,8 +81,8 @@
         }
       },
       "active": true,
-      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
-      "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
+      "lastCheckedAt": "2026-11-03T07:43:40.821Z",
+      "lastSuccessfulFetchAt": "2026-11-03T07:43:40.821Z",
       "lastDatasetVersion": "JPM-KRW-2026.1"
     },
     {
@@ -97,7 +97,7 @@
       "checkFrequency": "MONTHLY",
       "checkFrequencyDays": 25,
       "active": true,
-      "lastCheckedAt": "2026-09-16T15:08:01.786Z",
+      "lastCheckedAt": "2026-11-03T07:43:40.821Z",
       "lastSuccessfulFetchAt": "2026-09-16T15:08:01.786Z",
       "lastDatasetVersion": null
     },
@@ -157,9 +157,9 @@
       "sha256": "689512607c87830b3f1fd2b0e21ba1f4da45bb8a571ef93e8cc5adc6b0a96da0"
     },
     "https://cdn.jpmorganfunds.com/content/dam/jpm-am-aem/global/en/institutional/interactive-matrix/data/krw.csv": {
-      "etag": "\"b8a8-643764b223980-gzip\"",
-      "lastModified": "Thu, 13 Nov 2025 09:13:26 GMT",
-      "sha256": "b59143b645ac4538b52193043f93b1fc559691d2997477d5ccb9e571b81f96de"
+      "etag": "\"b26c-65ef72d95f7c0-gzip\"",
+      "lastModified": "Thu, 29 Oct 2026 09:19:35 GMT",
+      "sha256": "6d6e965ac680b17181e68b6e53e1b34197bdf75cf5eed8bf53a0068c47c157b9"
     },
     "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf": {
       "etag": null,

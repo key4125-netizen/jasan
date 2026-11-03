@@ -133,6 +133,82 @@
       "detectedVersion": "CMA-2026.2",
       "resultingStatus": "ACTIVE",
       "note": "C-1 승인 - AllianzGI 2026 Q2(기준일 2026-03-31) PRIMARY 활성화 + JPM 2026 LTCMA KRW Benchmark 유지(§47-4)."
+    },
+    {
+      "checkedAt": "2026-11-03T07:43:40.821Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+      "result": "UNCHANGED",
+      "previousVersion": "AGI-2026.2",
+      "detectedVersion": "AGI-2026.2",
+      "resultingStatus": "ACTIVE",
+      "note": "HTTP 304"
+    },
+    {
+      "checkedAt": "2026-11-03T07:43:40.821Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q3-allianzgi-ap.pdf",
+      "result": "NEW_VERSION",
+      "previousVersion": "AGI-2026.2",
+      "detectedVersion": "AGI-2026.3",
+      "datasetId": "AGI-LTCMA-2026Q3-USD",
+      "changedFields": [
+        "sourceTitle",
+        "sourceUrl",
+        "edition",
+        "publishedAt",
+        "asOfDate",
+        "expectedReturn.US Government Bonds",
+        "expectedReturn.Euro Government Bonds",
+        "expectedReturn.Euro Corporates IG Bonds",
+        "expectedReturn.Global Corporates IG Bonds",
+        "expectedReturn.US High Yield Bonds",
+        "expectedReturn.Euro High Yield Bonds",
+        "expectedReturn.Global High Yield Bonds",
+        "expectedReturn.Asian High Yield Bonds",
+        "expectedReturn.EM Government Bonds (HC)",
+        "expectedReturn.Developed World Equities",
+        "expectedReturn.North America Equities",
+        "expectedReturn.Europe Equities",
+        "expectedReturn.Asia Pacific ex Japan Equities",
+        "expectedReturn.China (on-shore) Equities",
+        "expectedReturn.China (off-shore) Equities"
+      ],
+      "changedFieldCount": 64,
+      "errorCode": null,
+      "errorMessage": null,
+      "resultingStatus": "VERIFIED"
+    },
+    {
+      "checkedAt": "2026-11-03T07:43:40.821Z",
+      "provider": "Allianz Global Investors",
+      "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+      "source": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q4-allianzgi-ap.pdf | https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/web-capitalmarketassumptions-lite-r2026q4-allianzgi-ap-stamped.pdf",
+      "result": "NO_NEW_SOURCE",
+      "detectedVersion": null,
+      "note": "2026Q4 발행 자료 없음"
+    },
+    {
+      "checkedAt": "2026-11-03T07:43:40.821Z",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceId": "JPM_LTCMA_MATRIX_KRW",
+      "source": "https://cdn.jpmorganfunds.com/content/dam/jpm-am-aem/global/en/institutional/interactive-matrix/data/krw.csv",
+      "result": "UPDATE_FAILED",
+      "previousVersion": "JPM-KRW-2026.1",
+      "errorCode": "PARSE_FAILED",
+      "errorMessage": "Global Core Real Estate 전년 복리 수익률: 숫자가 아닙니다 (\"-\")",
+      "resultingStatus": "ACTIVE_PRESERVED"
+    },
+    {
+      "checkedAt": "2026-11-03T07:43:40.821Z",
+      "provider": "J.P. Morgan Asset Management",
+      "sourceId": "JPM_LTCMA_FULL_REPORT",
+      "source": "https://am.jpmorgan.com/content/dam/jpm-am-aem/global/en/insights/portfolio-insights/ltcma/noindex/ltcma-full-report.pdf",
+      "result": "UPDATE_FAILED",
+      "errorCode": "SOURCE_UNAVAILABLE",
+      "errorMessage": "HTTP 404"
     }
   ]
 }

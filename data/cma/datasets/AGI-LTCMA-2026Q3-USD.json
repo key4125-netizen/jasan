@@ -1,0 +1,682 @@
+{
+  "datasetId": "AGI-LTCMA-2026Q3-USD",
+  "version": "AGI-2026.3",
+  "provider": "Allianz Global Investors",
+  "sourceId": "ALLIANZGI_LTCMA_AP_USD",
+  "sourceTitle": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD) (Released in Q3 2026)",
+  "sourceUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q3-allianzgi-ap.pdf",
+  "sourceType": "OFFICIAL_PDF",
+  "role": "PRIMARY",
+  "numberKind": "OFFICIAL_DATA",
+  "edition": "2026Q3",
+  "publishedAt": "2026-08",
+  "asOfDate": "2026-06-30",
+  "effectiveDate": "2026-06-30",
+  "horizonYears": 10,
+  "currency": "USD",
+  "returnDefinition": "NOT_STATED_IN_SOURCE",
+  "volatilityDefinition": "10-year Expected Volatility p.a. (원문 표기 - 연율 표준편차)",
+  "methodologyUrl": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q1-allianzgi-ap.pdf",
+  "retrievedAt": "2026-11-03T07:43:40.821Z",
+  "verifiedAt": "2026-11-03T07:43:40.821Z",
+  "fileSha256": "989786b3c2625fc607672c38ef2f6538e0c5fed547f94035ee7fa1554c9783f6",
+  "httpEtag": null,
+  "httpLastModified": "Thu, 22 Oct 2026 08:27:44 GMT",
+  "assetClasses": [
+    "US Government Bonds",
+    "Euro Government Bonds",
+    "Global Government Bonds",
+    "US Corporates IG Bonds",
+    "Euro Corporates IG Bonds",
+    "Global Corporates IG Bonds",
+    "US High Yield Bonds",
+    "Euro High Yield Bonds",
+    "Global High Yield Bonds",
+    "Asian Aggregate Bonds",
+    "Asian High Yield Bonds",
+    "EM Government Bonds (HC)",
+    "Developed World Equities",
+    "North America Equities",
+    "Europe Equities",
+    "Asia Pacific ex Japan Equities",
+    "China (on-shore) Equities",
+    "China (off-shore) Equities",
+    "Hong Kong Equities",
+    "Japan Equities",
+    "Korea Equities",
+    "Singapore Equities",
+    "Taiwan Equities",
+    "Thailand Equities",
+    "Emerging Markets Equities",
+    "Commodities",
+    "Private Equity",
+    "Listed Private Equity",
+    "Real Estate",
+    "Listed Real Estate",
+    "Hedge Funds",
+    "Listed Infrastructure Equity"
+  ],
+  "expectedReturn": {
+    "US Government Bonds": 4.9,
+    "Euro Government Bonds": 4.7,
+    "Global Government Bonds": 5,
+    "US Corporates IG Bonds": 5.5,
+    "Euro Corporates IG Bonds": 5,
+    "Global Corporates IG Bonds": 5.3,
+    "US High Yield Bonds": 5.9,
+    "Euro High Yield Bonds": 5.5,
+    "Global High Yield Bonds": 5.8,
+    "Asian Aggregate Bonds": 5.5,
+    "Asian High Yield Bonds": 6.1,
+    "EM Government Bonds (HC)": 5.5,
+    "Developed World Equities": 6.6,
+    "North America Equities": 6.4,
+    "Europe Equities": 7.6,
+    "Asia Pacific ex Japan Equities": 6.4,
+    "China (on-shore) Equities": 8.4,
+    "China (off-shore) Equities": 7.2,
+    "Hong Kong Equities": 6.3,
+    "Japan Equities": 6.1,
+    "Korea Equities": 7.3,
+    "Singapore Equities": 6.3,
+    "Taiwan Equities": 4.7,
+    "Thailand Equities": 6.1,
+    "Emerging Markets Equities": 6.6,
+    "Commodities": 5.6,
+    "Private Equity": 9.9,
+    "Listed Private Equity": 8.4,
+    "Real Estate": 5.6,
+    "Listed Real Estate": 6.3,
+    "Hedge Funds": 5.7,
+    "Listed Infrastructure Equity": 5.6
+  },
+  "volatility": {
+    "US Government Bonds": 6.5,
+    "Euro Government Bonds": 6.8,
+    "Global Government Bonds": 5.2,
+    "US Corporates IG Bonds": 7.8,
+    "Euro Corporates IG Bonds": 6,
+    "Global Corporates IG Bonds": 6.7,
+    "US High Yield Bonds": 11.2,
+    "Euro High Yield Bonds": 13.4,
+    "Global High Yield Bonds": 11.3,
+    "Asian Aggregate Bonds": 7.1,
+    "Asian High Yield Bonds": 12.3,
+    "EM Government Bonds (HC)": 10.2,
+    "Developed World Equities": 17.3,
+    "North America Equities": 16.5,
+    "Europe Equities": 21,
+    "Asia Pacific ex Japan Equities": 22.3,
+    "China (on-shore) Equities": 31.5,
+    "China (off-shore) Equities": 28.3,
+    "Hong Kong Equities": 22.2,
+    "Japan Equities": 18.4,
+    "Korea Equities": 30.2,
+    "Singapore Equities": 22.4,
+    "Taiwan Equities": 25,
+    "Thailand Equities": 26.2,
+    "Emerging Markets Equities": 24.2,
+    "Commodities": 18.5,
+    "Private Equity": 19.7,
+    "Listed Private Equity": 30.2,
+    "Real Estate": 11.4,
+    "Listed Real Estate": 20.4,
+    "Hedge Funds": 8.6,
+    "Listed Infrastructure Equity": 14.8
+  },
+  "correlationMatrix": {
+    "kind": "VERSUS_REFERENCE",
+    "referenceClass": "Developed World Equities",
+    "values": {
+      "US Government Bonds": 0,
+      "Euro Government Bonds": 0.07,
+      "Global Government Bonds": 0.02,
+      "US Corporates IG Bonds": 0.21,
+      "Euro Corporates IG Bonds": 0.25,
+      "Global Corporates IG Bonds": 0.23,
+      "US High Yield Bonds": 0.63,
+      "Euro High Yield Bonds": 0.62,
+      "Global High Yield Bonds": 0.64,
+      "Asian Aggregate Bonds": 0.37,
+      "Asian High Yield Bonds": 0.62,
+      "EM Government Bonds (HC)": 0.54,
+      "Developed World Equities": 1,
+      "North America Equities": 0.99,
+      "Europe Equities": 0.97,
+      "Asia Pacific ex Japan Equities": 0.89,
+      "China (on-shore) Equities": 0.55,
+      "China (off-shore) Equities": 0.73,
+      "Hong Kong Equities": 0.78,
+      "Japan Equities": 0.82,
+      "Korea Equities": 0.84,
+      "Singapore Equities": 0.85,
+      "Taiwan Equities": 0.79,
+      "Thailand Equities": 0.73,
+      "Emerging Markets Equities": 0.89,
+      "Commodities": 0.51,
+      "Private Equity": 0.81,
+      "Listed Private Equity": 0.94,
+      "Real Estate": 0.68,
+      "Listed Real Estate": 0.86,
+      "Hedge Funds": 0.85,
+      "Listed Infrastructure Equity": 0.91
+    }
+  },
+  "sourceExtras": {
+    "hedgedToUsd": {
+      "US Government Bonds": false,
+      "Euro Government Bonds": true,
+      "Global Government Bonds": true,
+      "US Corporates IG Bonds": false,
+      "Euro Corporates IG Bonds": true,
+      "Global Corporates IG Bonds": true,
+      "US High Yield Bonds": false,
+      "Euro High Yield Bonds": true,
+      "Global High Yield Bonds": true,
+      "Asian Aggregate Bonds": false,
+      "Asian High Yield Bonds": false,
+      "EM Government Bonds (HC)": false,
+      "Developed World Equities": false,
+      "North America Equities": false,
+      "Europe Equities": false,
+      "Asia Pacific ex Japan Equities": false,
+      "China (on-shore) Equities": false,
+      "China (off-shore) Equities": false,
+      "Hong Kong Equities": false,
+      "Japan Equities": false,
+      "Korea Equities": false,
+      "Singapore Equities": false,
+      "Taiwan Equities": false,
+      "Thailand Equities": false,
+      "Emerging Markets Equities": false,
+      "Commodities": false,
+      "Private Equity": false,
+      "Listed Private Equity": false,
+      "Real Estate": false,
+      "Listed Real Estate": false,
+      "Hedge Funds": false,
+      "Listed Infrastructure Equity": false
+    },
+    "changeVsPreviousQuarter": {
+      "US Government Bonds": {
+        "expectedReturn": 0.1,
+        "volatility": 0
+      },
+      "Euro Government Bonds": {
+        "expectedReturn": -0.2,
+        "volatility": 0
+      },
+      "Global Government Bonds": {
+        "expectedReturn": 0,
+        "volatility": 0.1
+      },
+      "US Corporates IG Bonds": {
+        "expectedReturn": 0,
+        "volatility": 0
+      },
+      "Euro Corporates IG Bonds": {
+        "expectedReturn": -0.3,
+        "volatility": -0.1
+      },
+      "Global Corporates IG Bonds": {
+        "expectedReturn": -0.1,
+        "volatility": -0.1
+      },
+      "US High Yield Bonds": {
+        "expectedReturn": -0.1,
+        "volatility": 0
+      },
+      "Euro High Yield Bonds": {
+        "expectedReturn": -0.5,
+        "volatility": -0.1
+      },
+      "Global High Yield Bonds": {
+        "expectedReturn": -0.2,
+        "volatility": -0.1
+      },
+      "Asian Aggregate Bonds": {
+        "expectedReturn": 0,
+        "volatility": 0
+      },
+      "Asian High Yield Bonds": {
+        "expectedReturn": -0.3,
+        "volatility": 0
+      },
+      "EM Government Bonds (HC)": {
+        "expectedReturn": -0.3,
+        "volatility": -0.1
+      },
+      "Developed World Equities": {
+        "expectedReturn": -0.4,
+        "volatility": -0.2
+      },
+      "North America Equities": {
+        "expectedReturn": -0.3,
+        "volatility": -0.1
+      },
+      "Europe Equities": {
+        "expectedReturn": -0.7,
+        "volatility": -0.4
+      },
+      "Asia Pacific ex Japan Equities": {
+        "expectedReturn": -0.3,
+        "volatility": -0.3
+      },
+      "China (on-shore) Equities": {
+        "expectedReturn": 0.1,
+        "volatility": -0.1
+      },
+      "China (off-shore) Equities": {
+        "expectedReturn": -0.4,
+        "volatility": -0.2
+      },
+      "Hong Kong Equities": {
+        "expectedReturn": -0.3,
+        "volatility": -0.1
+      },
+      "Japan Equities": {
+        "expectedReturn": -0.8,
+        "volatility": -0.3
+      },
+      "Korea Equities": {
+        "expectedReturn": 0,
+        "volatility": 0.8
+      },
+      "Singapore Equities": {
+        "expectedReturn": -0.4,
+        "volatility": -0.2
+      },
+      "Taiwan Equities": {
+        "expectedReturn": -0.6,
+        "volatility": 0.3
+      },
+      "Thailand Equities": {
+        "expectedReturn": -0.2,
+        "volatility": -0.2
+      },
+      "Emerging Markets Equities": {
+        "expectedReturn": -0.3,
+        "volatility": -0.2
+      },
+      "Commodities": {
+        "expectedReturn": 0,
+        "volatility": 0.2
+      },
+      "Private Equity": {
+        "expectedReturn": -0.4,
+        "volatility": -0.2
+      },
+      "Listed Private Equity": {
+        "expectedReturn": -0.6,
+        "volatility": -0.3
+      },
+      "Real Estate": {
+        "expectedReturn": 0,
+        "volatility": -0.1
+      },
+      "Listed Real Estate": {
+        "expectedReturn": -0.3,
+        "volatility": -0.3
+      },
+      "Hedge Funds": {
+        "expectedReturn": -0.2,
+        "volatility": 0.8
+      },
+      "Listed Infrastructure Equity": {
+        "expectedReturn": -0.2,
+        "volatility": -0.1
+      }
+    }
+  },
+  "evidence": {
+    "asOfDate": "원문 p.2 표 제목 \"Assumptions as at … (in USD)\" 및 출처 문구 \"Data as at …\"",
+    "horizonYears": "원문 p.2 출처 문구 \"The risk-return parameters assume an investment horizon of 10 years\"",
+    "currency": "원문 p.2 \"in USD terms\" - 주식은 USD 비헤지, 채권 · 대체자산은 USD 또는 USD 헤지(* 표시)",
+    "publishedAt": "원문 마지막 쪽 발행 월 표기",
+    "expectedReturn": "원문 p.2 표 \"10-year Expected Return p.a.\" 열",
+    "volatility": "원문 p.2 표 \"10-year Expected Volatility p.a.\" 열",
+    "correlationMatrix": "원문 p.2 표 \"CORRELATION Developed World Equities\" 열 - 모든 값은 Developed World Equities와의 상관이다",
+    "assetClasses": "원문 p.5 \"Asset Class Benchmarks\" 표(자산군별 기준 지수)",
+    "returnDefinition": "원문 열 이름은 \"10-year Expected Return p.a.\"뿐이며 기하(복리) · 산술 구분을 적지 않았다(2025 Q4 · 2026 Q1 · 2026 Q2 원문 확인). 앱이 임의로 해석하지 않는다."
+  },
+  "contentHash": "0b1e19b42ce8bb0fc78ff13789014a9245f908e0037e805e9460b767182598a1",
+  "validation": {
+    "passed": true,
+    "issues": [],
+    "minEigenvalue": null
+  },
+  "diffFromPrevious": {
+    "previousDatasetId": "AGI-LTCMA-2026Q2-USD",
+    "changedFields": [
+      {
+        "field": "sourceTitle",
+        "before": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD) (Released in Q2 2026)",
+        "after": "Long-Term Capital Market Assumptions - Highlights (AllianzGI Asia Pacific, USD) (Released in Q3 2026)"
+      },
+      {
+        "field": "sourceUrl",
+        "before": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q2-allianzgi-ap.pdf",
+        "after": "https://ap.allianzgi.com/-/media/allianzgi/ap/ap/ideas-connect/pdfs/capitalmarketassumptions-2026q3-allianzgi-ap.pdf"
+      },
+      {
+        "field": "edition",
+        "before": "2026Q2",
+        "after": "2026Q3"
+      },
+      {
+        "field": "publishedAt",
+        "before": "2026-05",
+        "after": "2026-08"
+      },
+      {
+        "field": "asOfDate",
+        "before": "2026-03-31",
+        "after": "2026-06-30"
+      },
+      {
+        "field": "expectedReturn.US Government Bonds",
+        "before": 4.8,
+        "after": 4.9
+      },
+      {
+        "field": "expectedReturn.Euro Government Bonds",
+        "before": 4.9,
+        "after": 4.7
+      },
+      {
+        "field": "expectedReturn.Euro Corporates IG Bonds",
+        "before": 5.3,
+        "after": 5
+      },
+      {
+        "field": "expectedReturn.Global Corporates IG Bonds",
+        "before": 5.4,
+        "after": 5.3
+      },
+      {
+        "field": "expectedReturn.US High Yield Bonds",
+        "before": 6,
+        "after": 5.9
+      },
+      {
+        "field": "expectedReturn.Euro High Yield Bonds",
+        "before": 6,
+        "after": 5.5
+      },
+      {
+        "field": "expectedReturn.Global High Yield Bonds",
+        "before": 6,
+        "after": 5.8
+      },
+      {
+        "field": "expectedReturn.Asian High Yield Bonds",
+        "before": 6.4,
+        "after": 6.1
+      },
+      {
+        "field": "expectedReturn.EM Government Bonds (HC)",
+        "before": 5.8,
+        "after": 5.5
+      },
+      {
+        "field": "expectedReturn.Developed World Equities",
+        "before": 7,
+        "after": 6.6
+      },
+      {
+        "field": "expectedReturn.North America Equities",
+        "before": 6.7,
+        "after": 6.4
+      },
+      {
+        "field": "expectedReturn.Europe Equities",
+        "before": 8.3,
+        "after": 7.6
+      },
+      {
+        "field": "expectedReturn.Asia Pacific ex Japan Equities",
+        "before": 6.7,
+        "after": 6.4
+      },
+      {
+        "field": "expectedReturn.China (on-shore) Equities",
+        "before": 8.3,
+        "after": 8.4
+      },
+      {
+        "field": "expectedReturn.China (off-shore) Equities",
+        "before": 7.6,
+        "after": 7.2
+      },
+      {
+        "field": "expectedReturn.Hong Kong Equities",
+        "before": 6.6,
+        "after": 6.3
+      },
+      {
+        "field": "expectedReturn.Japan Equities",
+        "before": 6.9,
+        "after": 6.1
+      },
+      {
+        "field": "expectedReturn.Singapore Equities",
+        "before": 6.7,
+        "after": 6.3
+      },
+      {
+        "field": "expectedReturn.Taiwan Equities",
+        "before": 5.3,
+        "after": 4.7
+      },
+      {
+        "field": "expectedReturn.Thailand Equities",
+        "before": 6.3,
+        "after": 6.1
+      },
+      {
+        "field": "expectedReturn.Emerging Markets Equities",
+        "before": 6.9,
+        "after": 6.6
+      },
+      {
+        "field": "expectedReturn.Private Equity",
+        "before": 10.3,
+        "after": 9.9
+      },
+      {
+        "field": "expectedReturn.Listed Private Equity",
+        "before": 9,
+        "after": 8.4
+      },
+      {
+        "field": "expectedReturn.Listed Real Estate",
+        "before": 6.6,
+        "after": 6.3
+      },
+      {
+        "field": "expectedReturn.Hedge Funds",
+        "before": 5.9,
+        "after": 5.7
+      },
+      {
+        "field": "expectedReturn.Listed Infrastructure Equity",
+        "before": 5.8,
+        "after": 5.6
+      },
+      {
+        "field": "volatility.Global Government Bonds",
+        "before": 5.1,
+        "after": 5.2
+      },
+      {
+        "field": "volatility.Euro Corporates IG Bonds",
+        "before": 6.1,
+        "after": 6
+      },
+      {
+        "field": "volatility.Global Corporates IG Bonds",
+        "before": 6.8,
+        "after": 6.7
+      },
+      {
+        "field": "volatility.Euro High Yield Bonds",
+        "before": 13.5,
+        "after": 13.4
+      },
+      {
+        "field": "volatility.Global High Yield Bonds",
+        "before": 11.4,
+        "after": 11.3
+      },
+      {
+        "field": "volatility.EM Government Bonds (HC)",
+        "before": 10.3,
+        "after": 10.2
+      },
+      {
+        "field": "volatility.Developed World Equities",
+        "before": 17.5,
+        "after": 17.3
+      },
+      {
+        "field": "volatility.North America Equities",
+        "before": 16.6,
+        "after": 16.5
+      },
+      {
+        "field": "volatility.Europe Equities",
+        "before": 21.4,
+        "after": 21
+      },
+      {
+        "field": "volatility.Asia Pacific ex Japan Equities",
+        "before": 22.6,
+        "after": 22.3
+      },
+      {
+        "field": "volatility.China (on-shore) Equities",
+        "before": 31.6,
+        "after": 31.5
+      },
+      {
+        "field": "volatility.China (off-shore) Equities",
+        "before": 28.5,
+        "after": 28.3
+      },
+      {
+        "field": "volatility.Hong Kong Equities",
+        "before": 22.3,
+        "after": 22.2
+      },
+      {
+        "field": "volatility.Japan Equities",
+        "before": 18.7,
+        "after": 18.4
+      },
+      {
+        "field": "volatility.Korea Equities",
+        "before": 29.4,
+        "after": 30.2
+      },
+      {
+        "field": "volatility.Singapore Equities",
+        "before": 22.6,
+        "after": 22.4
+      },
+      {
+        "field": "volatility.Taiwan Equities",
+        "before": 24.7,
+        "after": 25
+      },
+      {
+        "field": "volatility.Thailand Equities",
+        "before": 26.4,
+        "after": 26.2
+      },
+      {
+        "field": "volatility.Emerging Markets Equities",
+        "before": 24.4,
+        "after": 24.2
+      },
+      {
+        "field": "volatility.Commodities",
+        "before": 18.3,
+        "after": 18.5
+      },
+      {
+        "field": "volatility.Private Equity",
+        "before": 19.9,
+        "after": 19.7
+      },
+      {
+        "field": "volatility.Listed Private Equity",
+        "before": 30.5,
+        "after": 30.2
+      },
+      {
+        "field": "volatility.Real Estate",
+        "before": 11.5,
+        "after": 11.4
+      },
+      {
+        "field": "volatility.Listed Real Estate",
+        "before": 20.7,
+        "after": 20.4
+      },
+      {
+        "field": "volatility.Hedge Funds",
+        "before": 7.8,
+        "after": 8.6
+      },
+      {
+        "field": "volatility.Listed Infrastructure Equity",
+        "before": 14.9,
+        "after": 14.8
+      },
+      {
+        "field": "correlation.Global Government Bonds|Developed World Equities",
+        "before": 0.03,
+        "after": 0.02
+      },
+      {
+        "field": "correlation.Euro Corporates IG Bonds|Developed World Equities",
+        "before": 0.26,
+        "after": 0.25
+      },
+      {
+        "field": "correlation.Global Corporates IG Bonds|Developed World Equities",
+        "before": 0.24,
+        "after": 0.23
+      },
+      {
+        "field": "correlation.Asian Aggregate Bonds|Developed World Equities",
+        "before": 0.36,
+        "after": 0.37
+      },
+      {
+        "field": "correlation.Asian High Yield Bonds|Developed World Equities",
+        "before": 0.61,
+        "after": 0.62
+      },
+      {
+        "field": "correlation.Emerging Markets Equities|Developed World Equities",
+        "before": 0.88,
+        "after": 0.89
+      },
+      {
+        "field": "correlation.Hedge Funds|Developed World Equities",
+        "before": 0.83,
+        "after": 0.85
+      }
+    ]
+  },
+  "status": "VERIFIED",
+  "statusHistory": [
+    {
+      "status": "VERIFIED",
+      "at": "2026-11-03T07:43:40.821Z",
+      "by": "cma-pipeline",
+      "note": "자동 검증 통과 - PM 검토 대기"
+    }
+  ]
+}
